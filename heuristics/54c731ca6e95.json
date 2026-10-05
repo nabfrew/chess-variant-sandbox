@@ -1,0 +1,158 @@
+{
+  "ruleset_hash": "54c731ca6e95",
+  "vocabulary_version": 2,
+  "vocabulary": [
+    "material",
+    "prey_weight",
+    "mobility",
+    "advance",
+    "centrality",
+    "royal_exposure",
+    "territory_margin",
+    "score_margin",
+    "score_urgency",
+    "check_margin",
+    "extinction_margin",
+    "hand_material",
+    "promotion_occupancy",
+    "reach_progress",
+    "facing_alignment"
+  ],
+  "model": "hand-written",
+  "k": 6,
+  "set_hash": "a686eeb12242",
+  "heuristics": [
+    {
+      "name": "material-and-mobility",
+      "plan": "Win material, and keep your options open.",
+      "weights": [
+        0.7069527190432073,
+        0.0,
+        0.020873573599939174,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.7069527190432073,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "420f52985c46"
+    },
+    {
+      "name": "trade-up",
+      "plan": "Win material and keep the pieces that can take the most.",
+      "weights": [
+        1.0,
+        0.0,
+        0.05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "4bc788e733d4"
+    },
+    {
+      "name": "shed",
+      "plan": "Give material away as fast as possible.",
+      "weights": [
+        -1.0,
+        0.0,
+        0.05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "ff7960bcb810"
+    },
+    {
+      "name": "hunt-the-king",
+      "plan": "Keep the opponent's royal piece under threat and yours out of trouble.",
+      "weights": [
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "c1960888d36e"
+    },
+    {
+      "name": "hoard",
+      "plan": "Capture into hand and keep the reserve large.",
+      "weights": [
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "7cfc0e6e503b"
+    },
+    {
+      "name": "promote",
+      "plan": "Get promotable pieces onto the squares where they promote.",
+      "weights": [
+        0.0,
+        0.0,
+        0.0,
+        0.4,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "digest": "a3275df63d36"
+    }
+  ]
+}

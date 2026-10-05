@@ -1,0 +1,158 @@
+{
+  "ruleset_hash": "a7b6f22e6b73",
+  "vocabulary_version": 2,
+  "vocabulary": [
+    "material",
+    "prey_weight",
+    "mobility",
+    "advance",
+    "centrality",
+    "royal_exposure",
+    "territory_margin",
+    "score_margin",
+    "score_urgency",
+    "check_margin",
+    "extinction_margin",
+    "hand_material",
+    "promotion_occupancy",
+    "reach_progress",
+    "facing_alignment"
+  ],
+  "model": "hand-written",
+  "k": 6,
+  "set_hash": "f1a819123aa6",
+  "heuristics": [
+    {
+      "name": "material-and-mobility",
+      "plan": "Win material, and keep your options open.",
+      "weights": [
+        0.9694254973526577,
+        0.0,
+        0.24538582901739145,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "69ab554fc9df"
+    },
+    {
+      "name": "trade-up",
+      "plan": "Win material and keep the pieces that can take the most.",
+      "weights": [
+        1.0,
+        0.0,
+        0.05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "4bc788e733d4"
+    },
+    {
+      "name": "shed",
+      "plan": "Give material away as fast as possible.",
+      "weights": [
+        -1.0,
+        0.0,
+        0.05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "ff7960bcb810"
+    },
+    {
+      "name": "claim-ground",
+      "plan": "Take and hold as much of the board as possible.",
+      "weights": [
+        0.0,
+        0.0,
+        0.0,
+        0.2,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "edccc16f5829"
+    },
+    {
+      "name": "count-at-the-clock",
+      "plan": "Build a lead on the count that decides the game when time runs out.",
+      "weights": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.3,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "ea6f835bae4e"
+    },
+    {
+      "name": "eat-what-you-can",
+      "plan": "Value a piece by what it can still take on the board right now.",
+      "weights": [
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "c30678bd19de"
+    }
+  ]
+}

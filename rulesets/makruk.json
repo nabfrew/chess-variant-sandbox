@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "name": "makruk",
+  "description": "Thai chess, still played competitively today. Pawns start on the third rank and promote on the sixth, so the armies meet almost immediately. The met steps one square diagonally and the khon moves one square diagonally or one straight forward. There is no double step, no en passant and no castling, and the two kings stand on opposite files rather than facing each other.",
+  "board": {"width": 8, "height": 8},
+  "pieces": [
+    {
+      "id": "P",
+      "name": "bia",
+      "value": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+      ]
+    },
+    {
+      "id": "N",
+      "name": "ma",
+      "value": 3,
+      "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}]
+    },
+    {
+      "id": "S",
+      "name": "khon",
+      "value": 2.5,
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"},
+        {"kind": "leap", "vectors": [[0, 1]], "mode": "both"}
+      ]
+    },
+    {
+      "id": "R",
+      "name": "ruea",
+      "value": 5,
+      "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "M",
+      "name": "met",
+      "value": 1.5,
+      "moves": [{"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "K",
+      "name": "khun",
+      "value": 0,
+      "royal": true,
+      "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {"piece": "P", "player": 0, "squares": ["a3", "b3", "c3", "d3", "e3", "f3", "g3", "h3"]},
+      {"piece": "R", "player": 0, "squares": ["a1", "h1"]},
+      {"piece": "N", "player": 0, "squares": ["b1", "g1"]},
+      {"piece": "S", "player": 0, "squares": ["c1", "f1"]},
+      {"piece": "K", "player": 0, "squares": ["d1"]},
+      {"piece": "M", "player": 0, "squares": ["e1"]},
+      {"piece": "P", "player": 1, "squares": ["a6", "b6", "c6", "d6", "e6", "f6", "g6", "h6"]},
+      {"piece": "R", "player": 1, "squares": ["a8", "h8"]},
+      {"piece": "N", "player": 1, "squares": ["b8", "g8"]},
+      {"piece": "S", "player": 1, "squares": ["c8", "f8"]},
+      {"piece": "M", "player": 1, "squares": ["d8"]},
+      {"piece": "K", "player": 1, "squares": ["e8"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": 5, "to": ["M"]},
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 128
+  },
+  "provenance": {
+    "origin": "human",
+    "source": "Thailand, where it is still played competitively"
+  }
+}

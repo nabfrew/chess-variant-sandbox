@@ -1,0 +1,1465 @@
+"""Tier one: the legality job, which checks a score a visitor's browser measured.
+
+`docs/plan-client-compute.md` §5 and §8's row *Tier one, the legality job*. A browser runs
+the whole package under Pyodide, plays and scores a draft, and sends what it played. The
+server trusts none of it. This job re-derives everything that depends on positions, asking
+the core at every ply, and it scores the records with its own metrics. The number it
+stores is the server's. `provisional` holds the result afterwards, as `legal`, and shows it
+to its designer alone.
+
+## What arrives: B0's gathered text, slimmed
+
+A measurement in the browser is B0's units (`tournament/slices.py`), and the text a phase's
+units send back, concatenated in part order, is that phase's whole output. The upload is
+those five texts, with the fit's verdict as every later unit was handed it and the stamp
+the browser made. `upload` writes it and `read_upload` reads it, and they are the only
+writer and reader, so there is one form and not two:
+
+    {"schema": 1, "basis": {...}, "fit": {...},
+     "phases": {"fit": "<JSON Lines>", "accept": ..., "tournament": ...,
+                "analysis": ..., "blunder": ...}}
+
+It is *slim* because `upload` drops from each line the fields the walk rebuilds: a game's
+per-ply series, and every analysis field but `near_best`. Those are half of `analysis.json`
+and most of `games.jsonl`, and the position keys among them are the 64-bit values no
+JavaScript number may carry (§3). Every dropped field has a default, so a slim line is
+still a line `GameRecord.from_dict` and `GameAnalysis.from_dict` read, and a line that
+keeps them is read the same way with the copies ignored. JavaScript neither writes nor
+reads the text: Python writes it in the browser and Python reads it here.
+
+## What the job checks, in order
+
+1. **The basis.** `provisional.refusal`: the browser's stamp against the server's one-run
+   basis. A stale cached module is refused by its build fingerprint before anything is
+   walked, and the page fetches the current module. The stamp's `fit` is compared with
+   the fit store here when the game has one, and again after step 4 with the player the
+   server's own regression gives, which is the stamp a pass stores (Q468).
+2. **The schedules are the server's.** It builds the fit's, the acceptance match's and the
+   tournament's schedules itself and refuses any difference by name: a missing seed, a game
+   the schedule does not hold, a seed played twice, other players, or another order.
+3. **The walk asks the core at every ply** (`CLAUDE.md` rule 3). A move after a terminal
+   position, a move outside `Engine.legal_moves`, moves that stop before the game ends, and
+   a stated winner or reason that differ from the core's verdict are refused, each naming
+   the game and the ply. The same walk rebuilds the series and the analysis fields.
+4. **The fit is re-derived.** The server regresses the walked fit games itself
+   (`slices.gather_fit`, which is `fitting.harvest` and `logistic_fit`), totals the walked
+   acceptance match (`slices.gather_verdict`), and requires the six-decimal vector and the
+   verdict to match the submitted ones. Without this a forged vector would replay cleanly
+   in tier two, because the agent string carries the procedure and no weights.
+5. **The analysis covers the graded games, and the trials are the sampler's.** Which games
+   the pass grades and which it forces a blunder into are functions of the records, so the
+   server lists both and refuses a submission that covers others.
+6. **The score is the server's.** `slices.gather_measurement` scores the walked records with
+   the ordinary metrics, and that is the number `provisional.record` stores.
+
+## What stays unproven
+
+That the rostered players chose those moves; the search counters (`nodes`, `depth_sum`,
+`searches`); the probe's `near_best` counts, beyond their shape; and each blunder trial's
+new winner. Tier two replays a sample of all four. A forger who passes this tier has
+written legal games by hand and invented those numbers, which is why a `legal` result is
+shown to its designer alone.
+
+## The job
+
+A `jobs` row of kind `legality`. `file` refuses at once what needs no walk (an upload that
+cannot be read, a stale basis, a game that is not the sender's, a second job in flight),
+keeps the upload under `runs/provisional/uploads/`, and queues the row. `claim` takes the
+oldest queued one, and `run` checks it and moves it to `done`, with a provisional result
+that is `legal`, or to `refused`, with the refusal's name and sentence in `jobs.error`.
+The job runs off the request thread, because §5 costs it at about ten CPU-seconds for
+chess and a `ThreadingHTTPServer` thread held that long is a thread nobody else gets; it
+runs ahead of every other kind of job.
+
+Nothing here commits but `Checker`. The caller owns the transaction, as `provisional` and
+`votes` do, and `sweep` deletes the uploads of finished jobs after the commit.
+
+## The site's door (B10)
+
+`POST /api/provisional` files a submission (`SiteApp._submit`): a refusal that needs no
+walk is answered at once with its name, and `stale-build` -- a basis refused by its build
+fingerprint alone -- is the one the page repairs, by fetching the current manifest.
+`Checker` is the server's one runner: a daemon thread that `serve` starts, which claims,
+runs and sweeps, each in its own transaction, and is woken by every filing.
+`GET /api/provisional/<job>` is `status`, for the sender alone: the job's state, a
+refusal's name and sentence, or the server's own number under its state.
+
+## Tier two follows (Q503e)
+
+A pass files the spot check of its result (`spotcheck.file`), drawn from the very text this
+job read, unless a spot check has flagged the sender's account. `Checker` runs it on the
+same thread once no legality job is queued, at `nice 19` where the platform has it
+(`lower_this_thread`), within `quota.SAMPLE_JOB_CPU` and `quota.SAMPLE_JOB_WALL`. Every job
+of either tier records its thread's processor time in `jobs.cpu_seconds`, and `file`
+refuses a person whose rolling day of it is spent (`quota.CHECK_CPU_A_DAY`). `status`
+carries the check's state as `spotCheck`, so the page knows to keep asking.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+import threading
+import time
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
+from pathlib import Path
+from typing import Any
+
+from chess_variant_sandbox import corpus
+from chess_variant_sandbox.agents.evaluation import Evaluator
+from chess_variant_sandbox.agents.features import VOCABULARY
+from chess_variant_sandbox.agents.fitted import FitError, FittedObjective
+from chess_variant_sandbox.engine import Engine
+from chess_variant_sandbox.engine.moves import (
+    MOVE_DROP,
+    move_from,
+    move_promotion,
+    move_to,
+    move_type,
+)
+from chess_variant_sandbox.measurement import Basis, built_fingerprint
+from chess_variant_sandbox.metrics.scoring import WeightsError
+from chess_variant_sandbox.site import provisional, quota, spotcheck
+from chess_variant_sandbox.site.provisional import ProvisionalError
+from chess_variant_sandbox.tournament import runner, slices
+from chess_variant_sandbox.tournament.analysis import (
+    BLUNDER_FRACTION,
+    BLUNDER_SAMPLE,
+    PLY_STRIDE,
+    BlunderTrial,
+    CorpusAnalysis,
+    GameAnalysis,
+)
+from chess_variant_sandbox.tournament.record import GameRecord
+from chess_variant_sandbox.tournament.runner import TournamentConfig
+
+# The upload's form is written in the wheel, by the one worker that gathers (B10), so its
+# writer and its constants live in `slices`, which a browser imports; `site/` it does not.
+SCHEMA = slices.UPLOAD_SCHEMA
+"""The upload's own version. A reader that does not know it refuses the upload."""
+
+REBUILT_RECORD_FIELDS = slices.REBUILT_RECORD_FIELDS
+REBUILT_ANALYSIS_FIELDS = slices.REBUILT_ANALYSIS_FIELDS
+
+# What a refusal is called. The name is what a test, a log line and the page can key on;
+# the sentence beside it names the game and the ply.
+BASIS = "basis"
+STALE_BUILD = "stale-build"
+"""A basis refused by its build fingerprint alone: the browser ran a core built from other
+sources, which is a stale cached manifest and wheel. It is named apart because it has a
+remedy the page acts on -- fetch the current manifest and measure again (B10)."""
+UNREADABLE = "unreadable"
+MISSING_SEED = "missing-seed"
+UNSCHEDULED = "unscheduled-game"
+WRONG_PLAYERS = "wrong-players"
+OUT_OF_ORDER = "out-of-order"
+ILLEGAL_MOVE = "illegal-move"
+AFTER_TERMINAL = "move-after-terminal"
+UNFINISHED = "unfinished"
+WRONG_OUTCOME = "wrong-outcome"
+FIT_VECTOR = "fit-vector"
+FIT_VERDICT = "fit-verdict"
+ANALYSIS = "analysis"
+BLUNDER = "blunder"
+STORE = "store"
+NAMES: tuple[str, ...] = (
+    BASIS,
+    STALE_BUILD,
+    UNREADABLE,
+    MISSING_SEED,
+    UNSCHEDULED,
+    WRONG_PLAYERS,
+    OUT_OF_ORDER,
+    ILLEGAL_MOVE,
+    AFTER_TERMINAL,
+    UNFINISHED,
+    WRONG_OUTCOME,
+    FIT_VECTOR,
+    FIT_VERDICT,
+    ANALYSIS,
+    BLUNDER,
+    STORE,
+)
+
+# How each playing phase is named in a sentence.
+_CALLED = {
+    slices.FIT: "the fit games",
+    slices.ACCEPT: "the acceptance match",
+    slices.TOURNAMENT: "the tournament",
+}
+
+
+class Refused(ValueError):
+    """A submission the server will not score, by name, with the game and ply where known.
+
+    A `ValueError`, like `provisional.ProvisionalError`, so a route answers 400 with the
+    sentence. `str()` is the sentence; `logged` is what `jobs.error` keeps.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        sentence: str,
+        *,
+        phase: str | None = None,
+        game: int | None = None,
+        seed: int | None = None,
+        ply: int | None = None,
+    ) -> None:
+        super().__init__(sentence)
+        self.name = name
+        self.sentence = sentence
+        self.phase = phase
+        self.game = game
+        self.seed = seed
+        self.ply = ply
+
+    @property
+    def logged(self) -> str:
+        return f"{self.name}: {self.sentence}"
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "sentence": self.sentence,
+            "phase": self.phase,
+            "game": self.game,
+            "seed": self.seed,
+            "ply": self.ply,
+        }
+
+
+# ------------------------------------------------------------------ the upload's form
+
+
+@dataclass(frozen=True)
+class Upload:
+    """What a browser sent: its stamp, the fit's verdict, and each phase's gathered text."""
+
+    basis: Mapping[str, Any] | None
+    fit: Mapping[str, Any] | None
+    phases: Mapping[str, str]
+
+
+upload = slices.upload
+"""The slim upload's writer, `slices.upload`: B0's gathered text for each phase, less
+what the walk rebuilds. The browser calls it under Pyodide, in the gathering half's last
+step, so the text is Python's from end to end."""
+
+
+def read_upload(text: str | bytes) -> Upload:
+    """The upload as sent, or a refusal saying what could not be read. Nothing is walked."""
+    try:
+        data = json.loads(text)
+    except (TypeError, ValueError) as error:
+        raise Refused(UNREADABLE, "the upload is not JSON") from error
+    if not isinstance(data, dict):
+        raise Refused(UNREADABLE, "the upload is not one JSON object")
+    if data.get("schema") != SCHEMA:
+        raise Refused(
+            UNREADABLE,
+            f"the upload is in form {data.get('schema')!r} and this server reads form "
+            f"{SCHEMA}, so the page fetches the current module",
+        )
+    phases = data.get("phases")
+    if not isinstance(phases, dict):
+        raise Refused(UNREADABLE, "the upload carries no phases")
+    unknown = sorted(str(name) for name in phases if name not in slices.PHASES)
+    if unknown:
+        raise Refused(UNREADABLE, f"the upload carries phases no measurement has: {unknown}")
+    missing = [phase for phase in slices.PHASES if phase not in phases]
+    if missing:
+        raise Refused(UNREADABLE, f"the upload lacks the phases {missing}")
+    if not all(isinstance(value, str) for value in phases.values()):
+        raise Refused(UNREADABLE, "each phase is carried as the text its units sent back")
+    basis = data.get("basis")
+    fit = data.get("fit")
+    return Upload(
+        basis=basis if isinstance(basis, dict) else None,
+        fit=fit if isinstance(fit, dict) else None,
+        phases={str(name): str(value) for name, value in phases.items()},
+    )
+
+
+# --------------------------------------------------------------------- the check
+
+
+@dataclass
+class Checked:
+    """A submission that passed: the server's own copies of everything it re-derived."""
+
+    spec: dict[str, Any]
+    roster: TournamentConfig
+    fit: FittedObjective
+    fit_records: list[GameRecord]
+    accept_records: list[GameRecord]
+    records: list[GameRecord]
+    analysis: CorpusAnalysis
+    # The server's one-run basis with `fit` set to the objective its own regression plays
+    # (`provisional.refitted`): the stamp the submission was held to, and the one stored.
+    basis: Basis | None = None
+
+
+@dataclass
+class Scored:
+    """The server's number for a checked submission, and the files it stores."""
+
+    headline: float | None
+    viable: bool | None
+    files: dict[str, str] = field(default_factory=dict)
+    unscored: str = ""
+
+
+def refuse_basis(submitted: Mapping[str, Any] | None, current: Basis) -> None:
+    """`provisional.refusal` as a `Refused`: `stale-build` when the build alone differs."""
+    reason = provisional.refusal(submitted, current)
+    if reason is None:
+        return
+    name = STALE_BUILD if provisional.other_build(submitted, current) else BASIS
+    raise Refused(name, f"the result was refused: {reason}")
+
+
+def check(spec: dict[str, Any], sent: Upload, current: Basis) -> Checked:
+    """Walk, rebuild and re-derive a submission, or refuse it by name.
+
+    `current` is the server's basis for this game's one-run measurement, as it would stamp
+    its own (`corpus.current_basis(..., seeds=corpus.ONE_SEED)`); its roster, games per
+    pairing and seed are the schedule the tournament is held to.
+    """
+    refuse_basis(sent.basis, current)
+    engine = Engine(spec)
+    if engine.spec.hash != current.ruleset_hash:
+        raise Refused(
+            BASIS, f"the basis is for the game {current.ruleset_hash}, not {engine.spec.hash}"
+        )
+    roster = roster_of(current)
+    submitted_fit = _verdict(sent.fit, engine.spec.hash)
+
+    fit_sent = _records(sent.phases[slices.FIT], slices.FIT)
+    accept_sent = _records(sent.phases[slices.ACCEPT], slices.ACCEPT)
+    tournament_sent = _records(sent.phases[slices.TOURNAMENT], slices.TOURNAMENT)
+    analyses_sent = _analyses(sent.phases[slices.ANALYSIS])
+    trials_sent = _trials(sent.phases[slices.BLUNDER])
+
+    # The schedules the server can build before walking anything. The acceptance match's
+    # waits for the regression, because whether there is a match at all is the server's
+    # vector's to say and not the submitted one's.
+    same_schedule(slices.FIT, fit_sent, runner.schedule(slices.fit_config()))
+    same_schedule(slices.TOURNAMENT, tournament_sent, runner.schedule(roster))
+
+    evaluator = Evaluator.for_engine(engine, mobility_weight=0.0)
+    fit_records = [
+        walk(engine, evaluator, record, phase=slices.FIT, game=index).record
+        for index, record in enumerate(fit_sent)
+    ]
+    walked = [
+        walk(
+            engine,
+            evaluator,
+            record,
+            phase=slices.TOURNAMENT,
+            game=index,
+            series=roster.collect_series,
+        )
+        for index, record in enumerate(tournament_sent)
+    ]
+
+    provisional_fit = slices.gather_fit(spec, fit_records)
+    accept_records: list[GameRecord] = []
+    if slices.needs_a_match(provisional_fit):
+        same_schedule(
+            slices.ACCEPT,
+            accept_sent,
+            runner.schedule(slices.accept_config(provisional_fit.procedure)),
+        )
+        accept_records = [
+            walk(engine, evaluator, record, phase=slices.ACCEPT, game=index).record
+            for index, record in enumerate(accept_sent)
+        ]
+        verdict = slices.gather_verdict(provisional_fit, accept_records)
+    else:
+        if accept_sent:
+            raise Refused(
+                UNSCHEDULED,
+                "the fit games regress to a fit that is refused before its match, so there "
+                f"is no acceptance match, and the submission has {len(accept_sent)} games of one",
+                phase=slices.ACCEPT,
+            )
+        verdict = provisional_fit
+    same_verdict(submitted_fit, verdict)
+    # The stamp's `fit` against what the server would play: the player its own regression
+    # gives, which on a visitor's design is the only answer there is (Q468). Compared as
+    # `refusal` compares every field, so a mismatch names both players.
+    held = provisional.refitted(current, corpus.player_digest(verdict))
+    reason = provisional.refusal(sent.basis, held)
+    if reason is not None:
+        raise Refused(BASIS, f"the result was refused: {reason}", phase=slices.FIT)
+
+    records = [step.record for step in walked]
+    analyses = rebuilt_analyses(records, walked, analyses_sent)
+    trials = rebuilt_trials(records, walked, trials_sent, roster.seed)
+    return Checked(
+        spec=spec,
+        roster=roster,
+        fit=verdict,
+        fit_records=fit_records,
+        accept_records=accept_records,
+        records=records,
+        analysis=CorpusAnalysis(games=analyses, blunders=trials),
+        basis=held,
+    )
+
+
+def roster_of(current: Basis) -> TournamentConfig:
+    """The tournament a one-run basis names: its roster, games a pairing and one seed."""
+    if len(current.seeds) != 1:
+        raise Refused(
+            BASIS,
+            f"a browser measures one run, and this basis names the seeds {list(current.seeds)}",
+        )
+    return slices.canonical_config(
+        agents=tuple(current.agents),
+        games_per_pairing=current.games_per_pairing,
+        seed=current.seeds[0],
+    )
+
+
+def score(checked: Checked, weights: str) -> Scored:
+    """The server's own score of the walked records, and the files a result carries.
+
+    `slices.gather_measurement` writes the four files a run directory holds and scores
+    them with the ordinary metrics. The fit travels beside them -- its verdict and the
+    games it was regressed and accepted on -- because tier two replays a sample of those
+    too, and the tournament's `fit=` players cannot be replayed without the vector.
+    """
+    with tempfile.TemporaryDirectory(prefix="legality-") as scratch:
+        out = Path(scratch)
+        try:
+            gathered = slices.gather_measurement(
+                checked.spec,
+                out,
+                checked.fit,
+                checked.records,
+                checked.analysis,
+                config=checked.roster,
+                weights=weights,
+            )
+            headline: float | None = gathered.index
+            viable: bool | None = bool(gathered.result.viable)
+            unscored = ""
+        except WeightsError as error:
+            # A run the scorer cannot read is a fact about the run: it carries the
+            # sentence and no number, as `corpus._score_run` keeps it.
+            headline, viable, unscored = None, None, str(error)
+        files = {
+            path.name: path.read_text(encoding="utf-8")
+            for path in sorted(out.iterdir())
+            if path.is_file()
+        }
+    files[provisional.FIT] = json.dumps(checked.fit.as_dict(), indent=2) + "\n"
+    files[provisional.FIT_GAMES] = _jsonl(checked.fit_records)
+    files[provisional.ACCEPT_GAMES] = _jsonl(checked.accept_records)
+    return Scored(headline=headline, viable=viable, files=files, unscored=unscored)
+
+
+def _jsonl(records: Iterable[GameRecord]) -> str:
+    """Records as JSON Lines, in `write_records`' own spelling."""
+    return "".join(
+        json.dumps(record.as_dict(), separators=(",", ":")) + "\n" for record in records
+    )
+
+
+# ------------------------------------------------------------------- reading lines
+
+
+def _lines(text: str, phase: str) -> list[dict[str, Any]]:
+    try:
+        payloads = slices._parse(text)
+    except slices.SliceError as error:
+        raise Refused(UNREADABLE, f"{phase}: {error}", phase=phase) from error
+    for number, payload in enumerate(payloads, start=1):
+        if not isinstance(payload, dict):
+            raise Refused(
+                UNREADABLE, f"line {number} of {phase} is not one JSON object", phase=phase
+            )
+    return payloads
+
+
+def _records(text: str, phase: str) -> list[GameRecord]:
+    """A playing phase's games, each held to the shape a record has before it is walked."""
+    records = []
+    for index, payload in enumerate(_lines(text, phase)):
+        try:
+            record = GameRecord.from_dict(payload)
+        except (KeyError, TypeError, ValueError) as error:
+            raise Refused(
+                UNREADABLE,
+                f"game {index} of {_CALLED[phase]} is not a game record ({error})",
+                phase=phase,
+                game=index,
+            ) from error
+        problem = _shape(record)
+        if problem:
+            raise Refused(
+                UNREADABLE,
+                f"game {index} of {_CALLED[phase]} {problem}",
+                phase=phase,
+                game=index,
+            )
+        records.append(record)
+    return records
+
+
+def _is_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _shape(record: GameRecord) -> str:
+    """What is wrong with a record's types, or `""`. The walk trusts nothing it reads."""
+    if not _is_int(record.seed):
+        return "has no whole-number seed"
+    if len(record.agents) != 2 or not all(isinstance(a, str) for a in record.agents):
+        return "does not name two players"
+    if not isinstance(record.moves, list) or not all(_is_int(m) for m in record.moves):
+        return "does not list its moves as whole numbers"
+    if record.winner is not None and not (_is_int(record.winner) and record.winner in (0, 1)):
+        return "names a winner that is neither seat"
+    if not isinstance(record.reason, str):
+        return "gives no reason for its ending"
+    for pair in (record.nodes, record.depth_sum, record.searches):
+        if len(pair) != 2 or not all(_is_int(value) for value in pair):
+            return "does not count its searches as two whole numbers"
+    return ""
+
+
+def _analyses(text: str) -> list[GameAnalysis]:
+    found = []
+    for index, payload in enumerate(_lines(text, slices.ANALYSIS)):
+        try:
+            analysis = GameAnalysis.from_dict(payload)
+        except (KeyError, TypeError, ValueError) as error:
+            raise Refused(
+                UNREADABLE,
+                f"analysis {index} is not a game's analysis ({error})",
+                phase=slices.ANALYSIS,
+                game=index,
+            ) from error
+        if not _is_int(analysis.seed) or not isinstance(analysis.near_best, list):
+            raise Refused(
+                UNREADABLE, f"analysis {index} is not a game's analysis", phase=slices.ANALYSIS
+            )
+        found.append(analysis)
+    return found
+
+
+def _trials(text: str) -> list[BlunderTrial]:
+    found = []
+    for index, payload in enumerate(_lines(text, slices.BLUNDER)):
+        try:
+            found.append(BlunderTrial.from_dict(payload))
+        except (KeyError, TypeError, ValueError) as error:
+            raise Refused(
+                UNREADABLE,
+                f"blunder trial {index} is not a trial ({error})",
+                phase=slices.BLUNDER,
+                game=index,
+            ) from error
+    return found
+
+
+def _verdict(data: Mapping[str, Any] | None, game: str) -> FittedObjective:
+    if data is None:
+        raise Refused(UNREADABLE, "the upload carries no fit verdict", phase=slices.FIT)
+    try:
+        verdict = FittedObjective.from_dict(dict(data))
+    except (FitError, KeyError, TypeError, ValueError) as error:
+        raise Refused(
+            UNREADABLE, f"the fit verdict cannot be read: {error}", phase=slices.FIT
+        ) from error
+    if verdict.ruleset_hash != game:
+        raise Refused(
+            FIT_VERDICT,
+            f"the fit verdict is for the game {verdict.ruleset_hash}, not {game}",
+            phase=slices.FIT,
+        )
+    return verdict
+
+
+# ------------------------------------------------------------------ the schedules
+
+
+def same_schedule(
+    phase: str, records: Sequence[GameRecord], tasks: Sequence[tuple[int, str, str]]
+) -> None:
+    """Refuse, by name, any difference between the games sent and the server's schedule.
+
+    Names the first missing seed before anything else, because a dropped game is the
+    forgery this check exists for; then a game the schedule does not hold or holds once
+    and was sent twice, then other players at a seed, then the order.
+    """
+    called = _CALLED[phase]
+    wanted = {seed: (first, second) for seed, first, second in tasks}
+    sent: dict[int, int] = {}
+    for index, record in enumerate(records):
+        if record.seed not in wanted:
+            raise Refused(
+                UNSCHEDULED,
+                f"game {index} of {called} has seed {record.seed}, which its schedule does "
+                "not hold",
+                phase=phase,
+                game=index,
+                seed=record.seed,
+            )
+        if record.seed in sent:
+            raise Refused(
+                UNSCHEDULED,
+                f"games {sent[record.seed]} and {index} of {called} both have seed "
+                f"{record.seed}",
+                phase=phase,
+                game=index,
+                seed=record.seed,
+            )
+        sent[record.seed] = index
+    for position, (seed, _first, _second) in enumerate(tasks):
+        if seed not in sent:
+            raise Refused(
+                MISSING_SEED,
+                f"{called} is missing seed {seed}, game {position} of its schedule",
+                phase=phase,
+                game=position,
+                seed=seed,
+            )
+    for index, record in enumerate(records):
+        if tuple(record.agents) != wanted[record.seed]:
+            first, second = wanted[record.seed]
+            raise Refused(
+                WRONG_PLAYERS,
+                f"game {index} of {called} (seed {record.seed}) is "
+                f"{record.agents[0]} against {record.agents[1]}, and its schedule has "
+                f"{first} against {second}",
+                phase=phase,
+                game=index,
+                seed=record.seed,
+            )
+    for index, (record, task) in enumerate(zip(records, tasks, strict=True)):
+        if record.seed != task[0]:
+            raise Refused(
+                OUT_OF_ORDER,
+                f"game {index} of {called} has seed {record.seed} where its schedule has "
+                f"seed {task[0]}",
+                phase=phase,
+                game=index,
+                seed=record.seed,
+            )
+
+
+# ---------------------------------------------------------------------- the walk
+
+
+@dataclass
+class Walked:
+    """One game walked: the server's copy of it, and what the positions said on the way."""
+
+    record: GameRecord
+    # Every analysis field but `near_best`, as `analysis._analyse_game` reads them.
+    positions: GameAnalysis
+    # The side to move and the number of legal moves at the ply a blunder trial forces
+    # its move into, which is all of a trial the positions decide.
+    blunder_side: int = 0
+    blunder_choices: int = 0
+
+
+def walk(
+    engine: Engine,
+    evaluator: Evaluator,
+    record: GameRecord,
+    *,
+    phase: str,
+    game: int,
+    series: bool = False,
+) -> Walked:
+    """Walk one game, asking the core at every ply, and rebuild what the positions decide.
+
+    Python holds the position and the core answers every question: which moves are
+    legal, whether the game is over and how it ended. A move after a terminal position,
+    a move outside the legal list, moves that stop before a verdict and a verdict other
+    than the stated one are refused, naming the game and the ply.
+
+    `series` rebuilds the per-ply `branching`, `material` and `captures` the way
+    `play.play_game_python` records them, which `tests/test_backends.py` holds to the
+    core's own. Without it the series are empty, as a fit or acceptance game's are.
+
+    The analysis fields are `analysis._analyse_game`'s reading of the same positions,
+    without the probe search that only `near_best` needs.
+    `tests/test_site_legality.py` holds this copy to that one field by field.
+    """
+    called = _CALLED[phase]
+    n_types = engine.spec.n_types
+    moves = list(record.moves)
+    target = int(len(moves) * BLUNDER_FRACTION)
+
+    state = engine.initial_state()
+    starting = {sq for sq in range(engine.spec.n_squares) if state.board[sq] != 0}
+    moved: set[int] = set()
+    seen = {state.key}
+    keys: list[int] = []
+    revisited = 0
+    moves_by_type = [0] * n_types
+    captures_by_type = [0] * n_types
+    legal_counts: list[int] = []
+    capture_counts: list[int] = []
+    counting = True
+    branching: list[int] = []
+    material: list[float] = []
+    captures: list[int] = []
+    blunder = (0, 0)
+
+    for ply, move in enumerate(moves):
+        legal = engine.legal_moves(state)
+        outcome = engine.terminal(state, legal)
+        if outcome is not None:
+            raise Refused(
+                AFTER_TERMINAL,
+                f"game {game} of {called} (seed {record.seed}) plays on at ply {ply}, "
+                f"after the game ended ({_ending(outcome.winner, outcome.reason)})",
+                phase=phase,
+                game=game,
+                seed=record.seed,
+                ply=ply,
+            )
+        if move not in legal:
+            raise Refused(
+                ILLEGAL_MOVE,
+                f"game {game} of {called} (seed {record.seed}) plays an illegal move at "
+                f"ply {ply}",
+                phase=phase,
+                game=game,
+                seed=record.seed,
+                ply=ply,
+            )
+        if ply == target:
+            blunder = (state.side_to_move, len(legal))
+        if series:
+            branching.append(len(legal))
+            material.append(round(evaluator.material(state, 0), 4))
+
+        board = state.board
+        kind = _mover_kind(move, board, n_types) if counting else None
+        if kind is None:
+            # `_analyse_game` stops counting at a move from an empty square, saying the
+            # record and the spec have drifted apart. A legal move does not start on one,
+            # so this is kept only so that the two read every game alike.
+            counting = False
+        else:
+            if move_type(move) != MOVE_DROP and move_from(move) in starting:
+                moved.add(move_from(move))
+            moves_by_type[kind] += 1
+            if board[move_to(move)] != 0:
+                captures_by_type[kind] += 1
+            if ply % PLY_STRIDE == 0 and len(legal) > 1:
+                legal_counts.append(len(legal))
+                capture_counts.append(sum(1 for m in legal if board[move_to(m)] != 0))
+
+        successor = engine.apply(state, move)
+        if series:
+            captures.append(1 if successor.halfmove == 0 else 0)
+        state = successor
+        if counting:
+            keys.append(state.key)
+            if state.key in seen:
+                revisited += 1
+            else:
+                seen.add(state.key)
+
+    legal = engine.legal_moves(state)
+    outcome = engine.terminal(state, legal)
+    if target == len(moves):
+        blunder = (state.side_to_move, len(legal))
+    if outcome is None:
+        raise Refused(
+            UNFINISHED,
+            f"game {game} of {called} (seed {record.seed}) stops after ply "
+            f"{len(moves) - 1}, and the game is not over there",
+            phase=phase,
+            game=game,
+            seed=record.seed,
+            ply=len(moves),
+        )
+    if outcome.winner != record.winner or outcome.reason != record.reason:
+        raise Refused(
+            WRONG_OUTCOME,
+            f"game {game} of {called} (seed {record.seed}) ends in "
+            f"{_ending(outcome.winner, outcome.reason)}, and the submission says "
+            f"{_ending(record.winner, record.reason)}",
+            phase=phase,
+            game=game,
+            seed=record.seed,
+            ply=len(moves),
+        )
+
+    rebuilt = replace(
+        record,
+        ruleset_hash=engine.spec.hash,
+        ruleset_name=engine.spec.name,
+        agents=(str(record.agents[0]), str(record.agents[1])),
+        moves=moves,
+        plies=len(moves),
+        branching=branching,
+        material=material,
+        captures=captures,
+    )
+    positions = GameAnalysis(
+        seed=record.seed,
+        agents=rebuilt.agents,
+        near_best=[],
+        legal_counts=legal_counts,
+        moves_by_type=moves_by_type,
+        captures_by_type=captures_by_type,
+        capture_counts=capture_counts,
+        revisited_plies=revisited,
+        walked_plies=len(keys),
+        starting_instances=len(starting),
+        moved_instances=len(moved),
+        position_keys=keys,
+    )
+    return Walked(
+        record=rebuilt,
+        positions=positions,
+        blunder_side=blunder[0],
+        blunder_choices=blunder[1],
+    )
+
+
+def _mover_kind(move: int, board: bytes, n_types: int) -> int | None:
+    """The type of the piece a move moves or drops, or `None` from an empty square."""
+    if move_type(move) == MOVE_DROP:
+        return move_promotion(move) % n_types
+    occupant = board[move_from(move)]
+    return None if occupant == 0 else (occupant - 1) % n_types
+
+
+def _ending(winner: int | None, reason: str) -> str:
+    who = "a draw" if winner is None else f"a win for seat {winner}"
+    return f"{who} by {reason}"
+
+
+# ------------------------------------------------------------------ the fit's verdict
+
+
+def same_verdict(submitted: FittedObjective, server: FittedObjective) -> None:
+    """Refuse a fit whose vector or verdict is not the one its games give.
+
+    The vector is compared at the six decimals `fitted.unit` rounds it to, and named by
+    its first differing term. The verdict -- accepted or not, the match score, the games
+    and the regression's own sample count and loss -- is compared after it.
+    """
+    if submitted.procedure != server.procedure:
+        raise Refused(
+            FIT_VERDICT,
+            f"the fit names the procedure {submitted.procedure}, and this server fits "
+            f"by {server.procedure}",
+            phase=slices.FIT,
+        )
+    for term, sent, derived in zip(VOCABULARY, submitted.vector, server.vector, strict=True):
+        if round(sent, 6) != round(derived, 6):
+            raise Refused(
+                FIT_VECTOR,
+                f"the fit's vector gives {term} {sent:.6f}, and its games regress to "
+                f"{derived:.6f}",
+                phase=slices.FIT,
+            )
+    for name in ("accepted", "accept_score", "accept_games", "samples", "loss"):
+        sent_value, derived_value = getattr(submitted, name), getattr(server, name)
+        if sent_value != derived_value:
+            raise Refused(
+                FIT_VERDICT,
+                f"the fit's verdict says {name} {sent_value!r}, and its games give "
+                f"{derived_value!r}",
+                phase=slices.FIT,
+            )
+
+
+# ---------------------------------------------------------- the analysis and trials
+
+
+def rebuilt_analyses(
+    records: Sequence[GameRecord], walked: Sequence[Walked], sent: Sequence[GameAnalysis]
+) -> list[GameAnalysis]:
+    """The analysis the server stores: its own reading of the positions, the sent probe.
+
+    The graded games are the pass's (`slices.analysis_units`), in its order, and the
+    submission has to cover exactly those. `near_best` is the one field kept from it, and
+    only in the shape it can have: one count per sampled ply, each at least one (the best
+    move is within the margin of itself) and at most the legal moves there.
+    """
+    units = slices.analysis_units(records, 1)
+    graded = list(units[0].games) if units else []
+    if len(sent) != len(graded):
+        raise Refused(
+            ANALYSIS,
+            f"the analysis covers {len(sent)} games, and the pass grades {len(graded)}",
+            phase=slices.ANALYSIS,
+        )
+    found: list[GameAnalysis] = []
+    for position, (index, analysis) in enumerate(zip(graded, sent, strict=True)):
+        record = records[index]
+        if analysis.seed != record.seed or tuple(analysis.agents) != record.agents:
+            raise Refused(
+                ANALYSIS,
+                f"analysis {position} is of seed {analysis.seed}, and the pass's game "
+                f"{position} is tournament game {index} (seed {record.seed})",
+                phase=slices.ANALYSIS,
+                game=index,
+                seed=record.seed,
+            )
+        own = walked[index].positions
+        counts = analysis.near_best
+        if len(counts) != len(own.legal_counts) or not all(
+            _is_int(count) and 1 <= count <= legal
+            for count, legal in zip(counts, own.legal_counts, strict=False)
+        ):
+            raise Refused(
+                ANALYSIS,
+                f"the probe counts for tournament game {index} (seed {record.seed}) are "
+                f"not one count between one and the legal moves at each of its "
+                f"{len(own.legal_counts)} sampled plies",
+                phase=slices.ANALYSIS,
+                game=index,
+                seed=record.seed,
+            )
+        found.append(replace(own, near_best=list(counts)))
+    return found
+
+
+def rebuilt_trials(
+    records: Sequence[GameRecord],
+    walked: Sequence[Walked],
+    sent: Sequence[BlunderTrial],
+    seed: int,
+) -> list[BlunderTrial]:
+    """The blunder trials the server stores: the sampler's games, the sent new winners.
+
+    Which games get a trial is `_blunder_choices`' draw over the records, and a chosen
+    game with fewer than two legal moves at the trial's ply has none, as
+    `analysis._one_blunder` rules. The ply, the original winner and the side made to
+    blunder are the walk's. The new winner is the one field a trial's playout decides,
+    and tier two replays a sample of them.
+    """
+    units = slices.blunder_units(records, 1, BLUNDER_SAMPLE, seed)
+    chosen = [
+        index for index in (units[0].games if units else ()) if walked[index].blunder_choices >= 2
+    ]
+    if len(sent) != len(chosen):
+        raise Refused(
+            BLUNDER,
+            f"the submission has {len(sent)} blunder trials, and the sampler draws "
+            f"{len(chosen)} from these games",
+            phase=slices.BLUNDER,
+        )
+    found: list[BlunderTrial] = []
+    for position, (index, trial) in enumerate(zip(chosen, sent, strict=True)):
+        record = records[index]
+        if trial.seed != record.seed or tuple(trial.agents) != record.agents:
+            raise Refused(
+                BLUNDER,
+                f"blunder trial {position} is of seed {trial.seed}, and the sampler's "
+                f"trial {position} is tournament game {index} (seed {record.seed})",
+                phase=slices.BLUNDER,
+                game=index,
+                seed=record.seed,
+            )
+        if trial.new_winner is not None and (
+            not _is_int(trial.new_winner) or trial.new_winner not in (0, 1)
+        ):
+            raise Refused(
+                BLUNDER,
+                f"blunder trial {position} names a winner that is neither seat",
+                phase=slices.BLUNDER,
+                game=index,
+                seed=record.seed,
+            )
+        found.append(
+            BlunderTrial(
+                seed=record.seed,
+                agents=record.agents,
+                ply=int(record.plies * BLUNDER_FRACTION),
+                original_winner=record.winner,
+                blundering_side=walked[index].blunder_side,
+                new_winner=trial.new_winner,
+            )
+        )
+    return found
+
+
+# ----------------------------------------------------------------------- the job
+
+KIND = "legality"
+"""`jobs.kind` for tier one. It runs ahead of every other kind (§5)."""
+
+QUEUED = "queued"
+RUNNING = "running"
+DONE = "done"
+REFUSED = "refused"
+FAILED = "failed"
+JOB_STATES: tuple[str, ...] = (QUEUED, RUNNING, DONE, REFUSED, FAILED)
+IN_FLIGHT: tuple[str, ...] = (QUEUED, RUNNING)
+
+UPLOADS = "uploads"
+"""Where a queued upload waits, under `runs/provisional/`. Never a result's directory."""
+
+
+class LegalityError(ValueError):
+    """A job that cannot be filed or run as asked. A route answers 400 with the sentence."""
+
+
+@dataclass(frozen=True)
+class Finished:
+    """How one job ended: `done` with a result, `refused` by name, or `failed`."""
+
+    job: int
+    state: str
+    result: provisional.Result | None = None
+    refusal: Refused | None = None
+    error: str = ""
+    sample: int | None = None
+    """The spot check a pass filed (`spotcheck.file`), or `None` for a flagged account."""
+
+
+Now = Callable[[str, dict[str, Any]], Basis]
+"""The server's basis for a game's one-run measurement, from its hash and its rules."""
+
+
+def one_run_basis(game: str, spec: dict[str, Any]) -> Basis:
+    """What the server would stamp on its own one-run measurement of this game now."""
+    return corpus.current_basis(game, spec=spec, seeds=corpus.ONE_SEED)
+
+
+def upload_path(runs_dir: Path, job: int) -> Path:
+    return Path(runs_dir) / provisional.DIRECTORY / UPLOADS / f"{int(job)}.json"
+
+
+def file(
+    connection: Any,
+    runs_dir: Path,
+    *,
+    game: str,
+    submitter: int,
+    text: str | bytes,
+    basis: Now = one_run_basis,
+) -> int:
+    """Queue a submission's check, refusing at once what needs no walk. Returns the job.
+
+    Refused here, with the sentence the page shows: an upload that cannot be read, a
+    stamp the server's basis does not match (a stale cached module first, so the page
+    fetches the current one), a game that is not the sender's own, a person whose day of
+    checking is spent (`quota.check_checking`), and a second submission while one of
+    theirs is still being walked (`quota.JOBS_IN_FLIGHT`). A spot check still waiting does
+    not hold a new one back: the new result supersedes the old, whose check then finds
+    nothing to replay.
+
+    `basis` is the server's one-run basis for a game, which a test replaces with a
+    smaller roster's; `run` takes the same.
+    """
+    sent = read_upload(text)
+    spec = _spec(connection, game)
+    current = basis(game, spec)
+    refuse_basis(sent.basis, current)
+    provisional.check_owner(connection, game, submitter)
+    quota.check_checking(connection, submitter)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select count(*) from jobs where kind = %s and requester = %s"
+            " and state = any(%s)",
+            (KIND, submitter, list(IN_FLIGHT)),
+        )
+        flying = int(cursor.fetchone()[0])
+        if flying >= quota.JOBS_IN_FLIGHT:
+            raise LegalityError(
+                "a score of yours is still being checked; send this one when it is done"
+            )
+        cursor.execute(
+            "insert into jobs (kind, hash, requester, state) values (%s, %s, %s, %s)"
+            " returning id",
+            (KIND, game, submitter, QUEUED),
+        )
+        job = int(cursor.fetchone()[0])
+    path = upload_path(runs_dir, job)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = text if isinstance(text, str) else text.decode("utf-8")
+    path.write_text(body, encoding="utf-8", newline="")
+    return job
+
+
+def claim(connection: Any, worker: str = "server") -> int | None:
+    """Take the oldest queued legality job, or `None` when there is none.
+
+    One atomic update, which `jobs_queue` indexes, stamped with the server's build as
+    every claim is; `skip locked` lets two runners share the queue.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "update jobs set state = %s, claimed = now(), worker = %s, fingerprint = %s"
+            " where id = (select id from jobs where kind = %s and state = %s"
+            " order by created, id limit 1 for update skip locked) returning id",
+            (RUNNING, worker, built_fingerprint(), KIND, QUEUED),
+        )
+        found = cursor.fetchone()
+    return None if found is None else int(found[0])
+
+
+def run(
+    connection: Any,
+    runs_dir: Path,
+    job: int,
+    worker: str = "server",
+    basis: Now = one_run_basis,
+) -> Finished:
+    """Check one filed submission and move its job, and the game's result, on.
+
+    A pass records the server's number and files through `provisional.record`, as
+    `legal`, superseding the game's standing result; a refusal records nothing and keeps
+    the name and sentence in `jobs.error`. Anything else is a fault here rather than in
+    the submission: the job is `failed` with the error, and what was written for it is
+    rolled back to a savepoint so no half-recorded result survives the caller's commit.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select kind, hash, requester, state from jobs where id = %s for update", (job,)
+        )
+        found = cursor.fetchone()
+    if found is None:
+        raise LegalityError(f"no job numbered {job}")
+    kind, game, submitter, state = found
+    if kind != KIND:
+        raise LegalityError(f"job {job} is a {kind} job, not a legality check")
+    if state not in IN_FLIGHT:
+        raise LegalityError(f"job {job} is already {state}")
+    if state == QUEUED:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "update jobs set state = %s, claimed = now(), worker = %s,"
+                " fingerprint = %s where id = %s",
+                (RUNNING, worker, built_fingerprint(), job),
+            )
+
+    started = time.thread_time()
+    with connection.cursor() as cursor:
+        cursor.execute("savepoint legality_job")
+    try:
+        result, text = _check_and_record(
+            connection, runs_dir, job, str(game), int(submitter), basis
+        )
+    except Refused as refusal:
+        _rollback(connection)
+        _finish(connection, job, REFUSED, started, error=refusal.logged)
+        return Finished(job=job, state=REFUSED, refusal=refusal, error=refusal.logged)
+    except ProvisionalError as error:
+        stored = Refused(STORE, str(error))
+        _rollback(connection)
+        _finish(connection, job, REFUSED, started, error=stored.logged)
+        return Finished(job=job, state=REFUSED, refusal=stored, error=stored.logged)
+    except Exception as error:  # a fault here is recorded on the job, never lost
+        _rollback(connection)
+        said = f"{type(error).__name__}: {error}"
+        _finish(connection, job, FAILED, started, error=said)
+        return Finished(job=job, state=FAILED, error=said)
+    with connection.cursor() as cursor:
+        cursor.execute("release savepoint legality_job")
+    # Tier two follows on the same thread, after every queued legality job: a sample drawn
+    # from this very text, unless the account is flagged (Q503e, `spotcheck`).
+    check = spotcheck.file(
+        connection, game=str(game), submitter=int(submitter), result=result.id, text=text
+    )
+    shown = "no number" if result.headline is None else f"{result.headline:.4f}"
+    then = "" if check is not None else "; not spot-checked: the account is flagged"
+    _finish(
+        connection, job, DONE, started, log=f"provisional result {result.id}: {shown}{then}"
+    )
+    return Finished(job=job, state=DONE, result=result, sample=check)
+
+
+def _check_and_record(
+    connection: Any, runs_dir: Path, job: int, game: str, submitter: int, basis: Now
+) -> tuple[provisional.Result, str]:
+    path = upload_path(runs_dir, job)
+    if not path.is_file():
+        raise LegalityError(f"job {job}'s upload is not under {path.parent}")
+    text = path.read_text(encoding="utf-8")
+    sent = read_upload(text)
+    spec = _spec(connection, game)
+    current = basis(game, spec)
+    checked = check(spec, sent, current)
+    scored = score(checked, current.weights_version)
+    return provisional.record(
+        connection,
+        runs_dir,
+        game=game,
+        submitter=submitter,
+        submitted=sent.basis,
+        current=checked.basis or current,
+        headline=scored.headline,
+        viable=scored.viable,
+        files=scored.files,
+        job=job,
+    ), text
+
+
+def _rollback(connection: Any) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute("rollback to savepoint legality_job")
+        cursor.execute("release savepoint legality_job")
+
+
+def _finish(
+    connection: Any, job: int, state: str, started: float, error: str = "", log: str = ""
+) -> None:
+    # `clock_timestamp()`, not `now()`: the walk runs inside this transaction, and `now()`
+    # is when it began, which would date the end of a minute's walk to its start.
+    # `cpu_seconds` is this thread's processor time since `started`, which a person's day
+    # of checking sums (`quota.CHECK_CPU_A_DAY`).
+    spent = round(max(time.thread_time() - started, 0.0), 3)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "update jobs set state = %s, finished = clock_timestamp(), error = %s, log = %s,"
+            " cpu_seconds = %s where id = %s",
+            (state, error or None, log or None, spent, job),
+        )
+
+
+def _spec(connection: Any, game: str) -> dict[str, Any]:
+    with connection.cursor() as cursor:
+        cursor.execute("select spec from games where hash = %s", (game,))
+        found = cursor.fetchone()
+    if found is None:
+        raise LegalityError(
+            f"no game with the hash {game} is saved on the site: save it, then send its "
+            "score again"
+        )
+    spec = found[0]
+    if not isinstance(spec, dict):
+        raise LegalityError("this game's rules have been deleted")
+    return spec
+
+
+def sweep(connection: Any, runs_dir: Path) -> list[int]:
+    """Delete the uploads no job still waits on, after the commit. Returns their jobs.
+
+    A finished job's upload has served: a pass stored the server's own copies under the
+    result, and a refusal's sentence names the game and the ply. An upload whose row is
+    gone -- a deleted game cascades its jobs -- goes too.
+    """
+    where = Path(runs_dir) / provisional.DIRECTORY / UPLOADS
+    if not where.is_dir():
+        return []
+    numbered = {
+        int(path.stem): path
+        for path in where.glob("*.json")
+        if path.stem.isdigit() and path.stem == str(int(path.stem))
+    }
+    if not numbered:
+        return []
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select id from jobs where id = any(%s) and kind = %s and state = any(%s)",
+            (sorted(numbered), KIND, list(IN_FLIGHT)),
+        )
+        waiting = {int(row[0]) for row in cursor.fetchall()}
+    gone = sorted(set(numbered) - waiting)
+    for number in gone:
+        numbered[number].unlink(missing_ok=True)
+    return gone
+
+
+# ------------------------------------------------------- what the page is told (B10)
+
+
+def status(
+    connection: Any, job: int, requester: int | None, basis: Now = one_run_basis
+) -> dict[str, Any]:
+    """Where one submission stands, for the person who sent it and nobody else.
+
+    `state` is the job's: `queued`, `running`, `done`, `refused` or `failed`. A refusal
+    comes back as its name and sentence, which is how the page tells `stale-build` --
+    fetch the current manifest -- from the rest. `done` carries `result`, the payload the
+    game's page reads (`provisional.Result.payload`): the server's own number under its
+    state, or `None` when that result no longer stands on the current basis. Another
+    person's job, or a number that is no job, is the `KeyError` an unknown path gets.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select kind, hash, requester, state, error, created, finished"
+            " from jobs where id = %s",
+            (int(job),),
+        )
+        found = cursor.fetchone()
+    if (
+        found is None
+        or found[0] != KIND
+        or requester is None
+        or found[2] is None
+        or int(found[2]) != int(requester)
+    ):
+        raise KeyError(f"no such submission: {job}")
+    _, game, _, state, error, created, finished = found
+    answer: dict[str, Any] = {"job": int(job), "game": str(game), "state": str(state)}
+    if finished is not None and created is not None:
+        answer["seconds"] = round((finished - created).total_seconds(), 1)
+    if state == REFUSED:
+        name, _, sentence = str(error or "").partition(": ")
+        answer["refusal"] = {"name": name, "sentence": sentence or name}
+    elif state == FAILED:
+        answer["error"] = "the server could not finish checking it; send it again"
+    elif state == DONE:
+        answer["result"] = None
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "select state, id from provisional where job = %s order by id desc limit 1",
+                (int(job),),
+            )
+            row = cursor.fetchone()
+        if row is not None and row[0] in provisional.STANDING:
+            shown = provisional.shown(connection, [str(game)], requester, basis)
+            answer["result"] = shown.get(str(game))
+        elif row is not None:
+            answer["superseded"] = str(row[0])
+        if row is not None:
+            # Tier two's word on it (Q503e): `queued` or `running` while the page should
+            # keep asking, then `done`, `mismatch`, `stopped` (out of budget) or `failed`;
+            # absent for a flagged account, whose results are never spot-checked.
+            answer["spotCheck"] = spotcheck.of_result(connection, int(row[1]))
+    return answer
+
+
+# --------------------------------------------------------------- the one runner
+
+
+def lower_this_thread() -> bool:
+    """Put the calling thread at `nice 19`, where the platform can; whether it did.
+
+    On Linux a thread is a task of its own and `setpriority` on its native id lowers it
+    alone, so the site's request threads keep their priority while the checks yield to
+    them (`docs/reference/tier-costs-on-the-box.md`: one runner thread, `nice 19`, the
+    box's other core the site's). Elsewhere -- Windows has no `setpriority` -- it does
+    nothing and says so.
+    """
+    setpriority = getattr(os, "setpriority", None)
+    if setpriority is None:
+        return False
+    try:
+        setpriority(getattr(os, "PRIO_PROCESS", 0), threading.get_native_id(), 19)
+    except OSError:
+        return False
+    return True
+
+
+
+class Checker:
+    """The server's one thread that runs filed legality jobs, oldest first.
+
+    `connect` is a context-manager factory that yields a connection and commits on the
+    way out, as `SiteApp._connection` does, so each claim, each run and each sweep is its
+    own transaction: a claimed job is `running` for every other reader before its walk
+    starts, and a pass lands with its result or not at all. `drain` is the whole of the
+    work, and a test calls it on its own; `start` runs it on a daemon thread, woken by
+    `wake` when a submission is filed and every `every` seconds besides.
+    """
+
+    def __init__(
+        self,
+        connect: Callable[[], Any],
+        runs_dir: Path,
+        basis: Now = one_run_basis,
+        worker: str = "server",
+        every: float = 60.0,
+        cpu_cap: float = quota.SAMPLE_JOB_CPU,
+        wall_cap: float = quota.SAMPLE_JOB_WALL,
+    ) -> None:
+        self.connect = connect
+        self.runs_dir = Path(runs_dir)
+        self.basis = basis
+        self.worker = worker
+        self.every = every
+        # A spot check's caps (`quota.SAMPLE_JOB_CPU`, `SAMPLE_JOB_WALL`); a test lowers them.
+        self.cpu_cap = cpu_cap
+        self.wall_cap = wall_cap
+        self._wake = threading.Event()
+        self._stopping = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def drain(self) -> list[Finished | spotcheck.Outcome]:
+        """Run every queued job, then delete what the finished ones no longer need.
+
+        Tier one first, every time: a spot check is claimed only when no legality job is
+        queued, so a submission is never kept waiting behind somebody else's replay.
+        """
+        done: list[Finished | spotcheck.Outcome] = []
+        while True:
+            with self.connect() as connection:
+                job = claim(connection, self.worker)
+            if job is not None:
+                with self.connect() as connection:
+                    done.append(run(connection, self.runs_dir, job, self.worker, self.basis))
+                continue
+            with self.connect() as connection:
+                check = spotcheck.claim(connection, self.worker)
+            if check is None:
+                break
+            with self.connect() as connection:
+                done.append(
+                    spotcheck.run(
+                        connection, self.runs_dir, check, self.worker, self.basis,
+                        self.cpu_cap, self.wall_cap,
+                    )
+                )
+        if done:
+            with self.connect() as connection:
+                sweep(connection, self.runs_dir)
+                provisional.sweep(connection, self.runs_dir)
+        return done
+
+    def requeue(self) -> int:
+        """Put back what a stopped process left `running`; this is the only runner."""
+        with self.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "update jobs set state = %s, claimed = null, worker = null"
+                " where kind = %s and state = %s",
+                (QUEUED, KIND, RUNNING),
+            )
+            return int(cursor.rowcount or 0) + spotcheck.requeue(connection)
+
+    def wake(self) -> None:
+        self._wake.set()
+
+    def start(self) -> threading.Thread:
+        self.requeue()
+        # A start is a deploy, which is when a basis moves: the results it made stale get
+        # their `stale_since`, the shortlist's 30-day clock (`provisional.counted`).
+        try:
+            with self.connect() as connection:
+                provisional.mark_stale(connection, self.basis)
+        except Exception as error:  # noqa: BLE001 - a stale stamp is not worth the site
+            print(f"legality: the stale readings could not be stamped: {error}")
+        self._thread = threading.Thread(target=self._run, name="legality", daemon=True)
+        self._thread.start()
+        return self._thread
+
+    def stop(self, timeout: float = 5.0) -> None:
+        self._stopping.set()
+        self._wake.set()
+        if self._thread is not None:
+            self._thread.join(timeout)
+
+    def _run(self) -> None:
+        lowered = lower_this_thread()
+        print(f"legality: the runner thread {'runs at nice 19' if lowered else 'keeps its priority'}")
+        while not self._stopping.is_set():
+            try:
+                for finished in self.drain():
+                    print(f"legality: job {finished.job} {finished.state}")
+            except Exception as error:  # noqa: BLE001 - a fault must not end the thread
+                print(f"legality: the queue could not be run: {error}")
+            self._wake.wait(self.every)
+            self._wake.clear()
+

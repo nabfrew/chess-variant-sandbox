@@ -1,0 +1,224 @@
+{
+  "schema_version": 3,
+  "name": "hierarchy chess",
+  "description": "The idea a designer reasoned from before inventing the rock-paper-scissors sequence, recorded as its author first stated it. Chess board, chess army, chess setup -- but every piece moves as a rook, and a piece may capture only pieces below it in the usual value order. Nothing outranks the king, so the king can never be captured, so the game has no ending: a deliberately unwinnable ruleset, kept to check that the cheap gates say so.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "royal": false,
+      "captures": [],
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "royal": false,
+      "captures": [
+        "P"
+      ],
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "royal": false,
+      "captures": [
+        "P",
+        "N"
+      ],
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "royal": false,
+      "captures": [
+        "P",
+        "N",
+        "B"
+      ],
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "royal": false,
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R"
+      ],
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q"
+      ],
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "royal_capture",
+    "stalemate": "draw",
+    "max_plies": 300,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "appearance": {
+    "icons": {
+      "P": "pawn",
+      "N": "knight",
+      "B": "bishop",
+      "R": "rook",
+      "Q": "queen",
+      "K": "king"
+    }
+  },
+  "provenance": {
+    "origin": "human",
+    "source": "docs/reference/rps-versions.md, precursor",
+    "history": "Stated and immediately abandoned by its designer, who noticed that nothing can capture a king. Committed unfixed, as a labelled negative."
+  }
+}

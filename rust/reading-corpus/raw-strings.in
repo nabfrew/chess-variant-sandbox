@@ -1,0 +1,2 @@
+let r = r#"a "quoted" // here"#; let q = r"\"; // gone
+let b = br##"x"#  y"##; let c = cr"z  //";

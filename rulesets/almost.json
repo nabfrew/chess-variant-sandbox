@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "name": "almost chess",
+  "description": "Ralph Betza's minimal edit to chess: the queen is replaced by a chancellor, which slides like a rook and leaps like a knight. Everything else -- board, army, castling, double step, en passant -- is untouched. It exists to ask how much of chess survives changing exactly one piece.",
+  "board": {"width": 8, "height": 8},
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+        {
+          "kind": "slide",
+          "vectors": [[0, 1]],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {"from_rank": 1}
+        },
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "C",
+      "name": "chancellor",
+      "value": 8,
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"},
+        {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2"]},
+      {"piece": "R", "squares": ["a1", "h1"]},
+      {"piece": "N", "squares": ["b1", "g1"]},
+      {"piece": "B", "squares": ["c1", "f1"]},
+      {"piece": "C", "squares": ["d1"]},
+      {"piece": "K", "squares": ["e1"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": "last", "to": ["C", "R", "B", "N"]},
+    "en_passant": true,
+    "castling": {"king": "K", "rook": "R", "king_steps": 2},
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "origin": "human",
+    "author": "Ralph Betza",
+    "source": "a chess variant"
+  }
+}

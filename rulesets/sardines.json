@@ -1,0 +1,318 @@
+{
+  "schema_version": 10,
+  "name": "sardines",
+  "description": "Chaos and overcrowding: every square is occupied from the start. Each side fields 24 pawns, a queen, two rooks, two knights, two bishops and a king, 32 pieces a side and 64 in all, scattered at random across the board, kings included; no pawn starts on the rank it would promote from. Standard chess rules with no castling. Nothing can move until a capture opens a square. The starting position is random but contrived: rolled until neither king was in check, neither side had a mate in one, and the position played evenly and to a finish between the site's computer players.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {
+        "piece": "B",
+        "player": 0,
+        "squares": [
+          "d4",
+          "g6"
+        ]
+      },
+      {
+        "piece": "B",
+        "player": 1,
+        "squares": [
+          "a4",
+          "f2"
+        ]
+      },
+      {
+        "piece": "K",
+        "player": 0,
+        "squares": [
+          "a8"
+        ]
+      },
+      {
+        "piece": "K",
+        "player": 1,
+        "squares": [
+          "b1"
+        ]
+      },
+      {
+        "piece": "N",
+        "player": 0,
+        "squares": [
+          "b7",
+          "b8"
+        ]
+      },
+      {
+        "piece": "N",
+        "player": 1,
+        "squares": [
+          "a1",
+          "d7"
+        ]
+      },
+      {
+        "piece": "P",
+        "player": 0,
+        "squares": [
+          "a3",
+          "a7",
+          "b2",
+          "b3",
+          "b4",
+          "c2",
+          "c3",
+          "c4",
+          "c5",
+          "c6",
+          "d1",
+          "e6",
+          "f1",
+          "f3",
+          "f5",
+          "f6",
+          "g1",
+          "g4",
+          "g7",
+          "h1",
+          "h2",
+          "h3",
+          "h6",
+          "h7"
+        ]
+      },
+      {
+        "piece": "P",
+        "player": 1,
+        "squares": [
+          "a2",
+          "a5",
+          "a6",
+          "b5",
+          "c7",
+          "c8",
+          "d2",
+          "d3",
+          "d6",
+          "d8",
+          "e3",
+          "e4",
+          "e5",
+          "e7",
+          "e8",
+          "f4",
+          "f7",
+          "f8",
+          "g2",
+          "g3",
+          "g5",
+          "g8",
+          "h4",
+          "h8"
+        ]
+      },
+      {
+        "piece": "Q",
+        "player": 0,
+        "squares": [
+          "e2"
+        ]
+      },
+      {
+        "piece": "Q",
+        "player": 1,
+        "squares": [
+          "d5"
+        ]
+      },
+      {
+        "piece": "R",
+        "player": 0,
+        "squares": [
+          "b6",
+          "h5"
+        ]
+      },
+      {
+        "piece": "R",
+        "player": 1,
+        "squares": [
+          "c1",
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "origin": "generated",
+    "source": "sardines family",
+    "history": "Generated by docs/reference/sardines-family-generator.py, seed 20261169, wrap off, facing off. One of four cells sharing an army, a rule set and a placement procedure, each differing from its neighbour by one feature; the campaign that picked it is pre-registered in docs/reference/sardines-family.md. In the corpus it pins down a board with every square occupied from the start, and it is the plain cell of the sardines family: the exact control for rulesets/sardines-torus (wrap) and archive/weathervane (facing)."
+  }
+}

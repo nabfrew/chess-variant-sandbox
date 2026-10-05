@@ -1,0 +1,96 @@
+{
+  "procedure": "70b6ece08506",
+  "ruleset_hash": "d93e28d09a33",
+  "inputs_version": 1,
+  "verdict": "accepted",
+  "weights_sha256": "8ec914cecdd934c216069437d163d18dcf9c0029c9a48dac8a868533aa2b07f0",
+  "build": "34ab16658e63a83f",
+  "digest": "8ec914cecdd9",
+  "trainer_version": 1,
+  "recipe": {
+    "agents": [
+      "minimax:net=df1148b26ff6,nodes=1600",
+      "minimax:nodes=1600"
+    ],
+    "games": 5000,
+    "seed": 0,
+    "opening_plies": 8,
+    "skip_plies": 2,
+    "stride": 1,
+    "result_weight": 0.0,
+    "label_nodes": 6400,
+    "label_depth": 8,
+    "td_lambda": 0.7,
+    "label_search": "parent",
+    "scale": 1.0,
+    "accumulator": 256,
+    "hidden1": 32,
+    "hidden2": 32,
+    "epochs": 8,
+    "batch": 1024,
+    "learning_rate": 0.001,
+    "init_seed": 0,
+    "parent": {
+      "procedure": "df1148b26ff6",
+      "weights_sha256": "8e0c416ada366bb69414a65507b9cc87d4c214855630c4dac5af2f262c747eeb"
+    }
+  },
+  "data": {
+    "digest": "dda0778599ba1cf6d344dfbbc5fc710509c19d165caac16fa9665b66ddd4c202",
+    "games": 20000,
+    "positions": 1976140,
+    "most_active": 42
+  },
+  "training": {
+    "loss_by_epoch": [
+      0.01177911,
+      0.00592214,
+      0.00419654,
+      0.00326479,
+      0.00272082,
+      0.00238347,
+      0.002154,
+      0.0020085
+    ],
+    "w0_limit": 127,
+    "quantization_error": 0.108542
+  },
+  "acceptance": {
+    "candidate": "minimax:net=70b6ece08506,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 1000000,
+    "opening_plies": 8,
+    "score": 0.9125,
+    "error": 0.01335,
+    "games": 400,
+    "identical": 0,
+    "openings": 172,
+    "candidate_nodes": 71348706,
+    "reference_nodes": 70298399,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true
+  },
+  "lineage": {
+    "parent": "df1148b26ff6",
+    "parent_weights_sha256": "8e0c416ada366bb69414a65507b9cc87d4c214855630c4dac5af2f262c747eeb",
+    "teacher": "parent:8e0c416ada36"
+  },
+  "confirmation": {
+    "candidate": "minimax:net=70b6ece08506,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 2000000,
+    "opening_plies": 8,
+    "score": 0.89125,
+    "error": 0.016202,
+    "games": 400,
+    "identical": 0,
+    "openings": 162,
+    "candidate_nodes": 67655680,
+    "reference_nodes": 66656371,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true,
+    "gate": "G-A2, plan-teacher.md \u00a78.3"
+  },
+  "kept": false,
+  "kept_by": "generation 2, not kept: G-N failed on A25 (R5-2), plan-teacher.md \u00a79.11.2"
+}

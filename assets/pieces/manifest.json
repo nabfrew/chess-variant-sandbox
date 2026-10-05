@@ -1,0 +1,984 @@
+{
+  "alfil-black": {
+    "file": "svg/alfil-black.svg",
+    "viewBox": "0 0 12 12",
+    "bytes": 1309,
+    "source": "https://commons.wikimedia.org/wiki/File:Black_alfil.svg",
+    "author": "Kwamikagami",
+    "licence": "CC BY-SA 4.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+  },
+  "alfil-white": {
+    "file": "svg/alfil-white.svg",
+    "viewBox": "0 0 12 12",
+    "bytes": 1709,
+    "source": "https://commons.wikimedia.org/wiki/File:White_alfil.svg",
+    "author": "Kwamikagami",
+    "licence": "CC BY-SA 4.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+  },
+  "amazon-black": {
+    "file": "svg/amazon-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2673,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Adt45.svg",
+    "author": "user:Mszulc29",
+    "licence": "CC0",
+    "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en"
+  },
+  "amazon-white": {
+    "file": "svg/amazon-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 3122,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Alt45.svg",
+    "author": "Mszulc29",
+    "licence": "CC BY-SA 4.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+  },
+  "archbishop-black": {
+    "file": "svg/archbishop-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2114,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_adt45.svg",
+    "author": "Chess_alt45.svg : * Chess_blt45.svg : en:User:Cburnett Chess_nlt45.svg : en:User:Cburnett Chess_all44.png : OmegaChessFan derivative work: NikNaks93 ( talk ) Chess_adl44.png : OmegaChessFan derivative work: NikNaks93 ( talk )",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "archbishop-white": {
+    "file": "svg/archbishop-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1866,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_alt45.svg",
+    "author": "Chess blt45.svg : Cburnett Chess nlt45.svg : Cburnett Chess all44.png : OmegaChessFan derivative work: NikNaks93",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "bishop-black": {
+    "file": "svg/bishop-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1282,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_bdt45.svg",
+    "author": "Cburnett",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "bishop-white": {
+    "file": "svg/bishop-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1282,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_blt45.svg",
+    "author": "Cburnett",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "camel-black": {
+    "file": "svg/camel-black.svg",
+    "viewBox": "0 0 12 12",
+    "bytes": 1414,
+    "source": "https://commons.wikimedia.org/wiki/File:Black_chess_camel.svg",
+    "author": "Kwamikagami",
+    "licence": "CC BY-SA 4.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+  },
+  "camel-white": {
+    "file": "svg/camel-white.svg",
+    "viewBox": "0 0 12 12",
+    "bytes": 1691,
+    "source": "https://commons.wikimedia.org/wiki/File:White_chess_camel.svg",
+    "author": "Kwamikagami",
+    "licence": "CC BY-SA 4.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+  },
+  "centaur-black": {
+    "file": "svg/centaur-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 4361,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Cdt45.svg",
+    "author": "CheChe",
+    "licence": "CC0",
+    "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en"
+  },
+  "centaur-white": {
+    "file": "svg/centaur-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 3489,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Clt45.svg",
+    "author": "Sunny3113",
+    "licence": "CC BY-SA 4.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+  },
+  "champion-black": {
+    "file": "svg/champion-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 4023,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_zdt45.svg",
+    "author": "File:Chess zdl44.png : OmegaChessFan / *derivative work NikNaks93",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "champion-white": {
+    "file": "svg/champion-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 4024,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_zlt45.svg",
+    "author": "File:Chess zll44.png : OmegaChessFan / *derivative work NikNaks93",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "chancellor-black": {
+    "file": "svg/chancellor-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 7737,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_cdt45.svg",
+    "author": "Chess_clt45.svg : * Chess_alt45.svg : * Chess_blt45.svg : en:User:Cburnett Chess_nlt45.svg : en:User:Cburnett Chess_all44.png : OmegaChessFan derivative work: NikNaks93 ( talk ) Chess_cld44.png : OmegaChessFan derivative work: NikNaks93 ( talk ) Chess_cdd44.png : OmegaChessFan derivative work: NikNaks93 ( talk )",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "chancellor-white": {
+    "file": "svg/chancellor-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 7601,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_clt45.svg",
+    "author": "Chess_alt45.svg : * Chess_blt45.svg : en:User:Cburnett Chess_nlt45.svg : en:User:Cburnett Chess_all44.png : OmegaChessFan derivative work: NikNaks93 ( talk ) Chess_cld44.png : OmegaChessFan derivative work: NikNaks93 ( talk )",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "commoner-black": {
+    "file": "svg/commoner-black.svg",
+    "viewBox": "0 0 11.90625 11.90625",
+    "bytes": 3253,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_xdt45.svg",
+    "author": "Sunny3113",
+    "licence": "CC BY-SA 4.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+  },
+  "commoner-white": {
+    "file": "svg/commoner-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 954,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_xlt45.svg",
+    "author": "Uray M. János",
+    "licence": "GFDL",
+    "licence_url": "http://www.gnu.org/copyleft/fdl.html"
+  },
+  "dabbaba-black": {
+    "file": "svg/dabbaba-black.svg",
+    "viewBox": "0 0 11.90625 11.90625",
+    "bytes": 3752,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_vdt45.svg",
+    "author": "Sammy2012",
+    "licence": "CC0",
+    "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en"
+  },
+  "dabbaba-white": {
+    "file": "svg/dabbaba-white.svg",
+    "viewBox": "0 0 11.90625 11.90625",
+    "bytes": 3358,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_vlt45.svg",
+    "author": "Sammy2012",
+    "licence": "CC0",
+    "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en"
+  },
+  "dragon-black": {
+    "file": "svg/dragon-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 3453,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Ddt45.svg",
+    "author": "en:User:Cburnett (knight); Conorpetersen (dragon)",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "dragon-white": {
+    "file": "svg/dragon-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 3181,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Dlt45.svg",
+    "author": "en:User:Cburnett (knight); Conorpetersen (dragon)",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "ferz-black": {
+    "file": "svg/ferz-black.svg",
+    "viewBox": "0 0 11.90625 11.90625",
+    "bytes": 3290,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Fdt45.svg",
+    "author": "Sammy2012",
+    "licence": "CC0",
+    "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en"
+  },
+  "ferz-white": {
+    "file": "svg/ferz-white.svg",
+    "viewBox": "0 0 11.90625 11.90625",
+    "bytes": 2941,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Flt45.svg",
+    "author": "Sammy2012",
+    "licence": "CC0",
+    "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en"
+  },
+  "giraffe-black": {
+    "file": "svg/giraffe-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1707,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Gdt45.svg",
+    "author": "Francois-Pier",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "giraffe-white": {
+    "file": "svg/giraffe-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1707,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Glt45.svg",
+    "author": "Francois-Pier",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "inverted-king-black": {
+    "file": "svg/inverted-king-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1628,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_fdt45.svg",
+    "author": "Chess_kdt45.svg : en:User:Cburnett derivative work: NikNaks93 ( talk )",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "inverted-king-white": {
+    "file": "svg/inverted-king-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 4652,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_flt45.svg",
+    "author": "Chess_klt45.svg : en:User:Cburnett derivative work: NikNaks93 ( talk )",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "inverted-pawn-black": {
+    "file": "svg/inverted-pawn-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2509,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_hdt45.svg",
+    "author": "NikNaks93",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "inverted-pawn-white": {
+    "file": "svg/inverted-pawn-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 3035,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_hlt45.svg",
+    "author": "NikNaks93",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "inverted-queen-black": {
+    "file": "svg/inverted-queen-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 6170,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_gdt45.svg",
+    "author": "Chess_qdt45.svg : en:User:Cburnett derivative work: NikNaks93 ( talk )",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "inverted-queen-white": {
+    "file": "svg/inverted-queen-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 6272,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_glt45.svg",
+    "author": "Chess_qlt45.svg : en:User:Cburnett derivative work: NikNaks93 ( talk )",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "king-black": {
+    "file": "svg/king-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1456,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_kdt45.svg",
+    "author": "Cburnett",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "king-white": {
+    "file": "svg/king-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 700,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_klt45.svg",
+    "author": "Cburnett",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "knight-black": {
+    "file": "svg/knight-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1620,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_ndt45.svg",
+    "author": "Cburnett",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "knight-white": {
+    "file": "svg/knight-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1325,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_nlt45.svg",
+    "author": "Cburnett",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "man-black": {
+    "file": "svg/man-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1088,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Mdt45.svg",
+    "author": "Original: LithiumFlash This version: CheChe",
+    "licence": "CC BY-SA 4.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+  },
+  "man-white": {
+    "file": "svg/man-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1163,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Mlt45.svg",
+    "author": "Original: LithiumFlash This version: CheChe",
+    "licence": "CC BY-SA 4.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+  },
+  "moon-black": {
+    "file": "svg/moon-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2987,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_wdt45.svg",
+    "author": "Chess_wdl44.png : OmegaChessFan derivative work: NikNaks93 ( talk )",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "moon-white": {
+    "file": "svg/moon-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2982,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_wlt45.svg",
+    "author": "File:Chess wll44.png : OmegaChessFan / *derivative work NikNaks93",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "nightrider-black": {
+    "file": "svg/nightrider-black.svg",
+    "viewBox": "0 0 15.820312 15.820312",
+    "bytes": 5937,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Kdt45.svg",
+    "author": "Uray M. János",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "nightrider-white": {
+    "file": "svg/nightrider-white.svg",
+    "viewBox": "0 0 15.820312 15.820312",
+    "bytes": 5705,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Klt45.svg",
+    "author": "Uray M. János",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "paper-black": {
+    "file": "svg/paper-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 691,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository: a sheet with a folded corner"
+  },
+  "paper-white": {
+    "file": "svg/paper-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 659,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository: a sheet with a folded corner"
+  },
+  "pawn-black": {
+    "file": "svg/pawn-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 766,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_pdt45.svg",
+    "author": "Cburnett",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "pawn-white": {
+    "file": "svg/pawn-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 766,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_plt45.svg",
+    "author": "Cburnett",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "queen-black": {
+    "file": "svg/queen-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1422,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_qdt45.svg",
+    "author": "Cburnett",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "queen-white": {
+    "file": "svg/queen-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1087,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_qlt45.svg",
+    "author": "Cburnett",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "rock-black": {
+    "file": "svg/rock-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 770,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository: a faceted boulder"
+  },
+  "rock-white": {
+    "file": "svg/rock-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 722,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository: a faceted boulder"
+  },
+  "rook-black": {
+    "file": "svg/rook-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1818,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_rdt45.svg",
+    "author": "Cburnett",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "rook-white": {
+    "file": "svg/rook-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1198,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_rlt45.svg",
+    "author": "Cburnett",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "scissors-black": {
+    "file": "svg/scissors-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 979,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository: an open pair of scissors"
+  },
+  "scissors-white": {
+    "file": "svg/scissors-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 957,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository: an open pair of scissors"
+  },
+  "ship-black": {
+    "file": "svg/ship-black.svg",
+    "viewBox": "0 0 45.2 45.2",
+    "bytes": 3042,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_sdt45.svg",
+    "author": "Chess_ndt45.svg : en:User:Cburnett derivative work: NikNaks93 ( talk )",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "ship-white": {
+    "file": "svg/ship-white.svg",
+    "viewBox": "0 0 45.200001 45.200001",
+    "bytes": 6156,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_slt45.svg",
+    "author": "Chess_srg45.svg : Sp in ni ng Spark real life identity: SHA-1 commitment ba62ca25da3fee2f8f36c101994f571c151abee7 derivative work: BGwikimanager ( talk )",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "shogi-bishop": {
+    "file": "svg/shogi-bishop.svg",
+    "viewBox": "0 0 46.190098 50.073639",
+    "bytes": 5705,
+    "source": "https://commons.wikimedia.org/wiki/File:Shogi_bishop_western.svg",
+    "author": "Hari Seldon",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "shogi-gold": {
+    "file": "svg/shogi-gold.svg",
+    "viewBox": "0 0 46.190098 50.039272",
+    "bytes": 3965,
+    "source": "https://commons.wikimedia.org/wiki/File:Shogi_gold_general_western.svg",
+    "author": "Hari Seldon",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "shogi-king": {
+    "file": "svg/shogi-king.svg",
+    "viewBox": "0 0 46.190098 50.073639",
+    "bytes": 4033,
+    "source": "https://commons.wikimedia.org/wiki/File:Shogi_king_western.svg",
+    "author": "Hari Seldon",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "shogi-knight": {
+    "file": "svg/shogi-knight.svg",
+    "viewBox": "0 0 46.155727 50.073639",
+    "bytes": 4638,
+    "source": "https://commons.wikimedia.org/wiki/File:Shogi_knight_western.svg",
+    "author": "Hari Seldon",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "shogi-lance": {
+    "file": "svg/shogi-lance.svg",
+    "viewBox": "0 0 46.190098 50.039272",
+    "bytes": 3577,
+    "source": "https://commons.wikimedia.org/wiki/File:Shogi_lance_western.svg",
+    "author": "Hari Seldon",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "shogi-pawn": {
+    "file": "svg/shogi-pawn.svg",
+    "viewBox": "0 0 46.190098 50.073639",
+    "bytes": 3040,
+    "source": "https://commons.wikimedia.org/wiki/File:Shogi_pawn_western.svg",
+    "author": "Hari Seldon",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "shogi-promoted-bishop": {
+    "file": "svg/shogi-promoted-bishop.svg",
+    "viewBox": "0 0 46.190098 50.073639",
+    "bytes": 6894,
+    "source": "https://commons.wikimedia.org/wiki/File:Shogi_promoted_bishop_western.svg",
+    "author": "Hari Seldon",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "shogi-promoted-knight": {
+    "file": "svg/shogi-promoted-knight.svg",
+    "viewBox": "0 0 46.190098 50.073639",
+    "bytes": 4772,
+    "source": "https://commons.wikimedia.org/wiki/File:Shogi_promoted_knight_western.svg",
+    "author": "Hari Seldon",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "shogi-promoted-lance": {
+    "file": "svg/shogi-promoted-lance.svg",
+    "viewBox": "0 0 46.190098 50.039272",
+    "bytes": 4753,
+    "source": "https://commons.wikimedia.org/wiki/File:Shogi_promoted_lance_western.svg",
+    "author": "Hari Seldon",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "shogi-promoted-pawn": {
+    "file": "svg/shogi-promoted-pawn.svg",
+    "viewBox": "0 0 46.190098 50.073639",
+    "bytes": 4738,
+    "source": "https://commons.wikimedia.org/wiki/File:Shogi_promoted_pawn_western.svg",
+    "author": "Hari Seldon",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "shogi-promoted-rook": {
+    "file": "svg/shogi-promoted-rook.svg",
+    "viewBox": "0 0 46.190098 50.073639",
+    "bytes": 7089,
+    "source": "https://commons.wikimedia.org/wiki/File:Shogi_promoted_rook_western.svg",
+    "author": "Hari Seldon",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "shogi-promoted-silver": {
+    "file": "svg/shogi-promoted-silver.svg",
+    "viewBox": "0 0 46.155727 50.039272",
+    "bytes": 4720,
+    "source": "https://commons.wikimedia.org/wiki/File:Shogi_promoted_silver_western.svg",
+    "author": "Hari Seldon",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "shogi-rook": {
+    "file": "svg/shogi-rook.svg",
+    "viewBox": "0 0 46.190098 50.073639",
+    "bytes": 5642,
+    "source": "https://commons.wikimedia.org/wiki/File:Shogi_rook_western.svg",
+    "author": "Hari Seldon",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "shogi-silver": {
+    "file": "svg/shogi-silver.svg",
+    "viewBox": "0 0 46.190098 50.039272",
+    "bytes": 3674,
+    "source": "https://commons.wikimedia.org/wiki/File:Shogi_silver_western.svg",
+    "author": "Hari Seldon",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "short-rook-black": {
+    "file": "svg/short-rook-black.svg",
+    "viewBox": "0 0 11.90625 11.90625",
+    "bytes": 2514,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Sdt45.svg",
+    "author": "Uray M. János",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "short-rook-white": {
+    "file": "svg/short-rook-white.svg",
+    "viewBox": "0 0 11.90625 11.90625",
+    "bytes": 2337,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Slt45.svg",
+    "author": "Uray M. János",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+  },
+  "unicorn-black": {
+    "file": "svg/unicorn-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1608,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Udt45.svg",
+    "author": "en:User:Cburnett (knight); Francois-Pier (unicorn)",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "unicorn-white": {
+    "file": "svg/unicorn-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1304,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Ult45.svg",
+    "author": "en:User:Cburnett (knight); Francois-Pier (unicorn)",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "wazir-black": {
+    "file": "svg/wazir-black.svg",
+    "viewBox": "0 0 12 12",
+    "bytes": 1098,
+    "source": "https://commons.wikimedia.org/wiki/File:Black_wazir.svg",
+    "author": "Kwamikagami",
+    "licence": "CC BY-SA 4.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+  },
+  "wazir-white": {
+    "file": "svg/wazir-white.svg",
+    "viewBox": "0 0 12 12",
+    "bytes": 1344,
+    "source": "https://commons.wikimedia.org/wiki/File:White_wazir.svg",
+    "author": "Kwamikagami",
+    "licence": "CC BY-SA 4.0",
+    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+  },
+  "xiangqi-advisor-black": {
+    "file": "svg/xiangqi-advisor-black.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 1225,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Advisor_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-advisor-white": {
+    "file": "svg/xiangqi-advisor-white.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 1509,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Advisor_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-cannon-black": {
+    "file": "svg/xiangqi-cannon-black.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 2416,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Cannon_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-cannon-white": {
+    "file": "svg/xiangqi-cannon-white.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 2485,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Cannon_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-chariot-black": {
+    "file": "svg/xiangqi-chariot-black.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 2360,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Chariot_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-chariot-white": {
+    "file": "svg/xiangqi-chariot-white.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 2709,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Chariot_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-elephant-black": {
+    "file": "svg/xiangqi-elephant-black.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 2516,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Elephant_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-elephant-white": {
+    "file": "svg/xiangqi-elephant-white.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 2195,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Elephant_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-general-black": {
+    "file": "svg/xiangqi-general-black.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 2778,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_General_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-general-white": {
+    "file": "svg/xiangqi-general-white.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 2320,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_General_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-horse-black": {
+    "file": "svg/xiangqi-horse-black.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 2426,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Horse_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-horse-white": {
+    "file": "svg/xiangqi-horse-white.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 2668,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Horse_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-pictorial-advisor-black": {
+    "file": "svg/xiangqi-pictorial-advisor-black.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 756,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Advisor_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-pictorial-advisor-white": {
+    "file": "svg/xiangqi-pictorial-advisor-white.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 756,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Advisor_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-pictorial-cannon-black": {
+    "file": "svg/xiangqi-pictorial-cannon-black.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 789,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Cannon_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-pictorial-cannon-white": {
+    "file": "svg/xiangqi-pictorial-cannon-white.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 789,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Cannon_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-pictorial-chariot-black": {
+    "file": "svg/xiangqi-pictorial-chariot-black.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 790,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Chariot_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-pictorial-chariot-white": {
+    "file": "svg/xiangqi-pictorial-chariot-white.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 790,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Chariot_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-pictorial-elephant-black": {
+    "file": "svg/xiangqi-pictorial-elephant-black.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 819,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Elephant_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-pictorial-elephant-white": {
+    "file": "svg/xiangqi-pictorial-elephant-white.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 819,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Elephant_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-pictorial-general-black": {
+    "file": "svg/xiangqi-pictorial-general-black.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 872,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_General_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-pictorial-general-white": {
+    "file": "svg/xiangqi-pictorial-general-white.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 872,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_General_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-pictorial-horse-black": {
+    "file": "svg/xiangqi-pictorial-horse-black.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 781,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Horse_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-pictorial-horse-white": {
+    "file": "svg/xiangqi-pictorial-horse-white.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 781,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Horse_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-pictorial-soldier-black": {
+    "file": "svg/xiangqi-pictorial-soldier-black.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 713,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Soldier_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-pictorial-soldier-white": {
+    "file": "svg/xiangqi-pictorial-soldier-white.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 713,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Soldier_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-soldier-black": {
+    "file": "svg/xiangqi-soldier-black.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 1992,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Soldier_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "xiangqi-soldier-white": {
+    "file": "svg/xiangqi-soldier-white.svg",
+    "viewBox": "-50 -50 100 100",
+    "bytes": 1837,
+    "source": "https://commons.wikimedia.org/wiki/File:Xiangqi_Soldier_(Trad).svg",
+    "author": "Inductiveload",
+    "licence": "Public domain",
+    "licence_url": "",
+    "modified": "one disc cut from the four-up source sheet"
+  },
+  "zebra-black": {
+    "file": "svg/zebra-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 4427,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Zdt45.svg",
+    "author": "en:User:Cburnett (knight); Francois-Pier (zebra)",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "zebra-white": {
+    "file": "svg/zebra-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 5643,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_Zlt45.svg",
+    "author": "en:User:Cburnett (knight); Francois-Pier (zebra)",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  }
+}

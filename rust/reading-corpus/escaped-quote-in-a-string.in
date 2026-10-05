@@ -1,0 +1,2 @@
+let s = "a \" // still the string"; let t = "\\"; // gone
+x

@@ -1,0 +1,45 @@
+# One line ending in the repository, because two of them cost a campaign.
+#
+# `core.autocrlf=true` on this machine, so without this a fresh `.claude/worktrees/`
+# checkout holds CRLF where the main checkout holds LF, for the same commit. Both
+# fingerprints hash file bytes, so identical code fingerprinted differently in the two
+# checkouts and a worktree measurement could never be delivered as current. The hashers
+# now fold CRLF to LF before hashing, which repairs the number; `eol=lf` stops the drift
+# that produced it. Both halves, because either alone leaves a trap for the other.
+#
+# Nothing tracked here is binary -- 831 files, none with a NUL byte in the first 8000 --
+# so `text=auto` converts everything and guesses about nothing. The `-text` lines below
+# name kinds that are not in the tree yet. `text=auto` would detect them on its own; the
+# list is here so a first binary does not depend on a heuristic nobody is watching.
+#
+# Two directories override this and keep their own reasons. `deploy/` pins `* text eol=lf`
+# because a shell script with CRLF is a syntax error on the box it runs on, and
+# `assets/pieces/` pins `*.svg -text` because those are redistributed byte-for-byte and a
+# translated checkout reads as a tampered file. Ten of those SVGs hold CRLF in the index,
+# and `-text` is what keeps this file from touching them.
+#
+# Renormalisation: every tracked blob outside `assets/pieces/` is already LF, so
+# `git add --renormalize` has nothing to do and no existing checkout goes dirty. A
+# working tree that holds CRLF today still reads clean, because the clean filter folds it
+# back to LF before git compares.
+
+* text=auto eol=lf
+
+# Passed through byte-for-byte.
+*.png  -text
+*.jpg  -text
+*.jpeg -text
+*.gif  -text
+*.ico  -text
+*.webp -text
+*.woff  -text
+*.woff2 -text
+*.ttf  -text
+*.otf  -text
+*.pdf  -text
+*.zip  -text
+*.gz   -text
+*.pyd  -text
+*.dll  -text
+*.so   -text
+*.exe  -text

@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "name": "shatranj",
+  "description": "The Persian-Arabic ancestor of chess, played from roughly the 7th century. Same board and army as chess, but the queen is a ferz that steps one square diagonally and the bishop is an alfil that jumps exactly two. Pawns never double-step and promote only to ferz; there is no castling and no en passant. Stalemating the opponent wins. People played it for eight centuries and then abandoned it as too slow.",
+  "board": {"width": 8, "height": 8},
+  "pieces": [
+    {
+      "id": "P",
+      "name": "baidaq",
+      "value": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+      ]
+    },
+    {
+      "id": "N",
+      "name": "faras",
+      "value": 3,
+      "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}]
+    },
+    {
+      "id": "E",
+      "name": "alfil",
+      "value": 1.5,
+      "moves": [{"kind": "leap", "vectors": [[2, 2]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "R",
+      "name": "rukh",
+      "value": 5,
+      "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "F",
+      "name": "firzan",
+      "value": 1.5,
+      "moves": [{"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "K",
+      "name": "shah",
+      "value": 0,
+      "royal": true,
+      "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2"]},
+      {"piece": "R", "squares": ["a1", "h1"]},
+      {"piece": "N", "squares": ["b1", "g1"]},
+      {"piece": "E", "squares": ["c1", "f1"]},
+      {"piece": "K", "squares": ["d1"]},
+      {"piece": "F", "squares": ["e1"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "loss",
+    "promotion": {"piece": "P", "rank": "last", "to": ["F"]},
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 140
+  },
+  "provenance": {
+    "origin": "human",
+    "year": "from roughly the 7th century",
+    "source": "Persia and the Arabic world; the ancestor of chess"
+  }
+}

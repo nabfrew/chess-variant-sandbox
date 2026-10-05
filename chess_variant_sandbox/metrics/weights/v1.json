@@ -1,0 +1,124 @@
+{
+  "version": "v1",
+  "notes": "Initial calibration. Curve points are anchored on chess and on the deliberately dull control ruleset, not on anything the design loop has produced. Chess is intended to land high but well short of 1.0: a baseline that already maxes the scale leaves the search nothing to aim at. Re-anchoring these numbers is a version bump, never an edit.",
+  "llm_weight": 0.25,
+  "components": {
+    "rule_mass": {
+      "family": "elegance",
+      "weight": 0.10,
+      "curve": "lower_better",
+      "points": {"good_at": 30, "zero_at": 150}
+    },
+    "first_player_advantage": {
+      "family": "balance",
+      "weight": 0.10,
+      "curve": "lower_better",
+      "points": {"good_at": 0.06, "zero_at": 0.5}
+    },
+    "decisive_rate": {
+      "family": "balance",
+      "weight": 0.06,
+      "curve": "higher_better",
+      "points": {"zero_at": 0.15, "good_at": 0.7}
+    },
+    "stall_rate": {
+      "family": "balance",
+      "weight": 0.08,
+      "curve": "lower_better",
+      "points": {"good_at": 0.05, "zero_at": 0.45}
+    },
+    "mean_plies": {
+      "family": "pacing",
+      "weight": 0.06,
+      "curve": "band",
+      "points": {"zero_low": 8, "good_low": 30, "good_high": 140, "zero_high": 400}
+    },
+    "ply_spread": {
+      "family": "pacing",
+      "weight": 0.03,
+      "curve": "higher_better",
+      "points": {"zero_at": 0.05, "good_at": 0.35}
+    },
+    "mean_branching": {
+      "family": "pacing",
+      "weight": 0.06,
+      "curve": "band",
+      "points": {"zero_low": 2, "good_low": 12, "good_high": 45, "zero_high": 120}
+    },
+    "quick_kill_rate": {
+      "family": "pacing",
+      "weight": 0.04,
+      "curve": "lower_better",
+      "points": {"good_at": 0.02, "zero_at": 0.25}
+    },
+    "opening_diversity": {
+      "family": "variety",
+      "weight": 0.08,
+      "curve": "higher_better",
+      "points": {"zero_at": 0.2, "good_at": 0.85}
+    },
+    "distinct_game_rate": {
+      "family": "variety",
+      "weight": 0.05,
+      "curve": "higher_better",
+      "points": {"zero_at": 0.3, "good_at": 0.95}
+    },
+    "lead_changes": {
+      "family": "drama",
+      "weight": 0.06,
+      "curve": "band",
+      "points": {"zero_low": 0, "good_low": 1.5, "good_high": 12, "zero_high": 40}
+    },
+    "material_volatility": {
+      "family": "drama",
+      "weight": 0.04,
+      "curve": "band",
+      "points": {"zero_low": 0, "good_low": 0.05, "good_high": 0.9, "zero_high": 3.0}
+    },
+    "skill_gradient": {
+      "family": "depth",
+      "weight": 0.14,
+      "curve": "higher_better",
+      "points": {"zero_at": 0, "good_at": 60}
+    },
+    "search_advantage": {
+      "family": "depth",
+      "weight": 0.10,
+      "curve": "higher_better",
+      "points": {"zero_at": 0.5, "good_at": 0.9}
+    },
+    "rating_spread": {
+      "family": "depth",
+      "weight": 0.06,
+      "curve": "higher_better",
+      "points": {"zero_at": 20, "good_at": 400}
+    }
+  },
+  "gates": [
+    {
+      "component": "search_advantage",
+      "minimum": 0.55,
+      "reason": "a searching player must beat a random one, or there is nothing to play"
+    },
+    {
+      "component": "stall_rate",
+      "maximum": 0.7,
+      "reason": "a game that mostly fails to finish is not a game"
+    },
+    {
+      "component": "mean_branching",
+      "minimum": 1.5,
+      "reason": "with no choices there is no play"
+    },
+    {
+      "component": "decisive_rate",
+      "minimum": 0.2,
+      "reason": "a game that competent players almost always draw is not a contest"
+    },
+    {
+      "component": "skill_gradient",
+      "minimum": 8.0,
+      "reason": "doubling the thinking budget must be worth at least a few Elo, or skill does not exist here"
+    }
+  ]
+}

@@ -1,0 +1,292 @@
+{
+  "schema_version": 10,
+  "name": "three stones",
+  "description": "Chess in which either player has three stones and may, instead of moving, place one on any empty square. A stone never moves, is never captured and never leaves, so a placed stone is a square taken out of the game for good -- and there are only three of them, so the question is not whether to place one but when.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "X",
+      "name": "stone",
+      "moves": []
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "drops": {
+      "from_captures": false,
+      "stock": {
+        "X": 3
+      }
+    }
+  },
+  "provenance": {
+    "origin": "human",
+    "source": "international chess",
+    "history": "Hand-written as archive/stones.json with the stock changed from \"unlimited\" to 3 and nothing else, as the demonstrating ruleset for a stock that is a count (schema 10, row 27 of reference/schema-showcase-coverage.md). The count is the one thing an unlimited supply cannot say: a resource that is spent. Repaired 2026-09-08 (Q131) with the same capture matrix as its parent, and it was not a formality here either: 1078 of the 1434 stones placed in the superseded spec's run (0.7517; runs/707d1f6f1dbc-0) were captured afterwards, so three quarters of what \"never leaves\" describes did leave."
+  }
+}

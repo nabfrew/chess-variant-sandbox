@@ -1,0 +1,544 @@
+{
+  "schema_version": 15,
+  "name": "shogi",
+  "description": "Japanese chess, by the traditional rules but one. Every captured piece changes sides and may be dropped back onto the board, so material is never removed from the game, only borrowed. Six of the eight pieces may promote on any move that starts or ends in the far three ranks, and may decline -- except where declining would strand them somewhere they could never move from again. A pawn may not be dropped to give checkmate. The one deviation: perpetual check is a draw here, like any fourfold repetition, where traditional shogi makes it a loss for the side giving check.",
+  "board": {
+    "width": 9,
+    "height": 9
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "L",
+      "name": "lance",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "S",
+      "name": "silver",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "G",
+      "name": "gold",
+      "value": 6,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 8,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 10,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "tokin",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ],
+      "promoted_from": "P"
+    },
+    {
+      "id": "X",
+      "name": "promoted lance",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ],
+      "promoted_from": "L"
+    },
+    {
+      "id": "Y",
+      "name": "promoted knight",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ],
+      "promoted_from": "N"
+    },
+    {
+      "id": "Z",
+      "name": "promoted silver",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ],
+      "promoted_from": "S"
+    },
+    {
+      "id": "H",
+      "name": "horse",
+      "value": 10,
+      "promoted_from": "B",
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "name": "dragon",
+      "value": 12,
+      "promoted_from": "R",
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "orientation": "rotate",
+    "placements": [
+      {
+        "piece": "L",
+        "squares": [
+          "a1",
+          "i1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "S",
+        "squares": [
+          "c1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "G",
+        "squares": [
+          "d1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "b2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "h2"
+        ]
+      },
+      {
+        "piece": "P",
+        "squares": [
+          "a3",
+          "b3",
+          "c3",
+          "d3",
+          "e3",
+          "f3",
+          "g3",
+          "h3",
+          "i3"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "loss",
+    "forbid_immobility": true,
+    "promotion": [
+      {
+        "piece": "P",
+        "ranks": [
+          6,
+          7,
+          8
+        ],
+        "to": [
+          "Q"
+        ],
+        "mandatory": false,
+        "on_leaving": true
+      },
+      {
+        "piece": "L",
+        "ranks": [
+          6,
+          7,
+          8
+        ],
+        "to": [
+          "X"
+        ],
+        "mandatory": false,
+        "on_leaving": true
+      },
+      {
+        "piece": "N",
+        "ranks": [
+          6,
+          7,
+          8
+        ],
+        "to": [
+          "Y"
+        ],
+        "mandatory": false,
+        "on_leaving": true
+      },
+      {
+        "piece": "S",
+        "ranks": [
+          6,
+          7,
+          8
+        ],
+        "to": [
+          "Z"
+        ],
+        "mandatory": false,
+        "on_leaving": true
+      },
+      {
+        "piece": "B",
+        "ranks": [
+          6,
+          7,
+          8
+        ],
+        "to": [
+          "H"
+        ],
+        "mandatory": false,
+        "on_leaving": true
+      },
+      {
+        "piece": "R",
+        "ranks": [
+          6,
+          7,
+          8
+        ],
+        "to": [
+          "D"
+        ],
+        "mandatory": false,
+        "on_leaving": true
+      }
+    ],
+    "drops": {
+      "from_captures": true,
+      "no_doubled": [
+        "P"
+      ],
+      "no_mate": [
+        "P"
+      ]
+    },
+    "max_plies": 400,
+    "repetition_draw": 4,
+    "no_progress_draw": 200
+  },
+  "provenance": {
+    "origin": "human",
+    "source": "Japan"
+  },
+  "appearance": {
+    "icons": {
+      "P": "shogi-pawn",
+      "L": "shogi-lance",
+      "N": "shogi-knight",
+      "S": "shogi-silver",
+      "G": "shogi-gold",
+      "B": "shogi-bishop",
+      "R": "shogi-rook",
+      "Q": "shogi-promoted-pawn",
+      "X": "shogi-promoted-lance",
+      "Y": "shogi-promoted-knight",
+      "Z": "shogi-promoted-silver",
+      "H": "shogi-promoted-bishop",
+      "D": "shogi-promoted-rook",
+      "K": "shogi-king"
+    }
+  }
+}

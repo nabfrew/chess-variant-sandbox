@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="100" height="100" viewBox="-50 -50 100 100"
+     xmlns="http://www.w3.org/2000/svg">
+  <title>xiangqi-pictorial-chariot-black</title>
+  <!-- 此字型為全字庫正楷體，中華民國國家發展委員會，CNS11643中文標準交換碼全字庫網站，https://www.cns11643.gov.tw/。 -->
+  <circle r="48.5" stroke-width="3" stroke="#000" fill="#fda"/><circle r="43.5" stroke-width="3" stroke="#000" fill="none"/><path transform="scale(0.2)" stroke-linecap="round" stroke-linejoin="round" stroke-width="20" stroke="#000" fill="none" d="M20,-120 20,-95 55,-95 55,-120 95,-120 95,-55 -95,-55 -95,-120 -55,-120 -55,-95 -20,-95 -20,-120zM60,-45 60,50 -60,50 -60,-45zM95,60 95,90 -95,90 -95,60zM110,100 110,130 -110,130 -110,100z"/>
+</svg>

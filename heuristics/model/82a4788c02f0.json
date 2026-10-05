@@ -1,0 +1,158 @@
+{
+  "ruleset_hash": "82a4788c02f0",
+  "vocabulary_version": 2,
+  "vocabulary": [
+    "material",
+    "prey_weight",
+    "mobility",
+    "advance",
+    "centrality",
+    "royal_exposure",
+    "territory_margin",
+    "score_margin",
+    "score_urgency",
+    "check_margin",
+    "extinction_margin",
+    "hand_material",
+    "promotion_occupancy",
+    "reach_progress",
+    "facing_alignment"
+  ],
+  "model": "claude-opus-5",
+  "k": 6,
+  "set_hash": "61d849995c64",
+  "heuristics": [
+    {
+      "name": "material-and-mobility",
+      "plan": "Win material, and keep your options open.",
+      "weights": [
+        0.9694254973526577,
+        0.0,
+        0.24538582901739145,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "69ab554fc9df"
+    },
+    {
+      "name": "Pure land grab",
+      "plan": "Ignore the enemy entirely and spend every move stepping onto a square nobody has claimed yet, racing to 41.",
+      "weights": [
+        0.0,
+        0.0,
+        2.0,
+        0.5,
+        0.0,
+        0.0,
+        10.0,
+        1.0,
+        2.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "c4b686bbc151"
+    },
+    {
+      "name": "Hunter of legal prey",
+      "plan": "Keep only pieces that have something they are allowed to eat on the board, and hunt those targets down to strip the enemy army.",
+      "weights": [
+        4.0,
+        6.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        3.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "5153eaa7de64"
+    },
+    {
+      "name": "Fan out and never double back",
+      "plan": "Push every piece forward into enemy ground so each step claims virgin territory and denies them the same.",
+      "weights": [
+        1.0,
+        0.0,
+        2.0,
+        6.0,
+        0.0,
+        0.0,
+        5.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "359fb49b233d"
+    },
+    {
+      "name": "Centre clamp",
+      "plan": "Park pieces in the middle where their eight jump lines reach the most squares, and claim outward from there.",
+      "weights": [
+        2.0,
+        1.0,
+        4.0,
+        0.0,
+        6.0,
+        0.0,
+        3.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "7f45ac8689f1"
+    },
+    {
+      "name": "Wake up the rear guard",
+      "plan": "Move the back pieces first so nothing is dead weight, keeping every unit mobile while quietly out-claiming the enemy late.",
+      "weights": [
+        0.5,
+        0.0,
+        6.0,
+        2.0,
+        2.0,
+        0.0,
+        4.0,
+        0.0,
+        4.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "23d5fdf53017"
+    }
+  ]
+}

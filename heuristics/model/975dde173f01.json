@@ -1,0 +1,158 @@
+{
+  "ruleset_hash": "975dde173f01",
+  "vocabulary_version": 2,
+  "vocabulary": [
+    "material",
+    "prey_weight",
+    "mobility",
+    "advance",
+    "centrality",
+    "royal_exposure",
+    "territory_margin",
+    "score_margin",
+    "score_urgency",
+    "check_margin",
+    "extinction_margin",
+    "hand_material",
+    "promotion_occupancy",
+    "reach_progress",
+    "facing_alignment"
+  ],
+  "model": "claude-opus-5",
+  "k": 6,
+  "set_hash": "1818206982f2",
+  "heuristics": [
+    {
+      "name": "material-and-mobility",
+      "plan": "Win material, and keep your options open.",
+      "weights": [
+        0.9997370787298578,
+        0.0,
+        0.0229297495121527,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "2a0d1025586e"
+    },
+    {
+      "name": "Plain material grabber",
+      "plan": "Trade evenly and grab anything left hanging; count up wood and ignore everything else.",
+      "weights": [
+        10.0,
+        0.0,
+        0.5,
+        0.0,
+        0.2,
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "be35bfd1ee93"
+    },
+    {
+      "name": "Squeeze their moves",
+      "plan": "Keep my pieces free and take away the enemy's options until they have almost nothing safe to play.",
+      "weights": [
+        2.0,
+        0.0,
+        9.0,
+        0.0,
+        1.0,
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "63b561686312"
+    },
+    {
+      "name": "Promotion race",
+      "plan": "Push pawns up the tiny board and get one to the last rank to make a new queen, even at the cost of a piece.",
+      "weights": [
+        1.5,
+        0.0,
+        0.5,
+        6.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        9.0,
+        0.0,
+        0.0
+      ],
+      "digest": "3244b95a1f81"
+    },
+    {
+      "name": "Hunt the king",
+      "plan": "Throw pieces at the enemy king, keeping it in check and cornered, and don't worry about even trades.",
+      "weights": [
+        0.5,
+        0.0,
+        1.0,
+        3.0,
+        1.0,
+        9.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "3108d2b3479b"
+    },
+    {
+      "name": "Hold the middle five squares",
+      "plan": "Occupy and defend the centre with knights, bishops and pawns so every enemy piece has to come through me.",
+      "weights": [
+        2.0,
+        0.0,
+        2.0,
+        0.5,
+        9.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.5,
+        0.0,
+        0.0
+      ],
+      "digest": "1a20f4cbd84c"
+    }
+  ]
+}

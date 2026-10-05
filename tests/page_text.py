@@ -1,0 +1,103 @@
+"""The pages' text as the tests read it: every script's file in place of its tag.
+
+The page's JavaScript was Python strings until Q513 and is plain files now, loaded by
+`<script src>` (`docs/reference/page-javascript.md` §4.1). The suite reads the page as a
+string -- `"..." in PAGE`, `PAGE.count(...)`, a view's constant, the Node runs that cut
+the `<script>` out -- and all of that reads from here:
+
+- `PAGE` is the served page with its run of `<script src>` tags replaced by one
+  `<script>` holding the files' text in load order. Classic scripts share one global
+  scope, so that is the one program the browser runs, and it is what
+  `web.page.PAGE` was before the move. The served page itself is `web.page.PAGE`.
+- `CORE`, `GRAPH`, ... are the views' files, by the names their Python constants had.
+  `DESIGN` is `design.js` and the three files that were concatenated into it
+  (`teaching.js`, `cards.js`, `measure.js`), as it was.
+- `inlined(html)` does to any page what `PAGE` is, and `script_of(html)` is the program
+  a page runs, whether its scripts are files or (the offline replay) inline.
+
+Each file is read through the table its server answers from (`web.page.SCRIPTS`,
+`site.pages.SCRIPTS`), so a tag naming a route nobody serves is a `KeyError` here, not a
+page that silently runs less.
+
+The shell's script (`web/static/shell.js`, in every page's `<head>`) is served too but is
+not part of a page's program here: it reads and writes only `<html>`'s theme, the footer's
+switch and the header's menu, which no view touches, and `tests/test_shell.py` runs it on
+its own. `inlined` and `script_of` leave it out, so the page-level runs are what they were.
+"""
+
+from __future__ import annotations
+
+import re
+
+from chess_variant_sandbox.site import pages as site_pages
+from chess_variant_sandbox.web import page
+from chess_variant_sandbox.web.page import shell
+
+# Route -> file, for every script a server answers.
+SERVED = {
+    **page.SCRIPTS, **site_pages.SCRIPTS, shell.SHELL_SCRIPT_ROUTE: shell.SHELL_SCRIPT_FILE
+}
+
+_SCRIPT = re.compile(r"<script([^>]*)>(.*?)</script>", re.S)
+_SRC = re.compile(r'<script src="([^"]+)"></script>\n')
+_RUN = re.compile(r'(?:<script src="[^"]+"></script>\n)+')
+
+
+def text(route: str) -> str:
+    """One served script's text, by its route."""
+    return SERVED[route].read_text(encoding="utf-8")
+
+
+def inlined(html: str) -> str:
+    """`html` with each run of `<script src>` tags as one `<script>` of their text."""
+    def block(run: re.Match[str]) -> str:
+        routes = [route for route in _SRC.findall(run[0]) if route != shell.SHELL_SCRIPT_ROUTE]
+        if not routes:
+            return run[0]
+        return "<script>\n" + "".join(text(route) for route in routes) + "</script>\n"
+
+    return _RUN.sub(block, html)
+
+
+def script_of(html: str) -> str:
+    """Every script a page runs, in order, as one program: a file's text for a `src`, an
+    inline body as it stands, and nothing for a JSON data tag, which never runs."""
+    parts = []
+    for attributes, body in _SCRIPT.findall(html):
+        if "application/json" in attributes:
+            continue
+        found = re.search(r'src="([^"]+)"', attributes)
+        if found and found[1] == shell.SHELL_SCRIPT_ROUTE:
+            continue
+        parts.append(text(found[1]) if found else body)
+    return "\n".join(parts)
+
+
+def data_of(html: str) -> str:
+    """The text of a page's JSON data tag, or `""` where it has none."""
+    found = re.search(r'<script type="application/json" id="page-data">(.*?)</script>', html, re.S)
+    return found[1] if found else ""
+
+
+def view(name: str) -> str:
+    """One of the page's files, by its name without `.js`."""
+    return text(f"{page.SCRIPT_PREFIX}{name}.js")
+
+
+PAGE = inlined(page.PAGE)
+
+CORE = view("core")
+WRAPPED = view("wrapped")
+STILLBOARD = view("stillboard")
+BROWSE = view("browse")
+GRAPH = view("graph")
+EXPLORER = view("explorer")
+UPKEEP = view("upkeep")
+DETAIL = view("detail")
+TEACHING = view("teaching")
+CARDS = view("cards")
+MEASURE = view("measure")
+DESIGN = view("design") + TEACHING + CARDS + MEASURE
+BOARD = view("board")
+RUNS = view("runs")
+WHATSNEW = view("whatsnew")

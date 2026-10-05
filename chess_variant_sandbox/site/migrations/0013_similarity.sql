@@ -1,0 +1,38 @@
+-- How alike two of the store's games are, beside how many rules apart.
+--
+-- `docs/plan-game-graph.md` §9.5, T4. `spec/relate.py` gained a similarity index: six
+-- counts (rules one game involves and the other does not, rules both set differently,
+-- movement mechanisms, piece identities, starting squares, clocks and prices) weighed on
+-- a steep gradient into one number. The local application orders a game's neighbours by
+-- `units`, then that number, then the name (`web/library.py::neighbours`). The site asks
+-- this table which neighbours a game has and in what order, so the number has to be here
+-- for the two to agree.
+--
+-- **Both columns are nullable, and a row without them is not trusted.** A row written
+-- before this migration has neither, and `site/links.py::_held` counts it as a pair still
+-- to compare, so the first load after the migration compares every pair once and the
+-- second compares none. No backfill here: the counts are `relate`'s, and SQL cannot
+-- read two specs.
+--
+-- **`similarity` is a double, not an integer.** `relate.Similarity.index` is a float. At
+-- the ratio the user chose, eight to one with a setting at half a rule, it is always a
+-- whole number. A gentler ratio gives halves, and an integer column would round them
+-- without saying so.
+--
+-- **`counts` is the six counts by name**, as `Similarity.counts` gives them, so a reader
+-- can say *no rules, 6 mechanisms, 1 piece* without comparing the specs again.
+--
+-- **The row's `relate` stamp now covers the weighing too** (`site/links.py::RELATE`):
+-- the stored index depends on the ratio and the setting's weight as well as on
+-- `RELATE_VERSION`, so a changed constant recomputes the table without a migration.
+--
+-- **A twin pair keeps its own row.** Two specs that compile to one set of tables are one
+-- node on the map, and the map reads them at 0 (`web/graphing.py`). This table never
+-- compiles a spec, so the pair keeps the index `relate` gives it, as it keeps its own
+-- `units`, and the game page (`web/library.py`) reads it the same way.
+--
+-- The indexes stay as they are. The one read asks for every row of one game and sorts
+-- them, and a game has at most a few hundred.
+
+alter table links add column if not exists similarity double precision;
+alter table links add column if not exists counts jsonb;

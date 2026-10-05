@@ -1,0 +1,4 @@
+//! Inner doc.
+fn f() { // a comment
+    let x = 1; /// outer doc
+}

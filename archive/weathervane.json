@@ -1,0 +1,373 @@
+{
+  "schema_version": 10,
+  "name": "weathervane",
+  "description": "Chaos and overcrowding: every square is occupied from the start. Each side fields 24 pawns, a queen, two rooks, two knights, two bishops and a king, 32 pieces a side and 64 in all, scattered at random across the board, kings included; no pawn starts on the rank it would promote from. Standard chess rules with no castling. Nothing can move until a capture opens a square. A pawn has a direction and may spend a whole move turning to face another way instead of moving; each starts pointing whichever way the position was rolled, so 'forward' is a fact about the piece rather than about the side. The starting position is random but contrived: rolled until neither king was in check, neither side had a mate in one, and the position played evenly and to a finish between the site's computer players.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ],
+      "facing": {
+        "axes": 4
+      }
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {
+        "piece": "B",
+        "player": 0,
+        "squares": [
+          "a4",
+          "h1"
+        ]
+      },
+      {
+        "piece": "B",
+        "player": 1,
+        "squares": [
+          "b6",
+          "f6"
+        ]
+      },
+      {
+        "piece": "K",
+        "player": 0,
+        "squares": [
+          "e1"
+        ]
+      },
+      {
+        "piece": "K",
+        "player": 1,
+        "squares": [
+          "a8"
+        ]
+      },
+      {
+        "piece": "N",
+        "player": 0,
+        "squares": [
+          "a1",
+          "f8"
+        ]
+      },
+      {
+        "piece": "N",
+        "player": 1,
+        "squares": [
+          "f2",
+          "g1"
+        ]
+      },
+      {
+        "piece": "P",
+        "player": 0,
+        "squares": [
+          "a5",
+          "d2",
+          "d4",
+          "e5",
+          "g6",
+          "h5"
+        ],
+        "facing": "backward"
+      },
+      {
+        "piece": "P",
+        "player": 0,
+        "squares": [
+          "c5",
+          "c7",
+          "d5",
+          "f5"
+        ],
+        "facing": "forward"
+      },
+      {
+        "piece": "P",
+        "player": 0,
+        "squares": [
+          "a6",
+          "b1",
+          "d3",
+          "f3",
+          "g2",
+          "g7",
+          "h7"
+        ],
+        "facing": "left"
+      },
+      {
+        "piece": "P",
+        "player": 0,
+        "squares": [
+          "a2",
+          "b2",
+          "c1",
+          "d1",
+          "e6",
+          "f7",
+          "h4"
+        ],
+        "facing": "right"
+      },
+      {
+        "piece": "P",
+        "player": 1,
+        "squares": [
+          "c2",
+          "c8",
+          "d7",
+          "f4",
+          "g4",
+          "h8"
+        ],
+        "facing": "backward"
+      },
+      {
+        "piece": "P",
+        "player": 1,
+        "squares": [
+          "a7",
+          "b3",
+          "c3",
+          "e3",
+          "h2"
+        ],
+        "facing": "forward"
+      },
+      {
+        "piece": "P",
+        "player": 1,
+        "squares": [
+          "b4",
+          "d6",
+          "e7",
+          "e8",
+          "g3",
+          "g5",
+          "g8"
+        ],
+        "facing": "left"
+      },
+      {
+        "piece": "P",
+        "player": 1,
+        "squares": [
+          "b8",
+          "c4",
+          "d8",
+          "e2",
+          "h3",
+          "h6"
+        ],
+        "facing": "right"
+      },
+      {
+        "piece": "Q",
+        "player": 0,
+        "squares": [
+          "e4"
+        ]
+      },
+      {
+        "piece": "Q",
+        "player": 1,
+        "squares": [
+          "b7"
+        ]
+      },
+      {
+        "piece": "R",
+        "player": 0,
+        "squares": [
+          "b5",
+          "f1"
+        ]
+      },
+      {
+        "piece": "R",
+        "player": 1,
+        "squares": [
+          "a3",
+          "c6"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "appearance": {
+    "icons": {
+      "P": [
+        "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NSA0NSI+PGcgZmlsbD0iI2Y0ZjFlYSIgc3Ryb2tlPSIjMmIyYjJiIiBzdHJva2Utd2lkdGg9IjEuNiIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTIyLjUgMzAuNWMtNC42IDAtOCAyLjYtOCA2LjJoMTZjMC0zLjYtMy40LTYuMi04LTYuMnoiLz48cGF0aCBkPSJNMTguNiAzMC41YzAtMy4yIDEuNS01IDMuOS02LjYgMi40IDEuNiAzLjkgMy40IDMuOSA2LjZ6Ii8+PGNpcmNsZSBjeD0iMjIuNSIgY3k9IjE5LjUiIHI9IjUuMiIvPjwvZz48cGF0aCBkPSJNMjIuNSAzLjUgMzAgMTMuNWgtNC42djVoLTUuOHYtNUgxNXoiIGZpbGw9IiNjMDRhMWUiIHN0cm9rZT0iIzJiMmIyYiIgc3Ryb2tlLXdpZHRoPSIxLjQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48L3N2Zz4=",
+        "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NSA0NSI+PGcgZmlsbD0iIzMzMzEyZSIgc3Ryb2tlPSIjMTAxMDEwIiBzdHJva2Utd2lkdGg9IjEuNiIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTIyLjUgMzAuNWMtNC42IDAtOCAyLjYtOCA2LjJoMTZjMC0zLjYtMy40LTYuMi04LTYuMnoiLz48cGF0aCBkPSJNMTguNiAzMC41YzAtMy4yIDEuNS01IDMuOS02LjYgMi40IDEuNiAzLjkgMy40IDMuOSA2LjZ6Ii8+PGNpcmNsZSBjeD0iMjIuNSIgY3k9IjE5LjUiIHI9IjUuMiIvPjwvZz48cGF0aCBkPSJNMjIuNSAzLjUgMzAgMTMuNWgtNC42djVoLTUuOHYtNUgxNXoiIGZpbGw9IiNlODgyM2MiIHN0cm9rZT0iIzEwMTAxMCIgc3Ryb2tlLXdpZHRoPSIxLjQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48L3N2Zz4="
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "generated",
+    "source": "sardines family",
+    "history": "Generated by docs/reference/sardines-family-generator.py, seed 20261254, wrap off, facing on. One of four cells sharing an army, a rule set and a placement procedure, each differing from its neighbour by one feature; the campaign that picked it is pre-registered in docs/reference/sardines-family.md. Archived rather than promoted, for the reason quarry is: a game built to exercise a rule is evidence about the rule. It is rulesets/sardines with piece.facing on the pawn and nothing else, the facing cell of the family."
+  }
+}

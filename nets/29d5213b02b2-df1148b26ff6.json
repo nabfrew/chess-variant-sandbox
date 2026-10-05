@@ -1,0 +1,151 @@
+{
+  "procedure": "df1148b26ff6",
+  "ruleset_hash": "29d5213b02b2",
+  "inputs_version": 1,
+  "verdict": "accepted",
+  "weights_sha256": "8e0c416ada366bb69414a65507b9cc87d4c214855630c4dac5af2f262c747eeb",
+  "build": "34ab16658e63a83f",
+  "digest": "8e0c416ada36",
+  "trainer_version": 1,
+  "recipe": {
+    "agents": [
+      "minimax:net=db5ef1bc938e,nodes=1600",
+      "minimax:nodes=1600"
+    ],
+    "games": 5000,
+    "seed": 0,
+    "opening_plies": 8,
+    "skip_plies": 2,
+    "stride": 1,
+    "result_weight": 0.0,
+    "label_nodes": 6400,
+    "label_depth": 8,
+    "td_lambda": 0.7,
+    "label_search": "parent",
+    "scale": 1.0,
+    "accumulator": 256,
+    "hidden1": 32,
+    "hidden2": 32,
+    "epochs": 8,
+    "batch": 1024,
+    "learning_rate": 0.001,
+    "init_seed": 0,
+    "parent": {
+      "procedure": "db5ef1bc938e",
+      "weights_sha256": "5c5521ff2495a74e3b2b8fa9d816658db476fcfe30189e6a485fd18e14aacbc2"
+    }
+  },
+  "data": {
+    "digest": "945bf587065c205b05f32d3caab5aaa25b1469a528e4eb2dff32374d790966cc",
+    "games": 20000,
+    "positions": 2209908,
+    "most_active": 44
+  },
+  "training": {
+    "loss_by_epoch": [
+      0.01206684,
+      0.00596675,
+      0.00411271,
+      0.00329033,
+      0.00283897,
+      0.00256465,
+      0.00237327,
+      0.00224349
+    ],
+    "w0_limit": 127,
+    "quantization_error": 0.095084
+  },
+  "acceptance": {
+    "candidate": "minimax:net=df1148b26ff6,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 6000000,
+    "opening_plies": 8,
+    "score": 0.88875,
+    "error": 0.014033,
+    "games": 400,
+    "identical": 0,
+    "openings": 178,
+    "candidate_nodes": 101598204,
+    "reference_nodes": 100604504,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true,
+    "build": "39eccb50b518da2c"
+  },
+  "lineage": {
+    "parent": "db5ef1bc938e",
+    "parent_weights_sha256": "5c5521ff2495a74e3b2b8fa9d816658db476fcfe30189e6a485fd18e14aacbc2",
+    "teacher": "parent:5c5521ff2495"
+  },
+  "kept": true,
+  "kept_by": "generation 1, kept by R5-1: plan-teacher.md \u00a79.10.2",
+  "carried_from": {
+    "ruleset_hash": "d93e28d09a33",
+    "task": "Q696",
+    "why": "the capture-free draw moved from 100 plies to 200; the weights are unchanged and were re-dueled under the new hash (plan-teacher 9.12)",
+    "acceptance": {
+      "candidate": "minimax:net=df1148b26ff6,nodes=6400",
+      "reference": "minimax:nodes=6400",
+      "seed": 1000000,
+      "opening_plies": 8,
+      "score": 0.90875,
+      "error": 0.013401,
+      "games": 400,
+      "identical": 0,
+      "openings": 172,
+      "candidate_nodes": 84279476,
+      "reference_nodes": 83227500,
+      "bar": "score - 2 x error > 0.5",
+      "accepted": true
+    },
+    "confirmation": {
+      "candidate": "minimax:net=df1148b26ff6,nodes=6400",
+      "reference": "minimax:nodes=6400",
+      "seed": 2000000,
+      "opening_plies": 8,
+      "score": 0.9,
+      "error": 0.013727,
+      "games": 400,
+      "identical": 0,
+      "openings": 162,
+      "candidate_nodes": 91801998,
+      "reference_nodes": 90789611,
+      "bar": "score - 2 x error > 0.5",
+      "accepted": true,
+      "gate": "G-A2, plan-teacher.md \u00a78.3"
+    },
+    "rechecks": [
+      {
+        "candidate": "minimax:net=df1148b26ff6,nodes=6400",
+        "reference": "minimax:nodes=6400",
+        "seed": 4000000,
+        "opening_plies": 8,
+        "score": 0.8825,
+        "error": 0.014278,
+        "games": 400,
+        "identical": 0,
+        "openings": 171,
+        "candidate_nodes": 103184014,
+        "reference_nodes": 102203830,
+        "bar": "score - 2 x error > 0.5",
+        "accepted": true,
+        "build": "39eccb50b518da2c"
+      },
+      {
+        "candidate": "minimax:net=df1148b26ff6,nodes=6400",
+        "reference": "minimax:nodes=6400",
+        "seed": 1000000,
+        "opening_plies": 8,
+        "score": 0.90125,
+        "error": 0.013601,
+        "games": 400,
+        "identical": 0,
+        "openings": 172,
+        "candidate_nodes": 96618952,
+        "reference_nodes": 95593099,
+        "bar": "score - 2 x error > 0.5",
+        "accepted": true,
+        "build": "39eccb50b518da2c"
+      }
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+Chess variant sandbox
+Copyright (C) 2026 the Chess variant sandbox authors.
+
+This program is free software, licensed under the GNU General Public License, version 3
+(the file LICENSE), EXCEPT WHERE NOTED. The parts below are distributed alongside it and
+keep their own licences; each sits with its licence and credits, and those files must stay
+with them.
+
+Piece drawings: assets/pieces/svg/
+    Each drawing is under the licence named for it in assets/pieces/CREDITS.md: CC BY-SA 3.0,
+    CC BY-SA 4.0, the GNU Free Documentation Licence, CC0 or the public domain. CREDITS.md
+    names each drawing's author and source. The drawings are separate works aggregated with
+    the program, not part of it.
+
+Typefaces: chess_variant_sandbox/web/static/fonts/
+    Fraunces, Source Sans 3 and Source Code Pro, under the SIL Open Font Licence 1.1. Each
+    licence is beside its font (*-OFL.txt), and manifest.json in that folder names the sources.
+
+Vendored scripts: chess_variant_sandbox/web/static/vendor/
+    cytoscape (MIT), cytoscape-layers (MIT), cytoscape-bubblesets (MIT), and the packages
+    bundled inside them: bubblesets-js (MIT), lodash.throttle (MIT) and tslib (0BSD). Each
+    licence is beside the file (*-LICENSE.txt), and manifest.json in that folder names each
+    file's version, source and checksum.
+
+Fairy-Stockfish (GPL-3.0) is not included. The optional opponent runs a Fairy-Stockfish
+program that the user installs, as a separate process; pyffish, a test dependency, is
+installed from PyPI.

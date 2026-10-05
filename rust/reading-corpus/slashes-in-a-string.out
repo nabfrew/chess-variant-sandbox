@@ -1,0 +1,1 @@
+let s = "http://x // not a comment /* nor this */";

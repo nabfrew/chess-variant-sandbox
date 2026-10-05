@@ -1,0 +1,43 @@
+{
+  "ruleset_hash": "8a4bde5369b2",
+  "procedure": "16a4528b0d53",
+  "procedure_version": 1,
+  "vocabulary_version": 1,
+  "vocabulary": [
+    "material",
+    "prey_weight",
+    "mobility",
+    "advance",
+    "centrality",
+    "royal_exposure",
+    "territory_margin",
+    "score_margin",
+    "score_urgency",
+    "check_margin",
+    "extinction_margin",
+    "hand_material",
+    "promotion_occupancy",
+    "reach_progress"
+  ],
+  "accepted": false,
+  "accept_score": 0.4479,
+  "accept_games": 48,
+  "samples": 746,
+  "loss": 0.636276,
+  "weights": [
+    0.721053,
+    0.0,
+    0.033907,
+    0.312588,
+    0.253009,
+    -0.051233,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.173927,
+    0.533229,
+    0.0
+  ]
+}

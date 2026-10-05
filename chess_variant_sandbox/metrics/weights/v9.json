@@ -1,0 +1,221 @@
+{
+  "version": "v9",
+  "notes": "v8 re-anchored under a roster that no longer plays every game with the same evaluator: each searching rung carries `fit=16a4528b0d53`, an objective regressed from that ruleset's own games by a fixed procedure. The sixteen components, the families and the weights are v8's to the digit; the curve ends were re-placed mechanically by `chess-variant-sandbox anchor` over 62 runs with 7 held out. WHAT FORCED IT is stage 28: the ladder was competent on chess-likes and incompetent elsewhere, which is itself a rung that means different things on different games. TEN OF THIRTY-NINE rulesets took the fit and twenty-nine kept the built-in evaluator, each refusal named in docs/reference/v9-calibration.md. A refused fit resolves to the built-in evaluator EXACTLY -- 50 entries reproduce the stage-26 base arm to the digit with zero drift, which is what makes the fitted entries' movement readable at all. WHAT IT BOUGHT, honestly stated: separation -0.546 to -0.184 and sign accuracy 58% to 67%. But stage 26 had already measured that a uniformly stronger ladder buys -0.546 to -0.334 and 58% to 67% with no fitting whatever, so the fit's own contribution is the difference and the sign accuracy is entirely the strength artefact. Compared at equal curves (pre-anchor) the fit reaches -0.2254 against that -0.3341. WHAT IT COST: the band compresses 0.537 -> 0.200, harder than the 0.371 a stronger ladder gives, and every threshold in the index is stated on that scale. One known-bad mutant, `mutant-vast-board`, moved the WRONG WAY under its own fit -- 0.7423 to 0.7591 where more nodes correctly pushed it to 0.7012. THE INDEX IS NOT INVARIANT TO THE LADDER'S OBJECTIVE at fixed strength: on `onewaytunnel` the fit buys 44 Elo against the 542 that 8x nodes buys, and moves the index 54 times further (-0.0757 against -0.0014, 7.3 sd). That is a limitation of the instrument, not of the fit, and it is the finding stage 28 actually produced. THE HELD-OUT SALT IS UNCHANGED at v8, deliberately: the roster changed and the curves moved, but the slice of negatives no curve is fitted to is the same slice v8 was judged against, so the two separations are comparable. STILL UNREADABLE by this roster: racing kings, atomic, horde, shogi, tunnel chess vertical and xiangqi are held out of anchoring the skill curves. Fitting raised racing kings' index by 0.29 and did not make its budget ladder readable -- being able to play a game and having a readable ladder on it are two different things. The judge still contributes nothing: llm_weight stays 0.0.",
+  "llm_weight": 0.0,
+  "components": {
+    "rule_yield": {
+      "family": "elegance",
+      "weight": 0.099,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 62.4479,
+        "zero_at": 0.0
+      },
+      "evidence": "8.5 / +0.32"
+    },
+    "first_player_advantage": {
+      "family": "balance",
+      "weight": 0.0396,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 0.875
+      },
+      "evidence": "1.9 / +0.02  weakest on both axes"
+    },
+    "stall_rate": {
+      "family": "balance",
+      "weight": 0.0792,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 0.6428
+      },
+      "evidence": "11.4 / +0.43"
+    },
+    "mean_branching": {
+      "family": "pacing",
+      "weight": 0.0396,
+      "curve": "band",
+      "points": {
+        "good_low": 8.6032,
+        "good_high": 82.8055,
+        "zero_low": 0.0,
+        "zero_high": 157.0078
+      },
+      "evidence": "21.9 / +0.13"
+    },
+    "ply_spread": {
+      "family": "pacing",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.6595,
+        "zero_at": 0.0
+      },
+      "evidence": "9.9 / +0.38"
+    },
+    "opening_diversity": {
+      "family": "variety",
+      "weight": 0.0594,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.1158
+      },
+      "evidence": "9.5 / -0.11  guards a failure no mutant has"
+    },
+    "distinct_game_rate": {
+      "family": "variety",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.4529
+      },
+      "evidence": "4.6 / +0.06"
+    },
+    "blunder_recoverability": {
+      "family": "drama",
+      "weight": 0.0495,
+      "curve": "band",
+      "points": {
+        "good_low": 0.25,
+        "good_high": 0.75,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "2.5 / +0.69  noisy, but separates hard"
+    },
+    "decision_criticality": {
+      "family": "decisions",
+      "weight": 0.099,
+      "curve": "band",
+      "points": {
+        "good_low": 0.2728,
+        "good_high": 0.7373,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "12.5 / +0.72  best discriminator in the set"
+    },
+    "piece_utilisation": {
+      "family": "decisions",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.6741
+      },
+      "evidence": "16.0 / +0.16  precise, modest separation"
+    },
+    "skill_gradient": {
+      "family": "depth",
+      "weight": 0.1386,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 235.5915,
+        "zero_at": 4.57
+      },
+      "evidence": "6.8 / +0.60  the core question, well measured"
+    },
+    "gradient_persistence": {
+      "family": "depth",
+      "weight": 0.0693,
+      "curve": "band",
+      "points": {
+        "good_low": 0.225,
+        "good_high": 2.141,
+        "zero_low": 0.0,
+        "zero_high": 2.5
+      },
+      "evidence": "2.6 / +0.21  central idea, noisy at four budgets"
+    },
+    "draw_slope": {
+      "family": "drama",
+      "weight": 0.0495,
+      "curve": "band",
+      "points": {
+        "good_low": 0.8056,
+        "good_high": 1.875,
+        "zero_low": 0.0,
+        "zero_high": 2.0
+      },
+      "evidence": "2.5 / +0.14"
+    },
+    "progress_irreversibility": {
+      "family": "pacing",
+      "weight": 0.0693,
+      "curve": "band",
+      "points": {
+        "good_low": 0.1876,
+        "good_high": 0.8087,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "29.1 / band; -0.80 with blunder_recoverability, which came down for it"
+    },
+    "instance_participation": {
+      "family": "decisions",
+      "weight": 0.0495,
+      "curve": "band",
+      "points": {
+        "good_low": 0.4146,
+        "good_high": 0.8938,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "18.7 / band; +0.72 with distinct_game_rate"
+    },
+    "lead_conversion": {
+      "family": "drama",
+      "weight": 0.0396,
+      "curve": "band",
+      "points": {
+        "good_low": 0.5179,
+        "good_high": 0.9658,
+        "zero_low": 0.07,
+        "zero_high": 1.0
+      },
+      "evidence": "3.6 / band; the most independent of the seven, max +0.41",
+      "optional": true
+    }
+  },
+  "gates": [
+    {
+      "component": "search_advantage",
+      "minimum": 0.55,
+      "reason": "a searching player must beat a random one, or there is nothing to play"
+    },
+    {
+      "component": "stall_rate",
+      "maximum": 0.7,
+      "reason": "a game that mostly fails to finish is not a game"
+    },
+    {
+      "component": "mean_branching",
+      "minimum": 1.5,
+      "reason": "with no choices there is no play"
+    },
+    {
+      "component": "decisive_rate",
+      "minimum": 0.2,
+      "reason": "a game that competent players almost always draw is not a contest"
+    },
+    {
+      "component": "mean_plies",
+      "minimum": 8.0,
+      "reason": "a game decided before either player has developed anything is not a game"
+    },
+    {
+      "component": "skill_gradient",
+      "minimum": 8.0,
+      "reason": "doubling the thinking budget must be worth at least a few Elo, or skill does not exist here"
+    },
+    {
+      "component": "quick_kill_rate",
+      "maximum": 0.5,
+      "reason": "a game where half of all contests are over in a handful of moves is decided by an opening trap, not by play; it correlates -0.89 with distinct_game_rate, so scoring it as well as gating it counted one measurement twice"
+    }
+  ]
+}

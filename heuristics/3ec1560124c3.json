@@ -1,0 +1,158 @@
+{
+  "ruleset_hash": "3ec1560124c3",
+  "vocabulary_version": 2,
+  "vocabulary": [
+    "material",
+    "prey_weight",
+    "mobility",
+    "advance",
+    "centrality",
+    "royal_exposure",
+    "territory_margin",
+    "score_margin",
+    "score_urgency",
+    "check_margin",
+    "extinction_margin",
+    "hand_material",
+    "promotion_occupancy",
+    "reach_progress",
+    "facing_alignment"
+  ],
+  "model": "hand-written",
+  "k": 6,
+  "set_hash": "5c04e51ca415",
+  "heuristics": [
+    {
+      "name": "material-and-mobility",
+      "plan": "Win material, and keep your options open.",
+      "weights": [
+        0.9996135590412029,
+        0.0,
+        0.027798067936093043,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "48517bc42dc0"
+    },
+    {
+      "name": "trade-up",
+      "plan": "Win material and keep the pieces that can take the most.",
+      "weights": [
+        1.0,
+        0.0,
+        0.05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "4bc788e733d4"
+    },
+    {
+      "name": "shed",
+      "plan": "Give material away as fast as possible.",
+      "weights": [
+        -1.0,
+        0.0,
+        0.05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "ff7960bcb810"
+    },
+    {
+      "name": "swarm",
+      "plan": "Push everything forward and keep the pieces active.",
+      "weights": [
+        0.2,
+        0.0,
+        0.3,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "5d66ef8e390a"
+    },
+    {
+      "name": "starve-them",
+      "plan": "Take the pieces they cannot afford to lose.",
+      "weights": [
+        0.3,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "531e7ba1c14d"
+    },
+    {
+      "name": "promote",
+      "plan": "Get promotable pieces onto the squares where they promote.",
+      "weights": [
+        0.0,
+        0.0,
+        0.0,
+        0.4,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "digest": "a3275df63d36"
+    }
+  ]
+}

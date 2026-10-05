@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "name": "bastion",
+  "description": "A siege game on a small board. Cannons move freely along ranks and files but can only capture by leaping a screening piece, so every piece you develop is a weapon your opponent can fire over. The tension is that a crowded board is dangerous and an empty one is toothless.",
+  "board": {
+    "width": 7,
+    "height": 7
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "footman",
+      "value": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+      ]
+    },
+    {
+      "id": "A",
+      "name": "archer",
+      "value": 4,
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "range": 2, "mode": "both"}
+      ]
+    },
+    {
+      "id": "C",
+      "name": "cannon",
+      "value": 6,
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "move"},
+        {"kind": "hop", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "capture"}
+      ]
+    },
+    {
+      "id": "K",
+      "name": "warden",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "K", "squares": ["d1"]},
+      {"piece": "C", "squares": ["a1", "g1"]},
+      {"piece": "A", "squares": ["c1", "e1"]},
+      {"piece": "P", "squares": ["b2", "c2", "d2", "e2", "f2"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": "last", "to": ["A", "C"]},
+    "max_plies": 300,
+    "repetition_draw": 3,
+    "no_progress_draw": 60
+  },
+  "provenance": {
+    "origin": "control",
+    "source": "written for this project",
+    "history": "Hand-written as a deliberately broken reference. It validates, passes the cheap gate, and hides a three-ply forced mate: a cannon firing down the file over the defender's own pawn at a king smothered by its own army. The index found the trap unprompted, which is what makes it the regression test for the index still being able to see a degeneracy that random play cannot reach."
+  },
+  "appearance": {
+    "icons": {
+      "P": "pawn",
+      "A": "bishop",
+      "C": "xiangqi-pictorial-cannon",
+      "K": "king"
+    }
+  }
+}

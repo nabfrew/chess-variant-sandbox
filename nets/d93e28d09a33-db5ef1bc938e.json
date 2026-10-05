@@ -1,0 +1,85 @@
+{
+  "procedure": "db5ef1bc938e",
+  "ruleset_hash": "d93e28d09a33",
+  "inputs_version": 1,
+  "verdict": "accepted",
+  "weights_sha256": "5c5521ff2495a74e3b2b8fa9d816658db476fcfe30189e6a485fd18e14aacbc2",
+  "build": "5d1167fee54b8906",
+  "digest": "5c5521ff2495",
+  "trainer_version": 1,
+  "recipe": {
+    "agents": [
+      "minimax:nodes=1600"
+    ],
+    "games": 20000,
+    "seed": 0,
+    "opening_plies": 8,
+    "skip_plies": 2,
+    "stride": 1,
+    "result_weight": 0.0,
+    "label_nodes": 1200,
+    "label_depth": 8,
+    "td_lambda": 0.7,
+    "scale": 1.0,
+    "accumulator": 256,
+    "hidden1": 32,
+    "hidden2": 32,
+    "epochs": 8,
+    "batch": 1024,
+    "learning_rate": 0.001,
+    "init_seed": 0
+  },
+  "data": {
+    "digest": "153c6ea661656a553626832f93a56189b977ecb8e0ba2f37a7458d03a02e8bec",
+    "games": 20000,
+    "positions": 2060089,
+    "most_active": 41
+  },
+  "training": {
+    "loss_by_epoch": [
+      0.00498038,
+      0.00224918,
+      0.00162995,
+      0.00132562,
+      0.00114618,
+      0.00101802,
+      0.0009327,
+      0.00087287
+    ],
+    "w0_limit": 127,
+    "quantization_error": 0.108862
+  },
+  "acceptance": {
+    "candidate": "minimax:net=db5ef1bc938e,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 1000000,
+    "opening_plies": 8,
+    "score": 0.7475,
+    "error": 0.018838,
+    "games": 400,
+    "identical": 0,
+    "openings": 172,
+    "candidate_nodes": 118976035,
+    "reference_nodes": 118356341,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true
+  },
+  "confirmation": {
+    "candidate": "minimax:net=db5ef1bc938e,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 2000000,
+    "opening_plies": 8,
+    "score": 0.74125,
+    "error": 0.02039,
+    "games": 400,
+    "identical": 0,
+    "openings": 162,
+    "candidate_nodes": 114205971,
+    "reference_nodes": 113614435,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true,
+    "gate": "G-A2, plan-teacher.md \u00a78.3"
+  },
+  "kept": true,
+  "kept_by": "generation 0, the line's root and generation 1's parent, an earlier kept generation for G-C: plan-teacher.md \u00a79.11.1"
+}

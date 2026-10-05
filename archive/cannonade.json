@@ -1,0 +1,197 @@
+{
+  "board": {
+    "height": 6,
+    "width": 6
+  },
+  "description": "A 6x6 army with one straight-line slider, two knights, and two diagonal cannons that can only capture by leaping a piece \u2014 friend or enemy \u2014 standing in their line. Captures are permanent and the material count decides the game when the clock runs out, so a single pawn is worth a whole attack: you must grab something and then survive, while the pieces you push forward become the very screens your opponent's cannons need. The recurring decision is whether to crowd the board, where cannons rule and one loose piece is fatal, or to strip it bare, where the cannons fall silent and whoever is a point ahead simply wins.",
+  "name": "cannonade",
+  "pieces": [
+    {
+      "id": "P",
+      "moves": [
+        {
+          "kind": "slide",
+          "mode": "move",
+          "range": 1,
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ]
+        },
+        {
+          "kind": "leap",
+          "mode": "capture",
+          "symmetry": "lateral",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ]
+        }
+      ],
+      "name": "pawn",
+      "value": 1
+    },
+    {
+      "id": "N",
+      "moves": [
+        {
+          "kind": "leap",
+          "mode": "both",
+          "symmetry": "dihedral8",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ]
+        }
+      ],
+      "name": "knight",
+      "value": 3
+    },
+    {
+      "id": "C",
+      "moves": [
+        {
+          "kind": "slide",
+          "mode": "move",
+          "range": 0,
+          "symmetry": "rotate4",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ]
+        },
+        {
+          "kind": "hop",
+          "mode": "capture",
+          "screen": "any",
+          "screen_range": 0,
+          "symmetry": "rotate4",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ]
+        }
+      ],
+      "name": "cannon",
+      "value": 4
+    },
+    {
+      "id": "R",
+      "moves": [
+        {
+          "kind": "slide",
+          "mode": "both",
+          "range": 0,
+          "symmetry": "rotate4",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ]
+        }
+      ],
+      "name": "rook",
+      "value": 5
+    },
+    {
+      "id": "K",
+      "moves": [
+        {
+          "kind": "leap",
+          "mode": "both",
+          "symmetry": "rotate4",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ]
+        }
+      ],
+      "name": "king",
+      "royal": true,
+      "value": 0
+    }
+  ],
+  "rules": {
+    "max_plies": 200,
+    "no_progress_draw": 30,
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "N"
+      ]
+    },
+    "scoring": {
+      "count": "material"
+    },
+    "stalemate": "draw",
+    "win": "checkmate"
+  },
+  "schema_version": 4,
+  "setup": {
+    "mirror": true,
+    "orientation": "mirror",
+    "placements": [
+      {
+        "piece": "R",
+        "squares": [
+          "a1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "C",
+        "squares": [
+          "c1",
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      },
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "e2",
+          "f2"
+        ]
+      }
+    ]
+  },
+  "provenance": {
+    "origin": "evolved",
+    "author": "chess-variant-sandbox evolve (live-1)",
+    "parents": [
+      "975dde173f01"
+    ],
+    "history": "The first ruleset this project's design loop ever proposed against the live API. A one-generation run from gardner; it does not separate from its seed. Found by the design loop in run live-1, generation 1, revising gardner. Scores 0.783 +/- 0.015 on the corpus roster under weights v8."
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "name": "capablanca",
+  "description": "Jose Raul Capablanca's 10x8 enlargement, proposed in the 1920s because he believed master chess was drifting towards drawn theory. Two compound pieces join the array: the archbishop combines bishop and knight, the chancellor combines rook and knight. The king castles three squares instead of two.",
+  "board": {"width": 10, "height": 8},
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+        {
+          "kind": "slide",
+          "vectors": [[0, 1]],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {"from_rank": 1}
+        },
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "A",
+      "name": "archbishop",
+      "value": 7,
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"},
+        {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}
+      ]
+    },
+    {
+      "id": "C",
+      "name": "chancellor",
+      "value": 8,
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"},
+        {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [{"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2", "i2", "j2"]},
+      {"piece": "R", "squares": ["a1", "j1"]},
+      {"piece": "N", "squares": ["b1", "i1"]},
+      {"piece": "A", "squares": ["c1"]},
+      {"piece": "B", "squares": ["d1", "g1"]},
+      {"piece": "Q", "squares": ["e1"]},
+      {"piece": "K", "squares": ["f1"]},
+      {"piece": "C", "squares": ["h1"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": "last", "to": ["Q", "C", "A", "R", "B", "N"]},
+    "en_passant": true,
+    "castling": {"king": "K", "rook": "R", "king_steps": 3},
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "origin": "human",
+    "author": "Jose Raul Capablanca",
+    "year": "1920s",
+    "source": "proposed as a replacement for chess"
+  }
+}

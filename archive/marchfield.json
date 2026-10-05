@@ -1,0 +1,167 @@
+{
+  "board": {
+    "height": 7,
+    "width": 6
+  },
+  "description": "Nine short-ranged pieces a side stand four ranks apart on a tall field, and if no king has been trapped when the clock runs out the game goes to whoever has more pieces still standing in the far half of the board. Material is therefore a means and not the object: a piece kept safe at home is worth nothing at the reckoning, while a piece pushed across the middle is both a point and a target, and the soldiers that lead the advance can never come back. The recurring decision is how much of your army to commit forward, and whether to answer an invasion by killing it or by out-invading it on the other wing.",
+  "name": "marchfield",
+  "pieces": [
+    {
+      "id": "S",
+      "moves": [
+        {
+          "kind": "slide",
+          "mode": "both",
+          "range": 1,
+          "symmetry": "lateral",
+          "vectors": [
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              0
+            ]
+          ]
+        }
+      ],
+      "name": "soldier",
+      "value": 1
+    },
+    {
+      "id": "N",
+      "moves": [
+        {
+          "kind": "leap",
+          "mode": "both",
+          "symmetry": "dihedral8",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ]
+        }
+      ],
+      "name": "knight",
+      "value": 3
+    },
+    {
+      "id": "R",
+      "moves": [
+        {
+          "kind": "slide",
+          "mode": "both",
+          "range": 3,
+          "symmetry": "rotate4",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ]
+        }
+      ],
+      "name": "rook",
+      "value": 4
+    },
+    {
+      "id": "K",
+      "moves": [
+        {
+          "kind": "leap",
+          "mode": "both",
+          "symmetry": "rotate4",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ]
+        }
+      ],
+      "name": "king",
+      "royal": true,
+      "value": 0
+    }
+  ],
+  "rules": {
+    "max_plies": 120,
+    "no_progress_draw": 30,
+    "repetition_draw": 3,
+    "scoring": {
+      "count": "region",
+      "region": [
+        "a5",
+        "b5",
+        "c5",
+        "d5",
+        "e5",
+        "f5",
+        "a6",
+        "b6",
+        "c6",
+        "d6",
+        "e6",
+        "f6",
+        "a7",
+        "b7",
+        "c7",
+        "d7",
+        "e7",
+        "f7"
+      ]
+    },
+    "stalemate": "loss",
+    "win": "checkmate"
+  },
+  "schema_version": 4,
+  "setup": {
+    "mirror": true,
+    "orientation": "rotate",
+    "placements": [
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "e1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "c1"
+        ]
+      },
+      {
+        "piece": "S",
+        "squares": [
+          "b2",
+          "c2",
+          "d2",
+          "e2"
+        ]
+      }
+    ]
+  },
+  "provenance": {
+    "origin": "evolved",
+    "author": "chess-variant-sandbox evolve (live-2)",
+    "parents": [
+      "ffc7b604bea0"
+    ],
+    "history": "Generation 2 of the first two-generation live run: the model's own revision of Reckoning, and the highest-scoring thing the loop has produced. Found by the design loop in run live-2, generation 2, revising Reckoning. Scores 0.826 +/- 0.014 on the corpus roster under weights v8."
+  }
+}

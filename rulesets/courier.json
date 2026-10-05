@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "name": "courier",
+  "description": "The medieval German enlargement of shatranj on a 12x8 board, attested from 1202 and still played in Stroebeck into the nineteenth century. It is the first game known to give a piece the unlimited diagonal slide that later became the bishop. Beside it stand the older weak pieces: an alfil that jumps two diagonally, a fers that steps one, a wazir that steps one orthogonally, and a non-royal man that moves like a king. No castling, no double step, and pawns promote only to fers.",
+  "board": {"width": 12, "height": 8},
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}]
+    },
+    {
+      "id": "E",
+      "name": "alfil",
+      "value": 1.5,
+      "moves": [{"kind": "leap", "vectors": [[2, 2]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "B",
+      "name": "courier",
+      "value": 3,
+      "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "M",
+      "name": "man",
+      "value": 3,
+      "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "W",
+      "name": "schleich",
+      "value": 1.5,
+      "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "F",
+      "name": "fers",
+      "value": 1.5,
+      "moves": [{"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "P", "squares": [
+        "b2", "c2", "d2", "e2", "f2", "h2", "i2", "j2", "k2", "a4", "g4", "l4"
+      ]},
+      {"piece": "F", "squares": ["g3"]},
+      {"piece": "R", "squares": ["a1", "l1"]},
+      {"piece": "N", "squares": ["b1", "k1"]},
+      {"piece": "E", "squares": ["c1", "j1"]},
+      {"piece": "B", "squares": ["d1", "i1"]},
+      {"piece": "M", "squares": ["e1"]},
+      {"piece": "K", "squares": ["f1"]},
+      {"piece": "W", "squares": ["h1"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "loss",
+    "promotion": {"piece": "P", "rank": "last", "to": ["F"]},
+    "max_plies": 500,
+    "repetition_draw": 3,
+    "no_progress_draw": 140
+  },
+  "provenance": {
+    "origin": "human",
+    "year": "attested from 1202",
+    "source": "Germany; still played in Stroebeck into the nineteenth century"
+  },
+  "appearance": {
+    "icons": {
+      "P": "pawn",
+      "N": "knight",
+      "E": "alfil",
+      "B": "bishop",
+      "R": "rook",
+      "M": "man",
+      "W": "wazir",
+      "F": "ferz",
+      "K": "king"
+    }
+  }
+}

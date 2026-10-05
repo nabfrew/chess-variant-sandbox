@@ -1,0 +1,107 @@
+{
+  "procedure": "5fe1cb87d4c9",
+  "ruleset_hash": "975dde173f01",
+  "inputs_version": 1,
+  "verdict": "accepted",
+  "weights_sha256": "317025dfb0354389594cc78a85f2ca402546272fc62384b70b7b58b9668d9131",
+  "build": "39eccb50b518da2c",
+  "digest": "317025dfb035",
+  "trainer_version": 1,
+  "recipe": {
+    "agents": [
+      "minimax:net=e03365fe43e7,nodes=1600",
+      "minimax:nodes=1600"
+    ],
+    "games": 5000,
+    "seed": 0,
+    "opening_plies": 8,
+    "skip_plies": 2,
+    "stride": 1,
+    "result_weight": 0.0,
+    "label_nodes": 6400,
+    "label_depth": 8,
+    "td_lambda": 0.7,
+    "label_search": "parent",
+    "scale": 1.0,
+    "accumulator": 256,
+    "hidden1": 32,
+    "hidden2": 32,
+    "epochs": 8,
+    "batch": 1024,
+    "learning_rate": 0.001,
+    "init_seed": 0,
+    "parent": {
+      "procedure": "e03365fe43e7",
+      "weights_sha256": "b054bfe364119f3f93e6d55b47523198f5398077cef10b47dbe383653c58d6d4"
+    },
+    "replay": {
+      "agents": [
+        "minimax:net=db5ef1bc938e,nodes=1600",
+        "minimax:nodes=1600"
+      ],
+      "games": 5000,
+      "seed": 0,
+      "opening_plies": 8,
+      "net": {
+        "procedure": "db5ef1bc938e",
+        "weights_sha256": "b85a969f6131b250b3eea58e11693b3a5f7e480026ec5bc3076abae0cbf352fa"
+      }
+    }
+  },
+  "data": {
+    "digest": "1113395ce89c203430a36736f51dd1c27359f89d7e8acdde6e17ec52f504a984",
+    "games": 35000,
+    "positions": 1887163,
+    "most_active": 38
+  },
+  "training": {
+    "loss_by_epoch": [
+      0.02346321,
+      0.01492515,
+      0.01311155,
+      0.01199656,
+      0.01117546,
+      0.01055988,
+      0.01002658,
+      0.00957719
+    ],
+    "w0_limit": 127,
+    "quantization_error": 0.120774
+  },
+  "acceptance": {
+    "candidate": "minimax:net=5fe1cb87d4c9,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 1000000,
+    "opening_plies": 8,
+    "score": 0.6725,
+    "error": 0.017034,
+    "games": 400,
+    "identical": 2,
+    "openings": 163,
+    "candidate_nodes": 49848718,
+    "reference_nodes": 47874985,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true
+  },
+  "lineage": {
+    "parent": "e03365fe43e7",
+    "parent_weights_sha256": "b054bfe364119f3f93e6d55b47523198f5398077cef10b47dbe383653c58d6d4",
+    "teacher": "parent:b054bfe36411"
+  },
+  "confirmation": {
+    "candidate": "minimax:net=5fe1cb87d4c9,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 2000000,
+    "opening_plies": 8,
+    "score": 0.685,
+    "error": 0.016266,
+    "games": 400,
+    "identical": 3,
+    "openings": 152,
+    "candidate_nodes": 49029576,
+    "reference_nodes": 47006093,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true,
+    "gate": "G-A2, plan-teacher.md \u00a78.3"
+  }
+}

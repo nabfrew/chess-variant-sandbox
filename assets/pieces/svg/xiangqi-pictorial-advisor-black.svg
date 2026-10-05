@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="100" height="100" viewBox="-50 -50 100 100"
+     xmlns="http://www.w3.org/2000/svg">
+  <title>xiangqi-pictorial-advisor-black</title>
+  <!-- 此字型為全字庫正楷體，中華民國國家發展委員會，CNS11643中文標準交換碼全字庫網站，https://www.cns11643.gov.tw/。 -->
+  <circle r="48.5" stroke-width="3" stroke="#000" fill="#fda"/><circle r="43.5" stroke-width="3" stroke="#000" fill="none"/><path transform="scale(0.2)" stroke-linecap="round" stroke-linejoin="round" stroke-width="20" stroke="#000" fill="none" d="M0,-136 31,-96 107,-105 69,-35Q98,11 62,65Q102,94 112,150L-112,150Q-102,94 -62,65Q-98,11 -69,-35L-107,-105 -31,-96zM69,-35 -69,-35M40,0 20,18M-40,0 -20,18"/>
+</svg>

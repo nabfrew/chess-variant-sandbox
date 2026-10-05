@@ -1,0 +1,6 @@
+# These files are redistributed byte-for-byte under their upstream licences, and
+# CREDITS.md says so. With core.autocrlf=true a Windows checkout would rewrite
+# every LF in them, which both breaks that claim and trips the size guard in
+# fetch.py -- it compares the bytes on disk against the size Commons reports, so
+# a translated checkout looks like a tampered file. -text pins them.
+*.svg -text

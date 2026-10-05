@@ -1,0 +1,149 @@
+{
+  "schema_version": 3,
+  "name": "rps annihilation",
+  "description": "Version 1 of a designed-and-rejected sequence. Three pieces a side on a 9x9 board, all moving as chess kings, with a cyclic capture relation: rock takes scissors, scissors takes paper, paper takes rock. You win by taking everything. Its designer rejected it for two stated reasons -- the play is 'just going back and forth and back and forth', and a player who wants a draw can usually force one, because a position reduced to a rock each is dead by construction.",
+  "board": {
+    "width": 9,
+    "height": 9
+  },
+  "pieces": [
+    {
+      "id": "R",
+      "name": "rock",
+      "value": 1,
+      "captures": [
+        "S"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "P",
+      "name": "paper",
+      "value": 1,
+      "captures": [
+        "R"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "S",
+      "name": "scissors",
+      "value": 1,
+      "captures": [
+        "P"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "R",
+        "squares": [
+          "c1"
+        ]
+      },
+      {
+        "piece": "P",
+        "squares": [
+          "e1"
+        ]
+      },
+      {
+        "piece": "S",
+        "squares": [
+          "g1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "annihilation",
+    "stalemate": "draw",
+    "max_plies": 300,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "origin": "human",
+    "source": "docs/reference/rps-versions.md, version 1",
+    "history": "Rejected by its designer for repetitiveness and for reachable forced draws. Recorded here as a validation probe, never as a band member."
+  },
+  "appearance": {
+    "icons": {
+      "R": "rock",
+      "P": "paper",
+      "S": "scissors"
+    }
+  }
+}

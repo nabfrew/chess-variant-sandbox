@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="100" height="100" viewBox="-50 -50 100 100"
+     xmlns="http://www.w3.org/2000/svg">
+  <title>xiangqi-pictorial-elephant-black</title>
+  <!-- 此字型為全字庫正楷體，中華民國國家發展委員會，CNS11643中文標準交換碼全字庫網站，https://www.cns11643.gov.tw/。 -->
+  <circle r="48.5" stroke-width="3" stroke="#000" fill="#fda"/><circle r="43.5" stroke-width="3" stroke="#000" fill="none"/><path transform="scale(0.2)" stroke-linecap="round" stroke-linejoin="round" stroke-width="20" stroke="#000" fill="none" d="M135,-50 160,-50Q125,135 60,40Q12,60 -18,-7Q-50,70 -140,10L-90,-100Q-70,-130 -25,-110Q70,-170 100,0L118,8zM28,48Q40,75 40,108L-138,108Q-138,60 -120,30M35,-10 35,30 180,10zM50,-60A5,5 180 0 0 50,-50A5,5 180 0 0 50,-60"/>
+</svg>

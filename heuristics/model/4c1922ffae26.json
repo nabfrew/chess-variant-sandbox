@@ -1,0 +1,158 @@
+{
+  "ruleset_hash": "4c1922ffae26",
+  "vocabulary_version": 2,
+  "vocabulary": [
+    "material",
+    "prey_weight",
+    "mobility",
+    "advance",
+    "centrality",
+    "royal_exposure",
+    "territory_margin",
+    "score_margin",
+    "score_urgency",
+    "check_margin",
+    "extinction_margin",
+    "hand_material",
+    "promotion_occupancy",
+    "reach_progress",
+    "facing_alignment"
+  ],
+  "model": "claude-opus-5",
+  "k": 6,
+  "set_hash": "c2c80dd3705f",
+  "heuristics": [
+    {
+      "name": "material-and-mobility",
+      "plan": "Win material, and keep your options open.",
+      "weights": [
+        0.9995665039591523,
+        0.0,
+        0.02944153805218279,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "1c3b03404cc4"
+    },
+    {
+      "name": "Material grinder",
+      "plan": "Win pieces and pawns by any means, trading down whenever you come out ahead in raw force.",
+      "weights": [
+        10.0,
+        0.0,
+        0.5,
+        0.0,
+        0.3,
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "778b2431c3e2"
+    },
+    {
+      "name": "King hunter",
+      "plan": "Ignore small losses and throw pieces at the enemy king, keeping it in check and cramped.",
+      "weights": [
+        1.5,
+        0.0,
+        1.0,
+        2.0,
+        1.0,
+        8.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "f05b52a87509"
+    },
+    {
+      "name": "Space and mobility squeeze",
+      "plan": "Take the centre, keep every piece free to move, and suffocate the opponent's options rather than grabbing pawns.",
+      "weights": [
+        2.0,
+        0.0,
+        8.0,
+        1.0,
+        4.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "c7d807fedf97"
+    },
+    {
+      "name": "Pawn race to promotion",
+      "plan": "Push pawns hard toward the far rank and cash them in for queens, even at the cost of a piece.",
+      "weights": [
+        2.5,
+        0.0,
+        0.5,
+        5.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        9.0,
+        0.0,
+        0.0
+      ],
+      "digest": "28ed9245a8a7"
+    },
+    {
+      "name": "Solid fortress defender",
+      "plan": "Keep your own king safe and your pieces home, refusing to advance and inviting the opponent to overextend into a draw or a blunder.",
+      "weights": [
+        3.0,
+        0.0,
+        -2.0,
+        -3.0,
+        -1.0,
+        -4.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "c0977f167e2e"
+    }
+  ]
+}

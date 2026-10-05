@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="100" height="100" viewBox="-50 -50 100 100"
+     xmlns="http://www.w3.org/2000/svg">
+  <title>xiangqi-pictorial-general-black</title>
+  <!-- 此字型為全字庫正楷體，中華民國國家發展委員會，CNS11643中文標準交換碼全字庫網站，https://www.cns11643.gov.tw/。 -->
+  <circle r="48.5" stroke-width="3" stroke="#000" fill="#fda"/><circle r="43.5" stroke-width="3" stroke="#000" fill="none"/><path transform="scale(0.2)" stroke-linecap="round" stroke-linejoin="round" stroke-width="20" stroke="#000" fill="none" d="M-24,-47Q0,-44 24,-47L24,-90 56,-85Q58,-109 56,-135L24,-130 25,-163Q0,-166 -25,-163L-24,-130 -56,-135Q-58,-109 -56,-85L-24,-90zM23,119 23,-42C100,-70 142,-60 142,13C142,60 117,110 92,160L-92,160C-117,110 -142,60 -142,13C-142,-60 -100,-70 -23,-42L-23,119M110,122 -110,122"/>
+</svg>

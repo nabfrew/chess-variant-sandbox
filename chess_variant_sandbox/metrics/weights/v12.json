@@ -1,0 +1,329 @@
+{
+  "version": "v12",
+  "notes": "v11's design with every curve end given a source (docs/plan-evolving-score.md section 4, EV4; the user's decision of 2026-10-03, section 9 Q2, A). Each end is one of four kinds, named in its component's `sources`: DOMAIN, the limit the quantity cannot pass; GATE, the gate on the same measurement, so the zero end sits where the gate already says not a game; MEANING, a one-sentence reading of the quantity; REFERENCE, a quantile of the 20 published band games (the 21 agreed on 2026-09-28 less intransitive), the k-th lowest or highest at k = ceil(0.1 n), read ONCE from the library under v11 on 2026-10-03 and pinned here as a number. The band no longer places the scale: `anchor` lost --write and reports where the band sits against these ends, and `calibrate` checks the scale. Every weight, family, curve kind, gate and llm_weight is v11's to the digit, so a v11-to-v12 move of any score is the scale changing source and nothing else. The ends, the read and its amendment A1 (skill_gradient's 0.99 ladder rule applied per run, because the first rule left 8 of 20 games and stopped), the predictions and their grading are in docs/reference/v12-calibration.md, pre-registered before any table was computed. `evidence` and `roster_rho` are v11's: the components and their noise did not change.",
+  "llm_weight": 0.0,
+  "components": {
+    "first_player_advantage": {
+      "family": "balance",
+      "weight": 0.0396,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 0.5
+      },
+      "sources": {
+        "good_at": {
+          "source": "domain",
+          "why": "the two seats score the same between identical players"
+        },
+        "zero_at": {
+          "source": "meaning",
+          "why": "a first seat that scores 75% between identical players is not a contest"
+        }
+      },
+      "evidence": "1.70 (0.1651 / 0.0973); roster rho +0.5203  the least precise in the set, and the narrowest pass on roster rho",
+      "roster_rho": 0.5203
+    },
+    "stall_rate": {
+      "family": "balance",
+      "weight": 0.0792,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 0.7
+      },
+      "sources": {
+        "good_at": {
+          "source": "domain",
+          "why": "every game finishes"
+        },
+        "zero_at": {
+          "source": "gate",
+          "gate": "stall_rate_worst_half",
+          "why": "a game that mostly fails to finish is not a game"
+        }
+      },
+      "evidence": "12.48 (0.16 / 0.0128); roster rho +0.8687",
+      "roster_rho": 0.8687
+    },
+    "mean_branching": {
+      "family": "pacing",
+      "weight": 0.07425,
+      "curve": "band",
+      "points": {
+        "zero_low": 1.5,
+        "good_low": 9.6242,
+        "good_high": 56.3717,
+        "zero_high": 112.7434
+      },
+      "sources": {
+        "zero_low": {
+          "source": "gate",
+          "gate": "mean_branching",
+          "why": "with no choices there is no play"
+        },
+        "good_low": {
+          "source": "reference",
+          "why": "second-lowest of 20 the published band games (docs/reference/v12-calibration.md, read once on 2026-10-03 and pinned): dobutsu"
+        },
+        "good_high": {
+          "source": "reference",
+          "why": "second-highest of 20 the published band games (docs/reference/v12-calibration.md, read once on 2026-10-03 and pinned): crazyhouse"
+        },
+        "zero_high": {
+          "source": "reference",
+          "why": "twice the pinned good_high: no natural scale for too many moves"
+        }
+      },
+      "evidence": "30.41 (14.8105 / 0.487); roster rho +0.9890",
+      "roster_rho": 0.989
+    },
+    "ply_spread": {
+      "family": "pacing",
+      "weight": 0.07425,
+      "curve": "higher_better",
+      "points": {
+        "zero_at": 0.0,
+        "good_at": 0.9707
+      },
+      "sources": {
+        "zero_at": {
+          "source": "meaning",
+          "why": "every game runs the same length"
+        },
+        "good_at": {
+          "source": "reference",
+          "why": "second-highest of 20 the published band games (docs/reference/v12-calibration.md, read once on 2026-10-03 and pinned): antichess"
+        }
+      },
+      "evidence": "6.49 (0.2898 / 0.0446); roster rho +0.9121",
+      "roster_rho": 0.9121
+    },
+    "position_divergence": {
+      "family": "variety",
+      "weight": 0.099,
+      "curve": "higher_better",
+      "points": {
+        "zero_at": 0.0,
+        "good_at": 1.0
+      },
+      "sources": {
+        "zero_at": {
+          "source": "domain",
+          "why": "every game visits the same positions as another"
+        },
+        "good_at": {
+          "source": "domain",
+          "why": "no two games share a position"
+        }
+      },
+      "evidence": "15.97 (0.2187 / 0.0137); roster rho +0.9335  C1's table: 17.49 over 77 and 13.44 on the band",
+      "roster_rho": 0.9335
+    },
+    "blunder_recoverability": {
+      "family": "drama",
+      "weight": 0.077,
+      "curve": "band",
+      "points": {
+        "zero_low": 0.0,
+        "good_low": 0.25,
+        "good_high": 0.75,
+        "zero_high": 1.0
+      },
+      "sources": {
+        "zero_low": {
+          "source": "domain",
+          "why": "one error is always fatal"
+        },
+        "good_low": {
+          "source": "meaning",
+          "why": "a forced blunder is saved between one time in four and three times in four"
+        },
+        "good_high": {
+          "source": "meaning",
+          "why": "a forced blunder is saved between one time in four and three times in four"
+        },
+        "zero_high": {
+          "source": "domain",
+          "why": "errors never matter"
+        }
+      },
+      "evidence": "2.37 (0.1777 / 0.075); roster rho +0.6011  noisy; read at 24 trials for roster rho, 48 here",
+      "roster_rho": 0.6011
+    },
+    "decision_criticality": {
+      "family": "decisions",
+      "weight": 0.099,
+      "curve": "band",
+      "points": {
+        "zero_low": 0.0,
+        "good_low": 0.2954,
+        "good_high": 0.6535,
+        "zero_high": 1.0
+      },
+      "sources": {
+        "zero_low": {
+          "source": "domain",
+          "why": "no move costs anything"
+        },
+        "good_low": {
+          "source": "reference",
+          "why": "second-lowest of 20 the published band games (docs/reference/v12-calibration.md, read once on 2026-10-03 and pinned): antichess"
+        },
+        "good_high": {
+          "source": "reference",
+          "why": "second-highest of 20 the published band games (docs/reference/v12-calibration.md, read once on 2026-10-03 and pinned): crazyhouse"
+        },
+        "zero_high": {
+          "source": "domain",
+          "why": "every move but one loses"
+        }
+      },
+      "evidence": "15.77 (0.1939 / 0.0123); roster rho +0.9178",
+      "roster_rho": 0.9178
+    },
+    "piece_utilisation": {
+      "family": "decisions",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "zero_at": 0.735,
+        "good_at": 1.0
+      },
+      "sources": {
+        "zero_at": {
+          "source": "reference",
+          "why": "the low quantile less the distance between the quantiles, of 20 the published band games (docs/reference/v12-calibration.md, read once on 2026-10-03 and pinned): 0.8591 - (0.9832 - 0.8591)"
+        },
+        "good_at": {
+          "source": "domain",
+          "why": "every held type moves equally"
+        }
+      },
+      "evidence": "22.19 (0.1366 / 0.0062); roster rho +0.9177",
+      "roster_rho": 0.9177
+    },
+    "skill_gradient": {
+      "family": "depth",
+      "weight": 0.2079,
+      "curve": "higher_better",
+      "points": {
+        "zero_at": 8.0,
+        "good_at": 201.9833
+      },
+      "sources": {
+        "zero_at": {
+          "source": "gate",
+          "gate": "skill_gradient",
+          "why": "doubling the thinking budget must be worth a few Elo"
+        },
+        "good_at": {
+          "source": "reference",
+          "why": "second-highest of 13 the published band games (docs/reference/v12-calibration.md, read once on 2026-10-03 and pinned) with three clean-ladder runs (amendment A1): crazyhouse; re-read as v13 when the roster changes"
+        }
+      },
+      "evidence": "5.54 (63.6143 / 11.4738); roster rho +0.8429  zero_at placed by the span floor, not the negatives",
+      "roster_rho": 0.8429
+    },
+    "instance_participation": {
+      "family": "decisions",
+      "weight": 0.0495,
+      "curve": "band",
+      "points": {
+        "zero_low": 0.0,
+        "good_low": 0.5139,
+        "good_high": 0.8847,
+        "zero_high": 1.0
+      },
+      "sources": {
+        "zero_low": {
+          "source": "domain",
+          "why": "no piece ever moves"
+        },
+        "good_low": {
+          "source": "reference",
+          "why": "second-lowest of 20 the published band games (docs/reference/v12-calibration.md, read once on 2026-10-03 and pinned): atomic"
+        },
+        "good_high": {
+          "source": "reference",
+          "why": "second-highest of 20 the published band games (docs/reference/v12-calibration.md, read once on 2026-10-03 and pinned): makruk"
+        },
+        "zero_high": {
+          "source": "domain",
+          "why": "every piece moves"
+        }
+      },
+      "evidence": "18.50 (0.1921 / 0.0104); roster rho +0.9744",
+      "roster_rho": 0.9744
+    },
+    "lead_conversion": {
+      "family": "drama",
+      "weight": 0.0616,
+      "curve": "band",
+      "points": {
+        "zero_low": 0.5,
+        "good_low": 0.6164,
+        "good_high": 0.9357,
+        "zero_high": 1.0
+      },
+      "sources": {
+        "zero_low": {
+          "source": "meaning",
+          "why": "0.5 says a lead is worth nothing"
+        },
+        "good_low": {
+          "source": "reference",
+          "why": "second-lowest of 20 the published band games (docs/reference/v12-calibration.md, read once on 2026-10-03 and pinned): horde"
+        },
+        "good_high": {
+          "source": "reference",
+          "why": "second-highest of 20 the published band games (docs/reference/v12-calibration.md, read once on 2026-10-03 and pinned): shatranj"
+        },
+        "zero_high": {
+          "source": "domain",
+          "why": "a lead always wins"
+        }
+      },
+      "evidence": "3.27 (0.1027 / 0.0314); roster rho +0.8110  optional: absent where too few decisive games carry an edge",
+      "roster_rho": 0.811,
+      "optional": true
+    }
+  },
+  "gates": [
+    {
+      "component": "search_advantage",
+      "minimum": 0.55,
+      "reason": "a searching player must beat a random one, or there is nothing to play"
+    },
+    {
+      "component": "stall_rate_worst_half",
+      "maximum": 0.7,
+      "reason": "a game that mostly fails to finish is not a game, and a half of the ladder that mostly fails to finish is not rescued by the other half finishing"
+    },
+    {
+      "component": "mean_branching",
+      "minimum": 1.5,
+      "reason": "with no choices there is no play"
+    },
+    {
+      "component": "decisive_rate_worst_half",
+      "minimum": 0.2,
+      "reason": "a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one"
+    },
+    {
+      "component": "mean_plies_worst_half",
+      "minimum": 8.0,
+      "reason": "a game decided before either player has developed anything is not a game; pooled with a shuffle at the other end of the ladder the mean describes no game that was played"
+    },
+    {
+      "component": "skill_gradient",
+      "minimum": 8.0,
+      "reason": "doubling the thinking budget must be worth at least a few Elo, or skill does not exist here"
+    },
+    {
+      "component": "quick_kill_rate_worst_half",
+      "maximum": 0.5,
+      "reason": "a game where half of all contests are over in a handful of moves is decided by an opening trap, not by play; read on the half of the ladder that falls into the trap, because every quick kill in a run is a weak-half game and the strong half is only the denominator"
+    }
+  ]
+}

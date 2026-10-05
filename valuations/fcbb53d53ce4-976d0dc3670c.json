@@ -1,0 +1,66 @@
+{
+  "ruleset_hash": "fcbb53d53ce4",
+  "procedure": "976d0dc3670c",
+  "procedure_version": 1,
+  "piece_ids": [
+    "P",
+    "N",
+    "R",
+    "Q",
+    "K"
+  ],
+  "accepted": true,
+  "accept_score": 0.5469,
+  "accept_error": 0.0463,
+  "accept_games": 96,
+  "ladder_score": 0.5781,
+  "ladder_error": 0.0429,
+  "comparisons": 39,
+  "accepted_steps": 5,
+  "exhausted": false,
+  "plies": {
+    "400": 1.583,
+    "1600": 3.0,
+    "6400": 3.75,
+    "25600": 5.0
+  },
+  "build": "0596a87d9f1daaab",
+  "values": [
+    1.6,
+    2.5200000000000005,
+    4.256,
+    8.76,
+    0.0
+  ],
+  "derived": [
+    1.0,
+    3.1500000000000004,
+    6.65,
+    10.95,
+    0.0
+  ],
+  "weights": [
+    0.9996969719573374,
+    0.0,
+    0.02461634130674702,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "ratios": [
+    1.6,
+    0.8,
+    0.64,
+    0.8,
+    1.0
+  ]
+}

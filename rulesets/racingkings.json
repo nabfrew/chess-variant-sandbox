@@ -1,0 +1,223 @@
+{
+  "schema_version": 2,
+  "name": "racing kings",
+  "description": "Both kings start on the same two ranks and race for the eighth. No move may give check at all, so the whole game is a traffic problem rather than a fight.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "N",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "value": 9,
+      "royal": false,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {
+        "piece": "K",
+        "player": 0,
+        "squares": [
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "player": 0,
+        "squares": [
+          "g2",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "player": 0,
+        "squares": [
+          "f2",
+          "f1"
+        ]
+      },
+      {
+        "piece": "N",
+        "player": 0,
+        "squares": [
+          "e2",
+          "e1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "player": 0,
+        "squares": [
+          "h1"
+        ]
+      },
+      {
+        "piece": "K",
+        "player": 1,
+        "squares": [
+          "a2"
+        ]
+      },
+      {
+        "piece": "R",
+        "player": 1,
+        "squares": [
+          "b2",
+          "b1"
+        ]
+      },
+      {
+        "piece": "B",
+        "player": 1,
+        "squares": [
+          "c2",
+          "c1"
+        ]
+      },
+      {
+        "piece": "N",
+        "player": 1,
+        "squares": [
+          "d2",
+          "d1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "player": 1,
+        "squares": [
+          "a1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "forbid_check": true,
+    "reach": {
+      "piece": "K",
+      "squares": [
+        "a8",
+        "b8",
+        "c8",
+        "d8",
+        "e8",
+        "f8",
+        "g8",
+        "h8"
+      ],
+      "mirror": false,
+      "result": "win"
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "appearance": {
+    "icons": {
+      "N": "knight",
+      "B": "bishop",
+      "R": "rook",
+      "Q": "queen",
+      "K": "king"
+    }
+  },
+  "provenance": {
+    "origin": "human",
+    "source": "a widely played chess variant"
+  }
+}

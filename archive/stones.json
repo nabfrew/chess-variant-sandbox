@@ -1,0 +1,293 @@
+{
+  "schema_version": 10,
+  "name": "stones",
+  "description": "Chess in which either player may, instead of moving, place a stone on any empty square. A stone belongs to whoever placed it, never moves, is never captured and never leaves: it is a square taken out of the game. The supply is unlimited, so the choice is always available and always costs a tempo, and a board that fills with stones is a board with fewer squares to mate on.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "X",
+      "name": "stone",
+      "moves": []
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "drops": {
+      "from_captures": false,
+      "stock": {
+        "X": "unlimited"
+      }
+    }
+  },
+  "provenance": {
+    "origin": "human",
+    "source": "international chess",
+    "history": "Drawn from chess by the place-a-stone mutation operator, as the demonstrating ruleset for rules.drops.stock (schema 10, rows 28 and 29 of reference/schema-showcase-coverage.md). It is the one schema-10 showcase that is a new design rather than a variant: before a stock, the DSL could not say *a stone* at all, because a hand filled only from captures and nothing is ever captured that was never on the board. Repaired 2026-09-08 (Q131): the description has always said a stone \"is never captured and never leaves\" and the spec carried no capture matrix, so anything could take one -- 39073 of the 40416 captures in the superseded spec's own run (0.9668; runs/d9a411e36af4-0) were a stone being taken, which is the game the prose describes played as a different game entirely. The six types that can capture now name what they may take and the stone is not on any list. The description is not edited: it is the specification, and the rules were the defect (docs/archive/decisions.md, 2026-09-08).",
+    "exhibit": "Kept on purpose as an example of a game that cannot really be played, so its number is not a score."
+  }
+}

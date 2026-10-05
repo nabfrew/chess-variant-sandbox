@@ -1,0 +1,692 @@
+//! The Python boundary.
+//!
+//! `chess_variant_sandbox._core.Core` is one compiled ruleset, ready to play. Python compiles the
+//! rule spec, hands the tables over once, and from then on drives whole units of work
+//! across this boundary -- a game, a schedule, a perft -- rather than a move at a time.
+//! The per-move methods exist for tests, the visualiser and the CLI, where the
+//! conversion cost is irrelevant and being able to hold a position in Python is worth
+//! a great deal.
+
+mod agents;
+mod eval;
+mod features;
+mod game;
+mod net;
+mod parallel;
+mod play;
+mod probe;
+mod rng;
+mod tables;
+
+use std::sync::Arc;
+
+use pyo3::prelude::*;
+use pyo3::types::{PyBytes, PyDict, PyTuple};
+
+use crate::agents::{AgentSpec, Player};
+use crate::eval::Evaluator;
+use crate::game::{count_colours, scan_occupied, Game, Snapshot};
+use crate::rng::PyRandom;
+use crate::tables::{SquareSet, Tables, MAX_SQUARES};
+
+/// The full state crossing the boundary. Twelve fields: the original nine, plus checks
+/// (two u32), hands (two Vec<u32>), and everything schema 4 added grouped into one --
+/// the square colouring (bytes, empty when there is no territory rule), the moves left
+/// in this turn and the turns taken.
+///
+/// Grouped rather than flat because PyO3 implements the conversion traits for tuples up
+/// to twelve elements and a thirteenth simply does not compile. That is a real ceiling
+/// worth knowing about: the next field added here has to join a group.
+///
+/// **Schema 9 is the first field to meet that ceiling.** The bounty tally joins slot 11
+/// as a fourth element rather than taking a slot of its own, which is the shape the
+/// docstring promised.
+type StateIn = (
+    Vec<u8>, u8, Vec<u8>, i16, i16, u32, u32, u64, Vec<u64>,
+    (u32, u32),
+    (Vec<u32>, Vec<u32>),
+    (Vec<u8>, u32, u32, (f64, f64)),
+);
+type StateOut<'py> = (
+    Bound<'py, PyBytes>,
+    u8,
+    Bound<'py, PyBytes>,
+    i16,
+    i16,
+    u32,
+    u32,
+    u64,
+    Vec<u64>,
+    (u32, u32),
+    (Vec<u32>, Vec<u32>),
+    (Bound<'py, PyBytes>, u32, u32, (f64, f64)),
+);
+
+/// What the wild-piece phase did on the way to a position (schema 9): one
+/// `(from, to, eaten)` per wild piece that walked, oldest step first.
+///
+/// `eaten` is the board byte the destination held at the instant the wild piece wrote
+/// over it, which is the half a caller cannot recover from two positions. It travels
+/// beside the position rather than inside it because the position is already at PyO3's
+/// twelve-slot ceiling -- and because it describes the *transition*, not the state.
+type PhaseOut = Vec<(u32, u32, u8)>;
+
+/// `(kind, nodes, mobility, max_depth, rollout_depth, exploration, goal, weights,
+/// values)`, resolved by each agent's `register_native` resolver from the registry's own
+/// defaults.
+///
+/// The seventh slot is stage 17A's: what a whole win by a non-capture ending is worth,
+/// in mean non-royal pieces. It travels rather than living as a constant here for the
+/// same reason the piece values do -- a second definition is a second thing that can
+/// disagree with the first.
+///
+/// The ninth is stage 30's: what this player thinks the pieces are worth. It is
+/// *beside* the `values` argument each method below takes, not a replacement for it --
+/// that one is the derived table, one per game, which normalises material and orders
+/// captures for every player whatever its opinion. Nine of PyO3's twelve.
+///
+/// The tenth is Q466's: the immunity term's weight, in mean non-royal pieces an immune
+/// piece, zero for every player that does not ask for it.
+///
+/// The eleventh is Q502e's: a learned net's store bytes (`net.rs`), empty for every
+/// player without one -- which is also what an absent or refused store resolves to, so
+/// that player is the built-in objective exactly.
+///
+/// The twelfth is Q502i's: the search repairs (`agents::KEEP_TABLE`, `THREATS`,
+/// `LOUD_DROPS`) as bits, zero for today's search. Twelve is PyO3's ceiling, which is
+/// why three flags share one slot: the next field needs a struct.
+type AgentIn = (String, u64, f64, u32, u32, f64, f64, Vec<f64>, Vec<f64>, f64, Vec<u8>, u32);
+
+/// Everything a `GameRecord` needs, minus the fields Python already knows.
+///
+/// Ten of the twelve slots PyO3 will convert. The last three are the search's cost:
+/// nodes visited, plies completed, and searches run, each per seat.
+type RecordOut = (
+    Vec<u32>,
+    Option<i8>,
+    &'static str,
+    Vec<u32>,
+    Vec<f64>,
+    Vec<u8>,
+    (u64, u64),
+    (u64, u64),
+    (u64, u64),
+    f64,
+);
+
+/// A position as Python holds it, ready for the core. The two tallies the game
+/// maintains -- who stands where, how much is coloured -- are counted here, once, at
+/// the boundary; inside the core they travel with the snapshot.
+fn snapshot_from(t: &Tables, state: &StateIn) -> Snapshot {
+    let mut board = [0u8; MAX_SQUARES];
+    let len = state.0.len().min(MAX_SQUARES);
+    board[..len].copy_from_slice(&state.0[..len]);
+    Snapshot {
+        occupied: scan_occupied(t, &board),
+        colour_counts: count_colours(&state.11.0),
+        board,
+        side: state.1 as usize,
+        unmoved: SquareSet::from_bytes(&state.2),
+        ep_target: state.3,
+        ep_victim: state.4,
+        halfmove: state.5,
+        ply: state.6,
+        key: state.7,
+        repetition: state.8.clone(),
+        checks: [state.9.0, state.9.1],
+        hands: [state.10.0.clone(), state.10.1.clone()],
+        colour: state.11.0.clone(),
+        remaining: state.11.1,
+        turns_taken: state.11.2,
+        points: [state.11.3.0, state.11.3.1],
+    }
+}
+
+fn state_out<'py>(py: Python<'py>, game: &Game<'_>) -> StateOut<'py> {
+    (
+        PyBytes::new(py, &game.board[..game.t.n_squares]),
+        game.side as u8,
+        PyBytes::new(py, &game.unmoved.to_bytes()),
+        game.ep_target,
+        game.ep_victim,
+        game.halfmove,
+        game.ply,
+        game.key,
+        game.history[game.window..].to_vec(),
+        (game.checks[0], game.checks[1]),
+        (game.hands[0].clone(), game.hands[1].clone()),
+        (
+            PyBytes::new(py, &game.colour),
+            game.remaining,
+            game.turns_taken,
+            (game.points[0], game.points[1]),
+        ),
+    )
+}
+
+/// One agent, checked against the ruleset it is about to play.
+///
+/// The check is here rather than inside `Player::new` because this is the last point at
+/// which a refusal can be an ordinary Python exception naming its cause: below this,
+/// a player is built inside `py.detach` on a rayon pool. Every path to a `Player` comes
+/// through here, which is what makes the pairing in `Player::new` unreachable.
+///
+/// Every refusal carries `from_parts`'s or `check_against`'s own sentence, never one
+/// written here: a blanket message at this line once blamed the agent kind for a weight
+/// vector of the wrong length (Q142).
+fn agent_spec(t: &Tables, agent: &AgentIn) -> PyResult<AgentSpec> {
+    let spec = AgentSpec::from_parts(
+        &agent.0,
+        agent.1,
+        agent.2,
+        agent.3,
+        agent.4,
+        agent.5,
+        agent.6,
+        agent.7.clone(),
+        agent.8.clone(),
+        agent.9,
+        &agent.10,
+        agent.11,
+    )
+    .map_err(pyo3::exceptions::PyValueError::new_err)?;
+    spec.check_against(t)
+        .map_err(pyo3::exceptions::PyValueError::new_err)?;
+    Ok(spec)
+}
+
+fn record_out(output: play::GameOutput) -> RecordOut {
+    (
+        output.moves,
+        if output.winner < 0 {
+            None
+        } else {
+            Some(output.winner)
+        },
+        output.reason,
+        output.branching,
+        output.material,
+        output.captures,
+        (output.nodes[0], output.nodes[1]),
+        (output.depth_sum[0], output.depth_sum[1]),
+        (output.searches[0], output.searches[1]),
+        output.duration_ms,
+    )
+}
+
+/// One compiled ruleset. Construct once per ruleset and reuse.
+#[pyclass(module = "chess_variant_sandbox._core", frozen)]
+pub struct Core {
+    tables: Arc<Tables>,
+}
+
+#[pymethods]
+impl Core {
+    #[new]
+    fn new(tables: &Bound<'_, PyDict>) -> PyResult<Self> {
+        Ok(Self {
+            tables: Arc::new(Tables::from_py(tables)?),
+        })
+    }
+
+    fn initial_state<'py>(&self, py: Python<'py>) -> StateOut<'py> {
+        let game = Game::initial(&self.tables);
+        state_out(py, &game)
+    }
+
+    fn legal_moves(&self, state: StateIn) -> Vec<u32> {
+        let snapshot = snapshot_from(&self.tables, &state);
+        Game::from_snapshot(&self.tables, &snapshot).legal_moves()
+    }
+
+    fn pseudo_legal_moves(&self, state: StateIn) -> Vec<u32> {
+        let snapshot = snapshot_from(&self.tables, &state);
+        let game = Game::from_snapshot(&self.tables, &snapshot);
+        let mut moves = Vec::new();
+        game.generate_pseudo_legal(&mut moves);
+        moves
+    }
+
+    /// The position after `m`, and what the wild-piece phase did to reach it.
+    ///
+    /// The phase is the half of a ply no diff of two positions recovers: it runs after
+    /// the mover's move inside the same `make`, so one move makes two board changes and
+    /// a caller with only the end position has to work the second one out. It gets the
+    /// steps themselves instead.
+    fn apply<'py>(
+        &self,
+        py: Python<'py>,
+        state: StateIn,
+        m: u32,
+    ) -> PyResult<(StateOut<'py>, PhaseOut)> {
+        let snapshot = snapshot_from(&self.tables, &state);
+        let mut game = Game::from_snapshot(&self.tables, &snapshot);
+        // A castling move names only the king's squares, so applying one to a position
+        // with no partner rook is the one way a caller holding a hand-built move can
+        // reach an unrecoverable state inside the core. Reject it here, where it can
+        // still be an ordinary Python exception.
+        if tables::move_kind(m) == tables::MOVE_CASTLE
+            && game
+                .castling_partner(tables::move_from(m), tables::move_to(m))
+                .is_none()
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "castling move applied to a position with no partner rook",
+            ));
+        }
+        game.make(m);
+        // The game was built from the snapshot a moment ago, so its phase log holds
+        // this move's steps and nothing else.
+        let phase = game
+            .phase_steps()
+            .iter()
+            .map(|&(from, to, eaten)| (from as u32, to as u32, eaten))
+            .collect();
+        Ok((state_out(py, &game), phase))
+    }
+
+    /// What the wild-piece phase would do on the board as it stands (Q660), in `apply`'s
+    /// phase shape: where each wild piece is going next, for the board to draw. Empty for
+    /// every ruleset without wild pieces.
+    fn coming_phase(&self, state: StateIn) -> PhaseOut {
+        let snapshot = snapshot_from(&self.tables, &state);
+        let mut game = Game::from_snapshot(&self.tables, &snapshot);
+        game.coming_phase()
+            .into_iter()
+            .map(|(from, to, eaten)| (from as u32, to as u32, eaten))
+            .collect()
+    }
+
+    #[pyo3(signature = (state, moves = None))]
+    fn terminal(
+        &self,
+        state: StateIn,
+        moves: Option<Vec<u32>>,
+    ) -> Option<(Option<i8>, &'static str)> {
+        let snapshot = snapshot_from(&self.tables, &state);
+        let mut game = Game::from_snapshot(&self.tables, &snapshot);
+        let outcome = match moves {
+            Some(moves) => game.terminal_with(&moves),
+            None => game.terminal(),
+        };
+        outcome.map(|outcome| {
+            (
+                if outcome.winner < 0 {
+                    None
+                } else {
+                    Some(outcome.winner)
+                },
+                outcome.reason.as_str(),
+            )
+        })
+    }
+
+    /// The half of the verdict that needs no move list.
+    ///
+    /// Exposed for one caller: `agents/minimax.py`, the declared oracle for
+    /// `agents.rs`, has to ask the same question in the same place. Its search consults
+    /// its transposition table after this and before generating moves, and an oracle
+    /// that instead asked the *whole* verdict first would be a different search --
+    /// silently, and only in the positions where a cached value and an ended game meet.
+    fn terminal_prefix(&self, state: StateIn) -> Option<(Option<i8>, &'static str)> {
+        let snapshot = snapshot_from(&self.tables, &state);
+        let mut game = Game::from_snapshot(&self.tables, &snapshot);
+        game.terminal_prefix().map(|outcome| {
+            (
+                if outcome.winner < 0 {
+                    None
+                } else {
+                    Some(outcome.winner)
+                },
+                outcome.reason.as_str(),
+            )
+        })
+    }
+
+    fn in_check(&self, state: StateIn, player: u8) -> bool {
+        let snapshot = snapshot_from(&self.tables, &state);
+        Game::from_snapshot(&self.tables, &snapshot).in_check(player as usize)
+    }
+
+    /// The slow definition of the Zobrist hash: a full scan. `make` maintains the key
+    /// incrementally, and a test holds the two to agreeing.
+    fn compute_hash(&self, state: StateIn) -> u64 {
+        let snapshot = snapshot_from(&self.tables, &state);
+        Game::from_snapshot(&self.tables, &snapshot).compute_hash()
+    }
+
+    #[pyo3(signature = (state, depth, stop_at_terminal = false, threads = 1))]
+    fn perft(&self, py: Python<'_>, state: StateIn, depth: u32, stop_at_terminal: bool, threads: usize) -> u64 {
+        let snapshot = snapshot_from(&self.tables, &state);
+        py.detach(|| parallel::perft(&self.tables, &snapshot, depth, threads, stop_at_terminal))
+    }
+
+    #[pyo3(signature = (agents, values, seed, collect_series = true))]
+    fn play_game(
+        &self,
+        py: Python<'_>,
+        agents: (AgentIn, AgentIn),
+        values: Vec<f64>,
+        seed: u64,
+        collect_series: bool,
+    ) -> PyResult<RecordOut> {
+        let specs = [
+            agent_spec(&self.tables, &agents.0)?,
+            agent_spec(&self.tables, &agents.1)?,
+        ];
+        let output =
+            py.detach(|| play::play_game(&self.tables, &specs, &values, seed, collect_series));
+        Ok(record_out(output))
+    }
+
+    /// One position, one decision: what would this agent play *here*?
+    ///
+    /// The boundary otherwise carries only whole units of work -- a game, a schedule, a
+    /// perft -- which left every caller that needs a single move (an interactive
+    /// opponent, a position probe) driving the Python agents instead: a different
+    /// implementation from the one whose rating the index reads. This closes that,
+    /// taking the same `AgentIn` the tournament passes to `play_game` so there is no
+    /// second way to describe an agent.
+    ///
+    /// The seat stream is fresh, derived from `seed` exactly as seat 0 of a game is.
+    /// A caller that wants a stream continued across moves should be playing a game --
+    /// `play_from` is that call.
+    ///
+    /// `None` where the position has no legal move, which is the caller's cue to ask
+    /// `terminal` rather than to treat a missing move as an error.
+    #[pyo3(signature = (state, agent, values, seed = 0))]
+    fn select_move(
+        &self,
+        py: Python<'_>,
+        state: StateIn,
+        agent: AgentIn,
+        values: Vec<f64>,
+        seed: u64,
+    ) -> PyResult<Option<u32>> {
+        let spec = agent_spec(&self.tables, &agent)?;
+        let snapshot = snapshot_from(&self.tables, &state);
+        Ok(py.detach(|| {
+            let mut game = Game::from_snapshot(&self.tables, &snapshot);
+            let legal = game.legal_moves();
+            if legal.is_empty() {
+                return None;
+            }
+            let mut player = Player::new(&self.tables, spec, &values);
+            let mut rng = PyRandom::for_seat(seed, 0);
+            Some(player.select_move(&mut game, &legal, &mut rng))
+        }))
+    }
+
+    /// `select_move`, plus how deep the search actually got.
+    ///
+    /// A search's depth is a property of the position and the budget together, and no
+    /// caller can compute it from the outside. The heuristic pass needs it because a
+    /// "deep" arm that reaches two plies on a wide board makes every game look shallow
+    /// for a reason that has nothing to do with the rules -- so the control has to be
+    /// measured rather than assumed.
+    #[pyo3(signature = (state, agent, values, seed = 0))]
+    fn select_move_depth(
+        &self,
+        py: Python<'_>,
+        state: StateIn,
+        agent: AgentIn,
+        values: Vec<f64>,
+        seed: u64,
+    ) -> PyResult<(Option<u32>, u32)> {
+        let spec = agent_spec(&self.tables, &agent)?;
+        let snapshot = snapshot_from(&self.tables, &state);
+        Ok(py.detach(|| {
+            let mut game = Game::from_snapshot(&self.tables, &snapshot);
+            let legal = game.legal_moves();
+            if legal.is_empty() {
+                return (None, 0);
+            }
+            let mut player = Player::new(&self.tables, spec, &values);
+            let mut rng = PyRandom::for_seat(seed, 0);
+            let chosen = player.select_move(&mut game, &legal, &mut rng);
+            (Some(chosen), player.stats.depth)
+        }))
+    }
+
+    /// Q502e: a net's raw output along a line of moves, for the Python oracle to check.
+    ///
+    /// One `(raw, inputs, fresh)` per position -- the start and after each move: `raw`
+    /// from one evaluator whose accumulator is carried along the line (the incremental
+    /// path the search uses), `inputs` the active input indices, and `fresh` from an
+    /// accumulator summed from nothing. The moves must be legal in turn.
+    fn net_line(
+        &self,
+        state: StateIn,
+        net: Vec<u8>,
+        moves: Vec<u32>,
+    ) -> PyResult<Vec<(i64, Vec<u32>, i64)>> {
+        let parsed = net::Net::parse(&net).map_err(pyo3::exceptions::PyValueError::new_err)?;
+        parsed
+            .check_against(&self.tables)
+            .map_err(pyo3::exceptions::PyValueError::new_err)?;
+        let parsed = std::sync::Arc::new(parsed);
+        let snapshot = snapshot_from(&self.tables, &state);
+        let mut game = Game::from_snapshot(&self.tables, &snapshot);
+        let mut evaluator = net::NetEvaluator::new(&self.tables, parsed.clone(), Vec::new());
+        let mut out = Vec::with_capacity(moves.len() + 1);
+        let mut step = |game: &Game<'_>| {
+            let raw = evaluator.raw(game);
+            let inputs = evaluator.active().to_vec();
+            let fresh = parsed.forward(&parsed.refresh(&inputs), game.side);
+            debug_assert_eq!(evaluator.accumulator(), parsed.refresh(&inputs).as_slice());
+            (raw, inputs, fresh)
+        };
+        out.push(step(&game));
+        for m in moves {
+            game.make(m);
+            out.push(step(&game));
+        }
+        Ok(out)
+    }
+
+    /// Q502e: how many inputs this ruleset's net layout has (`net::Layout`).
+    fn net_inputs(&self) -> usize {
+        net::Layout::of(&self.tables).n_inputs
+    }
+
+    /// Score every legal move at a full window: the analysis probe, not a player.
+    ///
+    /// Returns one value per legal move, in the order `legal_moves` produced them.
+    /// See `probe.rs` for why this cannot reuse the agents' search.
+    #[pyo3(signature = (state, values, nodes, max_depth, goal = 0.0, immune = 0.0))]
+    #[allow(clippy::too_many_arguments)]
+    fn root_scores(
+        &self,
+        py: Python<'_>,
+        state: StateIn,
+        values: Vec<f64>,
+        nodes: u64,
+        max_depth: u32,
+        goal: f64,
+        immune: f64,
+    ) -> Vec<f64> {
+        let snapshot = snapshot_from(&self.tables, &state);
+        py.detach(|| {
+            let mut game = Game::from_snapshot(&self.tables, &snapshot);
+            let legal = game.legal_moves();
+            if legal.len() < 2 {
+                return vec![0.0; legal.len()];
+            }
+            // Mobility off: this measures how far apart the *positions* are, and a
+            // mobility term would mix the size of the move list back into the answer.
+            // The goal weight stays on, because a probe that cannot price the win
+            // condition measures the evaluator rather than the game -- which is exactly
+            // what `decision_criticality` was doing on every ruleset won by anything
+            // other than capture. The immunity term (Q471) is on for the same reason, at
+            // whatever weight the analysis pass's evaluator carries.
+            let eval =
+                Evaluator::new(&self.tables, values, 0.0, goal).with_immunity(&self.tables, immune);
+            probe::root_scores(&mut game, &eval, &legal, nodes, max_depth)
+        })
+    }
+
+    /// Q665 (plan-teacher §8.2, T2v): the playing search's own value of each position.
+    ///
+    /// One `(value, move, depth)` per state, in order: the root value of the last
+    /// iteration of deepening `agent` completed there, for the side to move, in its
+    /// objective's units (built-in units for the built-in objective), with its move and
+    /// that iteration's depth. `None` where the position has no move or has ended, or
+    /// where no iteration finished. `seeds[i]` names state `i`'s stream exactly as
+    /// `select_move`'s `seed` does, so the move is `select_move`'s wherever the position
+    /// has more than one legal move. A training label's teacher, never a player: nothing
+    /// that plays calls it. Minimax only. Spread over `threads`; the answer does not
+    /// depend on how many (`parallel::search_values`).
+    #[pyo3(signature = (states, agent, values, seeds, threads = 1))]
+    fn search_values(
+        &self,
+        py: Python<'_>,
+        states: Vec<StateIn>,
+        agent: AgentIn,
+        values: Vec<f64>,
+        seeds: Vec<u64>,
+        threads: usize,
+    ) -> PyResult<Vec<Option<(f64, u32, u32)>>> {
+        let spec = agent_spec(&self.tables, &agent)?;
+        if spec.kind != agents::Kind::Minimax {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "search_values asks a minimax player for its value; {} is not one",
+                agent.0
+            )));
+        }
+        if seeds.len() != states.len() {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "search_values needs one seed per state: {} states, {} seeds",
+                states.len(),
+                seeds.len()
+            )));
+        }
+        let snapshots: Vec<Snapshot> = states
+            .iter()
+            .map(|state| snapshot_from(&self.tables, state))
+            .collect();
+        Ok(py.detach(|| {
+            parallel::search_values(&self.tables, &snapshots, &spec, &values, &seeds, threads)
+        }))
+    }
+
+    /// Finish a game from a position that is already in progress.
+    ///
+    /// Same players, same seat-stream discipline, same record shape as `play_game`;
+    /// only the starting position differs. The blunder trial is what wants it: force
+    /// one arbitrary move into a recorded game and ask whether it is still a game.
+    #[pyo3(signature = (state, agents, values, seed, collect_series = false))]
+    fn play_from(
+        &self,
+        py: Python<'_>,
+        state: StateIn,
+        agents: (AgentIn, AgentIn),
+        values: Vec<f64>,
+        seed: u64,
+        collect_series: bool,
+    ) -> PyResult<RecordOut> {
+        let specs = [
+            agent_spec(&self.tables, &agents.0)?,
+            agent_spec(&self.tables, &agents.1)?,
+        ];
+        let snapshot = snapshot_from(&self.tables, &state);
+        let output = py.detach(|| {
+            let game = Game::from_snapshot(&self.tables, &snapshot);
+            play::play_from(&self.tables, game, &specs, &values, seed, collect_series)
+        });
+        Ok(record_out(output))
+    }
+
+    /// Play a whole schedule across `threads` threads. `tasks` is
+    /// `(seed, first agent index, second agent index)` into `agents`.
+    #[pyo3(signature = (agents, values, tasks, collect_series = true, threads = 1))]
+    fn run_tournament(
+        &self,
+        py: Python<'_>,
+        agents: Vec<AgentIn>,
+        values: Vec<f64>,
+        tasks: Vec<(u64, usize, usize)>,
+        collect_series: bool,
+        threads: usize,
+    ) -> PyResult<Vec<RecordOut>> {
+        let specs = agents
+            .iter()
+            .map(|agent| agent_spec(&self.tables, agent))
+            .collect::<PyResult<Vec<AgentSpec>>>()?;
+        let outputs = py.detach(|| {
+            parallel::run_tournament(&self.tables, &tasks, &specs, &values, collect_series, threads)
+        });
+        Ok(outputs.into_iter().map(record_out).collect())
+    }
+
+    /// Random playouts for the cheap gate, one independent stream per game.
+    #[pyo3(signature = (games, seed = 0, time_budget = 20.0, threads = 1))]
+    fn random_playouts(
+        &self,
+        py: Python<'_>,
+        games: usize,
+        seed: u64,
+        time_budget: f64,
+        threads: usize,
+    ) -> Vec<(u32, Option<i8>, &'static str, u64, u64)> {
+        let results = py.detach(|| {
+            parallel::random_playouts(&self.tables, games, seed, time_budget, threads)
+        });
+        results
+            .into_iter()
+            .map(|playout| {
+                (
+                    playout.plies,
+                    if playout.winner < 0 {
+                        None
+                    } else {
+                        Some(playout.winner)
+                    },
+                    playout.reason,
+                    playout.branching_total,
+                    playout.branching_samples,
+                )
+            })
+            .collect()
+    }
+}
+
+/// The agent kinds this core can run. Anything else falls back to the Python loop,
+/// which is what keeps `agents.register` a real extension point.
+#[pyfunction]
+fn native_agent_kinds() -> Vec<&'static str> {
+    vec!["random", "greedy", "minimax", "mcts"]
+}
+
+#[pymodule]
+fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<Core>()?;
+    m.add_function(wrap_pyfunction!(native_agent_kinds, m)?)?;
+    // Which sources this extension was built from, hashed by `build.rs`. Python compares
+    // it against the same hash taken from `rust/src/` on disk, which is the only way to
+    // tell a current build from one that predates an edit to the core.
+    m.add("BUILD_FINGERPRINT", env!("CHESS_VARIANT_SANDBOX_BUILD_FINGERPRINT"))?;
+    // Every table key `tables.rs` reads, straight from the registry its readers are
+    // spelled out of. `engine/bridge.py` compares it against the keys `build_tables`
+    // writes, which is the only way to catch a core built before a table was added: a
+    // missing key raises on the way in, an unread one is silent.
+    m.add("TABLE_KEYS", PyTuple::new(m.py(), crate::tables::keys::ALL)?)?;
+    // Whether this build re-derives what it memoises and compares. `game.rs` keeps two
+    // memos -- where a royal stands and whether a side is in check -- and each carries a
+    // `debug_assert_eq!` against the definition it stands in for, which is the only
+    // mechanical check that a cache and its source have not drifted apart. Exposed
+    // because the flag is invisible from Python otherwise, and a verification run that
+    // silently used the ordinary build proves nothing at all.
+    m.add("DEBUG_ASSERTIONS", cfg!(debug_assertions))?;
+    // The race term's share of the goal weight. Exported so the Python oracle's copy is
+    // held to it by a test rather than by hand: a share out of step on one side is a
+    // legal, plausible, *different* player on every ruleset with a priced race.
+    m.add("RACE_SHARE", crate::eval::RACE_SHARE)?;
+    // The immunity term's default weight, for the same reason.
+    m.add("NET_INPUTS_VERSION", net::INPUTS_VERSION)?;
+    m.add("IMMUNE_PIECES", crate::eval::IMMUNE_PIECES)?;
+    // Q502i: the search repairs a minimax player takes unless it spells them, for the
+    // same reason again.
+    m.add("DEFAULT_REPAIRS", crate::agents::DEFAULT_REPAIRS)?;
+    m.add("__doc__", "Move generation, search and tournament execution.")?;
+    Ok(())
+}

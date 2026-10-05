@@ -1,0 +1,3308 @@
+"""Compile a validated rule spec into flat lookup tables.
+
+All the interpretation happens here, once, so that move generation is a table walk
+rather than a rule walk. Three things are resolved at compile time that would
+otherwise cost something on every generated move:
+
+* **Symmetry expansion.** Base vectors become concrete directions per player.
+* **Rank conditions.** ``from_rank`` depends only on the origin square, which is a
+  table index, so a descriptor that cannot apply at a square is simply absent there.
+* **Overlapping descriptors.** Directions are merged into a single ray per direction
+  carrying a per-distance mode mask, so the generator can never emit a duplicate move.
+  This matters more than it looks: duplicate moves would silently inflate branching
+  factor, and branching factor feeds the interestingness index.
+
+What survives into the hot path is only what genuinely depends on the position:
+occupancy, and the ``unmoved`` mask behind ``first_move``.
+"""
+
+from __future__ import annotations
+
+import json
+import random
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
+from typing import Any
+
+from chess_variant_sandbox.spec.canonical import spec_hash
+from chess_variant_sandbox.spec.complexity import expand_symmetry
+from chess_variant_sandbox.spec.schema import (
+    DEFAULT_RANGE,
+    MAX_MOVES_PER_TURN,
+    REPETITION_NEVER,
+    STOCK_UNLIMITED,
+    WRAP_PAIRS,
+    SpecError,
+    absent_squares,
+    hex_distance,
+    npc_immune_attackers,
+    npc_routes,
+    obstacle_squares,
+    parse_square,
+    promotion_squares,
+    promotion_targets,
+    reach_reflection,
+    reflect_square,
+    validate_or_raise,
+    wrap_stated,
+)
+
+MODE_MOVE = 1
+MODE_CAPTURE = 2
+MODE_BOTH = 3
+
+# What ``rules.repetition_draw: "never"`` compiles to (schema 10). ``u32::MAX``, because
+# the core's threshold is a ``u32`` and a repetition count can never reach it -- so the
+# rule is removed by the *table* rather than by a branch, and no ruleset that states a
+# number is affected. See ``_compile_repetition_draw``.
+NO_REPETITION_DRAW = 0xFFFF_FFFF
+
+# The most orientations a piece may have, and therefore the most readings of one
+# descriptor set the movement tables can hold per player. Mirrors
+# ``schema.FACING_AXES``: two is forward and backward, four is the quarter turns.
+#
+# **This used to be `N_FACINGS`, a module constant at 1**, on the reading that every
+# ruleset had the same answer. It does not: a facing is a *piece* property, so the count
+# is a fact about one spec and lives on `CompiledSpec.n_facings`. What survives as a
+# module-level number is the cap, which is what the board byte can hold.
+MAX_FACINGS = 4
+
+# The orientations, in quarter turns clockwise from the piece's own forward. Index into
+# this is the *quarter turn count*, which is not the same number as a facing index
+# unless the spec has four of them -- see ``facing_quarter_turns``.
+FACING_NAMES = ("forward", "right", "backward", "left")
+
+# The owner index of a piece neither player owns (schema 9). Owners are 0 and 1 for the
+# two players and this for a wild piece, so a wild byte sits in a third contiguous block
+# above both armies and every "is this piece mine?" range test is untouched.
+WILD = 2
+
+
+def frame_index(player: int, facing: int, n_facings: int) -> int:
+    """Which frame a piece reads its movement out of.
+
+    A **frame** is one way of reading the movement vectors. There was exactly one per
+    player until schema 8, and the answer was the player index -- which is why the tables
+    have looked like `[player][type][square]` since the beginning. That first index has
+    always secretly meant *which way is forward*, and calling it the player is what this
+    generalises.
+
+    `player * n_facings + facing`, **player-major**, and that ordering is the whole of
+    the encoding argument. The board byte is `player * n_facings * n_types + facing *
+    n_types + type + 1`, so it runs frame-major too, and every "is this piece mine?" test
+    in the core stays the range comparison it always was -- only the stride changes. The
+    other spelling, `facing * 2 + player`, interleaves the two players' values and turns
+    each of those range tests into a silent bug. With `n_facings` of 1 both spellings are
+    the identity on the player, so the frames of every ruleset without a facing are the
+    two they always were and the tables are byte-identical.
+    """
+    return player * n_facings + facing
+
+
+def facing_quarter_turns(facing: int, n_facings: int) -> int:
+    """How far a facing index turns the vectors, in quarter turns clockwise.
+
+    A spec's facings are evenly spaced round the circle, so the step is `4 // n_facings`:
+    with four of them a facing index *is* a quarter turn, and with two of them each
+    index is a half turn. A piece with fewer axes than the spec simply steps by more
+    than one index at a time -- see ``CompiledSpec.facing_step``.
+    """
+    return facing * (4 // n_facings)
+
+
+def _rotate(dx: int, dy: int, quarters: int) -> tuple[int, int]:
+    """One vector turned clockwise, a quarter turn at a time.
+
+    Clockwise so that the four orientations read *forward, right, backward, left* in
+    index order, which is the order ``FACING_NAMES`` states and the order the prose says
+    out loud. Applied to the vector as the spec wrote it -- before the second player's
+    reflection -- so that a facing means the same relative thing to both armies, exactly
+    as a base vector does.
+    """
+    for _ in range(quarters % 4):
+        dx, dy = dy, -dx
+    return dx, dy
+
+_MODE_BITS = {"move": MODE_MOVE, "capture": MODE_CAPTURE, "both": MODE_BOTH}
+
+# (targets or ray, per-index mode mask, requires the origin piece to be unmoved)
+Entry = tuple[tuple[int, ...], tuple[int, ...], bool]
+
+# A hop also carries how far past its screen it may land -- 0 for the whole rest of the
+# ray, which is the xiangqi cannon, or n for the grasshopper family -- and whose piece
+# the screen has to be: SCREEN_ANY, SCREEN_OWN or SCREEN_ENEMY.
+HopEntry = tuple[tuple[int, ...], tuple[int, ...], bool, int, int]
+
+SCREEN_ANY = 0
+SCREEN_OWN = 1
+SCREEN_ENEMY = 2
+_SCREEN_BITS = {"any": SCREEN_ANY, "own": SCREEN_OWN, "enemy": SCREEN_ENEMY}
+
+# One way a square can be attacked:
+#   (origin, piece value, squares that must be empty, squares that hold the screens,
+#    how many screens, whether the attacker must be unmoved, whose piece the screen is)
+# Splitting the intervening squares into a must-be-empty prefix and a screen window is
+# what lets one flat scan serve all three primitives. A slide or a leap puts everything
+# in the prefix and wants no screens. A cannon puts everything in the window and wants
+# exactly one. A grasshopper, which must land immediately past its screen, puts all but
+# the last square in the prefix -- so "the screen is in the right place" is the same
+# count test as "there is a screen at all".
+#
+# Schema 13 adds two fields: sweep bits and the path's modes. Both are 0 and () for every
+# source but a sweep's. A sweep source's prefix is the ray before the attacked square and
+# its window is the rest of the ray; bit 0 says the square is a capture landing, bit 1
+# says some square past it may be one.
+AttackSource = tuple[
+    int, int, tuple[int, ...], tuple[int, ...], int, bool, int, int, tuple[int, ...]
+]
+SWEEP_LANDS = 1
+SWEEP_BEYOND = 2
+
+
+@dataclass(frozen=True)
+class WrapRule:
+    """Which edges each player may cross, and therefore what shape the board is.
+
+    Two separate questions live here and conflating them is the mistake to avoid. A
+    *permission* is directional and belongs to a player: the first player may leave by
+    the left edge and the second by the right, and those are different rules. The
+    *topology* is not directional and belongs to the board: ``left`` and ``right`` name
+    the same seam, because file ``a`` is adjacent to file ``h`` whichever way you cross
+    it. Movement reads the permission; an explosion's blast reads the topology.
+
+    Stored as ``[player] -> (may cross the low edge, may cross the high edge)``, where
+    low is file ``a`` and rank 1 -- absolute, from the standard diagram, so that two
+    identical strings can never mean two different seams.
+
+    **Q281a2 adds a hexagon's three pairs of sides** (unreachable until the gate,
+    `docs/reference/hex-build-plan.md` *Q281a2*): ``n_s``, ``ne_sw`` and ``nw_se``, one
+    field each, shaped exactly like ``files`` and ``ranks`` -- ``[player] -> (may leave
+    by the low side, may leave by the high side)``, `schema.WRAP_PAIRS`' own low and
+    high. ``files``, ``ranks``, ``files_join``, ``ranks_join`` and ``active_for`` keep
+    their meaning for a grid unchanged, so nothing that reads them for a rectangle moves.
+    """
+
+    files: tuple[tuple[bool, bool], tuple[bool, bool]] = ((False, False), (False, False))
+    ranks: tuple[tuple[bool, bool], tuple[bool, bool]] = ((False, False), (False, False))
+    n_s: tuple[tuple[bool, bool], tuple[bool, bool]] = ((False, False), (False, False))
+    ne_sw: tuple[tuple[bool, bool], tuple[bool, bool]] = ((False, False), (False, False))
+    nw_se: tuple[tuple[bool, bool], tuple[bool, bool]] = ((False, False), (False, False))
+
+    @property
+    def files_join(self) -> bool:
+        """Whether the two file edges are the same edge, for anyone at all."""
+        return any(any(side) for side in self.files)
+
+    @property
+    def ranks_join(self) -> bool:
+        return any(any(side) for side in self.ranks)
+
+    @property
+    def seams_join(self) -> bool:
+        """Whether any of a hexagon's three pairs is joined, for anyone at all."""
+        return any(
+            any(any(side) for side in getattr(self, key))
+            for key in ("n_s", "ne_sw", "nw_se")
+        )
+
+    def active_for(self, player: int) -> bool:
+        """Whether this player may cross anything, which is what bounds a ray."""
+        return (
+            any(self.files[player]) or any(self.ranks[player])
+            or any(any(getattr(self, key)[player]) for key in ("n_s", "ne_sw", "nw_se"))
+        )
+
+    def may_leave(self, side: str, player: int) -> bool:
+        """Whether ``player`` may leave the board by this hexagon side (Q281a2).
+
+        A move reads the mover's own permission, which is what makes ``{"0": "n", "1":
+        "s"}`` a one-way seam rather than a wall one player happens to stand at.
+        """
+        for key, pair in WRAP_PAIRS.items():
+            low, high = getattr(self, key)[player]
+            if side == pair.low:
+                return low
+            if side == pair.high:
+                return high
+        return False
+
+    def seam_open(self, side: str) -> bool:
+        """Whether anyone at all may cross this hexagon side, either way (Q281a2).
+
+        The topology question, for a blast or the flying general: a pair is a seam if
+        anyone may cross it either way, exactly as ``files_join``/``ranks_join`` read a
+        rectangle's two axes today.
+        """
+        for key, pair in WRAP_PAIRS.items():
+            if side in (pair.low, pair.high):
+                low, high = getattr(self, key)
+                return any(low) or any(high)
+        return False
+
+
+def _wrap_axis(value: int, size: int, low: bool, high: bool) -> int | None:
+    """One coordinate after a step, or ``None`` where the step leaves the board.
+
+    The sign of the excursion names the edge: a coordinate below zero left by the low
+    edge and one at or past ``size`` by the high edge, however far past it went. That is
+    what lets a leap apply its whole offset in one go while a slide, which steps one
+    square at a time, checks each crossing separately -- both with the same function.
+    """
+    if 0 <= value < size:
+        return value
+    if value < 0:
+        return value % size if low else None
+    return value % size if high else None
+
+
+def _land(
+    at_file: int,
+    at_rank: int,
+    width: int,
+    height: int,
+    low_file: bool,
+    high_file: bool,
+    low_rank: bool,
+    high_rank: bool,
+    radius: int = 0,
+    permitted: Callable[[str], bool] | None = None,
+) -> int | None:
+    """The one place that works out where a step lands (Q281a2, unreachable until the
+    gate -- `docs/reference/hex-build-plan.md` *Q281a2*, *What the compiler resolves it
+    into*).
+
+    On a rectangle (``radius == 0``) this is exactly today's two-axis wrap: ``low_file``/
+    ``high_file`` and ``low_rank``/``high_rank`` are read through ``_wrap_axis`` as they
+    always were, so every existing spec's tables are untouched byte for byte.
+
+    On a hexagon (``radius`` the board's R), ``(at_file, at_rank)`` is the raw target in
+    the frame and ``c = (at_file - R, at_rank - R)``. The direct cell is used if it is on
+    the board; otherwise the target lies in exactly one of the board's six neighbouring
+    copies (`schema.WRAP_PAIRS`, the tiling `tests/hex_geometry.py` proves), found by
+    subtracting that side's copy vector and testing the same hex-distance bound. That
+    side is then the one it takes ``permitted`` to open -- a move reads the mover's own
+    permission (``WrapRule.may_leave``); a blast or the flying general reads the board's
+    topology (``WrapRule.seam_open``) because neither has a "whose turn is it" to ask.
+    The board and its six copies cover every point a vector `validate_or_raise`'s
+    refusal 7 allows can reach, without overlap, so the first match is the only one.
+    """
+    if radius:
+        c_file, c_rank = at_file - radius, at_rank - radius
+        if hex_distance(c_file, c_rank) <= radius:
+            return at_rank * width + at_file
+        is_open = permitted or (lambda _side: False)
+        for pair in WRAP_PAIRS.values():
+            vector = pair.copy(radius)
+            for side, offset in ((pair.high, vector), (pair.low, (-vector[0], -vector[1]))):
+                near_file, near_rank = c_file - offset[0], c_rank - offset[1]
+                if hex_distance(near_file, near_rank) <= radius:
+                    if is_open(side):
+                        return (near_rank + radius) * width + (near_file + radius)
+                    return None
+        return None  # never reached: refusal 7 bounds every vector to what the six copies cover
+    wrapped_file = _wrap_axis(at_file, width, low_file, high_file)
+    if wrapped_file is None:
+        return None
+    wrapped_rank = _wrap_axis(at_rank, height, low_rank, high_rank)
+    if wrapped_rank is None:
+        return None
+    return wrapped_rank * width + wrapped_file
+
+
+@dataclass(frozen=True)
+class HexCopy:
+    """One of a hexagon's six neighbouring copies (Q281a2, unreachable until the gate).
+
+    ``side`` is the frame side a piece leaves by to reach it, one of `schema.WRAP_PAIRS`'
+    ``low``/``high`` names. ``vector`` is the (file, rank) offset from a cell of this
+    copy to the same cell of the board proper, so the drawing and the designer
+    (Q281b, Q281c) can place a copy, or work a click's offset out across one, without
+    doing any hex arithmetic of their own. ``permission`` is ``(player 0, player 1)``:
+    which players may actually cross to it, which is `WrapRule.may_leave` for ``side``.
+    """
+
+    side: str
+    vector: tuple[int, int]
+    permission: tuple[bool, bool]
+
+
+@dataclass(frozen=True)
+class StrikeRule:
+    """What happens instead of removal when two pieces meet (schema 6; schema 10).
+
+    **One rule, two spellings.** ``rules.strike`` says what the *victim* becomes, keyed
+    by the victim alone. ``rules.contacts`` (schema 10, Q19a) says what *both* become,
+    keyed by the pair -- and the first is the second with no attacker column, which is
+    why they compile to one dataclass and are refused beside each other rather than
+    ordered. Whatever the spec wrote, what is compiled here is the general form:
+
+    * ``onto_to[mover * n_types + victim]`` -- the type the struck piece becomes, or
+      ``-1`` for it leaving the board, which covers a link the table does not mention
+      and an immune type as well. Three cases, one test.
+    * ``mover_to[mover * n_types + victim]`` -- the type the *attacker* becomes, or
+      ``-1`` for it being what it already was. A ``strike`` fills this with ``-1``, so
+      it is the schema-6 rule exactly.
+
+    ``compact_to`` is the projection back: the schema-6 one-array form when the table
+    has no attacker column and every mover's row agrees. The boundary sends that form
+    wherever it exists, which is what keeps every ruleset written before schema 10
+    compiling byte for byte to the tables it always did -- and what makes "contacts
+    generalises strike" a checkable claim rather than a description.
+
+    Neither array is ``CompiledSpec.demotions``. That one already exists and means
+    shogi's "what a promoted piece reverts to in its captor's hand", keyed by
+    ``piece.promoted_from``; this is a different relation over the same piece set, and
+    folding the two together would give every shogi ruleset a strike rule nobody wrote.
+    """
+
+    effect: str  # "demote" or "promote"; "contact" for the general table
+    position: str  # "stay", "advance" or "swap"
+    immune_types: frozenset[int]
+    n_types: int
+    onto_to: tuple[int, ...]
+    mover_to: tuple[int, ...]
+    spelling: str = "strike"  # the key the spec wrote: "strike" or "contacts"
+    # Schema 11 (Q19b): the same two tables for a meeting with a *friendly* piece, keyed
+    # the same way. Empty when no link says `own`, which is every table before schema 11.
+    own_onto_to: tuple[int, ...] = ()
+    own_mover_to: tuple[int, ...] = ()
+    # Schema 12 (Q20): under ``position: "choose"``, ``landing[player][square]`` lists the
+    # squares a struck piece standing on ``square`` may be placed on, ascending. Empty
+    # under every other position.
+    landing: tuple[tuple[tuple[int, ...], ...], ...] = ()
+
+    @property
+    def meets_own(self) -> bool:
+        """Whether any link lets a piece move onto its own side's piece."""
+        return bool(self.own_onto_to)
+
+    @property
+    def survives_anything(self) -> bool:
+        """Whether any type at all is left on the board by a strike."""
+        return any(target >= 0 for target in self.onto_to + self.own_onto_to)
+
+    @property
+    def changes_mover(self) -> bool:
+        """Whether any meeting turns the *attacker* into something else."""
+        return any(target >= 0 for target in self.mover_to + self.own_mover_to)
+
+    @property
+    def compact_to(self) -> tuple[int, ...] | None:
+        """The schema-6 array, when this table can be said keyed by the victim alone."""
+        if self.changes_mover or self.meets_own:
+            return None
+        n = self.n_types
+        row = self.onto_to[:n]
+        for mover in range(1, n):
+            if self.onto_to[mover * n : (mover + 1) * n] != row:
+                return None
+        return row
+
+
+@dataclass(frozen=True)
+class ExplosionRule:
+    """A capture that destroys its own neighbourhood.
+
+    ``blast[square]`` is the precomputed neighbourhood, so the hot path never does
+    arithmetic on file and rank to find out what a capture takes with it. The capturing
+    piece always dies; ``immune_types`` is what survives standing next to one.
+
+    ``by_types`` and ``of_types`` are schema 10 (Q18) and narrow *when* the blast happens
+    rather than what it reaches: whose capture explodes, and what has to be taken for it
+    to. ``None`` means every type, which is atomic chess -- and it is ``None`` rather than
+    a full set on purpose, because the boundary sends an empty list for it and the
+    canonical tables of every ruleset written before schema 10 therefore do not move.
+
+    Neither can be an *empty* set here. A rule that no capturer can fire, or that no
+    victim can trigger, is not an explosion rule at all and ``_compile_explosion`` returns
+    ``None`` for it -- the answer at the boundary rather than the question, and the shape
+    ``_compile_strike`` already has for a chain that leaves nothing alive.
+    """
+
+    immune_types: frozenset[int]
+    blast: tuple[tuple[int, ...], ...]
+    by_types: frozenset[int] | None = None
+    of_types: frozenset[int] | None = None
+
+    @property
+    def fires_on_every_capture(self) -> bool:
+        """Whether this is atomic's explosion: any capturer, any victim."""
+        return self.by_types is None and self.of_types is None
+
+
+@dataclass(frozen=True)
+class DropRule:
+    """Where each piece type may be returned to the board, per player.
+
+    ``regions[player][piece_type]`` of ``None`` means any empty square. Crazyhouse uses
+    it for exactly one piece -- a pawn may not be dropped on a promotion rank, because
+    it would have to promote immediately and there is no move in which to do it.
+    """
+
+    from_captures: bool
+    regions: tuple[tuple[frozenset[int] | None, ...], tuple[frozenset[int] | None, ...]]
+    no_doubled: frozenset[int]  # not onto a file already holding one of your own
+    no_mate: frozenset[int]  # may not deliver checkmate on the drop itself
+    # Schema 10 (Q51): what each player holds before anything has been captured.
+    #
+    # ``stock[type]`` is what the hand starts at -- 0 for every type the spec does not
+    # stock, which is every ruleset before schema 10 -- and ``unlimited[type]`` says the
+    # slot is never spent. An unlimited slot starts at 1 rather than at a large number,
+    # because it is a *fact about the game* and not a resource: the core skips its
+    # decrement, so the count stays 1 for the whole game and the hand stays constant,
+    # which is what keeps the schema-2 argument for leaving hands out of the Zobrist key
+    # true. ``unmake`` needs nothing either -- the undo log records a signed delta and an
+    # unlimited slot records no delta at all.
+    stock: tuple[int, ...] = ()
+    unlimited: tuple[bool, ...] = ()
+
+
+@dataclass(frozen=True)
+class ReachRule:
+    """A win by arrival: king of the hill, racing kings, breakthrough.
+
+    ``piece_type`` of ``-1`` means any piece, which is what breakthrough wants.
+    Squares are stored per player because most such games aim each side at the other's
+    end of the board, but racing kings sends both to the same rank.
+    """
+
+    piece_type: int
+    squares: tuple[frozenset[int], frozenset[int]]
+    result: str
+    safe: bool = False  # the arriving piece must not be capturable where it lands
+
+
+@dataclass(frozen=True)
+class ExtinctionRule:
+    """A loss by running out: kinglet's pawns, three-kings' kings, the horde's army.
+
+    ``piece_types`` empty means "any piece at all", so the rule counts the whole army.
+    """
+
+    piece_types: tuple[int, ...]
+    any_piece: bool
+    min_count: int
+    result: str
+
+
+@dataclass(frozen=True)
+class TurnRule:
+    """How many moves a turn is, with the opening turns listed separately.
+
+    ``lengths`` is the ramp, already resolved: entry *n* is the length of turn *n*, and
+    everything past the end is ``moves``. Resolved here rather than in the core so the
+    core walks a table like everything else.
+    """
+
+    moves: int
+    lengths: tuple[int, ...]
+
+    def length_of(self, turn: int) -> int:
+        return self.lengths[turn] if turn < len(self.lengths) else self.moves
+
+
+@dataclass(frozen=True)
+class TerritoryRule:
+    """Squares that remember who moved onto them.
+
+    ``permanent`` is the cheap half and the only one that needs no Zobrist term: a
+    colour that never changes is monotone, so a ply that lays one down is irreversible
+    and resets the no-progress clock, so colour is constant inside any window a
+    repetition test compares across. Two positions the repetition rule ever compares
+    therefore always share the same colouring, exactly as they always share the same
+    hands, and the key does not have to carry it.
+
+    ``repaint`` gives that up: a square can go back and forth, so two positions with the
+    same pieces can differ in colour, and the key has to say so.
+    """
+
+    mode: str  # permanent | repaint
+    win_at: int  # 0 when the colouring is not itself a win condition
+
+
+@dataclass(frozen=True)
+class ScoringRule:
+    """What to compare when the clock runs out, instead of calling it a draw.
+
+    ``squares`` is per player, like every other region in this file, because "hold the
+    centre" is symmetric and "reach their half" is not, and the compiler cannot tell
+    which one a spec meant without being told the orientation.
+    """
+
+    count: str  # material | pieces | region | territory | points
+    squares: tuple[frozenset[int], frozenset[int]] | None
+
+
+@dataclass(frozen=True)
+class NpcRule:
+    """Wild pieces (schema 9): pieces neither player owns, each walking a route.
+
+    Three board-sized tables and a start list, and nothing else -- because a route is a
+    cycle of distinct squares and no square is on two routes, so *which square is next*
+    is a fact about the square a wild piece stands on. That is what lets the core step
+    every wild piece with one table read and never ask which one it is looking at, and
+    it is why the validator refuses two routes that share a square.
+
+    ``next[square]`` is the square a wild piece standing here steps to, ``-1`` off every
+    route and the square itself for a one-square route (a piece that never moves).
+    ``bounty[square]`` is what taking the wild piece that walks this square is worth,
+    ``0.0`` off every route. ``piece[square]`` is its type, ``-1`` off every route.
+    ``starts`` is where each stands at ply zero, in ``rules.npcs`` order with a mirrored
+    entry following its original.
+
+    **No movement frames.** A wild piece never reads a movement table; its type's
+    ``moves`` are what it does in a player's hands, which under ``drops`` is a real case.
+    Its threat is the square it steps to next, and that is one attack source per route
+    square in a third owner's block of ``attack_sources``, built here from ``next``.
+    """
+
+    next: tuple[int, ...]
+    bounty: tuple[float, ...]
+    piece: tuple[int, ...]
+    starts: tuple[tuple[int, int], ...]
+
+
+@dataclass(frozen=True)
+class PromotionRule:
+    """Where a pawn promotes, into what, and whether it may decline.
+
+    The zone is a set of squares because a promotion *zone* is a real rule -- grand chess
+    promotes anywhere in the last three ranks, and a hexagon's far edge is a zigzag rather
+    than a rank (schema 14) -- and targets are per player because chigorin gives the two
+    sides different armies to promote into.
+
+    ``on_leaving`` is schema 15 (Q452): the piece promotes on a move that *starts* in its
+    zone as well as on one that ends there, wherever it lands -- real shogi's rule, and
+    what Fairy-Stockfish does for every piece in ``promotedPieceType``. With ``mandatory``
+    every such move must promote. It is ``True`` only where the entry says so **and** the
+    piece has a move from a square of its zone to a square outside it, so a flag that can
+    never fire -- a chess pawn's, whose zone is the rank it cannot move from -- compiles
+    to the game that was already there (`_leaves_its_zone`). A move that ends in the zone
+    promotes as it always did, so the flag only ever adds promotions to moves out of it.
+    En passant never promotes, on arriving or on leaving: its move word has no promotion.
+    """
+
+    piece_type: int
+    squares: tuple[frozenset[int], frozenset[int]]  # absolute destination squares per player
+    targets: tuple[tuple[int, ...], tuple[int, ...]]  # per player
+    mandatory: bool
+    on_leaving: bool = False
+
+
+@dataclass(frozen=True)
+class EntryPromotionRule:
+    """What a piece becomes on *entering play* inside its promotion zone (schema 9).
+
+    ``rules.promote_on_entry``. A piece reaches a square without moving there by exactly
+    two routes -- it is dropped there, or a strike or contact leaves it standing there as
+    a new type -- and neither is a move in which a promotion could be chosen. So the answer is
+    resolved here, once, into one table: ``becomes[player][piece_type][square]`` is the
+    type the piece turns into on arrival, or ``-1`` where nothing happens, which is every
+    square outside the type's zone and every type with no promotion rule.
+
+    Three readings are fixed by the table rather than left to the core:
+
+    * it takes the **first** target the promotion rule lists for that player -- a
+      designer's ordering is the only choice available where no player is choosing;
+    * it fires whether or not the rule is ``mandatory`` -- ``mandatory`` is about a move's
+      option to decline, and there is no move here;
+    * it fires **once**: the piece it becomes stands, exactly as a piece promoted by
+      moving does not promote a second time, so a chain of promotion rules cannot loop.
+
+    ``None`` on the spec is every game before this one: a pawn dropped or struck onto the
+    far rank stands there, and a chess pawn on the far rank never moves again.
+    """
+
+    becomes: tuple[tuple[tuple[int, ...], ...], ...]
+
+    def at(self, player: int, piece_type: int, square: int) -> int:
+        return self.becomes[player][piece_type][square]
+
+
+@dataclass(frozen=True)
+class CastlingRule:
+    """Either a symmetric step count, or an explicit destination file per side.
+
+    ``king_files`` is what chess960 needs and a step count cannot express: the king
+    starts on a different file every game and always finishes on c or g, so the
+    distance it travels is a consequence rather than a rule. ``None`` means the spec
+    used ``king_steps`` and the old reading applies.
+    """
+
+    king_type: int
+    rook_type: int
+    king_steps: int
+    king_files: tuple[int, int] | None = None  # (queenside, kingside) destination
+    rook_files: tuple[int, int] | None = None
+
+
+@dataclass(frozen=True)
+class CompiledSpec:
+    """Immutable, position-independent tables derived from one rule spec."""
+
+    name: str
+    hash: str
+    width: int
+    height: int
+    # Schema 14: `"square"` or `"hex"`. A declaration that no table reads; the prose and the
+    # three drawing surfaces read it to say and show the board is hexagonal.
+    lattice: str
+    n_squares: int
+    n_types: int
+
+    piece_ids: tuple[str, ...]
+    piece_names: tuple[str, ...]
+    piece_values: tuple[float, ...]
+    royal_types: tuple[int, ...]
+
+    # How many frames the movement tables hold: `2 * n_facings`, and the one number
+    # every `[frame][...]` table's first dimension is a function of.
+    n_frames: int
+    # How many orientations this spec's pieces have between them -- the largest declared
+    # `facing.axes`, or 1 where nothing faces. One for every ruleset before schema 8,
+    # which is what makes a frame the player index and every one of those tables
+    # byte-identical to what it compiled to before frames existed.
+    n_facings: int
+    # [piece_type] -> how many orientations *that* type has, and which one it enters play
+    # in. A type with no facing has one orientation and enters play in it, so these are
+    # all-ones and all-zeros for every spec before schema 8.
+    facing_axes: tuple[int, ...]
+    facing_initial: tuple[int, ...]
+
+    # [frame][piece_type][square] -> entries. See `frame_index`: the first index is a
+    # frame rather than a player, which is the same thing today and will not be once a
+    # piece can face.
+    leaps: tuple[tuple[tuple[tuple[Entry, ...], ...], ...], ...]
+    slides: tuple[tuple[tuple[tuple[Entry, ...], ...], ...], ...]
+    hops: tuple[tuple[tuple[tuple[HopEntry, ...], ...], ...], ...]
+    # Schema 13: sweep rays, shaped as `slides`. Every slot is empty unless a piece sweeps.
+    sweeps: tuple[tuple[tuple[tuple[Entry, ...], ...], ...], ...]
+
+    # [player][target square] -> every way that player could attack that square
+    attack_sources: tuple[tuple[tuple[AttackSource, ...], ...], ...]
+
+    # [player][piece_type] -> squares whose generated moves still need a uniqueness
+    # check. Empty for every well-formed piece, so the generator normally skips it.
+    dedup_squares: tuple[tuple[frozenset[int], ...], ...]
+
+    # Whether any piece attacks by hopping. Hops invert the usual blocking logic --
+    # adding a piece to a line can *create* an attack -- which defeats the pin
+    # shortcut in legal-move filtering, so such rulesets take the slow, safe path.
+    has_hop_attacks: bool
+
+    # [attacker type][victim type] -> may the first take the second (schema 3).
+    #
+    # All true unless a piece declares ``captures``, which is what makes the feature
+    # inert on every spec written before it existed. It cannot be baked into the
+    # per-square tables the way a region or a lame leap can: what a move is allowed to
+    # do depends on the *victim's* type, which is a property of the position rather
+    # than of the geometry. So the core consults it at the capture test and at every
+    # consumer of ``attack_sources`` -- the attacker's type travels there already, as
+    # the piece value.
+    capture_allowed: tuple[tuple[bool, ...], ...]
+    # Whether any piece restricts what it may capture. False lets the core skip the
+    # lookup entirely, which is every committed ruleset.
+    has_capture_matrix: bool
+
+    initial_board: bytes
+    initial_unmoved: int
+
+    win: str
+    stalemate: str
+    max_plies: int
+    repetition_draw: int
+    no_progress_draw: int
+    en_passant: bool
+    # One rule per promoting piece. Shogi has six; chess has one; most rulesets that
+    # want promotion at all want exactly one, so the common case is a one-element tuple.
+    promotions: tuple[PromotionRule, ...]
+    # What each piece reverts to when captured, indexed by piece type: a promoted shogi
+    # piece goes back into its captor's hand as the modest thing it started as.
+    demotions: tuple[int, ...]
+    castling: CastlingRule | None
+
+    # Schema 2 endings. Each is off by default and costs a compiled-away branch when
+    # unused, so a ruleset that wants none of them pays for none of them.
+    bare_royal: str  # "" when off, else the result for the player who bares
+    check_limit: int  # 0 when off
+    reach: ReachRule | None
+    extinction: ExtinctionRule | None
+    # Schema 3: how a game decides itself at the ply limit or the no-progress clock.
+    # ``None`` keeps the draw those clocks have always produced.
+    scoring: ScoringRule | None
+    # Schema 4: whether the board keeps a record of who has been where.
+    territory: TerritoryRule | None
+    # Schema 4: how many moves a turn is. ``None`` is one, which is every game so far.
+    turn: TurnRule | None
+    # Schema 5: which edges each player may cross. ``None`` is a board with edges,
+    # which is every game before this one, and it keeps the compile path identical.
+    wrap: WrapRule | None
+    # Schema 6: squares nothing may occupy. Resolved once here and then *dissolved* --
+    # every consumer reads the per-square tables, which already have the walls compiled
+    # out of them. Kept on the spec because a board has to be drawable, not because the
+    # engine consults it.
+    #
+    # Q281a2 (unreachable until the gate) folds a hexagon's absent frame cells in here
+    # too, so this holds more than its name says: every square nothing may ever stand
+    # on, whether a declared wall or a corner the shape simply does not have. Every
+    # reader that asks "can a piece be here" gets the right answer from one set; the
+    # only place a corner is still visible is the drawing, which reads ``absent``.
+    obstacles: frozenset[int]
+    # Schema 6: what happens instead of removal when a piece is taken. ``None`` is
+    # removal, which is every game before this one.
+    strike: StrikeRule | None
+    # Schema 9: pieces neither player owns. ``None`` is every game before this one, and
+    # ``n_owners`` is 2 then and 3 otherwise -- the one number the byte encoding, the
+    # Zobrist draw and the attack-source table grow by.
+    npcs: NpcRule | None
+    n_owners: int
+    # Schema 9: a piece that enters play inside its promotion zone promotes at once.
+    # ``None`` is every game before this one, and the reason the field is a rule rather
+    # than a flag is that the compiler has already answered *into what*.
+    entry_promotion: EntryPromotionRule | None
+    drops: DropRule | None
+    explosion: ExplosionRule | None
+    must_capture: bool
+    forbid_immobility: bool
+    royal_facing_forbidden: bool
+    forbid_check: bool
+    checkmate: str
+    orientation: str
+
+    # [player][piece_type] -> squares from which that piece has no move at all. A
+    # shogi pawn on the far rank is the case that matters: declining to promote there
+    # would strand it forever, which is why shogi forbids the choice rather than the
+    # position.
+    immobile_squares: tuple[tuple[frozenset[int], ...], ...]
+
+    # [player][piece_type][square] -> how many moves that piece needs, on an empty
+    # board, to get from that square to the nearest square a ``reach`` rule wins on.
+    # ``UNREACHABLE`` where it cannot get there at all, and empty when the ruleset has
+    # no reach rule.
+    #
+    # A *fact about the rules*, which is why it is compiled here beside the attack
+    # sources rather than derived beside the piece values. An evaluator that wanted "how
+    # far is this piece from a winning square" and answered it with geometry would be
+    # wrong about every leaper: a knight's distance to a rank is not the number of
+    # ranks, and a piece that only moves forward may not be able to come back at all.
+    goal_distance: tuple[tuple[tuple[int, ...], ...], ...]
+    # The largest finite entry above: the diameter of this board *for these pieces*,
+    # which is the only honest normaliser for a distance measured in moves.
+    goal_diameter: int
+    # Q708 (F1): [player][goal][piece_type][square] -> the same distance to one goal
+    # square alone, goals in ascending square order. Empty unless a priced race gives a
+    # side more than one goal square: the evaluator reads it only when some of a side's
+    # goals are held by a piece that side can never capture (`evaluation.sealed_goals`).
+    goal_distance_each: tuple[tuple[tuple[tuple[int, ...], ...], ...], ...]
+
+    # Whether a player can ever hold more than one royal piece at once. The check
+    # filter is the hottest query in the engine and the single-royal case can answer
+    # "where is it?" with one ``bytes.find``; anything more has to collect them all.
+    # Deciding once, here, keeps the overwhelmingly common ruleset on the fast path.
+    multi_royal: bool
+
+    # [player][origin] -> the destinations that open an en passant window, each with the
+    # square the mover stepped over. Empty for every ruleset without en passant.
+    ep_passes: tuple[tuple[tuple[tuple[int, int], ...], ...], ...]
+
+    # [square] -> ((the far end of a file line, the squares strictly between), ...).
+    # Xiangqi's flying general, as a fact about the board rather than as arithmetic. See
+    # `_facing_lines`. Empty for every ruleset without `royal_facing: forbidden`.
+    facing_lines: tuple[tuple[tuple[int, tuple[int, ...]], ...], ...]
+
+    zobrist_pieces: tuple[tuple[int, ...], ...]
+    zobrist_side: int
+    zobrist_ep: tuple[int, ...]
+    # Per square colour, for a repainting territory rule. Unused by everything else.
+    zobrist_colour: tuple[tuple[int, ...], ...]
+    # Per moves-remaining, for a turn longer than one move.
+    zobrist_turn: tuple[int, ...]
+
+    # The JSON this was compiled from, as text.
+    #
+    # The tables above are what a rule *means* to this engine; they are not what it
+    # means in general, and translating a ruleset for a foreign engine needs the
+    # descriptors rather than the per-square expansion of them -- "slides orthogonally
+    # for ever" is not recoverable from a list of squares without inferring it back.
+    # Carried as text rather than as the dict so the dataclass stays frozen and
+    # hashable, and last so that every existing constructor call keeps working.
+    #
+    # ``chess_variant_sandbox/fairy/`` is the only reader. Nothing in ``engine/`` consults it, and
+    # nothing may: a second interpretation of the DSL is exactly what this project
+    # spends its design budget avoiding.
+    source: str = ""
+
+    # Schema 10 (Q51): the types that declared no move descriptor at all.
+    #
+    # A fact about the spec rather than a table, and it crosses nothing -- the core needs
+    # nothing for it, because a type with no descriptors already has no movement table
+    # and the generator emits nothing for it. It is here so that readers holding only the
+    # compiled spec can *ask* -- `fairy` refuses such a piece, `describe` says so out
+    # loud -- rather than each scanning the movement tables for emptiness and arriving at
+    # slightly different answers. Empty for every ruleset before schema 10, and last for
+    # the reason `source` is last.
+    moveless_types: frozenset[int] = frozenset()
+
+    # Q113: the types that can never return to a square they left.
+    #
+    # A move by one of these is *progress*, and both of the core's two tests for progress
+    # read it: the repetition window since Q113, the no-progress clock since Q135. Each
+    # used to be keyed on an unrelated rule's spelling -- the window on ``en_passant``,
+    # the clock on ``promotion`` -- so *a pawn move is progress*, a fact about chess, was
+    # switched on twice over by declarations that say nothing of the sort.
+    # Derived from the movement tables by ``_one_way_types``, which is where the geometry
+    # already is; the core reads it as a flag per type and walks no graph.
+    #
+    # Empty for a game whose every piece can come back, which is what keeps the boundary
+    # bytes of such a ruleset exactly what they were before this existed.
+    one_way_types: frozenset[int] = frozenset()
+
+    # Schema 13: whether any piece sweeps. False keeps every boundary key of the fourth
+    # table empty, which is what keeps earlier rulesets' fingerprints where they were.
+    has_sweep: bool = False
+
+    # Q281a2 (unreachable until the gate, `docs/reference/hex-build-plan.md` *Q281a2*):
+    # a hexagon's frame cells folded into ``obstacles`` above, kept apart too so the
+    # drawing can tell a corner from a wall. This and ``copies`` below are both empty
+    # wherever `board.shape` is not `"hexagon"`.
+    absent: frozenset[int] = frozenset()
+    # Q281a2: a hexagon's six neighbouring copies, with their side names and
+    # permissions, for the drawing and the designer (Q281b, Q281c) -- neither has to
+    # work a copy vector out for itself. Empty on a grid.
+    copies: tuple[HexCopy, ...] = ()
+    # Q281c3: a joined rectangle's copies, shaped exactly like ``copies`` -- one past each
+    # joined edge (``left``/``right`` a whole width away, ``bottom``/``top`` a whole
+    # height) and, on a torus, the four corner copies reached by crossing both, named
+    # ``"<file side>+<rank side>"``. For the designer's short step across a seam, so it
+    # works no square out for itself. Kept apart from ``copies`` because the drawings
+    # read that one as a hexagon's; empty on a hexagon and on a board with edges, and
+    # read by nothing that plays a game.
+    grid_copies: tuple[HexCopy, ...] = ()
+
+    def sweep_path(self, board: bytes, origin: int, target: int) -> tuple[int, ...]:
+        """The squares a sweep from ``origin`` to ``target`` passes over, in ray order.
+
+        Read off the fourth table for the piece standing on ``origin``, as
+        `Tables::sweep_path` reads it in the core. Empty when none of its sweeps reaches
+        ``target``: one ray reaches one target, because ``wrap`` is refused beside a sweep.
+        """
+        value = board[origin]
+        if not self.has_sweep or not value:
+            return ()
+        for ray, _, _ in self.sweeps[self.frame_at(value)][self.type_of(value)][origin]:
+            if target in ray:
+                return ray[: ray.index(target)]
+        return ()
+
+    def square_index(self, file: int, rank: int) -> int:
+        return rank * self.width + file
+
+    def square_file(self, square: int) -> int:
+        return square % self.width
+
+    def square_rank(self, square: int) -> int:
+        return square // self.width
+
+    def relative_rank(self, square: int, player: int) -> int:
+        """Rank counted from ``player``'s own back rank."""
+        rank = square // self.width
+        return rank if player == 0 else self.height - 1 - rank
+
+    def piece_at(self, board: bytes, square: int) -> tuple[int, int] | None:
+        """Return ``(player, piece_type)`` at ``square``, or ``None`` if empty."""
+        value = board[square]
+        if value == 0:
+            return None
+        return self.owner_of(value), self.type_of(value)
+
+    def encode_piece(self, player: int, piece_type: int, facing: int = 0) -> int:
+        """The board byte for one piece, **player-major**.
+
+        ``player * n_facings * n_types + facing * n_types + type + 1``. The ordering is
+        load-bearing rather than arbitrary: it keeps one player's values contiguous, so
+        "is this piece mine?" stays the range test it has been since the first commit and
+        only its stride moves. With ``n_facings`` of 1 it is the arithmetic it always was.
+
+        ``player`` may be ``WILD`` (2) for a piece neither player owns, since schema 9: a
+        third contiguous block above both armies, at facing 0, because a wild piece never
+        turns and never reads a frame.
+        """
+        return (player * self.n_facings + facing) * self.n_types + piece_type + 1
+
+    def owner_of(self, value: int) -> int:
+        """Who owns a board byte: 0, 1, or ``WILD`` for a piece neither player owns.
+
+        Never ``value // n_types``: that is the frame.
+        """
+        return (value - 1) // (self.n_facings * self.n_types)
+
+    def type_of(self, value: int) -> int:
+        return (value - 1) % self.n_types
+
+    def frame_at(self, value: int) -> int:
+        """The frame a piece reads its movement out of, straight off its board byte."""
+        return (value - 1) // self.n_types
+
+    def facing_of(self, value: int) -> int:
+        return self.frame_at(value) % self.n_facings
+
+    @property
+    def has_facing(self) -> bool:
+        return self.n_facings > 1
+
+    @property
+    def side_stride(self) -> int:
+        """How many board values one player owns. `(value - 1) // this` is the owner."""
+        return self.n_facings * self.n_types
+
+    def facing_headings(self) -> tuple[tuple[int, ...], ...]:
+        """`[player][facing] -> degrees clockwise` a piece at that facing points on screen.
+
+        For the drawing surfaces, which have to say which way a piece is pointing or the
+        game cannot be played by a person. Derived by putting the piece's own forward
+        vector through the same two transforms `_compile_square` puts every vector
+        through -- the facing rotation, then the player's reflection -- rather than
+        worked out from the facing index, because the answer is **not** `facing * 90` for
+        both players.
+
+        Under `mirror` the second player's vectors are reflected, and a reflection
+        reverses handedness: the same facing index turns clockwise on screen for the
+        first player and anticlockwise for the second. That is the chirality asymmetry
+        `setup.mirror` has always had -- invisible in chess because a knight is achiral
+        -- and a renderer that assumed `facing * 90` would draw one army pointing the
+        wrong way, which is precisely the kind of geometry-by-arithmetic this project
+        keeps out of the core.
+        """
+        headings: list[tuple[int, ...]] = []
+        for player in (0, 1):
+            per_facing: list[int] = []
+            for facing in range(self.n_facings):
+                dx, dy = _rotate(0, 1, facing_quarter_turns(facing, self.n_facings))
+                if player == 1:
+                    dx, dy = (-dx, -dy) if self.orientation == "rotate" else (dx, -dy)
+                # Screen y runs the other way from board rank, and the icons are drawn
+                # pointing up, so "up" is zero and the angle grows clockwise.
+                per_facing.append({(0, 1): 0, (1, 0): 90, (0, -1): 180, (-1, 0): 270}[(dx, dy)])
+            headings.append(tuple(per_facing))
+        return (headings[0], headings[1])
+
+    def facing_step(self, piece_type: int) -> int:
+        """How many facing indices one turn of this piece covers.
+
+        A piece with two axes on a board whose spec has four steps by two: its
+        orientations are the spec's forward and backward, and the two sideways facings
+        are ones it can never be in.
+        """
+        return self.n_facings // self.facing_axes[piece_type]
+
+    def has_royalty(self) -> bool:
+        return bool(self.royal_types)
+
+    @property
+    def promotion(self) -> PromotionRule | None:
+        """The single promotion rule, for the many rulesets that have at most one."""
+        return self.promotions[0] if len(self.promotions) == 1 else None
+
+    def has_v2_endings(self) -> bool:
+        """Whether ``terminal`` has to consider anything beyond the schema-1 endings."""
+        return bool(
+            self.bare_royal or self.check_limit or self.reach or self.extinction
+            or self.scoring or self.territory
+        )
+
+
+def _obstacles_with_absent(
+    rules: Any, board: Any, width: int, height: int, orientation: str
+) -> frozenset[int]:
+    """Every square nothing may stand on: walls, and (Q281a2) a hexagon's absent frame
+    cells folded in beside them.
+
+    One helper for both direct callers (`compile_spec`, `pieces_that_can_leave_their_zone`)
+    so a third caller cannot forget the fold -- the mistake `docs/reference/hex-build-
+    plan.md` *Q281a2* names by its second point. ``CompiledSpec.obstacles`` then means
+    more than its name says, which is documented on the field itself.
+    """
+    return obstacle_squares(rules, width, height, orientation) | absent_squares(board)
+
+
+def _hexagon_radius(board: Any) -> int:
+    """A hexagon board's R, or 0 for a grid (Q281a2). 0 also selects the grid reading of
+    ``_land`` everywhere it is threaded through, so a malformed or not-yet-hexagon board
+    never takes the hex path.
+    """
+    if not isinstance(board, dict) or board.get("shape") != "hexagon":
+        return 0
+    width = board.get("width")
+    if not isinstance(width, int) or isinstance(width, bool) or width < 1 or width % 2 == 0:
+        return 0
+    return (width - 1) // 2
+
+
+def compile_spec(spec: dict[str, Any]) -> CompiledSpec:
+    """Validate ``spec`` and build its tables. Raises ``SpecError`` if invalid."""
+    validate_or_raise(spec)
+
+    board_spec = spec["board"]
+    width = board_spec["width"]
+    height = board_spec["height"]
+    n_squares = width * height
+    pieces = spec["pieces"]
+    n_types = len(pieces)
+    rules = spec.get("rules", {})
+
+    piece_ids = tuple(p["id"] for p in pieces)
+    index_of = {pid: i for i, pid in enumerate(piece_ids)}
+    orientation = spec.get("setup", {}).get("orientation", "mirror")
+    shape = board_spec.get("shape", "grid")
+    radius = _hexagon_radius(board_spec)
+    wrap = _compile_wrap(rules.get("wrap"), shape)
+    obstacles = _obstacles_with_absent(rules, board_spec, width, height, orientation)
+    absent = absent_squares(board_spec)
+    blocks_leaps = bool((rules.get("obstacles") or {}).get("blocks_leaps", False))
+
+    leaps: list[list[list[tuple[Entry, ...]]]] = []
+    slides: list[list[list[tuple[Entry, ...]]]] = []
+    hops: list[list[list[tuple[HopEntry, ...]]]] = []
+    sweeps: list[list[list[tuple[Entry, ...]]]] = []
+
+    dedup: list[list[frozenset[int]]] = []
+
+    # One pass per *frame*. A frame is (player, facing) flattened player-major, so with
+    # nothing facing it is the player and this loop runs twice, exactly as it did before
+    # frames had a name.
+    facing_axes = tuple(
+        int((piece.get("facing") or {}).get("axes", 1)) for piece in pieces
+    )
+    n_facings = max(facing_axes)
+    facing_initial = tuple(
+        FACING_NAMES.index((piece.get("facing") or {}).get("initial", "forward"))
+        // (4 // n_facings)
+        for piece in pieces
+    )
+    n_frames = n_facings * 2
+    for frame in range(n_frames):
+        player, facing = divmod(frame, n_facings)
+        frame_leaps: list[list[tuple[Entry, ...]]] = []
+        frame_slides: list[list[tuple[Entry, ...]]] = []
+        frame_hops: list[list[tuple[HopEntry, ...]]] = []
+        frame_sweeps: list[list[tuple[Entry, ...]]] = []
+        frame_dedup: list[frozenset[int]] = []
+        for piece in pieces:
+            type_leaps: list[tuple[Entry, ...]] = []
+            type_slides: list[tuple[Entry, ...]] = []
+            type_hops: list[tuple[HopEntry, ...]] = []
+            type_sweeps: list[tuple[Entry, ...]] = []
+            ambiguous: set[int] = set()
+            for square in range(n_squares):
+                built = _compile_square(
+                    piece, player, square, width, height, orientation, wrap,
+                    obstacles, blocks_leaps,
+                    facing_quarter_turns(facing, n_facings),
+                    radius,
+                )
+                type_leaps.append(built[0])
+                type_slides.append(built[1])
+                type_hops.append(built[2])
+                type_sweeps.append(built[3])
+                if _needs_runtime_dedup(*built):
+                    ambiguous.add(square)
+            frame_leaps.append(type_leaps)
+            frame_slides.append(type_slides)
+            frame_hops.append(type_hops)
+            frame_sweeps.append(type_sweeps)
+            frame_dedup.append(frozenset(ambiguous))
+        leaps.append(frame_leaps)
+        slides.append(frame_slides)
+        hops.append(frame_hops)
+        sweeps.append(frame_sweeps)
+        dedup.append(frame_dedup)
+
+    capture_allowed = _apply_npc_immunity(
+        _build_capture_matrix(pieces, index_of), rules, piece_ids, index_of
+    )
+    npcs = _compile_npcs(rules, pieces, index_of, width, height, orientation)
+    n_owners = 3 if npcs is not None else 2
+    promotions = _settle_on_leaving(
+        _compile_promotions(rules.get("promotion"), index_of, width, height, orientation),
+        leaps, slides, hops, sweeps, facing_axes, n_facings,
+    )
+    board, unmoved = _build_initial_position(
+        spec, index_of, width, height, n_types, n_facings, facing_initial, npcs
+    )
+    digest = spec_hash(spec)
+    zob_pieces, zob_side, zob_ep, zob_colour, zob_turn = _build_zobrist(
+        digest, n_squares, n_types, width, n_facings, n_owners
+    )
+    royal_types = tuple(i for i, p in enumerate(pieces) if p.get("royal", False))
+    win = rules.get("win", "checkmate")
+    demotions = tuple(
+        index_of.get(piece.get("promoted_from"), i) for i, piece in enumerate(pieces)
+    )
+    # One slot for one mechanism. The validator refuses the two spellings together, so
+    # at most one of these is ever a rule -- and `contacts` lands in `CompiledSpec.strike`
+    # rather than beside it because everything downstream, from `rust_supports` to the
+    # Fairy refusal, has exactly one question to ask.
+    strike_source = rules.get("strike") or rules.get("contacts")
+    landing = (
+        _compile_landing(
+            strike_source["landing"], n_squares, width, height, orientation, wrap,
+            obstacles, radius,
+        )
+        if isinstance(strike_source, dict)
+        and strike_source.get("position") == "choose"
+        and isinstance(strike_source.get("landing"), dict)
+        else ()
+    )
+    strike = _compile_strike(rules.get("strike"), index_of, n_types, landing)
+    if strike is None:
+        strike = _compile_contacts(rules.get("contacts"), index_of, n_types, landing)
+    drops = _compile_drops(
+        rules.get("drops"), index_of, n_types, width, height, orientation, obstacles
+    )
+
+    compiled = CompiledSpec(
+        name=spec["name"],
+        hash=digest,
+        source=json.dumps(spec, sort_keys=True),
+        moveless_types=frozenset(
+            index for index, piece in enumerate(pieces) if not piece.get("moves")
+        ),
+        one_way_types=_one_way_types(
+            leaps,
+            slides,
+            hops,
+            facing_axes,
+            promotions,
+            n_types,
+            n_squares,
+            n_facings,
+            width,
+            sweeps,
+        ),
+        has_sweep=any(
+            entries
+            for frame_sweeps in sweeps
+            for type_sweeps in frame_sweeps
+            for entries in type_sweeps
+        ),
+        width=width,
+        height=height,
+        lattice=board_spec.get("lattice", "square"),
+        n_squares=n_squares,
+        n_types=n_types,
+        piece_ids=piece_ids,
+        piece_names=tuple(p.get("name", p["id"]) for p in pieces),
+        piece_values=tuple(float(p.get("value", 1)) for p in pieces),
+        royal_types=royal_types,
+        leaps=_freeze(leaps),
+        slides=_freeze(slides),
+        hops=_freeze(hops),
+        sweeps=_freeze(sweeps),
+        attack_sources=_build_attack_sources(
+            leaps,
+            slides,
+            hops,
+            sweeps,
+            n_squares,
+            n_types,
+            n_facings,
+            silent_types=royal_types if rules.get("explode_on_capture") else (),
+            npcs=npcs,
+        ),
+        capture_allowed=capture_allowed,
+        has_capture_matrix=any(
+            not allowed for row in capture_allowed for allowed in row
+        ),
+        dedup_squares=tuple(tuple(types) for types in dedup),
+        n_frames=n_frames,
+        n_facings=n_facings,
+        facing_axes=facing_axes,
+        facing_initial=facing_initial,
+        immobile_squares=tuple(
+            tuple(
+                frozenset(
+                    square
+                    for square in range(n_squares)
+                    if not leaps[frame][piece_type][square]
+                    and not slides[frame][piece_type][square]
+                    and not hops[frame][piece_type][square]
+                    and not sweeps[frame][piece_type][square]
+                )
+                for piece_type in range(n_types)
+            )
+            for frame in range(n_frames)
+        ),
+        has_hop_attacks=any(
+            any(modes[i] & 2 for i in range(len(modes)))
+            for frame_hops in hops
+            for type_hops in frame_hops
+            for square_hops in type_hops
+            for _, modes, _, _, _ in square_hops
+        ),
+        initial_board=board,
+        initial_unmoved=unmoved,
+        win=win,
+        stalemate=rules.get("stalemate", "draw"),
+        max_plies=rules.get("max_plies", 400),
+        repetition_draw=_compile_repetition_draw(rules.get("repetition_draw", 3)),
+        no_progress_draw=rules.get("no_progress_draw", 100),
+        en_passant=bool(rules.get("en_passant", False)),
+        promotions=promotions,
+        demotions=demotions,
+        castling=_compile_castling(rules.get("castling"), index_of, width),
+        bare_royal=rules.get("bare_royal") or "",
+        check_limit=int(rules.get("check_limit", 0)),
+        reach=_compile_reach(rules.get("reach"), index_of, width, height),
+        extinction=_compile_extinction(rules.get("extinction"), index_of),
+        scoring=_compile_scoring(rules.get("scoring"), width, height, orientation),
+        territory=_compile_territory(rules.get("territory")),
+        turn=_compile_turn(rules.get("turn")),
+        wrap=wrap,
+        obstacles=obstacles,
+        absent=absent,
+        copies=_compile_copies(shape, radius, wrap),
+        grid_copies=_compile_grid_copies(shape, width, height, wrap),
+        strike=strike,
+        npcs=npcs,
+        n_owners=n_owners,
+        entry_promotion=_compile_entry_promotion(
+            bool(rules.get("promote_on_entry", False)), promotions, n_types, width, height
+        ),
+        drops=drops,
+        explosion=_compile_explosion(
+            rules.get("explode_on_capture"), index_of, width, height, wrap, obstacles, radius
+        ),
+        must_capture=bool(rules.get("must_capture", False)),
+        forbid_immobility=bool(rules.get("forbid_immobility", False)),
+        royal_facing_forbidden=rules.get("royal_facing") == "forbidden",
+        forbid_check=bool(rules.get("forbid_check", False)),
+        checkmate=rules.get("checkmate", "loss"),
+        orientation=orientation,
+        multi_royal=_royalty_can_multiply(
+            royal_types, board, n_types, n_facings, promotions, strike, drops, demotions, win
+        ),
+        ep_passes=_ep_passes(
+            bool(rules.get("en_passant", False)),
+            promotions,
+            slides,
+            n_squares,
+            n_frames,
+        ),
+        facing_lines=_facing_lines(
+            rules.get("royal_facing") == "forbidden", width, height, obstacles, wrap, radius
+        ),
+        **_goal_distances(
+            _compile_reach(rules.get("reach"), index_of, width, height),
+            leaps,
+            slides,
+            n_types,
+            n_squares,
+            n_facings,
+            sweeps,
+            royal_types,
+        ),
+        zobrist_pieces=zob_pieces,
+        zobrist_side=zob_side,
+        zobrist_ep=zob_ep,
+        zobrist_colour=zob_colour,
+        zobrist_turn=zob_turn,
+    )
+    if obstacles:
+        _reject_walled_in(compiled)
+    if compiled.has_facing:
+        _reject_null_rotations(compiled)
+    return compiled
+
+
+def _reject_null_rotations(compiled: CompiledSpec) -> None:
+    """Refuse a facing whose orientations are not actually different.
+
+    **A rotation that changes no move is a pass**, and a pass is not a small thing to
+    hand a game by accident: zugzwang stops existing, a losing side can always stand
+    still, and the repetition rule becomes the only thing that ends anything. A rook
+    reads the same rays whichever way it is turned, so ``facing`` on one would generate
+    three legal moves per position that do nothing at all.
+
+    Checked against the *compiled* tables rather than against the declared vectors, so
+    it is exact: a region, a wall, a rank condition and a seam all feed into what a
+    frame actually contains, and two orientations that a symmetry argument says differ
+    can still compile to the same table on a particular board.
+
+    Only the first player's frames are compared. The second player's are the same
+    descriptors under one further reflection, which cannot make two equal tables unequal.
+    """
+    for piece_type in range(compiled.n_types):
+        axes = compiled.facing_axes[piece_type]
+        if axes < 2:
+            continue
+        step = compiled.facing_step(piece_type)
+        seen: dict[Any, int] = {}
+        for turn in range(axes):
+            facing = turn * step
+            frame = frame_index(0, facing, compiled.n_facings)
+            table = (
+                compiled.leaps[frame][piece_type],
+                compiled.slides[frame][piece_type],
+                compiled.hops[frame][piece_type],
+                compiled.sweeps[frame][piece_type],
+            )
+            if table in seen:
+                first = FACING_NAMES[facing_quarter_turns(seen[table], compiled.n_facings)]
+                second = FACING_NAMES[facing_quarter_turns(facing, compiled.n_facings)]
+                raise SpecError(
+                    [
+                        f"piece {compiled.piece_ids[piece_type]!r} facing {second} moves "
+                        f"exactly as it does facing {first}, so turning between them "
+                        "would be a move that does nothing -- which is a pass, and a "
+                        "pass changes every game it is added to. Give the facing to a "
+                        "piece whose moves are not symmetric under it."
+                    ]
+                )
+            seen[table] = facing
+
+
+def _reject_walled_in(compiled: CompiledSpec) -> None:
+    """Refuse a wall set that leaves a player with nothing that can move at all.
+
+    This is the degenerate case a proposal will find, and it is cheap here because
+    ``immobile_squares`` already answers it: it is the set of squares a piece has no
+    table entry from, which is exactly what a piece bricked up behind walls has. Note
+    what this is *not* -- it is not "has a legal move", which is a question about a
+    position and therefore the engine's to answer, not the compiler's. A piece with
+    entries that its own army happens to block is a normal chess opening; a piece with
+    no entries at all is a spec mistake.
+    """
+    for player in (0, 1):
+        mobile = False
+        for square in range(compiled.n_squares):
+            value = compiled.initial_board[square]
+            if value == 0 or compiled.owner_of(value) != player:
+                continue
+            frame = compiled.frame_at(value)
+            if square not in compiled.immobile_squares[frame][compiled.type_of(value)]:
+                mobile = True
+                break
+        if not mobile:
+            raise SpecError(
+                [
+                    f"rules.obstacles walls player {player} in: no piece of theirs has "
+                    "a move from where it starts"
+                ]
+            )
+
+
+# ------------------------------------------------------------------ move tables
+
+
+def _region_squares(
+    names: Any, player: int, width: int, height: int, orientation: str
+) -> frozenset[int] | None:
+    """Resolve a named square set for one player, reflecting it for the second.
+
+    ``None`` means "no restriction", which is not the same as the empty set: a piece
+    with an empty region could never move at all, and that is a spec mistake rather
+    than a default.
+    """
+    if not names:
+        return None
+    squares = set()
+    for name in names:
+        coords = parse_square(name, width, height)
+        assert coords is not None  # guaranteed by validation
+        file, rank = coords
+        if player == 1:
+            rank = height - 1 - rank
+            if orientation == "rotate":
+                file = width - 1 - file
+        squares.add(rank * width + file)
+    return frozenset(squares)
+
+
+def _lame_path(dx: int, dy: int) -> tuple[int, int]:
+    """The square a blockable leap is stopped at.
+
+    One step along the dominant axis, or the midpoint when the two are equal. That
+    single rule gives the xiangqi horse its leg -- a (1,2) move blocked at (0,1) -- and
+    the elephant its eye, a (2,2) move blocked at (1,1), which is how both are actually
+    described.
+    """
+    if abs(dx) == abs(dy):
+        return dx // 2, dy // 2
+    if abs(dx) > abs(dy):
+        return (1 if dx > 0 else -1), 0
+    return 0, (1 if dy > 0 else -1)
+
+
+def _descriptor_directions(
+    vectors: Sequence[Sequence[int]], symmetry: str, facing: int
+) -> set[tuple[int, int]]:
+    """Every direction one move descriptor implies, in the first player's orientation.
+
+    A set, so a descriptor naming the same direction twice states it once. It is a set
+    and not a sequence because nothing here has an order worth keeping -- the caller
+    imposes one, and `_compile_square` says why it has to.
+    """
+    directions: set[tuple[int, int]] = set()
+    for vector in vectors:
+        directions |= expand_symmetry((vector[0], vector[1]), symmetry)
+    if not facing:
+        return directions
+
+    # A rotationally symmetric descriptor is its own rotation, so a rook facing any way
+    # is a rook and the set comes back unchanged -- which is what makes a facing worth
+    # giving only to a piece that is directional.
+    return {_rotate(dx, dy, facing) for dx, dy in directions}
+
+
+def _compile_square(
+    piece: dict[str, Any],
+    player: int,
+    square: int,
+    width: int,
+    height: int,
+    orientation: str = "mirror",
+    wrap: WrapRule | None = None,
+    obstacles: frozenset[int] = frozenset(),
+    blocks_leaps: bool = False,
+    facing: int = 0,
+    radius: int = 0,
+) -> tuple[tuple[Entry, ...], tuple[Entry, ...], tuple[HopEntry, ...], tuple[Entry, ...]]:
+    """Build the four entry lists for one piece type standing on one square.
+
+    ``radius`` is a hexagon's R (Q281a2, unreachable until the gate); 0 is every board
+    before it and every rectangle after, and it is what selects the grid or hex reading
+    of ``landing`` below -- a spec is one shape or the other, never both, so nothing here
+    branches per square.
+
+    ``obstacles`` is the schema-6 counterpart to ``wrap`` and works the same way: it is
+    entirely static, so a wall is answered here once and never again. A ray ends at one,
+    a leap onto one is never emitted, and under ``blocks_leaps`` a leap *over* one is
+    not either. Nothing downstream -- not the inverted attack sources, not the core --
+    ever learns that walls exist.
+
+    ``facing`` is which way the piece is pointing, **in quarter turns clockwise**, and
+    it is what schema 8 added. It rotates the piece's declared vectors and does nothing
+    else: a facing is a different *reading* of the same descriptor set, not a new kind of
+    descriptor, which is why it costs another frame rather than another dimension and why
+    every ray, region, condition and wall test below is untouched by it.
+
+    The rotation is applied to the vector as the spec wrote it, *before* the second
+    player's reflection, so that a facing means the same relative thing to both armies --
+    exactly as a base vector does. Applied afterwards, the mirror would make the two
+    players' "turn right" the same absolute direction, which is the kind of secret
+    asymmetry ``wrap``'s absolute edge names exist to prevent.
+
+    ``wrap`` is the only thing here that can make a step land somewhere the raw
+    arithmetic did not, and this is deliberately the only place in the project that
+    works out *where a step lands* at all: everything downstream -- the inverted attack
+    sources, the goal-distance search, the runtime dedup flag, and the whole Rust core
+    -- reads the tables this builds and never asks what a file is. Other modules know
+    the rule exists -- the validator checks its spelling, the prose states it, the grid
+    files a game by it -- and none of them does geometry.
+    """
+    file = square % width
+    rank = square // width
+    relative_rank = rank if player == 0 else height - 1 - rank
+    low_file, high_file = wrap.files[player] if wrap else (False, False)
+    low_rank, high_rank = wrap.ranks[player] if wrap else (False, False)
+    permitted = (lambda side: wrap.may_leave(side, player)) if (radius and wrap) else None
+
+    def landing(at_file: int, at_rank: int) -> int | None:
+        """The square an offset lands on, or ``None`` if it left the board."""
+        return _land(
+            at_file, at_rank, width, height, low_file, high_file, low_rank, high_rank,
+            radius, permitted,
+        )
+
+    # A confined piece -- a xiangqi general in its palace, an elephant on its own bank
+    # of the river -- simply has no table entry for a square it may not reach, so the
+    # restriction costs nothing once compiled.
+    confine = _region_squares(piece.get("region"), player, width, height, orientation)
+    if confine is not None and square not in confine:
+        return ((), (), (), ())
+
+    # Nothing stands on a wall, so a piece that starts on one has no moves from it.
+    # Validation already refuses a setup that puts one there; this is what makes the
+    # table honest for a square no piece can ever reach either.
+    if square in obstacles:
+        return ((), (), (), ())
+
+    # Leaps merge into a target -> mode map; slides and hops merge per direction.
+    leap_targets: dict[bool, dict[int, int]] = {}
+    lame_entries: list[Entry] = []
+    # (kind, step x, step y, needs an unmoved origin, screen range, screen owner).
+    # The last two are hop-only and are zero for everything else, which is what keeps a
+    # slide and a hop along the same vector from merging into one ray.
+    _RayKey = tuple[str, int, int, bool, int, int]
+    ray_groups: dict[_RayKey, dict[int, int]] = {}
+    # The squares each ray actually visits, recorded as it is walked rather than
+    # re-derived afterwards. Two descriptors sharing a key share an origin and a step,
+    # so the shorter walk is a prefix of the longer one and this only ever extends --
+    # and with a seam in play there is no arithmetic that could rebuild it.
+    ray_squares: dict[_RayKey, list[int]] = {}
+
+    for descriptor in piece["moves"]:
+        condition = descriptor.get("condition") or {}
+        if "from_rank" in condition and condition["from_rank"] != relative_rank:
+            continue  # cannot ever apply here; drop it from the table entirely
+        if "region" in condition:
+            from_region = _region_squares(
+                condition["region"], player, width, height, orientation
+            )
+            if from_region is not None and square not in from_region:
+                continue
+        requires_unmoved = bool(condition.get("first_move", False))
+
+        kind = descriptor["kind"]
+        mode = _MODE_BITS[descriptor.get("mode", "both")]
+        symmetry = descriptor.get("symmetry", "none")
+        min_range = descriptor.get("min_range", 1)
+        max_range = descriptor.get("range", DEFAULT_RANGE.get(kind, 1))
+
+        # Sorted, and the sort is what makes the compiled tables a function of the spec
+        # alone. A set of tuples iterates in hash order, and CPython's tuple hash is
+        # built from `Py_uhash_t` -- 64 bits here, 32 under Emscripten. A lame leap is
+        # appended to `lame_entries` as its direction is walked, so an unsorted walk put
+        # the interpreter's hash width into the slide table's tail: that permuted
+        # xiangqi's `slide_squares` under Pyodide and parted its games from the server's
+        # at ply 1. Every other order below is re-imposed on a key (`sorted(ray_groups)`,
+        # `sorted(leap_targets)`), so this is the one walk whose order reaches a table.
+        for dx, dy in sorted(_descriptor_directions(descriptor["vectors"], symmetry, facing)):
+            # Vectors are written from the first player's view. Under the default
+            # mirror the second player's forward direction is the rank reflection and
+            # files are untouched; under ``rotate`` the whole board turns 180 degrees,
+            # which is what legan needs -- its pawns advance along a diagonal, and a
+            # rank-only flip would leave the two armies moving in unrelated directions.
+            # Either way this matches the reflection used to build the second army.
+            if player == 0:
+                step_x, step_y = dx, dy
+            elif orientation == "rotate":
+                step_x, step_y = -dx, -dy
+            else:
+                step_x, step_y = dx, -dy
+
+            if kind == "leap":
+                target = landing(file + step_x, rank + step_y)
+                # A wrapped leap can come all the way round onto its own square, which
+                # is a null move rather than a move; nothing else can produce one.
+                if target is None or target == square:
+                    continue
+                if confine is not None and target not in confine:
+                    continue
+                if target in obstacles:
+                    continue
+                # "A wall a knight may vault" and "a wall a knight may not" are two
+                # different games, and neither is obviously the default -- so the spec
+                # says which. The square a jump goes *over* is ``_lame_path``: this
+                # project already has exactly one rule for that, it is the rule the
+                # xiangqi horse is described by, and inventing a second notion of "the
+                # way past" would leave two answers to one question.
+                if blocks_leaps:
+                    block_x, block_y = _lame_path(step_x, step_y)
+                    over = landing(file + block_x, rank + block_y)
+                    if over is not None and over in obstacles:
+                        continue
+                bucket = leap_targets.setdefault(requires_unmoved, {})
+                bucket[target] = bucket.get(target, 0) | mode
+                continue
+
+            if kind == "lame":
+                target = landing(file + step_x, rank + step_y)
+                if target is None or target == square:
+                    continue
+                if confine is not None and target not in confine:
+                    continue
+                if target in obstacles:
+                    continue
+                block_x, block_y = _lame_path(step_x, step_y)
+                block = landing(file + block_x, rank + block_y)
+                # A leg standing on a wall is blocked for ever, so the move is not a
+                # move. This one holds whatever ``blocks_leaps`` says: a lame leap is
+                # *defined* by being stoppable at its leg, and a wall is the one thing
+                # that can never move out of the way.
+                if block is not None and block in obstacles:
+                    continue
+                # The leg is a shorter step in the same direction, so it can only be off
+                # the board where the target was too -- unless the target wrapped and the
+                # leg did not reach the seam, which is a leap nobody can make.
+                if block is None or block == target:
+                    continue
+                # Expressed as a slide whose first square carries no mode: the generator
+                # already walks off a ray the moment it meets an occupied square it
+                # cannot use, which is exactly what being blocked means.
+                lame_entries.append(((block, target), (0, mode), requires_unmoved))
+                continue
+
+            key = (
+                kind,
+                step_x,
+                step_y,
+                requires_unmoved,
+                descriptor.get("screen_range", 0),
+                _SCREEN_BITS[str(descriptor.get("screen", "any"))],
+            )
+            modes = ray_groups.setdefault(key, {})
+            walked = ray_squares.setdefault(key, [])
+            # An unbounded ray runs to the far edge, and on a board with no far edge it
+            # runs until it comes back on itself instead. The cap is the square count
+            # because a torus diagonal's period is neither the width nor the height.
+            limit = max_range if max_range > 0 else (
+                width * height if wrap and wrap.active_for(player)
+                else max(width, height)
+            )
+            current_file, current_rank = file, rank
+            visited = {square}
+            for distance in range(1, limit + 1):
+                current = landing(current_file + step_x, current_rank + step_y)
+                if current is None:
+                    break
+                # A ray stops when it reaches a square it has already been on, the
+                # origin included. Without a seam this never fires; with one it is what
+                # stops a rook circling a cylinder for ever, and it is exact for a
+                # diagonal whose period is neither dimension.
+                if current in visited:
+                    break
+                # A wall ends the line, and this is emphatically *not* what ``confine``
+                # does two lines down: a square outside a piece's region gets mode 0 and
+                # the ray carries on past it, because a palace is somewhere a piece may
+                # not *stop*. An obstacle is somewhere nothing may *be*, so there is
+                # nothing on the far side of it to see. Getting this backwards lets a
+                # rook shoot through a wall, and perft would happily count it. A hop's
+                # ray is walked by this same loop and so stops at a wall too, which is
+                # the reading a cannon deserves: a wall is not a screen, and there is
+                # nothing behind it to land on.
+                if current in obstacles:
+                    break
+                visited.add(current)
+                current_file, current_rank = current % width, current // width
+                index = distance - 1
+                if index < len(walked):
+                    assert walked[index] == current  # same origin, same step
+                else:
+                    walked.append(current)
+                if distance >= min_range and (confine is None or current in confine):
+                    modes[index] = modes.get(index, 0) | mode
+
+    leap_entries = [
+        (tuple(sorted(targets)), tuple(targets[t] for t in sorted(targets)), unmoved_flag)
+        for unmoved_flag, targets in sorted(leap_targets.items())
+        if targets
+    ]
+
+    slide_entries: list[Entry] = []
+    hop_entries: list[HopEntry] = []
+    sweep_entries: list[Entry] = []
+    for key in sorted(ray_groups):
+        kind, step_x, step_y, requires_unmoved, screen_range, screen_owner = key
+        ray = ray_squares.get(key, [])
+        length = len(ray)
+        if length == 0:
+            continue
+        modes = ray_groups[key]
+        entry: Entry = (
+            tuple(ray),
+            tuple(modes.get(i, 0) for i in range(length)),
+            requires_unmoved,
+        )
+        if not any(entry[1]):
+            continue
+        if kind == "slide":
+            slide_entries.append(entry)
+        elif kind == "sweep":
+            # Schema 13: a ray the core walks through pieces. A region square keeps mode
+            # 0 and stays on the ray, so a sweeper passes over it without stopping.
+            sweep_entries.append(entry)
+        else:
+            hop_entries.append((*entry, screen_range, screen_owner))
+
+    return _resolve_overlaps(
+        leap_entries, slide_entries + lame_entries, hop_entries, sweep_entries
+    )
+
+
+def _resolve_overlaps(
+    leaps: list[Entry], slides: list[Entry], hops: list[HopEntry], sweeps: list[Entry]
+) -> tuple[tuple[Entry, ...], tuple[Entry, ...], tuple[HopEntry, ...], tuple[Entry, ...]]:
+    """Strip redundant reachability so two primitives cannot emit the same move twice.
+
+    Merging by direction already handles same-kind overlap; what is left is a piece
+    that reaches one square by two different primitives. One case is resolvable
+    statically: an unconditional leap always fires, and a slide to the same square
+    fires only under the strictly narrower condition of a clear path, so the slide's
+    bits for that square are pure duplication and can go.
+
+    Hops are left alone. A hop needs exactly one screening piece and a slide needs
+    none, so the two never fire from the same position -- statically they look like a
+    conflict, but suppressing either would delete a real move.
+
+    Sweeps are left alone too (schema 13). A sweep over a piece and a leap to the same
+    square are two different moves; over an empty path the words are equal and the
+    runtime dedup folds them.
+    """
+    always_covered: dict[int, int] = {}
+    for targets, modes, requires_unmoved in leaps:
+        if requires_unmoved:
+            continue
+        for index, target in enumerate(targets):
+            always_covered[target] = always_covered.get(target, 0) | modes[index]
+
+    if always_covered:
+        cleaned: list[Entry] = []
+        for ray, modes, requires_unmoved in slides:
+            adjusted = tuple(
+                mode & ~always_covered.get(ray[index], 0) for index, mode in enumerate(modes)
+            )
+            if any(adjusted):
+                cleaned.append((ray, adjusted, requires_unmoved))
+        slides = cleaned
+
+    return tuple(leaps), tuple(slides), tuple(hops), tuple(sweeps)
+
+
+def _needs_runtime_dedup(
+    leaps: tuple[Entry, ...],
+    slides: tuple[Entry, ...],
+    hops: tuple[HopEntry, ...],
+    sweeps: tuple[Entry, ...] = (),
+) -> bool:
+    """Whether any square is still reachable two ways after static resolution.
+
+    True only for genuinely odd pieces -- a conditional leap shadowing an
+    unconditional one, or a leap and a hop converging. Flagging is per piece per
+    square, so the generator pays for the oddity exactly where it exists. A sweep that
+    shares a target with anything is flagged, because over an empty path its word is a
+    plain move's.
+    """
+    seen: dict[int, int] = {}
+    groups = [
+        (targets, modes) for targets, modes, _ in leaps
+    ] + [
+        (ray, modes) for ray, modes, _ in slides
+    ] + [
+        (ray, modes) for ray, modes, _, _, _ in hops
+    ] + [
+        (ray, modes) for ray, modes, _ in sweeps
+    ]
+    for squares, modes in groups:
+        local: dict[int, int] = {}
+        for index, square in enumerate(squares):
+            local[square] = local.get(square, 0) | modes[index]
+        for square, mode in local.items():
+            if seen.get(square, 0) & mode:
+                return True
+            seen[square] = seen.get(square, 0) | mode
+    return False
+
+
+def _freeze(table: list[list[list[Any]]]) -> Any:
+    """Deep-freeze a [player][piece type][square] table into nested tuples.
+
+    Deliberately untyped in the middle: leaps and slides hold ``Entry`` and hops hold
+    ``HopEntry``, and spelling that out here would mean two identical functions.
+    """
+    return tuple(tuple(tuple(squares) for squares in types) for types in table)
+
+
+def _build_attack_sources(
+    leaps: list[list[list[tuple[Entry, ...]]]],
+    slides: list[list[list[tuple[Entry, ...]]]],
+    hops: list[list[list[tuple[HopEntry, ...]]]],
+    sweeps: list[list[list[tuple[Entry, ...]]]],
+    n_squares: int,
+    n_types: int,
+    n_facings: int = 1,
+    silent_types: tuple[int, ...] = (),
+    npcs: NpcRule | None = None,
+) -> tuple[tuple[tuple[AttackSource, ...], ...], ...]:
+    """Invert the move tables into "who could attack this square?".
+
+    Legal-move filtering under ``win: checkmate`` asks that question once per candidate
+    move, which makes it the single hottest query in the engine. Answering it forward --
+    walk every enemy piece, generate its moves, look for the square -- costs a full
+    board scan each time. Inverted, it costs a walk over a short precomputed list, most
+    of whose entries fail on their first byte comparison.
+
+    Indexed by the *attacking owner* and not by frame, and that is deliberate: a source
+    already carries the exact piece value it matches, so a facing-carrying value is
+    simply another row and check detection needs no new dimension. The table grows with
+    the facing count and nothing that reads it changes -- which is the same property that
+    made a wrapped board and a walled one cost the core nothing.
+
+    **A third owner's block, from the routes rather than from the tables** (schema 9). A
+    wild piece threatens exactly the square it will step to next, so its block is one
+    source per route square -- origin the square, value the wild byte, no path, no
+    screens -- and the core walks it with the same loop it walks a player's. The block
+    exists only when the spec has wild pieces, so every earlier ruleset's table is still
+    two blocks long and byte-identical.
+    """
+    table: list[list[list[AttackSource]]] = [
+        [[] for _ in range(n_squares)] for _ in range(2)
+    ]
+    if npcs is not None:
+        wild: list[list[AttackSource]] = [[] for _ in range(n_squares)]
+        for origin, target in enumerate(npcs.next):
+            if target < 0 or target == origin:
+                continue
+            value = (WILD * n_facings) * n_types + npcs.piece[origin] + 1
+            wild[target].append((origin, value, (), (), 0, False, SCREEN_ANY, 0, ()))
+        table.append(wild)
+
+    for frame in range(len(leaps)):
+        player, facing = divmod(frame, n_facings)
+        for piece_type in range(len(leaps[frame])):
+            if piece_type in silent_types:
+                continue
+            piece_value = (player * n_facings + facing) * n_types + piece_type + 1
+            for origin in range(n_squares):
+                for targets, modes, unmoved in leaps[frame][piece_type][origin]:
+                    for index, target in enumerate(targets):
+                        if modes[index] & 2:
+                            table[player][target].append(
+                                (origin, piece_value, (), (), 0, unmoved, SCREEN_ANY, 0, ())
+                            )
+
+                for ray, modes, unmoved in slides[frame][piece_type][origin]:
+                    for index, target in enumerate(ray):
+                        if modes[index] & 2:
+                            table[player][target].append(
+                                (origin, piece_value, ray[:index], (), 0, unmoved, SCREEN_ANY,
+                                 0, ())
+                            )
+
+                for entry in hops[frame][piece_type][origin]:
+                    ray, modes, unmoved, screen_range, screen_owner = entry
+                    for index, target in enumerate(ray):
+                        if not modes[index] & 2:
+                            continue
+                        path = ray[:index]
+                        if screen_range and index >= screen_range:
+                            # Only the last ``screen_range`` squares may hold the screen,
+                            # so everything before them has to be empty.
+                            split = index - screen_range
+                            table[player][target].append(
+                                (origin, piece_value, path[:split], path[split:], 1,
+                                 unmoved, screen_owner, 0, ())
+                            )
+                        else:
+                            table[player][target].append(
+                                (origin, piece_value, (), path, 1, unmoved, screen_owner,
+                                 0, ())
+                            )
+
+                # Schema 13, decision A: one source per ray square. The square is attacked
+                # when it is a capture landing, or when a landing past it would sweep it,
+                # so a sweep over the enemy royal is check. The core walks the rest of the
+                # ray with `modes` to find that landing.
+                for ray, modes, unmoved in sweeps[frame][piece_type][origin]:
+                    for index, target in enumerate(ray):
+                        bits = (SWEEP_LANDS if modes[index] & 2 else 0) | (
+                            SWEEP_BEYOND if any(modes[index + 1:]) else 0
+                        )
+                        if bits:
+                            table[player][target].append(
+                                (origin, piece_value, ray[:index], ray[index:], 0, unmoved,
+                                 SCREEN_ANY, bits, modes)
+                            )
+
+    return tuple(tuple(tuple(sources) for sources in player_table) for player_table in table)
+
+
+# --------------------------------------------------------------- initial position
+
+
+def _compile_wrap(wrap: Any, shape: str | None = None) -> WrapRule | None:
+    """Resolve ``rules.wrap`` into one per-player permission set, through the one
+    resolver every reader of it shares (`schema.wrap_stated`).
+
+    ``None`` when nothing is declared or everything says ``none``, which is what keeps
+    a board with edges compiling down exactly the instructions it always did -- the
+    stepping helper is not merely equivalent on that path, it is skipped.
+
+    ``shape`` selects the keys: a rectangle's two axes, or (Q281a2, unreachable until
+    the gate) a hexagon's three pairs, `schema.WRAP_PAIRS`. A hexagon cannot reach this
+    until `validate_or_raise` admits ``board.shape`` (Q281a4), but the reading is built
+    now so the gate has nothing left to teach the compiler.
+    """
+    stated = wrap_stated(wrap, shape)
+    if shape == "hexagon":
+
+        def _seam(key: str, pair: Any) -> tuple[tuple[bool, bool], tuple[bool, bool]]:
+            p0, p1 = stated[key]
+            return (
+                (p0 in (pair.low, "both"), p0 in (pair.high, "both")),
+                (p1 in (pair.low, "both"), p1 in (pair.high, "both")),
+            )
+
+        seams = {key: _seam(key, pair) for key, pair in WRAP_PAIRS.items()}
+        rule = WrapRule(n_s=seams["n_s"], ne_sw=seams["ne_sw"], nw_se=seams["nw_se"])
+        return rule if rule.seams_join else None
+    files = tuple(
+        (value in ("left", "both"), value in ("right", "both")) for value in stated["files"]
+    )
+    ranks = tuple(
+        (value in ("bottom", "both"), value in ("top", "both")) for value in stated["ranks"]
+    )
+    rule = WrapRule(files=files, ranks=ranks)  # type: ignore[arg-type]
+    return rule if rule.files_join or rule.ranks_join else None
+
+
+def _compile_copies(shape: str, radius: int, wrap: WrapRule | None) -> tuple[HexCopy, ...]:
+    """A hexagon's six copies, with their side names and permissions (Q281a2).
+
+    Empty on a grid. The drawing and the designer (Q281b, Q281c) read this rather than
+    working a copy vector out for themselves, `docs/reference/hex-build-plan.md`
+    *Q281a2* names as the reason `CompiledSpec.copies` exists at all.
+    """
+    if shape != "hexagon":
+        return ()
+    copies = []
+    for pair in WRAP_PAIRS.values():
+        vector = pair.copy(radius)
+        for side, offset in ((pair.high, vector), (pair.low, (-vector[0], -vector[1]))):
+            permission = (
+                (wrap.may_leave(side, 0), wrap.may_leave(side, 1)) if wrap else (False, False)
+            )
+            copies.append(HexCopy(side=side, vector=offset, permission=permission))
+    return tuple(copies)
+
+
+def _compile_grid_copies(
+    shape: str, width: int, height: int, wrap: WrapRule | None
+) -> tuple[HexCopy, ...]:
+    """A joined rectangle's copies, with their side names and permissions (Q281c3).
+
+    ``vector`` means what a hexagon copy's does: a cell's place in the copy minus its
+    place on the board, which on a rectangle is a whole width or height, since
+    `_resolve` wraps an axis by exactly that. A corner copy is past a file edge and a
+    rank edge at once, and a player may reach it only when both are theirs to cross.
+    Empty on a hexagon and on a board with edges.
+    """
+    if shape == "hexagon" or wrap is None:
+        return ()
+    files = [("left", -width, 0), ("right", width, 1)] if wrap.files_join else []
+    ranks = [("bottom", -height, 0), ("top", height, 1)] if wrap.ranks_join else []
+    copies = [
+        HexCopy(side=side, vector=(dx, 0),
+                permission=(wrap.files[0][high], wrap.files[1][high]))
+        for side, dx, high in files
+    ] + [
+        HexCopy(side=side, vector=(0, dy),
+                permission=(wrap.ranks[0][high], wrap.ranks[1][high]))
+        for side, dy, high in ranks
+    ]
+    for file_side, dx, file_high in files:
+        for rank_side, dy, rank_high in ranks:
+            copies.append(HexCopy(
+                side=f"{file_side}+{rank_side}", vector=(dx, dy),
+                permission=tuple(  # type: ignore[arg-type]
+                    wrap.files[p][file_high] and wrap.ranks[p][rank_high] for p in (0, 1)
+                ),
+            ))
+    return tuple(copies)
+
+
+def _ep_passes(
+    en_passant: bool,
+    promotions: tuple[PromotionRule, ...],
+    slides: Any,
+    n_squares: int,
+    n_frames: int = 2,
+) -> tuple[tuple[tuple[tuple[int, int], ...], ...], ...]:
+    """``[frame][origin] -> ((destination, the square stepped over), ...)``.
+
+    Keyed by **frame** rather than by player, which is the one table schema 8 had to
+    reindex. A pawn that can turn steps over a different square depending on which way
+    it points, and an origin alone cannot say which -- so this would have been the fifth
+    entry in the "arithmetic on geometry" list, except that it had already stopped being
+    arithmetic and the repair was an index rather than a refusal.
+
+    En passant used to be the one rule the core answered with *arithmetic* rather than
+    by reading a table: it halved the move's delta to find the square the pawn crossed.
+    That is right on a board with edges and wrong on one without, because a wrapped
+    move's raw delta is not its real one -- and it fails silently, since nothing about
+    it changes a move count and every perft in the suite would still pass.
+
+    Stated as a table it is also a better definition than the arithmetic was. The square
+    a pawn steps over is the first square of the line it moved along, which is what a
+    ray already knows; a *leap* passes over nothing at all, so the old code computing a
+    midpoint for one was answering a question that has no answer. No committed ruleset
+    has an en passant piece that leaps, so the two agree everywhere they are both
+    defined.
+
+    **A hop is read here too and it does not belong** (Q121). It has a ray, so this used
+    to take its second square exactly as it takes a slide's -- but a hop lands past its
+    *screen*, and landing on the second square of the ray means the screen stands on the
+    first. So the window a hop opens is always on an occupied square, and every arm of
+    the generator that takes in passing requires an empty one. Nothing can vacate it
+    either: `make` sets the window only when the move captured nothing, so no strike
+    cleared it, and the wild phase closes the window outright when it touches that
+    square. So a hop's window is dead by construction rather than by omission, which is
+    why the repair is here and not in the generator. `schema.can_double_step` says the
+    same of the descriptor, and 32 committed and archived specs declare `en_passant`
+    with no hop on the promoting piece, so no compiled table moves.
+    """
+    empty = tuple(() for _ in range(n_squares))
+    if not en_passant or not promotions:
+        return tuple(empty for _ in range(n_frames))
+    piece_type = promotions[0].piece_type
+    table: list[tuple[tuple[tuple[int, int], ...], ...]] = []
+    for frame in range(n_frames):
+        per_square: list[tuple[tuple[int, int], ...]] = []
+        for origin in range(n_squares):
+            passes: dict[int, int] = {}
+            for entry in slides[frame][piece_type][origin]:
+                ray, modes = entry[0], entry[1]
+                if len(ray) >= 2 and modes[1] & MODE_MOVE:
+                    passes.setdefault(ray[1], ray[0])
+            per_square.append(tuple(sorted(passes.items())))
+        table.append(tuple(per_square))
+    return tuple(table)
+
+
+def _facing_lines(
+    forbidden: bool,
+    width: int,
+    height: int,
+    obstacles: frozenset[int],
+    wrap: WrapRule | None,
+    radius: int = 0,
+) -> tuple[tuple[tuple[int, tuple[int, ...]], ...], ...]:
+    """``[square] -> ((the far end of a file line, the squares strictly between), ...)``.
+
+    The flying general, stated as a fact about the board. ``royals_face`` in the core
+    used to walk a file by ``+= width`` asking what stood on each square, which is the
+    same mistake en passant's midpoint was in schema 5 and the same one castling still
+    is: **arithmetic that is only right on a board whose edges are edges and whose empty
+    squares are the only empty squares.** It was refused beside `wrap` for the first and
+    beside `obstacles` for the second, and both refusals go away with it.
+
+    A wall closes a line, which is the reading the rule deserves rather than a
+    concession: the flying general is about an *open* file, and a wall is precisely what
+    closes one. So the ray simply breaks at one, exactly as every other ray in this
+    module does, and no square beyond it is reachable.
+
+    Joined ranks give a square **two** entries for the same far end -- one each way round
+    -- and the rule is satisfied if either path is clear. That is not a special case
+    either; it is what "is there an open line between them" means once a file is a
+    circle, and it is the thing the arithmetic could not say at all.
+
+    Built only when the rule is declared. Every other ruleset gets an empty table, so
+    nothing else's compiled bytes move and only xiangqi's fingerprint changes.
+
+    ``radius`` is a hexagon's R (Q281a2, unreachable until the gate). The line still
+    steps by rank alone, ``(0, 1)`` and ``(0, -1)``, through the one landing function
+    (`_land`): on a rectangle that is exactly today's file, and on a hexagon it is
+    whichever line that step traces, wrapping through a joined side the same way a move
+    would. It reads the board's topology (`WrapRule.seam_open`), not a player's
+    permission, for the reason given above.
+    """
+    if not forbidden:
+        return ()
+
+    # A blast, not a move: facing belongs to the *board*, so it reads the topology rather
+    # than a player's permission. Schema 5 drew that distinction for `explosion.blast`
+    # and it applies here for the same reason -- two royals face each other or they do
+    # not, and there is no "whose turn is it" in the question. Only ranks matter: a file
+    # is a file however the two file edges are joined.
+    join = bool(wrap and wrap.ranks_join)
+    seam_open = wrap.seam_open if wrap else (lambda _side: False)
+    limit = width * height if (join or (radius and wrap and wrap.seams_join)) else height
+
+    table: list[tuple[tuple[int, tuple[int, ...]], ...]] = []
+    for square in range(width * height):
+        if square in obstacles:
+            table.append(())
+            continue
+        file, rank = square % width, square // width
+        entries: list[tuple[int, tuple[int, ...]]] = []
+        for step in (1, -1):
+            path: list[int] = []
+            visited = {square}
+            current_file, current_rank = file, rank
+            for _ in range(limit):
+                current = _land(
+                    current_file, current_rank + step, width, height,
+                    False, False, join, join, radius, seam_open,
+                )
+                if current is None:
+                    break
+                current_file, current_rank = current % width, current // width
+                # The same two stops every ray in this module makes, in the same order.
+                if current in visited:
+                    break
+                if current in obstacles:
+                    break
+                visited.add(current)
+                entries.append((current, tuple(path)))
+                path.append(current)
+        table.append(tuple(entries))
+    return tuple(table)
+
+
+def _compile_turn(turn: Any) -> TurnRule | None:
+    if not turn:
+        return None
+    moves = int(turn.get("moves", 1))
+    ramp = tuple(int(value) for value in turn.get("ramp") or ())
+    if moves == 1 and all(value == 1 for value in ramp):
+        return None  # a turn of one move is what every ruleset already does
+    return TurnRule(moves=moves, lengths=ramp)
+
+
+def _compile_territory(territory: Any) -> TerritoryRule | None:
+    if not territory:
+        return None
+    return TerritoryRule(
+        mode=str(territory.get("mode", "permanent")),
+        win_at=int(territory.get("win_at", 0)),
+    )
+
+
+def _compile_scoring(
+    scoring: Any, width: int, height: int, orientation: str
+) -> ScoringRule | None:
+    if not scoring:
+        return None
+    region = scoring.get("region")
+    squares = None
+    if region:
+        # `_region_squares` answers `None` for "no restriction", which cannot happen
+        # here: the validator requires a non-empty list whenever the count is "region".
+        first = _region_squares(region, 0, width, height, orientation)
+        second = _region_squares(region, 1, width, height, orientation)
+        assert first is not None and second is not None
+        squares = (first, second)
+    return ScoringRule(count=str(scoring.get("count", "material")), squares=squares)
+
+
+def _build_capture_matrix(
+    pieces: list[dict[str, Any]], index_of: dict[str, int]
+) -> tuple[tuple[bool, ...], ...]:
+    """``[attacker][victim] -> may take``, from each piece's ``captures`` list.
+
+    Absent means everything, which is what every ruleset written before schema 3 meant.
+    An empty list means nothing, which is a piece that moves and blocks and never takes.
+    The two are different and the distinction is load-bearing, so this reads ``is None``
+    rather than truthiness.
+    """
+    n_types = len(pieces)
+    matrix: list[tuple[bool, ...]] = []
+    for piece in pieces:
+        allowed = piece.get("captures")
+        if allowed is None:
+            matrix.append((True,) * n_types)
+        else:
+            permitted = {index_of[pid] for pid in allowed if pid in index_of}
+            matrix.append(tuple(victim in permitted for victim in range(n_types)))
+    return tuple(matrix)
+
+
+def _apply_npc_immunity(
+    matrix: tuple[tuple[bool, ...], ...],
+    rules: dict[str, Any],
+    piece_ids: tuple[str, ...],
+    index_of: dict[str, int],
+) -> tuple[tuple[bool, ...], ...]:
+    """Schema 10: take a wild type out of the capture matrix for everyone not named.
+
+    **The whole of Q78 in the engine, and it is one loop over a table that already
+    exists.** ``npcs[].immune`` is a different *spelling* of the schema-3 capture matrix,
+    not a second mechanism: the three capture tests in ``generate_pseudo_legal`` and
+    ``may_capture`` behind ``attacks_square_as`` read this matrix and are untouched, so
+    the core needs to know nothing about it. *Only a knight may take a wolf* costs
+    ``archive/wolves.json`` five six-element ``captures`` lists and this one key, and
+    `tests/test_schema_ten.py` asserts the two compile to byte-identical tables.
+
+    Which attackers lose the permission is ``schema.npc_immune_attackers``' answer, not a
+    second reading of the key here -- the same sharing ``npc_routes`` gets, and for the
+    same reason.
+
+    Absent ``immune`` clears nothing, so this returns the matrix it was handed for every
+    ruleset written before schema 10.
+    """
+    npcs = rules.get("npcs")
+    if not isinstance(npcs, list):
+        return matrix
+    cleared: dict[int, set[int]] = {}
+    for npc in npcs:
+        if not isinstance(npc, dict) or npc.get("piece") not in index_of:
+            continue
+        victim = index_of[npc["piece"]]
+        for pid in npc_immune_attackers(rules, piece_ids, npc):
+            cleared.setdefault(index_of[pid], set()).add(victim)
+    if not cleared:
+        return matrix
+    return tuple(
+        tuple(
+            allowed and victim not in cleared.get(attacker, ())
+            for victim, allowed in enumerate(row)
+        )
+        for attacker, row in enumerate(matrix)
+    )
+
+
+def _build_initial_position(
+    spec: dict[str, Any],
+    index_of: dict[str, int],
+    width: int,
+    height: int,
+    n_types: int,
+    n_facings: int = 1,
+    facing_initial: tuple[int, ...] = (),
+    npcs: NpcRule | None = None,
+) -> tuple[bytes, int]:
+    board = bytearray(width * height)
+    setup = spec["setup"]
+    mirror = setup.get("mirror", True)
+    rotate = setup.get("orientation", "mirror") == "rotate"
+
+    for placement in setup["placements"]:
+        piece_type = index_of[placement["piece"]]
+        player = placement.get("player", 0)
+        # Which way these pieces start pointing: the placement's answer where it gives
+        # one, the piece type's otherwise. Relative to each army's own forward, which is
+        # what makes a mirrored setup mirror the orientations too -- the facing index
+        # rotates the vectors, and those are already written from one player's view.
+        facing = facing_initial[piece_type] if facing_initial else 0
+        if "facing" in placement and n_facings > 1:
+            facing = FACING_NAMES.index(placement["facing"]) // (4 // n_facings)
+        for square_name in placement["squares"]:
+            coords = parse_square(square_name, width, height)
+            assert coords is not None  # guaranteed by validation
+            file, rank = coords
+            board[rank * width + file] = (
+                (player * n_facings + facing) * n_types + piece_type + 1
+            )
+            if mirror:
+                mirrored_rank = height - 1 - rank
+                mirrored_file = width - 1 - file if rotate else file
+                board[mirrored_rank * width + mirrored_file] = (
+                    ((1 - player) * n_facings + facing) * n_types + piece_type + 1
+                )
+
+    unmoved = 0
+    for square, value in enumerate(board):
+        if value:
+            unmoved |= 1 << square
+    # Wild pieces last, *after* the unmoved mask is taken: a wild square carries no bit,
+    # because the bit is a castling right and a first-move permission and a wild piece
+    # has neither. Placing them earlier would set a bit that the phase then clears on
+    # its first step, and `rights_changed` would call every opening ply irreversible.
+    if npcs is not None:
+        for square, piece_type in npcs.starts:
+            board[square] = (WILD * n_facings) * n_types + piece_type + 1
+    return bytes(board), unmoved
+
+
+def _royalty_can_multiply(
+    royal_types: tuple[int, ...],
+    board: bytes,
+    n_types: int,
+    n_facings: int,
+    promotions: tuple[PromotionRule, ...],
+    strike: StrikeRule | None,
+    drops: DropRule | None,
+    demotions: tuple[int, ...],
+    win: str,
+) -> bool:
+    """Whether either player might ever hold two royal pieces at the same time.
+
+    Read off the *compiled* rules, never the spec: ``promotions`` already holds both
+    spellings of ``rules.promotion`` and both of ``to`` / ``to_by_player``, and is what
+    ``promote_on_entry`` draws from; ``strike.onto_to`` has already dropped an immune
+    source, ``effect: capture`` and a chain that keeps nothing alive. An earlier version
+    read the spec a second time, knew the dict form of ``promotion`` only, and compiled a
+    promotion *list* ending on a king and a strike chain ending on a king both ``False``
+    -- a second interpretation of a rule is a second chance to interpret it differently,
+    and the core then guarded one king of two (``docs/game-ideas.md``, row 2).
+
+    A royal enters play after ply zero by exactly these routes:
+
+    * a promotion whose targets include a royal type;
+    * a strike or contact whose victim -- or, since schema 10, whose attacker --
+      becomes a royal type;
+    * a drop from a hand a royal can reach. A captured piece enters the captor's hand as
+      its ``demotions`` entry, so a common piece ``promoted_from`` a royal arrives royal
+      under any ending, and a royal arrives as itself wherever taking one leaves the
+      game running -- which is every ``win`` but ``checkmate``, where a royal cannot be
+      taken, and ``royal_capture``, where taking the only one ends the game.
+
+    Two royals at ply zero -- a second royal type, or two of one type placed -- are read
+    off the board rather than the spec for the same reason.
+    """
+    if not royal_types:
+        return False
+    if len(royal_types) > 1:
+        return True
+
+    royal = royal_types[0]
+    for player in (0, 1):
+        placed = sum(
+            1
+            for value in board
+            if value
+            and (value - 1) // (n_facings * n_types) == player
+            and (value - 1) % n_types == royal
+        )
+        if placed > 1:
+            return True
+
+    if any(royal in targets for rule in promotions for targets in rule.targets):
+        return True
+    # Both columns of the contact table (schema 10): a meeting can make a royal out of
+    # the attacker as easily as out of the piece it meets, and a `strike` fills the
+    # attacker's column with -1 so this is the schema-6 reading unchanged.
+    if strike is not None and any(
+        royal in table
+        for table in (strike.onto_to, strike.mover_to, strike.own_onto_to, strike.own_mover_to)
+    ):
+        return True
+    if drops is not None and drops.from_captures:
+        royal_taken_continues = win not in ("checkmate", "royal_capture")
+        for piece_type, demoted in enumerate(demotions):
+            if demoted == royal and (piece_type != royal or royal_taken_continues):
+                return True
+    return False
+
+
+def _compile_promotions(
+    promotion: Any, index_of: dict[str, int], width: int, height: int, orientation: str
+) -> tuple[PromotionRule, ...]:
+    if not promotion:
+        return ()
+    entries = promotion if isinstance(promotion, list) else [promotion]
+    return tuple(
+        _compile_promotion(entry, index_of, width, height, orientation) for entry in entries
+    )
+
+
+def _compile_promotion(
+    promotion: dict[str, Any],
+    index_of: dict[str, int],
+    width: int,
+    height: int,
+    orientation: str,
+) -> PromotionRule:
+    # The zone and the targets are resolved by `schema.promotion_squares` and
+    # `schema.promotion_targets`, which the validator's `promote_on_entry` coherence
+    # check reads too, so the two cannot disagree about where a zone is. The second
+    # player's zone is the first player's reflected, so a spec states the rule once from
+    # one side and the two are guaranteed to stay each other's mirror.
+    first, second = promotion_squares(promotion, width, height, orientation)
+    for_first, for_second = promotion_targets(promotion)
+    return PromotionRule(
+        piece_type=index_of[promotion["piece"]],
+        squares=(first, second),
+        targets=(
+            tuple(index_of[t] for t in for_first),
+            tuple(index_of[t] for t in for_second),
+        ),
+        mandatory=bool(promotion.get("mandatory", True)),
+        on_leaving=promotion.get("on_leaving", False) is True,
+    )
+
+
+def _settle_on_leaving(
+    promotions: tuple[PromotionRule, ...],
+    leaps: Any,
+    slides: Any,
+    hops: Any,
+    sweeps: Any,
+    facing_axes: tuple[int, ...],
+    n_facings: int,
+) -> tuple[PromotionRule, ...]:
+    """Schema 15's flag, kept only where it can fire.
+
+    ``on_leaving`` adds a promotion to a move from a square of the zone to a square
+    outside it, so a piece with no such move has nothing for it to add: a chess pawn's
+    zone is the far rank, where it has no move at all. There the flag is dropped, and the
+    spec compiles to the game it spells, table for table -- the ``{"effect": "capture"}``
+    rule one key over. Everything downstream reads this answer, never the JSON: the
+    boundary (`bridge.build_tables`), the one-way graph and Fairy-Stockfish's refusal.
+    """
+    if not any(rule.on_leaving for rule in promotions):
+        return promotions
+    return tuple(
+        rule
+        if not rule.on_leaving
+        or _leaves_its_zone(rule, leaps, slides, hops, sweeps, facing_axes, n_facings)
+        else replace(rule, on_leaving=False)
+        for rule in promotions
+    )
+
+
+def _leaves_its_zone(
+    rule: PromotionRule,
+    leaps: Any,
+    slides: Any,
+    hops: Any,
+    sweeps: Any,
+    facing_axes: tuple[int, ...],
+    n_facings: int,
+) -> bool:
+    """Whether the rule's piece has a move from a square of its zone to one outside it.
+
+    Asked of the compiled tables, for either player and any facing the piece can hold.
+    `pieces_that_can_leave_their_zone` asks the same of `_compile_square` directly.
+    """
+    piece = rule.piece_type
+    return any(
+        _moves_out_of(
+            (
+                leaps[frame][piece][origin],
+                slides[frame][piece][origin],
+                hops[frame][piece][origin],
+                sweeps[frame][piece][origin],
+            ),
+            rule.squares[player],
+        )
+        for player, frame in _frames_of(piece, facing_axes, n_facings)
+        for origin in rule.squares[player]
+    )
+
+
+def _frames_of(
+    piece_type: int, facing_axes: tuple[int, ...], n_facings: int
+) -> list[tuple[int, int]]:
+    """Every ``(player, frame)`` this type can stand in: both players, its own facings."""
+    axes = facing_axes[piece_type]
+    return [
+        (player, frame_index(player, turn * (n_facings // axes), n_facings))
+        for player in (0, 1)
+        for turn in range(axes)
+    ]
+
+
+def _moves_out_of(built: tuple[Any, ...], zone: frozenset[int]) -> bool:
+    """Whether one square's four entry lists reach any square outside ``zone``.
+
+    Over-approximate in the direction that keeps a flag: a ray square counts whether or
+    not its mode lets the piece stop there, and a hop's whole ray counts though it needs a
+    screen -- `_one_way_types`' two readings, and for the same reason. A kept flag that
+    never fires costs nothing but a line in the tables; a dropped one that could would
+    be a different game.
+    """
+    return any(target not in zone for table in built for entry in table for target in entry[0])
+
+
+def pieces_that_can_leave_their_zone(spec: dict[str, Any]) -> frozenset[str]:
+    """The promoting pieces of a valid spec with a move from their zone to outside it.
+
+    Where schema 15's ``on_leaving`` can fire, whether or not the spec says it: the
+    question `_settle_on_leaving` asks of the compiled tables, asked here of
+    `_compile_square` for the zone squares alone, so a caller choosing where to put the
+    flag (`loop.operators._promote_on_leaving`) does not pay for a whole compile.
+    """
+    rules = spec.get("rules", {})
+    board = spec["board"]
+    width, height = board["width"], board["height"]
+    pieces = spec["pieces"]
+    index_of = {piece["id"]: i for i, piece in enumerate(pieces)}
+    orientation = spec.get("setup", {}).get("orientation", "mirror")
+    shape = board.get("shape", "grid")
+    radius = _hexagon_radius(board)
+    wrap = _compile_wrap(rules.get("wrap"), shape)
+    obstacles = _obstacles_with_absent(rules, board, width, height, orientation)
+    blocks_leaps = bool((rules.get("obstacles") or {}).get("blocks_leaps", False))
+    facing_axes = tuple(int((piece.get("facing") or {}).get("axes", 1)) for piece in pieces)
+    n_facings = max(facing_axes)
+    leaving: set[str] = set()
+    for rule in _compile_promotions(
+        rules.get("promotion"), index_of, width, height, orientation
+    ):
+        piece = pieces[rule.piece_type]
+        if any(
+            _moves_out_of(
+                _compile_square(
+                    piece, player, origin, width, height, orientation, wrap, obstacles,
+                    blocks_leaps, facing_quarter_turns(frame % n_facings, n_facings),
+                    radius,
+                ),
+                rule.squares[player],
+            )
+            for player, frame in _frames_of(rule.piece_type, facing_axes, n_facings)
+            for origin in rule.squares[player]
+        ):
+            leaving.add(piece["id"])
+    return frozenset(leaving)
+
+
+def _compile_entry_promotion(
+    wanted: bool,
+    promotions: tuple[PromotionRule, ...],
+    n_types: int,
+    width: int,
+    height: int,
+) -> EntryPromotionRule | None:
+    """Resolve ``promote_on_entry`` into ``becomes[player][type][square]``.
+
+    ``None`` when the flag is off, which is every game before schema 9 and is what keeps
+    every earlier ruleset's tables byte-identical -- the boundary carries nothing for a
+    rule that is not there. With the flag on, every square of every promoting type's
+    zone holds the *first* target that type's rule lists for that player, and every
+    other cell holds ``-1``. The validator has already refused a flag no piece could
+    ever reach, so a rule that compiles is a rule that can fire.
+    """
+    if not wanted:
+        return None
+    n_squares = width * height
+    becomes = [[[-1] * n_squares for _ in range(n_types)] for _ in (0, 1)]
+    for rule in promotions:
+        for player in (0, 1):
+            targets = rule.targets[player]
+            if not targets:
+                continue
+            row = becomes[player][rule.piece_type]
+            for square in rule.squares[player]:
+                row[square] = targets[0]
+    return EntryPromotionRule(
+        becomes=tuple(tuple(tuple(row) for row in per_type) for per_type in becomes)
+    )
+
+
+def _compile_castling(
+    castling: dict[str, Any] | None, index_of: dict[str, int], width: int
+) -> CastlingRule | None:
+    if not castling:
+        return None
+
+    king_files = rook_files = None
+    if "king_file" in castling:
+        files = castling["king_file"]
+        king_files = (
+            _file_index(files["queenside"]),
+            _file_index(files["kingside"]),
+        )
+        if "rook_file" in castling:
+            rooks = castling["rook_file"]
+            rook_files = (_file_index(rooks["queenside"]), _file_index(rooks["kingside"]))
+        else:
+            # Chess's own convention: the rook lands on the square the king crossed.
+            rook_files = (king_files[0] + 1, king_files[1] - 1)
+
+    return CastlingRule(
+        king_type=index_of[castling["king"]],
+        rook_type=index_of[castling["rook"]],
+        king_steps=castling.get("king_steps", 2),
+        king_files=king_files,
+        rook_files=rook_files,
+    )
+
+
+def _file_index(name: str) -> int:
+    return ord(name.lower()) - ord("a")
+
+
+def _compile_reach(
+    reach: dict[str, Any] | None, index_of: dict[str, int], width: int, height: int
+) -> ReachRule | None:
+    if not reach:
+        return None
+    reflection = reach_reflection(reach)
+    squares = set()
+    second = set()
+    for name in reach["squares"]:
+        coords = parse_square(name, width, height)
+        assert coords is not None  # guaranteed by validation
+        file, rank = coords
+        squares.add(rank * width + file)
+        if reflection is not None:
+            file, rank = reflect_square(file, rank, width, height, reflection)
+        second.add(rank * width + file)
+
+    piece = reach.get("piece")
+    return ReachRule(
+        piece_type=index_of[piece] if piece is not None else -1,
+        squares=(frozenset(squares), frozenset(second)),
+        result=reach.get("result", "win"),
+        safe=bool(reach.get("safe", False)),
+    )
+
+
+# What ``goal_distance`` holds for a square a piece can never get to. One more than any
+# real distance can be, so "unreachable" compares as worse than the worst reachable
+# square without being a special case at every read.
+UNREACHABLE = 255
+
+
+def _goal_distances(
+    reach: ReachRule | None,
+    leaps: Any,
+    slides: Any,
+    n_types: int,
+    n_squares: int,
+    n_facings: int = 1,
+    sweeps: Any = None,
+    royal_types: tuple[int, ...] = (),
+) -> dict[str, Any]:
+    """How many moves each piece needs, from each square, to reach a winning square.
+
+    A breadth-first search over the compiled tables on an otherwise empty board, run
+    *backwards* from the goal squares. Backwards because movement is not symmetric --
+    a pawn cannot retreat, and a forward-only piece's distance *to* a rank is not its
+    distance *from* it -- so the edges have to be reversed before they are walked.
+
+    Bounded work: ``2 x n_types x n_squares`` entries, one BFS per (player, piece type),
+    once per ruleset at compile time. Nothing about it depends on a position, which is
+    why it belongs here beside the attack sources rather than beside the piece values:
+    it is a fact about the rules, not an agent's opinion.
+
+    Two honest limitations, both stated rather than papered over. **Hops contribute no
+    edges**, because a hop needs a screen and the board this walks is empty -- so a
+    cannon's distance is measured by its ordinary moves, which is what it has when
+    nothing is in the way. And **only quiet moves count**: a piece that can reach a
+    square by capture and not otherwise cannot reach it here, which is right for a board
+    with nothing on it and wrong for the game, and the search is what closes that gap.
+
+    A third arrived with facing: **a piece that can turn is measured as though turning
+    were free.** Every frame's edges are unioned, so the answer is the distance the piece
+    would have if orientation cost nothing -- an under-estimate by however many turns the
+    journey needs. The alternative is a distance per (square, facing), which the boundary
+    would have to carry and the evaluator index, for a term that is a heuristic already
+    and is read only by a ruleset combining `reach` with a facing.
+    """
+    if reach is None:
+        return {"goal_distance": (), "goal_diameter": 1, "goal_distance_each": ()}
+
+    # Q708 (F1): the same search from each goal square alone, for a race the evaluator
+    # prices (`evaluation._reach_is_priceable`'s two exclusions, restated: no `safe`, no
+    # royal racer) where a side has more than one goal square. The evaluator then reads
+    # the distance to the nearest goal a side can still use, when the others are held by
+    # a piece it can never capture. With one goal square a side's goals are all held or
+    # none, and the union table above already answers both, so nothing is sent.
+    goals = [sorted(square for square in reach.squares[player] if square < n_squares)
+             for player in (0, 1)]
+    priced = not reach.safe and (reach.piece_type < 0 or reach.piece_type not in royal_types)
+    each_wanted = priced and max(len(goals[0]), len(goals[1])) > 1
+    each: list[tuple[tuple[tuple[int, ...], ...], ...]] = []
+
+    # Reverse adjacency, per (player, piece type): who can move *into* this square.
+    distances: list[tuple[tuple[int, ...], ...]] = []
+    diameter = 1
+    for player in (0, 1):
+        per_type: list[tuple[int, ...]] = []
+        per_goal: list[list[tuple[int, ...]]] = [[] for _ in goals[player]]
+        for piece_type in range(n_types):
+            into: list[list[int]] = [[] for _ in range(n_squares)]
+            for facing in range(n_facings):
+                frame = player * n_facings + facing
+                for origin in range(n_squares):
+                    # A sweep reaches every ray square whatever stands on it, and an
+                    # empty board is all this walks (schema 13).
+                    swept = (sweeps[frame][piece_type][origin],) if sweeps else ()
+                    for entries in (leaps[frame][piece_type][origin],
+                                    slides[frame][piece_type][origin], *swept):
+                        for targets, modes, *_ in entries:
+                            for index, target in enumerate(targets):
+                                if modes[index] & MODE_MOVE:
+                                    into[target].append(origin)
+
+            distance = _walk_back(into, goals[player], n_squares)
+            finite = [d for d in distance if d != UNREACHABLE]
+            if finite:
+                diameter = max(diameter, max(finite))
+            per_type.append(tuple(distance))
+            if each_wanted:
+                for index, goal in enumerate(goals[player]):
+                    per_goal[index].append(tuple(_walk_back(into, [goal], n_squares)))
+        distances.append(tuple(per_type))
+        each.append(tuple(tuple(table) for table in per_goal))
+    return {
+        "goal_distance": tuple(distances),
+        "goal_diameter": diameter,
+        "goal_distance_each": tuple(each) if each_wanted else (),
+    }
+
+
+def _walk_back(into: list[list[int]], sources: list[int], n_squares: int) -> list[int]:
+    """Moves to the nearest of ``sources``, from every square: a breadth-first search over
+    ``into``, the reversed move edges ``_goal_distances`` built."""
+    distance = [UNREACHABLE] * n_squares
+    frontier = list(sources)
+    for square in frontier:
+        distance[square] = 0
+    while frontier:
+        nxt: list[int] = []
+        for square in frontier:
+            step = distance[square] + 1
+            for origin in into[square]:
+                if distance[origin] > step:
+                    distance[origin] = step
+                    nxt.append(origin)
+        frontier = nxt
+    return distance
+
+
+def _one_way_types(
+    leaps: Any,
+    slides: Any,
+    hops: Any,
+    facing_axes: tuple[int, ...],
+    promotions: tuple[PromotionRule, ...],
+    n_types: int,
+    n_squares: int,
+    n_facings: int,
+    width: int,
+    sweeps: Any = None,
+) -> frozenset[int]:
+    """Which piece types can never return to a square they left (Q113).
+
+    **A piece is one-way when its own move graph is acyclic.** Nodes are
+    ``(facing, square)``; edges are every square the compiled tables let it reach from
+    each node -- quiet, capturing and hopping alike -- plus every rotation it may make,
+    minus the moves that promote it into something else. If no path leads back to a node,
+    no move of that piece can be taken back, and that is what makes the move *progress*.
+    Both of ``game.rs``'s tests for progress read this flag -- it clears the repetition
+    window and it resets the no-progress clock.
+
+    **This replaces two rules that were hiding in code.** The window used to ask
+    ``piece_type == ep_type`` and ``ep_type`` is set only when ``en_passant`` is declared
+    (Q113); the clock used to ask ``is_promoting(piece_type)``, so declaring a
+    ``promotion`` rule made a piece's every move count, including a rotation (Q135). Both
+    spell out *a pawn move is progress*, a fact about chess, and `CLAUDE.md`'s fifth rule
+    says the engine may not hold one.
+    ``docs/reference/derived-irreversibility.md`` is the costing and the corpus table.
+
+    Four readings are the graph's rather than this function's, which is the point of
+    answering it here where the geometry already is:
+
+    * **A facing makes a piece reversible.** The core generates a rotation to *any* other
+      orientation in one move, so two rotations at one square are a two-cycle. The
+      decision's "no ``facing``" is a consequence, not a clause.
+    * **A seam is answered exactly.** A rank seam under a forward-only piece is a cycle;
+      a file seam under the same piece is not. Nothing here knows what a seam is --
+      ``_compile_square`` already put it in the table.
+    * **A promoting move is a sink, not an edge.** It is ``MOVE_PROMOTION``, irreversible
+      by kind already, and it ends the piece. Only a *mandatory* promotion whose targets
+      exclude the piece itself is removed; a declinable one leaves a ``MOVE_NORMAL``
+      behind and keeps its edge. The **node** stays: a piece can be dropped or struck onto
+      a promotion square and stand there, and from there it may move on -- which on a
+      torus is the difference between a right answer and a lucky one. Schema 15's
+      ``on_leaving`` makes a mandatory rule's moves *out of* the zone promote too, and
+      the graph needs no word for it: a sink has no incoming move edge, so no cycle of
+      moves passes through one, and taking its outgoing edges away as well would change
+      no answer.
+    * **A piece with no move is not one-way, it is still.** Vacuous acyclicity is not a
+      claim worth making and the flag would never be read.
+
+    Deliberately over-approximate in two places, both of which can only *lose* a claim
+    and never make a false one: a hop contributes its whole ray though it needs a screen
+    to travel it, and a ray square contributes an edge whether or not its mode lets the
+    piece stop there. Answered for both players and granted only if both agree, so one
+    army's seam cannot hand the other a claim it has not got.
+
+    Bounded work: one depth-first search per ``(player, piece type)`` over
+    ``n_facings x n_squares`` nodes, once per ruleset -- the same shape and bound as
+    ``_goal_distances``, which walks the same tables.
+    """
+    one_way: set[int] = set()
+    for piece_type in range(n_types):
+        axes = facing_axes[piece_type]
+        facings = [turn * (n_facings // axes) for turn in range(axes)]
+        # Squares this type cannot arrive on and still be this type.
+        sinks: list[frozenset[int]] = []
+        for player in (0, 1):
+            sinks.append(
+                frozenset(
+                    square
+                    for rule in promotions
+                    if rule.piece_type == piece_type
+                    and rule.mandatory
+                    and piece_type not in rule.targets[player]
+                    for square in rule.squares[player]
+                )
+            )
+        if all(
+            _acyclic(
+                leaps, slides, hops, piece_type, player, facings,
+                n_squares, n_facings, sinks[player], sweeps,
+            )
+            for player in (0, 1)
+        ):
+            one_way.add(piece_type)
+    return frozenset(one_way)
+
+
+def _acyclic(
+    leaps: Any,
+    slides: Any,
+    hops: Any,
+    piece_type: int,
+    player: int,
+    facings: list[int],
+    n_squares: int,
+    n_facings: int,
+    sinks: frozenset[int],
+    sweeps: Any = None,
+) -> bool:
+    """Whether one piece's move graph for one player holds no cycle, and any move at all.
+
+    Iterative three-colour depth-first search: grey is on the current path, so an edge
+    into grey is a cycle. Iterative rather than recursive because a slide's ray on a large
+    board makes the graph deeper than the interpreter's stack is willing to go.
+    """
+    adjacency: list[list[int]] = [[] for _ in range(len(facings) * n_squares)]
+    moves = 0
+    for slot, facing in enumerate(facings):
+        frame = frame_index(player, facing, n_facings)
+        for origin in range(n_squares):
+            node = slot * n_squares + origin
+            # A sweeper's rays are edges of its move graph too (schema 13).
+            swept = (sweeps[frame][piece_type][origin],) if sweeps else ()
+            for table in (
+                leaps[frame][piece_type][origin],
+                slides[frame][piece_type][origin],
+                hops[frame][piece_type][origin],
+                *swept,
+            ):
+                for entry in table:
+                    for target in entry[0]:
+                        moves += 1
+                        if target not in sinks:
+                            adjacency[node].append(slot * n_squares + target)
+            for other in range(len(facings)):
+                if other != slot:
+                    adjacency[node].append(other * n_squares + origin)
+    if not moves:
+        return False
+
+    WHITE, GREY, BLACK = 0, 1, 2
+    colour = [WHITE] * len(adjacency)
+    for start in range(len(adjacency)):
+        if colour[start] != WHITE:
+            continue
+        colour[start] = GREY
+        stack = [(start, iter(adjacency[start]))]
+        while stack:
+            node, remaining = stack[-1]
+            for nxt in remaining:
+                if colour[nxt] == GREY:
+                    return False
+                if colour[nxt] == WHITE:
+                    colour[nxt] = GREY
+                    stack.append((nxt, iter(adjacency[nxt])))
+                    break
+            else:
+                colour[node] = BLACK
+                stack.pop()
+    return True
+
+
+def _compile_repetition_draw(value: Any) -> int:
+    """The repetition threshold, with schema 10's ``"never"`` resolved to a number.
+
+    **This is the whole of Q38 in the engine, and it is deliberately not a branch in the
+    core.** ``game.rs`` tests ``repetition_count() >= t.repetition_draw`` against a
+    ``u32``, and a repetition count is bounded by the length of the game -- so a threshold
+    above every reachable count is a rule that can never fire, with no second test on the
+    hot path and no new boundary field. Schema 6's rule, in one line: the boundary carries
+    the answer, not the question.
+
+    ``NO_REPETITION_DRAW`` is ``u32::MAX``, which is unreachable by construction rather
+    than by argument about ``max_plies``: nothing in the core adds to this value, it is
+    only ever compared against, and a count that large cannot be stored in the history it
+    is counted from.
+    """
+    return NO_REPETITION_DRAW if value == REPETITION_NEVER else int(value)
+
+
+def _explosion_selection(
+    explosion: dict[str, Any], key: str, index_of: dict[str, int]
+) -> frozenset[int] | None:
+    """One of schema 10's ``by`` / ``of`` lists, resolved to types.
+
+    Three answers, and the two degenerate ones are why this is not a set comprehension:
+
+    * ``None`` -- the key is absent, or names every declared type. Both are "any", so a
+      spelled-out full list is an inert *spelling* and compiles to the game that was
+      already there, the way ``{"effect": "capture"}`` does. This is also what keeps the
+      boundary field at its inert default for every pre-schema-10 ruleset.
+    * the **empty set** -- the key is present and names nobody. There is then no capture
+      that can fire the rule, so the caller drops the whole explosion.
+    * a non-empty set -- the types that do fire it.
+    """
+    listed = explosion.get(key)
+    if not isinstance(listed, list):
+        return None
+    types = frozenset(index_of[pid] for pid in listed if pid in index_of)
+    if not types:
+        return types
+    return None if len(types) == len(index_of) else types
+
+
+def _compile_explosion(
+    explosion: dict[str, Any] | None,
+    index_of: dict[str, int],
+    width: int,
+    height: int,
+    wrap: WrapRule | None = None,
+    obstacles: frozenset[int] = frozenset(),
+    hex_radius: int = 0,
+) -> ExplosionRule | None:
+    if not explosion:
+        return None
+    by = _explosion_selection(explosion, "by", index_of)
+    of = _explosion_selection(explosion, "of", index_of)
+    if by == frozenset() or of == frozenset():
+        # Schema 10 (Q18). `by: []` is a rule no capture can fire, so it *is* the game
+        # that was already there written the long way -- the shape `_compile_strike` has
+        # for a chain that leaves nothing alive. Dropping it here is what lets the core
+        # keep one test rather than two, and what `complexity._RULE_ACTIVE` agrees with
+        # so the declaration is not charged 1.5 for nothing (Q56's ruling,
+        # docs/reference/bugs-investigations.md, "Ruled on in advance, for Q86").
+        return None
+    blast_radius = explosion.get("radius", 1)
+    # A blast reads the board's shape, not a player's permission: the two file edges are
+    # one seam whoever may cross it, so a capture beside the join takes what is on the
+    # other side of it. With no seam these are both false and ``_wrap_axis`` (or, on a
+    # hexagon, the six-copy search with every side closed) is the bounds test it
+    # replaces. ``hex_radius`` is a hexagon's R (Q281a2, unreachable until the gate).
+    join_files = bool(wrap and wrap.files_join)
+    join_ranks = bool(wrap and wrap.ranks_join)
+    seam_open = wrap.seam_open if wrap else (lambda _side: False)
+    blast = []
+    for square in range(width * height):
+        file, rank = square % width, square // width
+        neighbours = []
+        for dx in range(-blast_radius, blast_radius + 1):
+            for dy in range(-blast_radius, blast_radius + 1):
+                if dx == 0 and dy == 0:
+                    continue
+                nf, nr = file + dx, rank + dy
+                neighbour = _land(
+                    nf, nr, width, height, join_files, join_files, join_ranks, join_ranks,
+                    hex_radius, seam_open,
+                )
+                # A blast clears squares, and a wall is not a square that can be
+                # cleared: nothing is ever standing on one, so listing it would be a
+                # per-capture read of a square that is always empty.
+                if (
+                    neighbour is not None
+                    and neighbour != square
+                    and neighbour not in obstacles
+                    and neighbour not in neighbours
+                ):
+                    neighbours.append(neighbour)
+        blast.append(tuple(neighbours))
+    return ExplosionRule(
+        immune_types=frozenset(index_of[p] for p in explosion.get("immune", [])),
+        blast=tuple(blast),
+        by_types=by,
+        of_types=of,
+    )
+
+
+def _compile_landing(
+    landing: dict[str, Any],
+    n_squares: int,
+    width: int,
+    height: int,
+    orientation: str,
+    wrap: WrapRule | None,
+    obstacles: frozenset[int],
+    radius: int = 0,
+) -> tuple[tuple[tuple[int, ...], ...], ...]:
+    """Resolve ``landing`` into ``[player][square] -> candidate squares`` (schema 12, Q20).
+
+    Each vector is resolved as a leap from the struck piece's square, by
+    ``_compile_square`` itself, so the mover's frame, a seam and a wall mean here what
+    they mean for a move. The square itself is never a candidate. Ascending order is the
+    order the core fans a capture out in, and a stored landing index names an entry here.
+    """
+    thrower = {
+        "moves": [
+            {
+                "kind": "leap",
+                "vectors": landing["vectors"],
+                "symmetry": landing.get("symmetry", "none"),
+            }
+        ]
+    }
+    table = []
+    for player in (0, 1):
+        per_square = []
+        for square in range(n_squares):
+            leaps, *_ = _compile_square(
+                thrower, player, square, width, height, orientation, wrap, obstacles,
+                radius=radius,
+            )
+            per_square.append(tuple(sorted({t for squares, _, _ in leaps for t in squares})))
+        table.append(tuple(per_square))
+    return tuple(table)
+
+
+def _compile_strike(
+    strike: dict[str, Any] | None,
+    index_of: dict[str, int],
+    n_types: int,
+    landing: tuple[tuple[tuple[int, ...], ...], ...] = (),
+) -> StrikeRule | None:
+    """Resolve the strike chain into one target type per victim type.
+
+    ``{"effect": "capture"}`` compiles to ``None`` -- the game that was already there --
+    which is what makes the rule inert when it is spelled but not used, the way
+    ``turn`` and ``wrap`` are. A chain that leaves nothing alive compiles to ``None``
+    too, for the same reason: it *is* plain capture, written the long way.
+    """
+    if not strike:
+        return None
+    effect = strike.get("effect", "capture")
+    if effect == "capture":
+        return None
+
+    immune = frozenset(index_of[p] for p in strike.get("immune", []) if p in index_of)
+    strike_to = [-1] * n_types
+    for link in strike.get("chain") or []:
+        source, target = link["from"], link["to"]
+        victim = index_of[source]
+        if victim in immune:
+            continue  # a strike never reaches it; this is a plain capture
+        strike_to[victim] = index_of[target]
+
+    # The victim column, said the general way: every attacker meets the same table,
+    # which is precisely what "keyed by the victim alone" means. `compact_to` reads it
+    # straight back out, so the boundary still sends one array of `n_types`.
+    rule = StrikeRule(
+        effect=effect,
+        position=strike.get("position", "advance"),
+        immune_types=immune,
+        n_types=n_types,
+        onto_to=tuple(strike_to) * n_types,
+        mover_to=(-1,) * (n_types * n_types),
+        spelling="strike",
+        landing=landing,
+    )
+    return rule if rule.survives_anything else None
+
+
+def _compile_contacts(
+    contacts: dict[str, Any] | None,
+    index_of: dict[str, int],
+    n_types: int,
+    landing: tuple[tuple[tuple[int, ...], ...], ...] = (),
+) -> StrikeRule | None:
+    """Resolve the contact table into the two ``n_types x n_types`` arrays (schema 10).
+
+    The same three drops ``_compile_strike`` makes, for the same reason: a table with no
+    link, a table whose every target is immune, and a table that changes neither piece
+    are all plain capture written the long way, and the boundary carries the answer
+    rather than the question. Q56 ruled on the empty-list reading before the key existed
+    (``docs/reference/bugs-investigations.md``, "Ruled on in advance, for Q86") -- an empty table is no rule, so ``complexity._RULE_ACTIVE`` agrees with
+    the compiler and the declaration is not charged for nothing.
+    """
+    if not contacts:
+        return None
+    immune = frozenset(index_of[p] for p in contacts.get("immune", []) if p in index_of)
+    links = contacts.get("links") or []
+    onto_to = [-1] * (n_types * n_types)
+    mover_to = [-1] * (n_types * n_types)
+    # Schema 11: a link with `own` fills a second pair of tables. They stay empty unless
+    # some link uses it, so every earlier table compiles to what it did.
+    meets_own = any(link.get("own") is True for link in links)
+    own_onto_to = [-1] * (n_types * n_types) if meets_own else []
+    own_mover_to = [-1] * (n_types * n_types) if meets_own else []
+    for link in links:
+        mover, onto = index_of[link["mover"]], index_of[link["onto"]]
+        own = link.get("own") is True
+        if onto in immune and not own:
+            continue  # a contact never reaches it; this is a plain capture
+        cell = mover * n_types + onto
+        into, mover_into = (own_onto_to, own_mover_to) if own else (onto_to, mover_to)
+        if "onto_to" in link:
+            into[cell] = index_of[link["onto_to"]]
+        if "mover_to" in link:
+            mover_into[cell] = index_of[link["mover_to"]]
+
+    rule = StrikeRule(
+        effect="contact",
+        position=contacts.get("position", "advance"),
+        immune_types=immune,
+        n_types=n_types,
+        onto_to=tuple(onto_to),
+        mover_to=tuple(mover_to),
+        spelling="contacts",
+        own_onto_to=tuple(own_onto_to),
+        own_mover_to=tuple(own_mover_to),
+        landing=landing,
+    )
+    return rule if rule.survives_anything or rule.changes_mover else None
+
+
+def _compile_npcs(
+    rules: dict[str, Any],
+    pieces: list[dict[str, Any]],
+    index_of: dict[str, int],
+    width: int,
+    height: int,
+    orientation: str,
+) -> NpcRule | None:
+    """Resolve every wild piece's route into the three per-square tables.
+
+    ``None`` when the spec declares no wild piece, which is every game before schema 9.
+    The routes come from ``schema.npc_routes`` -- the same resolver the validator used
+    to refuse overlaps and walls -- so a route means one thing to both. A mirrored entry
+    is a second wild piece walking the reflected squares in the same order, and it
+    carries its original's type and bounty.
+
+    The bounty defaults to the type's declared ``value``: what a piece is worth is what
+    taking it pays, unless the designer says otherwise.
+    """
+    npcs = rules.get("npcs")
+    if not isinstance(npcs, list) or not npcs:
+        return None
+    n_squares = width * height
+    nxt = [-1] * n_squares
+    bounty = [0.0] * n_squares
+    piece_of = [-1] * n_squares
+    starts: list[tuple[int, int]] = []
+    for label, squares in npc_routes(rules, width, height, orientation):
+        index = int(label.split("[")[1].split("]")[0])
+        entry = npcs[index]
+        piece_type = index_of[entry["piece"]]
+        stated = entry.get("bounty")
+        worth = float(stated if stated is not None else pieces[piece_type].get("value", 1))
+        for position, square in enumerate(squares):
+            nxt[square] = squares[(position + 1) % len(squares)]
+            bounty[square] = worth
+            piece_of[square] = piece_type
+        starts.append((squares[0], piece_type))
+    return NpcRule(
+        next=tuple(nxt), bounty=tuple(bounty), piece=tuple(piece_of), starts=tuple(starts)
+    )
+
+
+def _compile_drops(
+    drops: dict[str, Any] | None,
+    index_of: dict[str, int],
+    n_types: int,
+    width: int,
+    height: int,
+    orientation: str,
+    obstacles: frozenset[int] = frozenset(),
+) -> DropRule | None:
+    """Where each piece may be dropped, with the walls already taken out.
+
+    **A drop is the one move that reaches a square without travelling to it**, so none of
+    what `_compile_square` does for a ray or a leap applies to it: the core picks the
+    empty squares, and a wall is empty. Dissolving the obstacle here rather than sending
+    it across the boundary is the same answer the rest of the rule gets -- by the time
+    anything crosses, the walls are gone. A piece with no region of its own gets one when
+    there are walls, because "anywhere" has to stop meaning "including on a wall".
+
+    Found by `chess_variant_sandbox/fuzz.py`, which is the fourth instance of the root cause item 1
+    enumerates: code that works a square out for itself is blind to what the compiler
+    dissolved. `generate_drops` was on that list as *correct today*, and the entry was
+    about its `no_doubled` file bucketing -- which is still correct. This is a different
+    blindness in the same function.
+    """
+    if not drops:
+        return None
+    region = drops.get("region") or {}
+    every_square = frozenset(range(width * height))
+    per_player = []
+    for player in (0, 1):
+        row: list[frozenset[int] | None] = [None] * n_types
+        for piece, squares in region.items():
+            row[index_of[piece]] = _region_squares(
+                squares, player, width, height, orientation
+            )
+        if obstacles:
+            for piece_type in range(n_types):
+                allowed = row[piece_type]
+                row[piece_type] = (
+                    every_square if allowed is None else allowed
+                ) - obstacles
+        per_player.append(tuple(row))
+    stated = drops.get("stock") or {}
+    stock = [0] * n_types
+    unlimited = [False] * n_types
+    for piece, held in stated.items():
+        if piece not in index_of:
+            continue
+        if held == STOCK_UNLIMITED:
+            stock[index_of[piece]] = 1
+            unlimited[index_of[piece]] = True
+        else:
+            stock[index_of[piece]] = int(held)
+    return DropRule(
+        from_captures=bool(drops.get("from_captures", True)),
+        regions=(per_player[0], per_player[1]),
+        no_doubled=frozenset(index_of[p] for p in drops.get("no_doubled", [])),
+        no_mate=frozenset(index_of[p] for p in drops.get("no_mate", [])),
+        # Empty rather than a run of zeros when nothing is stocked, so the boundary
+        # fields sit at their inert defaults and no committed ruleset's tables move.
+        stock=tuple(stock) if any(stock) else (),
+        unlimited=tuple(unlimited) if any(unlimited) else (),
+    )
+
+
+def _compile_extinction(
+    extinction: dict[str, Any] | None, index_of: dict[str, int]
+) -> ExtinctionRule | None:
+    if not extinction:
+        return None
+    pieces = extinction["pieces"]
+    any_piece = pieces == "any"
+    return ExtinctionRule(
+        piece_types=() if any_piece else tuple(index_of[p] for p in pieces),
+        any_piece=any_piece,
+        min_count=extinction.get("min_count", 1),
+        result=extinction.get("result", "loss"),
+    )
+
+
+# ----------------------------------------------------------------------- zobrist
+
+
+def _build_zobrist(
+    digest: str,
+    n_squares: int,
+    n_types: int,
+    width: int,
+    n_facings: int = 1,
+    n_owners: int = 2,
+) -> tuple[
+    tuple[tuple[int, ...], ...],
+    int,
+    tuple[int, ...],
+    tuple[tuple[int, ...], ...],
+    tuple[int, ...],
+]:
+    """Seed the Zobrist table from the spec hash.
+
+    Seeding from the ruleset rather than the clock means a position hash is stable
+    across threads, processes and runs, so transposition tables and repetition records
+    from a tournament worker mean the same thing to the analysis that reads them back.
+    """
+    rng = random.Random(int(digest, 16))
+    # One row per board value the encoding can produce, which with facing is
+    # ``n_facings`` times as many. A facing-carrying value gets its own term for
+    # nothing, which is most of the argument for putting the facing in the piece byte:
+    # two positions that differ only in which way a piece is pointing are different
+    # positions, and this is what makes the key say so.
+    #
+    # A third owner (schema 9) is a third block of rows *after* the two armies', so a
+    # ruleset without wild pieces draws exactly the rows it always drew, in the order it
+    # always drew them, and every number after them is where it always was.
+    pieces = tuple(
+        tuple(rng.getrandbits(64) for _ in range(n_squares))
+        for _ in range(n_owners * n_facings * n_types + 1)
+    )
+    side = rng.getrandbits(64)
+    ep = tuple(rng.getrandbits(64) for _ in range(width + 1))
+    # Square colours, for a *repainting* territory rule only. Drawn unconditionally so
+    # that adding a territory rule to a spec does not shift every other random number
+    # after it -- the seed is the spec hash, and a table whose layout depends on which
+    # rules happen to be present would make two similar rulesets incomparable for no
+    # reason. A permanent colouring never reads this: laying a colour down is
+    # irreversible, so it clears the repetition window, so the key never has to tell two
+    # differently-coloured positions apart.
+    colours = tuple(
+        tuple(rng.getrandbits(64) for _ in range(n_squares)) for _ in range(3)
+    )
+    # Moves remaining in the turn, for a ruleset whose turn is longer than one move.
+    # Drawn unconditionally for the same reason the colours are: the seed is the spec
+    # hash, and a table whose layout depended on which rules are present would shift
+    # every number after it.
+    turns = tuple(rng.getrandbits(64) for _ in range(MAX_MOVES_PER_TURN + 1))
+    return pieces, side, ep, colours, turns

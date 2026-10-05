@@ -1,0 +1,169 @@
+{
+  "schema_version": 3,
+  "name": "rps race",
+  "description": "Version 3 of a designed-and-rejected sequence. The cyclic capture relation of version 1 -- rock takes scissors, scissors takes paper, paper takes rock -- on a 9x9 board, with a larger army and a different object: get any one piece to the far rank. Its designer found almost nothing wrong with it except the one thing that matters, calling it 'a ball balanced on an extremely sharp point: if you make one small mistake, you will immediately lose'.",
+  "board": {
+    "width": 9,
+    "height": 9
+  },
+  "pieces": [
+    {
+      "id": "R",
+      "name": "rock",
+      "value": 1,
+      "captures": [
+        "S"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "P",
+      "name": "paper",
+      "value": 1,
+      "captures": [
+        "R"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "S",
+      "name": "scissors",
+      "value": 1,
+      "captures": [
+        "P"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "R",
+        "squares": [
+          "c1",
+          "a2",
+          "d2"
+        ]
+      },
+      {
+        "piece": "P",
+        "squares": [
+          "e1",
+          "e2"
+        ]
+      },
+      {
+        "piece": "S",
+        "squares": [
+          "g1",
+          "i2",
+          "f2"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "annihilation",
+    "reach": {
+      "squares": [
+        "a9",
+        "b9",
+        "c9",
+        "d9",
+        "e9",
+        "f9",
+        "g9",
+        "h9",
+        "i9"
+      ],
+      "mirror": true,
+      "result": "win"
+    },
+    "stalemate": "draw",
+    "max_plies": 300,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "origin": "human",
+    "source": "docs/reference/rps-versions.md, version 3",
+    "history": "Rejected by its designer as catastrophically blunder-prone. Recorded here as a validation probe, never as a band member."
+  },
+  "appearance": {
+    "icons": {
+      "R": "rock",
+      "P": "paper",
+      "S": "scissors"
+    }
+  }
+}

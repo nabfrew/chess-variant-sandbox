@@ -1,0 +1,324 @@
+{
+  "schema_version": 5,
+  "name": "torus chess extended",
+  "description": "Variant of torus chess, with more symmetry. There is a rear guard with pawns that work the same, but move 'backwards', and  a row of the other types, except the king.",
+  "board": {
+    "width": 8,
+    "height": 16
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 5
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "V",
+      "name": "rear pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              -1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              -1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 2
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              -1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a6",
+          "b6",
+          "c6",
+          "d6",
+          "e6",
+          "f6",
+          "g6",
+          "h6"
+        ]
+      },
+      {
+        "piece": "V",
+        "squares": [
+          "a3",
+          "b3",
+          "c3",
+          "d3",
+          "e3",
+          "f3",
+          "g3",
+          "h3"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a5",
+          "h5",
+          "a4",
+          "h4"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b5",
+          "g5",
+          "b4",
+          "g4"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c5",
+          "f5",
+          "c4",
+          "f4"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d5",
+          "e4"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e5"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": [
+      {
+        "piece": "P",
+        "rank": 12,
+        "to": [
+          "Q",
+          "R",
+          "B",
+          "N"
+        ]
+      },
+      {
+        "piece": "V",
+        "rank": 13,
+        "to": [
+          "Q",
+          "R",
+          "B",
+          "N"
+        ]
+      }
+    ],
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "wrap": {
+      "files": "both",
+      "ranks": "both"
+    }
+  },
+  "provenance": {
+    "origin": "generated",
+    "author": "stage 25",
+    "theme": "a board with no corners",
+    "history": "solve the immediate massacre of original torus"
+  },
+  "appearance": {
+    "icons": {
+      "P": "pawn",
+      "V": "inverted-pawn",
+      "N": "knight",
+      "B": "bishop",
+      "R": "rook",
+      "Q": "queen",
+      "K": "king"
+    }
+  }
+}

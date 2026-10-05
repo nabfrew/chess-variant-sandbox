@@ -1,0 +1,194 @@
+{
+  "schema_version": 10,
+  "name": "intransitive",
+  "description": "The end result of webgoatguy's game design process as published on YouTube, 'Turning Rock Paper Scissors into a strategy game'. The rules here are the ones he states in a separate video about the finished game. Two players on a 9x9 board take turns, and on your turn you move one of your pieces one square in any of the eight directions, orthogonally or diagonally. A piece captures by moving onto an enemy piece it beats: a rock takes scissors, a paper takes a rock, and scissors take a paper. The first player to get any one of their pieces into the corner opposite their own wins. There is no stalemate: a player with no legal move, which almost always means one with no pieces left, loses. There is no draw by repetition. If 200 turns in all (100 by each player) go by without a capture, the game is a draw. The video says '100 moves'; the program the designer's official site plays reads that as 100 moves by each side, chess's way of counting, and so does this game. Each side has three rocks, four papers and three scissors, and those counts are the designer's. Their arrangement near each side's own corner is read from the video's pictures and is not confirmed by anything written. One rule is not the designer's: like every game in this library, a game still going after 300 turns in all is a draw.",
+  "board": {
+    "width": 9,
+    "height": 9
+  },
+  "pieces": [
+    {
+      "id": "R",
+      "name": "rock",
+      "value": 1,
+      "captures": [
+        "S"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "P",
+      "name": "paper",
+      "value": 1,
+      "captures": [
+        "R"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "S",
+      "name": "scissors",
+      "value": 1,
+      "captures": [
+        "P"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {
+        "piece": "R",
+        "player": 0,
+        "squares": [
+          "b4",
+          "c3",
+          "d2"
+        ]
+      },
+      {
+        "piece": "P",
+        "player": 0,
+        "squares": [
+          "b5",
+          "c4",
+          "d3",
+          "e2"
+        ]
+      },
+      {
+        "piece": "S",
+        "player": 0,
+        "squares": [
+          "c5",
+          "d4",
+          "e3"
+        ]
+      },
+      {
+        "piece": "R",
+        "player": 1,
+        "squares": [
+          "f8",
+          "g7",
+          "h6"
+        ]
+      },
+      {
+        "piece": "P",
+        "player": 1,
+        "squares": [
+          "e8",
+          "f7",
+          "g6",
+          "h5"
+        ]
+      },
+      {
+        "piece": "S",
+        "player": 1,
+        "squares": [
+          "e7",
+          "f6",
+          "g5"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "stalemate": "loss",
+    "reach": {
+      "squares": [
+        "i9"
+      ],
+      "mirror": "rotate",
+      "result": "win"
+    },
+    "max_plies": 300,
+    "repetition_draw": "never",
+    "no_progress_draw": 200,
+    "win": "annihilation"
+  },
+  "appearance": {
+    "icons": {
+      "R": "rock",
+      "P": "paper",
+      "S": "scissors"
+    }
+  },
+  "provenance": {
+    "origin": "human",
+    "source": "webgoatguy https://www.youtube.com/watch?v=LO_zcGNJriA&t=7s",
+    "history": "Transcribed from the video, and corrected twice since against what the designer actually says. The user removed a phantom rules.territory on 2026-09-06 (c947850, hash 15e3eb35bfbc -> 09861015bb3a). Q120 added rules.repetition_draw: \"never\" on 2026-09-07 (09861015bb3a -> d93e28d09a33): the key was absent, which the schema reads as the default 3, and the video is explicit that there is no draw by repetition. Schema 10 is what makes that sayable. Q696 changed rules.no_progress_draw from 100 to 200 on 2026-10-04 (d93e28d09a33 -> 29d5213b02b2), the user's decision of 2026-10-03: the official site's program (hushhush) counts 200 plies, and the designer is in touch with it, so its reading is trusted. The starting position is still the transcriber's reading of images the transcript does not describe; the piece counts are the designer's and the geometry is not verified. runs/15e3eb35bfbc-0, runs/09861015bb3a-0 and the four runs/d93e28d09a33-<seed> are kept as records of the three specs that no longer exist."
+  }
+}

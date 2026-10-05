@@ -1,0 +1,318 @@
+{
+  "schema_version": 2,
+  "name": "xiangqi",
+  "description": "Chinese chess, on the intersections of a 9x10 board. The general and its two advisors never leave the palace, the elephants never cross the river, the horses and elephants are blocked by a piece on the way rather than leaping over it, the cannon captures by jumping a single screen, and the two generals may never see each other down an open file.",
+  "board": {
+    "width": 9,
+    "height": 10
+  },
+  "pieces": [
+    {
+      "id": "S",
+      "name": "soldier",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both",
+          "condition": {
+            "region": [
+              "a6",
+              "b6",
+              "c6",
+              "d6",
+              "e6",
+              "f6",
+              "g6",
+              "h6",
+              "i6",
+              "a7",
+              "b7",
+              "c7",
+              "d7",
+              "e7",
+              "f7",
+              "g7",
+              "h7",
+              "i7",
+              "a8",
+              "b8",
+              "c8",
+              "d8",
+              "e8",
+              "f8",
+              "g8",
+              "h8",
+              "i8",
+              "a9",
+              "b9",
+              "c9",
+              "d9",
+              "e9",
+              "f9",
+              "g9",
+              "h9",
+              "i9",
+              "a10",
+              "b10",
+              "c10",
+              "d10",
+              "e10",
+              "f10",
+              "g10",
+              "h10",
+              "i10"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "H",
+      "name": "horse",
+      "value": 4,
+      "moves": [
+        {
+          "kind": "lame",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "E",
+      "name": "elephant",
+      "value": 2,
+      "region": [
+        "c1",
+        "g1",
+        "a3",
+        "e3",
+        "i3",
+        "c5",
+        "g5"
+      ],
+      "moves": [
+        {
+          "kind": "lame",
+          "vectors": [
+            [
+              2,
+              2
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "A",
+      "name": "advisor",
+      "value": 2,
+      "region": [
+        "d1",
+        "e1",
+        "f1",
+        "d2",
+        "e2",
+        "f2",
+        "d3",
+        "e3",
+        "f3"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "chariot",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "name": "cannon",
+      "value": 4.5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "move"
+        },
+        {
+          "kind": "hop",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "general",
+      "value": 0,
+      "royal": true,
+      "region": [
+        "d1",
+        "e1",
+        "f1",
+        "d2",
+        "e2",
+        "f2",
+        "d3",
+        "e3",
+        "f3"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "i1"
+        ]
+      },
+      {
+        "piece": "H",
+        "squares": [
+          "b1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "E",
+        "squares": [
+          "c1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "A",
+        "squares": [
+          "d1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      },
+      {
+        "piece": "C",
+        "squares": [
+          "b3",
+          "h3"
+        ]
+      },
+      {
+        "piece": "S",
+        "squares": [
+          "a4",
+          "c4",
+          "e4",
+          "g4",
+          "i4"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "loss",
+    "royal_facing": "forbidden",
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 120
+  },
+  "provenance": {
+    "origin": "human",
+    "source": "China"
+  },
+  "appearance": {
+    "icons": {
+      "S": "xiangqi-pictorial-soldier",
+      "H": "xiangqi-pictorial-horse",
+      "E": "xiangqi-pictorial-elephant",
+      "A": "xiangqi-pictorial-advisor",
+      "R": "xiangqi-pictorial-chariot",
+      "C": "xiangqi-pictorial-cannon",
+      "K": "xiangqi-pictorial-general"
+    }
+  }
+}

@@ -1,0 +1,158 @@
+{
+  "ruleset_hash": "fe7c42772c71",
+  "vocabulary_version": 2,
+  "vocabulary": [
+    "material",
+    "prey_weight",
+    "mobility",
+    "advance",
+    "centrality",
+    "royal_exposure",
+    "territory_margin",
+    "score_margin",
+    "score_urgency",
+    "check_margin",
+    "extinction_margin",
+    "hand_material",
+    "promotion_occupancy",
+    "reach_progress",
+    "facing_alignment"
+  ],
+  "model": "claude-opus-5",
+  "k": 6,
+  "set_hash": "18f1ac0693db",
+  "heuristics": [
+    {
+      "name": "material-and-mobility",
+      "plan": "Win material, and keep your options open.",
+      "weights": [
+        0.9922778767136677,
+        0.0,
+        0.12403473458920847,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "1e7f11505a63"
+    },
+    {
+      "name": "Grunt counter",
+      "plan": "Trade only when it leaves you with more grunts than the opponent, since running them out of pieces is the only win.",
+      "weights": [
+        6.0,
+        0.0,
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        8.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "ab310e269b56"
+    },
+    {
+      "name": "Race up the board",
+      "plan": "Shove your grunts as far forward as possible and let the opponent worry about the collisions.",
+      "weights": [
+        1.0,
+        0.0,
+        0.0,
+        8.0,
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "f980a746cb37"
+    },
+    {
+      "name": "Keep options open",
+      "plan": "Play whichever move leaves you the most available moves later, and avoid locking your grunts against theirs.",
+      "weights": [
+        1.5,
+        0.0,
+        8.0,
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "6c66474c8239"
+    },
+    {
+      "name": "Lock it up for a draw",
+      "plan": "Block files head-on and strangle your own options until nobody can move, taking the draw instead of risking loss.",
+      "weights": [
+        0.5,
+        0.0,
+        -7.0,
+        -1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        2.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "a3bea2e9fcdb"
+    },
+    {
+      "name": "Own the middle files",
+      "plan": "Cluster your grunts on the central files where the diagonal captures cover the most ground, and ignore the wings.",
+      "weights": [
+        2.0,
+        0.0,
+        1.0,
+        -0.5,
+        9.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "c6786af7499e"
+    }
+  ]
+}

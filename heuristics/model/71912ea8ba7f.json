@@ -1,0 +1,158 @@
+{
+  "ruleset_hash": "71912ea8ba7f",
+  "vocabulary_version": 2,
+  "vocabulary": [
+    "material",
+    "prey_weight",
+    "mobility",
+    "advance",
+    "centrality",
+    "royal_exposure",
+    "territory_margin",
+    "score_margin",
+    "score_urgency",
+    "check_margin",
+    "extinction_margin",
+    "hand_material",
+    "promotion_occupancy",
+    "reach_progress",
+    "facing_alignment"
+  ],
+  "model": "claude-opus-5",
+  "k": 6,
+  "set_hash": "3121481b5ab4",
+  "heuristics": [
+    {
+      "name": "material-and-mobility",
+      "plan": "Win material, and keep your options open.",
+      "weights": [
+        0.9995665039591523,
+        0.0,
+        0.02944153805218279,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "1c3b03404cc4"
+    },
+    {
+      "name": "Hill Runner",
+      "plan": "March your king toward d4/e4/d5/e5 as fast as possible, trading pieces off to clear the path rather than hoarding them.",
+      "weights": [
+        1.0,
+        0.0,
+        1.0,
+        1.5,
+        3.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        9.0,
+        0.0
+      ],
+      "digest": "cdb88075691c"
+    },
+    {
+      "name": "Classical Material Grinder",
+      "plan": "Ignore the hill and just win pieces, keeping your own king safe and far from the middle.",
+      "weights": [
+        9.0,
+        0.5,
+        2.0,
+        0.3,
+        1.0,
+        1.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.5,
+        -1.0,
+        0.0
+      ],
+      "digest": "7879adce2c30"
+    },
+    {
+      "name": "Central Clamp",
+      "plan": "Occupy and control the four central squares with pieces so the enemy king can never step in, then squeeze.",
+      "weights": [
+        3.0,
+        0.0,
+        3.0,
+        1.0,
+        7.0,
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -3.0,
+        0.0
+      ],
+      "digest": "2ce437063e52"
+    },
+    {
+      "name": "Mating Attack",
+      "plan": "Throw everything at the enemy king with checks and threats, aiming for checkmate before hill or material matters.",
+      "weights": [
+        1.5,
+        0.0,
+        2.0,
+        3.5,
+        1.5,
+        8.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.5,
+        0.0,
+        0.0
+      ],
+      "digest": "f4db681ed298"
+    },
+    {
+      "name": "Pawn Storm and Promote",
+      "plan": "Push your pawns down the board and promote them to queens, using the new material to overwhelm both king and centre.",
+      "weights": [
+        3.0,
+        0.0,
+        1.0,
+        5.0,
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        7.0,
+        0.5,
+        0.0
+      ],
+      "digest": "58ce7384349a"
+    }
+  ]
+}

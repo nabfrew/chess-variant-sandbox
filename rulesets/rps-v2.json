@@ -1,0 +1,153 @@
+{
+  "schema_version": 4,
+  "name": "rps territory",
+  "description": "Version 2 of a designed-and-rejected sequence. The cyclic capture relation of version 1 on a 9x9 board, with a larger army and a different object: moving onto a square claims it for good, and the first player to claim 41 of the 81 squares wins. Its designer rejected it for three stated reasons -- the two players stop interacting, because chasing your opponent lets them claim ground while you do it; the rear pieces are dead weight; and the capture cycle stops mattering, so 'if you were playing the game with identical chess kings instead of rock paper and scissors, the gameplay and strategies would not be that much different'.",
+  "board": {
+    "width": 9,
+    "height": 9
+  },
+  "pieces": [
+    {
+      "id": "R",
+      "name": "rock",
+      "value": 1,
+      "captures": [
+        "S"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "P",
+      "name": "paper",
+      "value": 1,
+      "captures": [
+        "R"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "S",
+      "name": "scissors",
+      "value": 1,
+      "captures": [
+        "P"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "R",
+        "squares": [
+          "c1",
+          "a2",
+          "d2"
+        ]
+      },
+      {
+        "piece": "P",
+        "squares": [
+          "e1",
+          "e2"
+        ]
+      },
+      {
+        "piece": "S",
+        "squares": [
+          "g1",
+          "i2",
+          "f2"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "stalemate": "draw",
+    "max_plies": 300,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "win": "annihilation",
+    "territory": {
+      "mode": "permanent",
+      "win_at": 41
+    }
+  },
+  "appearance": {
+    "icons": {
+      "R": "rock",
+      "P": "paper",
+      "S": "scissors"
+    }
+  }
+}

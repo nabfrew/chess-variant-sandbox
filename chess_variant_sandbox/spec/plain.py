@@ -1,0 +1,639 @@
+"""The rules' complaints in the designer's words (`docs/plan-understanding.md` W5b, D40-D50).
+
+`validate_spec` names what is wrong by where it is in the game's text --
+``setup.placements[0].squares entry 'z9' is not a square on this board`` -- because its
+first readers write that text: the proposing LLM repairs a draft from those paths, the
+command line prints them and the tests match them. A person in the designer never sees
+the text. They see a piece called *knight* with rows of *ways of moving*, a section called
+*Where they start* and a card per rule, so the same problem reads *Where they start, row
+1: z9 isn't a square on this board.*
+
+This module is that translation and nothing else. It changes no condition: a problem in,
+the same problem out, one for one, in other words. The validator's own sentences stay the
+stable form everyone else matches on, and the designer's two servers translate at the
+point they show a problem (`plain_problems`).
+
+`FIELD_WORDS` is also the one table of what each part of the rules is called on the rule
+cards (`web/cards.py`, D40): the label a field carries, and, where the schema's description
+is written for the LLM (*rules.scoring with count 'points'*, *False, the default*), the
+sentence a visitor reads under it instead.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from chess_variant_sandbox.spec.describe import RULE_WORDS
+
+# Dotted from the top of the game's text, with no list indices: `pieces.moves.range` is
+# every way of moving's *how far*. A label is what the field is called on the page; the
+# second item, when there is one, replaces the schema's description under it.
+FIELD_WORDS: dict[str, tuple[str, str | None]] = {
+    # The parts the hand-written form draws, in the form's own words.
+    "name": ("the game's name", None),
+    "board": ("the board", None),
+    "board.width": ("board width", None),
+    "board.height": ("board height", None),
+    "board.lattice": ("the cells are", None),
+    "board.shape": ("the board is", None),
+    "pieces": ("the pieces", None),
+    "pieces.id": ("letter", None),
+    "pieces.name": ("name", None),
+    "pieces.value": ("worth", None),
+    "pieces.royal": ("royal", None),
+    "pieces.moves": ("ways of moving", None),
+    "pieces.moves.kind": ("how it travels", None),
+    "pieces.moves.symmetry": ("turned", None),
+    "pieces.moves.vectors": ("direction", None),
+    "pieces.moves.mode": ("and it may", None),
+    "pieces.moves.range": ("how far", None),
+    "pieces.moves.min_range": ("no nearer than", None),
+    "pieces.moves.condition.from_rank": ("only from rank", None),
+    "setup": ("where they start", None),
+    "setup.placements": ("where they start", None),
+    "setup.placements.piece": ("piece", None),
+    "setup.placements.player": ("whose", None),
+    "setup.placements.squares": ("squares", None),
+    "setup.mirror": ("mirror for the other player", None),
+    "setup.orientation": ("the second player's side of the board", None),
+    "rules": ("the rules", None),
+    # A piece's and a move's generated fields.
+    "pieces.region": ("only on these squares", None),
+    "pieces.promoted_from": ("promoted from", None),
+    "pieces.captures": (
+        "may take only",
+        "The pieces this one may take. Leave it empty and it may take anything, as in every "
+        "ordinary game. Set it and you get a ring of who beats whom: give rock scissors, "
+        "scissors paper and paper rock, and no piece can take the one that takes it.",
+    ),
+    "pieces.facing": (
+        "points a way",
+        "This piece points in a direction, and may spend a whole move turning instead of "
+        "moving. Its moves turn with it, so a pawn pointing right advances to the right. "
+        "Give it only to a piece whose moves change when it turns: a rook moves the same "
+        "whichever way it points, so turning one would be a move that does nothing, and "
+        "that is refused. A royal piece may not have one.",
+    ),
+    "pieces.facing.axes": ("how many ways it can point", None),
+    "pieces.facing.initial": ("which way it points at the start", None),
+    "pieces.moves.screen_range": ("how far past the piece it jumps", None),
+    "pieces.moves.screen": (
+        "whose piece it jumps",
+        "For a hop only: whose piece it may jump over. 'any' is the xiangqi cannon, and the "
+        "usual choice; 'own' jumps only its own side's pieces, and 'enemy' only the other "
+        "side's.",
+    ),
+    "pieces.moves.condition": ("only when", None),
+    "pieces.moves.condition.first_move": ("only on its first move", None),
+    "pieces.moves.condition.region": ("only from these squares", None),
+    "setup.placements.facing": (
+        "pointing",
+        "Which way these pieces start pointing, for a piece that points a way. Counted from "
+        "their own player's forward, so a mirrored start gives both armies the same "
+        "directions. Leave it empty and they start the way the piece itself says.",
+    ),
+    # The rule cards' fields.
+    "rules.win": (
+        "how the game is won",
+        "checkmate: trap the royal piece. royal capture: take it, with no obligation to "
+        "answer a threat. annihilation: clear the board of an army. none: the game is "
+        "decided only by the endings stated below.",
+    ),
+    "rules.checkmate": (
+        "what being checkmated does",
+        "The result for the player who is checkmated. 'win' turns the game inside out, as "
+        "losers' chess does.",
+    ),
+    "rules.bare_royal": (
+        "a player left with royalty alone",
+        "The result for a player left with only their royal pieces: 'loss' is shatranj's "
+        "rule.",
+    ),
+    "rules.promotion.piece": ("the piece that promotes", None),
+    "rules.promotion.rank": (
+        "on row",
+        "'last', or a row counted from the first player's side.",
+    ),
+    "rules.promotion.ranks": ("on rows", "A promotion zone several rows deep."),
+    "rules.promotion.squares": (
+        "on squares",
+        "A promotion zone of named squares, for a zone that is a shape. The only way to "
+        "give one on hexagons.",
+    ),
+    "rules.promotion.mandatory": (
+        "must promote",
+        "No lets a piece decline to promote, as in shogi.",
+    ),
+    "rules.promotion.on_leaving": (
+        "also on leaving the zone",
+        "Yes also promotes a piece on a move that starts in the zone, wherever it lands, as "
+        "in shogi: a silver standing in the zone may promote as it steps back out. No, the "
+        "usual choice, promotes only on a move that ends in the zone.",
+    ),
+    "rules.promotion.to": ("it may become", None),
+    "rules.promotion.to_by_player": ("it may become, for each player", None),
+    "rules.castling.king": ("the piece that castles", None),
+    "rules.castling.rook": ("the piece it castles with", None),
+    "rules.castling.king_steps": ("how far it steps", None),
+    "rules.castling.king_file": ("where it lands", None),
+    "rules.castling.king_file.kingside": ("on the king's side", None),
+    "rules.castling.king_file.queenside": ("on the queen's side", None),
+    "rules.castling.rook_file": ("where the other piece lands", None),
+    "rules.castling.rook_file.kingside": ("on the king's side", None),
+    "rules.castling.rook_file.queenside": ("on the queen's side", None),
+    "rules.territory.mode": (
+        "how a claim works",
+        "Moving onto a square claims it. 'permanent' means a claim can never be taken back; "
+        "'repaint' lets the other player claim it later.",
+    ),
+    "rules.territory.win_at": (
+        "claiming this many wins",
+        "Claiming this many squares wins outright. 0 leaves the claiming to another rule, "
+        "such as 'who wins when a clock runs out' comparing the ground each side holds.",
+    ),
+    "rules.turn.moves": ("moves a turn", None),
+    "rules.turn.ramp": (
+        "the opening turns",
+        "How many moves each of the first turns has, in order, before 'moves a turn' takes "
+        "over. With two moves a turn whoever starts is a whole move ahead forever; two "
+        "moves a turn with an opening turn of one levels it.",
+    ),
+    "rules.obstacles.squares": ("walled squares", None),
+    "rules.obstacles.mirror": (
+        "mirrored",
+        "Also wall the mirror image of every square listed: a quick way to write a "
+        "symmetric wall. A wall belongs to the board, not to a player. No, the usual choice, "
+        "walls only the squares listed.",
+    ),
+    "rules.obstacles.blocks_leaps": (
+        "stops jumps too",
+        "Whether a wall also stops a jumping piece. No, the usual choice, lets a knight "
+        "jump a wall; yes stops it, on the square the xiangqi horse is blocked on, one step "
+        "along the longer side of its jump.",
+    ),
+    "rules.strike.effect": (
+        "what happens to it",
+        "What happens to a piece that is taken. 'capture' removes it, as in the ordinary "
+        "game. 'demote' and 'promote' turn it into another piece instead, following the "
+        "list of what each becomes.",
+    ),
+    "rules.strike.chain": ("what each piece becomes", None),
+    "rules.strike.chain.from": ("the piece taken", None),
+    "rules.strike.chain.to": ("becomes", None),
+    "rules.strike.position": (
+        "where they end up",
+        "Where the two pieces end up. 'advance' is the ordinary capture, the taker moving "
+        "onto the square, and works only when nothing taken survives, since there would be "
+        "nowhere to put it. 'stay' leaves the taker where it was and changes the other "
+        "where it stands. 'swap' exchanges the two. 'choose' moves the taker in and lets "
+        "it put the piece it changed on one of the landing squares.",
+    ),
+    "rules.strike.landing": (
+        "where it may put the piece",
+        "Only with 'choose', and needed there: the squares the taker may put a surviving "
+        "piece on, as steps from where it stood, forward being the taker's. A piece with "
+        "no empty landing square cannot be taken.",
+    ),
+    "rules.strike.landing.vectors": ("steps", None),
+    "rules.strike.landing.symmetry": ("turned", "Which turns of each step it also gets, as on a way of moving."),
+    "rules.strike.immune": ("pieces it cannot reach", None),
+    "rules.contacts.links": ("what each pair becomes", None),
+    "rules.contacts.links.mover": ("the piece taking", None),
+    "rules.contacts.links.onto": ("the piece taken", None),
+    "rules.contacts.links.mover_to": ("the taker becomes", None),
+    "rules.contacts.links.onto_to": ("the piece taken becomes", None),
+    "rules.contacts.links.own": (
+        "onto its own side",
+        "Yes and the pair is about the mover's own piece: it may move onto a friendly "
+        "piece along the moves it takes with, and the pair says what both become. Leave it "
+        "empty for a piece of the other side.",
+    ),
+    "rules.contacts.position": (
+        "where they end up",
+        "Where the two pieces end up. 'advance' is the ordinary capture, the mover taking "
+        "the square, and works only when no pair leaves the other piece standing, since "
+        "there would be nowhere to put it. 'stay' leaves the mover where it was and changes "
+        "the other where it stands. 'swap' exchanges the two. 'choose' moves the mover in "
+        "and lets it put the other piece on one of the landing squares.",
+    ),
+    "rules.contacts.landing": (
+        "where it may put the piece",
+        "Only with 'choose', and needed there: the squares the mover may put the other "
+        "piece on, as steps from where it stood, forward being the mover's. A piece with "
+        "no empty landing square cannot be taken.",
+    ),
+    "rules.contacts.landing.vectors": ("steps", None),
+    "rules.contacts.landing.symmetry": ("turned", "Which turns of each step it also gets, as on a way of moving."),
+    "rules.contacts.immune": ("pieces it cannot reach", None),
+    "rules.wrap.files": (
+        "the left and right edges",
+        "Whether a piece may run off a side edge and come back in on the other. 'both' "
+        "makes the board a cylinder. The edges are named as the board is drawn, the first "
+        "player at the bottom.",
+    ),
+    "rules.wrap.ranks": (
+        "the top and bottom edges",
+        "The same for the top and bottom edges. Both together make a ring-shaped board "
+        "with no corners.",
+    ),
+    "rules.wrap.files_by_player": ("the left and right edges, by player", None),
+    "rules.wrap.ranks_by_player": ("the top and bottom edges, by player", None),
+    "rules.wrap.n_s": (
+        "top and bottom",
+        "Whether the hexagon's top and bottom sides are joined. 'both' lets a piece leave "
+        "by either and come back in by the other, straight across; one side lets it leave "
+        "by that side only.",
+    ),
+    "rules.wrap.n_s_by_player": ("top and bottom, by player", None),
+    "rules.wrap.ne_sw_by_player": ("upper right and lower left, by player", None),
+    "rules.wrap.nw_se_by_player": ("lower right and upper left, by player", None),
+    "rules.wrap.ne_sw": (
+        "upper right and lower left",
+        "Whether the hexagon's upper-right and lower-left sides are joined. 'both' lets a "
+        "piece leave by either and come back in by the other, straight across; one side "
+        "lets it leave by that side only.",
+    ),
+    "rules.wrap.nw_se": (
+        "upper left and lower right",
+        "Whether the hexagon's upper-left and lower-right sides are joined. 'both' lets a "
+        "piece leave by either and come back in by the other, straight across; one side "
+        "lets it leave by that side only.",
+    ),
+    "rules.npcs.piece": (
+        "which piece",
+        "One of the game's pieces, not a royal one. The wild piece has its name, drawing "
+        "and worth, and takes what that piece may take; how that piece moves for a player "
+        "is not how the wild one walks.",
+    ),
+    "rules.npcs.route": (
+        "its walk",
+        "The squares it walks, in order and round again, starting on the first. Different "
+        "squares, on no other wild piece's walk, and none of the starting pieces on the "
+        "first. One square is a wild piece that never moves.",
+    ),
+    "rules.npcs.bounty": (
+        "worth taking",
+        "What a player gains by taking it, counted when 'who wins when a clock runs out' "
+        "compares points. Its piece's worth when left empty.",
+    ),
+    "rules.npcs.mirror": (
+        "and a mirrored one",
+        "Also put a second wild piece on the mirror image of the walk, walking it in the "
+        "same order. A walk has a direction, so one wild piece makes the game lopsided and "
+        "a mirrored pair does not. No, the usual choice, is one wild piece.",
+    ),
+    "rules.npcs.immune": (
+        "only taken by",
+        "The only pieces that may take this wild piece; no other may. Leave it empty and "
+        "anything may take it. Another wild piece is not bound by it. Not with pieces "
+        "played back onto the board, because the piece would carry the protection out of "
+        "a player's hand.",
+    ),
+    "rules.promote_on_entry": (
+        "promoting on arrival",
+        "A piece that comes into play inside its own promotion zone, played back there or "
+        "left standing there by a capture that turned it into a promoting piece, promotes "
+        "at once, to the first piece its promotion lists, even where promotion is "
+        "otherwise a choice. Needs promotion and a way in: pieces played back onto the "
+        "board, or a capture that leaves a piece standing. Refused where no promoting "
+        "piece could ever come into its zone. No, the usual choice, leaves such a piece "
+        "as it arrived.",
+    ),
+    "rules.scoring.count": (
+        "what is compared",
+        "What to compare when the turn limit or the no-progress rule ends the game, "
+        "instead of calling it a draw. 'material' adds up the pieces' worth, 'pieces' "
+        "counts them, 'region' counts your pieces standing on the squares below, "
+        "'territory' counts ground claimed and needs claiming ground, 'points' counts what "
+        "taking wild pieces earned and needs wild pieces. Higher wins; equal is still a draw.",
+    ),
+    "rules.scoring.region": (
+        "the squares held",
+        "The ground being held, for 'region'. Written for the first player and mirrored, so "
+        "holding the centre is the same for both and holding the other side's half is not.",
+    ),
+    "rules.reach.piece": ("which piece", "Leave it empty for any piece."),
+    "rules.reach.squares": ("the squares", None),
+    "rules.reach.mirror": (
+        "for the other player",
+        "Yes aims each side at the other's end, mirrored; 'rotate' turns the squares round "
+        "the board's centre instead; no sends both players to the same squares.",
+    ),
+    "rules.reach.safe": ("only where it cannot be taken", None),
+    "rules.reach.result": ("the result", None),
+    "rules.extinction.pieces": ("which pieces", "'any' counts the whole army."),
+    "rules.extinction.min_count": ("fewer than", None),
+    "rules.extinction.result": ("the result", None),
+    "rules.drops.from_captures": ("captured pieces", None),
+    "rules.drops.region": ("where each may be played", "For each piece, the squares it may be played back on."),
+    "rules.drops.no_doubled": ("not onto a column holding one", None),
+    "rules.drops.no_mate": ("not checkmating as it is played", None),
+    "rules.drops.stock": (
+        "held at the start",
+        "For each piece, how many each player holds before anything is taken: a count of 1 "
+        "to 32, or 'unlimited' for a supply that never runs out. A held piece is the only "
+        "one that may have no way of moving.",
+    ),
+    "rules.explode_on_capture.radius": ("how far it reaches", None),
+    "rules.explode_on_capture.immune": ("pieces that survive it", None),
+    "rules.explode_on_capture.by": ("only when taken by", None),
+    "rules.explode_on_capture.of": ("only when taking", None),
+}
+
+# The rule cards themselves, by the titles their cards already carry.
+for _key, (_title, _) in RULE_WORDS.items():
+    FIELD_WORDS.setdefault(f"rules.{_key}", (_title, None))
+
+# A switch between two ways of writing one field, by the kind of thing each holds (D40).
+KIND_WORDS = {
+    "integer": "a number",
+    "number": "a number",
+    "string": "a word",
+    "boolean": "yes or no",
+}
+
+
+def field_words(path: str) -> tuple[str, str | None] | None:
+    """`FIELD_WORDS` for a dotted path that may carry list marks (`[]`, `[3]`)."""
+    return FIELD_WORDS.get(re.sub(r"\[\d*\]", "", path))
+
+
+# ------------------------------------------------------------------ problems, translated
+
+# A place in the game's text: a top-level part, then `.key` or `[n]` steps. Only taken
+# where it is plainly a path (at the start of a problem, or holding a `.` or `[`), so the
+# word *name* in a sentence is never read as the game's name.
+_PATH = re.compile(
+    r"\b(?:spec|name|board|pieces|setup|rules|appearance|provenance)"
+    r"(?:\[\d*\]|\['[^']*'\]|\.[A-Za-z_0-9]+)*"
+)
+
+# The validator's own vocabulary, in a visitor's (§3.2). Applied after the paths.
+_WORDS: tuple[tuple[str, str], ...] = (
+    (r"\bmust be a non-empty string\b", "can't be empty"),
+    (r"\bmust be a boolean\b", "must be yes or no"),
+    (r"\bmust be a non-negative integer\b", "must be a whole number, 0 or more"),
+    (r"\bmust be a positive integer\b", "must be a whole number, 1 or more"),
+    (r"\bmust be an integer\b", "must be a whole number"),
+    (r"\bmust be a number of 0 or more\b", "must be a number, 0 or more"),
+    (r"\bmust be a non-empty array of algebraic squares\b", "needs at least one square"),
+    (r"\bmust be a non-empty array of piece ids\b", "needs at least one piece"),
+    (r"\bmust be a non-empty array of \[dx, ?dy\] pairs\b", "needs at least one direction"),
+    (r"\bmust be a non-empty array of ranks\b", "needs at least one row"),
+    (r"\bmust be a non-empty array\b", "needs at least one"),
+    (r"\bone of \(([^()]*)\)", r"one of \1"),
+    (r"\ba non-empty array of algebraic squares\b", "at least one square"),
+    (r"\ba non-empty array of piece ids\b", "at least one piece"),
+    (r"\ba non-empty array of \[dx, ?dy\] pairs\b", "at least one direction"),
+    (r"\ba non-empty array\b", "at least one entry"),
+    (r"\ban array of piece ids\b", "a list of pieces"),
+    (r"\[dx, ?dy\] integer pairs", "pairs of whole numbers, sideways then forward"),
+    (r"\[dx, ?dy\] steps", "steps, sideways then forward"),
+    (r"\bmust be an object\b", "is written wrongly"),
+    (r"\bis not a declared piece id\b", "isn't one of the game's pieces"),
+    (r"\bis not a declared piece\b", "isn't one of the game's pieces"),
+    (r"\bmust be a piece id\b", "must be one of the game's pieces"),
+    (r"\bpiece ids\b", "pieces"),
+    (r"\bpiece id\b", "piece"),
+    (r"\bis not a square on this board\b", "isn't a square on this board"),
+    (r"\bis not a rank on this board\b", "isn't a row on this board"),
+    (r"\bis duplicated\b", "is used by more than one piece"),
+    (r"\bvectors\b", "directions"),
+    (r"\bvector\b", "direction"),
+    (r"\bplies\b", "turns"),
+    (r"\bply\b", "turn"),
+    (r"\bthe spec\b", "the rules"),
+    (r"\bthe validator\b", "the designer"),
+    (r"\bmust be 0 or 1\b", "must be the first player (0) or the second (1)"),
+    (r"\bare not cells of this board\b", "aren't cells of this board"),
+    (r", got\b", ", not"),
+)
+
+# The two clocks, counted in turns (§3.2: each player's move is one turn).
+_CLOCK_PATHS = frozenset({"rules.max_plies", "rules.no_progress_draw"})
+
+# Whole problems a person meets most, said the way the audit asked (D48-D50).
+_PHRASED: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^name must be a non-empty string$"), "Give the game a name."),
+    (re.compile(r"^spec is missing required key 'name'$"), "Give the game a name."),
+    (re.compile(r"^no royal piece appears in setup\.placements$"),
+     "No royal piece is on the board at the start."),
+    (re.compile(r"^spec must be a JSON object$"), "These rules couldn't be read."),
+)
+
+
+def _where(path: str, spec: Any) -> tuple[str, str | None]:
+    """A path as the place a person finds it, and the field there by its label.
+
+    ``pieces[1].moves[0].range`` is (*Piece 2 (knight), way of moving 1*, *how far*);
+    ``setup.placements[0].squares`` is (*Where they start, row 1*, *squares*);
+    ``rules.max_plies`` is (*The rule 'the longest a game may run'*, None).
+    """
+    steps = re.findall(r"\['[^']*'\]|[A-Za-z_0-9]+|\[\d*\]", path)
+    head, rest = steps[0], steps[1:]
+
+    def index(step: str) -> int | None:
+        inner = step[1:-1]
+        if inner.startswith("'"):
+            return None
+        return int(inner) if inner.isdigit() else None
+
+    if head == "spec":
+        return "The game", None
+    if head == "pieces" and rest and index(rest[0]) is not None:
+        number = index(rest[0])
+        assert number is not None
+        pieces = spec.get("pieces") if isinstance(spec, dict) else None
+        piece = pieces[number] if isinstance(pieces, list) and number < len(pieces) else None
+        called = piece.get("name") if isinstance(piece, dict) else None
+        place = f"Piece {number + 1}" + (f" ({called})" if isinstance(called, str)
+                                         and called.strip() else "")
+        rest = rest[1:]
+        dotted = "pieces"
+        if len(rest) >= 2 and rest[0] == "moves" and index(rest[1]) is not None:
+            moved = index(rest[1])
+            assert moved is not None
+            place += f", way of moving {moved + 1}"
+            rest = rest[2:]
+            dotted = "pieces.moves"
+        return place, _label(dotted, rest)
+    if head == "setup" and len(rest) >= 2 and rest[0] == "placements" \
+            and index(rest[1]) is not None:
+        row = index(rest[1])
+        assert row is not None
+        return f"Where they start, row {row + 1}", _label("setup.placements", rest[2:])
+    if head == "rules" and not rest:
+        return "The rules", None
+    if head == "rules":
+        key = rest[0]
+        title = RULE_WORDS.get(key, (key.replace("_", " "), ""))[0]
+        place = f"The rule '{title}'"
+        dotted = f"rules.{key}"
+        tail: list[str] = []
+        keyed = ""
+        for step in rest[1:]:
+            number = index(step) if step.startswith("[") else None
+            if step.startswith("['"):
+                # One piece's entry in a per-piece table: *for P*.
+                keyed = f", for {step[2:-2]}"
+                continue
+            if step.startswith("["):
+                if number is not None and tail == []:
+                    # One of several: *promotion 2*, *wild piece 1*.
+                    place += f", number {number + 1}"
+                elif number is not None:
+                    tail.append(f"{number + 1}")
+                continue
+            dotted += f".{step}"
+            tail.append(step)
+        if not tail:
+            return place + keyed, None
+        words = FIELD_WORDS.get(dotted)
+        label = words[0] if words else " ".join(t.replace("_", " ") for t in tail)
+        return place, label + keyed
+    if head == "setup":
+        if not rest or rest == ["placements"]:
+            return "Where they start", None
+        return "Where they start", _label("setup", rest)
+    if head == "board":
+        return "The board", _label("board", rest) if rest else None
+    if head == "name":
+        return "The game's name", None
+    if head == "appearance":
+        return "The pieces' drawings", None
+    return "Where the game comes from", None
+
+
+def _label(dotted: str, rest: list[str]) -> str | None:
+    keys = [step for step in rest if not step.startswith("[")]
+    if not keys:
+        return None
+    words = FIELD_WORDS.get(dotted + "." + ".".join(keys))
+    return words[0] if words else " ".join(key.replace("_", " ") for key in keys)
+
+
+def _used(name: str, spec: Any) -> str:
+    """One thing a version sentence says the draft uses: a rule key or a path."""
+    if name in RULE_WORDS:
+        return f"the rule '{RULE_WORDS[name][0]}'"
+    if _PATH.fullmatch(name):
+        where, field = _where(name, spec)
+        where = f"{where[0].lower()}{where[1:]}"
+        return f"{where}, '{field}'" if field else where
+    words = FIELD_WORDS.get(f"pieces.{name}") or FIELD_WORDS.get(f"pieces.moves.{name}")
+    return f"'{words[0]}'" if words else f"'{name.replace('_', ' ')}'"
+
+
+def _place(path: str, spec: Any) -> str:
+    where, field = _where(path, spec)
+    return f"{where}, '{field}'" if field else where
+
+
+def plain_problem(problem: str, spec: Any = None) -> str:
+    """One validator problem, in the designer's words. Never drops or adds a problem."""
+    for pattern, said in _PHRASED:
+        if pattern.match(problem):
+            return said
+    text = problem
+    # Two shapes worth their own sentence (D48, D50).
+    square = re.match(r"^(\S+) entry '([^']*)' is not a square on this board$", text)
+    if square:
+        # A row of *Where they start* is nothing but squares, so the row is the place.
+        place = (_where(square.group(1), spec)[0]
+                 if re.fullmatch(r"setup\.placements\[\d+\]\.squares", square.group(1))
+                 else _place(square.group(1), spec))
+        return f"{place}: {square.group(2)} isn't a square on this board."
+    leap = re.match(r"^(\S+)\.(range|min_range) means nothing on a (leap|lame), "
+                    r"which is one jump per vector; to reach further, list more vectors$", text)
+    if leap:
+        where, _ = _where(leap.group(1), spec)
+        label = FIELD_WORDS[f"pieces.moves.{leap.group(2)}"][0]
+        kind = "leap" if leap.group(3) == "leap" else "blockable leap"
+        return (f"{where}: '{label}' does nothing on a {kind}. "
+                "To reach further, add more directions.")
+    taken = re.match(r"^(\S+) '([^']*)' is already occupied by '([^']*)'$", text)
+    if taken:
+        where, _ = _where(taken.group(1), spec)
+        return f"{where}: {taken.group(2)} already has a piece on it ({taken.group(3)})."
+    stranger = re.match(r"^(\S+) (?:entry )?'([^']*)' is not a declared piece(?: id)?$", text)
+    if stranger:
+        # A row of *Where they start* names one piece, so the row is the place.
+        place = (_where(stranger.group(1), spec)[0]
+                 if re.fullmatch(r"setup\.placements\[\d+\]\.piece", stranger.group(1))
+                 else _place(stranger.group(1), spec))
+        return f"{place}: '{stranger.group(2)}' isn't one of the game's pieces."
+    # A version stamp the draft could not settle at: the settling waits for the rest of the
+    # draft to be a game (`designing._worth_saying`), and the site never names the version.
+    stamp = re.match(r'^(?:the spec|rules|a piece) uses (.+), added in schema \d+; '
+                     r'declare "schema_version": \d+ to use it$', text)
+    if stamp:
+        used = [_used(one, spec) for one in stamp.group(1).split(", ")]
+        return f"Using {' and '.join(used)} needs the rest of the draft to be a game first."
+    missing = re.match(r"^(\S+) is missing required key '([^']*)'$", text)
+    if missing:
+        where, _ = _where(missing.group(1), spec)
+        dotted = re.sub(r"\[\d*\]", "", missing.group(1)) + "." + missing.group(2)
+        if missing.group(1) == "spec":
+            dotted = missing.group(2)
+        words = FIELD_WORDS.get(dotted)
+        label = words[0] if words else missing.group(2).replace("_", " ")
+        return f"{where}: '{label}' is missing."
+    unknown = re.match(r"^(\S+) has unknown keys: (.*)$", text)
+    if unknown:
+        where, _ = _where(unknown.group(1), spec)
+        return f"{where}: these aren't parts of a game: {unknown.group(2)}."
+
+    return _generic(text, spec)
+
+
+def _generic(text: str, spec: Any) -> str:
+    """Any other problem: the path it opens with is its place, and any other path inside
+    it is named the same way."""
+    opening = _PATH.match(text)
+    place: str | None = None
+    field: str | None = None
+    body = text
+    if opening and text[opening.end():opening.end() + 1] in (" ", ""):
+        place, field = _where(opening.group(0), spec)
+        body = text[opening.end():].strip()
+
+    def inner(match: re.Match[str]) -> str:
+        token = match.group(0)
+        if "." not in token and "[" not in token:
+            return token
+        named_at, named = _where(token, spec)
+        named_at = f"{named_at[0].lower()}{named_at[1:]}"
+        return f"{named_at}, '{named}'" if named else named_at
+
+    body = _PATH.sub(inner, body)
+    for pattern, said in _WORDS:
+        body = re.sub(pattern, said, body)
+    # A menu's values as the menu spells them: *royal capture*, not *royal_capture*.
+    body = re.sub(r"'([a-z0-9]+(?:_[a-z0-9]+)+)'",
+                  lambda m: "'" + m.group(1).replace("_", " ") + "'", body)
+    if opening and opening.group(0) in _CLOCK_PATHS:
+        body = re.sub(r"\b(between \d+ and \d+)", r"\1 turns", body)
+    if place is None:
+        text = body
+    elif re.match(r"needs\b|stands\b", body):
+        # *Piece 1, way of moving 1 needs at least one direction.*
+        body = re.sub(r"^stands a piece", "a piece stands", body)
+        text = f"{place} {body}" if body.startswith("needs") else f"{place}: {body}"
+    elif field and re.match(r"['\"\d]|entry ", body):
+        # *on row 9 isn't a row on this board*: the label reads into its value.
+        text = f"{place}: {field} {body.removeprefix('entry ')}"
+    elif field:
+        text = f"{place}: '{field}' {body}"
+    elif re.match(r"(?:is|must|has|needs|beside|cannot|can't|isn't)\b|['\"]", body):
+        text = f"{place} {body}"
+    else:
+        text = f"{place}: {body}"
+    text = " ".join(text.split())
+    text = text[:1].upper() + text[1:]
+    return text if text.endswith((".", "?", "!")) else text + "."
+
+
+def plain_problems(problems: list[str], spec: Any = None) -> list[str]:
+    """`plain_problem` over a list, in order and one for one."""
+    return [plain_problem(problem, spec) for problem in problems]

@@ -1,0 +1,1 @@
+#[cfg(test)] fn helper() {} #[cfg(test)] mod outside; #[cfg(test)] #[allow(unused)] mod tests { }

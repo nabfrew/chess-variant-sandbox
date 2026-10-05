@@ -1,0 +1,64 @@
+{
+  "schema_version": 14,
+  "name": "en passant inside a two-move turn",
+  "description": "Not a game -- the smallest spec that reached rust/src/game.rs:1210 before the validator refused it. rules.turn gives a player two moves, so the en-passant window a double step opens is still open on that same player's second move, and the pawn on a2 may take its own pawn on b4 in passing. The strike rule turned the self-capture into a panic, because strike_writes reads the schema-11 own-contact tables, which are empty when no contact link declares own: true. The core would still do all of that; the validator is what stops a spec reaching it. Used by tests/test_spec.py::TestCoherence.",
+  "board": { "width": 5, "height": 5 },
+  "pieces": [
+    {
+      "id": "K",
+      "name": "king",
+      "royal": true,
+      "value": 0,
+      "moves": [
+        { "kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both" }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        { "kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both" }
+      ]
+    },
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        { "kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move" },
+        {
+          "kind": "slide",
+          "vectors": [[0, 1]],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": { "from_rank": 1 }
+        },
+        { "kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture" }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      { "piece": "K", "player": 0, "squares": ["a1"] },
+      { "piece": "K", "player": 1, "squares": ["e5"] },
+      { "piece": "P", "player": 0, "squares": ["a2", "b2"] },
+      { "piece": "P", "player": 1, "squares": ["d4"] }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": { "piece": "P", "rank": "last", "to": ["N"] },
+    "en_passant": true,
+    "turn": { "moves": 2 },
+    "strike": {
+      "effect": "promote",
+      "position": "stay",
+      "chain": [{ "from": "P", "to": "N" }],
+      "immune": ["K"]
+    }
+  }
+}

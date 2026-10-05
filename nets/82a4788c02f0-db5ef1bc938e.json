@@ -1,0 +1,83 @@
+{
+  "procedure": "db5ef1bc938e",
+  "ruleset_hash": "82a4788c02f0",
+  "inputs_version": 1,
+  "verdict": "accepted",
+  "weights_sha256": "2171ddcbc08b9c3d7c0062cb7216db5697670efa56e0efdc2efda3be856566aa",
+  "build": "39eccb50b518da2c",
+  "digest": "2171ddcbc08b",
+  "trainer_version": 1,
+  "recipe": {
+    "agents": [
+      "minimax:nodes=1600"
+    ],
+    "games": 20000,
+    "seed": 0,
+    "opening_plies": 8,
+    "skip_plies": 2,
+    "stride": 1,
+    "result_weight": 0.0,
+    "label_nodes": 1200,
+    "label_depth": 8,
+    "td_lambda": 0.7,
+    "scale": 1.0,
+    "accumulator": 256,
+    "hidden1": 32,
+    "hidden2": 32,
+    "epochs": 8,
+    "batch": 1024,
+    "learning_rate": 0.001,
+    "init_seed": 0
+  },
+  "data": {
+    "digest": "916f6d2597b85d3eb6a788b4e57b7131b6ead44df0a3ce002c1a10cbacdbc4d1",
+    "games": 20000,
+    "positions": 1680519,
+    "most_active": 101
+  },
+  "training": {
+    "loss_by_epoch": [
+      0.00337293,
+      0.0014269,
+      0.00097739,
+      0.0007924,
+      0.00065708,
+      0.00059834,
+      0.00053188,
+      0.00049473
+    ],
+    "w0_limit": 127,
+    "quantization_error": 0.032945
+  },
+  "acceptance": {
+    "candidate": "minimax:net=db5ef1bc938e,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 1000000,
+    "opening_plies": 8,
+    "score": 0.58,
+    "error": 0.023628,
+    "games": 400,
+    "identical": 0,
+    "openings": 172,
+    "candidate_nodes": 105529600,
+    "reference_nodes": 105324800,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true
+  },
+  "confirmation": {
+    "candidate": "minimax:net=db5ef1bc938e,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 2000000,
+    "opening_plies": 8,
+    "score": 0.575,
+    "error": 0.024235,
+    "games": 400,
+    "identical": 0,
+    "openings": 162,
+    "candidate_nodes": 104595200,
+    "reference_nodes": 104403200,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true,
+    "gate": "G-A2, plan-teacher.md \u00a78.3"
+  }
+}

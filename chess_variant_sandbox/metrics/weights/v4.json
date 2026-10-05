@@ -1,0 +1,184 @@
+{
+  "version": "v4",
+  "notes": "v4 is v3 with one change: llm_weight goes from 0.25 to 0.0. Every curve, weight and gate is identical, so the objective total a corpus scores under v4 equals the one it scored under v3 -- the human band 0.716-0.859, chess 0.814 sixth of eighteen, separation -0.055, sign accuracy 90 percent, null stability 0.000 all carry over unchanged. What changes is what the headline is. Under v3 a judge's absolute 0-1 score entered the headline at a quarter weight, which made it the de facto ranker inside a band the objective index resolves to about 0.05 -- an accident of scale compression rather than a decision. Absolute scores from a model are noisy and poorly calibrated; pairwise preference is a different and much better-behaved question, and the design loop now asks that instead and uses the resulting ordering only as the tie-break the interval leaves undefined. Blending an absolute score AND taking a tie-break from the same opinion would enter it into the ranking twice, which is the double-counting this project names by name. Calibrated against the labelled corpus, not provisional. v3 rebuilt v2's component set rather than re-tuning it. Four measured defects drove it: (1) the bootstrap sd of a v2 score was 0.027 against a human band 0.133 wide, so v2's ordering inside that band was noise; (2) 0.06 of weight sat on search_advantage, which has zero variance across all ten human variants of the time, and several more components were pinned at 1.00 for over 80 percent of the corpus; (3) skill_gradient and rating_spread correlate +0.93, so 0.22 of weight expressed one measurement twice; (4) rule_mass as lower_better correlates +0.88 with branching and +0.82 with rating spread, meaning the elegance term subtracted from the depth signal and both broken controls took the top of the family. v3 replaces level measurements with skill-response measurements wherever it can, replaces rule_mass with rule_yield, and moves the components that could not express a difference to gates. Measured on the 18 scoreable committed rulesets plus the mutant corpus: human band 0.716-0.859, chess 0.814 sixth of eighteen, separation -0.055 against a best known-bad mutant of 0.771, sign accuracy 90 percent, null stability 0.000. Separation is negative for one diagnosed pair and was deliberately not tuned away; see docs/plan.md stage 10. Curve ends were placed by metrics/calibration.py anchor_curves from the labelled corpus, with spans floored at three times the component's resampling sd and twice the human band width. Components asked for here that the analysis pass supplies -- decision_criticality, piece_utilisation, blunder_recoverability -- mean a corpus must be analysed before it can be scored under this version.",
+  "llm_weight": 0.0,
+  "components": {
+    "rule_yield": {
+      "family": "elegance",
+      "weight": 0.1,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 55.7236,
+        "zero_at": 0.0
+      },
+      "evidence": "8.5 / +0.32"
+    },
+    "first_player_advantage": {
+      "family": "balance",
+      "weight": 0.04,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0833,
+        "zero_at": 1.0
+      },
+      "evidence": "1.9 / +0.02  weakest on both axes"
+    },
+    "stall_rate": {
+      "family": "balance",
+      "weight": 0.08,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 0.36
+      },
+      "evidence": "11.4 / +0.43"
+    },
+    "mean_branching": {
+      "family": "pacing",
+      "weight": 0.04,
+      "curve": "band",
+      "points": {
+        "good_low": 8.9858,
+        "good_high": 61.0244,
+        "zero_low": 0.0,
+        "zero_high": 113.063
+      },
+      "evidence": "21.9 / +0.13"
+    },
+    "ply_spread": {
+      "family": "pacing",
+      "weight": 0.04,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.1966,
+        "zero_at": 0.0572
+      },
+      "evidence": "9.9 / +0.38"
+    },
+    "opening_diversity": {
+      "family": "variety",
+      "weight": 0.06,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.4321
+      },
+      "evidence": "9.5 / -0.11  guards a failure no mutant has"
+    },
+    "distinct_game_rate": {
+      "family": "variety",
+      "weight": 0.04,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.4555
+      },
+      "evidence": "4.6 / +0.06"
+    },
+    "blunder_recoverability": {
+      "family": "drama",
+      "weight": 0.08,
+      "curve": "band",
+      "points": {
+        "good_low": 0.125,
+        "good_high": 0.75,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "2.5 / +0.69  noisy, but separates hard"
+    },
+    "decision_criticality": {
+      "family": "decisions",
+      "weight": 0.1,
+      "curve": "band",
+      "points": {
+        "good_low": 0.2061,
+        "good_high": 0.7549,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "12.5 / +0.72  best discriminator in the set"
+    },
+    "piece_utilisation": {
+      "family": "decisions",
+      "weight": 0.06,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.6645
+      },
+      "evidence": "16.0 / +0.16  precise, modest separation"
+    },
+    "skill_gradient": {
+      "family": "depth",
+      "weight": 0.14,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 192.263,
+        "zero_at": 2.85
+      },
+      "evidence": "6.8 / +0.60  the core question, well measured"
+    },
+    "gradient_persistence": {
+      "family": "depth",
+      "weight": 0.07,
+      "curve": "band",
+      "points": {
+        "good_low": 0.162,
+        "good_high": 1.643,
+        "zero_low": 0.0,
+        "zero_high": 2.5
+      },
+      "evidence": "2.6 / +0.21  central idea, noisy at four budgets"
+    },
+    "draw_slope": {
+      "family": "drama",
+      "weight": 0.05,
+      "curve": "band",
+      "points": {
+        "good_low": 0.4615,
+        "good_high": 1.3,
+        "zero_low": 0.0,
+        "zero_high": 2.0
+      },
+      "evidence": "2.5 / +0.14"
+    }
+  },
+  "gates": [
+    {
+      "component": "search_advantage",
+      "minimum": 0.55,
+      "reason": "a searching player must beat a random one, or there is nothing to play"
+    },
+    {
+      "component": "stall_rate",
+      "maximum": 0.7,
+      "reason": "a game that mostly fails to finish is not a game"
+    },
+    {
+      "component": "mean_branching",
+      "minimum": 1.5,
+      "reason": "with no choices there is no play"
+    },
+    {
+      "component": "decisive_rate",
+      "minimum": 0.2,
+      "reason": "a game that competent players almost always draw is not a contest"
+    },
+    {
+      "component": "mean_plies",
+      "minimum": 8.0,
+      "reason": "a game decided before either player has developed anything is not a game"
+    },
+    {
+      "component": "skill_gradient",
+      "minimum": 8.0,
+      "reason": "doubling the thinking budget must be worth at least a few Elo, or skill does not exist here"
+    },
+    {
+      "component": "quick_kill_rate",
+      "maximum": 0.5,
+      "reason": "a game where half of all contests are over in a handful of moves is decided by an opening trap, not by play; it correlates -0.89 with distinct_game_rate, so scoring it as well as gating it counted one measurement twice"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+fn real() {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn t() { let s = "}"; let c = '}'; } // }
+    /* } */
+}
+fn after() {}

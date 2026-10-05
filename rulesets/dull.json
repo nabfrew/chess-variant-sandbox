@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "name": "dull",
+  "description": "A deliberately shallow control. Small board, one piece type, only forward movement, no royalty. Games are short, repetitive, and largely settled by the opening exchange. It is here as the dull end of the scale: a score that could not tell this game from chess would not be worth reading.",
+  "board": {
+    "width": 5,
+    "height": 5
+  },
+  "pieces": [
+    {
+      "id": "G",
+      "name": "grunt",
+      "value": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "G", "squares": ["a1", "b1", "c1", "d1", "e1"]}
+    ]
+  },
+  "rules": {
+    "win": "annihilation",
+    "stalemate": "draw",
+    "max_plies": 120,
+    "repetition_draw": 3,
+    "no_progress_draw": 40
+  },
+  "provenance": {
+    "origin": "control",
+    "source": "written for this project",
+    "history": "A deliberately shallow control that anchors the low end of the scale. One piece type, forward movement only, no royalty. It exists so that the index has a known-bad point to be measured against, and it is gated out on decisiveness rather than merely scoring low."
+  }
+}

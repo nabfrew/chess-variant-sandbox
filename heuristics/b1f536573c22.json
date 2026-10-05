@@ -1,0 +1,158 @@
+{
+  "ruleset_hash": "b1f536573c22",
+  "vocabulary_version": 2,
+  "vocabulary": [
+    "material",
+    "prey_weight",
+    "mobility",
+    "advance",
+    "centrality",
+    "royal_exposure",
+    "territory_margin",
+    "score_margin",
+    "score_urgency",
+    "check_margin",
+    "extinction_margin",
+    "hand_material",
+    "promotion_occupancy",
+    "reach_progress",
+    "facing_alignment"
+  ],
+  "model": "hand-written",
+  "k": 6,
+  "set_hash": "c5ef3ac0fafe",
+  "heuristics": [
+    {
+      "name": "material-and-mobility",
+      "plan": "Win material, and keep your options open.",
+      "weights": [
+        0.9995665039591523,
+        0.0,
+        0.02944153805218279,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "1c3b03404cc4"
+    },
+    {
+      "name": "trade-up",
+      "plan": "Win material and keep the pieces that can take the most.",
+      "weights": [
+        1.0,
+        0.0,
+        0.05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "4bc788e733d4"
+    },
+    {
+      "name": "shed",
+      "plan": "Give material away as fast as possible.",
+      "weights": [
+        -1.0,
+        0.0,
+        0.05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "ff7960bcb810"
+    },
+    {
+      "name": "hunt-the-king",
+      "plan": "Keep the opponent's royal piece under threat and yours out of trouble.",
+      "weights": [
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "c1960888d36e"
+    },
+    {
+      "name": "check-and-check-again",
+      "plan": "Give check as often as possible.",
+      "weights": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "af77f068d691"
+    },
+    {
+      "name": "promote",
+      "plan": "Get promotable pieces onto the squares where they promote.",
+      "weights": [
+        0.0,
+        0.0,
+        0.0,
+        0.4,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "digest": "a3275df63d36"
+    }
+  ]
+}

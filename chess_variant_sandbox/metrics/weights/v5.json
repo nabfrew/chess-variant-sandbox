@@ -1,0 +1,221 @@
+{
+  "version": "v5",
+  "notes": "v5 is the first re-anchoring since v3, and the first to be measured on a corpus that contains games schema 3 made expressible. Four changes, in descending order of how much they move a score.  (1) THE ROSTER IS WIDER. Six minimax budgets (100/200/400/800/1600/6400) rather than four, at 4 games per ordered pairing, seed 0. `gradient_persistence` compares the slope of the lower half of the ladder against the upper half, and with four budgets the two halves shared a point; with six they do not. That is what removes knightmate's spurious zero, and it is a roster problem rather than a component problem. It also breaks up the deterministic sweeps that made a Bradley-Terry interval look confident while containing no information.  (2) THREE COMPONENTS ARRIVE FROM STAGE 12, on the evidence in docs/reference/stage-12-measurements.md and not before it. `progress_irreversibility` (spread-to-noise 29.1) is the share of plies that could never be undone -- the irreversible process a designer named as the cure for repetitiveness -- scored as a BAND, because the two worst games in the corpus measure 1.000 and a game where every ply is irreversible is over in a handful of moves. `instance_participation` (18.7) is the share of pieces that ever moved, which is the axis `piece_utilisation` averages away; it does NOT rescue `piece_utilisation` from `mutant-instant-promotion` and was never adopted on that promise. `lead_conversion` (3.6) is the weakest-measured of the three and the most independent -- maximum correlation +0.41 against anything already scored -- which is why it is in at all: a modestly measured signal nothing else carries beats a precisely measured restatement.  (3) TWO EXISTING WEIGHTS COME DOWN, because the new components measured against them. `progress_irreversibility` correlates -0.80 with `blunder_recoverability` on raw values, and `instance_participation` +0.72 with `distinct_game_rate` while covering ground `piece_utilisation` claims. Both of those correlations are real overlap rather than saturation, so `blunder_recoverability` goes 0.08 -> 0.05 and `piece_utilisation` 0.06 -> 0.04. Wanting both halves of a correlated pair is allowed; paying full weight for both is double-counting.  (4) `capture_availability` IS REJECTED and `position_revisit_rate` and `threat_asymmetry` ARE HELD, all three on measurement rather than taste. `capture_availability` is the best-measured candidate of the seven at 51.7 and correlates -0.84 with `piece_utilisation`; `position_revisit_rate` has a corpus spread narrower than the curve span the anchoring floors require, so a compliant curve would be flat across every real game; `threat_asymmetry` is the one whose value should rise after schema 3 gives it a capture matrix to read, and it is re-read then rather than guessed at now. `traversal_time` is a diagnostic and a candidate grid axis and is never scored.  WHAT DID NOT CHANGE. The judge still contributes nothing: `llm_weight` stays 0.0, and the pairwise ordering is still a tie-break rather than a term. The gates are unchanged except where the roster forced it. Curve ends were placed by `metrics/calibration.py` anchor_curves from the labelled corpus with spans floored at three times the component's resampling sd and twice the human band width, and anchoring never saw the held-out slice -- `calibration.held_out` picks it by hashing the name, so separation is reported against negatives no curve was fitted to. Components asked for here that the analysis pass supplies -- decision_criticality, piece_utilisation, blunder_recoverability, instance_participation -- mean a corpus must be analysed before it can be scored under this version.",
+  "llm_weight": 0.0,
+  "components": {
+    "rule_yield": {
+      "family": "elegance",
+      "weight": 0.099,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 65.8754,
+        "zero_at": 0.0
+      },
+      "evidence": "8.5 / +0.32"
+    },
+    "first_player_advantage": {
+      "family": "balance",
+      "weight": 0.0396,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 0.75
+      },
+      "evidence": "1.9 / +0.02  weakest on both axes"
+    },
+    "stall_rate": {
+      "family": "balance",
+      "weight": 0.0792,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 1.0
+      },
+      "evidence": "11.4 / +0.43"
+    },
+    "mean_branching": {
+      "family": "pacing",
+      "weight": 0.0396,
+      "curve": "band",
+      "points": {
+        "good_low": 8.9244,
+        "good_high": 63.6699,
+        "zero_low": 0.0,
+        "zero_high": 118.4154
+      },
+      "evidence": "21.9 / +0.13"
+    },
+    "ply_spread": {
+      "family": "pacing",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.2181,
+        "zero_at": 0.0625
+      },
+      "evidence": "9.9 / +0.38"
+    },
+    "opening_diversity": {
+      "family": "variety",
+      "weight": 0.0594,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.36
+      },
+      "evidence": "9.5 / -0.11  guards a failure no mutant has"
+    },
+    "distinct_game_rate": {
+      "family": "variety",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.537
+      },
+      "evidence": "4.6 / +0.06"
+    },
+    "blunder_recoverability": {
+      "family": "drama",
+      "weight": 0.0495,
+      "curve": "band",
+      "points": {
+        "good_low": 0.1739,
+        "good_high": 1.0,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "2.5 / +0.69  noisy, but separates hard"
+    },
+    "decision_criticality": {
+      "family": "decisions",
+      "weight": 0.099,
+      "curve": "band",
+      "points": {
+        "good_low": 0.2035,
+        "good_high": 0.7574,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "12.5 / +0.72  best discriminator in the set"
+    },
+    "piece_utilisation": {
+      "family": "decisions",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.6915
+      },
+      "evidence": "16.0 / +0.16  precise, modest separation"
+    },
+    "skill_gradient": {
+      "family": "depth",
+      "weight": 0.1386,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 261.2385,
+        "zero_at": 5.065
+      },
+      "evidence": "6.8 / +0.60  the core question, well measured"
+    },
+    "gradient_persistence": {
+      "family": "depth",
+      "weight": 0.0693,
+      "curve": "band",
+      "points": {
+        "good_low": 0.432,
+        "good_high": 1.592,
+        "zero_low": 0.0,
+        "zero_high": 2.5
+      },
+      "evidence": "2.6 / +0.21  central idea, noisy at four budgets"
+    },
+    "draw_slope": {
+      "family": "drama",
+      "weight": 0.0495,
+      "curve": "band",
+      "points": {
+        "good_low": 0.9063,
+        "good_high": 1.4762,
+        "zero_low": 0.3364,
+        "zero_high": 2.0
+      },
+      "evidence": "2.5 / +0.14"
+    },
+    "progress_irreversibility": {
+      "family": "pacing",
+      "weight": 0.0693,
+      "curve": "band",
+      "points": {
+        "good_low": 0.0886,
+        "good_high": 0.813,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "29.1 / band; -0.80 with blunder_recoverability, which came down for it"
+    },
+    "instance_participation": {
+      "family": "decisions",
+      "weight": 0.0495,
+      "curve": "band",
+      "points": {
+        "good_low": 0.4526,
+        "good_high": 0.9997,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "18.7 / band; +0.72 with distinct_game_rate"
+    },
+    "lead_conversion": {
+      "family": "drama",
+      "weight": 0.0396,
+      "curve": "band",
+      "points": {
+        "good_low": 0.4819,
+        "good_high": 0.9329,
+        "zero_low": 0.0309,
+        "zero_high": 1.0
+      },
+      "evidence": "3.6 / band; the most independent of the seven, max +0.41",
+      "optional": true
+    }
+  },
+  "gates": [
+    {
+      "component": "search_advantage",
+      "minimum": 0.55,
+      "reason": "a searching player must beat a random one, or there is nothing to play"
+    },
+    {
+      "component": "stall_rate",
+      "maximum": 0.7,
+      "reason": "a game that mostly fails to finish is not a game"
+    },
+    {
+      "component": "mean_branching",
+      "minimum": 1.5,
+      "reason": "with no choices there is no play"
+    },
+    {
+      "component": "decisive_rate",
+      "minimum": 0.2,
+      "reason": "a game that competent players almost always draw is not a contest"
+    },
+    {
+      "component": "mean_plies",
+      "minimum": 8.0,
+      "reason": "a game decided before either player has developed anything is not a game"
+    },
+    {
+      "component": "skill_gradient",
+      "minimum": 8.0,
+      "reason": "doubling the thinking budget must be worth at least a few Elo, or skill does not exist here"
+    },
+    {
+      "component": "quick_kill_rate",
+      "maximum": 0.5,
+      "reason": "a game where half of all contests are over in a handful of moves is decided by an opening trap, not by play; it correlates -0.89 with distinct_game_rate, so scoring it as well as gating it counted one measurement twice"
+    }
+  ]
+}

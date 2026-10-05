@@ -1,0 +1,3604 @@
+//! The rule interpreter: move generation, application, and terminal detection.
+//!
+//! This is a port of `chess_variant_sandbox/engine/engine.py`, and the port is deliberately literal.
+//! Every place where a faster formulation was available but would have changed which
+//! moves come out in which order, the Python phrasing won: the two implementations are
+//! held to producing byte-identical games, and that test is worth more than the
+//! micro-optimisation would have been.
+//!
+//! The one structural departure is make/unmake. Python's `apply` returns a new
+//! immutable state because that is what makes states safe to hand between processes;
+//! here a search runs inside one thread on one position, so a move is applied in place
+//! and taken back, and the repetition window is a pair of indices into a single history
+//! rather than a tuple copied per node.
+
+use std::cell::Cell;
+
+use crate::tables::*;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Reason {
+    RoyalCaptured,
+    RoyalDestroyed,
+    Annihilated,
+    Repetition,
+    NoProgress,
+    PlyLimit,
+    Checkmate,
+    Stalemate,
+    StalemateLoss,
+    StalemateWin,
+    Reached,
+    Extinction,
+    BareRoyal,
+    CheckLimit,
+    /// Enough of the board was coloured.
+    Coloured,
+    /// The clock ran out and a scoring rule decided it. Distinct from `PlyLimit` and
+    /// `NoProgress` on purpose: those two are draws and this one is a result, and a
+    /// records file that called them the same thing would make every long game look
+    /// drawn in the metrics.
+    Scored,
+}
+
+impl Reason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Reason::RoyalCaptured => "royal_captured",
+            Reason::RoyalDestroyed => "royal_destroyed",
+            Reason::Annihilated => "annihilated",
+            Reason::Repetition => "repetition",
+            Reason::NoProgress => "no_progress",
+            Reason::PlyLimit => "ply_limit",
+            Reason::Checkmate => "checkmate",
+            Reason::Stalemate => "stalemate",
+            Reason::StalemateLoss => "stalemate_loss",
+            Reason::StalemateWin => "stalemate_win",
+            Reason::Reached => "reached",
+            Reason::Extinction => "extinction",
+            Reason::BareRoyal => "bare_royal",
+            Reason::CheckLimit => "check_limit",
+            Reason::Coloured => "coloured",
+            Reason::Scored => "scored",
+        }
+    }
+}
+
+/// `winner` is `-1` for a draw, matching `Outcome.winner is None` on the Python side.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Outcome {
+    pub winner: i8,
+    pub reason: Reason,
+}
+
+impl Outcome {
+    #[inline]
+    pub fn score_for(&self, player: usize) -> f64 {
+        if self.winner < 0 {
+            0.5
+        } else if self.winner as usize == player {
+            1.0
+        } else {
+            0.0
+        }
+    }
+}
+
+#[derive(Clone)]
+struct Undo {
+    origin: usize,
+    target: usize,
+    kind: u32,
+    moving: u8,
+    captured: u8,
+    captured_square: usize,
+    target_before: u8,
+    rook: Option<(usize, usize, u8)>,
+    unmoved: SquareSet,
+    ep_target: i16,
+    ep_victim: i16,
+    halfmove: u32,
+    key: u64,
+    window: usize,
+    checks: [u32; 2],
+    /// `(player, piece type, delta)` where this move changed a hand, and `None` where it
+    /// did not -- which is every move of every ruleset without drops.
+    ///
+    /// A whole clone of both hands used to live here, which is two heap allocations per
+    /// move on the hottest path in the engine for crazyhouse, shogi and dobutsu. **At
+    /// most one entry changes, by one**: a drop spends one piece from the mover's hand
+    /// and a capture adds one to it, and the two cannot both happen, because a drop's
+    /// target square is empty by construction. An explosion is not an exception -- the
+    /// blast puts nothing in a hand.
+    hand: Option<(u8, u8, i8)>,
+    /// Squares cleared by an explosion or by a sweep's path (schema 13), to be restored
+    /// on unmake. The two rules are refused together, so at most one writes it.
+    cleared: Vec<(usize, u8)>,
+    /// Moves left in the turn, and how many turns have been taken, before this move.
+    remaining: u32,
+    turns_taken: u32,
+    /// `(square, colour before)` when this move changed a square's colour. One square
+    /// at most: a move ends on one square, and that is the only one it can colour.
+    coloured: Option<(usize, u8)>,
+    /// Where this move's phase steps begin in `Game::npc_log` (schema 9).
+    ///
+    /// An index rather than a `Vec` of its own, and measured rather than tidied. C6 asked
+    /// for the `cleared` shape -- a `Vec` per `Undo`, empty and allocation-free
+    /// where the rule is off -- and that shape costs 24 bytes on a struct `make` writes at
+    /// every node of every search, which chess paid for in perft while never reading it.
+    /// One shared stack and one index is the `history`/`window` shape instead: four bytes
+    /// here, and no allocation at all after the first phase of the first game.
+    npc_log: u32,
+    /// Schema 12: one more than the landing index of a survivor this move placed under
+    /// `position: "choose"`, and 0 where it placed none. The fourth square a strike can
+    /// touch, which `unmake` clears before the generic restore. A `u8` sits in the
+    /// struct's one byte of padding, so `Undo` does not grow.
+    placed: u8,
+}
+
+/// The squares a legality filter has temporarily overwritten, and what stood on them.
+///
+/// A filter plays a move on the board, asks one question and puts it back, so the whole
+/// of its bookkeeping is a handful of `(square, value)` pairs -- and it ran once per
+/// candidate move at every node, allocating a `Vec` each time.
+///
+/// **Five inline is not a guess.** Castling touches four squares; the deepest other path
+/// is a capture that strikes, which is the origin and the target plus the three
+/// `strike_writes` returns. `position: "choose"` (schema 12) is still three writes, its
+/// third square the survivor's. An explosion's blast is bounded only by the board, so it
+/// spills, and so does an en passant strike, whose victim's square is a sixth entry: rare,
+/// correct, and not worth sixteen bytes on every filter call chess makes.
+struct Saved {
+    inline: [(usize, u8); Saved::INLINE],
+    len: usize,
+    spill: Vec<(usize, u8)>,
+}
+
+/// What a contact leaves behind: the squares to write, and the two things only `make`
+/// needs to know about afterwards.
+///
+/// The legality filters want the writes and nothing else. `make` wants both of the rest,
+/// and neither can be read back off the board: whether a struck piece is standing
+/// somewhere (its `unmoved` bit has to be cleared, and the no-progress clock compares its
+/// value against the one it replaced) and whether the *attacker* changed into something
+/// of a different worth, which since schema 10 is a second way for the board's declared
+/// material to move without a piece leaving it.
+struct StrikeOutcome {
+    writes: [(usize, u8); 3],
+    survivor: Option<(usize, u8)>,
+    mover_material_changed: bool,
+}
+
+impl Saved {
+    const INLINE: usize = 5;
+
+    fn new() -> Self {
+        Self { inline: [(0, 0); Self::INLINE], len: 0, spill: Vec::new() }
+    }
+
+    #[inline]
+    fn push(&mut self, entry: (usize, u8)) {
+        if self.len < Self::INLINE {
+            self.inline[self.len] = entry;
+            self.len += 1;
+        } else {
+            self.spill.push(entry);
+        }
+    }
+
+    /// Put the board back, newest square first -- which is what the `Vec` this replaced
+    /// did, and it matters wherever one square was written twice.
+    #[inline]
+    fn restore(&self, board: &mut [u8; MAX_SQUARES]) {
+        for &(square, value) in self.spill.iter().rev() {
+            board[square] = value;
+        }
+        for &(square, value) in self.inline[..self.len].iter().rev() {
+            board[square] = value;
+        }
+    }
+}
+
+/// What a royal piece of each player's looks like on the board, or `0` where asking is
+/// meaningless -- no royalty at all, or more than one royal per side, which is the case
+/// `Game::royal_hint` is not sound for.
+fn royal_values(t: &Tables) -> [u8; 2] {
+    match t.royal_types.first() {
+        Some(piece_type) if !t.multi_royal => {
+            // A royal may not declare a facing -- the validator refuses it by name --
+            // so a royal type is one board value per player and this hint stays sound.
+            [t.entering_value(0, *piece_type), t.entering_value(1, *piece_type)]
+        }
+        _ => [0, 0],
+    }
+}
+
+/// Tally a colouring. The slow definition `colour_counts` is maintained against, and
+/// the one every entry point into a position that was not reached by a move uses.
+pub fn count_colours(colour: &[u8]) -> [u32; 2] {
+    let mut counts = [0u32; 2];
+    for square in colour {
+        if *square != 0 {
+            counts[*square as usize - 1] += 1;
+        }
+    }
+    counts
+}
+
+/// Which squares each owner's pieces stand on: the slow definition `Game::occupied`
+/// is maintained against, and what a position that was not reached by a move starts
+/// from.
+///
+/// **Three sets, not two, since schema 9.** The third is the wild pieces', and it is
+/// there because `write` and `put` index this by `owner_of` -- a board that can hold a
+/// third owner's byte needs a set for it or the two writers panic. Nothing that means
+/// *the two armies* reads it: `all_occupied` is still the players' union, which is what
+/// keeps every material term blind to a piece nobody owns.
+pub fn scan_occupied(t: &Tables, board: &[u8; MAX_SQUARES]) -> [SquareSet; 3] {
+    let mut occupied = [SquareSet::EMPTY; 3];
+    for (square, value) in board.iter().enumerate().take(t.n_squares) {
+        if *value != 0 {
+            occupied[t.owner_of(*value)].set(square);
+        }
+    }
+    occupied
+}
+
+/// A position plus the history a repetition rule needs, mutated in place.
+pub struct Game<'t> {
+    pub t: &'t Tables,
+    pub board: [u8; MAX_SQUARES],
+    pub side: usize,
+    pub unmoved: SquareSet,
+    pub ep_target: i16,
+    pub ep_victim: i16,
+    pub halfmove: u32,
+    pub ply: u32,
+    pub key: u64,
+    /// Every position hash of the game so far. `window` is the index of the first one
+    /// that survived the last irreversible move, so `history[window..]` is exactly the
+    /// `repetition` tuple the Python state carries.
+    pub history: Vec<u64>,
+    pub window: usize,
+    /// Checks delivered so far by each player (schema 2: check_limit).
+    pub checks: [u32; 2],
+    /// Pieces held off the board, per player, counted by piece type (schema 2: drops).
+    pub hands: [Vec<u32>; 2],
+    /// Moves left in the current turn. 1 for every ruleset without a turn rule, and
+    /// the side flips whenever it reaches zero -- which is what `make` used to do
+    /// unconditionally.
+    pub remaining: u32,
+    /// How many turns have been taken, so the opening ramp knows where it is.
+    pub turns_taken: u32,
+    /// Who owns each square, 0 for nobody (schema 4: territory). Empty when the rule is
+    /// off, so a ruleset without it pays one `is_empty` and no memory.
+    pub colour: Vec<u8>,
+    /// How many squares each side has claimed, maintained alongside `colour`.
+    ///
+    /// Counted rather than scanned because three things now ask per node -- the win
+    /// condition, the evaluator's goal term, and the search's table key -- and a scan
+    /// is one pass over the board for each. A move claims at most one square, so the
+    /// delta is two increments and `unmake` reverses them.
+    colour_counts: [u32; 2],
+    /// Which squares each player's pieces stand on, maintained alongside `board`.
+    ///
+    /// Move generation used to find the mover's pieces by reading every square -- 256
+    /// reads on the largest board for perhaps twenty pieces -- and the evaluator, the
+    /// terminal counts and the drop generator each walked the board again for the same
+    /// answer. A set per player is one word per 64 squares, and walking it in ascending
+    /// order is exactly the order the scan visited, which is the one thing that must
+    /// not change: piece order is move order is tie-break order.
+    ///
+    /// **State, not a hint**, and so it has to be right everywhere the board changes.
+    /// `write` and `put` are the two places, one for `make` and one for `unmake`, and
+    /// nothing else writes a square except the legality filters -- which play a move,
+    /// ask about attacks, and put the board back without ever generating a move or
+    /// counting anything. `occupied()` refuses to answer while one of those has the
+    /// board mid-experiment, so a later caller that asks from inside a filter fails a
+    /// debug build rather than reading a set that describes the board a moment ago.
+    occupied: [SquareSet; 3],
+    /// What each player has been paid for taking wild pieces (schema 9).
+    ///
+    /// `scoring.count: "points"` compares the two at the clocks. **No Zobrist term**: a
+    /// bounty is awarded only when a wild piece is taken, which is a material change,
+    /// which is irreversible, which clears the repetition window -- so two positions the
+    /// repetition rule ever compares always share the tally. Exactly the `hands`
+    /// argument and the permanent-`colour` argument, with the same transposition-table
+    /// caveat all three carry.
+    pub points: [f64; 2],
+    /// Where each player's royal stands: a *hint*, not state.
+    ///
+    /// A hint because it is validated rather than invalidated -- `royal_square` checks
+    /// that the remembered square still holds that player's royal and rescans when it
+    /// does not. That is what makes it safe inside the two filters that play a move on
+    /// the board, ask a question and put it back: `leaves_royal_attacked` and
+    /// `restrict` would each have to maintain a field that had to be trusted, and
+    /// getting one of them wrong is the kind of thing no perft can see.
+    ///
+    /// Sound only while a player has at most one royal, which is exactly what
+    /// `multi_royal` is false for -- the compiler's own note on that field says the
+    /// single-royal case can answer "where is it?" with one `find`. With two, a square
+    /// holding a royal need not be the *first* one, and the scan's order is observable.
+    /// `-1` is "not looked up yet" rather than "no royal": a missing royal is a real
+    /// answer and is remembered like any other.
+    royal_hint: Cell<[i32; 2]>,
+    /// What a royal of each player's looks like on the board, or `0` where the hint
+    /// does not apply. Resolved once rather than per call: `t.royal_types.first()` is a
+    /// pointer into the tables and a bounds check, and validating the hint is on the
+    /// movegen path, where that is the same order of cost as the scan it replaces.
+    royal_value: [u8; 2],
+    /// "Is this side in check", remembered for the position now on the board. `-1`
+    /// unknown, `0` no, `1` yes.
+    ///
+    /// Pure memoisation of a function of the position, so it is invalidated wherever
+    /// the position moves -- `make`, `unmake` and `restore` -- and is not consulted at
+    /// all while `scratch` says the board is mid-experiment.
+    check_memo: Cell<[i8; 2]>,
+    /// How many legality filters currently have the board temporarily mutated.
+    ///
+    /// The completeness half of the memo above. Nothing in those filters asks
+    /// `in_check` today, so the memo would be correct without this -- but "correct
+    /// because no caller happens to ask" is an invariant a later edit breaks silently,
+    /// and what it breaks is a cached answer about a position no game was ever in.
+    scratch: u32,
+    undo: Vec<Undo>,
+    /// Every phase step of every move still on the undo stack, oldest first (schema 9).
+    ///
+    /// One stack for the whole game rather than one `Vec` per move, for the reason
+    /// `history` is one and the repetition window is a pair of indices into it: a move's
+    /// own steps are everything above the index its `Undo` recorded, and the two are the
+    /// same LIFO. Empty and never touched where nothing is wild.
+    npc_log: Vec<(usize, usize, u8)>,
+    /// Guard against infinite recursion in drop-mate checking.
+    checking_drop_mate: bool,
+    /// The key the move in progress is building. Scratch, not state: seeded from `key`
+    /// at the top of every `make` and installed at the bottom. Separate from `key`
+    /// because `Undo` stores the key as it was *before* the move and is pushed last.
+    working_key: u64,
+}
+
+/// Everything needed to put a `Game` back where it was, for the tree search that
+/// cannot use the undo stack because it revisits nodes out of order.
+#[derive(Clone)]
+pub struct Snapshot {
+    pub board: [u8; MAX_SQUARES],
+    pub side: usize,
+    pub unmoved: SquareSet,
+    pub ep_target: i16,
+    pub ep_victim: i16,
+    pub halfmove: u32,
+    pub ply: u32,
+    pub key: u64,
+    pub repetition: Vec<u64>,
+    pub checks: [u32; 2],
+    pub hands: [Vec<u32>; 2],
+    pub colour: Vec<u8>,
+    pub remaining: u32,
+    pub turns_taken: u32,
+    /// The two maintained tallies, carried so that `restore` copies them rather than
+    /// recounting the board -- which it did on every descent step of a tree search.
+    /// A snapshot taken from a `Game` copies its tallies; one built from a Python
+    /// state computes them once, at the boundary.
+    pub occupied: [SquareSet; 3],
+    pub colour_counts: [u32; 2],
+    /// The bounty tally, carried like every other maintained quantity.
+    pub points: [f64; 2],
+}
+
+impl<'t> Game<'t> {
+    pub fn initial(t: &'t Tables) -> Self {
+        // Schema 10 (Q51): a hand may start with something in it. `stock` is empty for
+        // every ruleset written before that, so both hands start at zero exactly as they
+        // did -- and both players get the same stock, because a supply one side has and
+        // the other does not is a first-seat effect rather than a rule.
+        let hands = match t.drops.as_ref() {
+            Some(rule) if !rule.stock.is_empty() => [rule.stock.clone(), rule.stock.clone()],
+            Some(_) => [vec![0u32; t.n_types], vec![0u32; t.n_types]],
+            None => [vec![], vec![]],
+        };
+        let mut game = Self {
+            t,
+            board: t.initial_board,
+            side: 0,
+            unmoved: t.initial_unmoved,
+            ep_target: NO_SQUARE,
+            ep_victim: NO_SQUARE,
+            halfmove: 0,
+            ply: 0,
+            key: 0,
+            history: Vec::with_capacity(64),
+            window: 0,
+            checks: [0, 0],
+            hands,
+            remaining: t.turn.as_ref().map_or(1, |rule| rule.length_of(0)),
+            turns_taken: 0,
+            colour: if t.territory.is_some() {
+                vec![0u8; t.n_squares]
+            } else {
+                Vec::new()
+            },
+            colour_counts: [0, 0],
+            occupied: scan_occupied(t, &t.initial_board),
+            points: [0.0, 0.0],
+            royal_hint: Cell::new([-1, -1]),
+            royal_value: royal_values(t),
+            check_memo: Cell::new([-1, -1]),
+            scratch: 0,
+            undo: Vec::with_capacity(64),
+            npc_log: Vec::new(),
+            checking_drop_mate: false,
+            working_key: 0,
+        };
+        game.key = game.compute_hash();
+        game.history.push(game.key);
+        game
+    }
+
+    pub fn from_snapshot(t: &'t Tables, snapshot: &Snapshot) -> Self {
+        debug_assert_eq!(snapshot.occupied, scan_occupied(t, &snapshot.board));
+        debug_assert_eq!(snapshot.colour_counts, count_colours(&snapshot.colour));
+        Self {
+            t,
+            board: snapshot.board,
+            side: snapshot.side,
+            unmoved: snapshot.unmoved,
+            ep_target: snapshot.ep_target,
+            ep_victim: snapshot.ep_victim,
+            halfmove: snapshot.halfmove,
+            ply: snapshot.ply,
+            key: snapshot.key,
+            history: snapshot.repetition.clone(),
+            window: 0,
+            checks: snapshot.checks,
+            hands: snapshot.hands.clone(),
+            remaining: snapshot.remaining.max(1),
+            turns_taken: snapshot.turns_taken,
+            // Sized here rather than trusted from the caller. A position built by hand
+            // in Python may carry no colouring at all, and every read of this is a
+            // per-square index -- "nothing has been claimed" is the well-defined
+            // reading of an absent array, and a panic is not.
+            colour: if t.territory.is_some() {
+                let mut colour = snapshot.colour.clone();
+                colour.resize(t.n_squares, 0);
+                colour
+            } else {
+                Vec::new()
+            },
+            colour_counts: snapshot.colour_counts,
+            occupied: snapshot.occupied,
+            points: snapshot.points,
+            royal_hint: Cell::new([-1, -1]),
+            royal_value: royal_values(t),
+            check_memo: Cell::new([-1, -1]),
+            scratch: 0,
+            undo: Vec::with_capacity(64),
+            npc_log: Vec::new(),
+            checking_drop_mate: false,
+            working_key: 0,
+        }
+    }
+
+    pub fn snapshot(&self) -> Snapshot {
+        Snapshot {
+            board: self.board,
+            side: self.side,
+            unmoved: self.unmoved,
+            ep_target: self.ep_target,
+            ep_victim: self.ep_victim,
+            halfmove: self.halfmove,
+            ply: self.ply,
+            key: self.key,
+            repetition: self.history[self.window..].to_vec(),
+            checks: self.checks,
+            hands: self.hands.clone(),
+            colour: self.colour.clone(),
+            remaining: self.remaining,
+            turns_taken: self.turns_taken,
+            occupied: self.occupied,
+            colour_counts: self.colour_counts,
+            points: self.points,
+        }
+    }
+
+    /// Reset this game to a snapshot without reallocating. The undo stack is dropped:
+    /// a caller that restores has abandoned whatever it was in the middle of.
+    ///
+    /// Without allocating either: the tree search calls this once per descent step,
+    /// and it used to clone both hands -- two heap allocations -- and recount the
+    /// colouring with a pass over the board. `clone_from` reuses the vectors already
+    /// here, and the two tallies ride on the snapshot.
+    pub fn restore(&mut self, snapshot: &Snapshot) {
+        self.board = snapshot.board;
+        self.side = snapshot.side;
+        self.unmoved = snapshot.unmoved;
+        self.ep_target = snapshot.ep_target;
+        self.ep_victim = snapshot.ep_victim;
+        self.halfmove = snapshot.halfmove;
+        self.ply = snapshot.ply;
+        self.key = snapshot.key;
+        self.history.clear();
+        self.history.extend_from_slice(&snapshot.repetition);
+        self.window = 0;
+        self.checks = snapshot.checks;
+        self.hands[0].clone_from(&snapshot.hands[0]);
+        self.hands[1].clone_from(&snapshot.hands[1]);
+        self.remaining = snapshot.remaining.max(1);
+        self.turns_taken = snapshot.turns_taken;
+        self.colour.clear();
+        self.colour.extend_from_slice(&snapshot.colour);
+        if self.t.territory.is_some() {
+            self.colour.resize(self.t.n_squares, 0);
+        }
+        debug_assert_eq!(snapshot.colour_counts, count_colours(&snapshot.colour));
+        debug_assert_eq!(snapshot.occupied, scan_occupied(self.t, &snapshot.board));
+        self.colour_counts = snapshot.colour_counts;
+        self.occupied = snapshot.occupied;
+        self.points = snapshot.points;
+        // The check bits describe the position that just went away. The royal hint is
+        // not cleared here and does not need to be: it is checked against the board
+        // before it is believed.
+        self.check_memo.set([-1, -1]);
+        self.undo.clear();
+        // The phase log is scratch belonging to the undo stack, and the stack is gone.
+        self.npc_log.clear();
+    }
+
+    /// Which squares each player's pieces stand on, for a board that is settled.
+    ///
+    /// Settled means no legality filter has it mid-experiment: the filters write the
+    /// board directly and put it back, and the sets are not told, so an answer read
+    /// from inside one would describe the board a moment ago. Nothing asks from there
+    /// today -- the filters only ask about attacks -- and this is what keeps that a
+    /// checked fact rather than a happy accident. A debug build also re-derives the
+    /// sets from the board on every read and compares.
+    #[inline(always)]
+    pub fn occupied(&self) -> &[SquareSet; 3] {
+        debug_assert_eq!(self.scratch, 0, "occupancy read while a filter has the board");
+        debug_assert_eq!(self.occupied, scan_occupied(self.t, &self.board));
+        &self.occupied
+    }
+
+    /// Both players' pieces, as one set. Walked in ascending order this is board
+    /// order over the occupied squares, which is the order every material sum adds
+    /// its terms in.
+    ///
+    /// **The two armies, and deliberately not the board.** A wild piece is nobody's, so
+    /// it is not here -- every caller is a material sum or a feature over the pieces
+    /// somebody owns, and each decodes an owner out of the board byte by dividing by
+    /// `side_stride`, which has no row for a third owner. `all_pieces` is the one that
+    /// means "every square with something on it".
+    #[inline(always)]
+    pub fn all_occupied(&self) -> SquareSet {
+        let occupied = self.occupied();
+        occupied[0].union(&occupied[1])
+    }
+
+    /// Every square with a piece on it, whoever owns it -- the wild ones included.
+    ///
+    /// What "empty" means to a rule that puts a piece somewhere: a drop may not land on
+    /// a boar. Identical to `all_occupied` for every ruleset before schema 9, because
+    /// the third set is empty there.
+    #[inline(always)]
+    pub fn all_pieces(&self) -> SquareSet {
+        let occupied = self.occupied();
+        occupied[0].union(&occupied[1]).union(&occupied[WILD])
+    }
+
+    pub fn compute_hash(&self) -> u64 {
+        let t = self.t;
+        let mut digest = 0u64;
+        for square in 0..t.n_squares {
+            let value = self.board[square];
+            if value != 0 {
+                digest ^= t.zobrist(value, square);
+            }
+        }
+        if self.side != 0 {
+            digest ^= t.zobrist_side;
+        }
+        if self.ep_target != NO_SQUARE {
+            digest ^= t.zobrist_ep_file(self.ep_target);
+        }
+        // Only a *repainting* colouring enters the key. A permanent one is monotone, so
+        // laying one down is irreversible, so it clears the repetition window, so two
+        // positions the repetition rule ever compares always share the same colouring --
+        // exactly the argument that keeps `hands` out of the key.
+        if t.territory.as_ref().is_some_and(|rule| rule.repaints) {
+            for square in 0..t.n_squares {
+                digest ^= t.zobrist_colour(self.colour[square], square);
+            }
+        }
+        // Two positions identical but for how many moves are left in the turn are not
+        // the same position: one side is about to move again and the other is not.
+        digest ^= t.zobrist_remaining(self.remaining);
+        digest
+    }
+
+    /// Where `player`'s royal stands, or `-1`.
+    ///
+    /// A linear scan over the board, remembered. It is asked from `in_check`, from
+    /// `terminal_prefix`, from the check filter once per *suspect move*, from the
+    /// `forbid_check` filter and from the drop-mate test, so the scan was several
+    /// passes over every square at every node of every checkmate ruleset -- and it
+    /// grows with the board, which is where the searches are already shallowest.
+    ///
+    /// The hint is validated against the board rather than maintained in `make`, which
+    /// is what makes it safe inside the filters that mutate the board and put it back.
+    /// See `royal_hint` for why it is only sound while `multi_royal` is false.
+    #[inline]
+    pub fn royal_square(&self, player: usize) -> i32 {
+        let t = self.t;
+        if t.multi_royal {
+            return self.scan_royal_square(player);
+        }
+        let hint = self.royal_hint.get()[player];
+        if hint >= 0 && self.holds_royal(player, hint as usize) {
+            debug_assert_eq!(hint, self.scan_royal_square(player));
+            return hint;
+        }
+        let found = self.scan_royal_square(player);
+        // Not remembered from inside a filter's experiment: that answer is about a
+        // board on its way back to what it was, so storing it would trade a scan saved
+        // for a scan wasted on the next call.
+        if self.scratch == 0 {
+            let mut hints = self.royal_hint.get();
+            hints[player] = found;
+            self.royal_hint.set(hints);
+        }
+        found
+    }
+
+    /// Whether `square` holds a royal piece of `player`'s. One load and one compare:
+    /// `multi_royal` being false means there is at most one royal *type*, and the value
+    /// it encodes to was resolved when the game was built.
+    #[inline]
+    fn holds_royal(&self, player: usize, square: usize) -> bool {
+        let value = self.royal_value[player];
+        value != 0 && self.board[square] == value
+    }
+
+    /// The scan the hint above is a memo of, and the definition it is checked against.
+    fn scan_royal_square(&self, player: usize) -> i32 {
+        let t = self.t;
+        for piece_type in &t.royal_types {
+            let value = t.entering_value(player, *piece_type);
+            for square in 0..t.n_squares {
+                if self.board[square] == value {
+                    return square as i32;
+                }
+            }
+        }
+        -1
+    }
+
+    /// How many royals `player` still has. One board read on the single-royal path,
+    /// through the validated hint; a scan where a side can have several.
+    #[inline]
+    fn royal_count(&self, player: usize) -> usize {
+        if self.t.multi_royal {
+            self.royal_squares(player).len()
+        } else {
+            usize::from(self.royal_square(player) >= 0)
+        }
+    }
+
+    /// Every royal square `player` still holds. Only called when there can be several.
+    pub fn royal_squares(&self, player: usize) -> Vec<usize> {
+        let t = self.t;
+        let mut squares = Vec::new();
+        for piece_type in &t.royal_types {
+            let value = t.entering_value(player, *piece_type);
+            for square in 0..t.n_squares {
+                if self.board[square] == value {
+                    squares.push(square);
+                }
+            }
+        }
+        squares
+    }
+
+    fn has_any_piece(&self, player: usize) -> bool {
+        !self.occupied()[player].is_empty()
+    }
+
+    /// Whether the two royal pieces see each other down an otherwise empty file.
+    /// Xiangqi's flying general.
+    ///
+    /// **Reads a table; computes nothing.** This function used to walk a file by
+    /// `+= width`, which made it the third and last place in the core that worked a
+    /// square out by arithmetic -- blind to a seam, because the line can run the other
+    /// way round, and blind to a wall, because a wall is not a piece standing anywhere.
+    /// It was refused beside both rather than fixed. `Tables::facing_lines` answers the
+    /// question the compiler was always able to answer: for this square, which squares
+    /// are at the far end of a file line, and what has to be empty in between.
+    ///
+    /// Joined ranks put the same far end in the list twice, one entry each way round,
+    /// so the loop is over *lines* rather than over pairs and the first open one wins.
+    fn royals_face(&self) -> bool {
+        let first = self.royal_square(0);
+        let second = self.royal_square(1);
+        if first < 0 || second < 0 {
+            return false;
+        }
+        let second = second as u16;
+        let t = self.t;
+        for &(other, start, length) in t.facing_from(first as usize) {
+            if other != second {
+                continue;
+            }
+            if t.facing_path(start, length)
+                .iter()
+                .all(|&square| self.board[square as usize] == 0)
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Whether `player` attacks `square` with any capture-capable move.
+    ///
+    /// Reads the inverted table: a flat list of the ways this square can be reached,
+    /// each rejected on one byte comparison before any path work happens.
+    /// Whether `player` could capture whatever stands on `square`.
+    ///
+    /// An empty square has no victim to consult the capture matrix about, so it is
+    /// "attacked" if anything reaches it at all. Every caller that means a *specific*
+    /// piece -- castling's transit squares are the only ones -- calls
+    /// `attacks_square_as` with that piece's type instead.
+    pub fn attacks_square(&self, player: usize, square: usize) -> bool {
+        // The victim's type is only worth reading when something consults it. This is
+        // the hottest query in the engine -- the check filter asks it once per candidate
+        // move -- and the division is not free.
+        if !self.t.has_capture_matrix {
+            return self.attacks_square_as(player, square, usize::MAX);
+        }
+        let occupant = self.board[square];
+        let victim = if occupant == 0 {
+            usize::MAX
+        } else {
+            self.t.type_of(occupant)
+        };
+        self.attacks_square_as(player, square, victim)
+    }
+
+    /// Whether `player` could capture a piece of `victim` type standing on `square`.
+    ///
+    /// `usize::MAX` means "any piece", which skips the capture-matrix filter.
+    pub fn attacks_square_as(&self, player: usize, square: usize, victim: usize) -> bool {
+        let t = self.t;
+        for source in t.attackers_of(player, square) {
+            if self.board[source.origin as usize] != source.piece_value {
+                continue;
+            }
+            if source.requires_unmoved && !self.unmoved.get(source.origin as usize) {
+                continue;
+            }
+            // Schema 3: an attacker that is not allowed to take this victim is not
+            // attacking it. The attacker's type is already here, encoded in the value
+            // the source matched against.
+            if t.has_capture_matrix && victim != usize::MAX {
+                let attacker = t.type_of(source.piece_value);
+                if !t.may_capture(attacker, victim) {
+                    continue;
+                }
+            }
+            if source.sweep != 0 {
+                if self.sweep_attacks(player, source) {
+                    return true;
+                }
+                continue;
+            }
+            let path = t.attack_path(source);
+            // The prefix must be empty and the window must hold exactly the screens the
+            // source expects. A slide is all prefix and no screens; a cannon is all
+            // window and one screen; a bounded hop is both, which is the case that used
+            // to be inexpressible here.
+            let (prefix, window) = path.split_at((source.prefix_len as usize).min(path.len()));
+            // The window holds exactly the screens the source expects, and -- since
+            // schema 3 -- they have to be the right side's pieces. A piece of the wrong
+            // ownership still occupies the square, so it is counted as an obstruction
+            // rather than skipped: `occupied` is the blocking test, `screens` the
+            // permission one, and a hop that wants a friendly screen is not attacking
+            // through an enemy one.
+            let occupied = window.iter().filter(|s| self.board[**s as usize] != 0).count();
+            if occupied != source.screens as usize {
+                continue;
+            }
+            let usable = if source.screen_owner == SCREEN_ANY {
+                occupied
+            } else {
+                let low = t.value_low(player);
+                let high = low + t.side_stride as u16;
+                window
+                    .iter()
+                    .filter(|s| {
+                        let occupant = self.board[**s as usize] as u16;
+                        occupant != 0
+                            && screen_matches(source.screen_owner, occupant, low, high)
+                    })
+                    .count()
+            };
+            if usable == source.screens as usize
+                && prefix.iter().all(|s| self.board[*s as usize] == 0)
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Schema 13: whether a sweep source attacks its square. A sweep over the enemy
+    /// royal is check.
+    ///
+    /// The path is the whole ray and `prefix_len` is the attacked square's index on it.
+    /// Under a capture matrix a piece the sweeper may not take blocks, before the square
+    /// or after it. The square is attacked when it is a capture landing itself, or when a
+    /// landing further along would sweep it: an empty square with move mode, or the other
+    /// side's piece on a square with capture mode. The occupant of the square itself was
+    /// already judged by the caller's matrix test.
+    #[inline(never)]
+    fn sweep_attacks(&self, player: usize, source: &AttackSource) -> bool {
+        let t = self.t;
+        let path = t.attack_path(source);
+        let index = source.prefix_len as usize;
+        let attacker = t.type_of(source.piece_value);
+        let blocks = |occupant: u8| {
+            occupant != 0 && t.has_capture_matrix && !t.may_capture(attacker, t.type_of(occupant))
+        };
+        if path[..index].iter().any(|square| blocks(self.board[*square as usize])) {
+            return false;
+        }
+        if source.sweep & SWEEP_LANDS != 0 {
+            return true;
+        }
+        if source.sweep & SWEEP_BEYOND == 0 {
+            return false;
+        }
+        let modes = t.attack_path_modes(source);
+        let low = t.value_low(player);
+        let high = low + t.side_stride as u16;
+        for beyond in index + 1..path.len() {
+            let occupant = self.board[path[beyond] as usize];
+            let mode = modes[beyond];
+            if occupant == 0 {
+                if mode & 1 != 0 {
+                    return true;
+                }
+            } else if blocks(occupant) {
+                return false;
+            } else if !(low <= occupant as u16 && (occupant as u16) < high) && mode & 2 != 0 {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Whether `square` is attacked by `by`, **or by a wild piece** (schema 9).
+    ///
+    /// One definition of "attacked", and every place the core asks whether a royal is
+    /// safe goes through it: the legality filter, the illegal-position guard, checkmate,
+    /// `forbid_check`, castling's transit squares and `reach.safe`. A wild piece's
+    /// threat is the square it will step to next, which is one attack source per route
+    /// square in a third owner's block, so this is the same slice walk twice.
+    ///
+    /// **`check_limit` is the one place that does not ask.** It counts checks a *player*
+    /// delivers, and a boar's threat is nobody's check.
+    #[inline]
+    fn threatened(&self, by: usize, square: usize) -> bool {
+        self.attacks_square(by, square)
+            || (self.t.has_npcs && self.attacks_square(WILD, square))
+    }
+
+    /// `threatened`, for the callers that mean a specific victim -- castling's transit
+    /// squares, which are empty and would otherwise skip the capture matrix.
+    #[inline]
+    fn threatened_as(&self, by: usize, square: usize, victim: usize) -> bool {
+        self.attacks_square_as(by, square, victim)
+            || (self.t.has_npcs && self.attacks_square_as(WILD, square, victim))
+    }
+
+    /// Whether `player`'s royal is attacked, remembered for this position.
+    ///
+    /// Three callers ask it about one node -- the illegal-position guard in
+    /// `terminal_prefix`, the check filter in `generate_legal`, and the evaluator's
+    /// royal-exposure term, which asks for *both* sides at every leaf -- and each was
+    /// paying for its own attack scan.
+    pub fn in_check(&self, player: usize) -> bool {
+        if self.t.royal_types.is_empty() {
+            return false;
+        }
+        self.remembered_check(player, || self.compute_in_check(player))
+    }
+
+    /// `in_check`, for the one caller that has already located the royal.
+    ///
+    /// The check filter looks the royal up to decide whether it needs the slow path at
+    /// all, so asking `in_check` there would locate it a second time. Equivalent only on
+    /// the single-royal path, which is the only place it is called from.
+    #[inline]
+    fn in_check_at(&self, player: usize, royal: usize) -> bool {
+        debug_assert!(!self.t.multi_royal);
+        self.remembered_check(player, || self.threatened(1 - player, royal))
+    }
+
+    /// Read the memo, or answer and remember. **The only place the memo is touched**,
+    /// which is what keeps its one rule in one place: while `scratch` says a filter has
+    /// the board mid-experiment, the answer is about a position no game is in, so it is
+    /// neither read from the memo nor written to it.
+    #[inline]
+    fn remembered_check(&self, player: usize, answer: impl Fn() -> bool) -> bool {
+        if self.scratch > 0 {
+            return answer();
+        }
+        let memo = self.check_memo.get();
+        if memo[player] >= 0 {
+            debug_assert_eq!(memo[player] != 0, self.compute_in_check(player));
+            return memo[player] != 0;
+        }
+        let found = answer();
+        debug_assert_eq!(found, self.compute_in_check(player));
+        let mut memo = self.check_memo.get();
+        memo[player] = i8::from(found);
+        self.check_memo.set(memo);
+        found
+    }
+
+    /// The definition `in_check` memoises, and what every `debug_assert` above compares
+    /// a remembered answer against.
+    fn compute_in_check(&self, player: usize) -> bool {
+        if self.t.multi_royal {
+            return self.royal_squares(player).iter().any(|&royal| {
+                self.threatened(1 - player, royal)
+            });
+        }
+        let royal = self.royal_square(player);
+        royal >= 0 && self.threatened(1 - player, royal as usize)
+    }
+}
+
+impl<'t> Game<'t> {
+    /// Locate the rook a castling move moves, and where it lands.
+    ///
+    /// For step-based castling: the first rook outward from the king in the direction
+    /// of travel, landing on the square the king crossed.
+    /// For file-based castling: the rook file is encoded in the move's promotion field,
+    /// and destination is looked up from the castle_files table.
+    pub fn castling_partner(&self, origin: usize, target: usize) -> Option<(usize, usize)> {
+        let t = self.t;
+        let (_, rook_type, _) = t.castling?;
+        let rank_base = (origin / t.width) * t.width;
+
+        if let Some((_, _, rook_qs, rook_ks)) = t.castle_files {
+            // File-based: can't determine rook_file from origin/target alone
+            // This path is used by lib.rs boundary check -- for file-based we need the
+            // rook_file from the move encoding, so just check if any rook exists.
+            let king_file = origin % t.width;
+            // Try both directions
+            for &rook_file_dest in &[rook_qs, rook_ks] {
+                if rook_file_dest < 0 { continue; }
+                // Find a rook on the right side
+                let step: i32 = if (target % t.width) >= king_file { 1 } else { -1 };
+                let mut file = king_file as i32 + step;
+                while file >= 0 && file < t.width as i32 {
+                    let square = rank_base + file as usize;
+                    if t.is_piece(self.board[square], self.side, rook_type) {
+                        return Some((square, rank_base + rook_file_dest as usize));
+                    }
+                    file += step;
+                }
+            }
+            None
+        } else {
+            let step: i32 = if target > origin { 1 } else { -1 };
+            let mut file = (origin % t.width) as i32 + step;
+            while file >= 0 && file < t.width as i32 {
+                let square = rank_base + file as usize;
+                if t.is_piece(self.board[square], self.side, rook_type) {
+                    return Some((square, (target as i32 - step) as usize));
+                }
+                file += step;
+            }
+            None
+        }
+    }
+
+    /// Internal castling rook lookup. `rook_file_hint` is the promotion field of the
+    /// move; for file-based castling it names the rook's file, for step-based it is 0.
+    fn castling_rook_squares(&self, origin: usize, target: usize, rook_file_hint: i32) -> (usize, usize) {
+        let t = self.t;
+        let (_, rook_type, _) = t.castling.expect("castling without a rule");
+        let rank_base = (origin / t.width) * t.width;
+
+        if let Some((_, _, rook_qs, rook_ks)) = t.castle_files {
+            // File-based castling: rook_file is encoded in the move
+            let side = if rook_file_hint as usize > origin % t.width { 1 } else { 0 };
+            let rook_dest = if side == 1 { rook_ks } else { rook_qs };
+            (rank_base + rook_file_hint as usize, rank_base + rook_dest as usize)
+        } else {
+            // Step-based: first rook outward from king
+            let step: i32 = if target > origin { 1 } else { -1 };
+            let mut file = (origin % t.width) as i32 + step;
+            while file >= 0 && file < t.width as i32 {
+                let square = rank_base + file as usize;
+                if t.is_piece(self.board[square], self.side, rook_type) {
+                    return (square, (target as i32 - step) as usize);
+                }
+                file += step;
+            }
+            panic!("castling move applied to a position with no partner rook");
+        }
+    }
+
+    /// Write a square, and put the change into the key as it happens.
+    ///
+    /// **The one place a move's effects touch the board.** Promotion, en passant,
+    /// castling, all three strike position rules and an explosion all go through here,
+    /// so the key is right for every one of them by construction rather than by five
+    /// branches each computing the same quantity a different way. The next effect gets
+    /// its Zobrist handling for nothing instead of getting it wrong -- which is the
+    /// failure this replaces: the atomic explosion bug was a square written by an effect
+    /// the delta did not know about, and no perft can see one, because none of it
+    /// changes a move count.
+    ///
+    /// **A square written twice cancels itself**, which is why nothing has to be
+    /// deduplicated and no log has to be stored. A target square is written up to three
+    /// times in one move -- the mover arrives, promotion replaces it, a strike or a
+    /// blast overwrites it again -- and `a -> b -> c` XORs out `a` and in `b`, then out
+    /// `b` and in `c`. What survives is exactly `a` out and `c` in. Writing a square the
+    /// value it already holds cancels to nothing at all, which is the early return.
+    #[inline]
+    fn write(&mut self, square: usize, value: u8) {
+        let before = self.board[square];
+        if before == value {
+            return;
+        }
+        if before != 0 {
+            self.working_key ^= self.t.zobrist(before, square);
+            self.occupied[self.t.owner_of(before)].clear(square);
+        }
+        if value != 0 {
+            self.working_key ^= self.t.zobrist(value, square);
+            self.occupied[self.t.owner_of(value)].set(square);
+        }
+        self.board[square] = value;
+    }
+
+    /// Write a square on the way *back*: `write` without the key, for `unmake`.
+    ///
+    /// `unmake` restores the key wholesale from `Undo`, so it never wanted the Zobrist
+    /// half -- but it does want the occupancy half, and this is the one place it gets
+    /// it. Every square `unmake` touches goes through here, in the order it always
+    /// did, so the sets track the board write for write and are right whatever
+    /// intermediate value a square passes through on the way to its final one.
+    #[inline]
+    fn put(&mut self, square: usize, value: u8) {
+        let before = self.board[square];
+        if before == value {
+            return;
+        }
+        if before != 0 {
+            self.occupied[self.t.owner_of(before)].clear(square);
+        }
+        if value != 0 {
+            self.occupied[self.t.owner_of(value)].set(square);
+        }
+        self.board[square] = value;
+    }
+
+    /// Push a move that ends on `target`: one word per promotion target, then the plain
+    /// arrival where promotion is optional or absent. `fan` says the target is occupied
+    /// under `position: "choose"`, so each word fans out over its landing squares.
+    /// `leaving` says the move starts in the mover's zone under schema 15's
+    /// `on_leaving`, so it promotes wherever it lands.
+    #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
+    fn push_arrival(
+        &self, out: &mut Vec<u32>, origin: usize, target: usize, piece_type: usize,
+        player: usize, promoting: bool, leaving: bool, promo_optional: bool, fan: bool,
+    ) {
+        let t = self.t;
+        if promoting && (leaving || t.promotes_on(player, piece_type, target)) {
+            for &promoted in t.promotion_targets(player, piece_type) {
+                self.push_capture(
+                    out, encode_move(origin, target, MOVE_PROMOTION, promoted), piece_type,
+                    player, target, fan,
+                );
+            }
+            if promo_optional {
+                self.push_capture(
+                    out, encode_move(origin, target, MOVE_NORMAL, 0), piece_type, player,
+                    target, fan,
+                );
+            }
+        } else {
+            self.push_capture(
+                out, encode_move(origin, target, MOVE_NORMAL, 0), piece_type, player, target,
+                fan,
+            );
+        }
+    }
+
+    /// Push `m`, or under `fan` one word per legal landing square of the piece struck on
+    /// `captured_square` (schema 12).
+    ///
+    /// A capture whose target does not survive is one word with landing index 0. One that
+    /// survives fans out over the static landing list in ascending order, and a candidate
+    /// is legal when it is empty once the attacker has left: empty now, or the origin, and
+    /// never the target the attacker lands on. The index is into the static list, so a
+    /// stored move names the same square in any position. No legal candidate is no move.
+    #[inline(always)]
+    fn push_capture(
+        &self, out: &mut Vec<u32>, m: u32, mover_type: usize, player: usize,
+        captured_square: usize, fan: bool,
+    ) {
+        if fan {
+            self.fan_out_landing(out, m, mover_type, player, captured_square);
+        } else {
+            out.push(m);
+        }
+    }
+
+    fn fan_out_landing(
+        &self, out: &mut Vec<u32>, m: u32, mover_type: usize, player: usize,
+        captured_square: usize,
+    ) {
+        let t = self.t;
+        let rule = t.strike.as_ref().expect("a landing fan-out without a strike rule");
+        let victim = self.board[captured_square];
+        let cell = mover_type * rule.n_types + t.type_of(victim);
+        let becomes = if t.owner_of(victim) == player { rule.own_to[cell] } else { rule.to[cell] };
+        if becomes < 0 {
+            out.push(m);
+            return;
+        }
+        let origin = move_from(m);
+        let target = move_to(m);
+        for (index, &square) in rule.landing(player, captured_square).iter().enumerate() {
+            let square = square as usize;
+            if square != target && (self.board[square] == 0 || square == origin) {
+                out.push(with_landing(m, index));
+            }
+        }
+    }
+
+    /// Where a contact leaves the two pieces, as squares to write in order, or `None`
+    /// when this capture is an ordinary one after all.
+    ///
+    /// Keyed by the *pair* since schema 10 (`rules.contacts`): what a meeting leaves
+    /// behind can depend on who arrived as well as on who was standing there, and it can
+    /// change the attacker as well as the piece it took. A `strike` fills the attacker's
+    /// column with -1 and gives every attacker the same row, so schema 6 is this function
+    /// with one column empty rather than a second function beside it.
+    ///
+    /// **One statement of the rule, three callers.** `make` plays it, and the legality
+    /// filter has to mirror it twice -- a strike can turn its victim into a piece that
+    /// gives check, and a filter that did not know would let a king be captured. Those
+    /// two mirrors were written by hand and were the fifth and sixth copies of the same
+    /// paragraph; a rule stated in more than one place is a rule that can be stated
+    /// differently in one of them.
+    ///
+    /// A survivor can be in exactly two places and there is no third: where it was
+    /// (`Stay`, the attacker never left its square) or where its attacker was (`Swap`,
+    /// the one square a strike is guaranteed to have freed). `Advance` is what capture
+    /// has always done and is refused by the validator beside a chain that keeps
+    /// anything alive, so this returns `None` for it.
+    ///
+    /// `Choose` (schema 12) is `Advance` for the attacker and places the survivor on the
+    /// landing square `landing_index` names, which movegen offered only while it was empty
+    /// or the attacker's origin. The origin is emptied first so a survivor placed there
+    /// stays.
+    fn strike_writes(
+        &self, mover_type: usize, captured: u8, origin: usize, target: usize,
+        captured_square: usize, landing_index: usize,
+    ) -> Option<StrikeOutcome> {
+        let strike = self.t.strike.as_ref()?;
+        if captured == 0 {
+            return None;
+        }
+        // Read after the promotion branch, so an attacker that promoted on the strike
+        // carries its new type wherever it ends up -- and *overridden* by a contact,
+        // because a contact is stated about this particular meeting while a rank
+        // promotion is stated about the square. `mover_type` is the attacker as it stood
+        // before the move, which is the reading `explosion.fires` also takes: "a capture
+        // by P" has to mean the piece that set out, or it is not readable.
+        let attacker = self.board[target];
+        let mover_owner = self.t.owner_of(attacker);
+        let owner = self.t.owner_of(captured);
+        let cell = mover_type * strike.n_types + self.t.type_of(captured);
+        // Schema 11: a friendly target reads its own pair of tables. Movegen offers such a
+        // move only where `own_link` is set, so the tables are never empty here.
+        let (becomes, mover_becomes) = if owner == mover_owner {
+            (strike.own_to[cell], strike.own_mover_to[cell])
+        } else {
+            (strike.to[cell], strike.mover_to[cell])
+        };
+        if becomes < 0 && mover_becomes < 0 {
+            return None;
+        }
+        // The survivor is a piece that has just become something else, which is the
+        // same event as a promotion and a drop and takes the same answer: it enters
+        // play as its new type's initial orientation. There is no other reading -- the
+        // facing it had belonged to the type it no longer is. The attacker's half of a
+        // contact is the same event read from the other side and gets the same answer.
+        let landing = match strike.position {
+            StrikePosition::Stay => origin,
+            _ => target,
+        };
+        let attacker = if mover_becomes >= 0 {
+            self.t.arriving_value(mover_owner, mover_becomes as usize, landing)
+        } else {
+            attacker
+        };
+        let mover_material_changed = mover_becomes >= 0
+            && self.t.piece_values[mover_type] != self.t.piece_values[mover_becomes as usize];
+        // Where the survivor lands is known in every arm before anything is written, and
+        // schema 9's `promote_on_entry` needs it: a piece left standing inside its own
+        // promotion zone by a strike has entered play there, exactly as a dropped one has.
+        //
+        // `Advance` keeps nothing standing -- the validator refuses to pair it with a
+        // table that does -- so it reaches here only for the attacker's half, which is
+        // one write where schema 6 had none and is why this returns `None` for it only
+        // when there is nothing to say.
+        let (writes, survivor) = match (strike.position, becomes >= 0) {
+            (StrikePosition::Stay, true) => {
+                let survivor = self.t.arriving_value(owner, becomes as usize, captured_square);
+                (
+                    [(target, 0), (origin, attacker), (captured_square, survivor)],
+                    Some((captured_square, survivor)),
+                )
+            }
+            (StrikePosition::Swap, true) => {
+                let survivor = self.t.arriving_value(owner, becomes as usize, origin);
+                (
+                    [(captured_square, 0), (target, attacker), (origin, survivor)],
+                    Some((origin, survivor)),
+                )
+            }
+            (StrikePosition::Choose, true) => {
+                let chosen = strike.landing(mover_owner, captured_square)[landing_index] as usize;
+                let survivor = self.t.arriving_value(owner, becomes as usize, chosen);
+                (
+                    [(origin, 0), (target, attacker), (chosen, survivor)],
+                    Some((chosen, survivor)),
+                )
+            }
+            (StrikePosition::Stay, false) => {
+                if mover_becomes < 0 {
+                    return None;
+                }
+                ([(target, 0), (captured_square, 0), (origin, attacker)], None)
+            }
+            (StrikePosition::Swap, false)
+            | (StrikePosition::Choose, false)
+            | (StrikePosition::Advance, _) => {
+                if mover_becomes < 0 {
+                    return None;
+                }
+                ([(captured_square, 0), (origin, 0), (target, attacker)], None)
+            }
+        };
+        Some(StrikeOutcome { writes, survivor, mover_material_changed })
+    }
+
+    /// The squares wild pieces stand on right now, ascending (schema 9).
+    ///
+    /// **Listed before the phase moves anything, and that is load-bearing**: a single
+    /// ascending scan that stepped a piece onto a higher square would meet it again in
+    /// the same pass and step it twice.
+    ///
+    /// Read off `npc_squares` -- every square any route visits -- rather than off the
+    /// board or off `occupied[WILD]`. The board is up to 256 squares for what is usually
+    /// two pieces, and the occupancy sets are stale inside a legality filter, which
+    /// writes the board directly and does not tell them; the route list is right in both
+    /// places because it is a fact about the rules rather than about the position.
+    #[inline]
+    fn npc_here(&self) -> SquareSet {
+        let mut here = SquareSet::EMPTY;
+        for &square in &self.t.npc_squares {
+            let value = self.board[square as usize];
+            if value != 0 && self.t.owner_of(value) == WILD {
+                here.set(square as usize);
+            }
+        }
+        here
+    }
+
+    /// What the wild piece standing on `square` does: `Some(next)` to step there, taking
+    /// whatever it may, and `None` to wait where it is.
+    ///
+    /// **The rule, stated once**, for the two callers that play it -- `make`, which
+    /// writes through `write` so the key and the occupancy follow, and the legality
+    /// filter, which writes the raw board and puts it back. Both read the board as the
+    /// wild pieces earlier in the same phase left it, which is what makes the phase a
+    /// sequence rather than a set.
+    ///
+    /// Three ways to wait, and each fails silently the other way: the next square is the
+    /// square itself, which is the one-square route's sentinel for a wild piece that
+    /// never moves; it holds another wild piece, which one never takes; or it holds a
+    /// piece this one's *type* may not capture, read off schema 3's matrix exactly as a
+    /// player's piece reads it.
+    ///
+    /// The middle one is **unreachable while the validator holds**: a wild piece's next
+    /// square is on its own route, routes are pairwise disjoint, and one route carries
+    /// one wild piece. It is stated anyway because disjointness is a rule the validator
+    /// enforces and this is the core, which is handed tables rather than a spec.
+    #[inline]
+    fn npc_step_of(&self, square: usize) -> Option<usize> {
+        let t = self.t;
+        let value = self.board[square];
+        debug_assert!(value != 0 && t.owner_of(value) == WILD);
+        let next = t.npc_next[square];
+        if next < 0 || next as usize == square {
+            return None;
+        }
+        let next = next as usize;
+        let standing = self.board[next];
+        if standing == 0 {
+            return Some(next);
+        }
+        if t.owner_of(standing) == WILD {
+            return None;
+        }
+        if t.may_capture(t.type_of(value), t.type_of(standing)) {
+            Some(next)
+        } else {
+            None
+        }
+    }
+
+    /// The phase, played for real: every wild piece walks, and every square written goes
+    /// through `write` so the Zobrist key and the occupancy sets follow it.
+    ///
+    /// Returns whether anything was eaten, which is the material change the no-progress
+    /// clock and the repetition window read. A quiet step is neither -- the route is a
+    /// cycle, so the position will come round again, and that is what lets the repetition
+    /// rule catch a game in which only the boar moves.
+    fn npc_phase(&mut self) -> bool {
+        let mut ate = false;
+        for square in self.npc_here().iter() {
+            let Some(next) = self.npc_step_of(square) else {
+                continue;
+            };
+            let value = self.board[square];
+            let eaten = self.board[next];
+            self.write(square, 0);
+            self.write(next, value);
+            // A square a wild piece has walked over is a square something has happened
+            // on. Wild squares carry no `unmoved` bit at ply zero, so the only bit this
+            // ever clears is a piece's -- and that piece has just been eaten, which is a
+            // material change and irreversible on its own account.
+            self.unmoved.clear(square);
+            self.unmoved.clear(next);
+            ate |= eaten != 0;
+            self.close_ep_window_over(square, next);
+            self.npc_log.push((square, next, eaten));
+        }
+        ate
+    }
+
+    /// What the phase did, oldest step first: `(from, to, eaten)` per wild piece that
+    /// walked, `eaten` being the board byte the destination held at the instant the wild
+    /// piece wrote over it.
+    ///
+    /// **That byte, and not the piece the ply started with.** A pawn that promoted and
+    /// was then eaten on the square it promoted onto is the piece it *became*, and a
+    /// castling rook eaten in transit is a rook on its new square. A caller diffing two
+    /// positions has to guess at both; this is the core not making it guess.
+    ///
+    /// The log is scratch belonging to the undo stack, so it holds one move's steps only
+    /// where one move was made on a fresh `Game` -- which is what the boundary's `apply`
+    /// does, and the only caller this is for.
+    pub fn phase_steps(&self) -> &[(usize, usize, u8)] {
+        &self.npc_log
+    }
+
+    /// What the phase would do if it ran on the board as it stands: `(from, to, eaten)`
+    /// per wild piece that would walk, in the order the real phase walks them (Q660).
+    ///
+    /// The question the board asks to draw where each wild piece is going next. The real
+    /// phase runs after the *coming* move, which can step into a wild piece's way, out of
+    /// it, or take the piece, so this is the phase as the position now has it -- every
+    /// step decided by `npc_step_of`, the one statement of the rule, on the board as the
+    /// earlier steps of the same phase leave it. The board is put back before returning.
+    pub fn coming_phase(&mut self) -> Vec<(usize, usize, u8)> {
+        let mut steps = Vec::new();
+        if !self.t.has_npcs {
+            return steps;
+        }
+        let mut saved = Saved::new();
+        for square in self.npc_here().iter() {
+            let Some(next) = self.npc_step_of(square) else {
+                continue;
+            };
+            let value = self.board[square];
+            let eaten = self.board[next];
+            saved.push((square, value));
+            saved.push((next, eaten));
+            self.board[square] = 0;
+            self.board[next] = value;
+            steps.push((square, next, eaten));
+        }
+        saved.restore(&mut self.board);
+        steps
+    }
+
+    /// The same phase, played on the raw board for a legality filter, with every square
+    /// written pushed to `saved` so it can be put back.
+    ///
+    /// The filter has to see the position the move *leaves behind*, and that is the
+    /// post-phase position: a move that lets a boar eat your royal in your own phase is
+    /// illegal, and so is one that leaves your royal standing where a boar steps next.
+    /// Two squares per wild piece is more than `Saved`'s five inline entries, so this is
+    /// the one heap allocation the rule pays, and only on the rulesets that have it.
+    fn npc_phase_for_filter(&mut self, saved: &mut Saved) {
+        for square in self.npc_here().iter() {
+            let Some(next) = self.npc_step_of(square) else {
+                continue;
+            };
+            let value = self.board[square];
+            saved.push((square, value));
+            saved.push((next, self.board[next]));
+            self.board[square] = 0;
+            self.board[next] = value;
+        }
+    }
+
+    /// Close the en passant window if the phase wrote either of its two squares.
+    ///
+    /// An en passant capture is generated onto `ep_target` and removes the piece on
+    /// `ep_victim`; if a boar has since stepped onto either, the capture would write over
+    /// the boar without counting it, or remove a piece that is no longer there. The
+    /// window is restored wholesale from `Undo`, so there is nothing to log.
+    #[inline]
+    fn close_ep_window_over(&mut self, first: usize, second: usize) {
+        if self.ep_target == NO_SQUARE && self.ep_victim == NO_SQUARE {
+            return;
+        }
+        let touched = |square: i16| square == first as i16 || square == second as i16;
+        if touched(self.ep_target) || touched(self.ep_victim) {
+            self.ep_target = NO_SQUARE;
+            self.ep_victim = NO_SQUARE;
+        }
+    }
+
+    pub fn make(&mut self, m: u32) {
+        let t = self.t;
+        let origin = move_from(m);
+        let target = move_to(m);
+        let kind = move_kind(m);
+        let player = self.side;
+
+        let previous_unmoved = self.unmoved;
+        let previous_ep = self.ep_target;
+        let previous_ep_victim = self.ep_victim;
+        let previous_checks = self.checks;
+        let mut hand: Option<(u8, u8, i8)> = None;
+        // Taken before anything moves, because `Undo` is pushed further down and the
+        // decrement below has to happen before the key is finished.
+        let previous_remaining = self.remaining;
+        let previous_turns = self.turns_taken;
+        // Seeded with the side flipped, which is right exactly when the turn ends; the
+        // flip is undone further down when the same player moves again.
+        self.working_key = self.key ^ t.zobrist_side;
+
+        // Handle MOVE_DROP separately -- it has no origin piece on the board.
+        let (moving, piece_type) = if kind == MOVE_DROP {
+            let pt = move_promotion(m) as usize;
+            // What stands on the square afterwards is the table's business (schema 9's
+            // `promote_on_entry`): a pawn dropped on the far rank is a queen there, or a
+            // tokin in shogi. The hand still gives up `pt`, the dropped type, and
+            // `Undo.hand` records `pt` rather than the board value, so `unmake` needs
+            // nothing -- and neither does the move word, whose promotion field carries
+            // the dropped type.
+            let value = t.arriving_value(player, pt, target);
+            self.write(target, value);
+            // Remove from hand -- unless the slot is a supply rather than a count
+            // (schema 10, Q51). An unlimited slot is never spent, so it records no undo
+            // delta either, which is the whole of what `unmake` needs to know about it.
+            if !t.drops.as_ref().is_some_and(|rule| rule.is_unlimited(pt)) {
+                self.hands[player][pt] -= 1;
+                hand = Some((player as u8, pt as u8, -1));
+            }
+            (value, pt)
+        } else {
+            let mv = self.board[origin];
+            (mv, t.type_of(mv))
+        };
+        let target_before = if kind == MOVE_DROP { 0 } else { self.board[target] };
+        // Two kinds end on an occupied square without taking what stands there, and
+        // saying so here is what keeps the hand, the explosion, the material clock and
+        // the strike rule out of both. A rotation's target *is* its origin, so the square
+        // holds the piece that is turning; a file-based castling can land the king on its
+        // own rook, which the castling branch below moves rather than removes.
+        let mut captured =
+            if kind == MOVE_ROTATE || kind == MOVE_CASTLE { 0 } else { target_before };
+        let mut captured_square = target;
+        let mut rook = None;
+        let mut struck: Option<(usize, u8)> = None;
+        let mut placed: u8 = 0;
+        let mut contact_changed_mover = false;
+        let mut cleared: Vec<(usize, u8)> = Vec::new();
+
+        if kind == MOVE_ROTATE {
+            // The whole of the move. `write` puts the change into the key as it happens,
+            // and a piece value that carries a facing has its own Zobrist row -- so two
+            // positions that differ only in which way a piece points are different
+            // positions, and the repetition test can see that they are.
+            self.write(origin, t.piece_value(player, move_promotion(m) as usize, piece_type));
+        } else if kind == MOVE_CASTLE {
+            // Both pieces leave before either arrives, which is the order
+            // `play_move_for_filter` already plays a castling in. Under file-based
+            // castling the two squares can overlap -- the king's destination is the
+            // rook's own square, the rook's the king's -- and any other order writes one
+            // piece over the other. The rook's value is read before the king moves for
+            // the same reason.
+            let (rook_from, rook_to) =
+                self.castling_rook_squares(origin, target, move_promotion(m) as i32);
+            let rook_value = self.board[rook_from];
+            self.write(origin, 0);
+            self.write(rook_from, 0);
+            self.write(target, moving);
+            self.write(rook_to, rook_value);
+            rook = Some((rook_from, rook_to, rook_value));
+            self.unmoved.clear(rook_from);
+            self.unmoved.clear(rook_to);
+        } else if kind != MOVE_DROP {
+            self.write(origin, 0);
+            self.write(target, moving);
+
+            if kind == MOVE_PROMOTION {
+                self.write(target, t.entering_value(player, move_promotion(m) as usize));
+            } else if kind == MOVE_EN_PASSANT {
+                captured_square = self.ep_victim as usize;
+                captured = self.board[captured_square];
+                self.write(captured_square, 0);
+            } else if kind == MOVE_SWEEP {
+                // Schema 13: every piece on the path goes, in ray order, onto the same
+                // log an explosion writes. `write` keys each clear as it happens.
+                for &square in t.sweep_path(moving, origin, target) {
+                    let square = square as usize;
+                    let value = self.board[square];
+                    if value != 0 {
+                        cleared.push((square, value));
+                        self.write(square, 0);
+                    }
+                }
+            }
+
+            // Strike (schema 6): a taken piece may be transformed rather than removed.
+            // Movegen never got here -- the move was generated, blocked and permitted
+            // exactly as a capture -- and the only question left is where the two pieces
+            // stand afterwards, which `strike_writes` answers for all three callers.
+            let landing_index = move_landing(m);
+            if let Some(outcome) = self.strike_writes(
+                piece_type, captured, origin, target, captured_square, landing_index,
+            ) {
+                for (square, value) in outcome.writes {
+                    self.write(square, value);
+                }
+                struck = outcome.survivor;
+                contact_changed_mover = outcome.mover_material_changed;
+                if struck.is_some()
+                    && t.strike.as_ref().is_some_and(|rule| rule.position == StrikePosition::Choose)
+                {
+                    placed = landing_index as u8 + 1;
+                }
+            }
+
+            // Explosion: captures destroy neighbourhood.
+            //
+            // Schema 10 (Q18) asks `fires` first: `by` names the capturer types whose
+            // captures explode and `of` the victim types whose being taken does, and both
+            // empty is atomic. `piece_type` is the mover as it stood *before* the move,
+            // so a pawn that captures and promotes is a pawn's capture -- which is what
+            // "a capture by P" has to mean if it is to be readable.
+            if let Some(explosion) = t.explosion.as_ref() {
+                if captured != 0 && explosion.fires(piece_type, t.type_of(captured)) {
+                    // Capturing piece goes up
+                    cleared.push((target, self.board[target]));
+                    self.write(target, 0);
+                    // Neighbourhood
+                    for &sq in &explosion.blast[target] {
+                        let value = self.board[sq];
+                        if value != 0 && !explosion.immune_types[t.type_of(value)] {
+                            cleared.push((sq, value));
+                            self.write(sq, 0);
+                        }
+                    }
+                }
+            }
+        }
+
+        self.unmoved.clear(origin);
+        self.unmoved.clear(target);
+        // A struck piece that survived has been through something, so it is no longer
+        // unmoved. Origin and target are already cleared above and cover `Stay` and
+        // `Swap` on an ordinary capture; this catches the one square they do not, which
+        // is an en passant victim standing off both of them.
+        if let Some((square, _)) = struck {
+            self.unmoved.clear(square);
+        }
+
+        self.ep_target = NO_SQUARE;
+        self.ep_victim = NO_SQUARE;
+        if kind != MOVE_DROP
+            && t.ep_type >= 0
+            && piece_type == t.ep_type as usize
+            && captured == 0
+            && kind != MOVE_PROMOTION
+        {
+            // The square stepped over is a table fact, not arithmetic on the delta:
+            // where the board's opposite edges are joined, a move's raw delta is not
+            // the distance it travelled, and the midpoint of the wrong delta is a
+            // square the piece never crossed.
+            if let Some(passed) = t.ep_passed(t.frame_of_value(moving), origin, target) {
+                self.ep_target = passed as i16;
+                self.ep_victim = target as i16;
+            }
+        }
+
+        // The tally (schema 9), before the phase and after `captured` is known: a player
+        // whose move takes a wild piece is paid the bounty of the route it walked. A
+        // phase step never awards anything -- a boar eating a boar is refused by the
+        // rule, and a boar eating a player's piece is nobody's gain.
+        //
+        // **Not logged.** `unmake` reads the award back off `captured`, `captured_square`
+        // and the side that moved, which `Undo` already carries -- one statement of what
+        // a bounty is, asked twice, rather than a second copy of the number stored beside
+        // the first. Measured, not tidied: an `Option<(usize, f64)>` here cost 24 bytes
+        // on a struct `make` writes at every node of every search, and chess -- which has
+        // no wild piece and never reads it -- paid for it in perft.
+        if t.has_npcs && captured != 0 && t.owner_of(captured) == WILD {
+            self.points[player] += t.npc_bounty[captured_square];
+        }
+
+        // The phase (schema 9): every wild piece walks, after the player's move is
+        // complete and the en passant window has been set, and before the hand, the
+        // check count, the material clock and the irreversibility test below. It runs
+        // before the key's en passant terms because it may close that window.
+        let npc_log = self.npc_log.len() as u32;
+        let phase_ate = t.has_npcs && self.npc_phase();
+
+        // Read after the phase, which clears the `unmoved` bit of every square it writes:
+        // the irreversibility test is asked of the position the whole ply leaves behind.
+        let rights_changed = self.unmoved != previous_unmoved;
+
+        // The squares are already in the key: `write` put each change there as it
+        // happened, which is the whole of this item. What is left is the part of the key
+        // that is not about a square.
+        //
+        // This used to be five branches computing the same quantity five ways --
+        // explosion, strike, drop, castle, normal -- one of which rescanned the whole
+        // board on every capture in atomic *because* an explosion clears squares the
+        // delta did not know about. The delta knows now. Nothing else should move, and
+        // the ply-by-ply hash walk over every committed and archived ruleset is what
+        // says so: no perft can see this class of bug, because none of it changes a
+        // move count.
+        let mut key = self.working_key;
+        if previous_ep != NO_SQUARE {
+            key ^= t.zobrist_ep_file(previous_ep);
+        }
+        if self.ep_target != NO_SQUARE {
+            key ^= t.zobrist_ep_file(self.ep_target);
+        }
+
+        // Drops: captured pieces go to captor's hand
+        if let Some(ref drops_rule) = t.drops {
+            if kind == MOVE_DROP {
+                // Already handled above (hand decremented)
+            } else if captured != 0 && drops_rule.from_captures {
+                let demoted = t.demotions[t.type_of(captured)];
+                // An unlimited slot takes no deposit either (schema 10, Q51). Taking a
+                // stone does not give you a stone you already always have, and leaving
+                // the slot constant is what makes "the hand is out of the Zobrist key"
+                // still true of a supply rather than merely still safe.
+                if !drops_rule.is_unlimited(demoted) {
+                    self.hands[player][demoted] += 1;
+                    debug_assert!(hand.is_none(), "a move changed two hand entries");
+                    hand = Some((player as u8, demoted as u8, 1));
+                }
+            }
+        }
+
+        // Check limit tracking
+        if t.check_limit > 0 {
+            let opponent = 1 - player;
+            let delivered = if t.multi_royal {
+                self.royal_squares(opponent).iter().any(|&royal| {
+                    self.attacks_square(player, royal)
+                })
+            } else {
+                let royal = self.royal_square(opponent);
+                royal >= 0 && self.attacks_square(player, royal as usize)
+            };
+            if delivered {
+                self.checks[player] += 1;
+            }
+        }
+
+        // Territory: the moving side claims the square it lands on. A repainting rule
+        // takes it whatever was there; a permanent one only claims an unclaimed square,
+        // which is what makes the colouring monotone and the Zobrist term unnecessary.
+        let mut coloured = None;
+        if let Some(ref rule) = t.territory {
+            let want = (player + 1) as u8;
+            let before = self.colour[target];
+            if before != want && (rule.repaints || before == 0) {
+                coloured = Some((target, before));
+                self.colour[target] = want;
+                self.colour_counts[player] += 1;
+                if before != 0 {
+                    self.colour_counts[before as usize - 1] -= 1;
+                }
+                if rule.repaints {
+                    key ^= t.zobrist_colour(before, target);
+                    key ^= t.zobrist_colour(want, target);
+                }
+            }
+        }
+
+        // What the no-progress clock is actually about is *progress*, and until schema 6
+        // "a piece was taken" and "the board holds less material than it did" were the
+        // same sentence. A strike separates them: a demotion moves material down and is
+        // progress, a promotion moves it up, and a pure swap moves nothing at all -- a
+        // swap-and-promote game could shuffle for ever if the old test were kept.
+        // Resolved as **the board's total declared material changed**, which is
+        // objective, is the same quantity `scoring.count: "material"` already reads, and
+        // is true of every plain capture -- so nothing before this schema moves.
+        //
+        // A wild piece that ate in the phase is a material change on the same reading --
+        // the board holds less than it did -- so `|| phase_ate` is the whole of schema
+        // 9's claim on this test, and on the no-progress clock below it.
+        // Schema 10 adds the second half of the same reading: a contact can change what
+        // the *attacker* is worth, and a pawn that takes a rook and becomes a knight has
+        // moved the board's declared material even though nothing left the board and the
+        // struck piece's own worth may not have moved at all.
+        // Schema 13: a sweep that took only path pieces changed material too.
+        let material_changed = phase_ate
+            || contact_changed_mover
+            || !cleared.is_empty()
+            || match struck {
+                Some((_, survivor)) => {
+                    t.piece_values[t.type_of(captured)] != t.piece_values[t.type_of(survivor)]
+                }
+                None => captured != 0,
+            };
+        // A rotation is **reversible**: the piece can turn back, and a game that turns
+        // back and forth has to be caught by the repetition rule rather than have its
+        // window cleared under it every ply. So it is not on this list -- and it does
+        // not reset the no-progress clock below either, for the same reason. What it
+        // *does* do is clear the turning piece's `unmoved` bit, which is a right that
+        // cannot come back, so the first turn of any piece is irreversible via
+        // `rights_changed` and every turn after it is not.
+        // A one-way piece can never return to a square it left, so its move is progress
+        // however quiet it looks. **This clause used to read `piece_type == ep_type`**,
+        // and `ep_type` is set only when `en_passant` is declared -- so *a pawn move is
+        // progress*, a fact about chess, was switched on by a spelling of an unrelated
+        // capturing rule. Q113 separated them: `one_way` is derived from the movement
+        // tables by the compiler, which is where the geometry already is, and this is a
+        // flag lookup rather than a rule.
+        let irreversible = material_changed
+            || (kind != MOVE_NORMAL && kind != MOVE_ROTATE)
+            || t.is_one_way(piece_type)
+            || rights_changed
+            // A permanent colour laid down is a one-way step and has to reset the
+            // window, or the repetition test could compare two positions with different
+            // colourings and the key -- which deliberately does not carry colour --
+            // would call them the same position.
+            || (coloured.is_some() && !t.territory.as_ref().is_some_and(|r| r.repaints));
+
+        self.undo.push(Undo {
+            origin,
+            target,
+            kind,
+            moving,
+            captured,
+            captured_square,
+            target_before,
+            rook,
+            unmoved: previous_unmoved,
+            ep_target: previous_ep,
+            ep_victim: previous_ep_victim,
+            halfmove: self.halfmove,
+            key: self.key,
+            window: self.window,
+            checks: previous_checks,
+            hand,
+            cleared,
+            coloured,
+            remaining: previous_remaining,
+            turns_taken: previous_turns,
+            npc_log,
+            placed,
+        });
+        // One move of the turn is spent. A ruleset without a turn rule spends the whole
+        // turn, which is what makes the flip below unconditional for every game so far.
+        self.remaining = if t.turn.is_some() { self.remaining - 1 } else { 0 };
+
+        self.key = key;
+        // The no-progress clock asks the same question the window above asks, so it reads
+        // the same derived flag. **This clause used to read `t.is_promoting(piece_type)`**
+        // -- so *declaring a promotion rule* was what made a piece's every move count as
+        // progress, including the quiet ones and including a rotation, which the comment
+        // above calls reversible. Q135 separated them (Q113's separation, one key on).
+        //
+        // `kind == MOVE_PROMOTION` is what the old term carried and keeps: a piece that
+        // changes type at the far end has spent itself, and that is progress whether or
+        // not the piece could have walked back. It is a fact about the move rather than
+        // about the type's rule sheet, which is the whole difference.
+        let progress = material_changed
+            || t.is_one_way(piece_type)
+            || kind == MOVE_PROMOTION
+            || (coloured.is_some() && !t.territory.as_ref().is_some_and(|r| r.repaints));
+        self.halfmove = if progress { 0 } else { self.halfmove + 1 };
+        // The side flips when the turn runs out of moves, which for every ruleset
+        // without a turn rule is every move -- `remaining` was set to zero above.
+        if self.remaining == 0 {
+            self.side = 1 - player;
+            self.turns_taken += 1;
+            self.remaining = t.turn.as_ref().map_or(1, |rule| rule.length_of(self.turns_taken));
+        }
+        // The key was computed with the side flipped unconditionally, which is right
+        // exactly when it did flip. Undo it when the same player moves again, and swap
+        // in the counter's own term either way.
+        if self.side == player {
+            self.key ^= t.zobrist_side;
+        }
+        self.key ^= t.zobrist_remaining(previous_remaining);
+        self.key ^= t.zobrist_remaining(self.remaining);
+
+        self.ply += 1;
+        self.history.push(self.key);
+        if irreversible {
+            self.window = self.history.len() - 1;
+        }
+        // A different position, so the check bits are about one that is no longer on
+        // the board. The royal hint survives on purpose: it is validated before it is
+        // believed, and a royal usually stands where it stood.
+        self.check_memo.set([-1, -1]);
+    }
+
+    pub fn unmake(&mut self) {
+        let undo = self.undo.pop().expect("unmake without a matching make");
+        self.history.pop();
+
+        // The phase, walked back before the player's move (schema 9). Newest step first,
+        // and the wild piece's own value is read off the square it stands on now --
+        // there is nowhere else it could be.
+        while self.npc_log.len() > undo.npc_log as usize {
+            let (from, to, eaten) = self.npc_log.pop().expect("npc log shorter than its base");
+            let value = self.board[to];
+            self.put(to, eaten);
+            self.put(from, value);
+        }
+
+        // Restore explosion-cleared squares first (in reverse)
+        for &(sq, value) in undo.cleared.iter().rev() {
+            self.put(sq, value);
+        }
+
+        if let Some((rook_from, rook_to, rook_value)) = undo.rook {
+            // `make`'s order run backwards: both destinations are emptied before either
+            // origin is written back, so an overlap under file-based castling restores
+            // rather than erases. A castling takes nothing, so the generic restore's
+            // `target_before` and `captured` have no part in it.
+            self.put(undo.target, 0);
+            self.put(rook_to, 0);
+            self.put(undo.origin, undo.moving);
+            self.put(rook_from, rook_value);
+        } else {
+            // A survivor placed under `choose` stands on a square the generic restore does
+            // not know. Cleared first, so one placed on the origin is overwritten by the
+            // mover coming back.
+            if undo.placed != 0 {
+                let t = self.t;
+                let rule = t.strike.as_ref().expect("a placed survivor without a strike rule");
+                let chosen = rule.landing(t.owner_of(undo.moving), undo.captured_square)
+                    [undo.placed as usize - 1] as usize;
+                self.put(chosen, 0);
+            }
+            self.put(undo.target, undo.target_before);
+            self.put(undo.captured_square, undo.captured);
+            if undo.kind != MOVE_DROP {
+                self.put(undo.origin, undo.moving);
+            }
+        }
+
+        self.unmoved = undo.unmoved;
+        self.ep_target = undo.ep_target;
+        self.ep_victim = undo.ep_victim;
+        self.halfmove = undo.halfmove;
+        self.key = undo.key;
+        self.window = undo.window;
+        self.checks = undo.checks;
+        if let Some((player, piece_type, delta)) = undo.hand {
+            let slot = &mut self.hands[player as usize][piece_type as usize];
+            *slot = slot.wrapping_add_signed(-i32::from(delta));
+        }
+        if let Some((square, before)) = undo.coloured {
+            let want = self.colour[square];
+            self.colour[square] = before;
+            self.colour_counts[want as usize - 1] -= 1;
+            if before != 0 {
+                self.colour_counts[before as usize - 1] += 1;
+            }
+        }
+        // `turns_taken` increments exactly when the side flipped, which is the only
+        // reliable witness once a turn can be longer than one move: `remaining` changes
+        // on every move whether the side flipped or not.
+        if self.turns_taken != undo.turns_taken {
+            self.side = 1 - self.side;
+        }
+        self.remaining = undo.remaining;
+        self.turns_taken = undo.turns_taken;
+        // The bounty, taken back (schema 9). `self.side` is the side that made this move
+        // again by here -- the flip above is undone from `turns_taken`, which is the only
+        // reliable witness -- and what the move was paid is the same question `make`
+        // asked of the same two fields.
+        if self.t.has_npcs && undo.captured != 0 && self.t.owner_of(undo.captured) == WILD {
+            self.points[self.side] -= self.t.npc_bounty[undo.captured_square];
+        }
+        self.ply -= 1;
+        self.check_memo.set([-1, -1]);
+    }
+}
+
+/// Drop every repeat of a move already in `out[start..]`, keeping the first occurrence of
+/// each in the order it was generated.
+///
+/// Runs only where the compiler's `dedup` flag says a piece on a square can still reach
+/// some target two ways after static resolution -- a rook on a wrapped board, whose two
+/// rays round the join meet -- so on most rulesets it never runs at all. **First
+/// occurrence order is the observable behaviour**: the surviving list is what every
+/// tie-break downstream reads, so nothing here may sort or hash the moves into another
+/// order.
+///
+/// Allocation-free. The moves kept so far *are* `out[start..write]`, so the membership
+/// test reads that prefix rather than a second list holding the same words. Two equal
+/// moves land on the same square, so a 256-bit mask of the targets kept so far settles
+/// the common case -- a target not reached before -- without a scan; the scan runs once
+/// per repeated target, which is once per duplicate the flag exists for. The mask is
+/// only ever a negative filter: a set bit says "scan", never "drop".
+fn dedup_segment(out: &mut Vec<u32>, start: usize) {
+    let mut targets = SquareSet::EMPTY;
+    let mut write = start;
+    for index in start..out.len() {
+        let m = out[index];
+        let to = move_to(m);
+        if targets.get(to) && out[start..write].contains(&m) {
+            continue;
+        }
+        targets.set(to);
+        out[write] = m;
+        write += 1;
+    }
+    out.truncate(write);
+}
+
+impl<'t> Game<'t> {
+    /// Moves that satisfy the piece rules, without the self-check filter.
+    ///
+    /// Appended to `out` rather than returned: a search reuses one buffer for every
+    /// node on the path, which is the difference between one allocation per ply and
+    /// one per node.
+    pub fn generate_pseudo_legal(&self, out: &mut Vec<u32>) {
+        let t = self.t;
+        let player = self.side;
+        let low = t.value_low(player);
+        let high = low + t.side_stride as u16;
+        let ep_target = self.ep_target;
+        let ep_victim = self.ep_victim;
+        // Schema 3's capture matrix binds the en passant arm exactly as it binds every
+        // other capture, and this is the one arm that cannot ask the square it moves to:
+        // an en passant capture lands on an **empty** square and takes the piece standing
+        // on `ep_victim`, so the three `may_take` tests below -- each reading the occupant
+        // of the *target* -- see an empty square, take the `occupant == 0` branch, and let
+        // it through. Without this line `captures: []` on every piece still takes a piece
+        // in passing, which made `spec.schema::_capture_is_possible` false about the game:
+        // it reads the same matrix and is what refuses `must_capture`,
+        // `explode_on_capture` and `drops` as declaring nothing.
+        //
+        // Asked once for the position rather than once per piece: `capturable_ep` below
+        // already requires the mover to *be* `ep_type`, so the attacker is the same type
+        // at every origin and the answer cannot differ between them. The two squares are
+        // written, cleared and restored as a pair everywhere in this file; the second test
+        // is for a position handed in from outside that set only one of them. All three
+        // arms share this one test, so the hop arm's branch (Q121) is bound by the matrix
+        // on arrival rather than being the fourth arm this comment warns about.
+        //
+        // Q531: and the victim must not be the mover's own. In one-move turns the side
+        // that opened the window has always handed the move over, so this never bound;
+        // in a long turn the window a double step opens is still open on the same
+        // player's next move, and without it a pawn took its own pawn in passing.
+        let ep_occupant = if ep_victim != NO_SQUARE {
+            self.board[ep_victim as usize] as u16
+        } else {
+            0
+        };
+        let ep_permitted = ep_target != NO_SQUARE
+            && ep_victim != NO_SQUARE
+            && t.ep_type >= 0
+            && !(low <= ep_occupant && ep_occupant < high)
+            && may_take(t, t.ep_type as usize, ep_occupant);
+        // Schema 12: a capture under `position: "choose"` fans out over its landing squares.
+        let choosing =
+            t.strike.as_ref().is_some_and(|rule| rule.position == StrikePosition::Choose);
+
+        // The mover's pieces, in ascending square order -- the order the scan this
+        // replaced visited them in, and therefore the order their moves come out in.
+        for origin in self.occupied()[player].iter() {
+            let raw = self.board[origin];
+            debug_assert!(low <= raw as u16 && (raw as u16) < high);
+            // A *frame*, not a player. What a piece may do depends on which way is
+            // forward and, since schema 8, on which way the piece itself is pointing --
+            // so the answer comes off the piece's own board value and not off whose
+            // turn it is.
+            let (piece_type, frame) = t.decode_owned(raw, low, player);
+            let origin_unmoved = self.unmoved.get(origin);
+            let promoting = t.is_promoting(piece_type);
+            let capturable_ep = ep_permitted && piece_type == t.ep_type as usize;
+            let slot = t.slot(frame, piece_type, origin);
+            let ambiguous = t.dedup[slot];
+            let segment_start = out.len();
+            let promo_optional = promoting && t.promotion_optional(piece_type);
+            // Schema 15: under `on_leaving` a move that starts in the zone promotes
+            // wherever it lands, so the origin is asked once here and every target of
+            // this piece reads the answer. False for every ruleset before it.
+            let leaving = promoting
+                && t.promotes_on_leaving(piece_type)
+                && t.promotes_on(player, piece_type, origin);
+
+            for entry in t.leaps.entries(slot) {
+                if entry.requires_unmoved && !origin_unmoved {
+                    continue;
+                }
+                let squares = t.leaps.squares(entry);
+                let modes = t.leaps.modes(entry);
+                for index in 0..squares.len() {
+                    let target = squares[index] as usize;
+                    let occupant = self.board[target] as u16;
+                    let mode = modes[index];
+                    if occupant == 0 {
+                        if capturable_ep && target as i16 == ep_target && mode & 2 != 0 {
+                            self.push_capture(
+                                out,
+                                encode_move(origin, target, MOVE_EN_PASSANT, 0),
+                                piece_type,
+                                player,
+                                ep_victim as usize,
+                                choosing,
+                            );
+                        }
+                        if mode & 1 == 0 {
+                            continue;
+                        }
+                    } else if !may_land(t, mode, piece_type, occupant, low, high) {
+                        continue;
+                    }
+                    self.push_arrival(
+                        out, origin, target, piece_type, player, promoting, leaving,
+                        promo_optional, choosing && occupant != 0,
+                    );
+                }
+            }
+
+            for entry in t.slides.entries(slot) {
+                if entry.requires_unmoved && !origin_unmoved {
+                    continue;
+                }
+                let squares = t.slides.squares(entry);
+                let modes = t.slides.modes(entry);
+                for index in 0..squares.len() {
+                    let target = squares[index] as usize;
+                    let occupant = self.board[target] as u16;
+                    let mode = modes[index];
+                    if occupant == 0 {
+                        if capturable_ep && target as i16 == ep_target && mode & 2 != 0 {
+                            self.push_capture(
+                                out,
+                                encode_move(origin, target, MOVE_EN_PASSANT, 0),
+                                piece_type,
+                                player,
+                                ep_victim as usize,
+                                choosing,
+                            );
+                        }
+                        if mode & 1 == 0 {
+                            continue;
+                        }
+                    } else if !may_land(t, mode, piece_type, occupant, low, high) {
+                        // An occupied square ends the ray whether or not it can be
+                        // taken: a piece this one may not capture blocks it exactly as
+                        // a friendly piece with no own contact link does.
+                        break;
+                    }
+                    self.push_arrival(
+                        out, origin, target, piece_type, player, promoting, leaving,
+                        promo_optional, choosing && occupant != 0,
+                    );
+                    if occupant != 0 {
+                        break;
+                    }
+                }
+            }
+
+            for entry in t.hops.entries(slot) {
+                if entry.requires_unmoved && !origin_unmoved {
+                    continue;
+                }
+                let squares = t.hops.squares(entry);
+                let modes = t.hops.modes(entry);
+                let length = squares.len();
+                let mut index = 0;
+                while index < length && self.board[squares[index] as usize] == 0 {
+                    index += 1;
+                }
+                if index >= length {
+                    continue; // nothing to hop over
+                }
+                // Schema 3: whose piece the screen is. A hop still stops at the *first*
+                // occupied square whatever the answer -- a piece it may not vault blocks
+                // the line rather than being skipped over, exactly as a piece it may not
+                // capture blocks a slide.
+                if !screen_matches(
+                    entry.screen_owner, self.board[squares[index] as usize] as u16, low, high
+                ) {
+                    continue;
+                }
+                index += 1;
+                // A cannon may land anywhere beyond its screen; a grasshopper only just
+                // past it. `screen_range` of zero means the rest of the ray.
+                let stop = if entry.screen_range == 0 {
+                    length
+                } else {
+                    length.min(index + entry.screen_range as usize)
+                };
+                while index < stop {
+                    let target = squares[index] as usize;
+                    let occupant = self.board[target] as u16;
+                    let mode = modes[index];
+                    if occupant == 0 {
+                        // The third arm, and it read differently from the other two until
+                        // Q121: a hop that may capture on the empty square a piece just
+                        // crossed may take it there, exactly as a leap or a slide may.
+                        // The window this consumes is never one a hop *opened* -- a hop's
+                        // passed square is its own screen, so `_ep_passes` builds none --
+                        // but a slide's double step opens one a hop can reach.
+                        if capturable_ep && target as i16 == ep_target && mode & 2 != 0 {
+                            self.push_capture(
+                                out,
+                                encode_move(origin, target, MOVE_EN_PASSANT, 0),
+                                piece_type,
+                                player,
+                                ep_victim as usize,
+                                choosing,
+                            );
+                        }
+                        if mode & 1 != 0 {
+                            if promoting
+                                && (leaving || t.promotes_on(player, piece_type, target))
+                            {
+                                for &promoted in t.promotion_targets(player, piece_type) {
+                                    out.push(encode_move(origin, target, MOVE_PROMOTION, promoted));
+                                }
+                                if promo_optional {
+                                    out.push(encode_move(origin, target, MOVE_NORMAL, 0));
+                                }
+                            } else {
+                                out.push(encode_move(origin, target, MOVE_NORMAL, 0));
+                            }
+                        }
+                        index += 1;
+                        continue;
+                    }
+                    if may_land(t, mode, piece_type, occupant, low, high) {
+                        self.push_arrival(
+                            out, origin, target, piece_type, player, promoting, leaving,
+                            promo_optional, choosing,
+                        );
+                    }
+                    break;
+                }
+            }
+
+            // Schema 13: sweeps. The ray does not break at a piece; every piece before a
+            // landing is swept, friendly included, and one the sweeper may not capture
+            // ends the ray. A landing over an empty path is `MOVE_NORMAL`, so the
+            // uniqueness pass below folds it into a slide or leap to the same square.
+            if t.has_sweep {
+                for entry in t.sweeps.entries(slot) {
+                    if entry.requires_unmoved && !origin_unmoved {
+                        continue;
+                    }
+                    debug_assert!(!promoting, "a sweeper may not be a promoting piece");
+                    let squares = t.sweeps.squares(entry);
+                    let modes = t.sweeps.modes(entry);
+                    let mut path_holds_piece = false;
+                    for index in 0..squares.len() {
+                        let target = squares[index] as usize;
+                        let occupant = self.board[target] as u16;
+                        if occupant != 0 && !may_take(t, piece_type, occupant) {
+                            break;
+                        }
+                        let mode = modes[index];
+                        let lands = if occupant == 0 {
+                            mode & 1 != 0
+                        } else {
+                            may_land(t, mode, piece_type, occupant, low, high)
+                        };
+                        if lands {
+                            let kind = if path_holds_piece { MOVE_SWEEP } else { MOVE_NORMAL };
+                            out.push(encode_move(origin, target, kind, 0));
+                        }
+                        path_holds_piece |= occupant != 0;
+                    }
+                }
+            }
+
+            if ambiguous {
+                dedup_segment(out, segment_start);
+            }
+
+            // Rotations, after the uniqueness pass rather than inside it: a rotation
+            // carries its own move kind, so it can never duplicate a move that goes
+            // somewhere. A piece turns to any of its other orientations in one move --
+            // three of them for a piece with four axes, one for a piece with two -- and
+            // the compiler refuses a facing whose rotation changes nothing, so none of
+            // these is a pass.
+            let axes = if t.has_facing { t.facings_of(piece_type) } else { 1 };
+            if axes > 1 {
+                let step = t.n_facings / axes;
+                let facing = frame % t.n_facings;
+                for turn in 1..axes {
+                    let to = (facing + turn * step) % t.n_facings;
+                    out.push(encode_move(origin, origin, MOVE_ROTATE, to as u32));
+                }
+            }
+        }
+
+        if t.castling.is_some() {
+            self.generate_castling(out);
+        }
+        if t.drops.is_some() {
+            self.generate_drops(out);
+        }
+    }
+}
+
+impl<'t> Game<'t> {
+    /// Drop moves: pieces from hand onto the board.
+    fn generate_drops(&self, out: &mut Vec<u32>) {
+        let t = self.t;
+        let rule = t.drops.as_ref().expect("generate_drops without drops");
+        let player = self.side;
+        let hand = &self.hands[player];
+        if hand.iter().all(|&count| count == 0) {
+            return;
+        }
+
+        let width = t.width;
+        // The empty squares are the complement of both occupancies, masked to the
+        // board; walked in ascending order they are the squares the scan this replaced
+        // found, in the order it found them. The file mask was a heap allocation *per
+        // piece type* once; it is on the stack at the size the core is built for, and
+        // is not cleared beyond the part it uses.
+        // Every piece, not just the two armies: a square a wild piece stands on is not
+        // an empty square, and a drop onto it would overwrite a boar (schema 9).
+        let empty = t.all_squares.difference(&self.all_pieces());
+        let mut blocked_files = [false; MAX_SQUARES];
+
+        for (piece_type, &held) in hand.iter().enumerate().take(t.n_types) {
+            if held == 0 {
+                continue;
+            }
+            let region = &rule.regions[player][piece_type];
+            if rule.no_doubled[piece_type] {
+                blocked_files[..width].fill(false);
+                // Any orientation counts: a doubled pawn is doubled whichever way the
+                // one already there happens to be pointing.
+                for sq in self.occupied()[player].iter() {
+                    if t.is_piece(self.board[sq], player, piece_type) {
+                        blocked_files[sq % width] = true;
+                    }
+                }
+            }
+            for square in empty.iter() {
+                if let Some(ref region_mask) = region {
+                    if !region_mask[square] {
+                        continue;
+                    }
+                }
+                if rule.no_doubled[piece_type] && blocked_files[square % width] {
+                    continue;
+                }
+                out.push(encode_move(square, square, MOVE_DROP, piece_type as u32));
+            }
+        }
+    }
+
+    /// King-and-rook moves, generated separately because they move two pieces.
+    fn generate_castling(&self, out: &mut Vec<u32>) {
+        let t = self.t;
+        let (king_type, rook_type, king_steps) =
+            t.castling.expect("generate_castling without a rule");
+        let player = self.side;
+        let width = t.width;
+        // One value per orientation the king can be in, and that is one value unless the
+        // castling king is *not* royal -- a royal may not face. Written as a loop over
+        // values rather than as a decode per square because this ran at every node of
+        // every castling ruleset, and with one value it is the single byte comparison
+        // it has always been. The candidates are the mover's unmoved pieces, walked in
+        // ascending order: the first of them holding the king's value is the square
+        // the scan over every square used to stop on.
+        let candidates = self.occupied()[player].intersection(&self.unmoved);
+        let mut king_square = usize::MAX;
+        'find: for facing in 0..t.facings_of(king_type) {
+            let king_value = t.piece_value(player, facing, king_type);
+            for square in candidates.iter() {
+                if self.board[square] == king_value {
+                    king_square = square;
+                    break 'find;
+                }
+            }
+        }
+        if king_square == usize::MAX {
+            return;
+        }
+
+        let needs_safety = t.needs_check_filter();
+        if needs_safety && self.attacks_square(1 - player, king_square) {
+            return;
+        }
+
+        let rank = king_square / width;
+        let king_file = (king_square % width) as i32;
+
+        for rook_file in 0..width as i32 {
+            if rook_file == king_file {
+                continue;
+            }
+            let rook_square = rank * width + rook_file as usize;
+            if !t.is_piece(self.board[rook_square], player, rook_type)
+                || !self.unmoved.get(rook_square)
+            {
+                continue;
+            }
+
+            if let Some((king_qs, king_ks, rook_qs, rook_ks)) = t.castle_files {
+                // File-based castling (schema 2)
+                let side = if rook_file > king_file { 1 } else { 0 };
+                let king_to = if side == 1 { king_ks } else { king_qs };
+                let rook_to = if side == 1 { rook_ks } else { rook_qs };
+                if king_to < 0 || king_to >= width as i32 || rook_to < 0 || rook_to >= width as i32 {
+                    continue;
+                }
+
+                // Check that the span is clear (excluding the castling pieces themselves)
+                let span_lo = king_file.min(king_to).min(rook_file).min(rook_to);
+                let span_hi = king_file.max(king_to).max(rook_file).max(rook_to);
+                let mut blocked = false;
+                for file in span_lo..=span_hi {
+                    if file == king_file || file == rook_file {
+                        continue;
+                    }
+                    if self.board[rank * width + file as usize] != 0 {
+                        blocked = true;
+                        break;
+                    }
+                }
+                if blocked {
+                    continue;
+                }
+
+                if needs_safety {
+                    let low = king_file.min(king_to);
+                    let high = king_file.max(king_to);
+                    let mut crossed_attack = false;
+                    for file in low..=high {
+                        // The victim is the king, not whatever happens to stand there:
+                        // a transit square is empty by the check above, so
+                        // `attacks_square` would skip the capture matrix and call a
+                        // square attacked by a piece that could not take a king.
+                        if self.threatened_as(
+                            1 - player, rank * width + file as usize, king_type,
+                        ) {
+                            crossed_attack = true;
+                            break;
+                        }
+                    }
+                    if crossed_attack {
+                        continue;
+                    }
+                }
+
+                out.push(encode_move(
+                    king_square,
+                    rank * width + king_to as usize,
+                    MOVE_CASTLE,
+                    rook_file as u32,
+                ));
+            } else {
+                // Step-based castling (schema 1)
+                let step: i32 = if rook_file > king_file { 1 } else { -1 };
+
+                let mut file = king_file + step;
+                let mut blocked = false;
+                while file != rook_file {
+                    if self.board[rank * width + file as usize] != 0 {
+                        blocked = true;
+                        break;
+                    }
+                    file += step;
+                }
+                if blocked {
+                    continue;
+                }
+
+                let target_file = king_file + step * king_steps;
+                if target_file < 0 || target_file >= width as i32 {
+                    continue;
+                }
+                if (target_file - king_file).abs() >= (rook_file - king_file).abs() {
+                    continue;
+                }
+
+                if needs_safety {
+                    let mut file = king_file + step;
+                    let mut crossed_attack = false;
+                    loop {
+                        if self.threatened_as(
+                            1 - player, rank * width + file as usize, king_type,
+                        ) {
+                            crossed_attack = true;
+                            break;
+                        }
+                        if file == target_file {
+                            break;
+                        }
+                        file += step;
+                    }
+                    if crossed_attack {
+                        continue;
+                    }
+                }
+
+                out.push(encode_move(
+                    king_square,
+                    rank * width + target_file as usize,
+                    MOVE_CASTLE,
+                    0,
+                ));
+            }
+        }
+    }
+
+    /// Squares holding the sole blocker of an enemy line onto `royal`.
+    fn pinned_squares(&self, attacker: usize, royal: usize) -> SquareSet {
+        let t = self.t;
+        let mut pinned = SquareSet::EMPTY;
+        for source in t.attackers_of(attacker, royal) {
+            if source.screens > 0 || self.board[source.origin as usize] != source.piece_value {
+                continue;
+            }
+            let mut blocker: i32 = -1;
+            for square in t.attack_path(source) {
+                if self.board[*square as usize] != 0 {
+                    if blocker >= 0 {
+                        blocker = -1;
+                        break;
+                    }
+                    blocker = *square as i32;
+                }
+            }
+            if blocker >= 0 {
+                pinned.set(blocker as usize);
+            }
+        }
+        pinned
+    }
+
+    /// Play a move on the board for a legality filter to ask one question about, saving
+    /// every square it writes.
+    ///
+    /// **One statement of what a filter's board looks like, for the two filters that ask.**
+    /// `leaves_royal_attacked` and the `forbid_check` branch of `restrict` held two copies
+    /// of this, and schema 8 had to repair both: a rotation's origin *is* its target, so
+    /// "clear the origin, write the target" cancels and the filter would have asked its
+    /// question about a board the move had not been played on.
+    ///
+    /// Returns the value that stood on the target square, and `None` for the three kinds
+    /// that are not an ordinary move -- which is what the explosion branch in
+    /// `leaves_royal_attacked` keys on. A rotation's "target" holds the piece that is
+    /// turning, so a flag saying *this was an ordinary move* is the difference between an
+    /// explosion firing where a capture happened and one firing wherever a piece turns.
+    fn play_for_filter(&mut self, m: u32, saved: &mut Saved) -> Option<u8> {
+        let played = self.play_move_for_filter(m, saved);
+        // The phase belongs to the ply, so a filter asking about the position a move
+        // leaves behind has to play it too (schema 9). Here rather than in the two
+        // callers, which is what makes "legality is asked of the post-phase position"
+        // one statement -- `must_capture` asks about the move alone and does not come
+        // through this function at all.
+        if self.t.has_npcs {
+            self.npc_phase_for_filter(saved);
+        }
+        played
+    }
+
+    /// The move alone, without the phase: the half `play_for_filter` shared before
+    /// schema 9 gave it a second half.
+    fn play_move_for_filter(&mut self, m: u32, saved: &mut Saved) -> Option<u8> {
+        let t = self.t;
+        let player = self.side;
+        let origin = move_from(m);
+        let target = move_to(m);
+        let kind = move_kind(m);
+
+        if kind == MOVE_DROP {
+            saved.push((target, self.board[target]));
+            // What arrives, not what was dropped (schema 9): a struck or dropped piece
+            // that promotes on arrival can give check, and a filter that did not know
+            // would let a royal be captured -- the `strike_writes`-in-the-filter argument
+            // applied to the new table.
+            self.board[target] = t.arriving_value(player, move_promotion(m) as usize, target);
+            return None;
+        }
+        if kind == MOVE_ROTATE {
+            // A turn changes what the piece attacks, so it can put a royal in check --
+            // and the pin shortcut in `generate_legal` is right to treat it like any
+            // other move from that square. What it must not do is nothing, which is
+            // what the ordinary "clear the origin, write the target" path amounts to
+            // when the two squares are the same.
+            let turning = self.board[origin];
+            saved.push((origin, turning));
+            self.board[origin] =
+                t.piece_value(player, move_promotion(m) as usize, t.type_of(turning));
+            return None;
+        }
+        if kind == MOVE_CASTLE {
+            let moving = self.board[origin];
+            let (rook_from, rook_to) =
+                self.castling_rook_squares(origin, target, move_promotion(m) as i32);
+            let rook_value = self.board[rook_from];
+            saved.push((origin, self.board[origin]));
+            saved.push((target, self.board[target]));
+            saved.push((rook_from, self.board[rook_from]));
+            saved.push((rook_to, self.board[rook_to]));
+            self.board[origin] = 0;
+            self.board[rook_from] = 0;
+            self.board[target] = moving;
+            self.board[rook_to] = rook_value;
+            return None;
+        }
+
+        let moving = self.board[origin];
+        let target_before = self.board[target];
+        saved.push((origin, moving));
+        saved.push((target, target_before));
+        self.board[origin] = 0;
+        self.board[target] = moving;
+
+        let mut captured = target_before;
+        let mut captured_square = target;
+        if kind == MOVE_PROMOTION {
+            self.board[target] = t.entering_value(player, move_promotion(m) as usize);
+        } else if kind == MOVE_EN_PASSANT {
+            let ep_sq = self.ep_victim as usize;
+            captured = self.board[ep_sq];
+            captured_square = ep_sq;
+            saved.push((ep_sq, captured));
+            self.board[ep_sq] = 0;
+        } else if kind == MOVE_SWEEP {
+            // Schema 13: the path is cleared as `make` clears it. Three victims fit inline
+            // beside the origin and the target; a fourth spills, correctly and rarely.
+            let mut victims = 0;
+            for &square in t.sweep_path(moving, origin, target) {
+                let square = square as usize;
+                let value = self.board[square];
+                if value != 0 {
+                    saved.push((square, value));
+                    self.board[square] = 0;
+                    victims += 1;
+                }
+            }
+            debug_assert_eq!(saved.spill.is_empty(), victims + 2 <= Saved::INLINE);
+        }
+
+        // Strike (schema 6): the surviving piece has to be on the board before the
+        // attack query, or a victim that a strike turns into a checking piece is
+        // invisible to the filter and a king can be captured. `strike_writes` is the
+        // same statement `make` plays, rather than a copy of it, and it is handed the
+        // piece `make` hands it -- en passant's victim stands off the target.
+        if let Some(outcome) = self.strike_writes(
+            t.type_of(moving), captured, origin, target, captured_square, move_landing(m),
+        ) {
+            for (square, value) in outcome.writes {
+                saved.push((square, self.board[square]));
+                self.board[square] = value;
+            }
+            debug_assert!(
+                kind == MOVE_EN_PASSANT || saved.spill.is_empty(),
+                "a strike spilled out of Saved's inline slots"
+            );
+        }
+
+        Some(target_before)
+    }
+
+    /// Legality test that skips building a successor state: only the board and the
+    /// unmoved mask affect the answer, so the move is played, tested and taken back.
+    fn leaves_royal_attacked(&mut self, m: u32) -> bool {
+        let t = self.t;
+        let player = self.side;
+        let origin = move_from(m);
+        let target = move_to(m);
+        let kind = move_kind(m);
+
+        let saved_unmoved = self.unmoved;
+        let mut saved = Saved::new();
+        // How many royals this player had *before* the move. The phase can eat one --
+        // a king that steps onto a boar's next square is taken in the mover's own phase
+        // -- and that is the one way a move can remove the royal it is being tested for.
+        // A royal that has been eaten is not an unattacked royal, and without this the
+        // post-phase question ("is it attacked?") answers no because there is nothing
+        // there to attack. Zero where nothing is wild, and the count is then never read.
+        let royals_before = if t.has_npcs { self.royal_count(player) } else { 0 };
+        self.scratch += 1;
+
+        // Schema 10 (Q18): who is capturing, read before the move is played because
+        // `play_for_filter` empties the origin. Behind `explosion.is_some()` so a ruleset
+        // without the rule pays nothing, and `make`'s reading exactly -- the mover's type
+        // as it stood before the move.
+        let capturer = if t.explosion.is_some() && kind != MOVE_DROP {
+            t.type_of(self.board[origin])
+        } else {
+            0
+        };
+
+        // Apply the move to the board, saving every square we touch.
+        let target_before = self.play_for_filter(m, &mut saved);
+
+        // Explosion. Only after an ordinary move, and only where something was taken:
+        // the target square of a rotation holds the piece that is turning, and reading
+        // it as a victim would detonate every turn.
+        if let (Some(target_before), Some(explosion)) = (target_before, t.explosion.as_ref()) {
+            if target_before != 0 && explosion.fires(capturer, t.type_of(target_before)) {
+                // The captor blows up where it now stands. Its square is already saved
+                // holding `target_before`, which is what the restore has to put back.
+                self.board[target] = 0;
+                for &sq in &explosion.blast[target] {
+                    let value = self.board[sq];
+                    if value != 0 && !explosion.immune_types[t.type_of(value)] {
+                        saved.push((sq, value));
+                        self.board[sq] = 0;
+                    }
+                }
+            }
+        }
+
+        self.unmoved.clear(origin);
+        self.unmoved.clear(target);
+
+        // Whether this move could have emptied a royal square at all (Q133). Only two
+        // things take a piece off a square the move did not move it from: something being
+        // taken on the target -- which is also the only thing that sets off a blast -- and
+        // the wild phase, which walks after every move. Everything else is quiet, and a
+        // quiet move pays one `bool` rather than a royal lookup it cannot need. The
+        // lookup is worth avoiding: inside a filter `royal_hint` is read but never
+        // written, so a miss is a board scan that is paid again on the next move tested.
+        let took_something = matches!(target_before, Some(value) if value != 0);
+        let could_empty_a_royal_square = took_something || t.has_npcs || kind == MOVE_SWEEP;
+
+        // Where losing the royal is losing, a move that removes the **opponent's** wins on
+        // the spot -- `terminal_prefix` says so before anyone moves again -- so whatever it
+        // leaves the mover's own royal exposed to cannot matter: the game is over before
+        // the exposure could be collected. That is the whole content of the branch this
+        // replaces, which was gated on `explode_on_capture` and carried a second copy of
+        // the three questions below to get back to the ordinary answer.
+        let attacked = if could_empty_a_royal_square
+            && t.royal_loss_ends_it(1 - player)
+            && self.royal_square(1 - player) < 0
+        {
+            false
+        } else if t.royal_facing_forbidden && self.royals_face() {
+            true
+        } else if t.multi_royal {
+            let mine = self.royal_squares(player);
+            // The mover's own royalty gone, and this side had royalty to lose: the move
+            // loses outright, and a move that loses outright is refused rather than played
+            // and then lost. `mine.len() < royals_before` is the narrower reading beside
+            // it -- losing *one* of several, which only the wild phase can do.
+            (mine.is_empty() && t.royal_loss_ends_it(player))
+                || mine.len() < royals_before
+                || mine.iter().any(|&r| self.threatened(1 - player, r))
+        } else {
+            match self.royal_square(player) {
+                // Gone, and this side had one to lose. This read `royals_before > 0`,
+                // which is the same answer wherever the question can be reached -- the
+                // filter is only entered with the royal standing -- and `royals_before` is
+                // zero unless the ruleset has a wild phase, so the old form also silently
+                // permitted a move that removed the mover's own royal any other way. One
+                // reading now, and it is the one the explosion arm already took.
+                r if r < 0 => t.royal_loss_ends_it(player),
+                r => self.threatened(1 - player, r as usize),
+            }
+        };
+
+        saved.restore(&mut self.board);
+        self.unmoved = saved_unmoved;
+        self.scratch -= 1;
+        attacked
+    }
+}
+
+impl<'t> Game<'t> {
+    /// Every move the side to move may play, appended to `out`.
+    pub fn generate_legal(&mut self, out: &mut Vec<u32>) {
+        let t = self.t;
+        let base = out.len();
+        self.generate_pseudo_legal(out);
+
+        if t.needs_check_filter() {
+            let player = self.side;
+
+            if t.multi_royal {
+                // Multi-royal: verify every candidate
+                let mut write = base;
+                for index in base..out.len() {
+                    let m = out[index];
+                    if !self.leaves_royal_attacked(m) {
+                        out[write] = m;
+                        write += 1;
+                    }
+                }
+                out.truncate(write);
+            } else {
+                let royal = self.royal_square(player);
+                if royal >= 0 {
+                    let royal = royal as usize;
+
+                    // Verify every candidate. Four reasons, and the last one is not like
+                    // the others: three are about the *ruleset*, and say the shortcut
+                    // below has no premise to stand on; the fourth is about the
+                    // *position*, and says the premise holds but admits nothing, because
+                    // out of check any move at all may be the one that answers it.
+                    //
+                    // **The shortcut's premise, stated once.** A move changes whether the
+                    // mover's own royal is attacked only by touching one of the royal's
+                    // lines -- the royal's own square, the sole blocker of an enemy line
+                    // onto it, a hop line, an en passant or a drop -- so every other move
+                    // may be admitted unasked. Three rules make that false, and each was
+                    // found by a played game rather than by a perft, because a filter
+                    // that errs in the permissive direction still hands back a move list
+                    // that looks like a move list:
+                    //
+                    // * `explosion` takes pieces off squares the move never touched.
+                    // * `royals_face` makes a move illegal by a geometry no attack table
+                    //   carries.
+                    // * `npcs` (schema 9) walks a piece nobody owns after **every** move,
+                    //   so the board the question is asked of is not the board the move
+                    //   left behind. A wild piece stepping *off* a square unblocks
+                    //   whatever line ran through it, and one stepping *onto* a square
+                    //   carries its threat -- the square it steps to next -- along with
+                    //   it. Neither has anything to do with the move being tested, which
+                    //   is what makes the shortcut unsound here and not merely
+                    //   incomplete.
+                    //
+                    // Spelled out rather than precomputed into a `Tables` field, and that
+                    // is a measurement and not a preference: the field costs chess -- none
+                    // of the three -- 4.3% of a random playout, because one more field
+                    // moves a struct the movegen reads at every ply, while these three
+                    // loads cost it nothing. The order is by price: two discriminants and
+                    // a bool before the attack query, all of them short-circuiting.
+                    // * `has_sweep` (schema 13) takes pieces off squares the move never
+                    //   touched, and a quiet move can open a landing beyond a royal.
+                    if t.explosion.is_some()
+                        || t.royal_facing_forbidden
+                        || t.has_npcs
+                        || t.has_sweep
+                        || self.in_check_at(player, royal)
+                    {
+                        let mut write = base;
+                        for index in base..out.len() {
+                            let m = out[index];
+                            if !self.leaves_royal_attacked(m) {
+                                out[write] = m;
+                                write += 1;
+                            }
+                        }
+                        out.truncate(write);
+                    } else {
+                        // Out of check: pin shortcut
+                        let pinned = self.pinned_squares(1 - player, royal);
+                        let hop_lines = if t.has_hop_attacks {
+                            t.hop_line(1 - player, royal)
+                        } else {
+                            SquareSet::EMPTY
+                        };
+                        let hop_relevant = !hop_lines.is_empty();
+
+                        let has_strike = t.strike.is_some();
+                        let mut write = base;
+                        for index in base..out.len() {
+                            let m = out[index];
+                            let origin = move_from(m);
+                            let suspect = origin == royal
+                                || pinned.get(origin)
+                                || move_kind(m) == MOVE_EN_PASSANT
+                                || move_kind(m) == MOVE_DROP
+                                || (hop_relevant && (hop_lines.get(origin) || hop_lines.get(move_to(m))))
+                                || (has_strike && self.board[move_to(m)] != 0);
+                            if suspect && self.leaves_royal_attacked(m) {
+                                continue;
+                            }
+                            out[write] = m;
+                            write += 1;
+                        }
+                        out.truncate(write);
+                    }
+                }
+            }
+        }
+
+        // Schema 2 restrictions: applied after the check filter
+        self.restrict(out, base);
+    }
+
+    /// Apply the restriction rules that narrow an already-legal move list.
+    fn restrict(&mut self, out: &mut Vec<u32>, base: usize) {
+        let t = self.t;
+
+        // forbid_check: racing kings — giving check is illegal
+        if t.forbid_check && !t.royal_types.is_empty() {
+            let player = self.side;
+            let opponent = 1 - player;
+            let mut write = base;
+            self.scratch += 1;
+            for index in base..out.len() {
+                let m = out[index];
+                // Apply move temporarily to check if it gives check. No explosion arm:
+                // this filter never had one, and `play_for_filter` is deliberately the
+                // half the two callers share rather than the union of them.
+                let origin = move_from(m);
+                let target = move_to(m);
+                let mut saved = Saved::new();
+                self.play_for_filter(m, &mut saved);
+
+                let saved_unmoved = self.unmoved;
+                self.unmoved.clear(origin);
+                self.unmoved.clear(target);
+
+                // "Gives check" reads schema 9's definition too: a move that leaves
+                // the other royal standing where a boar steps next has left it in check,
+                // whoever is threatening it, and this filter is about the position the
+                // move leaves behind.
+                let gives_check = if t.multi_royal {
+                    self.royal_squares(opponent).iter().any(|&r| self.threatened(player, r))
+                } else {
+                    let r = self.royal_square(opponent);
+                    r >= 0 && self.threatened(player, r as usize)
+                };
+
+                saved.restore(&mut self.board);
+                self.unmoved = saved_unmoved;
+
+                if !gives_check {
+                    out[write] = m;
+                    write += 1;
+                }
+            }
+            self.scratch -= 1;
+            out.truncate(write);
+        }
+
+        // forbid_immobility: shogi — no move may strand a piece
+        if t.forbid_immobility {
+            let player = self.side;
+            let mut write = base;
+            for index in base..out.len() {
+                let m = out[index];
+                let target = move_to(m);
+                let kind = move_kind(m);
+                // The frame the piece will be reading *after* the move, which for a
+                // rotation is the whole content of the move: a piece may not turn itself
+                // into a position it could never leave, exactly as it may not step into
+                // one.
+                let moving = self.board[move_from(m)];
+                let (piece_type, frame) = match kind {
+                    // A drop asks of the piece **as it stands after arrival** (schema 9):
+                    // shogi with `promote_on_entry` must not refuse a pawn drop on the far
+                    // rank as stranding a pawn, when what stands there is a tokin. The
+                    // `MOVE_PROMOTION` arm is the moved piece's own promotion, chosen by
+                    // the move, and reads the same table it always did.
+                    MOVE_DROP => {
+                        let arrived = t.arriving_value(player, move_promotion(m) as usize, target);
+                        (t.type_of(arrived), t.frame_of_value(arrived))
+                    }
+                    MOVE_PROMOTION => (
+                        move_promotion(m) as usize,
+                        t.frame_of_value(t.entering_value(player, move_promotion(m) as usize)),
+                    ),
+                    MOVE_ROTATE => (
+                        t.type_of(moving),
+                        player * t.n_facings + move_promotion(m) as usize,
+                    ),
+                    _ => (t.type_of(moving), t.frame_of_value(moving)),
+                };
+                if !t.is_immobile_square(frame, piece_type, target) {
+                    out[write] = m;
+                    write += 1;
+                }
+            }
+            out.truncate(write);
+        }
+
+        // Drop-mate check: shogi forbids finishing by dropping a pawn on the king
+        if let Some(rule) = t.drops.as_ref().filter(|_| !self.checking_drop_mate) {
+            if rule.no_mate.iter().any(|&v| v) {
+                let mut write = base;
+                for index in base..out.len() {
+                    let m = out[index];
+                    if move_kind(m) == MOVE_DROP {
+                        let pt = move_promotion(m) as usize;
+                        if rule.no_mate[pt] && self.is_forbidden_drop_mate(m) {
+                            continue;
+                        }
+                    }
+                    out[write] = m;
+                    write += 1;
+                }
+                out.truncate(write);
+            }
+        }
+
+        // must_capture: antichess — a capture on offer is the only move
+        if t.must_capture {
+            // A capture takes an enemy piece off the board, and three move kinds can.
+            // A leap, a slide and a hop all refuse a friendly occupant, so an occupied
+            // target under `MOVE_NORMAL` or `MOVE_PROMOTION` holds an enemy piece; an
+            // en passant takes the piece on `ep_victim` and lands on an empty square.
+            // The kinds left out end on an occupied square and take nothing -- a
+            // rotation on the piece that is turning, a file-based castling on the
+            // king's own rook -- so reading the target square alone would make castling
+            // compulsory wherever it is available, which is a rule nobody wrote.
+            let takes = |m: u32, board: &[u8; MAX_SQUARES]| {
+                let kind = move_kind(m);
+                // Schema 13: a sweep takes its path even onto an empty square.
+                kind == MOVE_EN_PASSANT
+                    || kind == MOVE_SWEEP
+                    || ((kind == MOVE_NORMAL || kind == MOVE_PROMOTION)
+                        && board[move_to(m)] != 0)
+            };
+            let has_capture = (base..out.len()).any(|index| takes(out[index], &self.board));
+            if has_capture {
+                let mut write = base;
+                for index in base..out.len() {
+                    let m = out[index];
+                    if takes(m, &self.board) {
+                        out[write] = m;
+                        write += 1;
+                    }
+                }
+                out.truncate(write);
+            }
+        }
+    }
+
+    /// Whether a drop move delivers checkmate (forbidden by shogi for pawns).
+    fn is_forbidden_drop_mate(&mut self, m: u32) -> bool {
+        let t = self.t;
+        let player = self.side;
+        let target = move_to(m);
+        let pt = move_promotion(m) as usize;
+        // The value placed is what arrives (schema 9): a pawn dropped on the far rank
+        // under `promote_on_entry` gives a queen's check, not a pawn's. `no_mate` is still
+        // read off the *dropped* type by the caller, which is right -- shogi's rule is
+        // about what was in the hand.
+        let value = t.arriving_value(player, pt, target);
+        let opponent = 1 - player;
+
+        // Place the piece
+        self.scratch += 1;
+        self.board[target] = value;
+
+        // Does it give check?
+        let gives_check = if t.multi_royal {
+            self.royal_squares(opponent).iter().any(|&r| self.attacks_square(player, r))
+        } else {
+            let r = self.royal_square(opponent);
+            r >= 0 && self.attacks_square(player, r as usize)
+        };
+
+        if !gives_check {
+            self.board[target] = 0;
+            self.scratch -= 1;
+            return false;
+        }
+
+        // Check if the opponent is mated (with this rule suppressed)
+        self.checking_drop_mate = true;
+        // Temporarily apply the move
+        self.board[target] = 0; // undo placement
+        self.scratch -= 1;
+        self.make(m);
+        let is_mate = self.legal_moves().is_empty();
+        self.unmake();
+        self.checking_drop_mate = false;
+
+        is_mate
+    }
+
+    pub fn legal_moves(&mut self) -> Vec<u32> {
+        let mut moves = Vec::new();
+        self.generate_legal(&mut moves);
+        moves
+    }
+
+    #[inline]
+    fn repetition_count(&self) -> u32 {
+        let key = self.key;
+        self.history[self.window..]
+            .iter()
+            .filter(|entry| **entry == key)
+            .count() as u32
+    }
+
+    /// The half of the verdict that does not need the caller's move list.
+    ///
+    /// Complete except for what an empty move list means *before* a clock runs out:
+    /// once `None`, the game is decided by `terminal_from_moves` alone. On the ply a
+    /// clock runs out it generates the moves itself, and only when the side to move is
+    /// in check, because a mate on that ply stands (Q412, `clock_or_mate`).
+    pub fn terminal_prefix(&mut self) -> Option<Outcome> {
+        if let Some(outcome) = self.ending_before_the_clocks() {
+            return Some(outcome);
+        }
+        let reason = self.clock_run_out()?;
+        if self.could_be_mated() {
+            let moves = self.legal_moves();
+            return Some(self.clock_or_mate(reason, &moves));
+        }
+        Some(self.on_the_clock(reason))
+    }
+
+    /// Everything asked before the clocks: the endings a position declares, then
+    /// repetition.
+    fn ending_before_the_clocks(&self) -> Option<Outcome> {
+        let t = self.t;
+
+        // A side whose royal is off the board has lost, wherever losing it is what loses
+        // (Q133). `Tables::royal_loss_ends_it` is the whole condition and it asks the
+        // *win condition* and the *setup*, never a rule key.
+        //
+        // This used to be gated on `t.explosion.is_some()`, so **declaring a blast** was
+        // what made a missing royal end a game -- a second rule under a key that does not
+        // mention it, and one `Win::RoyalCapture` already spelled out for itself further
+        // down. Both spellings are this loop now.
+        //
+        // The reason follows the win condition rather than whatever emptied the square: a
+        // game won *by capturing* the royal reports a capture, and one where the royal was
+        // never supposed to be takeable at all reports its destruction. That is the split
+        // every explosion ruleset already had, restated as a consequence.
+        if !t.royal_types.is_empty() {
+            for side in 0..2usize {
+                if t.royal_loss_ends_it(side) && self.royal_square(side) < 0 {
+                    return Some(Outcome {
+                        winner: (1 - side) as i8,
+                        reason: match t.win {
+                            Win::RoyalCapture => Reason::RoyalCaptured,
+                            _ => Reason::RoyalDestroyed,
+                        },
+                    });
+                }
+            }
+        }
+
+        // Illegal position: the opponent's royal is under attack on the side to
+        // move's turn, but the side to move is not itself in check.  This can only
+        // happen in a hand-built or generated starting position -- normal play never
+        // leaves a king in check after the move that gave it.  Treating it as an
+        // immediate win for the side to move prevents the king from being captured
+        // on the next ply without the game ending.
+        // Only for Checkmate games, where leaving your king in check is illegal;
+        // RoyalCapture games allow check and only end on actual capture.
+        // When both sides are in check (e.g. on a torus), the normal checkmate /
+        // stalemate path handles it via the move list.
+        if !t.royal_types.is_empty() && t.win == Win::Checkmate {
+            let player = self.side;
+            let opponent = 1 - player;
+            if self.in_check(opponent) && !self.in_check(player) {
+                return Some(Outcome {
+                    winner: player as i8,
+                    reason: Reason::RoyalCaptured,
+                });
+            }
+        }
+
+        // A `match` on `t.win` until Q133, when `Win::RoyalCapture`'s arm -- its own copy
+        // of the missing-royal loop -- moved into the block above, which is now both
+        // spellings of that rule. `Win::Annihilation` is what was left.
+        if t.win == Win::Annihilation {
+            for side in 0..2usize {
+                if !self.has_any_piece(side) {
+                    return Some(Outcome {
+                        winner: (1 - side) as i8,
+                        reason: Reason::Annihilated,
+                    });
+                }
+            }
+        }
+
+        // Schema-2 endings: asked before the draw clocks
+        if t.has_v2_endings() {
+            if let Some(outcome) = self.schema_two_ending() {
+                return Some(outcome);
+            }
+        }
+
+        if !self.history.is_empty() && self.repetition_count() >= t.repetition_draw {
+            return Some(Outcome {
+                winner: -1,
+                reason: Reason::Repetition,
+            });
+        }
+        None
+    }
+
+    /// Which clock has run out, the no-progress clock before the ply limit.
+    #[inline]
+    fn clock_run_out(&self) -> Option<Reason> {
+        let t = self.t;
+        if self.halfmove >= t.no_progress_draw {
+            Some(Reason::NoProgress)
+        } else if self.ply >= t.max_plies {
+            Some(Reason::PlyLimit)
+        } else {
+            None
+        }
+    }
+
+    /// Whether an empty move list here would be a checkmate rather than a stalemate.
+    #[inline]
+    fn could_be_mated(&self) -> bool {
+        let t = self.t;
+        t.win == Win::Checkmate && !t.royal_types.is_empty() && self.in_check(self.side)
+    }
+
+    /// The checkmate `moves` makes of this position, if it makes one.
+    fn mate_in(&self, moves: &[u32]) -> Option<Outcome> {
+        if !moves.is_empty() || !self.could_be_mated() {
+            return None;
+        }
+        let player = self.side;
+        Some(match self.t.checkmate_result {
+            CheckmateResult::Loss => Outcome {
+                winner: (1 - player) as i8,
+                reason: Reason::Checkmate,
+            },
+            CheckmateResult::Win => Outcome {
+                winner: player as i8,
+                reason: Reason::Checkmate,
+            },
+        })
+    }
+
+    /// A clock that has run out, unless the move that ran it out gave mate (Q412).
+    ///
+    /// Until Q412 the clocks were asked before the move list, so a mate given on the ply
+    /// a clock ran out was a draw here, or whatever a scoring rule made of it. FIDE's
+    /// 75-move rule and Fairy-Stockfish both let such a mate stand, and the user decided
+    /// on 2026-09-24 that it wins (*"mate wins"*). Only a mate: a stalemate on that ply
+    /// is still the clock's, as it is in both.
+    fn clock_or_mate(&self, reason: Reason, moves: &[u32]) -> Outcome {
+        self.mate_in(moves)
+            .unwrap_or_else(|| self.on_the_clock(reason))
+    }
+
+    /// What a clock produces: a draw, unless a scoring rule says otherwise.
+    ///
+    /// Deliberately *not* part of `schema_two_ending`, which runs before the clocks. A
+    /// score compared at every ply would end the game at ply zero, awarding it to
+    /// whoever the opening position happens to favour; the whole content of this rule
+    /// is that it fires when nothing else could resolve the game.
+    ///
+    /// Repetition is left alone. A game that has repeated three times is drawn by
+    /// agreement rather than by exhaustion, and handing it to whoever is ahead would
+    /// make repetition a *tool* for converting a lead rather than a way to stop.
+    fn on_the_clock(&self, reason: Reason) -> Outcome {
+        let Some(ref scoring) = self.t.scoring else {
+            return Outcome { winner: -1, reason };
+        };
+        let first = self.score_for(0, scoring);
+        let second = self.score_for(1, scoring);
+        if first == second {
+            return Outcome { winner: -1, reason };
+        }
+        Outcome {
+            winner: if first > second { 0 } else { 1 },
+            reason: Reason::Scored,
+        }
+    }
+
+    /// How many squares this side has coloured.
+    #[inline]
+    pub fn coloured_by(&self, player: usize) -> usize {
+        self.colour_counts[player] as usize
+    }
+
+    /// One side's score under a scoring rule. Everything it counts is already on the
+    /// board, which is what makes this cheap enough to sit on a terminal check.
+    ///
+    /// Public because `eval.rs` has a term for it: a rule that decides the game at the
+    /// clock is invisible to a player that cannot read the quantity being compared, and
+    /// two rulesets differing only in that rule played out identically until it could.
+    pub fn score_for(&self, player: usize, scoring: &ScoringRule) -> f64 {
+        // Territory is counted off the colouring rather than off the pieces, so it does
+        // not belong in the loop below at all -- "hold the most ground when the board
+        // fills" is about squares nobody is standing on as much as squares somebody is.
+        if scoring.count == 3 {
+            return self.coloured_by(player) as f64;
+        }
+        // Points (schema 9): what this player has been paid for taking wild pieces. Off
+        // the tally rather than off the board, because what it counts is gone.
+        if scoring.count == 4 {
+            return self.points[player];
+        }
+        let t = self.t;
+        let mut total = 0.0;
+        // The player's pieces in ascending square order: the same terms added in the
+        // same order as the scan over every square this replaced, since a square
+        // holding nothing of this player's added nothing.
+        for square in self.occupied()[player].iter() {
+            let raw = self.board[square];
+            total += match scoring.count {
+                // Declared values, in board order. Board order because floating point
+                // addition is not associative and a different traversal is a different
+                // sum -- the same reason `eval.rs` accumulates material the way it does.
+                0 => t.piece_values[t.type_of(raw)],
+                2 => match scoring.squares {
+                    Some(ref squares) if squares[player][square] => 1.0,
+                    _ => 0.0,
+                },
+                _ => 1.0,
+            };
+        }
+        total
+    }
+
+    /// Schema-2 endings: reach, extinction, bare_royal, check_limit.
+    fn schema_two_ending(&self) -> Option<Outcome> {
+        let t = self.t;
+
+        // Reach: win by arrival. Each side's own pieces in ascending order are the
+        // same candidate squares the scan over every square found, in the same order,
+        // so the first arrival it reports is the one it always reported.
+        if let Some(ref reach) = t.reach {
+            for (side, mine) in self.occupied()[..2].iter().enumerate() {
+                for square in mine.iter() {
+                    if !reach.squares[side][square] {
+                        continue;
+                    }
+                    let piece_type = t.type_of(self.board[square]);
+                    if reach.piece_type >= 0 && piece_type != reach.piece_type as usize {
+                        continue;
+                    }
+                    if reach.safe && self.threatened(1 - side, square) {
+                        continue;
+                    }
+                    return Some(decide(side, reach.result, Reason::Reached));
+                }
+            }
+        }
+
+        // Extinction: loss by running out
+        if let Some(ref extinction) = t.extinction {
+            for (side, mine) in self.occupied()[..2].iter().enumerate() {
+                let count = if extinction.any_piece {
+                    mine.len()
+                } else {
+                    mine.iter()
+                        .filter(|&sq| extinction.counts(t.type_of(self.board[sq])))
+                        .count()
+                };
+                if count < extinction.min_count {
+                    return Some(decide(side, extinction.result, Reason::Extinction));
+                }
+            }
+        }
+
+        // Bare royal: the side has a royal and nothing else. Shatranj's loss.
+        //
+        // `!mine.is_empty()` is the whole of Q134. The second test alone reads *no
+        // non-royal piece of mine*, which is **vacuously true for a side with nothing
+        // left**, so the key also declared a wiped-out player an ending -- a second rule
+        // its name does not mention. Unlike Q113's and Q133's, this one is not rehoused:
+        // a spec that means *a side with nothing left has lost* says so itself, with
+        // `win: "annihilation"` or with `extinction`, and both are read before this arm.
+        if let Some(result) = t.bare_royal {
+            for (side, mine) in self.occupied()[..2].iter().enumerate() {
+                let bared = !mine.is_empty()
+                    && !mine.iter().any(|sq| !t.is_royal(t.type_of(self.board[sq])));
+                if bared {
+                    return Some(decide(side, result, Reason::BareRoyal));
+                }
+            }
+        }
+
+        // Territory: enough of the board coloured
+        if let Some(ref rule) = t.territory {
+            if rule.win_at > 0 {
+                for side in 0..2usize {
+                    if self.coloured_by(side) >= rule.win_at as usize {
+                        return Some(Outcome {
+                            winner: side as i8,
+                            reason: Reason::Coloured,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Check limit
+        if t.check_limit > 0 {
+            for side in 0..2usize {
+                if self.checks[side] >= t.check_limit {
+                    return Some(Outcome {
+                        winner: side as i8,
+                        reason: Reason::CheckLimit,
+                    });
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Return the outcome if the game is over, else `None`, given an already generated
+    /// legal move list.
+    ///
+    /// The same verdict as `terminal`, in the same order, but read off the list handed
+    /// in, so it never generates one of its own.
+    pub fn terminal_with(&self, moves: &[u32]) -> Option<Outcome> {
+        if let Some(outcome) = self.ending_before_the_clocks() {
+            return Some(outcome);
+        }
+        if let Some(reason) = self.clock_run_out() {
+            return Some(self.clock_or_mate(reason, moves));
+        }
+        self.terminal_from_moves(moves)
+    }
+
+    /// The other half of the verdict: what an empty move list means.
+    ///
+    /// Split out because a search wants to ask the cheap half *before* it consults its
+    /// transposition table -- a cached value is a value for a position that is still
+    /// being played, and returning one for a position that has already ended is how a
+    /// territorial win got looked up as a quiet middlegame. Generating moves to find
+    /// that out would undo the table's whole purpose, and this half is the only one
+    /// that needs them. (The one exception is the ply a clock runs out on with the side
+    /// to move in check, where `terminal_prefix` generates them to see whether it is
+    /// mate: rare, and cheaper than splitting the clocks across the two halves.)
+    ///
+    /// The whole verdict only once `terminal_prefix` has said `None`.
+    pub fn terminal_from_moves(&self, moves: &[u32]) -> Option<Outcome> {
+        if !moves.is_empty() {
+            return None;
+        }
+        if let Some(mate) = self.mate_in(moves) {
+            return Some(mate);
+        }
+
+        let player = self.side;
+        Some(match self.t.stalemate {
+            Stalemate::Draw => Outcome {
+                winner: -1,
+                reason: Reason::Stalemate,
+            },
+            Stalemate::Loss => Outcome {
+                winner: (1 - player) as i8,
+                reason: Reason::StalemateLoss,
+            },
+            Stalemate::Win => Outcome {
+                winner: player as i8,
+                reason: Reason::StalemateWin,
+            },
+        })
+    }
+
+    pub fn terminal(&mut self) -> Option<Outcome> {
+        if let Some(outcome) = self.terminal_prefix() {
+            return Some(outcome);
+        }
+        let moves = self.legal_moves();
+        self.terminal_with(&moves)
+    }
+
+    /// Count leaf nodes at `depth`, with optional `stop_at_terminal` for schema 2.
+    pub fn perft_stop(&mut self, arena: &mut Vec<u32>, depth: u32, stop_at_terminal: bool) -> u64 {
+        if depth == 0 {
+            return 1;
+        }
+        if stop_at_terminal && self.terminal_prefix().is_some() {
+            return 0;
+        }
+        let base = arena.len();
+        self.generate_legal(arena);
+        let end = arena.len();
+        if stop_at_terminal {
+            // Check for terminal with moves (stalemate/checkmate detection)
+            if end == base {
+                arena.truncate(base);
+                return 0; // terminal position
+            }
+        }
+        if depth == 1 {
+            arena.truncate(base);
+            return (end - base) as u64;
+        }
+        let mut total = 0u64;
+        for index in base..end {
+            let m = arena[index];
+            self.make(m);
+            total += self.perft_stop(arena, depth - 1, stop_at_terminal);
+            self.unmake();
+        }
+        arena.truncate(base);
+        total
+    }
+
+    /// Count leaf nodes at `depth`. The engine's correctness workhorse.
+    pub fn perft(&mut self, arena: &mut Vec<u32>, depth: u32) -> u64 {
+        if depth == 0 {
+            return 1;
+        }
+        let base = arena.len();
+        self.generate_legal(arena);
+        let end = arena.len();
+        if depth == 1 {
+            arena.truncate(base);
+            return (end - base) as u64;
+        }
+        let mut total = 0u64;
+        for index in base..end {
+            let m = arena[index];
+            self.make(m);
+            total += self.perft(arena, depth - 1);
+            self.unmake();
+        }
+        arena.truncate(base);
+        total
+    }
+}
+
+/// Whether a piece of `attacker` type may capture the piece encoded in `occupant`.
+///
+/// Free when no ruleset in play declares a capture matrix, which `may_capture`
+/// short-circuits. Defined once rather than inlined at each of the three capture tests,
+/// because a slide, a leap and a hop must not be able to drift apart on what a legal
+/// capture is -- perft would count all three and notice none of it.
+#[inline(always)]
+fn may_take(t: &Tables, attacker: usize, occupant: u16) -> bool {
+    if !t.has_capture_matrix {
+        return true;
+    }
+    t.may_capture(attacker, t.type_of(occupant as u8))
+}
+
+/// Whether a move may end on an occupied square, for all three movement arms.
+///
+/// An enemy occupant is a capture, bound by the capture matrix. A friendly occupant is a
+/// target only through an own contact link (schema 11). Both need the capture mode bit,
+/// so an own contact travels the lines a capture travels. Without an own link a friendly
+/// piece blocks, as it always has.
+#[inline(always)]
+fn may_land(t: &Tables, mode: u8, attacker: usize, occupant: u16, low: u16, high: u16) -> bool {
+    if mode & 2 == 0 {
+        return false;
+    }
+    if low <= occupant && occupant < high {
+        return t.strike.as_ref().is_some_and(|rule| {
+            !rule.own_link.is_empty()
+                && rule.own_link[attacker * rule.n_types + t.type_of(occupant as u8)]
+        });
+    }
+    may_take(t, attacker, occupant)
+}
+
+/// Map a stated ending result to an `Outcome`. `actor` is the side the ending
+/// describes -- the one who arrives, runs out, or is stripped to royalty -- and
+/// `result` is -1 loss, 0 draw, 1 win for them.
+///
+/// The zero case is why this takes an integer rather than a boolean. The validator
+/// accepts `"draw"` for all three of these rules; a boolean has nowhere to put it, so
+/// every drawn ending was silently executed as one of the other two.
+fn decide(actor: usize, result: i8, reason: Reason) -> Outcome {
+    let winner = match result {
+        1 => actor as i8,
+        -1 => (1 - actor) as i8,
+        _ => -1,
+    };
+    Outcome { winner, reason }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dedup_segment;
+    use crate::tables::{encode_move, MOVE_EN_PASSANT, MOVE_NORMAL, MOVE_PROMOTION};
+
+    /// The pass `dedup_segment` replaced, kept as the oracle: a second list of the moves
+    /// kept so far, consulted before every push. First occurrence wins, in order.
+    fn reference(out: &[u32], start: usize) -> Vec<u32> {
+        let mut kept: Vec<u32> = out[..start].to_vec();
+        let mut seen: Vec<u32> = Vec::new();
+        for &m in &out[start..] {
+            if !seen.contains(&m) {
+                seen.push(m);
+                kept.push(m);
+            }
+        }
+        kept
+    }
+
+    #[test]
+    fn dedup_keeps_the_first_occurrence_in_generated_order() {
+        let a = encode_move(12, 20, MOVE_NORMAL, 0);
+        let b = encode_move(12, 28, MOVE_NORMAL, 0);
+        // The same square as `a`, another kind: a different move, and it stays.
+        let c = encode_move(12, 20, MOVE_EN_PASSANT, 0);
+        let d = encode_move(12, 60, MOVE_PROMOTION, 3);
+        // The same square as `d`, another piece to become: also stays.
+        let e = encode_move(12, 60, MOVE_PROMOTION, 4);
+        // An earlier piece's move to `a`'s square, before the segment: not "seen".
+        let before = encode_move(5, 20, MOVE_NORMAL, 0);
+        let mut out = vec![before, a, b, a, c, d, b, e, d, a, c, e];
+        let expected = reference(&out, 1);
+        dedup_segment(&mut out, 1);
+        assert_eq!(out, expected);
+        assert_eq!(out, vec![before, a, b, c, d, e]);
+    }
+
+    #[test]
+    fn dedup_leaves_the_prefix_alone_and_an_empty_segment_empty() {
+        let m = encode_move(3, 9, MOVE_NORMAL, 0);
+        let mut out = vec![m, m, m];
+        dedup_segment(&mut out, 3);
+        assert_eq!(out, vec![m, m, m]);
+        // Whatever stands before `start` is another piece's business.
+        dedup_segment(&mut out, 2);
+        assert_eq!(out, vec![m, m, m]);
+        dedup_segment(&mut out, 1);
+        assert_eq!(out, vec![m, m]);
+    }
+
+    /// Many segments drawn over a small alphabet of targets, kinds and promotions, so
+    /// repeats are dense, the target mask says "scan" often, and moves that share a
+    /// square while differing elsewhere are common. Targets are spread over all four
+    /// words of the mask.
+    #[test]
+    fn dedup_matches_the_list_it_replaced_on_dense_repeats() {
+        let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for _trial in 0..2000 {
+            let start = (next() % 4) as usize;
+            let length = (next() % 48) as usize;
+            let origin = (next() % 256) as usize;
+            let mut out: Vec<u32> = (0..start + length)
+                .map(|_| {
+                    let r = next();
+                    let target = ((r % 7) as usize * 41) % 256;
+                    let kind = ((r >> 8) % 3) as u32;
+                    let promotion = ((r >> 16) % 2) as u32;
+                    encode_move(origin, target, kind, promotion)
+                })
+                .collect();
+            let expected = reference(&out, start);
+            dedup_segment(&mut out, start);
+            assert_eq!(out, expected);
+        }
+    }
+}

@@ -1,0 +1,147 @@
+{
+  "schema_version": 6,
+  "name": "hierarchy extended",
+  "description": "hierarchy rise with three steps above the queen: A (amazon, queen plus knight), D (amazon whose diagonals leap over anything), Z (amazon whose diagonals and orthogonals both leap). A struck piece climbs one step and the two pieces exchange squares; nothing carries a piece above Z, which is taken outright. The pawn's rank promotion is chess's and stops at the queen, so the top three steps are reachable only by being struck.",
+  "board": {"width": 8, "height": 8},
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+        {
+          "kind": "slide",
+          "vectors": [[0, 1]],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {"from_rank": 1}
+        },
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}
+      ]
+    },
+    {
+      "id": "A",
+      "name": "amazon",
+      "value": 12,
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"},
+        {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}
+      ]
+    },
+    {
+      "id": "D",
+      "name": "diagonal leaper",
+      "value": 14,
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"},
+        {
+          "kind": "leap",
+          "vectors": [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6], [7, 7]],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}
+      ]
+    },
+    {
+      "id": "Z",
+      "name": "full leaper",
+      "value": 16,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0]],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6], [7, 7]],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2"]},
+      {"piece": "R", "squares": ["a1", "h1"]},
+      {"piece": "N", "squares": ["b1", "g1"]},
+      {"piece": "B", "squares": ["c1", "f1"]},
+      {"piece": "Q", "squares": ["d1"]},
+      {"piece": "K", "squares": ["e1"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": "last", "to": ["Q", "R", "B", "N"]},
+    "en_passant": true,
+    "castling": {"king": "K", "rook": "R", "king_steps": 2},
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "strike": {
+      "effect": "promote",
+      "position": "swap",
+      "chain": [
+        {"from": "P", "to": "N"},
+        {"from": "N", "to": "B"},
+        {"from": "B", "to": "R"},
+        {"from": "R", "to": "Q"},
+        {"from": "Q", "to": "A"},
+        {"from": "A", "to": "D"},
+        {"from": "D", "to": "Z"}
+      ],
+      "immune": ["K"]
+    }
+  },
+  "provenance": {
+    "origin": "designed",
+    "source": "docs/game-ideas.md",
+    "history": "The extended hierarchy from game-ideas.md, costed as row 3 of its table and built under Q6b-2: hierarchy rise with the chain continued three rungs past the queen, and nothing else changed. Board, army, starting material, rank promotion and the position rule are hierarchy rise's, so the pair differs in the three new pieces and the three links that reach them and in nothing else. The three pieces exist only through the chain: no pawn promotes to one, none is on the board at the start. Scores 0.628 +/- 0.041 on the corpus roster under weights v9, and is not viable there: quick_kill_rate 0.597 against the gate's 0.5, because a struck queen now climbs to an amazon on the striker's square, so a queen beside the king cannot be taken from close range and a queen offered in the enemy camp comes back as an amazon behind their lines.",
+    "parents": [
+      "1ba3d61e5961"
+    ]
+  }
+}

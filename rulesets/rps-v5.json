@@ -1,0 +1,155 @@
+{
+  "schema_version": 4,
+  "name": "rps both endings",
+  "description": "Version 5 of a designed-and-rejected sequence, and the only one its designer rejected on aesthetics alone. Permanent claiming as in version 2, plus the annihilation ending of version 1, with the ground held compared when the clock runs out. He was explicit that there were no major gameplay problems and that the complaint was not a count of rules: 'in chess, the rules mesh well with each other, whereas this game feels like someone took rules from five different games and combined them arbitrarily.'",
+  "board": {
+    "width": 9,
+    "height": 9
+  },
+  "pieces": [
+    {
+      "id": "R",
+      "name": "rock",
+      "value": 1,
+      "captures": [
+        "S"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "P",
+      "name": "paper",
+      "value": 1,
+      "captures": [
+        "R"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "S",
+      "name": "scissors",
+      "value": 1,
+      "captures": [
+        "P"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "R",
+        "squares": [
+          "c1",
+          "a2",
+          "d2"
+        ]
+      },
+      {
+        "piece": "P",
+        "squares": [
+          "e1",
+          "e2"
+        ]
+      },
+      {
+        "piece": "S",
+        "squares": [
+          "g1",
+          "i2",
+          "f2"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "stalemate": "draw",
+    "max_plies": 300,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "win": "annihilation",
+    "territory": {
+      "mode": "permanent"
+    },
+    "scoring": {
+      "count": "territory"
+    }
+  },
+  "appearance": {
+    "icons": {
+      "R": "rock",
+      "P": "paper",
+      "S": "scissors"
+    }
+  }
+}

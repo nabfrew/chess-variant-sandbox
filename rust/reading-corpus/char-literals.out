@@ -1,0 +1,1 @@
+let a = '\''; let b = '"'; let c = '/'; let d = '\\'; let e = '{'; let f = b'\''; let g = '\u{1F600}'; let h = ' ';

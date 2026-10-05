@@ -1,0 +1,221 @@
+{
+  "version": "v8",
+  "notes": "v7 re-anchored, not re-designed: the same sixteen components, the same families, the same weights to the digit, curve ends re-placed mechanically by `chess-variant-sandbox anchor`. WHAT FORCED IT is stage 20, and it moves exactly one entry. Where an extinction rule says that running out of anything is a WIN, the material term's SIGN now follows it. Phase B had given antichess a goal term for that rule and it was not enough: a goal term is ADDED to material, so the two argued and material won -- shedding a piece, which is progress towards the win condition, scored -2.05 against an opening of 0.00. The evidence that the change is right rather than merely different is the ladder. Before it, `minimax:nodes=6400` rated level with a random mover and the 400-node search finished last, which is the `ladder_monotonicity` 0.33 that CLAUDE.md has quoted since v2 as the standing example of a ruleset the roster cannot read. After it the ladder is monotonic: random -686, greedy -225, then 89, 303, 519. Antichess is a band member, so the band, its floor and every end anchored off it move with it, and that is what a version is for. NOTHING ELSE MOVED: every ruleset declaring no extinction-is-a-win rule replays byte-identically, asserted by tests/test_goal_terms.py's INERT table, and the one entry in its PHASE_B table that did move carries the reason next to its digest. THE HELD-OUT SLICE IS RE-DRAWN by bumping HELDOUT_SALT, so no curve here was fitted to the negatives it is scored against. The judge still contributes nothing: llm_weight stays 0.0. Stage 19's heuristic measurements are not scored here and are not scored anywhere -- they describe the instrument rather than the game, and tests/test_heuristics.py asserts that no weights file scores one.",
+  "llm_weight": 0.0,
+  "components": {
+    "rule_yield": {
+      "family": "elegance",
+      "weight": 0.099,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 64.8515,
+        "zero_at": 0.0
+      },
+      "evidence": "8.5 / +0.32"
+    },
+    "first_player_advantage": {
+      "family": "balance",
+      "weight": 0.0396,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 0.75
+      },
+      "evidence": "1.9 / +0.02  weakest on both axes"
+    },
+    "stall_rate": {
+      "family": "balance",
+      "weight": 0.0792,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 1.0
+      },
+      "evidence": "11.4 / +0.43"
+    },
+    "mean_branching": {
+      "family": "pacing",
+      "weight": 0.0396,
+      "curve": "band",
+      "points": {
+        "good_low": 8.6032,
+        "good_high": 56.5446,
+        "zero_low": 0.0,
+        "zero_high": 104.486
+      },
+      "evidence": "21.9 / +0.13"
+    },
+    "ply_spread": {
+      "family": "pacing",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.5302,
+        "zero_at": 0.0
+      },
+      "evidence": "9.9 / +0.38"
+    },
+    "opening_diversity": {
+      "family": "variety",
+      "weight": 0.0594,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.2494
+      },
+      "evidence": "9.5 / -0.11  guards a failure no mutant has"
+    },
+    "distinct_game_rate": {
+      "family": "variety",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.7306
+      },
+      "evidence": "4.6 / +0.06"
+    },
+    "blunder_recoverability": {
+      "family": "drama",
+      "weight": 0.0495,
+      "curve": "band",
+      "points": {
+        "good_low": 0.1667,
+        "good_high": 0.8947,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "2.5 / +0.69  noisy, but separates hard"
+    },
+    "decision_criticality": {
+      "family": "decisions",
+      "weight": 0.099,
+      "curve": "band",
+      "points": {
+        "good_low": 0.2899,
+        "good_high": 0.7352,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "12.5 / +0.72  best discriminator in the set"
+    },
+    "piece_utilisation": {
+      "family": "decisions",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.6719
+      },
+      "evidence": "16.0 / +0.16  precise, modest separation"
+    },
+    "skill_gradient": {
+      "family": "depth",
+      "weight": 0.1386,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 246.7965,
+        "zero_at": 4.57
+      },
+      "evidence": "6.8 / +0.60  the core question, well measured"
+    },
+    "gradient_persistence": {
+      "family": "depth",
+      "weight": 0.0693,
+      "curve": "band",
+      "points": {
+        "good_low": 0.347,
+        "good_high": 2.141,
+        "zero_low": 0.0,
+        "zero_high": 2.5
+      },
+      "evidence": "2.6 / +0.21  central idea, noisy at four budgets"
+    },
+    "draw_slope": {
+      "family": "drama",
+      "weight": 0.0495,
+      "curve": "band",
+      "points": {
+        "good_low": 0.8571,
+        "good_high": 1.875,
+        "zero_low": 0.0,
+        "zero_high": 2.0
+      },
+      "evidence": "2.5 / +0.14"
+    },
+    "progress_irreversibility": {
+      "family": "pacing",
+      "weight": 0.0693,
+      "curve": "band",
+      "points": {
+        "good_low": 0.0997,
+        "good_high": 0.793,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "29.1 / band; -0.80 with blunder_recoverability, which came down for it"
+    },
+    "instance_participation": {
+      "family": "decisions",
+      "weight": 0.0495,
+      "curve": "band",
+      "points": {
+        "good_low": 0.4823,
+        "good_high": 0.9987,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "18.7 / band; +0.72 with distinct_game_rate"
+    },
+    "lead_conversion": {
+      "family": "drama",
+      "weight": 0.0396,
+      "curve": "band",
+      "points": {
+        "good_low": 0.4271,
+        "good_high": 0.9318,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "3.6 / band; the most independent of the seven, max +0.41",
+      "optional": true
+    }
+  },
+  "gates": [
+    {
+      "component": "search_advantage",
+      "minimum": 0.55,
+      "reason": "a searching player must beat a random one, or there is nothing to play"
+    },
+    {
+      "component": "stall_rate",
+      "maximum": 0.7,
+      "reason": "a game that mostly fails to finish is not a game"
+    },
+    {
+      "component": "mean_branching",
+      "minimum": 1.5,
+      "reason": "with no choices there is no play"
+    },
+    {
+      "component": "decisive_rate",
+      "minimum": 0.2,
+      "reason": "a game that competent players almost always draw is not a contest"
+    },
+    {
+      "component": "mean_plies",
+      "minimum": 8.0,
+      "reason": "a game decided before either player has developed anything is not a game"
+    },
+    {
+      "component": "skill_gradient",
+      "minimum": 8.0,
+      "reason": "doubling the thinking budget must be worth at least a few Elo, or skill does not exist here"
+    },
+    {
+      "component": "quick_kill_rate",
+      "maximum": 0.5,
+      "reason": "a game where half of all contests are over in a handful of moves is decided by an opening trap, not by play; it correlates -0.89 with distinct_game_rate, so scoring it as well as gating it counted one measurement twice"
+    }
+  ]
+}

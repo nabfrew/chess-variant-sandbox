@@ -1,0 +1,344 @@
+{
+  "schema_version": 10,
+  "name": "weathervane half-turn",
+  "description": "Weathervane with two-way pawns, built to show a piece that faces only forward or backward and a piece type whose starting facing is backward. Every square is occupied from the start. Each side fields 24 pawns, a queen, two rooks, two knights, two bishops and a king, 32 pieces a side and 64 in all, on weathervane's squares; no pawn starts on the rank it would promote from. Standard chess rules with no castling. Nothing can move until a capture opens a square. A pawn points forward or backward and may spend a whole move turning round instead of moving. The pawn type starts facing backward, so a pawn placed without a facing of its own points towards its own side: 25 of the 48 are placed that way and the other 23 are placed facing forward. Weathervane's pawns that pointed sideways were each turned a quarter turn anticlockwise as drawn on the board. The position was checked so that neither king is in check and neither side has a mate in one; it was not rolled or picked for how it plays.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ],
+      "facing": {
+        "axes": 2,
+        "initial": "backward"
+      }
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {
+        "piece": "B",
+        "player": 0,
+        "squares": [
+          "a4",
+          "h1"
+        ]
+      },
+      {
+        "piece": "B",
+        "player": 1,
+        "squares": [
+          "b6",
+          "f6"
+        ]
+      },
+      {
+        "piece": "K",
+        "player": 0,
+        "squares": [
+          "e1"
+        ]
+      },
+      {
+        "piece": "K",
+        "player": 1,
+        "squares": [
+          "a8"
+        ]
+      },
+      {
+        "piece": "N",
+        "player": 0,
+        "squares": [
+          "a1",
+          "f8"
+        ]
+      },
+      {
+        "piece": "N",
+        "player": 1,
+        "squares": [
+          "f2",
+          "g1"
+        ]
+      },
+      {
+        "piece": "P",
+        "player": 0,
+        "squares": [
+          "a5",
+          "a6",
+          "b1",
+          "d2",
+          "d3",
+          "d4",
+          "e5",
+          "f3",
+          "g2",
+          "g6",
+          "g7",
+          "h5",
+          "h7"
+        ]
+      },
+      {
+        "piece": "P",
+        "player": 0,
+        "squares": [
+          "a2",
+          "b2",
+          "c1",
+          "c5",
+          "c7",
+          "d1",
+          "d5",
+          "e6",
+          "f5",
+          "f7",
+          "h4"
+        ],
+        "facing": "forward"
+      },
+      {
+        "piece": "P",
+        "player": 1,
+        "squares": [
+          "b8",
+          "c2",
+          "c4",
+          "c8",
+          "d7",
+          "d8",
+          "e2",
+          "f4",
+          "g4",
+          "h3",
+          "h6",
+          "h8"
+        ]
+      },
+      {
+        "piece": "P",
+        "player": 1,
+        "squares": [
+          "a7",
+          "b3",
+          "b4",
+          "c3",
+          "d6",
+          "e3",
+          "e7",
+          "e8",
+          "g3",
+          "g5",
+          "g8",
+          "h2"
+        ],
+        "facing": "forward"
+      },
+      {
+        "piece": "Q",
+        "player": 0,
+        "squares": [
+          "e4"
+        ]
+      },
+      {
+        "piece": "Q",
+        "player": 1,
+        "squares": [
+          "b7"
+        ]
+      },
+      {
+        "piece": "R",
+        "player": 0,
+        "squares": [
+          "b5",
+          "f1"
+        ]
+      },
+      {
+        "piece": "R",
+        "player": 1,
+        "squares": [
+          "a3",
+          "c6"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "appearance": {
+    "icons": {
+      "P": [
+        "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NSA0NSI+PGcgZmlsbD0iI2Y0ZjFlYSIgc3Ryb2tlPSIjMmIyYjJiIiBzdHJva2Utd2lkdGg9IjEuNiIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTIyLjUgMzAuNWMtNC42IDAtOCAyLjYtOCA2LjJoMTZjMC0zLjYtMy40LTYuMi04LTYuMnoiLz48cGF0aCBkPSJNMTguNiAzMC41YzAtMy4yIDEuNS01IDMuOS02LjYgMi40IDEuNiAzLjkgMy40IDMuOSA2LjZ6Ii8+PGNpcmNsZSBjeD0iMjIuNSIgY3k9IjE5LjUiIHI9IjUuMiIvPjwvZz48cGF0aCBkPSJNMjIuNSAzLjUgMzAgMTMuNWgtNC42djVoLTUuOHYtNUgxNXoiIGZpbGw9IiNjMDRhMWUiIHN0cm9rZT0iIzJiMmIyYiIgc3Ryb2tlLXdpZHRoPSIxLjQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48L3N2Zz4=",
+        "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NSA0NSI+PGcgZmlsbD0iIzMzMzEyZSIgc3Ryb2tlPSIjMTAxMDEwIiBzdHJva2Utd2lkdGg9IjEuNiIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTIyLjUgMzAuNWMtNC42IDAtOCAyLjYtOCA2LjJoMTZjMC0zLjYtMy40LTYuMi04LTYuMnoiLz48cGF0aCBkPSJNMTguNiAzMC41YzAtMy4yIDEuNS01IDMuOS02LjYgMi40IDEuNiAzLjkgMy40IDMuOSA2LjZ6Ii8+PGNpcmNsZSBjeD0iMjIuNSIgY3k9IjE5LjUiIHI9IjUuMiIvPjwvZz48cGF0aCBkPSJNMjIuNSAzLjUgMzAgMTMuNWgtNC42djVoLTUuOHYtNUgxNXoiIGZpbGw9IiNlODgyM2MiIHN0cm9rZT0iIzEwMTAxMCIgc3Ryb2tlLXdpZHRoPSIxLjQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48L3N2Zz4="
+      ]
+    }
+  },
+  "provenance": {
+    "origin": "hand",
+    "source": "archive/weathervane",
+    "history": "Derived by hand from archive/weathervane (1442513d38d7) for Q28b, to close rows 15 and 16 of docs/reference/schema-showcase-coverage.md. The pawn's facing became axes 2 with initial backward. A two-axis pawn has no sideways heading, so each of weathervane's 27 sideways pawns was turned a quarter turn anticlockwise as drawn; pawns facing backward name no facing and take it from initial. The three other ways to turn every sideways pawn by one rule each left the second player a mate in one. Board, army, squares and rules are weathervane's."
+  }
+}

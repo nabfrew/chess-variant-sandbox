@@ -1,0 +1,158 @@
+{
+  "ruleset_hash": "15593fc47f6d",
+  "vocabulary_version": 2,
+  "vocabulary": [
+    "material",
+    "prey_weight",
+    "mobility",
+    "advance",
+    "centrality",
+    "royal_exposure",
+    "territory_margin",
+    "score_margin",
+    "score_urgency",
+    "check_margin",
+    "extinction_margin",
+    "hand_material",
+    "promotion_occupancy",
+    "reach_progress",
+    "facing_alignment"
+  ],
+  "model": "hand-written",
+  "k": 6,
+  "set_hash": "11cf473c507c",
+  "heuristics": [
+    {
+      "name": "material-and-mobility",
+      "plan": "Win material, and keep your options open.",
+      "weights": [
+        0.9993729823730321,
+        0.0,
+        0.03540680870724542,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "e68622d5f93e"
+    },
+    {
+      "name": "trade-up",
+      "plan": "Win material and keep the pieces that can take the most.",
+      "weights": [
+        1.0,
+        0.0,
+        0.05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "4bc788e733d4"
+    },
+    {
+      "name": "shed",
+      "plan": "Give material away as fast as possible.",
+      "weights": [
+        -1.0,
+        0.0,
+        0.05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "ff7960bcb810"
+    },
+    {
+      "name": "hunt-the-king",
+      "plan": "Keep the opponent's royal piece under threat and yours out of trouble.",
+      "weights": [
+        0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "c1960888d36e"
+    },
+    {
+      "name": "starve-them",
+      "plan": "Take the pieces they cannot afford to lose.",
+      "weights": [
+        0.3,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "digest": "531e7ba1c14d"
+    },
+    {
+      "name": "promote",
+      "plan": "Get promotable pieces onto the squares where they promote.",
+      "weights": [
+        0.0,
+        0.0,
+        0.0,
+        0.4,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "digest": "a3275df63d36"
+    }
+  ]
+}

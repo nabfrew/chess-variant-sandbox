@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "name": "los alamos",
+  "description": "The 6x6 board the MANIAC I computer played in 1956, the first game of chess-like complexity a machine ever won against a human. Bishops are dropped for want of room, pawns never double-step, there is no castling and no en passant, and a pawn may not promote to a piece that does not exist.",
+  "board": {"width": 6, "height": 6},
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [{"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2", "f2"]},
+      {"piece": "R", "squares": ["a1", "f1"]},
+      {"piece": "N", "squares": ["b1", "e1"]},
+      {"piece": "Q", "squares": ["c1"]},
+      {"piece": "K", "squares": ["d1"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": "last", "to": ["Q", "R", "N"]},
+    "max_plies": 300,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "origin": "human",
+    "year": 1956,
+    "source": "the MANIAC I computer at Los Alamos; the first game of chess-like complexity a machine won against a human"
+  }
+}

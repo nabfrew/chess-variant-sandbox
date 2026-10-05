@@ -1,0 +1,221 @@
+{
+  "version": "v6",
+  "notes": "v6 is a re-anchoring forced by the agents rather than by the components. Stage 17 gave the evaluator terms for endings it could not read -- territory, a score at the clock, a count of checks, and running out of a piece -- so nine of the fifty-eight corpus entries play differently and every number measured from them moved. \n\nTHE COMPONENT SET IS v5's, UNCHANGED. Same sixteen measurements, same families, same weights to the digit. Ten of the sixteen curve ends are re-placed, from the same corpus by the same mechanical `anchor_curves`, with the same held-out slice picked by the same salt. Nothing here is a judgement about what to measure; it is the same index re-fitted to the games the current agents actually play. \n\nREAD THE HEADLINE NUMBERS WITH THE BAND MEMBERSHIP. v6's human band is 0.686-0.854 against v5's 0.731-0.862, its spread is 0.167 against 0.131, and its separation is -0.070 against -0.027. All of that is one ruleset. `antichess` was gated out under v5 because the roster could not read it -- a material evaluator maximising material in a game won by shedding it -- and stage 17B's extinction term makes its ladder monotonic, so it joins the band, at 0.686, which is the floor. Take it out and the band is 0.728-0.854, spread 0.126, separation -0.028: v5's numbers to within a thousandth. Separation is a property of who is in the band as much as of the index, and an instrument that reads one more game is not a worse instrument for reporting that the game scores low. \n\nTwo known-bad mutants crossed the floor that did not under v5 -- `mutant-idle-army` at 0.720 and `mutant-gardner-shuffle` at 0.730 -- and both crossed by moving up about two hundredths under the re-anchored skill curves rather than by the floor moving under them. `mutant-instant-promotion` is still the best known-bad at 0.756 and still held out of anchoring, so it is still a standing weakness and still not an artefact of the fit. \n\nFull report in docs/reference/v6-calibration.md; the measurements behind the agent change are in docs/reference/stage-17-measurements.md.",
+  "llm_weight": 0.0,
+  "components": {
+    "rule_yield": {
+      "family": "elegance",
+      "weight": 0.099,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 65.8754,
+        "zero_at": 0.0
+      },
+      "evidence": "8.5 / +0.32"
+    },
+    "first_player_advantage": {
+      "family": "balance",
+      "weight": 0.0396,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 0.5624
+      },
+      "evidence": "1.9 / +0.02  weakest on both axes"
+    },
+    "stall_rate": {
+      "family": "balance",
+      "weight": 0.0792,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 1.0
+      },
+      "evidence": "11.4 / +0.43"
+    },
+    "mean_branching": {
+      "family": "pacing",
+      "weight": 0.0396,
+      "curve": "band",
+      "points": {
+        "good_low": 8.9244,
+        "good_high": 63.6699,
+        "zero_low": 0.0,
+        "zero_high": 118.4154
+      },
+      "evidence": "21.9 / +0.13"
+    },
+    "ply_spread": {
+      "family": "pacing",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.2372,
+        "zero_at": 0.0
+      },
+      "evidence": "9.9 / +0.38"
+    },
+    "opening_diversity": {
+      "family": "variety",
+      "weight": 0.0594,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.3593
+      },
+      "evidence": "9.5 / -0.11  guards a failure no mutant has"
+    },
+    "distinct_game_rate": {
+      "family": "variety",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.537
+      },
+      "evidence": "4.6 / +0.06"
+    },
+    "blunder_recoverability": {
+      "family": "drama",
+      "weight": 0.0495,
+      "curve": "band",
+      "points": {
+        "good_low": 0.1,
+        "good_high": 1.0,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "2.5 / +0.69  noisy, but separates hard"
+    },
+    "decision_criticality": {
+      "family": "decisions",
+      "weight": 0.099,
+      "curve": "band",
+      "points": {
+        "good_low": 0.1704,
+        "good_high": 0.7574,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "12.5 / +0.72  best discriminator in the set"
+    },
+    "piece_utilisation": {
+      "family": "decisions",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.6656
+      },
+      "evidence": "16.0 / +0.16  precise, modest separation"
+    },
+    "skill_gradient": {
+      "family": "depth",
+      "weight": 0.1386,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 277.818,
+        "zero_at": 0.0
+      },
+      "evidence": "6.8 / +0.60  the core question, well measured"
+    },
+    "gradient_persistence": {
+      "family": "depth",
+      "weight": 0.0693,
+      "curve": "band",
+      "points": {
+        "good_low": 0.324,
+        "good_high": 1.592,
+        "zero_low": 0.0,
+        "zero_high": 2.5
+      },
+      "evidence": "2.6 / +0.21  central idea, noisy at four budgets"
+    },
+    "draw_slope": {
+      "family": "drama",
+      "weight": 0.0495,
+      "curve": "band",
+      "points": {
+        "good_low": 0.4167,
+        "good_high": 1.4762,
+        "zero_low": 0.0,
+        "zero_high": 2.0
+      },
+      "evidence": "2.5 / +0.14"
+    },
+    "progress_irreversibility": {
+      "family": "pacing",
+      "weight": 0.0693,
+      "curve": "band",
+      "points": {
+        "good_low": 0.0886,
+        "good_high": 0.813,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "29.1 / band; -0.80 with blunder_recoverability, which came down for it"
+    },
+    "instance_participation": {
+      "family": "decisions",
+      "weight": 0.0495,
+      "curve": "band",
+      "points": {
+        "good_low": 0.4526,
+        "good_high": 0.9997,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "18.7 / band; +0.72 with distinct_game_rate"
+    },
+    "lead_conversion": {
+      "family": "drama",
+      "weight": 0.0396,
+      "curve": "band",
+      "points": {
+        "good_low": 0.504,
+        "good_high": 0.9329,
+        "zero_low": 0.0751,
+        "zero_high": 1.0
+      },
+      "evidence": "3.6 / band; the most independent of the seven, max +0.41",
+      "optional": true
+    }
+  },
+  "gates": [
+    {
+      "component": "search_advantage",
+      "minimum": 0.55,
+      "reason": "a searching player must beat a random one, or there is nothing to play"
+    },
+    {
+      "component": "stall_rate",
+      "maximum": 0.7,
+      "reason": "a game that mostly fails to finish is not a game"
+    },
+    {
+      "component": "mean_branching",
+      "minimum": 1.5,
+      "reason": "with no choices there is no play"
+    },
+    {
+      "component": "decisive_rate",
+      "minimum": 0.2,
+      "reason": "a game that competent players almost always draw is not a contest"
+    },
+    {
+      "component": "mean_plies",
+      "minimum": 8.0,
+      "reason": "a game decided before either player has developed anything is not a game"
+    },
+    {
+      "component": "skill_gradient",
+      "minimum": 8.0,
+      "reason": "doubling the thinking budget must be worth at least a few Elo, or skill does not exist here"
+    },
+    {
+      "component": "quick_kill_rate",
+      "maximum": 0.5,
+      "reason": "a game where half of all contests are over in a handful of moves is decided by an opening trap, not by play; it correlates -0.89 with distinct_game_rate, so scoring it as well as gating it counted one measurement twice"
+    }
+  ]
+}

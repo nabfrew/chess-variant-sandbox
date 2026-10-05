@@ -1,0 +1,70 @@
+[project]
+name = "chess-variant-sandbox"
+version = "0.1.0"
+description = "A research harness for discovering chess-like games by automated design iteration"
+license = "GPL-3.0-only"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+llm = ["anthropic>=0.40"]
+dev = [
+    "pytest>=8.0",
+    "pytest-timeout>=2.3",
+    # The fast suite runs on four workers (`-n 4`) under a `suite` lease; see CLAUDE.md
+    # and docs/reference/fast-suite-review.md.
+    "pytest-xdist>=3.6",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    # Fairy-Stockfish's rules code as a library, for `tests/test_fairy.py`. It is the
+    # only way to check the generated Betza and the generated variants against the
+    # engine they are written for without depending on a binary being on somebody's
+    # PATH. It cannot search, so it is not the opponent -- see `chess_variant_sandbox/fairy/`.
+    "pyffish>=0.0.80",
+    # The learned evaluator's trainer (`agents/training/`), so its tests run in the fast
+    # suite rather than skip. The base install stays without it.
+    "chess-variant-sandbox[train]",
+]
+# The learned evaluator's trainer (Q502f, `docs/reference/learned-evaluator.md`): numpy
+# only, CPU, single-threaded. Nothing that plays a game imports it; `train` needs it.
+train = ["numpy>=1.26,<2.3"]
+# The public site's own dependencies. The database driver lives here so a plain
+# `uv sync` installs none: the local application never opens a database, and a person
+# who wants to play a game they invented should not build a driver to do it.
+# `[binary]` ships libpq in the wheel, so the box needs no system Postgres headers.
+site = ["psycopg[binary]>=3.2"]
+
+[project.scripts]
+chess-variant-sandbox = "chess_variant_sandbox.cli:main"
+
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[tool.maturin]
+manifest-path = "rust/Cargo.toml"
+module-name = "chess_variant_sandbox._core"
+python-source = "."
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: tournament-scale tests, excluded from the default run",
+    "llm: requires Anthropic API credentials",
+]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_ignores = true
+disallow_untyped_defs = true
+ignore_missing_imports = true

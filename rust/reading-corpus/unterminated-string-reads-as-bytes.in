@@ -1,0 +1,2 @@
+let s = "open; // not a comment
+fn f() {}

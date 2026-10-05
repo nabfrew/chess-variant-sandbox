@@ -1,0 +1,185 @@
+{
+  "version": "v10",
+  "notes": "v9's curve ends to the digit, and NOT A RE-ANCHOR: no good_at, no zero_at, no curve shape and no family total moves, and `chess-variant-sandbox anchor` run on this corpus would place the ends it placed for v9. Two changes, from docs/plan-roster-confound.md. FIRST, THE GATES READ A DIFFERENT DENOMINATOR. The four outcome gates -- quick_kill_rate, stall_rate, decisive_rate, mean_plies -- read the worse half of the budget ladder instead of the pooled graded set, at the midpoint pre-registered in section 3 before the corpus was swept: the median rung of the graded ladder, `greedy` plus six budgets, whose fourth is nodes=400, with a game in the strong half when its weaker seat stands at or above it. WHAT FORCED IT is `bastion`, the committed broken control, which measures viable under v9 at 0.7103: an opening trap against the rungs that cannot see it (quick_kill 0.606 on 132 games, past a maximum of 0.5) and a dead shuffle against the rungs that can (64 games, no quick kill at all). Pooled, the trap games supply the decisiveness that rescues the stall gate and the grind games supply the length that rescues the quick-kill gate -- EACH FAILURE IS THE OTHER ONE'S ALIBI, and mean_plies of 117.7 describes no game that was ever played. Same gates, same maxima, same games; only the denominator moves. The pooled stall_rate keeps its curve and its weight, because moving a scored component's denominator would move its curve and this version anchors nothing. SECOND, THREE COMPONENTS LEAVE, sixteen down to thirteen. progress_irreversibility on the user's decision of 2026-09-06, for inertia rather than unreliability: 41 of 43 band members score exactly 1.0 on it and its between-roster reliability is +0.9832, one of the highest in the set. gradient_persistence and draw_slope on section 8's reliability threshold, rank rho >= 0.50 between two rosters eight times apart, fixed at 5b4c5c9 before the table was computed; they read -0.0902 and -0.6058, they are the only two of sixteen that fail, the verdict is identical at every threshold from 0.00 to 0.52, and neither recovers between two arms that both search while fourteen others show +0.78 to +0.99 on the same eight entries. EACH DROPPED WEIGHT IS REDISTRIBUTED INSIDE ITS OWN FAMILY, PRO RATA, so no family total moves and the geometric mean keeps its arity and its exponents: pacing 0.1485 (mean_branching and ply_spread 0.07425 each), drama 0.1386 (blunder_recoverability 0.0770, lead_conversion 0.0616), depth 0.2079 (skill_gradient alone). DELETING the three lines instead would have cut depth to 0.1386, pacing to 0.0792 and drama to 0.0891 -- a re-weighting ACROSS families that nobody argued for, which the geometric mean reads as exponents, and which differs from this rule by up to 0.010 on an entry and in sign on some. The pro rata rule was pre-registered in section 8.1; the delete rule is what section 4 box 8's Q14 figures were computed under, and box 8 is corrected rather than followed. WHAT IT COSTS, stated so it is not sold as something else: the drop buys nothing measurable at the composite level -- the index's own between-roster stability goes -0.0159, 95% [-0.0467, +0.0104] -- and everything it buys is one level down, where every family that loses a component becomes more roster-stable and none becomes less (drama +0.125, depth +0.029, pacing +0.010). Sixteen terms to thirteen in a geometric mean also lowers every total: mean -0.0452, and every threshold quoted on the v9 scale is quoted on a different one. first_player_advantage is NOT dropped as a rider: it passes at +0.5231, 0.0231 above the threshold, and moving the threshold now to catch it would be the re-aiming the standing refusal forbids -- it is logged in docs/bugs.md as the component most likely to fail the next version of this test. Full report in docs/reference/v10-calibration.md.",
+  "llm_weight": 0.0,
+  "components": {
+    "rule_yield": {
+      "family": "elegance",
+      "weight": 0.099,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 62.4479,
+        "zero_at": 0.0
+      },
+      "evidence": "8.5 / +0.32; roster rho +0.9416"
+    },
+    "first_player_advantage": {
+      "family": "balance",
+      "weight": 0.0396,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 0.875
+      },
+      "evidence": "1.9 / +0.02  weakest on both axes; roster rho +0.5231, the narrowest pass in the set"
+    },
+    "stall_rate": {
+      "family": "balance",
+      "weight": 0.0792,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 0.6428
+      },
+      "evidence": "11.4 / +0.43; roster rho +0.8738. Scored pooled, gated on the worst half"
+    },
+    "mean_branching": {
+      "family": "pacing",
+      "weight": 0.07425,
+      "curve": "band",
+      "points": {
+        "good_low": 8.6032,
+        "good_high": 82.8055,
+        "zero_low": 0.0,
+        "zero_high": 157.0078
+      },
+      "evidence": "21.9 / +0.13; roster rho +0.9895. 0.0396 in v9, raised pro rata for progress_irreversibility"
+    },
+    "ply_spread": {
+      "family": "pacing",
+      "weight": 0.07425,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.6595,
+        "zero_at": 0.0
+      },
+      "evidence": "9.9 / +0.38; roster rho +0.9150. 0.0396 in v9, raised pro rata for progress_irreversibility"
+    },
+    "opening_diversity": {
+      "family": "variety",
+      "weight": 0.0594,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.1158
+      },
+      "evidence": "9.5 / -0.11  guards a failure no mutant has; roster rho +0.8121"
+    },
+    "distinct_game_rate": {
+      "family": "variety",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.4529
+      },
+      "evidence": "4.6 / +0.06; roster rho +0.9034"
+    },
+    "blunder_recoverability": {
+      "family": "drama",
+      "weight": 0.077,
+      "curve": "band",
+      "points": {
+        "good_low": 0.25,
+        "good_high": 0.75,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "2.5 / +0.69  noisy, but separates hard; roster rho +0.6068. 0.0495 in v9, raised pro rata for draw_slope"
+    },
+    "decision_criticality": {
+      "family": "decisions",
+      "weight": 0.099,
+      "curve": "band",
+      "points": {
+        "good_low": 0.2728,
+        "good_high": 0.7373,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "12.5 / +0.72  best discriminator in the set; roster rho +0.9210"
+    },
+    "piece_utilisation": {
+      "family": "decisions",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.6741
+      },
+      "evidence": "16.0 / +0.16  precise, modest separation; roster rho +0.9180"
+    },
+    "skill_gradient": {
+      "family": "depth",
+      "weight": 0.2079,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 235.5915,
+        "zero_at": 4.57
+      },
+      "evidence": "6.8 / +0.60  the core question, well measured; roster rho +0.8429. 0.1386 in v9, and now the whole depth family"
+    },
+    "instance_participation": {
+      "family": "decisions",
+      "weight": 0.0495,
+      "curve": "band",
+      "points": {
+        "good_low": 0.4146,
+        "good_high": 0.8938,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "18.7 / band; +0.72 with distinct_game_rate; roster rho +0.9755"
+    },
+    "lead_conversion": {
+      "family": "drama",
+      "weight": 0.0616,
+      "curve": "band",
+      "points": {
+        "good_low": 0.5179,
+        "good_high": 0.9658,
+        "zero_low": 0.07,
+        "zero_high": 1.0
+      },
+      "evidence": "3.6 / band; the most independent of the seven, max +0.41; roster rho +0.8142. 0.0396 in v9, raised pro rata for draw_slope",
+      "optional": true
+    }
+  },
+  "gates": [
+    {
+      "component": "search_advantage",
+      "minimum": 0.55,
+      "reason": "a searching player must beat a random one, or there is nothing to play"
+    },
+    {
+      "component": "stall_rate_worst_half",
+      "maximum": 0.7,
+      "reason": "a game that mostly fails to finish is not a game, and a half of the ladder that mostly fails to finish is not rescued by the other half finishing"
+    },
+    {
+      "component": "mean_branching",
+      "minimum": 1.5,
+      "reason": "with no choices there is no play"
+    },
+    {
+      "component": "decisive_rate_worst_half",
+      "minimum": 0.2,
+      "reason": "a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one"
+    },
+    {
+      "component": "mean_plies_worst_half",
+      "minimum": 8.0,
+      "reason": "a game decided before either player has developed anything is not a game; pooled with a shuffle at the other end of the ladder the mean describes no game that was played"
+    },
+    {
+      "component": "skill_gradient",
+      "minimum": 8.0,
+      "reason": "doubling the thinking budget must be worth at least a few Elo, or skill does not exist here"
+    },
+    {
+      "component": "quick_kill_rate_worst_half",
+      "maximum": 0.5,
+      "reason": "a game where half of all contests are over in a handful of moves is decided by an opening trap, not by play; read on the half of the ladder that falls into the trap, because every quick kill in a run is a weak-half game and the strong half is only the denominator"
+    }
+  ]
+}

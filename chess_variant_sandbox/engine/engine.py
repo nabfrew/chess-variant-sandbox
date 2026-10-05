@@ -1,0 +1,546 @@
+"""The rule interpreter: a thin façade over the Rust core.
+
+Everything downstream talks to this class and nothing else in the package. The public
+methods below are the boundary described in CLAUDE.md, and they are unchanged from the
+pure-Python engine this replaced -- that stability is the whole reason the swap was
+possible without touching agents, tournament or metrics -- and it is why this file is
+a facade rather than a dispatcher: there is one engine now, and every committed ruleset
+plays on it.
+
+Two things are worth knowing about the shape of this file.
+
+**Positions still cross the boundary as ``GameState``.** A tournament never pays for
+that: whole games, whole schedules and whole perft trees are single calls, and the
+position never comes back to Python until the game is over. What the per-move methods
+buy is that a test, the visualiser and the CLI can still hold a position, print it, and
+poke at it in Python, which is worth far more than the microseconds it costs them.
+
+**Compilation stays in Python.** ``compile_spec`` interprets the DSL; the core only
+walks the tables it produces. One interpretation means the two sides cannot disagree
+about what a rule means. A new movement primitive still changes both languages: its
+meaning goes in ``spec/schema.py`` and ``engine/compile.py``, and the core
+(``rust/src/game.rs``) has to walk its tables. Skill ``new-move-primitive`` lists the rest.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any
+
+from chess_variant_sandbox.engine.bridge import (
+    build_tables,
+    core_boundary_mismatch,
+    core_table_mismatch,
+    rust_supports,
+)
+from chess_variant_sandbox.engine.compile import (
+    FACING_NAMES,
+    CompiledSpec,
+    compile_spec,
+    facing_quarter_turns,
+)
+from chess_variant_sandbox.engine.moves import (
+    MOVE_CASTLE,
+    MOVE_DROP,
+    MOVE_EN_PASSANT,
+    MOVE_PROMOTION,
+    MOVE_ROTATE,
+    MOVE_SWEEP,
+    decode_move,
+    move_landing,
+)
+from chess_variant_sandbox.engine.state import NO_SQUARE, GameState, Outcome, PhaseStep
+
+if TYPE_CHECKING:
+    # A stub-only alias: the compiled module exports no such name at runtime.
+    from chess_variant_sandbox._core import State
+
+try:
+    import chess_variant_sandbox._core as _core
+except ImportError as error:  # pragma: no cover - a build problem, not a code path
+    raise ImportError(
+        "chess_variant_sandbox._core is not built. The engine is a Rust extension module; run "
+        "`uv sync --extra dev` (or `maturin develop`) to build it."
+    ) from error
+
+
+# ``unmoved`` is an arbitrary-width Python integer and a 16x16 board needs 256 bits of
+# it, so it crosses as bytes rather than as a machine word.
+_MASK_BYTES = 32
+
+
+def _pack(state: GameState) -> tuple[Any, ...]:
+    return (
+        state.board,
+        state.side_to_move,
+        state.unmoved.to_bytes(_MASK_BYTES, "little"),
+        state.ep_target,
+        state.ep_victim,
+        state.halfmove,
+        state.ply,
+        state.key,
+        state.repetition,
+        state.checks,
+        (list(state.hands[0]), list(state.hands[1])),
+        # Everything schema 4 added, grouped: the colouring, the moves left in this turn
+        # and the turns taken. Grouped because PyO3's tuple conversions stop at twelve
+        # elements, so the boundary has a hard ceiling and the next field joins a group.
+        # Schema 9's bounty tally is the first field to meet that ceiling, so it joins
+        # this group rather than taking a slot of its own.
+        (state.colour, state.remaining, state.turns_taken, state.points),
+    )
+
+
+def _unpack(packed: State) -> GameState:
+    # Typed as ``State`` and not ``tuple[Any, ...]``: this is the only consumer of the
+    # declared boundary shape, so it is the only place mypy can notice that the stub
+    # and the core have drifted. Loosely typed, the stub went two fields stale through
+    # the whole of schema 4 and every check still passed.
+    return GameState(
+        board=packed[0],
+        side_to_move=packed[1],
+        unmoved=int.from_bytes(packed[2], "little"),
+        ep_target=packed[3],
+        ep_victim=packed[4],
+        halfmove=packed[5],
+        ply=packed[6],
+        key=packed[7],
+        repetition=tuple(packed[8]),
+        checks=packed[9],
+        hands=(tuple(packed[10][0]), tuple(packed[10][1])),
+        colour=packed[11][0],
+        remaining=packed[11][1],
+        turns_taken=packed[11][2],
+        points=packed[11][3],
+    )
+
+
+class Engine:
+    """A compiled ruleset, ready to play.
+
+    Construct once per ruleset and reuse: compilation builds a table for every
+    (player, piece type, square) triple, which is cheap once and wasteful per game.
+
+    ``spec`` is the compiled tables as Python sees them, and everything downstream that
+    needs to know the shape of the game reads it. ``core`` is the same tables inside the
+    Rust extension; it is public because the callers that run *many* games -- the
+    tournament runner, the smoke gate, ``bench`` -- go straight to it rather than
+    driving this class a move at a time.
+    """
+
+    __slots__ = ("spec", "core")
+
+    # Annotated rather than assigned: ``__slots__`` supplies the descriptors and the
+    # values are set below. Without these, every downstream ``engine.spec`` is an
+    # attribute error to a type checker.
+    spec: CompiledSpec
+    core: Any
+
+    def __init__(self, spec: dict[str, Any] | CompiledSpec) -> None:
+        """Compile a ruleset and hand its tables to the core.
+
+        This used to be a dispatch: ``Engine(spec)`` returned a Rust-backed engine, or
+        the pure-Python interpreter for rules the core could not yet express. The core
+        expresses all of them now -- the last gap was a bounded screen range, closed by
+        giving every attack source a ``prefix_len`` -- so there is nothing to dispatch on
+        and the interpreter is gone.
+
+        ``rust_supports`` is still asked, because being wrong in the permissive direction
+        is silent: a primitive that lands in the compiler before it lands in the core
+        would otherwise be played under rules nobody wrote. It refuses nothing today, and
+        a new primitive is expected to add its check there in the same change that adds
+        its row to ``MOVE_KINDS``.
+
+        ``core_boundary_mismatch`` asks the other half of that question -- not what the
+        core can express, but whether the extension on this machine and this package
+        describe the same position. It is asked here, once, so that a stale build says so
+        instead of surfacing as an ``IndexError`` in whichever consumer indexed a tuple
+        first; ``_pack`` and ``_unpack`` are handed over as the boundary it probes. Not
+        memoised on purpose: it costs one opening position where this constructor already
+        pays for a whole compile, three orders of magnitude more.
+
+        ``core_table_mismatch`` asks the same question of the *tables*, and has to run
+        before they cross rather than after: a core that never reads a key ignores it in
+        silence, so there is nothing to catch on the far side. It compares the package's
+        keys with ``_core.TABLE_KEYS``, which the core reports off the registry its own
+        readers are spelled out of.
+        """
+        compiled = spec if isinstance(spec, CompiledSpec) else compile_spec(spec)
+        unsupported = rust_supports(compiled)
+        if unsupported is not None:  # no committed ruleset reaches this; a test stages it
+            raise NotImplementedError(f"the core cannot play this ruleset: {unsupported}")
+        self.spec = compiled
+        tables = build_tables(compiled)
+        unread = core_table_mismatch(tables, _core.TABLE_KEYS)
+        if unread is not None:  # no current build reaches this; a test stages it
+            raise RuntimeError(unread)
+        self.core = _core.Core(tables)
+        mismatch = core_boundary_mismatch(self.core, _unpack, _pack)
+        if mismatch is not None:  # no current build reaches this; a test stages it
+            raise RuntimeError(mismatch)
+
+    # ------------------------------------------------------------------ lifecycle
+
+    def initial_state(self) -> GameState:
+        return _unpack(self.core.initial_state())
+
+    # ----------------------------------------------------------------- generation
+
+    def legal_moves(self, state: GameState) -> list[int]:
+        """Every move the side to move may play."""
+        return self.core.legal_moves(_pack(state))
+
+    def pseudo_legal_moves(self, state: GameState) -> list[int]:
+        """Moves that satisfy the piece rules, without the self-check filter."""
+        return self.core.pseudo_legal_moves(_pack(state))
+
+    # ---------------------------------------------------------------- application
+
+    def apply(self, state: GameState, move: int) -> GameState:
+        """Return the position after ``move``. ``state`` is never mutated."""
+        return _unpack(self.core.apply(_pack(state), move)[0])
+
+    def apply_with_phase(
+        self, state: GameState, move: int
+    ) -> tuple[GameState, tuple[PhaseStep, ...]]:
+        """``apply``, and what the wild-piece phase did on the way (schema 9).
+
+        A ply with wild pieces in it makes two board changes: the mover's move, and then
+        the phase the rules run after it inside the same ``make``. The end position
+        carries only the sum, so a caller that has to *show* the ply -- the board in the
+        web app, and the move list beside it -- would otherwise be working the phase out
+        from a diff and the compiled route table. It asks instead. Empty for every
+        ruleset without ``rules.npcs``, and for most plies of the ones with it.
+        """
+        packed, phase = self.core.apply(_pack(state), move)
+        return _unpack(packed), tuple(PhaseStep(*step) for step in phase)
+
+    # -------------------------------------------------------------------- verdict
+
+    def terminal(self, state: GameState, moves: list[int] | None = None) -> Outcome | None:
+        """Return the outcome if the game is over, else ``None``.
+
+        ``moves`` is an optional already-generated legal move list. A game loop has one
+        in hand every ply, and generation is the expensive half of this call.
+        """
+        verdict = self.core.terminal(_pack(state), moves)
+        if verdict is None:
+            return None
+        winner, reason = verdict
+        return Outcome(winner=winner, reason=reason)
+
+    def terminal_prefix(self, state: GameState) -> Outcome | None:
+        """The half of the verdict that does not need a move list.
+
+        Every ending except checkmate and stalemate, which are the two that mean
+        "and there is nothing legal to play". A search wants exactly this half before it
+        consults its transposition table: a cached value is a value for a position still
+        being played, and generating moves to find out whether the game is over would
+        undo the table's whole purpose.
+        """
+        verdict = self.core.terminal_prefix(_pack(state))
+        if verdict is None:
+            return None
+        winner, reason = verdict
+        return Outcome(winner=winner, reason=reason)
+
+    def in_check(self, state: GameState, player: int | None = None) -> bool:
+        """Whether ``player`` (default: the side to move) has a royal under attack."""
+        player = state.side_to_move if player is None else player
+        return self.core.in_check(_pack(state), player)
+
+    # ------------------------------------------------------------------- players
+
+    # The three calls below take an agent as the core describes it -- a ``NativeSpec``
+    # tuple and a list of piece values -- rather than as a name. Resolving a name into
+    # those is an agent concern and lives in ``tournament/play.py``; the engine's job is
+    # to pack a position and get out of the way.
+
+    def select_move(
+        self, state: GameState, agent: tuple[Any, ...], values: list[float], seed: int = 0
+    ) -> int | None:
+        """What this agent would play in this position, or ``None`` if it cannot move.
+
+        The one-move counterpart to ``play_game``. Without it, anything needing a single
+        decision -- an interactive opponent, a position probe -- has to run the Python
+        agents, which is a different implementation from the one whose rating the index
+        reads: playing a game to find out what it is like and then scoring it would be
+        exercising two different players.
+        """
+        return self.core.select_move(_pack(state), agent, values, seed)
+
+    def select_move_depth(
+        self,
+        state: GameState,
+        agent: tuple[Any, ...],
+        values: list[float],
+        seed: int = 0,
+    ) -> tuple[int | None, int]:
+        """What the agent would play here, and how deep it got to decide it."""
+        return self.core.select_move_depth(_pack(state), agent, values, seed)
+
+    def root_scores(
+        self,
+        state: GameState,
+        values: list[float],
+        nodes: int,
+        max_depth: int,
+        goal: float = 0.0,
+        immune: float = 0.0,
+    ) -> list[float]:
+        """Score every legal move at a full window, in generation order.
+
+        Not a player: a playing search returns a bound for every move except the best,
+        which is fine for choosing and useless for asking how close the alternatives
+        were. See ``rust/src/probe.rs``.
+
+        ``goal`` is the evaluator's goal weight, in mean non-royal pieces. It is passed
+        rather than defaulted inside the core because there is one definition of that
+        constant and it lives in ``agents/evaluation.py``. ``immune`` is the immunity
+        term's weight (``evaluation.IMMUNE_PIECES``), passed for the same reason.
+        """
+        return self.core.root_scores(_pack(state), values, nodes, max_depth, goal, immune)
+
+    def play_from(
+        self,
+        state: GameState,
+        agents: tuple[tuple[Any, ...], tuple[Any, ...]],
+        values: list[float],
+        seed: int,
+        collect_series: bool = False,
+    ) -> tuple[Any, ...]:
+        """Finish a game already in progress, and report it as ``play_game`` would."""
+        return self.core.play_from(_pack(state), agents, values, seed, collect_series)
+
+    # ---------------------------------------------------------------------- hash
+
+    def hash(self, state: GameState) -> int:
+        """Zobrist hash of the position, maintained incrementally by ``apply``."""
+        return state.key
+
+    def _compute_hash(self, state: GameState) -> int:
+        """The slow definition of the hash: a full scan, and the reference the
+        incremental update in ``apply`` is tested against."""
+        return self.core.compute_hash(_pack(state))
+
+    # --------------------------------------------------------------- convenience
+
+    def perft(
+        self,
+        state: GameState,
+        depth: int,
+        threads: int = 1,
+        stop_at_terminal: bool = False,
+    ) -> int:
+        """Count leaf nodes at ``depth``. The engine's correctness workhorse.
+
+        ``threads`` splits the root moves across a thread pool. The count is a sum, so
+        the answer does not depend on how it was divided -- but the default stays
+        serial, because the callers that matter are tests comparing against published
+        numbers and they run many small perfts at once.
+
+        ``stop_at_terminal`` stops descending once a position is already decided. It
+        makes no difference to a game that ends only when someone runs out of moves,
+        which is why chess never needed it -- but a ruleset that ends on arrival or on a
+        count of checks keeps generating moves in positions that are already over, and
+        every other implementation has stopped.
+        """
+        return self.core.perft(
+            _pack(state), depth, stop_at_terminal=stop_at_terminal, threads=threads
+        )
+
+    def describe_move(self, state: GameState, move: int) -> str:
+        """Human-readable move text, used by records and the visualiser."""
+        spec = self.spec
+        origin, target, kind, promoted = decode_move(move)
+        if kind == MOVE_DROP:
+            # A drop has no origin: the piece comes from a hand, and the encoding sets
+            # origin equal to destination. Reading the board there finds an empty square,
+            # which used to name the piece by wrapping -1 around the type count -- every
+            # crazyhouse and shogi drop was reported as the last piece type moving from
+            # a square to itself.
+            # ``@`` rather than ``*``, which is how the interpreter this replaced wrote
+            # it: a record written before the port and one written after should not need
+            # different readers.
+            return (
+                f"{spec.piece_ids[promoted % spec.n_types]}@"
+                f"{_square_name(target, spec.width)}"
+            )
+        piece = spec.piece_ids[spec.type_of(state.board[origin])]
+        if kind == MOVE_ROTATE:
+            # A turn goes nowhere, so the "origin-dash-target" shape would read as a
+            # piece moving to the square it is already on. It is written as the piece,
+            # its square, and the direction it now points -- which is what a player
+            # would say out loud, and what a reader of the record needs in order to know
+            # what every later move of that piece means.
+            return (
+                f"{piece}{_square_name(origin, spec.width)}"
+                f"^{FACING_NAMES[facing_quarter_turns(promoted, spec.n_facings)]}"
+            )
+        text = f"{piece}{_square_name(origin, spec.width)}"
+        # A castling takes nothing, and under file-based castling the king's destination
+        # can be its own rook's square -- so the occupant of the target is not the test.
+        took = kind in (MOVE_EN_PASSANT, MOVE_SWEEP) or (
+            kind != MOVE_CASTLE and state.board[target]
+        )
+        text += "x" if took else "-"
+        text += _square_name(target, spec.width)
+        if kind == MOVE_SWEEP:
+            # Schema 13: the pieces a sweep passed over, which two positions cannot name.
+            swept = [
+                _square_name(square, spec.width)
+                for square in spec.sweep_path(state.board, origin, target)
+                if state.board[square]
+            ]
+            text += f" (sweeps {', '.join(swept)})"
+        # A strike is generated as a capture and written as one, so "Rh8xf8" would say
+        # the rook moved to f8 when under `stay` it never left h8 -- and a reader with
+        # no way to tell the two apart cannot follow the game at all. The suffix names
+        # what the capture actually did, and it is appended rather than replacing the
+        # capture text because the move *is* the same move.
+        if spec.strike is not None and state.board[target]:
+            # Keyed by the pair since schema 10: a contact's outcome depends on who is
+            # arriving as well as on who is standing there, and a `strike` fills the
+            # attacker's column with -1, so this reads schema 6 exactly as it did.
+            mover = spec.type_of(state.board[origin])
+            victim = spec.type_of(state.board[target])
+            cell = mover * spec.strike.n_types + victim
+            # Schema 11: a friendly target reads the own tables.
+            own = spec.owner_of(state.board[origin]) == spec.owner_of(state.board[target])
+            onto_table = spec.strike.own_onto_to if own else spec.strike.onto_to
+            mover_table = spec.strike.own_mover_to if own else spec.strike.mover_to
+            becomes = onto_table[cell] if onto_table else -1
+            mover_becomes = mover_table[cell] if mover_table else -1
+            if becomes >= 0 or mover_becomes >= 0:
+                if becomes >= 0:
+                    text += f"->{spec.piece_ids[becomes]}"
+                if mover_becomes >= 0:
+                    text += f"/{spec.piece_ids[mover]}->{spec.piece_ids[mover_becomes]}"
+                if spec.strike.position == "stay":
+                    text += " (stands fast)"
+                elif spec.strike.position == "swap":
+                    text += " (swap)"
+                elif spec.strike.position == "choose" and becomes >= 0:
+                    text += self._placed_on(state, move)
+        elif (
+            kind == MOVE_EN_PASSANT
+            and spec.strike is not None
+            and spec.strike.position == "choose"
+        ):
+            # Schema 12: en passant's victim stands off the target, and the landing moves
+            # differ only in where it is placed.
+            victim = state.board[state.ep_victim]
+            cell = spec.type_of(state.board[origin]) * spec.strike.n_types + spec.type_of(victim)
+            if spec.strike.onto_to[cell] >= 0:
+                text += f"->{spec.piece_ids[spec.strike.onto_to[cell]]}"
+                text += self._placed_on(state, move)
+        if kind == MOVE_PROMOTION:
+            text += f"={spec.piece_ids[promoted]}"
+        elif kind == MOVE_CASTLE:
+            text += " (castle)"
+        elif kind == MOVE_EN_PASSANT:
+            text += " e.p."
+        return text
+
+    def landing_square(self, state: GameState, move: int) -> int | None:
+        """Where a strike under ``position: "choose"`` places its survivor, or ``None``.
+
+        Read off the compiled landing table by the move's landing index (schema 12).
+        """
+        spec = self.spec
+        strike = spec.strike
+        if strike is None or strike.position != "choose":
+            return None
+        origin, target, kind, _ = decode_move(move)
+        struck = state.ep_victim if kind == MOVE_EN_PASSANT else target
+        if kind in (MOVE_DROP, MOVE_CASTLE, MOVE_ROTATE) or not state.board[struck]:
+            return None
+        mover, victim = state.board[origin], state.board[struck]
+        cell = spec.type_of(mover) * strike.n_types + spec.type_of(victim)
+        own = spec.owner_of(mover) == spec.owner_of(victim)
+        onto = strike.own_onto_to if own else strike.onto_to
+        if not onto or onto[cell] < 0:
+            return None
+        return strike.landing[spec.owner_of(mover)][struck][move_landing(move)]
+
+    def _placed_on(self, state: GameState, move: int) -> str:
+        square = self.landing_square(state, move)
+        return "" if square is None else f" (placed on {_square_name(square, self.spec.width)})"
+
+    def play(self, state: GameState, moves: Iterable[int]) -> GameState:
+        for move in moves:
+            state = self.apply(state, move)
+        return state
+
+    def find_move(self, state: GameState, text: str) -> int:
+        """Look up a legal move by the text ``describe_move`` would give it.
+
+        Tests and the CLI both need to name a move without knowing the bit layout.
+        Raises ``LookupError`` rather than returning ``None`` so a typo in a test
+        fixture fails loudly instead of quietly testing the null move.
+        """
+        for move in self.legal_moves(state):
+            if self.describe_move(state, move) == text:
+                return move
+        raise LookupError(f"no legal move {text!r}; legal: {self.move_texts(state)}")
+
+    def move_texts(self, state: GameState) -> list[str]:
+        return [self.describe_move(state, move) for move in self.legal_moves(state)]
+
+    def make_state(
+        self,
+        placement: dict[str, tuple[str, int]],
+        side_to_move: int = 0,
+        moved: Iterable[str] = (),
+        ep_target: str | None = None,
+        ep_victim: str | None = None,
+        halfmove: int = 0,
+        ply: int = 0,
+    ) -> GameState:
+        """Build a position directly, for tests, puzzles, and CLI setup.
+
+        ``placement`` maps square names to ``(piece id, player)``. Everything placed
+        counts as unmoved unless named in ``moved`` -- the convenient default for
+        castling tests, and the reason this takes a list of exceptions rather than a
+        list of inclusions.
+        """
+        spec = self.spec
+        board = bytearray(spec.n_squares)
+        index_of = {pid: i for i, pid in enumerate(spec.piece_ids)}
+        unmoved = 0
+
+        for square_name, (piece_id, player) in placement.items():
+            square = self._square_index(square_name)
+            board[square] = spec.encode_piece(player, index_of[piece_id])
+            unmoved |= 1 << square
+        for square_name in moved:
+            unmoved &= ~(1 << self._square_index(square_name))
+
+        state = GameState(
+            board=bytes(board),
+            side_to_move=side_to_move,
+            unmoved=unmoved,
+            ep_target=self._square_index(ep_target) if ep_target else NO_SQUARE,
+            ep_victim=self._square_index(ep_victim) if ep_victim else NO_SQUARE,
+            halfmove=halfmove,
+            ply=ply,
+            # Sized whenever the ruleset has a territory rule, and empty otherwise. A
+            # hand-built position with no colouring at all is the one place a
+            # zero-length array could reach the core, and the core indexes it per square.
+            colour=bytes(spec.n_squares) if spec.territory is not None else b"",
+        )
+        key = self._compute_hash(state)
+        return state.with_(key=key, repetition=(key,))
+
+    def _square_index(self, name: str) -> int:
+        file = ord(name[0].lower()) - ord("a")
+        rank = int(name[1:]) - 1
+        if not (0 <= file < self.spec.width and 0 <= rank < self.spec.height):
+            raise ValueError(
+                f"{name!r} is not a square on a {self.spec.width}x{self.spec.height} board"
+            )
+        return rank * self.spec.width + file
+
+
+def _square_name(square: int, width: int) -> str:
+    return f"{chr(ord('a') + square % width)}{square // width + 1}"

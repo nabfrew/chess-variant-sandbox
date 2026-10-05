@@ -1,0 +1,191 @@
+{
+  "schema_version": 2,
+  "name": "dobutsu",
+  "description": "Let's Catch the Lion: shogi on a three by four board with four pieces a side, designed for children and solved as a win for the second player. The chick promotes to a hen, captured pieces change sides, and getting your lion to the far rank wins -- provided it survives there.",
+  "board": {
+    "width": 3,
+    "height": 4
+  },
+  "pieces": [
+    {
+      "id": "C",
+      "name": "chick",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "H",
+      "name": "hen",
+      "value": 3,
+      "promoted_from": "C",
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "E",
+      "name": "elephant",
+      "value": 2,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "G",
+      "name": "giraffe",
+      "value": 2,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "L",
+      "name": "lion",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "orientation": "rotate",
+    "placements": [
+      {
+        "piece": "E",
+        "squares": [
+          "a1"
+        ]
+      },
+      {
+        "piece": "L",
+        "squares": [
+          "b1"
+        ]
+      },
+      {
+        "piece": "G",
+        "squares": [
+          "c1"
+        ]
+      },
+      {
+        "piece": "C",
+        "squares": [
+          "b2"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "royal_capture",
+    "stalemate": "draw",
+    "promotion": [
+      {
+        "piece": "C",
+        "rank": "last",
+        "to": [
+          "H"
+        ],
+        "mandatory": true
+      }
+    ],
+    "drops": {
+      "from_captures": true
+    },
+    "reach": {
+      "piece": "L",
+      "squares": [
+        "a4",
+        "b4",
+        "c4"
+      ],
+      "mirror": true,
+      "result": "win",
+      "safe": true
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 200
+  },
+  "provenance": {
+    "origin": "human",
+    "source": "Japan; designed for children and since solved as a second-player win"
+  },
+  "appearance": {
+    "icons": {
+      "C": "shogi-pawn",
+      "H": "shogi-promoted-pawn",
+      "E": "alfil",
+      "G": "giraffe",
+      "L": "king"
+    }
+  }
+}

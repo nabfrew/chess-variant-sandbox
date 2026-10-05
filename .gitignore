@@ -1,0 +1,51 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+api-key
+api_key
+# Compiled Rust core, dropped into the package by an editable install
+chess_variant_sandbox/_core*.pyd
+# ...and the debug symbols maturin drops beside it on Windows
+chess_variant_sandbox/*.pdb
+chess_variant_sandbox/_core*.so
+chess_variant_sandbox/_core*.dylib
+rust/target/
+
+# Generated pipeline output
+runs/
+
+# Opponents somebody built in the browser while playing. The two stores beside it --
+# heuristics/*.json and heuristics/model/ -- are committed, because they are what the
+# heuristic pass measured; these are one person's, made by using the tool, and land here
+# every time somebody moves a slider. `git add -f` one that turns out to be worth keeping.
+heuristics/custom/
+
+# JetBrains
+.idea/
+
+# Claude Code: personal settings and instructions, plus runtime state.
+# .claude/settings.json, rules/, skills/, scripts/ and launch.json ARE committed.
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+CLAUDE.local.md
+# Compute leases and worker logs shared by every worktree (.claude/scripts/compute_lease.py)
+.claude/coordinator/
+# Worktrees: the agents' and the refresher's (`refresher.WORKTREE`). Each is a checkout of
+# its own, which `git add -A` in the main checkout would otherwise add as an embedded repo.
+.claude/worktrees/
+
+# Calibration scratch: throwaway analysis scripts and logs, regenerated on demand.
+.scratch/
+
+# Secrets: API keys such as JEV_KEY. `.env` matches at any depth; the committed
+# deploy/*.env files are templates and stay tracked.
+.env
+server-details.env
+*.pem

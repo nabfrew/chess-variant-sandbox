@@ -1,0 +1,171 @@
+{
+  "board": {
+    "height": 6,
+    "width": 6
+  },
+  "description": "Two point-symmetric armies of deliberately short-ranged pieces meet on thirty-six squares, and if neither king is trapped before the clock runs out the side with more material still standing simply wins \u2014 so a single soldier is a whole war's worth of advantage. Nothing crosses the board in one stroke: the rook reaches three squares, the soldier steps one square forward or sideways and never back, and the soldier captures straight ahead, so walls of infantry grind each other down instead of locking. The recurring decision is whether to spend material for position on a board where only material is counted, and, once ahead, whether to force the trades that freeze the lead or keep pieces on to avoid being mated by a desperate opponent.",
+  "name": "reckoning",
+  "pieces": [
+    {
+      "id": "S",
+      "moves": [
+        {
+          "kind": "slide",
+          "mode": "both",
+          "range": 1,
+          "symmetry": "lateral",
+          "vectors": [
+            [
+              0,
+              1
+            ],
+            [
+              1,
+              0
+            ]
+          ]
+        }
+      ],
+      "name": "soldier",
+      "value": 1
+    },
+    {
+      "id": "N",
+      "moves": [
+        {
+          "kind": "leap",
+          "mode": "both",
+          "symmetry": "dihedral8",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ]
+        }
+      ],
+      "name": "knight",
+      "value": 3
+    },
+    {
+      "id": "B",
+      "moves": [
+        {
+          "kind": "slide",
+          "mode": "both",
+          "range": 0,
+          "symmetry": "rotate4",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ]
+        }
+      ],
+      "name": "bishop",
+      "value": 3
+    },
+    {
+      "id": "R",
+      "moves": [
+        {
+          "kind": "slide",
+          "mode": "both",
+          "range": 3,
+          "symmetry": "rotate4",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ]
+        }
+      ],
+      "name": "rook",
+      "value": 4
+    },
+    {
+      "id": "K",
+      "moves": [
+        {
+          "kind": "leap",
+          "mode": "both",
+          "symmetry": "rotate4",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ]
+        }
+      ],
+      "name": "king",
+      "royal": true,
+      "value": 0
+    }
+  ],
+  "rules": {
+    "max_plies": 180,
+    "no_progress_draw": 40,
+    "scoring": {
+      "count": "material"
+    },
+    "stalemate": "loss",
+    "win": "checkmate"
+  },
+  "schema_version": 4,
+  "setup": {
+    "mirror": true,
+    "orientation": "rotate",
+    "placements": [
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "e1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "S",
+        "squares": [
+          "b2",
+          "c2",
+          "d2",
+          "e2"
+        ]
+      }
+    ]
+  },
+  "provenance": {
+    "origin": "evolved",
+    "author": "chess-variant-sandbox evolve (live-2)",
+    "parents": [
+      "975dde173f01"
+    ],
+    "history": "Generation 1 of the first two-generation live run, from gardner. It separates from its seed by more than the noise in both, which no candidate in this project's history had done before. Found by the design loop in run live-2, generation 1, revising gardner. Scores 0.824 +/- 0.015 on the corpus roster under weights v8."
+  }
+}

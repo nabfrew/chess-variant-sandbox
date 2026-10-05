@@ -1,0 +1,176 @@
+{
+  "version": "v11",
+  "notes": "v10 re-designed and re-anchored in one version (docs/plan-variety.md section 5.4, C2). FIVE CHANGES, and no score's move from v10 to v11 can be split between them. (1) RULE YIELD LEAVES, and the elegance family with it, on the user's decision of 2026-09-23: the score no longer rewards a short rulebook. Six families remain and every weight in them is v10's to the digit, so their total is 0.9009 and Weights.combine divides by it. That renormalisation is the whole redistribution: no family's weight moves against another's. (2) THE VARIETY PAIR IS REPLACED. opening_diversity (0.0594) and distinct_game_rate (0.0396), whose raws read above the index audit's 0.85 limit on the calibration corpus (KNOWN_DUPLICATED), give way to position_divergence alone at the family's 0.099, higher_better: the mean Jaccard distance between each graded game's set of positions and its nearest other game's. C1's table adopted it on arms and thresholds fixed before the table was computed (docs/reference/v11-calibration.md, 'C1, the table'): precision 17.49 over 77 entries and 13.44 on the band, roster rho +0.9335, max |r| 0.733 against the ten other components, 5 of 5 nulls stable, bootstrap bias +0.040 on chess, and section 3.6's fixture did not fire. (3) EVERY CURVE END IS RE-PLACED by `chess-variant-sandbox anchor runs/v11 --weights v11 --write` over the 67 entries of runs/v11 outside the held-out slice (salt v8; 10 negatives held out), with each component's noise from that command's own component_noise run (60 resamples, cached as runs/v11/noise-v11.json). It is the first anchor on the live roster (fit=98f172aeac49 on every searching rung), the first on games played after A6 (the hand counted at h = 1), Q412 (mate before the clocks) and A5 (48 blunder trials), and the first since piece_utilisation's held-type denominator (Q205) and the identity bootstrap (Q233). Eight of the ten surviving curves moved at least one end; stall_rate and lead_conversion read v10's to the digit. skill_gradient's zero_at went from 4.57 to 0.0: its band widened to 93.99-245.32 over 28 clean ladders, so twice its width reaches past good_at and the span floor, not the negatives' median of 14.61, placed it. position_divergence's ends are its domain, 0.0 and 1.0, as C1 read off anchor_curves before the anchor ran: its band runs 0.214-0.983, and twice that width clamps both ends. (4) Every component carries roster_rho, the rank correlation of its raw between runs/stage26's base and x8 arms (C1's binding column), against the 0.50 threshold of plan-roster-confound.md section 8; all eleven clear it, first_player_advantage narrowest at +0.5203. Only metrics/glossary.py reads it, for display; nothing that scores does. (5) The gates are v10's, unchanged. THE ATTRIBUTION CAVEAT: the design change (1, 2) and the re-anchor (3) land in one version, on a corpus whose games also moved (A5, A6, Q412), so a v10-to-v11 difference in any score is the sum of all of them. Rule yield's own effect is read on v10's curves in docs/reference/rule-yield-assessment.md section 3. Each evidence string is this anchor's noise run, corpus sd over mean resampled sd across the 67 entries (ratio, then the two sds), then roster rho. Full report in docs/reference/v11-calibration.md, 'C2, the anchor'.",
+  "llm_weight": 0.0,
+  "components": {
+    "first_player_advantage": {
+      "family": "balance",
+      "weight": 0.0396,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 0.8124
+      },
+      "evidence": "1.70 (0.1651 / 0.0973); roster rho +0.5203  the least precise in the set, and the narrowest pass on roster rho",
+      "roster_rho": 0.5203
+    },
+    "stall_rate": {
+      "family": "balance",
+      "weight": 0.0792,
+      "curve": "lower_better",
+      "points": {
+        "good_at": 0.0,
+        "zero_at": 0.6428
+      },
+      "evidence": "12.48 (0.16 / 0.0128); roster rho +0.8687",
+      "roster_rho": 0.8687
+    },
+    "mean_branching": {
+      "family": "pacing",
+      "weight": 0.07425,
+      "curve": "band",
+      "points": {
+        "good_low": 8.6032,
+        "good_high": 89.8328,
+        "zero_low": 0.0,
+        "zero_high": 171.0624
+      },
+      "evidence": "30.41 (14.8105 / 0.487); roster rho +0.9890",
+      "roster_rho": 0.989
+    },
+    "ply_spread": {
+      "family": "pacing",
+      "weight": 0.07425,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.593,
+        "zero_at": 0.0
+      },
+      "evidence": "6.49 (0.2898 / 0.0446); roster rho +0.9121",
+      "roster_rho": 0.9121
+    },
+    "position_divergence": {
+      "family": "variety",
+      "weight": 0.099,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.0
+      },
+      "evidence": "15.97 (0.2187 / 0.0137); roster rho +0.9335  C1's table: 17.49 over 77 and 13.44 on the band",
+      "roster_rho": 0.9335
+    },
+    "blunder_recoverability": {
+      "family": "drama",
+      "weight": 0.077,
+      "curve": "band",
+      "points": {
+        "good_low": 0.2292,
+        "good_high": 0.7708,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "2.37 (0.1777 / 0.075); roster rho +0.6011  noisy; read at 24 trials for roster rho, 48 here",
+      "roster_rho": 0.6011
+    },
+    "decision_criticality": {
+      "family": "decisions",
+      "weight": 0.099,
+      "curve": "band",
+      "points": {
+        "good_low": 0.2728,
+        "good_high": 0.8243,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "15.77 (0.1939 / 0.0123); roster rho +0.9178",
+      "roster_rho": 0.9178
+    },
+    "piece_utilisation": {
+      "family": "decisions",
+      "weight": 0.0396,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 1.0,
+        "zero_at": 0.6652
+      },
+      "evidence": "22.19 (0.1366 / 0.0062); roster rho +0.9177",
+      "roster_rho": 0.9177
+    },
+    "skill_gradient": {
+      "family": "depth",
+      "weight": 0.2079,
+      "curve": "higher_better",
+      "points": {
+        "good_at": 298.2855,
+        "zero_at": 0.0
+      },
+      "evidence": "5.54 (63.6143 / 11.4738); roster rho +0.8429  zero_at placed by the span floor, not the negatives",
+      "roster_rho": 0.8429
+    },
+    "instance_participation": {
+      "family": "decisions",
+      "weight": 0.0495,
+      "curve": "band",
+      "points": {
+        "good_low": 0.4267,
+        "good_high": 0.8938,
+        "zero_low": 0.0,
+        "zero_high": 1.0
+      },
+      "evidence": "18.50 (0.1921 / 0.0104); roster rho +0.9744",
+      "roster_rho": 0.9744
+    },
+    "lead_conversion": {
+      "family": "drama",
+      "weight": 0.0616,
+      "curve": "band",
+      "points": {
+        "good_low": 0.5179,
+        "good_high": 0.9658,
+        "zero_low": 0.07,
+        "zero_high": 1.0
+      },
+      "evidence": "3.27 (0.1027 / 0.0314); roster rho +0.8110  optional: absent where too few decisive games carry an edge",
+      "roster_rho": 0.811,
+      "optional": true
+    }
+  },
+  "gates": [
+    {
+      "component": "search_advantage",
+      "minimum": 0.55,
+      "reason": "a searching player must beat a random one, or there is nothing to play"
+    },
+    {
+      "component": "stall_rate_worst_half",
+      "maximum": 0.7,
+      "reason": "a game that mostly fails to finish is not a game, and a half of the ladder that mostly fails to finish is not rescued by the other half finishing"
+    },
+    {
+      "component": "mean_branching",
+      "minimum": 1.5,
+      "reason": "with no choices there is no play"
+    },
+    {
+      "component": "decisive_rate_worst_half",
+      "minimum": 0.2,
+      "reason": "a game that competent players almost always draw is not a contest, and averaging in the games their weaker opponents lost outright does not make it one"
+    },
+    {
+      "component": "mean_plies_worst_half",
+      "minimum": 8.0,
+      "reason": "a game decided before either player has developed anything is not a game; pooled with a shuffle at the other end of the ladder the mean describes no game that was played"
+    },
+    {
+      "component": "skill_gradient",
+      "minimum": 8.0,
+      "reason": "doubling the thinking budget must be worth at least a few Elo, or skill does not exist here"
+    },
+    {
+      "component": "quick_kill_rate_worst_half",
+      "maximum": 0.5,
+      "reason": "a game where half of all contests are over in a handful of moves is decided by an opening trap, not by play; read on the half of the ladder that falls into the trap, because every quick kill in a run is a weak-half game and the strong half is only the denominator"
+    }
+  ]
+}

@@ -1,0 +1,91 @@
+{
+  "procedure": "2f81b3ec2c36",
+  "ruleset_hash": "4c1922ffae26",
+  "inputs_version": 1,
+  "verdict": "refused",
+  "weights_sha256": "0f8be9bb6d77c626f4fb0b6558687b2b34509abf6158f6b9181c3def0944f492",
+  "build": "39eccb50b518da2c",
+  "digest": "0f8be9bb6d77",
+  "trainer_version": 1,
+  "recipe": {
+    "agents": [
+      "minimax:net=5a5d034bc7a9,nodes=1600",
+      "minimax:nodes=1600"
+    ],
+    "games": 5000,
+    "seed": 0,
+    "opening_plies": 8,
+    "skip_plies": 2,
+    "stride": 1,
+    "result_weight": 0.0,
+    "label_nodes": 6400,
+    "label_depth": 8,
+    "td_lambda": 0.7,
+    "label_search": "parent",
+    "scale": 1.0,
+    "accumulator": 256,
+    "hidden1": 32,
+    "hidden2": 32,
+    "epochs": 8,
+    "batch": 1024,
+    "learning_rate": 0.001,
+    "init_seed": 0,
+    "parent": {
+      "procedure": "5a5d034bc7a9",
+      "weights_sha256": "586e34b158a9677582b15905128c9ab02a9617170e669107cd9260f642b64863"
+    },
+    "replay": {
+      "agents": [
+        "minimax:net=db5ef1bc938e,nodes=1600",
+        "minimax:nodes=1600"
+      ],
+      "games": 5000,
+      "seed": 0,
+      "opening_plies": 8,
+      "net": {
+        "procedure": "db5ef1bc938e",
+        "weights_sha256": "3bf9b00f9c0171e67afade8b668f614c5a593f84e0e47d715140a1037272e82a"
+      }
+    }
+  },
+  "data": {
+    "digest": "7db114aa96e396beefe2372eb66d2695894f789682306ec56b25a5d219124797",
+    "games": 35000,
+    "positions": 5583930,
+    "most_active": 63
+  },
+  "training": {
+    "loss_by_epoch": [
+      0.01796425,
+      0.01181744,
+      0.01034112,
+      0.00944188,
+      0.00884064,
+      0.0084393,
+      0.00812914,
+      0.0078889
+    ],
+    "w0_limit": 127,
+    "quantization_error": 0.085988
+  },
+  "acceptance": {
+    "candidate": "minimax:net=2f81b3ec2c36,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 1000000,
+    "opening_plies": 8,
+    "score": 0.37,
+    "error": 0.017982,
+    "games": 400,
+    "identical": 0,
+    "openings": 172,
+    "candidate_nodes": 243364269,
+    "reference_nodes": 246594012,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": false
+  },
+  "lineage": {
+    "parent": "5a5d034bc7a9",
+    "parent_weights_sha256": "586e34b158a9677582b15905128c9ab02a9617170e669107cd9260f642b64863",
+    "teacher": "parent:586e34b158a9"
+  }
+}
