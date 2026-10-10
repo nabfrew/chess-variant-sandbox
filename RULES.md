@@ -1,0 +1,625 @@
+# The rule language
+
+This is the whole language a game is written in, at schema version 20. A game
+is one JSON file. It says how big the board is, what pieces there are and how each moves,
+where they start, and how the game is won; nothing about a game lives anywhere else. A
+person can write one by hand, or give this file to an AI and ask it for one.
+
+<!-- Generated from the schema by `uv run chess-variant-sandbox rules-reference --out RULES.md`. Do not edit by hand. -->
+
+## Trying a game
+
+1. Write the file. Start from one of the two worked examples at the end, or from any game
+   in `rulesets/`, and change it.
+2. Check it. `uv run chess-variant-sandbox validate my-game.json` lists every problem at
+   once, in the words shown under *How a wrong file is refused*, or says the game is valid
+   and how many moves the first player has.
+3. Play it. In the designer, on the website or on your own machine
+   (`uv run chess-variant-sandbox serve --open`), press *load a rule file* and pick the file,
+   or paste its text into *the game as text*. A file with a mistake is refused in the same
+   words as `validate`, and the game you were editing is left as it was; a good one becomes
+   your draft, to see on the board, play against the computer and save.
+
+## Coordinates and directions
+
+- **Squares** are written as in chess: a file letter then a rank number, `a1` in the
+  first player's bottom-left corner. Files run `a`, `b`, `c`, ... left to right and ranks
+  `1`, `2`, `3`, ... bottom to top, as the first player sees the board.
+- **A step** is a vector `[dx, dy]`, written from the moving player's own side: `+dy` is
+  forward, toward the other player, and `+dx` is to the mover's right. The second
+  player's moves are the same vectors turned to face the other way, so a piece is written
+  once for both players.
+- **A ray** repeats its step: a slide with `[[0, 1]]` and range 0 goes straight forward
+  as far as nothing blocks it.
+- **Symmetry** saves listing every direction: `[1, 0]` turned by `rotate4` is the four
+  rook directions, and `[1, 2]` by `dihedral8` is the knight's eight jumps.
+- **A hex board** (`board.lattice: "hex"`) is a width-by-height rhombus in axial
+  coordinates: file `q`, rank `r`, and the six neighbours `[1, 0]`, `[-1, 0]`, `[0, 1]`,
+  `[0, -1]`, `[1, -1]`, `[-1, 1]`. Squares are still named `a1`, `b1`, ...
+- **Players** are numbered 0 (the first to move, at the bottom) and 1.
+
+## How to read the reference
+
+Each key gives its type and allowed values, whether it is required, what it means when it
+is left out, and what it does in play. A key that is not listed is refused: the language
+never ignores a key it does not know, so a misspelt rule is an error rather than a rule
+that silently does nothing.
+
+## The top level
+
+- **`schema_version`**: integer from 1 to 20. Optional; default 20, the version this reference describes. Which version of this language the file is written in. A file may declare any version from 1 up, but may use only what that version had; declaring the version this reference describes makes every key below available.
+- **`name`**: string, at least 1. Required. The game's name, shown wherever the game is listed. It must not be blank.
+- **`description`**: string. Optional; default empty. How the game plays and what makes it worth playing, in a few sentences.
+- **`board`**: object. Required. The size and shape of the board. See *board* below.
+- **`pieces`**: list of objects, 1 to 24 entries. Required. Every kind of piece in the game, each with its own one- or two-character id. The order does not matter. See *pieces: one entry per kind of piece* below.
+- **`setup`**: object. Required. Where every piece stands when the game begins. See *setup* below.
+- **`rules`**: object. Optional; default `{}`, every rule at its default. Everything about the game beyond the pieces and the board: how it is won, and each extra rule. Every key is optional; an empty object is the defaults below. See *rules* below.
+
+## `board`
+
+The size and shape of the board.
+
+- **`width`**: integer from 2 to 16. Required. How many files (columns) the board has.
+- **`height`**: integer from 2 to 16. Required. How many ranks (rows) the board has.
+- **`lattice`**: one of `"square"`, `"hex"`. Optional; default `"square"`. 'square', the default, or 'hex'. A hex board is a width by height rhombus of hexagons in axial coordinates, file q and rank r, whose six neighbours are [1,0] [0,1] [-1,1] [-1,0] [0,-1] [1,-1]; cut the shape you want out of it with rules.obstacles, or set shape 'hexagon' for a regular hexagon.
+- **`shape`**: one of `"grid"`, `"hexagon"`. Optional; default `"grid"`. 'grid', the default, is every cell of the width by height frame. 'hexagon' needs lattice 'hex' and an odd width equal to the height (11 is six cells a side): the rhombus's corners are not cells at all, no rule may name them, and rules.wrap joins the hexagon's sides with n_s, ne_sw and nw_se.
+
+## `pieces`: one entry per kind of piece
+
+- **`id`**: string, 1 to 2 characters. Required. A short id, one or two characters, unique in the game, that every other part of the file uses to name this piece: `P`, `N`, `Q2`.
+- **`name`**: string. Optional; default the piece's id. The piece's name, as players read it.
+- **`royal`**: boolean. Optional; default `false`. Losing every royal piece loses the game.
+- **`value`**: number from 0 to 100. Optional; default `1`. What the piece is worth, roughly in pawns. Computer players use it as a first guess at how much a piece matters, and `rules.scoring` with count 'material' adds it up. A royal piece is usually 0.
+- **`moves`**: list of objects, 1 to 12 entries. Required. The ways this piece may move, each one a separate entry; the piece may make any one of them on its turn. A piece may have none only when it starts in a player's hand (`rules.drops.stock`) or is a portal nobody moves. See *pieces[].moves: one entry per way of moving* below.
+- **`region`**: list of strings, at least 1. Optional. The only squares this piece may ever occupy, such as a palace or one bank of a river. Written for the first player and reflected. Algebraic squares such as a1 or e4.
+- **`promoted_from`**: string. Optional. The piece this one was promoted from. It only matters where captures go to hand, because a promoted piece returns as its modest original.
+- **`captures`**: list of strings. Optional; default the piece may capture any piece. The piece ids this one is allowed to capture. Omit it and the piece may capture anything, which is what every ordinary game means. State it and you get a dominance relation. Give rock ['S'], scissors ['P'] and paper ['R'] and no piece can take the one that takes it. An empty list is a piece that never captures.
+- **`facing`**: object. Optional. This piece has an orientation, and may spend a whole move turning to any other one instead of moving. Its move vectors are read rotated, so a pawn facing right advances east. Give it only to a piece whose moves are *not* symmetric under the turn -- a rook reads the same rays whichever way it faces, so turning one would be a move that does nothing, and the validator refuses that. A royal piece may not have one.
+  - **`axes`**: one of `2`, `4`. Required. How many directions this piece can point: 2 for forward and backward, 4 for the quarter turns.
+  - **`initial`**: one of `"forward"`, `"right"`, `"backward"`, `"left"`. Optional; default `"forward"`. Which way it points at the start, relative to its own forward. It must be one the piece can turn back to, so a piece with 2 axes has only forward and backward.
+
+## `pieces[].moves`: one entry per way of moving
+
+- **`kind`**: one of `"slide"`, `"leap"`, `"hop"`, `"lame"`, `"sweep"`. Required. slide: step repeatedly, blocked by pieces. leap: jump straight to the target, ignoring anything between. hop: jump exactly one screening piece, then continue. lame: like leap, but blocked by a piece on the way, as the xiangqi horse is. sweep: jump to any square along the line, removing every piece passed over, friendly included; a piece it may not capture blocks, and a sweep that could pass over the enemy royal is check.
+- **`vectors`**: list of `[dx, dy]` pairs (each number from -8 to 8), 1 to 8 entries. Required. The steps this move is made of, each `[dx, dy]` (see *Coordinates*). The symmetry turns each one into its images.
+- **`symmetry`**: one of `"none"`, `"lateral"`, `"rotate4"`, `"dihedral8"`, `"rotate6"`, `"dihedral12"`. Optional; default `"none"`. How the base vectors are expanded. none: as written. lateral: left-right mirror. rotate4: four right-angle rotations. dihedral8: all eight images, so [1,2] gives the knight. On a hex lattice only none, rotate6 (six 60-degree turns, so [1,0] gives the six neighbours) and dihedral12 (the six turns and their mirrors, so [1,2] gives the hex knight's twelve); the square's three turns are refused there, and the hex two on a square board.
+- **`range`**: integer from 0 to 16. Optional; default `0` for a slide, `0` for a hop, `1` for a leap, `1` for a lame, `0` for a sweep. Maximum distance of a slide or a hop; 0 means unlimited. Not for a leap or a lame leap, which are one jump per vector and refuse it. To reach further, list more vectors.
+- **`min_range`**: integer from 1 to 16. Optional; default `1`. Minimum distance of a slide or a hop. Set it equal to range for a move that must travel exactly that far, such as a pawn's opening double step. Refused on a leap or a lame leap, like range.
+- **`mode`**: one of `"move"`, `"capture"`, `"both"`. Optional; default `"both"`. Whether this move may occupy an empty square, capture, or both.
+- **`screen_range`**: integer from 0 to 16. Optional; default `0`. For hops only, how far past its screen the piece may land. 0 allows the whole rest of the line, which is the cannon, and 1 means the piece must land immediately beyond, which is the grasshopper.
+- **`screen`**: one of `"any"`, `"own"`, `"enemy"`. Optional; default `"any"`. For hops only, whose piece may serve as the screen. 'any' is the xiangqi cannon and the default, 'own' is a piece that vaults its own army, and 'enemy' is one that can only jump an opponent.
+- **`condition`**: object. Optional. Restrictions on when this move is available. Every condition stated must hold.
+  - **`from_rank`**: integer, at least 0. Optional. Only from this rank, counted from the mover's own back rank.
+  - **`first_move`**: boolean. Optional; default `false`. Only if this piece has never moved.
+  - **`region`**: list of strings, at least 1. Optional. Only from these squares. Written for the first player; the second player's region is the reflection. Algebraic squares such as a1 or e4.
+
+## `setup`
+
+Where every piece stands when the game begins.
+
+- **`mirror`**: boolean. Optional; default `true`. When true, list only the first player's army; the second player's is the reflection across the middle of the board.
+- **`orientation`**: one of `"mirror"`, `"rotate"`. Optional; default `"mirror"`. How the second player's army and move directions are derived. mirror reflects the rank and leaves the file, as chess does; rotate turns the whole board 180 degrees.
+- **`placements`**: list of objects, at least 1. Required. The starting squares, one entry per piece kind and player.
+  - **`piece`**: string. Required. The id of the piece placed.
+  - **`player`**: one of `0`, `1`. Optional; default `0`. Whose pieces these are: 0 for the first player, who moves first, 1 for the second. With `setup.mirror` on, write only the first player's and leave this out.
+  - **`facing`**: one of `"forward"`, `"right"`, `"backward"`, `"left"`. Optional. Which way these pieces start pointing, for a piece that has a facing. Relative to their own player's forward, so a mirrored setup gives both armies the same orientations. Omit it and they start in the piece's own initial facing.
+  - **`squares`**: list of strings, at least 1. Required. Algebraic squares such as a1 or e4.
+
+## `rules`
+
+Everything about the game beyond the pieces and the board: how it is won, and each extra rule. Every key is optional; an empty object is the defaults below.
+
+### `rules.win`: how the game is won
+
+*one of `"checkmate"`, `"royal_capture"`, `"annihilation"`, `"none"`*. Default `"checkmate"`. checkmate: trap the royal piece. royal_capture: take it, with no obligation to answer a threat. annihilation: clear the board of an army. none: the game is decided only by the endings stated below.
+
+### `rules.stalemate`: a player with no legal move
+
+*one of `"draw"`, `"loss"`, `"win"`*. Default `"draw"`. The result for the player who has no legal move but is not in check.
+
+### `rules.checkmate`: what being checkmated does
+
+*one of `"loss"`, `"win"`*. Default `"loss"`. The result for the player who is checkmated. 'win' inverts the object of the game, as losers chess does.
+
+### `rules.promotion`: promotion
+
+*object or list of objects, at least 1*. Leave it out for no such rule. One rule, or one per promoting piece as shogi needs.
+
+Its keys:
+
+- **`piece`**: string. Required. The id of the piece that promotes.
+- **`rank`**: string or integer. Optional; default `"last"`. 'last', or a rank index counted from the first player's side.
+- **`ranks`**: list of (integer, at least 0), at least 1. Optional. A promotion zone several ranks deep, instead of 'rank'.
+- **`squares`**: list of strings, at least 1. Optional. A promotion zone as named squares, for a zone that is a shape, instead of 'rank' or 'ranks'. The only spelling on a hex lattice. Algebraic squares such as a1 or e4.
+- **`mandatory`**: boolean. Optional; default `true`. False lets a piece decline to promote, as in shogi.
+- **`on_leaving`**: boolean. Optional; default `false`. True also promotes the piece on a move that starts in the zone, wherever it lands, as in shogi: a silver standing in the zone may promote as it steps back out. False, the default, promotes only on a move that ends in the zone.
+- **`only_lost`**: boolean. Optional; default `false`. True offers a target only while the mover's side has fewer of that type on the board than it started with, as in Grand chess: a pawn promotes only into a piece its side has lost. Every target must be in both armies' setup. Not beside drops that fill from captures, a circe strike or promote_on_entry.
+- **`to`**: list of strings, at least 1. Optional. The ids it may promote to; the player chooses among them.
+- **`to_by_player`**: object. Optional. Instead of `to`, a separate list of promotion targets for each player.
+  - **`0`**: list of strings, at least 1. Required. For the first player.
+  - **`1`**: list of strings, at least 1. Required. For the second player.
+
+### `rules.en_passant`: taking a piece in passing
+
+*boolean*. Default `false`. Requires promotion; applies to the promoting piece.
+
+### `rules.castling`: castling
+
+*object*. Leave it out for no such rule. The royal piece and a piece that has not moved make one move together, the royal stepping toward it and that piece jumping to the square the royal crossed.
+
+Its keys:
+
+- **`king`**: string. Required. The id of the piece that castles, usually the royal piece.
+- **`rook`**: string. Required. The id of the piece it castles with.
+- **`king_steps`**: integer from 1 to 4. Optional; default `2`. How many squares the castling piece moves.
+- **`king_file`**: object. Optional. Instead of `king_steps`, the file letter the castling piece lands on, on each side.
+  - **`kingside`**: string. Required. The file it lands on when castling toward the higher files.
+  - **`queenside`**: string. Required. The file it lands on when castling toward the lower files.
+- **`rook_file`**: object. Optional. The file letter the partner piece lands on, on each side.
+  - **`kingside`**: string. Required. The file the partner lands on when castling toward the higher files.
+  - **`queenside`**: string. Required. The file the partner lands on when castling toward the lower files.
+
+### `rules.must_capture`: a capture must be taken
+
+*boolean*. Default `false`. A capture on offer is the only kind of move there is.
+
+### `rules.forbid_check`: check is not allowed
+
+*boolean*. Default `false`. Giving check is not allowed at all.
+
+### `rules.forbid_immobility`: no move that strands a piece
+
+*boolean*. Default `false`. A move may not leave its own piece somewhere it could never move from again.
+
+### `rules.royal_facing`: royal pieces facing each other
+
+*one of `"allowed"`, `"forbidden"`*. Default `"allowed"`. Whether the two royal pieces may see each other down an open file.
+
+### `rules.bare_royal`: a player left with royalty alone
+
+*one of `"win"`, `"loss"`, `"draw"`*. Leave it out for no such rule. The result for the player reduced to royalty alone, so 'loss' is shatranj's rule.
+
+### `rules.check_limit`: winning by giving checks
+
+*integer from 1 to 20*. Leave it out for no such rule. Delivering this many checks wins.
+
+### `rules.territory`: claiming ground
+
+*object*. Leave it out for no such rule. Moving onto a square claims it, and claimed ground can win the game outright or settle it when a clock runs out.
+
+Its keys:
+
+- **`mode`**: one of `"permanent"`, `"repaint"`. Required. Moving onto a square claims it. 'permanent' means a claim can never be taken back, which makes every claim a one-way step; 'repaint' lets the other player claim it later.
+- **`win_at`**: integer, at least 0. Optional; default `0`. Claiming this many squares wins outright. 0 leaves the claiming to whatever else reads it -- rules.scoring with count 'territory' compares ground held when time runs out.
+
+### `rules.turn`: more than one move a turn
+
+*object*. Leave it out for no such rule. A turn is this many moves rather than one, and the opening turns can be given their own lengths.
+
+Its keys:
+
+- **`moves`**: integer from 1 to 4. Required. How many moves a turn is. 1 is the ordinary game. This is the one rule a search feels rather than reads. The branching factor becomes the legal move count raised to this, so it is capped rather than left open.
+- **`ramp`**: list of integers from 1 to 4, 1 to 8 entries. Optional. The lengths of the opening turns, in order, before 'moves' takes over. With two moves a turn whoever starts is a whole move ahead forever; 'moves': 2 with 'ramp': [1] gives the first turn one move and levels it.
+
+### `rules.obstacles`: walls on the board
+
+*object*. Leave it out for no such rule. Squares nothing may stand on. A sliding line stops at one, and a jump vaults it unless the rule says otherwise. This is how a board is given a shape other than a rectangle.
+
+Its keys:
+
+- **`squares`**: list of strings, at least 1. Required. Squares nothing may occupy. A ray stops at one and a piece may not land on one. Algebraic squares such as a1 or e4.
+- **`mirror`**: boolean. Optional; default `false`. Also wall the mirror image of every square listed. A wall belongs to the board rather than to a player, so this is shorthand for writing a symmetric wall out -- not a way to give one side a wall the other does not have. Defaults to false, unlike setup.mirror, because a square list here is usually meant absolutely.
+- **`blocks_leaps`**: boolean. Optional; default `false`. Whether a wall also stops a jumping piece. False, the default, lets a knight vault a wall; true stops it. The square a jump is stopped at is the one the xiangqi horse is blocked at, one step along the longer axis.
+
+### `rules.strike`: what a taken piece becomes
+
+*object*. Leave it out for no such rule. A piece that is taken turns into another piece instead of leaving the board, following a chain of what becomes what.
+
+Its keys:
+
+- **`effect`**: one of `"capture"`, `"demote"`, `"promote"`. Optional; default `"capture"`. What happens to a piece that is taken. 'capture' removes it, which is the ordinary game unless the position is 'stay' or 'home'. 'demote' and 'promote' turn it into another piece instead, following the chain.
+- **`chain`**: list of objects, at least 1. Optional. Where a struck piece goes, one link per piece. A piece with no link is removed when it is taken, as usual, so the bottom of a demotion chain is simply left out. A demotion chain may not cycle; a promotion chain may.
+  - **`from`**: string. Required. The piece that was taken.
+  - **`to`**: string. Required. What it becomes instead.
+- **`position`**: one of `"stay"`, `"advance"`, `"swap"`, `"choose"`, `"home"`. Optional; default `"advance"`. Where the two pieces end up. 'advance' is the ordinary capture -- the attacker takes the square -- and may only be used when nothing survives the chain, because there would be nowhere to put a survivor. 'stay' leaves the attacker where it was and transforms the struck piece where it stands; under effect 'capture' the taken piece is removed and the attacker never moves (rifle chess). 'swap' exchanges the two. 'choose' advances the attacker and lets it place the struck piece on a square of 'landing'. 'home' advances the attacker and puts the struck piece -- itself under 'capture', what the chain makes it otherwise -- back on its home square, the one its side's setup gives its type on the capture's file, else on the capture square's colour; if that square is taken, or the type has no home, it is removed (circe).
+- **`switches_sides`**: list of strings, at least 1. Optional. Pieces that change sides when they capture: the capturer becomes the other player's piece where it lands (Andernach chess). A royal piece may not be listed.
+- **`landing`**: object. Optional. Only with position 'choose', and required there: the squares the attacker may place a surviving piece on, as [dx, dy] steps from where it stood, forward being the attacker's. [[1, 0], [1, 1]] with rotate4 is a king's step. A piece with no empty landing square cannot be taken.
+  - **`vectors`**: list of `[dx, dy]` pairs (each number from -8 to 8), 1 to 8 entries. Required. The landing steps, each `[dx, dy]`.
+  - **`symmetry`**: one of `"none"`, `"lateral"`, `"rotate4"`, `"dihedral8"`, `"rotate6"`, `"dihedral12"`. Optional; default `"none"`. How the vectors are expanded, as on a move, and refused off its lattice as there.
+- **`immune`**: list of strings. Optional. Pieces a strike cannot reach; taking one removes it as usual. Every royal piece must be listed here, because a king that turns into something else makes check a question about a piece that is not on the board yet.
+
+### `rules.contacts`: what two pieces become when they meet
+
+*object*. Leave it out for no such rule. One link per pair says what each of two pieces becomes when one moves onto the other, and where the two of them end up.
+
+Its keys:
+
+- **`links`**: list of objects, at least 1. Required. What two pieces that meet both become, one link per pair. A pair with no link is an ordinary capture, so only the meetings that matter need saying. A link must change at least one of the two.
+  - **`mover`**: string. Required. The piece that is doing the taking.
+  - **`onto`**: string. Required. The piece it takes.
+  - **`mover_to`**: string. Optional. What the mover becomes. Leave it out and the mover is unchanged, which is what an ordinary capture does.
+  - **`onto_to`**: string. Optional. What the piece it took becomes. Leave it out and that piece is removed, as usual.
+  - **`own`**: boolean. Optional; default `false`. Set true and the link is about the mover's own piece: the mover may move onto a friendly 'onto' along its capture moves, and the link says what both become. Leave it out for an enemy target.
+- **`position`**: one of `"stay"`, `"advance"`, `"swap"`, `"choose"`. Optional; default `"advance"`. Where the two pieces end up. 'advance' is the ordinary capture -- the mover takes the square -- and may only be used when no link leaves the target standing, because there would be nowhere to put it. 'stay' leaves the mover where it was and transforms the target where it stands. 'swap' exchanges the two. 'choose' advances the mover and lets it place a surviving target on a square of 'landing'.
+- **`landing`**: object. Optional. Only with position 'choose', and required there: the squares the attacker may place a surviving piece on, as [dx, dy] steps from where it stood, forward being the attacker's. [[1, 0], [1, 1]] with rotate4 is a king's step. A piece with no empty landing square cannot be taken.
+  - **`vectors`**: list of `[dx, dy]` pairs (each number from -8 to 8), 1 to 8 entries. Required. The landing steps, each `[dx, dy]`.
+  - **`symmetry`**: one of `"none"`, `"lateral"`, `"rotate4"`, `"dihedral8"`, `"rotate6"`, `"dihedral12"`. Optional; default `"none"`. How the vectors are expanded, as on a move, and refused off its lattice as there.
+- **`immune`**: list of strings. Optional. Pieces no contact reaches; taking one removes it as usual and leaves the mover alone. Every royal piece must be listed here, because a king that turns into something else makes check a question about a piece that is not on the board yet.
+
+### `rules.wrap`: edges that join
+
+*object*. Leave it out for no such rule. A piece that runs off one edge continues from the opposite one, which makes the board a cylinder or a torus.
+
+Its keys:
+
+- **`files`**: one of `"none"`, `"left"`, `"right"`, `"both"`. Optional; default `"none"`. Which side edges a piece may run off and continue from the opposite one. 'both' makes the board a cylinder. Edges are named from the standard diagram, with the first player at the bottom and file a on the left. Not on a hexagon, whose sides are joined by n_s, ne_sw and nw_se.
+- **`ranks`**: one of `"none"`, `"bottom"`, `"top"`, `"both"`. Optional; default `"none"`. The same for the top and bottom edges. Both axes together make a torus, which has no corner to trap a king in.
+- **`files_by_player`**: object. Optional. Instead of `files`, a separate value for each player, keyed `"0"` and `"1"`.
+  - **`0`**: one of `"none"`, `"left"`, `"right"`, `"both"`. Required. For the first player.
+  - **`1`**: one of `"none"`, `"left"`, `"right"`, `"both"`. Required. For the second player.
+- **`ranks_by_player`**: object. Optional. Instead of `ranks`, a separate value for each player, keyed `"0"` and `"1"`.
+  - **`0`**: one of `"none"`, `"bottom"`, `"top"`, `"both"`. Required. For the first player.
+  - **`1`**: one of `"none"`, `"bottom"`, `"top"`, `"both"`. Required. For the second player.
+- **`n_s`**: one of `"none"`, `"s"`, `"n"`, `"both"`. Optional; default `"none"`. On a hexagon only: whether its top ('n') and bottom ('s') sides are joined. 'both' lets a piece leave by either and come back in by the other, straight across; a side's name lets it leave by that side only. Sides are named from the standard diagram, the first player at the bottom.
+- **`n_s_by_player`**: object. Optional. Instead of `n_s`, a separate value for each player, keyed `"0"` and `"1"`.
+  - **`0`**: one of `"none"`, `"s"`, `"n"`, `"both"`. Required. For the first player.
+  - **`1`**: one of `"none"`, `"s"`, `"n"`, `"both"`. Required. For the second player.
+- **`ne_sw`**: one of `"none"`, `"sw"`, `"ne"`, `"both"`. Optional; default `"none"`. On a hexagon only: whether its upper-right ('ne') and lower-left ('sw') sides are joined. 'both' lets a piece leave by either and come back in by the other, straight across; a side's name lets it leave by that side only. Sides are named from the standard diagram, the first player at the bottom.
+- **`ne_sw_by_player`**: object. Optional. Instead of `ne_sw`, a separate value for each player, keyed `"0"` and `"1"`.
+  - **`0`**: one of `"none"`, `"sw"`, `"ne"`, `"both"`. Required. For the first player.
+  - **`1`**: one of `"none"`, `"sw"`, `"ne"`, `"both"`. Required. For the second player.
+- **`nw_se`**: one of `"none"`, `"nw"`, `"se"`, `"both"`. Optional; default `"none"`. On a hexagon only: whether its upper-left ('nw') and lower-right ('se') sides are joined. 'both' lets a piece leave by either and come back in by the other, straight across; a side's name lets it leave by that side only. Sides are named from the standard diagram, the first player at the bottom.
+- **`nw_se_by_player`**: object. Optional. Instead of `nw_se`, a separate value for each player, keyed `"0"` and `"1"`.
+  - **`0`**: one of `"none"`, `"nw"`, `"se"`, `"both"`. Required. For the first player.
+  - **`1`**: one of `"none"`, `"nw"`, `"se"`, `"both"`. Required. For the second player.
+
+### `rules.npcs`: wild pieces
+
+*list of objects, at least 1*. Leave it out for no such rule. Wild pieces are pieces neither player owns. After every move each one steps to the next square of its route and eats whatever stands there that its type may capture, or waits if it may not. A royal piece standing where a wild piece steps next is in check from it. Taking a wild piece is worth its bounty.
+
+Each entry's keys:
+
+- **`piece`**: string. Required. A declared, non-royal piece id. The wild piece has that type's name, drawing and value, and eats what that type may capture; its moves are what it does in a player's hands, not how it walks.
+- **`route`**: list of strings, at least 1. Required. The squares it walks, in order and cyclically, starting on the first. Distinct squares, on no other wild piece's route, with no piece of the opening array on the first. One square is a wild piece that never moves. Algebraic squares such as a1 or e4.
+- **`bounty`**: number, at least 0. Optional; default the piece's value. What a player gains by taking it, read by rules.scoring with count 'points'. Defaults to the piece's value.
+- **`mirror`**: boolean. Optional; default `false`. Also place a second wild piece on the mirror image of the route, walking it in the same order. A route has a direction, so one wild piece is an asymmetry and a mirrored pair is not. Defaults to false.
+- **`immune`**: list of strings. Optional. The only piece ids that may take this wild piece; it is immune to every other. Leave the key out and anything may take it. Another wild piece is not bound by it. Not usable beside rules.drops, because capture permission is a fact about a type rather than about who owns it and the immunity would follow the piece out of a hand.
+
+### `rules.portals`: portals
+
+*list of objects, 1 to 4 entries*. Leave it out for no such rule. Pairs of portals, numbered by their place in the list. A piece whose move ends on a portal end open to it does not stop there: it comes out of the pair's other end, one king's step beyond it in the direction it was travelling (right-and-up by any amounts comes out diagonally up and right), and its move ends there -- capturing, promoting or winning there as usual. A blocked exit (off the board, a wall, its own piece, a piece it may not take, another portal, or its own square) is no move. A portal is never captured. Not usable on a hex lattice or beside npcs, strike, contacts, explode_on_capture, territory, a sweep, or a piece region.
+
+Each entry's keys:
+
+- **`piece`**: string. Required. A declared piece id whose moves the pair's ends use when a player moves one. It must be worth 0, not royal, not placed by setup.placements and named by no other rule; every move it has must say mode 'move' and read the same for both players. It may have no moves when nobody moves the pair.
+- **`orange`**: string. Required. Where the pair's orange end starts: an empty square, not a wall. Algebraic, such as c4.
+- **`blue`**: string. Required. Where the pair's blue end starts, likewise.
+- **`moved_by`**: object. Optional. Who may spend a turn moving each end of the pair, with the moves of the pair's `piece`. Leave it out and the portals never move.
+  - **`orange`**: list, each one of `0`, `1`. Optional; default `[]`, nobody. Which players may move the orange end, as a turn: [] for nobody (the default), [0], [1], or [0, 1] for either.
+  - **`blue`**: list, each one of `0`, `1`. Optional; default `[]`, nobody. Which players may move the blue end, as a turn: [] for nobody (the default), [0], [1], or [0, 1] for either.
+- **`passage`**: object. Optional. Which end each player's pieces may go in by. Leave it out and both ends work both ways for both players.
+  - **`0`**: one of `"both_ways"`, `"orange_to_blue"`, `"blue_to_orange"`, `"closed"`. Optional; default `"both_ways"`. Which end player 0's pieces may go in by: 'both_ways' (the default), 'orange_to_blue', 'blue_to_orange', or 'closed', when both ends are an uncapturable obstacle to that player.
+  - **`1`**: one of `"both_ways"`, `"orange_to_blue"`, `"blue_to_orange"`, `"closed"`. Optional; default `"both_ways"`. Which end player 1's pieces may go in by: 'both_ways' (the default), 'orange_to_blue', 'blue_to_orange', or 'closed', when both ends are an uncapturable obstacle to that player.
+- **`no_straight_back`**: boolean. Optional; default `false`. Schema 20. When true, a portal of this pair that has just been moved may not be moved straight back onto the square it came from on the very next move; it may go anywhere else, and back on the move after. Stops two players undoing each other's portal moves for ever. Needs somebody in moved_by. Default false.
+
+### `rules.promote_on_entry`: promoting on arrival
+
+*boolean*. Default `false`. A piece that enters play inside its own promotion zone -- dropped there, or left standing there by a strike that turned it into a promoting piece -- promotes at once, to the first piece its promotion rule lists, even where promotion is otherwise optional. Needs rules.promotion and a way in: rules.drops, or a strike whose chain leaves a piece standing. Refused where no promoting piece could ever enter its zone, such as a pawn whose drop region stops short of it. False, the default, leaves such a piece standing where it arrived.
+
+### `rules.scoring`: who wins when a clock runs out
+
+*object*. Leave it out for no such rule. A clock that runs out settles the game by comparing something -- material, pieces, ground held -- instead of drawing it.
+
+Its keys:
+
+- **`count`**: one of `"material"`, `"pieces"`, `"region"`, `"territory"`, `"points"`. Optional; default `"material"`. What to compare when the ply limit or the no-progress clock runs out, instead of drawing. 'material' sums the declared piece values, 'pieces' counts them, 'region' counts your own pieces standing in the squares below, 'territory' counts ground claimed and needs rules.territory, 'points' counts bounties collected and needs rules.npcs. Higher wins; equal is still a draw.
+- **`region`**: list of strings, at least 1. Optional. The ground being held, for count 'region'. Written for the first player and reflected, so 'hold the centre' is symmetric and 'hold their half' is not. Algebraic squares such as a1 or e4.
+
+### `rules.reach`: winning by arriving
+
+*object*. Leave it out for no such rule. Arriving on one of these squares decides the game there and then; or, where the rule says so, moving off one does, and standing there decides nothing.
+
+Its keys:
+
+- **`piece`**: string. Optional. Omit for any piece.
+- **`squares`**: list of strings, at least 1. Required. Where arriving decides the game. Algebraic squares such as a1 or e4.
+- **`mirror`**: boolean or one of `"rotate"`. Optional; default `true`. true aims each side at the other's end by reflecting the rank; 'rotate' reflects both rank and file (180° rotation); false sends both to the same squares.
+- **`safe`**: boolean. Optional; default `false`. The arriving piece must not be capturable where it lands.
+- **`result`**: one of `"win"`, `"loss"`, `"draw"`. Optional; default `"win"`. The result for the player whose piece reaches the squares.
+- **`on`**: one of `"arrive"`, `"leave"`. Optional; default `"arrive"`. Schema 18. 'arrive' (the default): a piece standing on a goal square decides the game. 'leave': the move that takes the piece off a goal square decides it (Jeson Mor), and standing there decides nothing. Not with safe.
+
+### `rules.extinction`: losing by running out of a piece
+
+*object*. Leave it out for no such rule. A player whose whole army, or whose count of some piece, falls below a number gets this result.
+
+Its keys:
+
+- **`pieces`**: one of `"any"` or list of strings, at least 1. Required. 'any' counts the whole army.
+- **`min_count`**: integer from 1 to 64. Optional; default `1`. A player with fewer than this many of the listed pieces gets the result.
+- **`result`**: one of `"win"`, `"loss"`, `"draw"`. Optional; default `"loss"`. The result for the player who falls below the count.
+- **`per_type`**: boolean. Optional; default `false`. True counts each listed type on its own, so a side loses when any one of them falls below min_count, as in Extinction chess. False, the default, counts the listed types together. Needs two or more types listed.
+
+### `rules.drops`: pieces played back onto the board
+
+*object*. Leave it out for no such rule. A player may put a piece from their hand onto an empty square instead of moving one. The hand is filled by what they capture, by a stock they start with, or by both.
+
+Its keys:
+
+- **`from_captures`**: boolean. Optional; default `true`. Captured pieces change sides and may be played back.
+- **`region`**: object from piece id to list of strings, at least 1. Optional. Per piece id, the squares it may be dropped on.
+- **`no_doubled`**: list of strings. Optional. These may not be dropped onto a file already holding one of yours.
+- **`no_mate`**: list of strings. Optional. These may not deliver checkmate on the drop itself.
+- **`stock`**: object from piece id to integer from 1 to 32 or `"unlimited"`. Optional. Per piece id, how many each player holds before anything has been captured, as a count of 1 to 32 or "unlimited" for a supply that never runs out. A stocked piece is the only one that may have an empty 'moves' list.
+- **`placement`**: boolean. Optional; default `false`. True is a placement phase: while a player holds any piece in hand, a drop is their only legal move, so a stock is played out before anything on the board moves (Placement chess, Sittuyin). Only then may a royal start in the stock, once, and not also placed.
+- **`either_face`**: boolean. Optional; default `false`. True lets a piece in hand be dropped as itself or as its other face, the piece whose promoted_from it is (Kyoto shogi). Needs at least one promoted_from pair a hand can hold; each base may have one face, and no face may itself be a base, stocked, or royal.
+
+### `rules.explode_on_capture`: captures that explode
+
+*object*. Leave it out for no such rule. A capture destroys the capturing piece and everything standing around the square it happened on.
+
+Its keys:
+
+- **`radius`**: integer from 0 to 3. Optional; default `1`. How far the blast reaches around the capture square; 1 is atomic chess. 0 destroys only the capturer and the piece it took (kamikaze chess), and then 'immune' may not be set.
+- **`immune`**: list of strings. Optional. Pieces that survive standing next to a capture.
+- **`by`**: list of strings. Optional. The only capturing pieces whose captures explode. Leave it out and every capture does. An empty list is no rule at all.
+- **`of`**: list of strings. Optional. The only captured pieces whose being taken explodes. Leave it out and taking anything does. An empty list is no rule at all.
+
+### `rules.max_plies`: the longest a game may run
+
+*integer from 2 to 10000*. Default `400`. How many moves the game may last, counting each player's move separately, before it stops as a draw (or is decided by `rules.scoring`).
+
+### `rules.repetition_draw`: drawing by repetition
+
+*integer from 2 to 10 or `"never"`*. Default `3`. How many repetitions of a position draw the game, or "never" for a game with no draw by repetition at all.
+
+### `rules.no_progress_draw`: how long a game may stall
+
+*integer from 2 to 1000*. Default `100`. The game is drawn after this many moves in a row, counting both players', with no capture and no promotion (chess's fifty-move rule is 100).
+
+## Keys that do not change the game
+
+Two more top-level objects are accepted. Neither changes how the game plays, so a file
+written from this reference needs neither.
+
+- **`appearance`**: how the pieces are drawn (`icons`),
+  mapping a piece id to the name of a drawing, or to a pair of names, one per player.
+  Without it every piece is drawn from its name, or as its letter.
+- **`provenance`**: where the game came from, as free text
+  (`added`, `author`, `exhibit`, `history`, `origin`, `parents`, `source`, `theme`, `year`). `added` is a day written
+  `YYYY-MM-DD` and `parents` a list of game identifiers.
+
+## How a wrong file is refused
+
+`validate` checks a file in two passes and reports every problem it finds, not just the
+first. The first pass is the shape described above: unknown keys, wrong types, values
+outside their list or range, missing required keys. The second is whether the parts
+agree: every piece id named anywhere is a declared piece, every square is on the board,
+every move can be made on this board, a rule that needs another has it (en passant needs
+promotion), two rules that cannot be played together are not, and a rule that could never
+fire is refused rather than kept. A file that uses a key newer than the `schema_version`
+it declares is refused with the version to declare.
+
+Each line below is what `validate` prints for one mistake made to the first worked
+example.
+
+- A key the language does not have, on the knight: `"speed": 2`.
+
+  ```text
+  pieces[1] has unknown keys: speed
+  ```
+
+- A move kind that does not exist: `"kind": "teleport"`.
+
+  ```text
+  pieces[2].moves[0].kind must be one of ('slide', 'leap', 'hop', 'lame', 'sweep'), got 'teleport'
+  ```
+
+- A square off the board, `f1`, in the setup.
+
+  ```text
+  setup.placements[1].squares entry 'f1' is not a square on this board
+  ```
+
+- A promotion to a piece that is not declared: `"to": ["Q", "A"]`.
+
+  ```text
+  rules.promotion.to entry 'A' is not a declared piece
+  ```
+
+- En passant, with the promotion rule it needs taken away.
+
+  ```text
+  rules.en_passant requires rules.promotion: en passant is defined against the promoting piece, so there must be one
+  ```
+
+- The portals of the second example under `"schema_version": 18`.
+
+  ```text
+  the spec uses rules.portals, rules.portals.moved_by, added in schema 19; declare "schema_version": 19 to use it
+  the spec uses rules.portals.no_straight_back, added in schema 20; declare "schema_version": 20 to use it
+  ```
+
+## Worked examples
+
+### 1. A small chess-like game
+
+```json
+{
+  "schema_version": 20,
+  "name": "Five by five",
+  "description": "Chess on a five by five board: one rook, knight, bishop, queen and king a side behind five pawns. Pawns step one square and promote on the far rank; no castling, no en passant.",
+  "board": {"width": 5, "height": 5},
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8"}]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4"}]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4"}]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [{"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2"]},
+      {"piece": "R", "squares": ["a1"]},
+      {"piece": "N", "squares": ["b1"]},
+      {"piece": "B", "squares": ["c1"]},
+      {"piece": "Q", "squares": ["d1"]},
+      {"piece": "K", "squares": ["e1"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": "last", "to": ["Q", "R", "B", "N"]},
+    "max_plies": 200
+  }
+}
+```
+
+- The pawn has two ways of moving: a one-square slide forward that may not capture
+  (`"mode": "move"`), and a diagonal one-square leap that may only capture, mirrored left
+  and right by `lateral`.
+- The other pieces leave `mode` out, so they move and capture alike. A slide with no
+  `range` runs to the edge of the board; a leap is one jump.
+- `setup.mirror` is on, so only the first player's army is written: the second player's
+  stands on the mirrored squares (`a4` to `e4`, and `a5` to `e5`).
+- `rules` states only what differs from the defaults or is worth saying: checkmate wins,
+  stalemate draws, a pawn promotes on the far rank, and the game stops as a draw after 200
+  moves.
+
+### 2. Portals that the players move
+
+```json
+{
+  "schema_version": 20,
+  "name": "Five by five with moving portals",
+  "description": "The five by five game with a pair of portals on the middle rank, on b3 and d3. A piece whose move ends on one comes out one step beyond the other, in the direction it was going. Either player may spend a turn moving either portal one king's step to an empty square, but not straight back on the very next move.",
+  "board": {"width": 5, "height": 5},
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8"}]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4"}]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4"}]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [{"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}]
+    },
+    {
+      "id": "O",
+      "name": "portal",
+      "value": 0,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [[1, 0], [1, 1]],
+          "symmetry": "rotate4",
+          "mode": "move"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2"]},
+      {"piece": "R", "squares": ["a1"]},
+      {"piece": "N", "squares": ["b1"]},
+      {"piece": "B", "squares": ["c1"]},
+      {"piece": "Q", "squares": ["d1"]},
+      {"piece": "K", "squares": ["e1"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": "last", "to": ["Q", "R", "B", "N"]},
+    "max_plies": 200,
+    "portals": [
+      {
+        "piece": "O",
+        "orange": "b3",
+        "blue": "d3",
+        "moved_by": {"orange": [0, 1], "blue": [0, 1]},
+        "no_straight_back": true
+      }
+    ]
+  }
+}
+```
+
+- The portal pair is a rule, `rules.portals`, and its ends are not pieces in the setup.
+  `O` is declared only to say how an end moves when a player moves it: one king's step,
+  onto an empty square (`"mode": "move"` is required of a portal's moves), worth 0 and not
+  royal.
+- `moved_by` lets both players (`[0, 1]`) move both ends; leave it out for portals that
+  never move, and `O` may then have no moves at all.
+- `no_straight_back` stops two players moving the same portal back and forth for ever.
+- With no `passage`, both ends work both ways for both players. A pawn pushed from `b2`
+  onto `b3` comes out on `d4`; a rook sliding up the d-file onto `d3` comes out on `b4`.

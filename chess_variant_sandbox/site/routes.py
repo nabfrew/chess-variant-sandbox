@@ -126,6 +126,15 @@ ALLOWED: tuple[Route, ...] = (
         "validate a draft; like every design POST, refused at 413 past "
         "quota.DESIGN_BODY_BYTES before the body is read (Q503a)",
     ),
+    Route(
+        "POST",
+        "/api/design/load",
+        "a rule file a person wrote, by hand or with their own AI, read and validated as "
+        "the designer's next draft (Q830b); in memory, writes nothing, milliseconds. Its "
+        "text is refused past designing.RULE_FILE_BYTES and RULE_FILE_DEPTH, and the body "
+        "past quota.DESIGN_BODY_BYTES like every design POST. A valid file becomes an "
+        "ordinary draft in the page, which only a save keeps",
+    ),
     Route("POST", "/api/design/moves", "the move-map preview for one piece on one square"),
     Route(
         "POST",
@@ -244,6 +253,14 @@ OWN: tuple[Route, ...] = (
     Route("POST", "/api/join", "spend an invitation: a handle, a password, and a session"),
     Route("POST", "/api/signin", "a handle and a password back, for a session"),
     Route("POST", "/api/signout", "drop this session and the cookie with it"),
+    # Q831, a visitor asks for an invitation (`site/asking.py`). For anybody: it is the
+    # one write a stranger makes, capped by the connection and by the site's day.
+    Route(
+        "POST",
+        "/api/ask-invitation",
+        "a request for an invitation: an address and an optional note, kept for `/admin` "
+        "to grant or decline. One answer whatever happened to it; nothing is mailed",
+    ),
     Route(
         "POST",
         "/api/game/<hash>/delete",
@@ -411,7 +428,7 @@ OWN: tuple[Route, ...] = (
 # everything the site serves. `STATIC` below is the other such entry.
 PAGES: tuple[str, ...] = (
     "/join", "/signin", "/profile", "/players", "/suggestions", "/credits", "/privacy",
-    "/terms", "/badges", "/admin",
+    "/terms", "/badges", "/admin", "/request-invitation",
 )
 
 # The site's pages with a variable part, by prefix: a challenge link, `/c/<token>`

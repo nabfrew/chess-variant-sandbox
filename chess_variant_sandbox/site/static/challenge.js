@@ -34,8 +34,8 @@ function linkSays(found) {
     return {
       lines: [`This is a challenge from ${found.from} to a game of ${game}. Sign in to `
         + 'accept it.',
-      `Accounts are by invitation for now; ${found.from} can ask for one for you. Once `
-        + 'you have joined, this link still works.'],
+      `Accounts are by invitation for now; ${found.from} can ask for one for you, or you `
+        + 'can request one yourself. Once you have joined, this link still works.'],
       signin: true,
     };
   }
@@ -95,6 +95,11 @@ function draw(found) {
     signin.href = '/signin?then=' + encodeURIComponent('/c/' + token);
     signin.textContent = 'Sign in';
     row.appendChild(signin);
+    // Q831: the wall says accounts are by invitation, so the way to ask for one is here.
+    const ask = document.createElement('a');
+    ask.href = '/request-invitation';
+    ask.textContent = 'Request an invitation';
+    row.appendChild(ask);
   }
   if (says.play) {
     const open = document.createElement('a');

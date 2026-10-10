@@ -663,6 +663,14 @@ RULES = """
               height: 72px; border-radius: 6px; background: var(--sq-lt);
               border: 1px solid var(--edge); color: var(--frame);
               font: 700 26px/1 var(--f-head); letter-spacing: .01em; }
+  /* Which way a piece goes (schema 19, Q832): the piece in the tile, as the promotion draws
+     it, and the way below it in the body's own words and size, broken only between words,
+     wide enough that a portal's whole name (number, colour, square) takes three lines. Two
+     ways side by side fit a 375 px screen's card. */
+  .promo-pieces .promo-pick.promo-route { width: 156px; font-weight: 400;
+                                          overflow-wrap: break-word; }
+  .promo-route .promo-way { font-size: 16px; line-height: 21px; }
+  .promo-route .promo-text { font-weight: 600; }
   .promo-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
   .promo-card .promo-row { margin-top: 12px; }
   .promo-row button { min-height: var(--ctl-h-lg); font-size: 16px; }
@@ -743,6 +751,7 @@ RULES = """
     .promo-pieces { gap: 8px; }
     .promo-pieces .promo-pick { width: 72px; font-size: 15px; }
     .promo-pick .promo-piece, .promo-pick .promo-sq { width: 56px; height: 56px; }
+    .promo-pieces .promo-pick.promo-route { width: 148px; font-size: 16px; }
   }
   button.danger { border-color: var(--alarm); color: var(--alarm); }
   .moves div.result { margin-top: 4px; }
@@ -882,6 +891,8 @@ RULES = """
      table's width and the phone scrolled sideways. */
   table.ratings td, table.ratings th { overflow-wrap: anywhere; }
   table.ratings tbody tr:nth-child(odd) { background: var(--stripe); }
+  /* The reader's own row on a game's leaderboard (L2): in weight, and said in words. */
+  table.ratings tr.you td { font-weight: 600; }
 
   /* --- rules --- */
   ul.rules { margin: 0; padding-left: 18px; }
@@ -1071,6 +1082,15 @@ RULES = """
   /* Where to start, above the board (F10): a phone meets it before the board, not two
      screens under it in the form. */
   .startFrom { max-width: 460px; margin: 10px 0 0; }
+  /* A rule file written outside the designer (Q830b): the button and the line with the
+     link under the chooser, and what became of a file. The validator's lines name paths
+     (`pieces[1].moves[0].kind`) and may be long, so they wrap anywhere rather than push a
+     phone's page sideways. */
+  .ruleFile { max-width: 70ch; margin: 8px 0 0; }
+  .ruleFile > .row > button { flex: none; }
+  .ruleSaid > .ok, .ruleSaid > .error { margin: 8px 0 0; }
+  .ruleSaid code { overflow-wrap: anywhere; }
+  .ruleSaid ul.rules { margin-top: 6px; }
   /* Not a game yet, compact (Q580): a heading, the first thing to fix, and the rest one
      tap away. The heading sits in the line, so the bar at the foot of a phone grows by
      three short lines and not by half the screen. */

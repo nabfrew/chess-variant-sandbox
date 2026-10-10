@@ -129,6 +129,7 @@ async function showDesigner(from) {
     noted.querySelector('button').onclick = () => { noted.remove(); };
   }
   wireStartFrom();
+  wireRuleFile();
   wireSticky();
   drawDesigner();
   drawBoardSide();
@@ -540,11 +541,13 @@ function drawDesigner() {
     </div>
 
     <details class="panel" style="margin-top:14px">
-      <summary class="muted small">the game as text (JSON), to copy out or paste in</summary>
+      <summary class="muted small">${esc(pasteLabel())} (JSON), to copy out or paste in</summary>
       <textarea id="dJson" class="jsonText" spellcheck="false">${
         esc(JSON.stringify(DRAFT, null, 1))}</textarea>
       <button id="dJsonApply" style="margin-top:6px">use this</button>
-      <span class="muted small">Paste a game's text here to edit it.</span>
+      <span class="muted small">Paste a game's text here to edit it. It is checked first,
+        and a text with a mistake is not taken.</span>
+      <div id="dPasteSaid" class="ruleSaid" aria-live="polite"></div>
     </details>`;
 
   wireDesigner();
@@ -1428,21 +1431,10 @@ function wireDesigner() {
   wirePalettePieces(form);
   wirePortalCards(form);
 
-  form.querySelector('#dJsonApply').onclick = () => {
-    try {
-      DRAFT = JSON.parse(form.querySelector('#dJson').value);
-      resetPortalState();
-      DRAFT_PIECE = 0;
-      changed(true);
-      loadMoveMap();
-    } catch (error) {
-      // The browser's own parse error names a token and a position (D4); a person wants
-      // to know what to look for.
-      fail(error instanceof SyntaxError
-        ? new Error("That text isn't a whole game: look for a missing comma or bracket.")
-        : error);
-    }
-  };
+  // Read by the server as a rule file is (Q830b): the parse, the size, the validator and
+  // the compiler are its, and a text with a mistake leaves the draft as it was.
+  form.querySelector('#dJsonApply').onclick = () => loadRuleText(
+    form.querySelector('#dJson').value, { fresh: false, near: 'dPasteSaid', named: '' });
 }
 
 // An SVG the reader has on disk, inlined into the spec. An icon entry is free text, so a
@@ -1695,7 +1687,110 @@ function startFromHtml(kit) {
         `<option value="${esc(t.key)}" title="${esc(t.means)}">${esc(t.title)}</option>`
       ).join('')}</optgroup>
       ${startingGamesHtml()}
-    </select></label>`;
+    </select></label>
+    ${ruleFileHtml(kit)}`;
+}
+
+// ------------------------------------------------------------- a rule file, loaded
+//
+// Q830b (`plan-website.md`, *LLM co-design*): the site offers no AI. A person who wants
+// one writes the game outside, by hand or with their own, from the rule language as one
+// file in the public repository, and brings the file here. The link, the button's label and
+// how much of a file to send are the kit's (`designing.rule_file_kit`), so the link is
+// spelt once and `RULES.md`'s *Trying a game* names this button by the same string.
+//
+// **The page reads nothing in the file.** It sends the text to `POST /api/design/load`,
+// which parses it, holds it to its size and depth, and asks the validator and the compiler
+// the designer's check asks. A valid file comes back as the draft; an invalid one comes
+// back as the validator's own lines, shown here, and the draft in hand is not touched.
+// The paste box at the foot of the form (*the game as text*) goes through the same route.
+
+function ruleFileHtml(kit) {
+  const file = kit && kit.ruleFile;
+  if (!file) return '';
+  return `<div class="ruleFile">
+      <div class="row small">
+        <button id="dLoadFile" type="button">${esc(file.load)}</button>
+        <span class="muted">Writing a game by hand, or with your own AI? Read
+          <a href="${esc(file.rulesUrl)}" target="_blank" rel="noopener"
+            title="opens in a new tab">the rule language</a>, write the game as a
+          <code>.json</code> file, and load it here.</span>
+      </div>
+      <div id="dLoadSaid" class="ruleSaid" aria-live="polite"></div>
+    </div>`;
+}
+
+// The paste box's name, which *Trying a game* names too.
+function pasteLabel() {
+  return ((DESIGN_KIT || {}).ruleFile || {}).paste || 'the game as text';
+}
+
+function wireRuleFile() {
+  const button = document.getElementById('dLoadFile');
+  if (!button) return;
+  button.onclick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = () => {
+      const file = input.files && input.files[0];
+      if (file) loadRuleFile(file);
+    };
+    input.click();
+  };
+}
+
+// One byte past the limit is all the server needs to refuse a file for its size, so a
+// large file is neither read whole nor sent whole.
+function loadRuleFile(file) {
+  const limit = Number(((DESIGN_KIT || {}).ruleFile || {}).bytes) || 0;
+  const part = limit && file.size > limit ? file.slice(0, limit + 1) : file;
+  return Promise.resolve(part.text()).then(text => loadRuleText(text, {
+    fresh: true, near: 'dLoadSaid', named: String(file.name || 'that file'),
+  })).catch(error => ruleFileSaid('dLoadSaid', [errorWords(error)], ''));
+}
+
+// The text of a file or of the paste box, sent to be read. `fresh` is a file: a game of
+// its own, started from nothing in the library. A paste keeps the game this draft was
+// started from, since the box holds this draft's text to be edited.
+function loadRuleText(text, how) {
+  return api('/api/design/load', { text: String(text) }).then(answer => {
+    if (!answer.valid) {
+      ruleFileSaid(how.near, answer.errors || [], how.named);
+      return answer;
+    }
+    DRAFT = answer.spec;
+    resetPortalState();
+    FRESH_PIECE = null;
+    if (how.fresh) {
+      DRAFT_FROM = '';
+      DRAFT_PARENT = null;
+    }
+    DRAFT_PIECE = 0;
+    PICKING = null;
+    PLACING = null;
+    TEACHING = null;
+    drawDesigner();
+    checkDraft();
+    loadMoveMap();
+    ruleFileSaid(how.near, [], how.named);
+    return answer;
+  }).catch(error => ruleFileSaid(how.near, [errorWords(error)], how.named));
+}
+
+// What became of it, under the control that sent it: the validator's lines as they came,
+// or that the draft is now this game, which undo takes back.
+function ruleFileSaid(near, errors, named) {
+  const slot = document.getElementById(near);
+  if (!slot) return;
+  const what = named ? `<b>${esc(named)}</b>` : 'That text';
+  slot.innerHTML = errors.length
+    ? `<div class="error small" role="alert">
+        <div>${what} was not loaded, and the game you were editing is as it was:</div>
+        <ul class="rules">${errors.map(line => `<li><code>${esc(line)}</code></li>`).join('')}</ul>
+      </div>`
+    : `<div class="ok small">${what} is your draft now: <b>${esc(DRAFT.name || 'a game')}</b>.
+        Undo takes it back, and nothing is kept until you save it.</div>`;
 }
 
 function wireStartFrom() {

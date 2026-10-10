@@ -91,7 +91,8 @@ def _served_text(site: Site, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str,
     visitor = site.browser()
     member = site.signed_in("ada")
 
-    for path in ("/", "/signin", "/join?code=abc", "/credits", "/privacy", "/terms", "/badges"):
+    for path in ("/", "/signin", "/join?code=abc", "/credits", "/privacy", "/terms", "/badges",
+                 "/request-invitation"):
         page(path, _get(visitor, path).text)
     for path in ("/profile", "/players", "/suggestions"):
         page(path, _get(member, path).text)
@@ -117,10 +118,12 @@ def _server_sentences() -> list[tuple[str, str]]:
     round's own sentences, the refusals of `matches` and the strong-seat cap's, each
     produced by the code that says it."""
     from chess_variant_sandbox.site import (
+        asking,
         badges,
         inviting,
         matches,
         milestones,
+        quota,
         rounds,
         shortlist,
         stages,
@@ -140,6 +143,12 @@ def _server_sentences() -> list[tuple[str, str]]:
               ("a visitor against hardest", matches.members_only_said("minimax:nodes=200000")),
               ("no invitations left", inviting.NONE_LEFT),
               ("an address with an account", inviting.ALREADY_JOINED),
+              # Q831: a visitor's request for an invitation, its answer and refusals.
+              ("a request's answer", asking.CONFIRMED),
+              ("a request's bad address", asking.NOT_AN_ADDRESS),
+              ("a request's hint", asking.NOTE_HINT),
+              ("the requests' full day", quota.ASKS_FULL),
+              ("a connection's requests", quota.ASKED_ENOUGH),
               # Q722: the terms' sentence at *Publish* and its two refusals.
               ("the terms at publish", terms.DEDICATION),
               ("a publish without the box", terms.NOT_ACCEPTED),

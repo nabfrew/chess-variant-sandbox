@@ -583,6 +583,9 @@ class App:
                 "rungs": candidacy.rungs(self.measurements.last_seconds),
                 "nominations": candidacy.nominations(
                     self.runs_dir, self.ruleset_dir, self.archive_dir),
+                # For writing a game outside the designer (Q830b): where the rule language
+                # is published, and the two controls `RULES.md` names, one spelling each.
+                "ruleFile": designing.rule_file_kit(),
             }
         if len(parts) == 4 and parts[:3] == ["api", "design", "standing"]:
             return self._draft_standing(parts[3], query or {})
@@ -772,6 +775,10 @@ class App:
             return self._keep(body, promote=True)
         if parts == ["api", "design", "check"]:
             return designing.check(body.get("spec"), self._parent_spec(body.get("parent")))
+        if parts == ["api", "design", "load"]:
+            # A rule file somebody wrote, read and validated in memory (Q830b): a valid one
+            # comes back as the draft, an invalid one with the validator's lines.
+            return designing.read_rule_file(body.get("text"))
         if parts == ["api", "design", "moves"]:
             return designing.move_map(
                 body.get("spec") or {},

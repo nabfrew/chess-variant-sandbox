@@ -101,3 +101,22 @@ class TestTheRouteChooser:
         (move,) = [m for m in _SNAPSHOT["moves"] if m["from"] == 2 and m["to"] == index]
         sent = _run(f"clickSquare(2); clickSquare({index});", "[BOX.hidden, CALLS.length]")
         assert sent == [True, 1], move
+
+    def test_the_tile_draws_the_piece_and_the_way_is_text_beside_it(self) -> None:
+        # Q832: the way's words went in the square tile, in its large glyph type, and a
+        # portal's whole name broke a letter or two a line out of the card. The tile holds
+        # the knight now, as the promotion's does; the words are their own body-size line.
+        html = " ".join(_run("open();", "BOX.html").split())
+        assert html.count('class="promo-pick promo-route"') == 2
+        assert html.count('<svg class="promo-piece"') == 2 and "promo-sq" not in html
+        for button in html.split('class="promo-pick promo-route"')[1:]:
+            tile = button[button.index("<svg"):button.index("</svg>")]
+            assert "through portal" not in tile
+            assert '<span class="promo-way">through portal 1, the ' in button
+        from chess_variant_sandbox.web.page import style
+        rule = style.RULES[style.RULES.index(".promo-route .promo-way {"):]
+        rule = rule[:rule.index("}")]
+        assert "font-size: 16px" in rule and "var(--f-head)" not in rule
+        route = style.RULES[style.RULES.index(".promo-pieces .promo-pick.promo-route {"):]
+        route = route[:route.index("}")]
+        assert "overflow-wrap: break-word" in route and "width: 156px" in route

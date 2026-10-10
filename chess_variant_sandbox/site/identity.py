@@ -495,6 +495,12 @@ def _handle(handle: str) -> str:
     return name
 
 
+def address(email: str) -> str:
+    """An address as an invitation would be written to it, or `Refused`. The check a
+    request for an invitation shares (`site/asking.py`), so the two cannot drift."""
+    return _address(email)
+
+
 def _address(email: str) -> str:
     """An address, lowered. One `@` with something either side is the whole check.
 

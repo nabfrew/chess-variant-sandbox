@@ -1098,9 +1098,33 @@ def _game_page_views() -> list[tuple[str, str]]:
     def view(where: str, call: str, more: str = "") -> None:
         found.append((where, site_words.visible(str(_run_page(setup + more, call)))))
 
-    view("the strength table", "strengthHtml(GAME)")
-    view("the strength table, rated here", "strengthHtml(GAME)",
-         "GAME.standing = { siteRatings: { random: 1500, greedy: 1600 } };")
+    # L2 (`docs/plan-leaderboard.md`): the leaderboard in each of its states, where the
+    # site drew the strength table before. A row the picker no longer offers carries the
+    # server's name for it (`opponents.table_name`, G17), never its agent string.
+    from chess_variant_sandbox.web import opponents
+
+    gone = json.dumps(opponents.table_name("minimax:nodes=12800"))
+    row = ("{ name: %s, computer: %s, rating: %d, settling: %s, games: %d, top: %s,"
+           " gone: %s, you: %s }")
+    rows = ", ".join((
+        row % ('"hardest"', "true", 2302, "false", 4, "true", "false", "false"),
+        row % ('"ada"', "false", 1712, "true", 3, "false", "false", "true"),
+        row % (gone, "true", 1650, "false", 1, "false", "true", "false"),
+        row % ('"random"', "true", 820, "false", 2, "false", "false", "false"),
+    ))
+    for where, board in (
+        ("the leaderboard", f"{{ rated: true, people: 1, library: true, rows: [{rows}],"
+         " waiting: [], unrated: ['tree search'] }"),
+        ("the leaderboard, nobody yet", "{ rated: true, people: 0, library: true, rows:"
+         " [{ name: 'hard', computer: true, rating: 1946, settling: false, games: 0,"
+         " top: true, gone: false, you: false }], waiting: [], unrated: [] }"),
+        ("the leaderboard, not rated yet", "{ rated: false, people: 0, library: true,"
+         " rows: [], waiting: ['random', 'greedy', 'easy'], unrated: [] }"),
+        ("the leaderboard, not rated yet", "{ rated: false, people: 0, library: false,"
+         " rows: [], waiting: ['random'], unrated: [] }"),
+    ):
+        view(where, "leaderboardHtml(GAME)",
+             f"GAME.standing = {{ leaderboard: {board} }};")
     view("the measuring panel", "measuringHtml(GAME)")
     view("the provisional score", "measuringHtml(GAME) + provisionalHtml(GAME)",
          "GAME.staleness = null; GAME.provisional = { yours: true, state: 'spot-checked',"
@@ -1284,9 +1308,11 @@ class TestTheDesignerSpeaksToAVisitor:
 
         for said in ("A game here is a board, some pieces, where they start and how it ends.",
                      "Each rule has a card, and the sentence under each control says what",
-                     "the game as text (JSON), to copy out or paste in",
+                     # The box's name is the kit's since Q830b (`reference.PASTE_CONTROL`),
+                     # and a text with a mistake is refused in the server's words.
+                     "(JSON), to copy out or paste in",
                      "Paste a game's text here to edit it.",
-                     "That text isn't a whole game: look for a missing comma or bracket.",
+                     "was not loaded, and the game you were editing is as it was:",
                      "played by a computer", "An automatic check by an AI model",
                      "last, or a row number (your own back row is 0)", "> none</label>",
                      "the editor doesn't know ("):
@@ -1429,14 +1455,25 @@ class TestTheShellAndItsInfosSpeakToAVisitor:
                 "rated 1700 here at the time",  # G12
             ],
             "a game left running": ["12 turns played"],  # G13
-            "the strength table": [
-                "How strong each computer player is on this game, on the scale people are"
-                " rated on.",  # G14
-                "This table holds only the computer players that scored this game, from its"
-                " four runs. The ones with a strategy are not in it.",  # G16
-                "the 6,400-position player",  # G17
+            # G14 and G16's table is the leaderboard since L2: the scale said once, and
+            # the scoring run's own table no longer drawn on the site at all.
+            "the leaderboard": [
+                "Everyone who has finished a rated game here, and every computer player,"
+                " strongest first, on the scale people are rated on.",  # G14, L2
+                "A number with a ? is still settling",  # L2, §2.1
+                "the 12,800-position player (no longer offered)",  # G17, L2
                 "One computer player, own piece values, is unavailable on this game for"
                 " now.",  # G19
+                "tree search has no rating on this game yet, so it is not on it.",  # L2
+            ],
+            "the leaderboard, nobody yet": [
+                "Nobody has played a rated game here yet. Your first one puts you on this"
+                " table, starting at 1500.",  # L2, §2.5
+            ],
+            "the leaderboard, not rated yet": [
+                "This game's computer players have not been rated yet, so every game here"
+                " is practice for now. They are rated on our own machine; this usually takes"
+                " a day.",  # L2, §2.5
             ],
             "the measuring panel": ["This game's score is out of date"],  # G20
             "the provisional score": [
@@ -1464,7 +1501,7 @@ class TestTheShellAndItsInfosSpeakToAVisitor:
         assert "stale (re-score)" not in views["the measuring panel"]  # G20
         assert "run-2026-09-01" not in views["where it came from"]  # G36
         assert "0a1b2c3d4e5f" not in views["where it came from"]  # G38
-        assert "+" not in views["the strength table, rated here"].split("games", 1)[1]  # G14
+        assert "+" not in views["the leaderboard"]  # G14
         # G42: the level's sentence, the server's.
         from chess_variant_sandbox.site import stages
 

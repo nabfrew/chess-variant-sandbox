@@ -70,10 +70,12 @@ async function showGame(hash) {
       <div class="gameSide">
         ${standingHtml(game)}
         ${votingHtml(game)}
-        <div class="panel">
-          <h3 style="margin-top:0">${ACCOUNTS ? 'How strong each computer player is'
-            : 'How hard each opponent is, here'}${info('elo')}</h3>
-          <div id="strength">${strengthHtml(game)}</div>
+        <div class="panel"${ACCOUNTS ? ' id="leaderboard"' : ''}>
+          ${ACCOUNTS
+            ? `<h3 style="margin-top:0">Leaderboard${info('leaderboard')}</h3>
+              <div id="strength">${leaderboardHtml(game)}</div>`
+            : `<h3 style="margin-top:0">How hard each opponent is, here${info('elo')}</h3>
+              <div id="strength">${strengthHtml(game)}</div>`}
           ${opponentLineHtml(game.standing)}
         </div>
         ${anchored ? yourRecordHtml(mine) : ''}
@@ -1380,15 +1382,15 @@ function ratingWait(why) {
     : 'takes under a minute on a small board and up to three on a large one';
 }
 
-// The two scales one computer player is rated on, named once. The local application has
-// only the tournament's, worked out there once; the site shows only the scale people are
-// rated on, the one that moves (`docs/plan-understanding.md` §2.3, G11 and G14), and the
-// tournament's number for the same player stays off it.
+// The scale the local application's table is on, named once: the tournament's, worked out
+// there once. The site draws no such table: a game's page there has its leaderboard, on the
+// one scale people are rated on (`docs/plan-understanding.md` §2.3, G11 and G14).
 const LADDER_SCALE = 'in the tournament';
-const SITE_SCALE = 'rated here';
 
 // How strong each opponent is *in this game*, which is the thing a node budget cannot
-// tell you: 6,400 nodes is +770 Elo on chess and level with random on racing kings.
+// tell you: 6,400 nodes is +770 Elo on chess and level with random on racing kings. The
+// local application's panel; the site's is `leaderboardHtml` (L2 of
+// `docs/plan-leaderboard.md`), which replaced this one there.
 //
 // Exactly one table is ever shown -- see ratingTable -- and it says which, because the
 // rated ladder's table and the picker's own are two fits over two corpora and reading a
@@ -1407,10 +1409,7 @@ const SITE_SCALE = 'rated here';
 // a diff against the roster there would call the whole ladder "no longer offered" and
 // the whole picker "not rated yet"; its note says the honest thing in one sentence.
 //
-// One number a row. On the local application it is the tournament's, the table's own and
-// fixed; on the site it is `standing.siteRatings`, the live `ratings` rows, which move as
-// people win and lose against these players (§2.3 of `docs/plan-understanding.md`: one
-// scale for a visitor). The sentence above the table says which case this is.
+// One number a row: the tournament's, the table's own and fixed.
 function strengthHtml(game) {
   const table = ratingTable(game);
   const picker = !!(table && table.kind === 'picker');
@@ -1419,8 +1418,7 @@ function strengthHtml(game) {
   const unrated = picker
     ? ROSTER.filter(o => o.agent !== 'human' && !o.practiceOnly && !rated.has(o.agent))
     : [];
-  // Rating plays a tournament. The site withholds it, so there the panel draws no button
-  // and says only which players have no rating yet, never why (G15).
+  // Rating plays a tournament, from the button below where the server offers it.
   const rates = offered('POST', '/api/rate');
   const button = rates ? `<div class="row" style="margin-top:10px">
       <button id="rate">${picker
@@ -1435,32 +1433,15 @@ function strengthHtml(game) {
   // than played as the built-in objective under its own name; `opponents.refused_stores`
   // says why. Here because rating the picker is where one of them used to fail, with a
   // message that blamed the agent kind.
-  const refused = (game.refusedStores || []).map(line =>
-    `<div class="muted small" style="margin-top:8px">${withCommands(line)}</div>`).join('');
+  const refused = refusedHtml(game);
   if (!table) {
     return `<div class="muted small">Nobody has been rated on this game yet. It has to be
       worked out per game and cannot be assumed, because the same opponent is 770 points
       above a random mover on chess and level with it on racing kings.</div>`
       + refused + button;
   }
-  // The site's rating per computer player, joined on by agent. An empty map on the local
-  // application, which has no `standing` at all, and on a game the site has seeded no
-  // players for yet.
-  const onSite = (game.standing && game.standing.siteRatings) || {};
-  const sited = table.standings.some(s => typeof onSite[s.name] === 'number');
   const runs = runCount(table.seeds);
-  // On the site, one scale (§2.3, G14 and G16): the number people are rated on, said
-  // once, and which players the table holds. The tournament's column and its paragraph
-  // are the local application's.
-  const note = ACCOUNTS
-    ? `How strong each computer player is on this game, on the scale people are rated
-       on.${picker
-         ? ' Worked out from about twenty games each, so read it to the nearest hundred.'
-         : ` This table holds only the computer players that scored this game, from ${
-             runs > 1 ? `its ${countWord(runs)} runs` : 'the run that scored it'}. The ones
-             with a strategy are not in it.`}${sited
-         ? '' : ' None of them has a rating here yet.'}`
-    : picker
+  const note = picker
     ? `This table holds every opponent that was in the picker when it was worked out, over
        ${table.games} games. It is a quick estimate. Most of them played about twenty
        games, so read these to the nearest hundred and expect ties.`
@@ -1469,40 +1450,29 @@ function strengthHtml(game) {
          ? `, across ${runs} runs -- each opponent's number here is its
             mean over them` : ''}. The ones with a plan are not in it${
        rates ? ', so press below to rate everything' : ''}.`;
-  const scales = ACCOUNTS ? ''
-    : `This copy keeps no accounts and rates no people, so each opponent has one number,
-       its number ${LADDER_SCALE}${info('ladderScale')}.`;
+  const scales = `This copy keeps no accounts and rates no people, so each opponent has one
+     number, its number ${LADDER_SCALE}${info('ladderScale')}.`;
   const rows = table.standings.map(s => {
     const entry = ROSTER.find(o => o.agent === s.name);
     // The live roster's name for an opponent wins over the one stored with the table.
     // A rating table is a set of *numbers* about agent strings; the words beside them
     // are this interface's, and a table written before a label was reworded should not
-    // keep printing the old one next to a game you can start right now. The site names
-    // the player and no more; a row the roster does not hold (the ladder that scored the
-    // game plays its own fitted players) carries the server's name for it (G17), never
-    // its agent string.
-    const label = (entry && (ACCOUNTS ? entry.name || entry.label : entry.label))
-      || s.label || shortName(s.name);
+    // keep printing the old one next to a game you can start right now.
+    const label = (entry && entry.label) || s.label || shortName(s.name);
     const group = (entry && entry.group) || s.group || '';
     // The rungs every board shares need no group beside them; a stored table names
-    // theirs as it was worded when it was written, and on the site a row the roster no
-    // longer holds shows none, since its stored heading is the words of whenever it was
-    // written.
+    // theirs as it was worded when it was written.
     const ladderRow = (entry && entry.store === 'ladder') || s.group === 'search depth'
       || s.group === 'computer players, weakest first';
     // In the picker's table and not in the picker: a rule of thumb whose set was
     // regenerated, a fit that has since been refused. Its number still stands; it is
     // just not a game you can start, and the row says so rather than looking like one.
     const gone = picker && !entry ? ' <span class="muted small">(no longer available)</span>' : '';
-    const number = ACCOUNTS
-      ? (typeof onSite[s.name] === 'number'
-          ? '<b>' + Math.round(onSite[s.name]) + '</b>'
-          : '<span class="muted small">not rated yet</span>')
-      : `<b>${s.rating > 0 ? '+' : ''}${Math.round(s.rating)}</b>`;
+    const number = `<b>${s.rating > 0 ? '+' : ''}${Math.round(s.rating)}</b>`;
     return `<tr>
         <td>${esc(label)}${gone}</td>
-        <td class="muted small">${esc(ladderRow || (ACCOUNTS && !entry) ? '' : group)}</td>
-        ${ACCOUNTS && !sited ? '' : `<td style="text-align:right">${number}</td>`}
+        <td class="muted small">${esc(ladderRow ? '' : group)}</td>
+        <td style="text-align:right">${number}</td>
         <td class="muted small" style="text-align:right">${
           s.games === undefined || s.games === null ? '' : s.games}</td>
       </tr>`;
@@ -1525,14 +1495,19 @@ function strengthHtml(game) {
   const column = (words, gloss) =>
     `<th style="text-align:right">${words}${info(gloss)}</th>`;
   return `<div class="muted small">${note}</div>
-    ${scales ? `<div class="muted small" style="margin-top:6px">${scales}</div>` : ''}
+    <div class="muted small" style="margin-top:6px">${scales}</div>
     <table class="ratings"><thead><tr>
-      <th>${ACCOUNTS ? 'computer player' : 'opponent'}</th><th></th>
-      ${ACCOUNTS
-        ? (sited ? column(SITE_SCALE, 'ratedHere') : '')
-        : column(LADDER_SCALE, 'ladderScale')}
+      <th>opponent</th><th></th>
+      ${column(LADDER_SCALE, 'ladderScale')}
       <th style="text-align:right">games</th>
     </tr></thead><tbody>${rows}</tbody></table>` + missing + refused + button;
+}
+
+// The stored players the roster left out, each in the server's own sentence (G19): under
+// the local application's strength table and under the site's leaderboard alike.
+function refusedHtml(game) {
+  return (game.refusedStores || []).map(line =>
+    `<div class="muted small" style="margin-top:8px">${withCommands(line)}</div>`).join('');
 }
 
 // A server sentence with its commands in backticks, as the page sets code: escaped
@@ -1540,6 +1515,86 @@ function strengthHtml(game) {
 function withCommands(line) {
   return esc(line).replace(/`([^`]+)`/g,
     '<span style="font-family:ui-monospace, monospace">$1</span>');
+}
+
+// ------------------------------------------------------------------- the leaderboard
+//
+// L2 of `docs/plan-leaderboard.md` (§2.1, §2.5, §3): on the site, the game's one rating
+// table, computer players and people together, where the local application keeps its
+// strength table above. Everything in a row is the server's (`site/leaderboard.py`, sent as
+// `standing.leaderboard`): who is on it, the order, the rounded number, the `?`, the count,
+// which rows are the strongest, no longer offered, or the reader's. The page sorts, rounds
+// and decides nothing; it draws the rows in the order they came and the sentences around
+// them. Null on the local application, which has no table of people, and there the
+// strength table is drawn as it always was. On the site a game the server sent no table
+// for reads as one whose computer players are not rated yet, never as the local panel.
+function boardOf(game) {
+  if (!ACCOUNTS) return null;
+  return (game && game.standing && game.standing.leaderboard)
+    || { rated: false, rows: [], people: 0, unrated: [], waiting: [], library: false };
+}
+
+// §2.5: before the computer players are rated the game is practice, and the panel says so
+// with their names, weakest first, and no numbers -- never a table of zeros or a blank
+// column. A library game's ladder is rated on our own machine; a member's game's sentence
+// promises no time until L5 rates one on publishing.
+const UNRATED_SAYS = `This game's computer players have not been rated yet, so every game
+  here is practice for now.`;
+const UNRATED_WAIT = 'They are rated on our own machine; this usually takes a day.';
+const NOBODY_YET = `Nobody has played a rated game here yet. Your first one puts you on
+  this table, starting at 1500.`;
+
+function leaderboardHtml(game) {
+  const board = boardOf(game);
+  const refused = refusedHtml(game);
+  const line = (words, top) =>
+    `<div class="muted small"${top ? ` style="margin-top:${top}px"` : ''}>${words}</div>`;
+  if (!board.rated) {
+    const waiting = board.waiting || [];
+    return line(`${UNRATED_SAYS}${board.library ? ' ' + UNRATED_WAIT : ''}`)
+      + (waiting.length ? `<table class="ratings" id="waiting"><thead><tr>
+          <th>its computer players, weakest first</th></tr></thead><tbody>${
+          waiting.map(name => `<tr><td>${esc(name)}</td></tr>`).join('')}</tbody></table>`
+        : '')
+      + refused;
+  }
+  const rows = board.rows || [];
+  const settling = rows.some(row => row.settling);
+  const who = board.people
+    ? 'Everyone who has finished a rated game here, and every computer player'
+    : 'Every computer player on this game';
+  const said = `${who}, strongest first, on the scale people are rated on. The computer
+    players started from about twenty games each against one another, and rated games
+    against people move them.${settling
+      ? ' A number with a ? is still settling, over about the first ten games.' : ''}`;
+  const body = rows.map(row => {
+    const name = row.computer ? esc(row.name) : personHtml(row.name);
+    const marks = [
+      row.you ? 'you' : '',
+      row.top ? 'the one to beat' : '',
+      row.gone ? 'no longer offered' : '',
+    ].filter(Boolean);
+    return `<tr${row.you ? ' class="you"' : ''}>
+        <td>${name}${marks.length
+          ? ` <span class="muted small">(${marks.join(', ')})</span>` : ''}</td>
+        <td style="text-align:right; white-space:nowrap"><b>${esc(row.rating)}</b>${
+          row.settling ? '<span title="still settling">?</span>'
+          : settling ? '<span aria-hidden="true" style="visibility:hidden">?</span>' : ''}</td>
+        <td class="muted small" style="text-align:right">${esc(row.games)}</td>
+      </tr>`;
+  }).join('');
+  const unrated = board.unrated || [];
+  const missing = unrated.length
+    ? line(`${unrated.map(name => `<b>${esc(name)}</b>`).join(', ')} ${
+        unrated.length === 1 ? 'has' : 'have'} no rating on this game yet, so ${
+        unrated.length === 1 ? 'it is' : 'they are'} not on it.`, 8)
+    : '';
+  return line(said) + `<table class="ratings"><thead><tr>
+      <th>player</th>
+      <th style="text-align:right; white-space:nowrap">rating${info('ratedHere')}</th>
+      <th style="text-align:right">rated games here</th>
+    </tr></thead><tbody>${body}</tbody></table>`
+    + (board.people ? '' : line(NOBODY_YET, 8)) + missing + refused;
 }
 
 // The only measurement on this page that is not the ladder grading itself.
@@ -1686,8 +1741,9 @@ function modePicker(game) {
   if (!standing) return '';
   const visitor = standing.signedIn === false ? ` ${UNKEPT}` : '';
   if (!standing.rated) {
-    return `<div class="muted small" style="margin-top:8px">Nobody has rated this game's
-      computer players yet, so every game here is a practice game${info('practice')}
+    // §2.5 of `docs/plan-leaderboard.md`: the leaderboard's own sentence, said here too.
+    return `<div class="muted small" style="margin-top:8px">This game's computer players
+      have not been rated yet, so every game here is practice${info('practice')} for now
       &mdash; undo and restart are on, and nothing counts towards a rating or
       Unbeaten.${visitor}</div>`;
   }

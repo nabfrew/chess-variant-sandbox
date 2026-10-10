@@ -101,6 +101,35 @@ function invites(rows) {
   }
 }
 
+// Q831. Requests for an invitation nobody has answered, oldest first. Every cell is a text
+// node, the visitor's note included. A button is off once pressed, so a double press
+// sends one invitation; the redraw after the answer brings the table back.
+function asks(rows, answered) {
+  const body = document.getElementById('asks');
+  body.replaceChildren();
+  const once = (asked) => async (event) => {
+    const pressed = event.currentTarget;
+    pressed.disabled = true;
+    await act(asked, 'asks-note');
+    pressed.disabled = false;  // a refusal leaves the row; a success has redrawn it
+  };
+  for (const one of rows) {
+    const row = document.createElement('tr');
+    cell(row, one.email);
+    cell(row, day(one.created));
+    cell(row, one.note || '\u2014', 'ask-note');
+    cell(row, one.invited ? day(one.invited) : '\u2014');
+    const acts = cell(row, '');
+    acts.appendChild(button('send an invitation', false, once({act: 'grant-ask', ask: one.id})));
+    acts.appendChild(button('decline', true, once({act: 'decline-ask', ask: one.id})));
+    body.appendChild(row);
+  }
+  const done = answered || {granted: 0, declined: 0, days: 30};
+  document.getElementById('asks-empty').textContent = (rows.length ? '' : 'Nobody is waiting '
+    + 'for an answer. ') + 'Answered in the last ' + done.days + ' days: ' + done.granted
+    + ' granted, ' + done.declined + ' declined.';
+}
+
 function inviteSay(text, done) {
   const note = document.getElementById('invite-note');
   note.textContent = text;
@@ -631,6 +660,7 @@ async function draw() {
   const payload = answer.data;
   people(payload.users);
   invites(payload.invites);
+  asks(payload.asks || [], payload.asksAnswered);
   games(payload.games);
   scoreHistory(payload.history || []);
   scoreVolatility(payload.volatility || []);

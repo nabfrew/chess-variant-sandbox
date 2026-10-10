@@ -556,6 +556,14 @@ const GLOSS = {
   ratedHere: ['Rated here',
     "The scale people are rated on. A new player starts at 1500. It moves with every"
     + " rated game, for people and computer players alike."],
+  // L2 of `docs/plan-leaderboard.md`: the game page's one table, drawn on the site only.
+  leaderboard: ['Leaderboard',
+    "This game's one table of ratings: every computer player, and everyone who has"
+    + " finished a rated game on it. A rated game moves both players, a person or a"
+    + " computer player alike; practice games count for nothing. A new player starts at"
+    + " 1500, and a ? beside a number means it is still settling, over about the first ten"
+    + " games. Each game has its own table, because being good at one game says nothing"
+    + " about another."],
   kind: ['What kind of game it is',
     "Eight things you can read straight off the rules before anybody plays: how big the"
     + " board is, how big the armies are, whether captured pieces come back, how it is"

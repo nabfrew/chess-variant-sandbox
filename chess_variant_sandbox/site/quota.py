@@ -195,6 +195,92 @@ REPORT_NOTE_LENGTH = 500
 """How long the optional note on a report may be, in characters. Room for "a copy of X"
 and a sentence of why; the column carries the same cap (`0017_reports.sql`)."""
 
+# ------------------------------------------- Q831, a visitor asks for an invitation
+
+ASKS_A_DAY = 20
+"""How many requests for an invitation the whole site keeps in a rolling day.
+
+Q831 (`site/asking.py`). The one write on the site a stranger makes, so the cap is the
+site's rather than a person's: nobody is signed in to count against. Twenty is
+`docs/plan-launch.md` §2 S5's sign-up cap, a day's worth for a small group and few enough
+that a script fills `/admin` with a page, not a flood. Past it the visitor is told the
+requests are full today; the sentence names no address, so it says nothing about anybody.
+Counted over the rows written, so a repeat that wrote nothing does not count.
+"""
+
+ASKS_A_SOURCE = 3
+"""How many requests one network address may send in a rolling day, written or not.
+
+The other half of the daily cap: without it one source could spend the whole site's
+twenty and leave nobody else a way in. Three covers a typo and a second thought. In memory,
+like `SignIns`, so the privacy notice's list does not grow by a log of addresses, and a
+restart forgets it.
+"""
+
+ASK_EMAIL_LENGTH = 254
+"""The longest address a request may carry: the longest a mail server delivers to. The
+column carries the same cap (`0034_invite_asks.sql`)."""
+
+ASK_NOTE_LENGTH = 500
+"""How long the optional note on a request may be, in characters: room to say how they
+found the site and a line about themselves. The column carries the same cap."""
+
+ASK_KEPT = timedelta(days=30)
+"""How long an answered request is kept after its answer, then deleted.
+
+While it is kept, the same address asking again writes nothing (one row an address, the
+table's unique index), which is the cap per address. After it, the address may ask again,
+and nothing about a stranger is kept longer than that. A pending request is kept until the
+maintainer answers it."""
+
+ASKS_TRACKED = 20_000
+"""How many network addresses `Asks` holds counts for, the ceiling `SIGNIN_TRACKED` is."""
+
+
+class Asks:
+    """Requests for an invitation in the last rolling day, by network address (Q831).
+
+    Every request counts, the ones that wrote a row and the ones that did not, so asking
+    about many addresses from one place is three tries a day whatever the answers were.
+    The count is taken before the address or the note is read, so a refused request costs
+    no query. In memory with one lock, like `SignIns`.
+    """
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._seen: dict[str, deque[float]] = {}
+
+    def take(self, source: str) -> None:
+        """Count one request from this address, or refuse it with the sentence the page shows."""
+        window = timedelta(days=1).total_seconds()
+        with self._lock:
+            now = self._clock()
+            times = self._seen.setdefault(source, deque())
+            while times and times[0] <= now - window:
+                times.popleft()
+            if len(times) >= ASKS_A_SOURCE:
+                raise Spent(ASKED_ENOUGH)
+            times.append(now)
+            for key in [key for key, kept in self._seen.items() if not kept]:
+                del self._seen[key]
+            while len(self._seen) > ASKS_TRACKED:
+                oldest = min(self._seen, key=lambda key: self._seen[key][-1])
+                del self._seen[oldest]
+
+
+ASKED_ENOUGH = (
+    "That is as many requests as one connection can send in a day. If you have sent one, "
+    "it has arrived; there is nothing more to do."
+)
+"""The refusal past `ASKS_A_SOURCE`. It names no address, so it says nothing about any."""
+
+ASKS_FULL = (
+    "The site has had as many requests for an invitation as it takes today. Please try "
+    "again tomorrow."
+)
+"""The refusal past `ASKS_A_DAY`, the same for everybody."""
+
 # ------------------------------------------------- phase 2's queue, stated not enforced
 
 CANONICAL_A_DAY = 1
@@ -1115,6 +1201,10 @@ def summary() -> tuple[tuple[str, str], ...]:
         ("Characters one suggestion may be", str(SUGGESTION_LENGTH)),
         ("Games one person may report a day", str(REPORTS_A_DAY)),
         ("Characters one report's note may be", str(REPORT_NOTE_LENGTH)),
+        ("Requests for an invitation the site keeps a day", str(ASKS_A_DAY)),
+        ("Requests for an invitation one connection may send a day", str(ASKS_A_SOURCE)),
+        ("Characters one request's note may be", str(ASK_NOTE_LENGTH)),
+        ("An answered request for an invitation is deleted after", f"{ASK_KEPT.days} days"),
         ("Bytes one designer request may carry", str(DESIGN_BODY_BYTES)),
         ("Games one person may keep saved", str(DRAFTS_A_PERSON)),
         ("Saves one person may make a day", str(SAVES_A_DAY)),

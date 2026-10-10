@@ -1197,8 +1197,15 @@ function drawBoard(previous) {
   // motion off and have to survive a redraw for a flip or a piece highlight.
   // Never while reviewing: a step *is* a position, and the review draw hands it over
   // whole rather than as a transition to be played.
-  const beats = (previous && !AT) ? plyBeats(SESSION.board, SESSION.lastMove) : null;
-  if (beats) PHASE = beats.length > 1 ? beats[1].steps : null;
+  //
+  // The one exception is `previous.review`: a step forward of one beat over a move through
+  // a portal (Q836, `showBeat`), which plays that move's journey from the beat stepped
+  // from, because a piece gone from one side of the board and standing on the other is
+  // the one move a reader cannot follow from the two positions alone.
+  const review = !!(previous && previous.review && AT);
+  const beats = review ? [{ kind: 'move', board: AT.board, steps: null }]
+    : (previous && !AT) ? plyBeats(SESSION.board, SESSION.lastMove) : null;
+  if (beats && !review) PHASE = beats.length > 1 ? beats[1].steps : null;
   const walked = new Map();
   for (const step of (PHASE || [])) { walked.set(step.from, 'from'); walked.set(step.to, 'to'); }
 
@@ -1410,7 +1417,8 @@ function drawBoard(previous) {
   // still animating is destroyed by the next draw. `BUSY_UNTIL` is when it would have
   // finished, and `whenSettled` is what respects it.
   BUSY_UNTIL = beats
-    ? performance.now() + animateChange(svg, previous, cell, W, H, FRAME, beats) : 0;
+    ? performance.now() + animateChange(svg, previous, cell, W, H, FRAME, beats,
+                                        review ? AT.lastMove : SESSION.lastMove) : 0;
   const busy = BUSY_UNTIL ? BUSY_UNTIL - performance.now() : 0;
   // What is coming is about the position the ply *leaves*, so it shows once the ply has
   // finished arriving: held back while the pieces move, then faded in.
@@ -1494,10 +1502,27 @@ const PACE = {
   // crawl; long enough that the piece that moved has landed and come to rest before
   // anything else on the board starts moving, which is the whole of what was missing.
   beat: 200,
-  // The pause inside a move through a portal (schema 19, §4), between the piece fading
-  // into the end it went in by and coming out of the other: long enough to read as
-  // passing through, shorter than a travel.
-  portal: 160,
+  // A move through a portal (schema 19, Q836, `docs/plan-portals.md` *Travel through a
+  // portal, animated*): one journey in three movements, laid out by `portalJourney`. The
+  // slide to the end it goes in by, quicker than a travel because the portal pulls ...
+  portalApproachMin: 170,
+  portalApproachPerUnit: 7,
+  portalApproachMax: 320,
+  // ... the share of that slide after which the dive starts, so the piece is already
+  // winding down into the rim as it arrives rather than stopping and then shrinking ...
+  portalOverlap: 0.72,
+  // ... the shrink and spin down into it ...
+  portalDive: 250,
+  // ... the instant it is nowhere, between the two ends ...
+  portalVoid: 40,
+  // ... and the grow and spin up out of the other end, the one step on, and the settle.
+  portalEmerge: 400,
+  // The share of the emergence after which a piece standing where it lands is struck:
+  // the moment the piece, full size again, reaches that square.
+  portalImpact: 0.6,
+  // With reduced motion: no slide, no spin, no scale; the piece fades from where it was
+  // and into where it lands, the two overlapping, in this long all told.
+  portalStill: 300,
 };
 const SVGNS = 'http://www.w3.org/2000/svg';
 let BUSY_UNTIL = 0;
@@ -1533,19 +1558,23 @@ function animateCrossing(svg, node, was, fx, fy, dx, dy, cell, arc, flight, dela
   fade.onfinish = () => away.remove();
 }
 
-// One beat after the other, in the order the rules ran them.
-function animateChange(svg, previous, cell, W, H, view, beats) {
-  if (STILL.matches) return 0;
+// One beat after the other, in the order the rules ran them. `last` is the move the
+// beats are of: the game's last move, or the move a review step forward walks over.
+function animateChange(svg, previous, cell, W, H, view, beats, last) {
   const before = previous.board;
   // The position the mover's own move leaves behind. For a ruleset with no wild pieces
   // that is the whole ply, and this is `SESSION.board`.
   const after = beats[0].board;
   if (!before || before.length !== after.length) return 0;
+  // Reduced motion: nothing moves, as before, except that a trip through a portal gets
+  // its calm version, because a piece that vanished on one side of the board and stands
+  // on the other is the one move a snap leaves a reader unable to follow.
+  if (STILL.matches) return portalStill(svg, before, after, last, cell, view);
   const phase = beats.length > 1 ? beats[1].steps : null;
   // Squares the phase moved onto: the piece the *page* draws there is the wild piece,
   // so anything the mover's beat puts there needs a ghost of its own.
   const swallowed = new Set(phase ? phase.map(step => step.to) : []);
-  const beat = animateMove(svg, before, after, swallowed, cell, W, H, view);
+  const beat = animateMove(svg, before, after, swallowed, cell, W, H, view, last);
   if (!phase) return beat.busy;
   return Math.max(beat.busy, animatePhase(svg, phase, after, beat, cell, W, H, view));
 }
@@ -1557,7 +1586,7 @@ function animateChange(svg, previous, cell, W, H, view, beats) {
 // Reports what the phase needs from it: `landed`, when the last piece of this beat came
 // to rest, and `doomed`, the ghosts it left standing on squares the phase is about to
 // take them on.
-function animateMove(svg, before, after, swallowed, cell, W, H, view) {
+function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
   // A piece the mover moved onto a square the phase then took it on. The board draws
   // the wild piece there, so this beat travels a ghost instead -- and the phase strikes
   // that same ghost, which is what makes "it moved there and was eaten" one story.
@@ -1624,7 +1653,6 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view) {
   const stepOf = (from, to) => wrapStep(from, to, W, H,
     wrapAllow(SESSION.ruleset.wrap, (pieceOf(after[to]) || {}).player));
   const pairs = [];
-  const last = SESSION.lastMove;
 
   // The move the player actually made comes first, so a piece that landed where another
   // just left is matched to its own origin rather than to whatever happens to fit.
@@ -1645,6 +1673,8 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view) {
   // capture below, which has to happen *to* the victim rather than beside it.
   const blows = new Map();
   let lastBlow = 0;
+  // A piece that came through a portal, kept to be laid over the piece it takes (Q836).
+  let traveller = null;
   for (const [from, to] of pairs) {
     let node = swallowed.has(to) ? null : svg.querySelector(`[data-piece="${to}"]`);
     const [fx, fy] = at(from), [tx, ty] = at(to);
@@ -1656,14 +1686,16 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view) {
       doomed.set(to, node);
     }
     svg.appendChild(node);            // travelling pieces pass over stationary ones
-    // Schema 19: a move through a portal is two beats (§4), the engine's two squares for
-    // it read off the move (`portal`, `portalOut`): the piece flies to the end it goes in
-    // by and fades into it, and after `PACE.portal` it comes out of the other end, one
-    // step on to where it lands, and takes there. Each leg along the mover's own step.
+    // Schema 19: a move through a portal is one journey (Q836), the engine's two squares
+    // for it read off the move (`portal`, `portalOut`): the piece slides to the end it
+    // goes in by, shrinks and spins down into it, grows and spins up out of the other end,
+    // and settles one step on, where it lands, and takes there. Each leg along the
+    // mover's own step.
     if (last && last.portal !== undefined && last.portalOut !== undefined
         && from === last.from && to === last.to && !swallowed.has(to)) {
-      const time = portalBeats(svg, node, pieceOf(before[from]), before, last, cell, W, H,
-                               view);
+      const time = portalTrip(svg, node, pieceOf(before[from]), before, last, cell, W, H,
+                              view);
+      traveller = node;
       blows.set(to, time.blow);
       lastBlow = Math.max(lastBlow, time.blow.at);
       landed = Math.max(landed, time.landed);
@@ -1785,6 +1817,10 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view) {
         capture(svg, piece, x, y, cell, blows.get(sq) || { at: lastBlow, dx: 0, dy: 0 }));
     }
   }
+  // The piece that came out of a portal is laid over the one it takes, which is drawn
+  // after it: it grows up out of the end and lands on its victim, and a victim knocked
+  // off on top of it would hide the arrival the whole journey was leading to.
+  if (traveller) svg.appendChild(traveller);
 
   // Immune pieces that were inside the blast radius but survived: a brief shield
   // shimmer tells the player the piece was in danger and resisted.  Only fires when
@@ -1836,38 +1872,267 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view) {
   return nothing();
 }
 
-// A move through a portal, in its two beats. The first: a ghost of the piece, drawn on the
-// end it goes in by, flown there from its origin and faded as it arrives. The second: the
-// piece the board already drew where it lands, held unseen at the other end until the
-// first is done and the pause after it, then flown the one step out while it fades in.
-// Returns when it lands and the blow a piece taken there is struck with.
-function portalBeats(svg, node, piece, before, last, cell, W, H, view) {
+// A trip through a portal (Q836, `docs/plan-portals.md` *Travel through a portal,
+// animated*), as times in milliseconds from the start of the move: the slide to the end
+// it goes in by (`approach`), the shrink and spin down into it (`dive`), which starts
+// before the slide is quite over so the two read as one movement, the instant it is
+// nowhere, the grow and spin up out of the other end and the step on to where it lands
+// (`emerge`), the blow a piece standing there is struck with (`strike`), and when it is
+// at rest (`landed`). `distance` is the slide's length in viewBox units. Pure, so the
+// order of the steps is something a test can hold.
+function portalJourney(distance) {
+  const approach = Math.min(PACE.portalApproachMax,
+                            PACE.portalApproachMin + distance * PACE.portalApproachPerUnit);
+  const dive = { at: approach * PACE.portalOverlap, for: PACE.portalDive };
+  const emerge = { at: dive.at + dive.for + PACE.portalVoid, for: PACE.portalEmerge };
+  return {
+    approach: { at: 0, for: approach }, dive: dive, emerge: emerge,
+    strike: emerge.at + emerge.for * PACE.portalImpact,
+    landed: emerge.at + emerge.for,
+  };
+}
+
+// The slide, for the piece going in and, on a slide across the seam, for the copy of it
+// leaving by the near edge: both the same motion, one repeat apart. Eased in, with a hair
+// of give at the start, so it gathers speed into the portal as though pulled, rather
+// than coasting to a stop beside it; a leap lifts over what it passes, as a travel does.
+function portalSlide(el, dx, dy, arc, duration) {
+  const frames = [{ transform: `translate(${dx}px, ${dy}px)` }];
+  if (arc) {
+    const lift = Math.min(Math.hypot(dx, dy) * 0.45, 6);
+    frames.push({ transform: `translate(${dx / 2}px, ${dy / 2 - lift}px) scale(1.1)`,
+                  offset: 0.5 });
+  }
+  frames.push({ transform: 'translate(0px, 0px)' });
+  el.animate(frames, { duration: duration, fill: 'forwards',
+                       easing: arc ? 'cubic-bezier(.45,0,.7,.6)' : 'cubic-bezier(.5,-.12,.75,.5)' });
+}
+
+// The way a piece went into a portal, as the engine says it went: the shortest step to
+// the end is the way in on a board with edges, but round a seam the piece may have come
+// the long way, and it comes out going the way it went in (`exitDir`, the sign of the
+// move's own vector, `engine/compile.py`'s `PORTAL_DIRECTIONS` order). An axis whose
+// shortest step runs against that sign is taken the other way round the board. Nothing
+// is worked out but which of the step's two drawings to show; on a hexagon, whose seams
+// are sides, the step stands.
+const PORTAL_SIGNS = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+function portalWayIn(step, exitDir, W, H) {
+  const sign = PORTAL_SIGNS[exitDir];
+  if (!sign || step.files === undefined) return step;
+  const round = (s, want, size) => (want && s && Math.sign(s) !== want ? s + want * size : s);
+  const files = round(step.files, sign[0], W), ranks = round(step.ranks, sign[1], H);
+  if (files === step.files && ranks === step.ranks) return step;
+  return { files: files, ranks: ranks, wrapped: true };
+}
+
+// What the swirl over the portal end standing on a square of `board` is drawn as: `ink`,
+// the colour it falls back to, today the rim's own, and `mark`, `pair` and `end`, the same
+// names the glyph carries (`data-portal`), for a stylesheet to key a look on. The one place
+// the trip asks what an end looks like, so a new glyph changes this and no timing.
+function portalLook(board, square) {
+  const end = portalEnd((pieceOf(board[square]) || {}).type);
+  return {
+    ink: end && end.end === 'blue' ? 'var(--portal-b)' : 'var(--portal-a)',
+    mark: end ? `${end.pair}${end.end[0]}` : '', pair: end ? end.pair : '',
+    end: end ? end.end : '',
+  };
+}
+
+// A dashed ring in an end's colour, edged so it reads on both woods, turning the way the
+// piece turns: drawn in towards the centre as the piece goes down (`inward`), thrown out
+// from it as the piece comes up. Laid under `under` when there is one, so the piece is
+// seen inside it. Gone when it is done; invisible before it starts.
+//
+// Its look is a class and two custom properties, never a colour of its own: the ring is
+// `.portal-swirl` (with `data-swirl` in or out and the end's `data-portal`, `data-pair`
+// and `data-end`), stroked in `--swirl-ink` and edged in `--swirl-edge`, each falling back
+// to `portalLook`'s colour and `--portal-edge`. A stylesheet rule that sets either
+// property restyles the ring and leaves the motion alone.
+function portalSwirl(svg, cx, cy, cell, look, inward, spin, at, duration, under) {
+  const ring = document.createElementNS(SVGNS, 'g');
+  ring.setAttribute('data-journey', inward ? 'swirl-in' : 'swirl-out');
+  ring.setAttribute('class', 'portal-swirl');
+  ring.setAttribute('data-swirl', inward ? 'in' : 'out');
+  ring.setAttribute('data-portal', look.mark);
+  ring.setAttribute('data-pair', look.pair);
+  ring.setAttribute('data-end', look.end);
+  ring.setAttribute('pointer-events', 'none');
+  const dash = `stroke-dasharray="${cell * 0.17} ${cell * 0.13}" stroke-linecap="round"`;
+  ring.innerHTML =
+    `<circle cx="${cx}" cy="${cy}" r="${cell * 0.4}" fill="none"
+      stroke="var(--swirl-edge, var(--portal-edge))" stroke-width="${cell * 0.1}" ${dash}/>`
+    + `<circle cx="${cx}" cy="${cy}" r="${cell * 0.4}" fill="none"
+      stroke="var(--swirl-ink, ${look.ink})" stroke-width="${cell * 0.055}" ${dash}/>`;
+  ring.style.opacity = '0';
+  ring.style.transformOrigin = `${cx}px ${cy}px`;
+  if (under && under.parentNode === svg) svg.insertBefore(ring, under);
+  else svg.appendChild(ring);
+  const turn = deg => `rotate(${spin * deg}deg)`;
+  const frames = inward
+    ? [{ opacity: 0, transform: `${turn(0)} scale(1.45)` },
+       { opacity: 0.95, transform: `${turn(110)} scale(1)`, offset: 0.35 },
+       { opacity: 0, transform: `${turn(320)} scale(0.15)` }]
+    : [{ opacity: 0, transform: `${turn(0)} scale(0.2)` },
+       { opacity: 0.95, transform: `${turn(120)} scale(1)`, offset: 0.3 },
+       { opacity: 0, transform: `${turn(300)} scale(1.55)` }];
+  const run = ring.animate(frames, { duration: duration, delay: at, fill: 'forwards',
+                                     easing: inward ? 'cubic-bezier(.4,0,.9,.5)'
+                                                    : 'cubic-bezier(.1,.5,.3,1)' });
+  run.onfinish = () => ring.remove();
+  return at + duration;
+}
+
+// The end itself reacting: a gulp as the piece goes down into it, a kick as one comes up
+// out of it. The glyph the board drew, scaled about its own centre and given back
+// untouched (no fill), so the end at rest is the end the drawing made.
+function portalPulse(svg, square, cell, view, frames, at, duration) {
+  const glyph = svg.querySelector(`[data-piece="${square}"]`);
+  if (!glyph || typeof glyph.animate !== 'function') return 0;
+  const [x, y] = squareXY(square, cell, view);
+  glyph.style.transformOrigin = `${x + cell / 2}px ${y + cell / 2}px`;
+  const run = glyph.animate(frames, { duration: duration, delay: at, easing: 'ease-in-out' });
+  run.onfinish = () => { glyph.style.transformOrigin = ''; };
+  return at + duration;
+}
+
+// A move through a portal as one journey (Q836). A ghost of the piece, drawn on the end it
+// goes in by, slides there from where it stood, squashes against the rim, and shrinks and
+// spins down into it while a swirl in the end's colour closes over it and the end gulps.
+// The piece the board already drew where it lands is held unseen at the other end until
+// then, and comes up out of it spinning the same way, overshooting its size, hops the one
+// step on, overshoots that and settles with a small squash, while that end kicks and a
+// swirl opens round it. Every movement eases out past its mark and back (springy
+// cubic-beziers, a keyframe of overshoot and squash), so it reads as a body thrown
+// through a hole rather than a slide show. Returns when it lands and the blow a piece
+// taken there is struck with: the moment the piece arrives on its square at full size.
+function portalTrip(svg, node, piece, before, last, cell, W, H, view) {
   const at = sq => squareXY(sq, cell, view);
   // Both legs are the mover's, so its seams: the end it goes in by is nobody's piece.
   const allow = wrapAllow(SESSION.ruleset.wrap, last.player);
   const stepOf = (from, to) => wrapStep(from, to, W, H, allow);
-  const [ex, ey] = at(last.portal), [fx, fy] = at(last.from);
-  const into = stepOf(last.from, last.portal);
+  const [ex, ey] = at(last.portal), [fx, fy] = at(last.from), [tx, ty] = at(last.to);
+  const into = portalWayIn(stepOf(last.from, last.portal), last.exitDir, W, H);
   const arc = pathHops(before, last.from, into, W, H, view);
   const [idx, idy] = stepXY(into, cell, view);
-  let first = PACE.travelMin;
-  if (piece) {
-    const goer = ghostAt(svg, piece, ex, ey, cell);
-    first = travel(goer, -idx, -idy, arc);
-    if (into.wrapped) animateCrossing(svg, goer, piece, fx, fy, idx, idy, cell, arc, first);
-    const inner = goer.firstElementChild || goer;
-    const fade = inner.animate([{ opacity: 1 }, { opacity: 1, offset: 0.6 }, { opacity: 0 }],
-                               { duration: first, fill: 'forwards' });
-    fade.onfinish = () => goer.remove();
-  }
-  const start = first + PACE.portal;
   const out = stepOf(last.portalOut, last.to);
   const [odx, ody] = stepXY(out, cell, view);
-  const second = travel(node, -odx, -ody, false, start);
+  const plan = portalJourney(Math.hypot(idx, idy));
+  // Which way it turns: clockwise going right (or down), as a wheel rolling that way
+  // would, and the same way coming out as going in, so the two halves are one spin.
+  const spin = (Math.abs(idx) >= Math.abs(idy) ? idx : idy) < 0 ? -1 : 1;
+  const turn = deg => `rotate(${spin * deg}deg)`;
+  const ecx = ex + cell / 2, ecy = ey + cell / 2;
+
+  if (piece) {
+    const goer = ghostAt(svg, piece, ex, ey, cell);
+    goer.setAttribute('data-journey', 'approach');
+    portalSlide(goer, -idx, -idy, arc, plan.approach.for);
+    if (into.wrapped) {
+      // Across the seam: the copy leaving by the near edge makes the same slide, and the
+      // two hand over in the middle, as every crossing does (`animateCrossing`).
+      goer.animate(crossOpacity(false), { duration: plan.approach.for, fill: 'backwards' });
+      const away = ghostAt(svg, piece, fx + idx, fy + idy, cell);
+      portalSlide(away, -idx, -idy, arc, plan.approach.for);
+      const fade = away.animate(crossOpacity(true),
+                                { duration: plan.approach.for, fill: 'both' });
+      fade.onfinish = () => away.remove();
+    }
+    // The dive, on the drawing inside the ghost, about the end's centre: a squash against
+    // the rim and a turn back to wind up, then down and round, gone at the end.
+    const inner = goer.firstElementChild || goer;
+    if (inner !== goer) inner.setAttribute('data-journey', 'dive');
+    inner.style.transformOrigin = `${ecx}px ${ecy}px`;
+    const dive = inner.animate([
+      { opacity: 1, transform: `${turn(0)} scale(1, 1)`, easing: 'cubic-bezier(.3,.6,.5,1)' },
+      { opacity: 1, transform: `${turn(-14)} scale(1.14, 0.86)`, offset: 0.22,
+        easing: 'cubic-bezier(.5,0,.85,.45)' },
+      { opacity: 1, transform: `${turn(150)} scale(0.55)`, offset: 0.6,
+        easing: 'cubic-bezier(.5,0,1,.6)' },
+      { opacity: 0, transform: `${turn(400)} scale(0.02)` },
+    ], { duration: plan.dive.for, delay: plan.dive.at, fill: 'forwards' });
+    dive.onfinish = () => goer.remove();
+    portalSwirl(svg, ecx, ecy, cell, portalLook(before, last.portal), true, spin,
+                plan.dive.at, plan.dive.for + 60, goer);
+  }
+  portalPulse(svg, last.portal, cell, view, [
+    { transform: 'scale(1)' },
+    { transform: 'scale(1.12)', offset: 0.3 },
+    { transform: 'scale(0.84)', offset: 0.62 },
+    { transform: 'scale(1.05)', offset: 0.84 },
+    { transform: 'scale(1)' },
+  ], plan.dive.at, plan.dive.for + 120);
+
+  // Out of the other end. Where it comes up is the square one step back from where it
+  // lands along its own step out, which is the exit end, or that end's copy across the
+  // seam when the step out crosses it, so the swirl and the piece meet there.
+  const ocx = tx - odx + cell / 2, ocy = ty - ody + cell / 2;
+  portalPulse(svg, last.portalOut, cell, view, [
+    { transform: 'scale(1)' },
+    { transform: 'scale(0.86)', offset: 0.22 },
+    { transform: 'scale(1.16)', offset: 0.5 },
+    { transform: 'scale(0.97)', offset: 0.78 },
+    { transform: 'scale(1)' },
+  ], Math.max(0, plan.emerge.at - 40), 340);
+  portalSwirl(svg, ocx, ocy, cell, portalLook(before, last.portalOut), false, spin,
+              Math.max(0, plan.emerge.at - 30), 380, node);
+  // The piece itself, about its own centre where it lands: held small and unseen at the
+  // exit until its moment (`backwards`), popped up past full size while it is still over
+  // the end, thrown the step on past its square with a squash across the way it moves,
+  // and settled. No fill after: at rest it is exactly what the board drew.
+  const across = Math.abs(odx) >= Math.abs(ody);
+  const squash = across ? 'scale(0.9, 1.08)' : 'scale(1.08, 0.9)';
+  const give = across ? 'scale(1.03, 0.97)' : 'scale(0.97, 1.03)';
+  const shift = k => `translate(${-odx * k}px, ${-ody * k}px)`;
+  node.style.transformOrigin = `${tx + cell / 2}px ${ty + cell / 2}px`;
+  const emerge = node.animate([
+    { opacity: 0, transform: `${shift(1)} ${turn(-320)} scale(0.04)`,
+      easing: 'cubic-bezier(.2,.75,.35,1)' },
+    { opacity: 1, transform: `${shift(0.9)} ${turn(-40)} scale(1.2)`, offset: 0.4,
+      easing: 'cubic-bezier(.45,0,.35,1)' },
+    { opacity: 1, transform: `${shift(-0.1)} ${turn(8)} ${squash}`, offset: 0.68,
+      easing: 'cubic-bezier(.3,0,.4,1)' },
+    { opacity: 1, transform: `${shift(0.02)} ${turn(-2)} ${give}`, offset: 0.86,
+      easing: 'ease-out' },
+    { opacity: 1, transform: `${shift(0)} ${turn(0)} scale(1, 1)` },
+  ], { duration: plan.emerge.for, delay: plan.emerge.at, fill: 'backwards' });
+  emerge.onfinish = () => { node.style.transformOrigin = ''; };
+  return { landed: plan.landed, blow: { at: plan.strike, dx: odx, dy: ody } };
+}
+
+// With reduced motion, a trip through a portal is a crossfade and nothing else: the
+// piece fades from the square it left while it fades in on the square it landed on, and
+// a piece taken there fades as it arrives. No slide, no turn, no change of size. Any
+// other move draws at once, as it always has with motion reduced; this returns 0 for it.
+function portalStill(svg, before, after, last, cell, view) {
+  if (!last || last.portal === undefined || last.from === null || last.from === undefined
+      || before[last.from] === after[last.from] || !after[last.to]) return 0;
+  const node = svg.querySelector(`[data-piece="${last.to}"]`);
+  if (!node) return 0;
+  const half = PACE.portalStill * 0.55;
+  const leaving = pieceOf(before[last.from]);
+  if (leaving) {
+    const [fx, fy] = squareXY(last.from, cell, view);
+    const was = ghostAt(svg, leaving, fx, fy, cell);
+    was.setAttribute('data-journey', 'still-from');
+    was.animate([{ opacity: 1 }, { opacity: 0 }],
+                { duration: half, easing: 'ease-out', fill: 'forwards' }).onfinish =
+      () => was.remove();
+  }
+  const victim = before[last.to] && before[last.to] !== after[last.to]
+    ? pieceOf(before[last.to]) : null;
+  if (victim) {
+    const [tx, ty] = squareXY(last.to, cell, view);
+    const gone = ghostAt(svg, victim, tx, ty, cell);
+    gone.setAttribute('data-journey', 'still-taken');
+    gone.animate([{ opacity: 1 }, { opacity: 0 }],
+                 { duration: half, delay: PACE.portalStill - half, easing: 'ease-in',
+                   fill: 'forwards' }).onfinish = () => gone.remove();
+  }
+  svg.appendChild(node);
   node.animate([{ opacity: 0 }, { opacity: 1 }],
-               { duration: second * 0.6, delay: start, fill: 'backwards', easing: 'ease-out' });
-  return { landed: start + second,
-           blow: { at: start + second * PACE.impact, dx: odx, dy: ody } };
+               { duration: half, delay: PACE.portalStill - half, easing: 'ease-in-out',
+                 fill: 'backwards' });
+  return PACE.portalStill;
 }
 
 // The second beat: the wild-piece phase, which the rules run after the mover's move
@@ -2786,13 +3051,29 @@ function clickSquare(square) {
   const piece = pieceAt(square);
   NOTE = !fromHere.length && piece && piece.player === SESSION.sideToMove
     ? `that ${pieceWord(piece)} has no legal move${
-        SESSION.inCheck ? ' - your side is in check' : ''}` : '';
+        SESSION.inCheck ? ' - your side is in check' : ''}${portalsOnlyWords()}` : '';
   drawBoard();
 }
 
 function pieceWord(piece) {
   const rules = SESSION.ruleset;
   return (rules.pieceNames || [])[piece.type] || (rules.pieceIds || [])[piece.type] || 'piece';
+}
+
+// Q833: when every move left is a portal end's, the note says so and names the ends. A
+// player in check on a game whose portals both sides may move tapped each of their pieces,
+// read *no legal move* on every one and took the game for stalled, when moving a portal
+// onto the checking line was the way out. The ends are read off the engine's own list,
+// as the rest of the note is; nothing here works a move out.
+function portalsOnlyWords() {
+  const from = [...new Set((SESSION.moves || []).map(m => m.from))];
+  if (!from.length || !from.every(square => portalOn(square))) return '';
+  const W = SESSION.ruleset.width;
+  const names = from.sort((a, b) => a - b)
+    .map(square => squareName(square % W, Math.floor(square / W)));
+  const list = names.length === 1 ? names[0]
+    : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
+  return `; only a portal can move: tap the one on ${list}`;
 }
 
 // ----- what a promoting piece becomes (Q765)
@@ -3011,10 +3292,17 @@ function drawPromotion() {
   if (stage === 'route') {
     head = `Choose how your ${esc(word)} gets there`;
     says = 'This square can be reached more than one way. Tap the way you want.' + still;
-    picks = `<div class="promo-pieces promo-squares">${candidates.map(m =>
-      `<button type="button" class="promo-pick promo-square" data-move="${m.move}"
-        aria-label="${esc(routeWords(m))}, ${esc(m.text)}"><span class="promo-sq">${
-        esc(routeWords(m))}</span><span>${esc(m.text)}</span></button>`
+    // Each way is the promotion's card: the piece drawn in the tile, as the promotion
+    // draws the piece it becomes, then the way in words at the body's size (Q832), then
+    // the move. The words never go in the tile, whose glyph type broke a long portal name
+    // a letter or two a line out of the card.
+    const piece = mover ? { player: mover.player, type: mover.type, facing: mover.facing || 0 } : null;
+    picks = `<div class="promo-pieces promo-routes">${candidates.map(m =>
+      `<button type="button" class="promo-pick promo-route" data-move="${m.move}"
+        aria-label="${esc(routeWords(m))}, ${esc(m.text)}">${piece
+        ? `<svg class="promo-piece" viewBox="0 0 100 100" aria-hidden="true">${
+          drawPiece(piece, 0, 0, 100)}</svg>` : ''}<span class="promo-way">${
+        esc(routeWords(m))}</span><span class="promo-text">${esc(m.text)}</span></button>`
     ).join('')}</div>`;
   } else if (stage === 'square') {
     const moves = landingMoves();
@@ -3360,18 +3648,32 @@ function showBeat(index) {
   if (TIMELINE.length < 2) return;
   const at = Math.max(0, Math.min(TIMELINE.length - 1, index));
   const live = at === TIMELINE.length - 1;
+  const from = reviewTrip(cursorAt(), at);
   // A game somebody is playing has no pause button (B3 of `docs/archive/plan-ux.md`), so coming
   // back to the position the game is in is what starts it again. Without this, stepping
   // back in a game against the computer left it stopped with no control to restart it.
-  if (live && SESSION.seats.includes('human')) return resumeGame();
+  if (live && SESSION.seats.includes('human')) return resumeGame(from);
   PAUSED = true;
   CURSOR = live ? null : at;
   AT = live ? null : TIMELINE[at];
   PHASE = TIMELINE[at].steps;
   SELECTED = null;
   DROP = null;
-  drawBoard();
+  drawBoard(from);
   drawPane();
+}
+
+// A step through the timeline that plays the move it walks over (Q836): exactly one beat
+// forward, onto the mover's beat of a move through a portal. Returns the beat stepped from,
+// marked `review`, for `drawBoard` to play the journey from; null for every other step,
+// which hands the position over whole, as a step always has. A step back never plays a
+// move backwards, for the reason a take-back does not: a move unmade is not a journey
+// anybody took.
+function reviewTrip(was, to) {
+  if (to !== was + 1 || !TIMELINE[was] || !TIMELINE[to]) return null;
+  const beat = TIMELINE[to];
+  if (beat.kind !== 'move' || !beat.lastMove || beat.lastMove.portal === undefined) return null;
+  return { board: TIMELINE[was].board, review: true };
 }
 
 // Back to the game as it stands, and on with it. The only way out of review, and so the
@@ -3379,12 +3681,12 @@ function showBeat(index) {
 // checks the reply belongs to the game on screen and that there is still a board to draw
 // it on. Resuming must not start a second game beside the one already running, and it
 // cannot, because it does not start a chain of its own.
-function resumeGame() {
+function resumeGame(from) {
   PAUSED = false;
   CURSOR = null;
   AT = null;
   PHASE = null;
-  drawBoard();
+  drawBoard(from || undefined);
   drawPane();
   maybeAgent();
 }

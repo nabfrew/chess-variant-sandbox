@@ -46,8 +46,8 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
+from chess_variant_sandbox.site import asking, quota, terms
 from chess_variant_sandbox.site import badges as site_badges
-from chess_variant_sandbox.site import quota, terms
 from chess_variant_sandbox.viz import pieces
 from chess_variant_sandbox.web.page import marks, shell
 from chess_variant_sandbox.web.page.style import STYLE as APP_STYLE
@@ -116,6 +116,8 @@ _OWN = """
   td.state.killed, td.state.retired, td.state.deleted, td.state.left,
   td.state.expired { color: var(--muted); }
   span.state { font-size: 12px; color: var(--muted); }
+  /* Q831: a visitor's note keeps its line breaks and gets room to be read. */
+  td.ask-note { white-space: pre-line; min-width: 14rem; }
   code.hash { font-size: 12px; color: var(--muted); }
   /* Every table on the maintainer's page scrolls inside its own box, so nine columns of
      usage cannot widen the page itself (D3). */
@@ -261,7 +263,7 @@ SCRIPTS: dict[str, Path] = {
     for name in (
         "post", "game-link", "play-link",
         "join", "signin", "profile", "players", "suggestions", "admin", "challenge",
-        "member",
+        "member", "ask",
     )
 }
 
@@ -542,14 +544,55 @@ def signin(after: str | None = None) -> str:
         '<p class="note" id="note"></p>\n'
         "</div>\n"
         # The first-visit study's F5: a reader looked here for a way to make an account
-        # and found none, and nothing said why.
+        # and found none, and nothing said why. Q831: and now the way to ask for one.
         '<p class="small muted">Accounts are by invitation for now: an invitation\'s '
-        "link is where you choose a handle and a password.</p>"
+        "link is where you choose a handle and a password.</p>\n"
+        f"{_ask_button()}"
     )
     scripts = ("post", "signin")
     return _shell(
         "Sign in to Chess variant sandbox", body, scripts, data={"then": _then(after)}
     )
+
+
+def _ask_button() -> str:
+    """The way to the request form, wherever a visitor meets the invitation wall (Q831)."""
+    return (
+        f'<div class="row"><a class="button" id="ask-invitation" href="{asking.PATH}">'
+        f"{asking.BUTTON}</a></div>"
+    )
+
+
+def request_invitation() -> str:
+    """Ask for an invitation (Q831, `site/asking.py`): an address, an optional note, send.
+
+    A constant page, like the credits: no cookie read and no store, so a visitor's look at
+    it costs nothing. The script posts the form to `/api/ask-invitation` and, on an
+    answer, puts the one sentence the server sends where the form was. The note's hint is
+    the user's own suggestion, that they say how they found the site.
+    """
+    body = (
+        f"<h1>{asking.BUTTON}</h1>\n"
+        '<p class="lead">Accounts here are by invitation. Leave your email address and the '
+        "person who runs the site can send you one. Looking at the games, and playing "
+        "practice games, need no account.</p>\n"
+        '<form class="panel form" id="ask-form">\n'
+        '<label><span>email address</span><input id="ask-email" type="email" '
+        'autocomplete="email" autocapitalize="off" spellcheck="false" '
+        f'maxlength="{quota.ASK_EMAIL_LENGTH}" required autofocus></label>\n'
+        '<p class="hint">Where the invitation would go. The site sends nothing else to '
+        "it.</p>\n"
+        '<label><span>a note, if you like</span><textarea id="ask-note" rows="3" '
+        f'maxlength="{quota.ASK_NOTE_LENGTH}"></textarea></label>\n'
+        f'<p class="hint">{asking.NOTE_HINT}</p>\n'
+        '<div class="row"><button class="primary" id="ask-send" type="submit">'
+        "send the request</button></div>\n"
+        '<p class="note" id="note"></p>\n'
+        "</form>\n"
+        '<p class="small muted"><a href="/signin">I already have an account</a> · '
+        '<a href="/privacy">what the site keeps</a></p>'
+    )
+    return _shell(asking.BUTTON, body, ("post", "ask"))
 
 
 def challenge_link(token: str) -> str:
@@ -1093,6 +1136,20 @@ def admin(handle: str, players: bool = False, *, user: int | None = None) -> str
         '<div class="scroller"><table><thead><tr><th>address</th><th>sent</th><th>from</th>'
         "<th>expires</th><th>accepted</th></tr></thead>\n"
         '<tbody id="invites"></tbody></table></div>\n'
+        # Q831. What visitors asked for from the sign-in page, oldest first.
+        "<h2>Requests for an invitation</h2>\n"
+        '<p class="under">Visitors ask from the sign-in page, with an address and, if '
+        "they like, a note. <em>send an invitation</em> sends the ordinary invitation, from "
+        "you; <em>decline</em> sends nothing. Either way the person is told nothing but "
+        "the invitation, if you send one. A request from an address that already has an "
+        "account, or that already asked, is not kept, and the person is not told so. An "
+        f"answered request is deleted after {quota.ASK_KEPT.days} days, and the same "
+        "address cannot ask again before then.</p>\n"
+        '<p class="note" id="asks-note"></p>\n'
+        '<div class="scroller"><table><thead><tr><th>address</th><th>asked</th>'
+        "<th>note</th><th>invited before</th><th></th></tr></thead>\n"
+        '<tbody id="asks"></tbody></table></div>\n'
+        '<p class="under" id="asks-empty"></p>\n'
         "<h2>Games</h2>\n"
         '<p class="under">A killed game is off the listing, off its own page and cannot '
         "be started. The matches already played on it stay and still count. A "
@@ -1533,6 +1590,15 @@ def privacy() -> str:
         "Then members, and nobody else, see your handle first under Play a person on each "
         "of your published games, and can challenge you there. A challenge holds no "
         "message.</p>\n"
+        # Q831: a visitor's request for an invitation, which is not one of the six: the
+        # person asking has no account, and the row is deleted once it is answered.
+        "<h2>Asking for an invitation</h2>\n"
+        "<p>If you ask for an invitation, the site keeps the email address and the note "
+        "you wrote, and when, for the person who runs the site to read; nobody else sees "
+        "them. The address is used for one thing, the invitation, if they send you one, "
+        "and no other mail goes to it. A request is deleted "
+        f"{quota.ASK_KEPT.days} days after it is answered.</p>\n"
+        f"{_ask_button()}\n"
         "<h2>A game played without signing in</h2>\n"
         "<p>A practice game keeps no person at all. The moves are stored so that the tab "
         "can be reopened, with how long each of your moves took and which moves a "

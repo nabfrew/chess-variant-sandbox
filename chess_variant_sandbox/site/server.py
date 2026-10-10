@@ -55,6 +55,7 @@ from chess_variant_sandbox.measurement import Basis
 from chess_variant_sandbox.site import (
     admin,
     alarm,
+    asking,
     awards,
     badges,
     browse,
@@ -67,6 +68,7 @@ from chess_variant_sandbox.site import (
     identity,
     inviting,
     kept,
+    leaderboard,
     legality,
     links,
     mail,
@@ -244,6 +246,9 @@ class SiteApp(App):
         # One object for the whole process, so the count holds across the threads the
         # server answers requests on.
         self.signins = quota.SignIns()
+        # Requests for an invitation, by network address (Q831): `quota.ASKS_A_SOURCE` a
+        # day from one, so one source cannot spend the site's `ASKS_A_DAY`.
+        self.asks = quota.Asks()
         # Every dispatched request, counted by the hour with nobody named
         # (`docs/plan-usage.md`). *Show me*'s people are read off `presses`.
         self.usage = usage.Counter(lambda: self.presses)
@@ -404,6 +409,8 @@ class SiteApp(App):
             return self._signin(body)
         if parts == ("api", "signout"):
             return self._signout()
+        if parts == ("api", "ask-invitation"):
+            return self._ask_invitation(body)
         if parts == ("api", "admin"):
             return self._admin_act(body)
         if parts == ("api", "challenge"):
@@ -701,8 +708,9 @@ class SiteApp(App):
         `siteRatings` is the opponent table's second column (A6 of
         `docs/archive/plan-ux.md`): every computer player's live rating on this scale,
         keyed by the agent string the picker ladder names it by, so the page can put the
-        two numbers for one player side by side. Only the computer players -- a person's
-        rating is theirs and §4's meta-game decides where it is shown.
+        two numbers for one player side by side. Only the computer players: the opponent
+        picker reads it. People are on `leaderboard` (L2 of `docs/plan-leaderboard.md`),
+        the whole table as `site/leaderboard.py` orders and marks it.
 
         `firstPlayed`, `highest` and `clearedBy` are the meta-game's three lines (box B1
         of `docs/archive/plan-meta-game.md`), and each is null or empty when there is
@@ -720,6 +728,17 @@ class SiteApp(App):
                 player.key.agent: player.rating
                 for player in rating.computers(table)
             }
+            # L2 (`docs/plan-leaderboard.md` §2.1, §2.5): the whole table as the page's
+            # *Leaderboard* draws it -- computer players by the picker's name, people by
+            # handle, strongest first, the marks decided here -- so the page sorts nothing.
+            roster = self.roster(digest)
+            standing["leaderboard"] = leaderboard.shown(
+                table,
+                named=named,
+                roster=roster,
+                viewer=self.viewer,
+                library=digest in self.known(),
+            )
             # §2.3 of `docs/plan-understanding.md` (P6): signed in, each computer
             # player's distance from the reader, so the picker says *about 240 above
             # you* rather than a signed number. The subtraction is here, never on the
@@ -791,7 +810,7 @@ class SiteApp(App):
             standing["signInFor"] = (
                 {
                     entry.agent: matches.SIGN_IN_TO_PLAY
-                    for entry in self.roster(digest)
+                    for entry in roster
                     if quota.members_only(entry.agent)
                 }
                 if self.viewer is None
@@ -1581,6 +1600,20 @@ class SiteApp(App):
         self.grant = Grant(None)
         return {"signedIn": False}
 
+    def _ask_invitation(self, body: dict[str, Any]) -> Any:
+        """A visitor asks for an invitation (Q831, `site/asking.py`).
+
+        The form is checked first, which costs nothing; then the connection's day
+        (`quota.Asks`, a 429); then the site's day and the row, in one transaction. The
+        answer is `asking.CONFIRMED` whether a row was written or not, so it says nothing
+        about the address. Nothing is mailed.
+        """
+        address, note = asking.checked(body.get("email"), body.get("note"))
+        self.asks.take(self.source)
+        with self._connection() as connection:
+            asking.ask(connection, address, note)
+        return {"said": asking.CONFIRMED}
+
     # ----------------------------------------------------------- the maintainer's page
 
     def _admin_view(self) -> Any:
@@ -1600,6 +1633,10 @@ class SiteApp(App):
             return {
                 "users": [person.as_dict() for person in admin.people(connection)],
                 "invites": [one.as_dict() for one in admin.invitations(connection)],
+                # Q831. Requests for an invitation nobody has answered yet, oldest
+                # first, and how many were granted and declined in the kept window.
+                "asks": [one.as_dict() for one in asking.pending(connection)],
+                "asksAnswered": asking.answered(connection),
                 "games": [game.as_dict() for game in admin.games(connection)],
                 "suggestions": [
                     one.as_dict() for one in suggestions.every(connection)
@@ -1714,6 +1751,8 @@ class SiteApp(App):
         with self._connection() as connection:
             if act == "invite":
                 return self._invite(connection, str(body.get("email") or ""))
+            if act in ("grant-ask", "decline-ask"):
+                return self._answer_ask(connection, act, body.get("ask"))
             if act == "set-invites":
                 # Q719. How many invitations a member may send themselves.
                 try:
@@ -1797,6 +1836,25 @@ class SiteApp(App):
                 dropped = suggestions.drop(connection, int(body["suggestion"]))
                 return {"said": f"deleted the {dropped.label} from {dropped.handle}"}
         raise KeyError(f"no such act: {act}")
+
+    def _answer_ask(self, connection: Any, act: str, asked: Any) -> Any:
+        """Grant or decline one request for an invitation (Q831).
+
+        Granting sends the ordinary invitation with the admin who pressed as its issuer,
+        as `_invite` does; an address that has gained an account since it asked is refused
+        in `identity`'s words, as a 400, and the request stays pending. Declining sends
+        nothing. The visitor is told neither.
+        """
+        if isinstance(asked, bool) or not isinstance(asked, int):
+            raise admin.AdminError("name the request by its number")
+        try:
+            if act == "decline-ask":
+                return {"said": f"declined the request from {asking.decline(connection, asked)}; "
+                                "nothing was sent"}
+            sent = asking.grant(connection, asked, mail.site_url(), self.send, self.viewer)
+        except (identity.Refused, asking.AskGone) as error:
+            raise admin.AdminError(str(error)) from error
+        return {"said": f"invited {sent}: the link is on its way"}
 
     def _invite(self, connection: Any, email: str) -> Any:
         """Invite one address from the page, through the command's own function.
@@ -2754,6 +2812,11 @@ def site_handler_for(app: SiteApp) -> type[Any]:
                 return
             if path == terms.PATH:
                 self._html(pages.terms_page())
+                return
+            if path == asking.PATH:
+                # Q831. The form for asking for an invitation: a constant page, so a
+                # visitor's request for it opens no connection and reads no cookie.
+                self._html(pages.request_invitation())
                 return
             if path == "/badges":
                 # The plain list of every badge and its rule. It asks nobody's name on

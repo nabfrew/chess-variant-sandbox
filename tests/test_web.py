@@ -5212,11 +5212,12 @@ class TestTheSiteDrawsOnlyWhatItServes:
         for words in self.WORDS:
             assert words not in html, words
         assert 'id="keeping"' not in html and "How you do against them" not in html
-        # The opponents nobody has rated are one sentence, and no list (G15: no reason the
-        # site withholds, since nothing there can be done about it).
+        # The opponents nobody has rated are one sentence under the leaderboard (L2), with
+        # no reason the site withholds, since nothing there can be done about it (G15).
         said = " ".join(html.split())
-        assert "2 of the computer players you can pick have no rating on this game yet." in said
-        assert "<b>trade-up</b>" not in html
+        assert ("<b>random</b>, <b>trade-up</b>, <b>fitted to this game</b> have no rating"
+                " on this game yet, so they are not on it.") in said
+        assert "not in the picker when this table" not in said
 
     def test_locally_every_button_is_still_drawn(self) -> None:
         drawn = _page_on(False, f"#/game/{self.HASH}", _game_payload(self.HASH, site=False))
@@ -5479,8 +5480,8 @@ class TestTheScorePanelInPlainWords:
         assert "stale (replay): the core or the agents changed" in html
         site = _page_on(True, f"#/game/{self.HASH}", _game_payload(self.HASH, site=True))["html"]
         assert "stale (replay)" not in site and 'data-gloss="stale"' in site
-        # The two unrated players are named by count, and nothing says why (G15).
-        assert ("2 of the computer players you can pick have no rating on this game yet."
+        # The unrated players are named under the leaderboard, and nothing says why (G15).
+        assert ("have no rating on this game yet, so they are not on it."
                 in " ".join(site.split()))
         assert "does not offer yet" not in site
 
@@ -5694,7 +5695,8 @@ class TestTheOpponentMenuIsTrimmed:
 
 class TestOneRatingScaleOnTheSite:
     """One computer player, one number on the site (`docs/plan-understanding.md` §2.3, G11
-    and G14).
+    and G14), and since L2 (`docs/plan-leaderboard.md`) that number is a row of the game's
+    leaderboard.
 
     The opponent table said *hardest +802* and the Unbeaten panel said *rated 2302* about
     the same player, because the table is the tournament's own scale centred on zero and
@@ -5702,7 +5704,7 @@ class TestOneRatingScaleOnTheSite:
     kept both and labelled them; a visitor needs one, so the site shows the scale people
     are rated on, the one that moves, and the local application keeps the tournament's.
     What these hold is that no number appears without its scale, that the site never
-    prints the tournament's number, and that an absent number is a missing column or a
+    prints the tournament's number, and that an absent number is an absent row or a
     sentence rather than an invented one.
 
     The fixture is coherent on purpose: the top rung is +600 in the tournament and 2100 on
@@ -5710,8 +5712,8 @@ class TestOneRatingScaleOnTheSite:
     """
 
     HASH = "abc123def456"
-    COLUMN = 'text-align:right">rated here'
-    """The site column's own heading."""
+    COLUMN = 'data-gloss="ratedHere"'
+    """The site's rating column's (i)."""
 
     @classmethod
     def _page(cls, site: bool, **change: object) -> str:
@@ -5724,13 +5726,13 @@ class TestOneRatingScaleOnTheSite:
 
     @staticmethod
     def _strength(html: str) -> str:
-        start = html.index("How strong each computer player is" if "How strong each"
-                           in html else "How hard each opponent is")
+        start = html.index('id="leaderboard"' if 'id="leaderboard"' in html
+                           else "How hard each opponent is")
         return html[start:html.index("How it scored")]
 
     @staticmethod
     def _unbeaten(html: str) -> str:
-        return html[html.index(">Unbeaten"):html.index("How strong each computer player is")]
+        return html[html.index(">Unbeaten"):html.index('id="voting"')]
 
     @staticmethod
     def _words(markup: str) -> str:
@@ -5741,20 +5743,27 @@ class TestOneRatingScaleOnTheSite:
         plain = re.sub(r'<button class="info".*?</button>', "", markup, flags=re.S)
         return " ".join(re.sub(r"<[^>]*>", " ", plain).split())
 
+    @staticmethod
+    def _rows(markup: str) -> list[str]:
+        import re
+
+        body = markup[markup.index("<tbody>"):markup.index("</tbody>")]
+        return re.findall(r"<tr.*?</tr>", body, re.S)
+
     def test_the_site_has_one_column_and_one_sentence(self) -> None:
         table = self._strength(self._page(True))
-        assert self.COLUMN in table and 'data-gloss="ratedHere"' in table
+        assert ">Leaderboard" in table and 'data-gloss="leaderboard"' in table
+        assert self.COLUMN in table
         assert "in the tournament" not in table and 'data-gloss="ladderScale"' not in table
         said = self._words(table)
-        assert "How strong each computer player is on this game, on the scale people are"                " rated on." in said
+        assert ("Every computer player on this game, strongest first, on the scale people"
+                " are rated on.") in said
         assert "+600" not in table
 
     def test_one_opponent_carries_its_site_number_alone(self) -> None:
-        import re
-
-        rows = re.findall(r"<tr>.*?</tr>", self._strength(self._page(True)), re.S)
+        rows = self._rows(self._strength(self._page(True)))
         assert any("<b>2100</b>" in row for row in rows)
-        assert not any("<b>+600</b>" in row for row in rows)
+        assert not any("+600" in row for row in rows)
 
     def test_the_unbeaten_panel_says_the_same_one_number(self) -> None:
         html = self._page(True)
@@ -5762,34 +5771,44 @@ class TestOneRatingScaleOnTheSite:
         assert "Its strongest computer player is rated 2100 here." in said
         assert "tournament" not in said and "+600" not in said
 
-    def test_an_opponent_the_site_has_not_seeded_shows_no_number(self) -> None:
-        import re
-
-        rows = re.findall(r"<tr>.*?</tr>", self._strength(self._page(True)), re.S)
-        weakest = [row for row in rows if "not rated yet" in row]
-        assert len(weakest) == 1
-        assert "<b>" not in weakest[0]
+    def test_an_opponent_the_site_has_not_seeded_is_no_row(self) -> None:
+        """Never a row with a blank or an invented number: it is named under the table."""
+        table = self._strength(self._page(True))
+        rows = self._rows(table)
+        assert len(rows) == 6 and not any(">random<" in row for row in rows)
+        assert all("<b>" in row for row in rows)
+        assert "<b>random</b>, <b>trade-up</b>" in table
 
     def test_a_game_with_no_site_ratings_has_no_column_and_says_so(self) -> None:
-        standing = {**_game_payload(self.HASH, site=True)["standing"], "siteRatings": {}}
+        """§2.5: the names, weakest first, no numbers, and the sentence for a library game."""
+        standing = {**_game_payload(self.HASH, site=True)["standing"], "rated": False,
+                    "siteRatings": {}, "leaderboard": {
+                        "rated": False, "rows": [], "people": 0, "unrated": [],
+                        "waiting": ["random", "greedy", "easy"], "library": True}}
         table = self._strength(self._page(True, standing=standing))
-        assert "None of them has a rating here yet." in self._words(table)
-        assert self.COLUMN not in table and "+600" not in table
+        said = self._words(table)
+        assert ("This game's computer players have not been rated yet, so every game here"
+                " is practice for now. They are rated on our own machine; this usually takes"
+                " a day.") in said
+        assert "its computer players, weakest first random greedy easy" in said
+        assert self.COLUMN not in table and "+600" not in table and "<b>" not in table
 
     def test_the_local_application_shows_one_scale_and_says_why(self) -> None:
         table = self._strength(self._page(False))
         assert ">in the tournament" in table
         assert "keeps no accounts and rates no people" in self._words(table)
         assert self.COLUMN not in table and "<b>2100</b>" not in table
-        assert "<b>+600</b>" in table
+        assert "<b>+600</b>" in table and "Leaderboard" not in table
 
-    def test_an_absent_ladder_still_shows_no_number(self) -> None:
-        """A stale or missing tournament table is a sentence, not a table of blanks."""
+    def test_an_absent_ladder_file_leaves_the_leaderboard_as_the_server_sent_it(
+        self,
+    ) -> None:
+        """The leaderboard is the site's table, so a stale or missing tournament file on
+        disk changes none of it."""
         html = self._page(True, pickerRatings=None, ratings=None)
         table = self._strength(html)
-        assert "Nobody has been rated on this game yet" in self._words(table)
-        assert "in the tournament" not in table and self.COLUMN not in table
-        # The panel keeps the site's number and claims nothing about the other scale.
+        assert "Nobody has been rated on this game yet" not in self._words(table)
+        assert "in the tournament" not in table and "<b>2100</b>" in table
         said = self._words(self._unbeaten(html))
         assert "rated 2100 here" in said and "in the tournament" not in said
 
@@ -5819,7 +5838,7 @@ class TestFiveStars:
     @staticmethod
     def _panel(html: str) -> str:
         start = html.index('id="voting"')
-        return html[start:html.index("How strong each computer player is", start)]
+        return html[start:html.index('id="leaderboard"', start)]
 
     @staticmethod
     def _row(html: str) -> str:
@@ -6245,6 +6264,19 @@ def _game_payload(digest: str, site: bool) -> dict:
                 agent: 100 * index + 1500.0
                 for index, agent in enumerate(rated) if index
             },
+            # L2: the same table as the leaderboard draws it (`site/leaderboard.py`),
+            # strongest first, nobody yet; the weakest rung and the two stored players
+            # are offered with no row.
+            "leaderboard": {
+                "rated": True, "people": 0, "library": True, "waiting": [],
+                "rows": [
+                    {"name": roster[index + 1]["name"], "computer": True,
+                     "rating": 100 * index + 1500, "settling": False, "games": 0,
+                     "top": index == len(rated) - 1, "gone": False, "you": False}
+                    for index in reversed(range(1, len(rated)))
+                ],
+                "unrated": [roster[1]["name"], "trade-up", "fitted to this game"],
+            },
         }
     return payload
 
@@ -6526,7 +6558,11 @@ class TestWhatReachesThePage:
         # place, a check's sentences, drawings and tray row put on them (five), and the
         # keyboard's ring over the board in *play it here* (one, a constant shape). Every
         # square name, side name and server sentence through `esc`.
-        assert len(sites) == 124
+        # 125 since Q836: the swirl a piece passes through a portal under (`portalSwirl`),
+        # two circles of numbers and a colour token, nothing from outside the page.
+        # 126 since Q830b: what became of a rule file (`ruleFileSaid`), its name, the
+        # validator's lines and the draft's name each through `esc`.
+        assert len(sites) == 126
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
@@ -8492,8 +8528,10 @@ class TestTheBoardAnimation:
         # string does not have -- so the pattern was `\\x08return` and matched nothing
         # in any page. The guard has been vacuous since it was written.
         assert re.search(r"\breturn\s*;", head) is None, "an early return says nothing"
-        # `animateChange`'s two: reduced motion, and a board that changed shape.
-        assert head.count("return 0;") == 2
+        # `animateChange`'s one, a board that changed shape (reduced motion returns
+        # `portalStill`'s duration, Q836), and the trip through a portal's three: an end
+        # with no glyph to pulse, and a move `portalStill` has no crossfade for, twice.
+        assert head.count("return 0;") == 4
         # `animateMove`'s three: nothing changed, a pure rotation, and the end of it --
         # all through the one expression that builds what the phase reads back.
         assert head.count("return nothing();") == 3
@@ -8505,7 +8543,10 @@ class TestTheBoardAnimation:
         from page_text import PAGE
 
         start = PAGE.index("function animateChange(")
-        assert "if (STILL.matches) return 0;" in PAGE[start:start + 200]
+        # Q836: with motion reduced nothing moves; a trip through a portal alone gets a
+        # crossfade, opacity only (`tests/test_portal_travel.py::TestReducedMotion`).
+        assert ("if (STILL.matches) return portalStill(svg, before, after, last, cell, view);"
+                in PAGE[start:start + 900])
 
 
 class TestWhatThePageIsTold:

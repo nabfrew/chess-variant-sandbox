@@ -11,12 +11,52 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-11
+
+### Write a game by hand, or with your own AI
+
+The rule language every game is written in is now described in full, with worked examples, in a page in the project's
+public code. The designer links to it and has a *load a rule file* button: write a game as a file, load it, and it becomes
+your draft. A file with a mistake is refused with the same explanation the designer gives, and your current draft is left as
+it was.
+
+### Pieces travel through portals
+
+A piece moving through a portal now makes the trip on the board: it slides to the portal, spins down into it, and spins
+up out of the other end with a springy landing. Stepping forward through a finished game shows it too. If your device asks
+for reduced motion, the move is a short fade instead.
+
 ## 2026-10-10
+
+### Ask for an invitation
+
+Accounts are still by invitation, but you no longer need to know a member to get one. The sign-in page has a *Request an
+invitation* button: leave your email address and, if you like, a note on how you found the site, and an invitation is sent
+if the request is granted.
+
+### Each game has a leaderboard
+
+A game's page now shows one leaderboard: its computer players and everyone who has finished a rated game on it, strongest
+first. A number still settling over someone's first games carries a question mark, your own row is marked, and a game nobody
+has played yet says so plainly.
+
+### Portal games say when only a portal can move
+
+In check on a portal game where your only way out is to move a portal, tapping one of your pieces now says so and names
+the portals to tap, instead of only saying that piece has no legal move.
+
+### Portal moves: choosing the way is readable again
+
+When a piece can reach a square two ways, directly or through a portal, the box asking which way now shows the piece and
+names each route in ordinary text. Before, the route's words were squeezed into the piece's picture and spilled across the
+box.
 
 ### Every game in the library has rated computer opponents
 
 The 29 newest games in the library had no rated computer players, so they offered only casual play against the computer. All of
-them now do: every game in the library can be played for a rating against computer players of known strength.
+them now do: every game in the library can be played for a rating against computer players of known strength. The computer players on
+every game were rated again the same evening by today's players, each game's table centred on the same five standard
+computer players.
 
 ### New games stay marked as new, and the games list sorts by date
 

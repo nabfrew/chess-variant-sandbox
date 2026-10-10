@@ -305,6 +305,7 @@ class TestTheRouteTable:
             ("POST", "/api/session"),
             ("POST", "/api/session/xyz/move"),
             ("POST", "/api/design/check"),
+            ("POST", "/api/design/load"),
         ):
             assert routes.find(method, path) is not None, f"{method} {path}"
 
@@ -1451,6 +1452,9 @@ STORE: dict[str, tuple[str, ...]] = {
     # `0017_reports.sql`, Q503d. One report a person a game, which is the primary key;
     # `reporter` does not cascade, for `suggestions.author`'s reason.
     "reports": ("reporter", "game", "reason", "note", "created", "dismissed"),
+    # `0034_invite_asks.sql`, Q831. A visitor's request for an invitation: no user, since
+    # the person asking has none; deleted `quota.ASK_KEPT` after it is answered.
+    "invite_asks": ("id", "email", "note", "created", "answered", "granted"),
     # `0018_finishes.sql`, Q502a. Every finish a person sat at, with its moves, which no
     # take-back or restart rewrites; it names its match and nothing about who played.
     "finishes": (
@@ -2691,7 +2695,7 @@ class TestTheCheapIdentityProbe:
 
 
 def _every_page() -> dict[str, str]:
-    """The nine pages, by the path each is served at."""
+    """The ten pages, by the path each is served at."""
     return {
         "/join": page_text.inlined(site_pages.join("code-1")),
         "/signin": page_text.inlined(site_pages.signin()),
@@ -2702,6 +2706,7 @@ def _every_page() -> dict[str, str]:
         "/privacy": site_pages.privacy(),
         "/terms": site_pages.terms_page(),
         "/badges": site_pages.badges(),
+        "/request-invitation": page_text.inlined(site_pages.request_invitation()),
     }
 
 
@@ -2781,7 +2786,8 @@ class TestOneShell:
         assert '<span class="muted small" id="who">ada</span>' in page_text.inlined(site_pages.profile("ada"))
         assert f'{site_pages._member_button("boss")}</span>' in page_text.inlined(site_pages.admin("boss"))
         assert f'{site_pages._member_button("ada")}</span>' in page_text.inlined(site_pages.players("ada"))
-        for path in ("/signin", "/join", "/credits", "/privacy", "/terms", "/badges"):
+        for path in ("/signin", "/join", "/credits", "/privacy", "/terms", "/badges",
+                     "/request-invitation"):
             assert '<span class="muted small" id="who"></span>' in _every_page()[path], path
 
     def test_the_way_to_your_page_is_a_button_that_says_where_it_goes(self) -> None:
@@ -2931,8 +2937,8 @@ class TestTheMaintainersPageOnAPhone:
     def test_every_table_scrolls_inside_its_own_box(self) -> None:
         page = page_text.inlined(site_pages.admin("boss"))
         assert page.count("<table") == page.count('<div class="scroller">')
-        assert page.count("<table") == 18, (
-            "people, invites, games, earlier scores, how much scores moved, people "
+        assert page.count("<table") == 19, (
+            "people, invites, requests for an invitation, games, earlier scores, how much scores moved, people "
             "beating the strongest, the training queue, computer players on people's "
             "scale, the refresher's refusals, the round, "
             "reports, dismissed reports, flagged accounts, suggestions, limits, by day, "
@@ -3051,13 +3057,14 @@ class TestThePages:
         assert found["named"] == ["/api/join"]
 
     def test_the_sites_own_pages_are_listed_in_one_place(self) -> None:
-        """Ten pages, listed beside the routes, so what the site serves is one table
+        """Eleven pages, listed beside the routes, so what the site serves is one table
         rather than a search through a handler. Six of them read the cookie, and one of
-        those six is reached only by an admin. The badge list and the terms (Q722) are not
-        among the six on purpose -- each reads the same for everybody (§3, test 7)."""
+        those six is reached only by an admin. The badge list, the terms (Q722) and the
+        request for an invitation (Q831) are not among the six on purpose -- each reads
+        the same for everybody (§3, test 7)."""
         assert routes.PAGES == (
             "/join", "/signin", "/profile", "/players", "/suggestions", "/credits",
-            "/privacy", "/terms", "/badges", "/admin",
+            "/privacy", "/terms", "/badges", "/admin", "/request-invitation",
         )
         assert routes.PERSONAL == (
             "/join", "/signin", "/profile", "/players", "/suggestions", "/admin"

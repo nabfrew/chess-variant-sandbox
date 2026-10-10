@@ -91,7 +91,7 @@ class TestNoServedPageCarriesAScriptBody:
             if "<script" in html.replace(shell_tag, "")
         }
         assert scripted == {"/", "/join", "/signin", "/profile", "/players", "/suggestions",
-                            "/admin", "/challenge_link", "/players/ada"}
+                            "/admin", "/challenge_link", "/players/ada", "/request_invitation"}
 
 
 class TestTheFilesAreTheWholeOfIt:

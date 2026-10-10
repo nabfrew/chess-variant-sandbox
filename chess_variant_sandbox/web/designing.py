@@ -49,7 +49,13 @@ from chess_variant_sandbox.engine.coming import coming_phases
 from chess_variant_sandbox.engine.compile import HexCopy
 from chess_variant_sandbox.loop.archive import Archive, Entry
 from chess_variant_sandbox.loop.gates import STALLED
-from chess_variant_sandbox.spec import SCHEMA_VERSION, SpecError, spec_hash, validate_spec
+from chess_variant_sandbox.spec import (
+    SCHEMA_VERSION,
+    SpecError,
+    reference,
+    spec_hash,
+    validate_spec,
+)
 from chess_variant_sandbox.spec.describe import (
     RULE_WORDS,
     describe_changes,
@@ -3144,12 +3150,123 @@ def schema_note() -> dict[str, Any]:
     }
 
 
-def load_json(text: str) -> dict[str, Any]:
-    """A pasted spec, with the parse error a person can act on."""
+# ------------------------------------------------------------------ a rule file, loaded
+
+
+RULE_FILE_BYTES = 32 * 1024
+"""The largest rule file the designer reads, in bytes of UTF-8 (Q830b).
+
+The largest game in the library is about 10 KB (a shogi with drops), so this is three of
+those. It also keeps a file, sent as a string inside a design POST's JSON, under the
+site's `quota.DESIGN_BODY_BYTES` however its quotes and line ends are escaped in transit
+-- so the refusal a person reads is this one, about their file, and not the body cap's.
+"""
+
+RULE_FILE_DEPTH = 16
+"""How deeply a rule file's objects and lists may nest (Q830b). The deepest game in the
+library nests 7; the rule language never needs more than about that. Counted before the
+text is parsed, so a file of ten thousand brackets is refused without being built."""
+
+
+def read_rule_file(text: Any) -> dict[str, Any]:
+    """A rule file somebody wrote, by hand or with their own AI, read as a draft (Q830b).
+
+    The text of the file or of the *game as text* box, and nothing else: the page sends
+    what it was given and decides nothing about it. The answer is ``valid`` with the
+    draft, settled as `check` settles one, or not valid with every problem, and then
+    the page keeps the draft it had.
+
+    **The problems are the validator's own lines**, the ones `validate` prints and
+    `RULES.md` shows under *How a wrong file is refused*, not `plain_problems`' form
+    words: whoever wrote the file reads it by its paths (``pieces[1].moves[0].kind``), and
+    the form those words describe is not the thing they wrote. The same two passes as the
+    designer's check -- the validator, then the compiler -- because a file the validator
+    accepts and the compiler refuses is not a game either.
+
+    Nothing is kept and nothing is played. Reading is milliseconds; a save, with every
+    limit and check the site puts on one, is still the only way a draft is written down.
+    """
+    if not isinstance(text, str):
+        return _not_loaded(["That file could not be read as text."])
+    # A byte-order mark is how some editors start a UTF-8 file; it is not part of the JSON.
+    text = text.removeprefix("﻿")
+    if len(text.encode("utf-8", "replace")) > RULE_FILE_BYTES:
+        return _not_loaded([
+            f"That is more than {RULE_FILE_BYTES // 1024} KB, and a rule file may be at most "
+            f"{RULE_FILE_BYTES // 1024} KB. The largest game in the library is about 10 KB."
+        ])
+    if not text.strip():
+        return _not_loaded(["That file is empty."])
+    deepest = _nesting(text)
+    if deepest > RULE_FILE_DEPTH:
+        return _not_loaded([
+            f"That nests {deepest} levels deep, and a rule file may nest at most "
+            f"{RULE_FILE_DEPTH}. No game needs more than about 7."
+        ])
     try:
         found = json.loads(text)
-    except ValueError as error:
-        raise DesignError(f"that is not JSON: {error}") from error
+    except json.JSONDecodeError as error:
+        return _not_loaded([
+            f"That is not JSON: {error.msg} at line {error.lineno}, column {error.colno}."
+        ])
     if not isinstance(found, dict):
-        raise DesignError("a ruleset is a JSON object")
-    return found
+        kind = "a list" if isinstance(found, list) else "a single value"
+        return _not_loaded([
+            f"A rule file is one JSON object, {{ ... }}, and this is {kind}."
+        ])
+    spec = settled(found)
+    problems = _worth_saying(validate_spec(spec))
+    if problems:
+        return _not_loaded(problems)
+    try:
+        engine = Engine(spec)
+        engine.legal_moves(engine.initial_state())
+    except SpecError as error:
+        return _not_loaded(list(error.errors))
+    except ValueError as error:
+        lines = [line.strip(" -") for line in str(error).splitlines() if line.strip()]
+        return _not_loaded(lines or [str(error)])
+    return {"valid": True, "errors": [], "spec": spec}
+
+
+def rule_file_kit() -> dict[str, Any]:
+    """What the page needs to offer a rule file: the link to the published rule language,
+    the two controls' labels `RULES.md` tells a reader to use, and how much of a file to
+    send (one byte over the limit is enough for this module to refuse it in its words)."""
+    return {
+        "rulesUrl": reference.PUBLISHED,
+        "load": reference.LOAD_CONTROL,
+        "paste": reference.PASTE_CONTROL,
+        "bytes": RULE_FILE_BYTES,
+    }
+
+
+def _not_loaded(errors: list[str]) -> dict[str, Any]:
+    return {"valid": False, "errors": errors}
+
+
+def _nesting(text: str) -> int:
+    """How deeply the text's objects and lists nest, read off its brackets.
+
+    Brackets inside strings are not counted, so an icon's or a description's text cannot
+    trip it. Malformed JSON gets an answer too -- the parser that runs next words that
+    refusal -- because all this needs is that no file is parsed deeper than it allows.
+    """
+    depth = deepest = 0
+    in_string = escaped = False
+    for char in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char in "[{":
+            depth += 1
+            deepest = max(deepest, depth)
+        elif char in "]}":
+            depth -= 1
+    return deepest

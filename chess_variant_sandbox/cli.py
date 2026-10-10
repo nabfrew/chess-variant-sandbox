@@ -93,6 +93,20 @@ def _build_parser() -> argparse.ArgumentParser:
     validate.add_argument("ruleset", type=Path)
     validate.set_defaults(handler=_cmd_validate)
 
+    reference = sub.add_parser(
+        "rules-reference",
+        help="write the rule language's reference, RULES.md, from the schema",
+    )
+    reference.add_argument(
+        "--out", type=Path, default=None,
+        help="the file to write (RULES.md at the repository's top); printed when omitted",
+    )
+    reference.add_argument(
+        "--check", action="store_true",
+        help="write nothing; exit 1 if --out differs from what would be written",
+    )
+    reference.set_defaults(handler=_cmd_rules_reference)
+
     bench = sub.add_parser("bench", help="measure move generation throughput")
     bench.add_argument("ruleset", type=Path)
     bench.add_argument("--depth", type=int, default=4)
@@ -763,6 +777,27 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     print(f"  pieces      {', '.join(engine.spec.piece_ids)}")
     print(f"  opening     {len(engine.legal_moves(state))} legal moves")
     print(f"  rule mass   {complexity.rule_mass:.1f}")
+    return 0
+
+
+def _cmd_rules_reference(args: argparse.Namespace) -> int:
+    from chess_variant_sandbox.spec.reference import COMMAND, render_reference
+
+    text = render_reference()
+    if args.out is None:
+        if args.check:
+            raise ValueError("--check needs --out, the file to compare")
+        sys.stdout.write(text)
+        return 0
+    if args.check:
+        current = args.out.read_text(encoding="utf-8") if args.out.exists() else None
+        if current != text:
+            print(f"{args.out} is out of date; regenerate it with `{COMMAND}`")
+            return 1
+        print(f"{args.out} is current")
+        return 0
+    args.out.write_text(text, encoding="utf-8", newline="\n")
+    print(f"wrote {args.out}")
     return 0
 
 

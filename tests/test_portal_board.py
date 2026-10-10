@@ -5,8 +5,9 @@ What can be held without a browser: the glyph's markup for each end (§4, D3, D9
 transit's two ends and its way out as the server reads them off the position, the chooser
 of where a piece comes out (D6), the copy it lights on a view slid across the seam (N6), the
 legend's two new rows and the tokens the glyph draws in. The look itself -- that the rim reads
-on both woods, that the chevrons and the double rim are legible, that the move plays in two
-beats -- is the look check's (`docs/reference/portal-board-look.md`).
+on both woods, that the chevrons and the double rim are legible -- is the look check's
+(`docs/reference/portal-board-look.md`); the move's journey through a portal is
+`test_portal_travel.py`'s (Q836).
 
 The chooser's position is hand-built on the archived `cylinder wormhole` (cylinder chess, one
 fixed two-way pair on d4 and d5): a white rook on a4 with rank 4 otherwise empty reaches d4

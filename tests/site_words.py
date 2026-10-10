@@ -42,7 +42,10 @@ PHRASES: dict[str, tuple[str, int]] = {
     "schema": (r"schema", re.I),
     "candidate": (r"candidate", re.I),
     "yardstick": (r"yardstick", re.I),
-    "leaderboard": (r"leaderboard", re.I),
+    # The rated mode's internal name (*leaderboard game*, *leaderboard mode*); a visitor reads
+    # *rated game*. Since L2 (`plan-leaderboard.md` §3, the user's word of 2026-10-10) a
+    # game's table of ratings is its *Leaderboard*, so the word alone is the site's own.
+    "leaderboard": (r"\bleaderboard[- ](?:mode|games?|match(?:es)?)\b", re.I),
     "sandbox mode": (r"sandbox mode", re.I),
     # Q579 (F7, F8; rows P1-P21, S1-S12): an opponent in the machine's terms, and the
     # profile's jargon.
