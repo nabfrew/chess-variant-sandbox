@@ -336,7 +336,8 @@ def self_play(
     built-in-only block (``replay_games``), so a harvest of these records is the union
     E1 trains on, and every arm harvesting them shares its positions.
     """
-    from chess_variant_sandbox.tournament.runner import run_tournament, schedule
+    from chess_variant_sandbox.tournament.checkpoint import run_tournament
+    from chess_variant_sandbox.tournament.runner import schedule
 
     config = _config(procedure, workers)
     # A generation's net seat must be the parent the name carries, or it would play the
@@ -356,8 +357,19 @@ def _play_tasks(spec: dict[str, Any], config: Any, tasks: list[Any], most: int) 
     from concurrent.futures import ThreadPoolExecutor
 
     from chess_variant_sandbox.engine import Engine
+    from chess_variant_sandbox.tournament import checkpoint
 
     engine = Engine(spec)
+    # Q732: inside a campaign directory, in sealed pieces a restart skips; the same games.
+    resumable = checkpoint.play_games(
+        {"ruleset_hash": engine.spec.hash, "opening_plies": most},
+        config.agents,
+        tasks,
+        lambda piece: [diverse_game(engine, task, most) for task in piece],
+        config.resolved_workers(),
+    )
+    if resumable is not None:
+        return resumable
     with ThreadPoolExecutor(max_workers=config.resolved_workers()) as pool:
         return list(pool.map(lambda task: diverse_game(engine, task, most), tasks))
 
@@ -413,7 +425,7 @@ def replay_games(spec: dict[str, Any], procedure: Procedure, workers: int = 0) -
     parent's was; with one, only ``replay_tasks`` are played. Either way the games are a
     pure function of the schedule's seeds, whatever the thread count.
     """
-    from chess_variant_sandbox.tournament.runner import run_tournament
+    from chess_variant_sandbox.tournament.checkpoint import run_tournament
 
     replay = procedure.replay
     if replay is None:
@@ -618,7 +630,17 @@ def harvest(
     # Each chunk is packed into arrays as it arrives (Q713): a union of 3.7 M positions held
     # as Python lists of ints until the end would need several GB; the arrays are the same.
     parts: list[tuple[np.ndarray, ...]] = []
-    if workers <= 1 or len(games) < 2:
+    from chess_variant_sandbox.tournament import checkpoint
+
+    campaign = checkpoint.current()
+    if campaign is not None and games:
+        # Q732: in sealed pieces of games a restart skips, concatenated in game order as the
+        # chunks below are, so the dataset is the same.
+        parts = _harvest_pieces(campaign, spec, games, procedure, parent, workers, report)
+        from chess_variant_sandbox.engine import Engine
+
+        n_inputs = int(Engine(spec).core.net_inputs())
+    elif workers <= 1 or len(games) < 2:
         _setup(spec, procedure, parent)
         parts.append(_packed(_harvest_games(games)))
         n_inputs = int(_WORKER["engine"].core.net_inputs())
@@ -658,6 +680,80 @@ def harvest(
         values=values,
         teacher=procedure.teacher,
     )
+
+
+def _harvest_packed(games: Sequence[Game]) -> tuple[np.ndarray, ...]:
+    """A worker's harvest of ``games``, packed: one campaign piece (Q732)."""
+    return _packed(_harvest_games(games))
+
+
+def _harvest_pieces(
+    campaign: Any,
+    spec: dict[str, Any],
+    games: list[Game],
+    procedure: Procedure,
+    parent: bytes,
+    workers: int,
+    report: Report | None,
+) -> list[tuple[np.ndarray, ...]]:
+    """``harvest``'s packed parts through a campaign directory (Q732), in game order.
+
+    The stage is named by the ruleset, the procedure, the games (moves, results, seeds)
+    and the parent's bytes; a piece is a run of games, cut from the game count alone.
+    """
+    import io
+    from concurrent.futures import Executor, ThreadPoolExecutor
+
+    from chess_variant_sandbox.engine import Engine
+    from chess_variant_sandbox.tournament import checkpoint
+
+    identity = {
+        "ruleset_hash": Engine(spec).spec.hash,
+        "procedure": procedure.digest,
+        "games": checkpoint.digest([[i, moves, score, seed] for i, moves, score, seed in games]),
+        "parent_sha256": hashlib.sha256(parent).hexdigest(),
+    }
+    stage = campaign.stage("harvest", identity, list(range(len(games))))
+
+    def encode(part: tuple[np.ndarray, ...]) -> bytes:
+        buffer = io.BytesIO()
+        np.savez(buffer, *part)
+        return buffer.getvalue()
+
+    def decode(payload: bytes, piece: list[int]) -> tuple[np.ndarray, ...] | None:
+        with np.load(io.BytesIO(payload)) as found:
+            part = tuple(found[f"arr_{column}"] for column in range(8))
+        if not set(part[4].tolist()) <= set(piece):
+            return None
+        return part
+
+    pool: Executor
+    if workers <= 1:
+        _setup(spec, procedure, parent)
+        pool = ThreadPoolExecutor(max_workers=1)
+    else:
+        pool = ProcessPoolExecutor(
+            max_workers=workers,
+            mp_context=get_context("spawn"),
+            initializer=_setup,
+            initargs=(spec, procedure, parent),
+        )
+    step = max(1, len(games) // 10)
+    last = [0]
+
+    def on_piece(done: int) -> None:
+        if report is not None and (done - last[0] >= step or done == len(games)):
+            last[0] = done
+            report(f"  harvested {done}/{len(games)} games")
+
+    with pool:
+        found: list[tuple[np.ndarray, ...]] = stage.run(
+            lambda piece: pool.submit(_harvest_packed, [games[index] for index in piece]),
+            encode,
+            decode,
+            on_piece,
+        )
+    return found
 
 
 def _packed(part: Harvested) -> tuple[np.ndarray, ...]:

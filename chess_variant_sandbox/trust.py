@@ -274,10 +274,13 @@ def _ladder(stored: dict[str, Any] | None, state: str, date: str | None) -> Item
         withheld = named if withheld is None else withheld & named
     blind = sum(1 for run in runs if run.get("unreadable"))
     finds = bool(withheld)
+    # Some runs blind and some not: the score keeps the ladder (silent, the level unmoved),
+    # but a visitor is told how many runs it rests on (plan-confidence.md §2.3.1).
+    partly = not finds and 0 < blind < len(runs)
     return Item(
         LADDER, state, FINDS_MORE if finds else SILENT,
         count=Count(blind, len(runs), "runs"), date=date,
-        sentence="ladder.withheld" if finds else "ladder.ordered",
+        sentence="ladder.withheld" if finds else "ladder.partly" if partly else "ladder.ordered",
         detail={"withheld": sorted(withheld or ())},
     )
 
@@ -491,6 +494,10 @@ QUESTIONED_TAIL = ("Read the score as a first guess; it will be measured again w
 _SAID: dict[str, str] = {
     "ladder.ordered": ("Its computer players get steadily stronger with more thinking time, "
                        "which is what the score needs."),
+    # `{read}` of `{of}`: the runs that could read it (the count is the blind ones).
+    "ladder.partly": ("Its computer players got clearly stronger with more thinking time in "
+                      "only {read} of the {of} runs that measured this game, so parts of the "
+                      "score rest on {those} alone."),
     "ladder.withheld": ("Its computer players don't get clearly stronger with more thinking "
                         "time here, so parts of the score describe the players more than "
                         "the game."),
@@ -588,6 +595,12 @@ def said(item: Item, *, counted: bool = False, fairy_translates: bool | None = N
         if fairy_translates is None:
             return ""
         text = FAIRY_NOT_TRIED if fairy_translates else _SAID["fairy.not-played"]
+    elif item.sentence == "ladder.partly":
+        if item.count is None:
+            return ""
+        read = item.count.of - item.count.n
+        those = "that run" if read == 1 else "those runs"
+        text = _SAID["ladder.partly"].format(read=read, of=item.count.of, those=those)
     else:
         text = _SAID.get(item.sentence, "")
     if not text:

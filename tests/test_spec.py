@@ -888,7 +888,34 @@ def test_every_rule_a_player_is_charged_for_is_a_rule_they_are_told(path) -> Non
         )
 
 
-@pytest.mark.parametrize("path", RULESET_PATHS, ids=lambda p: p.stem)
+def _stated_properties(piece: dict[str, object]) -> list[str]:
+    """The piece properties a ruleset states, of the four `describe` must say.
+
+    A property spelled out at its default is the absence of the property, and saying so
+    would be noise -- `"royal": false` is every piece that is not a king. `captures` is the
+    exception: an empty list is a real statement, and a piece that may take nothing at all
+    is not a piece with no restriction.
+    """
+    return [
+        key
+        for key in ("captures", "region", "promoted_from", "royal")
+        if key in piece and (piece[key] or key == "captures")
+    ]
+
+
+# Only the rulesets that state one: a ruleset that states none has nothing to check, and
+# until Q745 it was a case whose loop ran over nothing (antichess and dull).
+STATING_PATHS = [
+    path
+    for path in RULESET_PATHS
+    if any(
+        _stated_properties(piece)
+        for piece in json.loads(path.read_text(encoding="utf-8"))["pieces"]
+    )
+]
+
+
+@pytest.mark.parametrize("path", STATING_PATHS, ids=lambda p: p.stem)
 def test_every_piece_property_is_stated(path) -> None:
     """The same check one level down, where `captures` and `region` went missing."""
     from chess_variant_sandbox.spec import load_spec
@@ -897,15 +924,7 @@ def test_every_piece_property_is_stated(path) -> None:
     spec = load_spec(path)
     baseline = describe_spec(spec)
     for index, piece in enumerate(spec["pieces"]):
-        for key in ("captures", "region", "promoted_from", "royal"):
-            if key not in piece:
-                continue
-            # A property spelled out at its default is the absence of the property, and
-            # saying so would be noise -- `"royal": false` is every piece that is not a
-            # king. `captures` is the exception: an empty list is a real statement, and
-            # a piece that may take nothing at all is not a piece with no restriction.
-            if not piece[key] and key != "captures":
-                continue
+        for key in _stated_properties(piece):
             without = copy.deepcopy(spec)
             del without["pieces"][index][key]
             assert describe_spec(without) != baseline, (

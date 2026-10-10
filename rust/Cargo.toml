@@ -2,6 +2,11 @@
 name = "chess-variant-sandbox-core"
 version = "0.1.0"
 edition = "2021"
+# The newest stable whose whole std the browser core's compiler carries
+# (deploy/versions.env's PYODIDE_RUST_TOOLCHAIN). The box builds with a far newer Rust, so
+# nothing native notices an API past this; clippy's `incompatible_msrv`, denied below, does,
+# and tests/test_browser_toolchain.py holds this to the pin. Q808.
+rust-version = "1.89"
 description = "Move generation, search and tournament execution for the Chess variant sandbox harness"
 license = "GPL-3.0-only"
 publish = false
@@ -18,3 +23,8 @@ rayon = "1"
 opt-level = 3
 lto = "thin"
 codegen-units = 1
+
+[lints.clippy]
+# A std API newer than rust-version builds here and on the box, and fails only in the
+# browser build, which a deploy runs last. Denied so `cargo clippy` says so at the edit.
+incompatible_msrv = "deny"

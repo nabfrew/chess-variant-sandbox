@@ -239,6 +239,7 @@
     }
   },
   "provenance": {
+    "added": "2026-09-07",
     "origin": "human",
     "source": "a widely played chess variant",
     "history": "Hand-written as atomic chess with rules.explode_on_capture.of set to the queen and nothing else changed, as the demonstrating ruleset for that key (schema 10, row 26 of reference/schema-showcase-coverage.md). Its sibling archive/queen-bomb.json narrows the same rule by the capturer instead; both are one key from rulesets/atomic.json, which is the control for each."

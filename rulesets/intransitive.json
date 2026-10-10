@@ -187,6 +187,7 @@
     }
   },
   "provenance": {
+    "added": "2026-09-03",
     "origin": "human",
     "source": "webgoatguy https://www.youtube.com/watch?v=LO_zcGNJriA&t=7s",
     "history": "Transcribed from the video, and corrected twice since against what the designer actually says. The user removed a phantom rules.territory on 2026-09-06 (c947850, hash 15e3eb35bfbc -> 09861015bb3a). Q120 added rules.repetition_draw: \"never\" on 2026-09-07 (09861015bb3a -> d93e28d09a33): the key was absent, which the schema reads as the default 3, and the video is explicit that there is no draw by repetition. Schema 10 is what makes that sayable. Q696 changed rules.no_progress_draw from 100 to 200 on 2026-10-04 (d93e28d09a33 -> 29d5213b02b2), the user's decision of 2026-10-03: the official site's program (hushhush) counts 200 plies, and the designer is in touch with it, so its reading is trusted. The starting position is still the transcriber's reading of images the transcript does not describe; the piece counts are the designer's and the geometry is not verified. runs/15e3eb35bfbc-0, runs/09861015bb3a-0 and the four runs/d93e28d09a33-<seed> are kept as records of the three specs that no longer exist."

@@ -101,6 +101,7 @@
     "no_progress_draw": 100
   },
   "provenance": {
+    "added": "2026-09-04",
     "origin": "human",
     "source": "modification of chess",
     "history": "trying out the piece orientation rule."

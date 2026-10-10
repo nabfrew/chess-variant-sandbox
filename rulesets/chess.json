@@ -87,6 +87,7 @@
     "no_progress_draw": 100
   },
   "provenance": {
+    "added": "2026-08-19",
     "origin": "human",
     "source": "international chess",
     "history": "The calibration baseline for this project rather than its goal. Every measurement was normalised against this game, so its numbers are the scale."

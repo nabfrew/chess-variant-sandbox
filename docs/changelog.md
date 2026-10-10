@@ -11,6 +11,198 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-10
+
+### Every game in the library has rated computer opponents
+
+The 29 newest games in the library had no rated computer players, so they offered only casual play against the computer. All of
+them now do: every game in the library can be played for a rating against computer players of known strength.
+
+### New games stay marked as new, and the games list sorts by date
+
+The front page's *new in the library* shelf now follows the day each game joined, so a game added tomorrow appears there with no
+one updating a list, and it lets go of a game after two weeks. Every game now carries the day it was added, and the games list can
+be ordered newest first, each card saying its day.
+
+### Smaller fixes from watching people's first visits
+
+A resign or cancel button now waits fifteen seconds for its second press, so there is time to read *really resign?*. On a phone,
+tapping a tag on a game's card says what the tag means instead of opening the game; the cards on the front page open from anywhere
+on them; a list with no scored games opens in name order rather than *by score*; and the games list is ready about a third sooner
+after the site restarts. In the designer, picking a piece no longer makes the board jump, *teach a move* names its squares, and a
+tall board in a game between two people now fits on a phone's first screen.
+
+### Ferry without the shuffle
+
+In Ferry, two in five games ended in a repetition, nearly all of them by a player moving a portal straight back to where it had just
+been. A twin game, Ferry no straight back, forbids exactly that, the way Go forbids retaking a ko at once: repetitions fall to fewer
+than one game in ten, and it scores higher than Ferry. In the designer, a portal pair's card has a *Not straight back* tick for this.
+
+### Make your own portal games
+
+The designer has a portal row in its tray: put down a pair, move either end, renumber or remove it, and choose who may move each
+end. Each pair has a card that says in plain sentences what it does, and when you teach a piece a move the board shows where it would
+come out of a portal before you try it. To start from one that works, open Divide, Ferry or Carousel and choose *make your own from this*.
+
+### Portals, and seven games that use them
+
+A board can now hold pairs of portals: a piece that steps into one comes out of the other and carries on in the same direction,
+and a square it can reach two ways asks which way you meant. Seven new games in the library use them. In Divide a wall splits the
+board and the portals are the only way across; in Ferry either player may move the portals themselves; in Carousel some doors open
+for one side only. Four small games each try one idea on a little board, and two of those are marked not viable: there, the
+player who moves first gets through the door first and almost always wins.
+
+### Hex moves you write once and turn
+
+In the designer, a piece's move on a hexagonal board can now be written once and turned all six ways, or turned and mirrored, instead
+of listing every direction by hand. Two new archive games are Gliński's hexagonal chess written this way; they play exactly like it.
+
+## 2026-10-09
+
+### Jeson Mor, where you win by leaving the centre
+
+A game can now be won by moving a piece off a square. In Jeson Mor, each side has nine knights, and the first to land a knight
+on the centre square and then step off it again wins. It is in the library with a score of 0.70, below the bar
+the library sets for a good game.
+
+### Kyoto shogi, where a piece in hand can come back as either of its faces
+
+Kyoto shogi is in the library with a score. Its pieces turn over every time they move, and a captured piece can be put back on the
+board as either of its two faces: the board page now shows one button for each face when you hold such a piece.
+
+### Two games that start with pieces in hand: Placement chess and Sittuyin
+
+In Placement chess and Sittuyin (Burmese chess), the pieces other than the pawns begin off the board, the king among them, and the
+game opens with each side placing them one at a time. Both are in the library with scores.
+
+### Two more games: Extinction chess and Grand chess
+
+Extinction chess, where you lose when any one kind of your pieces is gone, and Grand chess, where a pawn may only promote to a
+piece you have already lost, now play by their real rules and are in the library with scores.
+
+### Two new games: Einstein chess and Omega chess
+
+The rule language can now say two things it could not: a piece that captures may stay what it is instead of changing (Einstein
+chess, where a queen that takes stays a queen), and castling may happen on a row that has walls beyond the rooks (Omega chess).
+Both games are in the library with scores.
+
+### The map's settings and the designer's checkboxes are back in place
+
+On a wide screen the map's settings fit on one line again, so the drawing starts on the first screen instead of below it. In the
+designer, the *royal* box sits beside its word again. On a phone, a ticked line under *Publish* that wraps now lines up under its
+own words.
+
+### Scores for the three newest games
+
+Pawn Knockdown, Shogi Backward Drops and Shogi Drop Promoted now have scores, each the average of four measurements.
+
+### A game whose computer players could be told apart only some of the time now says so
+
+Each library game is measured four times. Where the stronger computer players beat the weaker ones clearly in only some of those
+measurements, the game's page now says in how many, instead of calling them steadily stronger. How far the score is trusted does
+not change.
+
+### The designer explains a draft that isn't a game yet
+
+When you ask the designer what a piece can do in a draft that is not yet a complete game, it now says what is missing in a plain
+sentence instead of failing with a server error.
+
+### Plainer words when measuring stops, and the board's tabs first on a phone
+
+When measuring a game in your browser stops before it finishes, the page now says so in plain words instead of showing a programming error. Game pages no longer show the technical names another chess program uses for pieces and rules, and on a phone the board page's moves, rules and pieces tabs now come before the players' lines instead of under them.
+
+### New games and Intransitive on the front page; the games page goes straight to the list
+
+The front page now shows the games added to the library most recently, each with the day it was added and its score, or a plain *not measured* where the computer players have not measured it yet. Below them, *Intransitive*, the rock, paper, scissors strategy game, has a place of its own, beside today's game and this month's game, which used to sit at the top of the games page. The games page now opens straight on the search and the filters, with every game in the list, instead of repeating the front page's picks above a folded *All games*.
+
+### The game builder and the map in the site's look
+
+The game builder and the map now look like the rest of the site. In the builder, each piece is its own sheet of paper, the one you are editing is edged in green, and the rules are rows separated by thin lines instead of boxes inside a box. On the map, the settings above the drawing sit on one sheet. On a phone that sheet folds to a single line, so the map is the first thing you see, and one tap opens the settings.
+
+### Where the computer players stand among people
+
+On a game where at least five people have a settled rating, the line about its strongest computer player now says, under *more*, where each computer player people have played sits among them: about which rating a person would need to play like it, and how many of the people with a settled rating it is above. It comes from rated games people played against it, and it changes no game's score.
+
+### Placing a captured piece, right on the board
+
+In games where taking a piece throws it onto a square of your choosing, the choice of square now appears in a box over the board, as choosing a new piece for a pawn does: each square a large button named as on the board's edge, with *Look at the board* and Cancel. When your pawn takes on the far side, the box first asks what the pawn becomes, with each piece drawn and named, then where the piece you took goes. Before, both were a row of small buttons under the board that named the new piece by a single letter.
+
+## 2026-10-08
+
+### The wolves show both of their next steps
+
+In games with pieces that belong to nobody and walk on their own, like the wolves, each one takes two steps before it is your move again: one after your move and one after your opponent's. The board now shows both. The dotted arrow is where it goes after the next move, and a fainter dotted arrow carries on from there to where it goes after the move after that. The line under the board says which is which, in a game against the computer, in a game against another person and when you step back through a game.
+
+### Finding other players
+
+Members now have *People* at the top of every page. It opens a list of every member, A to Z, with a search box: type a few letters of a name, or of a game somebody made, and press a name to open that member's page. A member's page shows the games they made, newest first, the games they played lately, their milestones and badges, and says plainly what there is nothing of yet. *Challenge* on their page now offers the games they made first, and starts a correspondence game when they accept. Names elsewhere on the site, on a game's page and on your own page, now open that person's page too.
+
+### Choosing what your pawn becomes, right on the board
+
+When your pawn reaches the far side, the board now darkens and a box over it asks *Choose what your pawn becomes*, with each piece drawn large; tap one, press *Look at the board* to see the whole position first (the move waits until you choose), or press Cancel. Before, the choice was a row of small buttons under the board that was easy to miss.
+
+## 2026-10-05
+
+### Members' games on the front page show their own pieces
+
+The small boards under *Made by members* on the front page showed every piece as a letter in a circle the first time you opened the page. They now show each game's own pieces, the same drawings as on the games page and the game's own page, including pieces a member drew themselves.
+
+### A bigger board in a game against another person
+
+In a game against another member, a tall board (torus chess crazyhouse, say) used to sit at half the width it had room
+for, with *Send your move* and *Change my move* squeezed under it, *Change my move* cut to a few letters. On a wide
+screen those buttons now stand beside the board when that leaves the board more room, so a tall board is about half
+as wide again. On a phone they take the whole width and wrap their words rather than cut them off. The board no longer
+shrinks by a few pixels the first time you pick a move.
+
+### Publishing a game no longer waits for the site's check
+
+When you build a game, the button that measures it on your computer is now right beside *Publish*, under the line that
+says a score is needed, so there is no scrolling away and back. Once your computer has finished measuring, *Publish*
+works straight away: press it and the page says publishing will be complete once the site has checked the score. You
+can leave then. The game goes on trial by itself when the check passes, a few minutes later. If the check finds a
+problem, nothing is published and the page says why.
+
+### Games made by members, on the front page
+
+The front page now has a shelf of its own for games members have designed and published here, straight under the
+opening board: the four published most recently, each with its opening position, the name of the member who made it
+and a *Play* button, and a link to the rest when there are more. Drafts are never on it. Until somebody publishes a
+game, the shelf says it is empty and invites you to build one. The opening board also now says which of its games is
+today's game.
+
+### Changing your mind about a move before you send it
+
+In a game against another person, a move you have picked but not sent can now be changed as easily as it was picked.
+Tap another square the same piece can reach and the move goes there instead; tap a different piece of yours to pick
+that one; tap the picked piece or the square it would land on to take the move back. Beside *Send your move* there is
+now a *Change my move* button that does the same (at a keyboard, so does the Escape key), and the words above and under the board say the move can be changed
+until you send it. Nothing reaches the other player until you press *Send your move*.
+
+### A move you have picked but not sent is plain to see
+
+In a game against another person, the move you pick now shows on the board itself: the piece stands faded on the
+square it would go to, with a dashed arrow and dashed outlines, while the other player's last move keeps its usual
+yellow shading. Under the board a large *Send your move* button sits in a dashed box that says the other player has
+not seen your move yet; nothing reaches them until you press it, and *put it back* lets you choose again. If you leave
+the page first, the browser asks before you go, and the move is still waiting on the board when you come back on the
+same device. On your list of games waiting on your move, such a game says *Not sent yet*.
+
+### Inviting a friend to play, from the game itself
+
+Under *Play a person* on a game's page there is now a place for a friend who isn't a member yet. If the person who
+runs the site has given you invitations, type your friend's email address there and they get an invitation from you;
+once they have joined, challenge them on the same page. If you have none, it says so and who to ask. The button at the
+top right, which used to look like just your name, now reads *your page* and looks like a button you can press.
+
+### A score is an estimate that keeps improving
+
+Every score on the site is now treated as the best estimate we can make today, not a final verdict. When the computer
+players get stronger or the way a game is measured improves, the games are measured again on their own, one at a time,
+and each score moves to its new value. While a game waits its turn it keeps its last score, marked *provisional*. The
+yardstick a score is read against no longer shifts when a game joins or leaves the reference set, so a score moves
+because something about its own game was learned, not because the list around it changed.
+
 ## 2026-10-04
 
 ### Games you make can be published
@@ -1055,8 +1247,8 @@ a score moves between runs. Every other game's score is unchanged.
 
 A game that has left the library has a working page again. It shows the rules, the score
 and the games played on it, with a *retired* label where the board was. The person who made
-the game, or an admin, can delete its rules for good from a button on that page, confirmed
-once. Games played on it, ratings, votes and badges all stay and name it *deleted game*, so
+the game can delete its rules for good from a button on that page, confirmed once, and the
+site's keepers can too. Games played on it, ratings, votes and badges all stay and name it *deleted game*, so
 nobody's statistics change. A saved draft cannot be deleted this way yet.
 
 ### A game decided by who moves first is caught more often
@@ -1118,10 +1310,9 @@ site at the next deploy.
 
 ### The site's own pages look like the rest of the site
 
-The sign-in, profile, maintenance, credits and privacy pages now share the app's header
+The sign-in, profile, credits and privacy pages now share the app's header
 and stylesheet. A game named on the profile opens that game instead of the library. The
-profile lists what you have played first, then the rest by name. The maintenance page fits
-a phone. The credits read as a list of artists rather than a list of files. On main, and on
+profile lists what you have played first, then the rest by name. The credits read as a list of artists rather than a list of files. On main, and on
 the site at the next deploy.
 
 ### A game's page names its firsts
@@ -1249,7 +1440,7 @@ its reason in the same place. This is on main and reaches the site at the next d
 
 The site was deployed this evening. It now shows a current score for all 72 games, where it
 had shown every score as out of date since 14 September. It also has what was waiting on
-main. Boards can be hexagonal. Invitations can be sent from the Maintenance page. A
+main. Boards can be hexagonal. People can be invited to the site by email. A
 signed-in person can save a draft from the designer, and the draft is listed only if it
 passes the playability check. The game page and the designer no longer draw buttons the
 site refuses.
@@ -1300,7 +1491,7 @@ This arrives with the next deploy.
 A signed-in person will be able to save a draft on the site again, check that it plays, and
 follow its progress. A visitor is asked to sign in. A saved draft that passes the playability
 check appears in the library; one that fails stays unlisted and opens only by its link. Either
-can be played for practice, and an admin can take one down from the Maintenance page. The long
+can be played for practice, and the site's keepers can take one down. The long
 measurement, nominating a game, and re-rating a game's computer players stay off on the site.
 This arrives with the next deploy, once the playability check has a time limit.
 

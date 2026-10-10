@@ -40,6 +40,8 @@ from chess_variant_sandbox.viz.pieces import credits_for, icons_for
 from chess_variant_sandbox.viz.wrapped import (
     WRAPPED,
     goal_payload,
+    portal_payload,
+    portal_transit,
     walls_payload,
     wrap_payload,
     zone_payload,
@@ -67,6 +69,11 @@ def render_game(
                 # page splits the ply into beats from it; empty for every ruleset
                 # without ``rules.npcs``.
                 "phase": [step.as_dict() for step in phase],
+                # Who made it, which is whose passage a portal shows on the position
+                # before it; and, for a move through a portal (schema 19), the two ends
+                # it passed, so the replay marks both (`viz.wrapped.portal_transit`).
+                "player": state.side_to_move,
+                **(portal_transit(engine, state, move) or {}),
                 "material": record.material[index] if index < len(record.material) else None,
                 "branching": record.branching[index] if index < len(record.branching) else None,
             }
@@ -160,6 +167,9 @@ def _write_page(
         # Squares a piece promotes on, compiled, per player. ``None`` for a game with no
         # promotion, which is what the replay tests to draw no band and offer no toggle.
         "zones": zone_payload(engine.spec.promotions),
+        # Schema 19: each portal end's pair, colour, movers and doors, compiled, so an end
+        # is drawn as the play board draws it (`portalGlyph`). ``None`` without portals.
+        "portals": portal_payload(engine.spec),
         "pieceIcons": art,
         "credits": credits_for(art),
         "boards": boards,
@@ -199,6 +209,10 @@ _TEMPLATE = """<!doctype html>
        promotes on. Blue and rose because the board's other colours are spoken
        for: amber, ochre, teal, and green and purple for ground held. */
     --seam: #3466ac; --zone: #b0468a;
+    /* A portal end (schema 19): its rim's two colours, the near-black that edges the
+       rim, and the stone of an end nobody moves; the play board's own values. */
+    --portal-a: #e8590c; --portal-b: #2a86e0; --portal-edge: #1e140c;
+    --portal-stone: #b3aca1;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -208,6 +222,7 @@ _TEMPLATE = """<!doctype html>
       --p2: #8f6a2f; --p2-ink: #f4f2ee;
       --goal: #5cc9bd;
       --seam: #74a6ef; --zone: #e58cc4;
+      --portal-stone: #9b948a;
     }
   }
   * { box-sizing: border-box; }

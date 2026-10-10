@@ -55,8 +55,16 @@ SEED = 1000
 # Two searching players, so every game is one the analysis pass grades and every blunder
 # trial has a game to be drawn from. Neither carries `fit=`, so nothing here needs a
 # fitted store in place first.
+#
+# The minimax player spells `threats=0`, the search before Q502i's repair, as a small-sample
+# fixture pinned to the old search does (`.claude/rules/agents-and-eval.md`). With the repair
+# on, 50 nodes go to chasing threats and every one of the four games ends in three plies, so
+# no game reaches the twelve a blunder trial is drawn from (`analysis._blunder_choices`) and
+# the trial test below had nothing to test (red from Q502i until Q743). With it off, two of
+# the four run 27 and 64 plies.
 ROSTER = TournamentConfig(
-    agents=("greedy", "minimax:nodes=50"), games_per_pairing=1, seed=SEED, workers=1
+    agents=("greedy", "minimax:nodes=50,threats=0"),
+    games_per_pairing=1, seed=SEED, workers=1,
 )
 
 

@@ -120,6 +120,12 @@ PHRASES: dict[str, tuple[str, int]] = {
     "ceiling": (r"\bceiling", re.I),
     "floor": (r"\bfloors?\b", re.I),
     "verdict": (r"(?<!not a )\bverdicts?\b", re.I),
+    # Q728: Fairy-Stockfish's own vocabulary, which its reasons carried to the game page:
+    # the notation it writes a piece in, its option names and the slots of its board
+    # (`fairy.words._JARGON` says each as what it means). Ralph Betza, the man, stays.
+    "Fairy-Stockfish's own terms": (
+        r"(?<!Ralph )\bBetza\b|blastOnCapture|\bking slot|\bcustom slots?\b|\bvariant options?\b"
+        r"|\btranslator\b", re.I),
 }
 
 # What the site serves today that still holds a phrase, one entry per phrase with the rows of

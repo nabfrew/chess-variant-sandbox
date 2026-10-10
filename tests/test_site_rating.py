@@ -42,6 +42,16 @@ LADDER = {
 }
 
 
+# The same game rated again: every rung moved, and not all by the same amount.
+RERUN = {
+    "standings": [
+        {"name": "minimax:nodes=6400", "rating": 250.0},
+        {"name": "greedy", "rating": 40.0},
+        {"name": "random", "rating": -290.0},
+    ]
+}
+
+
 def _table(*players: r.Player) -> r.Table:
     return {player.key: player for player in players}
 
@@ -206,23 +216,65 @@ class TestSeeding:
         table = r.seeds_from_ladder(r.rungs(LADDER))
         assert r.seeds_from_ladder(r.rungs(LADDER), table) == {}
 
-    def test_a_re_rated_ladder_reseeds_nothing_even_when_the_numbers_moved(self) -> None:
+    def test_a_re_rated_ladder_reseeds_every_row_nobody_has_played(self) -> None:
+        """L3's reseed rule (`plan-leaderboard.md` §2.3): an unplayed row is only its seed.
+
+        So a newer ladder replaces it. Before L3 a re-rated ladder reseeded nothing, and a
+        table nobody had played kept its first ladder's numbers for good.
+        """
         table = r.seeds_from_ladder(r.rungs(LADDER))
-        rerun = {
-            "standings": [
-                {"name": "minimax:nodes=6400", "rating": 250.0},
-                {"name": "greedy", "rating": 40.0},
-                {"name": "random", "rating": -290.0},
-            ]
+        found = r.seeding(r.rungs(RERUN), table)
+        assert found.added == () and found.kept == 0
+        # The spine's mean is 0, so the seats are the ratings plus 1500.
+        assert {row.key.agent: row.rating for row in found.reseeded} == {
+            "minimax:nodes=6400": 1750.0, "greedy": 1540.0, "random": 1210.0,
         }
+        assert all(row.deviation == r.COMPUTER_DEVIATION and row.matches == 0
+                   for row in found.reseeded)
+
+    def test_a_reseed_leaves_the_rows_people_have_played(self) -> None:
+        """A played row keeps the number people gave it, and fixes the scale the rest
+        arrive on: the newer ladder's gaps, hung from the played rung."""
+        table = r.seeds_from_ladder(r.rungs(LADDER))
+        top = r.computer("minimax:nodes=6400")
+        played = r.Player(top, 1650.0, 90.0, 0.0, matches=3)
+        table[top] = played
+        found = r.seeding(r.rungs(RERUN), table)
+        assert top not in {row.key for row in found.written}
+        assert found.kept == 1
+        # The shift is 1650 - 250 = 1400, read off the one row people placed.
+        assert {row.key.agent: row.rating for row in found.reseeded} == {
+            "greedy": 1440.0, "random": 1110.0,
+        }
+        after = {**table, **r.seeds_from_ladder(r.rungs(RERUN), table)}
+        assert after[top] == played
+
+    def test_a_second_reading_of_a_newer_ladder_writes_nothing(self) -> None:
+        """Idempotent: the shift reads only played rows, which a reseed never writes."""
+        table = r.seeds_from_ladder(r.rungs(LADDER))
+        top = r.computer("minimax:nodes=6400")
+        table[top] = r.Player(top, 1650.0, 90.0, 0.0, matches=3)
+        rerun = {"standings": [{"name": "mcts:nodes=1600", "rating": 610.0},
+                               *RERUN["standings"]]}
+        table.update(r.seeds_from_ladder(r.rungs(rerun), table))
         assert r.seeds_from_ladder(r.rungs(rerun), table) == {}
+        assert r.seeding(r.rungs(rerun), table).kept == 4
+
+    def test_a_row_the_newer_ladder_does_not_name_is_left_alone(self) -> None:
+        """A player the picker no longer offers keeps its row: nothing is ever removed."""
+        table = r.seeds_from_ladder(r.rungs(LADDER))
+        rerun = {"standings": [{"name": "greedy", "rating": 10.0},
+                               {"name": "random", "rating": -10.0}]}
+        written = r.seeds_from_ladder(r.rungs(rerun), table)
+        assert set(written) == {r.computer("greedy"), r.computer("random")}
 
     def test_a_later_arrival_is_translated_by_the_shared_rungs(self) -> None:
         """§5: the ladder's zero moves when the roster does, so the shift is measured.
 
         The second run's roster has a fourth player in it, which pulls every rung's number
         down by 75 without anybody having got weaker. The arrival must land where the
-        shared rungs say, not 75 Elo low.
+        shared rungs say, not 75 Elo low; nobody has played, so the spine's mean is what
+        says (§2.4), and the three old rows are already at their seats.
         """
         table = r.seeds_from_ladder(r.rungs(LADDER))
         rerun = {
@@ -241,14 +293,14 @@ class TestSeeding:
         """The shift reads the table as it stands, not as it was seeded.
 
         People beat the top rung down 150 Elo, which is real information about that rung's
-        strength and so about anything measured against it. Because the shift is a *mean*
-        over the shared rungs, the arrival takes that correction spread over the spine --
-        150 over three rungs, so 50 -- rather than all of it or none. Without the
-        correction it would land at 2100.
+        strength and so about anything measured against it. That row is the only one people
+        have played, so it alone fixes the scale (L3): the arrival lands 300 above it, at
+        1950 rather than 2100, and the unplayed spine rungs are reseeded beside it. (Before
+        L3 the shift was a mean over every shared rung, played or not, and gave 2050.)
         """
         table = r.seeds_from_ladder(r.rungs(LADDER))
         beaten = table[r.computer("minimax:nodes=6400")]
-        table[beaten.key] = r.Player(beaten.key, beaten.rating - 150.0, 90.0, 0.0)
+        table[beaten.key] = r.Player(beaten.key, beaten.rating - 150.0, 90.0, 0.0, matches=4)
         rerun = {
             "standings": [
                 {"name": "mcts:nodes=1600", "rating": 600.0},
@@ -257,12 +309,57 @@ class TestSeeding:
                 {"name": "random", "rating": -300.0},
             ]
         }
-        added = r.seeds_from_ladder(r.rungs(rerun), table)
-        assert added[r.computer("mcts:nodes=1600")].rating == pytest.approx(2050.0)
+        written = r.seeds_from_ladder(r.rungs(rerun), table)
+        assert written[r.computer("mcts:nodes=1600")].rating == pytest.approx(1950.0)
+        assert written[r.computer("greedy")].rating == pytest.approx(1350.0)
+        assert beaten.key not in written
 
     def test_a_ladder_with_no_standings_seeds_nobody(self) -> None:
         assert r.rungs({}) == ()
         assert r.seeds_from_ladder(r.rungs({})) == {}
+
+
+class TestTheAnchor:
+    """§2.4 of `plan-leaderboard.md`: the first seeding puts 1500 at the spine's mean."""
+
+    SPINE = {
+        "random": -500.0,
+        "greedy": -300.0,
+        "minimax:nodes=400": -100.0,
+        "minimax:nodes=1600": 100.0,
+        "minimax:nodes=6400": 300.0,
+    }
+
+    def _ladder(self, extra: dict[str, float]) -> tuple[r.Rung, ...]:
+        rows = {**self.SPINE, **extra}
+        # Centred on the whole roster's mean, as the fit centres a real ladder.
+        mean = sum(rows.values()) / len(rows)
+        return tuple(r.Rung(name, rating - mean) for name, rating in rows.items())
+
+    def test_the_spines_mean_is_1500_whatever_else_is_on_the_roster(self) -> None:
+        """Fourteen rules of thumb at 6,400 nodes no longer move a game's 1500."""
+        thumbs = {f"minimax:h={index:012x},nodes=6400": 400.0 + index for index in range(14)}
+        for extra in ({}, {"minimax:nodes=200000": 900.0}, thumbs):
+            seats = r.seeds_from_ladder(self._ladder(extra))
+            spine = [seats[r.computer(name)].rating for name in self.SPINE]
+            assert sum(spine) / len(spine) == pytest.approx(r.SITE_ORIGIN)
+            # And the gaps are the ladder's own.
+            assert seats[r.computer("minimax:nodes=6400")].rating == pytest.approx(1900.0)
+
+    def test_a_ladder_with_no_spine_player_centres_on_its_whole_roster(self) -> None:
+        seats = r.seeds_from_ladder((r.Rung("a", 100.0), r.Rung("b", 300.0)))
+        assert seats[r.computer("a")].rating == pytest.approx(1400.0)
+        assert seats[r.computer("b")].rating == pytest.approx(1600.0)
+
+    def test_a_played_table_keeps_its_scale(self) -> None:
+        """A table people have played hangs from its played rows and is never re-anchored."""
+        table = r.seeds_from_ladder(self._ladder({}))
+        easy = r.computer("minimax:nodes=400")
+        table[easy] = r.Player(easy, 1777.0, 95.0, 0.0, matches=2)
+        seats = r.seeds_from_ladder(self._ladder({"minimax:nodes=200000": 900.0}), table)
+        # The newer ladder's gap from easy to hardest is 1,000; easy stays at 1777.
+        assert seats[r.computer("minimax:nodes=200000")].rating == pytest.approx(2777.0)
+        assert easy not in seats
 
 
 # -------------------------------------------------------------------------- the top
@@ -485,6 +582,39 @@ class TestTheStore:
             assert r.seed(connection, GAME, LADDER) == ()
             assert r.load(connection, GAME) == table
 
+    def test_a_reseed_leaves_played_rows_and_replaces_the_rest(self) -> None:
+        """§2.3's rule against the store: the row people played keeps their number, the
+        rows nobody played take the newer ladder's seats, a newcomer is added, and a second
+        reseed from the same file writes nothing."""
+        with _store() as connection:
+            first, _ = _people(connection)
+            r.seed(connection, GAME, LADDER)
+            _match(connection, "m1", r.person(first), r.computer("minimax:nodes=6400"), 1.0)
+            r.finish(connection, "m1")
+            connection.commit()
+            before = r.load(connection, GAME)
+            top = before[r.computer("minimax:nodes=6400")]
+            assert top.matches == 1
+
+            newer = {"standings": [{"name": "mcts:nodes=1600", "rating": 600.0},
+                                   *RERUN["standings"]]}
+            seated = r.reseed(connection, GAME, newer)
+            connection.commit()
+            assert [row.key.agent for row in seated.added] == ["mcts:nodes=1600"]
+            assert {row.key.agent for row in seated.reseeded} == {"greedy", "random"}
+            assert seated.kept == 1
+
+            after = r.load(connection, GAME)
+            assert after[top.key] == top
+            assert after[r.person(first)] == before[r.person(first)]
+            shift = top.rating - 250.0
+            assert after[r.computer("greedy")].rating == pytest.approx(40.0 + shift)
+            assert after[r.computer("mcts:nodes=1600")].rating == pytest.approx(600.0 + shift)
+
+            again = r.reseed(connection, GAME, newer)
+            assert again.written == () and again.kept == 4
+            assert r.load(connection, GAME) == after
+
     def test_a_finished_match_moves_both_seats_and_stamps_the_row(self) -> None:
         with _store() as connection:
             first, _ = _people(connection)
@@ -635,6 +765,37 @@ class TestTheRebuild:
             r.finish(connection, "m1")
             rebuilt = r.rebuild(connection, GAME)
             assert rebuilt[r.computer("minimax:nodes=6400")] == seeded
+
+    def test_a_fold_over_the_rows_still_rebuilds_the_table_after_a_reseed(self) -> None:
+        """L3: a reseed writes only rows with no matches, which `seeds_for` reads as their
+        own seed, and a reseeded row played later has its seat in that match's
+        before-columns. So the table stays a fold of its match rows."""
+        with _store() as connection:
+            first, second = _people(connection)
+            r.seed(connection, GAME, LADDER)
+            _match(connection, "m1", r.person(first), r.computer("minimax:nodes=6400"), 1.0,
+                   minute=1)
+            r.finish(connection, "m1")
+            newer = {"standings": [{"name": "mcts:nodes=1600", "rating": 600.0},
+                                   *RERUN["standings"]]}
+            seated = r.reseed(connection, GAME, newer)
+            assert {row.key.agent for row in seated.reseeded} == {"greedy", "random"}
+            # Played after the reseed: one reseeded row, one added, one never touched.
+            _match(connection, "m2", r.computer("greedy"), r.person(second), 0.0, minute=2)
+            r.finish(connection, "m2")
+            _match(connection, "m3", r.person(first), r.computer("mcts:nodes=1600"), 0.5,
+                   minute=3)
+            r.finish(connection, "m3")
+            connection.commit()
+            played = r.load(connection, GAME)
+            assert played[r.computer("random")].matches == 0, "reseeded, never played"
+
+            # Scribble over every row a match moved; an unplayed row *is* its seed.
+            with connection.cursor() as cursor:
+                cursor.execute("update ratings set rating = 1, deviation = 9, matches = 0"
+                               " where matches > 0")
+            assert r.rebuild(connection, GAME) == played
+            assert r.load(connection, GAME) == played
 
     def test_a_sandbox_row_changes_no_rebuild(self) -> None:
         with _store() as connection:

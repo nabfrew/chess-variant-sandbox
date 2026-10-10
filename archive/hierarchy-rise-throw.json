@@ -264,6 +264,7 @@
     }
   },
   "provenance": {
+    "added": "2026-09-14",
     "origin": "designed",
     "source": "docs/game-ideas.md",
     "history": "Q20's showcase for schema 12's position 'choose', pre-registered in game-ideas.md before the spec existed. The third value on the parent that hierarchy-rise (swap) and hierarchy-rise-stay (stay) already measure along the same axis, with nothing else changed.",

@@ -28,10 +28,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from chess_variant_sandbox.agents.base import AgentConfig, native_spec, parse_agent
-from chess_variant_sandbox.engine.coming import coming_phase
+from chess_variant_sandbox.engine.coming import coming_phases
 from chess_variant_sandbox.engine.engine import _square_name as square_name
 from chess_variant_sandbox.engine.moves import (
     MOVE_DROP,
+    MOVE_PORTAL,
     MOVE_PROMOTION,
     MOVE_ROTATE,
     MOVE_TYPE_NAMES,
@@ -46,6 +47,8 @@ from chess_variant_sandbox.viz.heading import directional_types
 from chess_variant_sandbox.viz.pieces import icons_for, side_names
 from chess_variant_sandbox.viz.wrapped import (
     goal_payload,
+    portal_payload,
+    portal_transit,
     walls_payload,
     wrap_payload,
     zone_payload,
@@ -132,16 +135,34 @@ def _reply(
     return move, depth
 
 
-def _coming(engine: Any, state: GameState) -> list[dict[str, Any]]:
-    """Where each wild piece steps next from ``state``, as the core plays it (Q660).
+def _coming(engine: Any, state: GameState) -> dict[str, list[dict[str, Any]]]:
+    """Where each wild piece steps next from ``state``, and after that, as the core plays it.
 
-    `engine.coming.coming_phase` is the phase the rules would run on the board as it stands, in
-    the shape a ply's own ``phase`` has. The page draws it as an arrow per wild piece and
-    decides nothing: which piece walks where, whether it waits and what it would eat are
-    the core's. Wild pieces walk fixed routes, so nothing here is drawn at random; the one
-    thing it cannot know is the coming move, which may block, clear or take a wild piece.
+    `engine.coming.coming_phases` is the two phases the rules would run on the board as it
+    stands (Q660, Q764), each in the shape a ply's own ``phase`` has: ``coming`` after the
+    next move, ``comingThen`` after the reply, which is every step a wild piece takes
+    before the player now to move moves again. The page draws each as an arrow per wild
+    piece, the second fainter, and decides nothing: which piece walks where, whether it
+    waits and what it would eat are the core's. Wild pieces walk fixed routes, so nothing
+    here is drawn at random; the one thing it cannot know is the coming moves, which may
+    block, clear or take a wild piece.
     """
-    return [step.as_dict() for step in coming_phase(engine, state)]
+    first, then = coming_phases(engine, state)
+    return {
+        "coming": [step.as_dict() for step in first],
+        "comingThen": [step.as_dict() for step in then],
+    }
+
+
+def drop_faces_payload(drops: Any) -> list[int] | None:
+    """Each hand slot's other face under ``drops.either_face`` (schema 18e, Q785), or ``None``.
+
+    The compiled pairs, so the page offers a piece in hand as both faces without reading
+    the spec's ``promoted_from``.
+    """
+    if drops is None or not drops.faces:
+        return None
+    return list(drops.faces)
 
 
 @dataclass
@@ -235,6 +256,10 @@ class Session:
                 "lattice": engine.spec.lattice,
                 "pieceIds": list(engine.spec.piece_ids),
                 "pieceNames": list(engine.spec.piece_names),
+                # Schema 18e (Q785): each hand slot's other face, or -1, compiled; `None`
+                # where a held piece comes back as itself only. The hand draws a button
+                # per face from it, so the picker never reads `promoted_from`.
+                "dropFaces": drop_faces_payload(engine.spec.drops),
 "nTypes": engine.spec.n_types,
                 # A whole army's worth of board values, the headings a facing piece is
                 # drawn at, and which pieces may be turned to a heading at all. A piece
@@ -264,6 +289,10 @@ class Session:
                 # with no such rule, and a board that never drew them asked a player to
                 # find the winning square by reading the rules panel.
                 "goals": goal_payload(engine.spec.reach),
+                # Schema 18 (Q786): whether the game is decided by moving off one of
+                # those squares rather than standing on one, so the ended banner says
+                # which (`reasonWords`). Off the compiled rule, as `goals` is.
+                "goalLeaves": bool(engine.spec.reach and engine.spec.reach.leaves),
                 # Squares a piece promotes on, compiled, per player. The spec states
                 # the zone once from the first player's side and the schema reflects
                 # it, so what crosses is the resolved pair of bands -- `None` for a
@@ -280,6 +309,9 @@ class Session:
                 # capture, and which piece types survive the blast (the "resistant"
                 # indicator).  Constant per ruleset, so sent once in the ruleset block.
                 "explosion": self._explosion_info(engine),
+                # Schema 19: each portal end's pair, colour, movers and doors, compiled
+                # (`viz.wrapped.portal_payload`); `None` without portals.
+                "portals": portal_payload(engine.spec),
             },
             "seats": list(self.seats),
             # How hard each seat thinks, in plain words off the budget it plays at, for
@@ -311,10 +343,11 @@ class Session:
             "history": self.history,
             "lastMove": self.history[-1] if self.history else None,
             # Where each wild piece steps after the coming move, if that move leaves its
-            # way as it is: the core's answer for this position (`engine.coming.coming_phase`),
-            # `[{from, to, eaten}]`, and empty for every ruleset without `rules.npcs`. A
-            # finished game has no coming move, so nothing is coming.
-            "coming": [] if ended else _coming(engine, self.state),
+            # way as it is, and after the reply (`comingThen`): the core's answer for this
+            # position (`engine.coming.coming_phases`), `[{from, to, eaten}]` each, and
+            # empty for every ruleset without `rules.npcs`. A finished game has no coming
+            # move, so nothing is coming.
+            **({"coming": [], "comingThen": []} if ended else _coming(engine, self.state)),
             "outcome": ended,
             # The page uses this to decide whether to ask for the opponent's reply. It
             # is deliberately not the same call: a human move should land on the board
@@ -372,11 +405,22 @@ class Session:
                 "kind": MOVE_TYPE_NAMES.get(kind, "normal"),
             }
             if kind == MOVE_DROP:
+                # What stands on the square afterwards, and (schema 18e) the hand slot
+                # the drop spends, which differ only for a piece dropped as its other face.
                 entry["drop"] = move_promotion(move) % engine.spec.n_types
+                drops = engine.spec.drops
+                entry["hand"] = entry["drop"] if drops is None else drops.hand_slot(entry["drop"])
             elif kind == MOVE_PROMOTION:  # what the piece becomes travels with it
                 entry["promotion"] = move_promotion(move) % engine.spec.n_types
             elif kind == MOVE_ROTATE:
                 entry["rotation"] = move_promotion(move)
+            elif kind == MOVE_PORTAL:
+                # Schema 19: the end it goes in by, the end it comes out beside and the
+                # way it comes out, named here (`viz.wrapped.portal_transit`); the target
+                # is the exit, and the promotion field carries the new piece plus one.
+                entry.update(portal_transit(engine, self.state, move) or {})
+                if move_promotion(move):
+                    entry["promotion"] = move_promotion(move) - 1
             # Schema 12: a strike under `choose` is one move per landing square, so the
             # page offers the square, named here rather than worked out there.
             landing = engine.landing_square(self.state, move)
@@ -485,6 +529,11 @@ class Session:
                 # page draws the phase from this rather than working it out from a diff.
                 # Empty for every ruleset without `rules.npcs`.
                 "phase": [step.as_dict() for step in phase],
+                # Schema 19: a transit's two ends and the way it came out, read off the
+                # position it was played in (`viz.wrapped.portal_transit`), so the trail is
+                # drawn in two legs and the move animated in two beats, on a position
+                # stepped back to as on the live one. Absent for every other move.
+                **(portal_transit(engine, self.state, move) or {}),
                 # How many moves ahead the machine's search got before it chose this
                 # one, counting both sides', from the core. `None` for a person's move
                 # and wherever `_reply` has nothing to report. A game rebuilt from its
@@ -498,10 +547,11 @@ class Session:
                 # from it, and a position stepped back to draws its check from it -- the
                 # page never works one out (the first-visit study's B1).
                 "check": engine.in_check(state, state.side_to_move),
-                # Where each wild piece goes next from the position this ply left, from
-                # the core (`engine.coming.coming_phase`), so a position stepped back to shows
-                # what was coming *then*. Empty for every ruleset without `rules.npcs`.
-                "coming": _coming(engine, state),
+                # Where each wild piece goes next from the position this ply left, and
+                # after that (`coming`, `comingThen`), from the core
+                # (`engine.coming.coming_phases`), so a position stepped back to shows what
+                # was coming *then*. Empty for every ruleset without `rules.npcs`.
+                **_coming(engine, state),
             }
         )
         self.state = state

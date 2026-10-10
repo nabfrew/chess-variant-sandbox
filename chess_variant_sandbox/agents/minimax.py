@@ -24,6 +24,7 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_CASTLE,
     MOVE_DROP,
     MOVE_EN_PASSANT,
+    MOVE_PORTAL,
     MOVE_PROMOTION,
     MOVE_ROTATE,
     MOVE_SWEEP,
@@ -337,10 +338,13 @@ class MinimaxAgent:
         can send the king to its own rook's square. A quiescence search that chased
         either would never come to rest.
         """
-        _, target, kind, _ = decode_move(move)
+        _, target, kind, promoted = decode_move(move)
         if kind not in (MOVE_ROTATE, MOVE_CASTLE) and state.board[target]:
             return True
-        return kind in (MOVE_EN_PASSANT, MOVE_PROMOTION, MOVE_SWEEP)
+        # Schema 19: a transit that promotes at its exit, as `agents.rs::is_loud` reads it.
+        return kind in (MOVE_EN_PASSANT, MOVE_PROMOTION, MOVE_SWEEP) or (
+            kind == MOVE_PORTAL and promoted != 0
+        )
 
     def _chases(self, state: GameState, move: int, horizon: bool) -> bool:
         """Q502i: whether quiescence chases this quiet move under the player's repairs.

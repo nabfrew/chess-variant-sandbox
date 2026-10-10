@@ -17,12 +17,14 @@ import json
 import re
 import shutil
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from chess_variant_sandbox import corpus
+from chess_variant_sandbox.history import HISTORY_FILE
 from chess_variant_sandbox.loop.archive import Archive, Entry
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS
 from chess_variant_sandbox.spec import spec_hash
@@ -1310,6 +1312,28 @@ class TestAPooledRescoreIsTheSerialOne:
             for path in sorted(root.rglob("*")) if path.is_file()
         }
 
+    @staticmethod
+    def _undated(tree: dict[str, bytes]) -> dict[str, bytes]:
+        """The tree with each history line's `replaced` day checked and set aside (Q744).
+
+        `replaced` is the UTC day the outgoing measurement was replaced on: the wall
+        clock's, not the work's. The serial half and the pooled half run one after the
+        other, and a pair that straddles UTC midnight writes two days, which is right, so
+        the day is held to being a day and everything else on the line to the identity.
+        """
+        out = dict(tree)
+        for name, body in tree.items():
+            if not name.endswith("/" + HISTORY_FILE):
+                continue
+            lines = []
+            for line in body.decode("utf-8").splitlines():
+                entry = json.loads(line)
+                date.fromisoformat(entry.pop("replaced"))
+                lines.append(json.dumps(entry, sort_keys=True))
+            assert lines, name
+            out[name] = "\n".join(lines).encode("utf-8")
+        return out
+
     def test_the_pool_writes_and_says_what_the_serial_path_does(
         self, library, monkeypatch, capsys
     ) -> None:
@@ -1341,9 +1365,13 @@ class TestAPooledRescoreIsTheSerialOne:
         pooled_said = capsys.readouterr().out
         assert here == []
 
-        serial = self._tree(library["serial"])
+        serial = self._undated(self._tree(library["serial"]))
         assert serial != before
-        assert self._tree(library["pooled"]) == serial
+        # Each game's replaced measurement went into its history, so the day was read.
+        assert sum(name.endswith("/" + HISTORY_FILE) for name in serial) == len(
+            library["hashes"]
+        )
+        assert self._undated(self._tree(library["pooled"])) == serial
         assert pooled_said.replace(str(library["pooled"]), "<runs>") == serial_said.replace(
             str(library["serial"]), "<runs>"
         )

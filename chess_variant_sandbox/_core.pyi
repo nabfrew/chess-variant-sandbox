@@ -24,11 +24,12 @@ it against.
 from typing import Any
 
 # (board, side_to_move, unmoved, ep_target, ep_victim, halfmove, ply, key,
-#  repetition, checks, hands, (colour, remaining, turns_taken, points))
+#  repetition, checks, hands,
+#  (colour, remaining, turns_taken, points, goal_left_by, portal_bar))
 State = tuple[
     bytes, int, bytes, int, int, int, int, int, list[int],
     tuple[int, int], tuple[list[int], list[int]],
-    tuple[bytes, int, int, tuple[float, float]],
+    tuple[bytes, int, int, tuple[float, float], int, tuple[int, int]],
 ]
 
 # What the wild-piece phase did on the way to a position (schema 9): one
@@ -84,7 +85,7 @@ class Core:
     def legal_moves(self, state: tuple[Any, ...]) -> list[int]: ...
     def pseudo_legal_moves(self, state: tuple[Any, ...]) -> list[int]: ...
     def apply(self, state: tuple[Any, ...], move: int) -> tuple[State, Phase]: ...
-    def coming_phase(self, state: tuple[Any, ...]) -> Phase: ...
+    def coming_phases(self, state: tuple[Any, ...], count: int) -> list[Phase]: ...
     def terminal(
         self, state: tuple[Any, ...], moves: list[int] | None = ...
     ) -> tuple[int | None, str] | None: ...

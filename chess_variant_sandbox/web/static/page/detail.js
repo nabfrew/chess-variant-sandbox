@@ -249,6 +249,7 @@ function openingHtml(game) {
   for (const square of Object.keys(marks)) {
     for (const mark of marks[square]) kinds.add(mark.kind);
   }
+  boardKinds(preview.obstacles, preview.portals).forEach(kind => kinds.add(kind));
   const said = legendEntries(kinds, preview.wrap, '');
   // Never taller than most of a screen: a board taller than it is wide is held to the
   // width that leaves its foot in view.
@@ -410,8 +411,47 @@ function playPersonHtml(game) {
       <span class="muted small">for a member who isn't in either list; it works once</span>
     </div>
     <div id="challengeSheet"></div>
+    <div id="inviteFriend">${inviteFriendHtml(people.invites)}</div>
     ${openToHtml(game, people)}
   </div>`;
+}
+
+// Q731: a friend who isn't a member yet. The friend you would invite is who you want to
+// play, so the invitations `/admin` gave this person (`site/inviting.py`) are offered here
+// as well as on their own page, through the same `/api/invite`. The form only for somebody
+// with one left; anybody else reads the server's plain sentence saying why not and whom to
+// ask. The words are the server's; nothing here counts.
+function inviteFriendHtml(box) {
+  if (!box) return '';
+  const head = `<h4 style="margin:12px 0 4px">A friend who isn't a member yet</h4>`;
+  if (!(box.left > 0)) return `${head}<div class="small" id="inviteSaid">${esc(box.said)}</div>`;
+  return `${head}
+    <div class="small" id="inviteSaid">${esc(box.said)} Invite your friend by email, and
+      once they have joined, challenge them here by their name.</div>
+    <form class="row" id="inviteForm" style="margin-top:6px; align-items:flex-end">
+      <label class="small" style="flex:1 1 16rem">their email address<br>
+        <input id="inviteEmail" type="email" required autocomplete="off"
+          autocapitalize="off" spellcheck="false" style="width:100%"></label>
+      <button id="inviteSend" type="submit">send the invitation</button>
+    </form>
+    ${box.under ? `<div class="muted small" style="margin-top:6px">${esc(box.under)}</div>` : ''}`;
+}
+
+function wireInviteFriend(game) {
+  const form = document.getElementById('inviteForm');
+  if (!form) return;
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    const send = document.getElementById('inviteSend');
+    send.disabled = true;
+    api('/api/invite', { email: document.getElementById('inviteEmail').value }).then(answer => {
+      game.standing.people.invites = answer.box;
+      const where = document.getElementById('inviteFriend');
+      where.innerHTML = inviteFriendHtml(answer.box)
+        + `<div class="ok" style="margin-top:8px">${esc(answer.said)}</div>`;
+      wireInviteFriend(game);
+    }).catch(error => { send.disabled = false; fail(error, send); });
+  };
 }
 
 // R10 (Q606): the game's maker, first, when they switched on *taking challengers* on
@@ -528,6 +568,7 @@ function wirePlayPerson(game, hash) {
   };
   const link = document.getElementById('challengeLink');
   if (link) link.onclick = () => open(null);
+  wireInviteFriend(game);
   const tick = document.getElementById('openTo');
   if (tick) tick.onchange = () => {
     api('/api/game/' + hash + '/open', { on: tick.checked }).then(answer => {
@@ -1051,7 +1092,7 @@ function designerMarksHtml(marks) {
   }
   const by = marks.forkedBy || [];
   if (by.length) {
-    line(`Built on by <b>${by.map(esc).join('</b>, <b>')}</b>`, rules.forkedBy, 'forked');
+    line(`Built on by <b>${by.map(handle => personHtml(handle)).join('</b>, <b>')}</b>`, rules.forkedBy, 'forked');
   }
   if (!lines.length) return '';
   return `<ul id="designerMarks" class="small"
@@ -1065,7 +1106,7 @@ function designerMarksHtml(marks) {
 function shortlistHtml(bar) {
   if (!bar) return '';
   const lines = (bar.checks || []).map(check => `<li style="margin-bottom:2px"
-      data-met="${check.met ? 'yes' : 'no'}"><span style="display:inline-block; width:1.4em">${
+      data-met="${check.met ? 'yes' : 'no'}"><span>${
       check.met ? '&#10003;' : '&middot;'}</span>${esc(check.says)}</li>`).join('');
   const button = bar.mine
     ? `<div class="row" style="margin-top:6px"><button id="nominateIt" class="primary"
@@ -1075,7 +1116,7 @@ function shortlistHtml(bar) {
     : '';
   return `<div id="shortlist" style="margin-top:8px">
       <div class="small">${esc(bar.says)}</div>
-      <ul class="small" style="list-style:none; padding-left:0; margin:4px 0">${lines}</ul>
+      <ul class="small marks" style="margin:4px 0">${lines}</ul>
       ${button}</div>`;
 }
 
@@ -1786,7 +1827,7 @@ function standingHtml(game) {
   const head = standing.unbeaten
     ? `<div><b>Nobody has beaten ${target} here.</b> Win a rated game against
        ${top.length > 1 ? 'each of them' : 'it'} and your name stays on this game.</div>`
-    : `<div><b>First beaten by ${esc((first && first.handle) || 'somebody')}</b>${
+    : `<div><b>First beaten by ${first && first.handle ? personHtml(first.handle) : 'somebody'}</b>${
        first && first.when ? ' on ' + esc(first.when.slice(0, 10)) : ''}, playing
        ${first && first.seat === 0 ? 'first' : 'second'}.
        Its strongest computer player${info('strongest')} is ${target}.</div>`;
@@ -1809,11 +1850,14 @@ function standingHtml(game) {
 // rated games (`site/opponent_line.py`). Under the computer players' table, beside the
 // trust line and never inside it: one is about the challenge, the other about the score.
 // The page draws what it is sent; the local application keeps no people's results and
-// sends no line.
+// sends no line. H7 (`docs/plan-human-data.md` §3.2): each computer player's place among
+// the people rated here joins the same *more*, worded by the server and sent only once
+// five people are established on the game's table (`site/people_scale.py`).
 function opponentLineHtml(standing) {
   const line = standing && standing.opponentLine;
   if (!line || !line.state) return '';
-  const more = line.more || [];
+  const scale = (standing.peopleScale && standing.peopleScale.said) || [];
+  const more = [...(line.more || []), ...scale];
   const state = line.state.charAt(0).toUpperCase() + line.state.slice(1);
   return `<div class="opponentLine" id="opponentLine"><strong>${esc(state)}.</strong> ${
     esc(line.said)}${more.length ? `
@@ -1858,7 +1902,7 @@ function clearsHtml(standing) {
   return `<div class="muted small" style="margin-top:8px">${clears.length} people have
     beaten it${info('clears')}, in the order they did.
     <ol style="margin:4px 0 0 18px; padding:0">${clears.map(clear => `
-      <li>${esc(clear.handle || 'somebody')}${
+      <li>${clear.handle ? personHtml(clear.handle) : 'somebody'}${
         clear.when ? ', ' + esc(clear.when.slice(0, 10)) : ''}, playing ${
         clear.seat === 0 ? 'first' : 'second'}</li>`).join('')}</ol></div>`;
 }
@@ -1871,7 +1915,7 @@ function firstPlayedHtml(standing) {
   const who = (first && first.handles) || [];
   if (!who.length) return '';
   return `<div class="muted small" style="margin-top:8px">First played by
-    <b>${who.map(esc).join(' and ')}</b>${
+    <b>${who.map(handle => personHtml(handle)).join(' and ')}</b>${
     first.when ? ', ' + esc(first.when.slice(0, 10)) : ''}${info('firstPlayed')}.</div>`;
 }
 
@@ -1884,7 +1928,7 @@ function highestHtml(standing) {
   const many = who.length > 1;
   return `<div class="muted small" style="margin-top:8px">The highest-rated ${
     many ? 'people' : 'person'} here${info('highestPerson')} ${many ? 'are' : 'is'}
-    <b>${who.map(esc).join(' and ')}</b>${typeof best.rating === 'number'
+    <b>${who.map(handle => personHtml(handle)).join(' and ')}</b>${typeof best.rating === 'number'
       ? `, rated ${Math.round(best.rating)} here` : ''}.</div>`;
 }
 
@@ -2454,8 +2498,10 @@ function verdictHtml(v) {
 
 function provenanceHtml(p, game) {
   const rows = [];
-  const line = (label, value) => value ? rows.push(
-    `<tr><td class="muted" style="width:110px">${label}</td><td>${esc(value)}</td></tr>`) : null;
+  // `html` is markup already escaped, for the one value that is a link (Q760: the
+  // designer's handle, linked to their page).
+  const line = (label, value, html) => value ? rows.push(
+    `<tr><td class="muted" style="width:110px">${label}</td><td>${html || esc(value)}</td></tr>`) : null;
   // The values `provenance.origin` actually carries across the corpus, said in words. A
   // value not in this list is printed as it stands rather than dropped: the field is free
   // text by design and a spec may honestly say something nobody anticipated.
@@ -2484,7 +2530,8 @@ function provenanceHtml(p, game) {
   // has no accounts and says where it was made instead.
   if (game && game.source === 'designed') {
     const by = game.designer && game.designer.by;
-    line('where from', by ? `designed by ${by}` : 'built in the designer here');
+    if (by) line('where from', `designed by ${by}`, `designed by ${personHtml(by)}`);
+    else line('where from', 'built in the designer here');
   } else if (ACCOUNTS) {
     // The site names no design run and no run id: what made the game, how many rounds of
     // changes it took, and what it was asked to try (G36-G37).
@@ -2772,7 +2819,7 @@ function scoreHtml(score, guide, band, trust) {
     ${isProvisional(score) ? '' : bandHtml(band)}
     ${trustHtml(trust, score.status)}
 
-    ${(score.violations || []).length ? `<div class="verdict" style="border-color:var(--bad)">
+    ${(score.violations || []).length ? `<div class="verdict out">
         <div>It is ruled out${info('gated')}, not marked down.</div>
         <div class="small" style="font-weight:400; margin-top:5px">${
           (siteSaid(score, 'violations') || score.violations).map(esc).join('<br>')}</div></div>` : ''}

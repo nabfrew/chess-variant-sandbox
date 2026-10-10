@@ -1894,7 +1894,8 @@ class TestTheReasonsAPageShowsAreInTheDesignersWords:
     """Q681 (`plan-understanding.md` W5b): the translator's reasons open on a path into
     the game's text, which the `fairy` command and these tests match on. What a page shows
     (`fairyReasons`, `fairyCheck.reasons`) names each rule by its card's title, one reason
-    for one, and the guard enforces *a path into the game's text* over it."""
+    for one, and the guard enforces *a path into the game's text* over it. Q728: and says
+    Fairy-Stockfish's own terms (*Betza*, *blastOnCapture*, *king slot*) as what they mean."""
 
     SAID = {
         "rules.wrap: Fairy-Stockfish has no board without edges":
@@ -1905,16 +1906,16 @@ class TestTheReasonsAPageShowsAreInTheDesignersWords:
             "the rule 'winning by giving checks' set to 4; the check-counting rule there"
             " counts to three",
         'rules.repetition_draw "never": no variant option there removes it':
-            "the rule 'drawing by repetition' set to \"never\": no variant option there"
+            "the rule 'drawing by repetition' set to \"never\": no setting there"
             " removes it",
         "rules.explode_on_capture.by / .of: blastOnCapture is a switch there":
             "the rule 'captures that explode', 'only when taken by' and 'only when"
-            " taking': blastOnCapture is a switch there",
+            " taking': explosions there are on or off for the whole game",
         "piece.captures: not a property a piece can have there":
             "a piece's 'may take only': not a property a piece can have there",
         "move.min_range: Betza has no ride that starts past its first square":
-            "a way of moving's 'no nearer than': Betza has no ride that starts past its"
-            " first square",
+            "a way of moving's 'no nearer than': a sliding move there cannot begin beyond"
+            " the first square",
         "the win condition and rules.extinction both end the game":
             "the win condition and the rule 'losing by running out of a piece' both end"
             " the game",
@@ -1924,6 +1925,43 @@ class TestTheReasonsAPageShowsAreInTheDesignersWords:
         from chess_variant_sandbox.fairy import plain_reasons
 
         assert plain_reasons(list(self.SAID)) == list(self.SAID.values())
+
+    def test_fairy_stockfishs_own_terms_are_said_as_what_they_mean(self) -> None:
+        """Q728: every reason the translator writes in Fairy-Stockfish's vocabulary reads
+        without it once a page has it, and the `fairy` command's spelling is kept."""
+        import site_words
+
+        from chess_variant_sandbox.fairy import plain_reasons
+
+        raw = [
+            "rules.explode_on_capture.by / .of: blastOnCapture is a switch there, so every "
+            "capture explodes and no option says which ones do",
+            "piece.facing: a piece that turns has no counterpart; a Betza notation describes "
+            "one piece and a facing makes it several",
+            "a piece with no moves: a Betza descriptor says what a piece does and there is no "
+            "term for a piece that does nothing",
+            "move.min_range: Betza has no ride that starts past its first square",
+            "piece 'x' move 1: no Betza notation for a hop along these vectors",
+            "piece 'x': a sweep captures what it passes over, and Betza has no such piece",
+            "more than one royal piece: there is one king slot",
+            "30 piece types; Fairy-Stockfish has 25 custom slots and a king",
+            "26 pieces need a custom slot and there are 25",
+            "rules.bare_royal: no counterpart in the current variant options",
+            "rules.check_limit beside x: Fairy-Stockfish counts checks only against its king "
+            "slot, so a royal outside it is never counted as checked",
+            'rules.win "none" beside a royal piece: every way Fairy-Stockfish has of holding '
+            "a royal (the king slot or an extinction rule) makes losing it a loss",
+            "rules.foo: this translator has never been through it",
+            "rules.foo.bar: rules.foo does cross, and this part of it has never been through "
+            "this translator",
+            "the board is 20x20; Fairy-Stockfish's large-board build stops at 12x10",
+        ]
+        said = plain_reasons(raw)
+        assert len(said) == len(raw)
+        for reason in said:
+            assert not site_words.hits(reason, ("Fairy-Stockfish's own terms",)), reason
+        assert said[0].endswith("explosions there are on or off for the whole game, so every"
+                                " capture explodes and nothing says which ones do")
 
     def test_every_library_games_reasons_hold_no_path(self) -> None:
         import re
@@ -1940,6 +1978,7 @@ class TestTheReasonsAPageShowsAreInTheDesignersWords:
             assert len(shown) == len(raw), path.name
             refused += bool(raw)
             for reason in shown:
-                assert not site_words.hits(reason, ("a path into the game's text",)), reason
+                assert not site_words.hits(
+                    reason, ("a path into the game's text", "Fairy-Stockfish's own terms")), reason
                 assert not re.search(r"\b[a-z]+_[a-z_]+\b", reason), reason
         assert refused >= 5, "the library's refusals are what this reads"

@@ -84,6 +84,11 @@ class Rule:
     The floors are §3.2's proposals ((b) and (c)); they are the user's to confirm, and
     changing one stales every verdict and no score. Sixteen seed-pairs is E8's size
     (§6.6), at a seed-pair error of about 0.05.
+
+    ``curtailed`` (plan-compute §4.2, Q632): each duel stops at the first schedule-order
+    prefix of seed-pairs after which no result of the rest could change its verdict. The
+    verdict is the sixteen pairs' by construction; the stored score is the prefix's, with
+    ``decided_after`` of ``planned_pairs`` beside it.
     """
 
     multiple: int = 8
@@ -92,12 +97,14 @@ class Rule:
     ceiling_floor: float = 0.20
     fairy_pairs: int = 16
     fairy_floor: float = 0.30
+    curtailed: bool = True
 
     def spelled(self) -> str:
         return (
             f"ceiling x{self.multiple}, {self.pairs} pairs, seed {self.seed}, "
             f"floor {self.ceiling_floor:g}; fairy-stockfish at equal nodes, "
             f"{self.fairy_pairs} pairs, floor {self.fairy_floor:g}"
+            + ("; curtailed" if self.curtailed else "")
         )
 
 
@@ -327,19 +334,14 @@ def check(
     whole schedule in the core (or, for Fairy-Stockfish, over the core's moves).
     """
     from chess_variant_sandbox.spec.canonical import spec_hash
-    from chess_variant_sandbox.tournament.duel import duel
 
     digest = spec_hash(spec)
     basis = PremiseBasis.current(digest, spec, agents, rule)
     top = basis.player
     ceiling = ceiling_of(top, rule.multiple)
-    held = duel(spec, top, ceiling, rule.pairs, seed=rule.seed, workers=workers)
-    ceiling_part = {
-        **held.as_dict(),
-        "pairs": list(held.pairs),
-        "floor": rule.ceiling_floor,
-        "passes": held.score >= rule.ceiling_floor,
-    }
+    ceiling_part = _duel_part(
+        spec, top, ceiling, rule.pairs, rule.ceiling_floor, rule, workers
+    )
 
     fairy_part: dict[str, Any]
     if not basis.fairy_code:
@@ -354,15 +356,11 @@ def check(
         if refused:
             fairy_part = {"played": False, "why": refused}
         else:
-            against = duel(
-                spec, top, fairy_of(top), rule.fairy_pairs, seed=rule.seed, workers=workers
-            )
             fairy_part = {
                 "played": True,
-                **against.as_dict(),
-                "pairs": list(against.pairs),
-                "floor": rule.fairy_floor,
-                "passes": against.score >= rule.fairy_floor,
+                **_duel_part(
+                    spec, top, fairy_of(top), rule.fairy_pairs, rule.fairy_floor, rule, workers
+                ),
             }
 
     passes = ceiling_part["passes"] and (not fairy_part["played"] or fairy_part["passes"])
@@ -373,6 +371,42 @@ def check(
         "ceiling": ceiling_part,
         "fairy": fairy_part,
         "basis": basis.as_dict(),
+    }
+
+
+def _duel_part(
+    spec: dict[str, Any],
+    top: str,
+    against: str,
+    pairs: int,
+    floor: float,
+    rule: Rule,
+    workers: int,
+) -> dict[str, Any]:
+    """One duel of the check as stored: its grade, its pairs, the floor and whether it held.
+
+    Curtailed under ``rule.curtailed``: ``passes`` is then the full duel's verdict, and the
+    score and pairs are the deciding prefix's (a decided pass reads at or above the floor
+    and a decided fail below it, so the words never contradict the verdict).
+    """
+    from chess_variant_sandbox.tournament.duel import curtailed_duel, duel, floor_verdict
+
+    if rule.curtailed:
+        played = curtailed_duel(
+            spec, top, against, pairs, floor_verdict(floor), seed=rule.seed, workers=workers
+        )
+        return {
+            **played.as_dict(),
+            "pairs": list(played.found.pairs),
+            "floor": floor,
+            "passes": played.verdict,
+        }
+    held = duel(spec, top, against, pairs, seed=rule.seed, workers=workers)
+    return {
+        **held.as_dict(),
+        "pairs": list(held.pairs),
+        "floor": floor,
+        "passes": held.score >= floor,
     }
 
 

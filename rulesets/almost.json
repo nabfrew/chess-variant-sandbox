@@ -78,6 +78,7 @@
     "no_progress_draw": 100
   },
   "provenance": {
+    "added": "2026-08-19",
     "origin": "human",
     "author": "Ralph Betza",
     "source": "a chess variant"

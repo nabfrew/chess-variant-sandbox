@@ -53,6 +53,14 @@ def connect(url: str | None = None) -> Any:
     The import is here rather than at the top of the module because `psycopg` is under
     the `site` extra: importing `chess_variant_sandbox.site` must work in a checkout that never
     installed a driver, or the CLI cannot print its own help there.
+
+    The session's time zone is UTC, whatever the server's `timezone` setting or the
+    client's `PGTZ` says (Q744). Every stamp the site reads back then carries `+00:00`,
+    and a page that prints a stamp's first ten characters prints UTC's day, the calendar
+    the site files everything else on (`daily`, `whats_new`, `stages.day`). Before, the
+    profile said a draft kept at midnight UTC was kept the day before wherever Postgres
+    ran west of UTC. A `SET` rather than a startup option because libpq sends `PGTZ` as a
+    startup parameter, which the server applies after `options` and so would win.
     """
     try:
         import psycopg
@@ -61,7 +69,12 @@ def connect(url: str | None = None) -> Any:
             "the site needs a database driver, which a plain `uv sync` does not install: "
             "run `uv sync --extra site`"
         ) from error
-    return psycopg.connect(url or database_url())
+    connection = psycopg.connect(url or database_url())
+    # Committed, so the setting is the session's and not one transaction's: a rollback
+    # later would otherwise undo it.
+    connection.execute("set time zone 'UTC'")
+    connection.commit()
+    return connection
 
 
 def redacted(url: str) -> str:

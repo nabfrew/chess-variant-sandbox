@@ -107,7 +107,7 @@ class TestTheFingerprintsPointAtSomething:
 # is the first `v11` box to move the library's repair from re-score to re-analyse; the
 # same stale window still holds until C3.
 #
-# **Moved again 2026-09-24 by Q383 (the package rename, `docs/plan-rename.md` stage 4)**:
+# **Moved again 2026-09-24 by Q383 (the package rename, `docs/archive/plan-rename.md` stage 4)**:
 # the package's name is in the code of every file that imports another, so the rename moves
 # the code reading without changing what anything computes. It was "900ddeecea463d7b" after
 # Q388. The user chose to wait for a replay owed for another reason (plan §8 question 1),
@@ -175,7 +175,40 @@ class TestTheFingerprintsPointAtSomething:
 # oracle of `eval.rs`), a real change to the pass on the two specs with a priced race.
 # It was "e75a741b1e0d5900" after Q689. The same commit moves the build fingerprint, so
 # the library replay batched with Q696 re-analyses and re-scores under this value.
-FROZEN_METRICS = "469490dd3142a17d"
+#
+# **Moved 2026-10-09 by Q540 (schema 17, what a capture leaves behind)**: `complexity.py`
+# charges the four new rules (no library spec's `rule_mass` moves) and `engine.py` names
+# what a rifle, circe or Andernach capture left behind, and stops printing a promotion a
+# contact overrides (Q539). It was "469490dd3142a17d" after
+# Q708. The core moves the build fingerprint in the same change, so the library owes one
+# replay, which re-analyses and re-scores under this value.
+#
+# **Moved 2026-10-09 by Q786 (schema 18f, win by leaving a square)**: the position crossing
+# the boundary gains `goal_left_by` (`engine.py`'s `_pack`/`_unpack`, `state.py`), which
+# moves no number on a library game (the field is -1 wherever the rule is absent). It was
+# "84159537759edd2a" after Q540. The core moved the build fingerprint already (18c to 18f),
+# and the library's batched replay (Q803) re-analyses and re-scores under this value.
+#
+# **Moved 2026-10-10 by Q782 (schema 18b, hex symmetries)**: `complexity.expand_symmetry`
+# turns `rotate6` and `dihedral12`, which no library spec but the two new showcases writes,
+# so no stored number moves. It was "c5771af6075c5f99" after Q786. The core is unchanged;
+# the same task re-scores the library under this value (no replay).
+#
+# **Moved 2026-10-10 by Q771 (schema 19, portals)**: `complexity.py` charges `rules.portals`
+# (no library spec's `rule_mass` moves), `engine.py` writes a transit's text and a portal's
+# own move, and the compiler adds the portal tables (every library game's `tables`
+# fingerprint unmoved). It was "8e1bf99a3a129d3d" after Q782. The core moves the build
+# fingerprint in the same change, so the library owes one replay, which re-analyses and
+# re-scores under this value (`STALE_WINDOW` holds the library's stamp until it lands).
+#
+# **Moved 2026-10-10 by Q807 (schema 20, no straight back)**: `complexity.py` charges
+# `rules.portals[].no_straight_back` (no library spec states it), `distance.py` reads it,
+# `engine.py` and `state.py` carry the bar across the boundary, and the compiler adds its
+# tables (sent empty where no pair states it, so every library game's `tables` fingerprint
+# is unmoved). It was "5da33cbfe349e4b7" after Q771. The core moves the build fingerprint
+# in the same change, so the library owes one replay, which re-analyses and re-scores
+# under this value (`STALE_WINDOW` holds the library's stamp until it lands).
+FROZEN_METRICS = "c33efb470398b44f"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -313,7 +346,7 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # re-analyse every run, put the new value here with the date, and say in the commit which
 # change moved it. What is not allowed is for it to move quietly.
 #
-# **Moved 2026-09-24 by Q383 (the package rename, `docs/plan-rename.md` stage 4)**: the
+# **Moved 2026-09-24 by Q383 (the package rename, `docs/archive/plan-rename.md` stage 4)**: the
 # imports name the package, so the code reading moved while the pass did not. It was
 # "25a187bfef3c04b7" after Q388; `FROZEN_METRICS`'s comment has the rest.
 #
@@ -327,7 +360,22 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 #
 # **Moved 2026-10-04 by Q708**: the probe's ruler reads the seal (see `FROZEN_METRICS`).
 # It was "3d6002464c646c75" after Q631; the replay batched with Q696 is the re-analysis.
-FROZEN_ANALYSIS = "4007c61e39ad76c0"
+#
+# **Moved 2026-10-09 by Q540**: `engine.py`'s move text names schema 17's captures (see
+# `FROZEN_METRICS`). It was "4007c61e39ad76c0" after Q708; the replay Q540 owes is the
+# re-analysis.
+#
+# **Moved 2026-10-09 by Q786**: the boundary's `goal_left_by` (see `FROZEN_METRICS`). It was
+# "8a435f46ce02cd4d" after Q540; the batched replay Q803 is the re-analysis.
+#
+# **Moved 2026-10-10 by Q771**: schema 19's transits in `engine.py`'s move text and
+# `agents/minimax.py`'s loud test (see `FROZEN_METRICS`). It was "a8d24b3ad16d45ac" after
+# Q786; the replay Q771 owes is the re-analysis.
+#
+# **Moved 2026-10-10 by Q807**: schema 20's bar crosses the boundary in `engine.py` and
+# `state.py` (see `FROZEN_METRICS`). It was "a0ed8e3487536646" after Q771; the replay Q807
+# owes is the re-analysis.
+FROZEN_ANALYSIS = "bc59672c7e718716"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

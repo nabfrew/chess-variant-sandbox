@@ -43,7 +43,7 @@ import traceback
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any
@@ -54,6 +54,7 @@ from chess_variant_sandbox.loop import grid
 from chess_variant_sandbox.measurement import Basis
 from chess_variant_sandbox.site import (
     admin,
+    alarm,
     awards,
     badges,
     browse,
@@ -75,6 +76,7 @@ from chess_variant_sandbox.site import (
     move_email,
     opponent_line,
     pages,
+    people_scale,
     provisional,
     quota,
     rating,
@@ -83,9 +85,11 @@ from chess_variant_sandbox.site import (
     routes,
     screening,
     shortlist,
+    showcase,
     stages,
     suggestions,
     terms,
+    training,
     unbeaten,
     usage,
     votes,
@@ -547,6 +551,10 @@ class SiteApp(App):
             checked = self._provisional(connection, hashes)
             rows = stages.read(connection, hashes)
             people_counts = trust_people.counts_of(connection, hashes)
+            # Q741: the landing page's *Made by members*, the newest games members
+            # published, over the cards this listing offers (so never a draft, a resting
+            # game or one taken off the site).
+            payload["madeHere"] = showcase.made_here(connection, payload["games"], rows)
         known = self.known()
         # Q564 (L6, `docs/plan-launch-set.md` §5.1) and Q654 (B5): the front page's first
         # step, the day's featured game with its gentlest opponent and the next one up,
@@ -560,6 +568,10 @@ class SiteApp(App):
         payload["launchSet"] = launch.launch_cards(offered)
         # Q603 (C2, `docs/plan-return.md` §3): this month's game, by the calendar month.
         payload["monthGame"] = launch.month_game(offered, launch.today())
+        # Q788: the landing page's newest games and spotlight, over what this listing
+        # offers, so a game taken off the site is never highlighted.
+        payload["newGames"] = launch.new_cards(offered)
+        payload["spotlight"] = launch.spotlight_card(offered)
         # Q647. The card's trust chip with people's counts folded in (they may move the
         # level, never the score: `trust.RULE.people_move_level`).
         for game in payload["games"]:
@@ -578,6 +590,12 @@ class SiteApp(App):
                 game["levelGloss"] = stages.GLOSSES.get(row["level"], "")
                 published = row["published"]
                 game["onTrialSince"] = None if published is None else published.isoformat()
+                # Q826: a member's game joined the site the day its designer published
+                # it (`games.published`, UTC), the day the *date added* order reads. A
+                # library file's day is its own (`library.added`) and is left alone.
+                if row.get("origin") == stages.DESIGNED:
+                    game["added"] = None if published is None else (
+                        published.astimezone(timezone.utc).date().isoformat())
         cards = browse.decorate(payload["games"], found)
         # The header's count over the cards this listing offers, drafts and retired games
         # already dropped and before a filter narrows it: the leaderboard's, not the view's.
@@ -715,9 +733,8 @@ class SiteApp(App):
                     player.key.agent: player.rating - reader.rating
                     for player in rating.computers(table)
                 }
-            standing["firstPlayed"] = _first_played(
-                matches.leaderboard_matches(connection, digest), named
-            )
+            rated_rows = matches.leaderboard_matches(connection, digest)
+            standing["firstPlayed"] = _first_played(rated_rows, named)
             standing["highest"] = _highest(table, named)
             standing["clearedBy"] = [
                 {
@@ -731,6 +748,17 @@ class SiteApp(App):
             # people's counts the trust line reads, and moving neither it nor the score.
             standing["opponentLine"] = opponent_line.shown(
                 trust_people.counts(connection, digest), rated=bool(found.tag.rated)
+            )
+            # H7 (`docs/plan-human-data.md` §3.2): each computer player's place among the
+            # people rated here, drawn in the opponent line's *more*, and only once five
+            # people are established on this table (`people_scale.MINIMUM_ESTABLISHED`).
+            standing["peopleScale"] = people_scale.shown(
+                people_scale.places_from(
+                    digest,
+                    rated_rows,
+                    table,
+                    rating.seeds_for(connection, digest),
+                )
             )
             standing["signedIn"] = self.viewer is not None
             standing["admin"] = self.role == admin.ADMIN
@@ -1439,9 +1467,13 @@ class SiteApp(App):
             )
             members_here = identity.members(connection)
             paged = members.with_pages(connection)
+            # Q760: every member, A to Z, for finding one by name.
+            everybody = members.directory(connection, viewer)
         listed = len(standings) >= milestones.LISTED_FROM
         return {
             "you": viewer,
+            "directory": everybody,
+            "directorySaid": members.DIRECTORY_SAID,
             "rated": len(rated),
             "listed": listed,
             "listedFrom": milestones.LISTED_FROM,
@@ -1606,7 +1638,42 @@ class SiteApp(App):
                     "mailed": move_email.sent_today(connection),
                     "mailCap": quota.MOVE_EMAILS_A_DAY,
                 },
+                # H7 (`docs/plan-human-data.md` §3.2). Each computer player's place among
+                # the people rated on each game, and whether the game page shows it yet.
+                "peopleScale": people_scale.admin_rows(connection),
+                # H8 and H9 (§3.3). Every game with a rated game against its strongest,
+                # against the bar, with the training queue's entry for it.
+                "bar": self._admin_bar(connection),
             }
+
+    @staticmethod
+    def _admin_bar(connection: Any) -> dict[str, Any]:
+        found = alarm.readings(connection)
+        held = training.held(connection)
+        queue = training.entries(connection)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "select hash, name from games where hash = any(%s)",
+                ([one.game for one in found] + [entry.game for entry in queue],),
+            )
+            names = {str(row[0]): str(row[1]) for row in cursor.fetchall()}
+        return {
+            "said": alarm.BAR_SAID,
+            "games": [
+                {
+                    "hash": one.game,
+                    "name": names.get(one.game, one.game[:12]),
+                    "over": one.over,
+                    "said": alarm.said(one),
+                    "queued": None if one.game not in held else held[one.game].as_dict(),
+                }
+                for one in found
+            ],
+            "queue": [
+                {**entry.as_dict(), "name": names.get(entry.game, entry.game[:12])}
+                for entry in queue
+            ],
+        }
 
     def _score_history(self) -> list[dict[str, Any]]:
         """`/admin`'s *Earlier scores*: one row a game whose score replaced another."""
@@ -1809,6 +1876,10 @@ class SiteApp(App):
         `terms` is the version of the terms the designer's ticked box stood for (Q722), a
         whole number and nothing else; anything else counts as no tick, which
         `drafts.publish` refuses with `terms.NOT_ACCEPTED`.
+
+        Q742: while the site is still checking the draft's score (`provisional.checking`)
+        the press is taken and waits, `listed` false and `waiting` true, and the runner is
+        woken so that `drafts.settle` puts the game on trial as soon as the check passes.
         """
         viewer = self._viewer()
         digest = str(body.get("hash") or "")
@@ -1816,11 +1887,19 @@ class SiteApp(App):
             raise drafts.PublishError("Say which game to publish.")
         self._playable(digest)
         with self._connection() as connection:
+            reading = drafts.attached(connection, digest, self._current)
             done = drafts.publish(
-                connection, digest, viewer, drafts.attached(connection, digest, self._current),
-                _agreed(body.get("terms")),
+                connection, digest, viewer, reading, _agreed(body.get("terms")),
+                checking=reading is None and provisional.checking(connection, digest),
             )
-        return {"hash": done.hash, "listed": True, "said": done.said}
+        if done.waiting:
+            # The check may have ended between the read above and this commit; the runner
+            # settles every waiting publish on each pass, so a wake is all it needs.
+            self.checks.wake()
+        return {
+            "hash": done.hash, "listed": not done.waiting, "waiting": done.waiting,
+            "said": done.said,
+        }
 
     def _vote(self, body: dict[str, Any]) -> Any:
         """One to five stars on a game, with up to three fixed tags, replacing whatever
@@ -2692,7 +2771,9 @@ def site_handler_for(app: SiteApp) -> type[Any]:
             elif viewer is None:
                 self._redirect("/signin")
             elif path == "/players":
-                self._html(pages.players(viewer.handle, user=viewer.id))
+                # Q760: `?q=` fills the search field, so a search can be linked to.
+                searched = (parse_qs(query).get("q") or [""])[-1]
+                self._html(pages.players(viewer.handle, user=viewer.id, asked=searched))
             elif path == "/suggestions":
                 self._html(pages.suggestions(viewer.handle, app.players_listed(), user=viewer.id))
             elif path == "/admin":

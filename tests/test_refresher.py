@@ -267,6 +267,10 @@ class FakeMachine:
     # Commits main holds, for `unmerged`; and a Ctrl-C at the first sleep.
     merged: set[str] = field(default_factory=set)
     interrupt_on_sleep: bool = False
+    # What `slow_tier` returns (a green run by default), or raises; and the files it leaves
+    # changed (`test_refresher_slow_tier.py`).
+    tier: Any = None
+    tier_changes: list[str] = field(default_factory=list)
 
     def head(self) -> str:
         return self.commit
@@ -337,6 +341,14 @@ class FakeMachine:
 
     def unmerged(self, commits: list[str]) -> list[str]:
         return [commit for commit in commits if commit not in self.merged]
+
+    def slow_tier(self) -> refresher.SlowTier:
+        assert self.holding == refresher.SLOW_TIER_LEASE
+        self.calls.append(("slow tier", self.commit))
+        self.changes = [*self.changes, *self.tier_changes]
+        if isinstance(self.tier, BaseException):
+            raise self.tier
+        return self.tier or refresher.SlowTier(commit=self.commit, passed=3)
 
     def sleep(self, seconds: float) -> None:
         self.calls.append(("sleep",))

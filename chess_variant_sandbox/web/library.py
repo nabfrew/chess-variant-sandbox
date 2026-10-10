@@ -19,6 +19,7 @@ import os
 import time
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -42,6 +43,7 @@ from chess_variant_sandbox.metrics.scoring import WeightsError
 from chess_variant_sandbox.spec import load_spec, spec_hash
 from chess_variant_sandbox.spec.complexity import measure_complexity
 from chess_variant_sandbox.spec.describe import describe_rules, describe_setup, describe_spec
+from chess_variant_sandbox.spec.schema import SpecError
 from chess_variant_sandbox.viz.pieces import icons_for, side_names
 from chess_variant_sandbox.web import sitescore
 
@@ -391,6 +393,10 @@ class Game:
             # is no current score, which says so itself: a provisional estimate has no
             # evidence read against the current basis, so it carries no trust level.
             "trust": trust_card(self),
+            # The day the game joined the library, `YYYY-MM-DD`, or `None` (Q826): what the
+            # games page's *date added* order sorts on. The site puts a member's publish
+            # day here for a member's game (`site/server.py`).
+            "added": added(self),
         }
 
     def ancestry(self) -> dict[str, Any]:
@@ -1577,6 +1583,25 @@ def provenance(game: Game) -> dict[str, Any]:
     return declared
 
 
+# Where a game's own file is the library's, so its `provenance.added` is the day it joined.
+# A design run's candidate and a member's draft are not in the library; a member's file
+# could say anything there, and only the site's own publish day speaks for it.
+LIBRARY_SOURCES = ("committed", "archived")
+
+
+def added(game: Game) -> str | None:
+    """The day `game` joined the library, `YYYY-MM-DD`, from its file's `provenance.added`
+    (Q826; `.claude/scripts/backfill_added.py` wrote the day git first saw each file).
+    `None` for a game the library's two directories do not hold."""
+    if game.source not in LIBRARY_SOURCES:
+        return None
+    day = (game.spec.get("provenance") or {}).get("added")
+    try:
+        return date.fromisoformat(day).isoformat() if isinstance(day, str) else None
+    except ValueError:
+        return None
+
+
 # Where a deliberate example may be kept: the two directories the maintainer commits to,
 # and a game retired out of them, whose page the site draws from the rules its loader
 # copied from those files (`site/kept.py`). A draft and a design run's candidate are not.
@@ -1669,7 +1694,12 @@ def far_from_chess(game: Game) -> list[str]:
         shape = still(game)
         if shape is not None:
             stride = shape.get("sideStride") or shape.get("nTypes") or 1
-            if any(value and (value - 1) // stride > 1 for value in shape["board"]):
+            types = shape.get("nTypes") or 1
+            # A portal end (schema 19) stands in the third owner's block too, and is
+            # nobody's piece: the board, not a wild piece (Q772d).
+            ends = {end["type"] for end in (shape.get("portals") or {}).get("ends") or []}
+            if any(value and (value - 1) // stride > 1 and (value - 1) % types not in ends
+                   for value in shape["board"]):
                 reasons.append("it has wild pieces that belong to neither side")
     except Exception:  # noqa: BLE001 - a page must survive one unloadable spec
         return []
@@ -1836,9 +1866,21 @@ def _engine_cached(blob: str) -> Engine:
 
 @lru_cache(maxsize=256)
 def _smoke_cached(blob: str) -> tuple[bool, tuple[str, ...]]:
+    """The cheap gate's verdict, played on the engine `engine_for` compiled.
+
+    The card's still board and the translation ask `engine_for` for the same rules, so
+    the three share one compile (the first-visit study's N8: a cold listing compiled
+    every ruleset three times). Rules that do not compile go to the gate as text, which
+    says why in the designer's words.
+    """
     from chess_variant_sandbox.loop.gates import smoke_test
 
-    result = smoke_test(json.loads(blob))
+    spec = json.loads(blob)
+    try:
+        engine: Engine | None = engine_for(spec)
+    except (SpecError, NotImplementedError):
+        engine = None
+    result = smoke_test(spec, engine=engine)
     return result.passed, tuple(result.reasons)
 
 
@@ -1868,10 +1910,23 @@ def _fairy_cached(blob: str) -> tuple[bool, tuple[str, ...]]:
     throws the reasons away and the second recomputes them -- and a listing that called
     both would compile every ruleset the translator refuses a second time to be told
     again why. No reasons *is* support, which is what `why_not` documents returning.
-    """
-    from chess_variant_sandbox import fairy
 
-    reasons = tuple(fairy.why_not(json.loads(blob)))
+    It is `why_not`'s attempt, handed the rules `engine_for` compiled rather than the
+    text. A cold listing compiled every ruleset three times, for the cheap gate, the
+    card's still board and this; the still board asks `engine_for` straight after this
+    (`App.library_payload`), so the two now share one compile (the first-visit study's N8:
+    the first listing after a start took 13.8 s, nearly all of it compiling).
+    """
+    from chess_variant_sandbox.fairy.variant import Untranslatable, translate
+
+    try:
+        translate(engine_for(json.loads(blob)).spec)
+    except Untranslatable as error:
+        reasons = tuple(error.reasons)
+    except Exception as error:  # noqa: BLE001 - as `why_not`: a refusal, not an error
+        reasons = (f"{type(error).__name__}: {error}",)
+    else:
+        reasons = ()
     return not reasons, reasons
 
 

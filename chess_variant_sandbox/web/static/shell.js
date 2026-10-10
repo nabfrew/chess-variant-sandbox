@@ -89,7 +89,10 @@
       var hash = window.location.hash.replace(/^#/, '');
       var part = page ? (hash.replace(/^\/?/, '').split(/[/?]/)[0] || '') : null;
       var bare = part === '' && path !== '/game' && hash !== '/';
-      var section = part === null || bare || part === 'round' || part === 'about' ? null
+      // The people page and a member's page (Q760) are in People.
+      var people = path === '/players' || path.indexOf('/players/') === 0;
+      var section = people ? 'players'
+        : part === null || bare || part === 'round' || part === 'about' ? null
         : part === 'design' ? '#/design' : part === 'whats-new' ? '#/whats-new' : 'game';
       nav.querySelectorAll('a').forEach(function (link) {
         var where = link.getAttribute('href').replace(/^\//, '');

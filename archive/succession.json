@@ -254,6 +254,7 @@
     }
   },
   "provenance": {
+    "added": "2026-09-07",
     "origin": "human",
     "source": "international chess",
     "history": "Drawn from chess by the become-what-you-take mutation operator at seed 1, as the demonstrating ruleset for rules.contacts (schema 10, row 30 of reference/schema-showcase-coverage.md). A contact table is the one thing a strike chain cannot say: the mover's column."

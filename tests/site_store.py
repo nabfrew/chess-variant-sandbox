@@ -48,6 +48,23 @@ _emptying: tuple[str, ...] = ()
 _connection: Any = None
 
 
+def check_driver() -> None:
+    """Fail the run, once, when the database is named but its driver cannot be imported.
+
+    A skipped test proves nothing: with the URL set and `psycopg` missing, every site test
+    would skip and look as if it had run. With the URL unset the tests skip quietly, as before.
+    """
+    if not os.environ.get(URL_ENV, "").strip():
+        return
+    try:
+        import psycopg  # noqa: F401
+    except ImportError:
+        raise pytest.UsageError(
+            f"{URL_ENV} is set but psycopg is not installed, so every site test would skip "
+            "silently. Fix: uv sync --extra dev --extra site"
+        ) from None
+
+
 def database(why: str) -> str:
     """The test database's address, or a skip that says what the test needed it for."""
     url = os.environ.get(URL_ENV, "").strip()

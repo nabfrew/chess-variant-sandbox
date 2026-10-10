@@ -243,18 +243,27 @@ SECTIONS: tuple[tuple[str, str], ...] = (
     ("#/whats-new", "What's new"),
 )
 
+PEOPLE = ("/players", "People")
+"""Q760: the people page, a section for signed-in members on the site only. It goes after
+*Games*. The site's own pages draw it when somebody is signed in (`sections(people=True)`);
+the application's page adds it once `/api/me` says a member is reading (`core.js`'s
+`paintIdentity`), since the local application has no people and a visitor would be sent to
+the door."""
+
 
 def brand() -> str:
     """The mark and the name, the header's left end."""
     return f'{mark(32)}<span class="word">{NAME}</span>'
 
 
-def sections(root: str = "") -> str:
+def sections(root: str = "", people: bool = False) -> str:
     """The sections, and the button a phone opens them with (`shell.js`). Without the
-    script the button stays hidden and the sections wrap under the name instead."""
+    script the button stays hidden and the sections wrap under the name instead. `people`
+    adds `PEOPLE` after the games."""
+    shown = (SECTIONS[0], PEOPLE, *SECTIONS[1:]) if people else SECTIONS
     links = "".join(
         f'<a href="{where if where.startswith("/") else root + where}">{words}</a>'
-        for where, words in SECTIONS
+        for where, words in shown
     )
     return (
         f'<nav class="sections" id="sections" aria-label="sections">{links}</nav>'

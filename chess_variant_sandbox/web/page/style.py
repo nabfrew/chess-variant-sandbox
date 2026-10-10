@@ -94,6 +94,36 @@ RULES = """
   .memberMark { display: inline-block; flex: none; vertical-align: -4px; margin-right: 6px; }
   h1 .memberMark { vertical-align: -5px; margin-right: 12px; }
   @media (max-width: 760px) { header.top #who .memberMark { display: none; } }
+  /* The way to your own page (Q731): a button, not a name. A bare handle in the corner
+     read as a label saying who is signed in; this is a sheet of the panel's paper with the
+     controls' outline, height and radius, the handle, then *your page* and a chevron in the
+     action colour. On a phone the handle goes and *your page* stays (`site/pages.py`'s
+     `_member_button`, `core.js`'s `memberButton`). */
+  header a.memberButton {
+    display: inline-flex; align-items: center; gap: 8px; direction: ltr; white-space: nowrap;
+    min-height: var(--ctl-h); padding: 0 12px; margin-left: 4px; vertical-align: middle;
+    border: 1px solid var(--edge); border-radius: var(--r-ctl);
+    background: var(--paper) 0 0 / 180px, var(--panel); box-shadow: var(--shadow);
+    color: var(--ink); font: 500 15px/1 var(--f-body);
+  }
+  header a.memberButton:hover { border-color: var(--ink); color: var(--ink); }
+  header a.memberButton .memberMark { margin-right: 0; vertical-align: 0; }
+  header a.memberButton .memberGo { color: var(--act); font-weight: 600; }
+  header a.memberButton .memberName + .memberGo { padding-left: 8px;
+                                                  border-left: 1px solid var(--line); }
+  /* On a phone the corner has about 50 px beside the name and the menu, too little for a
+     button that says where it goes. So when the corner holds the button, the button keeps
+     its whole width and the site's name gives way instead, onto two lines; the
+     maintainer's *Maintenance* link and its dot leave the corner (their own page has it). */
+  @media (max-width: 760px) {
+    header a.memberButton { font-size: 14px; padding: 0 10px; }
+    header a.memberButton .memberName { display: none; }
+    header a.memberButton .memberName + .memberGo { padding-left: 0; border-left: none; }
+    header.top:has(.memberButton) .brand { flex: 0 1 auto; min-width: 0; line-height: 1.1; }
+    header.top #who:has(.memberButton) { flex: none; overflow: visible; direction: ltr;
+                                         font-size: 0; }
+    header.top #who:has(.memberButton) > a:not(.memberButton) { display: none; }
+  }
   /* The footer is signed (V7): the mark small and the name in the heading face, then the
      links, then the theme switch; on a phone each takes its own line as it wraps. */
   footer .sign { display: inline-flex; align-items: center; gap: 8px; color: var(--muted);
@@ -130,19 +160,12 @@ RULES = """
      board. A card whose game drew no board is the words alone. */
   .card:has(> .thumb) { display: grid; grid-template-columns: 104px minmax(0, 1fr);
                         gap: 14px; align-items: start; }
-  .card .thumb, .doorCard .thumb { pointer-events: none; }
+  .card .thumb { pointer-events: none; }
   /* One loud thing: the level and the score are the pills; the rest of what the checks
      found is a quiet line of the same words, each with its hover, no border. */
   .card .notes { gap: 4px 10px; margin-bottom: 4px; }
   .card .notes .tag { border: 0; padding: 0; border-radius: 0; font-size: 12px; }
   .card .notes .tag.score { color: var(--good); font-weight: 600; }
-  /* The front door's cards: a 64 px board beside the name and the sentence; this month's
-     game an 80 px one. */
-  .doorCards { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
-  .doorCard { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px;
-              align-items: start; margin: 0; }
-  .doorCard:not(:has(> .thumb)) { grid-template-columns: minmax(0, 1fr); }
-  #monthGame.doorCard { grid-template-columns: 80px minmax(0, 1fr); gap: 14px; }
   @media (max-width: 760px) {
     .grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
     .card:has(> .thumb) { grid-template-columns: 80px minmax(0, 1fr); gap: 12px; }
@@ -151,7 +174,6 @@ RULES = """
     .grid > .card { padding: 12px; }
     .card .kind { display: none; }
     .card p { -webkit-line-clamp: 2; }
-    .doorCards { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   }
   /* The landing page (Q718): the words beside a quiet board at 1120 px, above it on a
      phone; then the sections as one column of reading width. The board's pieces are set
@@ -182,8 +204,11 @@ RULES = """
     .landingSlide { transition: none; }
     .landingBoard .settle { opacity: 1; animation: none; }
   }
-  .landingShow figcaption { margin-top: 10px; min-height: 36px; }
-  .landingShowControls { gap: 4px; margin-top: 2px; }
+  /* Three lines of caption and the controls' row are held from the start (Q741): the
+     longest sentence of the starting games takes three lines on a phone, and the
+     controls arrive with the listing, so neither moves *Made by members* under it. */
+  .landingShow figcaption { margin-top: 10px; min-height: 54px; }
+  .landingShowControls { gap: 4px; margin-top: 2px; min-height: var(--ctl-h); }
   .landingPart { margin: 0 0 26px; }
   .landingPart h3 { font-size: 20px; line-height: 26px; margin: 0 0 8px; }
   .landingPart p { margin: 0 0 10px; }
@@ -204,11 +229,91 @@ RULES = """
   .ingredientHead { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
   .ingredientWeight { font-family: var(--f-mono); font-size: 13px; color: var(--muted); }
   .landingFoot:empty { display: none; }
+  /* Q741: *Made by members*, straight under the opening board. Wider than the reading
+     column, so four games sit across at 1120 px. The shelf is one row of a fixed height
+     whatever it holds -- nothing while the listing loads, up to four games, or the
+     invitation before anybody has published -- so filling it moves nothing below it; on a
+     phone the row scrolls sideways inside its own box, the next game showing at the edge. */
+  .landingMembers { max-width: none; }
+  .landingMembers > p { max-width: 760px; }
+  .membersHead { display: flex; align-items: baseline; justify-content: space-between;
+                 gap: 12px; }
+  .membersHead a { white-space: nowrap; }
+  .membersShelf { display: grid; grid-auto-flow: column; gap: 12px; height: 140px;
+                  grid-auto-columns: minmax(250px, 1fr); overflow-x: auto; overflow-y: hidden;
+                  scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
+                  scrollbar-width: thin; }
+  .memberGame { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px;
+                align-items: center; padding: 10px; min-width: 0; scroll-snap-align: start;
+                box-shadow: none; }
+  .memberGame .thumb { width: 92px; pointer-events: none; }
+  .memberGame, .newGame { cursor: pointer; }
+  .memberGameText { display: flex; flex-direction: column; align-items: flex-start;
+                    gap: 4px; min-width: 0; }
+  .memberGameName { font-weight: 600; line-height: 20px; max-width: 100%; overflow: hidden;
+                    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .memberGameBy { display: flex; align-items: center; gap: 5px; max-width: 100%;
+                  color: var(--muted); }
+  .memberGameBy a { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+  .memberGameBy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .landing a.button.memberGamePlay { min-height: var(--ctl-h-sm); padding: 4px 16px; margin-top: 2px; }
+  .membersEmpty { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px;
+                  padding: 10px 16px; border: 1px dashed var(--line); border-radius: 10px; }
+  .membersEmpty p { margin: 0; max-width: 520px; }
+  .membersEmpty .button { flex: none; }
+  /* Q788: *New in the library*, a shelf like *Made by members* (one row of one height,
+     sideways on a phone), each card a board, the name, two lines of its sentence and the
+     pills; then the picks row, the day's game, the spotlight and this month's game, side by
+     side where there is room and one above the other on a phone. */
+  .landingShelf, .landingPicks { max-width: none; }
+  .landingShelf > p { max-width: 760px; }
+  .newShelf { display: grid; grid-auto-flow: column; gap: 12px; height: 156px;
+              grid-auto-columns: minmax(250px, 1fr); overflow-x: auto; overflow-y: hidden;
+              scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
+              scrollbar-width: thin; }
+  .newGame { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px;
+             align-items: center; padding: 10px; min-width: 0; scroll-snap-align: start;
+             box-shadow: none; }
+  .newGame .thumb { width: 92px; pointer-events: none; }
+  .newGameText { display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+                 min-width: 0; }
+  .newGameSentence { margin: 0; color: var(--muted); overflow: hidden; display: -webkit-box;
+                     -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .newGamePills { gap: 5px; flex-wrap: wrap; }
+  .tag.newTag { border-color: var(--act); color: var(--ink); }
+  .landingPicks { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr));
+                  align-items: stretch; }
+  /* A picks panel is `.landingPicks > .pick`, never a bare `.pick`: `label.pick` is the
+     labelled control everywhere else (the map's settings, the designer's *royal*, the
+     library's filters), and a bare rule gave each a 200 px grid box (Q777). */
+  .landingPicks > .pick { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 14px;
+          align-items: start; margin: 0; padding: 14px; min-height: 200px; box-shadow: none; }
+  .pickBoard .thumb { width: 120px; pointer-events: none; }
+  /* The spotlight is the row's own width, its board larger; the other two share a row. */
+  #landingSpotlight { grid-column: 1 / -1; grid-template-columns: 180px minmax(0, 1fr);
+                      gap: 20px; min-height: 0; }
+  #landingSpotlight .pickBoard .thumb { width: 180px; }
+  #landingSpotlight .pickText { max-width: 760px; }
+  .pickText h4 { font-size: 18px; line-height: 24px; margin: 2px 0 4px; }
+  .pickText p { margin: 0 0 8px; }
+  .pickWays { gap: 6px; flex-wrap: wrap; align-items: center; }
+  .landingPicks > .pick[aria-busy] > * { visibility: hidden; }
+  @media (max-width: 760px) {
+    .newShelf { grid-auto-columns: minmax(270px, 86%); }
+    .landingPicks { grid-template-columns: minmax(0, 1fr); }
+    .landingPicks > .pick { grid-template-columns: 84px minmax(0, 1fr); gap: 12px; padding: 12px; min-height: 0; }
+    .pickBoard .thumb { width: 84px; }
+    #landingSpotlight { grid-template-columns: 84px minmax(0, 1fr); gap: 12px; }
+    #landingSpotlight .pickBoard .thumb { width: 84px; }
+  }
   @media (max-width: 760px) {
     .landingHero { grid-template-columns: minmax(0, 1fr); gap: 18px; margin-bottom: 22px; }
     .landingShow { max-width: 340px; width: 100%; margin: 0 auto; }
     .landingTitle { font-size: 22px; line-height: 28px; }
     .landingLead { font-size: 16px; line-height: 24px; }
+    .membersShelf { grid-auto-columns: minmax(250px, 82%); }
+    .membersEmpty { flex-direction: column; align-items: flex-start; gap: 8px;
+                    font-size: 14px; line-height: 20px; }
   }
   .card h2 { font-size: 17px; line-height: 22px; margin: 0 0 6px; }
   /* A row of their own, whatever the name is: beside the name they sat next to a short
@@ -354,6 +459,14 @@ RULES = """
        so one long piece description pushed the whole column past the screen and the
        page scrolled sideways. Stacked there is one track and it is the screen. */
     .split > * { min-width: 0; }
+    /* Stacked, the board page's side panel comes a screen below the board, and its tabs
+       are what a person scrolls down for (a first game opens on the rules, K3): they lead
+       it, and the seat lines, which the status strip above the board already names, follow
+       (Q728). */
+    .boardSide { display: flex; flex-direction: column; }
+    .boardSide > .tabs { margin-top: 0 !important; align-self: flex-start; }
+    .boardSide > .seatLines { order: 1; margin-top: 12px; padding-top: 10px;
+                              border-top: 1px solid var(--line); }
   }
   /* The game's page (V6, §3.4): the play panel and what sits beside it first, then the
      rest of the game in two columns of sections, each folding under its heading. On a
@@ -376,8 +489,14 @@ RULES = """
   .opening { margin: 0; width: 100%; }
   .opening figcaption { margin-top: 6px; }
   .opening .frame-legend { margin-top: 4px; }
-  /* K3: a tapped piece's move sentences, one line under the board; and the first game. */
-  .piece-says { margin: 6px 0 0; }
+  /* K3: a tapped piece's move sentences, one line under the board; and the first game.
+     Q809: held to that one line (the line `fitBoard` keeps), the rest a tap away, so a
+     piece whose sentences run to three lines pushes nothing off the first screen until
+     the reader asks for them; the board is the same size either way. */
+  .piece-says { margin: 6px 0 0; display: -webkit-box; -webkit-box-orient: vertical;
+                -webkit-line-clamp: 1; overflow: hidden; }
+  .piece-says.more { cursor: pointer; }
+  .piece-says.open { display: block; -webkit-line-clamp: none; }
   .piece-says[hidden] { display: none; }
   .firstGame { margin: 0 0 10px; }
   .seatCard .gentlest { color: var(--act); font-weight: 600; }
@@ -427,6 +546,43 @@ RULES = """
                           -webkit-line-clamp: var(--strip-lines); overflow: hidden; min-width: 0; }
   .frame-status.ended { padding: 6px 12px; border-radius: var(--r-panel); border-color: var(--ink); }
   .frame-status .frame-note { font-weight: 400; margin-left: 10px; }
+  /* Q733: the slot under the board of a game between two people, what to do next in the
+     frame's largest words. Its height is fixed like the strip's, so the board never moves
+     as it changes; a move picked and not sent dashes its border in ink, as the move is
+     dashed on the board, and *Send your move* is the frame's one big button. */
+  .corr-send { height: 140px; box-sizing: border-box; overflow: hidden; margin-top: 8px;
+               padding: 8px 12px; display: flex; flex-direction: column; justify-content: center;
+               gap: 8px; border: 2px solid var(--line); border-radius: var(--r-panel);
+               background: var(--panel); color: var(--ink); font-size: 16px; line-height: 22px; }
+  .corr-send[hidden] { display: none; }
+  .corr-send.held { border-style: dashed; border-color: var(--ink); }
+  .corr-send .send-says { display: -webkit-box; -webkit-box-orient: vertical;
+                          -webkit-line-clamp: 2; overflow: hidden; }
+  .corr-send .send-row { display: flex; gap: 10px; align-items: center; flex-wrap: nowrap; }
+  /* Q761: a button too narrow for its words wraps them onto a second line rather than
+     clipping them; each keeps at least its longest word (a flex item's own minimum), and
+     `fitBoard` gives the slot the width the two need side by side (`SEND_WIDE`). */
+  .corr-send button.send-big { flex: 0 1 auto; min-height: var(--ctl-h-lg); padding: 8px 24px;
+                               font-size: 19px; line-height: 22px; font-weight: 700; }
+  /* Q740: *Change my move* beside it, a plain outlined button as tall as *Send your move*,
+     edged in ink so it reads as a button at a glance and not as a word on the panel. */
+  .corr-send button.send-change { flex: 0 1 auto; min-height: var(--ctl-h-lg); padding: 8px 16px;
+                                  font-size: 17px; line-height: 20px; font-weight: 600;
+                                  border: 2px solid var(--ink); color: var(--ink); }
+  /* Q761: the slot beside the board, where the column has room for it next to a board the
+     screen's height holds short (`fitBoard`'s `beside`). It stands at the board's foot, as
+     tall as its words and buttons, which take as many lines as they need: the board's own
+     height is what the row is, so nothing here moves the board or the bar under it. */
+  .board-row.beside { display: flex; align-items: flex-end; gap: 16px; }
+  .board-row.beside > .board-panel { flex: 0 0 auto; }
+  .board-row.beside > .corr-send { flex: 1 1 0; min-width: 0; height: auto; min-height: 140px;
+                                   margin-top: 0; }
+  .board-row.beside .send-row { flex-wrap: wrap; }
+  .board-row.beside .send-says, .board-row.beside .send-says:only-child { display: block; }
+  .corr-send button.send-change:hover:not(:disabled) { border-color: var(--ink);
+                                                       background: var(--sunk); }
+  .corr-send .send-says:only-child { -webkit-line-clamp: 4; }
+  .held-note { margin-top: 4px; font-size: 15px; }
   .seat-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%;
               margin-right: 8px; vertical-align: -1px; border: 1.5px solid var(--ink); }
   .seat-dot.s0 { background: var(--p0); }
@@ -439,8 +595,9 @@ RULES = """
   .frame-legend[hidden] { display: none; }
   .frame-legend #legend { display: inline-flex; flex-wrap: wrap; gap: 4px 12px; }
   .frame-legend .key { vertical-align: -3px; margin-right: 4px; border-radius: 2px; }
-  .frame-legend #zonetoggle { min-height: var(--ctl-h-sm); padding: 3px 10px; font-size: 13px;
-                              line-height: 18px; }
+  .frame-legend #zonetoggle, .frame-legend #linktoggle { min-height: var(--ctl-h-sm);
+                              padding: 3px 10px; font-size: 13px; line-height: 18px; }
+  .frame-legend #zonetoggle + #linktoggle { margin-left: 8px; }
   /* The square names stand outside the board, in the panel's margin, in the numbers'
      face (§3.3): `drawCoords` places each at its edge as a share of the drawing, and it is
      set off outwards by `--co-out`, the frame's wood and a little more. A board that keeps
@@ -448,6 +605,10 @@ RULES = """
   .board-panel { margin: 0; --co-out: 17px; }
   .board-panel.coords-out { padding-left: 26px; padding-bottom: 28px; }
   .board-panel .board-frame { overflow: visible; }
+  /* Q809: the designer's bench board names its squares the same way, in a margin of its
+     own (`edgeNamesHtml`). */
+  .still-named { padding-left: 26px; padding-bottom: 28px; --co-out: 17px; }
+  .still-named .board-frame { overflow: visible; }
   .board-box { position: relative; }
   .coords { position: absolute; inset: 0; pointer-events: none; }
   .coords .co { position: absolute; font: 600 11px/1 var(--f-mono); color: var(--muted);
@@ -472,6 +633,64 @@ RULES = """
   .frame-ended.won .ended-head { color: var(--win); }
   .frame-ended.lost { border-color: var(--loss); }
   .frame-ended.lost .ended-head { color: var(--loss); }
+  /* What a promoting piece becomes (Q765): the board dimmed under `--scrim`, and over its
+     middle a card of the panel's paper saying what to do, each piece drawn large on a
+     light square of the board's wood with its name under it, every one a big target. The
+     card may be wider than a small board; it is never wider than the screen. Every button
+     in it is a large control (52 px, 56 under a finger). */
+  .promo { position: absolute; inset: 0; z-index: 3; background: var(--scrim);
+           border-radius: inherit; scroll-margin: 12px; }
+  .promo[hidden] { display: none; }
+  .promo-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+                width: max-content; max-width: min(440px, calc(100vw - 24px));
+                padding: 16px 18px 12px; text-align: center; color: var(--ink);
+                background: var(--paper) 0 0 / 180px, var(--panel);
+                border: 2px solid var(--ink); border-radius: var(--r-panel);
+                box-shadow: var(--shadow-pop); scroll-margin: 12px; }
+  .promo-head { font: 600 22px/28px var(--f-head); margin: 0; letter-spacing: -.01em; }
+  .promo-says { margin: 4px 0 12px; font-size: 16px; line-height: 22px; }
+  .promo-pieces { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+  .promo-pieces .promo-pick { display: inline-flex; flex-direction: column; align-items: center;
+                              gap: 4px; width: 92px; min-height: 0; padding: 6px 4px 8px;
+                              font-size: 16px; line-height: 20px; font-weight: 600;
+                              white-space: normal; overflow-wrap: anywhere; }
+  .promo-pick .promo-piece { width: 72px; height: 72px; border-radius: 6px;
+                             background: var(--sq-lt); border: 1px solid var(--edge); }
+  /* Where a strike's survivor goes (Q769): each square a light square of the board's wood
+     the size of a drawn piece, its name in the frame's brown, which reads on the wood in
+     both themes. */
+  .promo-sq { display: flex; align-items: center; justify-content: center; width: 72px;
+              height: 72px; border-radius: 6px; background: var(--sq-lt);
+              border: 1px solid var(--edge); color: var(--frame);
+              font: 700 26px/1 var(--f-head); letter-spacing: .01em; }
+  .promo-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .promo-card .promo-row { margin-top: 12px; }
+  .promo-row button { min-height: var(--ctl-h-lg); font-size: 16px; }
+  /* Looking at the board while choosing: no dimming and nothing over the squares, and one
+     bar just under the board (over the square names and the line below them), which takes
+     the way back to the choice and Cancel. The board still takes no tap. */
+  .promo.looking { background: transparent; pointer-events: none; }
+  .promo-bar { position: absolute; left: 50%; top: calc(100% + 6px); transform: translateX(-50%);
+               pointer-events: auto; width: max-content; max-width: min(440px, calc(100vw - 24px));
+               display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+               gap: 6px 12px; padding: 8px 12px; text-align: center; color: var(--ink);
+               background: var(--paper) 0 0 / 180px, var(--panel); border: 2px solid var(--ink);
+               border-radius: var(--r-panel); box-shadow: var(--shadow-pop); scroll-margin: 12px; }
+  .promo-wait { font-size: 16px; line-height: 22px; font-weight: 600; }
+  /* The way out of a portal (schema 19, `docs/plan-portals.md` D6, N6): the bar under the
+     board, the board left undimmed so the exit each button names is lit on it as the
+     button is hovered or focused. One button a way, its arrow and its square in words. */
+  .promo-exits { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .promo-exits .promo-exit { min-height: var(--ctl-h-lg); font-size: 16px; }
+  .promo-exit .promo-arrow { font-size: 20px; margin-right: 6px; }
+  .promo-exit-bar > * { flex: 1 1 100%; }
+  .promo-exit-bar .promo-row { align-items: center; }
+  .promo-esc { font-size: 13px; }
+  /* A portal end drawn small (D9): under 28 px a cell its chevrons go, under 20 px its
+     double rim and hatch too, and the label and the line under the board say the rest. */
+  svg[data-portals="mid"] .pg-arrow, svg[data-portals="small"] .pg-arrow,
+  svg[data-portals="small"] .pg-double, svg[data-portals="small"] .pg-hatch,
+  .pg-small .pg-arrow, .pg-small .pg-double, .pg-small .pg-hatch { display: none; }
   .frame-controls { margin-top: 8px; gap: 6px; }
   .frame-controls .shift { gap: 6px; }
   .frame-controls .shift:empty { display: none; }
@@ -492,11 +711,38 @@ RULES = """
     .frame-controls .shift { order: 1; flex: 1 0 100%; }
     .frame-controls #frame { display: none; }
     .frame-controls .shift button { padding-left: 9px; padding-right: 9px; }
+    /* A hidden button stays hidden (Q733: *rematch* showed on a phone in a game still being
+       played, its `display` winning over `hidden`). */
+    .frame-controls > button[hidden] { display: none; }
+    /* Q733: on a phone the slot that sends a move is its button row alone while a move is
+       held, the strip right above the board saying it is not sent yet, and the legend's
+       *on the board:* runs on with its first entry; both so the frame of a game between
+       two people still ends inside the first screen. */
+    .corr-send { height: calc(var(--ctl-h-lg) + 12px); padding: 4px 10px; margin-top: 6px; }
+    .corr-send .more { display: none; }
+    /* Q740: both buttons on one row of a phone. Q761: *Send your move* keeps its one line
+       where it can and *Change my move* takes the rest, two lines inside its height; on a
+       screen narrower still both wrap, and neither is ever narrower than its longest word. */
+    .corr-send .send-row { gap: 8px; }
+    .corr-send button.send-big { flex: 0 1 auto; padding: 4px 14px; font-size: 18px;
+                                 line-height: 21px; }
+    .corr-send button.send-change { flex: 1 1 0; padding: 4px 8px;
+                                    font-size: 16px; line-height: 19px; }
+    .corr-send.held .send-says { display: none; }
+    .corr-send .send-says, .corr-send .send-says:only-child { -webkit-line-clamp: 2;
+                                                             font-size: 15px; line-height: 20px; }
+    .frame-legend #legend { display: block; }
     .board-panel { --co-out: 14px; }
     .board-panel.coords-out { padding-left: 20px; padding-bottom: 22px; }
+    .still-named { padding-left: 20px; padding-bottom: 22px; --co-out: 14px; }
     .frame-ended { padding: 10px 12px; }
     .frame-ended .ended-head { font-size: 19px; line-height: 24px; }
     .frame-ended .row { margin-top: 8px; }
+    .promo-card { padding: 12px 10px 10px; }
+    .promo-head { font-size: 20px; line-height: 25px; }
+    .promo-pieces { gap: 8px; }
+    .promo-pieces .promo-pick { width: 72px; font-size: 15px; }
+    .promo-pick .promo-piece, .promo-pick .promo-sq { width: 56px; height: 56px; }
   }
   button.danger { border-color: var(--alarm); color: var(--alarm); }
   .moves div.result { margin-top: 4px; }
@@ -521,9 +767,11 @@ RULES = """
      the striping above it, which is why it is stated after. */
   .moves div.on { background: var(--now); color: var(--ink); font-weight: 600; }
   .hand { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-  .verdict { margin-top: 12px; padding: 10px 12px; border-radius: 9px;
+  .verdict { margin-top: 12px; padding: 10px 12px; border-radius: var(--r-ctl);
              border: 1px solid var(--note); font-weight: 600; }
-  .error { border: 1px solid var(--bad); color: var(--bad); border-radius: 9px;
+  /* Ruled out by a gate: the verdict's box in the colour of *bad*. */
+  .verdict.out { border-color: var(--bad); }
+  .error { border: 1px solid var(--bad); color: var(--bad); border-radius: var(--r-ctl);
            padding: 9px 12px; margin: 12px 0; }
   /* An error shown beside the control that raised it. `.row` and `.hand` wrap, so a
      100% basis gives it a line of its own under the whole control line -- never over
@@ -736,9 +984,9 @@ RULES = """
      Inside the workbench's panel that is two frames of padding round one board, which
      left it 271 px wide on a 375 px phone (Q532); the workbench's frame is the one kept. */
   #benchPlay .panel { padding: 0; border: 0; background: none; box-shadow: none; }
-  /* A piece just added that no square holds (`freshNoteHtml`). */
-  .freshNote { border: 1px solid var(--note); border-radius: 9px; padding: 7px 10px;
-               margin: 8px 0; }
+  /* A piece just added that no square holds (`freshNoteHtml`). Inside the piece's sheet,
+     so the note's rule rather than a box of its own (V8: no panel inside a panel). */
+  .freshNote { border-left: 3px solid var(--note); padding: 3px 0 3px 9px; margin: 8px 0; }
   .benchTabs { gap: 6px; margin-bottom: 10px; }
   .benchTabs button { min-height: var(--ctl-h-sm); padding: 3px 11px; line-height: 18px; }
   /* The tray stands to the board's left, and drops above it when the column is too
@@ -762,6 +1010,60 @@ RULES = """
   .designer.bench.hexBench .tray { flex-direction: row; flex-wrap: wrap; width: 100%; }
   .designer.bench.hexBench .tray .palette { flex-direction: row; }
   .designer.bench.hexBench .benchBoard { width: 100%; max-width: 720px; }
+  /* Portals in the designer (P3, docs/plan-portals.md D2-D9): the status line a screen
+     reader reads out, the board taking the keyboard, a transit's legs shown on hover, a
+     refused square outlined once, the tray's portal row and the pair's card. */
+  .benchSaid { margin-top: 6px; color: var(--ink); }
+  .benchSaid:empty, .benchHover:empty { display: none; }
+  .benchHover { margin-top: 4px; }
+  figure.benchBoard:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .benchLeg { display: none; }
+  .benchLeg.on { display: inline; }
+  .benchFlash { animation: benchFlash 0.9s ease-out 1 forwards; }
+  @keyframes benchFlash { from { opacity: 1; } to { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .benchFlash { animation: none; } }
+  .benchLegend { margin-top: 6px; }
+  .portalRow { flex-wrap: wrap; align-items: center; }
+  .tray .portalRow { margin-top: 2px; padding-top: 6px; border-top: 1px solid var(--line); }
+  .portalRow .portalChip { padding: 1px 3px; }
+  .portalRow .portalChip svg { display: block; }
+  .portalRefused { font-size: 11px; max-width: 14em; }
+  .linkish { border: 0; background: none; padding: 0; min-height: 0; color: var(--ink);
+             text-decoration: underline; cursor: pointer; font: inherit; }
+  .pairCard { border: 1px solid var(--line); border-radius: var(--r-ctl); padding: 8px 10px; margin-top: 8px; }
+  .pairCard.on { border-color: var(--act); box-shadow: 0 0 0 1px var(--act); }
+  .pairHead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .pairHead .grow { flex: 1 1 0; }
+  .pairPick { padding: 0; border: 0; background: none; min-height: 0; line-height: 0; }
+  .pairPart { margin-top: 10px; }
+  .pairSays { color: var(--ink); }
+  .pairError { margin-top: 6px; }
+  .pairStale { opacity: .55; }
+  .cardWarn { border-left: 3px solid var(--note); padding: 2px 0 2px 8px; margin-top: 6px; }
+  .wayChoices { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 6px 0; }
+  .wayChoice { display: flex; flex-direction: column; align-items: center; gap: 2px;
+               padding: 6px 4px; font-size: 12px; line-height: 1.25; white-space: normal; }
+  .wayChoice.on { border-color: var(--act); background: var(--act-tint); color: var(--ink); font-weight: 600; }
+  .wayFor { margin-top: 6px; }
+  .moverRow { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin-top: 4px; }
+  .moverEnd { min-width: 11em; }
+  .moverRadios { display: inline-flex; flex-wrap: wrap; gap: 2px 10px; }
+  .moverMenu { display: none; }
+  .pairLooks { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 8px; }
+  .pairLook { display: inline-flex; align-items: center; gap: 6px; }
+  .portalKey { display: flex; gap: 10px; align-items: flex-start; margin-top: 8px;
+               padding: 4px 0 4px 9px; border-left: 3px solid var(--note); }
+  .portalKeyGrid { display: grid; grid-template-columns: repeat(3, 1.4em); text-align: center;
+                   line-height: 1.4em; color: var(--muted); flex: none; }
+  .portalKeyGrid .on { color: var(--ink); font-weight: 700; }
+  .pickLine { margin-top: 6px; gap: 6px; }
+  @media (max-width: 760px) {
+    .wayChoices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .wayChoice { min-height: 44px; }
+    .moverRadios { display: none; }
+    .moverMenu { display: inline; }
+    .moverEnd { min-width: 0; }
+  }
   @media (min-width: 1200px) {
     .designer.bench.hexBench { grid-template-columns: minmax(260px, 300px) minmax(440px, 1fr)
                                                      minmax(250px, 300px); }
@@ -778,11 +1080,24 @@ RULES = """
   .designer .notGameAll > .rules { margin: 6px 0 0; }
   .designer .says:has(> .notGameAll[open]) > .notGameFirst { display: none; }
   .checkedAt { white-space: nowrap; }
+  /* A group inside the verdict's panel (the ladder, the family): set off by a rule. */
+  .ruled { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+  /* Measuring on this computer, as a step inside *Publish* (`hereHtml`'s `inPanel`): the
+     line it answers is in the same panel, so a rule beside it, not a box round it. */
+  .hereStep { margin: 8px 0 10px; padding: 2px 0 2px 11px; border-left: 3px solid var(--line); }
+  /* A list of marked lines (*Publish*'s two ticks, the shortlist's bar): the mark in a
+     column of its own, so a line that wraps on a phone runs on under its words, not
+     under the mark (Q777). */
+  .marks { list-style: none; padding-left: 0; }
+  .marks > li { display: flex; }
+  .marks > li > span:first-child { flex: none; width: 1.4em; }
+  /* The game as text, in the numbers face. */
+  .jsonText { min-height: 220px; margin-top: 8px; font: 12px/1.45 var(--f-mono); }
   /* A typed way of moving, read back in words under its row (F10). */
   .moveSays { margin: 3px 0 2px; }
   .moveSays:empty { display: none; }
   /* Said once, on a phone (`phoneNoteHtml`). */
-  .phoneNote { border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px;
+  .phoneNote { border: 1px solid var(--line); border-radius: var(--r-panel); padding: 8px 10px;
                margin: 8px 0 0; display: flex; gap: 10px; align-items: center; }
   .phoneNote > button { flex: none; white-space: nowrap; }
   /* The board is the single most useful thing this editor draws, and it used to leave
@@ -895,7 +1210,11 @@ RULES = """
   .field input, .field select, .field textarea { width: 100%; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .editor { display: grid; gap: 10px; }
-  .editorPiece { border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  /* Each piece is a sheet of its own on the form's ground (V8): the panel's paper, its
+     radius and shadow, and the one being edited bordered in the action. */
+  .editorPiece { background: var(--paper) 0 0 / 180px, var(--panel); border: 1px solid var(--line);
+                 border-radius: var(--r-panel); padding: 12px; box-shadow: var(--shadow); }
+  .editorPiece.on { border-color: var(--act); }
   .editorPiece .row { align-items: flex-start; }
   /* Eight controls, and the widths are the labels': "blockable leap" and "all eight ways"
      are the longest option in their columns, and a select that clips its own value is
@@ -926,9 +1245,10 @@ RULES = """
   .moveMoreBody { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: flex-end;
                   margin-top: 4px; }
   /* Rule cards, generated from the schema. A sub-card is indented under its parent so
-     a nested clause reads as belonging to the rule it is in. */
-  .ruleCard { border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px;
-              margin-bottom: 8px; }
+     a nested clause reads as belonging to the rule it is in. They sit inside the rules'
+     panel, so each is a row apart by a rule, never a box inside it (V8, §3.4). */
+  .ruleCard { padding: 9px 0; border-top: 1px solid var(--line); }
+  .ruleCard:last-child { padding-bottom: 0; }
   .subCard { border-left: 2px solid var(--line); padding: 2px 0 2px 10px; margin: 6px 0 10px; }
   .cardHead { display: flex; align-items: center; gap: 8px; font-size: 13px; }
   .cardHead > span { color: var(--muted); font-size: 12px; }
@@ -946,7 +1266,7 @@ RULES = """
   .eitherHead > span { font-size: 12px; color: var(--muted); }
   details.extras { margin-top: 6px; }
   details.extras .cardBody { padding: 6px 0 0 10px; }
-  .iconSlot { min-width: 40px; height: 40px; border: 1px dashed var(--line); border-radius: 8px;
+  .iconSlot { min-width: 40px; height: 40px; border: 1px dashed var(--line); border-radius: var(--r-ctl);
               display: flex; align-items: center; justify-content: center; gap: 2px;
               padding: 0 3px; overflow: hidden; }
   .iconSlot img { width: 34px; height: 34px; }
@@ -959,7 +1279,7 @@ RULES = """
   .slider .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
   @media (max-width: 620px) { .slider { grid-template-columns: 1fr 44px; }
                               .slider input[type=range] { grid-column: 1 / -1; } }
-  .ok { border: 1px solid var(--good); color: var(--good); border-radius: 9px;
+  .ok { border: 1px solid var(--good); color: var(--good); border-radius: var(--r-ctl);
         padding: 9px 12px; margin: 12px 0; }
 
   /* --- rank and file labels, inside the edge squares of a board that wraps --- */
@@ -974,8 +1294,8 @@ RULES = """
   .mapView { display: grid; gap: 16px; align-items: start;
              grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); }
   .mapFrame { position: relative; overflow: hidden; background: var(--panel);
-              border: 1px solid var(--line); border-radius: 11px;
-              height: min(74vh, 780px); }
+              border: 1px solid var(--line); border-radius: var(--r-panel);
+              box-shadow: var(--shadow); height: min(74vh, 780px); }
   /* The drawing fills the frame. The graph library measures the element it is given, so
      it needs one with a size of its own; and a gesture on it is the library's, never the
      page's scroll. */
@@ -994,7 +1314,7 @@ RULES = """
   .mapLocal { position: absolute; left: 9px; right: 9px; top: 9px; z-index: 1;
               display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center;
               padding: 6px 10px; background: var(--panel); border: 1px solid var(--line);
-              border-radius: 9px; }
+              border-radius: var(--r-ctl); box-shadow: var(--shadow-pop); }
   .mapLocal button { min-height: var(--ctl-h-sm); padding: 3px 10px; }
   /* A control the map hides until it applies: the rule-step chips, the score key, the
      local view's bar. Each carries a `display` of its own, which would beat `hidden`. */
@@ -1012,6 +1332,19 @@ RULES = """
   .chip .swatch { margin-right: 6px; vertical-align: -1px; }
   .chip.off { opacity: .45; text-decoration: line-through; }
   .mapLegend { display: grid; gap: 7px; margin-bottom: 12px; }
+  /* The map's controls (V8): one sheet above the drawing, its rows apart by space and the
+     fold of which rule a colour means by a rule, never a panel inside it. On a phone it
+     folds to its summary line (`wireExplorer`), so the drawing is on the first screen. */
+  .mapControls { margin-bottom: 16px; padding: 10px 15px; }
+  .mapControls > summary { min-height: var(--hit); display: flex; align-items: center;
+                           width: max-content; max-width: 100%; }
+  .mapControls[open] > summary { margin-bottom: 4px; }
+  .mapCtl { gap: 8px 16px; margin: 8px 0; }
+  .mapEnds { justify-content: space-between; }
+  .mapFolds { flex: 1 1 320px; min-width: 0; }
+  .mapKinds { border-top: 1px solid var(--line); padding-top: 8px; }
+  .mapKinds > summary { min-height: var(--hit); display: flex; align-items: center; }
+  .mapControls .mapLegend { margin-bottom: 4px; }
   .mapPanel .links { margin-top: 10px; max-height: 42vh; overflow-y: auto; }
   .mapPanel .linkRow { display: block; width: 100%; text-align: left; border: none;
                        min-height: var(--hit); background: none; padding: 6px 0; border-top: 1px solid var(--line);

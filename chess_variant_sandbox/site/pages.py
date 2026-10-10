@@ -205,6 +205,32 @@ _OWN = """
   table.people { max-width: 30rem; }
   table.people.empty { display: none; }
 
+  /* Q760, finding a member: one large search field, then everybody as a sheet each, two
+     or three across on a desk and one on a phone. Each sheet is wholly the link to the
+     member's page, so the target is the whole sheet, never a small word; the handle is
+     large, and the rest is in the body size rather than the small print, for older eyes. */
+  label.find { max-width: 30rem; }
+  label.find input { min-height: 46px; font-size: 17px; padding: 8px 12px; }
+  ul.directory { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 10px;
+                 grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr)); }
+  ul.directory li { margin: 0; }
+  ul.directory a.person { display: grid; grid-template-columns: 40px 1fr; gap: 2px 12px;
+                          align-items: center; min-height: 64px; padding: 10px 14px;
+                          background: var(--paper) 0 0 / 180px, var(--panel);
+                          border: 1px solid var(--line); border-radius: var(--r-panel);
+                          box-shadow: var(--shadow); color: var(--ink); text-decoration: none; }
+  ul.directory a.person:hover, ul.directory a.person:focus-visible { border-color: var(--muted); }
+  ul.directory .personMark { grid-row: 1 / span 3; align-self: start; }
+  ul.directory .personName { font-size: 18px; line-height: 24px; font-weight: 600;
+                             overflow-wrap: anywhere; }
+  ul.directory .personName .you { font-size: 14px; font-weight: 400; color: var(--muted); }
+  ul.directory .personSince, ul.directory .personMade { font-size: 14px; line-height: 20px;
+                                                       color: var(--muted); }
+  p.found { font-size: 15px; margin: 0 0 12px; }
+  /* A member's page (Q760): the sections' lines a little larger than the small print. */
+  main.member ul.lines li { font-size: 15px; line-height: 22px; }
+  main.member select { max-width: 100%; }
+
   /* The profile's record, narrow. The last three columns -- the best opponent beaten,
      the rungs and the distance to the top -- are columns on a desk and lines under the
      game's name below 760px, so eight columns never have to fit a phone. */
@@ -350,7 +376,8 @@ def _shell(
         f'    <h1 class="brand"><a href="/">{shell.brand()}</a></h1>\n'
         f'    <span class="muted tagline">{TAGLINE}</span>\n'
         '    <span class="grow"></span>\n'
-        f"    {shell.sections('/')}\n"
+        # Q760: *People* for whoever is signed in, which is every page with a corner.
+        f"    {shell.sections('/', people=bool(corner))}\n"
         f'    <span class="muted small" id="who">{corner}</span>\n'
         "  </header>\n"
         f'<main class="{kind}">\n{body}\n</main>\n'
@@ -403,12 +430,26 @@ def not_found() -> str:
 
 
 def _who(handle: str, user: int | None, linked: bool = False) -> str:
-    """The header's corner on a signed-in page: the reader's mark (R2) and handle, linked
-    to their own page from every page but that one."""
-    named = escape(handle)
+    """The header's corner on a signed-in page: the reader's mark (R2) and handle, on
+    every page but their own one a button to it (Q731: a bare name read as a label saying
+    who is signed in, not as a way somewhere). `_member_button` is the one markup; the
+    application's header builds the same element in `core.js`'s `paintIdentity`."""
+    mark = "" if user is None else marks.svg(user, 20)
     if linked:
-        named = f'<a href="/profile">{named}</a>'
-    return named if user is None else f"{marks.svg(user, 20)}{named}"
+        return _member_button(handle, mark)
+    return f"{mark}{escape(handle)}"
+
+
+def _member_button(handle: str, mark: str = "") -> str:
+    """The header's way to your own page: your mark and handle, then *your page* and a
+    chevron, in one outlined button (`style.py`'s `.memberButton`). Its name says both
+    what it is and who is signed in; on a phone the handle goes and *your page* stays."""
+    named = escape(handle)
+    return (
+        f'<a class="memberButton" href="/profile" aria-label="Your page, signed in as {named}">'
+        f'{mark}<span class="memberName">{named}</span>'
+        '<span class="memberGo">your page<span aria-hidden="true"> ›</span></span></a>'
+    )
 
 
 def _your_mark(user: int | None) -> str:
@@ -642,24 +683,34 @@ def _against_html(against: dict[str, Any]) -> str:
     return escape(str(against.get("person", "")))
 
 
-def _event_html(event: dict[str, Any]) -> str:
-    """One line of *Recently* (§6.2): a finished game, a first, or a level."""
-    game = _game_link(str(event["game"]), str(event.get("name", "")))
-    when = _day(event["when"])
-    if event["kind"] == "game":
-        kind = "correspondence" if event.get("between") else "rated"
-        if event.get("between") and event.get("rated"):
-            kind = "correspondence, rated"
-        return (
-            f"{_RESULT_WORDS[str(event['result'])]} "
-            f"{_against_html(event['against'])} at {game}"
-            f' <span class="mark">· {kind} · {when}</span>'
+def _played_html(game: dict[str, Any]) -> str:
+    """One line of *Games ‹handle› played lately* (Q760): the result, who sat across
+    (linked to their page when they have one), the game, and what kind of game it was."""
+    link = _game_link(str(game["game"]), str(game.get("name", "")))
+    kind = "correspondence" if game.get("between") else "rated"
+    if game.get("between") and game.get("rated"):
+        kind = "correspondence, rated"
+    return (
+        f"{_RESULT_WORDS[str(game['result'])]} "
+        f"{_against_html(game['against'])} at {link}"
+        f' <span class="mark">· {kind} · {_day(game["when"])}</span>'
+    )
+
+
+def _made_html(game: dict[str, Any]) -> str:
+    """One line of *Games ‹handle› made* (Q760): the game, its level, the day it was
+    published, and how many other people have tried it (a count, never who)."""
+    parts = [escape(str(game["level"]))]
+    if game.get("published") is not None:
+        parts.append(f"published {_day(game['published'])}")
+    if game.get("tried"):
+        parts.append(
+            f'{game["tried"]} {"person has" if game["tried"] == 1 else "people have"} tried it'
         )
-    if event["kind"] == "first":
-        label, join = _MILESTONE_LINES.get(str(event["line"]), (str(event["line"]), "on"))
-        return f"<b>{escape(label)}</b>, {escape(join)} {game}" \
-            f' <span class="mark">· {when}</span>'
-    return f'{game} {escape(str(event["said"]))} <span class="mark">· {when}</span>'
+    return (
+        f'{_game_link(str(game["game"]), str(game["name"]))} '
+        f'<span class="mark">· {" · ".join(parts)}</span>'
+    )
 
 
 def _section(heading: str, inner: str, lead: str = "") -> str:
@@ -677,26 +728,38 @@ def _items(lines: list[str]) -> str:
     return '<ul class="lines">\n' + "".join(f"<li>{line}</li>\n" for line in lines) + "</ul>"
 
 
+def _options(games: list[dict[str, Any]]) -> str:
+    return "".join(
+        f'<option value="{escape(str(g["game"]), quote=True)}">'
+        f'{escape(str(g["name"]) or "an unnamed game")}</option>'
+        for g in games
+    )
+
+
 def _challenge_html(handle: str, challenge: dict[str, Any] | None) -> str:
     """*Challenge ‹handle›* (§6.2's header, Q571's challenge by handle), for another
-    member. A sheet the page's script opens: a rated game, a side, and send. Nothing
-    counts down and nothing is sent to anybody but the challenge itself (tests 2, 3)."""
+    member. A sheet the page's script opens: a game, a side, and send. The games they made
+    come first, under their own heading (Q760), then the rated games. Nothing counts down
+    and nothing is sent to anybody but the challenge itself (tests 2, 3)."""
     if challenge is None:
         return ""
     name = escape(handle)
     if challenge.get("paused"):
         return f'<p class="under">{escape(str(challenge.get("pausedSays", "")))}</p>\n'
+    theirs = challenge.get("theirs") or []
     games = challenge.get("games") or []
-    if not games:
+    if not games and not theirs:
         return (
             f'<p class="under">To challenge {name}, open a game and use <em>Play a '
             "person</em> on its page.</p>\n"
         )
-    options = "".join(
-        f'<option value="{escape(str(g["game"]), quote=True)}">'
-        f'{escape(str(g["name"]) or "an unnamed game")}</option>'
-        for g in games
-    )
+    if theirs and games:
+        options = (
+            f'<optgroup label="Games {escape(handle, quote=True)} made">{_options(theirs)}'
+            f'</optgroup><optgroup label="Rated games">{_options(games)}</optgroup>'
+        )
+    else:
+        options = _options(theirs or games)
     return (
         '<div class="row"><button class="primary" id="challenge-open">'
         f"Challenge {name}</button></div>\n"
@@ -707,7 +770,8 @@ def _challenge_html(handle: str, challenge: dict[str, Any] | None) -> str:
         '<option value="first">moving first</option>'
         '<option value="second">moving second</option></select></label>\n'
         '<p class="hint">By correspondence: you move whenever you like and the game waits '
-        f"for you. The challenge waits until {name} accepts or declines it. For a game "
+        f"for you. The challenge waits until {name} accepts or declines it, and nothing is "
+        f"sent to {name} but the challenge, which they find on their page. For a game "
         "not listed here, use <em>Play a person</em> on its page.</p>\n"
         '<div class="row"><button class="primary" id="challenge-send">send the '
         'challenge</button><button id="challenge-cancel">cancel</button></div>\n'
@@ -715,15 +779,48 @@ def _challenge_html(handle: str, challenge: dict[str, Any] | None) -> str:
     )
 
 
+DONE_LEAD = (
+    "Milestones and badges, newest first: the only achievements the site keeps, and "
+    'nobody is scored against anybody else. What earns each badge is on <a href="/badges">'
+    "the badges page</a>, the same for everybody."
+)
+"""What *What ‹handle› has done* says it holds, and what the site does not keep (Q760)."""
+
+
+def _not_yet(handle: str, reading: dict[str, Any]) -> str:
+    """Q760: what this page has nothing of yet, said plainly in one paragraph rather than
+    as empty headings or noughts (test 5: absent is not zero, and nothing here says
+    *last*). Only the three sections every member could have; the opt-in ones are not
+    named, so the page does not say whether somebody ticked a box."""
+    name = escape(handle)
+    said = []
+    if not reading.get("designed"):
+        said.append(f"{name} has not published a game yet.")
+    if not reading.get("played"):
+        said.append(
+            "No finished rated game or game against a person yet; practice games against "
+            "the computer are not listed."
+        )
+    if not reading.get("milestones") and not reading.get("badges"):
+        said.append("No milestones or badges yet.")
+    if not said:
+        return ""
+    return f'<p class="under" id="not-yet">{" ".join(said)}</p>\n'
+
+
 def member(
     reading: dict[str, Any], reader: str, players: bool = False, *, viewer: int | None = None
 ) -> str:
-    """`/players/<handle>`, a member's page (R1, `docs/plan-return.md` §6.2).
+    """`/players/<handle>`, a member's page (R1, `docs/plan-return.md` §6.2; Q760).
 
     Drawn whole by the server from `members.read`, every string escaped. Only a member
     reads it (a visitor is sent to the door before this runs), and every member reads the
     same page about a person, the person included; their own copy adds one line pointing
     at their own page, where the settings are, and drops *Challenge*.
+
+    Q760's order: the header with *Challenge*, the games they made (newest first), the
+    games they played lately, what they have done, then the two opt-in or derived
+    sections; and one plain paragraph naming what there is nothing of yet.
     """
     handle = str(reading["handle"])
     user = int(reading["user"])
@@ -741,19 +838,11 @@ def member(
             'cannot see it. <a href="/profile">Your own page</a> has your settings, your '
             "games in progress and your challenges.</p>\n"
         )
-    header += _challenge_html(handle, reading.get("challenge"))
-    recent = _items([_event_html(event) for event in reading.get("recent", [])])
-    designed = _items([
-        f'{_game_link(str(game["game"]), str(game["name"]))} '
-        f'<span class="mark">· {escape(str(game["level"]))}'
-        + (
-            f' · {game["tried"]} {"person has" if game["tried"] == 1 else "people have"}'
-            " tried it"
-            if game.get("tried") else ""
-        )
-        + "</span>"
-        for game in reading.get("designed", [])
-    ])
+    # The note sits under the button, so the word that a challenge went is where the
+    # eye already is, not at the foot of a long page.
+    header += _challenge_html(handle, reading.get("challenge")) + '<p class="note" id="note"></p>\n'
+    designed = _items([_made_html(game) for game in reading.get("designed", [])])
+    played = _items([_played_html(game) for game in reading.get("played", [])])
     done_lines: list[tuple[str, str]] = []
     for line in reading.get("milestones", []):
         label, join = _MILESTONE_LINES.get(str(line["kind"]), (str(line["kind"]), "on"))
@@ -793,14 +882,18 @@ def member(
         )
     body = (
         header
-        + _section("Recently", recent)
-        + _section(f"Games {handle} designed", designed)
         + _section(
-            f"What {handle} has done",
-            done,
-            'Milestones and badges, newest first. What earns each badge is on '
-            '<a href="/badges">the badges page</a>, the same for everybody.',
+            f"Games {handle} made",
+            designed,
+            "Published games, newest first. A draft is never shown.",
         )
+        + _section(
+            f"Games {handle} played lately",
+            played,
+            "Finished rated games and games against a person, newest first, the last "
+            "eight at most. Practice games against the computer are not listed.",
+        )
+        + _section(f"What {handle} has done", done, DONE_LEAD)
         + _section(
             "Favourite games", favourites, f"The games {name} gave five stars, shown by their choice."
         )
@@ -810,13 +903,14 @@ def member(
             "The people they have finished most games with, and the computer players "
             "they have finished most rated games against, most first.",
         )
-        + '<p class="note" id="note"></p>'
+        + _not_yet(handle, reading)
+        + '<p class="under"><a href="/players">Find another member</a></p>'
     )
     return _shell(
         f"{handle} on Chess variant sandbox",
         body,
         ("post", "member") if reading.get("challenge") else (),
-        kind="wide",
+        kind="wide member",
         corner=_who(reader, viewer, linked=True),
         data={"handle": handle} if reading.get("challenge") else None,
         players=players,
@@ -826,7 +920,7 @@ def member(
 # ------------------------------------------------------------------ the overall page
 
 
-def players(handle: str, *, user: int | None = None) -> str:
+def players(handle: str, *, user: int | None = None, asked: str = "") -> str:
     """S3, the overall page. Box A3 of `docs/archive/plan-meta-game.md`.
 
     The user decided its shape on 2026-09-14, option A: it lists only people who have
@@ -843,10 +937,26 @@ def players(handle: str, *, user: int | None = None) -> str:
     The handle in the corner is escaped; everything from `GET /api/players` is a text
     node, so a name full of tags is a name full of tags. Somebody who has left reads as
     *a former player*, which is the handle the store hands back for them.
+
+    Q760 puts *Find a member* first (the user, 2026-10-05: *"It should not be so hard to
+    find other players"*): a search field over every member, A to Z, each the way to their
+    page, where *Challenge* is. It holds no number, so it ranks nobody and leaves the
+    decision of 2026-09-14 (nothing ranked leads the page) standing. `asked` is the
+    address's `?q=`, filled into the field so a search can be linked to.
     """
     body = (
         "<h1>Players</h1>\n"
-        '<p class="lead">What nobody has claimed yet, and who is here.</p>\n'
+        '<p class="lead">Find another member and open their page: the games they made and '
+        "played, their badges, and a button to challenge them. Then what nobody has claimed "
+        "yet, and who has played.</p>\n"
+        '<h2 id="find-head">Find a member</h2>\n'
+        '<label class="find"><span>search by name, or by a game they made</span>'
+        '<input type="search" id="find" autocomplete="off" autocapitalize="off" '
+        'spellcheck="false" enterkeyhint="search" aria-controls="directory" '
+        f'value="{escape(asked[:40], quote=True)}"></label>\n'
+        '<p class="found" id="found" aria-live="polite"></p>\n'
+        '<ul class="directory" id="directory" aria-labelledby="find-head"></ul>\n'
+        '<p class="under" id="find-said"></p>\n'
         "<h2>Still unclaimed</h2>\n"
         '<p class="under" id="open-lead"></p>\n'
         '<ul class="lines" id="unclaimed"></ul>\n'
@@ -1022,6 +1132,37 @@ def admin(handle: str, players: bool = False, *, user: int | None = None) -> str
         "</tr></thead>\n"
         '<tbody id="score-volatility"></tbody></table></div>\n'
         '<p class="under" id="score-volatility-empty"></p>\n'
+        # H8 and H9 of `docs/plan-human-data.md` (§3.3): games whose strongest computer
+        # player people beat, against the bar fixed before any game was read, and the
+        # training queue a game over it enters. Visitors see none of it.
+        "<h2>People beating the strongest</h2>\n"
+        '<p class="under" id="bar-said"></p>\n'
+        '<p class="under">Counted over rated games against the computer players that are '
+        "the strongest on the game now. A game over the bar is queued for a stronger "
+        "computer player by itself, after every entry the strength-premise check made; the "
+        "player it gets is accepted by games between computers only, and no person's game "
+        "reaches a score. Visitors do not see this.</p>\n"
+        '<div class="scroller"><table><thead><tr><th>game</th><th>over the bar</th>'
+        "<th>the counts</th><th>training</th></tr></thead>\n"
+        '<tbody id="bar"></tbody></table></div>\n'
+        '<p class="under" id="bar-empty"></p>\n'
+        "<h3>The training queue</h3>\n"
+        '<div class="scroller"><table><thead><tr><th>game</th><th>asked by</th>'
+        "<th>state</th><th>queued</th></tr></thead>\n"
+        '<tbody id="training-queue"></tbody></table></div>\n'
+        '<p class="under" id="training-queue-empty"></p>\n'
+        # H7 (§3.2): each computer player's place on people's scale, per game.
+        "<h2>Computer players on people's scale</h2>\n"
+        '<p class="under">Each computer player\'s rating on a game\'s table, where '
+        "people's rated results have moved it from the computer-only ladder it was seeded "
+        "from, and how many of the people with an established rating there it is above. "
+        "A game's page shows these lines under <em>more</em> once five people are "
+        "established on it. It moves no score.</p>\n"
+        '<div class="scroller"><table><thead><tr><th>game</th><th>established</th>'
+        "<th>computer player</th><th>rating</th><th>seeded at</th><th>games with people"
+        "</th><th>above</th></tr></thead>\n"
+        '<tbody id="people-scale"></tbody></table></div>\n'
+        '<p class="under" id="people-scale-empty"></p>\n'
         # Q705. The refresher's status file (`web/refreshing.py`): what it is doing, the
         # game, when it last wrote, what it refused and why. Visitors see none of it.
         "<h2>The refresher</h2>\n"
@@ -1345,7 +1486,11 @@ def privacy() -> str:
         "row.</li>\n"
         "<li>Every match you play while signed in &mdash; the moves, the result, who or "
         "what played each side, and the rating the game moved. Each game's ratings are "
-        "worked out from these records, which is why they are kept.</li>\n"
+        "worked out from these records, which is why they are kept. Against a computer "
+        "player it also keeps how long you took over each move and which moves a "
+        "take-back undid, and in practice the ratings each side had on that game when it "
+        "started; no page shows these, and they are read with the game's moves, never "
+        "added up per person.</li>\n"
         "<li>A dated record of each badge you earn &mdash; which badge it was, when the "
         "game that earned it finished, and the figures its sentence quotes. A badge is "
         "written once and kept, so it still reads true after the numbers behind it have "
@@ -1368,6 +1513,11 @@ def privacy() -> str:
         "computer players you have finished most games with. Visitors are sent to the "
         "sign-in page instead. Nothing records when you visit, so no page says when you "
         "were last here.</p>\n"
+        "<p>The players page lists every member, A to Z, so members can find each other "
+        "by name: your mark, your handle, the month you joined and the names of up to "
+        "three of your published games, each the way to your page. It shows members "
+        "nothing that your page does not, puts nobody in an order but the alphabet's, "
+        "and visitors cannot see it.</p>\n"
         "<p>Your votes are private. A game's page shows how many people voted, the "
         "average, and how many votes chose each of the fixed tags, never who. The games "
         "you gave five stars appear on your page only if you tick the box for it on your "
@@ -1385,7 +1535,8 @@ def privacy() -> str:
         "message.</p>\n"
         "<h2>A game played without signing in</h2>\n"
         "<p>A practice game keeps no person at all. The moves are stored so that the tab "
-        "can be reopened, and neither side names anybody. A game that reaches its end "
+        "can be reopened, with how long each of your moves took and which moves a "
+        "take-back undid, and neither side names anybody. A game that reaches its end "
         "is also kept, move by move with its result, after a take-back or a restart, so "
         "that the ways people beat the computer players can be studied; it too names "
         "nobody. A practice game counts for "

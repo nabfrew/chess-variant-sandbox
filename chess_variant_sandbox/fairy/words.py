@@ -48,6 +48,47 @@ _NAMED = {
 }
 
 
+# Fairy-Stockfish's own vocabulary, said as what it means (Q728): the notation it writes a
+# piece in (*Betza*), its option names (*blastOnCapture*) and the slots of its board. The
+# `fairy` command and the tests keep the translator's spelling; a page reads these. Longer
+# phrases first, so a sentence is rewritten whole before its words are.
+_JARGON: tuple[tuple[str, str], ...] = (
+    (r"blastOnCapture is a switch there, so every capture explodes and no option says "
+     r"which ones do",
+     "explosions there are on or off for the whole game, so every capture explodes and "
+     "nothing says which ones do"),
+    (r"blastOnCapture is a switch there", "explosions there are on or off for the whole game"),
+    (r"a Betza notation describes one piece and a facing makes it several",
+     "a piece there moves one fixed way, and a piece that turns moves several ways"),
+    (r"a Betza descriptor says what a piece does and there is no term for a piece that "
+     r"does nothing",
+     "a piece there is written as the moves it makes, and there is no way to write a piece "
+     "that makes none"),
+    (r"Betza has no ride that starts past its first square",
+     "a sliding move there cannot begin beyond the first square"),
+    (r"no Betza notation for", "no way to write"),
+    (r"and Betza has no such piece", "and it has no such piece"),
+    (r"\bBetza\b", "its way of writing a move"),
+    (r"every way Fairy-Stockfish has of holding a royal \(the king slot or an extinction "
+     r"rule\)",
+     "every way Fairy-Stockfish has of keeping a royal piece (as its king, or under a rule "
+     "that ends the game when a kind of piece runs out)"),
+    (r"against its king slot, so a royal outside it", "against its king, so any other royal"),
+    (r"there is one king slot", "there is room for one king"),
+    (r"(\d+) custom slots and a king", r"room for \1 kinds of piece besides a king"),
+    (r"pieces need a custom slot and there are (\d+)",
+     r"kinds of piece need room of their own and there is room for \1"),
+    (r"in the current variant options", "among its present settings"),
+    (r"no variant option", "no setting"),
+    (r"\bvariant options?\b", "setting"),
+    (r"large-board build", "largest board"),
+    (r"this translator has never been through it",
+     "it has never been written out for Fairy-Stockfish"),
+    (r"has never been through this translator",
+     "has never been written out for Fairy-Stockfish"),
+)
+
+
 def _label(dotted: str, key: str) -> str:
     words = FIELD_WORDS.get(dotted)
     return words[0] if words else key.replace("_", " ")
@@ -88,6 +129,8 @@ def plain_reason(reason: str) -> str:
     text = _PATH.sub(name, reason)
     text = re.sub(r"\bthe spec does\b", "the rules do", text)
     text = re.sub(r"\bthe spec\b", "the rules", text)
+    for jargon, plain in _JARGON:
+        text = re.sub(jargon, plain, text)
     return text
 
 

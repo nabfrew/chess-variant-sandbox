@@ -33,8 +33,9 @@ three, which is why a spot-checked score is labelled as such and never ranks or 
 ## What follows
 
 - **Every row equal**: the result moves to `spot-checked`, its stamp names the sample's
-  size, everybody who can see the game sees the number, labelled, and *Publish* opens
-  (`provisional.attached`).
+  size, everybody who can see the game sees the number, labelled, and it is the reading
+  *Publish* needs (`provisional.attached`): a publish its designer pressed while this
+  check ran goes through on the runner's next settle (`drafts.settle`, Q742).
 - **A row that differs**: the result moves to `mismatch` and is never shown again, its
   records are kept, and the account is flagged (`provisional.flag`): it cannot publish, and
   what it sends later is walked by tier one but never spot-checked, so it waits for the
@@ -79,7 +80,7 @@ from chess_variant_sandbox.tournament.analysis import CorpusAnalysis
 from chess_variant_sandbox.tournament.record import GameRecord
 from chess_variant_sandbox.tournament.runner import TournamentConfig
 
-KIND = "sample"
+KIND = provisional.SPOT
 """`jobs.kind` for tier two. It runs after every queued legality job."""
 
 # The jobs table's words, as `legality` spells them.
@@ -224,7 +225,7 @@ class Outcome:
     cpu_seconds: float = 0.0
 
 
-STOPPED = "stopped at the cap"
+STOPPED = provisional.SPOT_STOPPED
 """How a check that ran out of budget begins its log line (`of_result` reads it)."""
 
 

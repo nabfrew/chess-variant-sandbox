@@ -251,6 +251,7 @@
     }
   },
   "provenance": {
+    "added": "2026-08-29",
     "origin": "designed",
     "source": "docs/new-rule-schema-brainstorm.md",
     "history": "Not a showcase but a control. hierarchy-fall uses position 'stay' and hierarchy-rise uses 'swap', so the pair differs in two things at once and neither result can be attributed. This is hierarchy-fall's chain under hierarchy-rise's position rule, which makes both comparisons one-dimensional. Added after seeing the pair's first measurement and before drawing any conclusion from it.",

@@ -25,6 +25,8 @@ from typing import Any
 
 from chess_variant_sandbox.spec.schema import (
     STOCK_UNLIMITED,
+    drop_face_pairs,
+    strike_is_live,
     strike_states_nothing,
     strike_survives_anything,
     wrap_axes,
@@ -195,6 +197,10 @@ def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
         # rule left naming nothing goes with what it named.
         if not drops.get("from_captures", True) and not drops.get("stock"):
             rules.pop("drops", None)
+        # Schema 18e (Q785). The last `promoted_from` pair gone leaves a flag that pairs
+        # nothing, which the validator refuses by name, so the flag goes with the pair.
+        elif drops.get("either_face") is True and not drop_face_pairs(pieces(spec)):
+            drops.pop("either_face")
 
     reach = rules.get("reach")
     if isinstance(reach, dict) and reach.get("piece") == piece_id:
@@ -205,6 +211,10 @@ def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
         extinction["pieces"] = [p for p in extinction["pieces"] if p != piece_id]
         if not extinction["pieces"]:
             rules.pop("extinction", None)
+        elif extinction.get("per_type") is True and len(set(extinction["pieces"])) < 2:
+            # Schema 18c: one type counted apart is the count together, which the
+            # validator refuses as stating nothing, so the flag goes with the type.
+            extinction.pop("per_type")
 
     npcs = rules.get("npcs")
     if isinstance(npcs, list):
@@ -221,6 +231,19 @@ def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
             if isinstance(rules.get("scoring"), dict) and rules["scoring"].get("count") == "points":
                 rules.pop("scoring", None)
 
+    # Schema 19: a pair whose ends moved like the dropped piece goes with it, and the rule
+    # with its last pair. Later pairs renumber, since a pair's number is its place.
+    portals = rules.get("portals")
+    if isinstance(portals, list):
+        kept_pairs = [
+            pair for pair in portals
+            if not (isinstance(pair, dict) and pair.get("piece") == piece_id)
+        ]
+        if kept_pairs:
+            rules["portals"] = kept_pairs
+        else:
+            rules.pop("portals", None)
+
     strike = rules.get("strike")
     if isinstance(strike, dict):
         _prune_list(strike, "immune")
@@ -234,6 +257,12 @@ def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
             # `effect` other than "capture" needs somewhere for the victim to go, so a
             # chain with no links left is not a weaker strike rule: it is no rule.
             if not strike["chain"]:
+                rules.pop("strike", None)
+        # Schema 17 (Q540): the pieces that change sides on a capture. An emptied list is
+        # gone, and with it a `"capture"` strike that said nothing else.
+        if "strike" in rules and "switches_sides" in strike:
+            _prune_list(strike, "switches_sides")
+            if not strike_is_live(strike):
                 rules.pop("strike", None)
 
     contacts = rules.get("contacts")
@@ -404,7 +433,11 @@ def resize_board(spec: dict[str, Any], width: int, height: int) -> dict[str, Any
         elif _is_rank(rule.get("rank")):
             rule["rank"] += grown
         if isinstance(rule.get("ranks"), list):
-            rule["ranks"] = [entry + grown if _is_rank(entry) else entry for entry in rule["ranks"]]
+            shifted = [entry + grown if _is_rank(entry) else entry for entry in rule["ranks"]]
+            # A band reaching the near edge loses the ranks a shorter board does not have
+            # (Q781: `einstein`'s zone is every rank), rather than naming rank -1.
+            on_board = [entry for entry in shifted if not (_is_rank(entry) and entry < 0)]
+            rule["ranks"] = on_board or shifted
     return spec
 
 
@@ -800,9 +833,18 @@ def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) 
     # the validator's own guard, a strike whose shape is sound: a malformed one is refused
     # for that instead, and is not this arm's to remove.
     # The contact table is the strike's other spelling and settles the same way.
+    # Schema 18 (Q781) first: a keeping link whose mover has lost its promotion (an edit
+    # took the promotion, or every target of it) is refused as changing nothing, and goes
+    # here; a table it empties is no rule and goes with it.
+    if settle_keeping_links(spec):
+        if (rules.get("contacts") or {}).get("links"):
+            dropped.append("keeping")
+        else:
+            drop("contacts")
     from chess_variant_sandbox.spec.schema import (
         _validate_contacts_shape,
         _validate_strike_shape,
+        promoting_piece_ids,
     )
 
     piece_ids = [
@@ -813,7 +855,10 @@ def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) 
     for key, shape_of in (("strike", _validate_strike_shape), ("contacts", _validate_contacts_shape)):
         rule = rules.get(key)
         shape: list[str] = []
-        shape_of(rule, piece_ids, shape)
+        if key == "contacts":
+            _validate_contacts_shape(rule, piece_ids, shape, promoting_piece_ids(rules))
+        else:
+            shape_of(rule, piece_ids, shape)
         if not shape and strike_states_nothing(rule, key, piece_ids):
             drop(key)
     # A wild piece's `immune` list that takes it from nobody (`_validate_npc_immune`):
@@ -840,6 +885,38 @@ def no_captures(spec: dict[str, Any]) -> dict[str, Any]:
         for move in piece["moves"]:
             move["mode"] = "move"
     return strip_rule(spec, "en_passant")
+
+
+def settle_keeping_links(spec: dict[str, Any]) -> bool:
+    """Drop every keeping link whose mover has no promotion left to override (Q781).
+
+    Schema 18's keeping link (``mover_to`` equal to ``mover``) states a rule only beside a
+    promotion of the mover's own (``schema.keeping_link_holds``); without one it is the
+    plain capture written the long way, and refused as such. An edit that takes the
+    promotion away (``never_forced``, or ``drop_piece`` removing its every target) takes
+    the links with it, as castling goes with its rook. True when anything went. A table
+    left with no link is the caller's to remove.
+    """
+    from chess_variant_sandbox.spec.schema import (
+        is_keeping_link,
+        keeping_link_holds,
+        promoting_piece_ids,
+    )
+
+    rules = spec.get("rules")
+    contacts = rules.get("contacts") if isinstance(rules, dict) else None
+    links = contacts.get("links") if isinstance(contacts, dict) else None
+    if not isinstance(contacts, dict) or not isinstance(links, list):
+        return False
+    promoting = promoting_piece_ids(rules)
+    kept = [
+        link for link in links
+        if not is_keeping_link(link) or keeping_link_holds(link, promoting)
+    ]
+    if len(kept) == len(links):
+        return False
+    contacts["links"] = kept
+    return True
 
 
 def never_forced(spec: dict[str, Any]) -> dict[str, Any]:
@@ -871,8 +948,13 @@ def never_forced(spec: dict[str, Any]) -> dict[str, Any]:
     rules = spec.setdefault("rules", {})
     rules.pop("promotion", None)
     # En passant is defined against the promoting piece, so it cannot outlive promotion
-    # -- the validator says so by name and it is right to.
+    # -- the validator says so by name and it is right to. Nor can promotion on entry
+    # (`archive/shogi-drop-promoted`, Q787, is the first library spec to carry it).
     rules.pop("en_passant", None)
+    rules.pop("promote_on_entry", None)
+    # Nor can a keeping link (schema 18, Q781): it overrides a promotion, and none is left.
+    if settle_keeping_links(spec) and not (rules.get("contacts") or {}).get("links"):
+        rules.pop("contacts", None)
     low, high = CLOCK_BOUNDS["no_progress_draw"]
     limit = min(high, max(low, int(rules.get("max_plies", 400))))
     rules["no_progress_draw"] = limit
@@ -1167,6 +1249,11 @@ def set_obstacle(spec: dict[str, Any], square: str) -> dict[str, Any]:
     if square not in obstacles["squares"]:
         obstacles["squares"].append(square)
     spec["schema_version"] = max(int(spec.get("schema_version", 1)), 6)
+    # A wall on castling's rank beyond every rook is schema 18's walled rank (Q781).
+    from chess_variant_sandbox.spec.schema import castling_rank_walled_beyond_its_spans
+
+    if castling_rank_walled_beyond_its_spans(spec):
+        spec["schema_version"] = max(int(spec["schema_version"]), 18)
     return spec
 
 

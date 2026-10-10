@@ -173,6 +173,7 @@
     }
   ],
   "provenance": {
+    "added": "2026-09-07",
     "history": "Hand-written as archive/wolves.json re-spelled with rules.npcs[].immune, as the demonstrating ruleset for that key (schema 10, row 24 of reference/schema-showcase-coverage.md). It is a spelling and not a new game, which is what the row asks of it: the elegance is the whole of the difference.",
     "origin": "human",
     "source": "international chess"

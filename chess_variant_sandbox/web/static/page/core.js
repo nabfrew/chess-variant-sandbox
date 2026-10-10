@@ -50,8 +50,6 @@ let LIBRARY = [], OPPONENTS = [], COVERAGE = null, SESSION = null, SELECTED = nu
       bins: {}, stage: '', scored: '', playable: '', fairy: '', tag: '',
       // The site's library tab (Q503b), by the key the listing sends; empty is the first.
       tab: '',
-      // Whether the site's *All games* is open below the front door (Q559); shut at first.
-      all: false,
     },
     // Which way round the board is drawn. Presentation only -- a square is a square and
     // the server never hears about this -- but playing the second seat down a board with
@@ -383,12 +381,17 @@ function paintIdentity() {
     if (ADMIN) who.append(link('/admin', 'Maintenance'), ' · ');
     // What an account adds, in one line beside *sign in* (L7, `docs/plan-launch.md` §4); in
     // full on the sign-in and invitation pages (`site/pages.py` `ACCOUNT_ADDS`).
-    if (ACCOUNTS && VIEWER) {
-      const mark = window.memberMark ? window.memberMark(VIEWER_MARK, 20) : null;
-      if (mark) who.append(mark);
-      who.append(link('/profile', VIEWER));
-    }
+    if (ACCOUNTS && VIEWER) who.append(memberButton(VIEWER, VIEWER_MARK));
     else if (ACCOUNTS) who.append(link('/signin', 'sign in'), ' to make your games count');
+  }
+  // Q760: *People*, after *Games*, for a member on the site (`shell.py`'s `PEOPLE`); the
+  // site's own pages draw it in the markup. A visitor would only be sent to the door, and
+  // the local application has nobody.
+  const nav = document.getElementById('sections');
+  if (nav && ACCOUNTS && VIEWER && !nav.querySelector('a[href="/players"]')) {
+    const people = link('/players', 'People');
+    const games = nav.querySelector('a');
+    if (games) games.after(people); else nav.append(people);
   }
   if (foot) {
     foot.textContent = '';
@@ -414,9 +417,47 @@ function markHtml(mark, size) {
   return drawn ? drawn.outerHTML : '';
 }
 
+// Q760: a person's handle as markup, linked to their page (`/players/<handle>`) for a
+// member reading the site, so every name on a page is a way to find that person. A
+// visitor, the local application, *a former player* (somebody who left has no page) and a
+// placeholder such as *somebody* read as plain words. Handles are a narrow set of
+// letters, digits, hyphen and underscore, and are encoded anyway.
+const FORMER_PLAYER = 'a former player';
+function personHtml(handle, mark, size) {
+  const name = String(handle || '');
+  const drawn = mark ? markHtml(mark, size || 18) : '';
+  if (!ACCOUNTS || !VIEWER || !name || name === FORMER_PLAYER || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(name)) {
+    return drawn + esc(name);
+  }
+  return `<a href="/players/${encodeURIComponent(name)}">${drawn}${esc(name)}</a>`;
+}
+
 // The site's contact (Q720): `web/landing.py`'s `CONTACT`, which `tests/test_landing.py`
 // holds equal. A profile page, never an email address.
 const CONTACT = 'https://github.com/nabfrew';
+
+// Q731: the header's way to your own page, a button rather than a bare name (a name alone
+// read as a label saying who is signed in). The same element as `site/pages.py`'s
+// `_member_button`: the mark, the handle, then *your page* and a chevron; on a phone the
+// handle goes (`style.py`'s `.memberButton`).
+function memberButton(handle, markData) {
+  const anchor = link('/profile', '');
+  anchor.className = 'memberButton';
+  anchor.setAttribute('aria-label', `Your page, signed in as ${handle}`);
+  const mark = window.memberMark ? window.memberMark(markData, 20) : null;
+  if (mark) anchor.append(mark);
+  const name = document.createElement('span');
+  name.className = 'memberName';
+  name.textContent = handle;
+  const go = document.createElement('span');
+  go.className = 'memberGo';
+  const chevron = document.createElement('span');
+  chevron.setAttribute('aria-hidden', 'true');
+  chevron.textContent = ' ›';
+  go.append('your page', chevron);
+  anchor.append(name, go);
+  return anchor;
+}
 
 function link(where, words) {
   const anchor = document.createElement('a');
@@ -1076,17 +1117,37 @@ function wireInfo() {
     // Two (i)s can share a term and carry different `extra`, so what the bubble is
     // currently showing is the pair and not the term alone.
     const more = button.dataset.more || '';
-    const showing = button.dataset.gloss + '\n' + more;
+    show(button, button.dataset.gloss + '\n' + more, () => glossBubble(button.dataset.gloss, more));
+  });
+  // The first-visit study's F3: a card's tags say what they mean in a `title`, and the line
+  // above the cards says *tap or point at one*. A phone has no pointer to rest, and a tap
+  // on a tag was a tap on its card, which opened the game. So where nothing can hover, a
+  // tap on a tag opens its sentence here instead, ahead of the card's own click (capture).
+  document.addEventListener('click', event => {
+    if (!cannotHover() || bubble.contains(event.target)) return;
+    const tag = event.target.closest('.tag[title]');
+    if (!tag || !tag.title) return;
+    event.preventDefault();
+    event.stopPropagation();
+    show(tag, 'tag\n' + tag.title, () => `<p>${esc(tag.title)}</p>`);
+  }, true);
+
+  function show(anchor, showing, html) {
     if (!bubble.hidden && bubble.dataset.for === showing) { bubble.hidden = true; return; }
     bubble.dataset.for = showing;
-    bubble.innerHTML = glossBubble(button.dataset.gloss, more);
+    bubble.innerHTML = html();
     bubble.hidden = false;
-    const box = button.getBoundingClientRect();
+    const box = anchor.getBoundingClientRect();
     const width = Math.min(320, window.innerWidth - 24);
     bubble.style.width = width + 'px';
     bubble.style.left = Math.max(12, Math.min(box.left, window.innerWidth - width - 12)) + 'px';
     bubble.style.top = (box.bottom + window.scrollY + 6) + 'px';
-  });
+  }
+}
+
+// A screen nothing can hover over: a `title` there is never read.
+function cannotHover() {
+  return !!(window.matchMedia && window.matchMedia('(hover: none)').matches);
 }
 
 // A game's address, to send to somebody (the first-visit study's B3). A saved draft is

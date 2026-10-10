@@ -278,6 +278,58 @@ FROZEN: dict[str, tuple[str, str]] = {
     "archive/hex-glinski-hexagon.json": ("6eaaad41673b", "502b6c432a0489b4"),
     "archive/hex-glinski-flanks.json": ("5ba53615c752", "e615ab9b05ef7ce9"),
     "archive/hex-glinski-flanks-one-way.json": ("2edcd9a30022", "4b8332fedb7ee7a7"),
+    # Q540, 2026-10-09: schema 17's showcases, chess with one rule each about what a
+    # capture leaves behind (rifle, circe, Andernach, kamikaze).
+    "archive/rifle.json": ("f7a789809758", "0fb33501ce9f14b3"),
+    "archive/circe.json": ("54a0a193da0f", "33948d3b415bd51e"),
+    "archive/andernach.json": ("f9e5dbf3ff1f", "05eec37015be2352"),
+    "archive/kamikaze.json": ("6cd3785c7246", "e626905b911bbd2b"),
+    # Q787, 2026-10-09: the three showcases the 2026-10-09 audit found missing (gaps G1 to G3
+    # of `docs/reference/schema-showcase-coverage.md`): shogi plus `promote_on_entry`, shogi
+    # with a backward-facing dropped pawn, and chess with a pawn that knocks pieces down.
+    "archive/shogi-drop-promoted.json": ("ffb9a99dbd01", "6811d5a31d92a207"),
+    "archive/shogi-backward-drops.json": ("8478a3301cfd", "b70216a4c181360f"),
+    "archive/pawn-knockdown.json": ("d50c552b49da", "89578d839100f40d"),
+    # Q781, 2026-10-09: schema 18a's showcases, Q533's audit specs with the rule each could
+    # not say: Einstein chess's keeping link and Omega chess's castling on a walled rank.
+    "archive/einstein.json": ("d90706fec9c0", "996d6281b00fcd83"),
+    "archive/omega.json": ("c68b69c57219", "59fe2b96b67ee042"),
+    # Q783, 2026-10-09: schema 18c's showcases, Q533's audit specs with the rule each could
+    # not say: Extinction chess's count per type and Grand chess's promotion from the lost.
+    "archive/extinction-chess.json": ("ca1fdd0b00bb", "5fdfec30333e4dba"),
+    "archive/grand.json": ("393dfeada70d", "dfd7945f0fab0e70"),
+    # Q784, 2026-10-09: schema 18d's showcases for the placement phase: Placement chess
+    # (less its opposite-coloured bishops and its dropped castling) and Sittuyin (with a
+    # caveat: a pawn promotes on arrival, not in place).
+    "archive/placement-chess.json": ("2cb9cb3c018c", "230ba2d2ea235f42"),
+    "archive/sittuyin.json": ("771c1a22e182", "59fcaa6f1987dac3"),
+    # Q785, 2026-10-09: schema 18e's showcase for dropping either face: Kyoto shogi, Q533's
+    # audit spec with each turned face's promoted_from and the flag.
+    "archive/kyoto.json": ("a1805ac1adc1", "e18bfb3c15b95c45"),
+    # Q786, 2026-10-09: schema 18f's showcase for winning by leaving a square: Jeson Mor,
+    # Q533's audit spec (jeson-mor-approx, 9447c056a0c0) with reach.on "leave".
+    "archive/jeson-mor.json": ("fb8a67625131", "afef964377992171"),
+    # Q782, 2026-10-10: schema 18b's showcases, `hex-glinski-promoting` with every officer's
+    # move written once and turned by the hexagon's `rotate6`, and by `dihedral12`. Their
+    # tables are the parent's array by array but for the five Zobrist draws, which the
+    # mechanics hash seeds (`tests/test_schema_eighteen.py::TestHexSymmetries`).
+    "archive/hex-glinski-turned.json": ("30c1003b9a61", "88ab61fbcf782f93"),
+    "archive/hex-glinski-turned-mirrored.json": ("461e29677d6d", "af0f34c7a089f751"),
+    # Q772a, 2026-10-10: schema 19's showcases (`plan-portals.md` §7 P4): the three games
+    # Divide (capablanca on a walled 10x11), Ferry (losalamos, two pairs either player
+    # moves) and Carousel (losalamos on a 6x8 cylinder, a private lift each), and the four
+    # one-feature specs: Wormhole on gardner, its `moved_by` and `passage` arms, and a
+    # two-exit pair on cylinder (`docs/reference/portal-showcases.md`).
+    "archive/divide.json": ("1f85f50a23f6", "d0ab03b90fdc996f"),
+    "archive/ferry.json": ("1501615e08e2", "6a3e2afa90281e2e"),
+    "archive/carousel.json": ("f1e40e35a6d9", "77a125f71060e8d6"),
+    "archive/wormhole.json": ("3732e55621b1", "b0b3d89367aea3fe"),
+    "archive/wormhole-adrift.json": ("22cc8982bc90", "3c974d08f97ae3cf"),
+    "archive/shut-wormhole.json": ("58afebca2286", "a4db7f4ed8334ea1"),
+    "archive/cylinder-wormhole.json": ("5abb0b804cf6", "44ff210388e3b982"),
+    # Q807, 2026-10-10: schema 20's showcase, Ferry with `no_straight_back` on both pairs
+    # (`plan-portals.md` *Ferry's shuffle*), a new game beside Ferry, whose row is unmoved.
+    "archive/ferry-no-straight-back.json": ("dd17d71412a7", "1fdb2020deedb6d1"),
 }
 
 

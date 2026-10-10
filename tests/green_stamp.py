@@ -18,7 +18,7 @@ What a stamp is keyed on, and why it can be trusted:
   scratch index so the real one is untouched. Uncommitted and untracked files count, so a
   stamp vouches for what was on disk rather than for HEAD. The tree is taken before and
   after the run, and a run whose files moved underneath it is not stamped.
-- **Except Markdown under `docs/` that no tracked Python file names.** The main checkout
+- **Except Markdown under `docs/` or `.claude/` that no tracked Python file names.** The main checkout
   usually carries an uncommitted line in the queue's inbox, and a key that counted it would
   never match there. `docs/changelog.md` is served by the site and read by its tests, so
   it counts; the name search is what tells the two apart. When every uncommitted path is
@@ -32,6 +32,33 @@ A stamp says the code was green. It does not vouch for anything outside the tree
 changed since, such as a delivered measurement or an environment variable, beyond
 re-running what skipped.
 
+Three things widen what a stamp is found for (2026-10-09, after a day of gates that re-ran the
+whole suite on code a worker had just tested):
+
+- **A tree that differs from a stamped one only in Markdown nothing reads**, committed or
+  not. The exemption above covers only uncommitted paths, so a worker that committed a
+  `docs/reference/` note after its run, or a coordinator commit to the queue, used to cost a
+  full run. `find_stamp` looks among the newest stamps for one whose tree differs from this
+  one only in paths `unread` clears, and the summary line names them. `unread` also stopped
+  counting `docs_tests/` as a reader (the fast suite never collects it), and clears skills
+  and rules under `.claude/`: the coordinator's queue, status and policy commits land
+  between a worker's run and its gate.
+- **A red run is stamped too**, with its failures (`"verdict": "red"`), when it ran to the
+  end (no `-x`/`--maxfail`). A gate on the same tree re-runs only what failed or skipped, so
+  re-checking a known-red main costs the failures, not the suite. A rerun that comes out
+  green stamps the tree green: every other test passed in the first run. A gate that matched
+  a green stamp and fails on what it re-ran stamps the tree red.
+- **A stamp can travel.** A cloud worker's stamp is written in its own clone and used to die
+  with it, so every cloud merge re-ran the whole suite here. `export` puts it on a branch of
+  its own (`<branch>-green`, an orphan commit holding `stamp.json`, never part of the code's
+  tree); `import` files it in this machine's store. The gate then re-runs what the cloud
+  skipped: the tests that need `runs/`, the database or Fairy-Stockfish. What it gives up,
+  by the user's choice (2026-10-09): code tested only on Linux reaches main without one full
+  run on Windows.
+
+        uv run python tests/green_stamp.py export --push origin     # in the cloud, after the suite
+        uv run python tests/green_stamp.py import origin/<branch>-green   # here, before the gate
+
 **Under xdist (`-n 4`, how the fast suite runs since Q377c)** the work is split, and so is
 this plugin. The *controller* keys the tree once, hands it to each worker, counts the
 passes and skips the workers report back, and alone decides and writes the stamp, from
@@ -41,13 +68,17 @@ reports what it did through `workeroutput`. A worker never stamps: its part of a
 be green while another worker's is red.
 """
 
+# compute-lease: light
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -64,22 +95,45 @@ KEEP_DAYS = 30
 XDIST_KEY = "green_stamp"
 # Files that name docs only as examples. Searched, they found the inbox in this module's own
 # tests and made its line count in the main checkout, so the coordinator's gate never matched.
-NOT_READERS = ("tests/green_stamp.py", "tests/test_green_stamp.py")
+#
+# `docs_tests/` reads documents on purpose, but the fast suite never collects it and every
+# merge runs it anyway. The other two name the queue as a path to classify and as a file in a
+# scratch repository. Counted, they made every queue commit on main a new tree, so a gate
+# after one never matched the worker's stamp (2026-10-09).
+NOT_READERS = (
+    "tests/green_stamp.py",
+    "tests/test_green_stamp.py",
+    "docs_tests/",
+    "tests/test_docs_only.py",
+    "tests/test_export_public.py",
+)
+# Where Markdown can be cleared as unread (`unread`).
+PROSE = ("docs/", ".claude/")
+# How many of the newest stamps `find_stamp` compares when none has this tree's own key.
+SEARCH = 100
+TREE_NAME = re.compile(r"[0-9a-f]{40}")
+# The file a travelling stamp is carried in, alone in its orphan commit's tree.
+CARRIED = "stamp.json"
+GREEN, RED = "green", "red"
 
 
 class NotAGitCheckout(Exception):
     """git could not answer: no repository, no HEAD, no git."""
 
 
-def _git(root: Path, *args: str, env: dict[str, str] | None = None) -> str:
+def _git(
+    root: Path, *args: str, env: dict[str, str] | None = None, input: str | None = None
+) -> str:
+    # Bytes, not text mode: on Windows a text pipe writes "\n" as "\r\n", and git would read
+    # the "\r" into an object or file name.
     try:
         out = subprocess.run(
-            ["git", *args], cwd=root, capture_output=True, text=True, check=True,
-            env=env, timeout=60,
+            ["git", *args], cwd=root, capture_output=True, check=True, env=env,
+            input=None if input is None else input.encode("utf-8"), timeout=60,
         )
     except (subprocess.SubprocessError, OSError) as error:
         raise NotAGitCheckout(" ".join(args)) from error
-    return out.stdout.strip()
+    return out.stdout.decode("utf-8", errors="replace").strip()
 
 
 def _absolute(root: Path, answer: str) -> Path:
@@ -101,11 +155,12 @@ def content_tree(root: Path, index: Path) -> str:
 def unread(root: Path, path: str) -> bool:
     """Whether an uncommitted path is one the suite cannot be reading.
 
-    Markdown under `docs/` whose file name appears in no tracked Python file outside
-    `NOT_READERS`. A substring search errs towards *read*: `queue.md` is read if a file
-    names `add-to-queue.md`.
+    Markdown under `docs/` or `.claude/` (the skills and rules, since 2026-10-09) whose file name
+    appears in no tracked Python file outside `NOT_READERS`. A substring search errs towards
+    *read*: `queue.md` is read if a file names `add-to-queue.md`. Markdown elsewhere is
+    never cleared, since `pyproject.toml` can name a README where no Python file does.
     """
-    if not (path.startswith("docs/") and path.endswith(".md")):
+    if not (path.startswith(PROSE) and path.endswith(".md")):
         return False
     name = path.rsplit("/", 1)[-1]
     excluded = [f":(exclude){reader}" for reader in NOT_READERS]
@@ -163,6 +218,67 @@ def write_stamp(store: Path, stamp: dict[str, Any]) -> None:
                 old.unlink()
         except OSError:
             pass
+
+
+@dataclass(frozen=True)
+class Found:
+    key: str  # the stamp's own tree, which names its file
+    drift: tuple[str, ...]  # Markdown nothing reads, by which that tree differs from this one
+
+
+def _present_trees(root: Path, names: list[str]) -> set[str]:
+    """Which of these are trees in this repository: a cloud stamp's may never have arrived."""
+    answer = _git(root, "cat-file", "--batch-check", input="".join(f"{n}\n" for n in names))
+    return {line.split()[0] for line in answer.splitlines() if line.split()[1:2] == ["tree"]}
+
+
+def _changed_paths(root: Path, stamped: list[str], key: str) -> dict[str, list[str]]:
+    """The paths by which each stamped tree differs from `key`, from one `git diff-tree`."""
+    answer = _git(
+        root, "-c", "core.quotepath=off", "diff-tree", "--stdin", "-r", "--name-only",
+        input="".join(f"{name} {key}\n" for name in stamped),
+    )
+    changed: dict[str, list[str]] = {}
+    current: list[str] | None = None
+    for line in answer.splitlines():
+        pair = line.split(" ")
+        if len(pair) == 2 and all(TREE_NAME.fullmatch(part) for part in pair):
+            current = changed.setdefault(pair[0], [])
+        elif current is not None and line:
+            current.append(line)
+    return changed
+
+
+def find_stamp(root: Path, store: Path, key: str) -> Found | None:
+    """The stamp that vouches for tree `key`: its own, or the newest one taken on a tree that
+    differs from it only in Markdown no test reads (`unread`), committed or not."""
+    if (store / f"{key}.json").exists():
+        return Found(key, ())
+    stamps = sorted(store.glob("*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+    names = [path.stem for path in stamps[:SEARCH] if TREE_NAME.fullmatch(path.stem)]
+    if not names:
+        return None
+    present = _present_trees(root, names)
+    names = [name for name in names if name in present]
+    if not names:
+        return None
+    changed = _changed_paths(root, names, key)
+    read: dict[str, bool] = {}
+
+    def nothing_reads(path: str) -> bool:
+        if path not in read:
+            read[path] = unread(root, path)
+        return read[path]
+
+    for name in names:  # newest first
+        paths = changed.get(name)
+        if not paths:
+            continue
+        if all(p.startswith(PROSE) and p.endswith(".md") for p in paths) and all(
+            nothing_reads(p) for p in paths
+        ):
+            return Found(name, tuple(paths))
+    return None
 
 
 def collection_digest(items: list[pytest.Item]) -> str:
@@ -234,11 +350,16 @@ class GreenStamp:
         self.root = config.rootpath
         self.tree: Tree | None = None
         self.store: Path | None = None
+        self.found: Found | None = None
         self.collection: str | None = None
         self.matched: dict[str, Any] | None = None
         self.rerun = 0
         self.passed = 0
         self.skipped: set[str] = set()
+        self.failed: set[str] = set()
+        # A run stopped early by -x or --maxfail never ran the rest, so its red says nothing
+        # about them.
+        self.ran_to_the_end = not config.getoption("maxfail", 0)
         self.started = time.time()
         self.note: str | None = None
         # xdist: set on a worker, which only collects and reports; the controller gathers
@@ -251,6 +372,8 @@ class GreenStamp:
             if handed is not None:  # the controller found a whole fast suite on a git tree
                 self.tree = Tree(handed["tree"], handed["head"], tuple(handed["exempt"]))
                 self.store = Path(handed["store"])
+                if handed.get("found") is not None:
+                    self.found = Found(handed["found"][0], tuple(handed["found"][1]))
             return
 
         why_not = not_the_fast_suite(config)
@@ -268,6 +391,9 @@ class GreenStamp:
         try:
             self.tree = tree_of(self.root)
             self.store = store_for(self.root)
+            if self.gate:
+                # Once, here: the workers are handed the answer rather than each searching.
+                self.found = find_stamp(self.root, self.store, self.tree.key)
         except NotAGitCheckout:
             self.tree = None
             self.note = "no git tree to key a stamp on; nothing skipped or stamped"
@@ -281,6 +407,7 @@ class GreenStamp:
                 "head": self.tree.head,
                 "exempt": list(self.tree.exempt),
                 "store": str(self.store),
+                "found": None if self.found is None else [self.found.key, list(self.found.drift)],
             }
 
     @pytest.hookimpl(trylast=True)
@@ -305,19 +432,19 @@ class GreenStamp:
         if not self.gate or self.tree is None or self.store is None:
             return
         short = self.tree.key[:10]
-        stamp = read_stamp(self.store, self.tree.key)
+        stamp = None if self.found is None else read_stamp(self.store, self.found.key)
         if stamp is None:
             self.note = f"no stamp for tree {short}; ran the whole fast suite"
             return
         if stamp.get("collection") != self.collection:
             self.note = (
-                f"tree {short} was green, but this checkout collects a different set of"
+                f"tree {short} was stamped, but this checkout collects a different set of"
                 " tests; ran the whole fast suite"
             )
             return
-        skipped = set(stamp.get("skipped", ()))
-        keep = [item for item in items if item.nodeid in skipped]
-        drop = [item for item in items if item.nodeid not in skipped]
+        rerun = set(stamp.get("skipped", ())) | set(stamp.get("failed", ()))
+        keep = [item for item in items if item.nodeid in rerun]
+        drop = [item for item in items if item.nodeid not in rerun]
         if drop:
             config.hook.pytest_deselected(items=drop)
         items[:] = keep
@@ -349,7 +476,7 @@ class GreenStamp:
         if not verdicts.pop():
             self.note = first["note"]
             return
-        stamp = read_stamp(self.store, self.tree.key) if self.tree and self.store else None
+        stamp = read_stamp(self.store, self.found.key) if self.found and self.store else None
         if stamp is None:  # gone since the workers read it: this run was a subset, so no stamp
             self.collection = None
             self.note = "the workers matched a stamp that is gone now; nothing stamped"
@@ -362,6 +489,74 @@ class GreenStamp:
             self.passed += 1
         elif report.skipped and not hasattr(report, "wasxfail"):
             self.skipped.add(report.nodeid)
+        elif report.failed:
+            self.failed.add(report.nodeid)
+
+    def _verdict(self, exitstatus: int) -> str | None:
+        """What this run says about its tree, or ``None`` when it says nothing whole."""
+        if exitstatus == pytest.ExitCode.OK:
+            return GREEN
+        if exitstatus == pytest.ExitCode.TESTS_FAILED and self.failed and self.ran_to_the_end:
+            return RED
+        return None
+
+    def _why_not_stamp(self) -> str | None:
+        stale = stale_core()
+        if stale is not None:
+            return stale
+        assert self.tree is not None
+        try:
+            after = tree_of(self.root)
+        except NotAGitCheckout:
+            return "no git tree after the run"
+        if after.key != self.tree.key:
+            return f"the files changed during the run (tree {self.tree.key[:10]})"
+        return None
+
+    def _stamp(self, verdict: str, **more: Any) -> None:
+        assert self.tree is not None and self.store is not None
+        write_stamp(
+            self.store,
+            {
+                "tree": self.tree.key,
+                "head": self.tree.head,
+                "exempt": list(self.tree.exempt),
+                "verdict": verdict,
+                "checkout": str(self.root),
+                "finished": time.strftime("%Y-%m-%d %H:%M"),
+                "seconds": round(time.time() - self.started, 1),
+                "core": built_core(),
+                "collection": self.collection,
+                "passed": self.passed,
+                "skipped": sorted(self.skipped),
+                "failed": sorted(self.failed),
+                **more,
+            },
+        )
+
+    def _matched_note(self, left_out: str) -> str:
+        assert self.matched is not None and self.tree is not None and self.found is not None
+        stamped = self.tree.key[:10]
+        said = f"tree {stamped}"
+        if self.found.drift:
+            stamped = self.found.key[:10]
+            said = (
+                f"tree {self.tree.key[:10]} differs from tree {stamped} only in Markdown"
+                f" nothing reads ({', '.join(self.found.drift)}); tree {stamped}"
+            )
+        where = Path(str(self.matched.get("checkout", "?"))).name
+        when = self.matched.get("finished")
+        if self.matched.get("verdict", GREEN) == RED:
+            failed = len(self.matched.get("failed", ()))
+            return (
+                f"{said} was red in {where} at {when} ({failed} failed); re-ran only the"
+                f" {self.rerun} tests that run failed or skipped{left_out}"
+            )
+        return (
+            f"{said} passed the fast suite in {where} at {when}"
+            f" ({self.matched.get('passed')} passed); re-ran only the {self.rerun} tests"
+            f" that run skipped{left_out}"
+        )
 
     def pytest_sessionfinish(self, session: pytest.Session, exitstatus: int) -> None:
         if self.workeroutput is not None:
@@ -376,45 +571,106 @@ class GreenStamp:
             left_out = f" (left out, uncommitted: {', '.join(self.tree.exempt)})"
         if self.matched is not None:
             if exitstatus == pytest.ExitCode.NO_TESTS_COLLECTED:
-                session.exitstatus = pytest.ExitCode.OK
-            where = Path(str(self.matched.get("checkout", "?"))).name
-            self.note = (
-                f"tree {short} passed the fast suite in {where} at {self.matched.get('finished')}"
-                f" ({self.matched.get('passed')} passed); re-ran only the {self.rerun} tests"
-                f" that run skipped{left_out}"
+                session.exitstatus = exitstatus = pytest.ExitCode.OK
+            self.note = self._matched_note(left_out)
+            verdict = self._verdict(exitstatus)
+            # A green stamp that stays green is left as it is. Anything else is news: a red
+            # tree come green, or what the rerun found failing.
+            if verdict is None or (verdict == GREEN and self.matched.get("verdict", GREEN) == GREEN):
+                return
+            why_not = self._why_not_stamp()
+            if why_not is not None:
+                self.note += f"; not stamped: {why_not}"
+                return
+            self._stamp(
+                verdict,
+                passed=int(self.matched.get("passed", 0)) + self.passed,
+                rerun_of={
+                    key: self.matched.get(key)
+                    for key in ("tree", "verdict", "checkout", "finished")
+                },
             )
+            self.note += f"; stamped tree {short} {verdict}"
             return
-        if exitstatus != pytest.ExitCode.OK or self.collection is None:
+        verdict = self._verdict(exitstatus)
+        if verdict is None or self.collection is None:
             return
-        stale = stale_core()
-        if stale is not None:
-            self.note = f"not stamped: {stale}"
+        why_not = self._why_not_stamp()
+        if why_not is not None:
+            self.note = f"not stamped: {why_not}"
             return
-        try:
-            after = tree_of(self.root)
-        except NotAGitCheckout:
-            return
-        if after.key != self.tree.key:
-            self.note = f"not stamped: the files changed during the run (tree {short})"
-            return
-        write_stamp(
-            self.store,
-            {
-                "tree": self.tree.key,
-                "head": self.tree.head,
-                "exempt": list(self.tree.exempt),
-                "checkout": str(self.root),
-                "finished": time.strftime("%Y-%m-%d %H:%M"),
-                "seconds": round(time.time() - self.started, 1),
-                "core": built_core(),
-                "collection": self.collection,
-                "passed": self.passed,
-                "skipped": sorted(self.skipped),
-            },
-        )
+        self._stamp(verdict)
         prefix = self.note + "; " if self.note else ""
-        self.note = f"{prefix}stamped tree {short} green{left_out}"
+        failed = f" ({len(self.failed)} failed)" if verdict == RED else ""
+        self.note = f"{prefix}stamped tree {short} {verdict}{failed}{left_out}"
 
     def pytest_terminal_summary(self, terminalreporter: Any) -> None:
         if self.note and self.workeroutput is None:
             terminalreporter.write_line(f"green stamp: {self.note}")
+
+
+# A stamp's journey from a cloud clone to this machine. The orphan commit's only file is the
+# stamp, so the branch shares no history or tree with the code it vouches for.
+
+
+def export(root: Path, push: str | None) -> int:
+    """Carry this checkout's stamp on `<branch>-green`; push it to `push` when named."""
+    tree = tree_of(root)
+    store = store_for(root)
+    found = find_stamp(root, store, tree.key)
+    stamp = None if found is None else read_stamp(store, found.key)
+    if found is None or stamp is None:
+        print(f"no stamp for tree {tree.key[:10]}: nothing to export", file=sys.stderr)
+        return 1
+    branch = _git(root, "branch", "--show-current")
+    if not branch:
+        print("no branch checked out to name the stamp's branch after", file=sys.stderr)
+        return 1
+    blob = _git(root, "hash-object", "-w", "--stdin", input=json.dumps(stamp, indent=1))
+    holder = _git(root, "mktree", input=f"100644 blob {blob}\t{CARRIED}\n")
+    commit = _git(
+        root, "-c", "user.name=green-stamp", "-c", "user.email=green-stamp@localhost",
+        "commit-tree", holder, "-m", f"GREEN STAMP {stamp['tree']} ({stamp.get('verdict', GREEN)})",
+    )
+    target = f"{branch}-green"
+    _git(root, "branch", "-f", target, commit)
+    if push:
+        _git(root, "push", "-f", push, f"{target}:{target}")
+    drift = f", which differs from this tree only in {', '.join(found.drift)}" if found.drift else ""
+    print(f"exported the {stamp.get('verdict', GREEN)} stamp of tree {found.key[:10]}{drift} on {target}")
+    return 0
+
+
+def import_(root: Path, ref: str) -> int:
+    """File the stamp carried on `ref` in this checkout's store."""
+    try:
+        stamp = dict(json.loads(_git(root, "show", f"{ref}:{CARRIED}")))
+    except (NotAGitCheckout, ValueError):
+        print(f"no stamp on {ref}", file=sys.stderr)
+        return 1
+    if not TREE_NAME.fullmatch(str(stamp.get("tree", ""))) or "collection" not in stamp:
+        print(f"{ref} carries something that is not a stamp", file=sys.stderr)
+        return 1
+    stamp["imported_from"] = {"ref": ref, "checkout": stamp.get("checkout")}
+    stamp["checkout"] = ref  # what the gate's summary line names
+    write_stamp(store_for(root), stamp)
+    print(f"imported the {stamp.get('verdict', GREEN)} stamp of tree {stamp['tree'][:10]} from {ref}")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Carry a green stamp between clones.")
+    commands = parser.add_subparsers(dest="command", required=True)
+    out = commands.add_parser("export", help="put this tree's stamp on <branch>-green")
+    out.add_argument("--push", metavar="REMOTE", help="and push that branch there")
+    into = commands.add_parser("import", help="file the stamp carried on REF here")
+    into.add_argument("ref")
+    args = parser.parse_args(argv)
+    root = Path(_git(Path.cwd(), "rev-parse", "--show-toplevel"))
+    if args.command == "export":
+        return export(root, args.push)
+    return import_(root, args.ref)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

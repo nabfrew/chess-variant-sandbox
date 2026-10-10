@@ -68,8 +68,8 @@ MEMBER_READING: dict[str, Any] = {
     "user": 1, "handle": "ada", "mark": None, "since": "October 2026", "finished": None,
     "own": False,
     "challenge": {"paused": False, "pausedSays": "",
-                  "games": [{"game": "0123456789ab", "name": "A game"}]},
-    "recent": [], "designed": [], "milestones": [], "badges": [], "favourites": [],
+                  "theirs": [], "games": [{"game": "0123456789ab", "name": "A game"}]},
+    "played": [], "designed": [], "milestones": [], "badges": [], "favourites": [],
     "playsWith": {"people": [], "computers": []},
 }
 """A member's page's reading as `site.members.read` hands it over, for a page with no store."""

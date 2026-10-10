@@ -25,6 +25,7 @@ from typing import Any
 
 from chess_variant_sandbox.spec.schema import (
     BARE_ROYAL_HOLDER,
+    CONTACT_POSITIONS,
     ENDING_RESULTS,
     FACING_AXES,
     FACING_NAMES,
@@ -38,6 +39,8 @@ from chess_variant_sandbox.spec.schema import (
     MODES,
     MOVE_KINDS,
     ORIENTATIONS,
+    PORTAL_PASSAGES,
+    REACH_ON,
     REPETITION_NEVER,
     SCHEMA_VERSION,
     SCORING_COUNTS,
@@ -78,7 +81,10 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
             "symmetry": {
                 "type": "string",
                 "enum": list(SYMMETRIES),
-                "description": "How the vectors are expanded, as on a move.",
+                "description": (
+                    "How the vectors are expanded, as on a move, and refused off its "
+                    "lattice as there."
+                ),
             },
         },
         required=["vectors"],
@@ -114,7 +120,11 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "description": (
                     "How the base vectors are expanded. none: as written. "
                     "lateral: left-right mirror. rotate4: four right-angle rotations. "
-                    "dihedral8: all eight images, so [1,2] gives the knight."
+                    "dihedral8: all eight images, so [1,2] gives the knight. "
+                    "On a hex lattice only none, rotate6 (six 60-degree turns, so [1,0] "
+                    "gives the six neighbours) and dihedral12 (the six turns and their "
+                    "mirrors, so [1,2] gives the hex knight's twelve); the square's three "
+                    "turns are refused there, and the hex two on a square board."
                 ),
             },
             "range": {
@@ -316,6 +326,17 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "a move that ends in the zone."
                 ),
             },
+            # Schema 18 (Q783): what `compile.PromotionRule.only_lost` reads.
+            "only_lost": {
+                "type": "boolean",
+                "description": (
+                    "True offers a target only while the mover's side has fewer of that "
+                    "type on the board than it started with, as in Grand chess: a pawn "
+                    "promotes only into a piece its side has lost. Every target must be in "
+                    "both armies' setup. Not beside drops that fill from captures, a circe "
+                    "strike or promote_on_entry."
+                ),
+            },
             "to": {"type": "array", "items": {"type": "string"}, "minItems": 1},
             "to_by_player": _object(
                 {
@@ -505,8 +526,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                         "enum": list(STRIKE_EFFECTS),
                         "description": (
                             "What happens to a piece that is taken. 'capture' removes "
-                            "it, which is the ordinary game. 'demote' and 'promote' "
-                            "turn it into another piece instead, following the chain."
+                            "it, which is the ordinary game unless the position is "
+                            "'stay' or 'home'. 'demote' and 'promote' turn it into "
+                            "another piece instead, following the chain."
                         ),
                     },
                     "chain": {
@@ -542,9 +564,26 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "be used when nothing survives the chain, because there "
                             "would be nowhere to put a survivor. 'stay' leaves the "
                             "attacker where it was and transforms the struck piece "
-                            "where it stands. 'swap' exchanges the two. 'choose' "
-                            "advances the attacker and lets it place the struck piece "
-                            "on a square of 'landing'."
+                            "where it stands; under effect 'capture' the taken piece "
+                            "is removed and the attacker never moves (rifle chess). "
+                            "'swap' exchanges the two. 'choose' advances the attacker "
+                            "and lets it place the struck piece on a square of "
+                            "'landing'. 'home' advances the attacker and puts the "
+                            "struck piece -- itself under 'capture', what the chain "
+                            "makes it otherwise -- back on its home square, the one "
+                            "its side's setup gives its type on the capture's file, "
+                            "else on the capture square's colour; if that square is "
+                            "taken, or the type has no home, it is removed (circe)."
+                        ),
+                    },
+                    "switches_sides": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "description": (
+                            "Pieces that change sides when they capture: the capturer "
+                            "becomes the other player's piece where it lands "
+                            "(Andernach chess). A royal piece may not be listed."
                         ),
                     },
                     "landing": {**landing, "description": landing_description},
@@ -614,7 +653,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     },
                     "position": {
                         "type": "string",
-                        "enum": list(STRIKE_POSITIONS),
+                        "enum": list(CONTACT_POSITIONS),
                         "description": (
                             "Where the two pieces end up. 'advance' is the ordinary "
                             "capture -- the mover takes the square -- and may only be "
@@ -744,6 +783,95 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "wild piece is worth its bounty."
                 ),
             },
+            "portals": {
+                "type": "array",
+                "items": _object(
+                    {
+                        "piece": {
+                            "type": "string",
+                            "description": (
+                                "A declared piece id whose moves the pair's ends use when "
+                                "a player moves one. It must be worth 0, not royal, not "
+                                "placed by setup.placements and named by no other rule; "
+                                "every move it has must say mode 'move' and read the same "
+                                "for both players. It may have no moves when nobody moves "
+                                "the pair."
+                            ),
+                        },
+                        "orange": {
+                            "type": "string",
+                            "description": (
+                                "Where the pair's orange end starts: an empty square, not a "
+                                "wall. Algebraic, such as c4."
+                            ),
+                        },
+                        "blue": {
+                            "type": "string",
+                            "description": "Where the pair's blue end starts, likewise.",
+                        },
+                        "moved_by": _object(
+                            {
+                                end: {
+                                    "type": "array",
+                                    "items": {"type": "integer", "enum": [0, 1]},
+                                    "description": (
+                                        f"Which players may move the {end} end, as a turn: "
+                                        "[] for nobody (the default), [0], [1], or [0, 1] "
+                                        "for either."
+                                    ),
+                                }
+                                for end in ("orange", "blue")
+                            },
+                            required=[],
+                            strict=strict,
+                        ),
+                        "passage": _object(
+                            {
+                                player: {
+                                    "type": "string",
+                                    "enum": list(PORTAL_PASSAGES),
+                                    "description": (
+                                        f"Which end player {player}'s pieces may go in by: "
+                                        "'both_ways' (the default), 'orange_to_blue', "
+                                        "'blue_to_orange', or 'closed', when both ends are "
+                                        "an uncapturable obstacle to that player."
+                                    ),
+                                }
+                                for player in ("0", "1")
+                            },
+                            required=[],
+                            strict=strict,
+                        ),
+                        "no_straight_back": {
+                            "type": "boolean",
+                            "description": (
+                                "Schema 20. When true, a portal of this pair that has just "
+                                "been moved may not be moved straight back onto the square "
+                                "it came from on the very next move; it may go anywhere "
+                                "else, and back on the move after. Stops two players "
+                                "undoing each other's portal moves for ever. Needs somebody "
+                                "in moved_by. Default false."
+                            ),
+                        },
+                    },
+                    required=["piece", "orange", "blue"],
+                    strict=strict,
+                ),
+                "minItems": 1,
+                "maxItems": 4,
+                "description": (
+                    "Pairs of portals, numbered by their place in the list. A piece whose "
+                    "move ends on a portal end open to it does not stop there: it comes out "
+                    "of the pair's other end, one king's step beyond it in the direction it "
+                    "was travelling (right-and-up by any amounts comes out diagonally up "
+                    "and right), and its move ends there -- capturing, promoting or winning "
+                    "there as usual. A blocked exit (off the board, a wall, its own piece, a "
+                    "piece it may not take, another portal, or its own square) is no move. "
+                    "A portal is never captured. Not usable on a hex lattice or beside "
+                    "npcs, strike, contacts, explode_on_capture, territory, a sweep, or a "
+                    "piece region."
+                ),
+            },
             "promote_on_entry": {
                 "type": "boolean",
                 "description": (
@@ -801,6 +929,16 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                         "description": "The arriving piece must not be capturable where it lands.",
                     },
                     "result": {"type": "string", "enum": list(ENDING_RESULTS)},
+                    "on": {
+                        "type": "string",
+                        "enum": list(REACH_ON),
+                        "description": (
+                            "Schema 18. 'arrive' (the default): a piece standing on a "
+                            "goal square decides the game. 'leave': the move that takes "
+                            "the piece off a goal square decides it (Jeson Mor), and "
+                            "standing there decides nothing. Not with safe."
+                        ),
+                    },
                 },
                 required=["squares"],
                 strict=strict,
@@ -819,6 +957,16 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                         "type": "string",
                         "enum": list(ENDING_RESULTS),
                         "description": "The result for the player who falls below the count.",
+                    },
+                    # Schema 18 (Q783): what `compile.ExtinctionRule.per_type` reads.
+                    "per_type": {
+                        "type": "boolean",
+                        "description": (
+                            "True counts each listed type on its own, so a side loses when "
+                            "any one of them falls below min_count, as in Extinction chess. "
+                            "False, the default, counts the listed types together. Needs "
+                            "two or more types listed."
+                        ),
                     },
                 },
                 required=["pieces"],
@@ -861,13 +1009,44 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             ]
                         },
                     },
+                    # Schema 18 (Q784): what `compile.DropRule.placement` reads.
+                    "placement": {
+                        "type": "boolean",
+                        "description": (
+                            "True is a placement phase: while a player holds any piece in "
+                            "hand, a drop is their only legal move, so a stock is played "
+                            "out before anything on the board moves (Placement chess, "
+                            "Sittuyin). Only then may a royal start in the stock, once, "
+                            "and not also placed."
+                        ),
+                    },
+                    # Schema 18 (Q785): what `compile.DropRule.faces` reads.
+                    "either_face": {
+                        "type": "boolean",
+                        "description": (
+                            "True lets a piece in hand be dropped as itself or as its "
+                            "other face, the piece whose promoted_from it is (Kyoto "
+                            "shogi). Needs at least one promoted_from pair a hand can "
+                            "hold; each base may have one face, and no face may itself be "
+                            "a base, stocked, or royal."
+                        ),
+                    },
                 },
                 required=[],
                 strict=strict,
             ),
             "explode_on_capture": _object(
                 {
-                    "radius": {"type": "integer", "minimum": 1, "maximum": 3},
+                    "radius": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 3,
+                        "description": (
+                            "How far the blast reaches around the capture square; 1 is "
+                            "atomic chess. 0 destroys only the capturer and the piece "
+                            "it took (kamikaze chess), and then 'immune' may not be set."
+                        ),
+                    },
                     "immune": {
                         "type": "array",
                         "items": {"type": "string"},

@@ -42,8 +42,11 @@ The mechanics side reads only the compiled tables and the validated spec. What a
 check: a piece is found by the name its own spec gives it, never by its id, because an id
 like *A* is a word of prose (rule 5).
 
-A spec is compiled only when its prose makes a claim, 12 of the 71 today. That keeps the
-whole file at about half a second of test time.
+A spec is a case only when its prose makes a claim, 17 of the 73 today (`CLAIMING`, read
+at collection). A spec that claims nothing has nothing to check, and until Q745 it was a
+case that returned before its assert: 56 passes that said nothing (`docs/plan-tests.md`
+T3). A spec whose prose gains a claim becomes a case by itself; one that loses a claim
+the record read fails `test_the_claims_the_record_read_are_still_read`.
 """
 
 from __future__ import annotations
@@ -409,13 +412,16 @@ def compiled_of() -> Iterator[Callable[[Path], CompiledSpec]]:
     kept.clear()
 
 
-@pytest.mark.parametrize("path", LIBRARY, ids=label_of)
+# The library specs whose prose claims something: keyword reading only, so it is cheap at
+# collection. The rest have nothing for the rules to keep.
+CLAIMING = [path for path in LIBRARY if claims(load(path))]
+
+
+@pytest.mark.parametrize("path", CLAIMING, ids=label_of)
 def test_what_the_prose_claims_the_rules_do(
     path: Path, compiled_of: Callable[[Path], CompiledSpec]
 ) -> None:
     spec = load(path)
-    if not claims(spec):
-        return  # nothing claimed, so nothing to compile
     wrong = contradictions(label_of(path), spec, compiled_of(path))
     assert not wrong, "\n\n".join(text for _claim, text in wrong)
 

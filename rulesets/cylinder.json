@@ -229,6 +229,7 @@
     }
   },
   "provenance": {
+    "added": "2026-08-28",
     "origin": "human",
     "source": "cylindrical chess",
     "history": "An old and widely played variant; the board is usually drawn as a strip with the two side edges glued together. Encoded here as the baseline for schema 5, because every other wrapped ruleset in the corpus differs from chess in more than one way at once."

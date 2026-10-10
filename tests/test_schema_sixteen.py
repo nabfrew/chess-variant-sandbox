@@ -235,8 +235,8 @@ def _check_against_the_oracle(radius: int, setting: dict[str, Any]) -> None:
 
 
 class TestTheVersionIsBumped:
-    def test_the_schema_version_is_sixteen(self) -> None:
-        assert SCHEMA_VERSION == 16
+    def test_the_schema_version_is_sixteen_or_later(self) -> None:
+        assert SCHEMA_VERSION >= 16
         assert SHAPES == ("grid", "hexagon")
 
     def test_the_collector_names_both_features(self, twin, flanks) -> None:
@@ -347,9 +347,24 @@ class TestTheNineRefusals:
         assert _errors(twin, "rules.npcs[0] walks off the hexagon at a1")
 
     def test_4_castling_off_the_middle_rank(self, twin) -> None:
+        """Schema 18 (Q781) reads castling's span, not its rank. A hexagon's row is one
+        run of cells, so a castling between a king and a rook on it never leaves them: it
+        is the walled rank, refused only under an older stamp. A destination off the
+        hexagon is refused at every version."""
         twin["rules"]["castling"] = {"king": "K", "rook": "R", "king_steps": 2}
+        assert _errors(twin, "rules.castling(walled rank), added in schema 18")
+        twin["schema_version"] = 18
+        assert validate_spec(twin) == []
+        for placement in twin["setup"]["placements"]:
+            if placement["piece"] == "R":
+                placement["squares"] = ["c4", "f1"]
+            if placement["piece"] == "B":
+                placement["squares"] = ["i1", "f2", "f3"]
+        twin["rules"]["castling"] = {
+            "king": "K", "rook": "R", "king_file": {"queenside": "d", "kingside": "i"},
+        }
         (error,) = _errors(twin, "rules.castling happens along rank 1, which runs off the hexagon")
-        assert "a1, b1, c1, d1, e1" in error
+        assert "at d1, e1 between the king" in error
 
     def test_4_a_wall_on_a_corner(self, twin) -> None:
         twin["rules"]["obstacles"] = {"squares": ["a1", "f6"]}

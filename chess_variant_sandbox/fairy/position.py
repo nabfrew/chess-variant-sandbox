@@ -191,10 +191,24 @@ def uci_of(
     origin, target, kind, promoted = decode_move(move)
     width = compiled.width
     if kind == MOVE_DROP:
-        return f"{chars[promoted % compiled.n_types].upper()}@{_square_name(target, width)}"
+        face = promoted % compiled.n_types
+        drops = compiled.drops
+        slot = face if drops is None else drops.hand_slot(face)
+        # Schema 18's `either_face` (Q785): a piece dropped as its other face is spent
+        # from its base's slot, and `dropPromoted` writes that drop as the base marked
+        # promoted, `+P@c3`.
+        mark = "+" if slot != face else ""
+        return f"{mark}{chars[slot].upper()}@{_square_name(target, width)}"
     text = f"{_square_name(origin, width)}{_square_name(target, width)}"
     if kind == MOVE_PROMOTION:
-        text += "+" if promotion_suffix == "plus" else chars[promoted].lower()
+        if promotion_suffix == "plus":
+            # A turn back to the piece's `promoted_from` is `pieceDemotion`'s move there,
+            # written with a minus (Kyoto shogi's flip, `variant._flip_pairs`).
+            mover = compiled.type_of(state.board[origin])
+            back = compiled.demotions[mover] == promoted and promoted != mover
+            text += "-" if back else "+"
+        else:
+            text += chars[promoted].lower()
     return text
 
 

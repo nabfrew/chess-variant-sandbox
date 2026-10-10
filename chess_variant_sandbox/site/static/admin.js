@@ -220,6 +220,76 @@ function scoreVolatility(rows) {
   }
 }
 
+function gameCell(row, hash, name) {
+  const first = cell(row, '');
+  const link = document.createElement('a');
+  link.href = GAME + hash;
+  link.textContent = name || hash.slice(0, 12);
+  first.appendChild(link);
+}
+
+// H8 and H9 (`docs/plan-human-data.md` §3.3). Each game with a rated game against its
+// strongest, against the bar, with its latest training entry; then the queue in the order
+// the pipeline serves it. The server words the counts; the page compares nothing.
+function bar(reading) {
+  const found = reading || {games: [], queue: []};
+  document.getElementById('bar-said').textContent = found.said || '';
+  const body = document.getElementById('bar');
+  body.replaceChildren();
+  document.getElementById('bar-empty').textContent = (found.games || []).length
+    ? '' : 'Nobody has played a rated game against a strongest computer player yet.';
+  for (const game of found.games || []) {
+    const row = document.createElement('tr');
+    gameCell(row, game.hash, game.name);
+    cell(row, game.over ? 'over' : 'not over');
+    cell(row, game.said);
+    const entry = game.queued;
+    cell(row, entry ? entry.state + ' (asked by ' + entry.cause + ', ' + day(entry.created)
+      + ')' : '—');
+    body.appendChild(row);
+  }
+  const queue = document.getElementById('training-queue');
+  queue.replaceChildren();
+  document.getElementById('training-queue-empty').textContent = (found.queue || []).length
+    ? '' : 'Nothing is waiting to be trained.';
+  for (const entry of found.queue || []) {
+    const row = document.createElement('tr');
+    gameCell(row, entry.hash, entry.name);
+    cell(row, entry.cause === 'people' ? 'people\'s games' : 'the premise check');
+    cell(row, entry.state);
+    cell(row, day(entry.created));
+    queue.appendChild(row);
+  }
+}
+
+// H7 (§3.2). Every computer player's place on each game's table among its people. One row
+// per computer player; the game's cells only on its first.
+function peopleScale(rows) {
+  const body = document.getElementById('people-scale');
+  body.replaceChildren();
+  document.getElementById('people-scale-empty').textContent = rows.length
+    ? '' : 'No person has a rating on any game yet.';
+  for (const game of rows) {
+    (game.places || []).forEach((place, index) => {
+      const row = document.createElement('tr');
+      if (index === 0) {
+        gameCell(row, game.hash, game.name);
+        cell(row, game.established + (game.shown ? ' (shown on its page)' : ''), 'num');
+      } else {
+        cell(row, '');
+        cell(row, '');
+      }
+      cell(row, place.name);
+      cell(row, Math.round(place.rating) + ' ±' + Math.round(place.deviation), 'num');
+      cell(row, place.seed === null || place.seed === undefined
+        ? '—' : String(Math.round(place.seed)), 'num');
+      cell(row, String(place.games), 'num');
+      cell(row, place.below + ' of ' + place.established, 'num');
+      body.appendChild(row);
+    });
+  }
+}
+
 // Q705. The refresher's status, worded by the server (`web/refreshing.py`): the lines in
 // order, then each game it refused and will not try again, newest first. No status file
 // is a refresher that is not running, said in a line like any other.
@@ -565,6 +635,8 @@ async function draw() {
   scoreHistory(payload.history || []);
   scoreVolatility(payload.volatility || []);
   refresherStatus(payload.refresher);
+  bar(payload.bar);
+  peopleScale(payload.peopleScale || []);
   reports(payload.reports || []);
   dismissedReports(payload.dismissedReports || [], payload.dismissedCount || 0);
   flagged(payload.flagged || []);

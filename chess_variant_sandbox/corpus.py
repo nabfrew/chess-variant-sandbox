@@ -1699,7 +1699,20 @@ def _provenance(
         declared.setdefault("parents", [str(lineage["parent"])])
     if history:
         declared["history"] = " ".join(history)
+    # The day the game joined the library (Q826), which the landing page's *New* shelf and
+    # the games page's *date added* order read. A game already in the library keeps its
+    # day, so one archived and later promoted keeps the day it first arrived; a candidate
+    # from `runs/` joins today, whatever its own file claims.
+    if candidate.stage not in ("archived", "committed") or "added" not in declared:
+        declared["added"] = _today()
     return declared
+
+
+def _today() -> str:
+    """Today's calendar day in UTC, `YYYY-MM-DD`: one day for everybody, as `launch.today`."""
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).date().isoformat()
 
 
 def _sentence(text: str) -> str:

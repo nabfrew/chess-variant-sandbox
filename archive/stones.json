@@ -285,6 +285,7 @@
     }
   },
   "provenance": {
+    "added": "2026-09-07",
     "origin": "human",
     "source": "international chess",
     "history": "Drawn from chess by the place-a-stone mutation operator, as the demonstrating ruleset for rules.drops.stock (schema 10, rows 28 and 29 of reference/schema-showcase-coverage.md). It is the one schema-10 showcase that is a new design rather than a variant: before a stock, the DSL could not say *a stone* at all, because a hand filled only from captures and nothing is ever captured that was never on the board. Repaired 2026-09-08 (Q131): the description has always said a stone \"is never captured and never leaves\" and the spec carried no capture matrix, so anything could take one -- 39073 of the 40416 captures in the superseded spec's own run (0.9668; runs/d9a411e36af4-0) were a stone being taken, which is the game the prose describes played as a different game entirely. The six types that can capture now name what they may take and the stone is not on any list. The description is not edited: it is the specification, and the rules were the defect (docs/archive/decisions.md, 2026-09-08).",

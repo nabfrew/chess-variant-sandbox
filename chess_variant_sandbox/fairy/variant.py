@@ -299,6 +299,7 @@ _RULES_REFUSED = frozenset(
         "bare_royal",
         "npcs",
         "obstacles",
+        "portals",
         "promote_on_entry",
         "scoring",
         "strike",
@@ -328,22 +329,36 @@ _RULES_IRRELEVANT: dict[str, str] = {}
 # answer and trip the refusal below.
 _RULE_OBJECT_KEYS: dict[str, frozenset[str]] = {
     "castling": frozenset({"king", "king_file", "king_steps", "rook", "rook_file"}),
-    # `stock` is schema 10 and is listed so the catch-all stops applying to it; the
-    # branch that decides what it means is in `_check_unsupported_rules`, and it refuses.
-    "drops": frozenset({"from_captures", "no_doubled", "no_mate", "region", "stock"}),
+    # `stock` is schema 10: a finite one is the startFen's pocket and an unlimited slot is
+    # refused (`_check_unsupported_rules`). `placement` is schema 18 (Q784) and is written
+    # as `mustDrop` by `_drop_lines`; `either_face` is schema 18 (Q785), `dropPromoted`
+    # (`_drop_face_lines`).
+    "drops": frozenset(
+        {"from_captures", "no_doubled", "no_mate", "region", "stock", "placement", "either_face"}
+    ),
     # `by` and `of` are schema 10 and are listed here so the catch-all stops applying to
     # them -- which, as this table's own comment says, is what stops the silence rather
     # than the whole job. The branch that decides what they mean is in
     # `_check_unsupported_rules`, and it refuses them.
     "explode_on_capture": frozenset({"immune", "radius", "by", "of"}),
-    "extinction": frozenset({"min_count", "pieces", "result"}),
+    # `per_type` is schema 18 (Q783): read off the compiled rule by `_ending_lines`, which
+    # writes it as the per-type count `extinctionPieceTypes` always was over there.
+    "extinction": frozenset({"min_count", "pieces", "per_type", "result"}),
     # `squares` is schema 14. A shaped zone crosses as square names in `promotionRegion*`.
     # `on_leaving` is schema 15 (Q452): read off the compiled entry by
     # `_check_leaving_the_zone`, which passes it on the map and refuses it on the list.
+    # `only_lost` is schema 18 (Q783): read off the compiled entry by `_promotion_lines`,
+    # which writes it as `promotionLimit` from the setup's counts.
     "promotion": frozenset(
-        {"mandatory", "on_leaving", "piece", "rank", "ranks", "squares", "to", "to_by_player"}
+        {
+            "mandatory", "on_leaving", "only_lost", "piece", "rank", "ranks", "squares",
+            "to", "to_by_player",
+        }
     ),
-    "reach": frozenset({"mirror", "piece", "result", "safe", "squares"}),
+    # `on` is schema 18 (Q786): read off the compiled rule by `_ending_lines`, which refuses
+    # `leave` by name. Over there `flagMove` gives the other side one more move after a
+    # flag is reached, which is not leaving (`general-fairy-fork.md`).
+    "reach": frozenset({"mirror", "on", "piece", "result", "safe", "squares"}),
 }
 
 
@@ -432,15 +447,27 @@ def _check_unsupported_rules(
             "rules.npcs: a piece neither player owns has no counterpart; nothing in "
             "Fairy-Stockfish moves between turns"
         )
-    drops = compiled.drops
-    if drops is not None and drops.stock:
-        # Schema 10 (Q51). A hand over there fills only from captures -- there is no
-        # variant option that puts something in it before the game starts, and none that
-        # makes a slot inexhaustible. `pocketSize` bounds a hand, it does not seed one.
-        # Read off the compiled rule, so a spec without a stock refuses nothing.
+    if compiled.portals is not None:
+        # Schema 19 (Q771). Fairy-Stockfish has no square that sends a piece somewhere
+        # else, and no option approximates one (`docs/plan-portals.md` §5); its walling
+        # rules place a wall, and a wall is not a door. Read off the compiled spec, so an
+        # empty or absent rule refuses nothing. `tests/portal_oracle.py` is the second
+        # implementation the core's transits are held against instead.
         reasons.append(
-            "rules.drops.stock: a hand there fills only from captures, and no option "
-            "seeds one before the game or makes a slot inexhaustible"
+            "rules.portals: a square that sends a piece out of another has no counterpart; "
+            "no variant option moves a piece anywhere but where its move ends"
+        )
+    drops = compiled.drops
+    if drops is not None and drops.unlimited:
+        # Schema 10 (Q51). No variant option makes a slot inexhaustible over there:
+        # `pocketSize` bounds a hand, and a hand counts down. A *finite* stock is the
+        # startFen's pocket (`compiled_initial_state`), which Q784 lifted from this
+        # refusal: the FEN's hand seeds one, as `seirawan`'s `[HEhe]` does
+        # (`reference/general-fairy-fork.md`, probed with `[XXxx]`). Read off the
+        # compiled rule, so a spec without an unlimited slot refuses nothing.
+        reasons.append(
+            'rules.drops.stock "unlimited": a hand there counts down, and no option makes '
+            "a slot inexhaustible"
         )
     if compiled.moveless_types:
         # The relaxation the stock gates, refused on its own account: a Betza descriptor
@@ -970,8 +997,13 @@ def _demotion_lines(
                 f"and as {ids[piece]!r} there, which cannot be told it is promoted; the "
                 "opponent's search expects the wrong piece in hand"
             )
+    # A turn back (Q785, `_flip_pairs`) is `pieceDemotion` there, which leaves the plain
+    # face that goes to a hand as ours does, so it needs no note.
+    flips = _flip_pairs(compiled)
     for rule in rules:
         for target in sorted({t for player in (0, 1) for t in rule.targets[player]}):
+            if flips.get(target) == rule.piece_type:
+                continue
             if demotions[target] != rule.piece_type:
                 notes.append(
                     f"a {ids[target]!r} promoted from {ids[rule.piece_type]!r} goes into "
@@ -1485,11 +1517,15 @@ def compiled_initial_state(compiled: CompiledSpec) -> Any:
     """
     from chess_variant_sandbox.engine.state import GameState
 
+    # A finite stock is each side's opening hand (schema 10), written into the startFen's
+    # pocket; the hand is otherwise empty, as the core's opening state is.
+    stock = compiled.drops.stock if compiled.drops is not None else ()
     return GameState(
         board=compiled.initial_board,
         side_to_move=0,
         unmoved=compiled.initial_unmoved,
         colour=bytes(compiled.n_squares) if compiled.territory is not None else b"",
+        hands=(tuple(stock), tuple(stock)) if stock else ((), ()),
     )
 
 
@@ -1634,13 +1670,20 @@ def _progress_lines(
 def _types_in_hand(compiled: CompiledSpec) -> set[int]:
     """The piece types a hand can hold: each capturable type, as it enters the hand.
 
-    A hand fills only from captures here (a stocked hand is refused), and a royal is
-    never taken into one, because taking it ends the game or is not a move at all.
+    A hand fills from captures, and from a finite stock (Q784), which the startFen's
+    pocket seeds and which may hold a royal under the placement phase. A royal is never
+    taken into one, because taking it ends the game or is not a move at all.
     """
+    drops = compiled.drops
+    stocked = (
+        {piece for piece, held in enumerate(drops.stock) if held}
+        if drops is not None
+        else set()
+    )
     if not _captures_to_hand(compiled):
-        return set()
+        return stocked
     royal = set(compiled.royal_types)
-    return {
+    return stocked | {
         compiled.demotions[piece] for piece in range(compiled.n_types) if piece not in royal
     }
 
@@ -1677,6 +1720,23 @@ def _ending_lines(
                 "the win condition and rules.extinction both end the game by running "
                 "out of a piece, and there is one extinction rule over there"
             )
+        # Over there each type in `extinctionPieceTypes` is counted on its own (the built-in
+        # `extinction` variant), which is schema 18's `per_type`. Our summed count over
+        # two or more types has no option, and writing the list would play the per-type
+        # game, so it is refused (Q783 found the old translation wrote it). One type and
+        # `*` read the same either way.
+        if not rule.any_piece and len(set(rule.piece_types)) > 1 and not rule.per_type:
+            reasons.append(
+                "rules.extinction counts its listed types together, and "
+                "extinctionPieceTypes counts each on its own; say per_type to mean that"
+            )
+        # Their count includes the hand (`count_with_hand`) and ours is the board, so a
+        # type gone to a hand is run out here and not there.
+        if rule.per_type and compiled.drops is not None:
+            reasons.append(
+                "rules.extinction.per_type beside rules.drops: a type held in hand counts "
+                "over there and not here"
+            )
         types = "*" if rule.any_piece else "".join(sorted(chars[t] for t in rule.piece_types))
         implied = [
             f"extinctionValue = {rule.result}",
@@ -1686,7 +1746,17 @@ def _ending_lines(
     lines.extend(implied)
 
     reach = compiled.reach
-    if reach is not None:
+    if reach is not None and reach.leaves:
+        # Schema 18 (Q786). Jeson Mor over there is a flag on e5 plus `flagMove`, which
+        # gives the other side one more move after the flag is reached and then calls it
+        # won: the knight never has to step off, and the win comes a ply early. That is
+        # another rule, so it is refused rather than written as the nearest one.
+        reasons.append(
+            'rules.reach.on "leave": the game is decided by the move off a goal square, '
+            "and Fairy-Stockfish has no such rule (its flagMove gives the other side one "
+            "more move after a flag is reached, which is not leaving)"
+        )
+    elif reach is not None:
         if reach.result != "win":
             notes.append(
                 f"rules.reach ends the game as a {reach.result} for the arriving player; "
@@ -1704,6 +1774,30 @@ def _ending_lines(
         if reach.safe:
             lines.append("flagPieceSafe = true")
     return lines
+
+
+def _promotion_limit(
+    compiled: CompiledSpec, rule: PromotionRule, chars: list[str], reasons: list[str]
+) -> list[str]:
+    """Schema 18's ``only_lost`` as ``promotionLimit`` (Grand chess's option, Q783).
+
+    Over there a target is offered while the mover has fewer of it than the limit, which
+    is ours with the limit set to the opening count. One limit serves both colours, so
+    the two armies must start with the same number of every target. A limit of 0 means
+    *no limit* over there, and the validator refuses a target a side starts with none of,
+    so every count written here is at least 1.
+    """
+    targets = sorted({t for player in (0, 1) for t in rule.targets[player]})
+    uneven = [t for t in targets if rule.opening[0][t] != rule.opening[1][t]]
+    if uneven:
+        reasons.append(
+            "rules.promotion.only_lost with armies that start with different numbers of "
+            + ", ".join(repr(compiled.piece_ids[t]) for t in uneven)
+            + "; promotionLimit is one count for both colours"
+        )
+        return []
+    pairs = " ".join(f"{chars[t].lower()}:{rule.opening[0][t]}" for t in targets)
+    return [f"promotionLimit = {pairs}"]
 
 
 def _promotion_lines(
@@ -1794,6 +1888,8 @@ def _promotion_lines(
                 targets = "".join(chars[t] for t in rule.targets[player])
                 lines.append(f"promotionPieceTypes{label} = {targets if targets else '-'}")
         lines.append(f"mandatoryPawnPromotion = {'true' if rule.mandatory else 'false'}")
+        if rule.only_lost:
+            lines.extend(_promotion_limit(compiled, rule, chars, reasons))
         return lines
 
     # Several promoting pieces: each must have exactly one target, which is what makes
@@ -1803,6 +1899,15 @@ def _promotion_lines(
     # a piece leaving its zone, which ours does only under `on_leaving`, and that is
     # what refuses shogi as committed.
     _check_leaving_the_zone(compiled, reasons, listed=False)
+    if any(rule.only_lost for rule in rules):
+        reasons.append(
+            "rules.promotion.only_lost beside another promoting piece; promotionLimit "
+            "is read for the pawn types' list, not for the map"
+        )
+        return lines
+    flips = _flip_pairs(compiled)
+    if flips:
+        return lines + _flip_lines(compiled, chars, flips, zones, reasons)
     pairs: list[str] = []
     for rule in rules:
         becomes = {t for player in (0, 1) for t in rule.targets[player]}
@@ -1822,6 +1927,72 @@ def _promotion_lines(
     lines.append(f"mandatoryPiecePromotion = {'true' if mandatory else 'false'}")
     lines.append("mandatoryPawnPromotion = false")
     return lines
+
+
+def _flip_pairs(compiled: CompiledSpec) -> dict[int, int]:
+    """Kyoto shogi's turn-over, read off the compiled promotions (Q785): base to face.
+
+    A pair is two promotion rules that undo each other, ``a -> b`` and ``b -> a``, where
+    ``b``'s ``promoted_from`` is ``a`` (so ``b`` goes to a hand as ``a``). Fairy-Stockfish
+    says that as the map's ``a:b`` beside ``pieceDemotion``, which turns a promoted piece
+    back when it moves. Empty unless every promotion rule belongs to such a pair, which
+    leaves every earlier translation as it was: a both-ways map with no ``promoted_from``
+    (Q533's audit spec) is still written as a map of eight entries.
+    """
+    rules = compiled.promotions
+    if len(rules) < 2:
+        return {}
+    single: dict[int, int] = {}
+    for rule in rules:
+        becomes = {t for player in (0, 1) for t in rule.targets[player]}
+        if len(becomes) != 1 or rule.piece_type in single:
+            return {}
+        single[rule.piece_type] = becomes.pop()
+    flips = {
+        base: face
+        for base, face in single.items()
+        if single.get(face) == base and face != base and compiled.demotions[face] == base
+    }
+    if set(flips) | set(flips.values()) != set(single):
+        return {}
+    return flips
+
+
+def _flip_lines(
+    compiled: CompiledSpec,
+    chars: list[str],
+    flips: dict[int, int],
+    zones: dict[int, list[int]],
+    reasons: list[str],
+) -> list[str]:
+    """The map's half of a turn-over (Q785): ``a:b`` per pair and ``pieceDemotion``.
+
+    ``pieceDemotion`` turns a promoted piece back on any move it makes, so it says ours
+    exactly where both directions are mandatory over the whole board, which is Kyoto
+    shogi's every move. A pair confined to a zone, or optional, is refused rather than
+    widened.
+    """
+    whole = list(range(compiled.height))
+    if any(zones[player] != whole for player in (0, 1)):
+        reasons.append(
+            "a piece turns back and forth only inside a zone; pieceDemotion turns a "
+            "promoted piece back on every move it makes"
+        )
+        return []
+    if not all(rule.mandatory for rule in compiled.promotions):
+        reasons.append(
+            "a piece may decline to turn over; pieceDemotion turns a promoted piece back "
+            "on every move it makes"
+        )
+        return []
+    return [
+        "promotedPieceType = "
+        + " ".join(f"{chars[base]}:{chars[face]}" for base, face in sorted(flips.items())),
+        "promotionPieceTypes = -",
+        "pieceDemotion = true",
+        "mandatoryPiecePromotion = true",
+        "mandatoryPawnPromotion = false",
+    ]
 
 
 def _check_leaving_the_zone(
@@ -1933,6 +2104,16 @@ def _pawn_lines(
         for player, label in ((0, "White"), (1, "Black")):
             spans = " ".join(f"*{rank + 1}" for rank in sorted(ranks[player]))
             lines.append(f"doubleStepRegion{label} = {spans}")
+        # The released (2021) engine ignores the regions and reads two rank numbers,
+        # counted from each side's own end, exactly as `promotionRank` stands beside
+        # `promotionRegion*` (Q783: Grand chess's pawns double-step from the third rank,
+        # and without these the installed binary had them double-step from the second).
+        # Both are said only where the ranks are one band, which is all two numbers mean;
+        # `ranks[1]` is the reflection, so the band is the same counted from either end.
+        band = sorted(ranks[0])
+        if band == list(range(band[0], band[-1] + 1)):
+            lines.append(f"doubleStepRankMin = {band[0] + 1}")
+            lines.append(f"doubleStepRank = {band[-1] + 1}")
     else:
         # `doubleStep` and not only the regions. The built-in pawn slot brings a double
         # step with it -- the option is on by default and its region defaults to the
@@ -2079,6 +2260,12 @@ def _drop_lines(
         "pieceDrops = true",
         f"capturesToHand = {'true' if rule.from_captures else 'false'}",
     ]
+    if rule.placement:
+        # Schema 18 (Q784): while a side holds anything in hand it must drop, which is
+        # what `mustDrop` says over there (`placement`, `sittuyin`).
+        lines.append("mustDrop = true")
+    if rule.faces:
+        lines.extend(_drop_face_lines(compiled, rule, reasons))
     if rule.no_doubled:
         if len(rule.no_doubled) > 1:
             reasons.append("more than one piece may not be doubled on a file; there it is one")
@@ -2102,24 +2289,110 @@ def _drop_lines(
         for piece in restricted
         if slots[piece] == "pawn" and _is_pawn_drop_region(compiled, rule, piece)
     }
-    rest = restricted - pawnish
+    # The types a hand can ever hold. Under a hand that fills from captures that is every
+    # type, as it always was; a stock-only hand (Q784) holds only what it stocks, so a
+    # region on any other type, or none, is never read on either side.
+    needed = (
+        set(range(compiled.n_types))
+        if rule.from_captures
+        else {piece for piece, held in enumerate(rule.stock) if held}
+    )
+    rest = (restricted - pawnish) & needed
     if not rest:
         # Nothing to write: the pawn slot already carries both exclusions, and saying
         # them again through `dropRegion` would apply them to every other piece too.
         return lines
 
+    rook_line = _sittuyin_rook_drop(compiled, rule, rest, slots)
+    if rook_line:
+        rest = rest - {piece for piece in rest if slots[piece] == "rook"}
+        lines.append(rook_line)
     shared = {rule.regions[0][piece] for piece in rest}
-    if len(shared) != 1 or len(rest) != compiled.n_types - len(pawnish):
+    if len(shared) != 1 or (needed - pawnish) - restricted:
         reasons.append(
             "the drop regions differ between pieces in a way that is neither a shared "
-            "mask nor the pawn rule; there a region applies to every piece"
+            "mask, the pawn rule nor Sittuyin's rook rule; there a region applies to "
+            "every piece"
         )
         return lines
     for player, label in ((0, "White"), (1, "Black")):
         region = rule.regions[player][next(iter(rest))] or frozenset()
         squares = " ".join(_square_name(sq, compiled.width) for sq in sorted(region))
         lines.append(f"dropRegion{label} = {squares if squares else '-'}")
+        # The installed 2021 build knows only the older spelling and ignored the line
+        # above in silence, dropping anywhere (found by Q784's `placement-chess`, the
+        # first translation with a drop region to reach a walk); both are written, as
+        # `doubleStepRankMin` is beside `doubleStepRegion*` (Q783).
+        lines.append(f"{label.lower()}DropRegion = {squares if squares else '-'}")
     return lines
+
+
+def _drop_face_lines(compiled: CompiledSpec, rule: Any, reasons: list[str]) -> list[str]:
+    """``drops.either_face`` (schema 18, Q785) is ``dropPromoted``, where it says ours.
+
+    Over there a piece in hand may also be dropped as what the ``promotedPieceType`` map
+    promotes it into, from the same drop region. Ours drops it as the piece whose
+    ``promoted_from`` it is, also from its slot's region. So the two agree where the map
+    and our pairs name the same faces; under the turn-over (`_flip_pairs`) the map holds
+    the bases only. ``no_doubled`` and ``no_mate`` read the face that stands here, and
+    which face they read there was not checked, so a pair either names is refused.
+    """
+    pairs = {slot: face for slot, face in enumerate(rule.faces) if face >= 0}
+    mapped: dict[int, int] = {}
+    if len(compiled.promotions) > 1:
+        for promotion in compiled.promotions:
+            becomes = {t for player in (0, 1) for t in promotion.targets[player]}
+            if len(becomes) == 1:
+                mapped[promotion.piece_type] = next(iter(becomes))
+    flips = _flip_pairs(compiled)
+    if (flips or mapped) != pairs:
+        reasons.append(
+            "drops.either_face: a piece's other face is not what the promotedPieceType "
+            "map promotes it into, and dropPromoted drops a piece as its map promotion"
+        )
+        return []
+    touched = set(pairs) | set(pairs.values())
+    if (rule.no_doubled | rule.no_mate) & touched:
+        reasons.append(
+            "drops.either_face beside drops.no_doubled or drops.no_mate on a paired "
+            "piece; which face those read over there is not checked"
+        )
+        return []
+    return ["dropPromoted = true"]
+
+
+def _sittuyin_rook_drop(
+    compiled: CompiledSpec, rule: Any, rest: set[int], slots: dict[int, str]
+) -> str:
+    """``sittuyinRookDrop = true`` where it says our regions exactly (Q784), else "".
+
+    Over there one region applies to every piece, and Sittuyin's one exception is an
+    option: a piece in the rook slot drops only on its side's first rank, inside that
+    region. So it is ours exactly when one piece in the rook slot has a region of its
+    own, that region is every other droppable piece's shared region cut to the first
+    rank on both sides, and nothing else differs.
+    """
+    rooks = [piece for piece in rest if slots.get(piece) == "rook"]
+    others = rest - set(rooks)
+    if len(rooks) != 1 or not others:
+        return ""
+    shared = {(rule.regions[0][piece], rule.regions[1][piece]) for piece in others}
+    if len(shared) != 1:
+        return ""
+    (region,) = shared
+    if all(rule.regions[player][rooks[0]] == region[player] for player in (0, 1)):
+        return ""  # the rook shares the region, and `dropRegion` says it already
+    width = compiled.width
+    first_rank = (
+        frozenset(range(width)),
+        frozenset(range(compiled.n_squares - width, compiled.n_squares)),
+    )
+    for player in (0, 1):
+        if region[player] is None:
+            return ""
+        if rule.regions[player][rooks[0]] != region[player] & first_rank[player]:
+            return ""
+    return "sittuyinRookDrop = true"
 
 
 def _check_drop_mate(

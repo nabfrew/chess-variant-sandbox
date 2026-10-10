@@ -1,0 +1,70 @@
+{
+  "schema_version": 18,
+  "name": "jeson-mor",
+  "description": "Jeson Mor, the Mongolian knights game, on a nine-by-nine board: nine knights a side on the first and last ranks. A knight that moves off the centre square e5 wins, so a knight has to get to e5 and survive there a move before it can win by stepping away; standing on e5 decides nothing. Taking every enemy knight also wins, and a player with no legal move loses.",
+  "board": {
+    "width": 9,
+    "height": 9
+  },
+  "pieces": [
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "N",
+        "squares": [
+          "a1",
+          "b1",
+          "c1",
+          "d1",
+          "e1",
+          "f1",
+          "g1",
+          "h1",
+          "i1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "annihilation",
+    "stalemate": "loss",
+    "reach": {
+      "piece": "N",
+      "squares": [
+        "e5"
+      ],
+      "mirror": false,
+      "result": "win",
+      "on": "leave"
+    },
+    "max_plies": 300,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "added": "2026-10-09",
+    "origin": "human",
+    "source": "Jeson Mor (Fairy-Stockfish's `jesonmor` is another reading: its flagMove gives the other side one more move after a knight reaches e5)",
+    "history": "Schema 18f's showcase for winning by leaving a square (rules.reach.on \"leave\") (Q786, 2026-10-09): Q533's audit spec (variant-expressibility-2026-09 row 22, jeson-mor-approx, 9447c056a0c0) with on: \"leave\", which is the rule the audit found inexpressible (it won on arrival). Pre-registered in docs/reference/schema-showcase-coverage.md."
+  }
+}

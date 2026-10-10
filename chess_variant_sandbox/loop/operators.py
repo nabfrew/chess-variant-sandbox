@@ -39,17 +39,24 @@ from typing import Any
 from chess_variant_sandbox.loop.grid import descriptor
 from chess_variant_sandbox.spec import validate_spec
 from chess_variant_sandbox.spec.canonical import spec_hash
+from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.relate import identity_key
 from chess_variant_sandbox.spec.schema import (
     CLOCK_BOUNDS,
+    HEX_SYMMETRIES,
     REPETITION_NEVER,
+    SQUARE_SYMMETRIES,
     absent_squares,
     can_double_step,
+    castling_spans,
     obstacle_squares,
+    opening_counts,
     parse_square,
+    portal_piece_ids,
     promoting_piece_ids,
     reach_reflection,
     reflect_square,
+    strike_is_live,
     sweep_conflicts,
     turn_is_long,
     uses_sweep,
@@ -83,7 +90,6 @@ ATTEMPTS = 16
 # The board dimensions the schema allows, which is what a resize has to stay inside.
 _MIN_DIM, _MAX_DIM = 3, 16
 
-_SYMMETRIES = ("none", "lateral", "rotate4", "dihedral8")
 _SHORT_VECTORS = ([1, 0], [1, 1], [0, 1], [1, 2], [2, 1], [1, 3], [2, 3])
 
 
@@ -146,6 +152,8 @@ _GONE_WORDS = {
     "reach": "the win by arrival",
     "promote_on_entry": "promotion on entry",
     "scoring": "the count of points at the clock",
+    "contacts": "the table of what a capture turns pieces into",
+    "keeping": "the links keeping a capturer as it was",
 }
 
 
@@ -158,15 +166,40 @@ def _gone_words(key: str) -> str:
     return _GONE_WORDS.get(key, key.replace("_", " "))
 
 
+def _has_portals(spec: dict[str, Any]) -> bool:
+    """Schema 19: whether the spec has portals, beside which the validator refuses a
+    strike, a contact table, an explosion, a colouring, a sweep and a wild piece -- so an
+    operator that would add one of those is not offered there."""
+    return bool((spec.get("rules") or {}).get("portals"))
+
+
+def _portal_squares(spec: dict[str, Any]) -> set[str]:
+    """The squares a portal end starts on, which no placement or wall may take."""
+    return {
+        str(pair.get(end))
+        for pair in (spec.get("rules") or {}).get("portals") or ()
+        if isinstance(pair, dict)
+        for end in ("orange", "blue")
+    }
+
+
 def _non_royal(spec: dict[str, Any]) -> list[dict[str, Any]]:
     return [piece for piece in pieces(spec) if not piece.get("royal")]
 
 
 def _movers(spec: dict[str, Any], kind: str | None = None) -> list[tuple[dict, dict]]:
-    """Every (piece, move) pair, optionally of one movement kind."""
+    """Every (piece, move) pair, optionally of one movement kind.
+
+    A portal type's moves are left out (schema 19): they must stay `move` mode and read the
+    same for both players, which a direction or a symmetry drawn for an army's piece
+    breaks (Q772a found `add-a-direction` and `change-symmetry` refused on every portal
+    showcase). `open-a-portal` is the operator that edits portals.
+    """
+    portal_types = portal_piece_ids(spec.get("rules"))
     return [
         (piece, move)
         for piece in pieces(spec)
+        if piece.get("id") not in portal_types
         for move in piece.get("moves", [])
         if kind is None or move.get("kind") == kind
     ]
@@ -278,17 +311,69 @@ def _remove_a_direction(spec: dict[str, Any], rng: random.Random) -> str | None:
     return f"took a {dropped[0]},{dropped[1]} step off the {piece.get('name', piece['id'])}"
 
 
+def _lattice_symmetries(spec: dict[str, Any]) -> tuple[str, ...]:
+    """The symmetries this spec's lattice accepts: the hexagon's two on a hex board (schema
+    18b), the square's three elsewhere, and ``none`` on both."""
+    hexy = (spec.get("board") or {}).get("lattice") == "hex"
+    return HEX_SYMMETRIES if hexy else SQUARE_SYMMETRIES
+
+
+def _set_symmetry(spec: dict[str, Any], move: dict[str, Any], rng: random.Random) -> str:
+    """Give ``move`` another of its lattice's symmetries, and stamp the version it needs.
+
+    The hexagon's two are schema 18's, so a hex child is settled, both ways: turned, it
+    needs 18, and written back under ``none`` it is the game its parent's stamp named. A
+    square child is left as it was, since the square's three are as old as the schema.
+    """
+    current = move.get("symmetry", "none")
+    move["symmetry"] = rng.choice([s for s in _lattice_symmetries(spec) if s != current])
+    if _lattice_symmetries(spec) is HEX_SYMMETRIES:
+        settle_schema_version(spec)
+    return str(current)
+
+
 def _change_symmetry(spec: dict[str, Any], rng: random.Random) -> str | None:
-    if spec.get("board", {}).get("lattice") == "hex":
-        return None  # every symmetry but "none" is refused on a hex lattice
     movers = _movers(spec)
     if not movers:
         return None
+    if _lattice_symmetries(spec) is HEX_SYMMETRIES:
+        return _turn_a_hex_move(spec, movers, rng)
     piece, move = rng.choice(movers)
-    current = move.get("symmetry", "none")
-    choices = [s for s in _SYMMETRIES if s != current]
-    move["symmetry"] = rng.choice(choices)
+    current = _set_symmetry(spec, move, rng)
     return f"changed how the {piece.get('name', piece['id'])}'s moves reflect ({current} to {move['symmetry']})"
+
+
+def _turn_a_hex_move(
+    spec: dict[str, Any], movers: list[tuple[dict, dict]], rng: random.Random
+) -> str | None:
+    """`change-symmetry` on a hex board: one of the hexagon's turns that moves the move.
+
+    A hex army lists its moves whole -- Glinski's rook is its six steps under ``none`` --
+    so most of the hexagon's turns are the same move spelled shorter, a child `refusal`
+    throws away as the parent's game. Drawing only among the turns that change where a
+    move goes spends the draw on a game. The square board keeps its draw as it was.
+    """
+
+    def directions(move: dict[str, Any], symmetry: str) -> set[tuple[int, int]]:
+        out: set[tuple[int, int]] = set()
+        for vector in move.get("vectors") or []:
+            out |= expand_symmetry((vector[0], vector[1]), symmetry)
+        return out
+
+    choices = [
+        (piece, move, symmetry)
+        for piece, move in movers
+        for symmetry in HEX_SYMMETRIES
+        if symmetry != move.get("symmetry", "none")
+        and directions(move, symmetry) != directions(move, move.get("symmetry", "none"))
+    ]
+    if not choices:
+        return None
+    piece, move, symmetry = rng.choice(choices)
+    current = move.get("symmetry", "none")
+    move["symmetry"] = symmetry
+    settle_schema_version(spec)
+    return f"changed how the {piece.get('name', piece['id'])}'s moves reflect ({current} to {symmetry})"
 
 
 def _across_a_board_bin(
@@ -368,7 +453,9 @@ def _restrict_a_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
     One type at a time, in both directions, because a step that could only tighten would
     walk every candidate to a game where nothing captures anything.
     """
-    candidates = [p for p in pieces(spec) if p.get("id")]
+    # Schema 19: a portal neither captures nor is captured, so it is no party to this.
+    portal = portal_piece_ids(spec.get("rules"))
+    candidates = [p for p in pieces(spec) if p.get("id") and p.get("id") not in portal]
     if len(candidates) < 2:
         return None  # a dominance relation needs something to dominate
     piece = rng.choice(candidates)
@@ -402,8 +489,11 @@ def _restrict_a_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 def _shift_promotion(spec: dict[str, Any], rng: random.Random) -> str | None:
     promotion = spec.get("rules", {}).get("promotion")
-    if not isinstance(promotion, dict) or "squares" in promotion:
-        return None  # a zone that is a shape has no rank to shift
+    if not isinstance(promotion, dict) or "squares" in promotion or "ranks" in promotion:
+        # A zone that is a shape has no rank to shift, and a band of ranks is not one
+        # rank: writing `rank` beside `ranks` is refused (`archive/grand`, Q783, was the
+        # first archived band and the first spec the sweep found this on).
+        return None
     height = int(spec.get("board", {}).get("height", 8))
     current = promotion.get("rank")
     rank = (height - 1 if current in (None, "last") else int(current)) + rng.choice((-2, -1, 1))
@@ -536,7 +626,12 @@ def _reprice_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
     without changing what it can do. Kept because that nudge is sometimes exactly the
     difference between a piece being traded off and being played.
     """
-    candidates = [p for p in _non_royal(spec) if isinstance(p.get("value"), (int, float))]
+    # A portal type is nobody's material and must be worth 0 (schema 19).
+    portal_types = portal_piece_ids(spec.get("rules"))
+    candidates = [
+        p for p in _non_royal(spec)
+        if isinstance(p.get("value"), (int, float)) and p.get("id") not in portal_types
+    ]
     if not candidates:
         return None
     piece = rng.choice(candidates)
@@ -563,6 +658,8 @@ def _move_a_placement(spec: dict[str, Any], rng: random.Random) -> str | None:
     moved = f"{files[index]}{square[1:]}"
     if any(moved in other.get("squares", []) for other in placements):
         return None
+    if moved in _portal_squares(spec):
+        return None  # schema 19: a portal end stands there
 
     # A wall is a square nothing may stand on, and a hexagon's corners (schema 16) are not
     # squares at all; the walled Glinski hexagon spells its corners as walls.
@@ -618,11 +715,22 @@ def _hand_the_pieces_back(spec: dict[str, Any], rng: random.Random) -> str | Non
             # than left to the validator for the module's own reason: what is checked
             # here is what would otherwise make *every* draw a rejection.
             return None
+        if isinstance(rules["drops"], dict) and rules["drops"].get("placement") is True:
+            # Schema 18d (Q784). The hand holds an army to place, and popping it leaves
+            # that army (and often the royal) nowhere; `place-the-army` puts it back on
+            # the board first.
+            return None
         rules.pop("drops", None)
         settle_schema_version(spec)
         return "captured pieces are gone for good again"
     if rules.get("strike") or rules.get("contacts") or uses_sweep(spec):
         return None  # a hand is refused beside a rule that takes several pieces at once
+    promotion = rules.get("promotion")
+    if any(
+        isinstance(entry, dict) and entry.get("only_lost") is True
+        for entry in (promotion if isinstance(promotion, list) else [promotion])
+    ):
+        return None  # schema 18c: a hand gives back what `only_lost` counts as lost
     if any(
         isinstance(npc, dict) and "immune" in npc for npc in rules.get("npcs") or ()
     ):
@@ -659,6 +767,20 @@ def _win_by_arrival(spec: dict[str, Any], rng: random.Random) -> str | None:
         settle_schema_version(spec)
         return "arriving somewhere no longer wins the game"
 
+    reach = _centre_reach(spec)
+    if reach is None:
+        return None
+    rules["reach"] = reach
+    settle_schema_version(spec)
+    return f"the game is now also won by walking the {reach['piece']} to the centre"
+
+
+def _centre_reach(spec: dict[str, Any]) -> dict[str, Any] | None:
+    """`_win_by_arrival`'s rule: the first royal that can stand, aimed at the centre.
+
+    ``None`` where no royal can stand. Shared with `_win_by_leaving`, which enters a
+    game without a goal by writing this rule and its own flag in one edit.
+    """
     # A royal that can stand, and the first declared one where it can: a `reach` about a
     # piece that never exists is refused (inert-rule case 13), and `royal_id` alone would
     # pick a royal declared first and placed nowhere on every draw (Q110).
@@ -678,12 +800,21 @@ def _win_by_arrival(spec: dict[str, Any], rng: random.Random) -> str | None:
     files = "abcdefghijklmnop"
     middle_files = {(width - 1) // 2, width // 2}
     middle_ranks = {(height - 1) // 2, height // 2}
+    # A centre square nobody can stand on is refused by name (a wall, or a hexagon's
+    # missing corner): Q772a's walled `divide` has its whole middle rank walled, so there
+    # the rule has no centre and is not offered.
+    orientation = str(spec.get("setup", {}).get("orientation", "mirror"))
+    unstandable = obstacle_squares(spec.get("rules", {}), width, height, orientation)
+    unstandable |= absent_squares(spec.get("board"))
     squares = sorted(
-        f"{files[file]}{rank + 1}" for file in middle_files for rank in middle_ranks
+        f"{files[file]}{rank + 1}"
+        for file in middle_files
+        for rank in middle_ranks
+        if rank * width + file not in unstandable
     )
-    rules["reach"] = {"piece": royal, "squares": squares, "mirror": False, "result": "win"}
-    settle_schema_version(spec)
-    return f"the game is now also won by walking the {royal} to the centre"
+    if not squares:
+        return None
+    return {"piece": royal, "squares": squares, "mirror": False, "result": "win"}
 
 
 # Ids a split can take. Single characters, because the schema allows one or two and a
@@ -738,11 +869,7 @@ def _add_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
     move = rng.choice(moves)
     vector = list(rng.choice(_SHORT_VECTORS))
     if vector in move.get("vectors", []):
-        if spec.get("board", {}).get("lattice") == "hex":
-            return None  # every symmetry but "none" is refused on a hex lattice
-        move["symmetry"] = rng.choice(
-            [s for s in _SYMMETRIES if s != move.get("symmetry", "none")]
-        )
+        _set_symmetry(spec, move, rng)
         change = f"a {move['symmetry']} symmetry"
     else:
         move.setdefault("vectors", []).append(vector)
@@ -810,6 +937,8 @@ def _claim_the_ground(spec: dict[str, Any], rng: random.Random) -> str | None:
     with nothing to count is a spec the validator rejects by name -- and an operator
     that produced one would spend a draw on a candidate that could never be played.
     """
+    if _has_portals(spec):
+        return None  # refused beside portals (schema 19)
     rules = spec.setdefault("rules", {})
     if rules.get("territory"):
         strip_rule(spec, "territory")
@@ -970,6 +1099,7 @@ def _wall_off_a_square(spec: dict[str, Any], rng: random.Random) -> str | None:
         if isinstance(placement, dict)
         for square in placement.get("squares", [])
     }
+    occupied |= _portal_squares(spec)
     for region in (rules.get("drops") or {}).get("region", {}).values():
         occupied.update(region if isinstance(region, list) else ())
     goal = rules.get("reach") or {}
@@ -993,6 +1123,14 @@ def _wall_off_a_square(spec: dict[str, Any], rng: random.Random) -> str | None:
             occupied.update(entry.get("squares", []) or ())
     for npc in rules.get("npcs") or ():
         occupied.update(npc.get("route", []) if isinstance(npc, dict) else ())
+    # Castling's spans (schema 18, Q781): a wall where a king and rook cross or land is
+    # refused by name, and one elsewhere on their rank is Omega's walled rank.
+    setup = spec.get("setup")
+    for span_rank, files in castling_spans(
+        rules, setup if isinstance(setup, dict) else {}, width, height,
+        str((setup or {}).get("orientation", "mirror")),
+    ):
+        occupied.update(f"{chr(ord('a') + file)}{span_rank + 1}" for file in files)
     # `set_obstacle` mirrors the wall, so the wall's image has to be free too, and the
     # image is the spec's own reflection (`schema.reflect_square`). It was the rank flip,
     # which is the image only under `orientation: "mirror"`: under `"rotate"` a wall could
@@ -1029,6 +1167,8 @@ def _soften_the_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
     no legal move at all -- every position has exactly the moves it had before, and only
     what they do is different.
     """
+    if _has_portals(spec):
+        return None  # refused beside portals (schema 19)
     rules = spec.setdefault("rules", {})
     if rules.get("strike"):
         placed = _place_the_survivor(spec, "strike", rng)
@@ -1083,10 +1223,15 @@ def _become_what_you_take(spec: dict[str, Any], rng: random.Random) -> str | Non
     left to the validator, on the module's own rule: what is checked here is what would
     otherwise make *every* draw a rejection.
     """
+    if _has_portals(spec):
+        return None  # refused beside portals (schema 19)
     from chess_variant_sandbox.spec.transform import set_contacts
 
     rules = spec.setdefault("rules", {})
     if rules.get("contacts"):
+        kept = _keep_the_mover(spec, rng)
+        if kept is not None:
+            return kept
         placed = _place_the_survivor(spec, "contacts", rng)
         if placed is not None:
             return placed
@@ -1105,6 +1250,71 @@ def _become_what_you_take(spec: dict[str, Any], rng: random.Random) -> str | Non
     return (
         f"a piece that takes {_rung(spec, rules['contacts']['links'])} becomes that "
         "piece, so a capture changes what the taker is and not only what is left"
+    )
+
+
+def _keep_the_mover(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Cross schema 18's keeping link on a standing contact table, or return ``None``.
+
+    The third half-draw `become-what-you-take` takes before removing its rule (Q781), so
+    the table survives the crossing. Leaving deletes every keeping link while another
+    link remains to hold the table up. Entering picks one piece with a promotion of its
+    own and adds a link keeping it as it is for every enemy target the table does not
+    already pair it with: *a queen that takes stays a queen*, which is Einstein chess's
+    one rule the audit could not say, and one edit rather than five. Royal pieces and
+    immune targets are left out, as the validator would refuse them by name.
+    """
+    from chess_variant_sandbox.spec.schema import is_keeping_link, keeping_link_holds
+
+    if rng.random() >= 1 / 3:
+        return None
+    rules = spec.get("rules", {})
+    contacts = rules.get("contacts")
+    links = contacts.get("links") if isinstance(contacts, dict) else None
+    if not isinstance(contacts, dict) or not isinstance(links, list):
+        return None
+    names = {
+        str(piece.get("id")): str(piece.get("name", piece.get("id")))
+        for piece in pieces(spec)
+        if isinstance(piece, dict)
+    }
+    keeping = [link for link in links if is_keeping_link(link)]
+    if keeping:
+        if len(keeping) == len(links):
+            return None  # the table would go with them; the strip arm says that
+        contacts["links"] = [link for link in links if not is_keeping_link(link)]
+        settle_schema_version(spec)
+        movers = sorted({names.get(str(link.get("mover")), "?") for link in keeping})
+        return f"a {' or '.join(movers)} that takes is promoted as its promotion says again"
+    royal = {
+        str(piece.get("id")) for piece in pieces(spec)
+        if isinstance(piece, dict) and piece.get("royal")
+    }
+    immune = set(contacts.get("immune") or ())
+    paired = {
+        (link.get("mover"), link.get("onto"))
+        for link in links
+        if isinstance(link, dict) and link.get("own") is not True
+    }
+    promoting = promoting_piece_ids(rules)
+    targets = [pid for pid in names if pid not in royal and pid not in immune]
+    choices = {
+        mover: [onto for onto in targets if (mover, onto) not in paired]
+        for mover in sorted(promoting)
+        if mover in names and mover not in royal
+    }
+    choices = {mover: ontos for mover, ontos in choices.items() if ontos}
+    if not choices:
+        return None
+    mover = rng.choice(sorted(choices))
+    added = [{"mover": mover, "onto": onto, "mover_to": mover} for onto in choices[mover]]
+    assert all(keeping_link_holds(link, promoting) for link in added)
+    links.extend(added)
+    settle_schema_version(spec)
+    name = names[mover]
+    return (
+        f"a {name} that takes stays a {name}, whatever its promotion would have made it "
+        "on that move"
     )
 
 
@@ -1158,6 +1368,8 @@ def _merge_your_own(spec: dict[str, Any], rng: random.Random) -> str | None:
     an entry, and takes the table with its last link. A deletion can remove the only link
     that kept a target alive, so it settles `choose` as `transform.settle_landing` does.
     """
+    if _has_portals(spec):
+        return None  # refused beside portals (schema 19)
     from chess_variant_sandbox.spec.transform import merge_links, set_own_link, settle_landing
 
     rules = spec.setdefault("rules", {})
@@ -1312,6 +1524,8 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
     than left to the validator, on the module's own rule: what is checked here is what
     would otherwise make *every* draw a rejection.
     """
+    if _has_portals(spec):
+        return None  # refused beside portals (schema 19)
     from chess_variant_sandbox.spec.transform import set_explosion
 
     rules = spec.setdefault("rules", {})
@@ -1339,6 +1553,9 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
 
     if rules.get("strike") or rules.get("contacts") or rules.get("npcs") or uses_sweep(spec):
         return None  # two rules cannot both say what happens to a taken piece
+    drops = rules.get("drops")
+    if isinstance(drops, dict) and drops.get("either_face") is True:
+        return None  # nor can a blast and a hand that drops either face (schema 18e)
     if not capture_is_possible(spec):
         return None  # a blast where nothing is taken is refused (inert-rule case 4, Q110)
     set_explosion(spec)
@@ -1362,7 +1579,6 @@ def _turn_to_face(spec: dict[str, Any], rng: random.Random) -> str | None:
     Two axes rather than four when only the half turn changes anything: a piece that
     reads the same rays a quarter turn round would be refused at four and is fine at two.
     """
-    from chess_variant_sandbox.spec.complexity import expand_symmetry
     from chess_variant_sandbox.spec.transform import clear_facing, set_facing
 
     pieces = [p for p in spec.get("pieces", []) if isinstance(p, dict)]
@@ -1491,6 +1707,7 @@ def _set_a_patrol(spec: dict[str, Any], rng: random.Random) -> str | None:
         or rules.get("explode_on_capture")
         or rules.get("turn")
         or rules.get("contacts")
+        or rules.get("portals")
         or uses_sweep(spec)
     ):
         return None  # the validator refuses each of these beside a wild piece
@@ -1604,11 +1821,7 @@ def _promote_what_arrives(spec: dict[str, Any], rng: random.Random) -> str | Non
         return None
     strike = rules.get("strike")
     contacts = rules.get("contacts")
-    survives = (
-        isinstance(strike, dict)
-        and strike.get("effect", "capture") != "capture"
-        and bool(strike.get("chain"))
-    ) or (
+    survives = strike_is_live(strike) or (
         # Schema 10 (Q19a) puts a piece into play on both of a contact's columns, and
         # `_check_entry_promotion_coherence` reads both -- so the cheap pre-check has to
         # as well, or the rule is unreachable on every contact-table game for a reason
@@ -1670,6 +1883,543 @@ def _promote_on_leaving(spec: dict[str, Any], rng: random.Random) -> str | None:
     )
 
 
+def _count_each_kind(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Running out of any one kind loses, or the listed kinds count together again.
+
+    Schema 18c's ``extinction.per_type`` (Q783, Extinction chess), both halves. A game
+    whose extinction lists two or more types gains or loses the flag; a game with no
+    extinction rule gains one over two or more of the non-royal types both armies start
+    with, counted apart, which is the one edit that reaches the feature from a game
+    without it (no committed game lists two types to count together). A rule over
+    ``any`` is the whole army and has no kinds to count apart, so it is left alone.
+    """
+    rules = spec.setdefault("rules", {})
+    extinction = rules.get("extinction")
+    if isinstance(extinction, dict) and extinction.get("per_type") is True:
+        extinction.pop("per_type")
+        settle_schema_version(spec)
+        return f"running out of {', '.join(extinction['pieces'])} counts them together again"
+    if isinstance(extinction, dict):
+        listed = extinction.get("pieces")
+        if not isinstance(listed, list) or len(set(listed)) < 2:
+            return None
+        trial = copy.deepcopy(spec)
+        trial["rules"]["extinction"]["per_type"] = True
+        settle_schema_version(trial)
+        if validate_spec(trial):
+            return None
+        spec.clear()
+        spec.update(trial)
+        return f"a player who runs out of any one of {', '.join(listed)} loses"
+    if extinction:
+        return None
+    first, second = opening_counts(spec)
+    kinds = sorted(
+        piece["id"]
+        for piece in _non_royal(spec)
+        if first.get(piece["id"], 0) >= 1 and second.get(piece["id"], 0) >= 1
+    )
+    if len(kinds) < 2:
+        return None
+    chosen = sorted(rng.sample(kinds, rng.randint(2, len(kinds))))
+    trial = copy.deepcopy(spec)
+    trial["rules"]["extinction"] = {"pieces": chosen, "per_type": True}
+    settle_schema_version(trial)
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return f"a player who runs out of any one of {', '.join(chosen)} loses"
+
+
+def _promote_only_lost(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """A piece promotes only into what its side has lost, or into any target again.
+
+    Schema 18c's ``promotion.only_lost`` (Q783, Grand chess), both halves, one entry at a
+    time. Offered only where the validator accepts it -- every target in both armies'
+    setup, and no hand, circe strike or entry promotion beside it -- which is a question
+    the validator answers rather than a second reading here.
+    """
+    promotion = (spec.get("rules") or {}).get("promotion")
+    listed = promotion if isinstance(promotion, list) else [promotion]
+    entries = [entry for entry in listed if isinstance(entry, dict)]
+    names = {
+        piece.get("id"): piece.get("name", piece.get("id")) for piece in spec.get("pieces", [])
+    }
+    flagged = [entry for entry in entries if entry.get("only_lost") is True]
+    if flagged:
+        entry = rng.choice(flagged)
+        entry.pop("only_lost")
+        settle_schema_version(spec)
+        return f"the {names.get(entry.get('piece'))} may promote into any of its targets again"
+    for index in rng.sample(range(len(entries)), len(entries)):
+        trial = copy.deepcopy(spec)
+        trial_promotion = trial["rules"]["promotion"]
+        trial_entries = [
+            entry
+            for entry in (trial_promotion if isinstance(trial_promotion, list) else [trial_promotion])
+            if isinstance(entry, dict)
+        ]
+        trial_entries[index]["only_lost"] = True
+        settle_schema_version(trial)
+        if validate_spec(trial):
+            continue
+        spec.clear()
+        spec.update(trial)
+        piece = entries[index].get("piece")
+        return f"the {names.get(piece)} promotes only into a piece its side has lost"
+    return None
+
+
+def _place_the_army(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Play a placement phase before the game, or put the army back on the board.
+
+    Schema 18d's ``drops.placement`` (Q784, Placement chess and Sittuyin), both halves. A
+    game with a stock gains or loses the flag. A game with no hand at all gains one by
+    the edit that makes a placement game out of a game: the first player's back rank
+    (every type that stands only there) goes into both players' hands, each type
+    droppable on the squares the rank held, and castling goes with it, since a dropped
+    king has moved. The way back puts each stocked piece on the first free squares of
+    its region again, which is the only way off the flag while a royal is stocked: a
+    royal in hand outside the phase is refused. ``rng`` is unused; every branch is the
+    one edit its spec allows.
+    """
+    del rng
+    rules = spec.setdefault("rules", {})
+    drops = rules.get("drops")
+    if isinstance(drops, dict) and drops.get("placement") is True:
+        return _unplace_the_army(spec)
+    if isinstance(drops, dict) and drops:
+        if not isinstance(drops.get("stock"), dict) or not drops["stock"]:
+            return None
+        trial = copy.deepcopy(spec)
+        trial["rules"]["drops"]["placement"] = True
+        settle_schema_version(trial)
+        if validate_spec(trial):
+            return None
+        spec.clear()
+        spec.update(trial)
+        return "a player holding a piece must place it before anything on the board moves"
+    if rules.get("strike") or rules.get("contacts") or uses_sweep(spec):
+        return None  # a hand is refused beside a rule that takes several pieces at once
+    setup = spec.get("setup")
+    board = spec.get("board") or {}
+    width, height = board.get("width"), board.get("height")
+    if (
+        not isinstance(setup, dict)
+        or setup.get("mirror", True) is not True
+        or not isinstance(width, int)
+        or not isinstance(height, int)
+    ):
+        return None
+    placements = [p for p in setup.get("placements") or [] if isinstance(p, dict)]
+    ranks: dict[str, set[int]] = {}
+    for placement in placements:
+        if placement.get("player", 0) != 0:
+            continue
+        for name in placement.get("squares") or []:
+            coords = parse_square(name, width, height) if isinstance(name, str) else None
+            if coords is not None:
+                ranks.setdefault(str(placement.get("piece")), set()).add(coords[1])
+    stocked = sorted(piece for piece, held in ranks.items() if held == {0})
+    if not stocked:
+        return None
+    kept: list[dict[str, Any]] = []
+    stock: dict[str, int] = {}
+    region: list[str] = []
+    for placement in placements:
+        piece = str(placement.get("piece"))
+        if placement.get("player", 0) == 0 and piece in stocked:
+            squares = [name for name in placement.get("squares") or [] if isinstance(name, str)]
+            stock[piece] = stock.get(piece, 0) + len(squares)
+            region.extend(squares)
+        else:
+            kept.append(placement)
+    trial = copy.deepcopy(spec)
+    trial["setup"]["placements"] = kept
+    castling = trial["rules"].get("castling")
+    if isinstance(castling, dict) and {castling.get("king"), castling.get("rook")} & set(stock):
+        trial["rules"].pop("castling")
+    region.sort(key=lambda name: parse_square(name, width, height) or (0, 0))
+    trial["rules"]["drops"] = {
+        "from_captures": False,
+        "placement": True,
+        "stock": stock,
+        "region": {piece: list(region) for piece in stocked},
+    }
+    settle_schema_version(trial)
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return (
+        "the back rank starts in hand, and each player places it, a piece a move, on the "
+        "squares it stood on before anything on the board moves"
+    )
+
+
+def _either_face(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Let a held piece come back as its other face, or as itself only again.
+
+    Schema 18e's ``drops.either_face`` (Q785, Kyoto shogi), both halves: on a game whose
+    hand holds a piece with a ``promoted_from`` pair (shogi, dobutsu) the flag goes on,
+    and off a game that has it, it comes off. The validator decides whether the pairs
+    allow it (one face per base, none stocked, royal or chained), and a refusal is a
+    draw with nothing to do. ``rng`` is unused; each branch is the one edit its spec
+    allows.
+    """
+    del rng
+    drops = spec.get("rules", {}).get("drops")
+    if not isinstance(drops, dict) or not drops:
+        return None
+    trial = copy.deepcopy(spec)
+    if drops.get("either_face") is True:
+        trial["rules"]["drops"].pop("either_face")
+        said = "a piece in hand comes back as itself only"
+    else:
+        trial["rules"]["drops"]["either_face"] = True
+        said = (
+            "a piece in hand may come back as either face: itself, or the piece that "
+            "reverts to it when captured"
+        )
+    settle_schema_version(trial)
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+def _win_by_leaving(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Decide a game by leaving its goal square rather than by arriving there, or back.
+
+    Schema 18f's ``reach.on: "leave"`` (Q786, Jeson Mor), both halves: on a game with a
+    ``reach`` rule the flag goes on, and off a game that has it, it comes off, so the
+    arrival twin and the leaving game are one edit apart. A game with no goal at all gets
+    `_win_by_arrival`'s centre with the flag already on, since a flag with no rule to
+    ride on is no edit and most parents have no goal. ``safe`` is refused beside leaving
+    (it reads the piece standing on the goal), and the validator says so; a refusal is a
+    draw with nothing to do. ``rng`` is unused; each branch is the one edit its spec
+    allows.
+    """
+    del rng
+    reach = spec.get("rules", {}).get("reach")
+    trial = copy.deepcopy(spec)
+    if not isinstance(reach, dict) or not reach:
+        centre = _centre_reach(trial)
+        if centre is None:
+            return None
+        trial.setdefault("rules", {})["reach"] = {**centre, "on": "leave"}
+        said = (
+            f"the game is now also won by walking the {centre['piece']} to the centre and "
+            "stepping off it again"
+        )
+    elif reach.get("on") == "leave":
+        trial["rules"]["reach"].pop("on")
+        said = "the game is decided by arriving on the goal square again, not by leaving it"
+    else:
+        trial["rules"]["reach"]["on"] = "leave"
+        said = (
+            "the game is now decided by moving off the goal square, so a piece has to get "
+            "there and then step away"
+        )
+    settle_schema_version(trial)
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+_PORTAL_STEP = {
+    "kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "move",
+}
+_PORTAL_IDS = ("O", "Y", "Z", "J", "U", "V")
+
+
+def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Put a pair of portals on the board, or change one of its settings, or take it away.
+
+    Schema 19 (Q771, `docs/plan-portals.md`), all three of its names both ways, and schema
+    20's ``no_straight_back`` (Q807) both ways. On a game with no portals a pair goes on two
+    empty squares that are each other's image under the setup's mirror, so neither side
+    starts with the better door; the portal is a new piece worth nothing that steps one
+    square and that nobody moves yet. On a game with portals one draw lets either player
+    move a pair's two ends (or stops it, and with it any bar on going straight back), one
+    makes a pair one way for each player (or two way again), one bars a moved portal from
+    going straight back (letting either player move it, if nobody could) or lifts the bar,
+    and one takes every portal away with the piece they moved like. Every branch is checked against the validator and drawn again rather
+    than handed back refused: what portals are refused beside is the validator's list.
+    """
+    rules = spec.get("rules") or {}
+    trial = copy.deepcopy(spec)
+    trial_rules = trial.setdefault("rules", {})
+    if rules.get("portals"):
+        pairs = trial_rules["portals"]
+        pair = rng.choice(pairs)
+        number = pairs.index(pair) + 1
+        draw = rng.random()
+        if draw < 1 / 4:
+            if pair.pop("moved_by", None):
+                # A bar needs somebody to move the pair (schema 20's refusal).
+                pair.pop("no_straight_back", None)
+                said = f"nobody may move portal pair {number} any more"
+            else:
+                pair["moved_by"] = {"orange": [0, 1], "blue": [0, 1]}
+                portal = next(p for p in pieces(trial) if p.get("id") == pair["piece"])
+                portal["moves"] = portal.get("moves") or [copy.deepcopy(_PORTAL_STEP)]
+                said = (
+                    f"either player may now spend a turn moving a portal of pair {number} "
+                    "one step onto an empty square"
+                )
+        elif draw < 1 / 2:
+            if pair.pop("passage", None):
+                said = f"both players' pieces may go in by either portal of pair {number} again"
+            else:
+                pair["passage"] = {"0": "orange_to_blue", "1": "blue_to_orange"}
+                said = (
+                    f"portal pair {number} is one way now: the first player's pieces go in "
+                    "only by the orange portal, the second player's only by the blue one"
+                )
+        elif draw < 3 / 4:
+            if pair.pop("no_straight_back", None):
+                said = (
+                    f"a portal of pair {number} may be moved straight back where it came "
+                    "from again"
+                )
+            else:
+                pair["no_straight_back"] = True
+                said = (
+                    f"a portal of pair {number} that has just been moved may not be moved "
+                    "straight back on the very next move"
+                )
+                if not any((pair.get("moved_by") or {}).values()):
+                    pair["moved_by"] = {"orange": [0, 1], "blue": [0, 1]}
+                    portal = next(p for p in pieces(trial) if p.get("id") == pair["piece"])
+                    portal["moves"] = portal.get("moves") or [copy.deepcopy(_PORTAL_STEP)]
+                    said = (
+                        f"either player may now spend a turn moving a portal of pair "
+                        f"{number} one step onto an empty square, but not straight back on "
+                        "the very next move"
+                    )
+        else:
+            named = portal_piece_ids(trial_rules)
+            del trial_rules["portals"]
+            trial["pieces"] = [p for p in pieces(trial) if p.get("id") not in named]
+            said = "the portals are gone, and the piece they moved like with them"
+    else:
+        board = trial.get("board", {})
+        if board.get("lattice") == "hex" or any("region" in p for p in pieces(trial)):
+            return None
+        used_ids = {str(p.get("id")) for p in pieces(trial)}
+        portal_id = next((pid for pid in _PORTAL_IDS if pid not in used_ids), None)
+        if portal_id is None:
+            return None
+        width, height = int(board.get("width", 8)), int(board.get("height", 8))
+        setup = trial.get("setup", {})
+        orientation = str(setup.get("orientation", "mirror"))
+        mirrored = bool(setup.get("mirror", True))
+        taken = set(obstacle_squares(trial_rules, width, height, orientation))
+        taken |= absent_squares(board)
+        for placement in setup.get("placements", []):
+            for name in placement.get("squares", []) if isinstance(placement, dict) else ():
+                file, rank = ord(name[0]) - ord("a"), int(name[1:]) - 1
+                taken.add(rank * width + file)
+                if mirrored:
+                    seen = reflect_square(file, rank, width, height, orientation)
+                    taken.add(seen[1] * width + seen[0])
+        doors: list[tuple[int, int]] = []
+        for square in range(width * height):
+            file, rank = square % width, square // width
+            image_file, image_rank = reflect_square(file, rank, width, height, orientation)
+            image = image_rank * width + image_file
+            if square < image and square not in taken and image not in taken:
+                doors.append((square, image))
+        if not doors:
+            return None
+        orange, blue = rng.choice(doors)
+
+        def name_of(square: int) -> str:
+            return f"{chr(ord('a') + square % width)}{square // width + 1}"
+
+        trial["pieces"] = [
+            *pieces(trial),
+            {"id": portal_id, "name": "portal", "value": 0,
+             "moves": [copy.deepcopy(_PORTAL_STEP)]},
+        ]
+        pair = {"piece": portal_id, "orange": name_of(orange), "blue": name_of(blue)}
+        said = (
+            f"a pair of portals stands on {name_of(orange)} and {name_of(blue)}: a piece "
+            "whose move ends on one comes out one step beyond the other, the way it was going"
+        )
+        # A quarter of the draws open the pair with one of its two settings already on,
+        # so a game with no portals is one edit from each name the bump added.
+        setting = rng.random()
+        if setting < 0.25:
+            pair["moved_by"] = {"orange": [0, 1], "blue": [0, 1]}
+            said += ", and either player may spend a turn moving one a step"
+        elif setting < 0.5:
+            pair["passage"] = {"0": "orange_to_blue", "1": "blue_to_orange"}
+            said += (
+                ", one way: the first player's pieces go in only by the orange one, the "
+                "second player's only by the blue"
+            )
+        trial_rules["portals"] = [pair]
+    settle_schema_version(trial)
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+def _unplace_the_army(spec: dict[str, Any]) -> str | None:
+    """`_place_the_army`'s way back: the flag off, and the army on the board where needed."""
+    rules = spec["rules"]
+    drops = rules["drops"]
+    royal = {str(piece.get("id")) for piece in pieces(spec) if piece.get("royal")}
+    stock = drops.get("stock") if isinstance(drops.get("stock"), dict) else {}
+    if not royal & set(stock):
+        drops.pop("placement")
+        settle_schema_version(spec)
+        return "a player holding a piece may wait to place it again"
+    setup = spec.get("setup")
+    board = spec.get("board") or {}
+    width, height = board.get("width"), board.get("height")
+    region = drops.get("region") or {}
+    if not isinstance(setup, dict) or not isinstance(width, int) or not isinstance(height, int):
+        return None
+    mirrored = setup.get("mirror", True) is True
+    orientation = str(setup.get("orientation", "mirror"))
+    taken = {
+        name
+        for placement in setup.get("placements") or []
+        if isinstance(placement, dict)
+        for name in placement.get("squares") or []
+    }
+    added: list[dict[str, Any]] = []
+    for piece, held in stock.items():
+        if not isinstance(held, int) or isinstance(held, bool):
+            return None  # an inexhaustible slot has no army to put back
+        free = [name for name in region.get(piece) or [] if name not in taken]
+        if len(free) < held:
+            return None
+        chosen = free[:held]
+        taken.update(chosen)
+        added.append({"piece": piece, "squares": chosen})
+        if not mirrored:
+            images = []
+            for name in chosen:
+                coords = parse_square(name, width, height)
+                if coords is None:
+                    return None
+                file, rank = reflect_square(*coords, width, height, orientation)
+                images.append(f"{chr(ord('a') + file)}{rank + 1}")
+            if taken & set(images):
+                return None
+            taken.update(images)
+            added.append({"piece": piece, "player": 1, "squares": images})
+    trial = copy.deepcopy(spec)
+    trial["setup"]["placements"] = [*trial["setup"].get("placements", []), *added]
+    if trial["rules"]["drops"].get("from_captures", True) is False:
+        trial["rules"].pop("drops")
+    else:
+        for key in ("stock", "placement", "region"):
+            trial["rules"]["drops"].pop(key, None)
+    settle_schema_version(trial)
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return "the pieces in hand start on the board again, where each was first placed"
+
+
+def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Change what a capture leaves behind, or make it ordinary again (schema 17, Q540).
+
+    Schema 17's four features, which no other operator writes: a capturer that stays
+    where it stood (rifle), a victim reborn on its home square (circe), a capturer that
+    changes sides (Andernach) and a blast that takes only the two pieces (kamikaze).
+    Leaving takes the feature off and keeps its host where it has one: a kamikaze blast
+    becomes atomic's radius 1, and a switching strike keeps its chain when it has one.
+
+    Entering draws one of the three strike spellings on a game with no rule that already
+    says what a capture leaves behind, adds `switches_sides` to a standing strike, or
+    narrows a standing blast to radius 0 (taking off `immune`, which radius 0 refuses).
+    Every royal is immune and never switches, which the validator requires; the switching
+    pieces are every non-royal one, Andernach's reading.
+    """
+    if _has_portals(spec):
+        return None  # refused beside portals (schema 19)
+    rules = spec.setdefault("rules", {})
+    strike = rules.get("strike")
+    explosion = rules.get("explode_on_capture")
+    if isinstance(explosion, dict) and explosion.get("radius") == 0:
+        explosion["radius"] = 1
+        settle_schema_version(spec)
+        return "a capture takes its neighbours with it again, not only the two pieces"
+    if isinstance(strike, dict) and "switches_sides" in strike:
+        strike.pop("switches_sides")
+        if not strike_is_live(strike):
+            strip_rule(spec, "strike")
+        settle_schema_version(spec)
+        return "a piece that captures stays on its own side again"
+    if (
+        isinstance(strike, dict)
+        and strike.get("effect", "capture") == "capture"
+        and strike.get("position") in ("stay", "home")
+    ):
+        strip_rule(spec, "strike")
+        settle_schema_version(spec)
+        return "a capture is an ordinary capture again: the taker moves in, the taken is gone"
+
+    if isinstance(explosion, dict) and explosion:
+        explosion["radius"] = 0
+        explosion.pop("immune", None)
+        settle_schema_version(spec)
+        return "a capture destroys the taker with what it took, and nothing beside them"
+    if (
+        explosion or rules.get("drops") or rules.get("npcs") or rules.get("contacts")
+        or uses_sweep(spec)
+    ):
+        return None  # two rules cannot both say what happens to a taken piece
+    switching = sorted(str(piece["id"]) for piece in _non_royal(spec))
+    if isinstance(strike, dict) and strike:
+        if not strike_is_live(strike) or not switching:
+            return None
+        strike["switches_sides"] = switching
+        settle_schema_version(spec)
+        return "a piece that captures also changes sides on the square it took"
+    if not capture_is_possible(spec):
+        return None
+    royals = sorted(str(piece["id"]) for piece in pieces(spec) if piece.get("royal"))
+    rule: dict[str, Any] = {"effect": "capture"}
+    if royals:
+        rule["immune"] = royals
+    promotion = rules.get("promotion")
+    only_lost = any(
+        isinstance(entry, dict) and entry.get("only_lost") is True
+        for entry in (promotion if isinstance(promotion, list) else [promotion])
+    )
+    # Schema 18c: circe gives back what `only_lost` counts as lost, so it is not offered.
+    choice = rng.choice(("stay", "switch") if only_lost else ("stay", "home", "switch"))
+    if choice == "switch":
+        if not switching:
+            return None
+        rule["switches_sides"] = switching
+        said = "a piece that captures changes sides on the square it took"
+    else:
+        rule["position"] = choice
+        said = (
+            "a capture removes the taken piece and leaves the taker where it stood"
+            if choice == "stay"
+            else "a taken piece is reborn on its home square, or is gone if that is occupied"
+        )
+    rules["strike"] = rule
+    settle_schema_version(spec)
+    return said
+
+
 def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Turn one slide into a sweep, or a sweep back into a slide.
 
@@ -1679,6 +2429,8 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     is a spec holding a rule the validator refuses beside a sweep: both would make every
     draw a rejection.
     """
+    if _has_portals(spec):
+        return None  # refused beside portals (schema 19)
     sweeps = _movers(spec, "sweep")
     if sweeps:
         piece, move = rng.choice(sweeps)
@@ -1710,10 +2462,17 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("become-what-you-take", _become_what_you_take),
     Operator("merge-your-own", _merge_your_own),
     Operator("set-the-blast", _set_the_blast),
+    Operator("leave-something-behind", _leave_something_behind),
     Operator("place-a-stone", _place_a_stone),
     Operator("set-a-patrol", _set_a_patrol),
     Operator("promote-what-arrives", _promote_what_arrives),
     Operator("promote-on-leaving", _promote_on_leaving),
+    Operator("count-each-kind", _count_each_kind),
+    Operator("promote-only-lost", _promote_only_lost),
+    Operator("place-the-army", _place_the_army),
+    Operator("either-face", _either_face),
+    Operator("win-by-leaving", _win_by_leaving),
+    Operator("open-a-portal", _open_a_portal),
     Operator("remove-a-piece", _remove_a_piece),
     Operator("add-a-piece", _add_a_piece),
     Operator("clip-a-slider", _clip_a_slider),

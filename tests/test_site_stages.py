@@ -244,6 +244,31 @@ class TestEveryReaderAsksTheOneFunction:
         # past the first that holds nothing is not sent (L4).
         assert [tab["count"] for tab in payload["site"]["tabs"]] == [0]
 
+    def test_every_card_carries_the_day_it_joined(self, levels: Levels) -> None:
+        """Q826: a library file's day is its `provenance.added`, a member's game's the day
+        it was published, and *date added* (`sort=added`) puts the newest first."""
+        from datetime import timezone
+
+        from chess_variant_sandbox.site import browse
+
+        payload = levels.site.browser().get("/api/library").payload
+        cards = {card["hash"]: card for card in payload["games"]}
+        assert cards[DULL_HASH]["added"] == DULL["provenance"]["added"]
+        assert cards[ARCHIVED_HASH]["added"] == ARCHIVED["provenance"]["added"]
+        with levels.site.store.cursor() as cursor:
+            cursor.execute("select published from games where hash = %s", (levels.trial,))
+            (published,) = cursor.fetchone()
+        assert cards[levels.trial]["added"] == (
+            published.astimezone(timezone.utc).date().isoformat())
+        # Published today, so newest; the library's two files follow by their own days.
+        ordered = browse.order(payload["games"], browse.ADDED)
+        assert ordered[0]["hash"] in (levels.trial, levels.shortlisted)
+        days = [card["added"] for card in ordered if card["added"] is not None]
+        assert days == sorted(days, reverse=True)
+        named = browse.order(levels.site.browser().get(
+            "/api/library?sort=added").payload["games"])
+        assert [card["hash"] for card in named] == [card["hash"] for card in ordered]
+
     def test_the_trial_tab_is_absent_until_a_game_is_on_trial(self, levels: Levels) -> None:
         """L4 of `docs/plan-launch.md` §3.4: absent, not empty. So is the order by
         *newest on trial*, which would order nothing."""

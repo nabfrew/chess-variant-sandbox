@@ -64,6 +64,7 @@ def smoke_test(
     seed: int = 0,
     time_budget: float = 20.0,
     workers: int = 0,
+    engine: Engine | None = None,
 ) -> SmokeResult:
     """Play fast random games and check the ruleset is not obviously broken.
 
@@ -77,11 +78,17 @@ def smoke_test(
     `time_budget` is refuse-or-whole: when the clock stops the core before all `games`
     finished, the ruleset is refused with a reason that says so, and the games that did
     finish are not graded. A verdict is always over the whole fixed sample.
+
+    `engine`, when given, is `spec` already compiled, and the gate plays it rather than
+    compiling the rules a second time: the library's listing has one from `engine_for`
+    for the card's still board (the first-visit study's N8). It must be `spec`'s own; a
+    spec that does not compile has none, and is passed alone to be refused in words.
     """
     reasons: list[str] = []
 
     try:
-        engine = Engine(spec)
+        if engine is None:
+            engine = Engine(spec)
     except SpecError as error:
         # In the designer's words, as the editor lists them (`spec.plain`, D44).
         said = " ".join(plain_problems(error.errors, spec))

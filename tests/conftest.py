@@ -117,6 +117,7 @@ compile_memo.install()
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    site_store.check_driver()
     config.addinivalue_line(
         "markers",
         "fresh_compile: compile every spec for real, bypassing the session's compile memo",

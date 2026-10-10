@@ -234,6 +234,7 @@
     }
   },
   "provenance": {
+    "added": "2026-08-29",
     "origin": "designed",
     "source": "docs/new-rule-schema-brainstorm.md",
     "history": "The control for the hierarchy pair: it isolates schema 6's obstacle rule from its strike rule, which is what makes the other two interpretable. The squares are placed where the long diagonals and the knights' natural outposts are, and mirrored so neither player is favoured. blocks_leaps is true because a wall a knight can ignore is a wall that changes the least interesting piece the least.",

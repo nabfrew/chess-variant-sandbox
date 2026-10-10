@@ -367,6 +367,131 @@ def _section(key: str, heading: str, body: str, needs: str = "") -> str:
             f"<h3>{_e(heading)}</h3>{body}</section>")
 
 
+# Q741: *Made by members*, the games members designed and published, straight under the
+# opening board. The site sends them (`site/showcase.py`, `madeHere` on `/api/library`:
+# newest published first, at most four); `landing.js` fills the shelf. The shelf's height
+# is fixed (`style.py`'s `.membersShelf`), so filling it moves nothing below it: it holds
+# its place empty while the listing loads, then shows the games, or, before anybody has
+# published, the invitation below in the same space. The local application has no members
+# and no Publish, so the section goes with `data-needs="accounts"`.
+MEMBERS_HEADING = "Made by members"
+MEMBERS_LEAD = "Games members designed here and published, the newest first."
+MEMBERS_EMPTY = (
+    "<b>The shelf is empty so far.</b> No member has published a game here yet; the "
+    "first one goes here.")
+MEMBERS_ALL = "All {n} on the games page"
+
+
+def _members_section() -> str:
+    head = (
+        '<div class="membersHead">'
+        f"<h3>{_e(MEMBERS_HEADING)}</h3>"
+        # `{n}` is filled in by `landing.js` when there are more than the shelf shows.
+        '<a href="/game" id="membersAll" class="small" hidden>'
+        + _e(MEMBERS_ALL).replace("{n}", '<span id="membersCount"></span>')
+        + "</a></div>")
+    empty = (
+        '<div class="membersEmpty" id="membersEmpty" hidden>'
+        f"<p>{MEMBERS_EMPTY}</p>"
+        '<a class="button" href="#/design">Build your own</a></div>')
+    return (
+        '<section class="landingPart landingMembers" id="landing-members"'
+        ' data-needs="accounts">'
+        f'{head}<p class="muted">{_e(MEMBERS_LEAD)}</p>'
+        '<div class="membersShelf" id="membersShelf" aria-busy="true">'
+        f"{empty}</div></section>")
+
+
+# Q788 (the user, 2026-10-09: *"I'd like the new games highlighted, as well as
+# intransitive"*): under the opening board, the library's newest games, then the spotlight
+# (*Intransitive*) beside this month's game. The games, their sentences and the day each
+# joined are the server's (`web/launch.py`'s `new_cards`, `SPOTLIGHT`, `month_game`, sent
+# as `newGames`, `spotlight` and `monthGame` on `/api/library`); `landing.js` fills the
+# places below. Each card's score is the library card's own pill (`scoreTag`), so a game
+# nobody has measured yet says *not measured* and never shows a number, and a stale one is
+# marked provisional. The shelf holds one height whatever it holds, as *Made by members*
+# does. `/game` repeats none of it: it opens on the search and the filters.
+#
+# Q826: the shelf is derived from the day each game joined (`launch.NEW_WINDOW_DAYS`).
+# When nothing joined inside the window, the server sends the most recently added marked
+# not `fresh`, and `landing.js` puts the `data-older` words in place of the heading and
+# the lead, so a game a month old is never called new.
+NEW_HEADING = "New in the library"
+NEW_LEAD = (
+    "The games added in the last two weeks, newest first, each one playable now. A game the "
+    "computer players have not measured yet says so, rather than show a score.")
+# The shelf holds `launch.NEW_SHOWN`, and a day can add more than that (fourteen games
+# joined on 9 and 10 October 2026), so its link opens the games page ordered by *date
+# added*, where every one of them is, newest first (`landing.js`).
+NEW_ALL = "All the games, newest first"
+NEW_OLDER_HEADING = "Recently added to the library"
+NEW_OLDER_LEAD = (
+    "Nothing has joined the library in the last two weeks, so these are the games added "
+    "most recently, newest first, each one playable now.")
+NEW_ADDED = "added {day}"
+SPOTLIGHT_LABEL = "In the spotlight"
+MONTH_LABEL = "This month's game"
+
+
+def _new_section() -> str:
+    return (
+        '<section class="landingPart landingShelf" id="landing-new">'
+        '<div class="membersHead">'
+        f'<h3 data-older="{_e(NEW_OLDER_HEADING)}">{_e(NEW_HEADING)}</h3>'
+        f'<a href="/game" class="small" data-newest>{_e(NEW_ALL)}</a></div>'
+        f'<p class="muted" data-older="{_e(NEW_OLDER_LEAD)}">{_e(NEW_LEAD)}</p>'
+        f'<div class="newShelf" id="newShelf" aria-busy="true" data-added="{_e(NEW_ADDED)}">'
+        "</div></section>")
+
+
+TODAY_LABEL = "Today's game"
+TODAY_NOTE = (
+    "You move first, against <b data-opponent></b>. A practice game: undo and restart are "
+    "on, and it counts for nothing.")
+
+
+def _pick(key: str, label: str, ways: str, extra: str = "") -> str:
+    """One panel of the picks row: a board, its label, and places `landing.js` fills. The
+    panel holds its place while the listing loads, and goes when the server sent no game."""
+    return (
+        f'<div class="pick panel" id="{key}" aria-busy="true">'
+        f'<div class="pickBoard" id="{key}Board"></div>'
+        '<div class="pickText">'
+        f'<div class="muted small">{_e(label)}<span data-when></span></div>'
+        '<h4><a data-name></a></h4>'
+        "<p data-sentence></p>"
+        f"{extra}"
+        f'<div class="row pickWays">{ways}</div>'
+        "</div></div>")
+
+
+def _picks_section() -> str:
+    """Q788: the day's game (Q564's first step, moved here from `/game`), the spotlight and
+    this month's game (Q603's, moved here too), side by side at 1120 px and one above the
+    other on a phone."""
+    today = _pick(
+        "landingToday", TODAY_LABEL,
+        '<button type="button" class="primary" data-play>Play the computer</button>'
+        '<button type="button" data-harder hidden>A harder one: <span></span></button>',
+        f'<p class="small muted" data-note>{TODAY_NOTE}</p>')
+    spotlight = _pick(
+        "landingSpotlight", SPOTLIGHT_LABEL,
+        '<a class="button primary" data-go>Play</a><span data-score></span>',
+        '<p class="small" data-why></p>')
+    month = _pick(
+        "landingMonth", MONTH_LABEL,
+        '<a class="button primary" data-go>Play</a>',
+        '<p class="small" data-why></p>'
+        '<p class="small" data-needs="member"><a data-find>Find someone to play it '
+        "with</a>.</p>"
+        '<p class="small" data-needs="visitor"><a href="/signin">Sign in</a> to play it '
+        "with someone.</p>"
+        '<p class="small muted" data-how></p>')
+    return (
+        '<section class="landingPart landingPicks" id="landing-picks">'
+        + spotlight + today + month + "</section>")
+
+
 def _ingredients_html(version: str) -> str:
     weights = load_weights(version)
     qualities = ingredients(version)
@@ -436,18 +561,24 @@ def html_page(version: str = DEFAULT_WEIGHTS) -> str:
         # door for a visitor to the site, a member's page for a member, and on the local
         # application neither (`landing.js` removes what does not apply).
         '<a class="button" href="/signin" data-needs="visitor">Sign in</a>'
-        '<a class="button" href="/profile" data-needs="member">Your page</a></div>'
+        '<a class="button" href="/profile" data-needs="member">Your page</a>'
+        # Q760: and for a member, the way to everybody else.
+        '<a class="button" href="/players" data-needs="member">Find players</a></div>'
         '<p class="muted small landingScroll">What it is, and how the score works, below.</p>'
         "</div>"
         '<figure class="landingShow" id="landingShow">'
         '<div class="landingBoard" id="landingBoard" aria-hidden="true"></div>'
-        '<figcaption class="small" id="landingCaption">'
+        # Q741: the day's game is named as the day's (`landing.js`).
+        '<figcaption class="small" id="landingCaption" data-today="Today&#39;s game">'
         "Some of the games here, each a different mix of rules.</figcaption>"
         '<div class="row landingShowControls">'
         '<button type="button" class="quiet" id="landingPause" hidden>pause</button>'
         '<button type="button" class="quiet" id="landingNext" hidden>another game</button>'
         "</div></figure></section>")
     parts = [
+        _new_section(),
+        _picks_section(),
+        _members_section(),
         _section("intent", "What this is", (
             "<p>A <b>vibe-coded playground for designing chess-like strategy games</b>. "
             "Vibe-coded means it was built by describing it, in plain language, to an AI that "
@@ -476,7 +607,11 @@ def html_page(version: str = DEFAULT_WEIGHTS) -> str:
             f"{CORRESPONDENCE_IDLE_SAID}. "
             "With an account your games count: you get a rating on each game, and beating "
             "the strongest computer player on a game puts your name on it. Joining is by "
-            "invitation for now.</p>"), needs="accounts"),
+            "invitation for now.</p>"
+            # Q760: a member is shown the way to find somebody to play.
+            '<p data-needs="member"><a href="/players">Find a member</a> by name, open '
+            "their page to see the games they made and played, and challenge them from "
+            "there.</p>"), needs="accounts"),
         _section("viable", "The computer checks that a game works", (
             f"<p>Before a game is scored, {_say(count)} computer players play it: one that "
             f"moves at random, one that takes whatever it can, and {_say(looking)} that look "
@@ -512,9 +647,8 @@ def html_page(version: str = DEFAULT_WEIGHTS) -> str:
             + _ingredients_html(version))),
         _section("more", "And more", (
             '<ul class="landingFeatures">'
-            '<li><a href="/game">The library</a>: every game, with filters by the kind of game '
-            "and sorting by any ingredient of the score, a game of the day to start with, "
-            "and a game of the month to play with someone.</li>"
+            '<li><a href="/game">The library</a>: every game, with a search, filters by the '
+            "kind of game, and sorting by any ingredient of the score.</li>"
             '<li><a href="#/map">The map</a>: the games laid out by how alike they are, in '
             "communities of games more like each other than like the rest.</li>"
             '<li><a href="#/design">The designer</a>: start from a blank board, a template '

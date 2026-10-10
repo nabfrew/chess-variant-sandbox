@@ -21,8 +21,8 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +42,6 @@ from chess_variant_sandbox.agents.nets import (
 )
 from chess_variant_sandbox.agents.training.data import (
     Dataset,
-    diverse_game,
     harvest,
     opening_plies_for,
     relabel,
@@ -88,6 +87,13 @@ class Acceptance:
     seed: int = ACCEPT_SEED
     opening_plies: int = ACCEPT_OPENING_PLIES
     openings: int = 1
+    # The fixed rule's size in seed-pairs. Below `games / 2` only for a curtailed duel
+    # (plan-compute §4.2): the verdict is still the full duel's, the score the prefix's.
+    planned: int = 0
+
+    @property
+    def decided_after(self) -> int:
+        return self.games // 2
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -104,7 +110,17 @@ class Acceptance:
             "reference_nodes": self.reference_nodes,
             "bar": f"score - {ACCEPT_ERRORS:g} x error > 0.5",
             "accepted": self.accepted,
+            "decided_after": self.decided_after,
+            "planned_pairs": self.planned or self.decided_after,
         }
+
+
+def accepts(estimates: Sequence[float]) -> bool:
+    """The acceptance verdict over a duel's seed-pairs: ``score - 2 x error > 0.5``."""
+    from chess_variant_sandbox.tournament.duel import summary
+
+    score, error = summary(estimates)
+    return score - ACCEPT_ERRORS * error > 0.5
 
 
 @dataclass(frozen=True)
@@ -263,6 +279,7 @@ def accept(
     seed: int = ACCEPT_SEED,
     opening_plies: int = ACCEPT_OPENING_PLIES,
     reference: str | None = None,
+    curtail: bool = False,
 ) -> Acceptance:
     """The net against the built-in objective at equal nodes, on paired seeds.
 
@@ -278,9 +295,17 @@ def accept(
     many plies of the core's ``random`` agent, every stream named by the pair's schedule
     seed, so both games of a pair start from one position with the seats swapped and the
     duel samples many positions. 0 is the ordinary runner from the start position.
+
+    ``curtail`` (plan-compute §4.2) stops the duel at the first schedule-order prefix of
+    seed-pairs whose every completion gives the same verdict, in batches of the worker
+    count: the same verdict as the full duel, by construction, with the prefix's score and
+    ``decided_after`` of ``planned``. Off by default because the score is not only the
+    verdict's: plan-teacher §3's G-S and G-G compare D2 scores between arms, and a prefix's
+    score is a different measurement from the 200 pairs those gates were registered on.
     """
-    from chess_variant_sandbox.tournament.duel import grade
-    from chess_variant_sandbox.tournament.runner import TournamentConfig, run_tournament
+    from chess_variant_sandbox.tournament.checkpoint import run_tournament
+    from chess_variant_sandbox.tournament.duel import curtailed_duel, grade
+    from chess_variant_sandbox.tournament.runner import TournamentConfig
 
     candidate = f"minimax:net={procedure.digest},nodes={nodes}"
     reference = reference or f"minimax:nodes={nodes}"
@@ -295,15 +320,26 @@ def accept(
         collect_series=False,
         paired=True,
     )
-    if opening_plies <= 0:
-        records = list(run_tournament(spec, config).records)
-        openings = 1
-    else:
-        records = _opening_duel(spec, config, opening_plies)
-        openings = len(
-            {tuple(r.moves[: opening_plies_for(r.seed, opening_plies)]) for r in records}
+
+    def play(first: int, count: int) -> list[Any]:
+        block = replace(config, games_per_pairing=count, seed=first)
+        if opening_plies <= 0:
+            return list(run_tournament(spec, block).records)
+        return _opening_duel(spec, block, opening_plies)
+
+    if curtail:
+        curtailed = curtailed_duel(
+            spec, candidate, reference, pairs, accepts, seed, workers, play=play
         )
-    found = grade(records, candidate, reference)
+        found, accepted = curtailed.found, curtailed.verdict
+        records = list(curtailed.records)
+    else:
+        records = play(seed, pairs)
+        found = grade(records, candidate, reference)
+        accepted = accepts(found.pairs)
+    openings = 1 if opening_plies <= 0 else len(
+        {tuple(r.moves[: opening_plies_for(r.seed, opening_plies)]) for r in records}
+    )
     spent = [0, 0]
     for record in records:
         seat = 0 if record.agents[0] == candidate else 1
@@ -318,10 +354,11 @@ def accept(
         identical=found.identical,
         candidate_nodes=spent[0],
         reference_nodes=spent[1],
-        accepted=found.score - ACCEPT_ERRORS * found.error > 0.5,
+        accepted=accepted,
         seed=seed,
         opening_plies=max(0, opening_plies),
         openings=openings,
+        planned=pairs,
     )
 
 
@@ -330,17 +367,13 @@ def _opening_duel(spec: dict[str, Any], config: Any, most: int) -> list[Any]:
 
     The opening is a function of the seed alone, and both games of a pair share the seed,
     so they share the opening. One game per core call on the config's threads; records in
-    schedule order, so the answer does not depend on the thread count.
+    schedule order, so the answer does not depend on the thread count. Self-play's own
+    loop (``data._play_tasks``), so a campaign directory resumes it as it does self-play.
     """
-    from concurrent.futures import ThreadPoolExecutor
-
-    from chess_variant_sandbox.engine import Engine
+    from chess_variant_sandbox.agents.training.data import _play_tasks
     from chess_variant_sandbox.tournament.runner import schedule
 
-    engine = Engine(spec)
-    tasks = schedule(config)
-    with ThreadPoolExecutor(max_workers=config.resolved_workers()) as pool:
-        return list(pool.map(lambda task: diverse_game(engine, task, most), tasks))
+    return _play_tasks(spec, config, schedule(config), most)
 
 
 def train_ruleset(
@@ -353,12 +386,14 @@ def train_ruleset(
     duel: bool = True,
     data: Dataset | None = None,
     report: Report | None = None,
+    curtail: bool = False,
 ) -> Trained:
     """Self-play, harvest, train, quantize, judge, store; returns what was stored.
 
     ``data`` skips the self-play and the harvest (a dataset saved earlier, or the same
-    positions twice for the determinism test). The store's verdict is registered in this
-    process, so a ``net=`` player built after this call plays what the store says.
+    positions twice for the determinism test). ``curtail`` curtails the acceptance duel
+    (``accept``). The store's verdict is registered in this process, so a ``net=`` player
+    built after this call plays what the store says.
     """
     from chess_variant_sandbox.engine import Engine
     from chess_variant_sandbox.measurement import built_fingerprint
@@ -402,7 +437,9 @@ def train_ruleset(
     if duel:
         register_net(NetRecord(procedure.digest, digest, ACCEPTED, blob, build))
         started = time.perf_counter()
-        acceptance = accept(spec, procedure, pairs=pairs, nodes=nodes, workers=workers)
+        acceptance = accept(
+            spec, procedure, pairs=pairs, nodes=nodes, workers=workers, curtail=curtail
+        )
         seconds["duel"] = time.perf_counter() - started
         verdict = ACCEPTED if acceptance.accepted else REFUSED
     record = NetRecord(procedure.digest, digest, verdict, blob, build)

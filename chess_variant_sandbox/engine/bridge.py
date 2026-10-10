@@ -31,7 +31,7 @@ _SCORING_COUNT = {"material": 0, "pieces": 1, "region": 2, "territory": 3, "poin
 # Where the two pieces end up after a strike, as the integer the core carries. The
 # *effect* has no number: ``demote`` and ``promote`` differ only in which way the chain
 # points, and the compiler has already resolved the chain into ``strike_to``.
-_STRIKE_POSITION = {"stay": 0, "advance": 1, "swap": 2, "choose": 3}
+_STRIKE_POSITION = {"stay": 0, "advance": 1, "swap": 2, "choose": 3, "home": 4}
 
 # Whether ``rust/src/game.rs`` can put a struck piece somewhere other than off the board.
 # Set false in the commit that taught the compiler the rule and true in the one that
@@ -121,6 +121,14 @@ _CORE_KNOWS_CONTACTS = True
 # square) asked the origin too. The constant stays as the honest record of the ordering.
 _CORE_KNOWS_PROMOTION_ON_LEAVING = True
 
+# Schema 18c (Q783): ``extinction.per_type`` and ``promotion.only_lost``. A core that never
+# read ``extinction_per_type`` would sum the listed types, and one that never read
+# ``promo_only_lost`` would offer every target: two plausible wrong games, Extinction chess
+# ending late and Grand chess promoting into a third queen. Lifted in the task that added
+# them, once ``schema_two_ending`` counted per type and both promotion sites (`push_arrival`
+# and the hop's empty square) asked `promotion_offered`.
+_CORE_KNOWS_SCHEMA_EIGHTEEN_COUNTS = True
+
 
 def _flatten_entries(
     table: tuple[tuple[tuple[tuple[Any, ...], ...], ...], ...],
@@ -169,6 +177,21 @@ def _flatten_entries(
                     modes.extend(mode_masks)
                 index.append(len(refs) // 5)
     return index, refs, squares, modes
+
+
+def _flatten_dirs(
+    table: Any, n_frames: int, n_types: int, n_squares: int
+) -> list[int]:
+    """Schema 19: a momentum table flattened in `_flatten_entries`' landing order, so the
+    core reads a landing's mask at the same offset as its square and its mode."""
+    return [
+        bits
+        for frame in range(n_frames)
+        for piece_type in range(n_types)
+        for square in range(n_squares)
+        for entry in table[frame][piece_type][square]
+        for bits in entry
+    ]
 
 
 def build_tables(spec: CompiledSpec) -> dict[str, Any]:
@@ -317,6 +340,15 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
     # Schema 15: which of them also promote on a move out of their zone. The compiler has
     # already dropped a flag that cannot fire, so this is empty for every game before it.
     promo_on_leaving = sorted({rule.piece_type for rule in spec.promotions if rule.on_leaving})
+    # Schema 18 (Q783): which promoting types offer a target only while it is short of
+    # its opening count, and the counts, flat `[player * n_types + type]`. The counts are
+    # the setup's, the same for every such rule, and both are empty for every game before
+    # it, so no earlier fingerprint moves.
+    promo_only_lost = sorted({rule.piece_type for rule in spec.promotions if rule.only_lost})
+    promo_opening: list[int] = next(
+        ([*rule.opening[0], *rule.opening[1]] for rule in spec.promotions if rule.only_lost),
+        [],
+    )
 
     # --- Explosion ---
     explosion = spec.explosion
@@ -442,6 +474,10 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
             for candidates in per_square:
                 strike_landing.extend(candidates)
                 strike_landing_index.append(len(strike_landing))
+    # Schema 17 (Q540): the rebirth table under `home` and the side-switch table, both
+    # empty unless the rule uses them -- the inert default again.
+    strike_rebirth = list(strike.rebirth) if strike else []
+    contact_mover_flips = [int(flip) for flip in strike.mover_flips] if strike else []
 
     # --- Facing (schema 8) ---
     # Two arrays, both per piece type, and both empty for a spec in which nothing turns
@@ -481,6 +517,41 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         if entering is not None
         else []
     )
+
+    # --- Portals (schema 19) ---
+    # Per type: the partner end (-1 for a piece that is not a portal), may each player go
+    # in by it, and which players may move it (a bit per player). The exit table per
+    # player, square and direction, and the momentum masks parallel to the three movement
+    # tables' landings and to the attack sources. Every one is empty and the flag false
+    # without a portal, so no earlier ruleset's fingerprint moves.
+    portals = spec.portals
+    portal_partner: list[int] = []
+    portal_open: list[int] = []
+    portal_movers: list[int] = []
+    portal_exits: list[int] = []
+    leap_dirs: list[int] = []
+    slide_dirs: list[int] = []
+    hop_dirs: list[int] = []
+    attack_dirs: list[int] = []
+    # Schema 20 (Q807): per type, may it not go straight back; the bar's Zobrist keys.
+    # Empty unless some pair sets ``no_straight_back``, so no schema 19 game's tables move.
+    portal_no_back: list[int] = []
+    zobrist_portal_bar: list[int] = []
+    if portals is not None:
+        portal_partner = list(portals.partner)
+        portal_no_back = [int(flag) for flag in portals.no_back]
+        zobrist_portal_bar = list(portals.zobrist_bar)
+        portal_open = [int(flag) for pair in portals.open_to for flag in pair]
+        portal_movers = [sum(1 << player for player in who) for who in portals.movers]
+        portal_exits = [
+            square for player in portals.exits for row in player for square in row
+        ]
+        leap_dirs = _flatten_dirs(portals.leap_dirs, n_frames, n_types, n_squares)
+        slide_dirs = _flatten_dirs(portals.slide_dirs, n_frames, n_types, n_squares)
+        hop_dirs = _flatten_dirs(portals.hop_dirs, n_frames, n_types, n_squares)
+        attack_dirs = [
+            bits for owner in portals.attack_dirs for per_square in owner for bits in per_square
+        ]
 
     # --- Extinction ---
     extinction = spec.extinction
@@ -561,6 +632,8 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         "promo_optional": promo_optional,
         "promo_piece_types": promo_piece_types,
         "promo_on_leaving": promo_on_leaving,
+        "promo_only_lost": promo_only_lost,
+        "promo_opening": promo_opening,
         # Castling
         "castle_king": castling.king_type if castling else -1,
         "castle_rook": castling.rook_type if castling else -1,
@@ -602,12 +675,19 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         # before it -- crazyhouse, shogi and dobutsu all keep the fingerprints they had.
         "drops_stock": list(drops.stock) if drops else [],
         "drops_unlimited": [int(flag) for flag in drops.unlimited] if drops else [],
+        # Schema 18 (Q784): the placement phase. False for every game before it.
+        "drops_placement": bool(drops.placement) if drops else False,
+        # Schema 18 (Q785): drop either face, each slot's other face or -1. Empty for
+        # every game before it.
+        "drops_faces": list(drops.faces) if drops else [],
         # Reach
         "has_reach": reach is not None,
         "reach_piece_type": reach.piece_type if reach else -1,
         "reach_squares": reach_squares,
         "reach_result": _ENDING_RESULT[reach.result] if reach else 1,
         "reach_safe": reach.safe if reach else False,
+        # Schema 18 (Q786): win by leaving a goal square. False for every game before it.
+        "reach_leaves": reach.leaves if reach else False,
         "goal_distance": goal_distance,
         "goal_diameter": spec.goal_diameter,
         "goal_distance_each": goal_distance_each,
@@ -635,17 +715,35 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         "contact_own_mover_to": contact_own_mover_to,
         "strike_landing": strike_landing,
         "strike_landing_index": strike_landing_index,
+        "strike_rebirth": strike_rebirth,
+        "contact_mover_flips": contact_mover_flips,
         # Wild pieces
         "has_npcs": npcs is not None,
         "npc_next": npc_next,
         "npc_bounty": npc_bounty,
         # Promotion on entering play
         "entry_promotion": entry_promotion,
+        # Portals (schema 19)
+        "has_portals": portals is not None,
+        "portal_partner": portal_partner,
+        "portal_open": portal_open,
+        "portal_movers": portal_movers,
+        "portal_exits": portal_exits,
+        "leap_dirs": leap_dirs,
+        "slide_dirs": slide_dirs,
+        "hop_dirs": hop_dirs,
+        "attack_dirs": attack_dirs,
+        # Portals' straight-back bar (schema 20)
+        "portal_no_back": portal_no_back,
+        "zobrist_portal_bar": zobrist_portal_bar,
         "has_extinction": extinction is not None,
         "extinction_types": list(extinction.piece_types) if extinction else [],
         "extinction_any_piece": extinction.any_piece if extinction else False,
         "extinction_min_count": extinction.min_count if extinction else 0,
         "extinction_result": _ENDING_RESULT[extinction.result] if extinction else -1,
+        # Schema 18 (Q783): each listed type counted on its own. False is the summed
+        # count every game before it makes.
+        "extinction_per_type": bool(extinction.per_type) if extinction else False,
         # Zobrist
         "zobrist_pieces": [
             value for row in spec.zobrist_pieces for value in row
@@ -689,6 +787,9 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "promo_piece_types": [],
     # Schema 15 (Q452). Empty unless a promoting piece can leave its zone under the flag.
     "promo_on_leaving": [],
+    # Schema 18 (Q783). Empty unless an entry says `only_lost`.
+    "promo_only_lost": [],
+    "promo_opening": [],
     "castle_king": -1,
     "castle_rook": -1,
     "castle_steps": 0,
@@ -722,11 +823,17 @@ _INERT_DEFAULTS: dict[str, Any] = {
     # ruleset with a hand up to now.
     "drops_stock": [],
     "drops_unlimited": [],
+    # Schema 18 (Q784). False unless the hand says `placement`.
+    "drops_placement": False,
+    # Schema 18 (Q785). Empty unless the hand says `either_face`.
+    "drops_faces": [],
     "has_reach": False,
     "reach_piece_type": -1,
     "reach_squares": [],
     "reach_result": 1,
     "reach_safe": False,
+    # Schema 18 (Q786). False unless the reach rule says `on: "leave"`.
+    "reach_leaves": False,
     "goal_distance": [],
     "goal_diameter": 1,
     "goal_distance_each": [],
@@ -750,6 +857,9 @@ _INERT_DEFAULTS: dict[str, Any] = {
     # Schema 12 (Q20). Empty unless the position is `choose`.
     "strike_landing": [],
     "strike_landing_index": [],
+    # Schema 17 (Q540). Empty unless the position is `home`, or a type switches sides.
+    "strike_rebirth": [],
+    "contact_mover_flips": [],
     # Schema 13 (Q21). Empty unless a piece sweeps.
     "sweep_index": [],
     "sweep_refs": [],
@@ -762,11 +872,26 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "npc_next": [],
     "npc_bounty": [],
     "entry_promotion": [],
+    # Schema 19 (Q771). Empty and false unless the spec has portals.
+    "has_portals": False,
+    "portal_partner": [],
+    "portal_open": [],
+    "portal_movers": [],
+    "portal_exits": [],
+    "leap_dirs": [],
+    "slide_dirs": [],
+    "hop_dirs": [],
+    "attack_dirs": [],
+    # Schema 20 (Q807). Empty unless a portal pair sets ``no_straight_back``.
+    "portal_no_back": [],
+    "zobrist_portal_bar": [],
     "has_extinction": False,
     "extinction_types": [],
     "extinction_any_piece": False,
     "extinction_min_count": 0,
     "extinction_result": -1,
+    # Schema 18 (Q783). False unless the rule says `per_type`.
+    "extinction_per_type": False,
 }
 
 # Keys that are part of what every game means, whatever rules it declares: the board's
@@ -882,6 +1007,30 @@ def rust_supports(spec: CompiledSpec) -> str | None:
     core the thing they guarded -- which is what a guard is for. The constants stay as
     the honest record of the ordering.
     """
+    # Schema 19 (Q771): the core's portal arm walks a transit as one landing and keeps
+    # portals in the third owner's block, so it has no reading for a portal beside a wild
+    # piece (the same block), a strike, a blast or a sweep (a second landing rule), a
+    # colouring (which square a transit paints) or a hex lattice (whose six neighbours the
+    # eight-direction exit table does not name). The validator refuses each by name; this
+    # holds a spec that reached the compiler some other way.
+    if spec.portals is not None:
+        beside = [
+            name
+            for name, present in (
+                ("rules.npcs", spec.npcs is not None),
+                ("a strike or contact table", spec.strike is not None),
+                ("rules.explode_on_capture", spec.explosion is not None),
+                ("a sweep", spec.has_sweep),
+                ("rules.territory", spec.territory is not None),
+                ("a hex lattice", spec.lattice == "hex"),
+            )
+            if present
+        ]
+        if beside:
+            return (
+                f"rules.portals beside {', '.join(beside)}: the core's transit has no "
+                "reading for the combination"
+            )
     if spec.npcs is not None and not _CORE_KNOWS_NPCS:
         return (
             "rules.npcs: the compiler places a piece neither player owns and the core "
@@ -898,6 +1047,20 @@ def rust_supports(spec: CompiledSpec) -> str | None:
         return (
             "rules.promotion.on_leaving: the compiler says which pieces promote on a move "
             "out of their zone and the core still promotes only on arriving"
+        )
+    if spec.extinction is not None and spec.extinction.per_type and not (
+        _CORE_KNOWS_SCHEMA_EIGHTEEN_COUNTS
+    ):
+        return (
+            "rules.extinction.per_type: the compiler counts each listed type on its own "
+            "and the core still sums them"
+        )
+    if any(rule.only_lost for rule in spec.promotions) and not (
+        _CORE_KNOWS_SCHEMA_EIGHTEEN_COUNTS
+    ):
+        return (
+            "rules.promotion.only_lost: the compiler says which targets wait for a loss "
+            "and the core still offers every one"
         )
     if spec.has_facing and not _CORE_KNOWS_FACING:
         return (

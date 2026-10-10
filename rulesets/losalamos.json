@@ -58,6 +58,7 @@
     "no_progress_draw": 100
   },
   "provenance": {
+    "added": "2026-08-19",
     "origin": "human",
     "year": 1956,
     "source": "the MANIAC I computer at Los Alamos; the first game of chess-like complexity a machine won against a human"

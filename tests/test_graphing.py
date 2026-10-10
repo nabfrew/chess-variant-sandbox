@@ -1043,7 +1043,42 @@ class TestTheLayout:
         for node in graph.nodes:
             assert bounds["minX"] <= node.x <= bounds["maxX"]
             assert bounds["minY"] <= node.y <= bounds["maxY"]
-        assert bounds["width"] == pytest.approx(bounds["maxX"] - bounds["minX"])
+        _hold_the_span(bounds, graph.nodes)
+
+    def test_the_span_is_rounded_once_where_its_ends_round_apart(self) -> None:
+        """Q744. Ends at -0.9994 and 10.0004 round to -0.999 and 10.0, 10.999 apart, while
+        their span, 10.9998, rounds to 11.0. That pair is what failed on cloud Linux: the
+        old check held the width to the rounded ends at a relative 1e-6, about 1e-5 here.
+        """
+        r = graphing.NODE_RADIUS
+        nodes = [_At(0.0006 - (1.0 - r), 0.0), _At(9.0004 + (1.0 - r), 0.0)]
+        bounds = graphing._bounds(nodes)  # type: ignore[arg-type]
+        assert (bounds["minX"], bounds["maxX"], bounds["width"]) == (-0.999, 10.0, 11.0)
+        _hold_the_span(bounds, nodes)
+
+
+class _At:
+    """A node as far as `_bounds` reads one: where it is drawn."""
+
+    def __init__(self, x: float, y: float) -> None:
+        self.x, self.y = x, y
+
+
+def _hold_the_span(bounds: dict[str, float], nodes: Any) -> None:
+    """The width and height are each the box's span, rounded once to the page's three places.
+
+    `_bounds` rounds each of the four ends and the two spans separately, so a span and the
+    difference of its rounded ends can be a thousandth apart, and which way a platform's
+    floats fall decides whether they are (Q734 §3: the cloud-Linux failure). So a span is
+    held exactly to the unrounded box rounded once, and to its rounded ends within that one
+    thousandth (the 1e-9 is the float error of two three-place numbers subtracted).
+    """
+    r = graphing.NODE_RADIUS
+    xs, ys = [node.x for node in nodes], [node.y for node in nodes]
+    assert bounds["width"] == round((max(xs) + r) - (min(xs) - r), 3)
+    assert bounds["height"] == round((max(ys) + r) - (min(ys) - r), 3)
+    assert abs(bounds["width"] - (bounds["maxX"] - bounds["minX"])) <= 0.001 + 1e-9
+    assert abs(bounds["height"] - (bounds["maxY"] - bounds["minY"])) <= 0.001 + 1e-9
 
 
 class TestThePairCache:
@@ -1865,15 +1900,51 @@ def test_the_map_modules_name_no_piece_and_no_game() -> None:
         assert not found, (module, found)
 
 
+#: The corpus `docs/archive/plan-game-graph.md` G2 and `plan-graph-map.md` S1 were measured
+#: over, by mechanics hash: the 70 committed and archived specs of 2026-09-25 (after Q434
+#: retired `tunnel-horizontal`). `TestTheCommittedCorpus` pins the plans' numbers on this
+#: set, not on whatever the library holds today, so a game added later (Q281a4's three hex
+#: showcases, 2026-09-28, were the first) cannot turn it red; the live library is
+#: `TestTheWholeLibrary`'s, which reads its counts from the corpus. A game of this set
+#: that is retired or edited in place fails `plan_corpus` by name: that is a re-read of the
+#: plans (`plan-graph-map.md` §8), not a re-aim.
+PLAN_CORPUS = frozenset({
+    "0268bb0926bf", "03aa7c3f2f18", "0b96463ffba7", "0be72e61ef24", "1442513d38d7", "14a126b38a1a",
+    "151582aed409", "15593fc47f6d", "1ba3d61e5961", "213f7b6604e4", "2261f8203948", "279f92a97530",
+    "29d5213b02b2", "2e94e1688601", "2eefcd835b3b", "313c913a5b3b", "3194d3a2251b", "328cab4db5cc",
+    "3c639d277808", "3ec1560124c3", "42bd7d06828d", "482ddc556331", "4c1922ffae26", "50a3da8f75e7",
+    "51d9b36b4e93", "54b38fb8cba8", "54c731ca6e95", "57667d7861ad", "57c73975c905", "5f9c1bfcf85a",
+    "66b001f1b790", "67270a8805a0", "6bd4d9c5769e", "71912ea8ba7f", "78130df01edd", "82a4788c02f0",
+    "85555467a4ca", "87a488975531", "8ec0ce4678e9", "8fc3939243d5", "93b02b591c87", "9574b0bf9095",
+    "975dde173f01", "9777cd6c9ed1", "9c26a04f1ca5", "9f538ab85a77", "a2193fb37097", "a2f0c65ceedf",
+    "a7b6f22e6b73", "a9306688fe57", "ab865f3f954a", "add543cc28c3", "b02bbe8da72c", "b1f536573c22",
+    "bb5d97520084", "bdf2801ade24", "c0e0c35f78b1", "c2925e027455", "c6ff883e5919", "ceb4916bdabc",
+    "da7647bf02e1", "df2fbba0ca76", "e7293070b5be", "eaa48ed29ad7", "f1fdbb539699", "f5585062433b",
+    "fcbb53d53ce4", "fdadd9839d34", "fe7c42772c71", "ffc7b604bea0",
+})
+
+
 @pytest.fixture(scope="module")
-def corpus() -> list[library.Game]:
-    """Every committed and archived ruleset, which is what the map draws."""
+def library_games() -> list[library.Game]:
+    """Every committed and archived ruleset today, which is what the map draws."""
     root = Path(__file__).resolve().parents[1]
     return [
         one
         for one in library.discover(root / "rulesets", root / "runs", root / "archive")
         if one.source in ("committed", "archived")
     ]
+
+
+@pytest.fixture(scope="module")
+def corpus(library_games: list[library.Game]) -> list[library.Game]:
+    """The plans' corpus out of today's library: every game of `PLAN_CORPUS`, and only those."""
+    kept = [one for one in library_games if one.hash in PLAN_CORPUS]
+    missing = PLAN_CORPUS - {one.hash for one in kept}
+    assert not missing, (
+        f"the plans' corpus lost {sorted(missing)}: a game was retired or its mechanics "
+        "edited, so re-read plan-graph-map.md's numbers on what is left (its §8)"
+    )
+    return kept
 
 
 @pytest.fixture(scope="module")
@@ -1908,11 +1979,12 @@ class TestTheCommittedCorpus:
     the plan's row was corrected to match; the figures it was written with came from the
     probe, before G1's folds moved four one-rule readings and before twins merged. Q434
     retired `tunnel-horizontal` (2026-09-25), which took one spec, one node and one gap
-    and moved nothing else here.
+    and moved nothing else here. Since Q743 (2026-10-05) the class draws `PLAN_CORPUS`, those
+    seventy by hash, so a game the library gains later does not move a number here.
     """
 
     def test_the_counts_are_the_ones_the_plan_names(self, graph: graphing.Graph) -> None:
-        assert graph.counts["specs"] == 70
+        assert graph.counts["specs"] == len(PLAN_CORPUS)
         assert graph.counts["nodes"] == 69
         assert graph.counts["twins"] == 1
         assert graph.counts["oneRule"] == 56
@@ -2123,3 +2195,53 @@ class TestTheCommittedCorpus:
     @staticmethod
     def _community(graph: graphing.Graph, ident: str) -> dict[str, Any]:
         return next(one for one in graph.communities if one["id"] == ident)
+
+
+@pytest.fixture(scope="module")
+def today(
+    library_games: list[library.Game], cache: Path, graph: graphing.Graph
+) -> graphing.Graph:
+    """The map of today's library, after `graph` has compared the plans' pairs."""
+    return graphing.build(library_games, cache)
+
+
+@pytest.mark.slow
+class TestTheWholeLibrary:
+    """The map of the library as it stands today, whatever it has grown to.
+
+    Nothing here is a number pinned to a date: every count is read from the corpus, so a
+    new game moves the map and leaves this green, while a game the map drops, a twin
+    counted twice or a game with no line at all still fails.
+    """
+
+    def test_every_game_is_drawn_once(
+        self, today: graphing.Graph, library_games: list[library.Game]
+    ) -> None:
+        assert today.counts["specs"] == len(library_games)
+        drawn = [digest for node in today.nodes for digest in node.hashes]
+        assert sorted(drawn) == sorted(one.hash for one in library_games)
+        assert today.counts["nodes"] == len(today.nodes)
+        assert today.counts["twins"] == sum(
+            len(node.hashes) - 1 for node in today.nodes
+        )
+
+    def test_every_node_carries_a_link_and_a_far_one_a_faint_one(
+        self, today: graphing.Graph
+    ) -> None:
+        joined = {node for link in today.links for node in (link.source, link.target)}
+        assert {node.hash for node in today.nodes} <= joined
+        faint = {
+            node for link in today.links if link.type == "nearest"
+            for node in (link.source, link.target)
+        }
+        assert {node.hash for node in today.nodes if node.far} <= faint
+
+    def test_the_communities_partition_the_joined_games(
+        self, today: graphing.Graph
+    ) -> None:
+        sizes = [one["size"] for one in today.communities]
+        assert sum(sizes) == sum(1 for node in today.nodes if node.community is not None)
+        assert sum(1 for node in today.nodes if node.community is None) == (
+            today.counts["alone"]
+        )
+        _assert_knots(today)

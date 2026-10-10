@@ -88,6 +88,7 @@ async function showDesigner(from) {
     AFRESH = false;
     const source = await api('/api/design/' + from);
     DRAFT = forkOf(source, from);
+    resetPortalState();
     DRAFT_FROM = from;
     // What the game you started from *is*, so the editor can say what changing a rule
     // costs before anything has been changed rather than after it has been saved.
@@ -267,15 +268,23 @@ function drawBoardSide() {
   // this draft's board and army; only a board kept from an earlier check is stale.
   const own = invalid && !!(DRAFT_CHECK.preview && DRAFT_CHECK.preview.standIn);
   const stale = invalid && !own;
+  // The keyboard's place on the board survives the column being drawn again (D9): every
+  // action on the board redraws it, and a person working it by keys keeps working.
+  const keyed = !!(document.activeElement && document.activeElement.closest
+    && document.activeElement.closest('#boardSide figure.benchBoard'));
   side.innerHTML = `<div class="panel benchPanel">
     <div class="row small benchTabs">${benchTabsHtml()}</div>
     ${shown === 'play' ? `<div id="benchPlay">${benchPlayHtml()}</div>`
       : preview ? `<div class="benchRow">
         <div class="tray"${shown === 'setup' ? ' data-palette' : ''}>${
           shown === 'setup' ? paletteHtml() : pieceTrayHtml()}</div>
-        <figure data-board="${shown === 'teach' ? 'alone' : 'start'}"
+        <figure data-board="${shown === 'teach' ? 'alone' : 'start'}" data-frame="board"
+          tabindex="0" aria-label="the board: arrow keys move from square to square, Enter acts
+          on the square, Esc cancels" aria-describedby="benchSaid"
           class="benchBoard${stale ? ' stale' : ''}">${benchBoardHtml(preview, shown)}</figure>
       </div>
+      <div data-saidslot></div>
+      <div class="small muted benchHover" id="benchHover" aria-live="polite"></div>
       ${stale ? `<div class="muted small" style="margin-top:6px">That is the last
         position these rules made, not this draft. Putting a piece down and picking
         squares still work on it, and it redraws as soon as the draft is a game
@@ -290,11 +299,17 @@ function drawBoardSide() {
   side.querySelectorAll('[data-bench]').forEach(node => {
     node.onclick = () => benchMode(node.dataset.bench);
   });
+  placeBenchSaid(side);
   wirePalette(side);
+  wirePortalRow(side);
   wirePieceTray(side);
   wireBoards(side);
   wireBenchPlay();
   wireTry();
+  if (keyed) {
+    const figure = side.querySelector('figure.benchBoard');
+    if (figure && typeof figure.focus === 'function') figure.focus();
+  }
 }
 
 // The one board, drawn for whichever question is being asked of it. Dimmed while the
@@ -302,11 +317,12 @@ function drawBoardSide() {
 // draft -- and it still takes clicks, which is how a half-made edit is repaired.
 function benchBoardHtml(preview, shown) {
   const picked = pickedSquares(preview.width);
+  const bench = benchMarks(shown);
   if (shown !== 'teach') {
-    return boardPreview(preview, shown === 'goes' ? liveMap() : null, picked);
+    return boardPreview(preview, shown === 'goes' ? liveMap() : null, picked, bench);
   }
   const map = DRAFT_MAP && !DRAFT_MAP.live ? DRAFT_MAP : null;
-  if (!map) return boardPreview(preview, null, picked);
+  if (!map) return boardPreview(preview, null, picked, bench);
   // While a move is being taught the marks are the chosen reading's, which is the
   // engine's answer about that descriptor, and the squares that were clicked are tinted
   // under them -- so a reading that reaches more than was asked for shows it.
@@ -315,9 +331,12 @@ function benchBoardHtml(preview, shown) {
   const answer = teaching ? (offer || { moves: [], takes: [] }) : map;
   const from = teaching ? teaching.square : map.from;
   const marks = { from, moves: answer.moves || [], takes: answer.takes || [] };
+  // The engine's transits for the piece on its own among the portals (N5, D5), while the
+  // map is the descriptors' own and no reading is being tried instead.
+  if (!teaching && map.transits) Object.assign(marks, { transits: map.transits, direct: map.direct });
   const clicked = teaching ? { moves: teaching.targets, takes: [] } : picked;
   return boardPreview(loneBoard(preview, from, teaching ? teaching.value : map.value),
-                      marks, clicked);
+                      marks, clicked, bench);
 }
 
 // The live answer, and only when it is one: a mode switch redraws before the fetch it
@@ -329,9 +348,28 @@ function liveMap() {
 
 // What the board under it is showing, in one sentence, plus the controls that mode has.
 function benchSaysHtml(shown) {
-  if (shown === 'setup') return paletteNoteHtml() + pickNoteHtml();
-  return `${TEACHING ? '' : moveKeyHtml()}${pickNoteHtml()}${
+  const legend = benchLegendHtml();
+  if (shown === 'setup') return legend + paletteNoteHtml() + pickNoteHtml();
+  const map = DRAFT_MAP;
+  const piece = (DRAFT.pieces || [])[DRAFT_PIECE] || {};
+  // Where a piece can come out of one end two ways round, it is said once (D6); and the
+  // key to momentum, once a sitting, wherever the board has portals (D5).
+  const choice = shown === 'goes' && map && map.live ? choiceLineHtml(map, piece.name || piece.id) : '';
+  return `${legend}${TEACHING ? '' : moveKeyHtml()}${choice}${portalKeyHtml()}${pickNoteHtml()}${
     shown === 'teach' ? teachPanelHtml() : ''}`;
+}
+
+// The legend under the bench board, for the marks it draws beyond the engine's dots: the
+// rules' marks on squares, the walls and the portals, each named from its `MARK_KINDS` row
+// as the play board names it (S3).
+function benchLegendHtml() {
+  const preview = lastPreview();
+  if (!preview || typeof legendEntries !== 'function') return '';
+  const kinds = new Set(boardKinds(preview.obstacles, preview.portals));
+  const marks = squareMarks(preview, { zone: !zonesShown() });
+  Object.keys(marks).forEach(square => marks[square].forEach(mark => kinds.add(mark.kind)));
+  const said = legendEntries(kinds, preview.wrap, '');
+  return said.length ? `<div class="frame-legend small benchLegend">on the board: ${said.join(' ')}</div>` : '';
 }
 
 // ------------------------------------------------------------- playing it here
@@ -455,7 +493,7 @@ function drawDesigner() {
     </div>
 
     <h3>The pieces</h3>
-    <div class="editor">${(DRAFT.pieces || []).map(pieceEditor).join('')}</div>
+    <div class="editor">${piecesInOrder().map(index => pieceEditor(DRAFT.pieces[index], index)).join('')}</div>
     <div class="row" style="margin-top:10px">
       <button id="dAddPiece">add a piece</button>
       <span class="muted small">Click a piece to see where it can go.</span>
@@ -503,7 +541,7 @@ function drawDesigner() {
 
     <details class="panel" style="margin-top:14px">
       <summary class="muted small">the game as text (JSON), to copy out or paste in</summary>
-      <textarea id="dJson" spellcheck="false" style="min-height:220px; margin-top:8px; font-family:ui-monospace, monospace; font-size:12px">${
+      <textarea id="dJson" class="jsonText" spellcheck="false">${
         esc(JSON.stringify(DRAFT, null, 1))}</textarea>
       <button id="dJsonApply" style="margin-top:6px">use this</button>
       <span class="muted small">Paste a game's text here to edit it.</span>
@@ -646,10 +684,17 @@ function wirePalettePieces(form) {
   });
 }
 
+// The pieces in the order the list shows them: the portal piece last (D1), since it is the
+// portals' and not one anybody plays.
+function piecesInOrder() {
+  const all = (DRAFT.pieces || []).map((_, index) => index);
+  return all.filter(index => !isPortalPiece(index)).concat(all.filter(isPortalPiece));
+}
+
 function pieceEditor(piece, index) {
   const on = index === DRAFT_PIECE;
-  return `<div class="editorPiece${on ? ' on' : ''}" data-piece="${index}"
-      style="${on ? 'border-color:var(--act)' : ''}">
+  if (isPortalPiece(index)) return portalPieceEditor(piece, index, on);
+  return `<div class="editorPiece${on ? ' on' : ''}" data-piece="${index}">
     <div class="row" style="gap:8px">
       <div class="iconSlot" data-icon="${index}">${pieceIconHtml(index)}</div>
       <label class="field" style="width:64px; margin:0"><span>letter</span>
@@ -678,6 +723,30 @@ function pieceEditor(piece, index) {
         <button data-drop="${index}" title="remove this piece from the game">remove piece</button>
       </div>
       ${extrasHtml('piece.' + index, piece, 'more about this piece')}
+    </div>
+  </div>`;
+}
+
+// The portal piece's card (D1): its name says what it is for, it has no worth, royalty or
+// drawing of its own and no *remove* (taking the last pair off takes it), and its move rows
+// offer only what a portal may do, with the line saying why.
+function portalPieceEditor(piece, index, on) {
+  return `<div class="editorPiece portalPiece${on ? ' on' : ''}" data-piece="${index}">
+    <div class="row" style="gap:8px">
+      <div class="iconSlot"><svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">${
+        portalGlyph({ pair: 1, end: 'orange', movedBy: [], open: [true, true] }, null, null,
+                    0, 0, 32, {})}</svg></div>
+      <b>${esc(piece.name || 'portal')}</b>
+      <span class="muted small">(used by the portals; it moves as below)</span>
+    </div>
+    ${portalPieceNoteHtml()}
+    <div style="margin-top:8px">
+      ${(piece.moves || []).length ? '' : `<div class="muted small">It has no way of moving,
+        which is right while nobody may move a portal.</div>`}
+      ${(piece.moves || []).map((move, m) => moveEditor(move, index, m)).join('')}
+      <div class="row" style="margin-top:7px">
+        <button data-addmove="${index}">add a way of moving</button>
+      </div>
     </div>
   </div>`;
 }
@@ -875,19 +944,23 @@ function ontoHex() {
 // The kinds are the schema's `MOVE_KINDS`, which a test holds this menu to. A sweep takes
 // a slide's fields, so it needs no control of its own.
 const TURNINGS = [['none', 'as written'], ['lateral', 'left and right'],
-                  ['rotate4', 'four ways'], ['dihedral8', 'all eight ways']];
+                  ['rotate4', 'four ways'], ['dihedral8', 'all eight ways'],
+                  ['rotate6', 'six ways'], ['dihedral12', 'all twelve ways']];
+const SQUARE_TURNS = ['none', 'lateral', 'rotate4', 'dihedral8'];
+const HEX_TURNS = ['none', 'rotate6', 'dihedral12'];
 
 function onHexagons() {
   return ((DRAFT && DRAFT.board) || {}).lattice === 'hex';
 }
 
-// The *turned* menu's choices. The turns are the square's: on hexagons they carry a
-// direction off the cells, which the rules refuse, so a hex draft is offered *as written*
-// alone, plus a move's own turn while it still has one, so the menu shows what is there
-// and setting it back is one choice.
+// The *turned* menu's choices. Each lattice has its own turns (schema 18b): the square's
+// quarter turns carry a direction off a hexagon's cells and the hexagon's sixth turns
+// carry one off a square's, which the rules refuse either way. So a draft is offered its
+// own lattice's, plus a move's own turn while it still has one, so the menu shows what is
+// there and setting it back is one choice.
 function turnings(move) {
-  if (!onHexagons()) return TURNINGS;
-  return TURNINGS.filter(([value]) => value === 'none' || value === move.symmetry);
+  const own = onHexagons() ? HEX_TURNS : SQUARE_TURNS;
+  return TURNINGS.filter(([value]) => own.includes(value) || value === move.symmetry);
 }
 
 function moveEditor(move, piece, index) {
@@ -906,23 +979,31 @@ function moveEditor(move, piece, index) {
   const condition = move.condition || {};
   const more = move.range !== undefined || move.min_range !== undefined
     || condition.from_rank !== undefined;
+  // The portal piece's rows offer only what a portal may do (D1): no sweep, *move only*,
+  // and the turns that read the same for both players. A value already written stays on
+  // its menu, so the row shows what the draft says beside the refusal of it.
+  const portal = isPortalPiece(piece);
+  const kinds = [['slide', 'slides'], ['leap', 'leaps'], ['hop', 'hops over'],
+                 ['lame', 'blockable leap'], ['sweep', 'sweeps']]
+    .filter(([value]) => !portal || value !== 'sweep' || move.kind === 'sweep');
+  const modes = [['both', 'move or take'], ['move', 'move only'], ['capture', 'take only']]
+    .filter(([value]) => !portal || value === 'move' || value === (move.mode || 'both'));
+  const turns = turnings(move).filter(([value]) => !portal || ['rotate4', 'dihedral8']
+    .includes(value) || value === (move.symmetry || 'none'));
   return `<div class="moveRow">
-    ${field('how it travels',
-      pick('kind', [['slide', 'slides'], ['leap', 'leaps'], ['hop', 'hops over'],
-                    ['lame', 'blockable leap'], ['sweep', 'sweeps']], move.kind || 'slide'),
+    ${field('how it travels', pick('kind', kinds, move.kind || 'slide'),
       'slides run until something stops them; leaps jump; hops need a piece to jump'
       + ' over; sweeps jump along the line and take everything they pass, their own'
       + ' pieces too')}
-    ${field('turned', pick('symmetry', turnings(move), move.symmetry || 'none'),
-      onHexagons() ? 'on hexagons a move goes only the directions listed, so list every one'
+    ${field('turned', pick('symmetry', turns, move.symmetry || 'none'),
+      onHexagons() ? 'which of the hexagon\'s turns the direction also gets: six ways, or'
+        + ' six ways and their mirrors'
         : 'which turns of the direction it also gets')}
     ${field('direction, sideways then forward',
       box('vectors', esc((move.vectors || []).map(v => v.join(',')).join(' ')), '0,1 1,2'),
       'one step as sideways,forward -- 0,1 is one square forward and 1,0 is one to the'
       + ' right; several separated by spaces')}
-    ${field('and it may',
-      pick('mode', [['both', 'move or take'], ['move', 'move only'],
-                    ['capture', 'take only']], move.mode || 'both'),
+    ${field('and it may', pick('mode', modes, move.mode || 'both'),
       'a pawn moves one way and takes another, which is two rows')}
     <button data-dropmove="${piece}.${index}" title="remove this move">&times;</button>
     <details class="moveMore"${more ? ' open' : ''}>
@@ -1307,8 +1388,12 @@ function wireDesigner() {
   form.querySelectorAll('[data-addmove]').forEach(node => {
     node.onclick = event => {
       event.stopPropagation();
-      DRAFT.pieces[Number(node.dataset.addmove)].moves.push(
-        { kind: 'slide', vectors: [[0, 1]], symmetry: 'rotate4' });
+      const index = Number(node.dataset.addmove);
+      const piece = DRAFT.pieces[index];
+      piece.moves = piece.moves || [];
+      // A portal's new way of moving is the one step a portal may take (D1).
+      piece.moves.push(isPortalPiece(index) ? JSON.parse(JSON.stringify(PORTAL_STEP))
+        : { kind: 'slide', vectors: [[0, 1]], symmetry: 'rotate4' });
       // On hexagons the slide it arrives with goes the hexagons' six ways (Q640).
       if ((DRAFT.board || {}).lattice === 'hex') return ontoHex();
       changed(true);
@@ -1335,17 +1420,18 @@ function wireDesigner() {
       form.querySelectorAll('[data-piece]').forEach(card => {
         const on = Number(card.dataset.piece) === piece;
         card.classList.toggle('on', on);
-        card.style.borderColor = on ? 'var(--act)' : '';
       });
       loadMoveMap();
     };
   });
   wireUploads(form);
   wirePalettePieces(form);
+  wirePortalCards(form);
 
   form.querySelector('#dJsonApply').onclick = () => {
     try {
       DRAFT = JSON.parse(form.querySelector('#dJson').value);
+      resetPortalState();
       DRAFT_PIECE = 0;
       changed(true);
       loadMoveMap();
@@ -1448,6 +1534,9 @@ function checkDraft() {
         wireUploads(box);
       });
       refreshPalette();
+      // The pairs' sentences and warnings, the refusals that name them, and whether
+      // another pair can go in (P3).
+      drawPortalSays();
       // Which rules cannot go in this game, asked once the draft is one. A card reads
       // the opening position for the piece it needs, so this waits for the check.
       if (answer.valid) loadRefusals();
@@ -1495,11 +1584,17 @@ function snapshotDraft() {
 // One step back, or forward. The whole draft is replaced, so a rule half added and the
 // piece it named come back together -- which a per-field undo could not promise.
 function stepDraft(forward) {
+  // Undo while a pair is being put down puts the placement away and nothing else (D8).
+  if (!forward && cancelPortalTool()) return;
   const from = forward ? DRAFT_REDO : DRAFT_UNDO;
   const to = forward ? DRAFT_UNDO : DRAFT_REDO;
   if (!from.length) return;
   to.push(JSON.stringify(DRAFT));
+  const before = DRAFT;
   DRAFT = JSON.parse(from.pop());
+  resetPortalState();
+  // What came back, where it was a portal (D8): *Pair 2 is back, on b4 and e3*.
+  benchSay(portalUndoWords(before, DRAFT));
   DRAFT_SNAP = JSON.stringify(DRAFT);
   DRAFT_PIECE = Math.min(DRAFT_PIECE, Math.max(0, (DRAFT.pieces || []).length - 1));
   // Each of these points at something in the draft that has just been replaced.
@@ -1623,6 +1718,7 @@ function wireStartFrom() {
     const found = (DESIGN_KIT.templates || []).find(t => t.key === game);
     if (!found) return;
     DRAFT = fromTemplate(found.spec);
+    resetPortalState();
     FRESH_PIECE = null;
     DRAFT_FROM = '';
     DRAFT_PARENT = null;
@@ -1831,6 +1927,7 @@ function takeStep(operator, seed) {
     const made = (answer || {}).remix;
     if (!made || !made.spec) throw new Error('that step made nothing of this draft');
     DRAFT = made.spec;
+    resetPortalState();
     DRAFT_PIECE = 0;
     DRAFT_SQUARE = -1;
     FRESH_PIECE = null;
@@ -1942,10 +2039,10 @@ function drawVerdict() {
           ? ' From its page you can start a design run from it.' : ''}
       </div>
       <div id="dSaved">${DRAFT_SAVED}</div>
-      <div id="dLadder" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--line)"
+      <div id="dLadder" class="ruled"
         >${ladderHtml(check)}</div>
-      <div id="dHere">${hereHtml(check)}</div>
-      <div id="dFamily" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--line)"
+      <div id="dHereAway">${hereAwayHtml(check)}</div>
+      <div id="dFamily" class="ruled"
         >${familyHtml()}</div>
     </div>
     ${identityHtml(check)}
@@ -2111,8 +2208,49 @@ function redrawLadder() {
   if (identity && DRAFT_CHECK && DRAFT_CHECK.valid) {
     identity.outerHTML = identityHtml(DRAFT_CHECK);
   }
+  // The measuring control moves into *Publish* once the standing says the button is this
+  // person's to press, and back out when it is not (`hereInPanel`).
+  const away = document.getElementById('dHereAway');
+  if (away && DRAFT_CHECK && DRAFT_CHECK.valid) away.innerHTML = hereAwayHtml(DRAFT_CHECK);
   wireLadder();
+  wireHere();
+  waitForPublish();
 }
+
+// The standing the rungs are drawn from, when it is the one for this check's hash.
+function standingFor(check) {
+  return check && DRAFT_STANDING && DRAFT_STANDING.hash === check.hash ? DRAFT_STANDING : null;
+}
+
+// Q742, the user: the measuring control sits where the measurement is asked for, so a
+// designer never scrolls away to measure and back to publish. On the site, wherever the
+// standing draws this person's *Publish* button, the control -- its button, its progress
+// and its result -- is drawn inside that panel, straight under the line that says a score
+// is needed (`publishHtml`). Everywhere else (the local application, somebody else's
+// game, a game already on trial) it keeps its own place under the rungs.
+function hereInPanel(s) {
+  return ACCOUNTS && !!(s && s.publish && s.publish.publishable);
+}
+
+function hereAwayHtml(check) {
+  return hereInPanel(standingFor(check)) ? '' : `<div id="dHere">${hereHtml(check)}</div>`;
+}
+
+// While a press of *Publish* waits for the site's check (Q742), the standing is asked
+// again every few seconds, so the panel turns to *On trial* by itself when the runner
+// puts it there, with nothing more to press. One timer, gone once nothing waits.
+let PUBLISH_TIMER = null;
+function waitForPublish() {
+  const p = (DRAFT_STANDING || {}).publish;
+  const waiting = !!(p && p.waitsForCheck) && DRAFT_STANDING.hash === DRAFT_HASH;
+  if (!waiting || PUBLISH_TIMER) return;
+  const hash = DRAFT_HASH;
+  PUBLISH_TIMER = setTimeout(() => {
+    PUBLISH_TIMER = null;
+    if (hash === DRAFT_HASH && document.getElementById('dPublish')) loadStanding(hash);
+  }, PUBLISH_POLL);
+}
+let PUBLISH_POLL = 5000;
 
 // Each rung is done, failed, under way or still ahead, with what it costs on this
 // machine. A number appears only on the measurement rung, and only when it is current.
@@ -2212,7 +2350,7 @@ function ladderHtml(check) {
   // works, so a sentence saying the site nominates nothing would contradict a live button
   // drawn just above it on a game on trial.
   const withheld = measurable && !canMeasure;
-  return `${publishHtml(s)}<h3 style="margin-top:0">From a draft to a ${
+  return `${publishHtml(s, check)}<h3 style="margin-top:0">From a draft to a ${
       ACCOUNTS ? 'score' : 'number'}</h3>
     <ol class="rungs small" style="margin:0; padding-left:0; list-style:none">${rungs.map(rung => {
       const state = states[rung.key] || { mark: 'ahead', says: '' };
@@ -2255,38 +2393,60 @@ function ladderHtml(check) {
 // The local application sends neither, and this draws nothing. On trial, its designer
 // also sees the shortlist's bar and *nominate it* (Q518), drawn by the game page's own
 // `shortlistHtml` from the same `shortlist.panel` the game page is sent.
-function publishHtml(s) {
+//
+// Q742: the button opens once this computer has measured the draft and sent the score,
+// not when the site has finished checking it. A press then waits (`waitsForCheck`): the
+// button gives way to *Waiting for verification* and the server's sentence, and the panel
+// is asked again until the game is on trial (`waitForPublish`). A waiting publish the site
+// called off says why (`stopped`) above the button. The measuring control is drawn here,
+// under the line that asks for a score (`hereInPanel`).
+function publishHtml(s, check) {
   const p = s.publish;
   const level = s.level || (p && p.level) || '';
   if (!p && !s.track) return '';
-  const ticks = ((p && p.ticks) || []).map(tick => `<li style="margin-bottom:4px">
-      <span style="display:inline-block; width:1.4em; color:${tick.met
+  const waits = !!(p && p.waitsForCheck);
+  // A list of `.marks`: the mark in a column of its own, so a tick's sentence that wraps
+  // stays clear of it on a phone (Q777).
+  const ticks = ((p && p.ticks) || []).map(tick => `<li style="margin-bottom:4px"><span
+      style="color:${tick.met
         ? 'var(--good)' : 'var(--bad)'}">${tick.met ? '&#10003;' : '&#10007;'}</span>${
       esc(tick.says)}</li>`).join('');
   // Q722: the terms' one sentence beside a box, the box unticked each time it is drawn.
   // The button waits for it as well as for the ticks; a press sends the version the box
   // stood for and nothing else (`site/terms.py`).
-  const terms = p && p.publishable && p.terms ? p.terms : null;
+  const terms = p && p.publishable && p.terms && !waits ? p.terms : null;
   const agree = terms ? `<label class="small" id="dTerms" style="display:flex; gap:8px;
         align-items:flex-start; margin:6px 0 8px; max-width:34rem">
         <input type="checkbox" id="dTermsAgree" data-version="${esc(String(terms.version))}"
           style="margin-top:3px; flex:none">
         <span>${esc(terms.says)} <a href="${esc(terms.href)}" target="_blank" rel="noopener"
           >the terms</a></span></label>` : '';
-  const button = p && p.publishable
+  const button = p && p.publishable && !waits
     ? `${agree}<div class="row"><button id="dPublishGo" class="primary" disabled
         data-open="${p.open ? 'yes' : 'no'}"
         title="${esc(p.open ? 'tick the box to agree to the terms first'
           : p.waiting || 'both ticks are needed first')}"
         >publish</button></div>` : '';
   const says = p ? p.says : s.levelSays;
+  const waiting = !p || !p.waiting ? ''
+    : waits ? `<div class="verdict" id="dPublishWaiting" style="margin:8px 0">
+        <div>Waiting for verification</div>
+        <div class="small" style="font-weight:400; margin-top:5px">${esc(p.waiting)}</div></div>`
+    : `<div class="small" id="dPublishWaiting" style="margin:4px 0 6px">${esc(p.waiting)}</div>`;
+  // While a press waits there is nothing to measure: the control is drawn only to show a
+  // measurement already in hand (its progress, its number, the site's check of it).
+  const here = hereInPanel(s) && !(waits && !HERE) ? `<div id="dHere" data-in="panel">${
+    hereHtml(check === undefined ? DRAFT_CHECK : check, true)}</div>` : '';
   return `<div id="dPublish" data-level="${esc(level)}" style="margin:0 0 12px">
       <h3 style="margin-top:0">Where this game stands: ${esc(level)}</h3>
       ${trackHtml(s.track)}
       ${says ? `<div class="small">${esc(says)}</div>` : ''}
-      ${ticks ? `<ul class="small" style="list-style:none; padding-left:0; margin:6px 0">${ticks}</ul>` : ''}
+      ${ticks ? `<ul class="small marks" style="margin:6px 0">${ticks}</ul>` : ''}
+      ${p && p.stopped ? `<div class="error small" id="dPublishStopped" style="margin:6px 0">${
+        esc(p.stopped)}</div>` : ''}
+      ${waiting}
+      ${here}
       ${button}
-      ${p && p.waiting ? `<div class="muted small" style="margin-top:4px">${esc(p.waiting)}</div>` : ''}
       ${s.shortlist && s.shortlist.mine ? shortlistHtml(s.shortlist) : ''}
       <div id="dPublishSays"></div>
     </div>`;
@@ -2342,7 +2502,12 @@ function wireLadder() {
     if (agree && agree.checked) body.terms = Number(agree.dataset.version);
     api('/api/design/publish', body).then(answer => {
       if (box) box.innerHTML = `<div class="ok">${esc(answer.said)}</div>`;
-      loadStanding(hash);
+      // Q742: a press the site takes while it checks the score comes back `waiting`, and
+      // the panel redrawn from the standing says so in its own box, in the same words.
+      loadStanding(hash).then(() => {
+        const again = document.getElementById('dPublishSays');
+        if (again && !answer.waiting) again.innerHTML = `<div class="ok">${esc(answer.said)}</div>`;
+      });
     }).catch(error => {
       if (box) box.innerHTML = `<div class="error">${esc(errorWords(error))}</div>`;
     });
@@ -2532,8 +2697,11 @@ function identityMeasuredHtml(check, parent) {
 }
 
 // Whether the game this draft came from has a number, in the interface's own three
-// states: current, stale with the repair named, or never measured. A stale score is not
-// shown as a score anywhere else and is not shown as one here. A current measurement
+// states: current, stale with the repair named, or never measured. Elsewhere a stale
+// score is shown as its last number, marked provisional (EV2, docs/plan-evolving-score.md
+// §3). Here it reads *out of date* with no number, by design: the editor compares a draft
+// with its parent, a provisional estimate enters no comparison, and the server sends the
+// parent's `current_score` only (`/api/design/<hash>`). A current measurement
 // with no number -- too few of its runs could be scored -- or with no run count reads
 // *no score*, not *never measured*: it was measured, and a number that does not say
 // what it rests on is not drawn.

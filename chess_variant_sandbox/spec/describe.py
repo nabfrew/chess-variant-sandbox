@@ -47,6 +47,8 @@ _SYMMETRY_TEXT = {
     "lateral": " mirrored left and right",
     "rotate4": " in all four rotations",
     "dihedral8": " in all eight directions",
+    "rotate6": " in all six turns",
+    "dihedral12": " in all six turns and their mirrors",
 }
 
 # How many squares a region is spelled out in full before it is summarised. A palace is
@@ -198,6 +200,9 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     lines.extend(_describe_strike(spec, rules))
     lines.extend(_describe_contacts(spec, rules))
     lines.extend(_describe_npcs(spec, rules))
+    # Schema 19: a portal changes where a line goes, so it is read with the walls and
+    # the wild pieces, before any sentence about what a capture or a promotion does.
+    lines.extend(_describe_portals(spec, rules))
 
     lines.append(
         "A player with no legal move "
@@ -1071,6 +1076,12 @@ RULE_WORDS: dict[str, tuple[str, str]] = {
         "next square of its route and eats whatever stands there, and taking one is "
         "worth its bounty.",
     ),
+    "portals": (
+        "portals",
+        "Pairs of squares that send a piece on: a move that ends on one comes out of the "
+        "other, one step further on in the direction it was going, and ends there. Each "
+        "pair says who may move its two ends and whose pieces may go in by which.",
+    ),
     "obstacles": (
         "walls on the board",
         "Squares nothing may stand on. A sliding line stops at one, and a jump vaults it "
@@ -1089,7 +1100,8 @@ RULE_WORDS: dict[str, tuple[str, str]] = {
     ),
     "reach": (
         "winning by arriving",
-        "Arriving on one of these squares decides the game there and then.",
+        "Arriving on one of these squares decides the game there and then; or, where the "
+        "rule says so, moving off one does, and standing there decides nothing.",
     ),
     "repetition_draw": (
         "drawing by repetition",
@@ -1319,6 +1331,13 @@ def _describe_promotion(promotion: dict[str, Any]) -> str:
     may = "may become" if promotion.get("mandatory", True) is False else "becomes"
     if may == "may become":
         becomes = becomes.replace("becomes one of", "may become one of", 1)
+    if promotion.get("only_lost") is True:
+        # Schema 18 (Q783): Grand chess's rule, which a reader of the list alone would not
+        # guess -- and with every target withheld, a compulsory promotion is no move.
+        becomes += (
+            ", but only into a piece its side has lost: one it has fewer of on the board "
+            "than it started with"
+        )
     if promotion.get("on_leaving") is True:
         # Schema 15: the move out of the zone promotes too, which is shogi's rule and the
         # one a player who has only been told "reaching" would not guess.
@@ -1425,14 +1444,41 @@ def _describe_strike(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         return []
     effect = strike.get("effect", "capture")
     chain = strike.get("chain")
-    if effect == "capture" or not chain:
-        return []
-
+    position = strike.get("position", "advance")
     names = {
         piece["id"]: piece.get("name", piece["id"])
         for piece in spec.get("pieces", [])
         if isinstance(piece, dict) and "id" in piece
     }
+    immune = [str(names.get(pid, pid)) for pid in strike.get("immune", [])]
+    # Schema 17 (Q540): the capturer changes sides, under any effect.
+    switching = strike.get("switches_sides")
+    switch_lines = (
+        [
+            f"A {', '.join(str(names.get(pid, pid)) for pid in switching)} that captures "
+            "changes sides: it becomes the other player's piece on the square it took."
+        ]
+        if isinstance(switching, list) and switching
+        else []
+    )
+    if effect == "capture":
+        # Schema 17 (Q540): what a plain capture leaves behind, when it is not plain.
+        said = {
+            "stay": "Taking a piece removes it, but the capturing piece stays where it "
+            "stood and does not move to the square it took.",
+            "home": "A piece that is taken is reborn on its home square: the square the "
+            "setup gives its type on the capture's file, or failing that on the capture "
+            "square's colour. If that square is occupied, or the type has no home, the "
+            "piece is removed. A reborn piece stands as if it had never moved.",
+        }.get(position)
+        lines = [said] if said else []
+        lines += switch_lines
+        if lines and immune:
+            lines.append(f"{', '.join(immune)} are taken as usual.")
+        return lines
+    if not chain:
+        return switch_lines
+
     verb = "demoted" if effect == "demote" else "promoted"
     links = [
         f"{names.get(link['from'], link['from'])} becomes "
@@ -1448,19 +1494,21 @@ def _describe_strike(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         "advance": "the attacker takes the square",
         "choose": "the attacker takes the square and places the struck piece on "
         f"{_landing_phrase(strike)}; a piece with no such square cannot be taken",
-    }[strike.get("position", "advance")]
+        "home": "the attacker takes the square and the struck piece is reborn on its "
+        "home square (the setup's square for its type on the capture's file, or failing "
+        "that on the capture square's colour), or removed if that square is occupied",
+    }[position]
 
     lines = [
         f"Taking a piece does not remove it. It is {verb} instead, and {where}.",
         f"In the chain, {'; '.join(links)}.",
         "Anything the chain does not name is captured outright, as usual.",
     ]
-    immune = [str(names.get(pid, pid)) for pid in strike.get("immune", [])]
     if immune:
         lines.append(
             f"{', '.join(immune)} cannot be struck, so taking one removes it for good."
         )
-    return lines
+    return lines + switch_lines
 
 
 def _describe_contacts(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
@@ -1495,7 +1543,11 @@ def _describe_contacts(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]
         mover, onto = said(link.get("mover")), said(link.get("onto"))
         own = link.get("own") is True
         halves = []
-        if "mover_to" in link:
+        if "mover_to" in link and link["mover_to"] == link.get("mover"):
+            # Schema 18 (Q781): Einstein's keeping link. Its whole content is that it
+            # beats the promotion, so the sentence says what is kept.
+            halves.append(f"the {mover} stays as it is")
+        elif "mover_to" in link:
             halves.append(f"the {mover} becomes {said(link['mover_to'])}")
         if "onto_to" in link:
             halves.append(f"the {onto} becomes {said(link['onto_to'])}")
@@ -1532,6 +1584,12 @@ def _describe_contacts(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]
         "Any other capture is ordinary, so the piece taken is removed and the piece "
         "taking it is unchanged.",
     ]
+    if any(isinstance(link, dict) and link.get("mover_to") == link.get("mover") for link in links):
+        lines.append(
+            "What a link says the taker becomes is decided after any promotion that move "
+            "would make, so a taker a link keeps as it is stays what it was even where "
+            "its promotion would have changed it."
+        )
     immune = [said(pid) for pid in immune_ids]
     if immune:
         lines.append(
@@ -1609,6 +1667,69 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         lines.append(
             f"A wild {name} belongs to neither player. It {walk}. {eats}.{taken} "
             f"{worth}{mirrored}"
+        )
+    return lines
+
+
+_PASSAGE_WORDS = {
+    "both_ways": "may go in by either end",
+    "orange_to_blue": "may go in only by the orange end",
+    "blue_to_orange": "may go in only by the blue end",
+    "closed": "may not go in at all: to them both ends are solid blocks",
+}
+
+
+def _describe_portals(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """Schema 19: pairs of portals, said the way a player has to be told them.
+
+    One sentence for what a portal does, then one per pair: where its two ends start, who
+    may move them, and whose pieces may go in by which end. "First player" and "second
+    player" because the sides' own names are the page's; `plain` and the board say White
+    and Black where the ruleset does.
+    """
+    portals = rules.get("portals")
+    if not isinstance(portals, list) or not portals:
+        return []
+    lines = [
+        "A piece whose move ends on a portal does not stop there: it comes out of the other "
+        "portal of the same pair, one step beyond it in the direction it was travelling "
+        "(a move up and to the right by any amounts comes out diagonally up and to the "
+        "right), and its move ends there, capturing, promoting or winning as on any square. "
+        "If that square is off the board, a wall, its own piece, a piece it may not take, "
+        "another portal or the square it started from, the move cannot be made. Where it "
+        "could arrive from two directions, the player chooses. A portal is never captured, "
+        "and moving one is a move onto an empty square."
+    ]
+    players = ("the first player", "the second player")
+    for number, pair in enumerate(portals, start=1):
+        if not isinstance(pair, dict):
+            continue
+        moved_by: dict[str, Any] = (
+            pair["moved_by"] if isinstance(pair.get("moved_by"), dict) else {}
+        )
+        movers = []
+        for end in ("orange", "blue"):
+            who = [players[p] for p in moved_by.get(end) or [] if p in (0, 1)]
+            if who:
+                movers.append(f"the {end} end may be moved by {' or '.join(who)}")
+        moved = "; ".join(movers) if movers else "nobody moves either end"
+        passage: dict[str, Any] = (
+            pair["passage"] if isinstance(pair.get("passage"), dict) else {}
+        )
+        ways = [
+            f"{players[p]}'s pieces {_PASSAGE_WORDS.get(passage.get(str(p), 'both_ways'), '')}"
+            for p in (0, 1)
+        ]
+        # Schema 20 (Q807): the bar on going straight back.
+        barred = (
+            " A portal of this pair that has just been moved may not be moved straight back "
+            "onto the square it came from on the very next move, by either player."
+            if pair.get("no_straight_back") is True
+            else ""
+        )
+        lines.append(
+            f"Portal pair {number} has its orange end on {pair.get('orange')} and its blue "
+            f"end on {pair.get('blue')}: {moved}; {ways[0]}, and {ways[1]}.{barred}"
         )
     return lines
 
@@ -1741,7 +1862,15 @@ def _describe_extra_rules(rules: dict[str, Any]) -> list[str]:
     if rules.get("check_limit"):
         lines.append(f"Delivering {rules['check_limit']} checks wins.")
     reach = rules.get("reach")
-    if reach:
+    if reach and reach.get("on") == "leave":
+        # Schema 18 (Q786): the move's origin decides, not where a piece stands.
+        piece = reach.get("piece", "any piece")
+        where = _squares(reach["squares"], limit=6)
+        lines.append(
+            f"{piece} moving off {where} is a {reach.get('result', 'win')}: it has to get "
+            f"there first and then step away, and standing there decides nothing."
+        )
+    elif reach:
         piece = reach.get("piece", "any piece")
         safe = " and surviving there" if reach.get("safe") else ""
         lines.append(
@@ -1752,9 +1881,17 @@ def _describe_extra_rules(rules: dict[str, Any]) -> list[str]:
     if extinction:
         what = "any piece" if extinction["pieces"] == "any" else ", ".join(extinction["pieces"])
         count = extinction.get("min_count", 1)
-        lines.append(
-            f"Holding fewer than {count} of {what} is a {extinction.get('result', 'loss')}."
-        )
+        result = extinction.get("result", "loss")
+        if extinction.get("per_type") is True:
+            # Schema 18 (Q783): each type on its own, and the one ordering a reader has to
+            # be told -- a move can run out a type on both sides at once.
+            lines.append(
+                f"Holding fewer than {count} of any one of {what}, each counted on its "
+                f"own, is a {result}; where one move does that to both sides, it is the "
+                "side that moved that has it."
+            )
+        else:
+            lines.append(f"Holding fewer than {count} of {what} is a {result}.")
     drops = rules.get("drops")
     if drops:
         lines.append(
@@ -1763,6 +1900,21 @@ def _describe_extra_rules(rules: dict[str, Any]) -> list[str]:
             else "Held pieces may be played onto the board."
         )
         lines.extend(_describe_stock(drops.get("stock")))
+        if drops.get("placement") is True:
+            # Schema 18 (Q784): the placement phase, which changes what a turn *is* for
+            # the opening stretch of the game, so it is said right after the stock.
+            lines.append(
+                "While a player holds any piece in hand, playing one onto the board is "
+                "their only move: the army in hand is placed before anything on the board "
+                "moves, and a royal still in hand is neither in check nor lost."
+            )
+        if drops.get("either_face") is True:
+            # Schema 18 (Q785): a held piece has two ways onto the board, and the pairs
+            # are the `promoted_from` notes each piece already carries.
+            lines.append(
+                "A piece in hand may be played as itself or as its other face, the piece "
+                "that reverts to it when captured, on any square it may be played on."
+            )
         lines.extend(_drop_restrictions(drops))
     lines.extend(_describe_explosion(rules.get("explode_on_capture")))
     return lines
@@ -1790,6 +1942,12 @@ def _describe_explosion(explosion: Any) -> list[str]:
     spared = f", except {', '.join(immune)}" if immune else ""
     who = f"A capture by {', '.join(by)}" if isinstance(by, list) else "A capture"
     what = f" of {', '.join(of)}" if isinstance(of, list) else ""
+    if explosion.get("radius", 1) == 0:
+        # Schema 17 (Q540): kamikaze.
+        return [
+            f"{who}{what} destroys only the capturing piece and the piece it took; "
+            "nothing beside them is touched."
+        ]
     return [
         f"{who}{what} destroys the capturing piece and everything beside it{spared}."
     ]
@@ -1955,6 +2113,14 @@ def _describe_ending_order(rules: dict[str, Any]) -> list[str]:
     stated = [
         (key, prose) for key, prose in _ENDING_ORDER if _ending_is_declared(key, rules)
     ]
+    # Schema 18 (Q786): leaving is read in arrival's slot of the order (`game.rs`'s
+    # `schema_two_ending`), so only its words change.
+    reach = rules.get("reach")
+    if isinstance(reach, dict) and reach.get("on") == "leave":
+        stated = [
+            (key, "a move off a winning square" if key == "reach" else prose)
+            for key, prose in stated
+        ]
     if len(stated) < 2:
         return []
     return [

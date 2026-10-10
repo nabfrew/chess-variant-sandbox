@@ -285,6 +285,7 @@
     }
   },
   "provenance": {
+    "added": "2026-09-07",
     "origin": "human",
     "source": "international chess",
     "history": "Hand-written as archive/stones.json with the stock changed from \"unlimited\" to 3 and nothing else, as the demonstrating ruleset for a stock that is a count (schema 10, row 27 of reference/schema-showcase-coverage.md). The count is the one thing an unlimited supply cannot say: a resource that is spent. Repaired 2026-09-08 (Q131) with the same capture matrix as its parent, and it was not a formality here either: 1078 of the 1434 stones placed in the superseded spec's run (0.7517; runs/707d1f6f1dbc-0) were captured afterwards, so three quarters of what \"never leaves\" describes did leave."

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +29,7 @@ from test_corpus import SPEC
 from chess_variant_sandbox import cli, fairy, measurement, premise
 from chess_variant_sandbox.spec import spec_hash
 from chess_variant_sandbox.tournament import duel as duel_module
-from chess_variant_sandbox.tournament.duel import Duel
+from chess_variant_sandbox.tournament.duel import Curtailed, Duel
 
 ROSTER = ("random", "greedy", "minimax:nodes=12", "minimax:nodes=24")
 TINY = premise.Rule(pairs=2, fairy_pairs=2)
@@ -98,7 +99,9 @@ class TestTheCheck:
         assert played["hash"] == DIGEST
         assert ceiling["candidate"] == "minimax:nodes=24"
         assert ceiling["reference"] == "minimax:nodes=192"
-        assert ceiling["games"] == 2 * TINY.pairs and len(ceiling["pairs"]) == TINY.pairs
+        k = ceiling["decided_after"]
+        assert ceiling["planned_pairs"] == TINY.pairs and 1 <= k <= TINY.pairs
+        assert ceiling["games"] == 2 * k and len(ceiling["pairs"]) == k
         assert ceiling["passes"] == (ceiling["score"] >= TINY.ceiling_floor)
         fairy_part = played["fairy"]
         assert played["verdict"] == (
@@ -107,7 +110,25 @@ class TestTheCheck:
             else premise.FAILS
         )
         assert played["basis"]["rule"] == TINY.spelled()
+        assert TINY.spelled().endswith("; curtailed")
         assert played["basis"]["player"] == "minimax:nodes=24"
+
+    @pytest.mark.parametrize("workers", [1, 4])
+    def test_curtailed_it_gives_the_full_check_s_verdict(
+        self, played: dict[str, Any], workers: int
+    ) -> None:
+        """plan-compute §4.2: the same verdict as the sixteen pairs, the prefix's score."""
+        rule = premise.Rule(pairs=6, fairy_pairs=6)
+        whole = premise.check(
+            SPEC, agents=ROSTER, rule=replace(rule, curtailed=False), workers=workers
+        )
+        cut = premise.check(SPEC, agents=ROSTER, rule=rule, workers=workers)
+        assert cut["verdict"] == whole["verdict"]
+        assert cut["ceiling"]["passes"] == whole["ceiling"]["passes"]
+        k = cut["ceiling"]["decided_after"]
+        assert k < rule.pairs, "the fixture never stops early"
+        assert cut["ceiling"]["pairs"] == whole["ceiling"]["pairs"][:k]
+        assert cut["basis"]["rule"] != whole["basis"]["rule"]
 
     def test_it_is_a_pure_function_of_the_game_the_roster_and_the_rule(
         self, played: dict[str, Any]
@@ -326,15 +347,16 @@ class TestFairyStockfish:
         """With a stand-in engine and duel: a pass above and a fail below make a fail."""
         monkeypatch.setattr(premise, "fairy_engine", lambda: "Stand-in@000000000000")
         monkeypatch.setattr(premise, "_fairy_plays", lambda spec: "")
-        real = duel_module.duel
+        real = duel_module.curtailed_duel
 
         def duel(spec: dict[str, Any], candidate: str, reference: str, pairs: int,
-                 **options: Any) -> Duel:
+                 verdict: Any, **options: Any) -> Curtailed:
             if reference.startswith("fairystockfish:"):
-                return Duel(candidate, reference, 0.10, 0.03, (0.1,) * pairs, 0)
-            return real(spec, candidate, reference, pairs, **options)
+                found = Duel(candidate, reference, 0.0, 0.0, (0.0,) * 2, 0)
+                return Curtailed(found, verdict(found.pairs + (0.0,) * (pairs - 2)), pairs)
+            return real(spec, candidate, reference, pairs, verdict, **options)
 
-        monkeypatch.setattr(duel_module, "duel", duel)
+        monkeypatch.setattr(duel_module, "curtailed_duel", duel)
         lenient = premise.Rule(pairs=2, fairy_pairs=2, ceiling_floor=0.0)
         payload = premise.check(SPEC, agents=ROSTER, rule=lenient, workers=1)
         assert payload["ceiling"]["passes"] is True
@@ -361,7 +383,8 @@ class TestFairyStockfish:
             pytest.skip("the installed Fairy-Stockfish does not play this game as ours does")
         payload = premise.check(SPEC, agents=ROSTER, rule=TINY, workers=1)
         part = payload["fairy"]
-        assert part["played"] is True and part["games"] == 2 * TINY.fairy_pairs
+        assert part["played"] is True and part["games"] == 2 * part["decided_after"]
+        assert part["planned_pairs"] == TINY.fairy_pairs
         assert part["reference"] == "fairystockfish:nodes=24"
         assert payload["basis"]["fairy_engine"].startswith(fairy.engine_name())
 

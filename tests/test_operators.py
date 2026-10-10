@@ -784,7 +784,10 @@ class TestAResizedPromotionFollowsTheFarEdge:
                     continue
                 child = resize_board(copy.deepcopy(parent), width, height)
                 where = f"{path.stem} at {width}x{height}"
-                assert self._from_the_far_edge(child) == before, where
+                # A distance the shorter board does not have is gone: `einstein`'s zone is
+                # every rank (Q781), and on a board one rank shorter it still is.
+                expected = [[d for d in zone if d < height] for zone in before]
+                assert self._from_the_far_edge(child) == expected, where
                 refused = [error for error in validate_spec(child) if "promotion" in error]
                 assert not refused, f"{where}: {refused}"
             checked.append(path.stem)
@@ -1741,7 +1744,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `SCHEMA_VERSION`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 16
+_FEATURES_ARE_FOR_SCHEMA = 20
 
 
 @dataclass(frozen=True)
@@ -1883,18 +1886,144 @@ def _parent_hexagon_seam() -> dict:
     return seamed
 
 
-# Schema 16's inventory (Q281): `board.shape` and a hexagon's pairs of sides. The seam
-# *is* the wrap rule on a hexagon, so its host is `None` and taking the rule away is the
-# crossing (the build plan said host `wrap`, which no edit could satisfy: every edit that
-# removes the pairs removes `rules.wrap` with them). `board.shape=grid` written out is a
-# name the collector returns too, and it is the board that was already there, so it owes
-# no row. Schema 15's row was retired with the bump.
+def _parent_strike(**rule: Any) -> Callable[[], dict]:
+    """Chess with one schema-17 strike: the smallest edit that turns the feature on."""
+
+    def build() -> dict:
+        spec = _chess()
+        spec["schema_version"] = 17
+        spec["rules"]["strike"] = {"effect": "capture", "immune": ["K"], **rule}
+        return spec
+
+    return build
+
+
+def _parent_kamikaze() -> dict:
+    """Atomic with its blast narrowed to radius 0, which refuses `immune`."""
+    atomic = load_spec(RULESETS / "atomic.json")
+    atomic["schema_version"] = 17
+    atomic["rules"]["explode_on_capture"] = {"radius": 0}
+    return atomic
+
+
+def _parent_keeping_link() -> dict:
+    """`archive/merger`'s cousin in one edit: chess's contact parent plus a keeping link.
+
+    The pawn promotes on the last rank, so a link keeping a pawn that takes a rook as a
+    pawn overrides that promotion: the smallest edit that turns schema 18's link on.
+    """
+    spec = _parent_contacts()
+    spec["schema_version"] = 18
+    spec["rules"]["contacts"]["links"].append({"mover": "P", "onto": "R", "mover_to": "P"})
+    return spec
+
+
+def _parent_walled_rank() -> dict:
+    """`archive/omega`, the one game whose castling rank holds walls beyond its rooks."""
+    return load_spec(ROOT / "archive" / "omega.json")
+
+
+def _parent_per_type() -> dict:
+    """Chess plus an extinction over five kinds counted apart: 18c's smallest edit."""
+    chess = load_spec(RULESETS / "chess.json")
+    chess["schema_version"] = 18
+    chess["rules"]["extinction"] = {"pieces": ["P", "N", "B", "R", "Q"], "per_type": True}
+    return chess
+
+
+def _parent_only_lost() -> dict:
+    """Chess whose pawn promotes only into what its side has lost: 18c's smallest edit."""
+    chess = load_spec(RULESETS / "chess.json")
+    chess["schema_version"] = 18
+    chess["rules"]["promotion"]["only_lost"] = True
+    return chess
+
+
+def _parent_placement() -> dict:
+    """Chess whose officers other than the king start in hand: 18d's smallest edit.
+
+    The king stays placed, so the leave arm can take the flag off alone; a stocked royal
+    is the showcases' (`placement-chess`, `sittuyin`), and their way off puts the army
+    back on the board. Castling goes, since a dropped rook has moved.
+    """
+    chess = load_spec(RULESETS / "chess.json")
+    chess["schema_version"] = 18
+    chess["setup"]["placements"] = [
+        placement for placement in chess["setup"]["placements"]
+        if placement["piece"] in ("P", "K")
+    ]
+    chess["rules"].pop("castling")
+    rank = [f"{file}1" for file in "abcdefgh"]
+    chess["rules"]["drops"] = {
+        "from_captures": False,
+        "placement": True,
+        "stock": {"Q": 1, "R": 2, "B": 2, "N": 2},
+        "region": {piece: rank for piece in ("Q", "R", "B", "N")},
+    }
+    return chess
+
+
+def _parent_either_face() -> dict:
+    """Shogi whose hand may drop either face: 18e's smallest edit.
+
+    Shogi's promoted pieces each name their base as `promoted_from`, one face per base,
+    so the flag goes on with nothing else changed.
+    """
+    shogi = load_spec(RULESETS / "shogi.json")
+    shogi["schema_version"] = 18
+    shogi["rules"]["drops"]["either_face"] = True
+    return shogi
+
+
+def _parent_leaving() -> dict:
+    """King of the hill decided by leaving the centre: 18f's smallest edit.
+
+    The committed game already has a `reach` rule with no `safe`, so the flag goes on
+    with nothing else changed.
+    """
+    hill = load_spec(RULESETS / "kingofthehill.json")
+    hill["schema_version"] = 18
+    hill["rules"]["reach"]["on"] = "leave"
+    return hill
+
+
+def _parent_turned(symmetry: str) -> dict:
+    """Glinski's hexagonal chess with the rook's six steps written once and turned: 18b's
+    smallest edit, for `rotate6`, and the knight's twelve as one jump for `dihedral12`."""
+    hexy = load_spec(ROOT / "archive" / "hex-glinski-promoting.json")
+    hexy["schema_version"] = 18
+    piece, vectors = ("R", [[1, 0]]) if symmetry == "rotate6" else ("N", [[1, 2]])
+    for move in next(p for p in hexy["pieces"] if p["id"] == piece)["moves"]:
+        move["vectors"], move["symmetry"] = vectors, symmetry
+    return hexy
+
+
+def _portal_parent(version: int = 19, **pair: object) -> dict:
+    """Gardner with one fixed two-way pair on b3 and d3 (`plan-portals.md` §6's Wormhole),
+    plus whatever ``pair`` sets: schema 19's smallest edit (20's with ``version``)."""
+    gardner = load_spec(RULESETS / "gardner.json")
+    gardner["schema_version"] = version
+    gardner["pieces"].append({
+        "id": "O", "name": "portal", "value": 0,
+        "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4",
+                   "mode": "move"}],
+    })
+    gardner["rules"]["portals"] = [{"piece": "O", "orange": "b3", "blue": "d3", **pair}]
+    return gardner
+
+
+# Schema 20's inventory (Q807, `plan-portals.md` *Ferry's shuffle*): one per-pair setting,
+# `no_straight_back`, entered and left by `open-a-portal` on a game with portals (it rides
+# on `portals`; entering it on a pair nobody moves lets either player move it, which needs
+# the portal piece's step, so it cannot keep the army). Schema 19's three rows (Q771)
+# retired with the bump; `open-a-portal` still enters and leaves all three.
 _FEATURES: dict[str, _Feature] = {
-    "Q281 native hexagon": _Feature(
-        None, frozenset({"board.shape=hexagon"}), True, "hexagon-twin", _parent_native_hexagon,
-    ),
-    "Q281 hexagon seams": _Feature(
-        None, frozenset({"rules.wrap.hexagon"}), True, "hexagon-twin+nw_se", _parent_hexagon_seam,
+    "Q807 no straight back": _Feature(
+        "portals", frozenset({"rules.portals.no_straight_back"}), False,
+        "gardner+barred-portals",
+        lambda: _portal_parent(
+            20, moved_by={"orange": [0, 1], "blue": [0, 1]}, no_straight_back=True,
+        ),
     ),
 }
 
@@ -1902,8 +2031,91 @@ _FEATURES: dict[str, _Feature] = {
 # Exact in both directions, as `_CANNOT_ENTER` is: a showcase that lands fails
 # `test_every_feature_of_this_schema_has_a_showcase` until its row goes. Empty since
 # Q454 put schema 15's flag on every promotion entry of `rulesets/shogi.json`, which is
-# that schema's showcase.
+# that schema's showcase; empty again since Q772a archived schema 19's seven
+# (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel).
 _SHOWCASE_OWED: dict[str, str] = {}
+
+
+# Every feature every schema from 9 on added, by the name its collector returns (Q791).
+# The collectors answer *what does this spec use*, never *what could a spec ever say*, so
+# the universe is hand-written, as `_FEATURES` is; `test_every_feature_of_every_schema_has_a_showcase`
+# reads each collector over the committed and archived games. Inert spellings a collector
+# names but that compile to the game that was already there (`board.lattice=square`,
+# `board.shape=grid`, `promotion.on_leaving=false`) owe no showcase and are not listed.
+_EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
+    6: frozenset({
+        'rules.strike.effect "capture"', 'rules.strike.position "advance"',
+        "rules.strike.immune naming a non-royal piece",
+    }),
+    9: frozenset({"rules.npcs", "rules.promote_on_entry", 'rules.scoring.count "points"'}),
+    10: frozenset({
+        'rules.repetition_draw "never"', "rules.npcs[].immune", "rules.explode_on_capture.by",
+        "rules.explode_on_capture.of", "rules.drops.stock", "rules.contacts",
+        "a piece with no moves of its own",
+    }),
+    11: frozenset({"rules.contacts.links[].own"}),
+    12: frozenset({
+        "rules.strike.position=choose", "rules.strike.landing",
+        "rules.contacts.position=choose", "rules.contacts.landing",
+    }),
+    13: frozenset({"the 'sweep' move kind"}),
+    14: frozenset({"board.lattice=hex", "rules.promotion.squares"}),
+    15: frozenset({"rules.promotion.on_leaving"}),
+    16: frozenset({"board.shape=hexagon", "rules.wrap.hexagon"}),
+    17: frozenset({
+        "rules.strike.position=stay(capture)", "rules.strike.position=home",
+        "rules.strike.switches_sides", "rules.explode_on_capture.radius=0",
+    }),
+    18: frozenset({
+        "rules.contacts.mover_to=mover(promotion)", "rules.castling(walled rank)",
+        "rules.extinction.per_type", "rules.promotion.only_lost", "rules.drops.placement",
+        "rules.drops.either_face", "rules.reach.on=leave", "symmetry=rotate6",
+        "symmetry=dihedral12",
+    }),
+    19: frozenset({"rules.portals", "rules.portals.moved_by", "rules.portals.passage"}),
+    20: frozenset({"rules.portals.no_straight_back"}),
+}
+
+# A feature deliberately without a showcase, with the reason and the audit row that says
+# so. Exact in both directions: an entry whose feature gains a game fails the test until
+# its row goes. Empty since Q787 closed rows 16b, 21 and 32b, the last three gaps of the
+# 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
+# whose schema 6 rows come from `_schema_6_uses` (Q795).
+_NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Schema 19's three rows went on 2026-10-10, when Q772a archived its showcases
+    # (`plan-portals.md` §7 P4, coverage rows 53 to 55).
+    "schema 6: rules.strike.immune naming a non-royal piece": (
+        "audit row 11: all nine strike games list only `K`, which is royal and already "
+        "untakeable, so the key is inert in every one; a game that names a non-royal "
+        "piece is owed, and this entry goes the day it lands"
+    ),
+}
+
+
+def _schema_6_uses(spec: dict) -> set[str]:
+    """Everything in this spec that schema 6 added and a game can show, by name (Q795).
+
+    Schema 6 (`strike`) has no collector in `spec/schema.py`, so this one lives here, in
+    the style of `_schema_nine_uses`. It reads *effective* values: a strike with no
+    `effect` is a capture and one with no `position` advances, as the schema defaults say.
+    `immune` is named only when it lists a non-royal piece, since listing a royal is inert
+    (audit row 11). The rest of schema 6 (obstacles, chain, demote, promote, stay, swap) is
+    shown by audit rows 1 to 6, 8 and 9 and is not in the table.
+    """
+    used: set[str] = set()
+    rules = spec.get("rules")
+    strike = rules.get("strike") if isinstance(rules, dict) else None
+    if not isinstance(strike, dict):
+        return used
+    if strike.get("effect", "capture") == "capture":
+        used.add('rules.strike.effect "capture"')
+    if strike.get("position", "advance") == "advance":
+        used.add('rules.strike.position "advance"')
+    immune = strike.get("immune")
+    royal = {p.get("id") for p in spec.get("pieces", []) if isinstance(p, dict) and p.get("royal")}
+    if isinstance(immune, list) and any(i not in royal for i in immune):
+        used.add("rules.strike.immune naming a non-royal piece")
+    return used
 
 
 def _feature_parents() -> dict[str, dict]:
@@ -1961,16 +2173,20 @@ def _feature_parents() -> dict[str, dict]:
 # Q229 added four rows, each the legitimate answer written down, and they retired with
 # schema 14's `_FEATURES` rows. Schema 15's one feature had `promote-on-leaving` both ways.
 #
-# Q281 adds two, the answer `board.lattice` got in schema 14. A hexagon's seams are
-# `join-the-edges` both ways; the shape itself only the model crosses.
-_HEXAGON_IS_THE_MODELS = (
-    "entering the hexagon means re-laying the army on a board of a new shape, or re-spelling "
-    "as a shape walls the tables already have, at distance zero; leaving it means cutting "
-    "the corners back in as walls or re-laying the army again. Neither is a local edit, so "
-    "only the model crosses it"
-)
-_CANNOT_ENTER: dict[str, str] = {"Q281 native hexagon": _HEXAGON_IS_THE_MODELS}
-_CANNOT_LEAVE: dict[str, str] = {"Q281 native hexagon": _HEXAGON_IS_THE_MODELS}
+# Q281 added two, the answer `board.lattice` got in schema 14: a hexagon's seams were
+# `join-the-edges` both ways, and the shape itself only the model crosses. They retired
+# with schema 16's `_FEATURES` rows.
+#
+# Q540's four are `leave-something-behind` both ways, so the tables were empty again.
+#
+# Q781 adds one. `wall-off-a-square` can enter the walled rank -- it keeps clear of every
+# castling span and stamps the child 18 -- but no committed or archived game without it
+# has a free square on a castling rank outside the spans (every castling army fills its
+# back rank, and `omega` already has it), and no operator adds castling to a walled game.
+# It retired with schema 18's `_FEATURES` rows (Q771); schema 19's three are
+# `open-a-portal` both ways, so the tables are empty again.
+_CANNOT_ENTER: dict[str, str] = {}
+_CANNOT_LEAVE: dict[str, str] = {}
 
 
 @pytest.fixture(scope="module")
@@ -2161,6 +2377,50 @@ class TestEveryFeatureOfThisSchemaIsReachable:
             f"a parent this file built: {shown}. `_SHOWCASE_OWED` names "
             f"{sorted(_SHOWCASE_OWED)}; a showcase that has landed deletes its row there"
         )
+
+    def test_every_feature_of_every_schema_has_a_showcase(self) -> None:
+        """The third gate, for the schemas that have already passed (Q791).
+
+        The test above reads the current schema's `_FEATURES`, so once a bump went by, a
+        feature of an earlier schema with no game stopped being checked: row 21 of
+        `reference/schema-showcase-coverage.md` was bare from schema 9 to Q787 and
+        nothing failed. This runs every version's collector over the committed and
+        archived games and names each feature no game uses.
+        """
+        specs = [load_spec(path) for path in ALL_SPECS]
+        unshown: set[str] = set()
+        unlisted: dict[int, set[str]] = {}
+        for version, listed in _EVERY_SCHEMA_FEATURES.items():
+            collector = (
+                _schema_6_uses if version == 6
+                else getattr(schema, f"_schema_{_NUMBER_WORDS[version]}_uses")
+            )
+            seen = set().union(*(collector(spec) for spec in specs))
+            unshown |= {f"schema {version}: {name}" for name in listed - seen}
+            # A name the collector returns that the table lacks is a feature the table
+            # forgot, except the inert spellings named in the table's comment.
+            extra = {n for n in seen - listed if not n.endswith(("=square", "=grid", "=false"))}
+            if extra:
+                unlisted[version] = extra
+        assert not unlisted, (
+            f"a collector returns names `_EVERY_SCHEMA_FEATURES` does not list: {unlisted}"
+        )
+        exempt = set(_NO_SHOWCASE_ON_PURPOSE)
+        assert unshown == exempt, (
+            "a rule feature is used by no committed or archived ruleset, so nothing has "
+            f"ever played it: {sorted(unshown - exempt)}. Write a showcase "
+            "(`new-move-primitive`) or, if the audit says it owes none, name it in "
+            f"`_NO_SHOWCASE_ON_PURPOSE`. Exempt but now shown: {sorted(exempt - unshown)}"
+        )
+
+    def test_the_every_schema_table_agrees_with_the_current_features(self) -> None:
+        """The table above is hand-written, so the bump that adds a schema must add its row."""
+        assert max(_EVERY_SCHEMA_FEATURES) == SCHEMA_VERSION, (
+            f"`_EVERY_SCHEMA_FEATURES` stops at schema {max(_EVERY_SCHEMA_FEATURES)} and "
+            f"SCHEMA_VERSION is {SCHEMA_VERSION}: add the new bump's names"
+        )
+        current = frozenset().union(*(f.names for f in _FEATURES.values()))
+        assert _EVERY_SCHEMA_FEATURES[SCHEMA_VERSION] == current
 
     def test_the_constructed_parents_are_valid_and_use_the_feature(self) -> None:
         """A leave arm built on an invalid parent measures nothing, and an operator's

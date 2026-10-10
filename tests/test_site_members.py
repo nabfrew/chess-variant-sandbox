@@ -115,16 +115,20 @@ class TestWhatAnotherMemberReads:
         assert 'id="challenge-open">Challenge ada</button>' in page
         assert "This is your page as other members see it" not in page
         # Empty sections are absent, not headings over nothing (test 5).
-        for heading in ("Recently", "Games ada designed", "What ada has done",
+        for heading in ("Games ada played lately", "Games ada made", "What ada has done",
                         "Favourite games", "Plays most with"):
             assert f"<h2>{heading}</h2>" not in page
+        # Q760: what there is nothing of yet, said once in plain words, with no nought.
+        assert "ada has not published a game yet." in page
+        assert "No milestones or badges yet." in page
+        assert not re.search(r"\b0 (games|badges)", page)
 
     def test_a_finished_game_between_people_and_who_they_play(self, store: Scratch) -> None:
         ada, bea = store.user("ada"), store.user("bea")
         _play_out(store, c.start(store.connection, SHORT_HASH, [ada, bea]).id)
         reading = members.read(store.connection, "ada", bea)
         assert reading is not None
-        games = [event for event in reading["recent"] if event["kind"] == "game"]
+        games = reading["played"]
         assert len(games) == 1
         event = games[0]
         assert (event["game"], event["between"], event["rated"]) == (SHORT_HASH, True, True)
@@ -135,6 +139,7 @@ class TestWhatAnotherMemberReads:
         assert reading["finished"] == "Finished the one correspondence game played."
         page = pages.member(reading, "bea", viewer=bea)
         assert '<a href="/players/bea">' in page and "· correspondence, rated ·" in page
+        assert "<h2>Games ada played lately</h2>" in page
         assert "<h2>Plays most with</h2>" in page
         # A fact about a person, never a standing: no count beside a name, no place.
         section = page[page.index("<h2>Plays most with</h2>"):]
@@ -146,9 +151,9 @@ class TestWhatAnotherMemberReads:
         shown = _designed(store, ada, "Out on trial", public=True)
         page = _page(store, "ada", bea)
         assert "Secret draft" not in page
-        assert "<h2>Games ada designed</h2>" in page and "Out on trial" in page
+        assert "<h2>Games ada made</h2>" in page and "Out on trial" in page
         assert f'href="/#/game/{shown}"' in page and "· On trial" in page
-        assert "went on trial" in page
+        assert re.search(r"· published \d{1,2} [A-Z][a-z]{2} \d{4}", page)
 
     def test_a_cancelled_game_is_no_event(
         self, store: Scratch
@@ -158,7 +163,7 @@ class TestWhatAnotherMemberReads:
         c.cancel(store.connection, started.id, ada)
         store.connection.commit()
         reading = members.read(store.connection, "ada", bea)
-        assert reading is not None and reading["recent"] == []
+        assert reading is not None and reading["played"] == []
 
     def test_five_star_games_only_by_their_choice(self, store: Scratch) -> None:
         ada, bea = store.user("ada"), store.user("bea")
@@ -210,6 +215,130 @@ class TestTheOwner:
         assert box == {
             "on": False, "said": members.FAVOURITES_SAID, "under": members.FAVOURITES_UNDER
         }
+
+
+# ------------------------------------------------------- Q760, finding other players
+
+
+def _make_designed(store: Scratch, digest: str, owner: int, *, public: bool = True,
+                   days_ago: int = 0) -> None:
+    """Turn a game the store holds into `owner`'s designed game, published `days_ago`
+    (on trial) or a draft, so it can be challenged to and played."""
+    with store.connection.cursor() as cursor:
+        cursor.execute(
+            "update games set origin = 'designed', owner = %s, visibility = %s,"
+            " published = case when %s then now() - make_interval(days => %s) end"
+            " where hash = %s",
+            (owner, "public" if public else "unlisted", public, days_ago, digest),
+        )
+    store.connection.commit()
+
+
+DIRECTORY_KEYS = {"handle", "mark", "page", "since", "you", "made", "moreMade"}
+"""Everything a row of the people page carries: what the member's page header shows,
+and their published games. Nothing else may reach the payload."""
+
+
+class TestTheDirectory:
+    def test_every_member_a_to_z_and_nobody_else(self, store: Scratch) -> None:
+        bea, ada = store.user("Bea"), store.user("ada")
+        store.user("cyd")
+        store.user("gone")
+        shut = store.user("shut")
+        admin.forget(store.connection, "gone")
+        admin.kill_user(store.connection, shut)
+        store.connection.commit()
+        listed = members.directory(store.connection, ada)
+        assert [row["handle"] for row in listed] == ["ada", "Bea", "cyd"]
+        assert all(set(row) == DIRECTORY_KEYS for row in listed)
+        assert [row["you"] for row in listed] == [True, False, False]
+        first = listed[0]
+        assert first["page"] == "/players/ada" and first["mark"] == marks.mark(ada)
+        assert re.fullmatch(r"[A-Z][a-z]+ \d{4}", first["since"])
+        assert listed[1]["mark"] == marks.mark(bea)
+
+    def test_published_games_only_newest_first_and_a_few(self, store: Scratch) -> None:
+        ada, bea = store.user("ada"), store.user("bea")
+        older = _designed(store, ada, "Older", public=True)
+        with store.connection.cursor() as cursor:
+            cursor.execute(
+                "update games set published = now() - interval '3 days' where hash = %s",
+                (older,),
+            )
+        store.connection.commit()
+        _designed(store, ada, "Newer", public=True)
+        _designed(store, ada, "Secret draft", public=False)
+        row = members.directory(store.connection, bea)[0]
+        assert [game["name"] for game in row["made"]] == ["Newer", "Older"]
+        assert row["moreMade"] == 0
+        for n in range(members.MADE_SHOWN):
+            _designed(store, ada, f"More {n}", public=True)
+        row = members.directory(store.connection, bea)[0]
+        assert len(row["made"]) == members.MADE_SHOWN and row["moreMade"] == 2
+        assert "Secret draft" not in json.dumps(members.directory(store.connection, bea))
+
+    def test_nothing_a_member_has_not_chosen_to_show(self, store: Scratch) -> None:
+        """Five-star games, votes, results and email never reach the list, ticked or not."""
+        ada, bea = store.user("ada"), store.user("bea")
+        votes.cast(store.connection, ada, SHORT_HASH, 5)
+        members.set_favourites(store.connection, ada, True)
+        _play_out(store, c.start(store.connection, SHORT_HASH, [ada, bea]).id)
+        held = json.dumps(members.directory(store.connection, bea))
+        for hidden in (SHORT_HASH, SHORT["name"], "example.com", "won", "lost"):
+            assert hidden not in held, hidden
+
+
+class TestTheMemberPageQ760:
+    def test_made_newest_first_with_the_day_and_played_lately(self, store: Scratch) -> None:
+        ada, bea = store.user("ada"), store.user("bea")
+        _make_designed(store, UNRATED_HASH, ada, days_ago=5)
+        _make_designed(store, SHORT_HASH, ada, days_ago=1)
+        _play_out(store, c.start(store.connection, SHORT_HASH, [ada, bea]).id)
+        reading = members.read(store.connection, "ada", bea)
+        assert reading is not None
+        assert [game["game"] for game in reading["designed"]] == [SHORT_HASH, UNRATED_HASH]
+        assert [game["game"] for game in reading["played"]] == [SHORT_HASH]
+        page = pages.member(reading, "bea", viewer=bea)
+        made = page.index("<h2>Games ada made</h2>")
+        played = page.index("<h2>Games ada played lately</h2>")
+        done = page.index("<h2>What ada has done</h2>")
+        assert made < played < done
+        assert "the only achievements the site keeps" in page
+        assert 'id="not-yet"' not in page
+        assert '<a href="/players">Find another member</a>' in page
+
+    def test_the_challenge_offers_their_games_first(self, store: Scratch) -> None:
+        ada, bea = store.user("ada"), store.user("bea")
+        _make_designed(store, UNRATED_HASH, ada)
+        reading = members.read(store.connection, "ada", bea)
+        assert reading is not None
+        challenge = reading["challenge"]
+        assert challenge["theirs"] == [{"game": UNRATED_HASH, "name": UNRATED["name"]}]
+        assert [g["game"] for g in challenge["games"]] == [SHORT_HASH]
+        page = pages.member(reading, "bea", viewer=bea)
+        assert '<optgroup label="Games ada made">' in page
+        assert page.index(UNRATED_HASH) < page.index(f'<option value="{SHORT_HASH}"')
+
+    def test_a_draft_is_never_offered(self, store: Scratch) -> None:
+        ada, bea = store.user("ada"), store.user("bea")
+        _make_designed(store, UNRATED_HASH, ada, public=False)
+        reading = members.read(store.connection, "ada", bea)
+        assert reading is not None and reading["challenge"]["theirs"] == []
+        assert UNRATED_HASH not in pages.member(reading, "bea", viewer=bea)
+
+    def test_the_challenge_starts_a_correspondence_game(self, store: Scratch) -> None:
+        """What *send the challenge* posts (`member.js`: game, seat, handle), through the
+        challenge's own path, to a game ada made: accepted, it is a game between people."""
+        from chess_variant_sandbox.site import challenges
+
+        ada, bea = store.user("ada"), store.user("bea")
+        _make_designed(store, UNRATED_HASH, ada)
+        sent = challenges.challenge(store.connection, bea, UNRATED_HASH, None, "ada")
+        store.connection.commit()
+        started = challenges.accept(store.connection, sent.id, ada)
+        store.connection.commit()
+        assert c.between_people(started)
+        assert {started.player(0).user, started.player(1).user} == {ada, bea}
 
 
 # ----------------------------------------------------------------------- over HTTP
@@ -282,6 +411,58 @@ class TestTheThreeViewers:
         assert "<h2>What other members see</h2>" in notice
         assert "never a draft" in notice and "Visitors are sent to the sign-in page" in notice
         assert "only if you tick the box" in notice
+        assert "The players page lists every member, A to Z" in notice
+
+
+class TestFindingAMemberOverHTTP:
+    """Q760: the people page's list and search, and the ways to it."""
+
+    def test_a_member_reads_everybody_and_a_visitor_nothing(self, site: Site) -> None:
+        _joined(site, "ada")
+        bea = _joined(site, "bea")
+        payload = bea.get("/api/players").payload
+        assert [row["handle"] for row in payload["directory"]] == ["ada", "bea"]
+        assert all(set(row) == DIRECTORY_KEYS for row in payload["directory"])
+        assert payload["directorySaid"] == members.DIRECTORY_SAID
+        assert "ada@example.com" not in json.dumps(payload)
+        visitor = site.browser().get("/api/players")
+        assert visitor.status in (400, 401) and "ada" not in visitor.text
+
+    def test_the_page_has_the_field_and_a_search_can_be_linked(self, site: Site) -> None:
+        bea = _joined(site, "bea")
+        page = bea.get("/players?q=ad").text
+        assert '<h2 id="find-head">Find a member</h2>' in page
+        assert 'type="search" id="find"' in page and 'value="ad"' in page
+        hostile = bea.get('/players?q="><script>x</script>').text
+        assert "<script>x</script>" not in hostile and "&quot;&gt;&lt;script&gt;" in hostile
+        assert site.browser().get("/players?q=ad").status == 303
+
+    def test_people_is_in_the_header_for_a_member_only(self, site: Site) -> None:
+        _joined(site, "ada")
+        bea = _joined(site, "bea")
+        people = '<a href="/players">People</a>'
+        for path in ("/players", "/players/ada", "/profile", "/suggestions"):
+            assert people in bea.get(path).text, path
+        for path in ("/credits", "/privacy", "/signin"):
+            assert people not in site.browser().get(path).text, path
+
+    def test_the_application_and_the_landing_page_lead_to_it(self) -> None:
+        from page_text import PAGE
+
+        from chess_variant_sandbox.web import landing
+
+        landing_page = landing.html_page()
+        assert '<a class="button" href="/players" data-needs="member">Find players</a>' in (
+            landing_page
+        )
+        assert '<p data-needs="member"><a href="/players">Find a member</a>' in landing_page
+        # The application's header adds *People* for a member, and names on its pages
+        # are links to their members' pages (`personHtml`).
+        assert "link('/players', 'People')" in PAGE
+        assert "function personHtml(" in PAGE
+        for named in ("personHtml(first.handle)", "personHtml(clear.handle)",
+                      "personHtml(one.designer)", "personHtml(by)"):
+            assert named in PAGE, named
 
 
 # ------------------------------------------------------------------ Q599, the vote

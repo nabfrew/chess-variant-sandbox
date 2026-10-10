@@ -251,6 +251,7 @@
     }
   },
   "provenance": {
+    "added": "2026-08-29",
     "origin": "designed",
     "source": "docs/new-rule-schema-brainstorm.md",
     "history": "The cell that completes the factorial. With hierarchy-fall (demote+stay), hierarchy-fall-swap (demote+swap) and hierarchy-rise (promote+swap), this is promote+stay -- so the chain's direction and the position rule can each be read with the other held fixed. Added after the first pair measured and before drawing any conclusion from it.",

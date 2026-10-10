@@ -713,27 +713,71 @@ class TestTheSeeding:
         assert {key.agent for key in table} == {TOP_AGENT, "greedy", "random"}
         assert table[r.computer(TOP_AGENT)].rating == pytest.approx(300.0 + r.SITE_ORIGIN)
 
-    def test_a_re_rated_ladder_changes_no_player_the_table_already_has(
+    def test_a_re_rated_ladder_reseeds_unplayed_rows_and_leaves_played_ones(
         self, store: Scratch, tree: Path
     ) -> None:
-        """§5: the loader adds computer players it has not seen and never touches the ones
-        it has, so a picker run three months later cannot rewrite a table human results
-        have moved."""
+        """L3's reseed rule (`plan-leaderboard.md` §2.3), through the loader.
+
+        A picker run three months later cannot rewrite what human results decided: the
+        rung a person has played keeps its number. Every rung nobody has played is still
+        only its seed, so it takes the newer ladder's seat; the rung the table had not seen
+        is added. And a second load over the same files writes nothing.
+        """
         _load(store, tree)
+        with store.connection.cursor() as cursor:
+            cursor.execute("insert into users (email) values ('one@example.test') returning id")
+            person = int(cursor.fetchone()[0])
+            cursor.execute(
+                "insert into matches (id, game, mode, seat0_user, seat1_agent, seed, result,"
+                " finished) values ('p1', %s, 'leaderboard', %s, %s, 0, 1.0, now())",
+                (RATED_HASH, person, TOP_AGENT),
+            )
+        r.finish(store.connection, "p1")
+        store.connection.commit()
         before = r.load(store.connection, RATED_HASH)
 
         rerated = json.loads(json.dumps(LADDER))
-        for row in rerated["standings"]:
-            row["rating"] += 111.0
+        for row, moved in zip(rerated["standings"], (90.0, 140.0, -20.0), strict=True):
+            row["rating"] += moved
         rerated["standings"].append({"name": "mcts:nodes=1600", "rating": 50.0, "games": 24})
         (tree / "runs" / "opponents" / f"{RATED_HASH}.json").write_text(
             json.dumps(rerated), encoding="utf-8"
         )
 
         report = _load(store, tree)
-        assert report.ratings.added == 1, "the rung the table had not seen, and only it"
+        assert (report.ratings.added, report.ratings.updated) == (1, 2)
+        assert report.ratings.unchanged == 1, "the rung a person played"
         after = r.load(store.connection, RATED_HASH)
-        assert {key: after[key] for key in before} == before
+        top = r.computer(TOP_AGENT)
+        assert after[top] == before[top]
+        assert after[r.person(person)] == before[r.person(person)]
+        shift = before[top].rating - 390.0
+        assert after[r.computer("greedy")].rating == pytest.approx(140.0 + shift)
+        assert after[r.computer("random")].rating == pytest.approx(-320.0 + shift)
+
+        snapshot = store.snapshot()
+        second = _load(store, tree)
+        assert second.ratings.written == 0
+        assert store.snapshot() == snapshot
+
+    def test_the_first_seeding_centres_on_the_spine(self, store: Scratch, tree: Path) -> None:
+        """§2.4: 1500 is the mean of the standard players the ladder has, not of its roster.
+
+        The fixture's ladder centres on its roster; a fourth, strong player pulls that
+        mean up while the spine's three stay where they are, so the seats must not move.
+        """
+        wider = json.loads(json.dumps(LADDER))
+        for row in wider["standings"]:
+            row["rating"] -= 150.0
+        wider["standings"].append({"name": "minimax:nodes=200000", "rating": 450.0})
+        (tree / "runs" / "opponents" / f"{RATED_HASH}.json").write_text(
+            json.dumps(wider), encoding="utf-8"
+        )
+        _load(store, tree)
+        table = r.load(store.connection, RATED_HASH)
+        spine = [table[r.computer(name)].rating for name in (TOP_AGENT, "greedy", "random")]
+        assert sum(spine) / 3 == pytest.approx(r.SITE_ORIGIN)
+        assert table[r.computer("minimax:nodes=200000")].rating == pytest.approx(2100.0)
 
     def test_a_game_with_no_ladder_gets_no_computer_players(
         self, store: Scratch, tree: Path

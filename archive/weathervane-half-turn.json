@@ -337,6 +337,7 @@
     }
   },
   "provenance": {
+    "added": "2026-09-13",
     "origin": "hand",
     "source": "archive/weathervane",
     "history": "Derived by hand from archive/weathervane (1442513d38d7) for Q28b, to close rows 15 and 16 of docs/reference/schema-showcase-coverage.md. The pawn's facing became axes 2 with initial backward. A two-axis pawn has no sideways heading, so each of weathervane's 27 sideways pawns was turned a quarter turn anticlockwise as drawn; pawns facing backward name no facing and take it from initial. The three other ways to turn every sideways pawn by one rule each left the second player a mate in one. Board, army, squares and rules are weathervane's."

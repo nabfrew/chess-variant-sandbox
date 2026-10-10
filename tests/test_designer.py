@@ -16,8 +16,9 @@ from typing import Any
 import node_session
 import pytest
 
+from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.loop import gates
-from chess_variant_sandbox.spec import describe, load_spec, spec_hash, validate_spec
+from chess_variant_sandbox.spec import SpecError, describe, load_spec, spec_hash, validate_spec
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
 from chess_variant_sandbox.spec.schema import _RULES_KEYS
 from chess_variant_sandbox.web import cards, designing
@@ -209,16 +210,20 @@ class TestWhatAClickCouldMean:
         assert one["move"]["vectors"] == [[1, 2]]
         assert two["exact"] and sorted(two["move"]["vectors"]) == [[1, 2], [2, 1]]
 
-    def test_a_hex_board_lists_every_direction(self) -> None:
-        """A hex lattice refuses every symmetry but none, so none is all that is
-        offered. That is the schema's rule rather than the designer's."""
+    def test_a_hex_board_is_offered_the_hexagons_turns(self) -> None:
+        """A hex lattice takes only the hexagon's symmetries (schema 18b), so one step is
+        offered as itself and turned six ways, and no square turn is offered. That is the
+        schema's rule rather than the designer's."""
         hexed = load_spec(Path(__file__).resolve().parent.parent / "archive"
                           / "hex-glinski-promoting.json")
         width = hexed["board"]["width"]
         offers = _offers(hexed, 0, "f6", ["f7"], width=width)
         assert offers, "a hex board offered nothing at all"
-        assert all("symmetry" not in offer["move"] for offer in offers)
+        turns = {offer["move"].get("symmetry", "none") for offer in offers}
+        assert turns <= {"none", "rotate6", "dihedral12"}
+        assert "rotate6" in turns
         assert any("forward-right" in offer["says"] for offer in offers)
+        assert any("in all six directions" in offer["says"] for offer in offers)
 
     def test_a_square_nothing_reaches_is_answered_with_nothing(self) -> None:
         """A leap past the schema's widest vector, which no descriptor can write."""
@@ -957,6 +962,10 @@ function addEverySubCard(templates, adds) {
 # Where a rule cannot be made valid on a template, and the words that say why. Each is a
 # fact about the game the template is -- no royal piece, nothing that promotes, one kind
 # of piece -- and not about the card, which is the line the first slice draws.
+# Schema 19 (Q771): a portal card arrives with no squares, because where a pair stands is
+# P3's portal tool's to place on the board (`docs/plan-portals.md` D2, Q772); until then
+# the validator says so, on every template.
+_PORTAL_SQUARES = "must be a square on the board"
 _CANNOT = {
     "skirmish": {
         "bare_royal": "no piece is marked royal",
@@ -966,10 +975,12 @@ _CANNOT = {
         "promote_on_entry": "needs rules.promotion",
         "promotion": "may not include the promoting piece itself",
         "contacts": "an ordinary capture written the long way",
+        "portals": _PORTAL_SQUARES,
     },
     "kingly": {
         "en_passant": "the promoting piece it is defined against, has none",
         "promote_on_entry": "nothing enters play except by moving",
+        "portals": _PORTAL_SQUARES,
     },
     "race": {
         "bare_royal": "no piece is marked royal",
@@ -977,6 +988,7 @@ _CANNOT = {
         "forbid_check": "no piece is marked royal",
         "en_passant": "requires rules.promotion",
         "promote_on_entry": "needs rules.promotion",
+        "portals": _PORTAL_SQUARES,
     },
 }
 
@@ -1266,7 +1278,14 @@ class TestTheFormOffersWhatTheSchemaAccepts:
     """Each hand-written menu is the schema's own list, so the next kind is not forgotten."""
 
     def test_each_menu_holds_exactly_the_schemas_values(self) -> None:
-        from chess_variant_sandbox.spec.schema import LATTICES, MODES, MOVE_KINDS, SYMMETRIES
+        from chess_variant_sandbox.spec.schema import (
+            HEX_SYMMETRIES,
+            LATTICES,
+            MODES,
+            MOVE_KINDS,
+            SQUARE_SYMMETRIES,
+            SYMMETRIES,
+        )
 
         html = _run_page(
             _kit_setup() + "DRAFT = { pieces: [] };",
@@ -1280,16 +1299,30 @@ class TestTheFormOffersWhatTheSchemaAccepts:
                 r'<select[^>]*data-[mb]field="(\w+)"[^>]*>(.*?)</select>', html, re.S
             )
         }
+        # The *turned* menu offers each lattice its own (schema 18b), so the schema's
+        # whole list is the square board's menu and the hex board's together.
+        hexed = _run_page(
+            _kit_setup() + "DRAFT = { pieces: [], board: { width: 7, height: 7, lattice: 'hex' } };",
+            "moveEditor({ kind: 'slide', vectors: [[0, 1]] }, 0, 0)",
+        )
+        hex_turns = set(re.findall(
+            r'<option value="([^"]*)"',
+            re.search(r'<select[^>]*data-mfield="symmetry"[^>]*>(.*?)</select>', hexed, re.S)
+            .group(1),
+        ))
         assert menus == {
-            "kind": set(MOVE_KINDS), "symmetry": set(SYMMETRIES),
+            "kind": set(MOVE_KINDS), "symmetry": set(SQUARE_SYMMETRIES),
             "mode": set(MODES), "lattice": set(LATTICES),
         }
+        assert hex_turns == set(HEX_SYMMETRIES)
+        assert menus["symmetry"] | hex_turns == set(SYMMETRIES)
 
 
     def test_a_hex_draft_is_offered_no_square_turn(self) -> None:
-        """Q681: the turns are the square's, which the rules refuse on hexagons. A hex
-        draft's *turned* menu offers *as written*, plus a move's own turn while it still
-        has one, so the menu shows what is there."""
+        """Q681: the square's turns are refused on hexagons. A hex draft's *turned* menu
+        offers *as written* and the hexagon's two (schema 18b), plus a move's own turn
+        while it still has one, so the menu shows what is there; a square draft, the
+        same the other way round."""
 
         def turned(board: str, move: str) -> list[str]:
             html = _run_page(_kit_setup() + f"DRAFT = {{ pieces: [], board: {board} }};",
@@ -1300,10 +1333,15 @@ class TestTheFormOffersWhatTheSchemaAccepts:
             return re.findall(r'<option value="([^"]*)"', body.group(1))
 
         hexes = "{ width: 7, height: 7, lattice: 'hex' }"
-        assert turned(hexes, "{ kind: 'slide', vectors: [[0, 1]] }") == ["none"]
+        assert turned(hexes, "{ kind: 'slide', vectors: [[0, 1]] }") == [
+            "none", "rotate6", "dihedral12"]
         assert turned(hexes, "{ kind: 'slide', vectors: [[0, 1]], symmetry: 'rotate4' }") == [
-            "none", "rotate4"]
-        assert len(turned("{ width: 8, height: 8 }", "{ kind: 'slide', vectors: [[0, 1]] }")) == 4
+            "none", "rotate4", "rotate6", "dihedral12"]
+        squares = "{ width: 8, height: 8 }"
+        assert turned(squares, "{ kind: 'slide', vectors: [[0, 1]] }") == [
+            "none", "lateral", "rotate4", "dihedral8"]
+        assert turned(squares, "{ kind: 'slide', vectors: [[0, 1]], symmetry: 'rotate6' }") == [
+            "none", "lateral", "rotate4", "dihedral8", "rotate6"]
 
 def _replayed(engine: Any, moves: list[int]) -> Any:
     state = engine.initial_state()
@@ -2294,6 +2332,70 @@ class TestAMoveMapOfABrokenDraftIsARefusal:
             answer = json.loads(response.read())
             assert response.status == 400, answer
             assert "annihilation" in answer["error"]
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
+class TestAMoveMapOfADraftTheCompilerRefusesIsARefusal:
+    """Q792: a draft the validator passes and the compiler refuses (a wall set that
+    bricks a player in) raised ``SpecError`` out of ``Engine(spec)`` into a 500, five
+    times on the live site on 2026-10-05. It is a 400 carrying the compiler's sentence."""
+
+    @staticmethod
+    def _bricked() -> dict[str, Any]:
+        return {
+            "schema_version": 6,
+            "name": "bricked",
+            "board": {"width": 5, "height": 5},
+            "pieces": [
+                {"id": "R", "name": "rook", "value": 5, "royal": True,
+                 "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4"}]},
+            ],
+            "setup": {"mirror": False, "placements": [
+                {"piece": "R", "player": 0, "squares": ["c3"]},
+                {"piece": "R", "player": 1, "squares": ["a1"]},
+            ]},
+            "rules": {"win": "royal_capture",
+                      "obstacles": {"squares": ["c2", "c4", "b3", "d3"]}},
+        }
+
+    def test_the_draft_validates_and_does_not_compile(self) -> None:
+        assert validate_spec(designing.settled(self._bricked())) == []
+        with pytest.raises(SpecError):
+            Engine(designing.settled(self._bricked()))
+
+    def test_the_move_map_raises_a_design_error(self) -> None:
+        with pytest.raises(designing.DesignError, match="walls player 0 in|walls"):
+            designing.move_map(self._bricked(), 0)
+
+    def test_the_route_answers_400(self) -> None:
+        import threading
+        from http.client import HTTPConnection
+
+        from chess_variant_sandbox.web import library
+        from chess_variant_sandbox.web.server import (
+            REQUEST_HEADER,
+            REQUEST_VALUE,
+            App,
+            Server,
+            handler_for,
+        )
+
+        server = Server(("127.0.0.1", 0), handler_for(App(RULESETS, library.RUNS_DIR)))
+        threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.02},
+                         daemon=True).start()
+        try:
+            connection = HTTPConnection("127.0.0.1", server.server_port, timeout=30)
+            connection.request("POST", "/api/design/moves",
+                               json.dumps({"spec": self._bricked(), "piece": 0}),
+                               {"Content-Type": "application/json",
+                                REQUEST_HEADER: REQUEST_VALUE})
+            response = connection.getresponse()
+            answer = json.loads(response.read())
+            assert response.status == 400, answer
+            assert "complete game" in answer["error"]
+            assert "walls" in answer["error"]
         finally:
             server.shutdown()
             server.server_close()

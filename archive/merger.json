@@ -47,6 +47,7 @@
     }
   },
   "provenance": {
+    "added": "2026-09-14",
     "origin": "human",
     "source": "international chess",
     "history": "Written as the demonstrating ruleset for rules.contacts.links[].own (schema 11, Q19b), from game-ideas.md row 6: a pawn onto its own rook makes a queen. One link, and nothing else differs from chess."

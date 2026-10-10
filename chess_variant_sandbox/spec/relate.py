@@ -71,6 +71,7 @@ RELATE_VERSION = "r2"
 RULE_KINDS: dict[str, str] = {
     "wrap": "board",
     "obstacles": "board",
+    "portals": "board",
     "castling": "pieces",
     "promotion": "pieces",
     "promote_on_entry": "pieces",
@@ -107,6 +108,7 @@ RULE_KINDS: dict[str, str] = {
 RULE_WORDS: dict[str, str] = {
     "wrap": "which edges of the board are joined",
     "obstacles": "which squares are walled off",
+    "portals": "which squares send a piece out of another",
     "castling": "the castling move",
     "promotion": "what a piece becomes at the far end",
     "promote_on_entry": "what a piece becomes on entering a region",
@@ -448,7 +450,8 @@ _PIECE_POSITIONS: dict[str, Any] = {
         "no_doubled": _IDS, "no_mate": _IDS, "stock": _KEYED, "region": _KEYED,
     },
     "npcs": [{"piece": _ID, "immune": _IDS}],
-    "strike": {"immune": _IDS, "chain": [{"from": _ID, "to": _ID}]},
+    "portals": [{"piece": _ID}],
+    "strike": {"immune": _IDS, "chain": [{"from": _ID, "to": _ID}], "switches_sides": _IDS},
     "contacts": {
         "immune": _IDS,
         "links": [{"mover": _ID, "onto": _ID, "mover_to": _ID, "onto_to": _ID}],

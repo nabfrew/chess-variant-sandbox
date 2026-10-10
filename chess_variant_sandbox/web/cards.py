@@ -60,6 +60,7 @@ PIECE_PATHS = frozenset({
     "rules.strike.chain[].from",
     "rules.strike.chain[].to",
     "rules.strike.immune",
+    "rules.strike.switches_sides",
     "rules.contacts.links[].mover",
     "rules.contacts.links[].onto",
     "rules.contacts.links[].mover_to",
@@ -67,6 +68,7 @@ PIECE_PATHS = frozenset({
     "rules.contacts.immune",
     "rules.npcs[].piece",
     "rules.npcs[].immune",
+    "rules.portals[].piece",
     "rules.reach.piece",
     "rules.extinction.pieces",
     "rules.drops.no_doubled",
@@ -81,6 +83,10 @@ TEXT_PATHS = frozenset({
     "rules.castling.king_file.queenside",
     "rules.castling.rook_file.kingside",
     "rules.castling.rook_file.queenside",
+    # Schema 19: one square each, typed as written until P3's portal tool places them
+    # on the board (`docs/plan-portals.md` D2).
+    "rules.portals[].orange",
+    "rules.portals[].blue",
 })
 
 # What the hand-written form already edits. Every other key gets a generated field.

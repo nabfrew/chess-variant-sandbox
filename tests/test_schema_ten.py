@@ -71,6 +71,9 @@ from chess_variant_sandbox.spec.schema import (
     STOCK_UNLIMITED,
     _schema_ten_uses,
     piece_has_stock,
+    portal_end_ids,
+    portal_pairs,
+    portal_piece_ids,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1247,10 +1250,16 @@ class TestASupplyThatNeverRunsOutIsNotMaterial:
         )
         assert len(paths) > 50, "the corpus moved out from under this test"
         for path in paths:
-            spec = compile_spec(json.loads(path.read_text(encoding="utf-8")))
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            spec = compile_spec(raw)
             values = Evaluator.for_spec(spec).values
             free = {i for i, v in enumerate(values) if v == 0.0}
             free -= set(spec.royal_types)
+            # A portal (schema 19) is nobody's material by rule, not by supply: its declared
+            # type and its ends are left out, as the royals are (Q772a's showcases).
+            rules = raw.get("rules", {})
+            portals = portal_piece_ids(rules) | set(portal_end_ids(len(portal_pairs(rules))))
+            free -= {i for i, pid in enumerate(spec.piece_ids) if pid in portals}
             assert free == inexhaustible_types(spec), path.name
 
 
@@ -1312,12 +1321,16 @@ class TestTheGoalWeightIsStatedInPiecesThatAreMaterial:
         checkmate and declare no `drops`. Q280 retired `hex-glinski` on 2026-09-17, which
         was also won by checkmate, so the count fell by one and no verdict moved, and Q434
         retired `tunnel-horizontal` on 2026-09-25 the same way. Q281a4's three hexagon
-        showcases (schema 16, 2026-09-28) are won by checkmate and declare no `drops`.
+        showcases (schema 16, 2026-09-28) are won by checkmate and declare no `drops`, and
+        so are Q540's four schema-17 showcases (2026-10-09), and Q781's two schema-18
+        showcases, `einstein` and `omega`. Q786's `jeson-mor` has goal terms (a priced
+        race) but no inexhaustible type, so it joins the plain majority too, and Q782's two
+        hex-symmetry showcases are won by checkmate and declare no `drops`.
         """
         paths = sorted((ROOT / "rulesets").glob("*.json")) + sorted(
             (ROOT / "archive").glob("*.json")
         )
-        assert len(paths) == 73, "the corpus moved out from under this test"
+        assert len(paths) == 98, "the corpus moved out from under this test"  # 98 since Q807
 
         endless_specs = []
         for path in paths:
@@ -1554,12 +1567,14 @@ class TestACaptureThatChangesSidesIsCountedAtBothEnds:
         (schema 14), declare no `drops` either. Q280 retired `hex-glinski` on 2026-09-17,
         which declared none either, so the no-hand count fell from 66 to 65, and Q434
         retired `tunnel-horizontal` on 2026-09-25, which took it to 64. Q281a4's three
-        hexagon showcases (schema 16) declare none either, which takes it to 67.
+        hexagon showcases (schema 16) declare none either, which takes it to 67, and Q540's
+        four schema-17 showcases to 71. Q781's two schema-18 showcases declare none either,
+        and nor do Q783's two, nor Q786's `jeson-mor`, nor Q782's two hex showcases.
         """
         paths = sorted((ROOT / "rulesets").glob("*.json")) + sorted(
             (ROOT / "archive").glob("*.json")
         )
-        assert len(paths) == 73, "the corpus moved out from under this test"
+        assert len(paths) == 98, "the corpus moved out from under this test"  # 98 since Q807
 
         no_hand: list[str] = []
         inert: list[str] = []
@@ -1581,13 +1596,26 @@ class TestACaptureThatChangesSidesIsCountedAtBothEnds:
             else:
                 moved.append(path.stem)
 
-        assert len(no_hand) == 67
+        # Q787's three showcases: `pawn-knockdown` declares no `drops` (72), and the two
+        # shogi ones hold a hand filled from captures, so they move with their parent.
+        # Q781's `einstein` and `omega` declare none (74), and Q783's `extinction-chess`
+        # and `grand` none either (76), and Q786's `jeson-mor` none (77), and Q782's
+        # `hex-glinski-turned` and `-turned-mirrored` none (79), and Q772a's seven portal
+        # showcases none (86), and Q807's `ferry-no-straight-back` none (87).
+        assert len(no_hand) == 87
         assert inert == ["stones"]
         assert sorted(moved) == [
             "crazyhouse",
             "crazyhouse-torus",
             "dobutsu",
+            # Q785's `kyoto` holds a hand filled from captures.
+            "kyoto",
+            # Q784's two placement showcases hold their armies in a stock.
+            "placement-chess",
             "shogi",
+            "shogi-backward-drops",
+            "shogi-drop-promoted",
+            "sittuyin",
             "three-stones",
         ]
 
@@ -2135,11 +2163,22 @@ class TestTheBumpIsInertOnEveryRulesetThatDoesNotUseIt:
         assert found == {
             # Schema 11's showcase rides on a contact table, so it uses this bump's key.
             "merger": ["rules.contacts"],
+            # Q787's pawn-knockdown rides on a contact table too (schema 12's `choose`).
+            "pawn-knockdown": ["rules.contacts"],
+            # Q781's einstein is a contact table, the keeping link schema 18 lifted in it.
+            "einstein": ["rules.contacts"],
             "perpetual": ['rules.repetition_draw "never"'],
+            # Q784's placement showcases (schema 18) hold their armies in a finite stock.
+            "placement-chess": ["rules.drops.stock"],
+            "sittuyin": ["rules.drops.stock"],
             "queen-bomb": ["rules.explode_on_capture.by"],
             "queens-wake": ["rules.explode_on_capture.of"],
             "stones": ["a piece with no moves of its own", "rules.drops.stock"],
             "succession": ["rules.contacts"],
             "three-stones": ["a piece with no moves of its own", "rules.drops.stock"],
             "wolves-immune": ["rules.npcs[].immune"],
+            # Q772a's two showcases whose portals nobody moves declare the portal type with
+            # no moves, schema 19's second exception to schema 10's rule.
+            "carousel": ["a piece with no moves of its own"],
+            "cylinder-wormhole": ["a piece with no moves of its own"],
         }

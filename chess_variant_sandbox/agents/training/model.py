@@ -23,12 +23,18 @@ weights and every epoch's order; the sparse gradient is summed in sorted input o
 (``np.add.reduceat``), never by scatter in arrival order. The same data therefore gives
 the same bytes on one machine (``tests/test_training.py``); another BLAS or CPU may sum
 a matrix product in another order, which is why the store, not the recipe, is the player.
+
+**Resumable** (Q732). Inside a campaign directory (``--checkpoint``) the run saves its
+weights, Adam's moments, the step, the epoch's random state and the position in it every
+few minutes (``tournament/checkpoint.py``), and a restart resumes from the newest sealed
+save to the same bytes it would have reached unbroken. Outside one nothing is saved.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 
@@ -240,10 +246,33 @@ def train(
     first = {key: np.zeros_like(value) for key, value in net.params.items()}
     second = {key: np.zeros_like(value) for key, value in net.params.items()}
     step = 0
-    for epoch in range(procedure.epochs):
+    saves = _saves(data, procedure)
+    # Where a resumed run picks up: the epoch, the batch in it, the loss summed so far, and
+    # the random state the epoch's order was drawn from.
+    start_epoch, start_begin, start_total = 0, 0, 0.0
+    start_rng: dict[str, Any] | None = None
+    found = saves.latest() if saves is not None else None
+    if found is not None:
+        arrays, meta = found
+        for key in net.params:
+            net.params[key] = arrays[f"p_{key}"].copy()
+            first[key] = arrays[f"m_{key}"].copy()
+            second[key] = arrays[f"v_{key}"].copy()
+        step = int(meta["step"])
+        net.history = [float(loss) for loss in meta["history"]]
+        start_epoch, start_begin = int(meta["epoch"]), int(meta["begin"])
+        start_total, start_rng = float(meta["total"]), dict(meta["rng"])
+        if report is not None:
+            report(f"  resumed at epoch {start_epoch + 1}, position {start_begin}, step {step}")
+    for epoch in range(start_epoch, procedure.epochs):
+        resumed = False
+        if epoch == start_epoch and start_rng is not None:
+            rng.bit_generator.state = start_rng
+            resumed = True
+        epoch_rng = dict(rng.bit_generator.state)
         order = rng.permutation(data.positions)
-        total = 0.0
-        for begin in range(0, data.positions, procedure.batch):
+        total = start_total if resumed else 0.0
+        for begin in range(start_begin if resumed else 0, data.positions, procedure.batch):
             rows = order[begin : begin + procedure.batch]
             index = _padded(data.offsets, data.inputs, rows, data.n_inputs)
             loss, grads = _gradients(
@@ -262,10 +291,63 @@ def train(
                 v += (1.0 - ADAM_BETA2) * grad * grad
                 net.params[key] -= (rate * m / (np.sqrt(v) + ADAM_EPSILON)).astype(np.float32)
             _clip(net)
+            if saves is not None and saves.due():
+                _save(saves, net, first, second, step, epoch, begin + len(rows), total, epoch_rng)
         net.history.append(round(total / data.positions, 8))
         if report is not None:
             report(f"  epoch {epoch + 1}/{procedure.epochs}: loss {net.history[-1]:.6f}")
+    if saves is not None and not (found is not None and start_epoch >= procedure.epochs):
+        # The finished state too, so a crash in the duel after it does not train again.
+        _save(saves, net, first, second, step, procedure.epochs, 0, 0.0, dict(rng.bit_generator.state))
     return net
+
+
+def _saves(data: Dataset, procedure: Procedure) -> Any:
+    """The active campaign's saves for this training (Q732), or ``None`` without one.
+
+    Named by the data's digest and the procedure, and by numpy's version, whose arithmetic
+    the steps are; ``model`` never reads the clock otherwise, and a save changes no step.
+    """
+    from chess_variant_sandbox.tournament import checkpoint
+
+    campaign = checkpoint.current()
+    if campaign is None:
+        return None
+    return campaign.saves(
+        {"data": data.digest, "procedure": procedure.digest, "numpy": np.__version__}
+    )
+
+
+def _save(
+    saves: Any,
+    net: FloatNet,
+    first: dict[str, np.ndarray],
+    second: dict[str, np.ndarray],
+    step: int,
+    epoch: int,
+    begin: int,
+    total: float,
+    epoch_rng: dict[str, Any],
+) -> None:
+    """Everything the next step reads: weights, Adam's moments and step, where in which
+    epoch, the loss summed so far in it, and the random state its order was drawn from."""
+    arrays: dict[str, np.ndarray] = {}
+    for key in net.params:
+        arrays[f"p_{key}"] = net.params[key]
+        arrays[f"m_{key}"] = first[key]
+        arrays[f"v_{key}"] = second[key]
+    saves.save(
+        arrays,
+        {
+            "step": step,
+            "epoch": epoch,
+            "begin": begin,
+            "total": total,
+            "history": list(net.history),
+            "rng": epoch_rng,
+            "where": f"epoch {epoch + 1}, position {begin}, step {step}",
+        },
+    )
 
 
 def predict(net: FloatNet, rows: Sequence[Sequence[int]], sides: Sequence[int]) -> np.ndarray:

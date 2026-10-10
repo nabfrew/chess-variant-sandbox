@@ -9,6 +9,11 @@ in turn by day (answer 6 A); the first game of the month is *reckoning* (answer 
 **One place.** Every page that names the launch set reads it from here: the front page's
 first step (L6, below), the front door's list (L1, Q559), this month's game (C2, Q603) and
 the refresher's priority (`refresher.LAUNCH_SET`, which a test holds to this list).
+The refresher keeps a copy rather than importing this one, on purpose (Q728): importing any
+`web` module runs `web/__init__`, which loads the server, which imports `refreshing` and so
+`refresher` itself. A lazy import would break the cycle only by making the measuring loop
+load the web server for nine names, and the core layer would then depend on the page layer;
+`tests/test_launch.py`'s equality test is the cheaper bond.
 
 **Each game is pinned by its hash as well as its name.** A game's identity is its
 mechanics hash (`canonical.MECHANIC_KEYS`): an in-place edit of its rules is a new game,
@@ -289,6 +294,99 @@ def first_step(
             "preview": None if preview is None else {**preview(game), "hash": entry.hash},
         }
     return None
+
+
+# --------------------------------------------------------------- the landing page's picks
+
+# Q788 (the user, 2026-10-09: *"I'd like the new games highlighted, as well as
+# intransitive"*). The landing page shows the library's newest games and *Intransitive*,
+# and `/game` repeats neither.
+#
+# Q826 (the user, 2026-10-10: *"Make the highlighting of recently added games update
+# automatically (currently it's out of date)"*). The shelf was a hand-kept list here
+# (`NEW_GAMES`, four schema-17 games of 9 October) that nobody edited when fourteen more
+# games joined the next two days. It is derived now, from the day each game joined the
+# library, which its file records as `provenance.added` (`library.added`;
+# `.claude/scripts/backfill_added.py` wrote every existing file's day from git, and
+# `corpus.promote` and `archive` stamp a new one). **A game is new for `NEW_WINDOW`
+# after the day it joined**; the shelf shows the newest `NEW_SHOWN` of them, newest day
+# first and by name within a day. Two weeks because the library grows in bursts (fourteen
+# games in two days, then nothing for a fortnight): a week would empty the shelf between
+# bursts, and a month would keep a game *new* after a visitor has seen it on every visit.
+# **When nothing joined in the window** the shelf shows the `NEW_FALLBACK` most recently
+# added, each with its day, under the heading *Recently added* rather than *New*
+# (`landing.js` swaps the words when no card is `fresh`), so the section never goes empty
+# and never calls a month-old game new. A member's game is not on this shelf: it has its
+# own, *Made by members*, newest published first (`site/showcase.made_here`).
+
+# How long a game counts as new after the day it joined the library.
+NEW_WINDOW_DAYS = 14
+
+# How many of the new games the landing page's shelf shows, newest first.
+NEW_SHOWN = 8
+
+# How many it shows, marked as not new, when nothing joined inside the window.
+NEW_FALLBACK = 4
+
+# The landing page's spotlight: *Intransitive*, the reserve the user named, with why it is
+# worth a look in a visitor's words.
+SPOTLIGHT = Launch(
+    "intransitive", "29d5213b02b2",
+    "Rock, paper, scissors made into a strategy game on a nine by nine board: each piece "
+    "takes only the kind it beats, and the first to bring a piece to the far corner wins.")
+SPOTLIGHT_WHY = (
+    "No piece is the strongest, because every kind beats one other and loses to the third, "
+    "so it plays like no chess variant does. It was designed by webgoatguy, who showed how "
+    "he made it on YouTube, and it is the game this project has studied most.")
+
+
+def _day_words(day: date) -> str:
+    return f"{day.day} {_MONTH_NAMES[day.month - 1]} {day.year}"
+
+
+def first_sentence(text: str) -> str:
+    """The first sentence of a game's description: what the shelf prints under its name."""
+    text = " ".join(str(text or "").split())
+    for at, mark in enumerate(text):
+        if mark in ".!?" and (at + 1 == len(text) or text[at + 1] == " "):
+            return text[:at + 1]
+    return text
+
+
+def new_cards(games: Iterable[Any], day: date | None = None) -> list[dict[str, Any]]:
+    """The library's newest games among `games`, newest first (Q826).
+
+    The games that joined within `NEW_WINDOW_DAYS` of `day` (today, UTC), at most
+    `NEW_SHOWN`, each `fresh`; when none did, the `NEW_FALLBACK` most recently added, none
+    `fresh`. Each card: name, hash, the first sentence of its description, the day it
+    joined in words and as `YYYY-MM-DD`. A game with no recorded day is never on it.
+    """
+    # Here rather than at the top: `web/__init__` loads the server, which imports this.
+    from chess_variant_sandbox.web import library
+
+    day = today() if day is None else day
+    dated = []
+    for game in games:
+        joined = library.added(game) if hasattr(game, "spec") else None
+        if joined is not None and date.fromisoformat(joined) <= day:
+            dated.append((date.fromisoformat(joined), game))
+    dated.sort(key=lambda pair: (-pair[0].toordinal(), str(pair[1].name).lower()))
+    fresh = [pair for pair in dated if (day - pair[0]).days < NEW_WINDOW_DAYS]
+    shown = fresh[:NEW_SHOWN] if fresh else dated[:NEW_FALLBACK]
+    return [
+        {"name": str(game.name), "hash": str(game.hash),
+         "sentence": first_sentence(getattr(game, "description", "")),
+         "added": _day_words(joined), "day": joined.isoformat(), "fresh": bool(fresh)}
+        for joined, game in shown
+    ]
+
+
+def spotlight_card(games: Iterable[Any]) -> dict[str, str] | None:
+    """The landing page's spotlight when the listing offers it, else None."""
+    if SPOTLIGHT.hash not in {game.hash for game in games}:
+        return None
+    return {"name": SPOTLIGHT.name, "hash": SPOTLIGHT.hash,
+            "sentence": SPOTLIGHT.sentence, "why": SPOTLIGHT_WHY}
 
 
 def launch_cards(games: Iterable[Any]) -> list[dict[str, str]]:

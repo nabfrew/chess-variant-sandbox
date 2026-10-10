@@ -64,10 +64,17 @@ def no_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(jev_hint.CAP_VAR, raising=False)
 
 
+# The UTC day every keyed test's requests are counted on (Q744). The count is by day, so
+# a test that asked before UTC midnight and read after it found its failure on a row it
+# did not read; the day is the test's, not the wall clock's.
+DAY = "2026-09-02"
+
+
 @pytest.fixture
 def keyed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(jev_hint.KEY_VAR, "test-key-not-a-real-one")
     monkeypatch.delenv(jev_hint.CAP_VAR, raising=False)
+    monkeypatch.setattr(jev_hint, "_today", lambda: DAY)
 
 
 @pytest.fixture
@@ -75,6 +82,13 @@ def app(tmp_path: Path) -> App:
     for name in ("rulesets", "runs", "archive"):
         (tmp_path / name).mkdir()
     return App(tmp_path / "rulesets", tmp_path / "runs", archive_dir=tmp_path / "archive")
+
+
+def _only_day(tmp_path: Path) -> dict[str, Any]:
+    """The one row of the day's count, which is `DAY`'s and no other."""
+    days = jev_hint.calls(tmp_path / "runs")
+    assert list(days) == [DAY]
+    return days[DAY]
 
 
 def _saved(app: App, spec: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -217,7 +231,7 @@ class TestAStubbedServiceAnswers:
         assert [one["claim"] for one in hint["claims"]] == [FALSE]
         assert hint["claims"][0]["contradicts"] == pytest.approx(0.9)
 
-        day = next(iter(jev_hint.calls(tmp_path / "runs").values()))
+        day = _only_day(tmp_path)
         assert day["calls"] == 1 and day["tokens"] == 1234 and day["failed"] == 0
         assert day["dollars"] == pytest.approx(1234 * jev_hint.PRICE_PER_TOKEN, abs=1e-8)
 
@@ -292,7 +306,7 @@ class TestAFailureIsNoHint:
         service.mode = mode
         kept = _saved(app)
         assert app.post("/api/design/hint", {"hash": kept["hash"]}) == {}
-        day = next(iter(jev_hint.calls(tmp_path / "runs").values()))
+        day = _only_day(tmp_path)
         assert day["calls"] == 1 and day["failed"] == 1 and day["tokens"] == 0
         # Nothing stored, so a later ask tries again rather than showing a failure.
         assert not (tmp_path / "runs" / jev_hint.HINT_DIR / f"{kept['hash']}.json").exists()
@@ -315,7 +329,7 @@ class TestAFailureIsNoHint:
         started = time.monotonic()
         assert app.post("/api/design/hint", {"hash": kept["hash"]}) == {}
         assert time.monotonic() - started < 5.0
-        day = next(iter(jev_hint.calls(tmp_path / "runs").values()))
+        day = _only_day(tmp_path)
         assert day["failed"] == 1
 
     def test_a_malformed_answer_is_no_hint(
@@ -344,7 +358,7 @@ class TestTheDailyCap:
         assert app.post("/api/design/hint", {"hash": first["hash"]})["claims"]
         assert app.post("/api/design/hint", {"hash": second["hash"]}) == {}
         assert len(service.requests) == 1
-        day = next(iter(jev_hint.calls(tmp_path / "runs").values()))
+        day = _only_day(tmp_path)
         assert day["calls"] == 1 and day["capped"] == 1
         # A stored answer is not a request, so it is still shown past the cap.
         assert app.post("/api/design/hint", {"hash": first["hash"]})["claims"]

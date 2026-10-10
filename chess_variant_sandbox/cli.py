@@ -30,7 +30,6 @@ from chess_variant_sandbox.tournament import (
     play_game,
     rate,
     read_records,
-    run_tournament,
 )
 from chess_variant_sandbox.tournament.analysis import BLUNDER_SAMPLE
 
@@ -57,7 +56,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.print_help()
         return 1
     try:
-        return args.handler(args)
+        if args.checkpoint is None:
+            return args.handler(args)
+        # Q732: a campaign directory; every long stage of the command is resumable there.
+        from chess_variant_sandbox.tournament import checkpoint
+
+        command = list(sys.argv[1:] if argv is None else argv)
+        with checkpoint.active(args.checkpoint, args.checkpoint_minutes, command=command):
+            code: int = args.handler(args)
+        return code
     except (ValueError, LookupError, FileNotFoundError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
@@ -65,6 +72,21 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="chess-variant-sandbox", description=__doc__)
+    parser.add_argument(
+        "--checkpoint",
+        default=None,
+        metavar="DIR",
+        help="a campaign directory: every schedule, harvest and training the command runs is "
+        "written there in pieces as they finish, and the same command run again resumes "
+        "from what is on disk, to the same result (tournament/checkpoint.py)",
+    )
+    parser.add_argument(
+        "--checkpoint-minutes",
+        type=float,
+        default=10.0,
+        metavar="M",
+        help="with --checkpoint: how often a training run saves its state (default 10)",
+    )
     sub = parser.add_subparsers()
 
     validate = sub.add_parser("validate", help="check a ruleset against the schema and compile it")
@@ -613,6 +635,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     refresh.add_argument("--watch", action="store_true",
                          help="with --library, keep going: sleep when nothing is owed")
+    refresh.add_argument("--no-slow-tier", action="store_true",
+                         help="with --watch, skip the weekly `pytest -m slow` run")
     refresh.add_argument("--plan", action="store_true",
                          help="print the queue, in order, and run nothing")
     refresh.add_argument("--status", action="store_true",
@@ -799,6 +823,9 @@ def _cmd_tournament(args: argparse.Namespace) -> int:
     print(f"{spec['name']} [{spec_hash(spec)}]: {total} games across {len(config.agents)} agents")
 
     started = time.perf_counter()
+    # Q732: resumable under --checkpoint; without it, the runner's own run_tournament.
+    from chess_variant_sandbox.tournament.checkpoint import run_tournament
+
     result = run_tournament(spec, config, progress=True)
     elapsed = time.perf_counter() - started
 
@@ -1608,7 +1635,7 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
     ) or None
     loop = refresher.Refresher(
         machine, refresher.Ledger(runs), watch=args.watch, interval=args.interval,
-        say=print, only=only,
+        say=print, only=only, slow_tier=False if args.no_slow_tier else None,
     )
     return loop.run()
 
@@ -2176,6 +2203,12 @@ def _add_train(sub: Any) -> None:
         "--no-duel", action="store_true",
         help="skip the duel: the store's verdict is 'unchecked', and it never plays",
     )
+    train.add_argument(
+        "--curtail", action="store_true",
+        help="stop the acceptance duel once its verdict is settled (plan-compute §4.2): the "
+        "same verdict, but the stored score and error are the prefix's, which plan-teacher "
+        "§3's gates read as measurements; so off by default",
+    )
     train.add_argument("--save-data", default=None, help="also write the harvested positions here (.npz)")
     train.add_argument(
         "--harvest-only", action="store_true",
@@ -2300,6 +2333,10 @@ def _cmd_train(args: argparse.Namespace) -> int:
         print("train: --duel-against and --duel-seed go with --duel-only; a stored verdict "
               "is only the acceptance duel", file=sys.stderr)
         return 2
+    if args.curtail and (args.no_duel or args.duel_only or args.harvest_only):
+        print("train: --curtail curtails the acceptance duel, which this run does not play",
+              file=sys.stderr)
+        return 2
     if args.also_harvest and not args.harvest_only:
         print("train: --also-harvest goes with --harvest-only", file=sys.stderr)
         return 2
@@ -2341,6 +2378,7 @@ def _cmd_train(args: argparse.Namespace) -> int:
         duel=not args.no_duel,
         data=data,
         report=print,
+        curtail=args.curtail,
     )
     if args.save_data:
         print(f"  positions saved to {done.data.save(args.save_data)}")
@@ -2356,6 +2394,8 @@ def _cmd_train(args: argparse.Namespace) -> int:
             f"  {found.candidate} against {found.reference}: {found.score:.4f} +/-"
             f"{found.error:.4f} over {found.games} games -- {done.record.verdict}"
         )
+        if found.planned and found.decided_after < found.planned:
+            print(f"  curtailed: decided after {found.decided_after} of {found.planned} pairs")
         print(
             f"  nodes: net {found.candidate_nodes}, built-in {found.reference_nodes}; "
             f"{rate:,.0f} nodes/s both seats together ({seconds:.1f}s)"

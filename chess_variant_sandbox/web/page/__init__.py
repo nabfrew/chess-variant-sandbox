@@ -15,6 +15,7 @@ files under ``web/static/page/``, one per view, loaded by ``<script src>`` in th
 ``design.js``      building a game, and building an opponent for it
 ``teaching.js``    teaching the designer a move, and where the pieces start
 ``cards.js``       the schema's field tree, rendered as controls
+``portals.js``     the designer's portals: the tray's row, the pair's card, the preview
 ``measure.js``     measuring a draft in the browser (``measure.py`` says what it is)
 ``board.js``       drawing a position, animating a move, playing one
 ``runs.js``        a design run, watched while it goes
@@ -89,7 +90,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent.parent / "static" / "page"
 # The views in the order they load: the order they were concatenated in, kept.
 _ORDER = (
     "core", "wrapped", "wood", "stillboard", "browse", "graph", "explorer", "upkeep", "detail",
-    "design", "teaching", "cards", "measure", "board", "runs", "whatsnew", "round", "landing",
+    "design", "teaching", "cards", "portals", "measure", "board", "runs", "whatsnew", "round", "landing",
     "boot",
 )
 

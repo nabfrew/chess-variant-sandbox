@@ -1,0 +1,415 @@
+{
+  "schema_version": 18,
+  "name": "einstein",
+  "description": "Einstein chess: every move that captures promotes the capturer one step up the line pawn, knight, bishop, rook, queen, and every move that does not demotes it one step down. A queen that captures stays a queen, and a pawn that does not capture stays a pawn. Pawns step one square and never two.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "royal": true
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": [
+      {
+        "piece": "Q",
+        "ranks": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "to": [
+          "R"
+        ],
+        "mandatory": true
+      },
+      {
+        "piece": "R",
+        "ranks": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "to": [
+          "B"
+        ],
+        "mandatory": true
+      },
+      {
+        "piece": "B",
+        "ranks": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "to": [
+          "N"
+        ],
+        "mandatory": true
+      },
+      {
+        "piece": "N",
+        "ranks": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "to": [
+          "P"
+        ],
+        "mandatory": true
+      },
+      {
+        "piece": "P",
+        "rank": "last",
+        "to": [
+          "Q"
+        ]
+      }
+    ],
+    "contacts": {
+      "links": [
+        {
+          "mover": "P",
+          "onto": "P",
+          "mover_to": "N"
+        },
+        {
+          "mover": "P",
+          "onto": "N",
+          "mover_to": "N"
+        },
+        {
+          "mover": "P",
+          "onto": "B",
+          "mover_to": "N"
+        },
+        {
+          "mover": "P",
+          "onto": "R",
+          "mover_to": "N"
+        },
+        {
+          "mover": "P",
+          "onto": "Q",
+          "mover_to": "N"
+        },
+        {
+          "mover": "N",
+          "onto": "P",
+          "mover_to": "B"
+        },
+        {
+          "mover": "N",
+          "onto": "N",
+          "mover_to": "B"
+        },
+        {
+          "mover": "N",
+          "onto": "B",
+          "mover_to": "B"
+        },
+        {
+          "mover": "N",
+          "onto": "R",
+          "mover_to": "B"
+        },
+        {
+          "mover": "N",
+          "onto": "Q",
+          "mover_to": "B"
+        },
+        {
+          "mover": "B",
+          "onto": "P",
+          "mover_to": "R"
+        },
+        {
+          "mover": "B",
+          "onto": "N",
+          "mover_to": "R"
+        },
+        {
+          "mover": "B",
+          "onto": "B",
+          "mover_to": "R"
+        },
+        {
+          "mover": "B",
+          "onto": "R",
+          "mover_to": "R"
+        },
+        {
+          "mover": "B",
+          "onto": "Q",
+          "mover_to": "R"
+        },
+        {
+          "mover": "R",
+          "onto": "P",
+          "mover_to": "Q"
+        },
+        {
+          "mover": "R",
+          "onto": "N",
+          "mover_to": "Q"
+        },
+        {
+          "mover": "R",
+          "onto": "B",
+          "mover_to": "Q"
+        },
+        {
+          "mover": "R",
+          "onto": "R",
+          "mover_to": "Q"
+        },
+        {
+          "mover": "R",
+          "onto": "Q",
+          "mover_to": "Q"
+        },
+        {
+          "mover": "Q",
+          "onto": "P",
+          "mover_to": "Q"
+        },
+        {
+          "mover": "Q",
+          "onto": "N",
+          "mover_to": "Q"
+        },
+        {
+          "mover": "Q",
+          "onto": "B",
+          "mover_to": "Q"
+        },
+        {
+          "mover": "Q",
+          "onto": "R",
+          "mover_to": "Q"
+        },
+        {
+          "mover": "Q",
+          "onto": "Q",
+          "mover_to": "Q"
+        }
+      ],
+      "immune": [
+        "K"
+      ]
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "added": "2026-10-09",
+    "origin": "human",
+    "source": "Einstein chess (Hans Kluever)",
+    "history": "Schema 18's showcase for a contact link that keeps its mover (rules.contacts.mover_to=mover(promotion)) (Q781, 2026-10-09): Q533's audit spec (variant-expressibility-2026-09 row 18, 2fa977d3efb3) with the queen's five keeping links added, which is the rule the audit found inexpressible. Pre-registered in docs/reference/schema-showcase-coverage.md.",
+    "parents": [
+      "4c1922ffae26"
+    ]
+  }
+}

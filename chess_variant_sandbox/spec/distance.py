@@ -75,6 +75,14 @@ _SCALES: dict[str, float] = {
     # the same distance from chess.
     "has_stock": 1.0,
     "stock_is_endless": 1.0,
+    # Schema 18d (Q784). Whether a held piece *must* be played: the whole difference
+    # between a stock spent when it suits and a placement phase, and not costed in
+    # `complexity` (as 18c's flags are not), so it needs a feature or the pair reads as
+    # one game.
+    "drops_placement": 1.0,
+    # Schema 18e (Q785). Whether a held piece may come back as its other face: not costed
+    # in `complexity` (as 18c's and 18d's flags are not), so it needs a feature.
+    "drops_either_face": 1.0,
     # The relaxation gets a feature too, because it is a feature of the *game* and not
     # only of the schema: a piece that never moves is a wall a player builds, and a spec
     # differing from another in nothing else is a different game.
@@ -147,9 +155,22 @@ _SCALES: dict[str, float] = {
     # Schema 11 (Q19b). A contact onto a friendly piece is a move that no other rule
     # generates, so a table with one is a different game from the same table without.
     "contacts_meet_own": 1.0,
+    # Schema 18 (Q781). A link that keeps its mover overrides the mover's promotion on
+    # that capture (Einstein's queen), and reads nothing else: `contacts_change_the_mover`
+    # is already set by any `mover_to`, so without this a table and the same table plus
+    # its keeping links measure zero apart and the loop skips the tournament.
+    "contacts_keep_the_mover": 1.0,
     # Schema 12 (Q20). Where the survivor goes is a different game, the `swaps_on_strike`
     # argument, and the attacker choosing it is a third answer beside stay and swap.
     "strike_places_the_survivor": 1.0,
+    # Schema 17 (Q540), one each, the `swaps_on_strike` argument again: a capturer that
+    # never moves (rifle), a victim reborn at home (circe) and a capturer that changes
+    # sides (Andernach) are each a different game from chess and from one another.
+    "strike_stays_put": 1.0,
+    "strike_rebirths": 1.0,
+    "capturer_switches_sides": 1.0,
+    # Schema 17 (Q540): a blast of radius 0 (kamikaze) is not atomic.
+    "explodes_alone": 1.0,
     # Two, for the same reason the strike has three. A rule with a cost but no feature
     # collides with every other rule of the same cost, and two specs then report distance
     # zero -- which makes the loop skip a tournament it should have run. `turns_freely`
@@ -199,6 +220,27 @@ _SCALES: dict[str, float] = {
     # is not costed in `complexity` -- so without a feature of its own the two would
     # report distance zero and the loop would skip the tournament that tells them apart.
     "promotes_on_leaving": 1.0,
+    # Schema 18c (Q783). Two flags, each the whole difference between two games that
+    # share a board, an army and every costed rule (neither is costed in `complexity`, as
+    # `on_leaving` is not), so each needs a feature of its own or the loop reads the pair
+    # as one game.
+    "extinction_per_type": 1.0,
+    "promotes_only_lost": 1.0,
+    # Schema 18f (Q786). Whether the game is decided by leaving a goal square rather than
+    # standing on one: not costed in `complexity` (as 18c to 18e's flags are not), so it
+    # needs a feature or a spec and its arrival twin read as one game.
+    "wins_by_leaving": 1.0,
+    # Schema 19 (Q771). How many portal pairs, as a share of the four a spec may have, so
+    # one pair and two read as near and none as far; whether anyone moves an end; whether
+    # any passage is one way or closed. The last two are charged in `complexity` only once
+    # however many pairs state them, so each needs a feature or a spec and its twin with
+    # every end fixed and every door open read as one game.
+    "portal_pairs": 1.0,
+    "portals_move": 1.0,
+    "portals_one_way": 1.0,
+    # Schema 20 (Q807). Whether any pair bars moving a portal straight back: charged once
+    # in `complexity`, so Ferry and its twin with the bar need this to read as two games.
+    "portals_no_back": 1.0,
 }
 
 
@@ -315,7 +357,55 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         "hex_lattice": 1.0 if board.get("lattice") == "hex" else 0.0,
         "promotion_zone_share": _promotion_zone_share(spec),
         "promotes_on_leaving": _promotes_on_leaving(rules),
+        "extinction_per_type": (
+            1.0
+            if isinstance(rules.get("extinction"), dict)
+            and rules["extinction"].get("per_type") is True
+            else 0.0
+        ),
+        "promotes_only_lost": _promotes_only_lost(rules),
+        "wins_by_leaving": (
+            1.0
+            if isinstance(rules.get("reach"), dict) and rules["reach"].get("on") == "leave"
+            else 0.0
+        ),
+        **_portal_features(rules.get("portals")),
     }
+
+
+def _portal_features(portals: Any) -> dict[str, float]:
+    """Schema 19: the pair count as a share of four, and the per-pair modifiers (schema
+    20's bar on going straight back the third)."""
+    pairs = [pair for pair in portals if isinstance(pair, dict)] if isinstance(
+        portals, list
+    ) else []
+    moved = any(
+        isinstance(pair.get("moved_by"), dict)
+        and any(pair["moved_by"].get(end) for end in ("orange", "blue"))
+        for pair in pairs
+    )
+    one_way = any(
+        isinstance(pair.get("passage"), dict)
+        and any(word != "both_ways" for word in pair["passage"].values())
+        for pair in pairs
+    )
+    return {
+        "portal_pairs": len(pairs) / 4,
+        "portals_move": 1.0 if moved else 0.0,
+        "portals_one_way": 1.0 if one_way else 0.0,
+        "portals_no_back": (
+            1.0 if any(pair.get("no_straight_back") is True for pair in pairs) else 0.0
+        ),
+    }
+
+
+def _promotes_only_lost(rules: dict[str, Any]) -> float:
+    """Whether any promotion entry offers its targets only once lost (schema 18c)."""
+    promotion = rules.get("promotion")
+    entries = promotion if isinstance(promotion, list) else [promotion]
+    return 1.0 if any(
+        isinstance(entry, dict) and entry.get("only_lost") is True for entry in entries
+    ) else 0.0
 
 
 def _promotes_on_leaving(rules: dict[str, Any]) -> float:
@@ -412,16 +502,29 @@ def _strike_features(spec: dict[str, Any]) -> dict[str, float]:
         "strike_promotes": 0.0,
         "swaps_on_strike": 0.0,
         "strike_places_the_survivor": 0.0,
+        "strike_stays_put": 0.0,
+        "strike_rebirths": 0.0,
+        "capturer_switches_sides": 0.0,
     }
     strike = (spec.get("rules") or {}).get("strike")
-    if not isinstance(strike, dict) or not keeps_a_survivor(spec, "strike"):
+    if not isinstance(strike, dict):
         return absent
     effect = strike.get("effect", "capture")
+    position = strike.get("position", "advance")
+    # Schema 17 (Q540): a capture that keeps its capturer still, or one that sends it
+    # over, is a rule with no survivor.
+    stays_put = effect == "capture" and position == "stay"
+    switches = bool(strike.get("switches_sides"))
+    if not (keeps_a_survivor(spec, "strike") or stays_put or switches):
+        return absent
     return {
         "strikes": 1.0,
         "strike_promotes": 1.0 if effect == "promote" else 0.0,
-        "swaps_on_strike": 1.0 if strike.get("position") == "swap" else 0.0,
-        "strike_places_the_survivor": 1.0 if strike.get("position") == "choose" else 0.0,
+        "swaps_on_strike": 1.0 if position == "swap" else 0.0,
+        "strike_places_the_survivor": 1.0 if position == "choose" else 0.0,
+        "strike_stays_put": 1.0 if stays_put else 0.0,
+        "strike_rebirths": 1.0 if position == "home" else 0.0,
+        "capturer_switches_sides": 1.0 if switches else 0.0,
     }
 
 
@@ -456,6 +559,7 @@ def _contact_features(pieces: list[Any], contacts: Any) -> dict[str, float]:
         "contacts_by_pair": 0.0,
         "contacts_change_the_mover": 0.0,
         "contacts_meet_own": 0.0,
+        "contacts_keep_the_mover": 0.0,
     }
     if not isinstance(contacts, dict):
         return absent
@@ -506,12 +610,26 @@ def _contact_features(pieces: list[Any], contacts: Any) -> dict[str, float]:
             1.0 if any("mover_to" in link for link in links) else 0.0
         ),
         "contacts_meet_own": 1.0 if any(link.get("own") is True for link in links) else 0.0,
+        "contacts_keep_the_mover": (
+            1.0 if any(link.get("mover_to") == link.get("mover") for link in links) else 0.0
+        ),
     }
 
 
 def _stock_features(drops: Any) -> dict[str, float]:
     """Whether a hand starts full, and whether it can ever empty (schema 10, Q51)."""
-    absent = {"has_stock": 0.0, "stock_is_endless": 0.0}
+    placement = (
+        1.0 if isinstance(drops, dict) and drops.get("placement") is True else 0.0
+    )
+    either = (
+        1.0 if isinstance(drops, dict) and drops.get("either_face") is True else 0.0
+    )
+    absent = {
+        "has_stock": 0.0,
+        "stock_is_endless": 0.0,
+        "drops_placement": placement,
+        "drops_either_face": either,
+    }
     stock = drops.get("stock") if isinstance(drops, dict) else None
     if not isinstance(stock, dict) or not stock:
         return absent
@@ -520,6 +638,8 @@ def _stock_features(drops: Any) -> dict[str, float]:
         "stock_is_endless": 1.0 if any(
             held == STOCK_UNLIMITED for held in stock.values()
         ) else 0.0,
+        "drops_placement": placement,
+        "drops_either_face": either,
     }
 
 
@@ -530,7 +650,7 @@ def _explosion_features(explosion: Any) -> dict[str, float]:
     all -- the same answer `engine.compile._compile_explosion` gives, and the reason this
     is a function rather than the truthiness test it replaces.
     """
-    absent = {"explodes": 0.0, "explodes_selectively": 0.0}
+    absent = {"explodes": 0.0, "explodes_selectively": 0.0, "explodes_alone": 0.0}
     if not isinstance(explosion, dict) or not explosion:
         return absent
     narrowed = False
@@ -541,7 +661,11 @@ def _explosion_features(explosion: Any) -> dict[str, float]:
         if not listed:
             return absent
         narrowed = True
-    return {"explodes": 1.0, "explodes_selectively": 1.0 if narrowed else 0.0}
+    return {
+        "explodes": 1.0,
+        "explodes_selectively": 1.0 if narrowed else 0.0,
+        "explodes_alone": 1.0 if explosion.get("radius", 1) == 0 else 0.0,
+    }
 
 
 def _wrap_features(wrap: Any, shape: Any = None) -> dict[str, float]:

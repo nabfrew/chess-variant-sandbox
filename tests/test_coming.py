@@ -25,7 +25,7 @@ import node_session
 import pytest
 
 from chess_variant_sandbox.engine import Engine
-from chess_variant_sandbox.engine.coming import coming_phase
+from chess_variant_sandbox.engine.coming import coming_phase, coming_phases
 from chess_variant_sandbox.engine.compile import WILD
 from chess_variant_sandbox.engine.moves import decode_move
 from chess_variant_sandbox.spec import load_spec, spec_hash
@@ -263,7 +263,7 @@ def _timeline(snapshots: list[dict]) -> list[dict]:
     runner = f"""
       for (const snapshot of {json.dumps(snapshots)}) {{ SESSION = snapshot; record(snapshot); }}
       console.log(JSON.stringify(TIMELINE.map(e => ({{ kind: e.kind, plies: e.plies,
-        steps: e.steps, coming: e.coming }}))));
+        steps: e.steps, coming: e.coming, comingThen: e.comingThen }}))));
     """
     from test_web import _ANIMATION_STUB
 
@@ -298,3 +298,187 @@ class TestSteppingBackShowsWhatWasComing:
                 assert beat["coming"] == move["phase"] == beats[i + 1]["steps"], i
                 phased += 1
         assert phased >= 3, "the ferret walks after every move"
+
+
+# ------------------------------------------------------------------ Q764: the step after
+
+
+def _near(engine: Engine, state: Any) -> set[int]:
+    """A wild piece's way on ``state`` over two phases: the square it stands on and its
+    route's next two squares, read off the compiled table (a test's oracle, as in the
+    property above)."""
+    assert engine.spec.npcs is not None
+    route_next = engine.spec.npcs.next
+    near: set[int] = set()
+    for square, value in enumerate(state.board):
+        if value and engine.spec.owner_of(value) == WILD:
+            near |= {square, route_next[square], route_next[route_next[square]]}
+    return near
+
+
+class TestTheStepAfter:
+    """The user, 2026-10-08: a wild piece moves twice before your next move -- after you,
+    then after your opponent -- so the board shows both. The second is the core's too."""
+
+    def test_two_phases_the_first_being_the_one_phase(self, engine: Engine) -> None:
+        for state in _walk(engine, seed=5, plies=20):
+            phases = coming_phases(engine, state)
+            assert len(phases) == 2
+            assert phases[0] == coming_phase(engine, state)
+
+    def test_the_opening_ferret_steps_twice_along_its_loop(self, engine: Engine) -> None:
+        first, then = coming_phases(engine, engine.initial_state())
+        assert [(s.origin, s.target) for s in first] == [(_square("b3"), _square("c3"))]
+        assert [(s.origin, s.target) for s in then] == [(_square("c3"), _square("d3"))]
+
+    def test_the_second_is_the_phase_after_two_moves_out_of_its_way(self, engine: Engine) -> None:
+        """The defining property: over a seeded game, a move and a reply that touch none of
+        a wild piece's next two squares are followed by exactly the two phases the
+        preview said, by the core's own log of each (`apply_with_phase`)."""
+        checked = 0
+        for state in _walk(engine, seed=13, plies=30):
+            first, then = coming_phases(engine, state)
+            near = _near(engine, state)
+            clear = [m for m in engine.legal_moves(state)
+                     if not {decode_move(m)[0], decode_move(m)[1]} & near]
+            for move in clear[:6]:
+                after, phase = engine.apply_with_phase(state, move)
+                assert phase == first
+                if engine.terminal(after) is not None:
+                    continue
+                for reply in engine.legal_moves(after)[:6]:
+                    origin, target, _, _ = decode_move(reply)
+                    if origin in near or target in near:
+                        continue
+                    assert engine.apply_with_phase(after, reply)[1] == then
+                    checked += 1
+        assert checked > 50, checked
+
+    def test_it_says_what_the_second_step_would_eat(self, engine: Engine) -> None:
+        state = engine.make_state({
+            "e1": ("K", 0), "e5": ("K", 1), "d3": ("R", 1), "b3": ("F", WILD)})
+        first, then = coming_phases(engine, state)
+        assert [(s.origin, s.target, s.eaten) for s in first] == [
+            (_square("b3"), _square("c3"), 0)]
+        ((origin, target, eaten),) = [(s.origin, s.target, s.eaten) for s in then]
+        assert (origin, target) == (_square("c3"), _square("d3"))
+        assert eaten == state.board[_square("d3")] != 0
+
+    def test_asking_moves_nothing(self, engine: Engine) -> None:
+        for state in _walk(engine, seed=3, plies=12):
+            before = (state, engine.legal_moves(state), engine._compute_hash(state))
+            coming_phases(engine, state)
+            assert (state, engine.legal_moves(state), engine._compute_hash(state)) == before
+
+    def test_a_game_without_wild_pieces_has_two_empty_phases(self) -> None:
+        dull = Engine(load_spec(ROOT / "rulesets" / "dull.json"))
+        assert coming_phases(dull, dull.initial_state()) == ((), ())
+
+    def test_every_position_carries_both(self, patrol_game: library.Game) -> None:
+        session = Sessions().start(patrol_game, ("random", "random"), seed=5)
+        engine = session.engine
+
+        def said(state: Any) -> dict[str, Any]:
+            first, then = coming_phases(engine, state)
+            return {"coming": [s.as_dict() for s in first],
+                    "comingThen": [s.as_dict() for s in then]}
+
+        snapshot = session.snapshot()
+        assert {k: snapshot[k] for k in ("coming", "comingThen")} == said(session.state)
+        assert snapshot["comingThen"], "the opening ferret walks twice"
+        for _ in range(6):
+            snapshot = session.play_agent()
+        assert {k: snapshot[k] for k in ("coming", "comingThen")} == said(session.state)
+        for entry, state in zip(session.history, session.states[1:] + [session.state],
+                                strict=True):
+            assert {k: entry[k] for k in ("coming", "comingThen")} == said(state)
+        timeline = designing.timeline(session)
+        assert [row["comingThen"] for row in timeline[1:]] == [
+            e["comingThen"] for e in session.history]
+
+    def test_a_finished_game_has_nothing_coming_after_either(
+        self, engine: Engine, patrol_game: library.Game
+    ) -> None:
+        session = Sessions().start(patrol_game, ("human", "human"))
+        session.state = engine.make_state({
+            "e1": ("K", 0), "a5": ("K", 1), "b1": ("R", 0), "b3": ("R", 0),
+            "d2": ("F", WILD)}, side_to_move=0)
+        session.play(engine.find_move(session.state, "Rb1-a1"))
+        snapshot = session.snapshot()
+        assert snapshot["outcome"] is not None
+        assert snapshot["coming"] == snapshot["comingThen"] == []
+
+
+_WIDTH = re.compile(r'data-mark="(\w+)"[^>]*?stroke-width="([\d.]+)"', re.S)
+
+
+class TestTheSecondArrow:
+    def test_it_is_drawn_fainter_and_under_the_first(self) -> None:
+        """b3 to c3, then c3 to d3, on a 5x5 board of cell 20: the second arrow is its own
+        kind, in the same violet at the same opacity (so it keeps the first's 3 : 1 on both
+        woods, `test_style`), and fainter by its thinner dots, set further apart."""
+        html = _wrapped("""
+          comingHtml([{from: 11, to: 12, eaten: 0}], 20, 5, 5, flatView(5, 5, false), null,
+                     [{from: 12, to: 13, eaten: 0}])
+        """)
+        assert 'data-coming="1"' in html and 'data-coming-then="1"' in html
+        widths = dict(_WIDTH.findall(html))
+        assert float(widths["comingThen"]) < float(widths["coming"])
+        assert html.index('data-mark="comingThen"') < html.index('data-mark="coming"')
+        assert html.count('opacity="0.85"') == 2 and html.count("var(--coming)") == 2
+
+    def test_a_step_and_the_step_straight_back_are_side_by_side(self) -> None:
+        """Two arrows on one line: a wild piece on a two-square route steps b3 to c3 and
+        then back. Each is set to its own right, so neither is drawn over the other; a step
+        with no way back drawn stays on the line between the squares' middles."""
+        html = _wrapped("""
+          comingHtml([{from: 11, to: 12, eaten: 0}], 20, 5, 5, flatView(5, 5, false), null,
+                     [{from: 12, to: 11, eaten: 0}])
+        """)
+        (_, y1a, _, y2a), (_, y1b, _, y2b) = [
+            tuple(map(float, p)) for p in _POINTS.findall(html)]
+        assert y1a == y2a and y1b == y2b, "both stay level"
+        assert abs(y1a - y1b) >= 2 * 0.12 * 20, "and apart by more than a dot's width"
+        alone = _wrapped("""
+          comingHtml([{from: 11, to: 12, eaten: 0}], 20, 5, 5, flatView(5, 5, false), null,
+                     [{from: 12, to: 13, eaten: 0}])
+        """)
+        assert {float(p[1]) for p in _POINTS.findall(alone)} == {50.0}
+
+    def test_only_the_second_is_drawn_when_the_first_is_empty(self) -> None:
+        html = _wrapped("""
+          comingHtml([], 20, 5, 5, flatView(5, 5, false), null, [{from: 12, to: 13, eaten: 0}])
+        """)
+        assert html.count('data-mark="comingThen"') == 1 and 'data-mark="coming"' not in html
+
+    def test_the_legend_names_it_in_plain_words(self) -> None:
+        row = _wrapped("MARK_KINDS.comingThen")
+        assert row["faint"] is True and row["colour"] == "var(--coming)"
+        assert row["name"] == "faint dotted arrow"
+        assert row["label"] == "where it steps after the move after that"
+        key = _wrapped("markKey('comingThen')")
+        assert 'data-mark="comingThen"' in key
+        from page_text import BOARD
+
+        assert "...(comingThen && comingThen.length ? ['comingThen'] : [])" in BOARD
+
+
+class TestSteppingBackShowsBoth:
+    def test_each_beat_carries_the_step_after_too(self, patrol_game: library.Game) -> None:
+        """The opening beat and a ply's last beat carry the core's second answer for that
+        position; the beat between a move and its phase carries, after the phase about to
+        run, the first answer for the position the ply left."""
+        session = Sessions().start(patrol_game, ("random", "random"), seed=9)
+        snapshots = [json.loads(json.dumps(session.snapshot()))]
+        for _ in range(5):
+            snapshots.append(json.loads(json.dumps(session.play_agent())))
+        for snapshot in snapshots:
+            snapshot["moves"] = []
+            snapshot["ruleset"]["icons"] = []
+        beats = _timeline(snapshots)
+
+        assert beats[0]["comingThen"] == snapshots[0]["comingThen"] != []
+        for i, beat in enumerate(beats[1:], start=1):
+            move = session.history[beat["plies"] - 1]
+            last = i + 1 == len(beats) or beats[i + 1]["plies"] != beat["plies"]
+            assert beat["comingThen"] == (move["comingThen"] if last else move["coming"]), i

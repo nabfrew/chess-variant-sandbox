@@ -12,6 +12,8 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 pub const NO_SQUARE: i16 = -1;
+/// Schema 20 (Q807): no straight-back bar (`Game::portal_bar`).
+pub const NO_BAR: [i16; 2] = [NO_SQUARE, NO_SQUARE];
 /// The third owner: a wild piece, which neither player owns (schema 9).
 ///
 /// Named rather than spelled `2` for the reason `SCREEN_ANY` is: the number appears in
@@ -43,6 +45,16 @@ pub const MOVE_ROTATE: u32 = 5;
 /// Schema 13: a sweep whose path held at least one piece. A sweep over an empty path is
 /// `MOVE_NORMAL`, the same word a slide to that square is.
 pub const MOVE_SWEEP: u32 = 6;
+/// Schema 19: a transit. The piece moves onto a portal end and comes out one king's step
+/// beyond the other end of its pair: the target is that exit square, where the move
+/// ends, bits 25 to 31 hold the internal type of the end it went in by, and the
+/// promotion field holds the promoted type plus one (0 for none), because one kind field
+/// cannot say both "portal" and "promotion".
+pub const MOVE_PORTAL: u32 = 7;
+/// The owner a portal end's board byte belongs to: the third block, nobody's, which a wild
+/// piece uses too. The validator refuses the two rules together, so a game's third block
+/// holds one or the other (`compile.PortalRule`).
+pub const PORTAL_OWNER: usize = WILD;
 
 /// `AttackSource::sweep` bit 0: the attacked square is itself a capture landing.
 pub const SWEEP_LANDS: u8 = 1;
@@ -276,6 +288,11 @@ impl EntryTable {
         &self.squares[lo..lo + entry.len as usize]
     }
 
+    /// How many landings the table holds, over every entry: the length of `squares`.
+    pub fn n_landings(&self) -> usize {
+        self.squares.len()
+    }
+
     #[inline(always)]
     pub fn modes(&self, entry: &EntryRef) -> &[u8] {
         let lo = entry.start as usize;
@@ -329,6 +346,64 @@ pub struct AttackSource {
     /// source's path is the whole ray and `prefix_len` is the attacked square's index on
     /// it. The byte sits in the struct's padding, which a `cargo test` pins.
     pub sweep: u8,
+    /// Schema 19: the directions this source captures in, one bit per
+    /// `compile.PORTAL_DIRECTIONS` entry, for an attack through a portal. Zero in every
+    /// game without portals. The struct's last padding byte.
+    pub dirs: u8,
+}
+
+/// Schema 19: pairs of portals, as the compiler resolved them (`compile.PortalRule`).
+///
+/// Boxed behind one `Option` on `Tables`, so a game without portals pays one pointer and
+/// one null test per piece in move generation, and the struct the movegen reads at every
+/// ply grows by eight bytes rather than by these arrays.
+pub struct PortalTables {
+    /// The first end's internal type; end `k` is type `first_type + k`.
+    pub first_type: usize,
+    /// How many ends: two per pair, at most eight.
+    pub n_ends: usize,
+    /// `partner[type]` -> the other end's type, or -1 for a type that is not a portal.
+    pub partner: [i8; MAX_PIECE_TYPES],
+    /// `open[type][player]` -> may that player's pieces go in by this end.
+    pub open: [[bool; 2]; MAX_PIECE_TYPES],
+    /// `movers[type]` -> a bit per player who may move this end.
+    pub movers: [u8; MAX_PIECE_TYPES],
+    /// `[(player * n_squares + square) * 8 + direction]` -> the square one king's step away
+    /// under that player's wrap permission, or -1.
+    pub exits: Vec<i16>,
+    /// The momentum masks, parallel to each movement table's squares: bits 0-7 the
+    /// directions a move-mode landing there was reached in, bits 8-15 a capture-mode one.
+    pub leap_dirs: Vec<u16>,
+    pub slide_dirs: Vec<u16>,
+    pub hop_dirs: Vec<u16>,
+    /// Schema 20 (Q807): `no_back[type]` -> once this end has moved, it may not move
+    /// straight back onto the square it left on the very next move (`no_straight_back`).
+    pub no_back: [bool; MAX_PIECE_TYPES],
+    /// Whether any end bars going straight back: `Game::portal_bar` and its log are kept
+    /// only then, so a portal game without the rule pays one flag test in `make`.
+    pub has_no_back: bool,
+    /// The bar's Zobrist keys: `[left]` for the square the end left, `[n_squares +
+    /// standing]` for the one it stands on. Empty without the rule.
+    pub zobrist_bar: Vec<u64>,
+}
+
+impl PortalTables {
+    /// The key term of a straight-back bar: the end standing on `bar[0]` may not move to
+    /// `bar[1]`. Zero for no bar, and for every game without the rule.
+    #[inline]
+    pub fn bar_key(&self, n_squares: usize, bar: [i16; 2]) -> u64 {
+        if bar[0] < 0 || self.zobrist_bar.is_empty() {
+            0
+        } else {
+            self.zobrist_bar[bar[1] as usize] ^ self.zobrist_bar[n_squares + bar[0] as usize]
+        }
+    }
+
+    /// The square one king's step from `square` in `direction`, for `player`, or -1.
+    #[inline(always)]
+    pub fn exit(&self, n_squares: usize, player: usize, square: usize, direction: usize) -> i16 {
+        self.exits[(player * n_squares + square) * 8 + direction]
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -431,9 +506,32 @@ pub struct StrikeRule {
     pub landing_index: Vec<u32>,
     pub landing_squares: Vec<u16>,
     pub landing_stride: usize,
+    /// Schema 17 (Q540), `Home` only: `rebirth[(owner * n_types + type) * landing_stride +
+    /// square]` is the home square a piece of `owner` and `type` taken on `square` is
+    /// reborn on, or -1 where it has none. Empty under every other position.
+    pub rebirth: Vec<i32>,
+    /// Schema 17 (Q540): `mover_flips[mover * n_types + victim]` -- the attacker changes
+    /// sides (Andernach). Empty when no type does, so every earlier rule reads nothing.
+    pub mover_flips: Vec<bool>,
 }
 
+/// Schema 17 (Q540): a `to` entry that removes the victim and leaves the attacker on its
+/// origin (rifle). Below -1, so "survives" (`>= 0`) still reads it as removal.
+pub const REMOVED_IN_PLACE: i32 = -2;
+
 impl StrikeRule {
+    /// Where a piece of `owner` and `piece_type` taken on `square` is reborn, or -1.
+    #[inline]
+    pub fn rebirth_square(&self, owner: usize, piece_type: usize, square: usize) -> i32 {
+        self.rebirth[(owner * self.n_types + piece_type) * self.landing_stride + square]
+    }
+
+    /// Whether a capture of `victim` by `mover` sends the attacker over to the other side.
+    #[inline]
+    pub fn flips(&self, cell: usize) -> bool {
+        !self.mover_flips.is_empty() && self.mover_flips[cell]
+    }
+
     /// The squares a piece struck on `square` by `player` may be placed on, ascending.
     #[inline]
     pub fn landing(&self, player: usize, square: usize) -> &[u16] {
@@ -450,6 +548,9 @@ pub enum StrikePosition {
     Advance,
     Swap,
     Choose,
+    /// Schema 17 (Q540): the attacker advances and the survivor is reborn on its home
+    /// square, read off `rebirth`; an occupied home square removes it (circe).
+    Home,
 }
 
 /// Drop rule: pieces played from hand.
@@ -472,6 +573,25 @@ pub struct DropRule {
     /// which is why a stone needs no Zobrist term -- the hand is out of the key already
     /// (schema 2's argument) and this keeps it constant besides.
     pub unlimited: Vec<bool>,
+    /// Schema 18 (Q784): the placement phase. While a side holds anything in hand, its
+    /// only legal moves are drops (`generate_pseudo_legal`'s gate). False for every
+    /// ruleset before it, which is the boundary's inert default.
+    pub placement: bool,
+    /// Whether the stock holds a royal type, so a side's royal may be in its hand rather
+    /// than off the board for good. Derived here from `stock` and `royal_types`, not sent:
+    /// the readings of a missing royal (`Game::royal_gone`) ask it before they ask the
+    /// hand, so a ruleset whose stock holds no royal never reads a hand for it.
+    pub royal_stocked: bool,
+    /// Schema 18 (Q785): drop either face. `faces[slot]` is the other face a piece held
+    /// in that hand slot may be dropped as (the piece whose `promoted_from` it is), or -1.
+    /// Empty for every ruleset before it, which is the boundary's inert default, so
+    /// `generate_drops` asks `faces.is_empty()` once and walks the hand as it always did.
+    pub faces: Vec<i32>,
+    /// The inverse, derived here rather than sent: `slot_of[face]` is the hand slot a
+    /// drop of `face` spends. The identity where `faces` is empty. The validator refuses
+    /// every spelling under which a hand could hold a paired face itself (a stocked face,
+    /// a chain of `promoted_from`), so one face names one slot.
+    pub slot_of: Vec<usize>,
 }
 
 impl DropRule {
@@ -480,9 +600,20 @@ impl DropRule {
     pub fn is_unlimited(&self, piece_type: usize) -> bool {
         !self.unlimited.is_empty() && self.unlimited[piece_type]
     }
+
+    /// The hand slot a drop placing `face` spends: `face` itself, except under schema
+    /// 18's `either_face`, where a paired face is spent from its base's slot.
+    #[inline]
+    pub fn slot_of(&self, face: usize) -> usize {
+        if self.slot_of.is_empty() {
+            face
+        } else {
+            self.slot_of[face]
+        }
+    }
 }
 
-/// Reach rule: win by arrival.
+/// Reach rule: win by arrival, or (schema 18) by leaving.
 pub struct ReachRule {
     pub piece_type: i32,
     /// `squares[player]` -> set of target squares.
@@ -494,6 +625,11 @@ pub struct ReachRule {
     /// A boolean here read "draw" as a loss for the player who got there first.
     pub result: i8,
     pub safe: bool,
+    /// Schema 18 (Q786, Jeson Mor): `reach.on: "leave"`. The game is decided by the move
+    /// that takes the named piece off one of its side's goal squares, which `make` records
+    /// in `Game::goal_left_by`; a piece standing on a goal decides nothing. False for
+    /// every ruleset before it, which is the boundary's inert default.
+    pub leaves: bool,
 }
 
 /// Turn rule: how many moves a turn is, and how the opening ramps up to it.
@@ -542,6 +678,10 @@ pub struct ExtinctionRule {
     /// Tri-state, from the point of view of the side that ran out: -1 loss, 0 draw,
     /// 1 win. Antichess is a win, the horde a loss, and "draw" is now itself.
     pub result: i8,
+    /// Schema 18 (Q783): each counted type on its own, so a side has run out when any
+    /// one of them is below `min_count`. False is the summed count, which is every
+    /// ruleset before it. Never true beside `any_piece` (the validator refuses it).
+    pub per_type: bool,
 }
 
 impl ExtinctionRule {
@@ -710,6 +850,13 @@ pub struct Tables {
     /// *starts* in their zone, wherever it lands. Asked once per promoting piece per node,
     /// beside `is_promoting`; all false for every ruleset before it.
     promo_leaving_flags: [bool; MAX_PIECE_TYPES],
+    /// Schema 18 (Q783), `promotion.only_lost`: the promoting types that offer a target
+    /// only while the mover has fewer of it than it started with. All false for every
+    /// ruleset before it, so `promotion_offered` is one load and a branch there.
+    promo_only_lost_flags: [bool; MAX_PIECE_TYPES],
+    /// `promo_opening[player][type]` -> how many of that type the player started with.
+    /// Read only behind `promo_only_lost_flags`; zeros where nothing says `only_lost`.
+    promo_opening: [[u32; MAX_PIECE_TYPES]; 2],
 
     pub castling: Option<(usize, usize, i32)>,
     /// Schema 2 castling by destination file: (king_qs, king_ks, rook_qs, rook_ks).
@@ -736,6 +883,9 @@ pub struct Tables {
     pub strike: Option<StrikeRule>,
     pub drops: Option<DropRule>,
     pub reach: Option<ReachRule>,
+    /// `reach.leaves`, hoisted: the one flag `make` asks on every move, so a ruleset
+    /// without the rule pays one load for it rather than an `Option` and a field.
+    pub reach_leaves: bool,
     /// `[player * n_types * n_squares + piece_type * n_squares + square]` -> how many
     /// moves that piece needs, on an empty board, to reach a square a `reach` rule wins
     /// on. `GOAL_UNREACHABLE` where it cannot. Empty when there is no reach rule.
@@ -784,6 +934,9 @@ pub struct Tables {
     /// The ceiling `features.rs` measures a points gap against, and 0.0 when nothing is
     /// wild.
     pub npc_bounty_total: f64,
+
+    /// Schema 19: the portal tables, or `None` for every game without portals.
+    pub portals: Option<Box<PortalTables>>,
 
     /// Schema 9's second key, `rules.promote_on_entry`: what a piece that *enters play*
     /// on a square becomes, as `[player][piece_type][square]` flattened in that order,
@@ -1149,6 +1302,19 @@ impl Tables {
         self.promo_squares[player][piece_type * self.n_squares + square]
     }
 
+    /// Schema 18 (Q783): whether this promoting type offers a target only while its side
+    /// is short of its opening count of that type.
+    #[inline(always)]
+    pub fn promotes_only_lost(&self, piece_type: usize) -> bool {
+        self.promo_only_lost_flags[piece_type]
+    }
+
+    /// Schema 18 (Q783): how many of `piece_type` the player started with.
+    #[inline]
+    pub fn opening_count(&self, player: usize, piece_type: usize) -> u32 {
+        self.promo_opening[player][piece_type]
+    }
+
     /// Promotion targets for a piece type for a player.
     #[inline]
     pub fn promotion_targets(&self, player: usize, piece_type: usize) -> &[u32] {
@@ -1273,6 +1439,8 @@ impl Tables {
         let packed_sources: Vec<u32> = field(source, keys::ATTACK_SRCS)?;
         // Schema 13: one byte per source, or empty when nothing sweeps.
         let attack_sweep: Vec<u8> = field(source, keys::ATTACK_SWEEP)?;
+        // Schema 19: one byte per source, or empty when there are no portals.
+        let attack_dirs: Vec<u8> = field(source, keys::ATTACK_DIRS)?;
         let attack_sources: Vec<AttackSource> = packed_sources
             .chunks_exact(8)
             .enumerate()
@@ -1286,8 +1454,15 @@ impl Tables {
                 prefix_len: chunk[6],
                 screen_owner: chunk[7] as u8,
                 sweep: attack_sweep.get(index).copied().unwrap_or(0),
+                dirs: attack_dirs.get(index).copied().unwrap_or(0),
             })
             .collect();
+        if !attack_dirs.is_empty() && attack_dirs.len() != attack_sources.len() {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "attack_dirs holds {} bytes for {} attack sources",
+                attack_dirs.len(), attack_sources.len(),
+            )));
+        }
         if !attack_sweep.is_empty() && attack_sweep.len() != attack_sources.len() {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "attack_sweep holds {} bytes for {} attack sources",
@@ -1376,6 +1551,15 @@ impl Tables {
         let promo_optional_raw: Vec<u8> = field(source, keys::PROMO_OPTIONAL)?;
         let promo_piece_types: Vec<usize> = field(source, keys::PROMO_PIECE_TYPES)?;
         let promo_on_leaving: Vec<usize> = field(source, keys::PROMO_ON_LEAVING)?;
+        let promo_only_lost: Vec<usize> = field(source, keys::PROMO_ONLY_LOST)?;
+        let promo_opening_flat: Vec<u32> = field(source, keys::PROMO_OPENING)?;
+        let mut promo_opening = [[0u32; MAX_PIECE_TYPES]; 2];
+        if !promo_opening_flat.is_empty() {
+            for (player, row) in promo_opening.iter_mut().enumerate() {
+                row[..n_types]
+                    .copy_from_slice(&promo_opening_flat[player * n_types..(player + 1) * n_types]);
+            }
+        }
 
         // Rebuild promo_squares as Vec<Vec<bool>> [player][piece_type * n_squares + square]
         let player_stride = n_types * n_squares;
@@ -1453,6 +1637,7 @@ impl Tables {
                 1 => StrikePosition::Advance,
                 2 => StrikePosition::Swap,
                 3 => StrikePosition::Choose,
+                4 => StrikePosition::Home,
                 other => return Err(unknown("strike position", &other.to_string())),
             };
             let landing_squares: Vec<u16> = field(source, keys::STRIKE_LANDING)?;
@@ -1478,6 +1663,21 @@ impl Tables {
             } else {
                 (contact_onto, field(source, keys::CONTACT_MOVER_TO)?)
             };
+            // Schema 17 (Q540): -2 removes the victim and leaves the attacker where it
+            // stood, which only `stay` can say.
+            if position != StrikePosition::Stay && to.contains(&REMOVED_IN_PLACE) {
+                return Err(unknown("strike entry", "removed in place outside stay"));
+            }
+            let rebirth: Vec<i32> = field(source, keys::STRIKE_REBIRTH)?;
+            let expected = if position == StrikePosition::Home { 2 * n_types * n_squares } else { 0 };
+            if rebirth.len() != expected {
+                return Err(unknown("strike rebirth length", &rebirth.len().to_string()));
+            }
+            let flips_raw: Vec<u8> = field(source, keys::CONTACT_MOVER_FLIPS)?;
+            if !flips_raw.is_empty() && flips_raw.len() != n_types * n_types {
+                return Err(unknown("contact mover flips length", &flips_raw.len().to_string()));
+            }
+            let mover_flips: Vec<bool> = flips_raw.iter().map(|v| *v != 0).collect();
             let own_to: Vec<i32> = field(source, keys::CONTACT_OWN_ONTO_TO)?;
             let own_mover_to: Vec<i32> = field(source, keys::CONTACT_OWN_MOVER_TO)?;
             let own_link = own_to
@@ -1496,6 +1696,8 @@ impl Tables {
                 landing_index,
                 landing_squares,
                 landing_stride: n_squares,
+                rebirth,
+                mover_flips,
             })
         } else {
             None
@@ -1503,7 +1705,7 @@ impl Tables {
 
         // Drops
         let has_drops: bool = field(source, keys::HAS_DROPS)?;
-        let drops = if has_drops {
+        let mut drops = if has_drops {
             let from_captures: bool = field(source, keys::DROPS_FROM_CAPTURES)?;
             let regions_flat: Vec<i32> = field(source, keys::DROPS_REGIONS)?;
             // regions_flat: [player][piece_type][square] flattened; -1 means "any"
@@ -1528,6 +1730,30 @@ impl Tables {
             let no_mate_raw: Vec<u8> = field(source, keys::DROPS_NO_MATE)?;
             let stock: Vec<u32> = field(source, keys::DROPS_STOCK)?;
             let unlimited_raw: Vec<u8> = field(source, keys::DROPS_UNLIMITED)?;
+            let placement: bool = field(source, keys::DROPS_PLACEMENT)?;
+            let faces: Vec<i32> = field(source, keys::DROPS_FACES)?;
+            let mut slot_of: Vec<usize> = Vec::new();
+            if !faces.is_empty() {
+                if faces.len() != n_types {
+                    return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                        "drops_faces has {} entries for {} piece types",
+                        faces.len(),
+                        n_types
+                    )));
+                }
+                slot_of = (0..n_types).collect();
+                for (slot, &face) in faces.iter().enumerate() {
+                    if face >= 0 {
+                        let face = face as usize;
+                        if face >= n_types || slot_of[face] != face {
+                            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                                "drops_faces pairs piece type {face} with more than one hand slot"
+                            )));
+                        }
+                        slot_of[face] = slot;
+                    }
+                }
+            }
             Some(DropRule {
                 from_captures,
                 regions,
@@ -1535,6 +1761,11 @@ impl Tables {
                 no_mate: no_mate_raw.iter().map(|v| *v != 0).collect(),
                 stock,
                 unlimited: unlimited_raw.iter().map(|v| *v != 0).collect(),
+                placement,
+                // Settled below, once `royal_types` has been read.
+                royal_stocked: false,
+                faces,
+                slot_of,
             })
         } else {
             None
@@ -1550,6 +1781,7 @@ impl Tables {
             let reach_squares_raw: Vec<u8> = field(source, keys::REACH_SQUARES)?;
             let reach_result: i8 = field(source, keys::REACH_RESULT)?;
             let reach_safe: bool = field(source, keys::REACH_SAFE)?;
+            let reach_leaves: bool = field(source, keys::REACH_LEAVES)?;
             let squares: [Vec<bool>; 2] = [
                 reach_squares_raw[..n_squares].iter().map(|v| *v != 0).collect(),
                 reach_squares_raw[n_squares..].iter().map(|v| *v != 0).collect(),
@@ -1571,6 +1803,7 @@ impl Tables {
                 goals,
                 result: reach_result,
                 safe: reach_safe,
+                leaves: reach_leaves,
             })
         } else {
             None
@@ -1621,12 +1854,14 @@ impl Tables {
             let ext_any: bool = field(source, keys::EXTINCTION_ANY_PIECE)?;
             let ext_min: usize = field(source, keys::EXTINCTION_MIN_COUNT)?;
             let ext_result: i8 = field(source, keys::EXTINCTION_RESULT)?;
+            let ext_per_type: bool = field(source, keys::EXTINCTION_PER_TYPE)?;
             Some(ExtinctionRule {
                 counted: type_flags(&ext_types),
                 piece_types: ext_types,
                 any_piece: ext_any,
                 min_count: ext_min,
                 result: ext_result,
+                per_type: ext_per_type,
             })
         } else {
             None
@@ -1643,7 +1878,14 @@ impl Tables {
         // below has to know about; `_check_facing_coherence` refuses the same thing on
         // the Python side, with the same arithmetic and a better message.
         let has_npcs: bool = field(source, keys::HAS_NPCS)?;
-        let n_owners = if has_npcs { 3 } else { 2 };
+        // Schema 19: portals are nobody's too, in the same third block.
+        let has_portals: bool = field(source, keys::HAS_PORTALS)?;
+        if has_npcs && has_portals {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "wild pieces and portals share the third owner's block; the validator                  refuses the two together",
+            ));
+        }
+        let n_owners = if has_npcs || has_portals { 3 } else { 2 };
         let npc_next: Vec<i16> = field::<Vec<i32>>(source, keys::NPC_NEXT)?
             .into_iter()
             .map(|square| square as i16)
@@ -1715,6 +1957,18 @@ impl Tables {
             let owner = value_owner[value as usize] as usize;
             if owner < 2 && royal_flags[value_type[value as usize] as usize] {
                 royal_at_start[owner] = true;
+            }
+        }
+        // Schema 18 (Q784): a royal may start in the hand under `drops.placement`, and a
+        // side whose royal is in its stock had one to lose as surely as one whose royal
+        // was placed. Both players get the same stock (`_validate_stock`), so it is both
+        // sides or neither.
+        if let Some(rule) = drops.as_mut() {
+            rule.royal_stocked = royal_types
+                .iter()
+                .any(|piece_type| rule.stock.get(*piece_type).is_some_and(|held| *held > 0));
+            if rule.royal_stocked {
+                royal_at_start = [true; 2];
             }
         }
 
@@ -1792,6 +2046,8 @@ impl Tables {
             promo_optional,
             promo_flags: type_flags(&promo_piece_types),
             promo_leaving_flags: type_flags(&promo_on_leaving),
+            promo_only_lost_flags: type_flags(&promo_only_lost),
+            promo_opening,
             promo_piece_types,
             castling,
             castle_files,
@@ -1800,6 +2056,7 @@ impl Tables {
             explosion,
             strike,
             drops,
+            reach_leaves: reach.as_ref().is_some_and(|rule| rule.leaves),
             reach,
             goal_distance,
             goal_diameter,
@@ -1813,6 +2070,7 @@ impl Tables {
             npc_bounty,
             npc_squares,
             npc_bounty_total: 0.0,
+            portals: None,
             entry_promotion,
             piece_values,
             must_capture,
@@ -1892,8 +2150,94 @@ impl Tables {
                 .sum();
         }
 
+        if has_portals {
+            tables.portals = Some(Box::new(Self::portal_tables(source, &tables)?));
+        }
+
         tables.hop_lines = tables.build_hop_lines();
         Ok(tables)
+    }
+}
+
+impl Tables {
+    /// Schema 19: read the portal tables, checking each against the shape it indexes.
+    fn portal_tables(source: &Bound<'_, PyDict>, tables: &Tables) -> PyResult<PortalTables> {
+        let fail = |what: String| Err(pyo3::exceptions::PyValueError::new_err(what));
+        let n_types = tables.n_types;
+        let partner_raw: Vec<i32> = field(source, keys::PORTAL_PARTNER)?;
+        let open_raw: Vec<u8> = field(source, keys::PORTAL_OPEN)?;
+        let movers_raw: Vec<u8> = field(source, keys::PORTAL_MOVERS)?;
+        if partner_raw.len() != n_types || open_raw.len() != 2 * n_types
+            || movers_raw.len() != n_types
+        {
+            return fail(format!("portal tables are not one row per each of {n_types} types"));
+        }
+        let mut partner = [-1i8; MAX_PIECE_TYPES];
+        let mut open = [[false; 2]; MAX_PIECE_TYPES];
+        let mut movers = [0u8; MAX_PIECE_TYPES];
+        for piece_type in 0..n_types {
+            partner[piece_type] = partner_raw[piece_type] as i8;
+            open[piece_type] = [open_raw[2 * piece_type] != 0, open_raw[2 * piece_type + 1] != 0];
+            movers[piece_type] = movers_raw[piece_type];
+        }
+        let ends: Vec<usize> = (0..n_types).filter(|t| partner[*t] >= 0).collect();
+        let first_type = ends.first().copied().unwrap_or(0);
+        if ends.is_empty() || ends.len() > 8 || !ends.len().is_multiple_of(2)
+            || ends.iter().enumerate().any(|(k, t)| *t != first_type + k)
+        {
+            return fail("portal ends are not two to eight contiguous types".to_string());
+        }
+        let exits: Vec<i16> = field::<Vec<i32>>(source, keys::PORTAL_EXITS)?
+            .into_iter()
+            .map(|square| square as i16)
+            .collect();
+        if exits.len() != 2 * tables.n_squares * 8 {
+            return fail(format!("portal_exits holds {} entries", exits.len()));
+        }
+        let leap_dirs: Vec<u16> = field(source, keys::LEAP_DIRS)?;
+        let slide_dirs: Vec<u16> = field(source, keys::SLIDE_DIRS)?;
+        let hop_dirs: Vec<u16> = field(source, keys::HOP_DIRS)?;
+        // Schema 20: empty unless some pair sets `no_straight_back`.
+        let no_back_raw: Vec<u8> = field(source, keys::PORTAL_NO_BACK)?;
+        let zobrist_bar: Vec<u64> = field(source, keys::ZOBRIST_PORTAL_BAR)?;
+        if !no_back_raw.is_empty() && no_back_raw.len() != n_types {
+            return fail(format!(
+                "portal_no_back holds {} rows for {n_types} types", no_back_raw.len(),
+            ));
+        }
+        let has_no_back = no_back_raw.iter().any(|flag| *flag != 0);
+        if zobrist_bar.len() != if has_no_back { 2 * tables.n_squares } else { 0 } {
+            return fail(format!("zobrist_portal_bar holds {} keys", zobrist_bar.len()));
+        }
+        let mut no_back = [false; MAX_PIECE_TYPES];
+        for (piece_type, flag) in no_back_raw.iter().enumerate() {
+            no_back[piece_type] = *flag != 0;
+        }
+        for (name, dirs, table) in [
+            ("leap", &leap_dirs, &tables.leaps),
+            ("slide", &slide_dirs, &tables.slides),
+            ("hop", &hop_dirs, &tables.hops),
+        ] {
+            if dirs.len() != table.n_landings() {
+                return fail(format!(
+                    "{name}_dirs holds {} masks for {} landings", dirs.len(), table.n_landings(),
+                ));
+            }
+        }
+        Ok(PortalTables {
+            first_type,
+            n_ends: ends.len(),
+            partner,
+            open,
+            movers,
+            exits,
+            leap_dirs,
+            slide_dirs,
+            hop_dirs,
+            no_back,
+            has_no_back,
+            zobrist_bar,
+        })
     }
 }
 
@@ -1999,6 +2343,7 @@ pub mod keys {
     declare_keys! {
         ATTACK_INDEX => "attack_index",
         ATTACK_PATH_MODES => "attack_path_modes",
+        ATTACK_DIRS => "attack_dirs",
         ATTACK_PATHS => "attack_paths",
         ATTACK_SRCS => "attack_srcs",
         ATTACK_SWEEP => "attack_sweep",
@@ -2011,15 +2356,18 @@ pub mod keys {
         CASTLE_STEPS => "castle_steps",
         CHECK_LIMIT => "check_limit",
         CHECKMATE_RESULT => "checkmate_result",
+        CONTACT_MOVER_FLIPS => "contact_mover_flips",
         CONTACT_MOVER_TO => "contact_mover_to",
         CONTACT_ONTO_TO => "contact_onto_to",
         CONTACT_OWN_MOVER_TO => "contact_own_mover_to",
         CONTACT_OWN_ONTO_TO => "contact_own_onto_to",
         DEDUP => "dedup",
         DEMOTIONS => "demotions",
+        DROPS_FACES => "drops_faces",
         DROPS_FROM_CAPTURES => "drops_from_captures",
         DROPS_NO_DOUBLED => "drops_no_doubled",
         DROPS_NO_MATE => "drops_no_mate",
+        DROPS_PLACEMENT => "drops_placement",
         DROPS_REGIONS => "drops_regions",
         DROPS_STOCK => "drops_stock",
         DROPS_UNLIMITED => "drops_unlimited",
@@ -2034,6 +2382,7 @@ pub mod keys {
         EXPLOSION_OF => "explosion_of",
         EXTINCTION_ANY_PIECE => "extinction_any_piece",
         EXTINCTION_MIN_COUNT => "extinction_min_count",
+        EXTINCTION_PER_TYPE => "extinction_per_type",
         EXTINCTION_RESULT => "extinction_result",
         EXTINCTION_TYPES => "extinction_types",
         FACING_AXES => "facing_axes",
@@ -2053,6 +2402,7 @@ pub mod keys {
         HAS_EXTINCTION => "has_extinction",
         HAS_HOP_ATTACKS => "has_hop_attacks",
         HAS_NPCS => "has_npcs",
+        HAS_PORTALS => "has_portals",
         HAS_REACH => "has_reach",
         HAS_SCORING => "has_scoring",
         HAS_STRIKE => "has_strike",
@@ -2060,6 +2410,7 @@ pub mod keys {
         HAS_TERRITORY => "has_territory",
         HAS_TURN => "has_turn",
         HEIGHT => "height",
+        HOP_DIRS => "hop_dirs",
         HOP_INDEX => "hop_index",
         HOP_MODES => "hop_modes",
         HOP_REFS => "hop_refs",
@@ -2067,6 +2418,7 @@ pub mod keys {
         IMMOBILE_SQUARES => "immobile_squares",
         INITIAL_BOARD => "initial_board",
         INITIAL_UNMOVED => "initial_unmoved",
+        LEAP_DIRS => "leap_dirs",
         LEAP_INDEX => "leap_index",
         LEAP_MODES => "leap_modes",
         LEAP_REFS => "leap_refs",
@@ -2082,12 +2434,20 @@ pub mod keys {
         NPC_NEXT => "npc_next",
         ONE_WAY_TYPES => "one_way_types",
         PIECE_VALUES => "piece_values",
+        PORTAL_EXITS => "portal_exits",
+        PORTAL_MOVERS => "portal_movers",
+        PORTAL_NO_BACK => "portal_no_back",
+        PORTAL_OPEN => "portal_open",
+        PORTAL_PARTNER => "portal_partner",
         PROMO_ON_LEAVING => "promo_on_leaving",
+        PROMO_ONLY_LOST => "promo_only_lost",
+        PROMO_OPENING => "promo_opening",
         PROMO_OPTIONAL => "promo_optional",
         PROMO_PIECE_TYPES => "promo_piece_types",
         PROMO_SQUARES => "promo_squares",
         PROMO_TARGETS_FLAT => "promo_targets_flat",
         PROMO_TARGETS_INDEX => "promo_targets_index",
+        REACH_LEAVES => "reach_leaves",
         REACH_PIECE_TYPE => "reach_piece_type",
         REACH_RESULT => "reach_result",
         REACH_SAFE => "reach_safe",
@@ -2097,6 +2457,7 @@ pub mod keys {
         ROYAL_TYPES => "royal_types",
         SCORING_COUNT => "scoring_count",
         SCORING_SQUARES => "scoring_squares",
+        SLIDE_DIRS => "slide_dirs",
         SLIDE_INDEX => "slide_index",
         SLIDE_MODES => "slide_modes",
         SLIDE_REFS => "slide_refs",
@@ -2105,6 +2466,7 @@ pub mod keys {
         STRIKE_LANDING => "strike_landing",
         STRIKE_LANDING_INDEX => "strike_landing_index",
         STRIKE_POSITION => "strike_position",
+        STRIKE_REBIRTH => "strike_rebirth",
         STRIKE_TO => "strike_to",
         SWEEP_INDEX => "sweep_index",
         SWEEP_MODES => "sweep_modes",
@@ -2119,6 +2481,7 @@ pub mod keys {
         ZOBRIST_COLOUR => "zobrist_colour",
         ZOBRIST_EP => "zobrist_ep",
         ZOBRIST_PIECES => "zobrist_pieces",
+        ZOBRIST_PORTAL_BAR => "zobrist_portal_bar",
         ZOBRIST_SIDE => "zobrist_side",
         ZOBRIST_TURN => "zobrist_turn",
     }

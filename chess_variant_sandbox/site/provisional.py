@@ -502,6 +502,35 @@ def one_run(game: str, spec: Any) -> Basis | None:
     return corpus.current_basis(game, spec=spec, seeds=corpus.ONE_SEED)
 
 
+WALK = "legality"
+"""`jobs.kind` for tier one's walk (`legality.KIND` is this)."""
+
+SPOT = "sample"
+"""`jobs.kind` for tier two's spot check (`spotcheck.KIND` is this)."""
+
+SPOT_STOPPED = "stopped at the cap"
+"""How a spot check that ran out of budget begins its log line (`spotcheck.STOPPED`)."""
+
+_IN_FLIGHT = ("queued", "running")
+
+
+def checking(connection: Any, game: str) -> bool:
+    """Whether a score of this game is in the site's check now: walked or spot-checked.
+
+    What lets *Publish* take a press before the check has finished (Q742): the designer's
+    browser has measured the draft and sent it, and a walk or a spot check of it is
+    queued or running. When the last of them ends, the reading is `attached` or it is not,
+    and `drafts.settle` puts the game on trial or calls the publish off.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select 1 from jobs where hash = %s and kind = any(%s) and state = any(%s)"
+            " limit 1",
+            (game, [WALK, SPOT], list(_IN_FLIGHT)),
+        )
+        return cursor.fetchone() is not None
+
+
 def attached(connection: Any, game: str, current: Current) -> dict[str, Any] | None:
     """The spot-checked reading on today's basis this game carries, or `None` (Q503e).
 

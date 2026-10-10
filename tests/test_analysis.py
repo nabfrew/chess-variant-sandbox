@@ -307,16 +307,18 @@ class TestOnePositionCalls:
         assert (native.winner, native.reason) == (python.winner, python.reason)
 
     def test_no_legal_move_is_reported_as_no_move(self, chess) -> None:
-        """A terminal position is a question for ``terminal``, not an error here."""
+        """A terminal position is a question for ``terminal``, not an error here.
+
+        Chess, for a stalemate whose squares are easy to check by eye: the second player's
+        king in the corner, boxed in by the first player's queen and king. Until Q745 this
+        walked a greedy game to its end and asked only if that end had no legal move; it
+        never did (the game ran to its ply limit), so the assert never ran.
+        """
         from chess_variant_sandbox.tournament.play import choose_move
 
-        # Walk a game to its end, then ask.
-        record = play_game(chess, ("greedy", "greedy"), 1)
-        state = chess.initial_state()
-        for move in record.moves:
-            state = chess.apply(state, move)
-        if not chess.legal_moves(state):
-            assert choose_move(chess, "greedy", state) is None
+        state = chess.make_state({"h8": ("K", 1), "f7": ("Q", 0), "g6": ("K", 0)}, side_to_move=1)
+        assert not chess.legal_moves(state)
+        assert choose_move(chess, "greedy", state) is None
 
 
 class TestWorkerIndependence:

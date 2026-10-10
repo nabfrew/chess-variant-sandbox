@@ -111,9 +111,10 @@ function hereWorker(manifest, gathers) {
 }
 
 // A worker's own message is Python's or the browser's (*a unit arrived before Pyodide was
-// loaded*, a traceback's last line), written for whoever debugs the worker. The view of a
-// measurement that stopped repeats it, which is that person's view; it is marked where it
-// is made, so the site's answer about a send never carries one (Q682).
+// loaded*, a traceback's last line), written for whoever debugs the worker. It is marked
+// where it is made, so neither the site's answer about a send (Q682) nor the view of a
+// measurement that stopped (Q728) shows it: the run keeps it as `error`, the console has
+// it, and the reader gets `hereFault`'s plain clause.
 function workerError(message) {
   const error = new Error(message);
   error.fromWorker = true;
@@ -140,7 +141,7 @@ async function hereMeasure(spec, count) {
     hash: DRAFT_HASH, name: spec.name || 'this game', workers: count,
     state: 'loading', step: 'loading', done: 0, total: 0, games: 0,
     started: performance.now(), seconds: 0, times: [], loads: [], heaps: [],
-    pool: [], result: null, error: '',
+    pool: [], result: null, error: '', said: '',
   };
   HERE = run;
   hereClock(true);
@@ -167,6 +168,7 @@ async function hereMeasure(spec, count) {
     if (run.state !== 'stopped') {
       run.state = 'failed';
       run.error = error.message || String(error);
+      run.said = hereFault(error);
     }
   } finally {
     run.seconds = (performance.now() - run.started) / 1000;
@@ -189,14 +191,21 @@ function hereSends() {
 // it and, after that, spot-checked it (Q503e: `spotCheck` queued or running means keep
 // asking). The upload goes as the string it arrived as. A `stale-build` refusal means this
 // page loaded an engine the server no longer runs, so the manifest is asked again and the
-// next measurement loads the current one. When the spot check ends, the designer's
-// *Where this game stands* is asked again, because a spot-checked score is what opens
-// *Publish*; the page reads the server's answer and decides nothing itself.
+// next measurement loads the current one. The designer's *Where this game stands* is asked
+// again as soon as the site has taken the score, because a score the site is checking is
+// what opens *Publish* (Q742), and again when the checks end, which is when a press that
+// waited goes through or is called off; the page reads the server's answer and decides
+// nothing itself.
 async function hereSubmit(run) {
   run.check = { state: 'sending' };
   if (HERE === run) redrawHere();
+  const restand = () => {
+    if (typeof loadStanding === 'function' && typeof DRAFT_HASH === 'string'
+        && DRAFT_HASH === run.result.hash) loadStanding(DRAFT_HASH);
+  };
   try {
     let answer = await api('/api/provisional', { game: run.result.hash, upload: run.upload });
+    if (answer.state === 'queued' || answer.state === 'running') restand();
     while (answer.state === 'queued' || answer.state === 'running' || hereSpotting(answer)) {
       run.check = answer;
       if (HERE === run) redrawHere();
@@ -208,10 +217,7 @@ async function hereSubmit(run) {
       HERE_MANIFEST = undefined;
       hereLookup();
     }
-    if (answer.spotCheck && typeof loadStanding === 'function'
-        && typeof DRAFT_HASH === 'string' && DRAFT_HASH === run.result.hash) {
-      loadStanding(DRAFT_HASH);
-    }
+    restand();
   } catch (error) {
     run.check = { state: 'failed', error: hereFault(error) };
   }
@@ -297,19 +303,24 @@ function hereCores(n) {
 function redrawHere() {
   const box = document.getElementById('dHere');
   if (!box) return;
-  box.innerHTML = hereHtml(DRAFT_CHECK);
+  box.innerHTML = hereHtml(DRAFT_CHECK, box.dataset.in === 'panel');
   wireHere();
 }
 
 // Nothing at all where there is no artefact, or no game to measure, and nothing in hand.
-function hereHtml(check) {
+// `inPanel` is the control drawn inside *Publish*, under the line asking for a score
+// (Q742, `hereInPanel`): a framed step of that panel rather than a section of its own.
+function hereHtml(check, inPanel) {
   const run = HERE;
   const offer = !!HERE_MANIFEST && !!check && check.valid && check.playable !== false;
   if (!run && !offer) return '';
   const busy = !!run && (run.state === 'loading' || run.state === 'running');
-  return `<div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--line)">
-      <h3 style="margin-top:0">Measure it on this computer</h3>
-      ${run ? hereRunHtml(run) : `<div class="muted small">Your browser plays the games the
+  return `<div class="${inPanel ? 'hereStep' : 'ruled'}">
+      ${inPanel ? '<div style="font-weight:600">Measure it on this computer</div>'
+        : '<h3 style="margin-top:0">Measure it on this computer</h3>'}
+      ${run ? hereRunHtml(run) : inPanel ? `<div class="muted small">This computer plays the
+        games and scores them; a game the size of chess takes a few minutes. Then the site
+        checks the score.</div>` : `<div class="muted small">Your browser plays the games the
         server would, with the same engine, and scores them the same way, on ${
         hereCores(hereWorkerCap())}. A game the size of chess takes a few minutes. ${
         hereSends() ? `When it finishes, the games go to the site, which checks every one
@@ -336,7 +347,7 @@ function hereRunHtml(run) {
   if (run.state === 'done') return hereResultHtml(run);
   const spent = hereSeconds((performance.now() - run.started) / 1000);
   if (run.state === 'failed') {
-    return `<div class="error">It stopped before it finished: ${esc(run.error)}</div>`;
+    return `<div class="error">It stopped before it finished: ${esc(run.said || run.error)}</div>`;
   }
   if (run.state === 'stopped') {
     return `<div class="muted small">Stopped after ${esc(hereSeconds(run.seconds))}.
@@ -364,7 +375,7 @@ function hereResultHtml(run) {
     ${moved ? `<div class="muted small" style="margin-top:6px">This is ${esc(r.name)} as it
       stood when you pressed the button${ACCOUNTS ? '' : ` (<code>${esc(r.hash)}</code>)`}; the rules have changed
       since, so it is not a number for the draft on screen.</div>` : ''}
-    ${(r.violations || []).length ? `<div class="verdict" style="border-color:var(--bad)">
+    ${(r.violations || []).length ? `<div class="verdict out">
         <div>It is ruled out${info('gated')}, not marked down.</div>
         <div class="small" style="font-weight:400; margin-top:5px">${
           r.violations.map(esc).join('<br>')}</div></div>` : ''}
@@ -453,8 +464,10 @@ function hereSpotHtml(check) {
   if (!spot || (check.result && check.result.state === 'spot-checked')) return '';
   if (spot.state === 'queued' || spot.state === 'running') {
     return `<div class="small" style="margin-top:6px">The site is now replaying a sample of
-      the games exactly, to spot-check it; that takes a few minutes. Once it has, the score
-      can be published with the game.</div>`;
+      the games exactly, to spot-check it; that takes a few minutes.${
+      typeof hereInPanel === 'function' && hereInPanel(DRAFT_STANDING)
+        ? ' You can press Publish already: the game goes on trial by itself once the check has passed.'
+        : ''}</div>`;
   }
   if (spot.state === 'stopped') {
     return `<div class="small" style="margin-top:6px">The site's spot check ran out of time

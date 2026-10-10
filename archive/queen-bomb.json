@@ -239,6 +239,7 @@
     }
   },
   "provenance": {
+    "added": "2026-09-07",
     "origin": "human",
     "source": "a widely played chess variant",
     "history": "Hand-written as atomic chess with rules.explode_on_capture.by set to the queen and nothing else changed, as the demonstrating ruleset for that key (schema 10, row 25 of reference/schema-showcase-coverage.md). One key away from rulesets/atomic.json, which is its control."

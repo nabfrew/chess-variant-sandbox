@@ -129,6 +129,14 @@ NEXT = {
 """What the designer does next, for *Your games*. A level with nothing for the designer
 to do has no entry."""
 
+WAITING = (
+    "Waiting for the site's check: publishing will be complete once the site has checked "
+    "the score measured on your computer, and it goes on trial by itself."
+)
+"""A draft whose designer pressed *Publish* while the site was still checking its score
+(Q742, `drafts.settle`), as its designer reads it on the game's page and in *Your games*.
+Anybody else reads the draft's plain sentence: the press is the designer's business."""
+
 
 def stage(row: Mapping[str, Any]) -> str:
     """The level of the game this `games` row holds. See the module for the order.
@@ -198,11 +206,12 @@ def shown(level: str, says: str | None = None) -> dict[str, Any]:
 
 COLUMNS = (
     "hash", "origin", "visibility", "nominated", "retired", "published", "rested", "woken",
-    "owner",
+    "owner", "publish_asked",
 )
 """What `read` asks of a row. `stage` reads five of them; `published` dates a trial
 game for the trial tab's newest-first order; `woken` and `owner` word a Resting game's
-sentence (`said`)."""
+sentence (`said`); `publish_asked` and `owner` word a draft waiting for the site's check
+(`WAITING`)."""
 
 
 def read(connection: Any, hashes: Iterable[str]) -> dict[str, dict[str, Any]]:
@@ -252,7 +261,8 @@ def yours(connection: Any, owner: int) -> list[dict[str, Any]]:
         grouped.setdefault(level, []).append({
             "hash": str(row["hash"]),
             "name": name,
-            "next": "" if level == RESTING and not wakes else NEXT.get(level, ""),
+            "next": WAITING if row.get("publish_asked") is not None
+            else "" if level == RESTING and not wakes else NEXT.get(level, ""),
             "inDesigner": level == DRAFT or wakes,
         })
     order = [*LEVELS, *sorted(set(grouped) - set(LEVELS))]
@@ -391,6 +401,10 @@ def said(connection: Any, row: Mapping[str, Any], viewer: int | None) -> str:
     a Baseline game that has always been one, says its plain sentence (`SAYS`).
     """
     level = str(row.get("level") or stage(row))
+    if row.get("publish_asked") is not None and level in (DRAFT, RESTING):
+        owner = row.get("owner")
+        if viewer is not None and owner is not None and int(owner) == viewer:
+            return WAITING
     if level == RESTING:
         # Imported here: the local application reads this module without the store's.
         from chess_variant_sandbox.site import resting

@@ -170,7 +170,9 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::make": "the drop branch and the fill; the fill is behind `captured != 0` "
         "and `from_captures`, which the two refusals switch off between them",
         "game.rs::generate_pseudo_legal": "calls `generate_drops`, which returns at once on "
-        "an empty hand",
+        "an empty hand; schema 18's placement gate (Q784) fires only on a non-empty one",
+        "game.rs::royal_in_hand": "asks `royal_stocked` first (Q784), which needs a royal in "
+        "the stock; the refusals need no stock, so it answers false",
         "game.rs::generate_drops": "walks the hand, which is empty for the life of the game",
         "game.rs::restrict": "the drop-mate filter; it filters drops, and there are none",
         "eval.rs::new": "`mean_non_royal` skips unlimited types; the refusals need no "
@@ -250,6 +252,9 @@ READERS: dict[str, dict[str, str]] = {
         "eval.rs::of": "`Seal::of` asks whether the race is priced; the seal it builds is "
         "read only as above",
         "features.rs::reach_progress": "`REACH_PROGRESS`, over pieces on the board",
+        "game.rs::make": "schema 18f (Q786): whether the move took the named piece off a goal "
+        "square, read only under `reach_leaves`, from the mover as it set out, so a piece "
+        "that never stands never leaves",
     },
     "goal_distance": {
         "eval.rs::goal_distance_of": "the distance of a piece that stands, for the race and "
@@ -287,18 +292,29 @@ READERS: dict[str, dict[str, str]] = {
     },
     "is_promoting()": {
         "game.rs::generate_pseudo_legal": "asked of the moving piece",
+        "game.rs::push_transits": "asked of the moving piece (schema 19)",
+        "game.rs::push_portal_moves": "asked of each piece before its transits (schema 19)",
         "features.rs::promotion_occupancy": "asked of a piece on the board",
     },
     "promotes_on()": {
         "game.rs::generate_pseudo_legal": "asked of a moving piece's origin",
         "game.rs::push_arrival": "asked of a moving piece's target",
+        "game.rs::push_transits": "asked of a moving piece's exit (schema 19)",
+        "game.rs::push_portal_moves": "asked of a moving piece's origin (schema 19)",
         "features.rs::promotion_occupancy": "asked of a piece on the board",
     },
-    "promotes_on_leaving()": {"game.rs::generate_pseudo_legal": "asked of the moving piece"},
-    "promotion_optional()": {"game.rs::generate_pseudo_legal": "asked of the moving piece"},
+    "promotes_on_leaving()": {
+        "game.rs::generate_pseudo_legal": "asked of the moving piece",
+        "game.rs::push_portal_moves": "asked of each piece before its transits (schema 19)",
+    },
+    "promotion_optional()": {
+        "game.rs::generate_pseudo_legal": "asked of the moving piece",
+        "game.rs::push_transits": "asked of the moving piece (schema 19)",
+    },
     "promotion_targets()": {
         "game.rs::generate_pseudo_legal": "asked of the moving piece",
         "game.rs::push_arrival": "asked of the moving piece",
+        "game.rs::push_transits": "asked of the moving piece (schema 19)",
     },
     "entry_promotion": {"tables.rs::arriving_value": "the accessor; its callers are followed"},
     "arriving_value()": {

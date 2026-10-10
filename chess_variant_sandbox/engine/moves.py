@@ -12,7 +12,9 @@ access. The layout is fixed here so the Rust core can reproduce it exactly.
                 the dropped piece type for MOVE_DROP, and the new facing for
                 MOVE_ROTATE
     bits 25-31  landing index (schema 12): which entry of the compiled landing list a
-                struck piece is placed on under ``position: "choose"``, zero otherwise
+                struck piece is placed on under ``position: "choose"``, zero otherwise;
+                under MOVE_PORTAL (schema 19) the internal type of the portal end the
+                piece went in by, and bits 20-24 then hold the promoted type plus one
 
 Square indices are ``rank * width + file``, so the layout supports boards up to
 16x16 (256 squares), matching ``spec.schema.MAX_BOARD_DIM``.
@@ -42,6 +44,11 @@ MOVE_ROTATE = 5
 # Schema 13: a sweep whose path held a piece. The path is recovered from the compiled
 # sweep table by origin and target. A sweep over an empty path is ``MOVE_NORMAL``.
 MOVE_SWEEP = 6
+# Schema 19: a transit through a portal. The target is the exit square, where the piece
+# ends up; bits 25-31 hold the internal type of the portal end it went in by
+# (``move_portal``), and the promotion field holds the promoted type *plus one*, 0 for
+# none, because the kind field cannot say both "portal" and "promotion".
+MOVE_PORTAL = 7
 
 MOVE_TYPE_NAMES = {
     MOVE_NORMAL: "normal",
@@ -51,6 +58,7 @@ MOVE_TYPE_NAMES = {
     MOVE_DROP: "drop",
     MOVE_ROTATE: "rotate",
     MOVE_SWEEP: "sweep",
+    MOVE_PORTAL: "portal",
 }
 
 
@@ -83,6 +91,11 @@ def move_promotion(move: int) -> int:
 
 def move_landing(move: int) -> int:
     """The landing index of a strike under ``position: "choose"``; zero for any other move."""
+    return (move >> 25) & 0x7F
+
+
+def move_portal(move: int) -> int:
+    """The internal type of the portal end a ``MOVE_PORTAL`` went in by (schema 19)."""
     return (move >> 25) & 0x7F
 
 

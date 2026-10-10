@@ -218,6 +218,23 @@ def test_the_on_leaving_arm_changes_the_game() -> None:
     assert flagged.moves != plain.moves
 
 
+@pytest.mark.parametrize("name", ["rifle", "circe", "andernach", "kamikaze"])
+@pytest.mark.parametrize(
+    "agents", [("random", "random"), ("greedy", "random")], ids=lambda pair: "-vs-".join(pair)
+)
+def test_what_a_capture_leaves_behind_is_played_the_same_way_on_both_sides(
+    name: str, agents: tuple[str, str]
+) -> None:
+    """Schema 17 (Q540): no library game leaves its capturer still, reborns a victim,
+    switches a capturer's side or blasts nothing beside a capture. The Python agents must
+    read each such capture as the core does: loud, a material change, the same choice."""
+    engine = Engine(load_spec(RULESETS.parent / "archive" / f"{name}.json"))
+    _assert_same_played(engine, agents)
+    assert play_game(engine, agents, seed=5).moves != play_game(
+        Engine(load_spec(RULESETS / "chess.json")), agents, seed=5
+    ).moves
+
+
 def _hexagon(name: str) -> Engine:
     """Schema 16's native hexagon (Q281a4): the twin, or its flanks joined by a seam."""
     return Engine(load_spec(RULESETS.parent / "archive" / f"{name}.json"))
@@ -1803,8 +1820,8 @@ def test_a_core_built_after_a_field_was_added_is_caught_too() -> None:
     """The direction that raises nothing at all, and so would otherwise play on.
 
     A core *newer* than the package -- an older branch checked out over a fresh build --
-    hands back a field the package does not read. Nothing throws: `_unpack` takes the four
-    it knows and drops the fifth on the floor. It is caught because the position that goes
+    hands back a field the package does not read. Nothing throws: `_unpack` takes the six
+    it knows (five until schema 20's `portal_bar`) and drops the seventh on the floor. It is caught because the position that goes
     back in is a field shorter than the one that came out, which is a comparison that
     needs no version number on either side to make.
     """
@@ -1817,7 +1834,7 @@ def test_a_core_built_after_a_field_was_added_is_caught_too() -> None:
 
     message = core_boundary_mismatch(newer, _unpack, _pack)
     assert message is not None
-    assert "slot 11 carries 5 fields where this package writes 4" in message
+    assert "slot 11 carries 7 fields where this package writes 6" in message
     assert "maturin develop --release" in message
 
 

@@ -7,8 +7,26 @@ part of what the index is calibrated against.
 That distinction is the reason this directory exists rather than a `keep` flag on
 `rulesets/`. Every file in `rulesets/` is read by `metrics/calibration.py` as the human
 band, held to the cheap gates by `tests/test_index_quality.py`, and pinned by frozen
-perft ladders — so a game admitted there changes what the instruments say about every
-other game. Nothing in `metrics/` or `tests/` reads this directory.
+perft ladders — so a game admitted there becomes part of what every other game is
+checked against. Nothing in `metrics/` or `tests/` reads this directory.
+
+Since `v12` (2026-10-03, `docs/plan-evolving-score.md` §4) the band **checks the scale and
+places none of it**. Every curve end comes from the measurement's domain, its gate, a
+one-sentence meaning, or a quantile of the published band games read once and pinned as a
+number (`docs/reference/v12-calibration.md`), so admitting a game to `rulesets/` moves no
+curve and no other game's score. What it changes is what `calibrate` reports, whether the
+scale puts real games above known-bad ones, and, for a published game, the set a later
+revision would re-read a pinned end from, under its own pre-registration. That is still a
+claim about every other game, and still the reason a game worth keeping comes here first.
+(Under `v11` and before, the band's extremes placed the curve ends, so admitting a game
+moved every other game's score at the next re-anchor; `docs/reference/baseline-review.md`
+§1.5 has what that cost.)
+
+The scores quoted below are as measured on the date and under the weights version each
+names (`v10` for most). A score is an evolving estimate: it is worked out again whenever the
+computer players or the measurements change, and a game's current number, or its last one
+marked *provisional*, is on its page. The quoted numbers are records of what was measured
+then, not today's scores.
 
 What that buys is a place to put a game whose tournament nobody wants to pay for yet,
 and a game that is good and simply does not pin anything down. Archiving asks for no
@@ -251,6 +269,17 @@ showcases*.
   the first player leaving by the lower right and the second by the upper left, which is
   the rule turned half a turn. Predicted: at least 0.3 of games cross.
 
+## `hex-glinski-turned.json` and `hex-glinski-turned-mirrored.json` — schema 18b, hex symmetries
+
+Q782, 2026-10-10. `hex-glinski-promoting` with every officer's move written once and turned
+by the hexagon's own symmetries, one feature each: `hex-glinski-turned` (`30c1003b9a61`) by
+`rotate6` (the rook is `[[1, 0]]`, the bishop `[[1, 1]]`, the knight `[[1, 2], [2, 1]]`) and
+`hex-glinski-turned-mirrored` (`461e29677d6d`) by `dihedral12` (the knight is `[[1, 2]]`). The
+same game: tables equal to the parent's but for the Zobrist draws, and measured, every one
+of each's 1,024 games the parent's move for move, 0.9248, viable, as pre-registered
+(`docs/reference/schema-showcase-coverage.md` rows 51 and 52). The committed hex specs keep
+their listed vectors, since rewriting them would make new hashes and orphan their runs.
+
 ## Schema 10's seven — one feature each, and two of them broken on purpose
 
 Q101, 2026-09-07. `SCHEMA_VERSION` went to 10 with five features and no game showing any
@@ -373,3 +402,144 @@ least 0.2 of captured pieces taken by sweep — is in
 record is
 `docs/reference/engine-and-spec-record.md`
 §*Schema 13*.
+
+## `rifle.json`, `circe.json`, `andernach.json`, `kamikaze.json` — schema 17, what a capture leaves behind
+
+Q540's four showcases (2026-10-09), each chess with one rule added and nothing else, and
+each a variant older than this project: rifle chess (a capture removes the victim and the
+capturer stays where it stood), circe (a taken piece is reborn on its home square, or is
+gone if that square is occupied), Andernach (a capturer other than the king changes sides
+on the square it took) and kamikaze (a capture destroys the capturer with its victim, and
+nothing else). None changes an opening move, so each one's perft equals chess's until the
+first capture. In twenty seeded random games each rule fired in all twenty
+(`docs/reference/schema-showcase-coverage.md`, rows 39 to 42). Unmeasured until the
+library's schema-17 replay. The rules are in `docs/reference/engine-and-spec-record.md`,
+*Schema 17*.
+
+## `einstein.json`, `omega.json` — schema 18a, a keeping link and a walled rank
+
+Q781's two showcases (2026-10-09), each a variant older than this project written from
+Q533's audit spec (`docs/reference/variant-expressibility-2026-09.md`, rows 18 and 13) with
+the one rule the audit could not say added. `einstein` is Einstein chess: a capture promotes
+the capturer one step up pawn, knight, bishop, rook, queen and a quiet move demotes it one
+step down, and a queen that captures stays a queen (schema 18's keeping link). `omega` is
+Omega chess, a 10x10 board with a wizard cell outside each corner, walled on a 12x12, with
+champions and wizards, and castling as in chess on a rank whose walls stand beyond the rooks
+(schema 18's walled rank). In twenty seeded random games the keeping link fired in 7 and
+castling in 1, both short of their pre-registered shares
+(`docs/reference/schema-showcase-coverage.md`, rows 43 and 44). Measured 2026-10-09 (v12,
+four runs): `einstein` 0.849, `omega` 0.928, both viable. The rules are in
+`docs/reference/engine-and-spec-record.md`, *Schema 18*.
+
+## `extinction-chess.json`, `grand.json` — schema 18c, a count per type and the lost pieces
+
+Q783's two showcases (2026-10-09), written from Q533's audit specs as 18a's were
+(`docs/reference/variant-expressibility-2026-09.md`, rows 29 and 15). `extinction-chess` is
+Extinction chess: nothing is royal, and a side loses when it has no king, no queen, no rooks,
+no bishops, no knights or no pawns left, each kind counted on its own (schema 18's
+`extinction.per_type`); a pawn may promote to a king. It is not called `extinction` because
+that is a rule key, and a game's name may not be a word the code uses. `grand` is Grand
+chess on 10x10 with the archbishop and chancellor, and a pawn promotes only into a piece its
+side has lost (schema 18's `promotion.only_lost`). In twenty seeded random games every
+`extinction-chess` game ended by one kind running out and every `grand` game offered a pawn a
+zone square with a target withheld (`docs/reference/schema-showcase-coverage.md`, rows 45 and
+46). Measured 2026-10-09 (v12, four runs, on the 18c core): `extinction-chess` 0.830,
+`grand` 0.894, both viable. Both verify against Fairy-Stockfish (`extinction-chess` without
+its castling, which the translator refuses for a king that is not royal). The rules are in
+`docs/reference/engine-and-spec-record.md`, *Schema 18*.
+
+## `placement-chess.json`, `sittuyin.json` — schema 18d, the placement phase
+
+Q784's two showcases (2026-10-09) for `drops.placement`: while a player holds a piece in
+hand, placing one is their only move, and the king starts in hand. `placement-chess` is
+chess with the pawns placed and the other eight pieces in each hand, dropped on the back
+rank; it leaves out Fairy-Stockfish's opposite-coloured bishops and the castling of a dropped
+king and rook, which the DSL cannot say, and is otherwise exact (it verifies). It is not called
+`placement`, a word the code uses. `sittuyin` is Burmese chess: makruk's pieces, the pawns
+staggered across the third and fourth ranks, the rest dropped on the three back ranks (a
+chariot on the first), and a pawn on its long diagonal may become a general only once its
+side's general is lost. It counts **with a caveat**: the pawn promotes on arrival rather than
+in place, and the counting rules are the plain no-progress clock; Fairy-Stockfish refuses its
+diagonal zone, and its promotion-free twin verifies. In twenty seeded random games of each,
+every position with a piece in hand offered only drops and withheld a pawn's step
+(`docs/reference/schema-showcase-coverage.md`, rows 47 and 48). Measured 2026-10-09 (v12, four
+runs, on the 18d core): `placement-chess` 0.899, `sittuyin` 0.851, both viable.
+
+## `kyoto.json` — schema 18e, drop either face
+
+Q785's showcase (2026-10-09) for `drops.either_face`: a piece in hand may be dropped as itself
+or as its other face, the piece whose `promoted_from` it is. Kyoto shogi on five by five:
+every piece but the king turns over after each move it makes (pawn and rook, silver and
+bishop, knight and gold, lance and tokin, spelled as mandatory promotions over the whole board
+both ways), a captured piece enters the hand as its plain face, and it may be dropped anywhere
+empty as either. It is Q533's audit spec (`ef312a2e4736`) with each turned face's
+`promoted_from` and the flag, and it is exact: it verifies against Fairy-Stockfish's
+`dropPromoted` and `pieceDemotion`, and our moves equal the built-in `kyotoshogi`'s. In twenty
+seeded random games every hand held only plain faces, every held piece was offered as both
+faces on the same squares, and a turned face was dropped in all twenty (0.494 of the drops
+played) (`docs/reference/schema-showcase-coverage.md`, row 49). Measured 2026-10-09 (v12, four
+runs, on the 18e core): 0.887, viable.
+
+## `jeson-mor.json` — schema 18f, win by leaving a square
+
+Q786's showcase (2026-10-09) for `reach.on: "leave"`: the game is decided by the move that takes
+the named piece off a goal square, and standing there decides nothing. Jeson Mor on nine by
+nine: nine knights a side on the first and last ranks, and a knight that moves off e5 wins
+(taking every enemy knight also wins, and a side with no move loses). It is Q533's audit spec
+(`jeson-mor-approx`, `9447c056a0c0`, which won on arrival) with the flag. Fairy-Stockfish's
+`jesonmor` is another rule (its `flagMove` calls the game one move after a knight reaches e5),
+so `fairy` refuses it. In twenty seeded random games a knight stood on e5 without ending the
+game in all twenty, and every game ended on a move off e5
+(`docs/reference/schema-showcase-coverage.md`, row 50). Measured 2026-10-09 (v12, four runs, on
+the 18f core): 0.698, **not viable**: the worst half's games are over in about six plies.
+
+## `shogi-drop-promoted.json`, `shogi-backward-drops.json`, `pawn-knockdown.json` — the three gap showcases
+
+Q787's three showcases (2026-10-09), each a one-rule delta from a corpus game, for three
+features that had no game (`docs/reference/schema-showcase-coverage.md`, *The 2026-10-09
+audit*, gaps G1 to G3). `shogi-drop-promoted` is shogi plus schema 9's `promote_on_entry`: a
+piece dropped into the far three ranks arrives promoted. `shogi-backward-drops` is shogi with
+a pawn that faces a way and turns (schema 8): every placed pawn faces the enemy and a
+dropped pawn arrives facing its own side, schema 8's `facing.initial` on a piece that enters
+play. `pawn-knockdown` is chess in which only the pawn, when it captures, knocks the piece
+down a rank and throws it onto a free square next to the capture square, the pawn's player
+choosing which (schema 12's `contacts.position: "choose"`). None changes shogi's or chess's
+opening captures, so the opening perfts equal their parents' (`shogi-backward-drops` has 39
+opening moves, shogi's 30 and nine pawn turns). Unmeasured until the library's next replay.
+`tests/test_showcases_q787.py` shows each feature acting.
+
+## `divide.json`, `ferry.json`, `carousel.json`, `wormhole.json`, `wormhole-adrift.json`, `shut-wormhole.json`, `cylinder-wormhole.json` — schema 19, portals
+
+Q772a's showcases (2026-10-10) for `rules.portals` (`docs/plan-portals.md` §7 P4 and *Showcase
+games*): a piece that ends its move on a portal comes out one step beyond the other end of the
+pair, in the direction it was travelling. **Divide** is the walled game the user asked for:
+Capablanca chess on ten by eleven with a wall across rank 6, crossed only by one pair whose
+ends each player moves on its own side, one way per player (the plan's option A). **Ferry**
+is Los Alamos with two numbered pairs that either player may move. **Carousel** is Los Alamos
+on a six by eight cylinder with a private one-way lift for each player, closed to the other.
+The four small ones each add one thing to a measured parent: **wormhole** (Gardner, one fixed
+two-way pair on b3/d3), **wormhole-adrift** (the same pair moved by either player),
+**shut-wormhole** (the same pair closed to the first player) and **cylinder-wormhole**
+(cylinder chess with a pair on d4/d5, reached both ways round, the player choosing the exit).
+Pre-registered and measured 2026-10-10 (v12, four runs, the schema-19 core):
+`divide` 0.666, `ferry` 0.694, `carousel` 0.771, `shut-wormhole` 0.726 and
+`cylinder-wormhole` 0.858, viable; `wormhole` 0.584 and `wormhole-adrift` 0.644, **not
+viable**: a pawn through the door on Gardner's middle row lands a step from promotion, and
+the first mover gets there first. Divide's strong players draw on the no-progress clock
+(the plan's named miss), and Ferry's players shuffle portals into repetition (0.404 of
+games). `docs/reference/portal-showcases.md` has the clauses and the misses;
+`tests/test_showcases_q772a.py` shows each feature acting, and that no move crosses Divide's
+wall but through the door.
+
+## `ferry-no-straight-back.json` — schema 20, no straight back
+
+Q807's answer to Ferry's shuffle (2026-10-10, `docs/plan-portals.md` *Ferry's shuffle*):
+Ferry with `rules.portals[].no_straight_back` on both pairs and nothing else changed, so a
+portal that has just been moved may not be moved straight back where it came from on the very
+next move (a portal's ko; in 404 of Ferry's 414 repetition games the opponent had done exactly
+that). A new game beside Ferry, which keeps its own number. Pre-registered and measured
+2026-10-10 (v12, four runs, the schema-20 core): **0.827, viable (4-0)**, above its
+pre-registered band; repetition 0.072 of games (Ferry 0.404, Los Alamos 0.091), the bar
+removing a legal move at 0.457 of plies, the strongest two deciding 26 of 32 cross games.
+`docs/reference/portal-showcases.md` *Q807* has the clauses; `tests/test_schema_twenty.py`
+holds the rule against `tests/portal_oracle.py`.

@@ -9,6 +9,8 @@ from __future__ import annotations
 import copy
 import json
 
+import pytest
+
 from chess_variant_sandbox.loop import Archive, Entry, smoke_test
 from chess_variant_sandbox.metrics.scoring import WEIGHTS_DIR
 
@@ -430,6 +432,11 @@ def test_the_design_brief_does_not_state_a_scored_measurement() -> None:
             assert phrase not in shown, f"{name}'s measurement is in the brief: {phrase!r}"
 
 
+@pytest.mark.skipif(
+    not _ALLOWED_WHILE_UNSCORED,
+    reason="no unscored component is asked for in the brief today (_ALLOWED_WHILE_UNSCORED "
+    "is empty); this bites when a row is added",
+)
 def test_an_unscored_components_sentence_is_still_in_the_brief() -> None:
     """The other half of the rule, asserted so it cannot rot into a silent leak.
 

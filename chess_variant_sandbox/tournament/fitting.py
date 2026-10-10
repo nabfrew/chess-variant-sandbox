@@ -17,6 +17,16 @@ Four steps, and the fourth is the one that makes the whole thing arguable:
    name if it loses. A fit that does not beat the built-in evaluator is a failed fit and
    falls back to it -- recorded, not hidden.
 
+**The check may be curtailed, exactly, and only when asked** (``curtail=True``,
+``docs/plan-compute.md`` §4.2). ``acceptance`` then reads the match's games one at a time
+in a fixed order of the schedule and stops at the first prefix after which every result of
+the unplayed games gives the same verdict (``duel.settled``). The verdict is the full
+match's by construction; the stored score and ``accept_games`` are the prefix's, so the
+store says "decided after ``accept_games`` of ``2 x ACCEPT_GAMES_PER_PAIRING``". It is off
+by default because the sliced measurement (``slices.gather_verdict``) plays all 48 and the
+site holds a visitor's sliced fit to the server's field by field, score and game count
+included: a curtailed store would be a different file from the one that path derives.
+
 **Why fitting rather than proposing.** Stage 23 asked a model for weight vectors over
 this same vocabulary. They cleared the random-vector null and lost to a free hand-written
 list, and they were near-random where it counted: mobility at 0.667 of material where the
@@ -31,10 +41,12 @@ import hashlib
 import json
 import math
 import sys
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from chess_variant_sandbox.agents import native_spec
 from chess_variant_sandbox.agents.features import VOCABULARY, FeatureEvaluator, feature_context
 from chess_variant_sandbox.agents.fitted import (
     ACCEPT_GAMES_PER_PAIRING,
@@ -56,6 +68,8 @@ from chess_variant_sandbox.agents.fitted import (
     unit,
 )
 from chess_variant_sandbox.engine import Engine
+from chess_variant_sandbox.tournament import runner
+from chess_variant_sandbox.tournament.duel import settled
 from chess_variant_sandbox.tournament.heuristics import head_to_head
 from chess_variant_sandbox.tournament.play import replay
 from chess_variant_sandbox.tournament.record import GameRecord
@@ -155,6 +169,7 @@ def fit_ruleset(
     spec: dict[str, Any],
     workers: int = 0,
     verify: bool = True,
+    curtail: bool = False,
 ) -> FittedObjective:
     """Fit this ruleset's objective, check it, and return the verdict.
 
@@ -167,6 +182,10 @@ def fit_ruleset(
     for tests and for the one legitimate case -- inspecting a vector before paying for
     the match -- and a store written that way is a store whose central claim is
     unchecked, which is why the flag is not reachable from the CLI.
+
+    ``curtail`` stops the acceptance match once its verdict is settled (``acceptance``):
+    the same verdict, the prefix's score, and ``accept_games`` the games it was decided
+    after. The procedure digest does not move, since the verdict function is the same.
     """
     engine = Engine(spec)
     procedure = procedure_digest()
@@ -215,28 +234,156 @@ def fit_ruleset(
     if not verify:
         return provisional
 
-    score = head_to_head(
+    match = acceptance(
         spec,
         f"minimax:fit={procedure},nodes={ACCEPT_NODES}",
         f"minimax:nodes={ACCEPT_NODES}",
         ACCEPT_GAMES_PER_PAIRING,
         ACCEPT_SEED,
         workers,
+        curtail=curtail,
     )
-    # Strictly better. A fitted objective that draws with the one it replaces has not
-    # earned a place in the roster, and "beats" is the word the bar was written in.
     final = _record(
         engine.spec.hash,
         procedure,
         vector,
-        score > 0.5,
-        score,
-        2 * ACCEPT_GAMES_PER_PAIRING,
+        match.accepted,
+        match.score,
+        match.decided_after,
         len(samples),
         loss,
     )
     register_fit(final, replace=True)
     return final
+
+
+# ------------------------------------------------------------------ the acceptance match
+
+
+def beats(scores: Sequence[float]) -> bool:
+    """The acceptance bar over the match's games, each 0, 1/2 or 1 for the candidate.
+
+    Strictly better. A fitted objective that draws with the one it replaces has not earned
+    a place in the roster, and "beats" is the word the bar was written in. The score is
+    ``head_to_head``'s, rounding included, so the full match is one computation either way.
+    """
+    return _match_score(scores) > 0.5
+
+
+def _match_score(scores: Sequence[float]) -> float:
+    return round(sum(scores) / len(scores), 4) if scores else 0.5
+
+
+@dataclass(frozen=True)
+class Acceptance:
+    """The acceptance match's verdict, its score, and how many of its games decided it.
+
+    ``score`` is over the first ``decided_after`` games of the reading order, all
+    ``planned`` of them unless the match was curtailed. A curtailed score never sits on the
+    other side of the bar from the verdict: an accept is decided only once more than half
+    the planned points are won, which is more than half the prefix's, and a refusal only
+    once at least half are lost.
+    """
+
+    accepted: bool
+    score: float
+    decided_after: int
+    planned: int
+    # The kept games, in reading order. Out of equality: a record carries its wall time.
+    records: tuple[GameRecord, ...] = field(default=(), compare=False)
+
+
+PlayGames = Callable[[list[tuple[int, str, str]]], list[GameRecord]]
+"""A block of schedule entries ``(seed, first, second)`` to their records, in order."""
+
+
+def reading_order(tasks: Sequence[tuple[int, str, str]]) -> list[tuple[int, str, str]]:
+    """The order a curtailed match reads its schedule in: the two colours alternately.
+
+    The schedule plays every game with the candidate first, then every game with it
+    second. Read in that order, any prefix shorter than half the match is one colour's, and
+    its score would carry the first move's advantage. Alternating the halves keeps every
+    even prefix balanced. It is a fixed permutation of the schedule, so the stopping point
+    still depends on nothing but the schedule.
+    """
+    half, odd = divmod(len(tasks), 2)
+    if odd:
+        raise ValueError(f"an acceptance match of {len(tasks)} games is not both colours")
+    order: list[tuple[int, str, str]] = []
+    for first, second in zip(tasks[:half], tasks[half:], strict=True):
+        order.extend((first, second))
+    return order
+
+
+def acceptance(
+    spec: dict[str, Any],
+    candidate: str,
+    reference: str,
+    games_per_pairing: int,
+    seed: int,
+    workers: int = 0,
+    curtail: bool = False,
+    play: PlayGames | None = None,
+) -> Acceptance:
+    """``candidate`` against ``reference`` at both colours, and whether it ``beats`` it.
+
+    Uncurtailed this is ``head_to_head``, unchanged. Curtailed (plan-compute §4.2), the same
+    schedule is read in ``reading_order`` and played a batch of the worker count at a time
+    (by ``play``, or the runner); after each batch the games are read one by one and the
+    first prefix ``settled`` answers is the decision, the rest of that batch discarded. So
+    the verdict is the full match's whatever the unplayed games would have been, and the
+    stopping point, the kept games and the score are functions of the schedule alone, the
+    same at any worker count.
+
+    ``settled`` was written for pairs, scored in quarters, and serves single games as it
+    stands: a game's 0, 1/2 or 1 is a whole number of quarters, and ``beats`` reads only
+    the sum, so it meets both of ``duel.Verdict``'s conditions. The quarter completions
+    ``settled`` tries include every game completion, among them the all-lost and all-won
+    ones, and a verdict monotone in the sum agrees with every completion as soon as it
+    agrees with those two; so its answer is exactly the games' answer (held to brute force
+    over every game completion in ``tests/test_fit_curtail.py``).
+    """
+    if not curtail:
+        score = head_to_head(spec, candidate, reference, games_per_pairing, seed, workers)
+        planned = 2 * games_per_pairing
+        return Acceptance(score > 0.5, score, planned, planned)
+
+    config = TournamentConfig(
+        agents=(candidate, reference),
+        games_per_pairing=games_per_pairing,
+        seed=seed,
+        workers=workers,
+        include_self_play=False,
+        collect_series=False,
+    )
+    order = reading_order(runner.schedule(config))
+    batch = config.resolved_workers()
+    if play is None:
+        engine = Engine(spec)
+        natives = [native_spec(agent, engine.spec.hash) for agent in config.agents]
+
+        def standard(block: list[tuple[int, str, str]]) -> list[GameRecord]:
+            # The runner's own player over a block of its schedule, as `checkpoint` reads
+            # it: `runner.py` is in the engine fingerprint set, so it is read, never edited.
+            return runner._play(engine, config, block, natives, False)
+
+        play = standard
+
+    scores: list[float] = []
+    kept: list[GameRecord] = []
+    while True:
+        block = order[len(scores):len(scores) + batch]
+        records = play(block)
+        if [(record.seed, *record.agents) for record in records] != block:
+            raise ValueError("a batch of the acceptance match came back as other games")
+        for record in records:
+            scores.append(record.score_for(0 if record.agents[0] == candidate else 1))
+            kept.append(record)
+            call = settled(scores, len(order), beats)
+            if call is not None:
+                return Acceptance(
+                    call, _match_score(scores), len(scores), len(order), tuple(kept)
+                )
 
 
 def _record(

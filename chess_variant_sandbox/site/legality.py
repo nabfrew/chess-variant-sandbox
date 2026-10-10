@@ -995,7 +995,7 @@ def rebuilt_trials(
 
 # ----------------------------------------------------------------------- the job
 
-KIND = "legality"
+KIND = provisional.WALK
 """`jobs.kind` for tier one. It runs ahead of every other kind (§5)."""
 
 QUEUED = "queued"
@@ -1413,11 +1413,28 @@ class Checker:
                         self.cpu_cap, self.wall_cap,
                     )
                 )
+        self.settle()
         if done:
             with self.connect() as connection:
                 sweep(connection, self.runs_dir)
                 provisional.sweep(connection, self.runs_dir)
         return done
+
+    def settle(self) -> list[Any]:
+        """Finish every *Publish* that waited for a check now ended, or call it off (Q742).
+
+        On every pass, not only after a job: a press can land just after the check it was
+        waiting for ended, and the next pass is then what finishes it. `drafts.settle` is
+        idempotent, so a pass that finds nothing to do changes nothing.
+        """
+        # Imported here: `drafts` is read by modules that never run a check.
+        from chess_variant_sandbox.site import drafts
+
+        with self.connect() as connection:
+            moved = drafts.settle_all(connection, self.basis)
+        for settled in moved:
+            print(f"legality: the publish of {settled.hash} {settled.state}")
+        return moved
 
     def requeue(self) -> int:
         """Put back what a stopped process left `running`; this is the only runner."""

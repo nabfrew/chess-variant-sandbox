@@ -227,6 +227,28 @@ class TestContrast:
                     ratio = _ratio(arrow, under)
                     assert ratio >= tokens.DOT_FLOOR, (dark, square, round(ratio, 2))
 
+    def test_a_held_move_reads_on_both_woods(self) -> None:
+        """Q733: a move picked and not sent is drawn in `--held` edged in `--held-halo`, so
+        the dashes read 3 : 1 on both squares, bare and under their worst streak, in both
+        themes, and the halo stands off the dashes at text contrast."""
+        for dark in (False, True):
+            theme = _theme(dark)
+            held, halo = _rgb(theme["held"]), _rgb(theme["held-halo"])
+            assert _ratio(held, halo) >= 4.5, dark
+            for square in ("sq-lt", "sq-dk"):
+                for under in (_rgb(theme[square]), _grained(dark, square)):
+                    ratio = _ratio(held, under)
+                    assert ratio >= tokens.DOT_FLOOR, (dark, square, round(ratio, 2))
+
+    def test_a_held_move_is_not_the_last_move(self) -> None:
+        """A sent move (the last move's amber fill) and an unsent one (dark dashes) are two
+        kinds of mark, far apart in colour in both themes, and neither is the action colour."""
+        for dark in (False, True):
+            theme = _theme(dark)
+            assert theme["held"] != theme["act"], dark
+            apart = _delta_e(_rgb(theme["held"]), _rgb(theme["hl-last"]))
+            assert apart >= 40, (dark, round(apart, 1))
+
     def test_a_coming_arrow_is_none_of_the_other_marks(self) -> None:
         """One colour, one meaning: the arrow is told apart from every other thing the
         board draws on or between squares -- the dot, the last move, the selection, the
@@ -274,8 +296,8 @@ class TestTheControls:
 
     def test_one_height_scale(self) -> None:
         """Every control's height is a token (or zero, for one drawn smaller that reaches
-        `--hit`), never a pixel value of its own."""
-        allowed = re.compile(r"^(?:0|var\(--(?:ctl-h|ctl-h-sm|chip-h|hit)\)|"
+        `--hit`), never a pixel value of its own. `--ctl-h-lg` is *Send your move*'s (Q733)."""
+        allowed = re.compile(r"^(?:0|var\(--(?:ctl-h|ctl-h-sm|ctl-h-lg|chip-h|hit)\)|"
                              r"max\(var\(--hit\), calc\(var\(--(?:ctl-h|ctl-h-sm)\) - 2px\)\))$")
         seen = 0
         for selector, body in _blocks(style.RULES):

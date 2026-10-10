@@ -226,6 +226,7 @@
     "no_progress_draw": 100
   },
   "provenance": {
+    "added": "2026-09-07",
     "origin": "human",
     "source": "international chess",
     "history": "Hand-written as chess with rules.repetition_draw set to \"never\" and nothing else changed, as the demonstrating ruleset for that value (schema 10, row 23 of reference/schema-showcase-coverage.md). Chess is the host rather than intransitive because 28 of chess's 256 canonical-roster games end by repetition and none of intransitive's do."

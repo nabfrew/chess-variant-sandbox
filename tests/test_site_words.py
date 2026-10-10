@@ -239,15 +239,18 @@ class TestTheSitesWordsAreAVisitorsOnTheWire:
 
         assert routes.find("POST", "/api/promote") is None  # `keeping` is drawn only if offered
 
+    @pytest.mark.skipif(not site_words.NOT_YET, reason="nothing is listed as not yet")
     def test_a_phrase_still_listed_as_not_yet_is_still_served(
         self, served: Site, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """So the list cannot go stale: the task that removes a phrase from the site moves
         it to `ENFORCED` in the same change, and this fails until it does. The page's own
         script is read by `test_candidacy.py`, so a phrase that only it still serves is
-        looked for there as well."""
-        if not site_words.NOT_YET:
-            pytest.skip("nothing is listed as not yet")
+        looked for there as well.
+
+        A mark rather than a skip in the body (Q745), so the empty list is decided before
+        the site fixture is built and the skip is never read as a pass that asserted
+        nothing."""
         text = " ".join(words for _, words in _served_text(served, monkeypatch))
         text += " " + " ".join(words for _, words in served_by_the_page())
         gone = [name for name in site_words.NOT_YET if not site_words.hits(text, (name,))]

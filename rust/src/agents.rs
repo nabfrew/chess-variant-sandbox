@@ -21,8 +21,8 @@ use crate::game::{Game, Outcome, Snapshot};
 use crate::net::{Net, NetEvaluator};
 use crate::rng::PyRandom;
 use crate::tables::{
-    move_kind, move_from, move_to, Tables, MOVE_CASTLE, MOVE_DROP, MOVE_EN_PASSANT,
-    MOVE_PROMOTION, MOVE_ROTATE, MOVE_SWEEP,
+    move_kind, move_from, move_promotion, move_to, Tables, MOVE_CASTLE, MOVE_DROP,
+    MOVE_EN_PASSANT, MOVE_PORTAL, MOVE_PROMOTION, MOVE_ROTATE, MOVE_SWEEP,
 };
 
 /// How deep a quiescence search may go past the horizon before it settles for the
@@ -840,7 +840,11 @@ impl Player {
         if kind != MOVE_ROTATE && kind != MOVE_CASTLE && game.board[move_to(m)] != 0 {
             return true;
         }
-        kind == MOVE_EN_PASSANT || kind == MOVE_PROMOTION || kind == MOVE_SWEEP
+        // Schema 19: a transit that promotes at its exit adds material as a promotion does.
+        kind == MOVE_EN_PASSANT
+            || kind == MOVE_PROMOTION
+            || kind == MOVE_SWEEP
+            || (kind == MOVE_PORTAL && move_promotion(m) != 0)
     }
 
     /// Q502i: whether quiescence chases this quiet move under the player's repairs.

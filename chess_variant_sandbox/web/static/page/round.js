@@ -74,7 +74,7 @@ function entrantHtml(one) {
   }
   return `<div class="entrant" style="margin-bottom:12px" data-hash="${esc(one.hash)}">
       <div><a href="#/game/${esc(one.hash)}"><strong>${esc(one.name)}</strong></a>
-        <span class="muted small">by ${esc(one.designer)}</span></div>
+        <span class="muted small">by ${personHtml(one.designer)}</span></div>
       <div class="small">${score} · ${stars} · ${esc(one.players)} ${
         one.players === 1 ? 'player' : 'players'}</div>
       ${carried}${counted}

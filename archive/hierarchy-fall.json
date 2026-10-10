@@ -251,6 +251,7 @@
     }
   },
   "provenance": {
+    "added": "2026-08-29",
     "origin": "designed",
     "source": "docs/new-rule-schema-brainstorm.md",
     "history": "The brainstorm's primary showcase for schema 6's strike rule. The plan asked for position 'advance' and that spelling is unsound: the attacker takes the square, so a demoted piece that survives has nowhere to stand. 'stay' is the nearest legal reading and arguably the better game -- the attacker holds its ground and the blow lands where the victim is.",

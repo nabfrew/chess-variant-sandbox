@@ -1,0 +1,550 @@
+{
+  "schema_version": 15,
+  "name": "shogi drop promoted",
+  "description": "Shogi, except that a piece dropped from hand into the far three ranks arrives already promoted: a pawn as a tokin, a silver as a promoted silver, a rook as a dragon. Everything else is shogi's, including every opening move. A pawn dropped on the last rank is no longer dead.",
+  "board": {
+    "width": 9,
+    "height": 9
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "L",
+      "name": "lance",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "S",
+      "name": "silver",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "G",
+      "name": "gold",
+      "value": 6,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 8,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 10,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "tokin",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ],
+      "promoted_from": "P"
+    },
+    {
+      "id": "X",
+      "name": "promoted lance",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ],
+      "promoted_from": "L"
+    },
+    {
+      "id": "Y",
+      "name": "promoted knight",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ],
+      "promoted_from": "N"
+    },
+    {
+      "id": "Z",
+      "name": "promoted silver",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ],
+      "promoted_from": "S"
+    },
+    {
+      "id": "H",
+      "name": "horse",
+      "value": 10,
+      "promoted_from": "B",
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "name": "dragon",
+      "value": 12,
+      "promoted_from": "R",
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "orientation": "rotate",
+    "placements": [
+      {
+        "piece": "L",
+        "squares": [
+          "a1",
+          "i1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "S",
+        "squares": [
+          "c1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "G",
+        "squares": [
+          "d1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "b2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "h2"
+        ]
+      },
+      {
+        "piece": "P",
+        "squares": [
+          "a3",
+          "b3",
+          "c3",
+          "d3",
+          "e3",
+          "f3",
+          "g3",
+          "h3",
+          "i3"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "loss",
+    "forbid_immobility": true,
+    "promotion": [
+      {
+        "piece": "P",
+        "ranks": [
+          6,
+          7,
+          8
+        ],
+        "to": [
+          "Q"
+        ],
+        "mandatory": false,
+        "on_leaving": true
+      },
+      {
+        "piece": "L",
+        "ranks": [
+          6,
+          7,
+          8
+        ],
+        "to": [
+          "X"
+        ],
+        "mandatory": false,
+        "on_leaving": true
+      },
+      {
+        "piece": "N",
+        "ranks": [
+          6,
+          7,
+          8
+        ],
+        "to": [
+          "Y"
+        ],
+        "mandatory": false,
+        "on_leaving": true
+      },
+      {
+        "piece": "S",
+        "ranks": [
+          6,
+          7,
+          8
+        ],
+        "to": [
+          "Z"
+        ],
+        "mandatory": false,
+        "on_leaving": true
+      },
+      {
+        "piece": "B",
+        "ranks": [
+          6,
+          7,
+          8
+        ],
+        "to": [
+          "H"
+        ],
+        "mandatory": false,
+        "on_leaving": true
+      },
+      {
+        "piece": "R",
+        "ranks": [
+          6,
+          7,
+          8
+        ],
+        "to": [
+          "D"
+        ],
+        "mandatory": false,
+        "on_leaving": true
+      }
+    ],
+    "drops": {
+      "from_captures": true,
+      "no_doubled": [
+        "P"
+      ],
+      "no_mate": [
+        "P"
+      ]
+    },
+    "max_plies": 400,
+    "repetition_draw": 4,
+    "no_progress_draw": 200,
+    "promote_on_entry": true
+  },
+  "appearance": {
+    "icons": {
+      "P": "shogi-pawn",
+      "L": "shogi-lance",
+      "N": "shogi-knight",
+      "S": "shogi-silver",
+      "G": "shogi-gold",
+      "B": "shogi-bishop",
+      "R": "shogi-rook",
+      "Q": "shogi-promoted-pawn",
+      "X": "shogi-promoted-lance",
+      "Y": "shogi-promoted-knight",
+      "Z": "shogi-promoted-silver",
+      "H": "shogi-promoted-bishop",
+      "D": "shogi-promoted-rook",
+      "K": "shogi-king"
+    }
+  },
+  "provenance": {
+    "added": "2026-10-09",
+    "origin": "human",
+    "source": "archive/shogi-drop-promoted",
+    "history": "Q787 (2026-10-09), gap G1 of the audit: the showcase for schema 9's rules.promote_on_entry. rulesets/shogi.json plus that one key and nothing else. Pre-registered in docs/reference/schema-showcase-coverage.md, The 2026-10-09 audit, Q787.",
+    "parents": [
+      "54c731ca6e95"
+    ]
+  }
+}

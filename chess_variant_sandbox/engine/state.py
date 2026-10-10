@@ -95,6 +95,21 @@ class GameState:
     # a material change, which is irreversible, which clears the repetition window -- so
     # two positions the repetition rule ever compares always share the tally.
     points: tuple[float, float] = (0.0, 0.0)
+    # Schema 18 (Q786, ``reach.on: "leave"``): the side whose last move took the named
+    # piece off one of its goal squares, or -1. Nothing on the board says what the last
+    # move was, so ``terminal`` could not read it there and stay a pure function of the
+    # state; -1 for every ruleset without the rule.
+    #
+    # It needs no Zobrist term: a position where it is set is terminal, so no search and
+    # no repetition rule ever compares it with another position.
+    goal_left_by: int = -1
+    # Schema 20 (Q807, ``no_straight_back``): ``(standing, left)`` when the last move carried
+    # a barring portal end from ``left`` to ``standing``, so it may not go straight back on
+    # this move; ``(-1, -1)`` for none, and for every ruleset without the rule. Nothing on
+    # the board says what the last move was, so it is state, and it **is** in the Zobrist
+    # key, as the en passant file is: the same board with and without a bar has different
+    # legal moves.
+    portal_bar: tuple[int, int] = (-1, -1)
 
     def with_(self, **changes: Any) -> GameState:
         return replace(self, **changes)

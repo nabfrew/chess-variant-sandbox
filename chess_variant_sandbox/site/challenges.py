@@ -52,7 +52,15 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from chess_variant_sandbox.site import correspondence, identity, matches, quota, rating, stages
+from chess_variant_sandbox.site import (
+    correspondence,
+    identity,
+    inviting,
+    matches,
+    quota,
+    rating,
+    stages,
+)
 from chess_variant_sandbox.site.matches import MatchError
 
 SEATS: dict[str, int | None] = {"first": 0, "second": 1, "either": None}
@@ -380,6 +388,9 @@ def people(connection: Any, game: str, viewer: int) -> dict[str, Any]:
         if str(handle) not in shown
     ]
     answer["members"] = members
+    # Q731. A friend who is not a member yet: invite them from here, with the
+    # invitations `/admin` gave this person, or read why not.
+    answer["invites"] = inviting.for_a_friend(connection, viewer)
     return answer
 
 

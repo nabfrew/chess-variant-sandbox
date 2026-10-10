@@ -35,6 +35,8 @@ from chess_variant_sandbox.engine.bridge import (
 )
 from chess_variant_sandbox.engine.compile import (
     FACING_NAMES,
+    REMOVED_IN_PLACE,
+    WILD,
     CompiledSpec,
     compile_spec,
     facing_quarter_turns,
@@ -43,11 +45,13 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_CASTLE,
     MOVE_DROP,
     MOVE_EN_PASSANT,
+    MOVE_PORTAL,
     MOVE_PROMOTION,
     MOVE_ROTATE,
     MOVE_SWEEP,
     decode_move,
     move_landing,
+    move_portal,
 )
 from chess_variant_sandbox.engine.state import NO_SQUARE, GameState, Outcome, PhaseStep
 
@@ -86,8 +90,13 @@ def _pack(state: GameState) -> tuple[Any, ...]:
         # and the turns taken. Grouped because PyO3's tuple conversions stop at twelve
         # elements, so the boundary has a hard ceiling and the next field joins a group.
         # Schema 9's bounty tally is the first field to meet that ceiling, so it joins
-        # this group rather than taking a slot of its own.
-        (state.colour, state.remaining, state.turns_taken, state.points),
+        # this group rather than taking a slot of its own, and schema 18's side that has
+        # just left a goal square (Q786) and schema 20's straight-back bar (Q807) join it
+        # the same way.
+        (
+            state.colour, state.remaining, state.turns_taken, state.points,
+            state.goal_left_by, state.portal_bar,
+        ),
     )
 
 
@@ -112,6 +121,8 @@ def _unpack(packed: State) -> GameState:
         remaining=packed[11][1],
         turns_taken=packed[11][2],
         points=packed[11][3],
+        goal_left_by=packed[11][4],
+        portal_bar=(packed[11][5][0], packed[11][5][1]),
     )
 
 
@@ -377,6 +388,15 @@ class Engine:
                 f"{piece}{_square_name(origin, spec.width)}"
                 f"^{FACING_NAMES[facing_quarter_turns(promoted, spec.n_facings)]}"
             )
+        if kind == MOVE_PORTAL:
+            return self._transit_text(state, move)
+        if spec.portals is not None and spec.owner_of(state.board[origin]) == WILD:
+            # Schema 19 (N1): a portal's own move names its pair and end, so two portals of
+            # one type are told apart: ``1o:e3-f3``.
+            return (
+                f"{piece}:{_square_name(origin, spec.width)}-"
+                f"{_square_name(target, spec.width)}"
+            )
         text = f"{piece}{_square_name(origin, spec.width)}"
         # A castling takes nothing, and under file-based castling the king's destination
         # can be its own rook's square -- so the occupant of the target is not the test.
@@ -398,6 +418,10 @@ class Engine:
         # no way to tell the two apart cannot follow the game at all. The suffix names
         # what the capture actually did, and it is appended rather than replacing the
         # capture text because the move *is* the same move.
+        # Q539: a contact that turns the attacker into something else overrides a
+        # promotion on the same move (`strike_writes` reads the promoted piece and replaces
+        # it), so the "=X" a promotion word would print is not what stands there.
+        promotion_overridden = False
         if spec.strike is not None and state.board[target]:
             # Keyed by the pair since schema 10: a contact's outcome depends on who is
             # arriving as well as on who is standing there, and a `strike` fills the
@@ -411,10 +435,20 @@ class Engine:
             mover_table = spec.strike.own_mover_to if own else spec.strike.mover_to
             becomes = onto_table[cell] if onto_table else -1
             mover_becomes = mover_table[cell] if mover_table else -1
-            if becomes >= 0 or mover_becomes >= 0:
+            flips = not own and bool(spec.strike.mover_flips) and spec.strike.mover_flips[cell]
+            if spec.strike.position == "home" and becomes >= 0:
+                # Schema 17 (Q540, circe). Where the piece went, and whether its home was
+                # free, is the core's answer: the move is played and the square read back.
+                if becomes != victim:
+                    text += f"->{spec.piece_ids[becomes]}"
+                text += self._reborn(state, move, becomes)
+            elif becomes == REMOVED_IN_PLACE:
+                text += " (stays)"  # schema 17: rifle
+            elif becomes >= 0 or mover_becomes >= 0:
                 if becomes >= 0:
                     text += f"->{spec.piece_ids[becomes]}"
                 if mover_becomes >= 0:
+                    promotion_overridden = True
                     text += f"/{spec.piece_ids[mover]}->{spec.piece_ids[mover_becomes]}"
                 if spec.strike.position == "stay":
                     text += " (stands fast)"
@@ -422,6 +456,17 @@ class Engine:
                     text += " (swap)"
                 elif spec.strike.position == "choose" and becomes >= 0:
                     text += self._placed_on(state, move)
+            if flips:
+                text += " (changes sides)"  # schema 17: Andernach
+        elif (
+            kind == MOVE_EN_PASSANT
+            and spec.strike is not None
+            and spec.strike.position == "home"
+        ):
+            victim = spec.type_of(state.board[state.ep_victim])
+            cell = spec.type_of(state.board[origin]) * spec.strike.n_types + victim
+            if spec.strike.onto_to[cell] >= 0:
+                text += self._reborn(state, move, spec.strike.onto_to[cell])
         elif (
             kind == MOVE_EN_PASSANT
             and spec.strike is not None
@@ -434,13 +479,44 @@ class Engine:
             if spec.strike.onto_to[cell] >= 0:
                 text += f"->{spec.piece_ids[spec.strike.onto_to[cell]]}"
                 text += self._placed_on(state, move)
-        if kind == MOVE_PROMOTION:
+        if kind == MOVE_PROMOTION and not promotion_overridden:
             text += f"={spec.piece_ids[promoted]}"
         elif kind == MOVE_CASTLE:
             text += " (castle)"
         elif kind == MOVE_EN_PASSANT:
             text += " e.p."
         return text
+
+    def _transit_text(self, state: GameState, move: int) -> str:
+        """A move through a portal (schema 19): origin, the end it went in by, then the exit.
+
+        ``Bc1-d2>e3``, with a capture ``Bc1-d2>xe3`` and a promotion ``Pe7-e8>f8=Q``.
+        Each exit is its own move with its own text, so ``find_move`` stays unique.
+        """
+        spec = self.spec
+        origin, target, _, promoted = decode_move(move)
+        piece = spec.piece_ids[spec.type_of(state.board[origin])]
+        entry = self.portal_entry(state, move)
+        text = f"{piece}{_square_name(origin, spec.width)}-"
+        text += _square_name(entry, spec.width) if entry is not None else "?"
+        text += ">x" if state.board[target] else ">"
+        text += _square_name(target, spec.width)
+        if promoted:
+            text += f"={spec.piece_ids[promoted - 1]}"
+        return text
+
+    def portal_entry(self, state: GameState, move: int) -> int | None:
+        """The square of the portal end a ``MOVE_PORTAL`` goes in by, read off the board.
+
+        The move word names the end by its type, which is unique on the board, so a stored
+        transit means the same move wherever that end stands (schema 19).
+        """
+        spec = self.spec
+        if spec.portals is None:
+            return None
+        value = spec.encode_piece(WILD, move_portal(move))
+        square = state.board.find(bytes((value,)))
+        return square if square >= 0 else None
 
     def landing_square(self, state: GameState, move: int) -> int | None:
         """Where a strike under ``position: "choose"`` places its survivor, or ``None``.
@@ -462,6 +538,26 @@ class Engine:
         if not onto or onto[cell] < 0:
             return None
         return strike.landing[spec.owner_of(mover)][struck][move_landing(move)]
+
+    def _reborn(self, state: GameState, move: int, becomes: int) -> str:
+        """Where a struck piece was reborn under ``position: "home"`` (schema 17), as text.
+
+        The home square is the compiled table's; whether the piece stands on it is read
+        off the position the core leaves, so this says what happened rather than working
+        it out a second time.
+        """
+        spec = self.spec
+        strike = spec.strike
+        assert strike is not None
+        _, target, kind, _ = decode_move(move)
+        struck = state.ep_victim if kind == MOVE_EN_PASSANT else target
+        owner = spec.owner_of(state.board[struck])
+        home = strike.rebirth[(owner * spec.n_types + becomes) * spec.n_squares + struck]
+        if home >= 0:
+            value = self.apply(state, move).board[home]
+            if value and spec.owner_of(value) == owner and spec.type_of(value) == becomes:
+                return f" (reborn {_square_name(home, spec.width)})"
+        return " (removed: no free home)"
 
     def _placed_on(self, state: GameState, move: int) -> str:
         square = self.landing_square(state, move)

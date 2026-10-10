@@ -131,6 +131,12 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "in shogi: a silver standing in the zone may promote as it steps back out. No, the "
         "usual choice, promotes only on a move that ends in the zone.",
     ),
+    "rules.promotion.only_lost": (
+        "only into what was lost",
+        "Yes offers a piece only while its side has fewer of it on the board than it "
+        "started with, as in Grand chess: a pawn promotes only into a piece its side has "
+        "lost. No, the usual choice, offers every piece listed.",
+    ),
     "rules.promotion.to": ("it may become", None),
     "rules.promotion.to_by_player": ("it may become, for each player", None),
     "rules.castling.king": ("the piece that castles", None),
@@ -186,8 +192,10 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "Where the two pieces end up. 'advance' is the ordinary capture, the taker moving "
         "onto the square, and works only when nothing taken survives, since there would be "
         "nowhere to put it. 'stay' leaves the taker where it was and changes the other "
-        "where it stands. 'swap' exchanges the two. 'choose' moves the taker in and lets "
-        "it put the piece it changed on one of the landing squares.",
+        "where it stands; with 'capture' the piece taken is simply gone and the taker never "
+        "moves. 'swap' exchanges the two. 'choose' moves the taker in and lets it put the "
+        "piece it changed on one of the landing squares. 'home' moves the taker in and puts "
+        "the piece taken back on its starting square, or removes it if that is occupied.",
     ),
     "rules.strike.landing": (
         "where it may put the piece",
@@ -198,6 +206,11 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
     "rules.strike.landing.vectors": ("steps", None),
     "rules.strike.landing.symmetry": ("turned", "Which turns of each step it also gets, as on a way of moving."),
     "rules.strike.immune": ("pieces it cannot reach", None),
+    "rules.strike.switches_sides": (
+        "pieces that change sides",
+        "A piece listed here that takes something becomes the other player's piece on the "
+        "square it took. A king may not be listed.",
+    ),
     "rules.contacts.links": ("what each pair becomes", None),
     "rules.contacts.links.mover": ("the piece taking", None),
     "rules.contacts.links.onto": ("the piece taken", None),
@@ -290,6 +303,60 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "played back onto the board, because the piece would carry the protection out of "
         "a player's hand.",
     ),
+    "rules.portals": (
+        "portals",
+        "Pairs of portals, numbered by their place in the list. A piece whose move ends on "
+        "a portal open to it comes out of the other portal of the pair, one step beyond it "
+        "in the direction it was going, and its move ends there: it captures, promotes or "
+        "wins there as on any square. If that square is off the board, a wall, its own "
+        "piece, a piece it may not take, another portal or the square it started from, "
+        "there is no such move. A portal is never captured.",
+    ),
+    "rules.portals.piece": (
+        "moves like",
+        "The piece whose moves a portal of this pair makes when a player moves it: one "
+        "worth nothing, not royal, not on the starting board and named by no other rule. "
+        "Every move it has goes only onto an empty square and is the same seen from either "
+        "side. It may have no moves when nobody moves the pair.",
+    ),
+    "rules.portals.orange": (
+        "orange portal on",
+        "Where the pair's orange portal starts: an empty square, not a wall.",
+    ),
+    "rules.portals.blue": (
+        "blue portal on",
+        "Where the pair's blue portal starts: an empty square, not a wall.",
+    ),
+    "rules.portals.moved_by": ("who may move each portal", None),
+    "rules.portals.moved_by.orange": (
+        "the orange one",
+        "Which players may spend a turn moving the orange portal: nobody, the usual "
+        "choice, either one of them, or both.",
+    ),
+    "rules.portals.moved_by.blue": (
+        "the blue one",
+        "Which players may spend a turn moving the blue portal: nobody, the usual choice, "
+        "either one of them, or both.",
+    ),
+    "rules.portals.passage": ("whose pieces may go in by which portal", None),
+    "rules.portals.passage.0": (
+        "the first player's pieces",
+        "both ways: in by either portal, the usual choice. orange to blue: in by the "
+        "orange one only. blue to orange: in by the blue one only. closed: neither, and "
+        "both portals are solid blocks to these pieces.",
+    ),
+    "rules.portals.passage.1": (
+        "the second player's pieces",
+        "both ways: in by either portal, the usual choice. orange to blue: in by the "
+        "orange one only. blue to orange: in by the blue one only. closed: neither, and "
+        "both portals are solid blocks to these pieces.",
+    ),
+    "rules.portals.no_straight_back": (
+        "no moving a portal straight back",
+        "When on, a portal that has just been moved may not be moved straight back where it "
+        "came from on the very next move: it can go anywhere else, and back the move after. "
+        "It stops two players undoing each other's portal moves until the game is drawn.",
+    ),
     "rules.promote_on_entry": (
         "promoting on arrival",
         "A piece that comes into play inside its own promotion zone, played back there or "
@@ -322,13 +389,37 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
     ),
     "rules.reach.safe": ("only where it cannot be taken", None),
     "rules.reach.result": ("the result", None),
+    "rules.reach.on": (
+        "arriving or leaving",
+        "'arrive', the usual choice, decides the game when the piece stands on one of the "
+        "squares; 'leave' decides it when the piece moves off one, so it must get there and "
+        "then step away, as in Jeson Mor.",
+    ),
     "rules.extinction.pieces": ("which pieces", "'any' counts the whole army."),
     "rules.extinction.min_count": ("fewer than", None),
     "rules.extinction.result": ("the result", None),
+    "rules.extinction.per_type": (
+        "each kind on its own",
+        "Yes counts each listed piece separately, so a player loses when any one kind "
+        "runs out, as in Extinction chess. No, the usual choice, counts them together.",
+    ),
     "rules.drops.from_captures": ("captured pieces", None),
     "rules.drops.region": ("where each may be played", "For each piece, the squares it may be played back on."),
     "rules.drops.no_doubled": ("not onto a column holding one", None),
     "rules.drops.no_mate": ("not checkmating as it is played", None),
+    "rules.drops.placement": (
+        "place everything first",
+        "Yes means a player who holds any piece must play one onto the board instead of "
+        "moving, so the pieces in hand are all placed before the game proper starts, as in "
+        "Placement chess. A king may then start in hand. No, the usual choice, lets a held "
+        "piece wait.",
+    ),
+    "rules.drops.either_face": (
+        "either face",
+        "Yes lets a piece in hand be played as itself or as the piece that reverts to it "
+        "when captured, so a captured dragon, held as a rook, may come back as either, as "
+        "in Kyoto shogi. No, the usual choice, plays it back as itself.",
+    ),
     "rules.drops.stock": (
         "held at the start",
         "For each piece, how many each player holds before anything is taken: a count of 1 "

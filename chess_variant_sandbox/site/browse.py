@@ -38,7 +38,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from chess_variant_sandbox.site import matches as match_rows
@@ -49,7 +49,10 @@ HUMAN_GAMES = "human_games"
 INDEX = "index"
 NEWEST = "newest"
 """Newest on trial first, by `games.published` (the *On trial* tab's own order, Q503b)."""
-SORTS = (STARS, HUMAN_GAMES, INDEX, NEWEST)
+ADDED = "added"
+"""Newest first by the day a game joined: a library file's `provenance.added`, a member's
+game's publish day (Q826, the games page's *date added*)."""
+SORTS = (STARS, HUMAN_GAMES, INDEX, NEWEST, ADDED)
 """What `/api/library?sort=` takes. Anything else, including nothing, leaves the listing
 in the order the library gave it -- committed first, then archived, each by name."""
 
@@ -403,7 +406,8 @@ def _key(card: Mapping[str, Any], sort: str) -> tuple[int, float, str]:
     *scored zero*, and a ranking that confused the two would put every new game first.
     """
     field = {
-        STARS: "stars", HUMAN_GAMES: "humanGames", INDEX: "index", NEWEST: "onTrialSince"
+        STARS: "stars", HUMAN_GAMES: "humanGames", INDEX: "index", NEWEST: "onTrialSince",
+        ADDED: "added",
     }[sort]
     value = card.get(field)
     name = str(card.get("name", "")).lower()
@@ -411,4 +415,6 @@ def _key(card: Mapping[str, Any], sort: str) -> tuple[int, float, str]:
         return (1, 0.0, name)
     if sort == NEWEST:
         return (0, -datetime.fromisoformat(str(value)).timestamp(), name)
+    if sort == ADDED:
+        return (0, -float(date.fromisoformat(str(value)[:10]).toordinal()), name)
     return (0, -float(value), name)

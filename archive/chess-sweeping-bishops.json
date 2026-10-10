@@ -87,6 +87,7 @@
     "no_progress_draw": 100
   },
   "provenance": {
+    "added": "2026-09-14",
     "origin": "human",
     "source": "Q21, docs/game-ideas.md: chess with the bishop's slide replaced by a diagonal sweep",
     "history": "Schema 13's showcase, 2026-09-14. Pre-registered perft(1) = 30: chess's 20 plus five sweeps per bishop."

@@ -16,6 +16,10 @@ Q503e. The acceptance, and what holds each part:
   checking is priced in CPU-seconds -- `TestTheCaps`;
 * a draft measured in the browser, walked and spot-checked, **publishes through the route**,
   and nothing short of that does -- `TestASuccessfulPublish`;
+* since Q742 a press while the site is still checking the score is taken and waits, and the
+  game goes on trial by itself when the check passes; a failed walk, a mismatch, a check
+  out of budget or a game taken off the site calls it off and says why; a flagged account
+  and an unticked box are still refused at the press -- `TestAPublishThatWaits`;
 * a spot-checked reading made stale by the site still counts toward the shortlist for 30
   days, then stops -- `TestTheShortlistsGrace`.
 
@@ -40,7 +44,16 @@ from test_site_legality import Measured, lines, measure_as_a_browser, small_rost
 
 from chess_variant_sandbox import measurement
 from chess_variant_sandbox.measurement import LEGAL, Basis, sample_check
-from chess_variant_sandbox.site import db, drafts, legality, provisional, quota, spotcheck, terms
+from chess_variant_sandbox.site import (
+    db,
+    drafts,
+    legality,
+    provisional,
+    quota,
+    spotcheck,
+    stages,
+    terms,
+)
 from chess_variant_sandbox.site.provisional import SPOT_CHECKED
 from chess_variant_sandbox.spec import load_spec
 from chess_variant_sandbox.spec.canonical import spec_hash
@@ -454,10 +467,12 @@ class TestASuccessfulPublish:
         # Somebody else cannot press it, and the designer can.
         with pytest.raises(drafts.PublishError, match="Only the person who saved"):
             draft.publish(draft.bo)
+        assert panel["ticks"][1]["says"] == drafts.READING_CHECKED
         done = draft.publish()
         assert done == {
             "hash": draft.game,
             "listed": True,
+            "waiting": False,
             "said": "Published. It is on trial: others can find it, play it and vote on it.",
         }
         [(visibility, published, version)] = draft.query(
@@ -467,16 +482,20 @@ class TestASuccessfulPublish:
         assert (visibility, version) == ("public", terms.VERSION) and published is not None
         assert draft.publish()["said"] == "Already on trial: listed with the other games."
 
-    def test_a_reading_that_is_only_legal_does_not_open_it(self, draft: Draft) -> None:
+    def test_a_reading_that_is_only_legal_lists_nothing(self, draft: Draft) -> None:
+        """Q742 changed what a press does here (it waits, `TestAPublishThatWaits`), not
+        what it needs: a reading tier two has not replayed is not attached, and a press
+        on it lists nothing."""
         draft.send()
         with draft.app._connection() as connection:
             legality.run(connection, draft.runs, int(legality.claim(connection) or 0),
                          basis=draft.basis)
         assert drafts.attached(draft.connection, draft.game, draft.basis) is None
         draft.connection.commit()
-        with pytest.raises(drafts.PublishError) as refused:
-            draft.publish()
-        assert str(refused.value) == drafts.NEEDS_A_READING
+        answer = draft.publish()
+        assert (answer["listed"], answer["waiting"]) == (False, True)
+        assert draft.query("select visibility, published from games where hash = %s",
+                           draft.game) == [("unlisted", None)]
 
     def test_a_reading_on_another_basis_does_not_open_it(self, draft: Draft) -> None:
         draft.send()
@@ -485,6 +504,197 @@ class TestASuccessfulPublish:
         assert drafts.attached(draft.connection, draft.game, lambda g, s: moved) is None
         draft.connection.commit()
         draft.app.checks.basis = lambda game, spec: moved
+        with pytest.raises(drafts.PublishError) as refused:
+            draft.publish()
+        assert str(refused.value) == drafts.NEEDS_A_READING
+
+
+class TestAPublishThatWaits:
+    """Q742, the user on 2026-10-05: *Publish* opens once the designer's own computer has
+    measured the draft, is not held back by the site's check, says that publishing will be
+    complete once the score has been verified, and the game goes live by itself then.
+    Nothing goes live unverified: only `drafts.attached` ever lists it."""
+
+    def _row(self, draft: Draft) -> tuple[Any, ...]:
+        [row] = draft.query(
+            "select visibility, published is not null, publish_asked is not null,"
+            " publish_stopped, terms_version from games where hash = %s",
+            draft.game,
+        )
+        return row
+
+    def _panel(self, draft: Draft, viewer: int | None = None) -> dict[str, Any]:
+        panel = drafts.standing(
+            draft.connection, draft.game, draft.ada if viewer is None else viewer, draft.basis
+        )
+        draft.connection.commit()
+        assert panel is not None
+        return panel
+
+    def _altered(self, draft: Draft, field: str) -> str:
+        rows = draft.measured.rows(slices.TOURNAMENT)
+        game = next(i for i, row in enumerate(rows) if row.get("nodes") and len(row["moves"]) > 4)
+        if field == "nodes":
+            rows[game]["nodes"] = [n + 1 for n in rows[game]["nodes"]] if isinstance(
+                rows[game]["nodes"], list) else rows[game]["nodes"] + 1
+        else:
+            rows[game]["moves"][2] = 10**9
+        return draft.measured.upload(tournament=lines(rows))
+
+    def test_a_press_while_it_is_checked_waits_then_goes_on_trial_by_itself(
+        self, draft: Draft
+    ) -> None:
+        draft.send()
+        # Sent and queued: the tick is met, the button opens, nothing is attached yet.
+        panel = self._panel(draft)
+        assert panel["ticks"][1] == {"met": True, "says": drafts.READING_CHECKING}
+        assert (panel["open"], panel["waiting"], panel["waitsForCheck"]) == (True, "", False)
+        assert drafts.attached(draft.connection, draft.game, draft.basis) is None
+        draft.connection.commit()
+
+        answer = draft.publish()
+        assert answer == {
+            "hash": draft.game, "listed": False, "waiting": True, "said": drafts.WAITING,
+        }
+        assert "publishing will be complete once the site has checked" in drafts.WAITING.lower()
+        # The terms are taken at the press; nothing is listed.
+        assert self._row(draft) == ("unlisted", False, True, None, terms.VERSION)
+        assert draft.game not in drafts.listed(draft.connection)
+        panel = self._panel(draft)
+        assert (panel["open"], panel["waiting"], panel["waitsForCheck"]) == (
+            False, drafts.WAITING, True)
+        # The designer's own words on the game page and in *Your games*; nobody else's.
+        rows = stages.read(draft.connection, [draft.game])
+        assert stages.said(draft.connection, rows[draft.game], draft.ada) == stages.WAITING
+        assert stages.said(draft.connection, rows[draft.game], draft.bo) == stages.SAYS[
+            stages.DRAFT]
+        [group] = stages.yours(draft.connection, draft.ada)
+        assert group["games"][0]["next"] == stages.WAITING
+        draft.connection.commit()
+        # A second press while it waits is the same answer, and changes nothing.
+        assert draft.publish()["waiting"] is True
+
+        # The runner finishes the check and, with it, the publish. No further press.
+        draft.app.checks.drain()
+        assert self._row(draft) == ("public", True, False, None, terms.VERSION)
+        assert draft.game in drafts.listed(draft.connection)
+        draft.connection.commit()
+        assert self._panel(draft)["level"] == stages.ON_TRIAL
+        assert draft.publish()["said"] == "Already on trial: listed with the other games."
+
+    def test_settling_twice_or_with_nothing_waiting_changes_nothing(self, draft: Draft) -> None:
+        assert drafts.settle(draft.connection, draft.game, draft.basis) is None
+        draft.connection.commit()
+        draft.send()
+        draft.publish()
+        draft.app.checks.drain()
+        before = draft.query("select published from games where hash = %s", draft.game)
+        assert drafts.settle(draft.connection, draft.game, draft.basis) is None
+        assert drafts.settle_all(draft.connection, draft.basis) == []
+        draft.connection.commit()
+        assert draft.app.checks.drain() == []
+        assert draft.query("select published from games where hash = %s", draft.game) == before
+
+    def test_a_press_the_check_overtook_is_finished_on_the_next_pass(
+        self, draft: Draft
+    ) -> None:
+        """The checks ran without a settle -- a press that landed just as they ended, or
+        a runner stopped between them -- and the next pass, with no job left, finishes
+        it."""
+        draft.send()
+        draft.publish()
+        with draft.app._connection() as connection:
+            legality.run(connection, draft.runs, int(legality.claim(connection) or 0),
+                         basis=draft.basis)
+        with draft.app._connection() as connection:
+            spotcheck.run(connection, draft.runs, int(spotcheck.claim(connection) or 0),
+                          "server", draft.basis)
+        assert self._row(draft)[:3] == ("unlisted", False, True)
+        assert draft.app.checks.drain() == []
+        assert self._row(draft)[:3] == ("public", True, False)
+
+    def test_a_new_score_while_it_waits_is_the_one_it_waits_for(self, draft: Draft) -> None:
+        draft.send()
+        with draft.app._connection() as connection:
+            legality.run(connection, draft.runs, int(legality.claim(connection) or 0),
+                         basis=draft.basis)
+        draft.publish()
+        draft.send()
+        draft.app.checks.drain()
+        assert [state for _, state in draft.results()] == ["superseded", SPOT_CHECKED]
+        assert self._row(draft)[:3] == ("public", True, False)
+
+    def test_a_mismatch_calls_it_off_and_flags_the_account(self, draft: Draft) -> None:
+        draft.send(self._altered(draft, "nodes"))
+        draft.publish()
+        draft.app.checks.drain()
+        visibility, published, waits, stopped, _ = self._row(draft)
+        assert (visibility, published, waits) == ("unlisted", False, False)
+        assert stopped == drafts.CALLED_OFF + provisional.FLAGGED
+        panel = self._panel(draft)
+        assert (panel["open"], panel["stopped"], panel["waiting"]) == (
+            False, stopped, provisional.FLAGGED)
+
+    def test_a_walk_that_refuses_the_score_calls_it_off_with_its_reason(
+        self, draft: Draft
+    ) -> None:
+        draft.send(self._altered(draft, "moves"))
+        draft.publish()
+        [walked] = draft.app.checks.drain()
+        assert walked.state == legality.REFUSED
+        visibility, _, waits, stopped, _ = self._row(draft)
+        assert (visibility, waits) == ("unlisted", False)
+        assert stopped.startswith(drafts.CALLED_OFF + drafts.FOUND_A_PROBLEM.split("{}")[0])
+        assert stopped.endswith("Measure it here again, then press Publish.")
+        # Not flagged: a walk's refusal names the problem and the designer measures again.
+        panel = self._panel(draft)
+        assert (panel["stopped"], panel["waiting"]) == (stopped, drafts.NEEDS_A_READING)
+        assert panel["open"] is False
+        # The next press clears it, once a new score is being checked.
+        draft.send()
+        assert self._panel(draft)["open"] is True
+        draft.publish()
+        assert self._row(draft)[2:4] == (True, None)
+
+    def test_a_check_out_of_time_calls_it_off(self, draft: Draft) -> None:
+        draft.app.checks.cpu_cap = 0.0
+        draft.send()
+        draft.publish()
+        draft.app.checks.drain()
+        assert self._row(draft)[3] == drafts.CALLED_OFF + drafts.OUT_OF_TIME
+
+    def test_a_game_taken_off_the_site_while_it_waits_is_called_off(self, draft: Draft) -> None:
+        draft.send()
+        draft.publish()
+        with draft.connection.cursor() as cursor:
+            cursor.execute("update games set revoked = now() where hash = %s", (draft.game,))
+        draft.connection.commit()
+        draft.app.checks.drain()
+        visibility, _, waits, stopped, _ = self._row(draft)
+        assert (visibility, waits, stopped) == (
+            "unlisted", False, drafts.CALLED_OFF + drafts.TAKEN_OFF)
+
+    def test_the_press_still_takes_the_terms_and_refuses_a_flagged_account(
+        self, draft: Draft
+    ) -> None:
+        draft.send()
+        with pytest.raises(drafts.PublishError) as refused:
+            draft.as_(draft.ada).post("/api/design/publish", {"hash": draft.game})
+        assert str(refused.value) == terms.NOT_ACCEPTED
+        assert self._row(draft)[2] is False
+        provisional.flag(draft.connection, draft.ada)
+        draft.connection.commit()
+        with pytest.raises(drafts.PublishError) as refused:
+            draft.publish()
+        assert str(refused.value) == provisional.FLAGGED
+        assert self._row(draft)[2] is False
+
+    def test_a_press_with_nothing_sent_is_still_refused(self, draft: Draft) -> None:
+        """The button stays shut until the designer's computer has measured it: that is
+        the one wait the user kept."""
+        panel = self._panel(draft)
+        assert (panel["open"], panel["waiting"]) == (False, drafts.NEEDS_A_READING)
+        assert panel["ticks"][1] == {"met": False, "says": drafts.READING_TICK}
         with pytest.raises(drafts.PublishError) as refused:
             draft.publish()
         assert str(refused.value) == drafts.NEEDS_A_READING

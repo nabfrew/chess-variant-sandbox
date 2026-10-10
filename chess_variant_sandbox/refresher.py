@@ -32,6 +32,14 @@ nothing; this is what makes them *current* again, with nobody starting a campaig
    logged, the game is skipped, and the next one is taken. A refused game comes back only
    when its stored measurement changes (somebody repaired it) or a person clears it
    (`refresh --forget <hash>`).
+7. **The slow tier, weekly, when idle** (Q743, `docs/plan-tests.md` §8 F1). The gate runs
+   `pytest -m "not slow"` only, so a `slow` test went red the day the tree moved past it
+   and stayed red. When a watching refresher finds nothing owed and the machine free, and
+   the last slow-tier run finished `SLOW_TIER_EVERY` or more ago, it runs `pytest -m slow`
+   in its own worktree under a `heavy` lease and writes the result to `slow-tier.json`
+   beside its status file (`read_slow_tier`). A failure is recorded, never acted on: it
+   repairs nothing, refuses nothing and moves no score. Committed files the run changed are
+   put back and named. A one-pass `--library` or an `--only` run never runs it.
 
 **What it writes**, beside the measurements in the main checkout's `runs/`:
 `refresh-status.json` (what it is doing, what is owed, the last game, the last refusal,
@@ -108,9 +116,24 @@ CHANGED_COMMITTED_FILES = "changed committed files"
 ERROR = "error"
 HALTS = (STALE_BUILD,)
 
+# The slow tier (point 7 above): its result file in the main checkout's `runs/`, how often
+# it runs, the lease it takes, the workers it runs on (a `heavy` lease books ten slots),
+# and how long a run may take before it is stopped and recorded as one that did not finish.
+SLOW_TIER_FILE = "slow-tier.json"
+SLOW_TIER_EVERY = datetime.timedelta(days=7)
+SLOW_TIER_LEASE = "heavy"
+SLOW_TIER_WORKERS = 8
+SLOW_TIER_TIMEOUT_S = 3 * 3600
+# How many failing test ids the status file and its summary carry; the rest are counted.
+SLOW_TIER_NAMES = 50
+
 
 def _now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+
+
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
 
 
 # ------------------------------------------------------------------------- the order
@@ -489,6 +512,137 @@ def owed_counts(items: Iterable[Item]) -> dict[str, int]:
     return counts
 
 
+# ------------------------------------------------------------------ the slow tier
+
+
+@dataclass(frozen=True)
+class SlowTier:
+    """One run of `pytest -m slow` in the refresher's worktree, as `slow-tier.json` keeps it.
+
+    ``failing`` holds the ids of the tests that failed or errored, in the order the report
+    gave them. ``note`` says why a run did not finish, or what it changed that was put back.
+    """
+
+    commit: str = ""
+    passed: int = 0
+    failed: int = 0
+    errors: int = 0
+    skipped: int = 0
+    failing: tuple[str, ...] = ()
+    seconds: float = 0.0
+    exit_code: int = 0
+    note: str = ""
+
+    @property
+    def outcome(self) -> str:
+        """`green`, `red` (a test failed or errored), or `unfinished` (no verdict at all)."""
+        if self.failed or self.errors:
+            return "red"
+        if self.exit_code == 0 and self.passed > 0:
+            return "green"
+        return "unfinished"
+
+    def as_dict(self) -> dict[str, Any]:
+        return {**asdict(self), "failing": list(self.failing), "outcome": self.outcome}
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> SlowTier:
+        return cls(
+            commit=str(data.get("commit") or ""),
+            passed=int(data.get("passed") or 0),
+            failed=int(data.get("failed") or 0),
+            errors=int(data.get("errors") or 0),
+            skipped=int(data.get("skipped") or 0),
+            failing=tuple(str(name) for name in data.get("failing") or ()),
+            seconds=float(data.get("seconds") or 0.0),
+            exit_code=int(data.get("exit_code") or 0),
+            note=str(data.get("note") or ""),
+        )
+
+
+def slow_tier_summary(tier: SlowTier, finished: str) -> str:
+    """One line a person or a file-reading tool can print as it is."""
+    day = finished[:10]
+    counts = f"{tier.passed} passed, {tier.failed} failed"
+    counts += f", {tier.errors} errors" if tier.errors else ""
+    counts += f", {tier.skipped} skipped" if tier.skipped else ""
+    line = f"{tier.outcome} on {day} at {tier.commit[:12]}: {counts}"
+    if tier.failing:
+        shown = ", ".join(tier.failing[:3])
+        more = len(tier.failing) - 3
+        line += f" ({shown}{f' and {more} more' if more > 0 else ''})"
+    if tier.note:
+        line += f"; {tier.note}"
+    return line
+
+
+def parse_junit(path: Path) -> SlowTier:
+    """Counts and failing ids from pytest's `--junitxml` report, and nothing else."""
+    import xml.etree.ElementTree as ElementTree
+
+    root = ElementTree.parse(path).getroot()
+    passed = failed = errors = skipped = 0
+    failing: list[str] = []
+    for case in root.iter("testcase"):
+        kinds = {child.tag for child in case}
+        name = "::".join(part for part in (case.get("classname"), case.get("name")) if part)
+        if "error" in kinds:
+            errors += 1
+            failing.append(name)
+        elif "failure" in kinds:
+            failed += 1
+            failing.append(name)
+        elif "skipped" in kinds:
+            skipped += 1
+        else:
+            passed += 1
+    return SlowTier(passed=passed, failed=failed, errors=errors, skipped=skipped,
+                    failing=tuple(failing))
+
+
+def read_slow_tier(runs_dir: Path) -> dict[str, Any] | None:
+    """The last slow-tier run's file, or ``None`` if the refresher has run none here.
+
+    Plain JSON with a ready ``summary`` line, so a tool that reads files and imports
+    nothing (`.claude/scripts/slow_tier_status.py`) can show it.
+    """
+    try:
+        data = json.loads((Path(runs_dir) / SLOW_TIER_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def write_slow_tier(runs_dir: Path, tier: SlowTier, started: str,
+                    finished: str) -> dict[str, Any]:
+    record = {**tier.as_dict(), "failing": list(tier.failing[:SLOW_TIER_NAMES]),
+              "failing_total": len(tier.failing), "started": started,
+              "finished": finished, "summary": slow_tier_summary(tier, finished)}
+    runs_dir = Path(runs_dir)
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    path = runs_dir / SLOW_TIER_FILE
+    partial = path.with_suffix(".json.partial")
+    partial.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(partial, path)
+    return record
+
+
+def slow_tier_due(record: Mapping[str, Any] | None, now: datetime.datetime,
+                  every: datetime.timedelta = SLOW_TIER_EVERY) -> bool:
+    """Whether the last run finished `every` or more before ``now``, or there was none.
+
+    A run that did not finish is a run: a tier that cannot run here is not retried every
+    ten minutes, and its file says why.
+    """
+    if not record:
+        return True
+    try:
+        finished = datetime.datetime.fromisoformat(str(record.get("finished")))
+    except ValueError:
+        return True
+    return now - finished >= every
+
+
 # ------------------------------------------------------------------------ the loop
 
 
@@ -509,6 +663,7 @@ class Machine(Protocol):
     def keep(self, item: Item, paths: list[str]) -> str: ...  # commit them; the sha
     def discard(self, paths: list[str]) -> None: ...  # put them back
     def unmerged(self, commits: list[str]) -> list[str]: ...  # those main does not hold
+    def slow_tier(self) -> SlowTier: ...  # `pytest -m slow` at the worktree's commit
     def sleep(self, seconds: float) -> None: ...
 
 
@@ -537,6 +692,9 @@ class Refresher:
     passes: int | None = None
     # Only these games (`refresh --only`), for a first run on one small game.
     only: frozenset[str] | None = None
+    # The weekly slow tier (point 7): ``None`` runs it exactly when watching.
+    slow_tier: bool | None = None
+    clock: Callable[[], datetime.datetime] = _utcnow
 
     def run(self) -> int:
         """Until nothing is owed, or forever when watching. 1 if it stopped on a halt.
@@ -614,6 +772,8 @@ class Refresher:
             refused_owed=len(items) - len(todo),
         )
         if not todo:
+            if self._slow_tier_due():
+                return self._slow_tier()
             self.ledger.update(state="idle", doing=None)
             return "idle"
 
@@ -663,6 +823,46 @@ class Refresher:
         self.ledger.update(state="working", doing=None, last_done=last)
         self.say(f"  delivered in {outcome.seconds:.0f}s")
         return "repaired"
+
+    def _slow_tier_due(self) -> bool:
+        wanted = self.watch if self.slow_tier is None else self.slow_tier
+        return (wanted and self.only is None
+                and slow_tier_due(read_slow_tier(self.ledger.runs_dir), self.clock()))
+
+    def _slow_tier(self) -> str:
+        """Run the slow tier once, under its own lease, and record it; never act on it."""
+        if not self.machine.acquire(SLOW_TIER_LEASE, "refresh slow tier"):
+            self.ledger.update(state="waiting", doing=None,
+                               waiting_for=f"a {SLOW_TIER_LEASE} lease for the slow tier")
+            return "waiting"
+        started = _now()
+        # `working`, the one state a page waits hours on before it calls the loop quiet
+        # (`web/refreshing.QUIET_AFTER_S`); a run is bounded by `SLOW_TIER_TIMEOUT_S`.
+        self.ledger.update(state="working", doing={
+            "name": "the slow tier", "hash": "", "needs": "running the slow tests",
+            "started": started})
+        self.say("nothing owed: running the slow tier")
+        try:
+            tier = self.machine.slow_tier()
+        except Exception as error:  # noqa: BLE001 - recorded; the loop goes on
+            tier = SlowTier(commit=self.machine.head(), exit_code=-1,
+                            note=f"the run raised: {error}")
+        finally:
+            self.machine.release()
+        changed = self.machine.changed()
+        if changed:
+            self.machine.discard(changed)
+            put_back = "it changed committed files, put back: " + ", ".join(changed)
+            tier = replace(tier, note=f"{tier.note}; {put_back}" if tier.note else put_back)
+        record = write_slow_tier(self.ledger.runs_dir, tier, started, _now())
+        self.ledger.log("slow tier", outcome=tier.outcome, commit=tier.commit,
+                        passed=tier.passed, failed=tier.failed, errors=tier.errors,
+                        failing=record["failing"], seconds=tier.seconds)
+        self.ledger.update(state="idle", doing=None, slow_tier={
+            "outcome": tier.outcome, "finished": record["finished"],
+            "summary": record["summary"]})
+        self.say(f"  slow tier {record['summary']}")
+        return "idle"
 
     def _rebuild(self) -> str | None:
         if not self.machine.acquire("build", "refresh rebuild"):
@@ -873,6 +1073,38 @@ class GitMachine:
 
         return [c for c in commits if holds("HEAD", c) and not holds("main", c)]
 
+    def slow_tier(self) -> SlowTier:
+        """`pytest -m slow` in the worktree, on its own interpreter, read from its report.
+
+        The report goes to a scratch directory, so the run writes nothing in the worktree
+        that the loop reads; whatever a test leaves in committed files the loop puts back.
+        """
+        import tempfile
+
+        commit = self.head()
+        started = time.monotonic()
+        with tempfile.TemporaryDirectory(prefix="slow-tier-") as scratch:
+            report = Path(scratch) / "slow.xml"
+            command = [str(_python(self.worktree)), "-m", "pytest", "-m", "slow", "-q",
+                       "-p", "no:cacheprovider", "-n", str(SLOW_TIER_WORKERS),
+                       f"--junitxml={report}"]
+            try:
+                done = self.run(command, cwd=self.worktree, capture_output=True, text=True,
+                                check=False, timeout=SLOW_TIER_TIMEOUT_S)
+            except subprocess.TimeoutExpired:
+                return SlowTier(commit=commit, exit_code=-1,
+                                seconds=round(time.monotonic() - started, 1),
+                                note=f"stopped after {SLOW_TIER_TIMEOUT_S}s")
+            seconds = round(time.monotonic() - started, 1)
+            if not report.exists():
+                said = (done.stdout or "") + (done.stderr or "")
+                return SlowTier(commit=commit, exit_code=done.returncode, seconds=seconds,
+                                note=f"pytest wrote no report: {said.strip()[-400:]}")
+            tier = parse_junit(report)
+        note = "" if self.head() == commit else "the worktree moved during the run"
+        return replace(tier, commit=commit, seconds=seconds, exit_code=done.returncode,
+                       note=note)
+
     def sleep(self, seconds: float) -> None:
         time.sleep(seconds)
 
@@ -951,4 +1183,7 @@ def plain_status(status: Mapping[str, Any] | None) -> list[str]:
     if status.get("owed_merge"):
         lines.append(f"owed a merge into main: {', '.join(status['owed_merge'])} "
                      f"(branch {BRANCH})")
+    tier = status.get("slow_tier")
+    lines.append(f"slow tier: {tier.get('summary')}" if isinstance(tier, Mapping)
+                 else "slow tier: not run here yet (weekly, when watching and idle)")
     return lines

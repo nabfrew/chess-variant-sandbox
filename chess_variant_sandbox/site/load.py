@@ -13,7 +13,7 @@ Four sources, four tables and one seeding:
     runs/<hash>/canonical.json      -> measurements   the summary, its basis, its state
     runs/<hash>/index-<w>.json      -> measurements   both ends of the interval
     runs/opponents/<hash>.json      -> measurements   the whole ladder, and its top rung
-                                    -> ratings        seeded once, through `rating.seed`
+                                    -> ratings        seated through `rating.reseed`
     runs/human/games.jsonl          -> matches        the maintainer's own games, history
     the games just written          -> links          how near each pair is (`site/links.py`)
 
@@ -240,8 +240,8 @@ def read_specs(directory: Path) -> tuple[dict[str, dict[str, Any]], list[str]]:
 def read_ladder(runs_dir: Path, digest: str) -> dict[str, Any] | None:
     """The picker ladder for one game, as it stands on disk.
 
-    The whole file, because §3 stores every rung: the site's table is seeded from it once
-    and the page names the rungs. A file that will not parse is no ladder, which leaves
+    The whole file, because §3 stores every rung: the site's table is seeded from it
+    (`rating.reseed`) and the page names the rungs. A file that will not parse is no ladder, which leaves
     the game unrated and offering sandbox only -- the same answer as never having run the
     picker on it.
     """
@@ -635,21 +635,28 @@ def _dump(payload: dict[str, Any] | None) -> str | None:
 
 
 def seed_ratings(connection: Any, digests: list[str], runs_dir: Path) -> Change:
-    """Seed each game's computer players from its picker ladder, once each.
+    """Seat each game's computer players from its picker ladder (`rating.reseed`).
 
-    `rating.seed` adds only players the table has not seen, so a second load adds
-    nothing and a re-rated ladder reseeds nothing -- §5's rule, and the reason this
-    function counts additions and never updates. A ladder run that added a rung is the
-    one case where a later load writes here again, and it writes only that rung.
+    The reseed rule of `docs/plan-leaderboard.md` §2.3 (L3). A player the table has not
+    seen is *added*. A computer row no person has played is still only its seed, so a
+    newer ladder's seat replaces it: *updated*. A row people have played keeps the number
+    they gave it, and a row already at its seat is left as it is: *unchanged*. So a second
+    load over the same files writes nothing, a re-rated ladder refreshes every computer
+    number nobody has played against, and what people decided stays.
+
+    The first seeding of a table centres on the ladder's five standard players
+    (`rating.anchor`, §2.4), so the first load after L3 also moves the unplayed rows of a
+    table seeded under the old rule (1500 at the whole roster's mean) onto the new one.
     """
     change = Change()
     for digest in sorted(digests):
         ladder = read_ladder(runs_dir, digest)
         if ladder is None:
             continue
-        added = rating.seed(connection, digest, ladder)
-        change.added += len(added)
-        change.unchanged += len(rating.rungs(ladder)) - len(added)
+        seated = rating.reseed(connection, digest, ladder)
+        change.added += len(seated.added)
+        change.updated += len(seated.reseeded)
+        change.unchanged += seated.kept
     return change
 
 

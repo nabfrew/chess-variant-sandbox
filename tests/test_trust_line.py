@@ -55,6 +55,7 @@ def _trust(*items: trust.Item, score: str = trust.CURRENT) -> trust.Trust:
 ORDERED = _item(trust.LADDER, trust.SILENT, "ladder.ordered", count=trust.Count(0, 4, "runs"))
 WITHHELD = _item(trust.LADDER, trust.FINDS_MORE, "ladder.withheld",
                  count=trust.Count(4, 4, "runs"), withheld=["skill_gradient"])
+PARTLY = _item(trust.LADDER, trust.SILENT, "ladder.partly", count=trust.Count(2, 4, "runs"))
 FAIRY_HELD = _item(trust.FAIRY, trust.AGREES, "fairy.held-its-own",
                    count=trust.Count(12, 32, "games"), date="2026-10-02", score=0.37)
 FAIRY_BEATS = _item(trust.FAIRY, trust.FINDS_MORE, "fairy.beats-ours",
@@ -78,6 +79,16 @@ class TestTheWords:
         assert shown["said"] == trust.EARLY_SAID
         assert "If you beat the strongest computer player here" in shown["said"]
         assert shown["more"][0].startswith("Its computer players get steadily stronger")
+
+    def test_a_partly_blind_ladder_names_its_runs_and_keeps_the_level(self) -> None:
+        # Q793: *dull*, blind on 2 of 4 runs, no longer reads *steadily stronger*.
+        assert _trust(PARTLY).level == _trust(ORDERED).level == trust.EARLY
+        shown = trust.shown(_trust(PARTLY))
+        assert shown is not None and shown["said"] == trust.EARLY_SAID
+        assert shown["more"][0] == (
+            "Its computer players got clearly stronger with more thinking time in only 2 of "
+            "the 4 runs that measured this game, so parts of the score rest on those runs "
+            "alone.")
 
     def test_questioned_opens_with_the_finding(self) -> None:
         shown = trust.shown(_trust(ORDERED, FAIRY_BEATS))
@@ -188,7 +199,7 @@ class TestTheWords:
                      (trust.NET, trust.SILENT, "net.refused"),
                      (trust.CONVERGENCE, trust.FINDS_MORE, "convergence.moved"))}
         readings = [
-            _trust(ORDERED), _trust(WITHHELD), _trust(FAIRY_HELD), _trust(FAIRY_BEATS, NET),
+            _trust(ORDERED), _trust(WITHHELD), _trust(PARTLY), _trust(FAIRY_HELD), _trust(FAIRY_BEATS, NET),
             _trust(*stale.values()),
             _trust(_item(trust.CONVERGENCE, trust.AGREES, "convergence.held")),
             _trust(_item(trust.NET, trust.SILENT, "net.in-the-score")),

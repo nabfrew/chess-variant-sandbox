@@ -13,6 +13,14 @@
 // gives that width to the board.
 let BOARD_INLINE = false;
 
+// How long a button that ends the game (*resign*, *cancel the game*) stays armed after its
+// first press, in ms. It was six seconds, and two of the first-visit study's readers met
+// it reverting before their second press (N1). Fifteen gives a person time to read *really
+// resign?* and decide. It is a timer at all because a phone's Safari gives a tapped
+// button no focus, so *blur* never disarms it there: without one the button would stay
+// armed until the next stray tap ended the game.
+const ARM_HOLD = 15000;
+
 // The board, given up. Everything it holds is about one game, so a view that takes the
 // board away drops all of it: a reply still on its way lands on a session nobody is
 // showing and is discarded by `maybeAgent`'s own check, and the next game opens without
@@ -35,6 +43,9 @@ function leaveBoard() {
   TIMELINE_FOR = null;
   BOARD_INLINE = false;
   CORR_HELD = null;
+  PROMO = null;
+  PROMO_LOOKING = false;
+  PROMO_PIECE = null;
   stopCorrPoll();
 }
 
@@ -44,8 +55,12 @@ async function showBoard(snapshot, how) {
   stopPolling();
   stopCorrPoll();
   CORR_HELD = null;
+  PROMO = null;
+  PROMO_LOOKING = false;
+  PROMO_PIECE = null;
   const inline = !!(how && how.mount);
   BOARD_INLINE = inline;
+  BOARD_FOCUS = null;
   const root = inline ? how.mount : view;
   SESSION = snapshot;
   SHOWN = null;
@@ -113,10 +128,12 @@ async function showBoard(snapshot, how) {
         </div>`}
         <div id="ground" class="muted small" style="margin-top:6px"></div>
       </div>
-      ${inline ? '' : `<div class="panel">
-        <div>${seatHtml(0)}</div>
-        <div style="margin-top:6px">${seatHtml(1)}</div>
-        ${modeHtml(snapshot)}
+      ${inline ? '' : `<div class="panel boardSide">
+        <div class="seatLines">
+          <div>${seatHtml(0)}</div>
+          <div style="margin-top:6px">${seatHtml(1)}</div>
+          ${modeHtml(snapshot)}
+        </div>
         <div class="tabs" style="margin-top:10px">
           ${['moves', 'rules', 'pieces'].map(tab => `<button data-tab="${tab}"${
             tab === TAB ? ' class="on"' : ''}>${tab}</button>`).join('')}
@@ -184,7 +201,7 @@ async function showBoard(snapshot, how) {
   // moves on it exactly as it moves on a checkmate. So it takes two presses, the first of which says
   // what the second does -- and the button disarms itself on a timer and when it loses
   // focus, because a control left armed behind the reader's back is one stray click away
-  // from ending their game.
+  // from ending their game. The timer is `ARM_HOLD`.
   const resign = document.getElementById('resign');
   if (resign) {
     const disarm = () => { resign.dataset.armed = ''; sayOn(resign, 'resign'); };
@@ -193,7 +210,7 @@ async function showBoard(snapshot, how) {
       if (resign.dataset.armed !== 'yes') {
         resign.dataset.armed = 'yes';
         sayOn(resign, 'really resign?');
-        setTimeout(disarm, 6000);
+        setTimeout(disarm, ARM_HOLD);
         return;
       }
       disarm();
@@ -226,6 +243,9 @@ async function showBoard(snapshot, how) {
   // first opened: a panel that takes a round trip to appear is a panel nobody opens
   // twice. It is one request per ruleset per page load either way.
   detailFor(rules.hash).then(drawPane).catch(() => {});
+  // A move picked between two people and never sent is still on the board when the
+  // person comes back to it, in this browser, until it is sent or put back (Q733).
+  if (between) CORR_HELD = corrHeldKept(snapshot);
   drawBoard();
   drawPane();
   watchBoardSight(root);
@@ -256,9 +276,10 @@ async function showBoard(snapshot, how) {
 //
 // Above the board, the status strip -- whose move, *in check*, and the result once the
 // game is over -- and the legend line naming every mark the board carries, the
-// promotion zone's toggle at its end. Under it, the hand (pieces held, and the
-// promotion chooser), then take back, flip, the view's shift where the board wraps, and
-// resign last. Starting another game is not a control of this one, so new game, the
+// promotion zone's toggle at its end. Over it, when a move promotes, the choice of what
+// the piece becomes (`choosePromotion`, Q765), and when a strike places its survivor, the
+// choice of where (`chooseLanding`, Q769). Under it, the hand (pieces held), then take
+// back, flip, the view's shift where the board wraps, and resign last. Starting another game is not a control of this one, so new game, the
 // other side and watch sit further down.
 //
 // `mode` is the store's word for the game (`snapshot.mode`). A sandbox game can be given
@@ -281,10 +302,14 @@ function frameHtml(inline, mode, watched, between) {
   const ends = (rated || mode === 'sandbox') && !watched;
   return `
     <div class="row frame-status${between ? ' between' : ''}" data-frame="status"><span id="status"></span></div>
-    <div class="panel board-panel"><div class="board-frame"><div class="board-box">
+    <div class="board-row" id="boardRow"><div class="panel board-panel"><div class="board-frame"><div class="board-box">
       <svg id="board" data-frame="board" viewBox="0 0 100 100"></svg>
       <div class="coords" id="coords" aria-hidden="true"></div></div>
-      <div class="frame-ended" id="ended" hidden></div></div></div>
+      <div class="frame-ended" id="ended" hidden></div>
+      <div class="promo" id="promo" data-frame="promotion" role="dialog" aria-modal="true"
+        aria-labelledby="promoHead" hidden></div></div></div>
+    ${between && between.you !== null ? `<div class="corr-send" id="corrSend"
+      data-frame="send" aria-live="polite"></div>` : ''}</div>
     <div id="hand" class="hand"></div>
     <div id="pieceSays" class="muted small piece-says" hidden></div>
     <div class="row frame-controls" data-frame="controls">
@@ -347,14 +372,36 @@ function sayOn(button, words) {
 // board is measured from where it sits on the page, so the header and the status strip
 // above it count; a board inline in the designer is wherever the editor put it, so only
 // the frame's own parts count there. Never smaller than a phone's board, so a short
-// landscape screen scrolls rather than shrinking the game to a stamp.
+// landscape screen scrolls rather than shrinking the game to a stamp -- but for one line
+// (`PIECE_SAYS_LINE`) where that line brings the whole frame onto the screen (Q809).
 const BOARD_FLOOR = 280;
-// The height of the one line a tapped piece's sentences take under the board (K3).
+// The height of the one line a tapped piece's sentences take under the board (K3). It is
+// kept for the line whether or not a piece is picked, and the line's own height is never
+// read: a sentence that wraps to two or three lines once moved the board under the
+// pointer, so a second tap could land on another square than the one aimed at (Q809).
 const PIECE_SAYS_LINE = 22;
 // The status strip's width under which its longest sentences (a note, the computer being
 // slow, *in check*) take three lines rather than two.
 const STRIP_NARROW = 560;
+// Q761: the width the slot that sends a move between two people needs for its two buttons
+// side by side, with its words over them. Under a board narrower than this (a tall board,
+// height-limited) the slot and the strip take this much of the column rather than the
+// board's width, where *Change my move* was squeezed to three clipped lines.
+const SEND_WIDE = 440;
+// ... and the least it takes beside the board, its buttons one over the other, where the
+// column has the room: a tall board then keeps the height the slot took under it.
+const SEND_BESIDE = 260;
+const BESIDE_GAP = 16;
 
+// A line of the status strip, as `.frame-status` sets it (`--strip-lines` lines of 22 px).
+const STRIP_LINE = 22;
+
+// Q761: a fit is worked out for the layout it ends in, not read off the one before. The
+// strip's height is the one its width there gives it (a third or fourth line under
+// `STRIP_NARROW`), and the frame's wood, a share of the panel's width, is read again until
+// the width stops moving. Before, both came from the last layout, so a game opened with a
+// board one size and the first move picked shrank it by a few pixels, and a frame could
+// settle in either of two layouts depending on the one it came from.
 function fitBoard() {
   const svg = document.getElementById('board');
   if (!svg || typeof svg.getBoundingClientRect !== 'function') return;
@@ -365,40 +412,108 @@ function fitBoard() {
   const status = document.querySelector('[data-frame="status"]');
   const legend = document.querySelector('[data-frame="legend"]');
   if (box.length !== 4 || !(box[2] > 0) || !(box[3] > 0) || !panel || !controls) return;
+  const ratio = box[3] / box[2];
   const tall = node => (node && node.getBoundingClientRect
     ? node.getBoundingClientRect().height : 0);
-  // The panel's own padding and border, round the board, and the margin the square names
-  // stand in.
-  const rim = tall(panel) - tall(svg);
-  // Under the board: the hand, the control bar and the legend line, the frame's last
-  // two slots, both held to the first screen (S2).
-  // Read off where they end, so their margins and a legend that wraps count too.
   const bottom = node => (node && !node.hidden && node.getBoundingClientRect
     ? node.getBoundingClientRect().bottom : 0);
-  const panelBottom = panel.getBoundingClientRect().bottom;
-  const last = Math.max(bottom(hand), bottom(controls), bottom(legend));
-  // A line is kept for a tapped piece's sentences (K3, `drawPieceSays`), so picking a
-  // piece never pushes the bar off the screen; it is counted where it is already shown.
+  const row = document.getElementById('boardRow');
+  const send = document.getElementById('corrSend');
+  const sending = !!(send && !send.hidden && row && row.classList);
   const says = document.getElementById('pieceSays');
-  const spare = says && says.hidden ? PIECE_SAYS_LINE : 0;
-  const under = (last > panelBottom ? last - panelBottom : tall(hand) + tall(controls)) + 12
-    + spare;
-  const above = BOARD_INLINE
-    ? tall(status) + 16
-    : panel.getBoundingClientRect().top + (window.scrollY || 0);
-  const side = Math.max(BOARD_FLOOR, window.innerHeight - above - rim - under);
-  // The width that gives the board that height, plus the panel round it.
-  const wide = side * box[2] / box[3];
-  panel.style.maxWidth = Math.ceil(wide + (panel.offsetWidth - svg.clientWidth || 0)) + 'px';
-  // The strip above is the board's own, so it is no wider than the board: a verdict boxed
-  // across the whole column read as a line of the page rather than of this game.
-  if (status && status.style) status.style.maxWidth = panel.style.maxWidth;
-  // Its height is fixed, so the board never moves when the status changes (Q725), and
-  // sized here, once a size: a strip narrower than `STRIP_NARROW` keeps a third line,
-  // which is what its longest states take on a phone.
-  if (status && status.classList) {
-    status.classList.toggle('narrow', tall(status) > 0
-      && status.getBoundingClientRect().width < STRIP_NARROW);
+  for (let pass = 0; pass < 4; pass += 1) {
+    // Measured with the slot under the board, where every layout starts.
+    if (row && row.classList) row.classList.remove('beside');
+    panel.style.width = '';
+    // The panel's own padding and border, round the board, and the margin the square
+    // names stand in.
+    const rim = tall(panel) - tall(svg);
+    // Read off the drawn boxes rather than the rounded `offsetWidth`, so a second fit of
+    // an unchanged frame gives the same width (Q733: it lost a pixel each time).
+    const wood = (panel.getBoundingClientRect().width - svg.getBoundingClientRect().width) || 0;
+    const across = row && row.getBoundingClientRect ? row.getBoundingClientRect().width : 0;
+    // Under the board: the slot that sends a move, the hand, the control bar and the
+    // legend line, held to the first screen (S2). Read off where they end, so their
+    // margins and a legend that wraps count too. A line is kept for a tapped piece's
+    // sentences (K3, `drawPieceSays`), so picking a piece never pushes the bar off the
+    // screen; where the sentences are shown, the room they take is read out again and the
+    // one line kept instead, so the board is the same size whatever is picked (Q809).
+    const panelBottom = panel.getBoundingClientRect().bottom;
+    const last = Math.max(bottom(hand), bottom(controls), bottom(legend));
+    const saysStyle = says && !says.hidden && typeof getComputedStyle === 'function'
+      ? getComputedStyle(says) : null;
+    const saysRoom = says && !says.hidden
+      ? tall(says) + ((saysStyle && parseFloat(saysStyle.marginTop)) || 0) : 0;
+    const under = (last > panelBottom ? last - panelBottom - saysRoom
+      : tall(hand) + tall(controls)) + 12 + PIECE_SAYS_LINE;
+    // Above it: the page's own board is measured from where it sits, so the header and
+    // the strip count; a board inline in the designer counts only the frame's own strip.
+    // The strip's height is the one it will have, a line more when it is narrow.
+    const strip = tall(status);
+    const wasNarrow = !!(status && status.classList && status.classList.contains('narrow'));
+    const stripAt = narrow => (strip > 0 ? strip + ((narrow ? 1 : 0) - (wasNarrow ? 1 : 0)) * STRIP_LINE : 0);
+    const top = BOARD_INLINE ? 16 : panel.getBoundingClientRect().top + (window.scrollY || 0) - strip;
+    const sideAt = (narrow, less) => window.innerHeight - top - stripAt(narrow) - rim - less;
+    // The strip above is the board's own, so it is no wider than the board: a verdict
+    // boxed across the whole column read as a line of the page rather than of this game.
+    // So is the slot under it that sends a move between two people (Q733). But never
+    // narrower than the slot's two buttons need (Q761).
+    const ownWidth = side => Math.max(side / ratio + wood, Math.min(across, SEND_WIDE));
+    const narrowAt = side => strip > 0
+      && (across > 0 ? Math.min(across, ownWidth(side)) : ownWidth(side)) < STRIP_NARROW;
+    // Q809: a tall board on a phone (ten by eleven between two people, under the taller
+    // strip and the slot that sends a move) stood at the floor with its legend's last row
+    // 4 px under the first screen. Where the frame needs no more than the line kept for a
+    // tapped piece below the floor, the board gives that much: it takes the height the
+    // frame leaves it without that line, so the legend is on the first screen and only a
+    // picked piece's sentences, while shown, push it down. A board further off the screen
+    // than that keeps the floor and the page scrolls, as before.
+    const floored = narrow => {
+      const room = sideAt(narrow, under);
+      if (room >= BOARD_FLOOR) return room;
+      const tight = sideAt(narrow, under - PIECE_SAYS_LINE);
+      return tight >= BOARD_FLOOR - PIECE_SAYS_LINE ? Math.min(BOARD_FLOOR, tight) : BOARD_FLOOR;
+    };
+    let side = floored(false);
+    let narrow = narrowAt(side);
+    if (narrow) side = floored(true);
+    // Q761: a board held short by the screen's height (a tall one, a torus with its
+    // copies) left most of a desk's column empty while the slot under it took 150 px of
+    // that height. Beside the board the slot frees them, so it goes there when that gives
+    // the bigger board: the board's height without the slot under it, or the width the
+    // column has left once the slot has its least, whichever is smaller. The strip then
+    // spans the board and the slot.
+    let beside = false;
+    if (sending && across > 0) {
+      const style = typeof getComputedStyle === 'function' ? getComputedStyle(send) : null;
+      const freed = tall(send) + ((style && parseFloat(style.marginTop)) || 0);
+      const spans = strip > 0 && across < STRIP_NARROW;
+      const nextTo = Math.min(sideAt(spans, under - freed),
+        (across - BESIDE_GAP - SEND_BESIDE - wood) * ratio);
+      const below = Math.min(side, (across - wood) * ratio);
+      if (nextTo >= BOARD_FLOOR && nextTo > below + 1) {
+        beside = true;
+        side = nextTo;
+        narrow = spans;
+      }
+    }
+    // The width that gives the board that height, plus the panel round it.
+    const width = Math.ceil(side / ratio + wood) + 'px';
+    const own = beside ? '' : Math.ceil(ownWidth(side)) + 'px';
+    const settled = pass > 0 && panel.style.maxWidth === width && narrow === wasNarrow
+      && (!status || !status.style || status.style.maxWidth === own);
+    panel.style.maxWidth = width;
+    if (beside) {
+      row.classList.add('beside');
+      panel.style.width = width;
+    }
+    if (status && status.style) status.style.maxWidth = own;
+    if (send && send.style) send.style.maxWidth = own;
+    // The strip's height is fixed, so the board never moves when the status changes
+    // (Q725), and sized here, once a size: a strip narrower than `STRIP_NARROW` keeps a
+    // third line, which is what its longest states take on a phone.
+    if (status && status.classList) status.classList.toggle('narrow', narrow);
+    if (settled) break;
   }
 }
 
@@ -406,7 +521,9 @@ let FIT_WIRED = false;
 function wireFit() {
   if (FIT_WIRED || typeof window.addEventListener !== 'function') return;
   FIT_WIRED = true;
-  window.addEventListener('resize', () => { if (SESSION) fitBoard(); });
+  window.addEventListener('resize', () => {
+    if (SESSION) { fitBoard(); fitPortals(document.getElementById('board')); }
+  });
 }
 
 function applySnapshot(snapshot, animate = true) {
@@ -581,6 +698,260 @@ function tint() { return (AT ? AT.colour : SESSION.colour) || []; }
 
 function pieceAt(square) { return pieceOf(position()[square]); }
 
+// Schema 19: the compiled facts about a portal end's type (`portal_payload`), or null.
+function portalEnd(type) {
+  const portals = SESSION && SESSION.ruleset && SESSION.ruleset.portals;
+  if (!portals) return null;
+  return portals.ends.find(end => end.type === type) || null;
+}
+
+// The portal end standing on a square of the position on screen, with its partner and its
+// words, or null. Where an end stands is the board's, as every piece's square is.
+function portalOn(square) {
+  if (square === null || square === undefined || !SESSION) return null;
+  const piece = pieceAt(square);
+  const end = piece ? portalEnd(piece.type) : null;
+  if (!end) return null;
+  const portals = SESSION.ruleset.portals;
+  const partner = portalPartner(portals, end);
+  const W = SESSION.ruleset.width;
+  const words = portalWords(end, partner, squareName(square % W, Math.floor(square / W)),
+                            portalPairs(portals), sideName);
+  return { end, partner, words };
+}
+
+// Whose passage a portal end shows (`docs/plan-portals.md` §4): the seat the person plays
+// on this page; between two people, the reader's own; otherwise -- a game between
+// machines, two people at one board, a replay -- the side to move on the board on screen.
+function portalViewer() {
+  if (!SESSION) return null;
+  const toMove = AT ? AT.sideToMove : SESSION.sideToMove;
+  const between = SESSION.correspondence;
+  if (between) return between.you === 0 || between.you === 1 ? between.you : toMove;
+  const people = [0, 1].filter(player => (SESSION.seats || [])[player] === 'human');
+  return people.length === 1 ? people[0] : toMove;
+}
+
+// Schema 19: what the reader is looking at among the portals. `INSPECT` is the end last
+// tapped, whose words stand under the board and whose partner is linked to it; `HOVER_END`
+// the end under the pointer, linked while the reader has links on (`LINKS`, theirs, kept
+// by the browser, off by default in play, §4); `LIT` the move whose exit the chooser
+// lights (D6).
+let INSPECT = null;
+let HOVER_END = null;
+let LIT = null;
+const LINKS_KEY = 'chess_variant_sandbox.portalLinks';
+let LINKS = linksShown();
+
+function linksShown() {
+  try { return window.localStorage.getItem(LINKS_KEY) === '1'; } catch (err) { return false; }
+}
+
+function toggleLinks() {
+  LINKS = !LINKS;
+  try { window.localStorage.setItem(LINKS_KEY, LINKS ? '1' : '0'); } catch (err) { /* not offered */ }
+  drawBoard();
+}
+
+function linkToggleHtml(shown) {
+  const lit = shown ? ' style="border-color:var(--act);color:var(--act)"' : '';
+  return `<button id="linktoggle" aria-pressed="${!!shown}"${lit}
+    title="a line from a portal under the pointer to the other end of its pair">pair links</button>`;
+}
+
+// Where an end of this type stands in the position on screen, or -1.
+function portalSquare(type) {
+  const board = position();
+  for (let square = 0; square < board.length; square++) {
+    const piece = pieceOf(board[square]);
+    if (piece && piece.type === type && portalEnd(piece.type)) return square;
+  }
+  return -1;
+}
+
+function boardCentre(square, cell) {
+  const xy = squareXY(square, cell, FRAME);
+  return [xy[0] + cell / 2, xy[1] + cell / 2];
+}
+
+// A line from (ax, ay) to (bx, by), each end held back by `trimA` and `trimB` cells, so
+// it runs between two glyphs rather than over them; '' when nothing is left of it.
+function trimmedLine(ax, ay, bx, by, trimA, trimB, cell, attrs) {
+  const length = Math.hypot(bx - ax, by - ay);
+  if (!(length > (trimA + trimB) * cell)) return '';
+  const ux = (bx - ax) / length, uy = (by - ay) / length;
+  return `<line x1="${(ax + ux * trimA * cell).toFixed(3)}" y1="${(ay + uy * trimA * cell).toFixed(3)}"
+    x2="${(bx - ux * trimB * cell).toFixed(3)}" y2="${(by - uy * trimB * cell).toFixed(3)}" ${attrs}/>`;
+}
+
+// A move through a portal in its two legs (§4): the piece's own way to the end it went in
+// by, and the king's step out from the other end to where it stands. Each leg is drawn
+// along the step the mover took (`wrapStep`, its own seams), ending at the square, so a
+// leg through a seam runs in from the far side as the piece did. Amber, the last move's
+// colour, cased in the glyph's edge so it reads on both woods.
+function portalLegsHtml(last, cell, W, H) {
+  if (!last || last.portal === undefined || last.portalOut === undefined
+      || last.from === null || last.from === undefined) return '';
+  const allow = wrapAllow(SESSION.ruleset.wrap, last.player);
+  const leg = (from, to, trimFrom, trimTo) => {
+    const [bx, by] = boardCentre(to, cell);
+    const [dx, dy] = stepXY(wrapStep(from, to, W, H, allow), cell, FRAME);
+    const ax = bx - dx, ay = by - dy;
+    const cased = trimmedLine(ax, ay, bx, by, trimFrom, trimTo, cell,
+      `stroke="var(--portal-edge)" stroke-width="${cell * 0.12}" stroke-linecap="round" opacity="0.55"`);
+    if (!cased) return '';
+    return cased + trimmedLine(ax, ay, bx, by, trimFrom, trimTo, cell,
+      `stroke="var(--hl-last)" stroke-width="${cell * 0.065}" stroke-linecap="round"`);
+  };
+  return `<g data-legs="${last.portal}" pointer-events="none">${
+    leg(last.from, last.portal, 0.1, 0.45)}${leg(last.portalOut, last.to, 0.45, 0.3)}</g>`;
+}
+
+// The pair link (§4): a faint line from an end to the other end of its pair, for the end
+// tapped, a portal picked to move, and, with links on, the end under the pointer. Laid
+// over the drawing rather than in it, so the pointer moving draws no board.
+function paintLinks() {
+  const svg = document.getElementById('board');
+  if (!svg || !SESSION || !FRAME || typeof svg.querySelector !== 'function') return;
+  const old = svg.querySelector('[data-link]');
+  if (old) old.remove();
+  if (!SESSION.ruleset.portals) return;
+  const ends = new Set();
+  if (LINKS && HOVER_END !== null) ends.add(HOVER_END);
+  if (INSPECT !== null) ends.add(INSPECT);
+  if (SELECTED !== null && portalOn(SELECTED)) ends.add(SELECTED);
+  const cell = 100 / Math.max(SESSION.ruleset.width, SESSION.ruleset.height);
+  let out = '';
+  for (const square of ends) {
+    const here = portalOn(square);
+    const there = here && here.partner ? portalSquare(here.partner.type) : -1;
+    if (there < 0) continue;
+    const [ax, ay] = boardCentre(square, cell), [bx, by] = boardCentre(there, cell);
+    out += trimmedLine(ax, ay, bx, by, 0.46, 0.46, cell, `stroke="var(--portal-edge)"
+      stroke-width="${cell * 0.04}" stroke-dasharray="${cell * 0.12} ${cell * 0.08}"
+      stroke-linecap="round" opacity="0.6"`);
+  }
+  if (!out) return;
+  const group = document.createElementNS(SVGNS, 'g');
+  group.setAttribute('data-link', '');
+  group.setAttribute('pointer-events', 'none');
+  group.innerHTML = out;
+  svg.appendChild(group);
+}
+
+// The keyboard on a board played inside the designer (*play it here*, P3's D9): the board
+// takes the focus, arrow keys move a ring from square to square as the board is drawn,
+// Enter or space is a click on that square -- picking a piece, playing a move, or opening
+// the choice of where a piece comes out of a portal -- and Esc puts a picked piece down.
+// Only there: on the board's own page the bare arrows step through the game, and that is
+// the more common reading.
+let BOARD_FOCUS = null;
+
+function boardKeys(event) {
+  if (!SESSION || PROMO || !BOARD_INLINE) return;
+  const rules = SESSION.ruleset;
+  const W = rules.width, H = rules.height;
+  const key = event.key;
+  const handled = () => { event.preventDefault(); event.stopPropagation(); };
+  if (key === 'Enter' || key === ' ') {
+    if (BOARD_FOCUS === null) return;
+    handled();
+    clickSquare(BOARD_FOCUS);
+    paintBoardFocus();
+    return;
+  }
+  if (key === 'Escape') {
+    if (SELECTED === null) return;
+    handled();
+    SELECTED = null;
+    drawBoard();
+    return;
+  }
+  const by = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[key];
+  if (!by) return;
+  handled();
+  // Up on the screen is up the board, or down it on a board turned round.
+  const turn = FLIPPED ? -1 : 1;
+  const absent = new Set(SESSION.absent || []);
+  let at = BOARD_FOCUS;
+  if (at === null) {
+    at = SELECTED !== null ? SELECTED : Math.floor(H / 2) * W + Math.floor(W / 2);
+  } else {
+    let file = at % W, rank = Math.floor(at / W);
+    for (let tries = 0; tries < Math.max(W, H); tries++) {
+      file += by[0] * turn;
+      rank += by[1] * turn;
+      if (file < 0 || file >= W || rank < 0 || rank >= H) { file -= by[0] * turn; rank -= by[1] * turn; break; }
+      if (!absent.has(rank * W + file)) break;
+    }
+    at = rank * W + file;
+  }
+  BOARD_FOCUS = at;
+  paintBoardFocus();
+}
+
+// The keyboard's ring, laid over the drawing as the pair link is.
+function paintBoardFocus() {
+  const svg = document.getElementById('board');
+  if (!svg || !SESSION || !FRAME || typeof svg.querySelector !== 'function') return;
+  const old = svg.querySelector('[data-kbfocus]');
+  if (old) old.remove();
+  if (BOARD_FOCUS === null || !BOARD_INLINE) return;
+  const cell = 100 / Math.max(SESSION.ruleset.width, SESSION.ruleset.height);
+  const [x, y] = squareXY(BOARD_FOCUS, cell, FRAME);
+  const group = document.createElementNS(SVGNS, 'g');
+  group.setAttribute('data-kbfocus', String(BOARD_FOCUS));
+  group.setAttribute('pointer-events', 'none');
+  group.innerHTML = cellShape(x, y, cell, FRAME, `fill="none" stroke="var(--focus)" stroke-width="${
+    cell * 0.06}"`, 0.04);
+  svg.appendChild(group);
+  svg.setAttribute('aria-label', `the board; the keyboard is on ${squareName(BOARD_FOCUS % SESSION.ruleset.width,
+    Math.floor(BOARD_FOCUS / SESSION.ruleset.width))}: arrow keys move, Enter picks or plays, Esc puts a piece down`);
+}
+
+// The exit the chooser's focused or hovered button names, lit on the board (D6). On a
+// wrapping board the lit copy is the one drawn nearest the end it comes out beside (N6):
+// on a view slid across the seam that may be a ghost, and the square inside the outline
+// is then the far side of the board from where the piece will be seen to come out.
+function lightExit(move) {
+  LIT = move || null;
+  const svg = document.getElementById('board');
+  if (!svg || typeof svg.querySelector !== 'function') return;
+  const old = svg.querySelector('[data-lit]');
+  if (old) old.remove();
+  if (!LIT || !SESSION || !FRAME || LIT.portalOut === undefined) return;
+  const cell = 100 / Math.max(SESSION.ruleset.width, SESSION.ruleset.height);
+  const copy = nearestCopy(LIT.to, squareCell(LIT.portalOut, FRAME), FRAME);
+  const [x, y] = cellXY(copy.u, copy.v, cell, FRAME);
+  const group = document.createElementNS(SVGNS, 'g');
+  group.setAttribute('data-lit', String(LIT.to));
+  group.setAttribute('data-copy', `${copy.u},${copy.v}`);
+  group.setAttribute('pointer-events', 'none');
+  group.innerHTML = cellShape(x, y, cell, FRAME, 'fill="var(--hl-sel)" opacity="0.5"')
+    + cellShape(x, y, cell, FRAME, `fill="none" stroke="var(--hl-sel)" stroke-width="${
+      cell * 0.08}"`, 0.04);
+  svg.appendChild(group);
+}
+
+// How big a cell is drawn, which is how much of a portal's glyph it keeps (D9): the
+// board's `data-portals` tier, read by the stylesheet, and the pair's number held at
+// `PORTAL_NUMBER_LEAST` px however small the cell.
+function fitPortals(svg) {
+  if (!svg || !SESSION || !SESSION.ruleset.portals) return;
+  if (typeof svg.getBoundingClientRect !== 'function') return;
+  const box = String(svg.getAttribute('viewBox') || '').split(/\s+/).map(Number);
+  const width = svg.getBoundingClientRect().width;
+  if (box.length !== 4 || !(box[2] > 0) || !(width > 0)) return;
+  const cell = 100 / Math.max(SESSION.ruleset.width, SESSION.ruleset.height);
+  const perUnit = width / box[2];
+  svg.setAttribute('data-portals', portalTier(cell * perUnit));
+  const least = PORTAL_NUMBER_LEAST / perUnit;
+  for (const text of svg.querySelectorAll('.pg-num')) {
+    const em = Number(text.dataset.em || PORTAL_NUMBER) * cell;
+    text.setAttribute('font-size', Math.max(em, least).toFixed(3));
+  }
+}
+
 // Always a <g>, even for the letter fallback, so the animation has one element per piece
 // to move and the two-node fallback does not have to be special-cased.
 function drawPiece(piece, x, y, cell, square) {
@@ -590,6 +961,18 @@ function drawPiece(piece, x, y, cell, square) {
   const pair = piece.player > 1 ? null : (SESSION.ruleset.icons || [])[piece.type];
   const icon = pair ? pair[piece.player] : null;
   const tag = square === undefined ? '' : ` data-piece="${square}"`;
+  // Schema 19: a portal end is drawn by the board (`portalGlyph`): its rim, its pair's
+  // number where there are several, who may move it and, for the player looking, which
+  // way through it is open. Its words go on the glyph for a screen reader.
+  const portal = portalEnd(piece.type);
+  if (portal) {
+    const portals = SESSION.ruleset.portals;
+    const partner = portalPartner(portals, portal);
+    const said = square === undefined ? null : portalOn(square);
+    return portalGlyph(portal, partner, portalViewer(), x, y, cell, {
+      numbered: portalPairs(portals) > 1, label: said ? said.words.label : '',
+      attrs: `${tag.trim()} pointer-events="none"` });
+  }
   let inner;
   if (icon) {
     const size = cell * 0.88, corner = (cell - size) / 2;
@@ -646,12 +1029,15 @@ let ZONES = zonesShown();
 function drawMarks() {
   const row = document.getElementById('marks');
   if (!row || !SESSION) return;
-  if (!SESSION.ruleset.zones) { row.innerHTML = ''; row.dataset.built = ''; showLegendRow(); return; }
-  const state = ZONES ? 'on' : 'off';
+  // Schema 19: a game with portals also offers the pair link (§4), off until asked for.
+  const zones = !!SESSION.ruleset.zones, links = !!SESSION.ruleset.portals;
+  if (!zones && !links) { row.innerHTML = ''; row.dataset.built = ''; showLegendRow(); return; }
+  const state = (zones ? (ZONES ? 'on' : 'off') : '') + (links ? (LINKS ? '/links' : '/') : '');
   if (row.dataset.built !== state) {
-    row.innerHTML = zoneToggleHtml(ZONES);
+    row.innerHTML = (zones ? zoneToggleHtml(ZONES) : '') + (links ? linkToggleHtml(LINKS) : '');
     row.dataset.built = state;
-    document.getElementById('zonetoggle').onclick = toggleZones;
+    if (zones) document.getElementById('zonetoggle').onclick = toggleZones;
+    if (links) document.getElementById('linktoggle').onclick = toggleLinks;
   }
   showLegendRow();
 }
@@ -823,7 +1209,26 @@ function drawBoard(previous) {
                     boardCut(SESSION.absent, rules.wrap));
   svg.setAttribute('viewBox', viewBox(FRAME, cell));
 
-  const targets = new Set(movesFrom(SELECTED).map(m => m.to));
+  // A move picked between two people and not sent yet (Q733), drawn on the game as it
+  // stands and never on a position the reader has stepped back to.
+  const held = AT ? null : corrHeldDrawn();
+  // With a move held and nothing else picked, the held piece's other squares keep their
+  // dots: a tap on one moves it there instead (Q740, `corrRepick`).
+  const picked = SELECTED !== null ? SELECTED
+    : held && DROP === null && held.from !== null ? held.from : null;
+  const targets = new Set(movesFrom(picked).map(m => m.to));
+  if (held && SELECTED === null) { targets.delete(held.to); targets.delete(held.dest); }
+  // Schema 19: the picked piece's ways through a portal (`docs/plan-portals.md` §4). Each
+  // square it comes out on takes a dot in the colour of the end it goes in by (`through`),
+  // beside the plain dot where it can also get there directly (`direct`); each end it can
+  // go in by is ringed, since a tap there is a way in (`entries`, D6).
+  const through = new Map(), direct = new Set(), entries = new Set();
+  for (const m of movesFrom(picked)) {
+    if (m.portal === undefined) { direct.add(m.to); continue; }
+    const way = portalOn(m.portal);
+    through.set(m.to, way && way.end.end === 'blue' ? 'var(--portal-b)' : 'var(--portal-a)');
+    entries.add(m.portal);
+  }
   const dropTargets = DROP === null ? new Set()
     : new Set(SESSION.moves.filter(m => m.drop === DROP).map(m => m.to));
   const last = AT ? AT.lastMove : SESSION.lastMove;
@@ -869,8 +1274,12 @@ function drawBoard(previous) {
     const file = square % W, rank = Math.floor(square / W);
     const real = depth === 0;
     const shade = cellShade(file, rank, FRAME);
-    let out = cellShape(x, y, cell, FRAME, `fill="${shade}" data-square="${square}"`)
-      + wood.cell(x, y, FRAME, square, shade);
+    // A portal end's words are its square's tooltip (D9), on the square itself because the
+    // glyph, like every piece, takes no pointer.
+    const portal = portalOn(square);
+    const base = cellShape(x, y, cell, FRAME, `fill="${shade}" data-square="${square}"`);
+    let out = (portal ? base.replace(/\/>$/, `><title>${esc(portal.words.label)}</title></${
+      FRAME.hex ? 'path' : 'rect'}>`) : base) + wood.cell(x, y, FRAME, square, shade);
     if (walls.has(square)) {
       out += cellShape(x, y, cell, FRAME, 'pointer-events="none" fill="var(--wall)"');
       out += `<path d="${wallCross(x, y, cell, FRAME)}"
@@ -884,7 +1293,11 @@ function drawBoard(previous) {
     // Under the piece, because a square that ends the game is a square pieces arrive
     // on, and the piece standing there has to stay the thing you see first.
     if (SQUARE_MARKS[square]) out += squareBadge(x, y, cell, SQUARE_MARKS[square], FRAME, 'board');
-    if (last && (square === last.from || square === last.to)) {
+    // A move through a portal tints the two ends it passed as well (§4: the trail in two
+    // legs, origin to entry and exit to landing, its pair's two cells marked); the legs
+    // themselves are drawn over the board (`portalLegsHtml`).
+    if (last && (square === last.from || square === last.to
+        || (last.portal !== undefined && (square === last.portal || square === last.portalOut)))) {
       out += mark(x, y, cell, 'var(--hl-last)', 0.34);
     }
     // Where the wild piece walked, in its own hand and not the mover's: a dashed
@@ -898,13 +1311,39 @@ function drawBoard(previous) {
     const piece = pieceAt(square);
     if (piece) {
       if (lit !== null && piece.type === lit) out += mark(x, y, cell, 'var(--hl-sel)', 0.45);
-      out += drawPiece(piece, x, y, cell, real ? square : undefined);
+      // The piece a held move lifts, and the one it would take, stay where they are,
+      // faded: the move is not made until it is sent.
+      const lifted = held && (square === held.from || square === held.to || square === held.dest);
+      const drawn = drawPiece(piece, x, y, cell, real ? square : undefined);
+      out += lifted ? `<g opacity="${HELD_FADE}">${drawn}</g>` : drawn;
     }
-    if (targets.has(square) || dropTargets.has(square)) {
+    if (held && (square === held.from || square === held.dest)) {
+      out += heldOutline(x, y, cell, square === held.dest);
+    }
+    const way = through.get(square);
+    if (way && !direct.has(square) && !piece) {
+      // Reached only through a portal: the dot in the entry end's colour, edged so it
+      // holds on both woods.
+      out += `<circle cx="${x + cell / 2}" cy="${y + cell / 2}" r="${cell * 0.13}"
+               fill="${way}" stroke="var(--portal-edge)" stroke-width="${cell * 0.03}"
+               data-square="${square}" data-through="1"/>`;
+    } else if (targets.has(square) || dropTargets.has(square)) {
       out += `<circle cx="${x + cell / 2}" cy="${y + cell / 2}"
                r="${piece ? cell * 0.44 : cell * 0.13}" fill="${piece ? 'none' : 'var(--dot)'}"
                stroke="var(--dot)" stroke-width="${cell * 0.05}" opacity="0.8"
                data-square="${square}"/>`;
+      // And through a portal too, or a capture there: a small dot of the entry's colour
+      // on the square's corner, clear of the piece.
+      if (way) {
+        out += `<circle cx="${x + cell * 0.8}" cy="${y + cell * 0.2}" r="${cell * 0.09}"
+                 fill="${way}" stroke="var(--portal-edge)" stroke-width="${cell * 0.025}"
+                 data-square="${square}" data-through="1"/>`;
+      }
+    }
+    if (entries.has(square)) {
+      out += `<circle cx="${x + cell / 2}" cy="${y + cell / 2}" r="${cell * 0.47}" fill="none"
+               stroke="var(--dot)" stroke-width="${cell * 0.035}" stroke-dasharray="${
+               cell * 0.09} ${cell * 0.06}" opacity="0.8" data-square="${square}"/>`;
     }
     if (real) return outside ? out : out + coordsHtml(square, x, y, cell, FRAME);
     return `<g opacity="${ghostFade(depth).toFixed(3)}">${out}</g>`;
@@ -932,15 +1371,40 @@ function drawBoard(previous) {
   out += outlineHtml(cell, FRAME, rules.wrap) + barrierHtml(cell, FRAME, rules.wrap);
   // Where each wild piece steps next, over everything: a dotted arrow from the edge of
   // the piece to short of the square's middle, so it never covers the piece or a
-  // legal-move dot. The core's answer for the position on screen (`coming`).
+  // legal-move dot; and, fainter, where it steps after the move after that (Q764). The
+  // core's answer for the position on screen (`coming`, `comingThen`).
   const coming = AT ? AT.coming : SESSION.coming;
-  out += comingHtml(coming, cell, W, H, FRAME, rules.wrap);
+  const comingThen = AT ? AT.comingThen : SESSION.comingThen;
+  out += comingHtml(coming, cell, W, H, FRAME, rules.wrap, comingThen);
+  // The held move over everything: its arrow, then its piece where it would land.
+  if (held) out += heldHtml(held, cell, W, H, rules.wrap);
+  // A move through a portal, in its two legs (§4), over the squares it tinted.
+  out += portalLegsHtml(last, cell, W, H);
 
   svg.innerHTML = markDefs(SQUARE_MARKS, 'board') + wood.defs() + out;
+  // A piece is drawn `pointer-events="none"`, the held move's faded one too, so a tap on
+  // it is a tap on its square: on the held move's landing square, which takes it back.
   svg.onclick = event => {
     const node = event.target.closest('[data-square]');
     if (node) clickSquare(Number(node.dataset.square));
   };
+  // The pair link under the pointer (§4), while the reader has links on.
+  svg.onpointerover = event => {
+    const node = event.target.closest ? event.target.closest('[data-square]') : null;
+    const square = node ? Number(node.dataset.square) : null;
+    const hover = portalOn(square) ? square : null;
+    if (hover !== HOVER_END) { HOVER_END = hover; paintLinks(); }
+  };
+  svg.onpointerleave = () => { if (HOVER_END !== null) { HOVER_END = null; paintLinks(); } };
+  // A board inside the designer takes the keyboard (D9); the board's own page does not.
+  if (BOARD_INLINE && typeof svg.setAttribute === 'function') {
+    svg.setAttribute('tabindex', '0');
+    if (!svg.getAttribute('aria-label')) {
+      svg.setAttribute('aria-label', 'the board: arrow keys move from square to square, Enter'
+        + ' picks or plays, Esc puts a piece down');
+    }
+    svg.onkeydown = boardKeys;
+  }
 
   // Redrawing replaces the board's contents outright, so whatever the last move was
   // still animating is destroyed by the next draw. `BUSY_UNTIL` is when it would have
@@ -966,9 +1430,21 @@ function drawBoard(previous) {
   drawReview();
   drawShift();
   drawMarks();
-  drawLegend(SQUARE_MARKS, coming && coming.length ? ['coming'] : []);
+  drawLegend(SQUARE_MARKS, [
+    ...(coming && coming.length ? ['coming'] : []),
+    ...(comingThen && comingThen.length ? ['comingThen'] : []),
+    ...boardKinds(SESSION.obstacles, SESSION.ruleset.portals),
+  ]);
   drawCoords(cell, outside);
   fitBoard();
+  fitPortals(svg);
+  // The pair link and a lit exit live over the drawing, so they are laid again on it.
+  paintLinks();
+  lightExit(LIT);
+  paintBoardFocus();
+  // The choice of what a piece becomes belongs to the position it was asked on: a step
+  // back through the game, a take-back or an answer that moved the game puts it away.
+  if (PROMO && !promotionStands()) closePromotion();
 }
 
 // The squares' names in a margin of their own beside the board (plan-visual.md §3.3), in
@@ -984,11 +1460,7 @@ function drawCoords(cell, outside) {
   // each is set close to its own cell's edge, on a scrap of the page's paper.
   layer.classList.toggle('on-wood', !!(outside && FRAME.hex));
   if (!outside) { layer.innerHTML = ''; return; }
-  const box = viewBox(FRAME, cell).split(/\s+/).map(Number);
-  layer.innerHTML = edgeLabels(cell, FRAME).map(label => `<span class="co" style="left:${
-    ((label.x - box[0]) / box[2] * 100).toFixed(3)}%;top:${
-    ((label.y - box[1]) / box[3] * 100).toFixed(3)}%;--dx:${label.dx.toFixed(3)};--dy:${
-    label.dy.toFixed(3)}">${esc(label.text)}</span>`).join('');
+  layer.innerHTML = edgeNamesHtml(cell, FRAME, viewBox(FRAME, cell));
 }
 
 // --------------------------------------------------------------- the animation
@@ -1022,6 +1494,10 @@ const PACE = {
   // crawl; long enough that the piece that moved has landed and come to rest before
   // anything else on the board starts moving, which is the whole of what was missing.
   beat: 200,
+  // The pause inside a move through a portal (schema 19, §4), between the piece fading
+  // into the end it went in by and coming out of the other: long enough to read as
+  // passing through, shorter than a travel.
+  portal: 160,
 };
 const SVGNS = 'http://www.w3.org/2000/svg';
 let BUSY_UNTIL = 0;
@@ -1180,6 +1656,20 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view) {
       doomed.set(to, node);
     }
     svg.appendChild(node);            // travelling pieces pass over stationary ones
+    // Schema 19: a move through a portal is two beats (§4), the engine's two squares for
+    // it read off the move (`portal`, `portalOut`): the piece flies to the end it goes in
+    // by and fades into it, and after `PACE.portal` it comes out of the other end, one
+    // step on to where it lands, and takes there. Each leg along the mover's own step.
+    if (last && last.portal !== undefined && last.portalOut !== undefined
+        && from === last.from && to === last.to && !swallowed.has(to)) {
+      const time = portalBeats(svg, node, pieceOf(before[from]), before, last, cell, W, H,
+                               view);
+      blows.set(to, time.blow);
+      lastBlow = Math.max(lastBlow, time.blow.at);
+      landed = Math.max(landed, time.landed);
+      busy = Math.max(busy, time.landed);
+      continue;
+    }
     const step = stepOf(from, to);
     const arc = pathHops(before, from, step, W, H, view);
     // Where the piece came from, along the step rather than across the board. The two
@@ -1344,6 +1834,40 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view) {
     busy = Math.max(busy, PACE.drop);
   }
   return nothing();
+}
+
+// A move through a portal, in its two beats. The first: a ghost of the piece, drawn on the
+// end it goes in by, flown there from its origin and faded as it arrives. The second: the
+// piece the board already drew where it lands, held unseen at the other end until the
+// first is done and the pause after it, then flown the one step out while it fades in.
+// Returns when it lands and the blow a piece taken there is struck with.
+function portalBeats(svg, node, piece, before, last, cell, W, H, view) {
+  const at = sq => squareXY(sq, cell, view);
+  // Both legs are the mover's, so its seams: the end it goes in by is nobody's piece.
+  const allow = wrapAllow(SESSION.ruleset.wrap, last.player);
+  const stepOf = (from, to) => wrapStep(from, to, W, H, allow);
+  const [ex, ey] = at(last.portal), [fx, fy] = at(last.from);
+  const into = stepOf(last.from, last.portal);
+  const arc = pathHops(before, last.from, into, W, H, view);
+  const [idx, idy] = stepXY(into, cell, view);
+  let first = PACE.travelMin;
+  if (piece) {
+    const goer = ghostAt(svg, piece, ex, ey, cell);
+    first = travel(goer, -idx, -idy, arc);
+    if (into.wrapped) animateCrossing(svg, goer, piece, fx, fy, idx, idy, cell, arc, first);
+    const inner = goer.firstElementChild || goer;
+    const fade = inner.animate([{ opacity: 1 }, { opacity: 1, offset: 0.6 }, { opacity: 0 }],
+                               { duration: first, fill: 'forwards' });
+    fade.onfinish = () => goer.remove();
+  }
+  const start = first + PACE.portal;
+  const out = stepOf(last.portalOut, last.to);
+  const [odx, ody] = stepXY(out, cell, view);
+  const second = travel(node, -odx, -ody, false, start);
+  node.animate([{ opacity: 0 }, { opacity: 1 }],
+               { duration: second * 0.6, delay: start, fill: 'backwards', easing: 'ease-out' });
+  return { landed: start + second,
+           blow: { at: start + second * PACE.impact, dx: odx, dy: ody } };
 }
 
 // The second beat: the wild-piece phase, which the rules run after the mover's move
@@ -1857,6 +2381,11 @@ const REASON_WORDS = {
 };
 
 function reasonWords(reason) {
+  // Schema 18 (Q786): a game won by moving off its goal square ends on the reach rule's
+  // reason, so the words follow the compiled rule the session carries (`goalLeaves`).
+  if (reason === 'reached' && SESSION && SESSION.ruleset && SESSION.ruleset.goalLeaves) {
+    return 'by leaving the goal';
+  }
   return REASON_WORDS[reason] || 'by the rules';
 }
 
@@ -1969,6 +2498,16 @@ let OPEN_TAB = null;
 function drawPieceSays() {
   const line = document.getElementById('pieceSays');
   if (!line || !SESSION) return;
+  // Schema 19: a portal end picked or tapped says what it does, in the words its label
+  // and its square's tooltip carry (`portalWords`), and how a piece comes out of it.
+  const looked = SELECTED !== null && !AT && portalOn(SELECTED) ? SELECTED : INSPECT;
+  const portal = looked !== null ? portalOn(looked) : null;
+  if (portal) {
+    line.hidden = false;
+    line.innerHTML = `<b>${esc(portal.words.head)}</b>. ${esc(portal.words.says)}`;
+    sayMore(line);
+    return;
+  }
   const game = DETAIL[SESSION.ruleset.hash];
   const piece = SELECTED !== null && !AT ? pieceAt(SELECTED) : null;
   const about = piece && game && (game.pieces || [])[piece.type];
@@ -1976,6 +2515,39 @@ function drawPieceSays() {
   line.hidden = !moves.length;
   line.innerHTML = moves.length
     ? `<b>${esc(about.name || about.id)}</b>: ${moves.map(esc).join('; ')}` : '';
+  sayMore(line);
+}
+
+// Q809: the sentences are held to the one line `fitBoard` keeps for them (the style's
+// `.piece-says`), so a piece whose sentences run longer pushes nothing off the screen when
+// it is picked. Where they are cut, the line is a button that shows them whole, and again
+// one line; the reader's choice holds for those words until other words are shown. The
+// board is the same size either way: `fitBoard` never reads the line's height.
+let SAYS_OPEN = null;
+function sayMore(line) {
+  if (!line.classList || typeof line.setAttribute !== 'function'
+      || typeof line.removeAttribute !== 'function') return;
+  const words = line.hidden ? '' : String(line.textContent || '');
+  if (SAYS_OPEN !== words) SAYS_OPEN = null;
+  const opened = !!words && SAYS_OPEN === words;
+  line.classList.toggle('open', opened);
+  const cut = !!words && !opened && typeof line.scrollHeight === 'number'
+    && line.scrollHeight > line.clientHeight + 1;
+  const more = cut || opened;
+  line.classList.toggle('more', more);
+  if (more) {
+    line.setAttribute('role', 'button');
+    line.setAttribute('tabindex', '0');
+    line.setAttribute('aria-expanded', String(opened));
+    line.title = opened ? 'show one line of it' : 'show all of it';
+  } else {
+    for (const name of ['role', 'tabindex', 'aria-expanded', 'title']) line.removeAttribute(name);
+  }
+  const flip = () => { SAYS_OPEN = opened ? null : words; sayMore(line); };
+  line.onclick = more ? flip : null;
+  line.onkeydown = more ? event => {
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); flip(); }
+  } : null;
 }
 
 // The words *in check*, as a pill of their own in the status strip, in the alarm colour
@@ -2017,6 +2589,9 @@ function drawStrip() {
   const ended = on => { if (strip && strip.classList) strip.classList.toggle('ended', on); };
 
   if (ground) ground.innerHTML = groundHtml();
+  // The slot under the board that sends a move between two people says the game as it
+  // stands, whichever position the board is showing.
+  drawCorrSend();
   const undo = document.getElementById('undo');
   // A game that is over cannot be resigned, and neither can a position the game has
   // already left -- the store refuses both, and the button says so before it is pressed.
@@ -2043,7 +2618,6 @@ function drawStrip() {
   } else if (SESSION.correspondence) {
     ended(false);
     status.innerHTML = corrStatus();
-    wireCorrHeld();
   } else {
     ended(false);
     const more = SESSION.remaining > 1
@@ -2112,11 +2686,23 @@ function drawHand() {
   const droppable = new Set(SESSION.moves.filter(m => m.drop !== undefined).map(m => m.drop));
   if (!held.length) { hand.innerHTML = ''; return; }
 
+  // Schema 18e (Q785): a held piece may come back as its other face, a second button on
+  // the same count. `dropFaces` is the compiled pair per slot (-1 for none), and `DROP`
+  // is the face chosen, which is what each drop move names.
+  const faces = SESSION.ruleset.dropFaces || null;
+  const ids = SESSION.ruleset.pieceIds;
+  const buttons = [];
+  held.forEach(([type, count]) => {
+    const shown = faces && faces[type] >= 0 ? [type, faces[type]] : [type];
+    shown.forEach(face => {
+      const other = face !== type;
+      buttons.push(`<button data-drop="${face}" class="${DROP === face ? 'on' : ''}"
+        ${other ? `title="${esc(ids[type])} in hand, played as its other face"` : ''}
+        ${!AT && droppable.has(face) ? '' : 'disabled'}>${esc(ids[face])}${other ? ` (${esc(ids[type])})` : ''} x${count}</button>`);
+    });
+  });
   hand.innerHTML = '<span class="muted" style="align-self:center">in hand:</span>' +
-    held.map(([type, count]) =>
-      `<button data-drop="${type}" class="${DROP === type ? 'on' : ''}"
-        ${!AT && droppable.has(type) ? '' : 'disabled'}>${esc(SESSION.ruleset.pieceIds[type])} x${count}</button>`
-    ).join('');
+    buttons.join('');
   hand.querySelectorAll('[data-drop]').forEach(node => {
     node.onclick = () => {
       DROP = DROP === Number(node.dataset.drop) ? null : Number(node.dataset.drop);
@@ -2127,14 +2713,24 @@ function drawHand() {
 }
 
 function clickSquare(square) {
+  // Schema 19: a tap on a portal end says what it does, under the board (D9), whoever's
+  // turn it is and whatever position is on screen; a tap anywhere else puts that away.
+  const inspected = portalOn(square) ? square : null;
+  if (inspected !== INSPECT && !PROMO) {
+    INSPECT = inspected;
+    drawPieceSays();
+    paintLinks();
+    fitBoard();
+  }
   // The board is showing a position the game has left; there is nothing to move in it.
-  if (AT) return;
+  if (AT || PROMO) return;
   if (!SESSION || SESSION.outcome || SESSION.awaitingAgent) return;
   if (SESSION.seats[SESSION.sideToMove] !== 'human') return;
   // Between two people, only the player to move picks, and a picked move waits to be
-  // sent: the board takes no second pick until it is sent or put back.
+  // sent -- and until it is sent it can be changed on the board (Q740): see `corrRepick`.
   const between = SESSION.correspondence;
-  if (between && (between.you !== SESSION.sideToMove || CORR_HELD !== null)) return;
+  if (between && (between.you !== SESSION.sideToMove || CORR_SENDING)) return;
+  if (between && CORR_HELD !== null && corrRepick(square)) return;
   NOTE = '';
 
   if (DROP !== null) {
@@ -2143,8 +2739,23 @@ function clickSquare(square) {
     DROP = null;
   }
 
+  // Schema 19: a tap on an end the picked piece can go in by is that way in: the move
+  // itself where it comes out on one square, else the choice of where it comes out (D6).
+  const ways = movesFrom(SELECTED).filter(m => m.portal === square);
+  if (ways.length && ways.every(m => m.to === ways[0].to)) {
+    if (ways.length === 1) return send(ways[0].move);
+    return choosePromotion(ways);
+  }
+  if (ways.length) return chooseExit(ways);
+
   const candidates = movesFrom(SELECTED).filter(m => m.to === square);
   if (candidates.length === 1) return send(candidates[0].move);
+  // Schema 19: one square reached more than one way -- directly and through a portal, or
+  // through two -- is a choice of route (`docs/plan-portals.md` §2.3), each the engine's
+  // own move named by its text.
+  if (candidates.length > 1 && candidates.some(m => m.portal !== undefined)
+      && new Set(candidates.map(m => m.portal === undefined ? -1 : m.portal)).size > 1)
+    return chooseRoute(candidates);
   // A strike that places its survivor: one move per landing square (and per promotion).
   if (candidates.length > 1 && candidates[0].landing !== undefined)
     return chooseLanding(candidates);
@@ -2158,6 +2769,9 @@ function clickSquare(square) {
   // On the first click, if the piece has rotation moves, show the rotation chooser
   // immediately instead of requiring a second click on the same square.
   const fromHere = movesFrom(square);
+  // Another of your pieces that can move is picked *instead* of the move held (Q740): the
+  // held one goes, and this piece's squares show.
+  if (fromHere.length && CORR_HELD !== null) corrForget();
   const rotations = fromHere.filter(m => m.rotation !== undefined);
   if (rotations.length > 0) {
     SELECTED = square;
@@ -2181,28 +2795,359 @@ function pieceWord(piece) {
   return (rules.pieceNames || [])[piece.type] || (rules.pieceIds || [])[piece.type] || 'piece';
 }
 
-function choosePromotion(candidates) {
-  const hand = document.getElementById('hand');
-  hand.innerHTML = '<span class="muted" style="align-self:center">promote to:</span>' +
-    candidates.map(m => `<button data-move="${m.move}">${
-      esc(SESSION.ruleset.pieceNames[m.promotion] || SESSION.ruleset.pieceIds[m.promotion])
-    }</button>`).join('');
-  hand.querySelectorAll('[data-move]').forEach(node => {
-    node.onclick = () => send(Number(node.dataset.move));
-  });
+// ----- what a promoting piece becomes (Q765)
+//
+// Two members each took the game for stalled when a pawn reached the far side: the choice
+// of what it becomes was a row of small buttons under the board, out of sight on a phone.
+// So the choice is drawn *over* the board, which is where the reader is looking when
+// they make the move: the board dimmed behind a card that says, in plain words, what to
+// do, with each piece drawn large on a square of the board's own wood and its name under
+// it. The card is scrolled into view and takes the keyboard's focus; Tab stays inside it,
+// the arrow keys walk the pieces, Enter or Space picks one, and Escape or *Cancel* puts
+// the choice away with nothing moved: the pawn still on its square, nothing held or sent.
+//
+// **The position stays in reach while choosing** (the user, after the first cut): a
+// person thinks about what the pawn should become by looking at the board, and a card
+// over it hides the position. *Look at the board* puts the card and the dimming away and
+// leaves one small bar under the board -- *Choose the new piece* to have the card back,
+// and *Cancel* -- so every square can be seen while the move is still not made. The board
+// takes no tap meanwhile: the move waits for its piece.
+//
+// A pick is the move, exactly as a click on a square is: `send`, so against the machine
+// it is played, and between two people it is held until *Send your move* like any other
+// pick (Q733), and can still be changed (Q740). The pieces offered are the engine's
+// moves for that square pair, never a list the page makes up.
+let PROMO = null;          // the moves on offer while the choice is open, else null
+let PROMO_LOOKING = false; // the card put aside to look at the board, the choice still open
+let PROMO_PIECE = null;    // a strike's: the piece type already picked, the square still to pick
+
+function promotionWord(piece) {
+  const names = SESSION.ruleset.pieceNames || [];
+  return (piece && names[piece.type]) || 'piece';
 }
 
-function chooseLanding(candidates) {
-  const hand = document.getElementById('hand');
-  hand.innerHTML = '<span class="muted" style="align-self:center">place it on:</span>' +
-    candidates.map(m => `<button data-move="${m.move}">${esc(m.landingName)}${
-      m.promotion !== undefined
-        ? ' =' + esc(SESSION.ruleset.pieceIds[m.promotion])
-        : ''
-    }</button>`).join('');
-  hand.querySelectorAll('[data-move]').forEach(node => {
-    node.onclick = () => send(Number(node.dataset.move));
+function choosePromotion(candidates) {
+  if (!document.getElementById('promo')) return;
+  PROMO = candidates;
+  PROMO_LOOKING = false;
+  PROMO_PIECE = null;
+  PROMO_ROUTE = false;
+  drawPromotion();
+}
+
+// Schema 19: the way to a square reached through a portal and some other way. The same
+// card, one button per move, named by the engine's text (`Bc1-d2>e3`, `Bc1-e3`); P2 draws
+// the routes on the board.
+let PROMO_ROUTE = false;
+let PROMO_EXIT = false;
+function chooseRoute(candidates) {
+  if (!document.getElementById('promo')) return;
+  PROMO = candidates;
+  PROMO_LOOKING = false;
+  PROMO_PIECE = null;
+  PROMO_ROUTE = true;
+  drawPromotion();
+}
+
+// Schema 19: where a piece comes out of a portal it can reach two ways (D6, §2.3): one
+// button a square, named by the way out the engine says it takes (`exitDir`) as the
+// board is drawn, and the square. The bar under the board rather than the card over it,
+// so the exit each button names can be lit on the board (`lightExit`, N6).
+function chooseExit(candidates) {
+  if (!document.getElementById('promo')) return;
+  PROMO = candidates;
+  PROMO_LOOKING = false;
+  PROMO_PIECE = null;
+  PROMO_ROUTE = false;
+  PROMO_EXIT = true;
+  drawPromotion();
+}
+
+function exitWords(m) {
+  const W = SESSION.ruleset.width;
+  const at = portalOn(m.portal);
+  const name = at ? portalName(at.end, portalPairs(SESSION.ruleset.portals)) : 'the portal';
+  const square = squareName(m.to % W, Math.floor(m.to / W));
+  const step = portalStep(m.exitDir, FLIPPED);
+  const words = step ? `${step.words} of ${name}, ${square}` : `beside ${name}, ${square}`;
+  return { arrow: step ? step.arrow : '', words: words.charAt(0).toUpperCase() + words.slice(1) };
+}
+
+function drawExits(box) {
+  const ways = [];
+  for (const m of PROMO) if (!ways.some(way => way.to === m.to)) ways.push(m);
+  const still = SESSION.correspondence ? ' You can still change your move until you send it.' : '';
+  box.hidden = false;
+  box.onkeydown = promotionKeys;
+  if (box.classList) box.classList.toggle('looking', true);
+  if (box.setAttribute) box.setAttribute('aria-modal', 'false');
+  box.innerHTML = `<div class="promo-bar promo-exit-bar">
+    <span class="promo-wait" id="promoHead">Come out where?</span>
+    <span class="promo-exits">${ways.map((m, i) => {
+      const said = exitWords(m);
+      return `<button type="button" class="promo-pick promo-exit" data-move="${m.move}"
+        data-exit="${m.to}" aria-keyshortcuts="${i + 1}" title="${esc(said.words)} (key ${
+        i + 1})${esc(still)}"><span class="promo-arrow" aria-hidden="true">${
+        said.arrow}</span>${esc(said.words)}</button>`;
+    }).join('')}</span>
+    <span class="promo-row"><span class="muted promo-esc">Esc: choose another move</span>
+    <button type="button" class="quiet" id="promoCancel">Cancel</button></span>
+  </div>`;
+  box.querySelectorAll('[data-exit]').forEach(node => {
+    const to = Number(node.dataset.exit);
+    const moves = PROMO.filter(m => m.to === to);
+    const light = () => lightExit(moves[0]);
+    const dim = () => { if (LIT && LIT.to === to) lightExit(null); };
+    node.onmouseenter = light;
+    node.onfocus = light;
+    node.onmouseleave = dim;
+    node.onblur = dim;
+    // A way out that is also a promotion asks what the piece becomes next.
+    node.onclick = () => {
+      closePromotion();
+      if (moves.length === 1) send(moves[0].move); else choosePromotion(moves);
+    };
   });
+  document.getElementById('promoCancel').onclick = () => cancelPromotion();
+  promotionInView(box, box.querySelector('.promo-bar'), box.querySelector('[data-exit]'));
+}
+
+function routeWords(m) {
+  if (m.portal === undefined) return 'directly';
+  const end = portalEnd(pieceAt(m.portal) ? pieceAt(m.portal).type : -1);
+  return end ? `through portal ${end.pair}, the ${end.end} one on ${m.portalName}`
+    : `through the portal on ${m.portalName}`;
+}
+
+// ----- where a strike's survivor goes (Q769)
+//
+// A strike under `position: "choose"` takes the square and puts the piece it struck,
+// changed by the strike, on an empty square of its own choosing: one move per landing
+// square, and, when the striker promotes as it takes, per landing square *and* piece. That
+// choice was the last row of small buttons under the board, naming the new piece by its
+// letter (`b7 =Q`). It is the same card now, in two steps when there are two things to
+// pick: first what the striker becomes, the pieces drawn large and named, exactly as
+// above; then the square for the piece it took, each square a large target named as the
+// board's edge names it, with *Change the piece* to go back a step. One step is skipped
+// when it offers one answer only. *Look at the board*, Cancel, Escape, the keys and a pick
+// being the move are the promotion's. The squares are the engine's moves' own
+// (`landingName`), never squares the page works out.
+function chooseLanding(candidates) {
+  choosePromotion(candidates);
+}
+
+// The piece types a choice offers, in the engine's order, each once.
+function promotionPieces(candidates) {
+  const seen = [];
+  for (const m of candidates) {
+    if (m.promotion !== undefined && !seen.includes(m.promotion)) seen.push(m.promotion);
+  }
+  return seen;
+}
+
+// What the open choice asks now: `piece` (what the piece becomes) or `square` (where a
+// strike's survivor goes, from the moves the piece picked leaves).
+function promotionStage() {
+  if (PROMO && PROMO_EXIT) return 'exit';
+  if (PROMO && PROMO_ROUTE) return 'route';
+  if (!PROMO || PROMO[0].landing === undefined) return 'piece';
+  return promotionPieces(PROMO).length > 1 && PROMO_PIECE === null ? 'piece' : 'square';
+}
+
+function landingMoves() {
+  return PROMO.filter(m => PROMO_PIECE === null || m.promotion === PROMO_PIECE);
+}
+
+// A piece picked where a square is still to choose: the move itself when only one square
+// is left, else the squares.
+function pickPiece(type) {
+  const left = PROMO.filter(m => m.promotion === type);
+  if (left.length === 1) { closePromotion(); send(left[0].move); return; }
+  PROMO_PIECE = type;
+  drawPromotion();
+}
+
+// The choice as it stands: the card over the dimmed board, or, while the reader looks at
+// the board, the bar under it. Either way its first control takes the focus.
+function drawPromotion() {
+  const box = document.getElementById('promo');
+  if (!box || !PROMO) return;
+  if (PROMO_EXIT) { drawExits(box); return; }
+  const candidates = PROMO;
+  const mover = pieceAt(candidates[0].from);
+  const word = promotionWord(mover);
+  const stage = promotionStage();
+  const landing = candidates[0].landing !== undefined;
+  // The piece the strike took, as the reader sees it standing there now.
+  const taken = esc(promotionWord(pieceAt(candidates[0].to)));
+  box.hidden = false;
+  box.onkeydown = promotionKeys;
+  if (box.classList) box.classList.toggle('looking', PROMO_LOOKING);
+  if (box.setAttribute) box.setAttribute('aria-modal', PROMO_LOOKING ? 'false' : 'true');
+  if (PROMO_LOOKING) {
+    box.innerHTML = `<div class="promo-bar">
+      <span class="promo-wait" id="promoHead">${stage === 'route'
+        ? `Your ${esc(word)} is waiting for its way.`
+        : stage === 'square'
+        ? `The ${taken} you took is waiting to be placed.`
+        : `Your ${esc(word)} is waiting to become a new piece.`}</span>
+      <span class="promo-row"><button type="button" class="primary" id="promoBack">${
+        stage === 'route' ? 'Choose the way'
+        : stage === 'square' ? 'Choose the square' : 'Choose the new piece'}</button>
+      <button type="button" class="quiet" id="promoCancel">Cancel</button></span>
+    </div>`;
+    document.getElementById('promoBack').onclick = () => { PROMO_LOOKING = false; drawPromotion(); };
+    document.getElementById('promoCancel').onclick = () => cancelPromotion();
+    promotionInView(box, box.querySelector('.promo-bar'), document.getElementById('promoBack'));
+    return;
+  }
+  const player = mover ? mover.player : SESSION.sideToMove;
+  const names = SESSION.ruleset.pieceNames || [];
+  const ids = SESSION.ruleset.pieceIds || [];
+  const nameOf = type => names[type] || ids[type] || 'piece';
+  const between = !!SESSION.correspondence;
+  const still = between ? ' You can still change your move until you send it.' : '';
+  let head, says, picks, back = '';
+  if (stage === 'route') {
+    head = `Choose how your ${esc(word)} gets there`;
+    says = 'This square can be reached more than one way. Tap the way you want.' + still;
+    picks = `<div class="promo-pieces promo-squares">${candidates.map(m =>
+      `<button type="button" class="promo-pick promo-square" data-move="${m.move}"
+        aria-label="${esc(routeWords(m))}, ${esc(m.text)}"><span class="promo-sq">${
+        esc(routeWords(m))}</span><span>${esc(m.text)}</span></button>`
+    ).join('')}</div>`;
+  } else if (stage === 'square') {
+    const moves = landingMoves();
+    head = `Place the ${taken} you took`;
+    const picked = nameOf(PROMO_PIECE);
+    says = (PROMO_PIECE !== null
+      ? `Your ${esc(word)} becomes ${/^[aeiou]/i.test(picked) ? 'an' : 'a'} ${esc(picked)}. ` : '')
+      + 'Tap a square.' + still;
+    picks = `<div class="promo-pieces promo-squares">${moves.map(m =>
+      `<button type="button" class="promo-pick promo-square" data-move="${m.move}"
+        aria-label="square ${esc(m.landingName)}"><span class="promo-sq">${esc(m.landingName)}</span></button>`
+    ).join('')}</div>`;
+    if (PROMO_PIECE !== null) {
+      back = '<button type="button" class="quiet" id="promoPiece">Change the piece</button>';
+    }
+  } else {
+    head = `Choose what your ${esc(word)} becomes`;
+    says = landing
+      ? `Tap the piece you want. Then place the ${taken} you took.${still}`
+      : between ? 'Tap a piece. You can still change your move until you send it.'
+        : 'Tap the piece you want.';
+    // A strike's pieces are its piece types, each once: the square comes next.
+    const offered = landing
+      ? promotionPieces(candidates).map(type => ({ type, attr: `data-piece="${type}"` }))
+      : candidates.map(m => ({ type: m.promotion, attr: `data-move="${m.move}"` }));
+    picks = `<div class="promo-pieces">${offered.map(({ type, attr }) => {
+      const name = nameOf(type);
+      const piece = { player, type, facing: mover ? mover.facing : 0 };
+      return `<button type="button" class="promo-pick" ${attr}
+        aria-label="${esc(name)}"><svg class="promo-piece" viewBox="0 0 100 100"
+        aria-hidden="true">${drawPiece(piece, 0, 0, 100)}</svg><span>${esc(name)}</span></button>`;
+    }).join('')}</div>`;
+  }
+  box.innerHTML = `<div class="promo-card">
+    <h2 class="promo-head" id="promoHead">${head}</h2>
+    <p class="promo-says">${says}</p>
+    ${picks}
+    <div class="promo-row">${back}<button type="button" class="quiet" id="promoLook"
+      title="put this away to see the whole board; the move is not made yet">Look at the board</button>
+    <button type="button" class="quiet" id="promoCancel">Cancel</button></div>
+  </div>`;
+  box.querySelectorAll('[data-move]').forEach(node => {
+    node.onclick = () => { closePromotion(); send(Number(node.dataset.move)); };
+  });
+  box.querySelectorAll('[data-piece]').forEach(node => {
+    node.onclick = () => pickPiece(Number(node.dataset.piece));
+  });
+  if (back) document.getElementById('promoPiece').onclick = () => { PROMO_PIECE = null; drawPromotion(); };
+  document.getElementById('promoLook').onclick = () => { PROMO_LOOKING = true; drawPromotion(); };
+  document.getElementById('promoCancel').onclick = () => cancelPromotion();
+  promotionInView(box, box.querySelector('.promo-card'), box.querySelector('[data-move]')
+    || box.querySelector('[data-piece]'));
+}
+
+// On a phone the board may be half off the screen when the pawn arrives: the board is
+// scrolled until it is whole on the screen, then the part drawn (a card taller than a
+// small board, the bar under it), neither where it is already in view, and its first
+// control takes the focus without scrolling again.
+function promotionInView(box, part, first) {
+  for (const node of [box, part]) {
+    if (node && typeof node.scrollIntoView === 'function') {
+      node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }
+  if (first && typeof first.focus === 'function') first.focus({ preventScroll: true });
+}
+
+// Put away with nothing moved and nothing picked; a move already held between two people
+// stays held.
+function cancelPromotion() {
+  closePromotion();
+  SELECTED = null;
+  drawBoard();
+}
+
+function closePromotion() {
+  PROMO = null;
+  PROMO_LOOKING = false;
+  PROMO_PIECE = null;
+  PROMO_ROUTE = false;
+  PROMO_EXIT = false;
+  lightExit(null);
+  const box = document.getElementById('promo');
+  if (!box) return;
+  box.hidden = true;
+  box.innerHTML = '';
+  if (box.classList) box.classList.toggle('looking', false);
+}
+
+// Whether the choice still belongs to the board on screen: the game as it stands, still
+// going, and every move it offers still one the engine offers.
+function promotionStands() {
+  if (!PROMO || !SESSION || AT || SESSION.outcome) return false;
+  return PROMO.every(m => (SESSION.moves || []).some(o => o.move === m.move && o.text === m.text));
+}
+
+// The choice's own keys, kept from the page's: an arrow here walks the pieces rather than
+// stepping through the game, and Escape puts this choice away rather than a held move.
+function promotionKeys(event) {
+  const box = document.getElementById('promo');
+  if (!box || !PROMO) return;
+  const stops = [...box.querySelectorAll('button')];
+  const picks = stops.filter(node => node.dataset.move !== undefined
+    || node.dataset.piece !== undefined);
+  const at = stops.indexOf(document.activeElement);
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    cancelPromotion();
+  } else if (event.key === 'Tab') {
+    // The focus stays inside the choice while it is open.
+    event.preventDefault();
+    event.stopPropagation();
+    const next = (at + (event.shiftKey ? -1 : 1) + stops.length) % stops.length;
+    if (stops.length) stops[at < 0 ? 0 : next].focus();
+  } else if (event.key.indexOf('Arrow') === 0) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!picks.length) return;
+    const step = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1;
+    const here = picks.indexOf(document.activeElement);
+    const next = here < 0 ? 0 : (here + step + picks.length) % picks.length;
+    picks[next].focus();
+  } else if (PROMO_EXIT && /^[1-9]$/.test(event.key)) {
+    // The ways out of a portal by number, as the buttons are ordered (D6).
+    event.preventDefault();
+    event.stopPropagation();
+    const pick = picks[Number(event.key) - 1];
+    if (pick) pick.click();
+  } else if (event.key === ' ' || event.key === 'Enter') {
+    // The button's own press; the page's space (pause) never sees it.
+    event.stopPropagation();
+  }
 }
 
 // Arrow symbols for the four cardinal directions a piece can face.
@@ -2240,6 +3185,7 @@ function chooseRotation(candidates) {
 function send(move) {
   SELECTED = null;
   DROP = null;
+  INSPECT = null;
   if (SESSION.correspondence) { corrHold(move); return; }
   const id = SESSION.id, before = SESSION.history.length;
   const here = () => !!SESSION && SESSION.id === id;
@@ -2301,8 +3247,9 @@ let PAUSED = false;        // the chain that plays a machine game is stopped
 // was, so the review line can say where you are in words rather than in an index.
 // `walkers` is which piece took each of a phase's steps, as `plyBeats` found it, which
 // is what lets the move list name the wolf as well as its squares.
-// `coming` is where each wild piece was going next from this beat's board, the core's
-// own answer (`comingAt`), so a position stepped back to shows what was coming *then*.
+// `coming` is where each wild piece was going next from this beat's board, and
+// `comingThen` where after that, the core's own answers (`comingAt`), so a position
+// stepped back to shows what was coming *then*.
 function beatEntry(kind, board, steps, snapshot, plies, walkers, coming) {
   const move = plies > 0 ? snapshot.history[plies - 1] : null;
   return {
@@ -2310,7 +3257,8 @@ function beatEntry(kind, board, steps, snapshot, plies, walkers, coming) {
     board: board.slice(),
     steps: steps || null,
     walkers: walkers || null,
-    coming: coming || [],
+    coming: (coming && coming.coming) || [],
+    comingThen: (coming && coming.comingThen) || [],
     lastMove: move || null,
     text: move ? move.text : '',
     plies: plies,
@@ -2338,7 +3286,7 @@ function record(snapshot) {
   if (!TIMELINE.length) {
     TIMELINE = snapshot.replay
       ? replayBeats(snapshot)
-      : [beatEntry('start', snapshot.board, null, snapshot, plies, null, snapshot.coming)];
+      : [beatEntry('start', snapshot.board, null, snapshot, plies, null, snapshot)];
     return;
   }
   // A take-back is not a move: the plies after the position being restored are no
@@ -2350,8 +3298,7 @@ function record(snapshot) {
     // More than one ply between two snapshots, which nothing on this page does today.
     // A diff across several moves does not split into beats, so it is recorded as one
     // position rather than as a guess at the ones in between.
-    TIMELINE.push(beatEntry('ply', snapshot.board, null, snapshot, plies, null,
-                            snapshot.coming));
+    TIMELINE.push(beatEntry('ply', snapshot.board, null, snapshot, plies, null, snapshot));
     return;
   }
   const beats = plyBeats(snapshot.board, snapshot.lastMove);
@@ -2361,13 +3308,17 @@ function record(snapshot) {
   });
 }
 
-// What was coming from one beat of a ply, all of it the core's: from the board between
-// the mover's move and the phase, the phase itself, which the core logged as it ran it;
-// from the ply's last beat, the core's answer for the position the ply left
-// (`engine.coming.coming_phase`, carried on the move as `coming`).
+// What was coming from one beat of a ply, as `{coming, comingThen}`, all of it the
+// core's: from the board between the mover's move and the phase, the phase itself, which
+// the core logged as it ran it, and then the first phase the core answered for the
+// position the ply left; from the ply's last beat, the core's two answers for that
+// position (`engine.coming.coming_phases`, carried on the move as `coming` and
+// `comingThen`).
 function comingAt(beats, i, move) {
-  if (i < beats.length - 1) return beats[i + 1].steps || [];
-  return (move && move.coming) || [];
+  if (i < beats.length - 1) {
+    return { coming: beats[i + 1].steps || [], comingThen: (move && move.coming) || [] };
+  }
+  return { coming: (move && move.coming) || [], comingThen: (move && move.comingThen) || [] };
 }
 
 // A session the server replayed arrives many plies in, with every position it passed
@@ -2375,7 +3326,7 @@ function comingAt(beats, i, move) {
 function replayBeats(snapshot) {
   const at = ply => Object.assign({ history: snapshot.history }, snapshot.replay[ply]);
   const beats = [beatEntry('start', snapshot.replay[0].board, null, at(0), 0, null,
-                           snapshot.replay[0].coming)];
+                           snapshot.replay[0])];
   for (let ply = 1; ply < snapshot.replay.length; ply++) {
     const move = snapshot.history[ply - 1];
     const split = plyBeats(snapshot.replay[ply].board, move);
@@ -2520,6 +3471,9 @@ function wireReviewKeys() {
     if (!SESSION || !document.getElementById('review')) return;
     const tag = (event.target && event.target.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    // While the choice of a promotion is open, the keys are its own, wherever the focus
+    // has wandered to (Q765).
+    if (PROMO) { promotionKeys(event); return; }
     if (event.shiftKey && event.key.indexOf('Arrow') === 0) {
       const wrap = wrapAxes(SESSION.ruleset.wrap);
       const by = { ArrowLeft: [-1, 0], ArrowRight: [1, 0],
@@ -2547,9 +3501,10 @@ function wireReviewKeys() {
 // `snapshot.correspondence` (`site/correspondence.py::view`):
 //
 // **A picked move is held until Send.** The board offers the engine's legal moves as for
-// any game; picking one puts it in `CORR_HELD` and the strip says *‹move›, not sent yet* with
-// *Send move* and *put it back*. Nothing reaches the server until Send, and a sent move is
-// final. The board keeps the position as it stands until the move is sent, so what is on
+// any game; picking one puts it in `CORR_HELD`, the strip says *‹move› is not sent yet* and
+// the slot under the board offers *Send your move* and *Change my move*. Until Send it can be
+// changed on the board as well (Q740, `corrRepick`). Nothing reaches the server until Send,
+// and a sent move is final. The board keeps the position as it stands until the move is sent, so what is on
 // it is never a move the other person has not been told about.
 //
 // **Whose move it is, and the time left to move, are facts.** The strip says whose move
@@ -2609,7 +3564,9 @@ function corrChanged(was, now) {
 // move, then the controls redrawn (an offer, a cancel that is no longer possible), and the
 // polling started or stopped by whose move it now is.
 function corrApply(snapshot) {
-  CORR_HELD = null;
+  // A move still held survives an answer that did not move the game (a draw offered while
+  // it waits); one the game has moved past is gone, here and in the browser's keeping.
+  CORR_HELD = corrHeldKept(snapshot);
   applySnapshot(snapshot);
   refreshCorrControls();
   pollCorr();
@@ -2638,8 +3595,9 @@ function refreshCorrControls() {
 
 function wireCorr() {
   if (!SESSION || !SESSION.correspondence) return;
+  wireHeldLeaving();
   const id = SESSION.id;
-  const act = (action) => api('/api/session/' + id + '/' + action, {})
+  const act =(action) => api('/api/session/' + id + '/' + action, {})
     .then(corrApply).catch(error => fail(error));
   const draw = document.getElementById('draw');
   if (draw) draw.onclick = () => {
@@ -2653,7 +3611,7 @@ function wireCorr() {
     if (cancel.dataset.armed !== 'yes') {
       cancel.dataset.armed = 'yes';
       sayOn(cancel, 'really cancel?');
-      setTimeout(() => { cancel.dataset.armed = ''; sayOn(cancel, 'cancel the game'); }, 6000);
+      setTimeout(() => { cancel.dataset.armed = ''; sayOn(cancel, 'cancel the game'); }, ARM_HOLD);
       return;
     }
     act('cancel');
@@ -2687,6 +3645,8 @@ function wireCorr() {
 
 function corrHold(move) {
   CORR_HELD = move;
+  const entry = corrHeldEntry();
+  if (entry) keepHeld(SESSION.id, SESSION.history.length, entry);
   drawStatus();
   drawBoard();
 }
@@ -2695,16 +3655,279 @@ function corrHeldEntry() {
   return CORR_HELD === null ? null : (SESSION.moves || []).find(m => m.move === CORR_HELD) || null;
 }
 
+// The held move gone, here and in this browser's keeping (so the list of games waiting on
+// you no longer says *Not sent yet*), without drawing anything.
+function corrForget() {
+  CORR_HELD = null;
+  if (SESSION) forgetHeld(SESSION.id);
+}
+
+// Taking the held move back: nothing held, nothing picked, the board as the game stands.
+function corrPutBack() {
+  corrForget();
+  SELECTED = null;
+  DROP = null;
+  NOTE = '';
+  drawStatus();
+  drawBoard();
+}
+
+// **A held move can be changed on the board until it is sent** (Q740; the user could not
+// see how to change a move, and never found Q733's *put it back* link). A tap on the held move itself --
+// its piece, the square it lands on, the faded piece standing there -- takes it back, and
+// the answer is true: the tap is spent. Otherwise the held piece counts as the one picked,
+// so another of its squares (the dots still drawn round it) replaces the move at once,
+// through the ordinary pick in `clickSquare`; another piece of yours that can move is
+// picked instead of it there; and a tap anywhere else leaves the held move as it is.
+function corrRepick(square) {
+  const held = corrHeldDrawn();
+  if (!held || DROP !== null) return false;
+  if (square === held.from || square === held.to || square === held.dest) {
+    corrPutBack();
+    return true;
+  }
+  if (SELECTED === null && held.from !== null) SELECTED = held.from;
+  return false;
+}
+
 function wireCorrHeld() {
   const go = document.getElementById('sendHeld');
+  const change = document.getElementById('changeHeld');
+  if (change) change.onclick = corrPutBack;
   if (go) go.onclick = () => {
-    const move = CORR_HELD;
+    const move = CORR_HELD, id = SESSION.id;
+    if (move === null) return;
     go.disabled = true;
-    api('/api/session/' + SESSION.id + '/move', { move })
-      .then(corrApply).catch(error => { CORR_HELD = null; drawStatus(); fail(error); });
+    if (change) change.disabled = true;
+    sayOn(go, 'Sending…');
+    // Once it is on its way the move is no longer the reader's to change: the board takes
+    // no tap until the answer comes (`clickSquare`).
+    CORR_SENDING = true;
+    api('/api/session/' + id + '/move', { move })
+      .then(fresh => { CORR_SENDING = false; forgetHeld(id); corrApply(fresh); })
+      .catch(error => { CORR_SENDING = false; corrPutBack(); fail(error); });
   };
-  const back = document.getElementById('putBack');
-  if (back) back.onclick = () => { CORR_HELD = null; drawStatus(); drawBoard(); };
+  wireHeldKeys();
+}
+
+let CORR_SENDING = false;  // a held move on its way to the server
+
+// Escape takes a held move back too, for a reader at a keyboard (Q740); the two buttons are
+// reached by Tab like any other. Once per page, like `wireReviewKeys`, and nothing while
+// somebody is typing into a field or the move is on its way.
+function wireHeldKeys() {
+  if (wireHeldKeys.done || typeof window.addEventListener !== 'function') return;
+  wireHeldKeys.done = true;
+  window.addEventListener('keydown', event => {
+    // An Escape the promotion's choice took (Q765) is not also a take-back.
+    if (event.key !== 'Escape' || event.defaultPrevented || PROMO) return;
+    if (CORR_HELD === null || CORR_SENDING) return;
+    if (!SESSION || !SESSION.correspondence || !document.getElementById('corrSend')) return;
+    const tag = (event.target && event.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    event.preventDefault();
+    corrPutBack();
+  });
+}
+
+// **The held move is kept in this browser** (Q733), so leaving the page and coming back
+// finds it still on the board, still unsent: `localStorage`, one entry per game, holding
+// how many moves the game had when it was picked and the move's number and words. It is
+// given back only to the same game at the same move, and only while the engine still
+// offers that move under those words; anything else is forgotten. It never reaches the
+// server, so the other player never sees it, and nothing here says they have.
+const HELD_KEY = 'chess_variant_sandbox.held.';
+
+function keepHeld(id, ply, entry) {
+  try {
+    window.localStorage.setItem(HELD_KEY + id,
+      JSON.stringify({ ply: ply, move: entry.move, text: entry.text }));
+  } catch (error) { /* not kept: the move is still held on this page */ }
+}
+
+function forgetHeld(id) {
+  try { window.localStorage.removeItem(HELD_KEY + id); } catch (error) { /* nothing kept */ }
+}
+
+function keptHeld(id) {
+  try {
+    const kept = JSON.parse(window.localStorage.getItem(HELD_KEY + id) || 'null');
+    return kept && typeof kept === 'object' ? kept : null;
+  } catch (error) { return null; }
+}
+
+// Whether this browser holds an unsent move for a game at `plies` moves: what the list of
+// games waiting on you reads (`waitingHtml`). True only of the game as it still stands.
+function heldWaiting(id, plies) {
+  const kept = keptHeld(id);
+  return !!kept && kept.ply === plies;
+}
+
+// The move to hold on a snapshot of a game between two people: the one kept for it, if
+// the game is where it was when the move was picked and it is still the reader's move.
+function corrHeldKept(snapshot) {
+  const between = snapshot && snapshot.correspondence;
+  if (!between) return null;
+  const kept = keptHeld(snapshot.id);
+  if (!kept) return null;
+  const mine = !snapshot.outcome && between.you !== null && between.you === snapshot.sideToMove;
+  const offered = (snapshot.moves || []).some(m => m.move === kept.move && m.text === kept.text);
+  if (mine && kept.ply === (snapshot.history || []).length && offered) return kept.move;
+  forgetHeld(snapshot.id);
+  return null;
+}
+
+// Leaving the page with a move picked and not sent asks first, in the browser's own words
+// (a page may not choose them). The move is kept either way.
+let HELD_LEAVING = false;
+function wireHeldLeaving() {
+  if (HELD_LEAVING || typeof window.addEventListener !== 'function') return;
+  HELD_LEAVING = true;
+  window.addEventListener('beforeunload', event => {
+    if (CORR_HELD === null || !SESSION || !SESSION.correspondence) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+}
+
+// ----- the held move on the board
+//
+// Drawn so it cannot be taken for a move that was made (Q733): the squares it leaves and
+// lands on are outlined in dashes, an arrow runs between them in dashes, and the piece
+// stands on the square it would land on faded, while the pieces on both squares stay
+// where they are, faded too. A sent move is the other kind of mark entirely, the solid
+// tint of the last move, which stays on the other player's last move while this one is
+// held, so the two read as two things. `--held` is dark and edged in `--held-halo`, so
+// it reads on both woods in both themes (`tests/test_style.py`).
+const HELD_FADE = 0.45;
+
+// The held move's squares: where it leaves (null for a piece put down from the hand), the
+// square it names, where the piece comes to rest (a strike's landing, else that square),
+// and the piece as it would stand there -- its type after a promotion, its facing after a
+// turn. Nothing here works out what the move does to anything else on the board.
+function corrHeldDrawn() {
+  if (!SESSION || !SESSION.correspondence) return null;
+  const entry = corrHeldEntry();
+  if (!entry) return null;
+  const from = entry.from === null || entry.from === undefined ? null : entry.from;
+  const was = from === null ? null : pieceAt(from);
+  const piece = entry.drop !== undefined
+    ? { player: SESSION.sideToMove, type: entry.drop, facing: 0 }
+    : was ? Object.assign({}, was) : null;
+  if (piece && entry.promotion !== undefined) piece.type = entry.promotion;
+  if (piece && entry.rotation !== undefined) piece.facing = entry.rotation;
+  const dest = entry.landing !== undefined && entry.landing !== null ? entry.landing : entry.to;
+  const held = { from: from, to: entry.to, dest: dest, piece: piece, text: entry.text };
+  // A move through a portal: the end it goes in by and the one it comes out beside (the
+  // server's `portal_transit`), so the arrow is drawn in its two legs.
+  if (entry.portal !== undefined && entry.portal !== null) {
+    held.portal = entry.portal;
+    held.portalOut = entry.portalOut;
+  }
+  return held;
+}
+
+function heldOutline(x, y, cell, arrived) {
+  const dash = `stroke-dasharray="${cell * 0.16} ${cell * 0.1}"`;
+  return cellShape(x, y, cell, FRAME, `fill="none" stroke="var(--held-halo)"
+           stroke-width="${cell * 0.11}" opacity="0.9" pointer-events="none"`, 0.07)
+    + cellShape(x, y, cell, FRAME, `fill="none" stroke="var(--held)"
+           stroke-width="${cell * 0.06}" ${dash} pointer-events="none"
+           data-held="${arrived ? 'to' : 'from'}"`, 0.07);
+}
+
+function heldHtml(held, cell, W, H, wrap) {
+  let out = '';
+  if (held.from !== null && held.from !== held.dest && held.piece) {
+    const allow = wrapAllow(wrap, held.piece.player);
+    // Q772d: a move through a portal is held as it would be made, in its two legs (§4's
+    // trail, `portalLegsHtml`): into the end it goes in by, and out of the other end to
+    // where it lands. One arrow from where it leaves to where it lands crossed the board
+    // through whatever lay between, a wall included.
+    const legs = held.portal !== undefined && held.portalOut !== undefined
+      ? [[held.from, held.portal], [held.portalOut, held.dest]] : [[held.from, held.dest]];
+    const drawn = legs.map(([from, to]) => heldArrowHtml(from, to, cell, W, H, allow)).join('');
+    if (drawn) out += `<g data-held="arrow" pointer-events="none" stroke-linecap="round"
+          stroke-linejoin="round">${drawn}</g>`;
+  }
+  if (held.piece) {
+    const at = squareXY(held.dest, cell, FRAME);
+    out += `<g data-held="piece" opacity="0.7">${drawPiece(held.piece, at[0], at[1], cell)}</g>`;
+  }
+  return out;
+}
+
+// One dashed arrow of a held move, from one square to another along the mover's own step
+// (`wrapStep`, its seams), or nothing for a step too short to carry one.
+function heldArrowHtml(from, to, cell, W, H, allow) {
+  const f = n => n.toFixed(3);
+  const at = squareXY(from, cell, FRAME);
+  const step = stepXY(wrapStep(from, to, W, H, allow), cell, FRAME);
+  const length = Math.hypot(step[0], step[1]);
+  if (!(length > cell * 0.6)) return '';
+  const ux = step[0] / length, uy = step[1] / length;
+  const x1 = at[0] + cell / 2 + ux * cell * 0.3, y1 = at[1] + cell / 2 + uy * cell * 0.3;
+  const x2 = at[0] + cell / 2 + ux * (length - cell * 0.34);
+  const y2 = at[1] + cell / 2 + uy * (length - cell * 0.34);
+  const head = cell * 0.2;
+  const back = [x2 - ux * head, y2 - uy * head];
+  const wing = [-uy * head * 0.75, ux * head * 0.75];
+  const tip = `M${f(back[0] + wing[0])} ${f(back[1] + wing[1])}L${f(x2)} ${f(y2)}L${
+    f(back[0] - wing[0])} ${f(back[1] - wing[1])}Z`;
+  const line = `x1="${f(x1)}" y1="${f(y1)}" x2="${f(back[0])}" y2="${f(back[1])}"`;
+  return `<line ${line} stroke="var(--held-halo)"
+      stroke-width="${f(cell * 0.15)}" opacity="0.85"/><path d="${tip}"
+      fill="var(--held-halo)" stroke="var(--held-halo)" stroke-width="${f(cell * 0.09)}"
+      opacity="0.85"/><line ${line} stroke="var(--held)" stroke-width="${f(cell * 0.075)}"
+      stroke-dasharray="${f(cell * 0.16)} ${f(cell * 0.11)}"/><path d="${tip}"
+      fill="var(--held)" stroke="var(--held)" stroke-width="${f(cell * 0.03)}"/>`;
+}
+
+// ----- the slot under the board
+//
+// What a person does next in a game between two people, in the largest words on the
+// frame, kept the same height in every state so the board never moves (Q725's rule for
+// the strip, here for the slot; on a phone its last words, `.more`, go): with a move
+// held, **Send your move** as the frame's one
+// big button, *Change my move* beside it (Q740), and that the other player has not seen it; on your
+// move with nothing held, how to pick one and that nothing goes until it is sent; on
+// theirs, that the move went and the page can be closed.
+// Nothing for somebody watching, and nothing once the game is over.
+function drawCorrSend() {
+  const slot = document.getElementById('corrSend');
+  if (!slot || !SESSION) return;
+  const between = SESSION.correspondence;
+  if (!between || between.you === null || SESSION.outcome) {
+    slot.hidden = true;
+    slot.innerHTML = '';
+    return;
+  }
+  slot.hidden = false;
+  const other = esc(between.players[1 - between.you]);
+  const held = corrHeldEntry();
+  let says, row = '';
+  if (held) {
+    // Q740: *Change my move* is a plain button as tall as the one that sends, where *put
+    // it back* was a link nobody found, and the words say the board takes a change too.
+    // No name here: a long one pushed how to change it out of the slot's two lines.
+    says = `<b>Not sent yet.</b> To change it, tap another square or press <b>Change my
+      move</b>.`;
+    row = `<button id="sendHeld" class="primary send-big">Send your move</button>
+      <button id="changeHeld" class="send-change">Change my move</button>`;
+  } else if (between.you === SESSION.sideToMove) {
+    says = `<b>Your move.</b> Pick it on the board, then press <b>Send your move</b>.<span
+      class="more"> Nothing goes to ${other} before that.</span>`;
+  } else {
+    const last = SESSION.history.length ? SESSION.history[SESSION.history.length - 1] : null;
+    says = last && last.player === between.you
+      ? `<b>Your move is sent.</b> It is ${other}'s turn now.<span class="more"> You can
+        close this page.</span>`
+      : `<b>It is ${other}'s turn.</b><span class="more"> You can close this page; the game
+        waits for you.</span>`;
+  }
+  slot.classList.toggle('held', !!held);
+  slot.innerHTML = `<div class="send-says">${says}</div>${row ? `<div class="send-row">${row}</div>` : ''}`;
+  wireCorrHeld();
 }
 
 // When something happened, in words: a fact about the past, never time left.
@@ -2733,9 +3956,12 @@ function corrStatus() {
     : between.drawOffer === between.you ? ' You have offered a draw.'
     : ` ${esc(between.players[between.drawOffer])} offers a draw.`;
   const held = corrHeldEntry();
+  // The strip says it in words; the button that sends it is the slot's, under the board
+  // (`drawCorrSend`), so there is one of it. It says the move can still be changed (Q740),
+  // since on a phone the slot is its two buttons alone.
   if (held) {
-    return `<b>${esc(held.text)}</b>, not sent yet. <button id="sendHeld" class="primary"
-      >Send move</button> <button id="putBack">put it back</button>${check}`;
+    return `<b>${esc(held.text)}</b> is not sent yet. You can change it until you send it.${
+      check}`;
   }
   const left = between.toMove ? ` ${esc(between.toMove)}` : '';
   if (between.you === mover) {

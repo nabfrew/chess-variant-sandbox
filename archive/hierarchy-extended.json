@@ -137,6 +137,7 @@
     }
   },
   "provenance": {
+    "added": "2026-09-06",
     "origin": "designed",
     "source": "docs/game-ideas.md",
     "history": "The extended hierarchy from game-ideas.md, costed as row 3 of its table and built under Q6b-2: hierarchy rise with the chain continued three rungs past the queen, and nothing else changed. Board, army, starting material, rank promotion and the position rule are hierarchy rise's, so the pair differs in the three new pieces and the three links that reach them and in nothing else. The three pieces exist only through the chain: no pawn promotes to one, none is on the board at the start. Scores 0.628 +/- 0.041 on the corpus roster under weights v9, and is not viable there: quick_kill_rate 0.597 against the gate's 0.5, because a struck queen now climbs to an amazon on the striker's square, so a queen beside the king cannot be taken from close range and a queen offered in the enemy camp comes back as an amazon behind their lines.",

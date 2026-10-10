@@ -32,6 +32,10 @@ def test_used_rule_keys_cost_the_same_as_count_special_rules(path: Path) -> None
     spec = load_spec(path)
     rule_keys = rules_used.used(spec) - set(schema.MOVE_KINDS)
     total = sum(complexity._RULE_COSTS[key] for key in rule_keys)
+    # `portals` costs a flat rate per key plus what one key cannot say (a further pair, a
+    # mover, a one-way or closed passage), charged by `_portal_extras` (Q771); the first
+    # specs to state any of those are Q772a's showcases.
+    total += complexity._portal_extras(spec.get("rules", {}).get("portals"))
     assert total == complexity._count_special_rules(spec.get("rules", {}))
 
 
@@ -71,10 +75,11 @@ def test_a_movement_kind_is_used_when_a_piece_declares_it() -> None:
     assert rules_used.used(spec) == {"slide"}
 
 
-def test_available_holds_thirty_names_today() -> None:
+def test_available_holds_thirty_one_names_today() -> None:
+    # Thirty-one since schema 19 added `portals` (Q771).
     names = rules_used.available()
-    assert len(names) == 30
-    assert len(set(names)) == 30
+    assert len(names) == 31
+    assert len(set(names)) == 31
     assert names[: len(schema.MOVE_KINDS)] == schema.MOVE_KINDS
 
 

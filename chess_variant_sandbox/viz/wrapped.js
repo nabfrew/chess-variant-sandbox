@@ -814,6 +814,26 @@ const MARK_KINDS = {
   coming: { colour: 'var(--coming)', shape: 'arrow', name: 'dotted arrow',
             ink: 'var(--coming-ink)',
             label: 'where a wild piece steps after the next move' },
+  // And where it steps after the move after that (Q764): a wild piece walks twice before
+  // the player to move moves again, after that player's move and after the reply. The
+  // same violet at the same opacity, so it still reads 3 : 1 on both woods, and fainter
+  // by carrying less ink: smaller dots set further apart and a smaller head
+  // (`COMING_FAINT`). Its own row, so the legend names it in its own words.
+  comingThen: { colour: 'var(--coming)', shape: 'arrow', faint: true,
+                name: 'faint dotted arrow', ink: 'var(--coming-ink)',
+                label: 'where it steps after the move after that' },
+  // A wall (`obstacles`): a square drawn dark and crossed, which no piece may stand on.
+  // Drawn by the board's own cell loop, never as a mark, so `squareMarks` adds none; the
+  // row is the legend's, named where the board has a wall (Q772b). Its words are in ink,
+  // the wall's own colour being nearly the dark page's.
+  wall: { colour: 'var(--wall)', shape: 'wall', name: 'dark crossed square', ink: 'var(--ink)',
+          label: 'a wall: no piece may stand on it' },
+  // A portal end (schema 19): drawn as a piece is, by `portalGlyph`, so `squareMarks`
+  // adds none either; the row is the legend's, named where the game has portals. `ink`
+  // is the words' own colour on the page, the rim's orange being drawn for the wood.
+  portal: { colour: 'var(--portal-a)', shape: 'portal', name: 'orange or blue ring',
+            ink: 'var(--ink)',
+            label: 'a portal: a piece that moves onto one end comes out beside the other' },
 };
 
 // The coming step's arrow, in fractions of a cell: it leaves the wild piece's square
@@ -825,48 +845,79 @@ const COMING_SHORT = 0.2;
 const COMING_HEAD = 0.15;
 const COMING_WIDTH = 0.07;
 const COMING_OPACITY = 0.85;
+// The step after that one (Q764), drawn fainter by drawing less of it rather than by
+// fading its colour, which would take it under 3 : 1 on the dark wood: dots `width`
+// across set `gap` widths apart, and a head `head` of a cell. It leaves its square only
+// `from` out from the middle: that square is where the first arrow points, the wild
+// piece is not on it yet, and starting near the first arrow's tip makes the two read as
+// one route, there and then on, rather than two arrows leaving one corner.
+const COMING_FAINT = { width: 0.05, gap: 3.4, head: 0.12, from: 0.24 };
+// How far a step and the step straight back are set apart, each to its own right, so
+// a wild piece on a two-square route shows two arrows side by side rather than one
+// drawn over the other.
+const COMING_APART = 0.13;
 
-// One arrow from a cell's middle `(cx, cy)` along the step `(dx, dy)`.
-function comingArrow(cx, cy, dx, dy, cell) {
+// One arrow from a cell's middle `(cx, cy)` along the step `(dx, dy)`, set `apart` of a
+// cell to its own right, in the look of the mark kind `kind`.
+function comingArrow(cx, cy, dx, dy, cell, kind, apart) {
   const length = Math.hypot(dx, dy);
-  const from = cell * COMING_FROM, to = length - cell * COMING_SHORT;
+  const faint = MARK_KINDS[kind || 'coming'].faint;
+  const from = cell * (faint ? COMING_FAINT.from : COMING_FROM);
+  const to = length - cell * COMING_SHORT;
   if (!length || to <= from) return '';
   const ux = dx / length, uy = dy / length;
-  return comingLine(cx + ux * from, cy + uy * from, cx + ux * to, cy + uy * to, cell);
+  const side = cell * (apart || 0), sx = -uy * side, sy = ux * side;
+  return comingLine(cx + ux * from + sx, cy + uy * from + sy,
+                    cx + ux * to + sx, cy + uy * to + sy, cell, kind);
 }
 
 // The arrow itself, `(x1, y1)` to its tip at `(x2, y2)`: a shaft of round dots and a
-// chevron, both in the kind's colour, sized off `cell`.
-function comingLine(x1, y1, x2, y2, cell) {
+// chevron, both in the kind's colour, sized off `cell`. `kind` is `coming` (the default)
+// or `comingThen`, the fainter step after it.
+function comingLine(x1, y1, x2, y2, cell, kind) {
   const length = Math.hypot(x2 - x1, y2 - y1);
   if (!length) return '';
+  const name = kind || 'coming';
+  const faint = MARK_KINDS[name].faint ? COMING_FAINT : null;
   const ux = (x2 - x1) / length, uy = (y2 - y1) / length;
-  const head = cell * COMING_HEAD, width = cell * COMING_WIDTH;
+  const head = cell * (faint ? faint.head : COMING_HEAD);
+  const width = cell * (faint ? faint.width : COMING_WIDTH);
+  const gap = faint ? faint.gap : 2.1;
   const back = [x2 - ux * head, y2 - uy * head];
   const left = [back[0] - uy * head * 0.8, back[1] + ux * head * 0.8];
   const right = [back[0] + uy * head * 0.8, back[1] - ux * head * 0.8];
   const f = n => n.toFixed(3);
-  return `<g data-mark="coming" fill="none" stroke="${MARK_KINDS.coming.colour}"
+  return `<g data-mark="${name}" fill="none" stroke="${MARK_KINDS[name].colour}"
       stroke-width="${f(width)}" stroke-linecap="round" stroke-linejoin="round"
       opacity="${COMING_OPACITY}" pointer-events="none"><line x1="${f(x1)}" y1="${f(y1)}"
-      x2="${f(back[0])}" y2="${f(back[1])}" stroke-dasharray="0.001 ${f(width * 2.1)}"/><path
+      x2="${f(back[0])}" y2="${f(back[1])}" stroke-dasharray="0.001 ${f(width * gap)}"/><path
       d="M${f(left[0])} ${f(left[1])}L${f(x2)} ${f(y2)}L${f(right[0])} ${f(right[1])}"/></g>`;
 }
 
-// Every wild piece's coming step on one drawing, `coming` being the core's
-// `[{from, to, eaten}]` for the position on screen. A wild piece belongs to neither seat,
-// so its step crosses whatever seams the board has, as its walk does (`animatePhase`).
-// Nothing is worked out here but where on screen the two squares are.
-function comingHtml(coming, cell, W, H, view, rule) {
-  if (!coming || !coming.length) return '';
+// Every wild piece's coming steps on one drawing: `coming` is the core's
+// `[{from, to, eaten}]` for the phase after the next move on the position on screen, and
+// `then` the phase after the move after that (Q764), drawn fainter and under it. A wild
+// piece belongs to neither seat, so its step crosses whatever seams the board has, as its
+// walk does (`animatePhase`). Nothing is worked out here but where on screen the squares
+// are, and which drawn steps are one another's way back, to set those side by side.
+function comingHtml(coming, cell, W, H, view, rule, then) {
+  coming = coming || [];
+  then = then || [];
+  if (!coming.length && !then.length) return '';
   const allow = wrapAllow(rule, null);
-  let out = '';
-  for (const step of coming) {
+  const key = (from, to) => from + '>' + to;
+  const drawn = new Set([...coming, ...then].map(step => key(step.from, step.to)));
+  const arrow = (step, kind) => {
     const at = squareXY(step.from, cell, view);
     const d = stepXY(wrapStep(step.from, step.to, W, H, allow), cell, view);
-    out += comingArrow(at[0] + cell / 2, at[1] + cell / 2, d[0], d[1], cell);
-  }
-  return `<g data-coming="${coming.length}" pointer-events="none">${out}</g>`;
+    const apart = drawn.has(key(step.to, step.from)) ? COMING_APART : 0;
+    return comingArrow(at[0] + cell / 2, at[1] + cell / 2, d[0], d[1], cell, kind, apart);
+  };
+  let out = '';
+  for (const step of then) out += arrow(step, 'comingThen');
+  for (const step of coming) out += arrow(step, 'coming');
+  return `<g data-coming="${coming.length}" data-coming-then="${then.length}"
+      pointer-events="none">${out}</g>`;
 }
 
 // The corner of a ring at that inset, where its beads sit. The rounded corner's arc at
@@ -1033,7 +1084,21 @@ function squareBadge(x, y, cell, marks, view, tag) {
     // Only the legend's key draws an arrow through here: on a board it runs between two
     // squares (`comingHtml`). Corner to corner, so the key reads as a step.
     if (kind.shape === 'arrow') {
-      out += comingLine(x + cell * 0.2, y + cell * 0.8, x + cell * 0.8, y + cell * 0.2, cell);
+      out += comingLine(x + cell * 0.2, y + cell * 0.8, x + cell * 0.8, y + cell * 0.2, cell,
+                        mark.kind);
+      continue;
+    }
+    // A wall and a portal are drawn by the board's cell loop, never as a mark: only the
+    // legend's key comes through here, the wall's square and an orange end.
+    if (kind.shape === 'wall') {
+      out += cellShape(x, y, cell, view, `fill="${kind.colour}" data-mark="${mark.kind}"`)
+        + `<path d="${wallCross(x, y, cell, view)}" stroke="var(--ink)"
+           stroke-width="${cell * 0.06}" opacity="0.5" pointer-events="none"/>`;
+      continue;
+    }
+    if (kind.shape === 'portal') {
+      out += portalGlyph({ pair: 1, end: 'orange', movedBy: [], open: [true, true] }, null,
+                         null, x, y, cell, { attrs: `data-mark="${mark.kind}"` });
       continue;
     }
     if (kind.shape === 'glow') {
@@ -1191,6 +1256,218 @@ function crossOpacity(leaving) {
   const a = leaving ? 1 : 0, b = leaving ? 0 : 1;
   return [{ opacity: a }, { opacity: a, offset: CROSS_HANDOVER[0] },
           { opacity: b, offset: CROSS_HANDOVER[1] }, { opacity: b }];
+}
+
+// ---------------------------------------------------------------------- a portal
+//
+// Schema 19 (`docs/plan-portals.md` §4, D3, D9): a portal end is drawn by the board, not
+// taken from the icon library, because what it must say depends on the ruleset and on who
+// is looking. One glyph, a disc inscribed in the cell (so it fits a hexagon's cell when
+// portals reach one, and never reads as the square rings the rules' marks are drawn as):
+//
+//   rim       a thick ring, orange for a pair's first end and blue for its second, edged
+//             inside and out by a near-black keyline that reads on both woods
+//             (`--portal-edge`), so the ring holds 3 : 1 against either square;
+//   double    the blue end's rim is split by a thin keyline, so the two ends of a pair
+//             differ in a grey picture and for a reader who cannot tell orange from blue;
+//   interior  who may move it: the first player's colour, the second's, the board seen
+//             through a hatch for both, flat stone for nobody;
+//   number    the pair's, in the centre, where the game has more than one pair;
+//   passage   for the player looking: chevrons pointing in on an end that player may only
+//             go in by, pointing out on one they only come out of, none on a two-way end,
+//             and the rim dashed on stone on an end closed to them.
+//
+// Every fact is the compiled payload's (`viz.wrapped.portal_payload`); nothing here reads
+// the DSL or works out where a piece goes. The parts carry classes so a small board can
+// put them away (D9): the chevrons (`pg-arrow`) under `PORTAL_ARROWS_FROM` px a cell, the
+// double rim and the hatch (`pg-double`, `pg-hatch`) under `PORTAL_DETAIL_FROM`; the
+// number (`pg-num`) is never drawn smaller than `PORTAL_NUMBER_LEAST` px.
+const PORTAL_ARROWS_FROM = 28;
+const PORTAL_DETAIL_FROM = 20;
+const PORTAL_NUMBER_LEAST = 10;
+// The glyph's radii, in cells: the rim's middle and width, and the keylines either side.
+const PORTAL_RIM = 0.355;
+const PORTAL_BAND = 0.13;
+const PORTAL_KEYLINE = 0.024;
+// The pair's number, as a share of a cell.
+const PORTAL_NUMBER = 0.3;
+
+// The end's partner: the other end of the same pair, read off the same payload.
+function portalPartner(portals, end) {
+  if (!portals || !end) return null;
+  return portals.ends.find(other => other.pair === end.pair && other.end !== end.end) || null;
+}
+
+// How many pairs the game has, which is whether an end shows its number.
+function portalPairs(portals) {
+  return portals ? new Set(portals.ends.map(end => end.pair)).size : 0;
+}
+
+// How one player's pieces may use this end: `both` (in here or in at the partner),
+// `in` (in here only), `out` (they only come out beside it) or `closed`. Null for a
+// player who is neither seat, which draws no passage at all.
+function portalPassage(end, partner, player) {
+  if (player !== 0 && player !== 1) return null;
+  const here = !!(end.open || [])[player];
+  const there = !!(partner && (partner.open || [])[player]);
+  return here && there ? 'both' : here ? 'in' : there ? 'out' : 'closed';
+}
+
+// What the glyph keeps at a cell this many pixels across: `full`, `mid` (no chevrons) or
+// `small` (rim and number). Unknown, it is drawn whole.
+function portalTier(px) {
+  if (!(px > 0) || px >= PORTAL_ARROWS_FROM) return 'full';
+  return px >= PORTAL_DETAIL_FROM ? 'mid' : 'small';
+}
+
+// The glyph for one end, as SVG, in the cell whose corner is (x, y). `viewer` is the
+// player whose passage it shows (0, 1, or null for none). `options.numbered` draws the
+// pair's number; `options.label` is its words for a screen reader; `options.attrs` goes on
+// the group (the board's `data-piece`).
+function portalGlyph(end, partner, viewer, x, y, cell, options) {
+  const opts = options || {};
+  const cx = x + cell / 2, cy = y + cell / 2;
+  const hue = end.end === 'blue' ? 'var(--portal-b)' : 'var(--portal-a)';
+  const edge = 'var(--portal-edge)';
+  const movers = end.movedBy || [];
+  const both = movers.includes(0) && movers.includes(1);
+  const passage = portalPassage(end, partner, viewer);
+  const closed = passage === 'closed';
+  const ring = (r, attrs) => `<circle cx="${cx}" cy="${cy}" r="${(cell * r).toFixed(3)}" ${attrs}/>`;
+  const inner = PORTAL_RIM - PORTAL_BAND / 2, outer = PORTAL_RIM + PORTAL_BAND / 2;
+  const k = cell * PORTAL_KEYLINE;
+  let out = '';
+  // The interior first, so the rim's keyline lies over its edge: who may move this end.
+  if (both) {
+    // See-through: the board shows, washed a little so the number reads, and hatched.
+    out += ring(inner, `fill="var(--p0)" fill-opacity="0.3"`);
+    const r = cell * inner;
+    for (const d of [-0.16, -0.055, 0.055, 0.16]) {
+      const o = cell * d, half = Math.sqrt(Math.max(0, r * r - o * o));
+      const mx = cx + o / Math.SQRT2, my = cy + o / Math.SQRT2;
+      const tx = half / Math.SQRT2;
+      out += `<line class="pg-hatch" x1="${(mx - tx).toFixed(3)}" y1="${(my + tx).toFixed(3)}"
+        x2="${(mx + tx).toFixed(3)}" y2="${(my - tx).toFixed(3)}" stroke="${edge}"
+        stroke-width="${(cell * 0.018).toFixed(3)}" opacity="0.45"/>`;
+    }
+  } else {
+    const fill = movers.includes(0) ? 'var(--p0)' : movers.includes(1) ? 'var(--p1)'
+      : 'var(--portal-stone)';
+    out += ring(inner, `fill="${fill}"`);
+  }
+  // The rim: the pair's colour, or on an end closed to the player looking, the colour in
+  // dashes over stone.
+  if (closed) {
+    const around = 2 * Math.PI * cell * PORTAL_RIM;
+    out += ring(PORTAL_RIM, `fill="none" stroke="var(--portal-stone)"
+      stroke-width="${(cell * PORTAL_BAND).toFixed(3)}"`);
+    out += ring(PORTAL_RIM, `fill="none" stroke="${hue}" stroke-width="${
+      (cell * PORTAL_BAND).toFixed(3)}" stroke-dasharray="${(around / 16).toFixed(3)} ${
+      (around / 16).toFixed(3)}" data-rim="${end.end}"`);
+  } else {
+    out += ring(PORTAL_RIM, `fill="none" stroke="${hue}" stroke-width="${
+      (cell * PORTAL_BAND).toFixed(3)}" data-rim="${end.end}"`);
+  }
+  out += ring(outer + PORTAL_KEYLINE / 2, `fill="none" stroke="${edge}" stroke-width="${k.toFixed(3)}"`);
+  out += ring(inner, `fill="none" stroke="${edge}" stroke-width="${k.toFixed(3)}"`);
+  if (end.end === 'blue') {
+    out += ring(PORTAL_RIM, `class="pg-double" fill="none" stroke="${edge}" stroke-width="${
+      (k * 0.9).toFixed(3)}"`);
+  }
+  // Passage, for the player looking: four chevrons on the rim's diagonals.
+  if (passage === 'in' || passage === 'out') {
+    const reach = cell * 0.04, spread = cell * 0.055;
+    for (let i = 0; i < 4; i++) {
+      const angle = Math.PI / 4 + i * Math.PI / 2;
+      const ux = Math.cos(angle), uy = Math.sin(angle);
+      const tip = passage === 'in' ? -reach : reach;
+      const ax = cx + ux * (cell * PORTAL_RIM + tip), ay = cy + uy * (cell * PORTAL_RIM + tip);
+      const bx = cx + ux * (cell * PORTAL_RIM - tip), by = cy + uy * (cell * PORTAL_RIM - tip);
+      out += `<path class="pg-arrow" d="M${(bx - uy * spread).toFixed(3)} ${(by + ux * spread).toFixed(3)
+        }L${ax.toFixed(3)} ${ay.toFixed(3)}L${(bx + uy * spread).toFixed(3)} ${
+        (by - ux * spread).toFixed(3)}" fill="none" stroke="${edge}" stroke-width="${
+        (cell * 0.03).toFixed(3)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    }
+  }
+  if (opts.numbered) {
+    const ink = both ? edge : movers.includes(0) ? 'var(--p0-ink)'
+      : movers.includes(1) ? 'var(--p1-ink)' : edge;
+    const halo = both ? ` stroke="var(--p0)" stroke-width="${(cell * 0.06).toFixed(3)}"
+      paint-order="stroke"` : '';
+    out += `<text class="pg-num" x="${cx}" y="${cy}" font-size="${(cell * PORTAL_NUMBER).toFixed(3)}"
+      data-em="${PORTAL_NUMBER}" fill="${ink}"${halo} font-weight="700" text-anchor="middle"
+      dominant-baseline="central">${end.pair}</text>`;
+  }
+  const label = opts.label ? ` role="img" aria-label="${String(opts.label).replace(/"/g, '&quot;')}"` : '';
+  return `<g data-portal="${end.pair}${end.end[0]}" data-passage="${passage || ''}"${label}${
+    opts.attrs ? ' ' + opts.attrs : ''}>${out}</g>`;
+}
+
+// The ways out of a portal, by the direction the engine says the piece came out in
+// (`exitDir`, `engine/compile.py`'s `PORTAL_DIRECTIONS` order: right, then round
+// anticlockwise), as the board is drawn: turned round, its right is the reader's left.
+const PORTAL_STEP_WORDS = ['right', 'up and right', 'up', 'up and left', 'left',
+  'down and left', 'down', 'down and right'];
+const PORTAL_STEP_ARROWS = ['→', '↗', '↑', '↖', '←', '↙',
+  '↓', '↘'];
+function portalStep(direction, flipped) {
+  if (typeof direction !== 'number' || !(direction >= 0 && direction < 8)) return null;
+  const seen = flipped ? (direction + 4) % 8 : direction;
+  return { words: PORTAL_STEP_WORDS[seen], arrow: PORTAL_STEP_ARROWS[seen] };
+}
+
+// What a portal is called in a sentence: by its number where the game has several pairs.
+function portalName(end, pairs) {
+  return pairs > 1 ? `portal ${end.pair}` : 'the portal';
+}
+
+// One player's (or both players') passage through this end, as a clause.
+function passageWords(kind, whose, other) {
+  if (kind === 'both') return `${whose} pieces go in at either end and come out beside the other`;
+  if (kind === 'in') return `${whose} pieces go in here and come out beside the ${other} end`;
+  if (kind === 'out') return `${whose} pieces come out beside this end, going in at the ${other} end`;
+  return `${whose} pieces cannot go through: to them it is a solid block`;
+}
+
+// An end in words, for the label a screen reader reads, the tooltip on its square and the
+// line under the board (D9: a person never has to decode the icon to know the rule).
+// `square` is its name; `sideOf(player)` the side's name as the ruleset says it. Returns
+// `{head, label, says}`: which end it is, the label (that and its rule), and the rule
+// with how a piece comes out, for the line under the board after the head.
+function portalWords(end, partner, square, pairs, sideOf) {
+  const cap = text => text.charAt(0).toUpperCase() + text.slice(1);
+  const other = partner ? partner.end : (end.end === 'orange' ? 'blue' : 'orange');
+  const first = portalPassage(end, partner, 0), second = portalPassage(end, partner, 1);
+  const clauses = first === second ? [passageWords(first, "both sides'", other)]
+    : [passageWords(first, `${sideOf(0)}'s`, other), passageWords(second, `${sideOf(1)}'s`, other)];
+  const movers = end.movedBy || [];
+  const moved = !movers.length ? 'Nobody moves it.'
+    : movers.length > 1 ? 'Either side may move it, as its turn.'
+      : `Only ${sideOf(movers[0])} may move it, as a turn.`;
+  const head = `${cap(portalName(end, pairs))}, ${end.end} end, on ${square}`;
+  const rule = `${clauses.map(cap).join('. ')}. ${moved}`;
+  const through = first === 'closed' && second === 'closed' ? ''
+    : ' A piece comes out one step beyond the other end, in the direction it was going.';
+  return { head: head, label: `${head}. ${rule}`, says: rule + through };
+}
+
+// The kinds a board carries beyond its square marks, for the legend line: a wall where
+// the rules put one (`obstacles`), and a portal where the game has them.
+function boardKinds(walls, portals) {
+  return [...(walls && walls.length ? ['wall'] : []), ...(portals ? ['portal'] : [])];
+}
+
+// The copy of `square` drawn nearest the cell (u, v): the square itself, or one of its
+// ghosts round a wrapping board. On a view slid across the seam an exit beside a portal at
+// the outline's edge is drawn beside it only as a ghost (N6), and that is the copy to light.
+function nearestCopy(square, near, view) {
+  const own = squareCell(square, view);
+  let best = { u: own[0], v: own[1], depth: 0 };
+  const far = c => Math.hypot(c.u - near[0], c.v - near[1]);
+  for (const ghost of ghostCells(view)) {
+    if (ghost.square === square && far(ghost) < far(best)) best = ghost;
+  }
+  return best;
 }
 
 // ---------------------------------------------------------------- a ply is beats

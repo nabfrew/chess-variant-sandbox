@@ -52,6 +52,12 @@ function stopTeaching() {
 // taught, and otherwise where to stand the piece.
 function teachClick(square) {
   if (offBoard(lastPreview(), square)) return;
+  // A portal stays where the setup puts it (N5), and no piece stands on one.
+  if (stillPortalAt(lastPreview(), square)) {
+    benchSay(`A portal stands on ${boardName(square)}: click another square to stand the piece`
+      + ' on, or a square it can come out on to see how it gets there.');
+    return;
+  }
   if (!TEACHING) {
     DRAFT_SQUARE = square;
     loadMoveMap();
@@ -212,6 +218,8 @@ function paletteHtml() {
     ${players.length > 1
       ? `<span class="muted trayWho">${esc(sides[player])}</span>` : ''}
     ${(DRAFT.pieces || []).map((piece, index) => {
+      // The portal piece is put down by the portals' row, never from here (D1).
+      if (isPortalPiece(index)) return '';
       const icon = ((preview.icons || [])[index] || [])[player];
       const on = PLACING && !PLACING.erase && PLACING.piece === index && PLACING.player === player;
       return `<button data-placing="${index}.${player}" draggable="true" class="${on ? 'on' : ''}"
@@ -222,8 +230,8 @@ function paletteHtml() {
   </div>`).join('');
   return rows + `<div class="row small palette">
     <button data-placing="erase" class="${PLACING && PLACING.erase ? 'on' : ''}"
-      title="click a square to lift what is standing on it">take off</button>
-  </div>`;
+      title="click a square to lift what is standing on it; on a portal, it takes off the whole pair">take off</button>
+  </div>${portalRowHtml()}`;
 }
 
 // The same strip, for the modes that ask about one piece rather than put pieces down:
@@ -233,6 +241,7 @@ function pieceTrayHtml() {
   const preview = lastPreview() || {};
   return `<div class="row small palette">
     ${(DRAFT.pieces || []).map((piece, index) => {
+      if (isPortalPiece(index)) return '';
       const icon = ((preview.icons || [])[index] || [])[0];
       return `<button data-pick="${index}" class="${index === DRAFT_PIECE ? 'on' : ''}"
         title="${esc(piece.name || piece.id || '')}">${icon
@@ -278,6 +287,9 @@ function wirePalette(root) {
     node.onclick = () => {
       const next = picked();
       PLACING = PLACING && JSON.stringify(PLACING) === JSON.stringify(next) ? null : next;
+      // A piece picked from the tray is the board's tool now, so a pair being put down
+      // or an end lifted is put away.
+      if (PORTAL_TOOL || PORTAL_LIFT) { PORTAL_TOOL = null; PORTAL_LIFT = null; drawBoardSide(); }
       refreshPalette();
     };
     // Not redrawn here: replacing the node being dragged cancels the drag.
@@ -292,6 +304,7 @@ function refreshPalette() {
   document.querySelectorAll('[data-palette]').forEach(box => {
     box.innerHTML = paletteHtml();
     wirePalette(box);
+    wirePortalRow(box);
   });
 }
 
@@ -376,19 +389,61 @@ function wireBoards(root) {
   root.querySelectorAll('[data-board="start"] svg').forEach(svg => {
     // A square list being picked takes the click before a piece being put down, and
     // *where it goes* asks the engine about whichever piece was clicked rather than
-    // changing the position under it.
+    // changing the position under it. The portals come before the tray's tool: a pair
+    // being put down, an end being moved, or an end picked up (D2).
     svg.onclick = event => {
       const s = squareOf(event);
       if (s === null) return;
-      if (PICKING) pickSquare(s);
+      BENCH_FOCUS = -1;
+      if (PICKING && PICK_LINE) pickLine(s);
+      else if (PICKING) pickSquare(s);
       else if (DRAFT_MODE === 'goes') askWhereItGoes(s);
+      else if (portalClick(s)) return;
       else if (PLACING) placeAt(s);
     };
-    svg.ondragover = event => { if (PLACING) event.preventDefault(); };
+    // An end dragged to another square is moved there (D2): down on the end, up on the
+    // square. A press and release on one square is the click above.
+    svg.onpointerdown = event => {
+      const s = squareOf(event);
+      BENCH_DRAG = DRAFT_MODE === 'setup' && !PICKING && !PORTAL_TOOL && s !== null
+        && !(PLACING && PLACING.erase)
+        && portalEndNamed(boardName(s)) ? s : null;
+    };
+    svg.onpointerup = event => {
+      const s = squareOf(event), from = BENCH_DRAG;
+      BENCH_DRAG = null;
+      if (from === null || s === null || s === from) return;
+      PORTAL_LIFT = null;
+      portalClick(from);
+      if (PORTAL_LIFT) portalClick(s);
+    };
+    svg.ondragover = event => { if (PLACING || PORTAL_TOOL) event.preventDefault(); };
     svg.ondrop = event => {
       event.preventDefault();
       const s = squareOf(event);
-      if (s !== null) placeAt(s);
+      if (s === null) return;
+      if (PORTAL_TOOL) portalClick(s); else placeAt(s);
+    };
+  });
+  // Hovering a square the piece comes out on, or an end it can go in by, draws the
+  // journey and says it under the board (D5).
+  root.querySelectorAll('figure.benchBoard').forEach(figure => {
+    const svg = figure.querySelector('svg');
+    if (svg) {
+      svg.onpointerover = event => lightLegs(figure, squareOf(event));
+      svg.onpointerleave = () => lightLegs(figure, null);
+    }
+    figure.onkeydown = event => {
+      if (benchKey(event.key)) { event.preventDefault(); event.stopPropagation(); }
+    };
+    if (BENCH_FOCUS >= 0) lightLegs(figure, BENCH_FOCUS);
+  });
+  const shut = root.querySelector('#dPortalKeyShut');
+  if (shut) shut.onclick = () => { PORTAL_KEY_SHUT = true; drawBoardSide(); };
+  root.querySelectorAll('[data-pickline]').forEach(node => {
+    node.onclick = () => {
+      PICK_LINE = PICK_LINE === node.dataset.pickline ? '' : node.dataset.pickline;
+      drawBoardSide();
     };
   });
   const byId = id => root.querySelector('#' + id);

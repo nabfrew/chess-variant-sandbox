@@ -622,6 +622,31 @@ class TestTheApp:
             server.shutdown()
             server.server_close()
 
+    def test_head_answers_like_get_without_a_body(self, app: SiteApp) -> None:
+        """Q792: ``HEAD /`` was a 501. The site's own pages, its 404 and the local
+        handler's routes it falls through to all answer a HEAD as their GET, bodiless."""
+        server = Server(("127.0.0.1", 0), handler_for(app))
+        threading.Thread(target=server.serve_forever, kwargs=SERVE_FAST, daemon=True).start()
+        try:
+            connection = HTTPConnection("127.0.0.1", server.server_port, timeout=10)
+            seen: set[int] = set()
+            for path in ("/", "/privacy", "/no-such-page"):
+                connection.request("GET", path)
+                got = connection.getresponse()
+                body = got.read()
+                connection.request("HEAD", path)
+                head = connection.getresponse()
+                assert head.read() == b"", path
+                assert head.status == got.status, path
+                assert head.getheader("Content-Type") == got.getheader("Content-Type")
+                assert head.getheader("Content-Length") == str(len(body)), path
+                seen.add(got.status)
+            assert 200 in seen and 404 in seen
+            connection.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_a_cross_site_post_is_refused_before_dispatch(
         self, app: SiteApp, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -1102,6 +1127,30 @@ class TestTheDriver:
             cursor.execute("select 1")
             assert cursor.fetchone() == (1,)
 
+    @pytest.mark.parametrize("zone", ["America/Los_Angeles", "Pacific/Kiritimati"])
+    def test_a_stamp_reads_back_on_utcs_calendar_whatever_the_session_zone(
+        self, zone: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Q744. A connection asked for a zone either side of UTC still reads stamps in UTC.
+
+        Midnight UTC is the evening before in Los Angeles and the afternoon of the same
+        day at UTC+14; the page prints a stamp's first ten characters, so either zone
+        leaking into the session would name a day the rest of the site does not.
+        `PGTZ` is libpq's, read when the connection opens.
+        """
+        url = os.environ.get(TEST_URL_ENV, "").strip()
+        if not url:
+            pytest.skip(f"{TEST_URL_ENV} is unset: no database to open a connection to")
+        pytest.importorskip("psycopg", reason="the site extra is not installed here")
+        monkeypatch.setenv("PGTZ", zone)
+        with db.connect(url) as connection, connection.cursor() as cursor:
+            cursor.execute("select '2026-09-02 00:00:00+00'::timestamptz")
+            (stamp,) = cursor.fetchone()
+            connection.rollback()
+            cursor.execute("show timezone")
+            assert cursor.fetchone() == ("UTC",)
+        assert stamp.isoformat() == "2026-09-02T00:00:00+00:00"
+
 
 # ------------------------------------------------------------------- 1.2, the store
 
@@ -1186,6 +1235,11 @@ STORE: dict[str, tuple[str, ...]] = {
         # designer agreed to the terms at *Publish*, and which version. Both or neither.
         "terms_accepted",
         "terms_version",
+        # `publish_asked` and `publish_stopped` are `0031_publish_waits.sql`, Q742's: a
+        # press of *Publish* waiting for the site's check of the score, and why the last
+        # one was called off.
+        "publish_asked",
+        "publish_stopped",
     ),
     "measurements": (
         "hash",
@@ -1270,6 +1324,15 @@ STORE: dict[str, tuple[str, ...]] = {
         # null for every other seat.
         "seat0_played",
         "seat1_played",
+        # `0032_human_data.sql`, Q767 (H1 to H3 of `docs/plan-human-data.md`). Think time per
+        # move against a computer player, what each take-back undid, and each side's rating
+        # when a practice game started.
+        "thinks",
+        "undone",
+        "standing",
+        # `0033_pinned_and_alarm.sql`, Q768 (H4). Who the computer seats were beyond their
+        # agent strings: the core's build, the tables and the values, per identity.
+        "pinned",
     ),
     "votes": ("voter", "game", "stars", "tags", "note", "updated"),
     "jobs": (
@@ -1290,6 +1353,10 @@ STORE: dict[str, tuple[str, ...]] = {
         "result",
         "sample",
         "cpu_seconds",
+        # `0033_pinned_and_alarm.sql`, Q768 (H9): who asked for a `train` job, and the
+        # counts a people's entry was raised on.
+        "cause",
+        "evidence",
     ),
     # `0006_usage.sql`, `docs/plan-usage.md` §2. Counts by the hour, and no column that
     # could name a person: `TestUsageIsCounted` reads these tuples for exactly that.
@@ -1386,7 +1453,11 @@ STORE: dict[str, tuple[str, ...]] = {
     "reports": ("reporter", "game", "reason", "note", "created", "dismissed"),
     # `0018_finishes.sql`, Q502a. Every finish a person sat at, with its moves, which no
     # take-back or restart rewrites; it names its match and nothing about who played.
-    "finishes": ("match", "ordinal", "moves", "result", "reason", "takebacks", "finished"),
+    "finishes": (
+        "match", "ordinal", "moves", "result", "reason", "takebacks", "finished",
+        # `0032_human_data.sql`, Q767: the three copied from the match row at the finish.
+        "thinks", "undone", "standing",
+    ),
     # `0020_resting.sql`, Q503n. Each move of a game between the Library and the Baseline
     # that `site load` found, with the maintainer's reason; no route writes it.
     "level_moves": ("id", "game", "was", "became", "reason", "moved"),
@@ -2708,10 +2779,33 @@ class TestOneShell:
         server, which hands the handle to the two pages that have one. Credits and
         privacy read no cookie at all, so their corner is empty on purpose."""
         assert '<span class="muted small" id="who">ada</span>' in page_text.inlined(site_pages.profile("ada"))
-        assert '<a href="/profile">boss</a></span>' in page_text.inlined(site_pages.admin("boss"))
-        assert '<a href="/profile">ada</a></span>' in page_text.inlined(site_pages.players("ada"))
+        assert f'{site_pages._member_button("boss")}</span>' in page_text.inlined(site_pages.admin("boss"))
+        assert f'{site_pages._member_button("ada")}</span>' in page_text.inlined(site_pages.players("ada"))
         for path in ("/signin", "/join", "/credits", "/privacy", "/terms", "/badges"):
             assert '<span class="muted small" id="who"></span>' in _every_page()[path], path
+
+    def test_the_way_to_your_page_is_a_button_that_says_where_it_goes(self) -> None:
+        """Q731: a bare handle in the corner read as a label saying who is signed in. It
+        is an outlined button, named for where it goes and for whom, as tall as any other
+        control, its handle dropped on a phone; both servers build the same element."""
+        from page_text import PAGE
+
+        button =site_pages._member_button("<ada>")
+        assert button.startswith('<a class="memberButton" href="/profile"')
+        assert 'aria-label="Your page, signed in as &lt;ada&gt;"' in button
+        assert '<span class="memberName">&lt;ada&gt;</span>' in button
+        assert '<span class="memberGo">your page<span aria-hidden="true"> ›</span></span>' in button
+        style = site_pages.STYLE
+        rule = style[style.index("header a.memberButton {"):]
+        rule = rule[: rule.index("}")]
+        for held in ("min-height: var(--ctl-h)", "border: 1px solid var(--edge)",
+                     "border-radius: var(--r-ctl)", "direction: ltr"):
+            assert held in rule, held
+        assert "header a.memberButton .memberName { display: none; }" in style
+        assert "memberButton(VIEWER, VIEWER_MARK)" in PAGE
+        assert "anchor.className = 'memberButton';" in PAGE
+        assert "`Your page, signed in as ${handle}`" in PAGE
+        assert "go.append('your page', chevron);" in PAGE
 
     def test_an_admin_reading_their_profile_is_offered_the_maintainers_page(self) -> None:
         page = page_text.inlined(site_pages.profile("ada"))
@@ -2837,9 +2931,10 @@ class TestTheMaintainersPageOnAPhone:
     def test_every_table_scrolls_inside_its_own_box(self) -> None:
         page = page_text.inlined(site_pages.admin("boss"))
         assert page.count("<table") == page.count('<div class="scroller">')
-        assert page.count("<table") == 15, (
-            "people, invites, games, earlier scores, how much scores moved, the "
-            "refresher's refusals, the round, "
+        assert page.count("<table") == 18, (
+            "people, invites, games, earlier scores, how much scores moved, people "
+            "beating the strongest, the training queue, computer players on people's "
+            "scale, the refresher's refusals, the round, "
             "reports, dismissed reports, flagged accounts, suggestions, limits, by day, "
             "two of usage"
         )
@@ -5674,7 +5769,9 @@ class TestThePlayersRouteOverAStore:
         assert payload["members"] == 5
         assert payload["unclaimed"]["offered"] == 1
         assert browser.get("/api/me").payload["players"] is False
-        assert 'href="/players"' not in browser.get("/profile").text
+        # The footer does not link it; the header's *People* (Q760) is the way to find a
+        # member, and the page then sends no rows of counts.
+        assert 'href="/players">players' not in browser.get("/profile").text
 
     def test_the_fifth_person_starts_the_list_and_the_link(
         self, site: Site, monkeypatch: pytest.MonkeyPatch

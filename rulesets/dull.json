@@ -31,6 +31,7 @@
     "no_progress_draw": 40
   },
   "provenance": {
+    "added": "2026-08-19",
     "origin": "control",
     "source": "written for this project",
     "history": "A deliberately shallow control that anchors the low end of the scale. One piece type, forward movement only, no royalty. It exists so that the index has a known-bad point to be measured against, and it is gated out on decisiveness rather than merely scoring low."

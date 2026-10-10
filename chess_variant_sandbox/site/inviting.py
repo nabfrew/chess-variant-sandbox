@@ -129,6 +129,27 @@ def box(connection: Any, user: int) -> dict[str, Any] | None:
                      f"{identity.INVITE_LIFETIME.days} days."}
 
 
+NONE_GIVEN = (
+    "Only members can play here, and joining is by invitation. You have no invitations "
+    "to send. Ask the person who runs the site if you would like to invite a friend."
+)
+"""What a game's page says, where a friend would be invited, to somebody never given any."""
+
+
+def for_a_friend(connection: Any, user: int) -> dict[str, Any]:
+    """The invitation under *Play a person* on a game's page (Q731).
+
+    The friend you would invite is who you want to play, so the box `/admin`'s allowance
+    draws on your own page is offered here too, through the same `/api/invite`. Unlike
+    your page, this one always says something: the form for somebody with invitations
+    left, and for anybody else the plain sentence saying they have none and who to ask.
+    """
+    found = box(connection, user)
+    if found is None:
+        return {"left": 0, "said": NONE_GIVEN, "sent": 0, "under": None}
+    return found
+
+
 def left_said(left: int) -> str:
     """The plain count, as the page says it."""
     if left <= 0:

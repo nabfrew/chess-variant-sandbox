@@ -46,20 +46,61 @@ module comes from proposed scoring the margin -- a win by mate in 20 is not a wi
 in 200 -- and ``_graded`` does it, blending the result with the final material lead.
 ``MARGIN_WEIGHT`` is the answer the calibration gave and it is zero; the sweep is in
 ``docs/reference/piece-values.md``.
+
+**A steering duel may stop early; a stamped one never does.** ``steer`` is a
+group-sequential rule with looks at 8, 16 and 24 seed-pairs (``docs/plan-compute.md``
+§4.3), pre-registered in ``docs/reference/learned-evaluator.md`` §9 before anything used
+it. It is a different test from the fixed one, so it changes which comparisons pass near
+the bar, and it is for duels whose result only chooses the next experiment. Nothing that
+writes a stamp, an acceptance or a score calls it; ``tests/test_duel_steer.py`` holds that.
+
+**A stamped duel may be curtailed, exactly.** ``curtailed_duel`` (``docs/plan-compute.md``
+§4.2) plays the fixed rule's seed-pairs in schedule order, a batch of the worker count at a
+time, and stops at the first prefix after which every possible result of the unplayed pairs
+gives the same verdict (``settled``). The verdict is then the full duel's by construction,
+not by a bound on an error. The stopping point is read pair by pair along the schedule, never
+from which games came back first, so it is the same at any worker count; games past it are
+discarded. What moves is the score, which is the prefix's, stored with "decided after k of n".
 """
 
 from __future__ import annotations
 
 import math
 import statistics
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from typing import Any
 
 from chess_variant_sandbox.agents.evaluation import Evaluator
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.compile import CompiledSpec
+from chess_variant_sandbox.tournament.checkpoint import run_tournament
 from chess_variant_sandbox.tournament.record import GameRecord
-from chess_variant_sandbox.tournament.runner import TournamentConfig, run_tournament
+from chess_variant_sandbox.tournament.runner import TournamentConfig
+
+# The steering rule's design, pre-registered in `docs/reference/learned-evaluator.md` §9.
+# Changing any of these is a new rule, re-registered there with its error rates first.
+#
+# The looks, in seed-pairs: plan-compute §4.3's 8, 16 and 24.
+STEER_LOOKS = (8, 16, 24)
+# Stop for a side when z = (W - L) / sqrt(W + L) reaches this, W and L the pairs each side
+# won outright and ties (a pair at exactly 0.5) left out. Pocock-shaped: one bound at every
+# look, the smallest bound to one decimal whose worst one-sided error over every tie
+# pattern is under `STEER_ALPHA` (2.4 reaches 0.0313; 2.5's worst is 0.0210, with 7, 10
+# and 16 decisive pairs at the three looks).
+STEER_BOUND = 2.5
+# Stop early as *too close* when |z| is under these at the first two looks: a duel that 24 pairs
+# would very likely leave unresolved, not a finding that the two are equal. Non-binding:
+# the error rates hold whether or not a caller obeys it.
+STEER_FUTILITY = (0.5, 1.0)
+# The ceiling on each side's false call, under any tie rate, which a test proves exactly.
+STEER_ALPHA = 0.025
+
+CANDIDATE = "candidate"
+REFERENCE = "reference"
+TOO_CLOSE = "too close"
+INCONCLUSIVE = "inconclusive"
+CONTINUE = "continue"
 
 # How much of a graded outcome is the material lead rather than the result.
 #
@@ -231,15 +272,22 @@ def grade(
 
     if not estimates:
         raise ValueError("a duel needs at least one seed-pair; none were played")
+    score, error = summary(estimates)
     return Duel(
         candidate=candidate,
         reference=reference,
-        score=sum(estimates) / len(estimates),
-        error=_standard_error(estimates),
+        score=score,
+        error=error,
         pairs=tuple(estimates),
         identical=identical,
         margin_weight=margin_weight,
     )
+
+
+def summary(estimates: Sequence[float]) -> tuple[float, float]:
+    """A duel's score and error from its seed-pairs: what ``grade`` stores, and what every
+    verdict over a duel reads, so a curtailed verdict and a full one are one computation."""
+    return sum(estimates) / len(estimates), _standard_error(list(estimates))
 
 
 def _standard_error(estimates: list[float]) -> float:
@@ -311,3 +359,367 @@ def _army_scale(spec: CompiledSpec) -> float:
         _owner, piece_type = divmod(value - 1, n_types)
         total += abs(values[piece_type])
     return total / 2.0
+
+
+@dataclass(frozen=True)
+class Steer:
+    """Where a steering duel stands: the call, and the look it was made at.
+
+    ``call`` is one of ``CANDIDATE`` or ``REFERENCE`` (that side won, at the registered
+    error), ``TOO_CLOSE`` (stopped early, too close for more pairs to be worth it),
+    ``INCONCLUSIVE`` (all 24 pairs and no side reached the bound) or ``CONTINUE`` (play to
+    ``next_look`` and ask again). A steer is a reading for choosing the next step and has
+    no score to store, by design.
+    """
+
+    call: str
+    pairs: int
+    wins: int
+    losses: int
+    z: float
+    next_look: int | None
+
+
+def steer(pairs: Sequence[float]) -> Steer:
+    """Read a steering duel's seed-pairs at the registered looks, in schedule order.
+
+    ``pairs`` is ``Duel.pairs`` (or ``SteeringDuel.estimates``), each pair's estimate in
+    seed order. The rule reads the prefix at each look in turn and returns the first call;
+    pairs past the deciding look are ignored, so the call never depends on how many extra
+    games happened to come back. Fewer pairs than the next look is ``CONTINUE``.
+    """
+    if len(pairs) > STEER_LOOKS[-1]:
+        raise ValueError(
+            f"a steering duel reads at most {STEER_LOOKS[-1]} seed-pairs and was given "
+            f"{len(pairs)}; more is a different rule, with different error rates"
+        )
+    wins = losses = 0
+    read = 0
+    z = 0.0
+    for index, look in enumerate(STEER_LOOKS):
+        if len(pairs) < look:
+            return Steer(CONTINUE, read, wins, losses, z, look)
+        for estimate in pairs[read:look]:
+            if estimate > 0.5:
+                wins += 1
+            elif estimate < 0.5:
+                losses += 1
+        read = look
+        z = _steer_z(wins, losses)
+        call = steer_call(index, wins, losses)
+        if call != CONTINUE:
+            return Steer(call, look, wins, losses, z, None)
+    raise AssertionError("the last look always makes a call")
+
+
+def steer_call(look: int, wins: int, losses: int, futility: bool = True) -> str:
+    """The call at look ``look`` (0, 1 or 2) after ``wins`` and ``losses`` outright pairs.
+
+    The rule's one definition: ``steer`` walks the looks through it, and
+    ``steer_characteristics`` integrates over it. ``futility=False`` is the rule played on
+    regardless of the too-close stop.
+    """
+    z = _steer_z(wins, losses)
+    if z >= STEER_BOUND:
+        return CANDIDATE
+    if z <= -STEER_BOUND:
+        return REFERENCE
+    if futility and look < len(STEER_FUTILITY) and abs(z) < STEER_FUTILITY[look]:
+        return TOO_CLOSE
+    if look == len(STEER_LOOKS) - 1:
+        return INCONCLUSIVE
+    return CONTINUE
+
+
+def _steer_z(wins: int, losses: int) -> float:
+    decisive = wins + losses
+    return (wins - losses) / math.sqrt(decisive) if decisive else 0.0
+
+
+@dataclass(frozen=True)
+class SteerCharacteristics:
+    """The exact probability of each call, and the expected pairs played, at one truth."""
+
+    candidate: float
+    reference: float
+    too_close: float
+    inconclusive: float
+    expected_pairs: float
+
+
+def steer_characteristics(win: float, loss: float, futility: bool = True) -> SteerCharacteristics:
+    """``steer``'s operating characteristics when each pair independently goes to the
+    candidate with probability ``win``, to the reference with ``loss``, and ties otherwise.
+
+    Exact, by walking the distribution of (wins, losses) through the looks; no sampling.
+    ``futility=False`` reads the rule with the futility stop ignored, which is the rule a
+    caller who plays on regardless gets, and the one whose error is the registered bound.
+    """
+    if win < 0 or loss < 0 or win + loss > 1:
+        raise ValueError(f"win {win} and loss {loss} are not the chances of one pair")
+    tie = 1.0 - win - loss
+    states: dict[tuple[int, int], float] = {(0, 0): 1.0}
+    played = 0
+    out = {CANDIDATE: 0.0, REFERENCE: 0.0, TOO_CLOSE: 0.0, INCONCLUSIVE: 0.0}
+    expected = 0.0
+    for index, look in enumerate(STEER_LOOKS):
+        while played < look:
+            grown: dict[tuple[int, int], float] = {}
+            for (wins, losses), chance in states.items():
+                for key, step in (((wins + 1, losses), win), ((wins, losses + 1), loss),
+                                  ((wins, losses), tie)):
+                    if step:
+                        grown[key] = grown.get(key, 0.0) + chance * step
+            states = grown
+            played += 1
+        going: dict[tuple[int, int], float] = {}
+        for (wins, losses), chance in states.items():
+            call = steer_call(index, wins, losses, futility)
+            if call == CONTINUE:
+                going[(wins, losses)] = chance
+                continue
+            out[call] += chance
+            expected += chance * look
+        states = going
+    return SteerCharacteristics(
+        candidate=out[CANDIDATE],
+        reference=out[REFERENCE],
+        too_close=out[TOO_CLOSE],
+        inconclusive=out[INCONCLUSIVE],
+        expected_pairs=expected,
+    )
+
+
+@dataclass(frozen=True)
+class SteeringDuel:
+    """A steering duel as played: the call, and every pair's estimate up to it."""
+
+    candidate: str
+    reference: str
+    steer: Steer
+    estimates: tuple[float, ...]
+    identical: int
+
+    @property
+    def games(self) -> int:
+        return 2 * len(self.estimates)
+
+
+def steering_duel(
+    spec: dict[str, Any],
+    candidate: str,
+    reference: str,
+    seed: int = 0,
+    workers: int = 0,
+    margin_weight: float = MARGIN_WEIGHT,
+) -> SteeringDuel:
+    """Play look by look until ``steer`` makes a call. For steering only, never a verdict.
+
+    Each look plays the next block of seed-pairs through ``duel`` with its seed offset by
+    the pairs already played. Two players get one block of seeds starting at ``seed``, so
+    the pairs are those of one long duel's prefix: the same games at any worker count,
+    and the same call as reading a full 24-pair duel with ``steer``.
+    """
+    estimates: list[float] = []
+    identical = 0
+    while True:
+        reading = steer(estimates)
+        if reading.call != CONTINUE:
+            return SteeringDuel(candidate, reference, reading, tuple(estimates), identical)
+        assert reading.next_look is not None
+        block = duel(
+            spec,
+            candidate,
+            reference,
+            pairs=reading.next_look - len(estimates),
+            seed=seed + len(estimates),
+            workers=workers,
+            margin_weight=margin_weight,
+        )
+        estimates.extend(block.pairs)
+        identical += block.identical
+
+
+# ------------------------------------------------------------------ exact curtailment
+
+# Single games fit the same reading unchanged (Q800): a game's 0, 1/2 or 1 is a whole
+# number of quarters, and a verdict over their sum alone meets both conditions below, so
+# `settled` over games is exact for it (`fitting.acceptance`, the fit's `score > 0.5`).
+Verdict = Callable[[Sequence[float]], bool]
+"""A stamped duel's verdict, read off all of its seed-pairs.
+
+``settled`` asks it only of complete duels, and relies on two properties every verdict here
+has: it reads the pairs as a multiset, through their count, sum and sum of squares (as
+``summary`` does, whose sum of quarters and exact variance are order-free), and at a fixed
+sum it is monotone in the sum of squares (a larger spread is a larger error, never a
+better score)."""
+
+PlayPairs = Callable[[int, int], list[GameRecord]]
+"""``(first seed, pairs)`` to the records of that block of a paired schedule's seeds."""
+
+
+def floor_verdict(floor: float) -> Verdict:
+    """``score >= floor``: the strength check's two duels."""
+
+    def passes(estimates: Sequence[float]) -> bool:
+        return summary(estimates)[0] >= floor
+
+    return passes
+
+
+def settled(prefix: Sequence[float], planned: int, verdict: Verdict) -> bool | None:
+    """The verdict every completion of ``prefix`` to ``planned`` pairs gives, else ``None``.
+
+    Exact. A pair's estimate is one of {0, 1/4, 1/2, 3/4, 1} (two games of 0, 1/2 or 1,
+    ``MARGIN_WEIGHT`` zero), so the unplayed pairs reach a total ``t`` quarters in many ways
+    but, at each ``t``, their sum of squares lies between the even spread's and the heaped
+    one's (as many whole points as fit). The verdict is monotone in that sum at a fixed
+    total, so the two extremes at every ``t`` agree with everything between them, and the
+    question is ``2 x (4r + 1)`` verdicts for ``r`` unplayed pairs. The two ends, all lost
+    and all won, are asked first: an open duel nearly always disagrees there at once.
+    """
+    played = len(prefix)
+    if played > planned:
+        raise ValueError(f"{played} pairs played of a duel of {planned}")
+    for estimate in prefix:
+        quarters = estimate * 4
+        if quarters != int(quarters) or not 0 <= quarters <= 4:
+            raise ValueError(
+                f"a pair scored {estimate}, not a whole number of quarters: curtailment "
+                "reads ungraded duels only (MARGIN_WEIGHT 0)"
+            )
+    rest = planned - played
+    head = list(prefix)
+    if not rest:
+        return verdict(head)
+    first = verdict(head + [0.0] * rest)
+    for total in (4 * rest, *range(1, 4 * rest)):
+        for completion in (_spread(total, rest), _heaped(total, rest)):
+            if verdict(head + completion) != first:
+                return None
+    return first
+
+
+def _spread(total: int, rest: int) -> list[float]:
+    """``total`` quarters over ``rest`` pairs as evenly as they go: the least spread."""
+    each, over = divmod(total, rest)
+    return [(each + 1) / 4] * over + [each / 4] * (rest - over)
+
+
+def _heaped(total: int, rest: int) -> list[float]:
+    """``total`` quarters as whole points first, the remainder in one pair: the most."""
+    whole, part = divmod(total, 4)
+    tail = [part / 4] if part else []
+    return [1.0] * whole + tail + [0.0] * (rest - whole - len(tail))
+
+
+@dataclass(frozen=True)
+class Curtailed:
+    """A stamped duel played to its decision: the full duel's verdict, the prefix's grade.
+
+    ``found`` grades only the pairs up to the deciding one, so its score and error are the
+    prefix's; ``planned`` is the fixed rule's size. ``decided_after`` of ``planned`` is
+    what gets stored beside the verdict.
+    """
+
+    found: Duel
+    verdict: bool
+    planned: int
+    # The kept games, every game of the pairs up to the deciding one, by seed and then with
+    # the candidate's first seat first, whatever the batches were. Out of equality: a
+    # record carries its wall time.
+    records: tuple[GameRecord, ...] = field(default=(), compare=False)
+
+    @property
+    def decided_after(self) -> int:
+        return len(self.found.pairs)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            **self.found.as_dict(),
+            "decided_after": self.decided_after,
+            "planned_pairs": self.planned,
+        }
+
+
+def curtailed_duel(
+    spec: dict[str, Any],
+    candidate: str,
+    reference: str,
+    pairs: int,
+    verdict: Verdict,
+    seed: int = 0,
+    workers: int = 0,
+    play: PlayPairs | None = None,
+) -> Curtailed:
+    """``duel``'s ``pairs`` seed-pairs from ``seed``, stopped once ``verdict`` is settled.
+
+    A batch is ``workers`` (resolved as the runner resolves it) seed-pairs, the next block
+    of the one paired schedule, played as ``duel`` plays it, or by ``play``. After each
+    batch the pairs are read one at a time in seed order and the first prefix ``settled``
+    answers is the decision; the rest of that batch is discarded. So the stopping point,
+    the kept games and the verdict are functions of the schedule alone, and the verdict is
+    ``verdict`` of the full duel whatever the unplayed games would have been.
+    """
+    if pairs < 1:
+        raise ValueError("a duel needs at least one seed-pair")
+    config = TournamentConfig(
+        agents=(candidate, reference),
+        games_per_pairing=1,
+        workers=workers,
+        include_self_play=False,
+        paired=True,
+    )
+    batch = config.resolved_workers()
+
+    def standard(first: int, count: int) -> list[GameRecord]:
+        return duel_records(spec, candidate, reference, count, first, workers)
+
+    play = play or standard
+    estimates: list[float] = []
+    kept: list[GameRecord] = []
+    while True:
+        first = seed + len(estimates)
+        count = min(batch, pairs - len(estimates))
+        records = play(first, count)
+        block = grade(records, candidate, reference)
+        if len(block.pairs) != count:
+            raise ValueError(f"a batch of {count} seed-pairs came back with {len(block.pairs)}")
+        for index, estimate in enumerate(block.pairs):
+            estimates.append(estimate)
+            call = settled(estimates, pairs, verdict)
+            if call is None:
+                continue
+            cut = first + index
+            kept.extend(record for record in records if record.seed <= cut)
+            kept.sort(key=lambda record: (record.seed, record.agents[0] != candidate))
+            return Curtailed(grade(kept, candidate, reference), call, pairs, tuple(kept))
+        kept.extend(records)
+
+
+def duel_records(
+    spec: dict[str, Any],
+    candidate: str,
+    reference: str,
+    pairs: int,
+    seed: int = 0,
+    workers: int = 0,
+) -> list[GameRecord]:
+    """The games of ``duel``'s paired schedule, ungraded: seeds ``seed`` to ``seed + pairs``.
+
+    A paired schedule gives the one pairing one block of seeds from the config's, so the
+    block from ``seed + k`` is the same games as the tail of the block from ``seed``.
+    """
+    result = run_tournament(
+        spec,
+        TournamentConfig(
+            agents=(candidate, reference),
+            games_per_pairing=pairs,
+            seed=seed,
+            workers=workers,
+            include_self_play=False,
+            collect_series=False,
+            paired=True,
+        ),
+    )
+    return list(result.records)

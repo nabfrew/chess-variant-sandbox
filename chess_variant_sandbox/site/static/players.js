@@ -135,12 +135,82 @@ function drawPeople(people, rated, here) {
       + 'the first name here.';
 }
 
+// Q760, *Find a member*: everybody with a page, A to Z as the server sent them, each a
+// sheet that is wholly the link to their page. The field narrows the list as it is typed,
+// by handle or by the name of a game they made; nothing is fetched per keystroke, since
+// the list is the whole membership and small. The count says what the field matched, in
+// words, and an empty match says so rather than leaving a blank.
+let DIRECTORY = [];
+
+function matches(person, asked) {
+  if (!asked) return true;
+  if (person.handle.toLowerCase().includes(asked)) return true;
+  return (person.made || []).some(game => (game.name || '').toLowerCase().includes(asked));
+}
+
+function personSheet(person) {
+  const item = document.createElement('li');
+  const sheet = document.createElement('a');
+  sheet.className = 'person';
+  sheet.href = person.page;
+  const mark = window.memberMark && window.memberMark(person.mark, 40);
+  const holder = document.createElement('span');
+  holder.className = 'personMark';
+  if (mark) holder.appendChild(mark);
+  sheet.appendChild(holder);
+  const name = span(sheet, person.handle, 'personName');
+  if (person.you) span(name, ' (you)', 'you');
+  span(sheet, 'member since ' + person.since, 'personSince');
+  const made = person.made || [];
+  if (made.length) {
+    const more = person.moreMade ? ' and ' + plural(person.moreMade, 'more', 'more') : '';
+    span(sheet, 'made ' + made.map(game => game.name || 'an unnamed game').join(', ') + more,
+      'personMade');
+  }
+  item.appendChild(sheet);
+  return item;
+}
+
+function drawDirectory() {
+  const field = document.getElementById('find');
+  const asked = field.value.trim().toLowerCase();
+  const shown = DIRECTORY.filter(person => matches(person, asked));
+  const where = document.getElementById('directory');
+  where.replaceChildren(...shown.map(personSheet));
+  const found = document.getElementById('found');
+  if (!asked) {
+    found.textContent = plural(DIRECTORY.length, 'member', 'members') + ', A to Z.';
+  } else if (!shown.length) {
+    found.textContent = 'Nobody matches “' + field.value.trim() + '”. A handle is '
+      + 'searched anywhere in it, so a few letters are enough.';
+  } else {
+    found.textContent = plural(shown.length, 'member matches', 'members match')
+      + ' “' + field.value.trim() + '”.';
+  }
+}
+
+function wireDirectory(people, said) {
+  DIRECTORY = people;
+  document.getElementById('find-said').textContent = said || '';
+  const field = document.getElementById('find');
+  field.addEventListener('input', drawDirectory);
+  // Enter with exactly one match opens that member's page.
+  field.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    const asked = field.value.trim().toLowerCase();
+    const shown = DIRECTORY.filter(person => matches(person, asked));
+    if (asked && shown.length === 1) window.location.href = shown[0].page;
+  });
+  drawDirectory();
+}
+
 async function draw() {
   let answer;
   try { answer = await read('/api/players'); } catch (error) { say(error.message); return; }
   if (!answer.ok) { say('Sign in to see the players.'); return; }
   const payload = answer.data;
   YOU = payload.you;
+  wireDirectory(payload.directory || [], payload.directorySaid);
   drawUnclaimed(payload.unclaimed);
   drawPeople(payload.players || [], payload.rated, payload);
 }

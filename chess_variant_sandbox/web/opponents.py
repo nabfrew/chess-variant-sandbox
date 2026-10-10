@@ -11,9 +11,11 @@ tuple could express the first and never the second.
 `runs/<hash>-<seed>/tournament.json` holds the rated ladder's Elo for a ruleset and is
 read by the index; heuristic players are kept out of it by construction, because
 `rating_spread` reads the whole table and no name filter can reach that. So the on-demand
-run below writes `runs/opponents/<hash>.json`, which nothing in `metrics/` looks at, and
-it writes no `games.jsonl` -- the corpus it fits exists for the length of the request and
-the interface is the only thing that ever reads the result.
+run below writes `runs/opponents/<hash>.json`, which nothing in `metrics/` looks at. Its
+games are kept beside it since L3 (`docs/plan-leaderboard.md` §2.2), as
+`runs/opponents/<hash>.games.jsonl` -- the seats, the seed and the winner, never a run
+directory's `games.jsonl` -- so a newly offered player can be added to a ladder by playing
+its own games alone; nothing under `metrics/` reads those either.
 
 That leaves two tables of Elo for one ruleset, which is a real hazard and is handled the
 way this project handles two weights versions: they are never mixed in one column. The
@@ -23,6 +25,7 @@ each says how many games it rests on.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
 import time
@@ -1089,6 +1092,188 @@ def stored_path(ruleset_hash: str, runs_dir: str | Path) -> Path:
     return Path(runs_dir) / "opponents" / f"{ruleset_hash}.json"
 
 
+# ------------------------------------------------- the ladder's stamp and its games (L3)
+
+# `docs/plan-leaderboard.md` §2.2. A ladder written since L3 says what it rated, on what
+# build and when, and keeps its games beside it, so a newly offered player can be added by
+# playing its games alone (a *top-up*) and a reader can tell a ladder whose players have
+# since changed. A file without `format` is one from before, read as before: its standings
+# seed the site, and it can only be rated again whole.
+LADDER_FORMAT = 2
+
+# The changes the maintainer marks as changing how the computer players play, by the date
+# each landed on main. A ladder rated before the latest of them has *old players*
+# (`deploy/ladders_check.py`), and `deploy/ladders.py --rerate` rates it again. **Not every
+# core rebuild:** a ladder is a seed that people's games correct, not a score, so it carries
+# the build fingerprint (`built`) for the record and is never called stale by it alone;
+# re-rating the library on each fingerprint would cost 30 to 60 slot-hours a time for
+# numbers people move anyway. A change goes here when it changes what the picker's players
+# do on the board -- a search repair turned on by default, a new evaluation term -- and the
+# entry is a dated sentence, so the report can say which change a ladder predates.
+PLAYER_CHANGES: tuple[tuple[str, str], ...] = (
+    ("2026-09-29", "Q502i turned threat-aware quiescence on for every minimax player"),
+)
+
+
+def games_path(ruleset_hash: str, runs_dir: str | Path) -> Path:
+    """Where a picker ladder's own games are kept, beside its table.
+
+    Never `tournament.json` or `games.jsonl` under a run directory, for `stored_path`'s
+    reason: nothing under `metrics/` reads these, and nothing that globs for a measured
+    corpus can find them here.
+    """
+    return Path(runs_dir) / "opponents" / f"{ruleset_hash}.games.jsonl"
+
+
+def _today() -> str:
+    """The date a ladder is stamped with, UTC. A seam for the tests."""
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def _built() -> str:
+    from chess_variant_sandbox.measurement import built_fingerprint
+
+    return built_fingerprint()
+
+
+def ladder_date(table: dict[str, Any] | None, path: str | Path | None = None) -> str | None:
+    """When a ladder's games were played: its stamp, else its file's modification date.
+
+    The stamp's `rated` is the date of the whole rating; a top-up keeps it, because the
+    older games are still in the fit. A ladder from before L3 has no stamp, and its file's
+    date on this machine is the honest stand-in (a copy elsewhere may have lost it).
+    """
+    if isinstance(table, dict) and isinstance(table.get("rated"), str):
+        return str(table["rated"])
+    if path is None:
+        return None
+    from datetime import datetime, timezone
+
+    try:
+        stamp = Path(path).stat().st_mtime
+    except OSError:
+        return None
+    return datetime.fromtimestamp(stamp, tz=timezone.utc).date().isoformat()
+
+
+def changed_since(date: str | None) -> tuple[tuple[str, str], ...]:
+    """The marked player changes a ladder played on `date` predates, oldest first.
+
+    A ladder with no date at all predates every one of them: nothing says otherwise.
+    """
+    return tuple(change for change in PLAYER_CHANGES if date is None or date < change[0])
+
+
+def _game_line(record: Any) -> dict[str, Any]:
+    """What a kept game holds: what the fit reads and what reproduces it, not its moves.
+
+    `tournament.ratings.rate` reads the two seats and the winner; the seed and the seats
+    are the game's reproduction triple with the ruleset's hash, which the file name holds.
+    So the file stays a few kilobytes a game and travels with `runs/opponents/` cheaply.
+    """
+    return {
+        "seed": int(record.seed),
+        "agents": list(record.agents),
+        "winner": record.winner,
+        "reason": str(record.reason),
+        "plies": int(record.plies),
+    }
+
+
+def read_games(ruleset_hash: str, runs_dir: str | Path) -> list[Any] | None:
+    """A ladder's kept games as records the fit reads, or ``None`` when none are kept.
+
+    A line that will not parse makes the whole file unreadable rather than shorter: a fit
+    over some of a ladder's games would be a different ladder under the same name.
+    """
+    from chess_variant_sandbox.tournament.record import GameRecord
+
+    path = games_path(ruleset_hash, runs_dir)
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    records = []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            data = json.loads(line)
+            records.append(GameRecord(
+                ruleset_hash=ruleset_hash,
+                ruleset_name="",
+                seed=int(data["seed"]),
+                agents=(str(data["agents"][0]), str(data["agents"][1])),
+                moves=[],
+                winner=None if data["winner"] is None else int(data["winner"]),
+                reason=str(data.get("reason", "")),
+                plies=int(data.get("plies", 0)),
+            ))
+        except (ValueError, KeyError, IndexError, TypeError):
+            return None
+    return records
+
+
+def _write_ladder(
+    ruleset_hash: str, runs_dir: str | Path, table: dict[str, Any], records: list[Any]
+) -> Path:
+    """Write the games, then the table that names them: a table is never ahead of them."""
+    path = stored_path(ruleset_hash, runs_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    kept = games_path(ruleset_hash, runs_dir)
+    kept.write_text(
+        "".join(json.dumps(_game_line(record), separators=(",", ":")) + "\n"
+                for record in records),
+        encoding="utf-8",
+    )
+    path.write_text(json.dumps(table, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def move_aside(ruleset_hash: str, runs_dir: str | Path, date: str | None = None) -> Path | None:
+    """Move a game's ladder and its games to `runs/opponents/before-<date>/`, never deleting.
+
+    `--rerate`'s first step (`plan-launch-set.md` §4.3, `plan-leaderboard.md` §2.2). A
+    second re-rating on one day goes to `before-<date>.2/` and so on, so nothing is ever
+    written over. Returns the directory, or ``None`` when there was no ladder to move.
+    """
+    path = stored_path(ruleset_hash, runs_dir)
+    if not path.exists():
+        return None
+    date = date or _today()
+    base = path.parent / f"before-{date}"
+    aside, count = base, 1
+    while (aside / path.name).exists():
+        count += 1
+        aside = path.parent / f"before-{date}.{count}"
+    aside.mkdir(parents=True, exist_ok=True)
+    kept = games_path(ruleset_hash, runs_dir)
+    if kept.exists():
+        kept.replace(aside / kept.name)
+    path.replace(aside / path.name)
+    return aside
+
+
+def restore(ruleset_hash: str, runs_dir: str | Path, aside: Path) -> None:
+    """Put a moved-aside ladder back, for a re-rating that failed: a game never loses one.
+
+    Only where nothing has taken its place, which a failed rating never writes.
+    """
+    path = stored_path(ruleset_hash, runs_dir)
+    kept = games_path(ruleset_hash, runs_dir)
+    for moved, home in ((aside / kept.name, kept), (aside / path.name, path)):
+        if moved.exists() and not home.exists():
+            moved.replace(home)
+    with contextlib.suppress(OSError):
+        aside.rmdir()  # only when empty, which is when it held nothing else
+
+
+class LadderError(ValueError):
+    """A top-up asked of a ladder that cannot take one: rate it again whole."""
+
+
 @dataclass(frozen=True)
 class _SpineConfig(TournamentConfig):
     """A schedule in which challengers meet the spine and never each other.
@@ -1096,17 +1281,97 @@ class _SpineConfig(TournamentConfig):
     `run_tournament` asks the config how many games a pairing gets, which is the seam
     this needs and the reason no change to `tournament/` was required. Returning zero
     drops a pairing entirely, because the scheduler loops `range(games_for(...))`.
+
+    `fresh`, for a top-up, narrows that to the pairings a ladder lacks: a newly offered
+    player against each spine player, each seat, and nothing the kept games already hold.
     """
 
     spine: tuple[str, ...] = ()
+    fresh: tuple[str, ...] = ()
 
     def games_for(self, first: str, second: str) -> int:
+        if self.fresh:
+            if (first in self.spine and second in self.fresh) or (
+                second in self.spine and first in self.fresh
+            ):
+                return self.games_per_pairing
+            return 0
         if first in self.spine or second in self.spine:
             return self.games_per_pairing
         return 0
 
     def as_dict(self) -> dict[str, Any]:
-        return {**super().as_dict(), "spine": list(self.spine)}
+        found = {**super().as_dict(), "spine": list(self.spine)}
+        if self.fresh:
+            found["fresh"] = list(self.fresh)
+        return found
+
+
+@dataclass(frozen=True)
+class _Plan:
+    """What one rating run will play, decided before any game starts."""
+
+    config: _SpineConfig
+    entries: tuple[str, ...]
+    # For a top-up: the ladder it extends and that ladder's games.
+    held: dict[str, Any] | None = None
+    kept: tuple[Any, ...] = ()
+
+
+def _plan(
+    entries: list[str],
+    games: int,
+    seed: int,
+    held: dict[str, Any] | None = None,
+    kept: list[Any] | None = None,
+) -> _Plan:
+    """The schedule: the whole picker, or for a top-up only the newcomers' spine games.
+
+    A top-up's seeds start one past the highest seed in the kept games, so a ladder's
+    games never share a seed and the whole schedule is fixed before a thread starts. It
+    plays at the ladder's own games per pairing, and against the ladder's own spine.
+    """
+    if held is None:
+        spine = tuple(agent for agent in SPINE if agent in entries)
+        config = _SpineConfig(
+            agents=tuple(entries),
+            games_per_pairing=games,
+            seed=seed,
+            include_self_play=False,
+            collect_series=False,
+            spine=spine,
+        )
+        return _Plan(config, tuple(entries))
+
+    if held.get("format") != LADDER_FORMAT or kept is None:
+        raise LadderError(
+            "this ladder keeps no games (it predates the stamp), so a top-up has nothing "
+            "to fit beside; rate it again whole with --rerate"
+        )
+    if len(kept) != int(held.get("games", -1)):
+        raise LadderError(
+            f"this ladder says {held.get('games')} games and {len(kept)} are kept beside "
+            "it; rate it again whole with --rerate"
+        )
+    rows = {str(row["name"]) for row in held.get("standings") or ()}
+    fresh = tuple(agent for agent in entries if agent not in rows)
+    spine = tuple(str(agent) for agent in held.get("spine") or ())
+    if any(agent in SPINE for agent in fresh) or not spine:
+        raise LadderError(
+            "a spine player is new to this ladder, so every other player would need its "
+            "games again; rate it again whole with --rerate"
+        )
+    config = _SpineConfig(
+        agents=(*spine, *fresh),
+        games_per_pairing=int(held.get("games_per_pairing", games)),
+        seed=1 + max((int(record.seed) for record in kept), default=seed - 1),
+        include_self_play=False,
+        collect_series=False,
+        spine=spine,
+        fresh=fresh,
+    )
+    return _Plan(config, (*[str(a) for a in held.get("roster") or ()], *fresh),
+                 held, tuple(kept))
 
 
 @dataclass
@@ -1179,27 +1444,46 @@ class Ratings:
         roster: list[Opponent],
         games: int = 2,
         seed: int = 0,
+        top_up: bool = False,
     ) -> RatingRun:
-        """Begin rating this ruleset's picker, or return the run already doing it."""
+        """Begin rating this ruleset's picker, or return the run already doing it.
+
+        `top_up` extends the ladder on disk instead of replacing it (L3): each player the
+        picker offers and the ladder has no row for plays the ladder's spine, each seat,
+        and the fit is redone over the kept games and the new ones together. A ladder that
+        cannot take one (no kept games, a spine player new to it) is a run that failed at
+        once, with the reason, and nothing written.
+        """
         with self._lock:
             existing = self._runs.get(ruleset_hash)
             if existing is not None and existing.state == "running":
                 return existing
             entries = agents_of(roster)
-            spine = tuple(agent for agent in SPINE if agent in entries)
-            challengers = [agent for agent in entries if agent not in spine]
+            try:
+                held = self.stored(ruleset_hash) if top_up else None
+                if top_up and held is None:
+                    raise LadderError("there is no ladder here to top up; rate it whole")
+                plan = _plan(entries, games, seed, held,
+                             read_games(ruleset_hash, self.runs_dir) if top_up else None)
+            except LadderError as error:
+                run = RatingRun(ruleset_hash=ruleset_hash, name=name, total=0,
+                                state="failed", error=str(error))
+                self._runs[ruleset_hash] = run
+                return run
+            from chess_variant_sandbox.tournament.runner import schedule
+
             run = RatingRun(
                 ruleset_hash=ruleset_hash,
                 name=name,
-                total=(
-                    len(spine) * (len(spine) - 1) + 2 * len(spine) * len(challengers)
-                ) * games,
+                # A top-up with nobody new plays nothing (`_play` returns the ladder).
+                total=(0 if plan.held is not None and not plan.config.fresh
+                       else len(schedule(plan.config))),
             )
             self._runs[ruleset_hash] = run
 
         thread = threading.Thread(
             target=self._play,
-            args=(run, spec, roster, games, seed),
+            args=(run, spec, roster, plan),
             daemon=True,
         )
         thread.start()
@@ -1210,13 +1494,23 @@ class Ratings:
         run: RatingRun,
         spec: dict[str, Any],
         roster: list[Opponent],
-        games: int,
-        seed: int,
+        plan: _Plan,
     ) -> None:
+        from chess_variant_sandbox.tournament.ratings import rate
+
         try:
-            entries = agents_of(roster)
-            spine = tuple(agent for agent in SPINE if agent in entries)
-            run.lines.append(f"{len(entries)} opponents, {run.total} games")
+            config = plan.config
+            if plan.held is not None and not config.fresh:
+                # Nothing offered is missing from the ladder: a top-up with no games.
+                run.table = plan.held
+                run.lines.append("every offered player has a row; nothing to add")
+                run.state = "finished"
+                return
+            run.lines.append(
+                f"{len(config.fresh)} new opponents against the spine, {run.total} games"
+                if plan.held is not None else
+                f"{len(plan.entries)} opponents, {run.total} games"
+            )
             # One schedule over the whole picker. The runner sends the games whose seats
             # both have a native form to the core, on its threads, and plays only the
             # ones with Fairy-Stockfish in the Python loop (Q439), so this no longer
@@ -1225,39 +1519,65 @@ class Ratings:
             def count(played: int) -> None:
                 run.played = played
 
-            result = run_tournament(
-                spec,
-                _SpineConfig(
-                    agents=tuple(entries),
-                    games_per_pairing=games,
-                    seed=seed,
-                    include_self_play=False,
-                    collect_series=False,
-                    spine=spine,
-                ),
-                on_progress=count,
-            )
-            records, table = result.records, result.ratings
-            run.played = len(records)
+            result = run_tournament(spec, config, on_progress=count)
+            run.played = len(result.records)
+            records = [*plan.kept, *result.records]
+            # The fit over every game the ladder holds. For a whole run that is exactly
+            # the runner's own table; for a top-up it is the old games and the new.
+            table = rate(records) if plan.held is not None else result.ratings
             labels = {entry.agent: entry for entry in roster}
+            before = {
+                str(row["name"]): row for row in (plan.held or {}).get("standings") or ()
+            }
+
+            def said(name: str, key: str) -> str:
+                # The live roster's words, else what the ladder said when it rated the
+                # player (one no longer offered keeps its row and its name), else its
+                # agent string for the label.
+                entry = labels.get(name)
+                if entry is not None:
+                    return str(getattr(entry, key))
+                return str(before.get(name, {}).get(key, name if key == "label" else ""))
+
+            stamp: dict[str, Any] = {
+                "format": LADDER_FORMAT,
+                "roster": list(plan.entries),
+                "spine": list(config.spine),
+                "rated": _today(),
+                "built": _built(),
+                "games_file": games_path(run.ruleset_hash, self.runs_dir).name,
+                "top_ups": [],
+            }
+            if plan.held is not None:
+                # A top-up keeps the ladder's own stamp -- its older games are still in
+                # the fit, so its date and build are still what most of it rests on --
+                # and adds a line saying who joined, when and on what build.
+                stamp.update(
+                    rated=plan.held.get("rated"),
+                    built=plan.held.get("built"),
+                    top_ups=[
+                        *(plan.held.get("top_ups") or ()),
+                        {"players": list(config.fresh), "games": len(result.records),
+                         "seed": config.seed, "rated": _today(), "built": _built()},
+                    ],
+                )
             run.table = {
                 "ruleset_hash": run.ruleset_hash,
-                "games_per_pairing": games,
-                "seed": seed,
+                "games_per_pairing": config.games_per_pairing,
+                "seed": (plan.held or {}).get("seed", config.seed),
                 "games": len(records),
+                **stamp,
                 "standings": [
                     {
                         **standing,
-                        "label": getattr(labels.get(standing["name"]), "label", standing["name"]),
-                        "group": getattr(labels.get(standing["name"]), "group", ""),
-                        "plan": getattr(labels.get(standing["name"]), "plan", ""),
+                        "label": said(standing["name"], "label"),
+                        "group": said(standing["name"], "group"),
+                        "plan": said(standing["name"], "plan"),
                     }
                     for standing in table.as_dict()["standings"]
                 ],
             }
-            path = stored_path(run.ruleset_hash, self.runs_dir)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(run.table, indent=2) + "\n", encoding="utf-8")
+            path = _write_ladder(run.ruleset_hash, self.runs_dir, run.table, records)
             run.lines.append(f"rated {len(run.table['standings'])} opponents -> {path}")
             run.state = "finished"
         except Exception as error:  # noqa: BLE001 - a thread must report, not vanish

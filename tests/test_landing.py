@@ -389,3 +389,50 @@ class TestOnTheWire:
                     assert (answer.status, answer.text) == (404, pages.not_found()), (who, path)
             assert '<a class="button primary" href="/game">See the games</a>' in (
                 pages.not_found())
+
+
+class TestAWholeCardOpensItsGame:
+    """First-visit study N6: a card opened only from its name, and a reader pressed its
+    board. The landing page's shelves open a game wherever its card is pressed, and a
+    link inside the card still goes where it says."""
+
+    SETUP = """
+      const NODES = {};
+      for (const id of ['landing-new', 'newShelf', 'landing-members', 'membersShelf',
+                        'membersEmpty', 'membersAll', 'membersCount']) {
+        // An element's own queries, as a browser's has them: Q826's shelf asks its
+        // section for the *recently added* words and the *see them all* link.
+        NODES[id] = { id, dataset: {}, innerHTML: '', textContent: '', hidden: true,
+          remove() {}, removeAttribute() {}, querySelectorAll: () => [],
+          querySelector: () => null };
+      }
+      document.getElementById = id => NODES[id] || null;
+      thumbHtml = () => '<svg class="thumb"></svg>';
+      scoreTag = () => '';
+      const WENT = [];
+      go = hash => WENT.push(hash);
+      const press = (shelf, inLink) => NODES[shelf].onclick({ target: { closest: sel =>
+        sel === 'a, button' ? (inLink ? {} : null) : { dataset: { open: '#/game/aaa' } } } });
+    """
+    DATA = ("{ games: [{ hash: 'aaa', name: 'alpha' }],"
+            " newGames: [{ hash: 'aaa', name: 'alpha', sentence: 's', added: 'today' }],"
+            " madeHere: { total: 1, games: [{ hash: 'aaa', name: 'alpha', by: 'ada',"
+            " mark: null }] } }")
+
+    def test_a_shelf_card_opens_its_game_from_anywhere_on_it(self) -> None:
+        from test_web import _in_page
+
+        for fill, shelf in (("fillNewShelf", "newShelf"), ("fillMembersShelf", "membersShelf")):
+            found = _in_page(
+                self.SETUP + f"{fill}({self.DATA}); press('{shelf}', false);"
+                f" press('{shelf}', true);",
+                f"[NODES['{shelf}'].innerHTML, WENT]")
+            assert 'data-open="#/game/aaa"' in found[0], fill
+            # The board pressed opens the game; a link pressed is left to the link.
+            assert found[1] == ["#/game/aaa"], fill
+
+    def test_the_cards_say_they_can_be_pressed(self) -> None:
+        from chess_variant_sandbox.web.page import style
+
+        assert ".memberGame, .newGame { cursor: pointer; }" in style.STYLE
+

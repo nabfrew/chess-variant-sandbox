@@ -61,6 +61,7 @@
     "no_progress_draw": 60
   },
   "provenance": {
+    "added": "2026-08-19",
     "origin": "control",
     "source": "written for this project",
     "history": "Hand-written as a deliberately broken reference. It validates, passes the cheap gate, and hides a three-ply forced mate: a cannon firing down the file over the defender's own pawn at a king smothered by its own army. The index found the trap unprompted, which is what makes it the regression test for the index still being able to see a degeneracy that random play cannot reach."

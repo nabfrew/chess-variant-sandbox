@@ -32,6 +32,11 @@ if (opener && sheet && send && cancel) {
     const note = document.getElementById('note');
     note.className = 'note done';
     note.textContent = 'Challenge sent. It waits on your page, under Challenges you sent, '
-      + 'until ' + handle + ' accepts or declines it.';
+      + 'until ' + handle + ' accepts or declines it. ';
+    // Q760: the way there, beside the words that name it.
+    const mine = document.createElement('a');
+    mine.href = '/profile';
+    mine.textContent = 'Open your page';
+    note.appendChild(mine);
   });
 }

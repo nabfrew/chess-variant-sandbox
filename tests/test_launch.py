@@ -12,6 +12,8 @@ database (`tests/test_site.py` has the recipe); it skips without one.
 
 from __future__ import annotations
 
+import hashlib
+import html
 import json
 import re
 import shutil
@@ -151,61 +153,189 @@ class TestTheFirstOpponents:
 
 
 class TestTheFirstStepOnThePage:
+    """Q564's first step, on the landing page's picks row since Q788."""
+
     def test_the_page_draws_what_the_server_chose(self) -> None:
         from page_text import PAGE
 
-        assert "function firstStepHtml(step)" in PAGE
-        assert "Play the computer" in PAGE
-        assert "A harder one: " in PAGE
+        from chess_variant_sandbox.web import landing
+
+        assert "function wireTodaysGame(panel, step)" in PAGE
+        assert "Play the computer" in landing.HTML
+        assert "A harder one: " in landing.HTML
+        assert html.escape(landing.TODAY_LABEL) in landing.HTML
         # The page picks no game and no opponent: it reads both off `firstStep`.
         assert "step.opponents.gentle" in PAGE
         assert "featured_name" not in PAGE
 
 
-class TestTheFrontDoor:
-    """Q559 (L1, `docs/plan-launch.md` §3.1): the site's `/` opens with the first step, the
-    three lines of `docs/plan-understanding.md` §1.2, the launch set, then *All games*."""
+class TestTheGamesPage:
+    """Q788 (the user, 2026-10-09): `/game` repeats none of the landing page's highlights and
+    opens straight on the search and the filters; Q559's front door and its *All games* door
+    are gone, on both servers."""
 
-    LINES = (
-        "People invent chess-like games here, and anyone can play them.",
-        "The computer plays each one hundreds of times and scores how interesting it is: a "
-        "best estimate, which improves as people play.",
-        "Play this one now",
-        "Pick one and play it now",
-        'build your own</a>.',
-    )
-
-    @staticmethod
-    def _flat(text: str) -> str:
-        return " ".join(text.split())
-
-    def test_the_three_lines_word_for_word(self) -> None:
+    def test_no_front_door_and_no_door_to_the_list(self) -> None:
         from page_text import PAGE
 
-        flat = self._flat(PAGE)
-        for line in self.LINES:
-            assert line in flat, line
-        # *thousands* is true of no game (§1.2's note): the lines say *hundreds*.
-        assert "thousands of times" not in flat
+        for gone in ("function frontDoorHtml(", "function launchSetHtml(",
+                     "function firstStepHtml(", "function aboutLinesHtml(",
+                     "Games to start with", "All games (${LIBRARY.length})", "BROWSE.all",
+                     'id="everything" hidden', "${shut ? ' hidden' : ''}"):
+            assert gone not in PAGE, gone
 
-    def test_the_lines_pass_the_words_guard(self) -> None:
-        for line in self.LINES:
-            assert site_words.hits(line) == [], line
-
-    def test_the_launch_set_then_all_games_behind_a_door(self) -> None:
+    def test_the_library_view_opens_on_the_search_and_filters(self) -> None:
         from page_text import PAGE
 
-        assert "function frontDoorHtml(data)" in PAGE
-        assert "Games to start with" in PAGE
-        assert "All games (${LIBRARY.length})" in PAGE
-        # Shut at first, and only where the server sent a launch set (the site): the local
-        # application keeps its list open.
-        assert "all: false," in PAGE
-        assert "const door = Array.isArray(data.launchSet);" in PAGE
-        # The page names no game of its own: the cards are the server's.
-        assert "launchSetHtml(data.launchSet)" in PAGE
+        body = PAGE[PAGE.index("async function showLibrary()"):]
+        body = body[:body.index("\n}\n")]
+        assert "controlsHtml()" in body and "tabsHtml()" in body
+        # No highlight of the landing page is drawn here.
+        for highlight in ("firstStep", "launchSet", "monthGame", "newGames", "spotlight",
+                          "madeHere"):
+            assert highlight not in body, highlight
+        # The page names no game of its own.
         for entry in launch.LAUNCH_SET:
             assert f"'{entry.name}'" not in PAGE
+
+
+class _Dated:
+    """A listed game with what `library.added` reads: where its file is and its spec."""
+
+    def __init__(self, name: str, added: str | None, source: str = "archived",
+                 description: str = "A game. More words.") -> None:
+        self.hash = hashlib.sha256(name.encode()).hexdigest()[:12]
+        self.name = name
+        self.source = source
+        self.description = description
+        self.spec: dict[str, Any] = {"provenance": {} if added is None else {"added": added}}
+
+
+class TestTheNewGamesAndTheSpotlight:
+    """Q788's shelf and *Intransitive*; Q826: the shelf derived from the day each game joined."""
+
+    DAY = date(2026, 10, 10)
+
+    def test_a_game_is_new_for_the_window_after_the_day_it_joined(self) -> None:
+        window = launch.NEW_WINDOW_DAYS
+        games = [
+            _Dated("today", self.DAY.isoformat()),
+            _Dated("last day", (self.DAY - timedelta(days=window - 1)).isoformat()),
+            _Dated("just past", (self.DAY - timedelta(days=window)).isoformat()),
+            _Dated("tomorrow", (self.DAY + timedelta(days=1)).isoformat()),
+            _Dated("undated", None),
+        ]
+        cards = launch.new_cards(games, self.DAY)
+        assert [card["name"] for card in cards] == ["today", "last day"]
+        assert all(card["fresh"] for card in cards)
+        assert cards[0]["added"] == "10 October 2026" and cards[0]["day"] == "2026-10-10"
+        assert cards[0]["sentence"] == "A game."
+
+    def test_a_game_added_tomorrow_is_on_the_shelf_tomorrow_with_no_edit(self) -> None:
+        tomorrow = self.DAY + timedelta(days=1)
+        games = [_Dated("old", "2026-10-01"), _Dated("tomorrow", tomorrow.isoformat())]
+        assert [card["name"] for card in launch.new_cards(games, self.DAY)] == ["old"]
+        assert [card["name"] for card in launch.new_cards(games, tomorrow)] == [
+            "tomorrow", "old"]
+
+    def test_newest_day_first_then_by_name_and_at_most_the_shelf(self) -> None:
+        games = [_Dated(f"game {letter}", "2026-10-09") for letter in "hgfedcba"]
+        games += [_Dated("zed", "2026-10-10"), _Dated("Alpha", "2026-10-10")]
+        cards = launch.new_cards(games, self.DAY)
+        assert len(cards) == launch.NEW_SHOWN
+        assert [card["name"] for card in cards][:4] == ["Alpha", "zed", "game a", "game b"]
+
+    def test_when_nothing_is_new_the_most_recent_marked_not_fresh(self) -> None:
+        games = [_Dated(f"g{n}", f"2026-08-{10 + n:02d}") for n in range(6)]
+        cards = launch.new_cards(games, self.DAY)
+        assert [card["name"] for card in cards] == ["g5", "g4", "g3", "g2"][
+            :launch.NEW_FALLBACK]
+        assert not any(card["fresh"] for card in cards)
+        assert launch.new_cards([], self.DAY) == []
+
+    def test_only_a_library_file_says_when_it_joined(self) -> None:
+        """A member's draft or a design run's candidate may carry any `provenance.added`;
+        only the library's two directories speak for theirs."""
+        games = [_Dated("drafted", "2026-10-10", source="designed"),
+                 _Dated("evolved", "2026-10-10", source="evolved"),
+                 _Dated("kept", "2026-10-10", source="committed")]
+        assert [card["name"] for card in launch.new_cards(games, self.DAY)] == ["kept"]
+
+    def test_the_library_today_shows_what_joined_on_the_ninth_and_tenth(self) -> None:
+        """The shelf over the real library on the day Q826 landed: eight of the games that
+        joined on 9 and 10 October, the tenth's first, each in the library."""
+        found = _the_library()
+        cards = launch.new_cards(found, self.DAY)
+        assert len(cards) == launch.NEW_SHOWN and all(card["fresh"] for card in cards)
+        assert {card["day"] for card in cards} <= {"2026-10-10", "2026-10-09"}
+        assert cards[0]["day"] == "2026-10-10"
+        listed = {game.hash for game in found}
+        assert all(card["hash"] in listed for card in cards)
+        # On the ninth, the ninth's own games (fifteen joined, so the shelf is full of
+        # them); three weeks later nothing is new and the shelf says so.
+        ninth = launch.new_cards(found, date(2026, 10, 9))
+        assert len(ninth) == launch.NEW_SHOWN
+        assert {card["day"] for card in ninth} == {"2026-10-09"}
+        later = launch.new_cards(found, date(2026, 11, 1))
+        assert len(later) == launch.NEW_FALLBACK and not any(card["fresh"] for card in later)
+
+    def test_the_shelfs_link_opens_every_game_newest_first(self) -> None:
+        """A day can add more than the shelf holds; the link is the rest of them."""
+        from page_text import PAGE
+
+        from chess_variant_sandbox.web import landing
+
+        assert f"data-newest>{html.escape(landing.NEW_ALL)}</a>" in landing.HTML
+        body = PAGE[PAGE.index("function fillNewShelf(data)"):]
+        body = body[:body.index("\n}\n")]
+        assert "BROWSE.sort = 'added'" in body and "BROWSE.descending = true" in body
+        assert "ORDER_SET = true" in body and "goPath(GAMES_PATH)" in body
+
+    def test_their_words_are_a_visitors(self) -> None:
+        for card in launch.new_cards(_the_library(), self.DAY):
+            assert card["sentence"].endswith("."), card
+            assert site_words.hits(card["sentence"]) == [], card
+        for words in (launch.SPOTLIGHT.sentence, launch.SPOTLIGHT_WHY):
+            assert words.endswith("."), words
+            assert site_words.hits(words) == [], words
+
+    def test_the_spotlight_is_in_the_library(self) -> None:
+        found = launch.resolve((launch.SPOTLIGHT,), _the_library())
+        assert [game.hash for game in found] == [launch.SPOTLIGHT.hash]
+        assert launch.SPOTLIGHT.name == "intransitive"
+        assert launch.SPOTLIGHT.hash == launch.by_name("intransitive").hash
+        assert launch.spotlight_card([]) is None
+        spot = launch.spotlight_card([_Game(launch.SPOTLIGHT.hash, "intransitive")])
+        assert spot is not None and spot["why"] == launch.SPOTLIGHT_WHY
+
+    def test_the_page_draws_no_number_of_its_own(self) -> None:
+        """A new game is drawn with the library card's own pill, which reads *not
+        measured* when nobody has measured it and marks a stale score provisional."""
+        from page_text import PAGE
+
+        from chess_variant_sandbox.web import landing
+
+        body = PAGE[PAGE.index("function fillNewShelf(data)"):]
+        body = body[:body.index("\n}\n")]
+        assert "scoreTag(game)" in body
+        assert "fmt(" not in body and ".index" not in body
+        assert 'id="landing-new"' in landing.HTML
+        assert 'id="landingSpotlight"' in landing.HTML
+        assert landing.NEW_HEADING in landing.HTML
+
+    def test_an_older_shelf_is_never_called_new(self) -> None:
+        """With no card `fresh`, the heading and the lead take their `data-older` words."""
+        from page_text import PAGE
+
+        from chess_variant_sandbox.web import landing
+
+        body = PAGE[PAGE.index("function fillNewShelf(data)"):]
+        body = body[:body.index("\n}\n")]
+        assert "card.fresh" in body and "dataset.older" in body
+        assert f'data-older="{html.escape(landing.NEW_OLDER_HEADING)}"' in landing.HTML
+        assert f'data-older="{html.escape(landing.NEW_OLDER_LEAD)}"' in landing.HTML
+        assert "new" not in landing.NEW_OLDER_HEADING.lower()
+        for words in (landing.NEW_LEAD, landing.NEW_OLDER_LEAD, landing.NEW_OLDER_HEADING):
+            assert site_words.hits(words) == [], words
 
 
 class TestThisMonthsGame:
@@ -254,9 +384,11 @@ class TestThisMonthsGame:
     def test_the_page_draws_what_the_server_chose(self) -> None:
         from page_text import PAGE
 
-        assert "function monthGameHtml(month)" in PAGE
-        assert "monthGameHtml(data.monthGame)" in PAGE
-        assert "This month's game" in PAGE
+        from chess_variant_sandbox.web import landing
+
+        # On the landing page's picks row since Q788.
+        assert "fill('landingMonth', data && data.monthGame" in PAGE
+        assert html.escape(landing.MONTH_LABEL) in landing.HTML
         assert "month_name" not in PAGE
 
 
@@ -265,7 +397,8 @@ class TestThisMonthsGame:
 
 @pytest.fixture
 def served(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
-    """A running site over the five featured games and one game outside the set."""
+    """A running site over the five featured games, one game outside the set, one of the
+    newest games and the spotlight."""
     from test_site_admin import SITE_URL, _running_site
 
     from chess_variant_sandbox.site import mail
@@ -276,8 +409,10 @@ def served(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
     for name in ("rulesets", "runs", "archive"):
         (tmp_path / name).mkdir()
     files = [library.RULESET_DIR / f"{name}.json"
-             for name in ("cylinder", "threecheck", "losalamos", "crazyhouse", "dull")]
+             for name in ("cylinder", "threecheck", "losalamos", "crazyhouse", "dull",
+                          "intransitive")]
     files.append(library.ARCHIVE_DIR / "quarry.json")
+    files.append(library.ARCHIVE_DIR / "rifle.json")
     for path in files:
         shutil.copy(path, tmp_path / "rulesets")
     with _running_site(tmp_path) as running:
@@ -316,6 +451,25 @@ class TestTheFrontPage:
         assert month["name"] == "quarry"
         assert month["hash"] == launch.by_name("quarry").hash
         assert month["month"] == "October 2026"
+
+    def test_the_new_games_and_spotlight_are_sent_over_what_is_offered(
+        self, served: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Of this library only *rifle* joined in the fortnight before 10 October, so it
+        # alone is sent: never a game the listing does not offer, and never an old one.
+        monkeypatch.setattr(launch, "today", lambda: date(2026, 10, 10))
+        payload = served.browser().get("/api/library").payload
+        assert [card["name"] for card in payload["newGames"]] == ["rifle"]
+        assert payload["newGames"][0]["added"] == "9 October 2026"
+        assert payload["newGames"][0]["fresh"] is True
+        # Every card carries the day its game joined, which *date added* sorts on.
+        days = {card["name"]: card["added"] for card in payload["games"]}
+        assert days["rifle"] == "2026-10-09" and days["cylinder chess"] == "2026-08-28"
+        assert payload["spotlight"]["name"] == "intransitive"
+        assert payload["spotlight"]["hash"] == launch.SPOTLIGHT.hash
+        for where, words in site_words.strings(
+                {"newGames": payload["newGames"], "spotlight": payload["spotlight"]}):
+            assert site_words.hits(words) == [], (where, words)
 
     def test_the_next_day_the_next_game(
         self, served: Any, monkeypatch: pytest.MonkeyPatch

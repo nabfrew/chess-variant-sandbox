@@ -248,7 +248,7 @@ class TestTheCheckHasAWallClock:
         # got. Both rungs ran and the draft passed the last of them.
         assert (kept["rung"], kept["rungPassed"]) == ("screen", True)
         assert "passes the playability check" in kept["said"]
-        assert "spot-checked by the site" in kept["said"]
+        assert "measured its score on your computer" in kept["said"]
         assert (tmp_path / "runs" / "designed" / "specs" / f"{kept['hash']}.json").is_file()
         assert [
             params for sql, params in store.executed if "insert into games" in sql

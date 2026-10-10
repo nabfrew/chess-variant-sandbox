@@ -1,0 +1,217 @@
+{
+  "schema_version": 19,
+  "name": "carousel",
+  "description": "Los Alamos chess on a board six wide and eight tall whose left and right edges are joined, with two fixed pairs of portals that work for one player each. Pair 1 is White's: White's pieces go in at b3 and come out one step beyond c5, in the direction they were travelling, never the other way; to Black's pieces both its ends are solid blocks. Pair 2 is Black's in the same way, in at b6 and out beside c4. Because the edges are joined, a piece can reach a portal from both sides, and then it comes out on either side of the exit: the player chooses. Nobody moves a portal and a portal is never captured.",
+  "board": {
+    "width": 6,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "O",
+      "name": "portal",
+      "value": 0,
+      "moves": []
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "e1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "c1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "d1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "N"
+      ]
+    },
+    "max_plies": 300,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "wrap": {
+      "files": "both"
+    },
+    "portals": [
+      {
+        "piece": "O",
+        "orange": "b3",
+        "blue": "c5",
+        "passage": {
+          "0": "orange_to_blue",
+          "1": "closed"
+        }
+      },
+      {
+        "piece": "O",
+        "orange": "b6",
+        "blue": "c4",
+        "passage": {
+          "0": "closed",
+          "1": "orange_to_blue"
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "added": "2026-10-10",
+    "origin": "human",
+    "source": "archive/carousel",
+    "history": "Q772a (2026-10-10): plan-portals.md's Carousel, one-way and closed passage per player and the exit chosen on a wrapping board. rulesets/losalamos.json on rulesets/cylinder.json's joined files, six by eight, with two fixed pairs. Pre-registered in docs/reference/portal-showcases.md before it was measured.",
+    "parents": [
+      "fcbb53d53ce4"
+    ]
+  }
+}

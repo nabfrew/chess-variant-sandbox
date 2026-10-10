@@ -130,6 +130,9 @@ function dropIn(object, path) {
 function controlValue(control) {
   const raw = control.raw;
   switch (control.control) {
+    // A rule a card of its own draws (the portals, P3), held as it stands: its card writes
+    // it, and an edit to any other card writes it back unchanged.
+    case 'kept': return raw;
     case 'menu': return raw === '' ? undefined : JSON.parse(raw);
     case 'int': case 'number': return String(raw).trim() === '' ? undefined : Number(raw);
     case 'rank':
@@ -751,6 +754,9 @@ function rulesCardsHtml(out) {
   const rules = DRAFT.rules || {};
   const byKey = Object.fromEntries(model.rules.map(f => [f.key, f]));
   const cards = model.ruleOrder.filter(key => key in rules).map(key => {
+    // The portals have a card of their own, in sentences, one per pair (P3, D4); the
+    // generated one stays reachable as the game's text.
+    if (key === 'portals' && Array.isArray(rules.portals)) return portalCardsHtml(out);
     const field = byKey[key];
     const fixed = model.fixed.includes(key);
     const inner = fieldHtml(field, rules[key], [key], 'rules', out, '');
@@ -902,6 +908,9 @@ function readControl(node) {
   const control = node.dataset.cctl;
   const path = JSON.parse(node.dataset.cpath);
   const required = node.dataset.creq === '1';
+  if (control === 'kept') {
+    return { path, control, required, raw: getIn(rootTarget(node.dataset.croot) || {}, path) };
+  }
   if (MARKERS.has(control)) return { path, control, raw: null, required };
   if (LIST_CONTROLS.has(control)) {
     const text = node.querySelector('[data-cpart="text"]');
@@ -957,7 +966,7 @@ function wireCards(form) {
     node.addEventListener('click', event => event.stopPropagation());
   });
   form.querySelectorAll('[data-cpath]').forEach(node => {
-    if (MARKERS.has(node.dataset.cctl)) return;
+    if (MARKERS.has(node.dataset.cctl) || node.dataset.cctl === 'kept') return;
     const write = () => writeRoot(node.dataset.croot);
     node.onchange = write;
     if (node.tagName !== 'SELECT') node.oninput = write;
@@ -1186,5 +1195,5 @@ function pickNoteHtml() {
   if (!PICKING) return '';
   return `<div class="muted small" style="margin-top:6px">You are picking squares for <b>${
     esc(PICKING.label)}</b>. Click squares on the opening board, and click one again to take
-    it back. Squares are written for the first player.</div>`;
+    it back. Squares are written for the first player.</div>${pickLineHtml()}`;
 }

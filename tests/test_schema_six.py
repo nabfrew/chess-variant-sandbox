@@ -461,14 +461,21 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
     ``intransitive`` is the only one whose goal sets differ: its army is mirrored and its
     goal rotated, so the second player's goal is a1 and not i1. ``dobutsu`` pairs its
     squares differently under the two readings, but a whole rank is its own image. None
-    of the five has walls, so the old validator never read ``reach`` on any of them.
+    of the six has walls, so the old validator never read ``reach`` on any of them.
     """
     root = Path(__file__).resolve().parents[1]
     paths = sorted((root / "rulesets").glob("*.json")) + sorted(
         (root / "archive").glob("*.json")
     )
-    # 73 since Q281a4's three hexagon showcases, none of which declares `reach`.
-    assert len(paths) == 73
+    # 77 since Q540's four schema-17 showcases, none of which declares `reach`; 80 since
+    # Q787's three gap showcases, none of which does either; 82 since Q781's two schema-18
+    # showcases, which do not either; 84 since Q783's two schema-18c showcases, likewise;
+    # 86 since Q784's two placement showcases, likewise; 87 since Q785's `kyoto`, likewise;
+    # 88 since Q786's `jeson-mor`, which does, aiming both sides at e5 (so the two
+    # readings agree); 90 since Q782's two hex-symmetry showcases, which declare none;
+    # 97 since Q772a's seven portal showcases, which declare none either; 98 since Q807's
+    # Ferry with no straight back, which does not either.
+    assert len(paths) == 98
 
     with_reach: dict[str, tuple[frozenset[int], frozenset[int]]] = {}
     for path in paths:
@@ -491,7 +498,7 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
         with_reach[path.stem] = (compiled.reach.squares[1], by_orientation)
 
     assert sorted(with_reach) == [
-        "dobutsu", "intransitive", "kingofthehill", "racingkings", "rps-v3"
+        "dobutsu", "intransitive", "jeson-mor", "kingofthehill", "racingkings", "rps-v3"
     ]
     differ = sorted(name for name, (built, other) in with_reach.items() if built != other)
     assert differ == ["intransitive"]
@@ -871,13 +878,11 @@ def test_a_strike_rule_that_cannot_mean_anything_is_refused(
 @pytest.mark.parametrize(
     "strike,fragment",
     [
-        # `rifle-b`, the find: it reads as rifle chess and plays an ordinary capture.
-        ({"effect": "capture", "position": "stay"}, "effect 'capture' and position 'stay'"),
-        ({"effect": "capture", "position": "stay", "immune": ["K"]}, "and an immune list"),
+        # `rifle-b`, the find, read as rifle chess and played an ordinary capture. Since
+        # schema 17 (Q540) `stay` under `capture` *is* rifle; see the test below.
         ({"effect": "capture", "position": "swap"}, "position 'swap'"),
         ({"effect": "capture", "chain": FALL}, "effect 'capture' and a chain"),
         ({"effect": "capture", "immune": ["K"]}, "effect 'capture' and an immune list"),
-        ({"position": "stay"}, "effect 'capture' and position 'stay'"),
         # A chain whose every `from` is immune, under each position that is not `choose`.
         *(
             (
@@ -905,6 +910,28 @@ def test_a_strike_the_core_plays_as_plain_capture_is_refused(
     assert not strike_changes_anything(strike, "strike", [p["id"] for p in spec["pieces"]])
     errors = validate_spec(spec)
     assert len(errors) == 1 and fragment in errors[0] and PLAYED_AS_CAPTURE in errors[0], errors
+
+
+@pytest.mark.parametrize(
+    "strike",
+    [
+        {"effect": "capture", "position": "stay"},
+        {"effect": "capture", "position": "stay", "immune": ["K"]},
+        {"position": "stay", "immune": ["K"]},
+    ],
+)
+def test_rifle_is_schema_seventeens(strike: dict[str, Any]) -> None:
+    """Q538's find, `rifle-b`, became a rule in Q540: `stay` under `"capture"` removes the
+    victim and leaves the attacker where it stood. Under schema 6 it is refused by name as
+    schema 17's; under 17 it validates once every royal is immune."""
+    from chess_variant_sandbox.spec.schema import strike_changes_anything
+
+    spec = with_rules(strike=strike)
+    assert strike_changes_anything(strike, "strike", [p["id"] for p in spec["pieces"]])
+    assert any("added in schema 17" in error for error in validate_spec(spec))
+    spec["schema_version"] = 17
+    errors = validate_spec(spec)
+    assert errors == [] if "immune" in strike else any("not in rules.strike.immune" in e for e in errors)
 
 
 @pytest.mark.parametrize(

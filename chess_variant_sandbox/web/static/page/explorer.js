@@ -243,11 +243,14 @@ async function showExplorer() {
 // what a line means, which rule a colour is, the families, and both ends of the score
 // ramp as numbers.
 function explorerBodyHtml() {
-  return `${explorerLinesHtml()}
+  return `<details class="panel mapControls" id="mapControls" open>
+    <summary class="muted small">what the map draws, and its key</summary>
+    ${explorerLinesHtml()}
     ${mapLegendHtml()}
     ${explorerSizeHtml()}
     ${explorerKeepHtml()}
     ${explorerGroupsHtml()}
+    </details>
     <div class="mapView">
       <div class="mapFrame" id="exploreFrame">
         <div class="exploreCanvas" id="explore"></div>
@@ -289,7 +292,7 @@ function explorerLinesHtml() {
         aria-valuetext="${MAP_CUT}">
       <b id="exploreCutValue">${MAP_CUT}</b>${info('likeness')}</label>
     <span class="muted small" id="exploreCutSay"></span>` : '';
-  return `<div class="row" style="gap:8px 16px; margin:8px 0; flex-wrap:wrap">
+  return `<div class="row mapCtl">
     ${slider}
     <label class="pick">colour the dots by
       <select id="explorePaint" aria-label="what the colour of a dot says">
@@ -421,7 +424,7 @@ function explorerKeepHtml() {
   if (!filters.length) return '';
   const options = filters.map(one => `<option value="${esc(one.filter)}"${
     one.filter === EXPLORER_KEEP ? ' selected' : ''}>${esc(one.label)}</option>`).join('');
-  return `<div class="row" style="gap:10px; margin:8px 0; flex-wrap:wrap">
+  return `<div class="row mapCtl">
     <label class="pick">and light up only
       <select id="exploreKeep" aria-label="which games to light up">
         <option value="">every game</option>${options}</select></label>
@@ -478,7 +481,7 @@ function explorerSizeHtml() {
   if (!sizes.length) return '';
   const options = sizes.map(size => `<option value="${esc(size.key)}"${
     size.key === EXPLORER_SIZE ? ' selected' : ''}>${esc(size.label)}</option>`).join('');
-  return `<div class="row" style="gap:10px; margin:8px 0; flex-wrap:wrap">
+  return `<div class="row mapCtl">
     <label class="pick">size the dots by
       <select id="exploreSize" aria-label="what the size of a dot says">${
         options}</select></label>
@@ -553,8 +556,8 @@ function explorerGroupsHtml() {
       window.innerWidth > 720 ? ' open' : ''}>
       <summary class="muted small">fold a community into one dot</summary>
       <div class="chips">${chips}</div></details>` : '';
-  return `<div class="row" style="justify-content:space-between; gap:10px; margin:8px 0">
-    <div style="flex:1 1 320px">${folds}</div>
+  return `<div class="row mapCtl mapEnds">
+    <div class="mapFolds">${folds}</div>
     <div class="row">
       <button id="exploreReset" title="Every community open, every game back where it
         started, and the lines the page opened with.">reset</button>
@@ -1902,6 +1905,10 @@ function wireExplorer() {
   // put the picture below the fold.
   const legend = document.getElementById('mapLegend');
   if (legend) legend.open = window.innerWidth > 720 && window.innerHeight > 860;
+  // On a phone the whole sheet of controls folds to its one line, so the drawing is on the
+  // first screen (plan-visual.md §1.1: the controls took it); one tap opens them.
+  const controls = document.getElementById('mapControls');
+  if (controls) controls.open = window.innerWidth > 720;
   const find = document.getElementById('mapFind');
   if (find) {
     find.oninput = () => {

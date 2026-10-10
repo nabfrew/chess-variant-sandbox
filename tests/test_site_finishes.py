@@ -293,6 +293,7 @@ class TestWhatIsKeptNamesNobody:
             columns = {found[0] for found in cursor.fetchall()}
         assert columns == {
             "match", "ordinal", "moves", "result", "reason", "takebacks", "finished",
+            "thinks", "undone", "standing",
         }
 
     def test_a_visitors_finish_is_the_game_and_no_one(self, store: Scratch) -> None:

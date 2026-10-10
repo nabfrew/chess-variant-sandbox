@@ -9,12 +9,13 @@ What the page holds, and nothing else (§6.2's table):
 
 - **the header**: the mark (R2, `web/page/marks.py`), the handle, *member since ‹month›*,
   the abandonment line (`correspondence.finished_line`, once there is a finished game
-  between people), and *Challenge ‹handle›* for another member;
-- **Recently**: the last `RECENT` events, newest first -- a finished rated game or game
-  between people, a first (a milestone), one of their games going on trial, being
-  shortlisted or joining the Library or the Baseline;
-- **Games ‹handle› designed**: published games only, with the level word and how many other
-  people have tried each (a count, never who);
+  between people), and *Challenge ‹handle›* for another member: the games they made first,
+  then the rated games (Q760);
+- **Games ‹handle› played lately**: the last `RECENT` finished rated games and games
+  between people, newest first (Q760: R1's *Recently* mixed these with firsts and level
+  changes, which are said once each under the two sections below);
+- **Games ‹handle› made**: published games only, newest first, each with the day it was
+  published, the level word and how many other people have tried it (a count, never who);
 - **What ‹handle› has done**: the milestones and badges, as on your own page;
 - **Favourite games**: the games they gave five stars, **only if they ticked**
   `users.show_favourites` on their own page;
@@ -57,7 +58,10 @@ from chess_variant_sandbox.site import (
 from chess_variant_sandbox.web import opponents
 
 RECENT = 8
-"""How many events *Recently* lists (§6.2)."""
+"""How many finished games *Games ‹handle› played lately* lists (§6.2)."""
+
+MADE_SHOWN = 3
+"""How many of a member's published games the people page names beside them (Q760)."""
 
 PLAYS_WITH = 3
 """How many people, and how many computer players, *Plays most with* names."""
@@ -176,6 +180,68 @@ def with_pages(connection: Any) -> dict[int, str]:
         return {int(found[0]): str(found[1]) for found in cursor.fetchall()}
 
 
+DIRECTORY_SAID = (
+    "Every member is listed here: a handle is chosen to be seen by other members, and "
+    "the box that challenges somebody already suggests every member's handle. Each name "
+    "is the way to that member's page. Visitors cannot see this list or the pages."
+)
+"""Who the people page lists, and why, said on the page itself (Q760)."""
+
+
+def directory(connection: Any, viewer: int | None = None) -> list[dict[str, Any]]:
+    """The people page's list (Q760): everybody who has a page, by handle, A to Z.
+
+    Each with exactly what their page's header already shows every member -- the mark, the
+    handle, *member since* -- and the names of the newest `MADE_SHOWN` of their published
+    games with how many more there are, so somebody can be found by a game of theirs.
+    Nothing is counted against anybody else and nothing here is a position: the order is
+    the alphabet's. No draft, no vote, no game played and no setting is read, so nothing
+    a member has not chosen to show can reach the payload. `you` marks the reader's own
+    row, so they can find themselves.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select id, handle, created from users"
+            " where handle is not null and revoked is null and forgotten is null"
+            " order by lower(handle), id"
+        )
+        # Only a handle `find` answers for, so every row's link opens a page.
+        people = [
+            (int(row[0]), str(row[1]), row[2]) for row in cursor.fetchall()
+            if identity.HANDLE.match(str(row[1]))
+        ]
+        cursor.execute(
+            "select hash, owner from games where origin = %s and owner = any(%s)",
+            (designs.DESIGNED, [person[0] for person in people]),
+        )
+        owned = [(str(row[0]), int(row[1])) for row in cursor.fetchall()]
+    public = _published(connection, (digest for digest, _ in owned))
+    names = browse.names(connection, sorted(public))
+    made: dict[int, list[tuple[float, str]]] = {}
+    for digest, owner in owned:
+        if digest not in public:
+            continue
+        published = public[digest].get("published")
+        stamp = published.timestamp() if isinstance(published, datetime) else 0.0
+        made.setdefault(owner, []).append((-stamp, digest))
+    listed = []
+    for user, handle, joined in people:
+        theirs = [digest for _, digest in sorted(made.get(user, []))]
+        listed.append({
+            "handle": handle,
+            "mark": identity.mark_of(user, handle),
+            "page": address(handle),
+            "since": month(joined),
+            "you": user == viewer,
+            "made": [
+                {"game": digest, "name": names.get(digest, "")}
+                for digest in theirs[:MADE_SHOWN]
+            ],
+            "moreMade": max(0, len(theirs) - MADE_SHOWN),
+        })
+    return listed
+
+
 def _seat(found: matches.Row, user: int) -> int:
     return 0 if found.seat0 is not None and found.seat0.user == user else 1
 
@@ -202,38 +268,6 @@ def _result(found: matches.Row, user: int) -> str:
     if score is None or score == 0.5:
         return "drew"
     return "won" if score > 0.5 else "lost"
-
-
-def _level_events(
-    connection: Any, made: Mapping[str, dict[str, Any]], names: Mapping[str, str]
-) -> list[dict[str, Any]]:
-    """A designed game going on trial, being shortlisted, or moving between the Library
-    and the Baseline, for the games of theirs the page may name."""
-    found: list[dict[str, Any]] = []
-    for digest, row in made.items():
-        name = names.get(digest, "")
-        if row.get("published") is not None:
-            found.append({"kind": "level", "when": row["published"], "game": digest,
-                          "name": name, "said": "went on trial"})
-        if row.get("nominated") is not None:
-            found.append({"kind": "level", "when": row["nominated"], "game": digest,
-                          "name": name, "said": "was shortlisted"})
-    if made:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "select game, was, became, moved from level_moves where game = any(%s)",
-                (sorted(made),),
-            )
-            for digest, was, became, moved in cursor.fetchall():
-                if became == stages.CORPUS:
-                    said = "joined the Baseline"
-                elif was == stages.DESIGNED:
-                    said = "joined the Library"
-                else:
-                    said = "left the Baseline for the Library"
-                found.append({"kind": "level", "when": moved, "game": str(digest),
-                              "name": names.get(str(digest), ""), "said": said})
-    return found
 
 
 def read(connection: Any, handle: str, viewer: int) -> dict[str, Any] | None:
@@ -281,34 +315,41 @@ def read(connection: Any, handle: str, viewer: int) -> dict[str, Any] | None:
     def named(digest: str) -> dict[str, Any]:
         return {"game": digest, "name": names.get(digest, "")}
 
-    # Recently: games, firsts and levels together, newest first, the last RECENT.
-    events: list[dict[str, Any]] = []
+    # Q760: the games they played lately, newest first, the last RECENT. (R1's *Recently*
+    # mixed these with firsts and level changes; the firsts are under *What ‹handle› has
+    # done* and a game's level is beside it under *Games ‹handle› made*, so each fact is
+    # said once.)
+    played: list[dict[str, Any]] = []
     for row in games:
         if row.game not in public or row.finished is None:
             continue
-        events.append({
-            "kind": "game", "when": row.finished, **named(row.game),
+        played.append({
+            "when": row.finished, **named(row.game),
             "result": _result(row, user), "against": _against(row, user, people),
             "between": correspondence.between_people(row),
             "rated": row.mode == matches.LEADERBOARD,
         })
+        if len(played) == RECENT:
+            break
     lines = [line for line in reading.milestones if line.game in public]
-    for line in lines:
-        events.append({"kind": "first", "when": line.when, "line": line.kind,
-                       **named(line.game)})
     mine_shown = {
         digest: row for digest, row in public.items() if digest in set(own_games)
     }
-    events.extend(_level_events(connection, mine_shown, names))
-    events.sort(key=lambda event: event["when"], reverse=True)
 
+    def newest(digest: str) -> tuple[float, str, str]:
+        published = mine_shown[digest].get("published")
+        stamp = published.timestamp() if isinstance(published, datetime) else 0.0
+        return (-stamp, names.get(digest, "").lower(), digest)
+
+    # Every published game they made, the newest first, each with the day it went out.
     designed = [
         {
             **named(digest),
             "level": mine_shown[digest]["level"],
+            "published": mine_shown[digest].get("published"),
             "tried": len({t.user for t in tries if t.game == digest and t.user != user}),
         }
-        for digest in sorted(mine_shown, key=lambda d: (names.get(d, "").lower(), d))
+        for digest in sorted(mine_shown, key=newest)
     ]
 
     badges_shown = [
@@ -343,11 +384,16 @@ def read(connection: Any, handle: str, viewer: int) -> dict[str, Any] | None:
     challenge = None
     if not own:
         unlisted = admin.unlisted_games(connection)
-        offered = [game for game in rated if game not in unlisted]
+        # Q760: the games they made come first, since a challenge from somebody's page is
+        # most often to one of theirs; then every rated game. A game of theirs nobody can
+        # start (taken off the site) is in neither.
+        theirs = [game["game"] for game in designed if game["game"] not in unlisted]
+        offered = [game for game in rated if game not in unlisted and game not in theirs]
         offered_names = browse.names(connection, offered)
         challenge = {
             "paused": correspondence.paused(connection),
             "pausedSays": correspondence.PAUSED_SAID,
+            "theirs": [named(game) for game in theirs],
             "games": sorted(
                 ({"game": game, "name": offered_names.get(game, "")} for game in offered),
                 key=lambda game: (str(game["name"]).lower(), game["game"]),
@@ -362,7 +408,7 @@ def read(connection: Any, handle: str, viewer: int) -> dict[str, Any] | None:
         "finished": correspondence.finished_line(connection, user),
         "own": own,
         "challenge": challenge,
-        "recent": events[:RECENT],
+        "played": played,
         "designed": designed,
         "milestones": [
             {

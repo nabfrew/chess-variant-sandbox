@@ -23,6 +23,14 @@ moves and its verdict, into `finishes` (`0018_finishes.sql`, Q502a), which nothi
 rewrites: a person's win survives *play again*. `site/finishes.py` reads and replays
 those rows, and `takebacks` on this row counts the undos a finish copies beside them.
 
+Three more things are kept for the baseline a person's games can give (H1 to H3 of
+`docs/plan-human-data.md` §1.2, `0032_human_data.sql`), on a game between a person and a
+computer player only, none shown per person and none read by anything that scores:
+`thinks`, beside `moves`, the milliseconds from the stored reply (or the start, or a
+take-back) to the person's move arriving, on the database's clock and null past
+`THINK_CAP`; `undone`, what each take-back and restart removed; and `standing`, each
+side's rating in the game's table when a practice game started, read and never moved.
+
 ## The two modes
 
 **Sandbox** has undo and restart and counts for nothing. Its row exists only so a tab can
@@ -102,7 +110,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from chess_variant_sandbox.site import finishes, quota, rating, usage
+from chess_variant_sandbox.site import finishes, pinning, quota, rating, usage
 from chess_variant_sandbox.web import opponents
 from chess_variant_sandbox.web.human import HUMAN, RESIGNED, HumanGame, summarise
 from chess_variant_sandbox.web.library import Game, engine_for
@@ -177,6 +185,14 @@ CANCELLED = "cancelled"
 
 BETWEEN_PEOPLE = "seat0_user is not null and seat1_user is not null"
 """A row with a person in both seats, as SQL: a game between two people (Q570)."""
+
+THINK_CAP = timedelta(minutes=30)
+"""The longest gap stored as a think time; a longer one is stored as null (H1).
+
+`docs/plan-human-data.md` §1.2: a person who walked off and came back did not think for an
+hour, so a gap over this is *away*, not *thinking*. Fixed by the plan before any gap was
+read, and not to be tuned against what it excludes.
+"""
 
 
 class MatchError(ValueError):
@@ -464,6 +480,11 @@ def start(
     }
     match_id = secrets.token_urlsafe(9)
     columns, players = _seat_columns(seats, user)
+    # H3, named only where there is one, as `played` is, so every other match writes what
+    # it wrote before `0032_human_data.sql`.
+    standing = _standing(connection, game, mode, seats, user)
+    if standing is not None:
+        played["standing"] = json.dumps(standing)
     named = "".join(f", {column}" for column in played)
     with connection.cursor() as cursor:
         cursor.execute(
@@ -474,7 +495,50 @@ def start(
             (match_id, game, mode, seed, is_top, list(group), followed, *players,
              *played.values()),
         )
+    # H4: who the computer seats are beyond their agent strings (`site/pinning.py`).
+    computers = [str(seat) for seat in seats if seat != HUMAN]
+    if computers:
+        pinning.note(connection, match_id, pinning.identity(_spec, computers))
     return row(connection, match_id)
+
+
+def _standing(
+    connection: Any, game: str, mode: str, seats: Sequence[str], user: int | None
+) -> dict[str, list[Any]] | None:
+    """Each side's rating and deviation as the game's table stands now, for a practice row.
+
+    H3 of `docs/plan-human-data.md` §1.2: a practice game against a computer player on a
+    game whose table has computer players keeps what the table said at its start, so it
+    can be graded by skill later. A read only; nothing moves. A person with no row yet
+    reads the table's starting values and is marked `starting`; a seat with nothing to
+    read -- a visitor, a computer player the table does not hold -- is null throughout.
+    None for a rated row (its `seat*_rating_before` is written at the finish), a watch,
+    a game between two people, and a game whose table has no computer players.
+    """
+    if mode != SANDBOX or list(seats).count(HUMAN) != 1:
+        return None
+    table = rating.load(connection, game)
+    if not rating.computers(table):
+        return None
+    ratings: list[float | None] = []
+    deviations: list[float | None] = []
+    starting: list[bool | None] = []
+    for seat in seats:
+        if seat == HUMAN:
+            key = None if user is None else rating.person(user)
+        else:
+            key = rating.computer(str(seat))
+        if key is None or (key.is_computer and key not in table):
+            ratings.append(None)
+            deviations.append(None)
+            starting.append(None)
+            continue
+        held = table.get(key)
+        player = held if held is not None else rating.newcomer(key)
+        ratings.append(player.rating)
+        deviations.append(player.deviation)
+        starting.append(held is None)
+    return {"ratings": ratings, "deviations": deviations, "starting": starting}
 
 
 def _played(seat: str, game: str) -> str | None:
@@ -743,7 +807,7 @@ def play(connection: Any, match_id: str, move: int) -> dict[str, Any]:
     through `correspondence.move`, which checks that before it calls `_advance`.
     """
     _not_between_people(row(connection, match_id))
-    return _advance(connection, match_id, lambda game: game.play(move))
+    return _advance(connection, match_id, lambda game: game.play(move), person=True)
 
 
 def _not_between_people(found: Row) -> None:
@@ -768,7 +832,7 @@ def play_agent(connection: Any, match_id: str) -> dict[str, Any]:
         _note_budget(found)
         _check_played(connection, found)
 
-    return _advance(connection, match_id, lambda game: game.play_agent(), checked)
+    return _advance(connection, match_id, lambda game: game.play_agent(), checked, reply=True)
 
 
 def _agents(found: Row) -> list[str]:
@@ -801,9 +865,19 @@ def _retake_seats(connection: Any, found: Row) -> None:
 
 
 def _advance(
-    connection: Any, match_id: str, act: Any, noted: Any = None
+    connection: Any,
+    match_id: str,
+    act: Any,
+    noted: Any = None,
+    person: bool = False,
+    reply: bool = False,
 ) -> dict[str, Any]:
-    """Apply one move to a running match, store the new move list, and finish if it ended."""
+    """Apply one move to a running match, store the new move list, and finish if it ended.
+
+    `person` is a move a person sent, whose think time is measured now, as it arrives
+    (H1); `reply` is the computer player's, whose landing is stamped when it is stored,
+    after its search, since that is when the person can start to think.
+    """
     found = row(connection, match_id)
     if noted is not None:
         noted(found)
@@ -811,8 +885,19 @@ def _advance(
         raise MatchError("this game is over")
     _retake_seats(connection, found)
     game = session(connection, match_id)
+    if reply:
+        # H4: a reply chosen under another build than the row's last is appended.
+        pinning.note(connection, match_id, pinning.identity(game.game.spec, _agents(found)))
+    kept = len(game.played)
+    think = None
+    if person and game.seats[game.state.side_to_move] == HUMAN:
+        think = _think(connection, match_id)
     snapshot = act(game)
-    _store_moves(connection, match_id, game.played, game.depths, moved=True)
+    thinks = _thinks_now(connection, found, kept, len(game.played), think)
+    _store_moves(
+        connection, match_id, game.played, game.depths, moved=True, thinks=thinks,
+        stored=reply,
+    )
     outcome = snapshot.get("outcome")
     if outcome is not None:
         _finish(
@@ -838,23 +923,117 @@ def _store_moves(
     moves: Sequence[int],
     depths: Sequence[int | None],
     moved: bool,
+    thinks: Sequence[int | None] | None = None,
+    stored: bool = False,
 ) -> None:
     """The move list and the depth beside each move, written in one statement.
 
     Together, because `matches_depths_beside_moves` holds the two arrays to one length and
-    an entry of `depths` means nothing apart from the move at the same place.
+    an entry of `depths` means nothing apart from the move at the same place. `thinks`
+    goes in the same statement for the same reason (`0032_human_data.sql`), and is left
+    as it is when None, which is every row that is not a person against a computer player.
+
+    `moved` is the transaction's *now* -- when the request arrived -- except for a stored
+    computer reply (`stored`), which is stamped as it is written: the reply's search runs
+    between the two, and a person's think starts when the reply exists, not when it was
+    asked for (H1).
     """
+    stamp = "clock_timestamp()" if stored else "now()"
+    values: list[Any] = [
+        json.dumps([int(move) for move in moves]),
+        json.dumps([None if depth is None else int(depth) for depth in depths]),
+    ]
+    if thinks is not None:
+        values.append(json.dumps([None if think is None else int(think) for think in thinks]))
     with connection.cursor() as cursor:
         cursor.execute(
             "update matches set moves = %s::jsonb, depths = %s::jsonb"
-            + (", moved = now()" if moved else ", moved = null")
+            + (", thinks = %s::jsonb" if thinks is not None else "")
+            + (f", moved = {stamp}" if moved else ", moved = null")
             + " where id = %s",
-            (
-                json.dumps([int(move) for move in moves]),
-                json.dumps([None if depth is None else int(depth) for depth in depths]),
-                match_id,
-            ),
+            (*values, match_id),
         )
+
+
+def _against_computer(found: Row) -> bool:
+    """A person (signed in or not) against a computer player: the rows `thinks` is kept on."""
+    return found.is_computer(0) != found.is_computer(1)
+
+
+def _stored_thinks(connection: Any, match_id: str) -> list[int | None] | None:
+    with connection.cursor() as cursor:
+        cursor.execute("select thinks from matches where id = %s", (match_id,))
+        found = cursor.fetchone()
+    if found is None or found[0] is None:
+        return None
+    return [None if think is None else int(think) for think in found[0]]
+
+
+def _think(connection: Any, match_id: str) -> int | None:
+    """The milliseconds since the row last changed hands to the person (H1).
+
+    From the stored computer reply, the start, or a take-back -- whichever last left the
+    person to move, which is `coalesce(moved, started)` -- to now, on the database's
+    clock, so it is the server's measure and not a browser's. None past `THINK_CAP`.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select case when now() - coalesce(moved, started) > %s then null"
+            " else greatest(0, round(extract(epoch from now() - coalesce(moved, started))"
+            " * 1000))::bigint end from matches where id = %s",
+            (THINK_CAP, match_id),
+        )
+        found = cursor.fetchone()
+    return None if found is None or found[0] is None else int(found[0])
+
+
+def _thinks_now(
+    connection: Any, found: Row, kept: int, length: int, think: int | None
+) -> list[int | None] | None:
+    """`thinks` after a move: the first `kept` entries, then `think` for the first new move.
+
+    None (the column left alone) on a row that is not a person against a computer player.
+    A row from before the column pads every earlier move with null, as `depths` does.
+    """
+    if not _against_computer(found):
+        return None
+    stored = _stored_thinks(connection, found.id) or []
+    thinks: list[int | None] = stored[:kept] + [None] * max(0, kept - len(stored))
+    for index in range(max(0, length - kept)):
+        thinks.append(think if index == 0 else None)
+    return thinks
+
+
+def _note_undone(
+    connection: Any, found: Row, before: Sequence[int], ply: int, restart: bool = False
+) -> list[int | None] | None:
+    """Append what a take-back or restart removed to `undone`; `thinks` cut to match (H2).
+
+    The entry is the ply the board went back to, the moves it removed and their think
+    times where the row kept them; a restart's says so. Returns `thinks` truncated to
+    `ply`, for the caller to store with the moves. A watch -- nobody at the board -- keeps
+    neither, and gets None.
+    """
+    if not _against_computer(found):
+        return None
+    removed = [int(move) for move in before[ply:]]
+    stored = _stored_thinks(connection, found.id)
+    padded = (stored or []) + [None] * max(0, len(before) - len(stored or []))
+    thinks = padded[:ply]
+    if not removed:
+        return thinks
+    entry: dict[str, Any] = {"ply": ply, "moves": removed}
+    if stored is not None:
+        entry["thinks"] = padded[ply : len(before)]
+    if restart:
+        entry["restart"] = True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "update matches set undone = coalesce(undone, '[]'::jsonb)"
+            " || jsonb_build_array(%s::jsonb) where id = %s",
+            (json.dumps(entry), found.id),
+        )
+    return thinks
 
 
 def undo(connection: Any, match_id: str) -> dict[str, Any]:
@@ -877,8 +1056,11 @@ def undo(connection: Any, match_id: str) -> dict[str, Any]:
     if not game.played:
         return game.snapshot()
     _retake_seats(connection, found)
+    before = list(game.played)
     snapshot = game.undo()
-    _store_moves(connection, match_id, game.played, game.depths, moved=True)
+    # What it removed, kept beside the row (H2), before the moves are cut.
+    thinks = _note_undone(connection, found, before, len(game.played))
+    _store_moves(connection, match_id, game.played, game.depths, moved=True, thinks=thinks)
     _reopen(connection, match_id)
     # Counted, so a finish reached with the undo button says so (`0018_finishes.sql`).
     with connection.cursor() as cursor:
@@ -897,11 +1079,22 @@ def restart(connection: Any, match_id: str) -> dict[str, Any]:
     """
     found = _sandbox_only(connection, match_id, "restarted")
     _retake_seats(connection, found)
-    _store_moves(connection, match_id, (), (), moved=False)
+    before = [move for move, _depth in _moves(connection, match_id)]
+    thinks = _note_undone(connection, found, before, 0, restart=True)
+    _store_moves(connection, match_id, (), (), moved=False, thinks=thinks)
     _reopen(connection, match_id)
+    # A restart is a fresh start, so the table is read again as it stands now (H3).
+    seats = (_seat_name(found.seat0), _seat_name(found.seat1))
+    person = next(
+        (key.user for key in (found.seat0, found.seat1) if key is not None and key.user),
+        None,
+    )
+    standing = _standing(connection, found.game, found.mode, seats, person)
     with connection.cursor() as cursor:
         cursor.execute(
-            "update matches set started = now(), takebacks = 0 where id = %s", (match_id,)
+            "update matches set started = now(), takebacks = 0, standing = %s::jsonb"
+            " where id = %s",
+            (None if standing is None else json.dumps(standing), match_id),
         )
     return session(connection, match_id).snapshot()
 
@@ -993,6 +1186,9 @@ def _finish(
     The badges of §2.9 are granted last, in this same transaction, so a finish and the
     badges it completed land together or neither does. They run after the rating call
     because *Giant-killer* reads the ratings going in, which that call is what writes.
+    A rated game between a person and a computer player then asks whether its game is
+    over the bar of `docs/plan-human-data.md` §3.3, and queues it for training if so
+    (`site/training.py`, H9); that writes a queue entry and nothing that rates or scores.
     `site/badges.py` is imported here rather than at the top because it reads this
     module's rows.
     """
@@ -1008,6 +1204,12 @@ def _finish(
     finishes.record(connection, match_id)
     update = rating.finish(connection, match_id)
     badges.grant_for_match(connection, match_id)
+    if update is not None and update.seat0.key.is_computer != update.seat1.key.is_computer:
+        # H9 (`docs/plan-human-data.md` §3.3, the user's B): a rated game against a
+        # computer player may put its game over the bar, which queues it for training.
+        from chess_variant_sandbox.site import training
+
+        training.alarm_for(connection, row(connection, match_id).game)
     return update
 
 

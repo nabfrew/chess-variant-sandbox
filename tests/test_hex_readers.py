@@ -202,6 +202,31 @@ class TestTheWrapCard:
 # `describe_spec` of every committed and archived spec, computed by the code before the
 # hexagon branches (`624ece8`): sha256 of the text, first sixteen hex digits.
 _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
+    "archive/andernach": "62f0b7d191b8acf6",  # Q540, schema 17
+    "archive/circe": "dd25abf2bc7c6f21",  # Q540, schema 17
+    "archive/kamikaze": "86810a81183707bc",  # Q540, schema 17
+    "archive/rifle": "7ea1669e4e1aa9e2",  # Q540, schema 17
+    "archive/einstein": "d3b6b02f8466f39b",  # Q781, schema 18
+    "archive/omega": "9c2b1ac6dbc35c11",  # Q781, schema 18
+    "archive/extinction-chess": "ed5f3e3428a44bcc",  # Q783, schema 18
+    "archive/grand": "8cd64b4fc05a23fe",  # Q783, schema 18
+    "archive/placement-chess": "86a5bb2444f119a3",  # Q784, schema 18
+    "archive/sittuyin": "51b0f5043e170580",  # Q784, schema 18
+    "archive/kyoto": "042d5726eb291356",  # Q785, schema 18
+    "archive/jeson-mor": "051d25a135b04a2c",  # Q786, schema 18
+    "archive/hex-glinski-turned": "b592a4deec6f7850",  # Q782, schema 18
+    "archive/hex-glinski-turned-mirrored": "0833f5eb9004204c",  # Q782, schema 18
+    "archive/shogi-drop-promoted": "b9a76d36e4533433",  # Q787
+    "archive/shogi-backward-drops": "7146e06d789e999e",  # Q787
+    "archive/pawn-knockdown": "16b16f92f478e283",  # Q787
+    "archive/divide": "9bb463b570c037d6",  # Q772a, schema 19
+    "archive/ferry": "78f34d021bf69c60",  # Q772a, schema 19
+    "archive/ferry-no-straight-back": "6496a58a9f77bd62",  # Q807, schema 20
+    "archive/carousel": "adca05bb14f01944",  # Q772a, schema 19
+    "archive/wormhole": "f9e39fb07aaf10ef",  # Q772a, schema 19
+    "archive/wormhole-adrift": "bfe66dbf1f9be1bd",  # Q772a, schema 19
+    "archive/shut-wormhole": "899a44ea1a70e016",  # Q772a, schema 19
+    "archive/cylinder-wormhole": "956c4052a0efe3b2",  # Q772a, schema 19
     "archive/cannonade": "fc242c00df9a0b1d",
     "archive/chess-sweeping-bishops": "e1fbb67c85b726f2",  # Q614 (W7): its description, for a player
     "archive/hex-glinski-promoting": "85e8bb4ab13a3462",

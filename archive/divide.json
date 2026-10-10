@@ -1,0 +1,367 @@
+{
+  "schema_version": 19,
+  "name": "divide",
+  "description": "Capablanca chess on a board ten wide and eleven tall, cut in two by a wall across the middle row that no piece may stand on, slide through or jump over. The only way across is one pair of portals. The orange end stands in White's half and only White may move it; the blue end stands in Black's half and only Black may move it. Moving a portal is a turn: one step in any direction onto an empty square. White's pieces go in only at the orange end and come out one step beyond the blue end, in the direction they were travelling; Black's go in only at the blue end and come out beside the orange end. So the door you move is your way out and also where the enemy arrives, and a piece that has gone through never comes back: to it the far door is a solid block. A pawn reaches its promotion row only by going through. Otherwise it is Capablanca chess.",
+  "board": {
+    "width": 10,
+    "height": 11
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "A",
+      "name": "archbishop",
+      "value": 7,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "name": "chancellor",
+      "value": 8,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "O",
+      "name": "portal",
+      "value": 0,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "move"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2",
+          "i2",
+          "j2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "j1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "i1"
+        ]
+      },
+      {
+        "piece": "A",
+        "squares": [
+          "c1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "d1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "e1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "f1"
+        ]
+      },
+      {
+        "piece": "C",
+        "squares": [
+          "h1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "C",
+        "A",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 3
+    },
+    "max_plies": 500,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "obstacles": {
+      "squares": [
+        "a6",
+        "b6",
+        "c6",
+        "d6",
+        "e6",
+        "f6",
+        "g6",
+        "h6",
+        "i6",
+        "j6"
+      ],
+      "blocks_leaps": true
+    },
+    "portals": [
+      {
+        "piece": "O",
+        "orange": "e3",
+        "blue": "e9",
+        "moved_by": {
+          "orange": [
+            0
+          ],
+          "blue": [
+            1
+          ]
+        },
+        "passage": {
+          "0": "orange_to_blue",
+          "1": "blue_to_orange"
+        }
+      }
+    ]
+  },
+  "provenance": {
+    "added": "2026-10-10",
+    "origin": "human",
+    "source": "archive/divide",
+    "history": "Q772a (2026-10-10): plan-portals.md's walled game, Divide, with the one-way return rule (the plan's option A). rulesets/capablanca.json on a 10x11 board, a wall on rank 6 that blocks leaps, and one pair moved and entered by one player per end. Pre-registered in docs/reference/portal-showcases.md before it was measured.",
+    "parents": [
+      "2eefcd835b3b"
+    ]
+  }
+}

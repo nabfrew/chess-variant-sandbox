@@ -46,7 +46,7 @@ async function showLibrary() {
   ]);
   SCORING = scoring;
   LIBRARY = data.games;
-  PIECE_ART = data.pieceArt || {};
+  takePieceArt(data);
   OPPONENTS = data.opponents;
   COVERAGE = data.coverage;
   METRICS = data.metrics;
@@ -60,24 +60,23 @@ async function showLibrary() {
     // what this project has found go *down*. Committed is the only thing that isn't.
     `${LIBRARY.length} games, ${LIBRARY.filter(g => g.source !== 'committed').length} invented here`;
 
-  // Q559 (L1): the site opens on a front door, and the whole library waits behind *All
-  // games*. The local application, which is sent no launch set, keeps the list as it was.
-  const door = Array.isArray(data.launchSet);
-  const shut = door && !BROWSE.all;
+  // Q788 (the user, 2026-10-09: *"I'd like /games to skip repeating the game highlights of
+  // the landing page, and just go straight to the full search+filter interface"*): the
+  // day's game, this month's game, the games to start with and the newest games are the
+  // landing page's (`landing.js`), and this page opens on the search and the filters, on
+  // both servers. What waits on a signed-in member (`forYou`) is theirs, not a highlight,
+  // and stays on top.
   view.innerHTML = `
     <div id="forYou">${forYouHtml(asked)}</div>
-    ${door ? frontDoorHtml(data) : ''}
     <div class="row" style="justify-content:space-between; margin-bottom:12px">
-      ${door ? `<button id="allGames" aria-expanded="${!shut}">${
-        shut ? '&#9656;' : '&#9662;'} All games (${LIBRARY.length})</button>`
-        : `<div class="muted small">Every game here is playable in the browser. Pick one, or
-        <b>build your own</b>.</div>`}
+      <div class="muted small">Every game here is playable in the browser. Pick one, or
+        <b>build your own</b>.</div>
       <div class="row">
         ${viewSwitchHtml('list')}
         <button class="primary" id="newGame">build a game</button>
       </div>
     </div>
-    <div id="everything"${shut ? ' hidden' : ''}>
+    <div id="everything">
       <div id="scoring">${scoringHtml(SCORING)}</div>
       ${provisionalScoresHtml(data.provisionalScores)}
       <div id="tabs">${tabsHtml()}</div>
@@ -86,20 +85,10 @@ async function showLibrary() {
     </div>`;
 
   document.getElementById('newGame').onclick = () => go('#/design');
-  const all = document.getElementById('allGames');
-  if (all) {
-    all.onclick = () => {
-      BROWSE.all = !BROWSE.all;
-      document.getElementById('everything').hidden = !BROWSE.all;
-      all.setAttribute('aria-expanded', String(BROWSE.all));
-      all.textContent = `${BROWSE.all ? '\u25BE' : '\u25B8'} All games (${LIBRARY.length})`;
-    };
-  }
   // The same two buttons the map draws, so the way to the other view is in one place on
   // both. `graph.py` owns them.
   wireViewSwitch();
   wireForYou();
-  wireFirstStep(data.firstStep);
   wireTabs();
   wireControls();
   wireScoring();
@@ -128,18 +117,30 @@ function provisionalScoresHtml(found) {
 // move landed is a fact, and so is the time left to move, in the server's words; the
 // page works out no time of its own and nothing here ticks.
 
+//
+// Q733: a game where this browser holds a move picked and never sent (`heldWaiting`,
+// kept by the board) says so on its line, and its button says what is left to do. Only
+// this browser knows it, so the line says *on this device*; another device shows the
+// game as waiting, which it is.
 function waitingHtml(asked) {
   const waiting = (asked && asked.waiting) || [];
   if (!waiting.length) return '';
   return `<h3 style="margin-top:0">Games waiting on your move</h3>
-    ${waiting.map(entry => `<div class="row" style="margin-top:6px">
+    ${waiting.map(entry => {
+      const held = heldWaiting(entry.id, entry.plies);
+      return `<div class="row" style="margin-top:6px">
       <span><a href="#/play/${esc(entry.id)}">${esc(entry.name)}</a> against
         <b>${markHtml(entry.opponentMark, 18)}${esc(entry.opponent)}</b>
         <span class="muted small">&middot; ${entry.rated ? 'rated' : 'practice'} &middot; ${
           entry.plies ? esc(entry.opponent) + ' moved ' : 'started '}${
-          esc(corrAgoWords(entry.moved))} &middot; ${esc(entry.toMove)}</span></span>
-      <button class="primary" data-play="${esc(entry.id)}">Your move</button>
-    </div>`).join('')}`;
+          esc(corrAgoWords(entry.moved))} &middot; ${esc(entry.toMove)}</span>${held
+          ? `<div class="held-note" data-held-waiting="${esc(entry.id)}"><b>Not sent yet:</b>
+            you picked a move on this device and did not send it. ${esc(entry.opponent)}
+            has not seen it.</div>` : ''}</span>
+      <button class="primary" data-play="${esc(entry.id)}">${
+        held ? 'Send your move' : 'Your move'}</button>
+    </div>`;
+    }).join('')}`;
 }
 
 function forYouHtml(asked) {
@@ -183,125 +184,20 @@ function wireForYou() {
   });
 }
 
-// ------------------------------------------- the front door
-//
-// Q559 (L1, `docs/plan-launch.md` §3.1 and §4): on the site, `/` opens with the first step
-// (below), the three lines that say what this place is (`docs/plan-understanding.md` §1.2,
-// word for word), this month's game, and the launch set, each game with its one sentence;
-// the whole library waits behind *All games*. Every game named here is the server's
-// (`web/launch.py`): the page picks none.
-
-// The three lines. The third's *this one* is the featured game above it; with none, it
-// reads as §1.2 says.
-function aboutLinesHtml(featured) {
-  return `<div id="about" style="margin:10px 0 0">
-    <p style="margin:0 0 4px">People invent chess-like games here, and anyone can play them.</p>
-    <p style="margin:0 0 4px">The computer plays each one hundreds of times and scores how
-      interesting it is: a best estimate, which improves as people play.</p>
-    <p style="margin:0">${featured ? 'Play this one now' : 'Pick one and play it now'}, or
-      <a href="#/design">build your own</a>.</p>
-  </div>`;
-}
-
-function launchSetHtml(cards) {
-  if (!cards || !cards.length) return '';
-  return `<div id="launchSet" style="margin-bottom:14px">
-    <h3 style="margin:0 0 8px">Games to start with</h3>
-    <div class="doorCards">
-      ${cards.map(card => `<div class="panel doorCard">
-        ${thumbOf(card.hash)}
-        <div>
-          <a href="#/game/${esc(card.hash)}"><b>${esc(card.name)}</b></a>
-          <div class="small" style="margin-top:4px">${esc(card.sentence)}</div>
-        </div>
-      </div>`).join('')}
-    </div>
-  </div>`;
-}
-
-// Q603 (C2, `docs/plan-return.md` §3): this month's game, small, beside the day's. The
-// server names it by the calendar month (`launch.month_game`) and words why and how it is
-// chosen; the page draws it. The way in is the game's page, where *Play a person* is: a
-// game by correspondence is the point. A visitor, who has no *Play a person*, is offered
-// the sign-in instead. No count of who played it, and no time left.
-function monthGameHtml(month) {
-  if (!month) return '';
-  return `<div id="monthGame" class="panel doorCard" style="margin-bottom:14px">
-    ${thumbOf(month.hash)}
-    <div>
-    <div class="muted small">This month's game &middot; ${esc(month.month)}</div>
-    <div style="margin:2px 0 4px"><a href="#/game/${esc(month.hash)}"><b>${
-      esc(month.name)}</b></a>: ${esc(month.sentence)}</div>
-    <div class="small">${esc(month.why)}
-      ${VIEWER ? `<a href="#/game/${esc(month.hash)}">Find someone to play it with</a>`
-        : `<a href="/signin">Sign in</a> to play it with someone.`}</div>
-    <div class="muted small" style="margin-top:2px">${esc(month.how)}</div>
-    </div>
-  </div>`;
-}
-
-function frontDoorHtml(data) {
-  const step = firstStepHtml(data.firstStep);
-  return `<div id="firstStep">${step}</div>
-    ${step ? '' : `<div class="panel" style="margin-bottom:14px">${aboutLinesHtml(false)}</div>`}
-    ${monthGameHtml(data.monthGame)}
-    ${launchSetHtml(data.launchSet)}`;
-}
-
-// ------------------------------------------- the first step
-//
-// Q564 (L6, `docs/plan-launch-set.md` §5.1): the site's front page features one game a
-// day, the same for everybody, from the five a chess player can start without reading the
-// rules. The server chooses it (`web/launch.py`, by the calendar day) and sends it as
-// `firstStep`; the page draws it and chooses nothing. **Play the computer** seats the
-// gentlest opponent the server named, as practice, and the next one up is one tap away.
-// The opponents are called by their names alone: the page says nothing of their strength
-// beyond the order the server read. Absent (the local application, or none of the five
-// offered), it draws nothing.
-
-function firstStepHtml(step) {
-  if (!step || !step.opponents) return '';
-  const gentle = step.opponents.gentle, harder = step.opponents.harder;
-  return `<div class="panel" style="margin-bottom:14px">
-    <div class="row" style="align-items:flex-start; gap:16px; flex-wrap:wrap">
-      ${step.preview ? `<div style="width:220px; max-width:100%">${
-        boardPreview(Object.assign({}, step.preview, { plain: true }))}</div>` : ''}
-      <div style="flex:1; min-width:220px">
-        <div class="muted small">Today's game</div>
-        <h3 style="margin:2px 0 6px">${esc(step.name)}</h3>
-        <p style="margin:0 0 10px">${esc(step.sentence)}</p>
-        <div class="row">
-          <button class="primary" id="firstPlay">Play the computer</button>
-          ${harder ? `<button id="firstHarder">A harder one: ${esc(harder.name)}</button>` : ''}
-        </div>
-        <div class="muted small" style="margin-top:6px">You move first, against
-          <b>${esc(gentle.name)}</b>. A practice game: undo and restart are on, and it counts
-          for nothing.</div>
-        <div class="small" style="margin-top:6px"><a href="#/game/${esc(step.hash)}"
-          >How it moves</a></div>
-      </div>
-    </div>
-    ${aboutLinesHtml(true)}
-  </div>`;
-}
-
-function wireFirstStep(step) {
-  if (!step || !step.opponents) return;
-  const start = (button, opponent) => {
-    if (!button) return;
-    button.onclick = () => {
-      button.disabled = true;
-      pending('Starting the game…');
-      const body = { hash: step.hash, seats: ['human', opponent.agent] };
-      if (ACCOUNTS) body.mode = 'sandbox';
-      api('/api/session', body).then(open_)
-        .catch(error => { button.disabled = false; fail(error, button); });
-    };
+// A button that seats you first against `agent` on the game `hash`, as a practice game
+// (on the site; the local application has no other kind). The landing page's day's game
+// (Q564's first step, there since Q788) wires its two buttons through this, so the landing
+// page's own script starts no game.
+function startPracticeOn(button, hash, agent) {
+  if (!button) return;
+  button.onclick = () => {
+    button.disabled = true;
+    pending('Starting the game…');
+    const body = { hash: hash, seats: ['human', agent] };
+    if (ACCOUNTS) body.mode = 'sandbox';
+    api('/api/session', body).then(open_)
+      .catch(error => { button.disabled = false; fail(error, button); });
   };
-  start(document.getElementById('firstPlay'), step.opponents.gentle);
-  if (step.opponents.harder) {
-    start(document.getElementById('firstHarder'), step.opponents.harder);
-  }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -318,12 +214,21 @@ function wireFirstStep(step) {
 //
 // The local application keeps the alphabet: it is a working tool over a checkout, and
 // the score panel above the list is already about which scores are current.
+//
+// First-visit study N5: a list opened *by score* over games none of which has a score is
+// ordered by nothing, under a word that says otherwise. So the score is the opening order
+// only where some game in the list has one to sort on; otherwise the list opens by name.
 function settleOrder() {
   if (ORDER_SET) return;
   ORDER_SET = true;
   if (!ACCOUNTS) return;
-  BROWSE.sort = 'index';
-  BROWSE.descending = true;
+  BROWSE.sort = openingSort('index', inTab());
+  BROWSE.descending = BROWSE.sort !== 'name';
+}
+
+// The order a list opens in: `wanted`, unless no game in `games` has a value for it.
+function openingSort(wanted, games) {
+  return games.some(game => sortValue(game, wanted) !== null) ? wanted : 'name';
 }
 
 // ---------------------------------------------------------- narrowing and ordering
@@ -333,18 +238,21 @@ function settleOrder() {
 const PLAIN_SORTS = [
   ['name', 'name'],
   ['index', 'score'],
+  // Q826: the day the game joined the library (a member's game: the day it was published),
+  // `YYYY-MM-DD` on the card as `added`, so it sorts as text. Newest first when picked.
+  ['added', 'date added'],
   ['squares', 'board size'],
   ['pieceTypes', 'number of piece types'],
   ['ruleMass', 'complexity'],
   ['descent', 'how many versions it has been through'],
 ];
 
-// The four keys a player has a reason to reach for, in this order, above every group in
+// The five keys a player has a reason to reach for, in this order, above every group in
 // the menu. The other twenty-two entries are the scoring formula's table of contents,
-// which is a way in for somebody who already knows what a component is. Two of the four
+// which is a way in for somebody who already knows what a component is. Two of the five
 // are the store's own columns and arrive with the listing, so they are named by the key
-// a card carries and take the server's label; where there is no store the tier is two.
-const FIRST_SORTS = ['name', 'index', 'stars', 'humanGames'];
+// a card carries and take the server's label; where there is no store the tier is three.
+const FIRST_SORTS = ['name', 'index', 'added', 'stars', 'humanGames'];
 
 const GROUPINGS = [
   ['none', 'nothing'],
@@ -415,8 +323,8 @@ function wireTabs() {
     button.onclick = () => {
       BROWSE.tab = button.dataset.tab;
       const tab = currentTab();
-      BROWSE.sort = (tab && tab.sort) || 'index';
-      BROWSE.descending = true;
+      BROWSE.sort = openingSort((tab && tab.sort) || 'index', inTab());
+      BROWSE.descending = BROWSE.sort !== 'name';
       const box = document.getElementById('tabs');
       if (box) box.innerHTML = tabsHtml();
       wireTabs();
@@ -601,7 +509,7 @@ function controlsHtml() {
             families.concat(components).join('')}</optgroup>
         </select>
       </label>
-      <button id="dir" title="reverse the order">${BROWSE.descending ? 'high to low' : 'low to high'}</button>
+      <button id="dir" title="reverse the order">${dirWords()}</button>
       <label class="pick">group by
         <select id="group">${groupings().map(([key, label]) =>
           option(key, label, BROWSE.group)).join('')}</select>
@@ -655,6 +563,13 @@ function controlsHtml() {
       </div>
     </details>
   </div>`;
+}
+
+// The order button's words. A day is not high or low: *date added* reads newest or oldest
+// first (Q826).
+function dirWords() {
+  if (BROWSE.sort === 'added') return BROWSE.descending ? 'newest first' : 'oldest first';
+  return BROWSE.descending ? 'high to low' : 'low to high';
 }
 
 function wireControls() {
@@ -824,6 +739,11 @@ function cardHtml(game) {
 // sends each piece's drawing once (`pieceArt`) and the card names it by its stem, so the
 // drawing is put back here. The game's own hash goes in, so its wood is its own (Q588's
 // grain is hashed from it); no hand strip and no marks: a card is a glance, not the rules.
+//
+// The drawings come with the listing, so anything that draws a thumbnail from a listing
+// first takes that listing's drawings (`takePieceArt`): the games page, the landing page's
+// board and its *Made by members* shelf. Q762: the shelf drew before the landing page had
+// taken them, so a first visit's shelf showed every piece as its letter.
 function thumbHtml(game) {
   const still = game && game.still;
   if (!still) return '';
@@ -834,10 +754,10 @@ function thumbHtml(game) {
     { icons: icons, hash: game.hash, handsUsed: false, plain: true }), null)}</div>`;
 }
 
-// The same thumbnail for a game named by its hash, where the listing has it: the front
-// door's cards carry only a name and a sentence.
-function thumbOf(hash) {
-  return thumbHtml((LIBRARY || []).find(game => game.hash === hash));
+// The listing's drawings, stem to drawing, for every thumbnail drawn from it. A listing
+// without them (none arrived) leaves the drawings already taken.
+function takePieceArt(data) {
+  if (data && data.pieceArt) PIECE_ART = data.pieceArt;
 }
 
 // The store's tag, and the honest blank beside it. Three states, and the third is half
@@ -957,6 +877,11 @@ function cardBandHtml(game) {
 // place a single component's number is ever shown outside the score panel.
 function sortedByHtml(game) {
   const key = BROWSE.sort;
+  // Q826: ordered by the day each game joined, every card says its day.
+  if (key === 'added') {
+    return `<div class="metric small muted">${game.added
+      ? 'added ' + esc(dayWords(game.added)) : 'no day recorded'}</div>`;
+  }
   if (!key.includes(':')) return '';
   const [kind, name] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
   const legend = ((METRICS || {})[kind === 'family' ? 'families' : 'components'] || {})[name];

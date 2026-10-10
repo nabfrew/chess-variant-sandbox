@@ -27,6 +27,12 @@ never happened.
 did, not an input to any metric, rating or weight. The rating table folds over
 `matches`, as it did.
 
+**Beside the moves, three things a baseline graded by skill reads** (H1 to H3 of
+`docs/plan-human-data.md`, `0032_human_data.sql`), copied from the match row at the finish
+as `takebacks` is: how long the person took over each move against a computer player,
+what each take-back undid, and each side's rating in the game's table when a practice game
+started. No page shows them; the export carries them.
+
 How it gets out: `chess-variant-sandbox site games`, one JSON line per finish, on the
 box that holds the store -- `site usage`'s shape, since whoever can run it already holds
 the database.
@@ -51,10 +57,12 @@ def record(connection: Any, match_id: str) -> bool:
     """
     with connection.cursor() as cursor:
         cursor.execute(
-            "insert into finishes (match, ordinal, moves, result, reason, takebacks)"
+            "insert into finishes (match, ordinal, moves, result, reason, takebacks,"
+            " thinks, undone, standing)"
             " select m.id,"
             "  coalesce((select max(f.ordinal) from finishes f where f.match = m.id), 0) + 1,"
-            "  m.moves, m.result, coalesce(m.reason, ''), m.takebacks"
+            "  m.moves, m.result, coalesce(m.reason, ''), m.takebacks,"
+            "  m.thinks, m.undone, m.standing"
             " from matches m"
             " where m.id = %s and m.result is not null"
             " and not (m.seat0_agent is not null and m.seat1_agent is not null)",
@@ -89,6 +97,14 @@ class Finish:
     reason: str
     takebacks: int
     finished: str
+    # H1 to H3 of `docs/plan-human-data.md` (`0032_human_data.sql`), each None on a finish
+    # that kept none. `thinks`: milliseconds per move, beside `moves`, null on a computer
+    # player's move and on a gap over half an hour. `undone`: what each take-back and
+    # restart removed, oldest first. `standing`: each seat's rating and deviation in the
+    # game's table when a practice game started. Read by nothing that scores.
+    thinks: tuple[int | None, ...] | None = None
+    undone: tuple[dict[str, Any], ...] | None = None
+    standing: dict[str, Any] | None = None
 
     @property
     def person_won(self) -> bool:
@@ -97,6 +113,8 @@ class Finish:
     def as_dict(self) -> dict[str, Any]:
         found = asdict(self)
         found["moves"] = list(self.moves)
+        found["thinks"] = None if self.thinks is None else list(self.thinks)
+        found["undone"] = None if self.undone is None else list(self.undone)
         return found
 
 
@@ -130,7 +148,7 @@ def recorded(
         cursor.execute(
             "select m.id, f.ordinal, m.game, g.name, m.mode, m.seat0_agent, m.seat1_agent,"
             " m.seat0_user, m.seat1_user, m.seed, f.moves, f.result, f.reason, f.takebacks,"
-            " f.finished"
+            " f.finished, f.thinks, f.undone, f.standing"
             " from finishes f join matches m on m.id = f.match join games g on g.hash = m.game"
             f" where {' and '.join(where)} order by f.finished, m.id, f.ordinal",
             tuple(values),
@@ -142,7 +160,7 @@ def recorded(
 
 def _to_finish(row: Any) -> Finish:
     (match, ordinal, game, name, mode, agent0, agent1, user0, user1, seed, moves,
-     result, reason, takebacks, finished) = row
+     result, reason, takebacks, finished, thinks, undone, standing) = row
     # A finish is kept only with somebody at the board, so at least one seat has no
     # agent. The site seats one person at a time, so the other seat is the opponent.
     seat = 0 if agent0 is None else 1
@@ -166,6 +184,9 @@ def _to_finish(row: Any) -> Finish:
         reason=str(reason),
         takebacks=int(takebacks),
         finished=finished.isoformat(),
+        thinks=None if thinks is None else tuple(thinks),
+        undone=None if undone is None else tuple(undone),
+        standing=standing,
     )
 
 

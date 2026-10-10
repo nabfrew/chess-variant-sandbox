@@ -48,8 +48,37 @@ RULESETS = REPOSITORY / "rulesets"
 # made on an older one. So it is the accepting spec least likely to flip under the next
 # core change. If one does flip it, the assertion that it accepts says so, and `fitted/`
 # lists the verdicts to choose from.
-ACCEPTS = "kingofthehill"
+#
+# **Kingofthehill flipped too**, at the Q281a6 refit on core `2468e338` (0.7083 to 0.2917,
+# `docs/reference/replay-2026-09-29.md`), and the slow tier stayed red on it for a week
+# because nothing read it (Q743). So the accepting spec is no longer a name: it is read from
+# `fitted/` when the measurement runs (`_accepting`), the committed ruleset with the
+# smallest board whose committed fit under today's procedure accepts, the larger margin
+# breaking a tie. On 2026-10-05 that is gardner (5x5, 0.6146). A refit that flips it moves
+# the choice to the next one rather than turning this red; a fresh fit that disagrees with
+# the committed store still fails, below and in `test_the_sliced_verdict_is_...`.
+ACCEPTS = "accepts"
 REFUSES = "dull"
+
+
+def _accepting() -> str:
+    """The committed ruleset, by file stem, the slices test measures as the accepting one."""
+    from chess_variant_sandbox.spec.canonical import spec_hash
+
+    procedure = fitted.procedure_digest()
+    found = []
+    for path in sorted(RULESETS.glob("*.json")):
+        spec = load_spec(path)
+        verdict = fitted.load_fit(spec_hash(spec), procedure)
+        if verdict is not None and verdict.accepted:
+            area = int(spec["board"]["width"]) * int(spec["board"]["height"])
+            found.append((area, -verdict.accept_score, path.stem))
+    assert found, f"no committed ruleset accepts its fit under procedure {procedure}"
+    return min(found)[2]
+
+
+def _named(role: str) -> str:
+    return _accepting() if role == ACCEPTS else role
 
 # The library, read from the main checkout even in a worktree, as the index audit reads it.
 # Read only. Before Q398 this was the worktree's own `runs/`, which does not exist, so the
@@ -117,7 +146,57 @@ LIBRARY = test_index_quality.RUNS
 # ruler `agents/evaluation.py` moves `metrics` and `analysis`, and the build fingerprint
 # moves with it, so the library owes one replay, batched with Q696's. The window is the
 # stamp the library carries now (Q689's re-score); **that replay empties it**.
-STALE_WINDOW: dict[str, str] = {"metrics": "e75a741b1e0d5900", "analysis": "3d6002464c646c75"}
+#
+# **Re-opened 2026-10-09 by Q540** (schema 17, what a capture leaves behind): the
+# describer of a move (`engine/engine.py`) and the rule-mass charge (`spec/complexity.py`)
+# learn the four new rules, which moves `metrics` and `analysis` with no number on a
+# library game, and the core moves the build fingerprint. The library owes one replay; the
+# window is the stamp it carries now (Q708's replay); **that replay empties it**.
+#
+# **Emptied 2026-10-09 by Q778**, that replay: all 73 library games re-played, re-analysed
+# and re-scored on build `13fbbe06736fae90` under `metrics` "84159537759edd2a" and
+# `analysis` "8a435f46ce02cd4d" (no game, file or score moved), and the four schema-17
+# showcases measured for the first time, so every `canonical.json` carries the tree's own
+# reading again. The replaced measurements, with the stamp this window held, are kept under
+# each game's `runs/<hash>/previous/` (`docs/reference/replay-2026-10-09.md`).
+#
+# **Opened 2026-10-09 by Q786** (schema 18f): the position crossing the boundary gains
+# `goal_left_by` (`engine.py`, `state.py`), which moves `metrics` and `analysis` with no
+# number on a library game; the core had moved the build fingerprint already (18c to 18f).
+# The window is the stamp the library carries now (Q778's replay); **the batched replay,
+# Q803, empties it**.
+#
+# **Emptied 2026-10-10 by Q803**, that replay: all 87 library games other than *jeson-mor*
+# (measured on this build by Q786) re-played, re-analysed and re-scored on build
+# `f3e1bb0c7586c2a4` under `metrics` "c5771af6075c5f99" and `analysis` "a8d24b3ad16d45ac"
+# (no game, file or score moved), so every `canonical.json` carries the tree's own reading
+# again. The replaced measurements, with the stamp this window held, are kept under each
+# game's `runs/<hash>/previous/` (`docs/reference/replay-2026-10-09b.md`).
+#
+# **Opened 2026-10-10 by Q771** (schema 19, portals): `complexity.py`, `engine.py` and the
+# compiler move `metrics` and `analysis` with no number on a library game, and the core moves
+# the build fingerprint. The window is the stamp the library carries now (Q803's replay and
+# Q782's re-score); **the library replay Q771 owes empties it**.
+#
+# **Emptied 2026-10-10 by Q806**, that replay: all 90 library games re-played, re-analysed
+# and re-scored on build `1f812b55db2dba87` under `metrics` "5da33cbfe349e4b7" and
+# `analysis` "a0ed8e3487536646" (no game, file or score moved), so every `canonical.json`
+# carries the tree's own reading again. The replaced measurements, with the stamp this window
+# held, are kept under each game's `runs/<hash>/previous/` (`docs/reference/replay-2026-10-10.md`).
+#
+# **Opened 2026-10-10 by Q807** (schema 20, no straight back): `complexity.py`, `distance.py`,
+# the boundary's `portal_bar` (`engine.py`, `state.py`) and the compiler move `metrics` and
+# `analysis` with no number on a library game, and the core moves the build fingerprint. The
+# window is the stamp the library carries now (Q806's replay); **the library replay Q807
+# owes empties it**.
+#
+# **Emptied 2026-10-10 by Q810**, that replay: all 97 library games other than *ferry no
+# straight back* (measured on this build by Q807) re-played, re-analysed and re-scored on build
+# `49565ddb722a1195` under `metrics` "c33efb470398b44f" and `analysis` "bc59672c7e718716" (no
+# game, file or score moved), so every `canonical.json` carries the tree's own reading again.
+# The replaced measurements, with the stamp this window held, are kept under each game's
+# `runs/<hash>/previous/` (`docs/reference/replay-2026-10-10b.md`).
+STALE_WINDOW: dict[str, str] = {}
 
 
 @pytest.fixture(scope="module")
@@ -527,12 +606,12 @@ def measured(tmp_path_factory):
     work = tmp_path_factory.mktemp("slices-measured")
     done = {}
     for name in (ACCEPTS, REFUSES):
-        spec = load_spec(RULESETS / f"{name}.json")
+        spec = load_spec(RULESETS / f"{_named(name)}.json")
         digest = spec_hash(spec)
         corpus.measure(
             corpus.Candidate(
                 hash=digest, name=str(spec["name"]), spec=spec,
-                path=RULESETS / f"{name}.json", stage="committed",
+                path=RULESETS / f"{_named(name)}.json", stage="committed",
             ),
             runs_dir=work / name,
             workers=1,
@@ -564,9 +643,10 @@ def test_a_sliced_measurement_writes_what_corpus_measure_writes(
     spec, whole, fitted_verdict = done[name]
     assert fitted_verdict is not None
     assert fitted_verdict.accepted is (name == ACCEPTS), (
-        f"{name}'s fit {'accepted' if fitted_verdict.accepted else 'refused'} at "
-        f"{fitted_verdict.accept_score} on this core, and this test needs one spec of "
-        "each verdict; pick another from fitted/ (see ACCEPTS)"
+        f"{spec['name']}'s fit {'accepted' if fitted_verdict.accepted else 'refused'} at "
+        f"{fitted_verdict.accept_score} on this core, where its committed store in fitted/ "
+        "says otherwise (ACCEPTS is read from it): this core re-derives a different "
+        "verdict, so the store owes a refit (`fit --check`) before this test means anything"
     )
 
     sliced = work / f"sliced-{name}-{count}"

@@ -601,8 +601,11 @@ class TestTheMatchPageDraws:
         from test_web import _in_page
 
         held = _in_page(_GAME + "CORR_HELD = 7;", "corrStatus()")
-        assert "<b>b8-b7</b>, not sent yet." in held
-        assert 'id="sendHeld"' in held and "Send move" in held and "put it back" in held
+        assert "<b>b8-b7</b> is not sent yet." in held
+        # Q740: it says the move can still be changed, the one place a phone says so.
+        assert "You can change it until you send it." in held
+        # One button sends it, the slot's under the board (Q733), never one in the strip.
+        assert 'id="sendHeld"' not in held
 
     def test_the_other_players_move_and_the_names(self) -> None:
         from test_web import _in_page
@@ -641,3 +644,243 @@ class TestTheMatchPageDraws:
             _GAME, "frameHtml(false, 'leaderboard', false, { you: null, mayCancel: false })"
         )
         assert 'id="resign"' not in reader and 'id="draw"' not in reader
+        # The slot that sends a move is a player's, under the board (Q733).
+        assert 'id="corrSend"' in bar and 'id="corrSend"' not in reader
+        assert bar.index('id="board"') < bar.index('id="corrSend"') < bar.index('data-frame="controls"')
+
+
+# A slot the page can write into, and the browser's keeping as a plain map, for the parts
+# of Q733 that draw into the frame and keep a move across a visit.
+_SLOT = """
+const SLOT = { hidden: false, innerHTML: '', held: false,
+  classList: { toggle: (name, on) => { if (name === 'held') SLOT.held = !!on; } } };
+document.getElementById = id => (id === 'corrSend' ? SLOT : null);
+const KEPT = {};
+window.localStorage = { getItem: k => (k in KEPT ? KEPT[k] : null),
+  setItem: (k, v) => { KEPT[k] = String(v); }, removeItem: k => { delete KEPT[k]; } };
+drawBoard = () => {};
+"""
+
+
+class TestTheHeldMove:
+    """Q733: a move picked between two people and not sent is unmistakably unfinished --
+    on the board, in a slot under it with the frame's one big button, and still there when
+    the person comes back -- and the list of games waiting on you says so."""
+
+    def test_the_slot_offers_send_only_while_a_move_is_held(self) -> None:
+        from test_web import _in_page
+
+        held = _in_page(_GAME + _SLOT + "CORR_HELD = 7; drawCorrSend();", "SLOT")
+        assert held["held"] and not held["hidden"]
+        assert 'id="sendHeld"' in held["innerHTML"] and "Send your move" in held["innerHTML"]
+        # Q740: a plain button changes it, not a link, and the words say the board does too.
+        assert '<button id="changeHeld" class="send-change">Change my move</button>' in held[
+            "innerHTML"]
+        assert 'id="putBack"' not in held["innerHTML"]
+        said = " ".join(held["innerHTML"].split())
+        assert "<b>Not sent yet.</b> To change it, tap another square or press" in said
+        assert "Change my move</b>." in said
+
+        mine = _in_page(_GAME + _SLOT + "drawCorrSend();", "SLOT")
+        assert not mine["held"] and 'id="sendHeld"' not in mine["innerHTML"]
+        assert "<b>Your move.</b>" in mine["innerHTML"]
+        assert "then press <b>Send your move</b>." in mine["innerHTML"]
+        assert "Nothing goes to ada before that." in mine["innerHTML"]
+
+        sent = _in_page(
+            _GAME + _SLOT + "SESSION.correspondence.you = 0; drawCorrSend();", "SLOT"
+        )
+        assert "<b>Your move is sent.</b> It is bo's turn now." in sent["innerHTML"]
+        assert 'id="sendHeld"' not in sent["innerHTML"]
+
+        for after in ("SESSION.outcome = { winner: 0, reason: 'resigned' };",
+                      "SESSION.correspondence.you = null;"):
+            gone = _in_page(_GAME + _SLOT + after + "drawCorrSend();", "SLOT")
+            assert gone["hidden"] and gone["innerHTML"] == "", after
+
+    def test_a_held_move_is_kept_until_sent_or_put_back(self) -> None:
+        from test_web import _in_page
+
+        kept = _in_page(_GAME + _SLOT + "corrHold(7);", "KEPT")
+        assert kept == {
+            "chess_variant_sandbox.held.g1": '{"ply":1,"move":7,"text":"b8-b7"}'
+        }
+        # Back on the page: the same game at the same move gives it back.
+        assert _in_page(_GAME + _SLOT + "corrHold(7); CORR_HELD = null;",
+                        "corrHeldKept(SESSION)") == 7
+        assert _in_page(_GAME + _SLOT + "corrHold(7);", "heldWaiting('g1', 1)") is True
+        assert _in_page(_GAME + _SLOT + "corrHold(7);", "heldWaiting('g1', 2)") is False
+        # Put back, it is forgotten.
+        assert _in_page(_GAME + _SLOT + "corrHold(7); corrPutBack();", "KEPT") == {}
+        # A game that moved on, a move the engine no longer offers under those words, the
+        # other player's turn or a finished game: forgotten, never given back.
+        for changed in (
+            "SESSION.history.push({ player: 1, text: 'b8-b7' });",
+            "SESSION.moves[0].text = 'b8-b6';",
+            "SESSION.sideToMove = 0;",
+            "SESSION.outcome = { winner: 0, reason: 'resigned' };",
+        ):
+            gone = _in_page(_GAME + _SLOT + "corrHold(7);" + changed,
+                            "[corrHeldKept(SESSION), KEPT]")
+            assert gone == [None, {}], changed
+
+    def test_leaving_with_a_move_held_asks_first(self) -> None:
+        from test_web import _in_page
+
+        setup = _GAME + _SLOT + """
+        const HEARD = {};
+        window.addEventListener = (name, listen) => { HEARD[name] = listen; };
+        wireHeldLeaving();
+        const asked = () => { const e = { prevented: false, returnValue: null,
+          preventDefault() { this.prevented = true; } }; HEARD.beforeunload(e); return e.prevented; };
+        """
+        assert _in_page(setup, "asked()") is False
+        assert _in_page(setup + "CORR_HELD = 7;", "asked()") is True
+
+    def test_the_board_draws_it_dashed_with_the_piece_where_it_would_land(self) -> None:
+        """The held move's squares are outlined in dashes, an arrow runs between them and
+        the piece stands faded on its landing square; the last move keeps its solid tint."""
+        from test_web import _in_page
+
+        board = """
+        SESSION.ruleset = Object.assign(SESSION.ruleset, { width: 2, height: 2, nTypes: 1,
+          pieceIds: ['P'], icons: [] });
+        SESSION.board = [0, 0, 2, 0];
+        SESSION.moves = [{ move: 7, from: 2, to: 0, text: 'b8-b7' }];
+        FRAME = boardView(2, 2, wrapAxes(null), { files: 0, ranks: 0 }, false);
+        CORR_HELD = 7;
+        """
+        drawn = _in_page(_GAME + board, "corrHeldDrawn()")
+        assert drawn["from"] == 2 and drawn["dest"] == 0
+        assert drawn["piece"] == {"player": 1, "type": 0, "facing": 0}
+        html = _in_page(_GAME + board, "heldHtml(corrHeldDrawn(), 50, 2, 2, null)")
+        assert 'data-held="arrow"' in html and "stroke-dasharray" in html
+        assert 'data-held="piece" opacity="0.7"' in html and "var(--held)" in html
+        outline = _in_page(_GAME + board, "heldOutline(0, 0, 50, true)")
+        assert 'data-held="to"' in outline and "stroke-dasharray" in outline
+        assert "var(--held-halo)" in outline
+        # A promotion stands as the piece it becomes; nothing held, nothing drawn.
+        promoted = _in_page(_GAME + board + "SESSION.moves[0].promotion = 3;",
+                            "corrHeldDrawn().piece.type")
+        assert promoted == 3
+        assert _in_page(_GAME + board + "CORR_HELD = null;", "corrHeldDrawn()") is None
+
+    def test_the_waiting_list_says_a_move_was_never_sent(self) -> None:
+        from test_web import _in_page
+
+        asked = """
+        markHtml = () => '';
+        const ASKED = { waiting: [{ id: 'g1', name: 'chess', opponent: 'ada', plies: 1,
+          rated: false, moved: new Date().toISOString(), toMove: 'Five days to move.' }] };
+        """
+        plain = _in_page(_GAME + _SLOT + asked, "waitingHtml(ASKED)")
+        assert "Not sent yet" not in plain and ">Your move</button>" in plain
+        held = _in_page(_GAME + _SLOT + asked + "corrHold(7);", "waitingHtml(ASKED)")
+        assert "<b>Not sent yet:</b>" in held and "on this device" in held
+        assert ">Send your move</button>" in held
+
+
+# Q740's board: three squares a row, two rows; two pieces of the side to move, on 3 and 4.
+# The piece on 3 may go to 0 or 1, the one on 4 to 1; squares 2 and 5 are nobody's.
+_REPICK = """
+SESSION.ruleset = Object.assign(SESSION.ruleset, { width: 3, height: 2, nTypes: 1,
+  pieceIds: ['P'], pieceNames: ['pawn'], icons: [] });
+SESSION.board = [0, 0, 0, 2, 2, 0];
+SESSION.moves = [{ move: 7, from: 3, to: 0, text: 'c1-a1' }, { move: 8, from: 3, to: 1, text: 'c1-b1' },
+  { move: 9, from: 4, to: 1, text: 'a2-b1' }];
+const ASKED = { waiting: [{ id: 'g1', name: 'chess', opponent: 'ada', plies: 1, rated: false,
+  moved: new Date().toISOString(), toMove: 'Five days to move.' }] };
+markHtml = () => '';
+const state = () => [CORR_HELD, SELECTED, KEPT];
+"""
+
+
+class TestChangingTheHeldMove:
+    """Q740: until it is sent, a held move is changed or taken back on the board, by a
+    plain button beside *Send your move*, or by Escape; nothing reaches the server, and
+    the browser's keeping (and so the list of games waiting on you) follows every change."""
+
+    def _after(self, steps: str):
+        from test_web import _in_page
+
+        return _in_page(_GAME + _SLOT + _REPICK + "corrHold(7);" + steps, "state()")
+
+    def test_another_square_of_the_held_piece_replaces_it_at_once(self) -> None:
+        held, selected, kept = self._after("clickSquare(1);")
+        assert held == 8 and selected is None
+        assert kept == {"chess_variant_sandbox.held.g1": '{"ply":1,"move":8,"text":"c1-b1"}'}
+
+    def test_a_tap_on_the_held_move_takes_it_back(self) -> None:
+        # Its piece, the square it lands on (where its faded piece stands).
+        for square in (3, 0):
+            assert self._after(f"clickSquare({square});") == [None, None, {}], square
+
+    def test_another_piece_is_picked_instead(self) -> None:
+        assert self._after("clickSquare(4);") == [None, 4, {}]
+        # ... and its square makes that piece's move the one held.
+        held, _, kept = self._after("clickSquare(4); clickSquare(1);")
+        assert held == 9 and '"move":9' in kept["chess_variant_sandbox.held.g1"]
+
+    def test_a_tap_elsewhere_or_while_sending_leaves_it(self) -> None:
+        assert self._after("clickSquare(5);")[0] == 7
+        assert self._after("clickSquare(2);")[0] == 7
+        assert self._after("CORR_SENDING = true; clickSquare(3); clickSquare(1);")[0] == 7
+
+    def test_change_my_move_and_escape_take_it_back(self) -> None:
+        from test_web import _in_page
+
+        buttons = """
+        const BUTTONS = { changeHeld: {}, sendHeld: {} };
+        const HEARD = {};
+        window.addEventListener = (name, listen) => { HEARD[name] = listen; };
+        document.getElementById = id => (id === 'corrSend' ? SLOT : BUTTONS[id] || null);
+        """
+        setup = _GAME + _SLOT + _REPICK + buttons + "corrHold(7); drawCorrSend();"
+        assert _in_page(setup + "BUTTONS.changeHeld.onclick();", "state()") == [None, None, {}]
+        press = "HEARD.keydown({ key: '{key}', target: { tagName: '{tag}' }, preventDefault() {} });"
+        escape = press.replace("{key}", "Escape").replace("{tag}", "BODY")
+        assert _in_page(setup + escape, "state()") == [None, None, {}]
+        typing = press.replace("{key}", "Escape").replace("{tag}", "INPUT")
+        assert _in_page(setup + typing, "CORR_HELD") == 7
+        other = press.replace("{key}", "a").replace("{tag}", "BODY")
+        assert _in_page(setup + other, "CORR_HELD") == 7
+        # Taken back, the list of games waiting on you no longer says it was never sent.
+        listed = _in_page(setup + escape, "waitingHtml(ASKED)")
+        assert "Not sent yet" not in listed and ">Your move</button>" in listed
+
+    def test_nothing_about_a_pick_goes_to_the_server(self) -> None:
+        source = _between_source()
+        start = source.index("function corrRepick")
+        repick = source[start:source.index("function wireCorrHeld")]
+        assert "api(" not in repick
+        forget = source[source.index("function corrForget"):source.index("function corrPutBack")]
+        assert "api(" not in forget
+
+
+# ----------------------------------------------------------- the wild pieces' next two
+
+
+class TestTheWildPiecesNextTwo:
+    """Q764 (the user, 2026-10-08): in a game between two people the board shows where each
+    wild piece steps after the next move and after the one after, as it does against the
+    computer, from the core (`engine.coming.coming_phases`), on whichever person's turn
+    it is and on the position the store rebuilds."""
+
+    def test_each_turn_carries_both_steps_from_the_core(self, store: Scratch) -> None:
+        from test_coming import PATROL
+
+        from chess_variant_sandbox.engine.coming import coming_phases
+        from chess_variant_sandbox.spec import spec_hash
+
+        digest = store.game(spec_hash(PATROL), PATROL)
+        found, ada, bo = _pair(store, digest)
+        for _ in range(4):
+            session = m.session(store.connection, found.id)
+            snapshot = session.snapshot()
+            first, then = coming_phases(session.engine, session.state)
+            assert snapshot["coming"] == [s.as_dict() for s in first]
+            assert snapshot["comingThen"] == [s.as_dict() for s in then]
+            assert snapshot["comingThen"], "the ferret walks after every move"
+            for entry in snapshot["history"]:
+                assert "comingThen" in entry
+            _move(store, found.id, ada, bo)

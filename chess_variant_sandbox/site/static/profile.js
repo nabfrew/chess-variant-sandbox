@@ -39,6 +39,19 @@ function bold(parent, said) {
   return it;
 }
 function words(parent, said) { parent.appendChild(document.createTextNode(said)); }
+// Q760: a person named on this page, linked to their page so every name is a way to find
+// them; somebody who left (*a former player*) has no page and reads as words.
+function person(parent, handle) {
+  const name = String(handle || '');
+  if (!name || name === 'a former player' || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(name)) {
+    words(parent, name);
+    return;
+  }
+  const it = document.createElement('a');
+  it.href = '/players/' + encodeURIComponent(name);
+  it.textContent = name;
+  parent.appendChild(it);
+}
 // A deleted game has no page to go to, so its name is text rather than a link. Your
 // rows, your milestones and your badges on it stay where they are and read *deleted
 // game*, which is the name the store now holds for it.
@@ -269,11 +282,13 @@ function drawBetween(between) {
       const item = document.createElement('li');
       const link = document.createElement('a');
       link.href = PLAY + entry.id;
-      link.textContent = (entry.name || nameOf(entry.game)) + ' against ' + entry.opponent;
+      link.textContent = entry.name || nameOf(entry.game);
       // The opponent's generated mark (R2), at the head of the line.
       const mark = window.memberMark && window.memberMark(entry.opponentMark, 18);
       if (mark) item.appendChild(mark);
       item.appendChild(link);
+      words(item, ' against ');
+      person(item, entry.opponent);
       words(item, ' \u00b7 ' + (entry.rated ? 'rated' : 'practice')
         + ', last moved ' + day(entry.moved) + '. ');
       if (entry.toMove) words(item, entry.toMove);
@@ -496,7 +511,7 @@ function drawChallenges(asked) {
       const item = document.createElement('li');
       const mark = window.memberMark && window.memberMark(entry.fromMark, 18);
       if (mark) item.appendChild(mark);
-      bold(item, entry.from);
+      person(bold(item, ''), entry.from);
       words(item, entry.rematch ? ' offers a rematch at ' : ' challenged you to ');
       item.appendChild(gameLink(entry.game, entry.name));
       span(item, ' · ' + entry.seat + ' · ' + (entry.rated ? 'rated' : 'practice')
@@ -514,7 +529,8 @@ function drawChallenges(asked) {
     list.className = 'lines';
     for (const entry of sent) {
       const item = document.createElement('li');
-      words(item, entry.to ? entry.to + ', to ' : 'a link, to ');
+      if (entry.to) { person(item, entry.to); words(item, ', to '); }
+      else words(item, 'a link, to ');
       item.appendChild(gameLink(entry.game, entry.name));
       if (entry.answer === 'declined') {
         span(item, ' · declined', 'muted small');
@@ -638,7 +654,7 @@ function milestoneItem(line) {
   words(item, ', ' + said[1] + ' ');
   item.appendChild(gameLink(line.game, line.name));
   // A designer's line (D1 to D4) has no seat; D4 says who forked it.
-  if (line.by) words(item, ', by ' + line.by);
+  if (line.by) { words(item, ', by '); person(item, line.by); }
   const seat = line.seat === 0 || line.seat === 1 ? ', ' + seatWord(line.seat) : '';
   words(item, ', ' + day(line.when) + seat + '.');
   span(item, line.rule, 'rule');

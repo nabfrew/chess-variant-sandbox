@@ -217,7 +217,9 @@ OWN: tuple[Route, ...] = (
     Route(
         "GET",
         "/api/players",
-        "the overall page: what nobody has claimed yet, and everybody who has finished "
+        "the overall page: every member A to Z for finding one by name (Q760: the mark, "
+        "the handle, member since and a few of their published games), what nobody has "
+        "claimed yet, and everybody who has finished "
         "a game beside their three counts, once five people have (below that, how many "
         "members there are and no rows)",
         visitor=(

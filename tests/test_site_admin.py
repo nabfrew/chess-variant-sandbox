@@ -396,6 +396,10 @@ class TestWhoIsAnAdmin:
         assert [game["hash"] for game in payload["games"]] == [DULL_HASH]
         assert payload["limits"], "the page has no numbers to show"
 
+    # Q744: it lists the committed corpus and the home page through `Browser`'s 30 s
+    # socket, so the process's cold first listing is paid in setup (`corpus_listed`); it
+    # timed out in the call under eight workers and coverage (plan-tests.md §3).
+    @pytest.mark.usefixtures("corpus_listed")
     def test_an_admin_is_sent_the_refreshers_status_and_a_visitor_never(
         self, site: Site, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -426,6 +430,10 @@ class TestWhoIsAnAdmin:
             assert "refresher" not in who.get("/api/library").text
             assert "refresher-said" not in who.get("/").text
 
+    # Q744: it lists the committed corpus and the home page through `Browser`'s 30 s
+    # socket, so the process's cold first listing is paid in setup (`corpus_listed`); it
+    # timed out in the call under eight workers and coverage (plan-tests.md §3).
+    @pytest.mark.usefixtures("corpus_listed")
     def test_an_admin_is_sent_how_much_scores_moved_and_a_visitor_never(
         self, site: Site, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -1361,7 +1369,7 @@ class TestADraftSavedOnTheSite:
         assert kept.payload["listed"] is False
         assert kept.payload["visibility"] == "unlisted"
         assert kept.payload["screenPassed"] is True
-        assert "spot-checked by the site" in kept.payload["said"]
+        assert "measured its score on your computer" in kept.payload["said"]
         with drafting.store.cursor() as cursor:
             cursor.execute(
                 "select g.origin, g.visibility, g.parent, g.revoked, g.screen_passed,"
@@ -1559,7 +1567,7 @@ class TestPublishing:
 
         assert answer.status == 400
         assert answer.payload["error"] == drafts.NEEDS_A_READING
-        assert "spot-checked by the site" in answer.payload["error"]
+        assert "Measure it here" in answer.payload["error"]
         assert drafting.count(
             "games", f"hash = '{digest}' and visibility = 'unlisted' and published is null"
         ) == 1
@@ -1577,11 +1585,11 @@ class TestPublishing:
         assert (panel["level"], panel["mine"], panel["open"]) == ("Draft", True, False)
         assert [tick["met"] for tick in panel["ticks"]] == [True, False]
         assert panel["waiting"] == drafts.NEEDS_A_READING
-        # Said once (Q537): the line under the button says how to get a reading, so the
+        # Said once (Q537): the line above the measuring control says how to get a reading, so the
         # tick only names what a publish needs.
         assert panel["ticks"][1]["says"] == drafts.READING_TICK
         lines = [panel["says"], panel["waiting"]] + [tick["says"] for tick in panel["ticks"]]
-        assert " | ".join(lines).count("measure it on this computer") == 1
+        assert " | ".join(lines).count("Measure it here") == 1
 
         bob = drafting.signed_in("bob")
         theirs = bob.get(f"/api/design/standing/{digest}").payload["publish"]

@@ -19,8 +19,10 @@ rated match's before-columns, which no update ever touches.
 
 Two kinds of player sit in one table. A person starts at 1500 with a deviation of 350 and
 Glicko-2's default volatility, and is *established* once the deviation falls under 110. A
-computer player is seeded once from the game's picker ladder at its ladder rating on the
-site's scale, with a deviation of 100 and a volatility pinned at zero -- pinned because
+computer player is seeded from the game's picker ladder at its ladder rating on the
+site's scale (1500 at the mean of the five standard players on a table nobody has played),
+and reseeded from a newer ladder for as long as no person has played it, with a deviation
+of 100 and a volatility pinned at zero -- pinned because
 its strength does not change, which is also why its deviation can only shrink. Human
 results move computer players; §5 says why that has to be true.
 
@@ -44,9 +46,12 @@ land together or not at all.
 
 ## What the loader calls
 
-Task 1.6 loads `runs/opponents/<hash>.json` into `measurements.ladder` and seeds the
-game's computer players from it with `seed`. A second run adds nothing, because seeding
-only ever adds players the table has not seen.
+Task 1.6 loads `runs/opponents/<hash>.json` into `measurements.ladder` and seats the
+game's computer players from it with `reseed` (`docs/plan-leaderboard.md` §2.3, L3): a
+player the table has not seen is added, a computer row no person has played is replaced
+by the newer ladder's seat, and a row people have played keeps the number they gave it. A
+second run over the same file writes nothing, because the seats it computes are the ones
+the first wrote.
 
 Match rows are never deleted. The fold assumes that, and the retention question (§8) is
 open; option A, the recommended default, is what this is built on.
@@ -65,8 +70,9 @@ from typing import Any
 # value that drifted away from the prose would be invisible.
 
 SITE_ORIGIN = 1500.0
-"""The site's scale is the ladder's plus this. A ladder centres on its roster's mean, so
-a newcomer at 1500 sits in the middle of the roster and the numbers read as Elo."""
+"""Where a newcomer starts, and where the first seeding puts the mean of the ladder's five
+standard players (`anchor`), so a newcomer's 1500 is level with the middle of the standard
+five on every game and the numbers read as Elo."""
 
 NEWCOMER_RATING = 1500.0
 NEWCOMER_DEVIATION = 350.0
@@ -379,56 +385,126 @@ class Rung:
 def rungs(ladder: Mapping[str, Any]) -> tuple[Rung, ...]:
     """The picker ladder's standings, which is all the seeding reads of it.
 
-    The file carries games, wins, labels and a plan per rung; none of them is a seed. The
-    ladder is read once, as a seed, and a later run of it changes nothing on a table that
-    exists.
+    The file carries games, wins, labels, a plan per rung and since L3 its stamp; none of
+    them is a seed. A later run of the ladder reseeds only the rows no person has played.
     """
     standings = ladder.get("standings") or ()
     return tuple(Rung(str(row["name"]), float(row["rating"])) for row in standings)
+
+
+def anchor(standings: Sequence[Rung]) -> float:
+    """The shift that puts 1500 at the mean of the ladder's spine: the first seeding's.
+
+    `docs/plan-leaderboard.md` §2.4. A ladder's own zero is the mean of its whole roster,
+    so a game with fourteen rules of thumb at 6,400 nodes had a different 1500 from a game
+    with none. Centred on the five standard players (`opponents.SPINE`: *random*, *greedy*,
+    *easy*, *medium*, *hard*), a newcomer's 1500 means the same thing on every game: level
+    with the middle of the standard five. A ladder with none of them (a test's, an old
+    hand-made one) centres on its whole roster, which is the old rule.
+    """
+    from chess_variant_sandbox.web.opponents import SPINE
+
+    pool = [rung.rating for rung in standings if rung.name in SPINE]
+    pool = pool or [rung.rating for rung in standings]
+    if not pool:
+        return SITE_ORIGIN
+    return SITE_ORIGIN - sum(pool) / len(pool)
+
+
+def played(player: Player) -> bool:
+    """Whether people have put this row where it is: it has finished rated matches.
+
+    For a computer player those are games against people, the only rated games it plays
+    on the site; a row with none is still exactly its seed (`seeds_for` reads it so).
+    """
+    return player.matches > 0
 
 
 def ladder_shift(standings: Sequence[Rung], table: Mapping[PlayerKey, Player]) -> float:
     """How far this ladder's zero sits from the table's scale.
 
     A ladder centres on its own roster's mean, so the zero moves when the roster does and
-    two runs of the same game put the same rung at two numbers. With nothing shared, the
-    shift is the site's origin and the seed is the ladder rating plus 1500. With rungs in
-    common -- a later run that added a fitted objective, a rule of thumb, Fairy-Stockfish
-    -- the shift is the mean gap over those rungs, read against where the table has them
-    *now* rather than where they were seeded, so a newcomer arrives beside the players
-    human results have already placed.
+    two runs of the same game put the same rung at two numbers. **People's rows fix the
+    scale:** with rungs in common that people have played, the shift is the mean gap over
+    those, read against where the table has them *now* rather than where they were seeded,
+    so every rung of a newer ladder arrives beside the players human results have placed.
+    With none, nothing on the table is more than a seed, and the shift is the first
+    seeding's, `anchor`'s: 1500 at the spine's mean.
+
+    Only played rows, since L3 (§2.3): an unplayed row is replaced by the newer ladder, so
+    reading it here would anchor the newer ladder to the older one, and a second load would
+    move the rows the first wrote.
     """
     shared = [
         (rung, table[computer(rung.name)])
         for rung in standings
-        if computer(rung.name) in table
+        if computer(rung.name) in table and played(table[computer(rung.name)])
     ]
     if not shared:
-        return SITE_ORIGIN
+        return anchor(standings)
     return sum(row.rating - rung.rating for rung, row in shared) / len(shared)
 
 
-def seeds_from_ladder(
-    standings: Sequence[Rung], table: Mapping[PlayerKey, Player] | None = None
-) -> Table:
-    """The computer players this ladder adds, at their seats on the site's scale.
+@dataclass(frozen=True)
+class Seeding:
+    """What one ladder does to a game's table: the rows it adds and the rows it reseeds.
 
-    Only the ones the table has not seen: §5's loader adds computer players it has not
-    seen and never touches the ones it has, so a re-rated ladder reseeds nothing and a
-    second load changes no rows.
+    `kept` counts the rungs whose rows stay as they are: played by people, or already at
+    the seat this ladder gives them. A learned net's rung is none of the three (Q683).
+    """
+
+    added: tuple[Player, ...] = ()
+    reseeded: tuple[Player, ...] = ()
+    kept: int = 0
+
+    @property
+    def written(self) -> tuple[Player, ...]:
+        return (*self.added, *self.reseeded)
+
+
+def seeding(
+    standings: Sequence[Rung], table: Mapping[PlayerKey, Player] | None = None
+) -> Seeding:
+    """The computer players this ladder seats, at their seats on the site's scale.
+
+    The reseed rule (`docs/plan-leaderboard.md` §2.3, L3). A computer player the table has
+    not seen is added. A computer row with **no rated games against people** is still only
+    its seed, so a newer ladder **replaces** it -- the fold stays reproducible, because
+    `seeds_for` takes a row with no matches as its own seed. A row people **have** played
+    keeps its number: people put it there. A row this ladder does not name (a player the
+    picker no longer offers) is left alone, and nothing is ever removed.
+
+    Idempotent: the shift reads only played rows, which this never writes, so a second
+    reading of the same ladder computes the same seats and writes nothing.
     """
     from chess_variant_sandbox.web.opponents import never_rated
 
     existing: Mapping[PlayerKey, Player] = table or {}
     shift = ladder_shift(standings, existing)
-    added: Table = {}
+    added: list[Player] = []
+    reseeded: list[Player] = []
+    kept = 0
     for rung in standings:
         key = computer(rung.name)
         # Q683: a learned net's player is practice only, so no ladder seats it here.
-        if key in existing or never_rated(rung.name):
+        if never_rated(rung.name):
             continue
-        added[key] = Player(key, rung.rating + shift, COMPUTER_DEVIATION, COMPUTER_VOLATILITY)
-    return added
+        held = existing.get(key)
+        seat = Player(key, rung.rating + shift, COMPUTER_DEVIATION, COMPUTER_VOLATILITY)
+        if held is None:
+            added.append(seat)
+        elif played(held) or held == seat:
+            kept += 1
+        else:
+            reseeded.append(seat)
+    return Seeding(tuple(added), tuple(reseeded), kept)
+
+
+def seeds_from_ladder(
+    standings: Sequence[Rung], table: Mapping[PlayerKey, Player] | None = None
+) -> Table:
+    """The rows this ladder writes, added and reseeded, keyed by player (`seeding`)."""
+    return {player.key: player for player in seeding(standings, table).written}
 
 
 # ----------------------------------------------------------------------- the top query
@@ -542,16 +618,21 @@ def store(connection: Any, game: str, players: Iterable[Player]) -> None:
             )
 
 
-def seed(connection: Any, game: str, ladder: Mapping[str, Any]) -> tuple[Player, ...]:
-    """Seed a game's computer players from its picker ladder, once each.
+def reseed(connection: Any, game: str, ladder: Mapping[str, Any]) -> Seeding:
+    """Seat a game's computer players from its picker ladder, by `seeding`'s rule.
 
     What task 1.6's loader calls, with `runs/opponents/<hash>.json` as it read it. A
-    second run adds nothing and touches nothing, which is that task's own acceptance.
-    Returns the players added, so the loader can say what it did.
+    second run over the same file writes nothing, which is that task's own acceptance; a
+    newer ladder adds the players the table lacks and replaces the rows nobody has played.
     """
-    added = seeds_from_ladder(rungs(ladder), load(connection, game))
-    store(connection, game, added.values())
-    return tuple(added.values())
+    found = seeding(rungs(ladder), load(connection, game))
+    store(connection, game, found.written)
+    return found
+
+
+def seed(connection: Any, game: str, ladder: Mapping[str, Any]) -> tuple[Player, ...]:
+    """`reseed`, returning the rows it wrote: empty on a second run over the same file."""
+    return reseed(connection, game, ladder).written
 
 
 def finished(connection: Any, game: str) -> tuple[Finished, ...]:

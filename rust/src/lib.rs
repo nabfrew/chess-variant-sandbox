@@ -40,12 +40,13 @@ use crate::tables::{SquareSet, Tables, MAX_SQUARES};
 ///
 /// **Schema 9 is the first field to meet that ceiling.** The bounty tally joins slot 11
 /// as a fourth element rather than taking a slot of its own, which is the shape the
-/// docstring promised.
+/// docstring promised. Schema 18's side that has just left a goal square (Q786) joins
+/// it as a fifth, and schema 20's straight-back bar (Q807) as a sixth.
 type StateIn = (
     Vec<u8>, u8, Vec<u8>, i16, i16, u32, u32, u64, Vec<u64>,
     (u32, u32),
     (Vec<u32>, Vec<u32>),
-    (Vec<u8>, u32, u32, (f64, f64)),
+    (Vec<u8>, u32, u32, (f64, f64), i8, (i16, i16)),
 );
 type StateOut<'py> = (
     Bound<'py, PyBytes>,
@@ -59,7 +60,7 @@ type StateOut<'py> = (
     Vec<u64>,
     (u32, u32),
     (Vec<u32>, Vec<u32>),
-    (Bound<'py, PyBytes>, u32, u32, (f64, f64)),
+    (Bound<'py, PyBytes>, u32, u32, (f64, f64), i8, (i16, i16)),
 );
 
 /// What the wild-piece phase did on the way to a position (schema 9): one
@@ -139,6 +140,8 @@ fn snapshot_from(t: &Tables, state: &StateIn) -> Snapshot {
         remaining: state.11.1,
         turns_taken: state.11.2,
         points: [state.11.3.0, state.11.3.1],
+        goal_left_by: state.11.4,
+        portal_bar: [state.11.5.0, state.11.5.1],
     }
 }
 
@@ -160,6 +163,8 @@ fn state_out<'py>(py: Python<'py>, game: &Game<'_>) -> StateOut<'py> {
             game.remaining,
             game.turns_taken,
             (game.points[0], game.points[1]),
+            game.goal_left_by,
+            (game.portal_bar[0], game.portal_bar[1]),
         ),
     )
 }
@@ -285,15 +290,21 @@ impl Core {
         Ok((state_out(py, &game), phase))
     }
 
-    /// What the wild-piece phase would do on the board as it stands (Q660), in `apply`'s
-    /// phase shape: where each wild piece is going next, for the board to draw. Empty for
-    /// every ruleset without wild pieces.
-    fn coming_phase(&self, state: StateIn) -> PhaseOut {
+    /// What the next `count` wild-piece phases would do on the board as it stands (Q660,
+    /// Q764), each in `apply`'s phase shape and each played on the board the one before
+    /// it left: where each wild piece is going next and after that, for the board to
+    /// draw. Every phase empty for a ruleset without wild pieces.
+    fn coming_phases(&self, state: StateIn, count: usize) -> Vec<PhaseOut> {
         let snapshot = snapshot_from(&self.tables, &state);
         let mut game = Game::from_snapshot(&self.tables, &snapshot);
-        game.coming_phase()
+        game.coming_phases(count)
             .into_iter()
-            .map(|(from, to, eaten)| (from as u32, to as u32, eaten))
+            .map(|phase| {
+                phase
+                    .into_iter()
+                    .map(|(from, to, eaten)| (from as u32, to as u32, eaten))
+                    .collect()
+            })
             .collect()
     }
 

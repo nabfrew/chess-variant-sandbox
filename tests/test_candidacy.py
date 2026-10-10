@@ -760,11 +760,13 @@ class TestTheSitesWordsAreAVisitors:
             "ceiling": "It scored 0.43 in the ceiling duel.",
             "floor": "0.30 is the floor.",
             "verdict": "The check's verdict is fails.",
+            "Fairy-Stockfish's own terms": "Betza has no ride that starts past its first square.",
         }
         assert set(samples) == set(site_words.PHRASES)
         for name, sentence in samples.items():
             assert site_words.hits(sentence, (name,)) == [name], name
         assert site_words.hits("A digit and a target.", ("git",)) == []
+        assert site_words.hits("Ralph Betza's chancellor.", ("Fairy-Stockfish's own terms",)) == []
         # *Not a verdict* says what a score is not, in the purpose's own words, and stays.
         assert site_words.hits("The best estimate today, not a verdict.", ("verdict",)) == []
         assert list(site_words.strings({"hash": "c5e5b57cab2b", "says": "Two words"})) == [

@@ -298,7 +298,7 @@ class UciEngine:
         self._send("position startpos")
         shown = self._describe()
         expected = _start_fen(variant.config)
-        if expected and shown.split()[:1] != expected.split()[:1]:
+        if expected and _opening_field(shown) != _opening_field(expected):
             raise FairyEngineError(
                 f"the engine did not take variant {variant.name!r}: it opens from "
                 f"{shown!r} rather than {expected!r}"
@@ -403,3 +403,16 @@ def _start_fen(config: str) -> str:
         if separator and key.strip() == "startFen":
             return value.strip()
     return ""
+
+
+def _opening_field(fen: str) -> tuple[str, str]:
+    """A FEN's board field, with its pocket read as a multiset.
+
+    The engine writes a hand in its own piece order (king first) and ours writes it in
+    type order, so a stocked opening hand (schema 10's finite stock, written into the
+    startFen since Q784) is the same hand spelled two ways. The board is compared as
+    written.
+    """
+    first = fen.split()[0] if fen.split() else ""
+    board, _, pocket = first.partition("[")
+    return board, "".join(sorted(pocket.rstrip("]")))

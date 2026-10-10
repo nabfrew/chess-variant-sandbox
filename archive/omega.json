@@ -1,0 +1,363 @@
+{
+  "schema_version": 18,
+  "name": "omega",
+  "description": "Omega chess: a 10x10 board with a wizard cell outside each corner, and two new pieces, the champion and the wizard. Pawns may step one, two or three squares from their first rank, and the king castles two squares toward either rook as in chess.",
+  "board": {
+    "width": 12,
+    "height": 12
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 3,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 2
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "royal": true
+    },
+    {
+      "id": "C",
+      "name": "champion",
+      "value": 4,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              2,
+              0
+            ],
+            [
+              2,
+              2
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "W",
+      "name": "wizard",
+      "value": 4,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              3
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "W",
+        "squares": [
+          "a1",
+          "l1"
+        ]
+      },
+      {
+        "piece": "C",
+        "squares": [
+          "b2",
+          "k2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "c2",
+          "j2"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "d2",
+          "i2"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "e2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "f2"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "g2"
+        ]
+      },
+      {
+        "piece": "P",
+        "squares": [
+          "b3",
+          "c3",
+          "d3",
+          "e3",
+          "f3",
+          "g3",
+          "h3",
+          "i3",
+          "j3",
+          "k3"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": 10,
+      "to": [
+        "Q",
+        "C",
+        "W",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "obstacles": {
+      "squares": [
+        "b1",
+        "b12",
+        "c1",
+        "c12",
+        "d1",
+        "d12",
+        "e1",
+        "e12",
+        "f1",
+        "f12",
+        "g1",
+        "g12",
+        "h1",
+        "h12",
+        "i1",
+        "i12",
+        "j1",
+        "j12",
+        "k1",
+        "k12",
+        "a2",
+        "l2",
+        "a3",
+        "l3",
+        "a4",
+        "l4",
+        "a5",
+        "l5",
+        "a6",
+        "l6",
+        "a7",
+        "l7",
+        "a8",
+        "l8",
+        "a9",
+        "l9",
+        "a10",
+        "l10",
+        "a11",
+        "l11"
+      ],
+      "mirror": false,
+      "blocks_leaps": false
+    }
+  },
+  "provenance": {
+    "added": "2026-10-09",
+    "origin": "human",
+    "source": "Omega chess (Daniel MacDonald, 1992)",
+    "history": "Schema 18's showcase for castling on a walled rank (rules.castling(walled rank)) (Q781, 2026-10-09): Q533's audit spec (variant-expressibility-2026-09 row 13, b7298cafc13a) with chess's castling put back, which the audit had to leave out because the walls at a2 and l2 stand on the castling rank. Pre-registered in docs/reference/schema-showcase-coverage.md.",
+    "parents": [
+      "4c1922ffae26"
+    ]
+  }
+}

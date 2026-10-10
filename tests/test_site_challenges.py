@@ -34,7 +34,7 @@ from test_site_matches import (
     _scratch,
 )
 
-from chess_variant_sandbox.site import admin, pages, quota, routes
+from chess_variant_sandbox.site import admin, inviting, pages, quota, routes
 from chess_variant_sandbox.site import challenges as ch
 from chess_variant_sandbox.site import correspondence as c
 from chess_variant_sandbox.site import matches as m
@@ -391,6 +391,31 @@ class TestLeaving:
         assert ch.for_you(store.connection, bo) == []
 
 
+class TestInvitingAFriendFromAGame:
+    """Q731: *Play a person* carries the invitations `/admin` gave the viewer, the same
+    allowance as their own page, and says plainly why not when there are none."""
+
+    def test_none_given_some_given_and_all_spent(self, store: Scratch) -> None:
+        ada, _bo, _cy = _three(store)
+        said = ch.people(store.connection, SHORT_HASH, ada)["invites"]
+        assert said == {"left": 0, "said": inviting.NONE_GIVEN, "sent": 0, "under": None}
+        assert "Ask the person who runs the site" in inviting.NONE_GIVEN
+
+        inviting.set_to_give(store.connection, ada, 1)
+        given = ch.people(store.connection, SHORT_HASH, ada)["invites"]
+        assert given == inviting.box(store.connection, ada)
+        assert (given["left"], given["said"]) == (1, "You can invite one more person.")
+
+        inviting.send(store.connection, ada, "eve@example.com", "https://x", None)
+        spent = ch.people(store.connection, SHORT_HASH, ada)["invites"]
+        assert (spent["left"], spent["sent"], spent["said"]) == (0, 1, inviting.NONE_LEFT)
+
+    def test_nothing_while_games_between_people_are_paused(self, store: Scratch) -> None:
+        ada, _bo, _cy = _three(store)
+        c.set_paused(store.connection, True)
+        assert "invites" not in ch.people(store.connection, SHORT_HASH, ada)
+
+
 # -------------------------------------------------------------------- through the site
 
 
@@ -705,6 +730,27 @@ class TestTheGamePageDraws:
         assert 'value="https://x/c/t1"' in sent and "works once" in sent
         named = _in_page(_PEOPLE, "challengeSentHtml({ to: 'ana', link: null }, '')")
         assert "Challenge sent." in named and "ana accepts or declines" in named
+
+
+    def test_a_friend_who_is_not_a_member_yet(self) -> None:
+        """Q731. The friend you would invite is who you want to play: with invitations
+        left, the form to `/api/invite`; with none, the server's sentence and no form."""
+        from test_web import _in_page
+
+        given = (_PEOPLE + "GAMEX.standing.people.invites = { left: 2, sent: 0,"
+                 " said: 'You can invite 2 more people.', under: 'They get an email.' };")
+        panel = html.unescape(_in_page(given, "playPersonHtml(GAMEX)"))
+        assert "A friend who isn't a member yet" in panel
+        assert "You can invite 2 more people." in panel and "They get an email." in panel
+        assert 'id="inviteForm"' in panel and 'type="email"' in panel
+        assert "send the invitation" in panel and "primary" not in panel
+        none = (_PEOPLE + "GAMEX.standing.people.invites = { left: 0, sent: 0,"
+                f" said: {inviting.NONE_GIVEN!r}, under: null }};")
+        panel = html.unescape(_in_page(none, "playPersonHtml(GAMEX)"))
+        assert "A friend who isn't a member yet" in panel and inviting.NONE_GIVEN in panel
+        assert 'id="inviteForm"' not in panel and "send the invitation" not in panel
+        # The same route as your own page, so the same allowance and refusals.
+        assert "api('/api/invite', { email:" in _people_source()
 
 
 class TestTheLandingPageDraws:

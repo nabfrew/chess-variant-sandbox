@@ -166,6 +166,118 @@ class TestLibrary:
         # The rule by its card's title, never by its path (Q681).
         assert any("edges that join" in reason for reason in torus["fairyReasons"])
 
+    def test_the_translation_and_the_still_board_share_one_compile(
+        self, games, monkeypatch
+    ) -> None:
+        """First-visit study N8: a cold listing compiled every ruleset three times (the
+        cheap gate, the still board, the translation). The translation now reads the
+        rules `engine_for` compiled, which the still board asks for next, and answers what
+        `fairy.why_not` answers from the text."""
+        import json
+
+        from chess_variant_sandbox import fairy
+        from chess_variant_sandbox.engine import compile as compiling
+        from chess_variant_sandbox.engine import engine
+
+        by_name = {game.name: game for game in games}
+        compiled: list[dict] = []
+        real = compiling.compile_spec
+
+        def counted(spec, *args, **kwargs):  # type: ignore[no-untyped-def]
+            compiled.append(spec)
+            return real(spec, *args, **kwargs)
+
+        monkeypatch.setattr(compiling, "compile_spec", counted)
+        monkeypatch.setattr(engine, "compile_spec", counted)
+        for name in ("chess", "torus chess"):
+            spec = by_name[name].spec
+            blob = json.dumps(spec, sort_keys=True)
+            library._fairy_cached.cache_clear()
+            library._engine_cached.cache_clear()
+            library._still_cached.cache_clear()
+            compiled.clear()
+            _, reasons = library._fairy_cached(blob)
+            library.still(by_name[name])
+            # The translator's own proof that a key it leaves out is inert compiles a
+            # widened copy (`_check_skipped_squares`); the rules themselves, once.
+            assert compiled.count(spec) == 1, name
+            monkeypatch.setattr(compiling, "compile_spec", real)
+            assert reasons == tuple(fairy.why_not(spec)), name
+            monkeypatch.setattr(compiling, "compile_spec", counted)
+
+    def test_a_card_compiles_its_rules_once(self, games, monkeypatch) -> None:
+        """First-visit study N8, the last third (Q823b): the cheap gate played its own
+        compile of the rules. It now plays `engine_for`'s, which the translation and the
+        still board read too, so a cold card compiles its rules once, and the gate's
+        answer is the one it gives the text."""
+        import json
+
+        from chess_variant_sandbox.engine import compile as compiling
+        from chess_variant_sandbox.engine import engine
+        from chess_variant_sandbox.loop.gates import smoke_test
+
+        by_name = {game.name: game for game in games}
+        compiled: list[dict] = []
+        real = compiling.compile_spec
+
+        def counted(spec, *args, **kwargs):  # type: ignore[no-untyped-def]
+            compiled.append(spec)
+            return real(spec, *args, **kwargs)
+
+        # A pass, a game the gate refuses by name, and one on a torus.
+        for name in ("chess", "hierarchy chess", "torus chess"):
+            game = by_name[name]
+            for cache in (library._smoke_cached, library._fairy_cached,
+                          library._engine_cached, library._still_cached):
+                cache.cache_clear()
+            compiled.clear()
+            monkeypatch.setattr(compiling, "compile_spec", counted)
+            monkeypatch.setattr(engine, "compile_spec", counted)
+            card = game.summary()
+            library.still(game)
+            monkeypatch.setattr(compiling, "compile_spec", real)
+            monkeypatch.setattr(engine, "compile_spec", real)
+            # The translator's proof that a skipped key is inert compiles a widened copy.
+            assert compiled.count(game.spec) == 1, name
+            alone = smoke_test(json.loads(json.dumps(game.spec)))
+            assert card["playable"] is alone.passed, name
+            assert card["playableReasons"] == alone.reasons, name
+        assert not by_name["hierarchy chess"].summary()["playable"]
+
+    def test_rules_that_do_not_compile_are_refused_in_the_gates_words(self) -> None:
+        """The listing has no engine for rules that do not compile, so the gate gets the
+        text and says why, as it did when it compiled every spec itself."""
+        import json
+
+        from chess_variant_sandbox.loop.gates import smoke_test
+
+        broken = {"name": "broken", "schema_version": 1, "board": {"width": 0}}
+        library._smoke_cached.cache_clear()
+        passed, reasons = library._smoke_cached(json.dumps(broken, sort_keys=True))
+        alone = smoke_test(broken)
+        assert (passed, list(reasons)) == (alone.passed, alone.reasons)
+        assert not passed and reasons[0].startswith("the rules don't fit together")
+
+    @pytest.mark.slow
+    def test_the_gate_answers_the_same_on_a_shared_compile_over_the_corpus(self) -> None:
+        """Every library spec, `rulesets/` and `archive/`: the gate on `engine_for`'s
+        compile gives the verdict, reasons and numbers it gives compiling the text."""
+        import json
+
+        from chess_variant_sandbox.loop.gates import smoke_test
+
+        everything = library.discover(RULESETS, library.RUNS_DIR, corpus.ARCHIVE_DIR)
+        assert any(game.spec.get("name") == "chess" for game in everything)
+        for game in everything:
+            spec = json.loads(json.dumps(game.spec))
+            alone = smoke_test(spec).as_dict()
+            shared = smoke_test(spec, engine=library.engine_for(spec)).as_dict()
+            assert shared == alone, game.name
+            library._smoke_cached.cache_clear()
+            card = library._playability(game.spec)
+            assert (card["playable"], card["playableReasons"]) == (
+                alone["passed"], alone["reasons"]), game.name
+
     def test_the_card_never_claims_the_engine_can_play_it(self, chess_game) -> None:
         """A translation that is nearly right is worse than none, so the key name matters.
 
@@ -360,12 +472,38 @@ class TestAGamesNeighbours:
         assert library.detail(found[0], found)["links"][0]["gap"] is None
 
     def test_a_gap_is_read_from_the_two_measurements_and_never_computed(
+        self, tmp_path
+    ) -> None:
+        """Both ends are the two games' own stored numbers, and the gap is their difference.
+
+        Two games one rule apart, each handed a current score (the memo `Game.score`
+        fills, so no measurement has to be played). Until Q745 this read the tree's own
+        library, where a worktree has no `runs/` and so no gap, and its asserts never ran;
+        that reading is `test_every_gap_in_this_trees_library_is_read_from_its_two_ends`.
+        """
+        first, second = self._two_games(tmp_path, stalemate="loss")
+        first._score_cache = {"status": "current", "index": 0.5, "sd": 0.01,
+                              "weights_version": "v12", "seeds": [0, 1000, 2000, 3000]}
+        second._score_cache = {"status": "current", "index": 0.62, "sd": 0.02,
+                               "weights_version": "v12", "seeds": [0]}
+        [link] = library.detail(first, [first, second])["links"]
+        gap = link["gap"]
+        assert (gap["index"], gap["otherIndex"]) == (0.5, 0.62)
+        assert gap["gap"] == pytest.approx(0.12)
+        assert gap["spread"] == pytest.approx((0.01**2 + 0.02**2) ** 0.5)
+        assert gap["clear"] is True
+        assert (gap["seeds"], gap["otherSeeds"]) == ([0, 1000, 2000, 3000], [0])
+        assert gap["weights"] == "v12"
+
+    def test_every_gap_in_this_trees_library_is_read_from_its_two_ends(
         self, chess_game, games
     ) -> None:
-        for link in library.detail(chess_game, games)["links"]:
-            gap = link["gap"]
-            if gap is None:
-                continue
+        """The same, on the library as measured: the main checkout's `runs/`, not a worktree's."""
+        gaps = [link["gap"] for link in library.detail(chess_game, games)["links"]]
+        gaps = [gap for gap in gaps if gap is not None]
+        if not gaps:
+            pytest.skip("no neighbour of chess has two current scores in this tree's runs/")
+        for gap in gaps:
             assert gap["gap"] == pytest.approx(gap["otherIndex"] - gap["index"])
             assert gap["clear"] is (abs(gap["gap"]) > 2 * gap["spread"])
             assert gap["weights"]
@@ -2388,6 +2526,19 @@ class TestWhatsNew:
             for phrase in ("docs/", "decisions.md", "deploy", "admin", "you decide"):
                 assert phrase not in said.lower(), (heading, phrase)
             assert not site_words.hits(said), (heading, site_words.hits(said))
+
+    def test_no_visitors_entry_names_the_admin_panel(self) -> None:
+        """Q728: the admin panel and its account are the maintainer's. A visitor entry
+        never names them; one that only they would notice is marked for maintainers."""
+        from chess_variant_sandbox.web import changelog
+
+        site = changelog.for_visitors(changelog.payload())
+        for day in site["days"]:
+            for entry in day["entries"]:
+                said = " ".join([entry["heading"]] + [
+                    run["s"] for block in entry["blocks"] for run in block.get("runs", [])])
+                for phrase in ("admin", "maintenance"):
+                    assert phrase not in said.lower(), (entry["heading"], phrase)
 
     def test_a_line_it_does_not_understand_is_printed_as_itself(self) -> None:
         """A list item keeps its dash and a link its brackets.
@@ -4849,7 +5000,8 @@ class TestTheWayInToTheSitesOwnPages:
             "() => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve("
             "{ signedIn: true, handle: 'ada', admin: false, accounts: true }) })"
         )
-        assert drawn["who"] == [{"text": "ada", "href": "/profile"}]
+        # Q731: a button to your page, named for where it goes and for whom.
+        assert drawn["who"] == [_your_page("ada")]
 
     def test_a_server_with_no_accounts_is_offered_nothing_it_does_not_have(self) -> None:
         """The local application serves none of the five pages, so a header linking to
@@ -4875,9 +5027,7 @@ class TestTheWayInToTheSitesOwnPages:
             "{ signedIn: true, handle: '<img src=x onerror=alert(1)>', admin: false,"
             " accounts: true }) })"
         )
-        assert drawn["who"] == [
-            {"text": "<img src=x onerror=alert(1)>", "href": "/profile"}
-        ]
+        assert drawn["who"] == [_your_page("<img src=x onerror=alert(1)>")]
 
     def test_only_a_maintainer_is_shown_the_way_to_the_admin_page(self) -> None:
         """`/admin` is a page a `users.role` of `admin` reaches and nobody else does, so
@@ -4891,11 +5041,9 @@ class TestTheWayInToTheSitesOwnPages:
         assert drawn["who"] == [
             {"text": "Maintenance", "href": "/admin"},
             " · ",
-            {"text": "ada", "href": "/profile"},
+            _your_page("ada"),
         ]
-        assert _header_after(signed_in, admin="false")["who"] == [
-            {"text": "ada", "href": "/profile"}
-        ]
+        assert _header_after(signed_in, admin="false")["who"] == [_your_page("ada")]
 
     def test_an_answer_that_does_not_say_leaves_the_flag_where_it_was(self) -> None:
         """The local application has no roles at all and sends the key nowhere, so a
@@ -4906,7 +5054,7 @@ class TestTheWayInToTheSitesOwnPages:
             "{ signedIn: true, handle: 'ada', accounts: true }) })",
             admin="undefined",
         )
-        assert drawn["who"] == [{"text": "ada", "href": "/profile"}]
+        assert drawn["who"] == [_your_page("ada")]
 
         from page_text import PAGE
 
@@ -4942,6 +5090,13 @@ class TestTheWayInToTheSitesOwnPages:
         assert "VIEWER = data.handle || null;" in body and "VIEWER_MARK = data.mark" in body
 
 
+def _your_page(handle: str) -> dict:
+    """The header's button to your own page as `_header_after` reports it (Q731): its
+    accessible name, where it goes, its visible words leaf by leaf, and its class."""
+    return {"text": f"Your page, signed in as {handle}", "href": "/profile",
+            "shown": f"{handle}|your page| ›", "kind": "memberButton"}
+
+
 def _header_after(fetch_stub: str, admin: str = "undefined") -> dict:
     """Run `identify()` and `paintIdentity()` in node, and report what they built.
 
@@ -4971,15 +5126,18 @@ def _header_after(fetch_stub: str, admin: str = "undefined") -> dict:
           set textContent(v) {{ node._text = String(v); node.children = []; }},
           set innerHTML(v) {{ throw new Error('this element must not be given markup'); }},
           append(...kids) {{ kids.forEach(kid => node.children.push(kid)); }},
+          attrs: {{}}, setAttribute(k, v) {{ node.attrs[k] = String(v); }},
         }};
         return node;
       }}
       function __anchor() {{
         const node = {{
-          tag: 'a', href: '', _text: '',
+          tag: 'a', href: '', _text: '', children: [], attrs: {{}}, className: '',
           get textContent() {{ return node._text; }},
-          set textContent(v) {{ node._text = String(v); }},
+          set textContent(v) {{ node._text = String(v); node.children = []; }},
           set innerHTML(v) {{ throw new Error('a link must not be given markup'); }},
+          append(...kids) {{ kids.forEach(kid => node.children.push(kid)); }},
+          setAttribute(k, v) {{ node.attrs[k] = String(v); }},
         }};
         return node;
       }}
@@ -4987,7 +5145,8 @@ def _header_after(fetch_stub: str, admin: str = "undefined") -> dict:
       global.document = {{
         getElementById: id => (id === 'who' ? WHO : id === 'foot' ? FOOT : el),
         querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {{}},
-        createElement: tag => (tag === 'a' ? __anchor() : el), body: el,
+        createElement: tag => (tag === 'a' ? __anchor() : tag === 'span' ? __strict() : el),
+        body: el,
       }};
       global.window = {{ matchMedia: () => ({{ matches: false, addEventListener: () => {{}} }}),
                         addEventListener: () => {{}}, innerWidth: 1200, scrollTo: () => {{}} }};
@@ -4996,7 +5155,13 @@ def _header_after(fetch_stub: str, admin: str = "undefined") -> dict:
         path === '/api/me' ? ({fetch_stub})() : new Promise(() => {{}});
     """
     runner = f"""
-      const seen = node => node.tag === 'a' ? {{ text: node._text, href: node.href }} : node;
+      const leaves = node => typeof node === 'string' ? [node]
+        : node.children.length ? node.children.flatMap(leaves) : [node._text];
+      const seen = node => node.tag !== 'a' ? node
+        : node.children.length ? {{ text: node.attrs['aria-label'], href: node.href,
+                                    shown: node.children.flatMap(leaves).join('|'),
+                                    kind: node.className }}
+        : {{ text: node._text, href: node.href }};
       identify().then(() => {{
         noteAdmin({admin});
         paintIdentity();
@@ -5811,6 +5976,8 @@ class TestTheGamePagesThreeLines:
         import re
 
         plain = re.sub(r'<button class="info".*?</button>', "", markup, flags=re.S)
+        # A name linked to its member's page (Q760) is read as the name, closed up too.
+        plain = re.sub(r"</?a\b[^>]*>", "", plain)
         return " ".join(re.sub(r"<[^>]*>", " ", plain.replace("<b>", "").replace("</b>", "")).split())
 
     @classmethod
@@ -6292,6 +6459,9 @@ class TestWhatReachesThePage:
         # emptying; the landing page's *A challenge for you* redraws after a decline
         # (`forYouHtml`). Every handle, name and sentence goes through `esc`.
         #
+        # 105 since Q731: *Play a person* redraws its *a friend who isn't a member yet*
+        # box after an invitation is sent, the server's two sentences through `esc`.
+        #
         # 104 since Q718: the landing page's opening board writes each game's still board
         # (`thumbHtml`, the cards' own) and its caption, the name and the server's sentence
         # through `esc`.
@@ -6315,6 +6485,27 @@ class TestWhatReachesThePage:
         # library does not load, the sentence that says so. Both are constants with
         # nothing interpolated into them.
         #
+        # 111 since Q769: the chooser of where a strike's survivor lands left the hand
+        # (one site) for the promotion's card, which writes it through the same three.
+        # Its square names (`landingName`) and the struck piece's word go through `esc`.
+        #
+        # 112 since Q765: the choice of what a promoting piece becomes moved from the hand
+        # (one site) to its own card over the board (three: the card, the bar shown while
+        # looking at the board, and emptying it). Each piece's name and the mover's word go
+        # through `esc`, each drawing through `drawPiece`, which escapes its href and letter.
+        #
+        # 110 since Q742: the measuring control's place under the rungs is redrawn when it
+        # moves into or out of *Publish* (`hereAwayHtml`, the page's own markup), and a
+        # press of *Publish* writes the server's sentence again after the panel is redrawn,
+        # through `esc`.
+        #
+        # 108 since Q741: the landing page's *Made by members* shelf, each game's name,
+        # maker and hash through `esc`, the maker's mark the DOM-built `markHtml`.
+        #
+        # 107 since Q733: the slot under a board between two people (`drawCorrSend`),
+        # emptied once the game is over and otherwise its words and buttons, the other
+        # player's handle and the held move's words through `esc`.
+        #
         # 102 since Q619 (K3): a tapped piece's sentences under the board
         # (`drawPieceSays`), every name and sentence through `esc`.
         #
@@ -6325,7 +6516,17 @@ class TestWhatReachesThePage:
         # Q345's changelog shell and Q342's map. Every name, sentence and hash any of
         # them interpolates goes through `esc`; the rest is counts and coordinates the
         # server computed.
-        assert len(sites) == 104
+        # 114 since Q788 (counted by Q728): the landing page's *New in the library* shelf and
+        # its picks row write each game's thumbnail and score pill (`thumbHtml`, `scoreTag`)
+        # and the shelf's cards, every name, hash and sentence through `esc`.
+        # 118 since Q772b: the portal exit chooser's bar (`drawExits`), and three layers laid
+        # over the board without redrawing it (the pair link, the lit exit, the board's
+        # tier), every square name and sentence through `esc`.
+        # 124 since Q772c: the designer's portals (`portals.js`): the pairs' cards redrawn in
+        # place, a check's sentences, drawings and tray row put on them (five), and the
+        # keyboard's ring over the board in *play it here* (one, a constant shape). Every
+        # square name, side name and server sentence through `esc`.
+        assert len(sites) == 124
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
@@ -6418,6 +6619,56 @@ _HOSTILE_VIEWS = """({
   cardMenu: fieldHtml({ control: 'menu', key: 'y', label: H, says: H,
                         options: [{ value: H, label: H, says: H }] }, H, ['y'], 'rules', []),
 })"""
+
+
+class TestHeadIsGetWithoutTheBody:
+    """Q792: ``HEAD /`` answered 501 (the stdlib's answer for a method with no handler).
+    A HEAD is the GET's status and headers and no body."""
+
+    def test_head_answers_like_get_and_sends_no_body(self) -> None:
+        server = Server(("127.0.0.1", 0), handler_for(App(RULESETS, library.RUNS_DIR)))
+        threading.Thread(target=server.serve_forever, kwargs=SERVE_FAST, daemon=True).start()
+        try:
+            for path in ("/", "/api/ruleset-does-not-exist"):
+                connection = HTTPConnection("127.0.0.1", server.server_port, timeout=10)
+                connection.request("GET", path)
+                got = connection.getresponse()
+                body = got.read()
+                connection.request("HEAD", path)
+                head = connection.getresponse()
+                # Read on the same keep-alive connection: a body left on the wire would
+                # break the next request, so the connection must still be usable.
+                assert head.read() == b""
+                assert head.status == got.status
+                assert head.getheader("Content-Type") == got.getheader("Content-Type")
+                assert head.getheader("Content-Length") == str(len(body))
+                assert head.getheader("Content-Security-Policy") == got.getheader(
+                    "Content-Security-Policy"
+                )
+                connection.request("GET", path)
+                again = connection.getresponse()
+                assert again.status == got.status
+                assert again.read() == body
+                connection.close()
+            assert got.status in (200, 404)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_the_page_itself_is_a_200(self) -> None:
+        server = Server(("127.0.0.1", 0), handler_for(App(RULESETS, library.RUNS_DIR)))
+        threading.Thread(target=server.serve_forever, kwargs=SERVE_FAST, daemon=True).start()
+        try:
+            connection = HTTPConnection("127.0.0.1", server.server_port, timeout=10)
+            connection.request("HEAD", "/")
+            head = connection.getresponse()
+            assert head.status == 200
+            assert int(head.getheader("Content-Length") or 0) > 0
+            assert head.read() == b""
+            connection.close()
+        finally:
+            server.shutdown()
+            server.server_close()
 
 
 class TestTheCrossSiteHeader:
@@ -7454,9 +7705,21 @@ class TestTheBoardKnowsItsMode:
         body = PAGE[start:PAGE.index("root.querySelectorAll('[data-tab]')", start)]
         assert "if (resign.dataset.armed !== 'yes') {" in body
         assert "sayOn(resign, 'really resign?');" in body
-        assert "setTimeout(disarm, 6000);" in body
+        assert "setTimeout(disarm, ARM_HOLD);" in body
         assert "resign.onblur = disarm;" in body
         assert "api('/api/session/' + snapshot.id + '/resign', {})" in body
+
+    def test_an_armed_finish_waits_long_enough_to_be_read(self) -> None:
+        """First-visit study N1: *really resign?* reverted after six seconds, before two
+        readers' second press. Both buttons that end a game hold for `ARM_HOLD`, at least
+        fifteen seconds, and no other timer disarms them."""
+        from page_text import PAGE
+
+        hold = _in_page("", "ARM_HOLD")
+        assert hold >= 15000
+        assert PAGE.count("setTimeout(disarm, ARM_HOLD);") == 1
+        assert "sayOn(cancel, 'cancel the game'); }, ARM_HOLD);" in PAGE
+        assert "6000)" not in PAGE.replace("16000)", "")
 
     def test_a_rematch_is_played_in_the_mode_it_was_pressed_in(self) -> None:
         """Q249 sent no mode, so the server's default applied and a rematch of a rated
@@ -8214,7 +8477,7 @@ class TestTheBoardAnimation:
             "the agent's reply is the draw that waits"
         # A person's own move is not one of them: it is the reason they clicked.
         send = PAGE.index("function send(move)")
-        assert "then(s => applySnapshot(s))" in PAGE[send:send + 300]
+        assert "then(s => applySnapshot(s))" in PAGE[send:send + 330]
 
     def test_nothing_animated_means_nothing_to_wait_for(self) -> None:
         """Every early return in `animateChange` has to report a duration, or the board
@@ -8602,16 +8865,26 @@ class TestTheBoardWithoutEdges:
         from page_text import PAGE
 
         assert 'id="marks"' in PAGE and "function drawMarks(" in PAGE
-        assert "if (!SESSION.ruleset.zones) { row.innerHTML = ''" in PAGE, (
+        # Since Q772b the row also holds a portal game's pair-link toggle, so it is empty
+        # only where there is neither a promotion nor a portal.
+        assert "if (!zones && !links) { row.innerHTML = ''" in PAGE, (
             "a game with no promotion gets no button"
         )
+        assert "(zones ? zoneToggleHtml(ZONES) : '')" in PAGE
         assert "let ZONES = zonesShown();" in PAGE
         assert "rememberZones(ZONES);" in PAGE
         # Three things the page remembers for its reader, each with one read and one write
         # and no fourth way in: this toggle, the play panel's last mode (Q578, F4), and
         # that the designer's note to a phone has been said (Q545); and since K3 (Q619)
-        # the games this browser has started, so a first game seats the gentlest.
-        assert PAGE.count("window.localStorage") == 8
+        # the games this browser has started, so a first game seats the gentlest; and since
+        # Q733 a move picked between two people and not sent, kept per game until it is
+        # sent or put back; and since Q772b whether the reader has portal pair links on.
+        assert PAGE.count("window.localStorage") == 13
+        assert PAGE.count("window.localStorage.getItem(LINKS_KEY") == 1
+        assert PAGE.count("window.localStorage.setItem(LINKS_KEY") == 1
+        assert PAGE.count("window.localStorage.setItem(HELD_KEY") == 1
+        assert PAGE.count("window.localStorage.getItem(HELD_KEY") == 1
+        assert PAGE.count("window.localStorage.removeItem(HELD_KEY") == 1
         assert PAGE.count("window.localStorage.getItem(PLAYED_KEY") == 1
         assert PAGE.count("window.localStorage.setItem(PLAYED_KEY") == 1
         assert PAGE.count("window.localStorage.getItem(PHONE_NOTE_KEY") == 1
@@ -9118,9 +9391,18 @@ class TestTwoRatingTablesThatMustNotMix:
     """
 
     def test_the_stored_ladder_table_contains_no_heuristic(self, games) -> None:
-        for game in games:
-            for standing in (game.ratings or {}).get("standings", []):
-                assert "h=" not in standing["name"], f"{game.name} rates a heuristic"
+        """Read off the tree's own `runs/`: the main checkout's has the tables, a worktree's
+        none, and there it skips rather than passing on nothing (Q745). That the picker's
+        table cannot reach this one is the two tests below, which need no `runs/`."""
+        standings = [
+            (game.name, standing)
+            for game in games
+            for standing in (game.ratings or {}).get("standings", [])
+        ]
+        if not standings:
+            pytest.skip("no game in this tree's runs/ has a stored ladder table")
+        for name, standing in standings:
+            assert "h=" not in standing["name"], f"{name} rates a heuristic"
 
     def test_the_pickers_table_is_not_a_tournament_file(self, tmp_path) -> None:
         """The library finds the rated table by globbing for `tournament.json`.
@@ -10530,8 +10812,12 @@ class TestBuildingAGameByHand:
     def test_a_draft_opened_from_a_game_is_told_what_its_measurement_costs(self) -> None:
         """Both hashes and the consequence, before anything has been changed.
 
-        The number is `Game.score`'s, so the one policy about a stale measurement holds
-        here too: the editor cannot show a score the game's own page would withhold.
+        The number is `Game.current_score`'s, so the one policy about a stale measurement
+        holds here too. Since EV2 the game's own page shows a stale number marked
+        *provisional*, but a draft's parent is one of the places a provisional number never
+        reaches (`docs/plan-evolving-score.md` §3, `test_provisional_estimate`): the editor
+        withholds it and says *out of date* from the staleness it carries. The assertion
+        holds whether chess's library measurement is current or stale today.
         """
         app = App(RULESETS, library.RUNS_DIR, "heuristics", library.ARCHIVE_DIR)
         opened = app.get("/api/design/4c1922ffae26")
@@ -10541,7 +10827,10 @@ class TestBuildingAGameByHand:
         assert "index" in opened and "staleness" in opened
         assert opened["roster"], "'measured' means nothing without saying against what"
         game = app.game("4c1922ffae26")
-        assert opened["index"] == (game.score or {}).get("index")
+        assert opened["index"] == (game.current_score or {}).get("index")
+        if game.status == library.PROVISIONAL:
+            assert opened["index"] is None, "a provisional number never reaches a parent"
+            assert opened["staleness"] and not opened["staleness"]["current"]
 
     # ------------------------------------------------ the version stamp is settled
 
@@ -10598,8 +10887,12 @@ class TestBuildingAGameByHand:
         # having to re-derive it. The hand-built half is the test below.
         # `contacts` left this set on 2026-09-07, when Q101's `archive/succession` became
         # the first library spec to use one (`schema-showcase-coverage.md` row 30).
+        # `promote_on_entry` left it on 2026-10-09, when Q787's `archive/shogi-drop-promoted`
+        # became the first library spec to use it (row 21); the hand-built arm below keeps it.
+        # `portals` (schema 19, Q771) joined it, and left on 2026-10-10 with Q772a's
+        # showcases (`schema-showcase-coverage.md` rows 53 to 55).
         assert _RULES_KEYS - seen == {
-            "bare_royal", "checkmate", "promote_on_entry", "turn",
+            "bare_royal", "checkmate", "turn",
         }, "the rule keys nothing in the library uses have changed"
 
     def test_the_rule_keys_nothing_in_the_library_uses_are_not_refused_either(
@@ -10631,6 +10924,8 @@ class TestBuildingAGameByHand:
                 "immune": ["K"],
                 "links": [{"mover": "P", "onto": "P", "mover_to": "K"}],
             },
+            # Schema 19 (Q771): a pair moved like a portal piece the draft gains below.
+            "portals": [{"piece": "O", "orange": "c3", "blue": "d4"}],
         }
         for key, value in cases.items():
             draft = json.loads(json.dumps(base))
@@ -10638,6 +10933,8 @@ class TestBuildingAGameByHand:
             if key == "promote_on_entry":
                 # It promotes a piece that *enters play*, so there has to be a way in.
                 draft["rules"]["drops"] = {"from_captures": True}
+            if key == "portals":
+                draft["pieces"].append({"id": "O", "name": "portal", "value": 0, "moves": []})
             problems = validate_spec(designing.settled(draft))
             assert not any("schema" in problem for problem in problems), (key, problems)
 
@@ -11601,7 +11898,7 @@ class TestTheGamePageOnAPhone:
         """The game page no longer shares `.split` with the board page (V6): its play
         column is first in its own markup. The board page keeps `.split`, its board first
         and its panel second."""
-        from page_text import BOARD, DETAIL
+        from page_text import BOARD, DETAIL, PAGE
 
         game = DETAIL[DETAIL.index('<div class="gameTop">'):]
         # The play column opens with B2's *carry on* block, which draws nothing unless
@@ -11614,12 +11911,17 @@ class TestTheGamePageOnAPhone:
         assert '<h3 style="margin-top:0">Play</h3>' in game
         board = BOARD[BOARD.index('<div class="split'):]
         # The panel opens on the two seats, one above the other since Q288 put how hard
-        # each one thinks under its name.
-        assert '<div class="panel">\n        <div>${seatHtml(0)}</div>' in board
+        # each one thinks under its name; stacked, on a phone, the tabs lead it and the
+        # seats follow (Q728).
+        assert ('<div class="panel boardSide">\n        <div class="seatLines">\n'
+                '          <div>${seatHtml(0)}</div>') in board
+        assert ".boardSide > .seatLines { order: 1;" in PAGE
+        narrow = PAGE.index("@media (max-width: 860px) {\n    .split { grid-template-columns: 1fr; }")
+        assert narrow < PAGE.index(".boardSide { display: flex;") < narrow + 1200
         # Q307. The designer plays a draft on this same markup with no second column at
         # all, which is what `.alone` says -- so the selector has no `nth-child(2)` to
         # turn on there and the game page's rule cannot reorder the editor's board.
-        assert "${inline ? '' : `<div class=\"panel\">" in board
+        assert "${inline ? '' : `<div class=\"panel boardSide\">" in board
 
 
 class TestAnOpenGameIsFoundAgain:
@@ -11776,27 +12078,33 @@ class TestTheOrderByMenuInTwoTiers:
     """`docs/archive/plan-ux.md` C4. Twenty-six entries, and the first six were the file's.
 
     The menu was the scoring formula's table of contents with *name* on top of it. The
-    four keys somebody choosing a game to play has a reason to use come first and
-    ungrouped; the eighteen families and components sit in one group under a heading
+    keys somebody choosing a game to play has a reason to use come first and ungrouped
+    (four, and five since Q826 put *date added* among them); the eighteen families and components sit in one group under a heading
     that says what they are.
     """
 
-    def test_the_first_four_entries_are_the_four(self) -> None:
+    def test_the_first_five_entries_are_the_five(self) -> None:
+        """*Date added* is a player's key too: the user asked on 2026-10-10 for games to be
+        sortable by the day they were made, and the *new in the library* shelf opens the
+        list ordered by it (Q826), so it sits in the first tier, after the score."""
         import re
 
         menu = _select(_in_page(_FIXTURE + _SITE_SORTS, "controlsHtml()"), "sort")
         top = menu[:menu.index("<optgroup")]
         assert re.findall(r'<option value="([^"]+)"', top) == [
-            "name", "index", "stars", "humanGames"
+            "name", "index", "added", "stars", "humanGames"
         ]
+        assert "date added" in top
         assert "star rating" in top and "human games played" in top
 
-    def test_a_server_with_no_store_offers_the_two_it_has(self) -> None:
+    def test_a_server_with_no_store_offers_the_three_it_has(self) -> None:
+        """Every library file carries the day it joined (`provenance.added`), so a checkout
+        with no store still orders by it; the store's two columns are what it lacks."""
         import re
 
         menu = _select(_in_page(_FIXTURE, "controlsHtml()"), "sort")
         top = menu[:menu.index("<optgroup")]
-        assert re.findall(r'<option value="([^"]+)"', top) == ["name", "index"]
+        assert re.findall(r'<option value="([^"]+)"', top) == ["name", "index", "added"]
 
     def test_the_score_is_one_group_and_the_rest_another(self) -> None:
         import re
@@ -11828,6 +12136,51 @@ class TestTheOrderByMenuInTwoTiers:
         ]
 
 
+class TestATagIsReadByTappingIt:
+    """First-visit study F3: the line above the cards says *tap or point at one*, and on a
+    phone a tap on a tag was a tap on its card, which opened the game. Where nothing can
+    hover, a tap on a tag opens its sentence in the page's one bubble, ahead of the card;
+    where a pointer can hover, the tag is left to its `title` and the card."""
+
+    SETUP = """
+      let HOVERLESS = true;
+      const LISTEN = [];
+      document.addEventListener = (kind, fn, capture) =>
+        LISTEN.push({ kind, fn, capture: !!capture });
+      const BUBBLE = { hidden: true, dataset: {}, innerHTML: '', style: {},
+                       contains: () => false };
+      document.createElement = () => BUBBLE;
+      document.body = { appendChild() {} };
+      window.matchMedia = query => ({ matches: query === '(hover: none)' && HOVERLESS,
+                                      addEventListener() {} });
+      wireInfo.done = false;
+      wireInfo();
+      const TAG = { title: 'Practice only: <b>', getBoundingClientRect: () => ({ left: 10, bottom: 20 }) };
+      const tap = () => {
+        const seen = { stopped: false };
+        LISTEN.find(one => one.capture).fn({
+          target: { closest: sel => (sel === '.tag[title]' ? TAG : null) },
+          preventDefault() {}, stopPropagation() { seen.stopped = true; } });
+        return seen.stopped;
+      };
+    """
+
+    def test_a_tap_on_a_phone_reads_the_tag(self) -> None:
+        assert _in_page(self.SETUP, "[tap(), BUBBLE.hidden, BUBBLE.innerHTML]") == [
+            True, False, "<p>Practice only: &lt;b&gt;</p>"]
+        # A second tap on the same tag puts it away.
+        assert _in_page(self.SETUP + "tap();", "[tap(), BUBBLE.hidden]") == [True, True]
+
+    def test_a_pointer_that_hovers_is_left_to_the_card(self) -> None:
+        assert _in_page(self.SETUP + "HOVERLESS = false;",
+                        "[tap(), BUBBLE.hidden]") == [False, True]
+
+    def test_the_line_says_tap(self) -> None:
+        from page_text import PAGE
+
+        assert "Tap or point at one for what it means." in PAGE
+
+
 class TestTheSiteOpensOnItsOwnJudgement:
     """`docs/archive/plan-ux.md` C5, and D1 as the user decided it on 2026-09-17: by score, best
     first. Alphabetical opened on *almost chess, antichess, atomic, bastion* and said
@@ -11845,6 +12198,22 @@ class TestTheSiteOpensOnItsOwnJudgement:
                         "[BROWSE.sort, BROWSE.descending]") == ["index", True]
         assert _in_page(_FIXTURE + "settleOrder();",
                         "[BROWSE.sort, BROWSE.descending]") == ["name", False]
+
+    def test_a_list_with_no_score_opens_by_name(self) -> None:
+        """First-visit study N5: *order by score* over a list in which no game has a
+        score orders by nothing, so such a list opens by name. One scored game is enough
+        for the score to be the order again."""
+        unscored = "LIBRARY.forEach(game => { game.index = null; });"
+        assert _in_page(_FIXTURE + _SITE_SORTS + unscored + "settleOrder();",
+                        "[BROWSE.sort, BROWSE.descending]") == ["name", False]
+        one = unscored + "LIBRARY[1].index = 0.4;"
+        assert _in_page(_FIXTURE + _SITE_SORTS + one + "settleOrder();",
+                        "[BROWSE.sort, BROWSE.descending]") == ["index", True]
+        # A tab is the same: the one it opens in is its own, or name where nothing in it
+        # has a value for it.
+        assert _in_page(_FIXTURE + unscored,
+                        "[openingSort('index', LIBRARY), openingSort('squares', LIBRARY)]"
+                        ) == ["name", "squares"]
 
     def test_the_order_is_the_readers_after_that(self) -> None:
         """The listing is re-read whenever somebody comes back to it, and a default that
@@ -11864,20 +12233,30 @@ class TestTheSiteOpensOnItsOwnJudgement:
     def test_the_listing_opens_that_way_on_the_site(self) -> None:
         """End to end, through `showLibrary`, so the decision is wired and not only
         written."""
-        listing = {
-            "games": [], "opponents": [], "coverage": {"axes": []}, "metrics": None,
-            "site": {"signedIn": False, "admin": False, "filters": [], "sorts": [
-                {"sort": "stars", "key": "stars", "label": "star rating"},
-                {"sort": "human_games", "key": "humanGames",
-                 "label": "human games played"},
-            ]},
+        scored = {
+            "hash": "aaa", "name": "alpha", "description": "", "source": "committed",
+            "board": "5x5", "pieceTypes": 2, "ruleMass": 10, "squares": 25, "descent": 0,
+            "cell": "0-0", "cellBins": [], "index": 0.5, "viable": True, "playable": True,
+            "staleness": None, "families": {}, "components": {},
+            "family": {"hash": "aaa", "name": "alpha"}, "run": "", "theme": "",
         }
-        seen = _page_on(True, "", _game_payload(self.HASH, site=True),
-                        {"/api/library": listing})
-        assert seen["errors"] == []
-        menu = _select(seen["html"], "sort")
-        assert '<option value="index" selected>score</option>' in menu
-        assert "high to low" in seen["html"]
+        for games, sort, way in (([scored], "index", "high to low"),
+                                 ([], "name", "low to high")):
+            listing = {
+                "games": games, "opponents": [], "coverage": {"axes": []}, "metrics": None,
+                "site": {"signedIn": False, "admin": False, "filters": [], "sorts": [
+                    {"sort": "stars", "key": "stars", "label": "star rating"},
+                    {"sort": "human_games", "key": "humanGames",
+                     "label": "human games played"},
+                ]},
+            }
+            seen = _page_on(True, "", _game_payload(self.HASH, site=True),
+                            {"/api/library": listing})
+            assert seen["errors"] == []
+            menu = _select(seen["html"], "sort")
+            # N5: a listing with no score to sort on opens by name.
+            assert f'<option value="{sort}" selected>' in menu, sort
+            assert way in seen["html"], sort
 
 
 # Every pill a card can carry, on one game, so the audit of what they explain has all
@@ -12314,6 +12693,76 @@ class TestWhatASaveSaysWhereTheClickWas:
         panel["publishable"] = False
         drawn = _said(_in_page(_kit(), "publishHtml(" + json.dumps({"publish": panel}) + ")"))
         assert "dTermsAgree" not in drawn
+
+    def test_a_press_that_waits_shows_waiting_for_verification_and_no_button(self) -> None:
+        """Q742. A press the site took while it checks the score: the button and the box
+        give way to *Waiting for verification* and the server's sentence, which says the
+        publish completes by itself once the score has been checked."""
+        from chess_variant_sandbox.site import drafts
+
+        panel = {
+            "level": "Draft", "mine": True, "open": False, "publishable": True,
+            "says": "", "waiting": drafts.WAITING, "waitsForCheck": True, "stopped": "",
+            "ticks": [{"met": True, "says": "it passes the playability check"},
+                      {"met": True, "says": drafts.READING_CHECKING}],
+            "terms": {"version": 1, "says": "x", "href": "/terms"},
+        }
+        drawn = _said(_in_page(_kit(), "publishHtml(" + json.dumps({"publish": panel}) + ")"))
+
+        assert 'id="dPublishWaiting"' in drawn and "Waiting for verification" in drawn
+        assert drafts.WAITING in drawn
+        assert "dPublishGo" not in drawn and "dTermsAgree" not in drawn
+
+    def test_a_publish_called_off_says_why_above_the_button(self) -> None:
+        from chess_variant_sandbox.site import drafts
+
+        why = drafts.CALLED_OFF + drafts.OUT_OF_TIME
+        panel = {
+            "level": "Draft", "mine": True, "open": False, "publishable": True,
+            "says": "", "waiting": drafts.NEEDS_A_READING, "waitsForCheck": False,
+            "stopped": why, "ticks": [],
+        }
+        drawn = _said(_in_page(_kit(), "publishHtml(" + json.dumps({"publish": panel}) + ")"))
+
+        assert 'id="dPublishStopped"' in drawn and why.replace("'", "&#39;") in drawn
+        assert drawn.index("dPublishStopped") < drawn.index('id="dPublishGo"')
+
+    def test_the_measuring_control_sits_under_the_line_that_asks_for_a_score(self) -> None:
+        """Q742, the user: *make sure the measurement button is next to where the
+        measurement is demanded*. On the site, wherever the designer's *Publish* button is
+        drawn, the measuring control is inside that panel: the line asking for a score,
+        then *measure it here*, then the box and the button. It is not drawn a second time
+        under the rungs, and for anybody else it keeps its old place."""
+        from chess_variant_sandbox.site import drafts
+
+        panel = {
+            "level": "Draft", "mine": True, "open": False, "publishable": True,
+            "says": "", "waiting": drafts.NEEDS_A_READING, "waitsForCheck": False,
+            "stopped": "",
+            "ticks": [{"met": True, "says": "it passes the playability check"},
+                      {"met": False, "says": drafts.READING_TICK}],
+            "terms": {"version": 1, "says": "x", "href": "/terms"},
+        }
+        setup = _kit() + (
+            " ACCOUNTS = true; VIEWER = 7;"
+            " HERE_MANIFEST = { schema: 1, runtime: 'pyodide-0', wheel: 'wheel-0/x.whl' };"
+            " DRAFT_CHECK = { hash: 'abc123abc123', valid: true, playable: true };"
+            " DRAFT_STANDING = { hash: 'abc123abc123', publish: " + json.dumps(panel) + " };"
+        )
+        drawn = _said(_in_page(setup, "publishHtml(DRAFT_STANDING, DRAFT_CHECK)"))
+        asked = drawn.index(drafts.NEEDS_A_READING)
+        assert asked < drawn.index('id="dHere" data-in="panel"') < drawn.index('id="dHereGo"')
+        assert drawn.index('id="dHereGo"') < drawn.index('id="dTermsAgree"')
+        assert drawn.index('id="dHereGo"') < drawn.index('id="dPublishGo"')
+        assert _in_page(setup, "hereAwayHtml(DRAFT_CHECK)") == ""
+
+        # Somebody else's draft, or the local application: no button, and the control
+        # stays where it was, under the rungs.
+        theirs = setup + " DRAFT_STANDING.publish.publishable = false;"
+        assert 'id="dHere"' not in _in_page(theirs, "publishHtml(DRAFT_STANDING, DRAFT_CHECK)")
+        assert 'id="dHereGo"' in _in_page(theirs, "hereAwayHtml(DRAFT_CHECK)")
+        local = setup + " ACCOUNTS = false;"
+        assert 'id="dHereGo"' in _in_page(local, "hereAwayHtml(DRAFT_CHECK)")
 
     def test_the_publish_panel_offers_no_button_to_anybody_else(self) -> None:
         panel = {"level": "Draft", "mine": False, "open": False, "ticks": [],
@@ -13094,7 +13543,7 @@ class TestOneBoardInTwoPlaces:
         body = self._show()
         # Both are written as the `inline` arm of one conditional rather than as a
         # second template, so a control added to the board is added to both boards.
-        assert "${inline ? '' : `<div class=\"panel\">" in body
+        assert "${inline ? '' : `<div class=\"panel boardSide\">" in body
         assert 'id="stopPlay"' in body
 
     def test_the_crumb_is_wired_by_the_chrome_and_never_by_presence(self) -> None:
@@ -13512,7 +13961,7 @@ for (const [label, spec, count, served] of [
     const run = vm.runInThisContext("HERE");
     out[label] = {
         state: run.state, error: run.error, result: run.result, games: run.games,
-        heaps: run.heaps, loads: run.loads.length,
+        said: run.said, heaps: run.heaps, loads: run.loads.length,
         urls: started.map((worker) => worker.url),
         sent: started.map((worker) => worker.sent.map((message) => message.kind)),
         load: started.map((worker) => ({
@@ -13833,17 +14282,28 @@ class TestMeasuringOnThisComputer:
         assert "sent nowhere" in said["local"] and "Sign in" not in said["local"]
 
     def test_a_unit_that_fails_ends_the_measurement_with_its_reason(self) -> None:
+        """The run keeps the worker's own message for whoever maintains the site; the
+        visitor reads a plain clause instead (Q728)."""
         broken = _here_page()["broken"]
         assert broken["state"] == "failed"
         assert "boom" in broken["error"]
         assert broken["result"] is None
+        assert broken["said"].startswith("measuring in this browser ran into a fault")
+        assert "boom" not in broken["said"]
+        setup = """HERE = { state: 'failed', error: 'PythonError: boom', said: 'a plain clause',
+                         started: 0 };"""
+        shown = json.loads(_in_the_page(setup, "JSON.stringify(hereRunHtml(HERE))"))
+        assert "It stopped before it finished: a plain clause" in shown and "boom" not in shown
 
     def test_a_wheel_that_cannot_gather_is_refused_at_load_by_name(self) -> None:
         """A wheel built before Q458 has no `gather_request`. The measurement stops before
-        any unit is dealt, and says what is wrong and what rebuilds it."""
+        any unit is dealt, and keeps what is wrong and what rebuilds it for the maintainer."""
         old = _here_page()["old"]
         assert old["state"] == "failed" and old["result"] is None
         assert "no slices.gather_request" in old["error"] and "build.sh" in old["error"]
+        # What is wrong and what rebuilds it is the maintainer's; a visitor sees neither.
+        assert "gather_request" not in old["said"] and "build.sh" not in old["said"]
+        assert "ran into a fault" in old["said"]
         assert old["games"] == 0
         assert all(sent == ["load"] for sent in old["sent"])
 

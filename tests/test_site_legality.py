@@ -153,6 +153,10 @@ def measure_as_a_browser(
         seeds=(roster.seed,),
         tables=measurement.tables_fingerprint(spec),
         verdict_rule=corpus.VERDICT_RULE,
+        # What the runner hands the core for this roster (Q631), as `corpus.current_basis`
+        # stamps it; without it the chess acceptance below compared against a basis the
+        # server no longer builds (red from Q631 until Q743).
+        players=measurement.players_fingerprint(spec, roster.agents),
     )
     return Measured(
         spec=spec,

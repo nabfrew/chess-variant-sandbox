@@ -280,7 +280,17 @@ class TestTheValidatorStillRefusesIt:
 # the readers moved (`4c5cfbe`): sha256 of `json.dumps(features, sort_keys=True)`, first
 # sixteen hex digits. A feature added later goes in `_ADDED_SINCE`, which keeps it out of
 # the digest, so the ones that were here must still read the same.
-_ADDED_SINCE: frozenset[str] = frozenset({"wraps_n_s", "wraps_ne_sw", "wraps_nw_se"})  # Q281a3
+_ADDED_SINCE: frozenset[str] = frozenset({
+    "wraps_n_s", "wraps_ne_sw", "wraps_nw_se",  # Q281a3
+    "strike_stays_put", "strike_rebirths", "capturer_switches_sides", "explodes_alone",  # Q540
+    "contacts_keep_the_mover",  # Q781
+    "extinction_per_type", "promotes_only_lost",  # Q783
+    "drops_placement",  # Q784
+    "drops_either_face",  # Q785
+    "wins_by_leaving",  # Q786
+    "portal_pairs", "portals_move", "portals_one_way",  # Q771
+    "portals_no_back",  # Q807
+})
 _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/almost": "9035530ccf64d8cd",
     "rulesets/antichess": "2fe16943c39e9212",
@@ -323,6 +333,31 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/torus": "a9b670d4a057ad89",
     "rulesets/tunnel-vertical": "f68684b1faa90d54",
     "rulesets/xiangqi": "51cec6a3a851bc63",
+    "archive/andernach": "352d33d9f6b29010",  # Q540, schema 17
+    "archive/circe": "352d33d9f6b29010",  # Q540, schema 17
+    "archive/kamikaze": "da0551bdcad0ddad",  # Q540, schema 17
+    "archive/rifle": "352d33d9f6b29010",  # Q540, schema 17
+    "archive/shogi-drop-promoted": "e533c3319ca37e67",  # Q787
+    "archive/shogi-backward-drops": "05d80d6d640c72bc",  # Q787
+    "archive/pawn-knockdown": "e4b0982ee874a806",  # Q787
+    "archive/divide": "24d51a6b605d2aa5",  # Q772a, schema 19
+    "archive/ferry": "62007817ab0c2bfb",  # Q772a, schema 19
+    "archive/ferry-no-straight-back": "3cd0008b2552d704",  # Q807, schema 20
+    "archive/carousel": "cce67fce00c2207f",  # Q772a, schema 19
+    "archive/wormhole": "a82a1c3ee0f4049b",  # Q772a, schema 19
+    "archive/wormhole-adrift": "8a7ee8f749713bb5",  # Q772a, schema 19
+    "archive/shut-wormhole": "8a7ee8f749713bb5",  # Q772a, schema 19
+    "archive/cylinder-wormhole": "af2b3931c3b0dda1",  # Q772a, schema 19
+    "archive/einstein": "5b12c7cca128a3a7",  # Q781, schema 18
+    "archive/omega": "5e421c4ae0d238e9",  # Q781, schema 18
+    "archive/extinction-chess": "8f42396c44179f33",  # Q783, schema 18
+    "archive/grand": "227f27e884fc2efc",  # Q783, schema 18
+    "archive/placement-chess": "46bff0e6d06b6fa7",  # Q784, schema 18
+    "archive/sittuyin": "f3a43bd577292f85",  # Q784, schema 18
+    "archive/kyoto": "2aed5b07a6185d43",  # Q785, schema 18
+    "archive/jeson-mor": "2a87f67280ed3538",  # Q786, schema 18
+    "archive/hex-glinski-turned": "cb415ec30ffc72bd",  # Q782, schema 18
+    "archive/hex-glinski-turned-mirrored": "eaa3e61fd8e5cd3a",  # Q782, schema 18
     "archive/cannonade": "9e78a35b5d909262",
     "archive/chess-sweeping-bishops": "980b6362973afb82",
     "archive/hex-glinski-promoting": "a7853bea41ae9ca1",

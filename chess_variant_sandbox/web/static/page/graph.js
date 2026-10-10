@@ -226,7 +226,7 @@ function mapLegendHtml() {
     <div id="mapScale"${MAP_PAINT === 'ramp' ? '' : ' hidden'}>${mapScaleHtml()}</div>
     <div id="mapSteps" class="mapLegend"${MAP_STEPS ? '' : ' hidden'}>
     <div class="chips">${types}</div>
-    <details class="panel" id="mapLegend">
+    <details class="mapKinds" id="mapLegend">
       <summary class="muted small">Which rule a colour means, and what to hide</summary>
       <div class="muted small" style="margin-top:8px">Each dot is a game and each line is
         how two of them differ. The rules are compared after setting aside how each game

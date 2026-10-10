@@ -587,6 +587,27 @@ def test_the_opening_duel_samples_positions_and_not_the_threads(
     assert plain.openings == 1 and plain.opening_plies == 0
 
 
+@pytest.mark.parametrize("opening_plies", [0, 4])
+def test_a_curtailed_acceptance_is_the_full_duel_s_verdict_at_any_worker_count(
+    spec: dict, clean: None, opening_plies: int
+) -> None:
+    """plan-compute §4.2 (Q632): the verdict by construction, the score of the prefix."""
+    engine = Engine(spec)
+    weights = model.quantize(model.train(_data(spec), TINY))
+    register_net(NetRecord(TINY.digest, engine.spec.hash, ACCEPTED, weights))
+    options = {"pairs": 8, "nodes": 60, "seed": 500, "opening_plies": opening_plies}
+    whole = accept(spec, TINY, workers=1, **options)
+    one = accept(spec, TINY, workers=1, curtail=True, **options)
+    four = accept(spec, TINY, workers=4, curtail=True, **options)
+    assert one == four
+    assert one.accepted == whole.accepted
+    assert whole.decided_after == whole.planned == 8
+    assert one.planned == 8 and one.decided_after < 8, "the fixture never stops early"
+    assert one.games == 2 * one.decided_after
+    stored = one.as_dict()
+    assert (stored["decided_after"], stored["planned_pairs"]) == (one.decided_after, 8)
+
+
 def test_train_runs_end_to_end_from_the_command_line(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clean: None, capsys: pytest.CaptureFixture
 ) -> None:

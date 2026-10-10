@@ -149,9 +149,10 @@ class TestTheGate:
 
 
 class TestWhatIsNotStamped:
-    def test_a_failing_run(self, pytester: pytest.Pytester) -> None:
+    def test_a_failing_run_stopped_early(self, pytester: pytest.Pytester) -> None:
+        """`-x` never ran the rest, so its red says nothing about them."""
         root = repository(pytester.path, {"tests/test_suite.py": "def test_fails():\n    assert 0\n"})
-        pytester.runpytest(*FAST).assert_outcomes(failed=1)
+        pytester.runpytest(*FAST, "-x").assert_outcomes(failed=1)
         assert stamp(root) is None
 
     def test_a_run_on_a_stale_core(
@@ -170,6 +171,175 @@ class TestWhatIsNotStamped:
     def test_another_marker_expression(self, pytester: pytest.Pytester, suite: Path) -> None:
         pytester.runpytest("-p", "green_stamp").assert_outcomes(passed=2, skipped=1)
         assert stamp(suite) is None
+
+
+EXPOSED = """
+import os
+import pytest
+
+def test_passes():
+    pass
+
+def test_reads_the_environment():
+    assert os.environ.get("GREEN_STAMP_STATE", "good") == "good"
+
+def test_wants_a_database():
+    if "GREEN_STAMP_DATABASE" not in os.environ:
+        pytest.skip("no database")
+    assert os.environ["GREEN_STAMP_DATABASE"] == "good"
+"""
+
+
+@pytest.fixture(scope="module")
+def exposed_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A suite whose verdict the environment sets, as `runs/` and a database set the real one's,
+    beside Markdown nothing reads and Markdown a module names."""
+    return repository(
+        tmp_path_factory.mktemp("exposed"),
+        {
+            "tests/test_suite.py": EXPOSED,
+            "app.py": 'CHANGELOG = "docs/changelog.md"\n',
+            "docs/changelog.md": "# Changes\n",
+            "docs/notes.md": "# Notes\n",
+        },
+    )
+
+
+@pytest.fixture
+def exposed(
+    pytester: pytest.Pytester, exposed_template: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    monkeypatch.delenv("GREEN_STAMP_STATE", raising=False)
+    monkeypatch.delenv("GREEN_STAMP_DATABASE", raising=False)
+    return copied(exposed_template, pytester.path)
+
+
+class TestRedStamps:
+    """A red tree re-checked costs its failures, not the suite (2026-10-09)."""
+
+    def test_a_red_run_is_stamped_and_its_gate_reruns_only_what_failed_or_skipped(
+        self, pytester: pytest.Pytester, exposed: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("GREEN_STAMP_STATE", "bad")
+        first = pytester.runpytest(*FAST)
+        first.assert_outcomes(passed=1, failed=1, skipped=1)
+        first.stdout.fnmatch_lines(["green stamp: stamped tree * red (1 failed)"])
+        written = stamp(exposed)
+        assert written is not None
+        assert written["verdict"] == "red"
+        assert written["failed"] == ["tests/test_suite.py::test_reads_the_environment"]
+
+        again = pytester.runpytest(*GATE)
+        again.assert_outcomes(failed=1, skipped=1, deselected=1)
+        assert again.ret == pytest.ExitCode.TESTS_FAILED
+        again.stdout.fnmatch_lines(
+            ["green stamp: tree * was red in * (1 failed); re-ran only the 2 tests that run"
+             " failed or skipped; stamped tree * red"]
+        )
+
+        # the cause outside the tree is fixed: the rerun is green, and so is the tree now
+        monkeypatch.delenv("GREEN_STAMP_STATE")
+        fixed = pytester.runpytest(*GATE)
+        fixed.assert_outcomes(passed=1, skipped=1, deselected=1)
+        assert fixed.ret == pytest.ExitCode.OK
+        fixed.stdout.fnmatch_lines(["green stamp: * stamped tree * green"])
+        written = stamp(exposed)
+        assert written is not None
+        assert written["verdict"] == "green"
+        assert written["failed"] == []
+        assert written["skipped"] == ["tests/test_suite.py::test_wants_a_database"]
+        assert written["passed"] == 2
+        assert written["rerun_of"]["verdict"] == "red"
+
+        last = pytester.runpytest(*GATE)
+        last.assert_outcomes(skipped=1, deselected=2)
+        last.stdout.fnmatch_lines(["green stamp: tree * re-ran only the 1 tests that run skipped"])
+
+    def test_a_green_stamp_whose_rerun_fails_turns_red(
+        self, pytester: pytest.Pytester, exposed: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A worker's green, then the main checkout's database test fails: the tree is red."""
+        pytester.runpytest(*FAST).assert_outcomes(passed=2, skipped=1)
+        monkeypatch.setenv("GREEN_STAMP_DATABASE", "bad")
+        gate = pytester.runpytest(*GATE)
+        gate.assert_outcomes(failed=1, deselected=2)
+        gate.stdout.fnmatch_lines(["green stamp: * stamped tree * red"])
+        written = stamp(exposed)
+        assert written is not None
+        assert written["verdict"] == "red"
+        assert written["failed"] == ["tests/test_suite.py::test_wants_a_database"]
+
+
+class TestMarkdownDrift:
+    """A committed edit to Markdown nothing reads doesn't cost a full run (2026-10-09)."""
+
+    def test_a_committed_note_nothing_reads_still_matches(
+        self, pytester: pytest.Pytester, exposed: Path
+    ) -> None:
+        pytester.runpytest(*FAST).assert_outcomes(passed=2, skipped=1)
+        stamped = git(exposed, "rev-parse", "HEAD^{tree}")
+        (exposed / "docs" / "notes.md").write_text("# Notes\n- after the run\n", encoding="utf-8")
+        git(exposed, "commit", "-qam", "a note after the run")
+        # a stamp named for a tree this repository never had is passed over, not an error
+        green_stamp.write_stamp(
+            exposed / green_stamp.STORE, {"tree": "0" * 40, "collection": "x", "skipped": []}
+        )
+
+        result = pytester.runpytest(*GATE)
+        result.assert_outcomes(skipped=1, deselected=2)
+        result.stdout.fnmatch_lines(
+            [f"green stamp: tree * differs from tree {stamped[:10]} only in Markdown nothing"
+             " reads (docs/notes.md); * re-ran only the 1 tests that run skipped"]
+        )
+
+    def test_a_committed_edit_to_markdown_code_reads_runs_in_full(
+        self, pytester: pytest.Pytester, exposed: Path
+    ) -> None:
+        pytester.runpytest(*FAST)
+        (exposed / "docs" / "changelog.md").write_text("# Changes\n- one\n", encoding="utf-8")
+        git(exposed, "commit", "-qam", "the changelog, which app.py reads")
+        result = pytester.runpytest(*GATE)
+        result.assert_outcomes(passed=2, skipped=1)
+        result.stdout.fnmatch_lines(["green stamp: no stamp for tree *; ran the whole fast suite*"])
+
+
+class TestATravellingStamp:
+    """A cloud clone's stamp, carried home on a branch of its own (2026-10-09)."""
+
+    def test_a_stamp_exported_from_a_clone_is_imported_and_matched(
+        self, pytester: pytest.Pytester, suite: Path, tmp_path: Path
+    ) -> None:
+        branch = git(suite, "branch", "--show-current")
+        head = git(suite, "rev-parse", "HEAD")
+        cloud = tmp_path / "cloud"
+        git(tmp_path, "clone", "-q", str(suite), str(cloud))
+        # the clone's run, stood in for by moving this checkout's stamp into its store
+        pytester.runpytest(*FAST).assert_outcomes(passed=1, skipped=1, deselected=1)
+        shutil.move(str(suite / green_stamp.STORE), str(cloud / green_stamp.STORE))
+        assert stamp(suite) is None
+
+        assert green_stamp.export(cloud, push="origin") == 0
+        assert green_stamp.import_(suite, f"{branch}-green") == 0
+
+        # the code is untouched: the stamp rode outside its history and tree
+        assert git(suite, "rev-parse", "HEAD") == head
+        assert git(suite, "status", "--porcelain") == ""
+        carried = git(suite, "ls-tree", "--name-only", f"{branch}-green")
+        assert carried == green_stamp.CARRIED
+
+        result = pytester.runpytest(*GATE)
+        result.assert_outcomes(skipped=1, deselected=2)
+        result.stdout.fnmatch_lines(
+            [f"green stamp: tree * passed the fast suite in {branch}-green at *;"
+             " re-ran only the 1 tests that run skipped"]
+        )
+
+    def test_nothing_to_export_says_so(self, suite: Path) -> None:
+        assert green_stamp.export(suite, push=None) == 1
+
+    def test_a_branch_without_a_stamp_imports_nothing(self, suite: Path) -> None:
+        assert green_stamp.import_(suite, "HEAD") == 1
+        assert not (suite / green_stamp.STORE).exists()
 
 
 class TestTheGateRefuses:
@@ -309,10 +479,16 @@ class TestUnderXdist:
         )
         result = pytester.runpytest(*self.WORKERS, "--dist", "loadfile")
         result.assert_outcomes(passed=2, failed=1)
-        assert stamp(root) is None
-        assert not (root / green_stamp.STORE).exists() or not list(
-            (root / green_stamp.STORE).glob("*.json")
-        )
+        written = stamp(root)
+        assert written is not None
+        assert written["verdict"] == "red"
+        assert written["failed"] == ["tests/test_red.py::test_fails"]
+        assert len(list((root / green_stamp.STORE).glob("*.json"))) == 1
+
+        # ...and the next gate on the tree runs the failure again rather than skipping it
+        again = pytester.runpytest(*self.WORKERS, "--skip-if-green")
+        again.assert_outcomes(failed=1)
+        assert again.ret == pytest.ExitCode.TESTS_FAILED
 
 
 def test_the_inbox_is_one_nothing_reads() -> None:
@@ -321,6 +497,13 @@ def test_the_inbox_is_one_nothing_reads() -> None:
     If code comes to read it on purpose, delete this test: the gate is then right to run.
     """
     assert green_stamp.unread(REPOSITORY, "docs/add-to-queue.md")
+
+
+@pytest.mark.parametrize("path", ["docs/queue.md", "docs/coordinator-status.md"])
+def test_the_coordinators_own_documents_are_ones_nothing_reads(path: str) -> None:
+    """The coordinator commits these between a worker's run and its gate. Were they read, the
+    gate after a queue commit would run in full (2026-10-09). Same remedy as the inbox's test."""
+    assert green_stamp.unread(REPOSITORY, path)
 
 
 def test_the_store_is_ignored_so_a_stamp_cannot_move_a_tree() -> None:

@@ -85,7 +85,7 @@ function scoringHtml(s) {
   // honest instruction is to stop the server, rebuild, start it again, and it is spelt
   // out here rather than left as a command with no explanation of why.
   const build = s.build
-    ? `<div class="verdict" style="border-color:var(--bad); margin-top:10px">
+    ? `<div class="verdict out" style="margin-top:10px">
          <div>Measuring is held, because the game engine has changed since it was last
            compiled.</div>
          <div class="small" style="font-weight:400; margin-top:5px">${esc(s.build)}.

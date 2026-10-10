@@ -175,6 +175,41 @@ class TestTheLadder:
         assert ladder.reading == trust.SILENT
         assert ladder.count == trust.Count(1, 4, "runs")
 
+    @pytest.mark.parametrize(("blind", "read", "those"), [
+        (1, 3, "those runs"), (2, 2, "those runs"), (3, 1, "that run")])
+    def test_a_partly_blind_ladder_says_how_many_runs_read_it(
+        self, world, blind: int, read: int, those: str
+    ) -> None:
+        # Q793 (`plan-confidence.md` §2.3.1): *dull* is blind on 2 of 4 runs and read
+        # *steadily stronger*. Words only: the item stays silent and the level unmoved.
+        _measured(world, unreadable=(("skill_gradient",),) * blind + ((),) * (4 - blind))
+        read_ = _read(world)
+        ladder = read_.item(trust.LADDER)
+        assert (ladder.reading, ladder.sentence) == (trust.SILENT, "ladder.partly")
+        assert ladder.count == trust.Count(blind, 4, "runs")
+        assert read_.level == trust.EARLY
+        text = trust.said(ladder)
+        assert f"in only {read} of the 4 runs that measured this game" in text
+        assert text.endswith(f"rest on {those} alone.")
+        assert "steadily" not in text
+
+    def test_no_blind_run_keeps_the_ordered_sentence(self, world) -> None:
+        _measured(world)
+        read = _read(world)
+        ladder = read.item(trust.LADDER)
+        assert ladder.sentence == "ladder.ordered"
+        assert trust.said(ladder).startswith("Its computer players get steadily stronger")
+        assert read.level == trust.EARLY
+
+    def test_every_run_blind_keeps_the_withheld_sentence(self, world) -> None:
+        _measured(world, unreadable=(("skill_gradient",),) * 4)
+        read = _read(world)
+        ladder = read.item(trust.LADDER)
+        assert ladder.sentence == "ladder.withheld"
+        assert trust.said(ladder).startswith(
+            "Its computer players don't get clearly stronger with more thinking time here")
+        assert read.level == trust.QUESTIONED
+
     def test_an_ordered_ladder_never_agrees(self, world) -> None:
         _measured(world)
         assert _read(world).item(trust.LADDER).reading == trust.SILENT

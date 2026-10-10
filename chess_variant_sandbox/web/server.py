@@ -377,6 +377,10 @@ class App:
                     # listing rather than fetched when the menu opens: it is four
                     # kilobytes and the menu is the first thing a person touches.
                     "metrics": library.metric_legend(),
+                    # Q788: the landing page's newest games and its spotlight, over
+                    # what the listing holds (the site narrows both to what it offers).
+                    "newGames": launch.new_cards(games),
+                    "spotlight": launch.spotlight_card(games),
                     "opponents": [
                         entry.as_dict() for entry in opponents.ladder()
                     ]}
@@ -1321,6 +1325,23 @@ def handler_for(app: App) -> type[BaseHTTPRequestHandler]:
         # a request does neither, so this bounds a dead peer and never a slow search.
         timeout = 30
 
+        # Whether the request in hand is a HEAD: `_send` then writes the headers a GET
+        # would have and leaves the body off. The handler outlives a request on a
+        # kept-alive connection, so `do_HEAD` sets it and puts it back.
+        _head_only = False
+
+        def do_HEAD(self) -> None:  # noqa: N802 - the stdlib's naming
+            """The answer a GET would give, without its body (Q792: a monitor's
+            ``HEAD /`` was a 501). The same dispatch, so every GET route has a HEAD and
+            the two cannot drift apart; every response goes through `_send`, which is
+            where the body is dropped. ``Content-Length`` stays the body's, as HTTP says
+            a HEAD answers."""
+            self._head_only = True
+            try:
+                self.do_GET()
+            finally:
+                self._head_only = False
+
         def do_GET(self) -> None:  # noqa: N802 - the stdlib's naming
             parsed = urlparse(self.path)
             if parsed.path in PAGE_PATHS:
@@ -1515,7 +1536,8 @@ def handler_for(app: App) -> type[BaseHTTPRequestHandler]:
                 # rather than left to discover it on the next request.
                 self.send_header("Connection", "close")
             self.end_headers()
-            self.wfile.write(body)
+            if not self._head_only:
+                self.wfile.write(body)
 
         def end_headers(self) -> None:
             """The one policy, on every answer: a page, a script, JSON, a redirect, an

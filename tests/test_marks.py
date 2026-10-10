@@ -153,7 +153,8 @@ class TestTheHues:
 
     def test_it_is_shown_where_a_person_is_named(self) -> None:
         # The application's header, a match's seats, Play a person, games waiting on you.
-        assert "window.memberMark(VIEWER_MARK, 20)" in PAGE
+        assert "memberButton(VIEWER, VIEWER_MARK)" in PAGE
+        assert "window.memberMark(markData, 20)" in PAGE
         assert "markHtml(between.marks[player], 18)" in PAGE
         assert "markHtml(person.mark, 20)" in PAGE
         assert "markHtml(entry.opponentMark, 18)" in PAGE
@@ -169,7 +170,9 @@ class TestTheHues:
         page = pages.profile("ada", user=7)
         assert f"<h1>{marks.svg(7, 40)}ada</h1>" in page
         assert f'id="who">{marks.svg(7, 20)}ada</span>' in page
-        assert f'{marks.svg(7, 20)}<a href="/profile">ada</a>' in pages.players("ada", user=7)
+        assert pages._member_button("ada", marks.svg(7, 20)) in pages.players("ada", user=7)
+        assert f'{marks.svg(7, 20)}<span class="memberName">ada</span>' in pages.players(
+            "ada", user=7)
         # Without an id (a test, a constant page), the corner is the handle alone.
         assert 'id="who">ada</span>' in pages.profile("ada")
 

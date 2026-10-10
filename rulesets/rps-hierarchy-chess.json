@@ -217,6 +217,7 @@
     }
   },
   "provenance": {
+    "added": "2026-08-21",
     "origin": "human",
     "source": "docs/reference/rps-versions.md, precursor",
     "history": "Stated and immediately abandoned by its designer, who noticed that nothing can capture a king. Committed unfixed, as a labelled negative."

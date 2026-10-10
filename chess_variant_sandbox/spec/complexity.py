@@ -175,7 +175,49 @@ _RULE_COSTS: dict[str, float] = {
     # single flags. `false` is the absence of the rule and costs nothing, on the grounds
     # `"en_passant": false` costs nothing.
     "promote_on_entry": 1.0,
+    # Schema 19 (Q771). A portal pair is a new actor on the board in the `npcs` sense -- a
+    # square that sends a piece somewhere else, with a direction rule a player has to be
+    # taught (it comes out one step beyond, the way it was going) and a set of blocked
+    # exits -- so it is costed as `npcs` is. Each further pair, a stated mover and a
+    # stated one-way or closed passage are charged on top by `_portal_extras`.
+    "portals": 2.5,
 }
+
+# Schema 19: what `rules.portals` costs beyond its first pair, and why. A further pair is
+# one more place on the board a player has to read the numbers of (0.5 each); someone
+# moving an end is a second kind of move, the portal's own (1.0, once); a passage that is
+# one way or closed is an exception per player about which end is a door (1.0, once).
+# Defaults cost nothing: `moved_by: []` and `both_ways` are the rule as first stated.
+# Schema 20 (Q807): a bar on moving a portal straight back is one exception to remember
+# about the portal's own move, a ko (0.5, once); `false` is the rule's absence.
+_PORTAL_PAIR = 0.5
+_PORTAL_MOVED = 1.0
+_PORTAL_PASSAGE = 1.0
+_PORTAL_NO_BACK = 0.5
+
+
+def _portal_extras(portals: Any) -> float:
+    """The part of `rules.portals`' charge `_RULE_COSTS` cannot say: see `_PORTAL_PAIR`."""
+    if not isinstance(portals, list) or not portals:
+        return 0.0
+    pairs = [pair for pair in portals if isinstance(pair, dict)]
+    total = _PORTAL_PAIR * max(len(pairs) - 1, 0)
+    if any(
+        any((pair.get("moved_by") or {}).get(end) for end in ("orange", "blue"))
+        for pair in pairs
+        if isinstance(pair.get("moved_by"), dict)
+    ):
+        total += _PORTAL_MOVED
+    if any(
+        word != "both_ways"
+        for pair in pairs
+        if isinstance(pair.get("passage"), dict)
+        for word in pair["passage"].values()
+    ):
+        total += _PORTAL_PASSAGE
+    if any(pair.get("no_straight_back") is True for pair in pairs):
+        total += _PORTAL_NO_BACK
+    return total
 
 # Keys whose cost applies only when they depart from the engine's default. Stating
 # "checkmate loses" is not a rule anyone has to learn.
@@ -222,11 +264,24 @@ _RULE_ACTIVE: dict[str, Any] = {
     # because a strike never reaches an immune piece. The compiler drops both
     # (``StrikeRule.survives_anything``). What makes a strike a rule is one link that
     # leaves a struck piece standing.
+    #
+    # Schema 17 (Q540) makes two `"capture"` positions rules -- `stay` (rifle) and `home`
+    # (circe) -- and `switches_sides` (Andernach) a rule under any effect. Each costs the
+    # strike's one charge: it is one sentence about what a capture leaves behind.
     "strike": lambda value: isinstance(value, dict)
-    and value.get("effect", "capture") != "capture"
-    and any(
-        link.get("from") not in (value.get("immune") or ())
-        for link in value.get("chain") or ()
+    and (
+        (
+            value.get("effect", "capture") != "capture"
+            and any(
+                link.get("from") not in (value.get("immune") or ())
+                for link in value.get("chain") or ()
+            )
+        )
+        or (
+            value.get("effect", "capture") == "capture"
+            and value.get("position") in ("stay", "home")
+        )
+        or bool(value.get("switches_sides"))
     ),
     # Schema 10 (Q19a), the same shape one spelling over. A table with no link is no rule
     # (`docs/reference/bugs-investigations.md` §*Ruled on in advance, for Q86*), and
@@ -279,6 +334,7 @@ def _count_special_rules(rules: dict[str, Any]) -> float:
             continue
         if value:
             total += cost
+    total += _portal_extras(rules.get("portals"))
     return total
 
 
@@ -360,6 +416,14 @@ def expand_symmetry(vector: tuple[int, int], symmetry: str) -> set[tuple[int, in
     Vectors are written in the first player's orientation: ``+y`` is forward. The
     second player's directions are produced by the engine at compile time, not here,
     so that ``distinct_directions`` counts concepts rather than doubling them.
+
+    ``rotate6`` and ``dihedral12`` (schema 18b) are the hexagon's, read in the hex
+    lattice's axial coordinates (file ``q``, rank ``r``): a turn by 60 degrees is
+    ``(q, r) -> (-r, q + r)``, which carries the six neighbours round in order, and the
+    mirror is ``(q, r) -> (r, q)``. Any one mirror generates the same twelve, so the
+    choice of axis changes nothing. Both sets are closed under the half turn, which is
+    the hex board's second-player orientation, so the engine's flip leaves them as they
+    are.
     """
     x, y = vector
     if symmetry == "none":
@@ -371,4 +435,9 @@ def expand_symmetry(vector: tuple[int, int], symmetry: str) -> set[tuple[int, in
     if symmetry == "dihedral8":
         rotations = {(x, y), (-y, x), (-x, -y), (y, -x)}
         return rotations | {(a, -b) for a, b in rotations}
+    if symmetry in ("rotate6", "dihedral12"):
+        turns = {(x, y), (-y, x + y), (-x - y, x), (-x, -y), (y, -x - y), (x + y, -x)}
+        if symmetry == "rotate6":
+            return turns
+        return turns | {(b, a) for a, b in turns}
     raise ValueError(f"unknown symmetry {symmetry!r}")

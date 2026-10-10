@@ -1,0 +1,336 @@
+{
+  "schema_version": 18,
+  "name": "sittuyin",
+  "description": "Sittuyin, Burmese chess. The pawns start on a staggered line across the third and fourth ranks; every other piece starts in hand, and while a player still holds one, a move is placing it on an empty square of their own three back ranks, a chariot (yahhta) on the back rank only. Then the game is makruk's pieces: a pawn on its long diagonal of promotion squares may become a general, but only once its side's general has been lost. Stalemate loses for the side that cannot move.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "ne",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "myin",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "S",
+      "name": "hsin",
+      "value": 2.5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "yahhta",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "F",
+      "name": "sit",
+      "value": 1.5,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "min-gyi",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {
+        "piece": "P",
+        "player": 0,
+        "squares": [
+          "a3",
+          "b3",
+          "c3",
+          "d3",
+          "e4",
+          "f4",
+          "g4",
+          "h4"
+        ]
+      },
+      {
+        "piece": "P",
+        "player": 1,
+        "squares": [
+          "a5",
+          "b5",
+          "c5",
+          "d5",
+          "e6",
+          "f6",
+          "g6",
+          "h6"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "loss",
+    "promotion": {
+      "piece": "P",
+      "squares": [
+        "a8",
+        "b7",
+        "c6",
+        "d5",
+        "e5",
+        "f6",
+        "g7",
+        "h8"
+      ],
+      "to": [
+        "F"
+      ],
+      "mandatory": false,
+      "only_lost": true
+    },
+    "drops": {
+      "from_captures": false,
+      "placement": true,
+      "stock": {
+        "K": 1,
+        "F": 1,
+        "R": 2,
+        "S": 2,
+        "N": 2
+      },
+      "region": {
+        "K": [
+          "a1",
+          "b1",
+          "c1",
+          "d1",
+          "e1",
+          "f1",
+          "g1",
+          "h1",
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2",
+          "a3",
+          "b3",
+          "c3",
+          "d3",
+          "e3",
+          "f3",
+          "g3",
+          "h3"
+        ],
+        "F": [
+          "a1",
+          "b1",
+          "c1",
+          "d1",
+          "e1",
+          "f1",
+          "g1",
+          "h1",
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2",
+          "a3",
+          "b3",
+          "c3",
+          "d3",
+          "e3",
+          "f3",
+          "g3",
+          "h3"
+        ],
+        "S": [
+          "a1",
+          "b1",
+          "c1",
+          "d1",
+          "e1",
+          "f1",
+          "g1",
+          "h1",
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2",
+          "a3",
+          "b3",
+          "c3",
+          "d3",
+          "e3",
+          "f3",
+          "g3",
+          "h3"
+        ],
+        "N": [
+          "a1",
+          "b1",
+          "c1",
+          "d1",
+          "e1",
+          "f1",
+          "g1",
+          "h1",
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2",
+          "a3",
+          "b3",
+          "c3",
+          "d3",
+          "e3",
+          "f3",
+          "g3",
+          "h3"
+        ],
+        "R": [
+          "a1",
+          "b1",
+          "c1",
+          "d1",
+          "e1",
+          "f1",
+          "g1",
+          "h1"
+        ]
+      }
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 128
+  },
+  "provenance": {
+    "added": "2026-10-09",
+    "origin": "human",
+    "source": "Sittuyin (Fairy-Stockfish's `sittuyin`), with a caveat: a pawn promotes on arriving at a promotion square rather than in place or by a later diagonal step, and the counting rules are the plain no-progress clock",
+    "history": "Schema 18d's second showcase for the placement phase (Q784, plan-schema-17.md section 9.3)."
+  }
+}

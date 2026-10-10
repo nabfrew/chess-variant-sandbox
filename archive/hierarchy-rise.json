@@ -251,6 +251,7 @@
     }
   },
   "provenance": {
+    "added": "2026-08-29",
     "origin": "designed",
     "source": "docs/new-rule-schema-brainstorm.md",
     "history": "The matched pair to hierarchy fall: same board, same army, same starting material, chain pointing the other way. Starting material is deliberately left at chess's, so the pair differs in the chain and the position rule and nothing else -- the brainstorm suggests adjusting the army, and doing so would make the comparison a comparison of two things at once.",

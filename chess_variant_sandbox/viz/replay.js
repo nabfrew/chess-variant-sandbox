@@ -62,8 +62,24 @@ function tintFor(player) {
        : ['var(--p2)', 'var(--p2-ink)'];
 }
 
-function drawPiece(piece, x, y) {
+// Whose passage a portal end shows on a beat: the side to move from that position, the
+// one that made the next move, or after the last move the other side (§4).
+function viewerAt(beat) {
+  const next = DATA.moves[beat.ply];
+  if (next && next.player !== undefined) return next.player;
+  const last = DATA.moves[DATA.moves.length - 1];
+  return last && last.player !== undefined ? 1 - last.player : 0;
+}
+
+function drawPiece(piece, x, y, viewer) {
   const cx = x + CELL / 2, cy = y + CELL / 2;
+  // Schema 19: a portal end, drawn as the play board draws it.
+  const end = DATA.portals ? DATA.portals.ends.find(one => one.type === piece.type) : null;
+  if (end) {
+    return portalGlyph(end, portalPartner(DATA.portals, end),
+                       viewer === undefined ? null : viewer, x, y, CELL,
+                       { numbered: portalPairs(DATA.portals) > 1 });
+  }
   const icon = iconFor(piece);
   if (icon) {
     const size = CELL * 0.88, corner = (CELL - size) / 2;
@@ -113,9 +129,10 @@ function cellHtml(board, marked, square, u, v, depth) {
   if (SQUARE_MARKS[square]) out += squareBadge(x, y, CELL, SQUARE_MARKS[square], FRAME, 'replay');
   const piece = pieceAt(board, square);
   if (piece) {
+    const viewer = viewerAt(BEATS[at]);
     out += depth === 0
-      ? `<g data-piece="${square}">${drawPiece(piece, x, y)}</g>`
-      : drawPiece(piece, x, y);
+      ? `<g data-piece="${square}">${drawPiece(piece, x, y, viewer)}</g>`
+      : drawPiece(piece, x, y, viewer);
   }
   if (depth === 0) return out + coordsHtml(square, x, y, CELL, FRAME);
   return `<g opacity="${ghostFade(depth).toFixed(3)}">${out}</g>`;
@@ -127,6 +144,11 @@ function draw() {
   const move = beat.ply > 0 ? DATA.moves[beat.ply - 1] : null;
   const marked = new Set(beat.kind === 'phase' ? beat.steps.flatMap(s => [s.from, s.to])
                          : move ? [move.from, move.to] : []);
+  // A move through a portal marks the two ends it passed too (schema 19).
+  if (beat.kind !== 'phase' && move && move.portal !== undefined) {
+    marked.add(move.portal);
+    marked.add(move.portalOut);
+  }
   FRAME = boardView(W, H, AXES, SHIFT, false, DATA.lattice, CUT);
   svg.setAttribute('viewBox', viewBox(FRAME, CELL));
 

@@ -159,6 +159,14 @@ LIGHT: dict[str, str] = {
     # What just happened, what you are holding, where it may go. Solid colours: the board
     # draws each at its own opacity over the square.
     "hl-last": "#f2c94c", "hl-sel": "#2e8b65", "dot": "#2b2420",
+    # A move picked between two people and not sent yet (Q733): dashed outlines and a
+    # dashed arrow in a near-black pine, each edged in a cream halo so it reads on both
+    # woods. Not the last move's amber, never a fill: a sent move and an unsent one are
+    # two kinds of mark, not two shades of one.
+    "held": "#0c2e20", "held-halo": "#fff8ea",
+    # The board dimmed behind a choice drawn over it (Q765: what a promoting piece
+    # becomes), so the card is the one lit thing in the reader's eye line.
+    "scrim": "rgba(30, 20, 10, .6)",
     # A capture's flash and a shield's glow, the board's two animations.
     "fx-fire": "#f59e42", "fx-flare": "#e8852e", "fx-spark": "#f5c242", "fx-shield": "#5bc0de",
     # --- the armies, for the lettered disc a piece with no drawing is ---
@@ -168,6 +176,16 @@ LIGHT: dict[str, str] = {
     # theme, and a third piece has to read as *off* that axis rather than as a shade
     # between them. It never takes an army's icon, so a wild piece is always the disc.
     "p2": "#c08a3e", "p2-ink": "#16171a",
+    # A portal end (schema 19, `docs/plan-portals.md` §4, D3, D9): the rim of a pair's
+    # first end and of its second, orange and blue, the pair the common colour-blind
+    # readings still tell apart (and the blue end's rim is drawn double, so a grey picture
+    # does too). Neither can hold 3 : 1 against both woods and still be orange or blue, so
+    # the rim is edged inside and out in `portal-edge`, a near-black that does, and each
+    # hue holds 3 : 1 against that edge (`FLOORS`). `portal-stone` is the flat interior of
+    # an end nobody moves, and the rim of an end closed to the player looking, under its
+    # hue in dashes. The board does not invert (S8), so dark sets only the stone.
+    "portal-a": "#e8590c", "portal-b": "#2a86e0", "portal-edge": "#1e140c",
+    "portal-stone": "#b3aca1",
     # Where a wild piece steps after the next move (Q660): a dotted arrow, in a deep violet
     # that is none of the board's other marks (not the wild piece's ochre, which its trail
     # already draws in) and reads as a graphic, 3 : 1, on both woods in both themes.
@@ -226,7 +244,10 @@ DARK: dict[str, str] = {
     # Fainter on the dimmed squares, where a dark streak costs a black piece more.
     "grain-lt-a": ".2", "grain-dk-a": ".16",
     "dot": "#1e140c",
+    "held": "#0a2519", "held-halo": "#f3e9d6",
+    "scrim": "rgba(0, 0, 0, .6)",
     "p0": "#f0ede7", "p1": "#3b3f45", "p2": "#8f6a2f", "p2-ink": "#f4f2ee",
+    "portal-stone": "#9b948a",
     "coming": "#341a5e", "coming-ink": "#b9a3ec",
     "claim0": "#6fae7c", "claim1": "#a98fd6",
     "goal": "#5cc9bd", "seam": "#74a6ef", "zone": "#e58cc4",
@@ -281,6 +302,12 @@ FLOORS: tuple[tuple[str, str, float], ...] = (
     # The legend's name for a wild piece's coming step (Q660), on the page and a panel.
     ("coming-ink", "panel", 4.5),
     ("coming-ink", "bg", 4.5),
+    # A portal's rim (Q772b): each hue against the keyline that edges it, a graphic, and
+    # the pair's number on an interior nobody moves, which is text. The keyline against
+    # the woods is read over their worst streak in `TestContrast`.
+    ("portal-a", "portal-edge", 3.0),
+    ("portal-b", "portal-edge", 3.0),
+    ("portal-edge", "portal-stone", 4.5),
     # A member's mark (R3): each of its eight hues, a graphic, on the page and a panel.
     *((f"mk-{n}", back, 3.0) for n in range(1, 9) for back in ("panel", "bg")),
 )
@@ -300,11 +327,15 @@ TINTED: tuple[tuple[str, str, float], ...] = (
 # minimum target. Two radii, controls' and panels'.
 SIZES: dict[str, str] = {
     "ctl-h": "40px", "ctl-h-sm": "30px", "chip-h": "28px", "hit": "24px",
+    # The one control a frame makes larger than the rest: *Send your move* under a board
+    # between two people (Q733), the step a person must not miss.
+    "ctl-h-lg": "52px",
     "r-ctl": "8px", "r-panel": "10px",
 }
 # Under a coarse pointer (a finger) every target is at least 44 px (§3.5): a button, an
 # input and a select at 44, a compact control at 44, a chip drawn at 36 and reaching 44.
-COARSE: dict[str, str] = {"ctl-h": "44px", "ctl-h-sm": "44px", "chip-h": "36px", "hit": "44px"}
+COARSE: dict[str, str] = {"ctl-h": "44px", "ctl-h-sm": "44px", "chip-h": "36px", "hit": "44px",
+                          "ctl-h-lg": "56px"}
 TARGET = 44
 # A black piece on a dark square (S8): the library's black pieces are filled #000.
 PIECE_FLOOR = 4.5
