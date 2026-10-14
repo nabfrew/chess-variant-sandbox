@@ -1,5 +1,5 @@
 {
- "source_commit": "02c9faa9e4e032d6644cc53352da028bd1b04b29",
+ "source_commit": "02f9d0b00c476479effb9e4a51bbb4b11bcc7c21",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -972,8 +972,8 @@
   },
   {
    "path": "chess_variant_sandbox/agents/nets.py",
-   "bytes": 18926,
-   "sha256": "435ab6ce745708ee3f460c18baa5eff406e1b5018144362b49b118e065612f34"
+   "bytes": 22337,
+   "sha256": "655c18d3b82218a4dac0a7da297191cb90d0868205c559d93366e62799075bc4"
   },
   {
    "path": "chess_variant_sandbox/agents/objective.py",
@@ -1042,8 +1042,8 @@
   },
   {
    "path": "chess_variant_sandbox/corpus.py",
-   "bytes": 76811,
-   "sha256": "5a465c6112e55e54dbc36ca1b99eb7ec960a869adaeb22f9beca35fe1712b980"
+   "bytes": 79434,
+   "sha256": "387079417c8811d44464c8055a3970b992903ec9460b308ec2a77270fa9bb19e"
   },
   {
    "path": "chess_variant_sandbox/engine/__init__.py",
@@ -1967,8 +1967,8 @@
   },
   {
    "path": "chess_variant_sandbox/trust.py",
-   "bytes": 33315,
-   "sha256": "6a01f0c61e9b7af3bbd041099cfe046802492d016ccd919da179d843206c6803"
+   "bytes": 34360,
+   "sha256": "7e22dee099628021eaa0965996d0f9713fc091d1fbca9d1b47c0bcc5d648405b"
   },
   {
    "path": "chess_variant_sandbox/viz/__init__.py",
@@ -2087,8 +2087,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/library.py",
-   "bytes": 117360,
-   "sha256": "56fd220474d944184cf6b1bbdbc1d2d78f728eaf704f0cf5a46d41715b30c39b"
+   "bytes": 117447,
+   "sha256": "90d9e4d105e383005fe6aec013de47bd0455cc1ad589431c459fa99f672edc16"
   },
   {
    "path": "chess_variant_sandbox/web/opponents.py",
@@ -2342,8 +2342,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 115005,
-   "sha256": "0acac3bdcd52c68a47557b8195ade532e50fafa387cdaa36f685c86b8f6f8250"
+   "bytes": 115453,
+   "sha256": "74da4a6a688627bccc8d1c30dc816c822302d7bf7688c8a73f2ece6622301922"
   },
   {
    "path": "fitted/0100091d63ff-98f172aeac49.json",
@@ -6671,14 +6671,19 @@
    "sha256": "47022b353fc4e0d9201531ab062a12c903576b4262e37c2fcfe33eb8ea3bff1c"
   },
   {
+   "path": "tests/test_rated_nets.py",
+   "bytes": 15503,
+   "sha256": "561f50572299910948ecc676fdf25a8a07e35485e63f66bb271c282b3ca04a0b"
+  },
+  {
    "path": "tests/test_ratings_convergence.py",
    "bytes": 4563,
    "sha256": "d04b45d0f431790dda7692abd8b21f20adb1eeff8cafb8bf9f9cee73d5fc8443"
   },
   {
    "path": "tests/test_refit_repair.py",
-   "bytes": 10926,
-   "sha256": "cfad011b6e34ed5da5b8a385c1f32cc1ff61b7b876c5b654dc2e126cab8a9099"
+   "bytes": 11083,
+   "sha256": "b1d16ee6dc3f53c1c4602b90186c663987bfb6069961dff5c2ed330be9db3393"
   },
   {
    "path": "tests/test_refresher.py",
@@ -7142,8 +7147,8 @@
   },
   {
    "path": "tests/test_training.py",
-   "bytes": 32181,
-   "sha256": "627a8293be36cec89f33dea825bbdf8d29f342e3e620b2d6389b62d074c0732a"
+   "bytes": 32469,
+   "sha256": "b008c9c167e6fdc65191034b661fb136746756c031c746555332bcef1e997c1b"
   },
   {
    "path": "tests/test_trust.py",

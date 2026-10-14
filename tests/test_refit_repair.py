@@ -238,6 +238,8 @@ def test_current_basis_finds_the_fit_store_by_hash_and_verifies_it_with_the_spec
     from chess_variant_sandbox.agents.fitted import STORE_ENV
 
     monkeypatch.setenv(STORE_ENV, str(tmp_path))
+    # No rated net, or gardner's roster would be its net ladder and record no fit (Q502h).
+    monkeypatch.setattr(corpus, "NETS_DIR", tmp_path / "no-nets")
     spec = load_spec(RULESETS / "gardner.json")
     digest = Engine(spec).spec.hash
     fit = a_fit(built_fingerprint(), ruleset_hash=digest)

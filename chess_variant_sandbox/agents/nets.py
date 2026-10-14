@@ -477,6 +477,72 @@ def require_net(options: dict[str, Any], ruleset_hash: str) -> bytes:
     raise NetError(_unplayable(procedure, ruleset_hash, why))
 
 
+def _confirmed(data: dict[str, Any]) -> bool:
+    """Whether a store's JSON records a passed acceptance duel and a passed G-A2 on fresh seeds.
+
+    A kept generation passed both by R5-1's definition (`plan-teacher.md` §9.6), so the
+    ``kept`` field stands for them where the second duel was recorded under another hash
+    (*Intransitive*'s generations carried over by Q696)."""
+    if data.get("kept") is True:
+        return True
+    duels = [data.get("acceptance"), data.get("confirmation")]
+    return all(isinstance(duel, dict) and duel.get("accepted") is True for duel in duels)
+
+
+def rated_net(ruleset_hash: str, root: str | Path = STORE_DIR) -> str:
+    """The procedure of the net this ruleset's measuring roster plays, or ``""`` (Q502h).
+
+    The user's answer of 2026-10-03 (`docs/archive/decisions.md`, *When a better computer
+    player arrives*): each kept generation joins the measuring set at once. The rule, read
+    off the stores alone so that a newly kept generation moves the basis the moment its
+    JSON lands (`docs/reference/general-player.md` §7):
+
+    - only an **accepted** store whose weights load and hash to their record plays;
+    - it must be **kept** (R5-1) or, where no generation line runs, **accepted and
+      confirmed** (its G-A2 duel on fresh seeds passed too, `plan-teacher.md` §8.3); a
+      store the plan read and did not keep (``kept: false``) never plays;
+    - where any eligible store is kept, the choice is among the kept ones, so an accepted
+      child stored beside its kept parent does not replace it;
+    - of those, the newest generation (the one no other candidate was trained from), then
+      the higher acceptance score, then the procedure, so the answer never depends on the
+      order files are listed in.
+
+    That is the site's learned player (`web.opponents._kept`) less any net not confirmed
+    on a second seed set; a test holds the two together on every library game.
+    """
+    found: list[tuple[str, str, bool, float]] = []
+    for path in sorted(Path(root).glob(f"{ruleset_hash}-*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict) or data.get("verdict") != ACCEPTED:
+            continue
+        procedure = str(data.get("procedure") or "")
+        if (data.get("ruleset_hash") != ruleset_hash or not procedure
+                or path.name != f"{ruleset_hash}-{procedure}.json"
+                or data.get("kept") is False or not _confirmed(data)):
+            continue
+        try:
+            record = load_net(ruleset_hash, procedure, root)
+        except (OSError, ValueError):
+            continue
+        if record is None or not record.playing:
+            continue
+        lineage = data.get("lineage")
+        parent = str(lineage.get("parent") or "") if isinstance(lineage, dict) else ""
+        acceptance = data.get("acceptance")
+        score = float(acceptance.get("score", 0.0)) if isinstance(acceptance, dict) else 0.0
+        found.append((procedure, parent, data.get("kept") is True, score))
+    kept = [entry for entry in found if entry[2]]
+    pool = kept or found
+    parents = {entry[1] for entry in pool}
+    leaves = [entry for entry in pool if entry[0] not in parents]
+    if not leaves:
+        return ""
+    return max(leaves, key=lambda entry: (entry[3], entry[0]))[0]
+
+
 def _unplayable(procedure: str, ruleset_hash: str, why: str) -> str:
     return (
         f"the learned player net={procedure} cannot play on ruleset {ruleset_hash}: {why}; "

@@ -11,6 +11,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-14
+
+### Five games measured by their learned players
+
+Where a game has a trained computer player that has proved itself, that player now does the measuring in place of the ordinary one. Five games were measured again this way. Racing kings changed most: with players that understand it, it now passes as a proper game where before it was ruled out. The other four moved only a little. Each score keeps its earlier value in its history.
+
 ## 2026-10-13
 
 ### The rules guide, current and versioned

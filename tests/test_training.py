@@ -672,10 +672,16 @@ def test_train_runs_end_to_end_from_the_command_line(
 # ------------------------------------------------------------------ the basis
 
 
-def test_a_roster_without_a_net_stamps_nothing() -> None:
-    """Every library stamp: no `net` field, so none is rewritten and none reads stale."""
+def test_a_roster_without_a_net_stamps_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every library stamp of a game with no rated net (Q502h): no `net` field, so none is
+    rewritten and none reads stale. Gardner's own roster is its net ladder; with no store
+    it is `CANONICAL_AGENTS`."""
+    from chess_variant_sandbox import corpus
     from chess_variant_sandbox.corpus import CANONICAL_AGENTS, current_basis
 
+    monkeypatch.setattr(corpus, "NETS_DIR", tmp_path / "no-nets")
     assert not any("net=" in agent for agent in CANONICAL_AGENTS)
     basis = current_basis(Engine(load_spec(GARDNER)).spec.hash)
     assert basis.net == ""

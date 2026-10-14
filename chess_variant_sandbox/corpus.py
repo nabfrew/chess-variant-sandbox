@@ -43,6 +43,7 @@ from chess_variant_sandbox.agents.fitted import (
     procedure_digest,
     store_path,
 )
+from chess_variant_sandbox.agents.nets import STORE_DIR, rated_net
 from chess_variant_sandbox.loop.archive import Archive
 from chess_variant_sandbox.measurement import (
     BUILTIN_PLAYER,
@@ -110,6 +111,41 @@ CANONICAL_AGENTS = ("random", "greedy") + tuple(
 )
 CANONICAL_GAMES = 4
 CANONICAL_SEED = 0
+
+# Where the measuring roster reads a game's learned net from (Q502h). Relative, as
+# `RUNS_DIR` is: every command runs from a checkout's root, and the box serves from its.
+NETS_DIR = Path(STORE_DIR)
+
+
+def canonical_agents(digest: str, nets_dir: Path | None = None) -> tuple[str, ...]:
+    """The roster this game's committed score means: `CANONICAL_AGENTS`, or its net ladder.
+
+    **Where a learned net is rated** (`nets.rated_net`: kept, or accepted and confirmed
+    where no generation line runs), every searching rung plays that net at the same
+    budget, `minimax:net=<procedure>,nodes=N` for N of `_FITTED_BUDGETS`, in place of the
+    fitted objective; `random` and `greedy` are unchanged. The user's answers: the
+    measuring players *"become smarter where they are trained"* (2026-09-28) and each kept
+    generation joins the measuring set at once (2026-10-03, `docs/archive/decisions.md`).
+    The whole ladder moves, not one rung, because every skill component asks whether
+    thinking harder wins, and a ladder whose top rung alone priced the game differently
+    would win for two reasons at once. The shape (eight players, the same budgets) and
+    the weights version stay, so every score still sits in one leaderboard; which players
+    measured it is in its `Basis.agents` and `Basis.net`.
+
+    Read off `nets/` every call, so a newly kept generation stales its game's score the
+    moment its store lands, and the refresher replays it (`plan-evolving-score.md` §6.4).
+    """
+    procedure = rated_net(digest, NETS_DIR if nets_dir is None else nets_dir)
+    if not procedure:
+        return CANONICAL_AGENTS
+    return ("random", "greedy") + tuple(
+        f"minimax:net={procedure},nodes={budget}" for budget in _FITTED_BUDGETS
+    )
+
+
+def fits_its_roster(agents: tuple[str, ...]) -> bool:
+    """Whether any player of this roster plays the fitted objective (none on a net ladder)."""
+    return any("fit=" in agent for agent in agents)
 
 # The seeds a library game is measured on, and the seeds everything else is. A run is a
 # tournament from one seed, and `docs/reference/run-to-run-spread.md` measured that four
@@ -398,20 +434,25 @@ def current_basis(
     which objective the roster's fitted rungs play is decided by it and nothing else:
     `fitted/<hash>-<procedure>.json` and the cores its sidecar says it was made or
     reproduced on under this spec's tables, players and runner (Q892). A ruleset with no
-    store records no fit, and the check is skipped.
+    store records no fit, and the check is skipped. **Nor does a roster that plays no
+    fitted objective** (a game whose net is rated, Q502h): its fit store decides no
+    player, so a refit there would stale a score for a player nobody sat down.
+
+    **The roster is this game's** (`canonical_agents`, Q502h), read from `nets/`.
     """
+    agents = canonical_agents(digest)
     return Basis.current(
         ruleset_hash=digest,
         weights_version=weights,
-        agents=CANONICAL_AGENTS,
+        agents=agents,
         games_per_pairing=CANONICAL_GAMES,
         seeds=EXPECTED_LIBRARY_SEEDS if seeds is None else tuple(seeds),
         tables=tables_fingerprint(spec) if spec is not None else "",
         verdict_rule=VERDICT_RULE,
         known_seed_sets=KNOWN_SEED_SETS,
-        fit=fit_reading(digest, spec=spec),
+        fit=fit_reading(digest, spec=spec) if fits_its_roster(agents) else None,
         # What the runner would hand the core (Q631); `""`, *cannot say*, without a spec.
-        players=players_fingerprint(spec, CANONICAL_AGENTS) if spec is not None else "",
+        players=players_fingerprint(spec, agents) if spec is not None else "",
     )
 
 
@@ -684,7 +725,10 @@ def _measure_seeds(
         if behind is not None:
             raise CorpusError(behind)
 
-    if (plays or adopt_from is not None) and not fitted:
+    # A net ladder plays no fitted objective (Q502h), so its fit is no part of the basis.
+    if (plays or adopt_from is not None) and not fitted and fits_its_roster(
+        canonical_agents(candidate.hash)
+    ):
         _fit_once(candidate, workers, say)
 
     # The score's history (Q649, `docs/plan-confidence.md` §3.2 step 3). After the fit,
@@ -913,7 +957,7 @@ def _adopt_seed(
         source,
         run_dir(candidate.hash, seed, runs_dir),
         TournamentConfig(
-            agents=CANONICAL_AGENTS,
+            agents=canonical_agents(candidate.hash),
             games_per_pairing=CANONICAL_GAMES,
             seed=seed,
             workers=workers,
@@ -971,18 +1015,19 @@ def _play_seed(
     origin: str,
 ) -> RunReading:
     """Play, analyse and score one seed into its own run directory."""
-    refusal = _foreign_run(out, seed)
+    agents = canonical_agents(candidate.hash)
+    refusal = _foreign_run(out, seed, agents)
     if refusal:
         raise CorpusError(refusal)
 
     say(
-        f"seed {seed}: {len(CANONICAL_AGENTS)} agents, "
+        f"seed {seed}: {len(agents)} agents, "
         f"{CANONICAL_GAMES} games a pairing"
     )
     tournament = run_tournament(
         candidate.spec,
         TournamentConfig(
-            agents=CANONICAL_AGENTS,
+            agents=agents,
             games_per_pairing=CANONICAL_GAMES,
             seed=seed,
             workers=workers,
@@ -1003,7 +1048,7 @@ def _play_seed(
     )
 
 
-def _foreign_run(out: Path, seed: int) -> str:
+def _foreign_run(out: Path, seed: int, roster: tuple[str, ...] = CANONICAL_AGENTS) -> str:
     """Why this run directory must not be written into, or ``""``.
 
     `chess-variant-sandbox tournament` writes to `runs/<hash>-<seed>` only with an explicit `--out`, or for
@@ -1023,7 +1068,7 @@ def _foreign_run(out: Path, seed: int) -> str:
 
     agents = tuple(str(agent) for agent in config.get("agents") or ())
     if (
-        agents != CANONICAL_AGENTS
+        agents != roster
         or int(config.get("games_per_pairing", -1)) != CANONICAL_GAMES
         or int(config.get("seed", -1)) != seed
     ):
@@ -1178,7 +1223,7 @@ def _store(
     stored = {
         "hash": candidate.hash,
         "name": candidate.name,
-        "agents": list(CANONICAL_AGENTS),
+        "agents": list(canonical_agents(candidate.hash)),
         "games_per_pairing": CANONICAL_GAMES,
         "seeds": list(combined.seeds),
         "games": combined.games,

@@ -1253,7 +1253,8 @@ def keeping(
         "blocker": corpus.promotion_blocker(candidate, runs_dir, ruleset_dir),
         # Shown because "tested" means nothing without saying against what, and this
         # ladder is the whole difference between a design run's number and a corpus one.
-        "roster": list(corpus.CANONICAL_AGENTS),
+        # This game's: a net ladder where its learned net is rated (Q502h).
+        "roster": list(corpus.canonical_agents(game.hash)),
         "gamesPerPairing": corpus.CANONICAL_GAMES,
         "lineage": dict(candidate.lineage),
     }

@@ -112,7 +112,8 @@ class Rule:
             f"ladder: finds more when the score withholds it (monotonicity below "
             f"{MEASURABLE_LADDER:g} or a negative gradient); self-duel: reported only; "
             f"fairy-stockfish: finds more below {self.fairy_floor:g}, agrees at or above; "
-            "trained player: finds more when an accepted net is not in the score's basis; "
+            "trained player: finds more when an accepted net is not in the score's basis, "
+            "unless the basis plays the net the measuring roster seats now (Q502h); "
             f"convergence: finds more at a move of {self.convergence_sds:g} sd or more, "
             f"agrees below; people: finds more at {self.people_clears} or more people "
             f"clearing the top, agrees at {self.people_games} or more games by "
@@ -336,13 +337,23 @@ def _premise_items(
 
 
 def _net(digest: str, played: str, nets_dir: Path) -> Item:
-    """E-N: an accepted net the score's basis does not play finds more; nothing agrees."""
-    from chess_variant_sandbox.agents.nets import ACCEPTED, INPUTS_VERSION, REFUSED
+    """E-N: an accepted net the score's basis does not play finds more; nothing agrees.
+
+    **Once the score plays the net its roster seats** (`nets.rated_net`, Q502h), the
+    game's other accepted nets find nothing: they are the earlier generations that net
+    was chosen over, and the plan's reading is that E-V carries the game from then on
+    (`plan-confidence.md` §2.3, E-N's row). A newer net the roster would seat and the
+    score does not play still finds more, so a kept generation questions the score the
+    moment it lands, until the score is measured with it.
+    """
+    from chess_variant_sandbox.agents.nets import ACCEPTED, INPUTS_VERSION, REFUSED, rated_net
 
     paths = sorted(Path(nets_dir).glob(f"{digest}-*.json"))
     if not paths:
         return Item(NET, ABSENT, SILENT, sentence="net.absent")
     playing = {part.strip() for part in played.split(",") if part.strip()}
+    seated = rated_net(digest, nets_dir)
+    plays_seated = any(part.startswith(f"{seated}=net:") for part in playing) if seated else False
     findings: list[Item] = []
     refused: list[Item] = []
     unreadable = 0
@@ -372,13 +383,17 @@ def _net(digest: str, played: str, nets_dir: Path) -> Item:
             refused.append(Item(NET, state, SILENT, count=count, date=_date(path),
                                 sentence="net.in-the-score", detail=detail))
             continue
+        if plays_seated and procedure != seated:
+            # An earlier generation than the one measuring: it beats no measuring player.
+            continue
         findings.append(Item(NET, state, FINDS_MORE, count=count, date=_date(path),
                              sentence="net.beats-ours", detail=detail))
     # One item per kind: a finding first, a current one before a stale one.
     if findings:
         return sorted(findings, key=lambda item: item.state != CURRENT)[0]
     if refused:
-        return refused[0]
+        # The net the score plays before a refused one beside it: it is what measured it.
+        return sorted(refused, key=lambda item: item.sentence != "net.in-the-score")[0]
     return Item(NET, UNREADABLE, SILENT, sentence="net.unreadable",
                 detail={"unreadable": unreadable})
 
