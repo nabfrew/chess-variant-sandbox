@@ -41,10 +41,15 @@ from chess_variant_sandbox.tournament.fitting import (
     check_fit,
     differences,
     ensure_fit,
+    record_made,
     reproduced_on,
+    reproduction_basis,
+    save_fit,
     sidecar_path,
     store_digest,
+    unverified_reason,
     verified_cores,
+    verified_under,
 )
 
 RULESETS = Path(__file__).resolve().parents[1] / "rulesets"
@@ -136,15 +141,17 @@ class TestTheCheck:
     def test_a_store_made_on_the_loaded_core_is_a_no_op(
         self, spec: dict[str, Any], digest: str, fitter: Fitter, tmp_path: Path
     ) -> None:
-        fit = stored(digest, tmp_path, build=built_fingerprint())
+        fit = a_fit(digest, built_fingerprint())
+        save_fit(fit, spec, tmp_path)
         before = store_path(digest, fit.procedure, tmp_path).read_bytes()
+        sidecar = sidecar_path(digest, fit.procedure, tmp_path).read_bytes()
 
         found = check_fit(spec, store=tmp_path)
 
         assert found.outcome == MADE_HERE and found.fit == fit
         assert fitter.calls == 0
         assert store_path(digest, fit.procedure, tmp_path).read_bytes() == before
-        assert not (tmp_path / fitting.REPRODUCED_DIR).exists()
+        assert sidecar_path(digest, fit.procedure, tmp_path).read_bytes() == sidecar
 
     def test_a_foreign_store_that_reproduces_gains_the_core(
         self, spec: dict[str, Any], digest: str, fitter: Fitter, tmp_path: Path
@@ -165,8 +172,10 @@ class TestTheCheck:
             "store_digest": store_digest(fit),
             "made_on": FOREIGN,
             "reproduced_on": [core],
+            "verified_under": [reproduction_basis(spec)],
         }
-        assert verified_cores(fit, tmp_path) == {FOREIGN, core}
+        # The maker is not counted: nothing records the tables its games were played on.
+        assert verified_cores(fit, tmp_path, spec) == {core}
 
     def test_a_second_check_on_the_same_core_plays_nothing(
         self, spec: dict[str, Any], digest: str, fitter: Fitter, tmp_path: Path
@@ -213,8 +222,16 @@ class TestTheCheck:
             "store_digest": store_digest(fit), "made_on": FOREIGN,
             "reproduced_on": ["1111111111111111"],
         }))
-        assert check_fit(spec, store=tmp_path).outcome == REFIT
-        assert not sidecar.exists()
+        found = check_fit(spec, store=tmp_path)
+        assert found.outcome == REFIT
+        record = json.loads(sidecar.read_text(encoding="utf-8"))
+        assert record["store_digest"] == store_digest(found.fit)
+        assert record["reproduced_on"] == []
+        assert reproduced_on(fit, tmp_path) == ()
+        # The new store is its maker's answer and needs no second fit.
+        assert verified_under(found.fit, tmp_path) == (reproduction_basis(spec),)
+        assert check_fit(spec, store=tmp_path).outcome == MADE_HERE
+        assert fitter.calls == 1
 
     def test_a_verdict_flip_is_refit_even_when_the_games_agree(
         self, spec: dict[str, Any], digest: str, fitter: Fitter, tmp_path: Path
@@ -230,9 +247,9 @@ class TestTheCheck:
         self, spec: dict[str, Any], digest: str, fitter: Fitter, tmp_path: Path
     ) -> None:
         fit = stored(digest, tmp_path, build="")
-        assert verified_cores(fit, tmp_path) == frozenset()
+        assert verified_cores(fit, tmp_path, spec) == frozenset()
         assert check_fit(spec, store=tmp_path).outcome == REPRODUCED
-        assert verified_cores(fit, tmp_path) == {built_fingerprint()}
+        assert verified_cores(fit, tmp_path, spec) == {built_fingerprint()}
 
     def test_no_store_is_fitted(
         self, spec: dict[str, Any], digest: str, fitter: Fitter, tmp_path: Path
@@ -240,6 +257,7 @@ class TestTheCheck:
         found = check_fit(spec, store=tmp_path)
         assert found.outcome == FITTED and found.stored is None
         assert FittedObjective.load(found.path) == fitter.fresh
+        assert verified_cores(found.fit, tmp_path, spec) == {built_fingerprint()}
 
 
 class TestTheSidecar:
@@ -253,7 +271,7 @@ class TestTheSidecar:
         assert load_all(tmp_path) == 1
 
     def test_a_sidecar_for_another_store_vouches_for_nothing(
-        self, digest: str, tmp_path: Path
+        self, spec: dict[str, Any], digest: str, tmp_path: Path
     ) -> None:
         """A store refit by hand after the check leaves a sidecar about a different file."""
         fit = stored(digest, tmp_path)
@@ -263,9 +281,11 @@ class TestTheSidecar:
         sidecar.write_text(json.dumps({
             "store_digest": store_digest(other), "made_on": FOREIGN,
             "reproduced_on": [built_fingerprint()],
+            "verified_under": [reproduction_basis(spec)],
         }))
         assert reproduced_on(fit, tmp_path) == ()
-        assert verified_cores(fit, tmp_path) == {FOREIGN}
+        assert verified_under(fit, tmp_path) == ()
+        assert verified_cores(fit, tmp_path, spec) == frozenset()
 
     def test_the_digest_covers_the_whole_store(self, digest: str) -> None:
         fit = a_fit(digest, FOREIGN)
@@ -289,6 +309,248 @@ class TestTheSidecar:
         check_fit(spec, store=tmp_path)
         ensure_fit(spec, store=tmp_path)
         assert capsys.readouterr().err == ""
+
+
+class TestTheBasis:
+    """Q892: a sidecar vouches for the core *and* what else the fit's games read.
+
+    Q880 moved *quarry*'s compiled tables with no core change, and its store, listed on
+    the core, went unrederived until a new core arrived. A part of the basis moving on
+    its own is simulated by moving the fingerprint the basis reads, as a compiler edit
+    moves `tables_fingerprint` and nothing else.
+    """
+
+    @staticmethod
+    def _move(monkeypatch: pytest.MonkeyPatch, part: str) -> None:
+        from chess_variant_sandbox import measurement
+
+        name = {
+            "tables": "tables_fingerprint",
+            "players": "players_fingerprint",
+            "runner": "source_fingerprint",
+        }[part]
+        real = getattr(measurement, name)
+
+        def moved(*args: Any) -> str:
+            return "moved-" + real(*args)
+
+        monkeypatch.setattr(measurement, name, moved)
+
+    def test_matching_core_and_tables_keep_the_store_verified(
+        self, spec: dict[str, Any], digest: str, fitter: Fitter, tmp_path: Path
+    ) -> None:
+        fit = a_fit(digest, built_fingerprint())
+        save_fit(fit, spec, tmp_path)
+        assert verified_cores(fit, tmp_path, spec) == {built_fingerprint()}
+        assert unverified_reason(fit, tmp_path, spec) is None
+        assert check_fit(spec, store=tmp_path).outcome == MADE_HERE
+        assert fitter.calls == 0
+
+    def test_a_tables_change_on_the_same_core_unverifies_the_store(
+        self,
+        spec: dict[str, Any],
+        digest: str,
+        fitter: Fitter,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        fit = a_fit(digest, built_fingerprint())
+        save_fit(fit, spec, tmp_path)
+        before = reproduction_basis(spec)
+        self._move(monkeypatch, "tables")
+        after = reproduction_basis(spec)
+        assert after["core"] == before["core"] and after["tables"] != before["tables"]
+
+        assert verified_cores(fit, tmp_path, spec) == frozenset()
+        reason = unverified_reason(fit, tmp_path, spec)
+        assert reason is not None and "under other tables," in reason
+
+        found = check_fit(spec, store=tmp_path)
+        assert found.outcome == REPRODUCED and fitter.calls == 1
+        assert verified_under(fit, tmp_path) == (before, after)
+        # Made here, so the history of other cores gains nothing.
+        assert reproduced_on(fit, tmp_path) == ()
+        assert verified_cores(fit, tmp_path, spec) == {built_fingerprint()}
+        assert check_fit(spec, store=tmp_path).outcome == MADE_HERE
+        assert fitter.calls == 1
+
+    @pytest.mark.parametrize("part", ["players", "runner"])
+    def test_every_other_part_unverifies_it_too(
+        self,
+        spec: dict[str, Any],
+        digest: str,
+        fitter: Fitter,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        part: str,
+    ) -> None:
+        fit = stored(digest, tmp_path)
+        assert check_fit(spec, store=tmp_path).outcome == REPRODUCED
+        self._move(monkeypatch, part)
+        assert verified_cores(fit, tmp_path, spec) == frozenset()
+        assert check_fit(spec, store=tmp_path).outcome == REPRODUCED
+        assert fitter.calls == 2
+        # One core in the history, two bases verified on it.
+        assert reproduced_on(fit, tmp_path) == (built_fingerprint(),)
+        assert len(verified_under(fit, tmp_path)) == 2
+
+    def test_a_sidecar_from_before_the_basis_is_checked_once(
+        self, spec: dict[str, Any], digest: str, fitter: Fitter, tmp_path: Path
+    ) -> None:
+        """The loaded core listed in an old sidecar is history, not a verification:
+        nothing recorded the tables that check ran on."""
+        fit = stored(digest, tmp_path)
+        sidecar = sidecar_path(digest, fit.procedure, tmp_path)
+        sidecar.parent.mkdir(parents=True)
+        sidecar.write_text(json.dumps({
+            "store_digest": store_digest(fit), "made_on": FOREIGN,
+            "reproduced_on": ["1111111111111111", built_fingerprint()],
+        }))
+        assert verified_cores(fit, tmp_path, spec) == frozenset()
+
+        assert check_fit(spec, store=tmp_path).outcome == REPRODUCED
+        assert fitter.calls == 1
+        assert reproduced_on(fit, tmp_path) == ("1111111111111111", built_fingerprint())
+        assert verified_under(fit, tmp_path) == (reproduction_basis(spec),)
+        assert check_fit(spec, store=tmp_path).outcome == REPRODUCED_BEFORE
+        assert fitter.calls == 1
+
+    def test_a_store_made_here_with_no_record_is_checked_once(
+        self, spec: dict[str, Any], digest: str, fitter: Fitter, tmp_path: Path
+    ) -> None:
+        """A store saved before Q892, or by hand, says its core and not its tables."""
+        fit = stored(digest, tmp_path, build=built_fingerprint())
+        assert verified_cores(fit, tmp_path, spec) == frozenset()
+        reason = unverified_reason(fit, tmp_path, spec)
+        assert reason is not None and "nothing records the tables" in reason
+        assert check_fit(spec, store=tmp_path).outcome == REPRODUCED
+        assert check_fit(spec, store=tmp_path).outcome == MADE_HERE
+        assert fitter.calls == 1
+
+    def test_no_spec_is_verified_nowhere(
+        self, spec: dict[str, Any], digest: str, tmp_path: Path
+    ) -> None:
+        fit = a_fit(digest, built_fingerprint())
+        save_fit(fit, spec, tmp_path)
+        assert verified_cores(fit, tmp_path, None) == frozenset()
+
+    def test_recording_a_maker_replaces_what_vouched_for_the_old_store(
+        self, spec: dict[str, Any], digest: str, tmp_path: Path
+    ) -> None:
+        old = stored(digest, tmp_path)
+        sidecar = sidecar_path(digest, old.procedure, tmp_path)
+        sidecar.parent.mkdir(parents=True)
+        sidecar.write_text(json.dumps({
+            "store_digest": store_digest(old), "made_on": FOREIGN,
+            "reproduced_on": ["1111111111111111"],
+        }))
+        new = a_fit(digest, built_fingerprint(), samples=600)
+        new.save(store_path(digest, new.procedure, tmp_path))
+        record_made(new, spec, tmp_path)
+        assert reproduced_on(new, tmp_path) == ()
+        assert verified_cores(new, tmp_path, spec) == {built_fingerprint()}
+
+    def test_the_plain_command_records_its_maker(
+        self, spec: dict[str, Any], digest: str, fitter: Fitter, tmp_path: Path
+    ) -> None:
+        ruleset = str(RULESETS / "gardner.json")
+        assert cli.main(["fit", ruleset, "--store", str(tmp_path), "--force"]) == 0
+        fit = FittedObjective.load(store_path(digest, procedure_digest(), tmp_path))
+        assert verified_cores(fit, tmp_path, spec) == {built_fingerprint()}
+
+
+class TestWhatDoesNotMatch:
+    """Q894: *stale (refit)* and `fit --check` name the part of the basis that differs.
+
+    Until Q892 the sentence said "made on core X and has not been re-derived on this one"
+    whatever the reason, which is false when X is the loaded core and the tables, players
+    or runner moved, or when nothing recorded them.
+    """
+
+    @staticmethod
+    def _summary(spec: dict[str, Any], digest: str, root: Path) -> str:
+        from dataclasses import replace
+
+        from chess_variant_sandbox.corpus import fit_reading, player_digest
+        from chess_variant_sandbox.measurement import Basis
+
+        reading = fit_reading(digest, root, spec)
+        assert reading is not None
+        current = Basis.current(
+            ruleset_hash=digest, weights_version="v12", agents=("random", "greedy"),
+            games_per_pairing=4, seeds=(0,), tables="t", fit=reading,
+        )
+        # A stamp taken on this core that recorded the store's player.
+        stamp = replace(current, fit=player_digest(stored_fit(digest, root)))
+        return stamp.stale_against(current).summary()
+
+    def test_a_tables_change_names_the_tables(
+        self, spec: dict[str, Any], digest: str, tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        save_fit(a_fit(digest, built_fingerprint()), spec, tmp_path)
+        TestTheBasis._move(monkeypatch, "tables")
+        assert self._summary(spec, digest, tmp_path) == (
+            "stale (refit): its fit was last verified where the tables differ, and has "
+            "not been re-derived on this one"
+        )
+
+    def test_a_core_change_names_the_core_that_made_it(
+        self, spec: dict[str, Any], digest: str, tmp_path: Path
+    ) -> None:
+        fit = stored(digest, tmp_path)
+        other = {**reproduction_basis(spec), "core": FOREIGN}
+        sidecar = sidecar_path(digest, fit.procedure, tmp_path)
+        sidecar.parent.mkdir(parents=True)
+        sidecar.write_text(json.dumps({
+            "store_digest": store_digest(fit), "made_on": FOREIGN,
+            "reproduced_on": [], "verified_under": [other],
+        }))
+        assert self._summary(spec, digest, tmp_path) == (
+            f"stale (refit): its fit was made on core {FOREIGN} and has not been "
+            "re-derived on this one"
+        )
+
+    def test_no_record_says_nothing_records_the_basis(
+        self, spec: dict[str, Any], digest: str, tmp_path: Path
+    ) -> None:
+        stored(digest, tmp_path, build=built_fingerprint())
+        assert self._summary(spec, digest, tmp_path) == (
+            f"stale (refit): its fit was made on this core ({built_fingerprint()}), but "
+            "nothing records the tables, players and runner its games read, so it has not "
+            "been re-derived under them"
+        )
+
+    def test_the_check_line_for_a_store_made_here_with_no_record(
+        self, spec: dict[str, Any], digest: str, fitter: Fitter, tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        stored(digest, tmp_path, build=built_fingerprint())
+        ruleset = str(RULESETS / "gardner.json")
+        assert cli.main(["fit", ruleset, "--store", str(tmp_path), "--check"]) == 0
+        out = capsys.readouterr().out
+        assert (
+            f"made on core {built_fingerprint()}, the loaded one, with no record of the "
+            "tables, players and runner it read, reproduces on "
+        ) in out
+
+    def test_the_check_line_for_a_tables_change(
+        self, spec: dict[str, Any], digest: str, fitter: Fitter, tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        save_fit(a_fit(digest, built_fingerprint()), spec, tmp_path)
+        TestTheBasis._move(monkeypatch, "tables")
+        ruleset = str(RULESETS / "gardner.json")
+        assert cli.main(["fit", ruleset, "--store", str(tmp_path), "--check"]) == 0
+        out = capsys.readouterr().out
+        assert (
+            f"made on core {built_fingerprint()}, the loaded one, last verified where "
+            "the tables differ, reproduces on "
+        ) in out
+
+
+def stored_fit(digest: str, root: Path) -> FittedObjective:
+    return FittedObjective.load(store_path(digest, procedure_digest(), root))
 
 
 class TestTheCommand:
@@ -360,7 +622,7 @@ class TestOnRealGames:
         foreign = FittedObjective(**{**made.fit.__dict__, "build": FOREIGN})
         foreign.save(made.path)
         assert check_fit(short, store=tmp_path, workers=1).outcome == REPRODUCED
-        assert verified_cores(foreign, tmp_path) == {FOREIGN, built_fingerprint()}
+        assert verified_cores(foreign, tmp_path, short) == {built_fingerprint()}
 
         # A vector no game on this core produces: refit, and back to the empty one.
         bent = FittedObjective(**{**foreign.__dict__, "vector": vector(mobility=1.0)})

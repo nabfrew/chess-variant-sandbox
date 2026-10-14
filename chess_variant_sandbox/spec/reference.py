@@ -38,13 +38,20 @@ from chess_variant_sandbox.spec.schema import (
 
 COMMAND = "uv run chess-variant-sandbox rules-reference --out RULES.md"
 
-PUBLISHED = "https://github.com/nabfrew/chess-variant-sandbox/blob/main/RULES.md"
-"""Where a reader finds the file this module writes: the public repository's copy.
+PUBLISHED = "/rules.md"
+"""Where a reader finds the file this module writes: the running server's own copy.
 
-The one spelling of the link (Q830b). The designer sends it to the page with its kit
-(`GET /api/design`), so the line pointing at the rules on the site and on a checkout is
-this string and no other.
+Both servers answer this path with `render_reference()` of the code they run (Q905;
+`web/server.py`'s handler, which the site inherits), so the reference a reader opens is
+always the one for the validator that will read their file. The public repository's
+`RULES.md` is a snapshot from the last export and can lag behind it. The one spelling of
+the link (Q830b): the designer sends it to the page with its kit (`GET /api/design`), and
+the route is this string too.
 """
+
+TITLE = f"# The rule language, schema version {SCHEMA_VERSION}"
+"""The reference's first line. It names the version, so any copy says what it is for;
+`deploy/deploy.sh`'s prove step reads it off the live `/rules.md` (`deploy/rules.py`)."""
 
 LOAD_CONTROL = "load a rule file"
 """The designer's button that reads a file somebody wrote into the draft (Q830b). Named
@@ -166,6 +173,7 @@ DEFAULTS: dict[str, str] = {
     "pieces[].moves[].screen_range": "`0`",
     "pieces[].moves[].condition.first_move": "`false`",
     "pieces[].facing.initial": "`\"forward\"`",
+    "pieces[].facing.turns": "`true`",
     "setup.mirror": "`true`",
     "setup.orientation": "`\"mirror\"`",
     "setup.placements[].player": "`0`",
@@ -241,12 +249,18 @@ _SECTIONS = (
 )
 
 _INTRO = f"""\
-# The rule language
+{TITLE}
 
 This is the whole language a game is written in, at schema version {SCHEMA_VERSION}. A game
 is one JSON file. It says how big the board is, what pieces there are and how each moves,
 where they start, and how the game is won; nothing about a game lives anywhere else. A
 person can write one by hand, or give this file to an AI and ask it for one.
+
+**Which version.** A game written from this reference should declare
+`"schema_version": {SCHEMA_VERSION}`. A site or checkout running a later version still
+accepts it, because every version ever cut stays accepted, and a file may use only what
+the version it declares had. The site serves the reference for the version it runs at
+`{PUBLISHED}`; when that copy names a later version than this one, write from that copy.
 
 <!-- Generated from the schema by `{COMMAND}`. Do not edit by hand. -->
 

@@ -1,7 +1,7 @@
 {
   "schema_version": 5,
   "name": "one-way cylinder chess",
-  "description": "The same cylinder, but each side may cross the join in only one direction: White leaves by the a-file and returns on the h-file, Black leaves by the h-file and returns on the a-file. The two armies therefore move under different geometry while the game stays exactly fair, because reflecting the board turns one player's rule into the other's.",
+  "description": "Cylinder chess with a one-way join: White may leave only by the a-file and come back on the h-file, Black only by the h-file and back on the a-file. The two armies therefore move under different geometry while the game stays exactly fair, because reflecting the board turns one player's rule into the other's. Each player keeps an edge on one side to press a king against, which a two-way cylinder does not.",
   "board": {
     "width": 8,
     "height": 8

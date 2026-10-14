@@ -10,7 +10,9 @@ Eight decisions, each §3's in `docs/archive/plan-game-graph.md`:
 1. **Twins merge.** Two specs whose compiled tables are equal, the Zobrist draw apart, are
    one game under two spellings and become one node carrying both names. The reading the
    node keeps is the shorter of the two, because a rule declared the long way is still
-   that rule. `wolves` and `wolves-immune` are the corpus's only such pair.
+   that rule. The library has no such pair today: `wolves` and `wolves-immune` were the
+   only one until Q876 retired the second, and `tests/test_graphing.py` keeps the merge
+   measured on that pair (rebuilt) and on made ones.
 2. **Every one-rule link is drawn.**
 3. **A two- or three-rule link is drawn only when it is unbridged** -- when no third game
    splits it into shorter steps -- and it is drawn as a *gap*, because a pair nothing
@@ -455,9 +457,9 @@ def _twin_groups(games: list[Game], cache: _Cache) -> list[list[Game]]:
 
     Two specs that produce the same tables are the same game however differently they are
     written, and no comparison of two written descriptions can see it: `wolves` and
-    `wolves-immune` declare one rule two ways and sit six units apart under a structural
-    diff. The compiler is the only reading that settles it, and this asks it rather than
-    guessing.
+    `wolves-immune` (retired at Q876, the library's last such pair) declared one rule two
+    ways and sat six units apart under a structural diff. The compiler is the only reading
+    that settles it, and this asks it rather than guessing.
 
     The Zobrist arrays are dropped because they are a draw from a seeded generator, not a
     rule -- two spellings of one game hash their positions differently and play the same
@@ -823,7 +825,8 @@ def _fill_between(links: list[Link], nodes: dict[str, list[Game]], cache: _Cache
     The drawn line may carry the *other* spelling's shorter reading, so for a twin the
     count on the line and the count this reads can differ by a unit -- in which case this
     offers nothing or offers a longer split, and never something the press cannot make.
-    One pair of twins exists and none of its gaps is affected.
+    The library's one pair of twins (retired at Q876) had none of its gaps affected, and
+    none exists now.
     """
     from chess_variant_sandbox.web import designing
 

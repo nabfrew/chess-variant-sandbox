@@ -14,10 +14,13 @@ opinion is allowed to act is the ordering the interval leaves undefined.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import re
+import threading
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import date
 from functools import lru_cache
@@ -35,17 +38,18 @@ from chess_variant_sandbox.loop.grid import (
     descriptor,
     label,
 )
-from chess_variant_sandbox.measurement import Measurement
+from chess_variant_sandbox.measurement import ROOT as MEASUREMENT_ROOT
+from chess_variant_sandbox.measurement import Measurement, built_fingerprint, tables_cache_path
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS
 from chess_variant_sandbox.metrics.glossary import explain
 from chess_variant_sandbox.metrics.index import IndexResult
 from chess_variant_sandbox.metrics.scoring import WeightsError
 from chess_variant_sandbox.spec import load_spec, spec_hash
+from chess_variant_sandbox.spec.canonical import HASH_LENGTH
 from chess_variant_sandbox.spec.complexity import measure_complexity
 from chess_variant_sandbox.spec.describe import describe_rules, describe_setup, describe_spec
-from chess_variant_sandbox.spec.schema import SpecError
 from chess_variant_sandbox.viz.pieces import icons_for, side_names
-from chess_variant_sandbox.web import sitescore
+from chess_variant_sandbox.web import card_rules, sitescore
 
 RULESET_DIR = Path("rulesets")
 RUNS_DIR = Path("runs")
@@ -450,6 +454,45 @@ def _stamp(path: Path) -> tuple[str, int, int]:
     return (str(path), info.st_mtime_ns, info.st_size)
 
 
+# A game's own directory directly under `runs/`: its measurement, `runs/<hash>/`, or one
+# of its runs, `runs/<hash>-<seed>/` (`corpus.measurement_dir`, `corpus.run_dir`).
+_GAME_DIR = re.compile(rf"[0-9a-f]{{{HASH_LENGTH}}}(-[0-9]+)?")
+# Where a tournament given no `--out` goes (`cli.TOURNAMENT_DIR`).
+_ONE_OFFS = "tournament"
+
+
+def _top_level(root: Path) -> tuple[list[Path], list[Path]]:
+    """The directories directly under ``root``: the games' own, and the rest.
+
+    One listing of ``root`` and nothing below it. A symbolic link is neither, as it was to
+    the `os.walk` this replaced, which listed a linked directory but never entered it.
+    """
+    games: list[Path] = []
+    others: list[Path] = []
+    try:
+        with os.scandir(root) as listing:
+            entries = list(listing)
+    except OSError:
+        return games, others
+    for entry in entries:
+        try:
+            if not entry.is_dir(follow_symlinks=False):
+                continue
+        except OSError:
+            continue
+        (games if _GAME_DIR.fullmatch(entry.name) else others).append(Path(entry.path))
+    return games, others
+
+
+def _file_names(directory: Path) -> list[str]:
+    """The names of what is directly in ``directory`` and is not a directory."""
+    try:
+        with os.scandir(directory) as entries:
+            return [entry.name for entry in entries if not entry.is_dir()]
+    except OSError:
+        return []
+
+
 @dataclass(frozen=True)
 class _Scan:
     """Every file a listing reads, found in one walk, with the stamp of each.
@@ -482,10 +525,25 @@ def _scan(
     behind a cache. The file's own mtime does move, and that is what is stamped here.
 
     A game's measurement is `runs/<hash>/canonical.json` and its runs are the
-    `runs/<hash>-<seed>/` directories beside it. The walk stamps any `canonical.json` it
-    finds, so the old single-run files still on disk are stamped too; `_measurements`
+    `runs/<hash>-<seed>/` directories beside it. The walk stamps the `canonical.json` in
+    each, so the old single-run files still on disk are stamped too; `_measurements`
     resolves each hash through `corpus.read_measurement`, which opens the measurement
     directory, so a stamped old file can move a cache key and can never become a number.
+
+    **The games' own directories, one level down, and nothing below them** (Q885). The
+    walk used to be `os.walk` over the whole of `runs/`: 10,760 directories in the main
+    checkout on 2026-10-13, 1.7 s of every cold listing, for the 126 measurements among
+    them. The rest is what a measurement leaves behind and no listing reads: the kept
+    scores under `runs/<hash>/previous/<n>/`, every replay campaign's `replaced/` copy,
+    the campaign directories' own runs, a run's games. Each `canonical.json` there names a
+    hash `read_measurement` answers from `runs/<hash>/` (or `runs/<hash>-0/`) anyway, so
+    it could only repeat an answer or ask about a game nobody listed (Q874). So a
+    directory whose name is a game's (`_GAME_DIR`) is listed, and any other directory
+    under `runs/` is only asked for the two files a listing reads by name there, a
+    design run's `lineage.jsonl` and a `verdict.json`. A verdict is also looked for in a
+    one-off tournament's `runs/tournament/<hash>-<seed>/`; one filed deeper than that,
+    inside a campaign, is no longer found, and none is (`verdict --run` is handed a
+    game's run directory, which is where `reread_one` looks too).
 
     The `index-<weights>.json` beside a measurement is stamped too, and only there.
     `Game._read_score` joins it onto the headline, and `chess-variant-sandbox score <run>` writes one
@@ -495,7 +553,9 @@ def _scan(
     listing a generation wrote.
 
     The one gap left is a design run's `specs/<hash>.json` edited in place without its
-    `lineage.jsonl` moving, which nothing in the loop does.
+    `lineage.jsonl` moving, which nothing does: `Archive.restate`, the one writer that
+    edits a spec in place (a saved draft's new description, Q595), rewrites the lineage
+    with it.
     """
     canonical: list[Path] = []
     verdicts: list[Path] = []
@@ -506,24 +566,35 @@ def _scan(
     # stamping it is what lets a new verdict reach a listing held in the cache.
     premises: list[Path] = []
     runs = Path(runs_dir)
-    for parent, _dirs, names in os.walk(runs):
-        here = Path(parent)
+    games, others = _top_level(runs)
+    for here in games:
+        names = _file_names(here)
         scored = "canonical.json" in names
         for name in names:
             if name == "canonical.json":
                 canonical.append(here / name)
             elif name == "verdict.json":
                 verdicts.append(here / name)
-            elif name == "lineage.jsonl" and here.parent == runs:
+            elif name == "lineage.jsonl":
                 lineages.append(here / name)
             elif scored and name.startswith("index-") and name.endswith(".json"):
                 indexes.append(here / name)
-            elif (name in ("premise.json", "history.jsonl", "convergence.json")
-                  and here.parent == runs):
+            elif name in ("premise.json", "history.jsonl", "convergence.json"):
                 # A score's history (Q649) and its convergence record (Q650) are stamped
                 # the same way: a replacement that appends a line, or a new record the
                 # trust line reads (Q647), reaches a listing held in the cache.
                 premises.append(here / name)
+    for here in others:
+        # Asked by name, never listed: a design run's lineage, and a verdict written
+        # beside it (`verdict --run` takes any directory).
+        for name, into in (("lineage.jsonl", lineages), ("verdict.json", verdicts)):
+            if (here / name).is_file():
+                into.append(here / name)
+    # A one-off tournament's directory (`cli._tournament_dir`), the other place
+    # `verdict --run` is pointed at. Its games are no measurement, so only that.
+    for here in _top_level(runs / _ONE_OFFS)[0]:
+        if (here / "verdict.json").is_file():
+            verdicts.append(here / "verdict.json")
 
     specs: list[tuple[Path, str]] = [
         (path, "committed") for path in sorted(Path(ruleset_dir).glob("*.json"))
@@ -679,7 +750,9 @@ def discover(
     seeds_by_hash = {
         digest: _expected_seeds(game.source) for digest, game in games.items()
     }
-    measurements = _measurements(runs_dir, spec_by_hash, scan.canonical, seeds_by_hash)
+    measurements = _measurements(
+        runs_dir, spec_by_hash, scan.canonical, seeds_by_hash, only_known=True
+    )
     for digest, game in games.items():
         game.measurement = measurements.get(digest)
 
@@ -1741,16 +1814,22 @@ def piece_maps(game: Game, reference: Game | None = None) -> list[dict[str, Any]
 
 @lru_cache(maxsize=256)
 def _maps_alone(blob: str) -> str:
+    """Every piece's map in one game, from one compile (`designing.alone_maps`).
+
+    Nothing on disk can stand in for that compile: the tables cache keeps a fingerprint
+    of the compiled tables, not the tables (`measurement.tables_fingerprint`), and
+    `engine_for` keeps the last sixteen engines, which a listing over eighty games has
+    long turned over. Asked a piece at a time through `move_map`, as before Q890, a game
+    compiled once more per piece and the reference game once per game compared with it:
+    661 compiles for the 87-game library where 88 do."""
     from chess_variant_sandbox.web import designing
 
-    spec = json.loads(blob)
-    compiled = engine_for(spec).spec
-    maps = []
-    for piece in range(compiled.n_types):
-        found = designing.move_map(spec, piece, alone=True)
-        maps.append({key: found[key] for key in ("from", "value", "moves", "takes")})
+    engine, found = designing.alone_maps(json.loads(blob))
+    compiled = engine.spec
+    maps = [{key: one[key] for key in ("from", "value", "moves", "takes")} for one in found]
     shape = {"width": compiled.width, "height": compiled.height,
-             "comparable": compiled.lattice == "square" and compiled.wrap is None}
+             "comparable": compiled.lattice == "square" and compiled.wrap is None,
+             "names": list(compiled.piece_names)}
     return json.dumps({"maps": maps, **shape})
 
 
@@ -1758,9 +1837,7 @@ def _maps_alone(blob: str) -> str:
 def _maps_cached(blob: str, reference: str | None) -> str:
     mine = json.loads(_maps_alone(blob))
     theirs = None if reference is None else json.loads(_maps_alone(reference))
-    names: list[str] = []
-    if theirs is not None:
-        names = list(engine_for(json.loads(reference or "{}")).spec.piece_names)
+    names: list[str] = [] if theirs is None else theirs["names"]
     out = []
     for found in mine["maps"]:
         like = None
@@ -1839,24 +1916,16 @@ def same_moves(
 
 @lru_cache(maxsize=512)
 def _still_cached(blob: str) -> tuple[str, tuple[tuple[str, str], ...]]:
-    """One opening position per ruleset, memoised on the spec as `_playability` is: it
-    compiles the rules, and a listing that paid that per request would be slow."""
-    from chess_variant_sandbox.web import designing
-
-    preview = designing.opening_preview(json.loads(blob))
-    art: dict[str, str] = {}
-    named: list[list[dict[str, Any] | None]] = []
-    for pair in preview.get("icons") or []:
-        row: list[dict[str, Any] | None] = []
-        for icon in pair:
-            if icon is None:
-                row.append(None)
-                continue
-            art[str(icon["stem"])] = str(icon["href"])
-            row.append({"stem": icon["stem"], "rotate": bool(icon.get("rotate"))})
-        named.append(row)
-    shape = {**preview, "icons": named}
-    return json.dumps(shape, sort_keys=True), tuple(sorted(art.items()))
+    """One opening position per ruleset (`card_rules.still`), memoised on the spec as
+    `_playability` is, and kept on disk between processes (`CardAnswers`)."""
+    stored = _CARDS.get(_STILL, blob)
+    if stored is not None:
+        shape, art = stored
+        return str(shape), tuple((str(stem), str(href)) for stem, href in art)
+    spec = json.loads(blob)
+    answer = card_rules.still(spec, lambda: engine_for(spec))
+    _CARDS.put(_STILL, blob, [answer[0], [list(pair) for pair in answer[1]]])
+    return answer
 
 
 @lru_cache(maxsize=16)
@@ -1866,22 +1935,18 @@ def _engine_cached(blob: str) -> Engine:
 
 @lru_cache(maxsize=256)
 def _smoke_cached(blob: str) -> tuple[bool, tuple[str, ...]]:
-    """The cheap gate's verdict, played on the engine `engine_for` compiled.
-
-    The card's still board and the translation ask `engine_for` for the same rules, so
-    the three share one compile (the first-visit study's N8: a cold listing compiled
-    every ruleset three times). Rules that do not compile go to the gate as text, which
-    says why in the designer's words.
-    """
-    from chess_variant_sandbox.loop.gates import smoke_test
-
+    """The cheap gate's verdict, played on the engine `engine_for` compiled
+    (`card_rules.smoke`), and kept on disk between processes (`CardAnswers`) unless the
+    gate's clock cut it, which is a fact about this machine's load and not the rules."""
+    stored = _CARDS.get(_SMOKE, blob)
+    if stored is not None:
+        passed, reasons = stored
+        return bool(passed), tuple(str(reason) for reason in reasons)
     spec = json.loads(blob)
-    try:
-        engine: Engine | None = engine_for(spec)
-    except (SpecError, NotImplementedError):
-        engine = None
-    result = smoke_test(spec, engine=engine)
-    return result.passed, tuple(result.reasons)
+    passed, said, timed_out = card_rules.smoke(spec, lambda: engine_for(spec))
+    if not timed_out:
+        _CARDS.put(_SMOKE, blob, [passed, list(said)])
+    return passed, said
 
 
 def _playability(spec: dict[str, Any]) -> dict[str, Any]:
@@ -1904,30 +1969,317 @@ def _playability(spec: dict[str, Any]) -> dict[str, Any]:
 
 @lru_cache(maxsize=256)
 def _fairy_cached(blob: str) -> tuple[bool, tuple[str, ...]]:
-    """One translation attempt per ruleset, for both halves of the answer.
+    """One translation attempt per ruleset, for both halves of the answer
+    (`card_rules.fairy`), and kept on disk between processes (`CardAnswers`).
 
-    `fairy.supports` and `fairy.why_not` are the same attempt asked twice -- the first
-    throws the reasons away and the second recomputes them -- and a listing that called
-    both would compile every ruleset the translator refuses a second time to be told
-    again why. No reasons *is* support, which is what `why_not` documents returning.
-
-    It is `why_not`'s attempt, handed the rules `engine_for` compiled rather than the
-    text. A cold listing compiled every ruleset three times, for the cheap gate, the
-    card's still board and this; the still board asks `engine_for` straight after this
-    (`App.library_payload`), so the two now share one compile (the first-visit study's N8:
+    A cold listing compiled every ruleset three times, for the cheap gate, the card's
+    still board and this; the still board asks `engine_for` straight after this
+    (`App.library_payload`), so the three share one compile (the first-visit study's N8:
     the first listing after a start took 13.8 s, nearly all of it compiling).
     """
-    from chess_variant_sandbox.fairy.variant import Untranslatable, translate
+    stored = _CARDS.get(_FAIRY, blob)
+    if stored is not None:
+        translates, reasons = stored
+        return bool(translates), tuple(str(reason) for reason in reasons)
+    answer = card_rules.fairy(lambda: engine_for(json.loads(blob)))
+    _CARDS.put(_FAIRY, blob, [answer[0], list(answer[1])])
+    return answer
 
+
+# ---------------------------------------------------------------- the card answers' store
+#
+# Q887. A process's first listing worked out the three answers above for every game, and
+# compiling the rules for them was nine tenths of it (`docs/reference/fast-suite-review.md`,
+# Q887): 6.7 s of a 7.4 s payload over the 87-game library here, and with the cheap gate's
+# playouts on one thread, most of the box's minute after a deploy. The answers are a pure
+# function of the spec, the code `card_rules` can reach, the piece drawings and the core,
+# so they are kept on disk under exactly that key and read back by the next process.
+
+CARD_ANSWERS_NAME = "library-cards.json"
+# Moves when the file's shape does, what a stored answer means, or how the key is read.
+# 2 (Q890): files in byte order of their repository path, and no `__pycache__`, so the
+# key is the same on Windows and on the box for the same tree.
+_CARD_FORMAT = 2
+# The module whose import closure is the key: everything an answer is worked out by.
+CARD_ENTRY = "chess_variant_sandbox/web/card_rules.py"
+_SMOKE, _FAIRY, _STILL = "smoke", "fairy", "still"
+
+# `from chess_variant_sandbox.x import a, b` (or a parenthesised list over several lines)
+# and `import chess_variant_sandbox.x`, one statement a line, deferred ones included.
+# Anchored at a line's start: `measurement._closure`'s pattern let one import's names run
+# on into the next line, which hid every second consecutive import from it (fixed in
+# Q889, `measurement.package_imports`).
+_FROM_IMPORT = re.compile(
+    rb"^[ \t]*from[ \t]+(chess_variant_sandbox(?:\.\w+)*)[ \t]+import[ \t]+"
+    rb"(\([^)]*\)|[^\r\n#;]*)",
+    re.MULTILINE,
+)
+_PLAIN_IMPORT = re.compile(rb"^[ \t]*import[ \t]+([^\r\n#;]*)", re.MULTILINE)
+
+
+def card_answers_path() -> Path:
+    """Beside the tables cache (`measurement.tables_cache_path`), so the one variable that
+    moves that moves this, and a test run never writes the checkout's `runs/`."""
+    return tables_cache_path().with_name(CARD_ANSWERS_NAME)
+
+
+def _module_path(dotted: str, listing: Callable[[str], frozenset[str]]) -> str | None:
+    """The repository path of the source file a dotted package name is, or ``None`` for an
+    attribute, in a tree whose directories `listing` names the files of.
+
+    Spelled exactly, against the directory's own listing: on a case-insensitive disk
+    `from chess_variant_sandbox.engine import Engine` would otherwise find `Engine.py`,
+    the same file as `engine.py` under another name, and which name reached the key
+    first would depend on the process's string hashing (it moved the key in 1 of 15
+    processes here before this check)."""
+    base = dotted.replace(".", "/")
+    parent, _, stem = base.rpartition("/")
+    for directory, name in ((parent, f"{stem}.py"), (base, "__init__.py")):
+        if name in listing(directory):
+            return f"{directory}/{name}" if directory else name
+    return None
+
+
+@lru_cache(maxsize=512)
+def _module_file(dotted: str) -> Path | None:
+    """`_module_path` on this checkout's disk, as a path."""
+    found = _module_path(dotted, _disk_listing)
+    return None if found is None else MEASUREMENT_ROOT / found
+
+
+def _disk_listing(directory: str) -> frozenset[str]:
+    return _listing(MEASUREMENT_ROOT / directory)
+
+
+@lru_cache(maxsize=256)
+def _listing(directory: Path) -> frozenset[str]:
+    """The exact names of the files in one directory, or none for a missing one."""
     try:
-        translate(engine_for(json.loads(blob)).spec)
-    except Untranslatable as error:
-        reasons = tuple(error.reasons)
-    except Exception as error:  # noqa: BLE001 - as `why_not`: a refusal, not an error
-        reasons = (f"{type(error).__name__}: {error}",)
-    else:
-        reasons = ()
-    return not reasons, reasons
+        return frozenset(entry.name for entry in os.scandir(directory) if entry.is_file())
+    except OSError:
+        return frozenset()
+
+
+def _package_imports(body: bytes) -> set[str]:
+    """Every package module a source file's import statements name, with its parents."""
+    named: list[str] = []
+    for match in _FROM_IMPORT.finditer(body):
+        module = match.group(1).decode("ascii")
+        names = match.group(2).decode("utf-8", "replace").strip("() \t\r\n")
+        named.append(module)
+        for name in names.replace("\n", ",").split(","):
+            word = name.split("#")[0].strip().split(" ")[0]
+            if word.isidentifier():
+                named.append(f"{module}.{word}")
+    for match in _PLAIN_IMPORT.finditer(body):
+        for name in match.group(1).decode("utf-8", "replace").split(","):
+            word = name.strip().split(" ")[0]
+            if word.startswith("chess_variant_sandbox"):
+                named.append(word)
+    found: set[str] = set()
+    for dotted in named:
+        parts = dotted.split(".")
+        found.update(".".join(parts[:end]) for end in range(1, len(parts) + 1))
+    return found
+
+
+def _generated(name: str) -> bool:
+    """A file Python leaves beside a script it ran, which no answer reads and no tree
+    ships: the main checkout's `assets/pieces/__pycache__/` was in the key and the box's
+    tree has none (Q890)."""
+    return "__pycache__" in name.split("/") or name.endswith((".pyc", ".pyo"))
+
+
+def card_files_in(
+    read: Callable[[str], bytes | None],
+    listing: Callable[[str], frozenset[str]],
+    assets: Iterable[str],
+) -> tuple[tuple[str, bytes], ...]:
+    """`card_sources` and their bytes in any tree, by repository path (POSIX, relative).
+
+    ``read`` gives a file's bytes or ``None`` when it cannot, ``listing`` the exact names
+    of the files in a directory, ``assets`` every file under the piece drawings. This
+    checkout's disk is one tree (`_card_files`); a git ref is another (`deploy/cards.py`,
+    which asks what key the box will run before it is deployed).
+
+    Sorted by path in byte order, never by `Path`: Windows compares paths case-blind, so
+    the same tree's files came out in another order there than on the box, and the key
+    moved between the two for the same bytes (Q890)."""
+    found: dict[str, bytes] = {}
+    queue = [CARD_ENTRY]
+    while queue:
+        name = queue.pop()
+        if name in found:
+            continue
+        body = read(name)
+        found[name] = b"<unreadable>" if body is None else body
+        if body is None:
+            continue
+        for dotted in _package_imports(body):
+            target = _module_path(dotted, listing)
+            if target is not None and target not in found:
+                queue.append(target)
+    for name in assets:
+        if name not in found and not _generated(name):
+            body = read(name)
+            found[name] = b"<unreadable>" if body is None else body
+    return tuple(sorted(found.items()))
+
+
+def _repo_name(path: Path) -> str:
+    return (path.relative_to(MEASUREMENT_ROOT).as_posix()
+            if path.is_relative_to(MEASUREMENT_ROOT) else path.as_posix())
+
+
+def _disk_read(name: str) -> bytes | None:
+    try:
+        return (MEASUREMENT_ROOT / name).read_bytes()
+    except OSError:
+        return None
+
+
+@lru_cache(maxsize=1)
+def _card_files() -> tuple[tuple[str, bytes], ...]:
+    """`card_sources` with each file's bytes, on this checkout's disk, each read once."""
+    from chess_variant_sandbox.viz.pieces import ASSET_ROOT
+
+    assets = [_repo_name(path) for path in ASSET_ROOT.rglob("*") if path.is_file()]
+    return card_files_in(_disk_read, _disk_listing, assets)
+
+
+def card_sources() -> tuple[Path, ...]:
+    """Every file whose content can decide a card answer: `CARD_ENTRY`'s import closure,
+    parent packages included (importing `a.b.c` runs `a/__init__.py` and `a/b/__init__.py`),
+    and every file under the piece drawings' directory but what Python generates there.
+    More files than the answers read only costs a recompute after an unrelated edit; fewer
+    would serve a stale answer."""
+    return tuple(MEASUREMENT_ROOT / name for name, _ in _card_files())
+
+
+def card_key(core: str, files: Iterable[tuple[str, bytes]]) -> str:
+    """SHA-256 over the format, a core build fingerprint and ``files`` by repository path
+    and exact bytes: `card_answers_key` for any core and tree."""
+    import hashlib
+
+    digest = hashlib.sha256(f"library-cards {_CARD_FORMAT}\0core {core}\0".encode())
+    for name, body in files:
+        digest.update(name.encode("utf-8") + b"\0" + body + b"\0")
+    return digest.hexdigest()
+
+
+@lru_cache(maxsize=1)
+def card_answers_key() -> str:
+    """The key the card answers are stored under in this process: `card_key` of the
+    loaded core's build fingerprint and this checkout's `card_sources`. Cached for the
+    process: the tree does not move under it."""
+    return card_key(built_fingerprint(), _card_files())
+
+
+class CardAnswers:
+    """The three card answers per spec, read from disk once and written back in one go.
+
+    The file holds one key's answers, ``{"sources": key, "cards": {spec digest: {kind:
+    answer}}}``, and an answer stored under any other key is never read: a moved key
+    means any of them may be wrong. A spec is named by the SHA-256 of the JSON text the
+    in-process memos are keyed on, so its name and its drawings are in the name too.
+
+    `save` writes only when something was added, to a temporary file renamed over the
+    old one, after folding in what another process stored meanwhile under the same key.
+    A `runs/` that cannot be written leaves the answers in memory. Every answer here is
+    the code's own, so the worst a race can cost is a recompute.
+    """
+
+    def __init__(self, path: Path | None = None) -> None:
+        self._fixed = path
+        self._lock = threading.Lock()
+        self._read_as: tuple[Path, str] | None = None
+        self._cards: dict[str, dict[str, Any]] = {}
+        self._added = False
+
+    def _path(self) -> Path:
+        return self._fixed if self._fixed is not None else card_answers_path()
+
+    @staticmethod
+    def _stored(path: Path, key: str) -> dict[str, dict[str, Any]]:
+        try:
+            held = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(held, dict) or held.get("sources") != key:
+            return {}
+        cards = held.get("cards")
+        return {str(k): dict(v) for k, v in cards.items() if isinstance(v, dict)} if (
+            isinstance(cards, dict)) else {}
+
+    def _current(self) -> dict[str, dict[str, Any]]:
+        """The answers for this path and key, read at most once per pair; under the lock."""
+        place = (self._path(), card_answers_key())
+        if self._read_as != place:
+            self._cards = self._stored(*place)
+            self._read_as = place
+            self._added = False
+        return self._cards
+
+    @staticmethod
+    def _name(blob: str) -> str:
+        import hashlib
+
+        return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+    def get(self, kind: str, blob: str) -> Any | None:
+        with self._lock:
+            return self._current().get(self._name(blob), {}).get(kind)
+
+    def put(self, kind: str, blob: str, answer: Any) -> None:
+        with self._lock:
+            self._current().setdefault(self._name(blob), {})[kind] = answer
+            self._added = True
+
+    def save(self) -> None:
+        with self._lock:
+            if not self._added or self._read_as is None:
+                return
+            path, key = self._read_as
+            merged = self._stored(path, key)
+            for name, answers in self._cards.items():
+                merged[name] = {**merged.get(name, {}), **answers}
+            self._cards = merged
+            payload = json.dumps({"sources": key, "cards": dict(sorted(merged.items()))},
+                                 sort_keys=True, separators=(",", ":"))
+            temporary = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                temporary.write_text(payload, encoding="utf-8")
+                os.replace(temporary, path)
+            except OSError:
+                with contextlib.suppress(OSError):
+                    temporary.unlink()
+                return
+            self._added = False
+
+
+_CARDS = CardAnswers()
+
+
+def save_card_answers() -> None:
+    """Write the answers this process worked out since the last save, if any; best effort.
+    `App.library_payload` calls it once a listing, so a cold listing writes the file once."""
+    _CARDS.save()
+
+
+def work_out_card_answers(games: Iterable[Game]) -> int:
+    """The three answers a listing asks of each game's card, worked out or read back
+    through the listing's own memos, then saved: the store a listing of these games
+    leaves, without the rest of the listing. How a deploy fills the store it ships
+    (`deploy/cards.py`, Q890). Returns how many games were asked about."""
+    asked = 0
+    for game in games:
+        _playability(game.spec)
+        _fairy(game.spec)
+        still(game)
+        asked += 1
+    save_card_answers()
+    return asked
 
 
 def _fairy(spec: dict[str, Any]) -> dict[str, Any]:
@@ -2029,6 +2381,7 @@ def _measurements(
     spec_by_hash: dict[str, dict[str, Any]] | None = None,
     paths: Iterable[Path] | None = None,
     seeds_by_hash: dict[str, tuple[int, ...]] | None = None,
+    only_known: bool = False,
 ) -> dict[str, Measurement]:
     """The one canonical-roster measurement for each game, judged against now.
 
@@ -2049,7 +2402,8 @@ def _measurements(
     as `spec=`, it lets that call skip `corpus.find`, which without a spec in hand
     re-globs and re-hashes every committed and archived spec to answer one lookup. A
     digest this map does not carry (a canonical.json with no spec anywhere this call
-    visited) still falls back to `find`, exactly as before.
+    visited) still falls back to `find`, unless ``only_known`` says the map is the
+    whole of what the caller will read.
 
     ``paths`` is `discover`'s own walk of `runs/`, handed over so the tree is not walked
     a second time to find the same files. Absent, this globs for them as it always did.
@@ -2057,12 +2411,24 @@ def _measurements(
     ``seeds_by_hash`` is how many runs each game's rung owes, from `_expected_seeds`:
     four for a library game, one for a candidate. A digest it does not carry is read
     against the library's four, `corpus.read_measurement`'s own default.
+
+    **Each digest is resolved once, and with ``only_known`` only the ones the map
+    carries** (Q874). The walk finds far more `canonical.json` files than games: every
+    replaced score kept under `runs/<hash>/previous/<n>/` and every replay campaign's
+    `replaced/` copy names its game's hash too, and `read_measurement` opens
+    `runs/<hash>/` whichever file named it, so a second file for a digest is the same
+    answer again. A digest no listed game carries -- a game that left the library or had
+    its rules edited, with its history still on disk -- went to `corpus.find`, about 60 ms
+    each, and `discover` then threw the answer away, since it reads a measurement only
+    for a game it lists. In the main checkout on 2026-10-13 that was 1,778 files for 119
+    digests, 322 of them for 34 such digests: 19 s of a 26 s listing.
     """
     from chess_variant_sandbox import corpus
 
-    spec_by_hash = spec_by_hash or {}
+    known = spec_by_hash or {}
     seeds_by_hash = seeds_by_hash or {}
     found: dict[str, Measurement] = {}
+    seen: set[str] = set()
     if paths is None:
         paths = Path(runs_dir).rglob("canonical.json")
     for path in sorted(paths):
@@ -2071,10 +2437,13 @@ def _measurements(
         except (OSError, ValueError):
             continue
         digest = stored.get("hash") if isinstance(stored, dict) else None
-        if not isinstance(digest, str) or not digest:
+        if not isinstance(digest, str) or not digest or digest in seen:
+            continue
+        seen.add(digest)
+        if only_known and digest not in known:
             continue
         measurement = corpus.read_measurement(
-            digest, runs_dir, spec=spec_by_hash.get(digest),
+            digest, runs_dir, spec=known.get(digest),
             seeds=seeds_by_hash.get(digest),
         )
         if measurement is not None:

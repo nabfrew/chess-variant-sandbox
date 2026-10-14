@@ -252,7 +252,9 @@ function openingHtml(game) {
     for (const mark of marks[square]) kinds.add(mark.kind);
   }
   boardKinds(preview.obstacles, preview.portals).forEach(kind => kinds.add(kind));
-  const said = legendEntries(kinds, preview.wrap, '');
+  // Q852: each wild piece's walk, drawn in order on the start position.
+  if (walksDrawn(preview)) kinds.add('walk');
+  const said = legendEntries(kinds, preview.wrap, '', preview.portals);
   // Never taller than most of a screen: a board taller than it is wide is held to the
   // width that leaves its foot in view.
   const tall = opening.height / Math.max(1, opening.width);
@@ -263,7 +265,7 @@ function openingHtml(game) {
     <figcaption class="muted small">The start position${
       (game.sides || [])[opening.toMove] ? `: ${esc(game.sides[opening.toMove])} moves first` : ''}.</figcaption>
     ${said.length ? `<div class="frame-legend small" data-opening="legend">on the board: ${
-      said.join(' ')}</div>` : ''}
+      said.join(' ')}</div>` : ''}${walkLeapsHtml(preview)}
   </figure>`;
 }
 
@@ -1536,13 +1538,44 @@ function boardOf(game) {
 
 // §2.5: before the computer players are rated the game is practice, and the panel says so
 // with their names, weakest first, and no numbers -- never a table of zeros or a blank
-// column. A library game's ladder is rated on our own machine; a member's game's sentence
-// promises no time until L5 rates one on publishing.
+// column. A library game's ladder is rated on our own machine. A member's game is rated on
+// the site when it is published, the five standard players first (L5), and `board.box`
+// says how far that has got; a game a cap refused waits for our own machine, with no time
+// promised.
 const UNRATED_SAYS = `This game's computer players have not been rated yet, so every game
   here is practice for now.`;
 const UNRATED_WAIT = 'They are rated on our own machine; this usually takes a day.';
+const BOX_SAYS = {
+  draft: 'They are rated on this site when the game is published.',
+  rating: `The five standard ones are being rated on this site now; this usually takes a few
+    minutes.`,
+  slow: `Rating them took longer than this site allows, so they are waiting to be rated on
+    our own machine.`,
+  large: `Rating them needed more memory than this site allows, so they are waiting to be
+    rated on our own machine.`,
+  waiting: `They could not be rated on this site, so they are waiting to be rated on our own
+    machine.`,
+};
 const NOBODY_YET = `Nobody has played a rated game here yet. Your first one puts you on
   this table, starting at 1500.`;
+
+// The players with no row yet (`board.unrated`). On a member's game rated here at publish
+// they are the stronger ones, who join when our own machine has rated them (L6); anywhere
+// else, a player offered since the ladder was rated.
+function unratedLine(board) {
+  const unrated = board.unrated || [];
+  if (!unrated.length) return '';
+  const names = unrated.map(name => `<b>${esc(name)}</b>`).join(', ');
+  const one = unrated.length === 1;
+  if (board.box === 'rated') {
+    return `The five standard computer players were rated on this site when the game was
+      published. ${names} ${one ? 'joins' : 'join'} this table when our own machine has
+      rated ${one ? 'it' : 'them'}; until then a game against ${one ? 'it' : 'them'} is
+      practice.`;
+  }
+  return `${names} ${one ? 'has' : 'have'} no rating on this game yet, so ${
+    one ? 'it is' : 'they are'} not on it.`;
+}
 
 function leaderboardHtml(game) {
   const board = boardOf(game);
@@ -1551,7 +1584,8 @@ function leaderboardHtml(game) {
     `<div class="muted small"${top ? ` style="margin-top:${top}px"` : ''}>${words}</div>`;
   if (!board.rated) {
     const waiting = board.waiting || [];
-    return line(`${UNRATED_SAYS}${board.library ? ' ' + UNRATED_WAIT : ''}`)
+    const when = board.library ? UNRATED_WAIT : (BOX_SAYS[board.box] || '');
+    return line(`${UNRATED_SAYS}${when ? ' ' + when : ''}`)
       + (waiting.length ? `<table class="ratings" id="waiting"><thead><tr>
           <th>its computer players, weakest first</th></tr></thead><tbody>${
           waiting.map(name => `<tr><td>${esc(name)}</td></tr>`).join('')}</tbody></table>`
@@ -1583,12 +1617,8 @@ function leaderboardHtml(game) {
         <td class="muted small" style="text-align:right">${esc(row.games)}</td>
       </tr>`;
   }).join('');
-  const unrated = board.unrated || [];
-  const missing = unrated.length
-    ? line(`${unrated.map(name => `<b>${esc(name)}</b>`).join(', ')} ${
-        unrated.length === 1 ? 'has' : 'have'} no rating on this game yet, so ${
-        unrated.length === 1 ? 'it is' : 'they are'} not on it.`, 8)
-    : '';
+  const unrated = unratedLine(board);
+  const missing = unrated ? line(unrated, 8) : '';
   return line(said) + `<table class="ratings"><thead><tr>
       <th>player</th>
       <th style="text-align:right; white-space:nowrap">rating${info('ratedHere')}</th>

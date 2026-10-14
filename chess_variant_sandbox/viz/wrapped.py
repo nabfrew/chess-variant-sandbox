@@ -46,7 +46,13 @@ from chess_variant_sandbox.engine.compile import (
     WrapRule,
 )
 from chess_variant_sandbox.engine.engine import _square_name as square_name
-from chess_variant_sandbox.engine.moves import MOVE_PORTAL, move_portal, move_to, move_type
+from chess_variant_sandbox.engine.moves import (
+    MOVE_PORTAL,
+    move_fold,
+    move_portal,
+    move_to,
+    move_type,
+)
 from chess_variant_sandbox.spec.schema import WRAP_PAIRS
 
 
@@ -155,32 +161,101 @@ def portal_payload(compiled: CompiledSpec) -> dict[str, Any] | None:
     """Schema 19: what the page draws a portal end with, per internal type, or ``None``.
 
     The static half of the rule, sent once per ruleset (`docs/plan-portals.md` §4): for
-    each end's type, its pair's number, which end it is, who may move it and whose pieces
-    may go in by it. Where the ends stand is on the board, as every piece's square is.
-    Compiled answers only, so the page reads no DSL and works out nothing.
+    each end's type, its group's number (``pair``, the colour's and the glyph's number), its
+    id (``id``, ``1o``, ``2a``) and its letter in it (``end``: ``orange`` or ``blue`` for a
+    pair's, ``a``, ``b``, ... for a map's), the type of the end it leads to (``dest``,
+    ``None`` for a way out only), who may move it, whose pieces may go in by it (``open``,
+    per player: some piece may) and which pieces (``admits``, per player, as piece ids, and
+    ``filtered``, whether the end names them; schema 21, `docs/plan-portals-2.md` §5.2).
+    Where the ends stand is on the board, as every piece's square is. Compiled answers
+    only, so the page reads no DSL and works out nothing.
     """
     portals = compiled.portals
     if portals is None:
         return None
     ends = []
     for index, piece_type in enumerate(portals.end_types):
+        group = portals.group_of[index]
+        piece_id = compiled.piece_ids[piece_type]
+        letter = piece_id[len(str(group + 1)):]
+        to = portals.dest[piece_type]
+        # A group of two ends is always a pair (the validator's), lettered o and b.
+        paired = portals.group_of.count(group) == 2
         ends.append({
             "type": piece_type,
-            "pair": portals.pair_of[index] + 1,
-            "end": "orange" if index % 2 == 0 else "blue",
+            "pair": group + 1,
+            "id": piece_id,
+            "end": {"o": "orange", "b": "blue"}[letter] if paired else letter,
+            "dest": to if to >= 0 else None,
             "movedBy": sorted(portals.movers[piece_type]),
-            "open": list(portals.open_to[piece_type]),
+            "open": [bool(mask) for mask in portals.admits[piece_type]],
+            "filtered": portals.carried[piece_type],
+            # Schema 22: the end's rule set, "momentum" or "fold".
+            "kind": portals.kinds[index] if portals.kinds else "momentum",
+            "admits": [
+                [pid for bit, pid in enumerate(compiled.piece_ids[:portals.declared_types])
+                 if mask >> bit & 1]
+                for mask in portals.admits[piece_type]
+            ],
         })
     return {"ends": ends}
+
+
+def fold_payload(engine: Any, state: Any) -> list[dict[str, Any]]:
+    """Schema 22: where each fold stands in ``state``, for the page to draw under the pieces.
+
+    One ``{square, type, pair}`` per fold end, in end order: its square (the state's
+    ``folds``, read through `Engine.fold_square`), its end's internal type (the key into
+    `portal_payload`'s ends) and its group's number (the colour). Empty for every game
+    without folds. A fold stands on no square of the board byte, so this is the only place
+    the page learns where one is; the page draws it as a pool under the pieces (Q843d,
+    `docs/plan-portals-2.md` §5.3).
+    """
+    portals = engine.spec.portals
+    if portals is None or portals.folds is None:
+        return []
+    found = []
+    for end, piece_type in enumerate(portals.end_types):
+        square = engine.fold_square(state, end)
+        if square is not None:
+            found.append({
+                "square": square, "type": piece_type, "pair": portals.group_of[end] + 1,
+            })
+    return found
+
+
+def fold_transit(engine: Any, state: Any, move: int) -> dict[str, Any] | None:
+    """Schema 22: what the page draws a move through a fold with, read off the position it
+    is played in, or ``None`` for a move that went through none.
+
+    The engine's own route (`Engine.fold_route`): the fold it went in by (``foldIn``) and
+    the end that one leads to, where it came out and ended (``foldOut``, the move's target
+    since schema 24), with their names and the group's number (``foldPair``, the colour).
+    The trip (the ripple), the trail at rest and the destination dots read these and work
+    out nothing (Q843d, `docs/plan-portals-2.md` §5.3; their revised look is §5.3R's).
+    """
+    route = engine.fold_route(state, move)
+    if route is None:
+        return None
+    way_in, way_out = route
+    # The tag is the fold end gone through, plus one (`MOVE_FOLD`'s word, §3.3).
+    group = engine.spec.portals.group_of[move_fold(move) - 1] + 1
+    return {
+        "foldIn": way_in,
+        "foldInName": square_name(way_in, engine.spec.width),
+        "foldOut": way_out,
+        "foldOutName": square_name(way_out, engine.spec.width),
+        "foldPair": group,
+    }
 
 
 def portal_transit(engine: Any, state: Any, move: int) -> dict[str, Any] | None:
     """Schema 19: what the page draws a transit with, read off the position it is played in.
 
     ``None`` for any move that is not a ``MOVE_PORTAL``. Otherwise the end it goes in by
-    (``portal``, the engine's own `portal_entry`), the other end of that pair, beside which
-    it comes out (``portalOut``: the end's partner type, found on the board as the entry
-    is), and the direction it comes out in (``exitDir``, an index into
+    (``portal``, the engine's own `portal_entry`), the end that one leads to, beside which
+    it comes out (``portalOut``: the entry end's ``dest`` type, found on the board as the
+    entry is), and the direction it comes out in (``exitDir``, an index into
     ``PORTAL_DIRECTIONS``), which is the compiled exit table read backwards: the direction
     whose step from ``portalOut`` under the mover's wrap permission is the move's own
     target. Squares come with their names. The two-leg trail, the two-beat animation and
@@ -194,8 +269,10 @@ def portal_transit(engine: Any, state: Any, move: int) -> dict[str, Any] | None:
     entry = engine.portal_entry(state, move)
     if entry is None:
         return None
-    partner = portals.partner[move_portal(move)]
-    out = state.board.find(bytes((spec.encode_piece(WILD, partner),)))
+    to = portals.dest[move_portal(move)]
+    if to < 0:
+        return None
+    out = state.board.find(bytes((spec.encode_piece(WILD, to),)))
     if out < 0:
         return None
     target = move_to(move)

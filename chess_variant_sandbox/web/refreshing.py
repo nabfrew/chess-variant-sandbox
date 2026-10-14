@@ -6,6 +6,13 @@
 game, how long ago it last wrote, what it refused and why, and how many games are owed
 a repair. Both pages draw the sentences and rows it returns and decide nothing.
 
+Since Q822 the refresher also rates computer players' ladders once no score is owed
+(`refresher.py` point 8), and its file carries `ladders_owed`, `ladder_counts` and
+`ladders_refused` beside the score keys. This module words those keys as it words the
+score ones (Q860) and works out no ladder state itself: `ladder_counts` set to ``None``
+is a refresher that has not read the ladders because a score is owed, and a file without
+the keys is one written before Q822, of which nothing is said.
+
 It is the maintainer's: `/api/admin` and `/api/scoring`, both admin-only on the site, are
 its only routes, so a visitor is never sent it. A missing or unreadable file is not an
 error, it is a refresher that is not running here.
@@ -37,6 +44,15 @@ REPAIRS = {
     "replay": "playing again",
 }
 
+# What each kind of ladder work does (`refresher.LADDER_ORDER`), as a repair is worded
+# above, and the short word for each in the line that counts them.
+LADDERS = {
+    "ladder": "rating its computer players",
+    "top-up": "topping up its computer players",
+    "re-rate": "rating its computer players again",
+}
+LADDER_COUNTED = {"ladder": "missing", "top-up": "short", "re-rate": "to rate again"}
+
 # Why a game was refused, in plain words, by `refresher`'s refusal kinds.
 REFUSALS = {
     refresher.STALE_BUILD: "the game engine changed and was not compiled again",
@@ -66,12 +82,20 @@ def _game(entry: Mapping[str, Any]) -> str:
     return str(entry.get("name") or str(entry.get("hash") or "")[:12] or "a game")
 
 
+def _work(needs: Any) -> str:
+    """A score repair or a ladder's work, in words; an unknown one as it was written."""
+    needs = str(needs or "")
+    return REPAIRS.get(needs) or LADDERS.get(needs) or needs
+
+
 def _refusal(entry: Mapping[str, Any]) -> dict[str, Any]:
     kind = str(entry.get("kind") or "")
+    needs = str(entry.get("needs") or "")
     return {
         "hash": str(entry.get("hash") or ""),
         "name": _game(entry),
-        "needs": REPAIRS.get(str(entry.get("needs") or ""), ""),
+        "needs": REPAIRS.get(needs) or LADDERS.get(needs, ""),
+        "ladder": needs in LADDERS,
         "why": REFUSALS.get(kind, kind or "refused"),
         "reason": str(entry.get("reason") or ""),
         "at": str(entry.get("at") or ""),
@@ -96,6 +120,9 @@ def view(runs_dir: Path) -> dict[str, Any]:
     `running` is whether it is running now; `said` is the headline and the lines under
     it, in order; `refused` is every standing refusal, newest first; `owed` and
     `owedCounts` are what it found owed at its last survey, refused games apart.
+    `laddersOwed`, `ladderCounts` and `laddersRefused` are the same for the ladders, each
+    ``None`` while the ladders wait on a score and in a file written before Q822;
+    `ladders` says which (`read`, `waiting`, or `unknown`).
     """
     status = refresher.read_status(runs_dir)
     state = state_of(status)
@@ -103,7 +130,8 @@ def view(runs_dir: Path) -> dict[str, Any]:
         return {"state": "none", "running": False, "said": [
             "The refresher is not running here: it has never written a status."],
             "ageS": None, "doing": None, "owed": 0, "owedCounts": {}, "refusedOwed": 0,
-            "refused": [], "lastDone": None, "lastRefusal": None}
+            "refused": [], "lastDone": None, "lastRefusal": None, "ladders": "unknown",
+            "laddersOwed": None, "ladderCounts": None, "laddersRefused": None}
 
     age = status.get("age_s")
     doing = status.get("doing") if isinstance(status.get("doing"), Mapping) else None
@@ -122,7 +150,7 @@ def view(runs_dir: Path) -> dict[str, Any]:
     }.get(state)
     if head is None and state == "working":
         head = (f"The refresher is working on {_game(doing)}: "
-                f"{REPAIRS.get(str(doing.get('needs')), str(doing.get('needs')))}, "
+                f"{_work(doing.get('needs'))}, "
                 f"since {ago(age)}." if doing else
                 f"The refresher is running (written {ago(age)}).")
     if head is None:
@@ -143,13 +171,42 @@ def view(runs_dir: Path) -> dict[str, Any]:
         said.append(f"{refused_owed} more {'is' if refused_owed == 1 else 'are'} out of date "
                     "and refused, so it does not try them again.")
 
+    # The ladders (point 8), only as the file has them: a key set to `None` is a survey
+    # not made because a score is owed; no key at all is a file from before Q822.
+    ladders = ("unknown" if "ladder_counts" not in status
+               else "waiting" if status.get("ladder_counts") is None else "read")
+    ladder_counts: dict[str, int] | None = None
+    ladders_owed = ladders_refused = None
+    if ladders == "waiting":
+        said.append("Computer players' ladders: not read while a score is owed (scores "
+                    "first).")
+    elif ladders == "read":
+        ladder_counts = {k: int(v) for k, v in (status.get("ladder_counts") or {}).items()
+                         if k in LADDERS and v}
+        ladders_owed = sum(ladder_counts.values())
+        ladders_refused = int(status.get("ladders_refused") or 0)
+        if ladders_owed:
+            parts = [f"{ladder_counts[k]} {LADDER_COUNTED[k]}" for k in refresher.LADDER_ORDER
+                     if ladder_counts.get(k)]
+            said.append(f"{ladders_owed} computer-player ladder"
+                        f"{' was' if ladders_owed == 1 else 's were'} owed at its last look: "
+                        + ", ".join(parts) + ".")
+        else:
+            said.append("No computer-player ladder was owed at its last look.")
+        if ladders_refused:
+            said.append(f"{ladders_refused} more ladder{' is' if ladders_refused == 1 else 's are'}"
+                        " owed and refused, so it does not try them again.")
+
     last = status.get("last_done") if isinstance(status.get("last_done"), Mapping) else None
     if last:
         index = last.get("index")
-        number = "no score" if index is None else f"{float(index):.4f}"
-        said.append(f"Last repaired: {_game(last)}, "
-                    f"{REPAIRS.get(str(last.get('needs')), str(last.get('needs')))}, "
-                    f"now {number}.")
+        if str(last.get("needs")) in LADDERS:
+            # A ladder has no score of its own to show.
+            said.append(f"Last done: {_game(last)}, {_work(last.get('needs'))}.")
+        else:
+            number = "no score" if index is None else f"{float(index):.4f}"
+            said.append(f"Last repaired: {_game(last)}, {_work(last.get('needs'))}, "
+                        f"now {number}.")
     merged = status.get("owed_merge") or []
     if merged:
         said.append(f"Waiting to be merged into main from branch {refresher.BRANCH}: "
@@ -164,7 +221,7 @@ def view(runs_dir: Path) -> dict[str, Any]:
         "said": said,
         "ageS": age,
         "doing": ({"hash": str(doing.get("hash") or ""), "name": _game(doing),
-                   "needs": REPAIRS.get(str(doing.get("needs")), "")}
+                   "needs": _work(doing.get("needs"))}
                   if doing and state == "working" else None),
         "owed": owed,
         "owedCounts": counts,
@@ -172,4 +229,8 @@ def view(runs_dir: Path) -> dict[str, Any]:
         "refused": refused,
         "lastDone": dict(last) if last else None,
         "lastRefusal": _refusal(raw) if isinstance(raw, Mapping) else None,
+        "ladders": ladders,
+        "laddersOwed": ladders_owed,
+        "ladderCounts": ladder_counts,
+        "laddersRefused": ladders_refused,
     }

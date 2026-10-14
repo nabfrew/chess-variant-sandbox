@@ -233,6 +233,11 @@ def head_links() -> str:
 
 NAME = "Chess variant sandbox"
 
+TAGLINE = "This is my vibe-slop project. There are many like it, but this one is mine."
+"""The header's second line as served, on the application's page and the site's own pages
+(the user's words, 2026-10-13). A view may write its one-line summary over it; `core.js`'s
+`render` puts this back before a view that writes none."""
+
 # The site's sections (§3.4): where a person goes from any page. The games are an address of
 # their own, `/game` (Q723), the same from every page; the rest are hash routes inside the
 # application, and `root` is "" on the application's page and "/" on the site's own

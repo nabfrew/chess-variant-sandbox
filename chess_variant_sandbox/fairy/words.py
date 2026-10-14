@@ -60,10 +60,6 @@ _JARGON: tuple[tuple[str, str], ...] = (
     (r"blastOnCapture is a switch there", "explosions there are on or off for the whole game"),
     (r"a Betza notation describes one piece and a facing makes it several",
      "a piece there moves one fixed way, and a piece that turns moves several ways"),
-    (r"a Betza descriptor says what a piece does and there is no term for a piece that "
-     r"does nothing",
-     "a piece there is written as the moves it makes, and there is no way to write a piece "
-     "that makes none"),
     (r"Betza has no ride that starts past its first square",
      "a sliding move there cannot begin beyond the first square"),
     (r"no Betza notation for", "no way to write"),

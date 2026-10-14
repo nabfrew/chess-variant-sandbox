@@ -473,7 +473,9 @@ class TestASuccessfulPublish:
             "hash": draft.game,
             "listed": True,
             "waiting": False,
-            "said": "Published. It is on trial: others can find it, play it and vote on it.",
+            # L5: its five standard computer players are queued to be rated on the site.
+            "said": "Published. It is on trial: others can find it, play it and vote on it. "
+                    + drafts.RATING_NOW,
         }
         [(visibility, published, version)] = draft.query(
             "select visibility, published, terms_version from games where hash = %s",

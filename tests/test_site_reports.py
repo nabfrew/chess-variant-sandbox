@@ -189,6 +189,15 @@ def site() -> Iterator[Site]:
         yield running
 
 
+@pytest.fixture
+def corpus_listed(site: Site, request: pytest.FixtureRequest) -> None:
+    """For a test that lists the committed corpus: `conftest.warm_library` pays the
+    process's first listing (the smoke gate over every ruleset) in setup, after `site` has
+    found a database, as `test_site_admin.py`'s fixture of the same name does. Without it
+    the test that lists first in its worker took 9 to 17 s of its own (Q868, 2026-10-13)."""
+    request.getfixturevalue("warm_library")
+
+
 def _other(number: int) -> str:
     """A made-up digest for the day's cap, one per game."""
     return f"{number:064x}"
@@ -262,7 +271,7 @@ class TestReportingAGame:
         assert killed.status == unknown.status == 404
         assert site.rows() == []
 
-    def test_a_report_hides_nothing_by_itself(self, site: Site) -> None:
+    def test_a_report_hides_nothing_by_itself(self, site: Site, corpus_listed: None) -> None:
         """Killing stays the maintainer's act: a report files a row and that is all."""
         digest = site.game()
         assert digest in site.listed()

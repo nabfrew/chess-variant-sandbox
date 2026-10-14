@@ -43,6 +43,7 @@ from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.relate import identity_key
 from chess_variant_sandbox.spec.schema import (
     CLOCK_BOUNDS,
+    FACING_NAMES,
     HEX_SYMMETRIES,
     REPETITION_NEVER,
     SQUARE_SYMMETRIES,
@@ -52,6 +53,8 @@ from chess_variant_sandbox.spec.schema import (
     obstacle_squares,
     opening_counts,
     parse_square,
+    portal_groups,
+    portal_open_ends,
     portal_piece_ids,
     promoting_piece_ids,
     reach_reflection,
@@ -64,6 +67,7 @@ from chess_variant_sandbox.spec.schema import (
 from chess_variant_sandbox.spec.transform import (
     capture_is_possible,
     drop_piece,
+    empties_a_filter,
     pieces,
     pieces_that_can_stand,
     promotion_rank,
@@ -163,6 +167,8 @@ def _gone_words(key: str) -> str:
         return f"the {key.split(':', 1)[1]}'s promotion"
     if key.startswith("immune:"):
         return f"the wild {key.split(':', 1)[1]}'s immunity"
+    if key.startswith("carries:"):
+        return f"the filter on the portal at {key.split(':', 1)[1]}"
     return _GONE_WORDS.get(key, key.replace("_", " "))
 
 
@@ -176,10 +182,9 @@ def _has_portals(spec: dict[str, Any]) -> bool:
 def _portal_squares(spec: dict[str, Any]) -> set[str]:
     """The squares a portal end starts on, which no placement or wall may take."""
     return {
-        str(pair.get(end))
-        for pair in (spec.get("rules") or {}).get("portals") or ()
-        if isinstance(pair, dict)
-        for end in ("orange", "blue")
+        str(end["at"])
+        for group in portal_groups(spec.get("rules") or {})
+        for end in group["ends"]
     }
 
 
@@ -224,6 +229,11 @@ def _remove_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
     }
     if len(placed) == 1:
         candidates = [piece for piece in candidates if piece["id"] not in placed]
+    # Schema 21 (Q849): a portal end only this piece may go in by would let nobody in
+    # without it, which no filter can say, and ``drop_piece`` would open it to everyone.
+    candidates = [piece for piece in candidates if not empties_a_filter(spec, piece["id"])]
+    if not candidates:
+        return None
     piece = rng.choice(candidates)
     drop_piece(spec, str(piece["id"]))
     return f"removed the {piece.get('name', piece['id'])}"
@@ -290,13 +300,20 @@ def _slide_becomes_leap(spec: dict[str, Any], rng: random.Random) -> str | None:
     return f"turned the {piece.get('name', piece['id'])}'s slide into a leap"
 
 
+def _no_leg_for(move: dict[str, Any], vector: list[int]) -> bool:
+    """Whether ``vector`` is a one-square step on a ``lame`` move, which the validator
+    refuses on admission (Q884): a lame leap's blockable square is the one it passes over,
+    and a one-square step passes over none."""
+    return move.get("kind") == "lame" and max(abs(vector[0]), abs(vector[1])) == 1
+
+
 def _add_a_direction(spec: dict[str, Any], rng: random.Random) -> str | None:
     movers = _movers(spec)
     if not movers:
         return None
     piece, move = rng.choice(movers)
     vector = list(rng.choice(_SHORT_VECTORS))
-    if vector in move.get("vectors", []):
+    if vector in move.get("vectors", []) or _no_leg_for(move, vector):
         return None
     move.setdefault("vectors", []).append(vector)
     return f"gave the {piece.get('name', piece['id'])} a {vector[0]},{vector[1]} step"
@@ -868,7 +885,7 @@ def _add_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None
     move = rng.choice(moves)
     vector = list(rng.choice(_SHORT_VECTORS))
-    if vector in move.get("vectors", []):
+    if vector in move.get("vectors", []) or _no_leg_for(move, vector):
         _set_symmetry(spec, move, rng)
         change = f"a {move['symmetry']} symmetry"
     else:
@@ -1480,6 +1497,10 @@ def _place_a_stone(spec: dict[str, Any], rng: random.Random) -> str | None:
         if piece.get("moves") == [] and piece_has_stock(rules, piece.get("id"))
     ]
     if stones:
+        # Schema 21 (Q849): not a stone that a portal end alone lets in.
+        stones = [stone for stone in stones if not empties_a_filter(spec, stone["id"])]
+        if not stones:
+            return None
         stone = rng.choice(stones)
         # `drop_piece` takes the stock entry with the piece, and the hand with the last
         # stock when nothing else fills it -- so this is one call and not three.
@@ -1626,6 +1647,61 @@ def _turn_to_face(spec: dict[str, Any], rng: random.Random) -> str | None:
         f"{piece['id']} now points {ways} and reads its moves turned that way; it may "
         "spend a move turning instead of moving"
     )
+
+
+def _fix_a_facing(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Stop a facing piece turning, or let one that cannot turn do so again (schema 25).
+
+    Both halves of ``pieces[].facing.turns``. Fixing a facing is worth nothing unless the
+    setup holds the piece two ways -- every way into play later takes its initial facing,
+    so the validator refuses a fixed facing every copy shares -- so when all its
+    placements point it the same way, one of them is pointed another way the piece has:
+    a rank of pawns placed facing backwards, the rear guard the bump was for. Freeing one
+    drops the key, which is the default, and leaves the placements where they stood.
+    """
+    pieces = [p for p in spec.get("pieces", []) if isinstance(p, dict)]
+    facing = [p for p in pieces if isinstance(p.get("facing"), dict)]
+    fixed = [p for p in facing if p["facing"].get("turns", True) is False]
+    if fixed:
+        piece = rng.choice(fixed)
+        piece["facing"].pop("turns")
+        settle_schema_version(spec)
+        return f"{piece['id']} may now spend a move turning to face another way"
+    placements = [
+        p for p in (spec.get("setup") or {}).get("placements", []) if isinstance(p, dict)
+    ]
+    candidates = [
+        p for p in facing if any(placement.get("piece") == p["id"] for placement in placements)
+    ]
+    if not candidates:
+        return None
+    piece = rng.choice(candidates)
+    initial = piece["facing"].get("initial", "forward")
+    own = [placement for placement in placements if placement.get("piece") == piece["id"]]
+    pointed = ""
+    if all(placement.get("facing", initial) == initial for placement in own):
+        axes = int(piece["facing"].get("axes", 2))
+        others = [
+            name for index, name in enumerate(FACING_NAMES)
+            if index % (len(FACING_NAMES) // axes) == 0 and name != initial
+        ]
+        placement = rng.choice(own)
+        turned = rng.choice(others)
+        squares = [square for square in placement.get("squares", [])]
+        if len(squares) > 1:
+            # Half of them, so the game keeps the piece both ways round.
+            moved = sorted(rng.sample(squares, len(squares) // 2))
+            placement["squares"] = [square for square in squares if square not in moved]
+            split = {key: value for key, value in placement.items() if key != "squares"}
+            split.update(squares=moved, facing=turned)
+            spec["setup"]["placements"].append(split)
+        else:
+            moved = squares
+            placement["facing"] = turned
+        pointed = f"; those on {', '.join(moved)} now point {turned}"
+    piece["facing"]["turns"] = False
+    settle_schema_version(spec)
+    return f"{piece['id']} no longer turns: each one points the way it was placed{pointed}"
 
 
 def _hunt_the_wild(spec: dict[str, Any], rng: random.Random) -> str | None:
@@ -2137,6 +2213,31 @@ _PORTAL_STEP = {
 _PORTAL_IDS = ("O", "Y", "Z", "J", "U", "V")
 
 
+def _has_movers(group: dict[str, Any]) -> bool:
+    """Whether anybody may move an end of this group, in either spelling."""
+    if "ends" in group:
+        return any(end.get("moved_by") for end in group["ends"] if isinstance(end, dict))
+    return any((group.get("moved_by") or {}).values())
+
+
+def _take_movers(group: dict[str, Any]) -> bool:
+    """Nobody may move any end of this group any more; whether anybody could."""
+    had = _has_movers(group)
+    group.pop("moved_by", None)
+    for end in group.get("ends") or ():
+        end.pop("moved_by", None)
+    return had
+
+
+def _give_movers(group: dict[str, Any]) -> None:
+    """Either player may move every end of this group, in either spelling."""
+    if "ends" in group:
+        for end in group["ends"]:
+            end["moved_by"] = [0, 1]
+    else:
+        group["moved_by"] = {"orange": [0, 1], "blue": [0, 1]}
+
+
 def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Put a pair of portals on the board, or change one of its settings, or take it away.
 
@@ -2160,12 +2261,12 @@ def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
         number = pairs.index(pair) + 1
         draw = rng.random()
         if draw < 1 / 4:
-            if pair.pop("moved_by", None):
+            if _take_movers(pair):
                 # A bar needs somebody to move the pair (schema 20's refusal).
                 pair.pop("no_straight_back", None)
                 said = f"nobody may move portal pair {number} any more"
             else:
-                pair["moved_by"] = {"orange": [0, 1], "blue": [0, 1]}
+                _give_movers(pair)
                 portal = next(p for p in pieces(trial) if p.get("id") == pair["piece"])
                 portal["moves"] = portal.get("moves") or [copy.deepcopy(_PORTAL_STEP)]
                 said = (
@@ -2173,13 +2274,15 @@ def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
                     "one step onto an empty square"
                 )
         elif draw < 1 / 2:
+            if "ends" in pair:
+                return None  # a map's doors are `filter-a-portal`'s `enter`
             if pair.pop("passage", None):
                 said = f"both players' pieces may go in by either portal of pair {number} again"
             else:
                 pair["passage"] = {"0": "orange_to_blue", "1": "blue_to_orange"}
                 said = (
                     f"portal pair {number} is one way now: the first player's pieces go in "
-                    "only by the orange portal, the second player's only by the blue one"
+                    f"only at {pair['orange']}, the second player's only at {pair['blue']}"
                 )
         elif draw < 3 / 4:
             if pair.pop("no_straight_back", None):
@@ -2193,8 +2296,8 @@ def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
                     f"a portal of pair {number} that has just been moved may not be moved "
                     "straight back on the very next move"
                 )
-                if not any((pair.get("moved_by") or {}).values()):
-                    pair["moved_by"] = {"orange": [0, 1], "blue": [0, 1]}
+                if not _has_movers(pair):
+                    _give_movers(pair)
                     portal = next(p for p in pieces(trial) if p.get("id") == pair["piece"])
                     portal["moves"] = portal.get("moves") or [copy.deepcopy(_PORTAL_STEP)]
                     said = (
@@ -2261,10 +2364,258 @@ def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
         elif setting < 0.5:
             pair["passage"] = {"0": "orange_to_blue", "1": "blue_to_orange"}
             said += (
-                ", one way: the first player's pieces go in only by the orange one, the "
-                "second player's only by the blue"
+                f", one way: the first player's pieces go in only at {name_of(orange)}, the "
+                f"second player's only at {name_of(blue)}"
             )
         trial_rules["portals"] = [pair]
+    settle_schema_version(trial)
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+def _portal_free_squares(trial: dict[str, Any]) -> list[str]:
+    """The squares a new portal end may start on: on the board, not a wall, empty in the
+    setup (and in its mirror image), and not already a portal end. Names, in board order."""
+    board = trial.get("board", {})
+    width, height = int(board.get("width", 8)), int(board.get("height", 8))
+    setup = trial.get("setup", {})
+    orientation = str(setup.get("orientation", "mirror"))
+    mirrored = bool(setup.get("mirror", True))
+    rules = trial.get("rules") or {}
+    taken = set(obstacle_squares(rules, width, height, orientation)) | absent_squares(board)
+    for placement in setup.get("placements", []):
+        for name in placement.get("squares", []) if isinstance(placement, dict) else ():
+            file, rank = ord(name[0]) - ord("a"), int(name[1:]) - 1
+            taken.add(rank * width + file)
+            if mirrored:
+                seen = reflect_square(file, rank, width, height, orientation)
+                taken.add(seen[1] * width + seen[0])
+    ends = {
+        str(end["at"]) for group in portal_groups(rules) for end in group["ends"]
+    }
+    return [
+        name for square in range(width * height)
+        if square not in taken
+        and (name := f"{chr(ord('a') + square % width)}{square // width + 1}") not in ends
+    ]
+
+
+def _as_map(pair: dict[str, Any]) -> list[dict[str, Any]]:
+    """A pair's two ends written as a map's, each keeping who moves it and who goes in."""
+    words: dict[str, Any] = pair["passage"] if isinstance(pair.get("passage"), dict) else {}
+    moved_by: dict[str, Any] = (
+        pair["moved_by"] if isinstance(pair.get("moved_by"), dict) else {}
+    )
+    carries: dict[str, Any] = pair["carries"] if isinstance(pair.get("carries"), dict) else {}
+    ends: list[dict[str, Any]] = []
+    for side, key in enumerate(("orange", "blue")):
+        enter = [
+            player for player in (0, 1)
+            if portal_open_ends(words.get(str(player), "both_ways"))[side]
+        ]
+        end: dict[str, Any] = {"at": pair[key]}
+        if enter:
+            end["to"] = 1 - side
+            if enter != [0, 1]:
+                end["enter"] = enter
+            if key in carries:
+                end["carries"] = copy.deepcopy(carries[key])
+        if moved_by.get(key):
+            end["moved_by"] = list(moved_by[key])
+        ends.append(end)
+    return ends
+
+
+def _as_pair(group: dict[str, Any]) -> dict[str, Any]:
+    """A map's first two ends written as a pair: each leads to the other, who goes in by
+    each is kept as a passage, and the rest of the map goes."""
+    first, second = group["ends"][0], group["ends"][1]
+    pair: dict[str, Any] = {"piece": group["piece"], "orange": first["at"], "blue": second["at"]}
+    moved_by = {key: list(end["moved_by"]) for key, end in (("orange", first), ("blue", second))
+                if end.get("moved_by")}
+    if moved_by:
+        pair["moved_by"] = moved_by
+    entered = [set(end.get("enter", [0, 1])) if "to" in end else set() for end in (first, second)]
+    words = {}
+    for player in (0, 1):
+        opened = (player in entered[0], player in entered[1])
+        word = {(True, True): "both_ways", (True, False): "orange_to_blue",
+                (False, True): "blue_to_orange", (False, False): "closed"}[opened]
+        if word != "both_ways":
+            words[str(player)] = word
+    if words:
+        pair["passage"] = words
+    carries = {key: list(end["carries"]) for key, end in (("orange", first), ("blue", second))
+               if end.get("carries") and "to" in end}
+    if carries:
+        pair["carries"] = carries
+    if group.get("no_straight_back") and moved_by:
+        pair["no_straight_back"] = True
+    if group.get("kind") == "fold":
+        pair["kind"] = "fold"
+    return pair
+
+
+def _reshape_portals(spec: dict[str, Any], rng: random.Random, shape: str) -> str | None:
+    """`ring-the-portals` and `funnel-the-portals` (schema 21, `plan-portals-2.md` §2): a
+    pair becomes a map of three, or a map becomes a pair again.
+
+    A ring: the pair's two ends and a third on an empty square lead round, each to the
+    next. A funnel: the pair's two ends both lead to a third, a way out only. Who moves and
+    who goes in by the two old ends is kept. On a game whose portals include a map, a
+    draw writes one back as a pair from its first two ends, so the axis is crossed both
+    ways. Checked against the validator and drawn again rather than handed back refused.
+    """
+    rules = spec.get("rules") or {}
+    groups = rules.get("portals")
+    if not isinstance(groups, list) or not groups:
+        return None
+    trial = copy.deepcopy(spec)
+    held = trial["rules"]["portals"]
+    maps = [index for index, group in enumerate(held) if "ends" in group]
+    pairs = [index for index, group in enumerate(held) if "ends" not in group]
+    if maps and (not pairs or rng.random() < 0.5):
+        index = rng.choice(maps)
+        held[index] = _as_pair(held[index])
+        said = (f"portal group {index + 1} is a pair again, on {held[index]['orange']} and "
+                f"{held[index]['blue']}")
+    elif pairs:
+        index = rng.choice(pairs)
+        if sum(len(g["ends"]) for g in portal_groups(trial["rules"])) >= 8:
+            return None
+        free = _portal_free_squares(trial)
+        if not free:
+            return None
+        square = rng.choice(free)
+        pair = held[index]
+        ends = _as_map(pair)
+        if shape == "ring":
+            ends[0]["to"], ends[1]["to"] = 1, 2
+            ends.append({"at": square, "to": 0})
+            said = (f"portal pair {index + 1} is a ring of three now: {ends[0]['at']} leads "
+                    f"to {ends[1]['at']}, {ends[1]['at']} to {square} and {square} back to "
+                    f"{ends[0]['at']}")
+        else:
+            for end in ends:
+                end["to"] = 2
+            ends.append({"at": square})
+            said = (f"portal pair {index + 1} is a funnel now: {ends[0]['at']} and "
+                    f"{ends[1]['at']} both lead out beside {square}, which nobody goes in by")
+        group: dict[str, Any] = {"piece": pair["piece"], "ends": ends}
+        if pair.get("no_straight_back"):
+            group["no_straight_back"] = True
+        if pair.get("kind") == "fold":
+            group["kind"] = "fold"
+        held[index] = group
+    else:
+        return None
+    settle_schema_version(trial)
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+def _ring_the_portals(spec: dict[str, Any], rng: random.Random) -> str | None:
+    return _reshape_portals(spec, rng, "ring")
+
+
+def _funnel_the_portals(spec: dict[str, Any], rng: random.Random) -> str | None:
+    return _reshape_portals(spec, rng, "funnel")
+
+
+def _filter_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Let only some pieces go in by one portal end, or every piece again; or, on a map,
+    let only one player's pieces go in by an end, or both again (schema 21's ``carries``
+    and ``enter``, `plan-portals-2.md` §2.3).
+
+    A filter names one piece that can move, drawn at random, so the end is a door to it
+    and a solid block to every other. Checked against the validator and drawn again
+    rather than handed back refused.
+    """
+    rules = spec.get("rules") or {}
+    if not isinstance(rules.get("portals"), list) or not rules["portals"]:
+        return None
+    trial = copy.deepcopy(spec)
+    held = trial["rules"]["portals"]
+    portal_ids = portal_piece_ids(trial["rules"])
+    movers = sorted(
+        str(p["id"]) for p in pieces(trial) if p.get("moves") and p.get("id") not in portal_ids
+    )
+    index = rng.randrange(len(held))
+    group = held[index]
+    number = index + 1
+    if "ends" in group:
+        doors = [end for end in group["ends"] if "to" in end]
+        if not doors:
+            return None
+        end = rng.choice(doors)
+        if rng.random() < 0.5:
+            if end.pop("enter", None) is not None:
+                said = f"both players' pieces may go in by the portal on {end['at']} again"
+            else:
+                player = rng.choice((0, 1))
+                end["enter"] = [player]
+                said = (f"only the {('first', 'second')[player]} player's pieces may go in "
+                        f"by the portal on {end['at']}")
+        elif end.pop("carries", None) is not None:
+            said = f"every piece may go in by the portal on {end['at']} again"
+        else:
+            if len(movers) < 2:
+                return None
+            end["carries"] = [rng.choice(movers)]
+            said = f"only {end['carries'][0]} may go in by the portal on {end['at']}"
+    else:
+        key = rng.choice(("orange", "blue"))
+        carries = group.get("carries") if isinstance(group.get("carries"), dict) else {}
+        if key in carries:
+            carries.pop(key)
+            if not carries:
+                group.pop("carries", None)
+            said = f"every piece may go in by the portal on {group[key]} of pair {number} again"
+        else:
+            if len(movers) < 2:
+                return None
+            group.setdefault("carries", {})[key] = [rng.choice(movers)]
+            said = (f"only {group['carries'][key][0]} may go in by the portal on "
+                    f"{group[key]} of pair {number}")
+    settle_schema_version(trial)
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
+def _fold_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Make one portal group fold portals, or momentum portals again (schema 24's ``kind``,
+    `plan-portals-2.md` §3R).
+
+    A fold is not a piece: a piece may stand in it, and a move that ends on an empty one may
+    stay there or go through and end on the end it leads to, taking a piece there as any
+    move does; a move that passes over it is not changed. Checked against the validator and
+    drawn again rather than handed back refused -- a fold that starts under a piece cannot
+    become a momentum portal, which may not.
+    """
+    rules = spec.get("rules") or {}
+    if not isinstance(rules.get("portals"), list) or not rules["portals"]:
+        return None
+    trial = copy.deepcopy(spec)
+    held = trial["rules"]["portals"]
+    index = rng.randrange(len(held))
+    group = held[index]
+    shape = "group" if "ends" in group else "pair"
+    if group.pop("kind", None) == "fold":
+        said = (f"portal {shape} {index + 1} is momentum portals again: a piece that goes in "
+                "comes out one step beyond the other end")
+    else:
+        group["kind"] = "fold"
+        said = (f"portal {shape} {index + 1} is fold portals now: a move that ends on one "
+                "may stay there or come out of the other")
     settle_schema_version(trial)
     if validate_spec(trial):
         return None
@@ -2456,6 +2807,45 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     )
 
 
+def _share_a_walk(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Put another wild piece on a walk that has one, or take the others off it (schema 23's
+    ``also_at``, `designer-case-study-wolves.md` §2.2).
+
+    The new one starts as far round the route from the first as the route allows -- half a
+    lap, the user's patrol -- because that is the start that leaves the two longest apart
+    and the one a designer asked for. Checked against the validator and drawn again rather
+    than handed back refused: a start under the opening array is refused by name.
+    """
+    rules = spec.get("rules") or {}
+    npcs = rules.get("npcs")
+    if not isinstance(npcs, list) or not npcs:
+        return None
+    walks = [
+        index for index, npc in enumerate(npcs)
+        if isinstance(npc, dict) and isinstance(npc.get("route"), list)
+        and len(npc["route"]) > 1
+    ]
+    if not walks:
+        return None
+    trial = copy.deepcopy(spec)
+    index = rng.choice(walks)
+    npc = trial["rules"]["npcs"][index]
+    kind = npc.get("piece")
+    if npc.pop("also_at", None):
+        said = f"the wild {kind} on {npc['route'][0]} walks its route alone again"
+    else:
+        start = npc["route"][len(npc["route"]) // 2]
+        npc["also_at"] = [start]
+        said = (f"a second wild {kind} starts on {start} and walks the same route as the one "
+                f"on {npc['route'][0]}, half a lap behind it")
+    settle_schema_version(trial)
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
 OPERATORS: tuple[Operator, ...] = (
     Operator("wall-off-a-square", _wall_off_a_square),
     Operator("soften-the-capture", _soften_the_capture),
@@ -2465,6 +2855,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("leave-something-behind", _leave_something_behind),
     Operator("place-a-stone", _place_a_stone),
     Operator("set-a-patrol", _set_a_patrol),
+    Operator("share-a-walk", _share_a_walk),
     Operator("promote-what-arrives", _promote_what_arrives),
     Operator("promote-on-leaving", _promote_on_leaving),
     Operator("count-each-kind", _count_each_kind),
@@ -2473,6 +2864,10 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("either-face", _either_face),
     Operator("win-by-leaving", _win_by_leaving),
     Operator("open-a-portal", _open_a_portal),
+    Operator("ring-the-portals", _ring_the_portals),
+    Operator("funnel-the-portals", _funnel_the_portals),
+    Operator("filter-a-portal", _filter_a_portal),
+    Operator("fold-a-portal", _fold_a_portal),
     Operator("remove-a-piece", _remove_a_piece),
     Operator("add-a-piece", _add_a_piece),
     Operator("clip-a-slider", _clip_a_slider),
@@ -2497,6 +2892,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("lengthen-the-turn", _lengthen_the_turn),
     Operator("join-the-edges", _join_the_edges),
     Operator("turn-to-face", _turn_to_face),
+    Operator("fix-a-facing", _fix_a_facing),
     Operator("sweep-a-slider", _sweep_a_slider),
 )
 

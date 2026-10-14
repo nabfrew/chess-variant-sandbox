@@ -1101,6 +1101,12 @@ def stored_path(ruleset_hash: str, runs_dir: str | Path) -> Path:
 # seed the site, and it can only be rated again whole.
 LADDER_FORMAT = 2
 
+# What every ladder plays, whoever rates it: two games a pairing, each seat once, from
+# seed 0. `deploy/ladders.py` passes the same (tested), and so does the site's rating of a
+# member's spine at publish (`rate_spine`, L5).
+LADDER_GAMES = 2
+LADDER_SEED = 0
+
 # The changes the maintainer marks as changing how the computer players play, by the date
 # each landed on main. A ladder rated before the latest of them has *old players*
 # (`deploy/ladders_check.py`), and `deploy/ladders.py --rerate` rates it again. **Not every
@@ -1220,12 +1226,31 @@ def _write_ladder(
     ruleset_hash: str, runs_dir: str | Path, table: dict[str, Any], records: list[Any]
 ) -> Path:
     """Write the games, then the table that names them: a table is never ahead of them."""
+    return write_ladder(ruleset_hash, runs_dir, table, game_lines(records))
+
+
+def game_lines(records: list[Any]) -> list[dict[str, Any]]:
+    """A ladder's games as the file beside it keeps them, one line each (`_game_line`)."""
+    return [_game_line(record) for record in records]
+
+
+def write_ladder(
+    ruleset_hash: str,
+    runs_dir: str | Path,
+    table: dict[str, Any],
+    lines: list[dict[str, Any]],
+) -> Path:
+    """Write a ladder's kept games, then its table, under `runs/opponents/`.
+
+    The one writer of a ladder: the page's *rate* button and `deploy/ladders.py` through
+    `Ratings`, and the site's own rating of a member's game at publish (`site/spine.py`,
+    L5), whose child process hands its games back as these lines.
+    """
     path = stored_path(ruleset_hash, runs_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     kept = games_path(ruleset_hash, runs_dir)
     kept.write_text(
-        "".join(json.dumps(_game_line(record), separators=(",", ":")) + "\n"
-                for record in records),
+        "".join(json.dumps(line, separators=(",", ":")) + "\n" for line in lines),
         encoding="utf-8",
     )
     path.write_text(json.dumps(table, indent=2) + "\n", encoding="utf-8")
@@ -1324,12 +1349,18 @@ def _plan(
     seed: int,
     held: dict[str, Any] | None = None,
     kept: list[Any] | None = None,
+    workers: int = 0,
 ) -> _Plan:
     """The schedule: the whole picker, or for a top-up only the newcomers' spine games.
 
     A top-up's seeds start one past the highest seed in the kept games, so a ladder's
     games never share a seed and the whole schedule is fixed before a thread starts. It
     plays at the ladder's own games per pairing, and against the ladder's own spine.
+
+    `workers` is how many of the core's threads play it, `0` for the machine's (the
+    tournament's own default). It never changes a game: every seed is fixed here, before a
+    thread starts, so the box's one-thread rating of a member's spine (L5) is the same
+    ladder this machine's sixteen threads would make.
     """
     if held is None:
         spine = tuple(agent for agent in SPINE if agent in entries)
@@ -1339,6 +1370,7 @@ def _plan(
             seed=seed,
             include_self_play=False,
             collect_series=False,
+            workers=workers,
             spine=spine,
         )
         return _Plan(config, tuple(entries))
@@ -1367,6 +1399,7 @@ def _plan(
         seed=1 + max((int(record.seed) for record in kept), default=seed - 1),
         include_self_play=False,
         collect_series=False,
+        workers=workers,
         spine=spine,
         fresh=fresh,
     )
@@ -1442,8 +1475,8 @@ class Ratings:
         ruleset_hash: str,
         name: str,
         roster: list[Opponent],
-        games: int = 2,
-        seed: int = 0,
+        games: int = LADDER_GAMES,
+        seed: int = LADDER_SEED,
         top_up: bool = False,
     ) -> RatingRun:
         """Begin rating this ruleset's picker, or return the run already doing it.
@@ -1496,8 +1529,6 @@ class Ratings:
         roster: list[Opponent],
         plan: _Plan,
     ) -> None:
-        from chess_variant_sandbox.tournament.ratings import rate
-
         try:
             config = plan.config
             if plan.held is not None and not config.fresh:
@@ -1511,72 +1542,14 @@ class Ratings:
                 if plan.held is not None else
                 f"{len(plan.entries)} opponents, {run.total} games"
             )
-            # One schedule over the whole picker. The runner sends the games whose seats
-            # both have a native form to the core, on its threads, and plays only the
-            # ones with Fairy-Stockfish in the Python loop (Q439), so this no longer
-            # splits the roster itself as Q432 had to. It tells `played` as games come
-            # back, which the page's count reads while the outside engine's games run.
+
             def count(played: int) -> None:
                 run.played = played
 
-            result = run_tournament(spec, config, on_progress=count)
-            run.played = len(result.records)
-            records = [*plan.kept, *result.records]
-            # The fit over every game the ladder holds. For a whole run that is exactly
-            # the runner's own table; for a top-up it is the old games and the new.
-            table = rate(records) if plan.held is not None else result.ratings
-            labels = {entry.agent: entry for entry in roster}
-            before = {
-                str(row["name"]): row for row in (plan.held or {}).get("standings") or ()
-            }
-
-            def said(name: str, key: str) -> str:
-                # The live roster's words, else what the ladder said when it rated the
-                # player (one no longer offered keeps its row and its name), else its
-                # agent string for the label.
-                entry = labels.get(name)
-                if entry is not None:
-                    return str(getattr(entry, key))
-                return str(before.get(name, {}).get(key, name if key == "label" else ""))
-
-            stamp: dict[str, Any] = {
-                "format": LADDER_FORMAT,
-                "roster": list(plan.entries),
-                "spine": list(config.spine),
-                "rated": _today(),
-                "built": _built(),
-                "games_file": games_path(run.ruleset_hash, self.runs_dir).name,
-                "top_ups": [],
-            }
-            if plan.held is not None:
-                # A top-up keeps the ladder's own stamp -- its older games are still in
-                # the fit, so its date and build are still what most of it rests on --
-                # and adds a line saying who joined, when and on what build.
-                stamp.update(
-                    rated=plan.held.get("rated"),
-                    built=plan.held.get("built"),
-                    top_ups=[
-                        *(plan.held.get("top_ups") or ()),
-                        {"players": list(config.fresh), "games": len(result.records),
-                         "seed": config.seed, "rated": _today(), "built": _built()},
-                    ],
-                )
-            run.table = {
-                "ruleset_hash": run.ruleset_hash,
-                "games_per_pairing": config.games_per_pairing,
-                "seed": (plan.held or {}).get("seed", config.seed),
-                "games": len(records),
-                **stamp,
-                "standings": [
-                    {
-                        **standing,
-                        "label": said(standing["name"], "label"),
-                        "group": said(standing["name"], "group"),
-                        "plan": said(standing["name"], "plan"),
-                    }
-                    for standing in table.as_dict()["standings"]
-                ],
-            }
+            run.table, records, played = rate_ladder(
+                spec, run.ruleset_hash, roster, plan, on_progress=count
+            )
+            run.played = played
             path = _write_ladder(run.ruleset_hash, self.runs_dir, run.table, records)
             run.lines.append(f"rated {len(run.table['standings'])} opponents -> {path}")
             run.state = "finished"
@@ -1584,3 +1557,115 @@ class Ratings:
             run.state = "failed"
             run.error = f"{type(error).__name__}: {error}"
             run.lines.append(traceback.format_exc().strip().splitlines()[-1])
+
+
+def rate_ladder(
+    spec: dict[str, Any],
+    ruleset_hash: str,
+    roster: list[Opponent],
+    plan: _Plan,
+    on_progress: Any = None,
+) -> tuple[dict[str, Any], list[Any], int]:
+    """Play a plan's games and fit them: the ladder's table, every game it rests on, and how
+    many of those this call played. Nothing is written.
+
+    The one place a picker ladder is made. `Ratings` (the page's *rate* button and
+    `deploy/ladders.py`) writes what this returns on this machine; the site's rating of a
+    member's game at publish (`site/spine.py`, L5) runs it in a capped child process on the
+    box over the five standard players alone, at one thread, and writes it there. So a
+    spine ladder is the same table and the same games wherever it was rated: a pure function
+    of the game's hash, the roster and the seeds, which `_plan` fixes before a thread starts.
+    """
+    from chess_variant_sandbox.tournament.ratings import rate
+
+    config = plan.config
+    # One schedule over the whole picker. The runner sends the games whose seats both have
+    # a native form to the core, on its threads, and plays only the ones with
+    # Fairy-Stockfish in the Python loop (Q439), so this no longer splits the roster itself
+    # as Q432 had to. It tells `on_progress` as games come back, which the page's count
+    # reads while the outside engine's games run.
+    result = run_tournament(spec, config, on_progress=on_progress)
+    records = [*plan.kept, *result.records]
+    # The fit over every game the ladder holds. For a whole run that is exactly the
+    # runner's own table; for a top-up it is the old games and the new.
+    table = rate(records) if plan.held is not None else result.ratings
+    labels = {entry.agent: entry for entry in roster}
+    before = {str(row["name"]): row for row in (plan.held or {}).get("standings") or ()}
+
+    def said(name: str, key: str) -> str:
+        # The live roster's words, else what the ladder said when it rated the player (one
+        # no longer offered keeps its row and its name), else its agent string for the label.
+        entry = labels.get(name)
+        if entry is not None:
+            return str(getattr(entry, key))
+        return str(before.get(name, {}).get(key, name if key == "label" else ""))
+
+    stamp: dict[str, Any] = {
+        "format": LADDER_FORMAT,
+        "roster": list(plan.entries),
+        "spine": list(config.spine),
+        "rated": _today(),
+        "built": _built(),
+        "games_file": games_path(ruleset_hash, ".").name,
+        "top_ups": [],
+    }
+    if plan.held is not None:
+        # A top-up keeps the ladder's own stamp -- its older games are still in the fit, so
+        # its date and build are still what most of it rests on -- and adds a line saying
+        # who joined, when and on what build.
+        stamp.update(
+            rated=plan.held.get("rated"),
+            built=plan.held.get("built"),
+            top_ups=[
+                *(plan.held.get("top_ups") or ()),
+                {"players": list(config.fresh), "games": len(result.records),
+                 "seed": config.seed, "rated": _today(), "built": _built()},
+            ],
+        )
+    table_out = {
+        "ruleset_hash": ruleset_hash,
+        "games_per_pairing": config.games_per_pairing,
+        "seed": (plan.held or {}).get("seed", config.seed),
+        "games": len(records),
+        **stamp,
+        "standings": [
+            {
+                **standing,
+                "label": said(standing["name"], "label"),
+                "group": said(standing["name"], "group"),
+                "plan": said(standing["name"], "plan"),
+            }
+            for standing in table.as_dict()["standings"]
+        ],
+    }
+    return table_out, records, len(result.records)
+
+
+# ------------------------------------------------ the spine alone, at publish (L5)
+
+def spine_roster() -> list[Opponent]:
+    """The five standard players (`SPINE`) as the picker names them, weakest first.
+
+    The players the site rates on its own server when a member publishes a game
+    (`docs/plan-leaderboard.md` §2.6 step 1): they are the same on every board, so they
+    need no heuristic store, fit or outside engine, and their 40 games cost seconds on most
+    games. The rest of the picker joins later as a top-up over these games (L6).
+    """
+    return [entry for entry in ladder() if entry.agent in SPINE]
+
+
+def rate_spine(
+    spec: dict[str, Any], ruleset_hash: str, workers: int = 1
+) -> tuple[dict[str, Any], list[Any]]:
+    """The spine's own ladder for a game: its table and its games. Nothing is written.
+
+    `_plan` over the spine alone at the ladders' games and seed, so it is the ladder
+    `Ratings` would make for a picker of these five, game for game, at any `workers`: the
+    box plays it at one thread in `site/spine.py`'s child. It is stamped as any ladder is
+    (`format`, `roster`, `spine`, `rated`, `built`), so a later top-up adds the rest of the
+    picker over its kept games instead of rating the game again whole.
+    """
+    roster = spine_roster()
+    plan = _plan(agents_of(roster), LADDER_GAMES, LADDER_SEED, workers=workers)
+    table, records, _ = rate_ladder(spec, ruleset_hash, roster, plan)
+    return table, records

@@ -59,8 +59,31 @@ def _weights(**terms: float) -> list[float]:
 
 
 @pytest.fixture(scope="module")
-def games():
+def games(warm_library: None):
+    """The committed library, listed once first (`warm_library`): a card's `summary`
+    runs the smoke gate on its game, 4 s a test over every card on a cold worker (Q749),
+    and the listing pays it once per worker for every test that reads a card."""
     return library.discover(RULESETS, library.RUNS_DIR)
+
+
+@pytest.fixture
+def cold_library(monkeypatch, tmp_path):
+    """The library's four compile memos, empty for this test and warm again after it.
+
+    A test that asks what a cold card costs clears them, and clearing the module's own
+    caches left every later test on the worker to list a cold library: 11 s on one core,
+    paid again by whichever test listed next, after `warm_library` had paid it once (Q749).
+    Each memo is swapped for a fresh one of the same size, so the test's `cache_clear`
+    empties only its own, and `monkeypatch` puts the warm ones back. So is the store the
+    answers outlive a process in (`library.CardAnswers`, Q887), for an empty one of its
+    own, so a cleared memo is answered by compiling and never by an earlier test's save.
+    """
+    from functools import lru_cache
+
+    for name in ("_smoke_cached", "_fairy_cached", "_engine_cached", "_still_cached"):
+        warm = getattr(library, name)
+        monkeypatch.setattr(library, name, lru_cache(**warm.cache_parameters())(warm.__wrapped__))
+    monkeypatch.setattr(library, "_CARDS", library.CardAnswers(tmp_path / "library-cards.json"))
 
 
 @pytest.fixture(scope="module")
@@ -167,7 +190,7 @@ class TestLibrary:
         assert any("edges that join" in reason for reason in torus["fairyReasons"])
 
     def test_the_translation_and_the_still_board_share_one_compile(
-        self, games, monkeypatch
+        self, games, monkeypatch, cold_library
     ) -> None:
         """First-visit study N8: a cold listing compiled every ruleset three times (the
         cheap gate, the still board, the translation). The translation now reads the
@@ -205,7 +228,7 @@ class TestLibrary:
             assert reasons == tuple(fairy.why_not(spec)), name
             monkeypatch.setattr(compiling, "compile_spec", counted)
 
-    def test_a_card_compiles_its_rules_once(self, games, monkeypatch) -> None:
+    def test_a_card_compiles_its_rules_once(self, games, monkeypatch, cold_library) -> None:
         """First-visit study N8, the last third (Q823b): the cheap gate played its own
         compile of the rules. It now plays `engine_for`'s, which the translation and the
         still board read too, so a cold card compiles its rules once, and the gate's
@@ -244,7 +267,9 @@ class TestLibrary:
             assert card["playableReasons"] == alone.reasons, name
         assert not by_name["hierarchy chess"].summary()["playable"]
 
-    def test_rules_that_do_not_compile_are_refused_in_the_gates_words(self) -> None:
+    def test_rules_that_do_not_compile_are_refused_in_the_gates_words(
+        self, cold_library
+    ) -> None:
         """The listing has no engine for rules that do not compile, so the gate gets the
         text and says why, as it did when it compiled every spec itself."""
         import json
@@ -259,7 +284,9 @@ class TestLibrary:
         assert not passed and reasons[0].startswith("the rules don't fit together")
 
     @pytest.mark.slow
-    def test_the_gate_answers_the_same_on_a_shared_compile_over_the_corpus(self) -> None:
+    def test_the_gate_answers_the_same_on_a_shared_compile_over_the_corpus(
+        self, cold_library
+    ) -> None:
         """Every library spec, `rulesets/` and `archive/`: the gate on `engine_for`'s
         compile gives the verdict, reasons and numbers it gives compiling the text."""
         import json
@@ -686,7 +713,7 @@ class TestTheSimilarityReadingOnThePage:
         chess = next(game for game in found if game.name == "chess")
         links = library.neighbours(chess, found)
         assert [link["name"] for link in links[:3]] == [
-            "perpetual", "almost chess", "chess sweeping bishops"
+            "perpetual", "almost chess", "sweeping bishop chess"
         ]
         berolina = next(link for link in links if link["name"] == "berolina")
         assert berolina["similarity"]["words"] == "no rules, 6 mechanisms, 1 piece"
@@ -2115,7 +2142,7 @@ class TestTheExplorer:
         assert "data-open-group" in GRAPH and "data-open-group" in EXPLORER
 
     def test_the_folds_are_the_communities_of_three_or_more(self) -> None:
-        """S5: the fold chips fold a community, and nothing reads `groups` or `clusters`.
+        """S5: a community folds (from its panel since Q801), and nothing reads `groups`.
 
         The payload's communities are a partition, so they fold as the groups did; a pair
         is left alone, as it is left without a colour. The far games' fold went with the
@@ -3169,6 +3196,9 @@ class TestTheIndexBand:
         assert moved[digests["d"]] == {"clears": 3, "clearedBy": 0, "close": 0, "of": 3}
         assert moved[digests["a"]]["clearedBy"] == 1
 
+    # Slow (Q749): four cold cards, renamed so no memo holds them, 3.2 s on one core and
+    # 3.0 s in the gate; the band's own arithmetic is the tests around it.
+    @pytest.mark.slow
     def test_the_card_and_the_game_page_say_the_same_three_counts(self, tmp_path) -> None:
         """One function, two callers, and the server is both of them.
 
@@ -3936,7 +3966,9 @@ class TestPlaying:
 
 
 class TestServer:
-    def test_the_page_and_the_api_answer(self) -> None:
+    def test_the_page_and_the_api_answer(self, warm_library: None) -> None:
+        """Warmed first, as `test_one_connection_serves_several_requests` is: what a cold
+        listing costs (11 s on a worker's one core, Q749) is not what this test claims."""
         app = App(RULESETS, library.RUNS_DIR)
         server = Server(("127.0.0.1", 0), handler_for(app))
         assert server.server_port, "--port 0 must still be given a real port"
@@ -6562,7 +6594,13 @@ class TestWhatReachesThePage:
         # two circles of numbers and a colour token, nothing from outside the page.
         # 126 since Q830b: what became of a rule file (`ruleFileSaid`), its name, the
         # validator's lines and the draft's name each through `esc`.
-        assert len(sites) == 126
+        # 125 since Q838d: the pair card's *how they look* row is gone, and the check no
+        # longer redraws it in place (`pairLooksHtml`).
+        # 126 since Q843d: the ripple a piece passes through a fold under (`foldRipple`), four
+        # circles of numbers and colour tokens, nothing from outside the page.
+        # 127 since Q851: the tray's line under the board redrawn with the tray
+        # (`paletteNoteBodyHtml`), the piece's name and side through `esc`.
+        assert len(sites) == 127
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
@@ -8530,8 +8568,9 @@ class TestTheBoardAnimation:
         assert re.search(r"\breturn\s*;", head) is None, "an early return says nothing"
         # `animateChange`'s one, a board that changed shape (reduced motion returns
         # `portalStill`'s duration, Q836), and the trip through a portal's three: an end
-        # with no glyph to pulse, and a move `portalStill` has no crossfade for, twice.
-        assert head.count("return 0;") == 4
+        # with no glyph to pulse, and a move `portalStill` has no crossfade for, twice; and
+        # since Q843d the trip through a fold's one, a fold with no pool to pulse.
+        assert head.count("return 0;") == 5
         # `animateMove`'s three: nothing changed, a pure rotation, and the end of it --
         # all through the one expression that builds what the phase reads back.
         assert head.count("return nothing();") == 3
@@ -9469,6 +9508,169 @@ class TestTwoRatingTablesThatMustNotMix:
         # `canonical.json` and nothing else, so a file of standings under any other name
         # is not a measurement and cannot be mistaken for one.
         assert library._measurements(tmp_path) == {}
+
+    def test_a_listing_reads_each_listed_games_measurement_once(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Q874: a kept score (`previous/<n>/`) names its game's hash again, and a game that
+        left the library leaves its files behind. Neither may cost a lookup: the first is
+        the same answer twice, and the second went to `corpus.find`, 60 ms a file, for a
+        measurement `discover` never used -- 19 s of a listing in the main checkout."""
+        rulesets = tmp_path / "rulesets"
+        rulesets.mkdir()
+        shutil.copy(RULESETS / "dull.json", rulesets / "dull.json")
+        digest = spec_hash(load_spec(rulesets / "dull.json"))
+        runs = tmp_path / "runs"
+        for directory in (runs / digest, runs / digest / "previous" / "1",
+                          runs / "gone", runs / "gone" / "previous" / "1"):
+            directory.mkdir(parents=True)
+            named = digest if digest in directory.parts else "0123456789ab"
+            (directory / "canonical.json").write_text(
+                json.dumps({"hash": named}), encoding="utf-8")
+
+        asked: list[str] = []
+        real = corpus.read_measurement
+
+        def counted(found: str, *args: object, **kwargs: object) -> object:
+            asked.append(found)
+            return real(found, *args, **kwargs)  # type: ignore[arg-type]
+
+        def refused(*args: object, **kwargs: object) -> object:
+            raise AssertionError("a listing looked a hash up with corpus.find")
+
+        monkeypatch.setattr(corpus, "read_measurement", counted)
+        monkeypatch.setattr(corpus, "find", refused)
+        [game] = library.discover(rulesets, runs)
+        assert game.hash == digest
+        assert asked == [digest]
+
+
+class TestTheListingWalksOnlyTheGamesOwnDirectories:
+    """Q885: a cold listing walked the whole of `runs/`, 10,760 directories in the main
+    checkout and 1.7 s, for the 126 measurements directly under it. It now lists `runs/`,
+    each game's own `runs/<hash>/` and `runs/<hash>-<seed>/`, and asks every other
+    directory there for two files by name. These hold that the answer did not move and
+    that the rest of the tree is never opened."""
+
+    CAMPAIGN = "replay-2026-10-13"
+
+    def _library(self, tmp_path: Path) -> tuple[Path, Path, str, str]:
+        """Two games: one measured where a measurement lives now, one only in the old
+        single-run place, with a verdict beside a seed run and one in a design run."""
+        rulesets = tmp_path / "rulesets"
+        rulesets.mkdir()
+        digests = []
+        for name in ("dull", "gardner"):
+            shutil.copy(RULESETS / f"{name}.json", rulesets / f"{name}.json")
+            digests.append(spec_hash(load_spec(rulesets / f"{name}.json")))
+        measured, old = digests
+        runs = tmp_path / "runs"
+        spec = load_spec(rulesets / "dull.json")
+        self._measurement(corpus.measurement_dir(measured, runs), measured, 0.5,
+                          corpus.current_basis(measured, spec=spec).as_dict())
+        self._measurement(corpus.run_dir(old, 0, runs), old, 0.4, None)
+        self._verdict(corpus.run_dir(measured, 1000, runs), measured, "Beside a seed.")
+        self._verdict(runs / "designed", old, "Beside a design run.")
+        return rulesets, runs, measured, old
+
+    @staticmethod
+    def _measurement(directory: Path, digest: str, index: float, basis: dict | None) -> None:
+        directory.mkdir(parents=True, exist_ok=True)
+        body: dict = {"hash": digest, "name": "fixture", "index": index, "sd": 0.02,
+                      "viable": True, "violations": [], "weights_version": "v12",
+                      "families": {}, "standings": [], "games": 4}
+        if basis is not None:
+            body |= {"seeds": [0], "totals_used": 1, "runs": _one_run(index, 0.02),
+                     "basis": basis}
+        (directory / "canonical.json").write_text(json.dumps(body), encoding="utf-8")
+
+    @staticmethod
+    def _verdict(directory: Path, digest: str, words: str) -> None:
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "verdict.json").write_text(json.dumps({
+            "ruleset_hash": digest, "verdict": words, "strengths": [], "weaknesses": [],
+            "suspected_degeneracy": "", "would_play_again": True,
+        }), encoding="utf-8")
+
+    def _clutter(self, runs: Path, measured: str, old: str) -> list[Path]:
+        """What history and campaigns leave behind, each naming a listed game again with a
+        different number, and a game that left the library. Returns the directories a
+        listing has no business opening, which is all but the last."""
+        kept = runs / measured / "previous" / "1"
+        replaced = runs / self.CAMPAIGN / "replaced" / measured
+        campaign_run = runs / self.CAMPAIGN / f"{old}-0"
+        deep = runs / "q999" / "schema6" / old
+        retired = runs / "0123456789ab"
+        self._measurement(kept, measured, 0.11, None)
+        self._measurement(replaced, measured, 0.22, None)
+        self._measurement(campaign_run, old, 0.33, None)
+        self._measurement(deep, old, 0.44, None)
+        self._measurement(retired, "0123456789ab", 0.55, None)
+        (campaign_run / "games.jsonl").write_text("", encoding="utf-8")
+        return [kept, replaced, campaign_run, deep]
+
+    @staticmethod
+    def _answer(rulesets: Path, runs: Path) -> list[tuple]:
+        library._LISTINGS.clear()
+        return [
+            (game.hash, game.source, game.status, game.verdict, game.score,
+             game.measurement.directory if game.measurement else None,
+             game.staleness, game.history, game.premise)
+            for game in library.discover(rulesets, runs)
+        ]
+
+    def test_the_clutter_moves_no_answer(self, tmp_path, monkeypatch) -> None:
+        """The same listing with and without everything a campaign leaves under `runs/`.
+        On a tree with nothing but the games' own directories the old walk and this one
+        read the same files, so this is the old answer too."""
+        monkeypatch.setattr(library, "_LISTINGS", {})
+        rulesets, runs, measured, old = self._library(tmp_path)
+        clean = self._answer(rulesets, runs)
+        by_hash = {row[0]: row for row in clean}
+        assert by_hash[measured][2] == "current" and by_hash[measured][4]["index"] == 0.5
+        assert by_hash[measured][3]["verdict"] == "Beside a seed."
+        assert by_hash[old][5] == corpus.run_dir(old, 0, runs)
+        assert by_hash[old][3]["verdict"] == "Beside a design run."
+
+        self._clutter(runs, measured, old)
+        assert self._answer(rulesets, runs) == clean
+
+    def test_the_walk_never_enters_a_campaign_or_a_kept_score(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(library, "_LISTINGS", {})
+        rulesets, runs, measured, old = self._library(tmp_path)
+        unvisited = self._clutter(runs, measured, old)
+        unvisited += [runs / self.CAMPAIGN, runs / self.CAMPAIGN / "replaced",
+                      runs / "q999", runs / "designed", runs / measured / "previous"]
+
+        listed: list[Path] = []
+        real_scandir, real_listdir = os.scandir, os.listdir
+
+        def scandir(path: object = ".") -> object:
+            listed.append(Path(os.fsdecode(path)).resolve())  # type: ignore[arg-type]
+            return real_scandir(path)  # type: ignore[call-overload]
+
+        def listdir(path: object = ".") -> object:
+            listed.append(Path(os.fsdecode(path)).resolve())  # type: ignore[arg-type]
+            return real_listdir(path)  # type: ignore[call-overload]
+
+        def walk(*args: object, **kwargs: object) -> object:
+            raise AssertionError("a listing walked a tree")
+
+        monkeypatch.setattr(os, "scandir", scandir)
+        monkeypatch.setattr(os, "listdir", listdir)
+        monkeypatch.setattr(os, "walk", walk)
+        library.discover(rulesets, runs)
+        monkeypatch.undo()
+
+        assert runs.resolve() in listed
+        assert corpus.measurement_dir(measured, runs).resolve() in listed
+        entered = sorted({path for path in listed if path.is_relative_to(runs.resolve())})
+        for directory in unvisited:
+            assert directory.resolve() not in entered, f"the listing opened {directory}"
+        for path in entered:
+            assert path == runs.resolve() or path.parent == runs.resolve(), path
 
 
 class TestTheSpineSchedule:
@@ -10765,6 +10967,59 @@ class TestBuildingAGameByHand:
         second = app.post("/api/design/save", {"spec": spec})
         assert second["hash"] == first["hash"]
         assert second["created"] is False
+
+    def test_a_draft_saved_without_a_description_gets_one_when_saved_again(
+        self, tmp_path
+    ) -> None:
+        """Q595: the same rules saved with new words are the same game with those words.
+        It used to answer *Already saved* and keep the empty description for ever."""
+        from chess_variant_sandbox.web import designing
+
+        runs = tmp_path / "runs"
+        app = App(RULESETS, runs, tmp_path / "heur", library.ARCHIVE_DIR)
+        spec = json.loads(json.dumps(designing.templates()[0]["spec"]))
+        spec["name"], spec["description"] = "a draft", ""
+        first = app.post("/api/design/save", {"spec": spec})
+        assert (first["restated"], first["unchanged"]) == ([], [])
+
+        spec["description"] = "Now it says what it is."
+        second = app.post("/api/design/save", {"spec": spec})
+
+        assert second["hash"] == first["hash"] and second["created"] is False
+        assert (second["restated"], second["unchanged"]) == (["description"], [])
+        game = next(g for g in app.refresh() if g.hash == first["hash"])
+        assert (game.name, game.description) == ("a draft", "Now it says what it is.")
+        lineage = (runs / "designed" / "lineage.jsonl").read_text(encoding="utf-8")
+        assert len(lineage.splitlines()) == 1, "a new description is not a new entry"
+
+        spec["name"] = "a better name"
+        third = app.post("/api/design/save", {"spec": spec})
+        assert (third["restated"], third["name"]) == (["name"], "a better name")
+        game = next(g for g in app.refresh() if g.hash == first["hash"])
+        assert (game.name, game.description) == ("a better name", "Now it says what it is.")
+
+        again = app.post("/api/design/save", {"spec": spec})
+        assert (again["restated"], again["unchanged"]) == ([], [])
+
+    def test_a_save_told_not_to_restate_keeps_the_words_and_names_them(
+        self, tmp_path
+    ) -> None:
+        """The site's half (Q595): rules somebody else saved first, or a published game,
+        keep their words; the answer names the ones the save asked for and did not get."""
+        from chess_variant_sandbox.web import designing
+
+        runs = tmp_path / "runs"
+        spec = json.loads(json.dumps(designing.templates()[0]["spec"]))
+        spec["name"], spec["description"] = "a draft", "as published"
+        first = designing.save(spec, runs_dir=runs)
+        spec["name"], spec["description"] = "renamed", "other words"
+
+        kept = designing.save(spec, runs_dir=runs, restate=False)
+
+        assert kept["hash"] == first["hash"] and kept["name"] == "a draft"
+        assert (kept["restated"], kept["unchanged"]) == ([], ["name", "description"])
+        on_disk = json.loads(Path(kept["path"]).read_text(encoding="utf-8"))
+        assert (on_disk["name"], on_disk["description"]) == ("a draft", "as published")
 
     def test_a_hand_built_game_can_be_played_at_once(self, tmp_path) -> None:
         from chess_variant_sandbox.web import designing
@@ -12690,6 +12945,29 @@ class TestWhatASaveSaysWhereTheClickWas:
         assert "only people with its link" in said and reason in said
         assert "cannot be published" in said
 
+    def test_a_resave_with_new_words_says_it_saved_them(self) -> None:
+        """Q595: not *Already saved*, which read as though the description were dropped."""
+        said = _said(_in_page(_kit(), "savedHtml(" + _save_answer(
+            created=False, restated=["description"], unchanged=[]) + ")"))
+        assert "Saved the new description of <b>a draft somebody kept</b>" in said
+        assert "same game" in said and "Already saved" not in said
+        both = _said(_in_page(_kit(), "savedHtml(" + _save_answer(
+            created=False, restated=["name", "description"], unchanged=[]) + ")"))
+        assert "Saved the new name and description of" in both
+
+    def test_a_resave_whose_words_stay_says_why(self) -> None:
+        from chess_variant_sandbox.site import drafts
+
+        said = _said(_in_page(_kit(), "savedHtml(" + _save_answer(
+            created=False, restated=[], unchanged=["description"],
+            keptAsIs=drafts.AS_PUBLISHED) + ")"))
+        assert "Already saved as <b>a draft somebody kept</b>" in said
+        assert drafts.AS_PUBLISHED in said
+        # The same words with nothing asked of them say nothing about why.
+        plain = _said(_in_page(_kit(), "savedHtml(" + _save_answer(
+            created=False, restated=[], unchanged=[], keptAsIs=drafts.AS_PUBLISHED) + ")"))
+        assert drafts.AS_PUBLISHED not in plain
+
 
     def test_the_publish_panel_is_off_and_says_publishing_opens_soon(self) -> None:
         """Q503a. The designer draws `drafts.standing`'s panel as it comes: the check
@@ -13325,7 +13603,9 @@ class TestOnlyADirectionalPieceIsTurned:
         """
         from page_text import PAGE
 
-        for name in ("function drawPiece(", "function boardPreview("):
+        # The still draws a piece in `stillPieceHtml` since Q843d, which an echo in a fold
+        # draws too.
+        for name in ("function drawPiece(", "function stillPieceHtml("):
             start = PAGE.index(name)
             body = PAGE[start:PAGE.index("\nfunction ", start + 1)]
             assert body.count("directional || [])[") == 1, name
@@ -14042,14 +14322,15 @@ process.stdout.write(JSON.stringify(out));
 """
 
 
-def _here_page() -> dict:
-    """What `_HERE_HOST` saw, run once for the session."""
-    if "out" not in _HERE_RAN:
-        _HERE_RAN["out"] = _run_here_host()
-    return _HERE_RAN["out"]
+@pytest.fixture(scope="module")
+def here_page() -> dict:
+    """What `_HERE_HOST` saw, run once for the module's nine readers.
 
-
-_HERE_RAN: dict[str, dict] = {}
+    A fixture rather than a memo (Q749): a real node and its worker threads, 3 s of wall
+    clock, is a cost the nine share, and `tests/duration_guard.py` charges a shared
+    fixture to no one test.
+    """
+    return _run_here_host()
 
 
 def _run_here_host() -> dict:
@@ -14188,8 +14469,8 @@ class TestMeasuringOnThisComputer:
         assert "at most 29 MiB" in now
         assert "the rules have changed" not in now and "the rules have changed" in moved
 
-    def test_every_unit_is_dealt_once_and_every_reply_lands_in_its_place(self) -> None:
-        out = _here_page()
+    def test_every_unit_is_dealt_once_and_every_reply_lands_in_its_place(self, here_page: dict) -> None:
+        out = here_page
         one, three = out["1"], out["3"]
         for run, count in ((one, 1), (three, 3)):
             assert run["state"] == "done", run["error"]
@@ -14218,8 +14499,8 @@ class TestMeasuringOnThisComputer:
             "blunder": replies("blunder", [25, 0]),
         }
 
-    def test_one_worker_gathers_and_every_worker_is_loaded_from_the_manifest(self) -> None:
-        three = _here_page()["3"]
+    def test_one_worker_gathers_and_every_worker_is_loaded_from_the_manifest(self, here_page: dict) -> None:
+        three = here_page["3"]
         gatherer, *players = three["load"]
         assert gatherer["gathers"] is True
         assert gatherer["keys"] == ["gathers", "kind", "runtime", "wheel"]
@@ -14236,17 +14517,17 @@ class TestMeasuringOnThisComputer:
         assert all(sent[0] == "load" and "gather" not in sent for sent in others)
         assert {kind for sent in three["sent"] for kind in sent} == {"load", "gather", "unit"}
 
-    def test_off_the_site_nothing_is_sent(self) -> None:
-        out = _here_page()
+    def test_off_the_site_nothing_is_sent(self, here_page: dict) -> None:
+        out = here_page
         for label in ("1", "3", "broken", "old"):
             assert out[label]["asked"] == [], label
         # The upload was handed over all the same, and kept as the string it came as.
         assert out["kept"]["upload"] == _HERE_UPLOAD
 
-    def test_on_the_site_the_upload_goes_as_it_came_and_the_job_is_followed(self) -> None:
+    def test_on_the_site_the_upload_goes_as_it_came_and_the_job_is_followed(self, here_page: dict) -> None:
         """B10: the gathering half's upload, never parsed, to the site's route; then the
         job asked about until the server has walked it, and its answer kept whole."""
-        kept = _here_page()["kept"]
+        kept = here_page["kept"]
         assert kept["state"] == "done"
         assert kept["asked"] == [
             ["/api/provisional", {"game": "abc", "upload": _HERE_UPLOAD}],
@@ -14257,23 +14538,23 @@ class TestMeasuringOnThisComputer:
         assert kept["check"]["result"]["index"] == 0.81094
         assert kept["fetched"] == 1
 
-    def test_a_stale_build_fetches_the_manifest_again(self) -> None:
-        stale = _here_page()["stale"]
+    def test_a_stale_build_fetches_the_manifest_again(self, here_page: dict) -> None:
+        stale = here_page["stale"]
         assert stale["check"]["refusal"]["name"] == "stale-build"
         assert len(stale["asked"]) == 1
         # Once for the measurement, and once more because the site refused its engine.
         assert stale["fetched"] == 2
 
-    def test_a_send_that_fails_keeps_the_sentence(self) -> None:
-        unsaved = _here_page()["unsaved"]
+    def test_a_send_that_fails_keeps_the_sentence(self, here_page: dict) -> None:
+        unsaved = here_page["unsaved"]
         assert unsaved["check"] == {
             "state": "failed", "error": "no game with the hash abc is saved on the site",
         }
 
-    def test_a_send_that_faults_says_so_in_a_sentence(self) -> None:
+    def test_a_send_that_faults_says_so_in_a_sentence(self, here_page: dict) -> None:
         """Q682: a `TypeError` in the page's own handler, or a worker's message, reaches
         the view as a plain clause, never as the engine's or Python's words."""
-        fault, worker = _here_page()["fault"], _here_page()["worker"]
+        fault, worker = here_page["fault"], here_page["worker"]
         assert fault["check"] == {
             "state": "failed",
             "error": "something went wrong on this page; reloading it usually puts it right"}
@@ -14322,10 +14603,10 @@ class TestMeasuringOnThisComputer:
         assert "a newer score for this game replaced it" in said["gone"]
         assert "sent nowhere" in said["local"] and "Sign in" not in said["local"]
 
-    def test_a_unit_that_fails_ends_the_measurement_with_its_reason(self) -> None:
+    def test_a_unit_that_fails_ends_the_measurement_with_its_reason(self, here_page: dict) -> None:
         """The run keeps the worker's own message for whoever maintains the site; the
         visitor reads a plain clause instead (Q728)."""
-        broken = _here_page()["broken"]
+        broken = here_page["broken"]
         assert broken["state"] == "failed"
         assert "boom" in broken["error"]
         assert broken["result"] is None
@@ -14336,10 +14617,10 @@ class TestMeasuringOnThisComputer:
         shown = json.loads(_in_the_page(setup, "JSON.stringify(hereRunHtml(HERE))"))
         assert "It stopped before it finished: a plain clause" in shown and "boom" not in shown
 
-    def test_a_wheel_that_cannot_gather_is_refused_at_load_by_name(self) -> None:
+    def test_a_wheel_that_cannot_gather_is_refused_at_load_by_name(self, here_page: dict) -> None:
         """A wheel built before Q458 has no `gather_request`. The measurement stops before
         any unit is dealt, and keeps what is wrong and what rebuilds it for the maintainer."""
-        old = _here_page()["old"]
+        old = here_page["old"]
         assert old["state"] == "failed" and old["result"] is None
         assert "no slices.gather_request" in old["error"] and "build.sh" in old["error"]
         # What is wrong and what rebuilds it is the maintainer's; a visitor sees neither.
@@ -14489,6 +14770,10 @@ class TestAHexagonReachesEveryBoardApartFromItsWalls:
 
     @staticmethod
     def _spec(name: str) -> dict:
+        from retired_specs import REBUILT
+
+        if name in REBUILT:  # retired by Q870 for `pinwheel`; rebuilt from the hexagon
+            return REBUILT[name]()
         path = Path(__file__).resolve().parents[1] / "archive" / f"{name}.json"
         spec: dict = json.loads(path.read_text(encoding="utf-8"))
         return spec

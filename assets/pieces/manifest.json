@@ -38,20 +38,22 @@
   "archbishop-black": {
     "file": "svg/archbishop-black.svg",
     "viewBox": "0 0 45 45",
-    "bytes": 2114,
-    "source": "https://commons.wikimedia.org/wiki/File:Chess_adt45.svg",
-    "author": "Chess_alt45.svg : * Chess_blt45.svg : en:User:Cburnett Chess_nlt45.svg : en:User:Cburnett Chess_all44.png : OmegaChessFan derivative work: NikNaks93 ( talk ) Chess_adl44.png : OmegaChessFan derivative work: NikNaks93 ( talk )",
+    "bytes": 3320,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_ndt45.svg",
+    "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/",
+    "modified": "drawn for this repository from Cburnett's knight and bishop (Chess_bdt45.svg): the bishop's mitre with the knight's head rising from behind its point"
   },
   "archbishop-white": {
     "file": "svg/archbishop-white.svg",
     "viewBox": "0 0 45 45",
-    "bytes": 1866,
-    "source": "https://commons.wikimedia.org/wiki/File:Chess_alt45.svg",
-    "author": "Chess blt45.svg : Cburnett Chess nlt45.svg : Cburnett Chess all44.png : OmegaChessFan derivative work: NikNaks93",
+    "bytes": 2078,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_nlt45.svg",
+    "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/",
+    "modified": "drawn for this repository from Cburnett's knight and bishop (Chess_blt45.svg): the bishop's mitre with the knight's head rising from behind its point"
   },
   "bishop-black": {
     "file": "svg/bishop-black.svg",
@@ -128,20 +130,22 @@
   "chancellor-black": {
     "file": "svg/chancellor-black.svg",
     "viewBox": "0 0 45 45",
-    "bytes": 7737,
-    "source": "https://commons.wikimedia.org/wiki/File:Chess_cdt45.svg",
-    "author": "Chess_clt45.svg : * Chess_alt45.svg : * Chess_blt45.svg : en:User:Cburnett Chess_nlt45.svg : en:User:Cburnett Chess_all44.png : OmegaChessFan derivative work: NikNaks93 ( talk ) Chess_cld44.png : OmegaChessFan derivative work: NikNaks93 ( talk ) Chess_cdd44.png : OmegaChessFan derivative work: NikNaks93 ( talk )",
+    "bytes": 3388,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_ndt45.svg",
+    "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/",
+    "modified": "drawn for this repository from Cburnett's knight and rook (Chess_rdt45.svg): the rook's tower with the knight's head on its battlements"
   },
   "chancellor-white": {
     "file": "svg/chancellor-white.svg",
     "viewBox": "0 0 45 45",
-    "bytes": 7601,
-    "source": "https://commons.wikimedia.org/wiki/File:Chess_clt45.svg",
-    "author": "Chess_alt45.svg : * Chess_blt45.svg : en:User:Cburnett Chess_nlt45.svg : en:User:Cburnett Chess_all44.png : OmegaChessFan derivative work: NikNaks93 ( talk ) Chess_cld44.png : OmegaChessFan derivative work: NikNaks93 ( talk )",
+    "bytes": 1925,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_nlt45.svg",
+    "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/",
+    "modified": "drawn for this repository from Cburnett's knight and rook (Chess_rlt45.svg): the rook's tower with the knight's head on its battlements"
   },
   "commoner-black": {
     "file": "svg/commoner-black.svg",

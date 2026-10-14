@@ -5,8 +5,9 @@ Two directions, and they are deliberately not symmetrical.
 **A position goes out as a FEN.** That is the whole of what the opponent is told, so
 everything the rules depend on has to be in it -- the board and which of its pieces
 count as promoted, the side, castling rights,
-the en passant window, the two clocks, a pocket where there are drops and a check count
-where they are counted. A field this gets wrong is a field the opponent plays without.
+the en passant window, the two clocks, a pocket where there are drops, a check count
+where they are counted and a `*` for a wall. A field this gets wrong is a field the
+opponent plays without.
 
 **A move comes back as text and is looked up, never parsed into one.** `uci_of` is
 applied to every move our engine says is legal and the answer is matched against what
@@ -84,14 +85,27 @@ def _board_field(
     A piece whose type demotes when captured is written promoted, ``+P`` or ``H~``
     (`variant.board_letters`, Q406). Without the mark the engine counts it as never
     promoted and its search puts the wrong piece in the captor's hand.
+
+    A wall (`rules.obstacles`) is written ``*``, which is a square nothing stands on there
+    (Q703). The translator refuses the walls that would mean something else
+    (`variant._check_walls`), and it refuses a hexagon, whose absent cells the compiler
+    folds into the same set.
     """
     letters = board_letters(compiled, chars)
+    walls = compiled.obstacles
     rows: list[str] = []
     for rank in range(compiled.height - 1, -1, -1):
         row = ""
         empty = 0
         for file in range(compiled.width):
-            occupant = compiled.piece_at(state.board, rank * compiled.width + file)
+            square = rank * compiled.width + file
+            occupant = compiled.piece_at(state.board, square)
+            if square in walls:
+                if empty:
+                    row += str(empty)
+                    empty = 0
+                row += "*"
+                continue
             if occupant is None:
                 empty += 1
                 continue

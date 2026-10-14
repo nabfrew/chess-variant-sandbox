@@ -30,6 +30,8 @@ the reader's own row is marked.
 Before the computer players are rated (§2.5), there are no rows: `waiting` names the
 players the picker offers, in the picker's order, which puts the standard players weakest
 first and the rest after them, and the page says the game is practice until they are rated.
+A member's game is rated on the site itself when it is published, the five standard players
+first (L5, `site/spine.py`), and `box` says how far that has got.
 
 Nothing here writes, and nothing under `metrics/` reads it (rule 5).
 """
@@ -100,6 +102,7 @@ def shown(
     roster: Sequence[opponents.Opponent],
     viewer: int | None,
     library: bool,
+    box: str | None = None,
 ) -> dict[str, Any]:
     """`standing.leaderboard`: the rows, and what the page says around them.
 
@@ -109,9 +112,14 @@ def shown(
     rule of thumb proposed since the ladder was rated): absent from the table, said in one
     sentence, never given an invented number. `waiting` is §2.5's list for a game whose
     computer players are not rated yet. `library` says whose machine rates them and when:
-    a library game's ladder is rated on our own machine within about a day; a member's
-    game's sentence is L5's to set (`plan-leaderboard.md` §2.6), and until then it promises
-    no time.
+    a library game's ladder is rated on our own machine within about a day.
+
+    `box` is a member's game's own rating on the site (L5, `spine.state`; `None` for a
+    library game), so the page can say where its computer players are: *draft* (rated when
+    it is published), *rating* (the five standard ones, now, in a few minutes), *rated*
+    (they were, here, and the rest -- `unrated` -- join when our own machine has rated them),
+    or *slow*, *large* and *waiting* (the site's caps refused them, or the rating failed, so
+    they wait for our own machine). The page words them; this decides nothing else.
     """
     drawn = rows(table, named=named, roster=roster, viewer=viewer)
     rated = any(row["computer"] for row in drawn)
@@ -127,4 +135,5 @@ def shown(
         ),
         "waiting": [] if rated else [entry.name for entry in playable],
         "library": library,
+        "box": box,
     }

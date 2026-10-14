@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
 from collections.abc import Set as AbstractSet
+from math import gcd
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from chess_variant_sandbox.spec.complexity import expand_symmetry
@@ -30,7 +31,7 @@ from chess_variant_sandbox.spec.reachability import (
 if TYPE_CHECKING:
     from chess_variant_sandbox.engine.compile import StrikeRule
 
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 25
 
 # Every version is accepted, and the number a spec declares is a claim about which
 # feature set it uses rather than a date stamp. That is what keeps a bump cheap:
@@ -40,7 +41,8 @@ SCHEMA_VERSION = 20
 # validator enforces that by name, so the version stays an honest description of what
 # the rules need.
 SUPPORTED_SCHEMA_VERSIONS = (
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+    25,
 )
 
 # The movement primitive table. Extending the design space means adding a row here,
@@ -230,7 +232,11 @@ FACING_AXES = (2, 4)
 # because the names are what ``describe.py`` says out loud.
 FACING_NAMES = ("forward", "right", "backward", "left")
 
-_FACING_KEYS = {"axes", "initial"}
+# ``turns`` is schema 25 (Q869, the rear pawn): ``false`` is a facing no move turns. The
+# piece still reads its vectors through its orientation and a placement still sets it,
+# but the core generates no rotation for it, so a pawn stood facing backward stays a
+# pawn going backward. See ``_schema_twenty_five_uses`` and ``_check_fixed_facings``.
+_FACING_KEYS = {"axes", "initial", "turns"}
 
 # Schema 9: a piece that neither player owns.
 #
@@ -259,7 +265,7 @@ _FACING_KEYS = {"axes", "initial"}
 # `_schema_nine_uses` is the one collector.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
 # ``immune`` is schema 10 (Q78) and is documented at ``REPETITION_NEVER`` below.
-_NPC_KEYS = {"piece", "route", "bounty", "mirror", "immune"}
+_NPC_KEYS = {"piece", "route", "bounty", "mirror", "immune", "also_at"}
 
 # Schema 19 (Q771, `docs/plan-portals.md` §1): pairs of portals. A piece whose move ends on
 # an end open to its player comes out one king's step beyond the other end, in the
@@ -272,27 +278,58 @@ _NPC_KEYS = {"piece", "route", "bounty", "mirror", "immune"}
 # Schema 20 (Q807, `docs/plan-portals.md` *Ferry's shuffle*): ``no_straight_back``, per pair.
 # An end of a pair that sets it, once moved, may not be moved straight back onto the square
 # it left on the very next move (a portal's ko). Absent is ``false``.
-_PORTAL_KEYS = {"piece", "orange", "blue", "moved_by", "passage", "no_straight_back"}
+#
+# Schema 21 (Q843a, `docs/plan-portals-2.md` §2): ``rules.portals`` holds **groups**. A group
+# is a pair, written as before (plus ``carries``, per end), or any other map of two to eight
+# ends, written with ``ends``: each end has its square (``at``), the index of the end it
+# leads to (``to``; absent, a way out only), whose pieces may go in by it (``enter``), who
+# may move it (``moved_by``) and which pieces may go in by it (``carries``). One normaliser,
+# `portal_groups`, reads both spellings into one list of ends with a destination each, and
+# nothing past it knows a pair from any other group.
+#
+# Schema 22 (Q843c), revised at schema 24 (Q867b, `docs/plan-portals-2.md` §3R): per group,
+# ``kind``. Absent is today's **momentum** portal; ``"fold"`` is the second rule set: a fold
+# is not a piece (a piece of either side may stand in it, and is taken there as anywhere),
+# and a move that ends on an empty fold may stay there or go through, ending on the square
+# of the end it leads to and taking an enemy piece there as any landing does; a move that
+# passes over a fold is not changed. Written only as ``"fold"``: the default spelled out is
+# one game under two hashes, so the validator refuses it (`_check_inert_rules`' argument).
+_PORTAL_KEYS = {
+    "piece", "orange", "blue", "moved_by", "passage", "carries", "no_straight_back", "kind",
+}
+_PORTAL_ENDS_KEYS = {"piece", "ends", "no_straight_back", "kind"}
+PORTAL_KINDS = ("momentum", "fold")
+_PORTAL_END_KEYS = {"at", "to", "enter", "moved_by", "carries"}
 PORTAL_ENDS = ("orange", "blue")
 PORTAL_PASSAGES = ("both_ways", "orange_to_blue", "blue_to_orange", "closed")
-MAX_PORTAL_PAIRS = 4
+# At most four groups (the palette's four colours, the number on the glyph) and eight ends
+# across them (the core's end arrays are eight wide).
+MAX_PORTAL_GROUPS = 4
+MAX_PORTAL_ENDS = 8
+# The letters an ``ends`` group's ends are named by, in place order (``2a``, ``2b``, ...);
+# a pair's keep ``o`` and ``b``, so the move text of every stored portal game stays true.
+_END_LETTERS = "abcdefgh"
 
 
-def portal_end_ids(pairs: int) -> tuple[str, ...]:
-    """The names the compiler gives each portal end's internal type: ``1o``, ``1b``, ...
+def portal_end_ids(groups: list[dict[str, Any]]) -> tuple[str, ...]:
+    """The names the compiler gives each portal end's internal type, in group order.
 
-    Pair number, then ``o`` for the orange end and ``b`` for the blue, the plan's own
-    notation and the move text's (N1). A declared piece may not take one of these ids
-    beside ``rules.portals``.
+    Group number, then the end's letter: ``o`` for a pair's orange end and ``b`` for its
+    blue (``1o``, ``1b``, the move text's since N1), and ``a``, ``b``, ``c``, ... by place for
+    an ``ends`` group (``2a``, ``2b``, ``2c``). ``groups`` is `portal_groups`' answer. A
+    declared piece may not take one of these ids beside ``rules.portals``.
     """
-    return tuple(f"{pair + 1}{end[0]}" for pair in range(pairs) for end in PORTAL_ENDS)
+    return tuple(
+        f"{group['number']}{end['letter']}" for group in groups for end in group["ends"]
+    )
 
 
 def portal_open_ends(passage: Any) -> tuple[bool, bool]:
     """``(orange, blue)``: which ends a player's pieces may go in by, for one passage word.
 
     ``both_ways`` (and anything malformed, which is refused by name elsewhere) is both;
-    ``orange_to_blue`` is only the orange end; ``closed`` is neither.
+    ``orange_to_blue`` is only the orange end; ``closed`` is neither. Read by the normaliser,
+    which turns a pair's ``passage`` into its two ends' ``enter``.
     """
     if passage == "orange_to_blue":
         return (True, False)
@@ -303,46 +340,115 @@ def portal_open_ends(passage: Any) -> tuple[bool, bool]:
     return (True, True)
 
 
-def portal_pairs(rules: Any) -> list[dict[str, Any]]:
-    """``rules.portals`` read permissively: the well-formed pairs, in order.
+def _players(value: Any) -> frozenset[int]:
+    """A permissive read of a list of players: the well-formed ones."""
+    return frozenset(
+        player for player in _listed(value)
+        if player in (0, 1) and not isinstance(player, bool)
+    )
 
-    Each is ``{"piece", "orange", "blue", "moved_by": {end: frozenset(players)},
-    "passage": {player: word}, "no_straight_back": bool}`` with the defaults filled in. Shared by the validator and
-    the compiler, as ``npc_routes`` is, so a pair means one thing to both. Squares stay
-    names here; the readers parse them against their own board.
+
+def _carried(value: Any) -> frozenset[str] | None:
+    """A permissive read of a ``carries`` list: ``None`` (every piece) when absent."""
+    if value is None:
+        return None
+    return frozenset(pid for pid in _listed(value) if isinstance(pid, str))
+
+
+def portal_groups(rules: Any) -> list[dict[str, Any]]:
+    """``rules.portals`` read permissively: the well-formed groups, in order (schema 21).
+
+    The one reader of the spelling, shared by the validator, the compiler and every reader
+    after them, so a group means one thing to all of them (`docs/plan-portals-2.md` §2.2).
+    Each group is ``{"number", "index", "piece", "no_straight_back", "kind", "spelling",
+    "passage", "ends"}``; each end ``{"at", "to", "enter", "moved_by", "carries", "letter",
+    "key"}``:
+
+    * ``at`` -- its square's name, as written (the readers parse it against their board);
+    * ``to`` -- the index in the group's ``ends`` of the end it leads to, or ``None`` for a
+      way out only;
+    * ``enter`` -- the players whose pieces may go in by it (empty where ``to`` is
+      ``None``);
+    * ``moved_by`` -- the players who may move it, as a turn;
+    * ``carries`` -- the piece ids that may go in by it, or ``None`` for every piece;
+    * ``letter`` -- its letter in its id (`portal_end_ids`), and ``key`` the place the
+      validator's messages name it by (``orange``, ``blue``, ``ends[2]``).
+
+    A pair is two ends, orange ``to`` blue and blue ``to`` orange, each ``enter`` read from
+    ``passage`` per player. ``spelling`` and ``passage`` are kept for the one reader that
+    writes the spelling back (the designer, `web/designing.py`); nothing that plays or says
+    the rule reads them. ``kind`` is ``"momentum"``, today's portal, or ``"fold"`` (schema 22;
+    anything else reads as momentum, and is refused by name elsewhere).
     """
     if not isinstance(rules, dict) or not isinstance(rules.get("portals"), list):
         return []
-    pairs: list[dict[str, Any]] = []
-    for pair in rules["portals"]:
-        if not isinstance(pair, dict):
+    groups: list[dict[str, Any]] = []
+    for index, group in enumerate(rules["portals"]):
+        if not isinstance(group, dict):
             continue
-        moved_by: dict[str, Any] = (
-            pair["moved_by"] if isinstance(pair.get("moved_by"), dict) else {}
-        )
-        passage: dict[str, Any] = (
-            pair["passage"] if isinstance(pair.get("passage"), dict) else {}
-        )
-        pairs.append(
-            {
-                "piece": pair.get("piece"),
-                "orange": pair.get("orange"),
-                "blue": pair.get("blue"),
-                "moved_by": {
-                    end: frozenset(
-                        player
-                        for player in _listed(moved_by.get(end))
-                        if player in (0, 1) and not isinstance(player, bool)
-                    )
-                    for end in PORTAL_ENDS
-                },
-                "passage": {
-                    player: passage.get(str(player), "both_ways") for player in (0, 1)
-                },
-                "no_straight_back": pair.get("no_straight_back") is True,
-            }
-        )
-    return pairs
+        if "ends" in group:
+            ends = _ends_spelled(group.get("ends"))
+            spelling = "ends"
+            passage: dict[int, Any] = {}
+        else:
+            ends, passage = _pair_spelled(group)
+            spelling = "pair"
+        groups.append({
+            "number": len(groups) + 1,
+            "index": index,
+            "piece": group.get("piece"),
+            "no_straight_back": group.get("no_straight_back") is True,
+            "kind": "fold" if group.get("kind") == "fold" else "momentum",
+            "spelling": spelling,
+            "passage": passage,
+            "ends": ends,
+        })
+    return groups
+
+
+def _pair_spelled(pair: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[int, Any]]:
+    """A pair's two ends, and its passage words per player."""
+    moved_by = pair["moved_by"] if isinstance(pair.get("moved_by"), dict) else {}
+    passage = pair["passage"] if isinstance(pair.get("passage"), dict) else {}
+    carries = pair["carries"] if isinstance(pair.get("carries"), dict) else {}
+    words = {player: passage.get(str(player), "both_ways") for player in (0, 1)}
+    opened = [portal_open_ends(words[player]) for player in (0, 1)]
+    ends = []
+    for side, end in enumerate(PORTAL_ENDS):
+        ends.append({
+            "at": pair.get(end),
+            "to": 1 - side,
+            "enter": frozenset(player for player in (0, 1) if opened[player][side]),
+            "moved_by": _players(moved_by.get(end)),
+            "carries": _carried(carries.get(end)),
+            "letter": end[0],
+            "key": end,
+        })
+    return ends, words
+
+
+def _ends_spelled(raw: Any) -> list[dict[str, Any]]:
+    """An ``ends`` group's ends, read permissively: a malformed ``to`` is a way out."""
+    ends: list[dict[str, Any]] = []
+    listed = [end for end in _listed(raw) if isinstance(end, dict)]
+    for place, end in enumerate(listed):
+        to = end.get("to")
+        if (
+            not isinstance(to, int) or isinstance(to, bool) or to == place
+            or not 0 <= to < len(listed)
+        ):
+            to = None
+        enter = _players(end["enter"]) if "enter" in end else frozenset((0, 1))
+        ends.append({
+            "at": end.get("at"),
+            "to": to,
+            "enter": enter if to is not None else frozenset(),
+            "moved_by": _players(end.get("moved_by")),
+            "carries": _carried(end.get("carries")),
+            "letter": _END_LETTERS[place] if place < len(_END_LETTERS) else str(place),
+            "key": f"ends[{place}]",
+        })
+    return ends
 
 
 def _listed(value: Any) -> list[Any]:
@@ -351,9 +457,9 @@ def _listed(value: Any) -> list[Any]:
 
 
 def portal_piece_ids(rules: Any) -> set[str]:
-    """The declared piece ids ``rules.portals`` names as a pair's ``piece``."""
+    """The declared piece ids ``rules.portals`` names as a group's ``piece``."""
     return {
-        pair["piece"] for pair in portal_pairs(rules) if isinstance(pair["piece"], str)
+        group["piece"] for group in portal_groups(rules) if isinstance(group["piece"], str)
     }
 
 
@@ -364,15 +470,38 @@ def portal_type_needs_no_moves(rules: Any, piece_id: Any) -> bool:
     ``piece_has_stock``): a portal nobody moves is placed by the rule and stands where it
     was put, so it needs no move of its own.
     """
-    named = [pair for pair in portal_pairs(rules) if pair["piece"] == piece_id]
+    named = [group for group in portal_groups(rules) if group["piece"] == piece_id]
     return bool(named) and not any(
-        pair["moved_by"][end] for pair in named for end in PORTAL_ENDS
+        end["moved_by"] for group in named for end in group["ends"]
     )
 
 
 def portal_extra_types(rules: Any) -> int:
-    """How many internal piece types the compiler adds for portals: two per pair."""
-    return 2 * len(portal_pairs(rules))
+    """How many internal piece types the compiler adds for portals: one per end."""
+    return sum(len(group["ends"]) for group in portal_groups(rules))
+
+
+def portal_map_shape(group: dict[str, Any]) -> str:
+    """The shape of one group's map (`portal_groups`' group): ``pair`` (written as one),
+    ``ring`` (every end leads to the next round one cycle), ``funnel`` (one end is a way out
+    only and every other leads to it), or ``other``. The designer's three named shapes and
+    the rest (`docs/plan-portals-2.md` §5.4), for the readers that tell maps apart."""
+    if group["spelling"] == "pair":
+        return "pair"
+    ends = group["ends"]
+    tos = [end["to"] for end in ends]
+    exits = [place for place, to in enumerate(tos) if to is None]
+    if len(exits) == 1 and all(to in (None, exits[0]) for to in tos):
+        return "funnel"
+    if not exits and sorted(tos) == list(range(len(ends))):
+        place, seen = 0, set()
+        while place not in seen:
+            seen.add(place)
+            place = tos[place]
+        if len(seen) == len(ends):
+            return "ring"
+    return "other"
+
 
 # Schema 10. Five features, one version, and only one of them is a top-level key -- which
 # is why the gate is `_schema_ten_uses` and not a `V10_RULE_KEYS` frozenset. Q84's costing
@@ -792,10 +921,11 @@ def validate_spec(spec: Any, *, new: bool = True) -> list[str]:
     default. ``validate_or_raise``, the check ``compile_spec`` opens with, passes
     ``new=False``, because building an engine is also how a *stored* spec is loaded: a
     retired game's page and its match replays on the site, and a calibration corpus's
-    entry re-scored. What that skips is one refusal,
-    ``_refuse_a_promotion_rank_past_the_board``, added (Q434) after such a spec had been
-    played. It declares a rule that never fires, so the engine plays that spec exactly as
-    it always did; the refusal is about not admitting another one.
+    entry re-scored. What that skips is three refusals, each of a rule that never fires,
+    added after such a spec could have been played: ``_refuse_a_promotion_rank_past_the_board``
+    (Q434), ``_refuse_a_portal_bar_no_move_meets`` (Q879) and ``_refuse_a_one_square_lame_leap``
+    (Q884). The engine plays that spec exactly as it always did; the refusal is about not
+    admitting another one.
     """
     errors: list[str] = []
 
@@ -829,6 +959,8 @@ def validate_spec(spec: Any, *, new: bool = True) -> list[str]:
     )
     if new:
         _refuse_a_promotion_rank_past_the_board(spec.get("rules"), height, errors)
+        _refuse_a_portal_bar_no_move_meets(spec, errors)
+        _refuse_a_one_square_lame_leap(spec, errors)
     _validate_appearance(spec.get("appearance"), piece_ids, errors)
     _validate_provenance(spec.get("provenance"), errors)
     _validate_coherence(spec, errors)
@@ -970,6 +1102,48 @@ def validate_spec(spec: Any, *, new: bool = True) -> list[str]:
             errors.append(
                 f"the spec uses {', '.join(sorted(used))}, added in schema 20; declare "
                 '"schema_version": 20 to use it'
+            )
+    if version < 21:
+        used = _schema_twenty_one_uses(spec)
+        if used:
+            errors.append(
+                f"the spec uses {', '.join(sorted(used))}, added in schema 21; declare "
+                '"schema_version": 21 to use it'
+            )
+    if version < 22:
+        used = _schema_twenty_two_uses(spec)
+        if used:
+            errors.append(
+                f"the spec uses {', '.join(sorted(used))}, added in schema 22; declare "
+                '"schema_version": 22 to use it'
+            )
+    if version < 23:
+        used = _schema_twenty_three_uses(spec)
+        if used:
+            errors.append(
+                f"the spec uses {', '.join(sorted(used))}, added in schema 23; declare "
+                '"schema_version": 23 to use it'
+            )
+    if version < 24:
+        used = _schema_twenty_four_uses(spec)
+        if used and version >= 22:
+            # Folds were schema 22's until their rules changed (the user, 2026-10-12);
+            # the first rules are gone, so a fold under 22 or 23 names no game.
+            errors.append(
+                "folds changed at schema 24 (the user, 2026-10-12): a piece that lands on a "
+                'fold stays or goes through; declare "schema_version": 24'
+            )
+        elif used:
+            errors.append(
+                f"the spec uses {', '.join(sorted(used))}, added in schema 24; declare "
+                '"schema_version": 24 to use it'
+            )
+    if version < 25:
+        used = _schema_twenty_five_uses(spec)
+        if used:
+            errors.append(
+                f"the spec uses {', '.join(sorted(used))}, added in schema 25; declare "
+                '"schema_version": 25 to use it'
             )
 
     return errors
@@ -1347,6 +1521,125 @@ def _schema_twenty_uses(spec: dict[str, Any]) -> set[str]:
         if isinstance(pair, dict) and "no_straight_back" in pair:
             return {"rules.portals.no_straight_back"}
     return set()
+
+
+def _schema_twenty_one_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that schema 21 added, by name (Q843a, portal maps and filters).
+
+    `docs/plan-portals-2.md` §2. Each named whatever its value, as schema 19's names are,
+    because an older spec may not write even an inert one:
+
+    * ``rules.portals.ends`` -- a group written as a list of ends rather than a pair: a
+      ring, a funnel or any other map of three to eight ends.
+    * ``rules.portals.ends.to`` -- the end a piece that goes in by this one comes out of.
+    * ``rules.portals.ends.enter`` -- whose pieces may go in by this end.
+    * ``rules.portals.carries`` -- which pieces may go in by an end, in either spelling.
+    """
+    used: set[str] = set()
+    rules = spec.get("rules")
+    portals = rules.get("portals") if isinstance(rules, dict) else None
+    for group in portals if isinstance(portals, list) else ():
+        if not isinstance(group, dict):
+            continue
+        if "carries" in group:
+            used.add("rules.portals.carries")
+        if "ends" not in group:
+            continue
+        used.add("rules.portals.ends")
+        for end in _listed(group["ends"]):
+            if not isinstance(end, dict):
+                continue
+            if "to" in end:
+                used.add("rules.portals.ends.to")
+            if "enter" in end:
+                used.add("rules.portals.ends.enter")
+            if "carries" in end:
+                used.add("rules.portals.carries")
+    return used
+
+
+def _schema_twenty_two_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that schema 22 added, by name: nothing any more.
+
+    Schema 22 (Q843c) added fold portals, ``rules.portals.kind``. Their rules changed at
+    schema 24 (Q867b, `docs/plan-portals-2.md` §3R.6), and the first rules were deleted, not
+    kept behind the old number (one implementation), so ``kind`` is
+    `_schema_twenty_four_uses`' and schema 22 keeps no rule of its own. A version with
+    nothing behind it is harmless: `settle_schema_version` stamps the lowest version a spec
+    validates under, so no new spec is ever stamped 22.
+    """
+    del spec
+    return set()
+
+
+def _schema_twenty_three_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that schema 23 added, by name (Q850, several wild pieces on
+    one walk).
+
+    `docs/reference/designer-case-study-wolves.md` §2.2. Named whatever its value, because
+    an older spec may not write even an empty one:
+
+    * ``rules.npcs.also_at`` -- squares of the entry's own route where a further wild piece
+      of the same kind stands at ply zero, every one of them walking the route in step with
+      the piece on the route's first square.
+    """
+    rules = spec.get("rules")
+    npcs = rules.get("npcs") if isinstance(rules, dict) else None
+    for npc in npcs if isinstance(npcs, list) else ():
+        if isinstance(npc, dict) and "also_at" in npc:
+            return {"rules.npcs.also_at"}
+    return set()
+
+
+def _schema_twenty_four_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that schema 24 added, by name (Q867b, folds revised).
+
+    `docs/plan-portals-2.md` §3R. Named whatever its value, as schema 19's names are,
+    because an older spec may not write even the default:
+
+    * ``rules.portals.kind`` -- a group's rule set: ``"fold"``, a portal a piece of either
+      side may stand in, where a move that ends on it empty may stay or go through and end
+      on the end it leads to, taking an enemy piece there as any landing does (absent:
+      today's momentum portal). Schema 22's first fold rules are gone with their version.
+    """
+    rules = spec.get("rules")
+    portals = rules.get("portals") if isinstance(rules, dict) else None
+    for group in portals if isinstance(portals, list) else ():
+        if isinstance(group, dict) and "kind" in group:
+            return {"rules.portals.kind"}
+    return set()
+
+
+def _schema_twenty_five_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that schema 25 added, by name (Q869, a fixed facing).
+
+    `docs/plan-library-audit.md` *The rear pawn: a fixed facing*. Named whatever its value,
+    because an older spec may not write even the default:
+
+    * ``pieces[].facing.turns`` -- whether a move may turn the piece (absent: it may, as
+      every facing piece could from schema 8). ``false`` keeps each piece pointing the way
+      it was placed, for the whole game.
+    """
+    pieces = spec.get("pieces")
+    for piece in pieces if isinstance(pieces, list) else ():
+        facing = piece.get("facing") if isinstance(piece, dict) else None
+        if isinstance(facing, dict) and "turns" in facing:
+            return {"pieces[].facing.turns"}
+    return set()
+
+
+def facing_turns(piece: Any) -> bool:
+    """Whether a move may turn this piece: it has a facing and does not say ``turns: false``.
+
+    The one reader of the flag, shared by the validator, the compiler and every surface
+    that asks whether a facing is a choice a player makes or a fact about a piece."""
+    facing = piece.get("facing") if isinstance(piece, dict) else None
+    return isinstance(facing, dict) and facing.get("turns", True) is not False
+
+
+def portal_has_folds(rules: Any) -> bool:
+    """Whether any portal group is a fold (schema 22)."""
+    return any(group["kind"] == "fold" for group in portal_groups(rules))
 
 
 def _hex_symmetries_used(spec: dict[str, Any]) -> set[str]:
@@ -2293,6 +2586,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
         owners=3 if rules.get("npcs") or rules.get("portals") else 2,
         extra_types=portal_extra_types(rules),
     )
+    _check_fixed_facings(spec, pieces, errors)
 
     if isinstance(rules.get("castling"), dict):
         castling = rules["castling"]
@@ -2343,6 +2637,38 @@ def _check_facing_coherence(
         )
 
 
+def _check_fixed_facings(spec: dict[str, Any], pieces: list[Any], errors: list[str]) -> None:
+    """A facing no move turns (schema 25) has to be held two ways, or it is no facing.
+
+    Nothing but the setup puts a piece in a facing other than its ``initial`` one: every
+    way of entering play later (a promotion, a drop, a strike that changes a piece's type
+    or side) takes the initial facing, and only a rotation could leave it. So when no
+    placement of a ``turns: false`` piece states another facing, every copy points the way
+    it entered for the whole game, which is the same game as its moves written that way
+    round with no facing -- two spellings of one game under two hashes, and a facing a
+    player is told about that never matters. Refused by name, as a null rotation is.
+    """
+    placements = (spec.get("setup") or {}).get("placements")
+    for index, piece in enumerate(pieces):
+        if not isinstance(piece, dict) or not isinstance(piece.get("facing"), dict):
+            continue
+        if facing_turns(piece):
+            continue
+        initial = piece["facing"].get("initial", "forward")
+        held = {initial} | {
+            placement.get("facing", initial)
+            for placement in (placements if isinstance(placements, list) else ())
+            if isinstance(placement, dict) and placement.get("piece") == piece.get("id")
+        }
+        if len(held) < 2:
+            errors.append(
+                f"pieces[{index}].facing.turns is false and every {piece.get('id')!r} "
+                f"starts facing {initial}, the way it enters play, so none ever faces "
+                "another way: write its moves that way round and give it no facing, or "
+                "place some of them facing another way"
+            )
+
+
 def _check_obstacle_coherence(
     spec: dict[str, Any], rules: dict[str, Any], errors: list[str]
 ) -> None:
@@ -2384,19 +2710,6 @@ def _check_obstacle_coherence(
     absent = absent_squares(board)
     if absent:
         _check_named_squares(rules, setup, width, height, orientation, absent, True, errors)
-
-
-def hexagon_joins_a_side(spec: Any) -> bool:
-    """Whether the spec is a hexagon with any of its six sides open to anyone."""
-    if board_shape(spec) != "hexagon":
-        return False
-    rules = spec.get("rules")
-    wrap = rules.get("wrap") if isinstance(rules, dict) else None
-    return any(
-        value not in (None, "none")
-        for values in wrap_stated(wrap, "hexagon").values()
-        for value in values
-    )
 
 
 def _check_hexagon_coherence(
@@ -2984,8 +3297,10 @@ def _check_npc_coherence(
       nobody to lose it;
     * **two routes sharing a square**, or one route visiting a square twice -- which
       square is *next* has to be a fact about the square alone, or ``npc_next`` is not a
-      table and the core has to know which wild piece it is looking at;
-    * **a wild piece starting under the opening array** -- two pieces on one square;
+      table and the core has to know which wild piece it is looking at. Several wild
+      pieces on *one* route are schema 23's ``also_at``, which keeps the tables a route's;
+    * **a wild piece starting under the opening array** -- two pieces on one square, for
+      every start, ``also_at``'s included;
     * **``strike``, ``explode_on_capture`` and a ``turn`` longer than one move** -- the
       first two are two rules saying what happens when a piece is taken (the shape
       ``_check_strike_coherence`` refuses), and the third puts the phase *between turns*
@@ -3039,7 +3354,8 @@ def _check_npc_coherence(
                 errors.append(
                     f"{where} and {seen[square]} both walk {name}; routes may not share "
                     "a square, because which square is next has to be a fact about the "
-                    "square alone"
+                    "square alone. To put more than one wild piece on one route, list "
+                    "the others' starting squares in that entry's also_at"
                 )
             else:
                 seen[square] = where
@@ -3062,9 +3378,10 @@ def _check_npc_coherence(
                         file, rank, width, height, orientation
                     )
                     standing.add(other_rank * width + other_file)
-    for where, squares in routes:
-        if squares and squares[0] in standing:
-            start = format_square(squares[0] % width, squares[0] // width)
+    # Every start, not only a route's first square (schema 23's ``also_at``).
+    for _, where, square in npc_starts(rules, width, height, orientation):
+        if square in standing:
+            start = format_square(square % width, square // width)
             errors.append(
                 f"{where} starts on {start}, where setup.placements stands a piece; a "
                 "wild piece needs an empty square to start from"
@@ -3900,7 +4217,7 @@ def _validate_pieces(
         errors.append(f"at most {MAX_PIECE_TYPES} piece types, got {len(pieces)}")
     elif len(pieces) + portal_extra_types(rules) > MAX_PIECE_TYPES:
         errors.append(
-            f"at most {MAX_PIECE_TYPES} piece types, and rules.portals adds two per pair: "
+            f"at most {MAX_PIECE_TYPES} piece types, and rules.portals adds one per end: "
             f"{len(pieces)} declared and {portal_extra_types(rules)} portal ends"
         )
 
@@ -4010,6 +4327,9 @@ def _validate_facing(
                 for i in range(0, len(FACING_NAMES), len(FACING_NAMES) // axes)
             )
         )
+
+    if "turns" in facing and not isinstance(facing["turns"], bool):
+        errors.append(f"{where}.facing.turns must be a boolean")
 
     if piece.get("royal", False):
         errors.append(
@@ -5030,6 +5350,104 @@ def npc_routes(
     return routes
 
 
+def npc_starts(
+    rules: Any, width: int, height: int, orientation: str = "mirror"
+) -> list[tuple[int, str, int]]:
+    """Where every wild piece stands at ply zero: ``(entry index, label, square)``.
+
+    Per entry, the route's first square and then each ``also_at`` square (schema 23) in
+    the order written, which the validator holds to route order; a mirrored entry's starts
+    follow its original's, each reflected as its route is. With no ``also_at`` this is
+    one start per route of ``npc_routes``, in the same order, which is what keeps every
+    earlier game's opening position where it was. Shared with ``engine.compile`` for the
+    reason ``npc_routes`` is.
+
+    An ``also_at`` square that is malformed or not on its route is skipped rather than
+    raised on: the validator is still collecting the errors about it.
+    """
+    if not isinstance(rules, dict):
+        return []
+    npcs = rules.get("npcs")
+    if not isinstance(npcs, list):
+        return []
+    starts: list[tuple[int, str, int]] = []
+    for index, npc in enumerate(npcs):
+        if not isinstance(npc, dict) or not isinstance(npc.get("route"), list):
+            continue
+        route = [name for name in npc["route"] if isinstance(name, str)]
+        named = [route[0]] if route else []
+        also = npc.get("also_at")
+        if isinstance(also, list):
+            named += [name for name in also if isinstance(name, str) and name in route[1:]]
+        own: list[tuple[str, int]] = []
+        mirrored: list[tuple[str, int]] = []
+        for position, name in enumerate(named):
+            coords = parse_square(name, width, height)
+            if coords is None:
+                continue
+            file, rank = coords
+            other_file, other_rank = reflect_square(file, rank, width, height, orientation)
+            suffix = "" if position == 0 else f".also_at {name}"
+            own.append((f"rules.npcs[{index}]{suffix}", rank * width + file))
+            mirrored.append(
+                (f"rules.npcs[{index}]{suffix} (mirrored)", other_rank * width + other_file)
+            )
+        starts += [(index, where, square) for where, square in own]
+        if npc.get("mirror") is True:
+            starts += [(index, where, square) for where, square in mirrored]
+    return starts
+
+
+def _validate_npc_also_at(npc: dict[str, Any], loc: str, errors: list[str]) -> None:
+    """Schema 23: more wild pieces of the entry's kind on the entry's own route.
+
+    Squares of the route other than its first (which is the entry's own piece's start),
+    each once, in route order -- so a game has one spelling: the extras share the entry's
+    type, bounty and immunity by construction, and listing them any other way, or
+    rotating the route so a different piece is "first", would say the same game twice.
+    Each piece walks the route in step with the others; the core steps them front first
+    (``docs/reference/engine-and-spec-record.md``, schema 23).
+    """
+    if "also_at" not in npc:
+        return
+    also = npc["also_at"]
+    route = npc.get("route")
+    if not isinstance(also, list) or not also:
+        errors.append(f"{loc}.also_at must be a non-empty array of squares on its route")
+        return
+    if not isinstance(route, list):
+        return
+    names = [name for name in route if isinstance(name, str)]
+    positions: list[int] = []
+    for name in also:
+        if not isinstance(name, str):
+            errors.append(f"{loc}.also_at entry {name!r} is not a square")
+        elif names and name == names[0]:
+            errors.append(
+                f"{loc}.also_at names {name}, the route's first square, where the entry's "
+                "own wild piece starts; list only the others"
+            )
+        elif name not in names:
+            errors.append(
+                f"{loc}.also_at names {name}, which is not on its route; a further wild "
+                "piece walks the entry's own route"
+            )
+        else:
+            positions.append(names.index(name))
+    repeated = sorted({name for name in also if isinstance(name, str) and also.count(name) > 1})
+    if repeated:
+        errors.append(
+            f"{loc}.also_at names {', '.join(repeated)} twice; one wild piece stands on a "
+            "square"
+        )
+    elif positions != sorted(positions):
+        in_order = [names[position] for position in sorted(positions)]
+        errors.append(
+            f"{loc}.also_at must list its squares in route order ({', '.join(in_order)}), "
+            "so the game has one spelling"
+        )
+
+
 def _validate_npcs(
     npcs: Any,
     piece_ids: list[str],
@@ -5077,6 +5495,8 @@ def _validate_npcs(
         if "mirror" in npc and not isinstance(npc["mirror"], bool):
             errors.append(f"{loc}.mirror must be a boolean")
 
+        _validate_npc_also_at(npc, loc, errors)
+
         _validate_npc_immune(npc, loc, rules or {}, piece_ids, errors)
 
     _check_one_immunity_per_type(npcs, errors)
@@ -5089,80 +5509,228 @@ def _validate_portals(
     height: int,
     errors: list[str],
 ) -> None:
-    """The shape of ``rules.portals`` (schema 19): pairs, each with two squares.
+    """The shape of ``rules.portals`` (schemas 19 and 21): groups, each a pair or a map.
 
-    What may stand beside portals, and where, is ``_check_portal_coherence``'s.
+    What may stand beside portals, where they may stand and what ``carries`` may name is
+    ``_check_portal_coherence``'s.
     """
     if portals is None:
         return
     if not isinstance(portals, list) or not portals:
-        errors.append("rules.portals must be a non-empty array of portal pairs")
+        errors.append("rules.portals must be a non-empty array of portal groups")
         return
-    if len(portals) > MAX_PORTAL_PAIRS:
+    if len(portals) > MAX_PORTAL_GROUPS:
         errors.append(
-            f"rules.portals holds {len(portals)} pairs; at most {MAX_PORTAL_PAIRS}, because a "
-            "pair's number is shown on its portals"
+            f"rules.portals holds {len(portals)} groups; at most {MAX_PORTAL_GROUPS}, because "
+            "a group's number and colour are shown on its portals"
         )
-    for index, pair in enumerate(portals):
+    n_ends = sum(
+        len(group["ends"]) if isinstance(group.get("ends"), list) else 2
+        for group in portals if isinstance(group, dict)
+    )
+    if n_ends > MAX_PORTAL_ENDS:
+        errors.append(
+            f"rules.portals has {n_ends} ends; at most {MAX_PORTAL_ENDS} across every group"
+        )
+    for index, group in enumerate(portals):
         loc = f"rules.portals[{index}]"
-        if not isinstance(pair, dict):
-            errors.append(f"{loc} must be an object with 'piece', 'orange' and 'blue'")
+        if not isinstance(group, dict):
+            errors.append(
+                f"{loc} must be an object with 'piece' and either 'orange' and 'blue' or 'ends'"
+            )
             continue
-        _check_keys(pair, _PORTAL_KEYS, loc, errors, required={"piece", "orange", "blue"})
-        piece = pair.get("piece")
+        piece = group.get("piece")
         if piece not in piece_ids:
             errors.append(f"{loc}.piece {piece!r} is not a declared piece")
-        for end in PORTAL_ENDS:
-            name = pair.get(end)
-            if not isinstance(name, str) or parse_square(name, width, height) is None:
-                errors.append(f"{loc}.{end} must be a square on the board, got {name!r}")
-        if (
-            pair.get("orange") == pair.get("blue")
-            and isinstance(pair.get("orange"), str)
-            and parse_square(pair["orange"], width, height) is not None
-        ):
-            errors.append(f"{loc} puts both ends on {pair['orange']}; a pair needs two squares")
-        moved_by = pair.get("moved_by")
-        if moved_by is not None:
-            if not isinstance(moved_by, dict):
-                errors.append(f"{loc}.moved_by must be an object keyed by 'orange' and 'blue'")
-            else:
-                for key in moved_by:
-                    if key not in PORTAL_ENDS:
-                        errors.append(
-                            f"{loc}.moved_by has unknown key {key!r}; it names the ends "
-                            "'orange' and 'blue'"
-                        )
-                for end, players in moved_by.items():
-                    if end not in PORTAL_ENDS:
-                        continue
-                    if (
-                        not isinstance(players, list)
-                        or any(p not in (0, 1) or isinstance(p, bool) for p in players)
-                        or len(set(players)) != len(players)
-                    ):
-                        errors.append(
-                            f"{loc}.moved_by.{end} must be a list of distinct players, "
-                            "drawn from 0 and 1 ([] for nobody)"
-                        )
-        passage = pair.get("passage")
-        if passage is not None:
-            if not isinstance(passage, dict):
-                errors.append(f"{loc}.passage must be an object keyed by player, '0' and '1'")
-            else:
-                for key, word in passage.items():
-                    if key not in ("0", "1"):
-                        errors.append(
-                            f"{loc}.passage has unknown key {key!r}; it is keyed by player, "
-                            "'0' and '1'"
-                        )
-                    elif word not in PORTAL_PASSAGES:
-                        errors.append(
-                            f"{loc}.passage.{key} must be one of {PORTAL_PASSAGES}, got "
-                            f"{word!r}"
-                        )
-        if "no_straight_back" in pair and not isinstance(pair["no_straight_back"], bool):
+        if "no_straight_back" in group and not isinstance(group["no_straight_back"], bool):
             errors.append(f"{loc}.no_straight_back must be true or false")
+        if "kind" in group:
+            if group["kind"] not in PORTAL_KINDS:
+                errors.append(f"{loc}.kind must be \"fold\", got {group['kind']!r}")
+            elif group["kind"] == "momentum":
+                errors.append(
+                    f"{loc}.kind \"momentum\" is the default: drop it, so the group has one "
+                    "spelling and the game one hash"
+                )
+        if "ends" in group:
+            _validate_portal_ends(group, loc, width, height, errors)
+        else:
+            _validate_portal_pair(group, loc, width, height, errors)
+
+
+def _players_problem(players: Any) -> bool:
+    """Whether a list of players is malformed: not a list of distinct 0s and 1s."""
+    return (
+        not isinstance(players, list)
+        or any(p not in (0, 1) or isinstance(p, bool) for p in players)
+        or len(set(players)) != len(players)
+    )
+
+
+def _carries_problem(carries: Any) -> str | None:
+    """What is wrong with the shape of one end's ``carries``, or ``None``."""
+    if not isinstance(carries, list) or not all(isinstance(pid, str) for pid in carries):
+        return "must be a list of piece ids"
+    if not carries:
+        return (
+            "is empty, so no piece may go in by this end; say that with who may enter "
+            "(passage 'closed' on a pair, no 'to' on an end of a map) instead"
+        )
+    if len(set(carries)) != len(carries):
+        return "names a piece twice"
+    return None
+
+
+def _validate_portal_pair(
+    pair: dict[str, Any], loc: str, width: int, height: int, errors: list[str],
+) -> None:
+    """A group written as a pair: ``orange`` and ``blue`` (schema 19), ``carries`` (21).
+
+    A missing end is said as a square that is not on the board, as a blank one is, so a
+    pair half written reads the same however it is half written.
+    """
+    _check_keys(pair, _PORTAL_KEYS, loc, errors, required={"piece"})
+    for end in PORTAL_ENDS:
+        name = pair.get(end)
+        if not isinstance(name, str) or parse_square(name, width, height) is None:
+            errors.append(f"{loc}.{end} must be a square on the board, got {name!r}")
+    if (
+        pair.get("orange") == pair.get("blue")
+        and isinstance(pair.get("orange"), str)
+        and parse_square(pair["orange"], width, height) is not None
+    ):
+        errors.append(f"{loc} puts both ends on {pair['orange']}; a pair needs two squares")
+    moved_by = pair.get("moved_by")
+    if moved_by is not None:
+        if not isinstance(moved_by, dict):
+            errors.append(f"{loc}.moved_by must be an object keyed by 'orange' and 'blue'")
+        else:
+            for key in moved_by:
+                if key not in PORTAL_ENDS:
+                    errors.append(
+                        f"{loc}.moved_by has unknown key {key!r}; it names the ends "
+                        "'orange' and 'blue'"
+                    )
+            for end, players in moved_by.items():
+                if end in PORTAL_ENDS and _players_problem(players):
+                    errors.append(
+                        f"{loc}.moved_by.{end} must be a list of distinct players, "
+                        "drawn from 0 and 1 ([] for nobody)"
+                    )
+    passage = pair.get("passage")
+    if passage is not None:
+        if not isinstance(passage, dict):
+            errors.append(f"{loc}.passage must be an object keyed by player, '0' and '1'")
+        else:
+            for key, word in passage.items():
+                if key not in ("0", "1"):
+                    errors.append(
+                        f"{loc}.passage has unknown key {key!r}; it is keyed by player, "
+                        "'0' and '1'"
+                    )
+                elif word not in PORTAL_PASSAGES:
+                    errors.append(
+                        f"{loc}.passage.{key} must be one of {PORTAL_PASSAGES}, got "
+                        f"{word!r}"
+                    )
+    carries = pair.get("carries")
+    if carries is not None:
+        if not isinstance(carries, dict) or not carries:
+            errors.append(
+                f"{loc}.carries must be a non-empty object keyed by 'orange' and 'blue'"
+            )
+        else:
+            for end, listed in carries.items():
+                if end not in PORTAL_ENDS:
+                    errors.append(
+                        f"{loc}.carries has unknown key {end!r}; it names the ends "
+                        "'orange' and 'blue'"
+                    )
+                elif (problem := _carries_problem(listed)) is not None:
+                    errors.append(f"{loc}.carries.{end} {problem}")
+
+
+def _validate_portal_ends(
+    group: dict[str, Any], loc: str, width: int, height: int, errors: list[str],
+) -> None:
+    """A group written with ``ends`` (schema 21, `docs/plan-portals-2.md` §2.1).
+
+    Refused: a destination outside the group or itself; an end nobody can use (no ``to``,
+    and no end leads to it); ``enter`` on an end that leads nowhere, or naming nobody (the
+    same end as one with no ``to``); and a group of two ends, which is always a pair --
+    two that lead to each other, or one way, which a pair's ``passage`` says -- so a pair
+    has one spelling and one hash.
+    """
+    _check_keys(group, _PORTAL_ENDS_KEYS, loc, errors, required={"piece", "ends"})
+    ends = group.get("ends")
+    if not isinstance(ends, list) or not all(isinstance(end, dict) for end in ends):
+        errors.append(f"{loc}.ends must be a list of ends, each an object with 'at'")
+        return
+    if len(ends) < 3:
+        errors.append(
+            f"{loc}.ends has {len(ends)} ends; two ends are a pair, written with 'orange' "
+            "and 'blue' (and 'passage' for one way), so a group of ends has three or more"
+        )
+    led_to = {
+        end.get("to") for end in ends
+        if isinstance(end.get("to"), int) and not isinstance(end.get("to"), bool)
+    }
+    seen: dict[str, int] = {}
+    for place, end in enumerate(ends):
+        where = f"{loc}.ends[{place}]"
+        _check_keys(end, _PORTAL_END_KEYS, where, errors, required={"at"})
+        name = end.get("at")
+        if not isinstance(name, str) or parse_square(name, width, height) is None:
+            errors.append(f"{where}.at must be a square on the board, got {name!r}")
+        elif name in seen:
+            errors.append(
+                f"{where}.at {name} is also {loc}.ends[{seen[name]}]; a group's ends need "
+                "squares of their own"
+            )
+        else:
+            seen[name] = place
+        to = end.get("to")
+        if "to" in end:
+            if not isinstance(to, int) or isinstance(to, bool) or not 0 <= to < len(ends):
+                errors.append(
+                    f"{where}.to must be the index of another end of this group, 0 to "
+                    f"{len(ends) - 1}, got {to!r}; a destination is always in its own group"
+                )
+            elif to == place:
+                errors.append(f"{where}.to is the end itself; an end leads to another end")
+        elif place not in led_to:
+            errors.append(
+                f"{where} leads nowhere and no end leads to it, so nobody can use it; give "
+                "it a 'to' or lead another end to it"
+            )
+        if "enter" in end:
+            if _players_problem(end["enter"]):
+                errors.append(
+                    f"{where}.enter must be a list of distinct players, drawn from 0 and 1"
+                )
+            elif "to" not in end:
+                errors.append(
+                    f"{where}.enter says who may go in, but the end leads nowhere (no 'to'); "
+                    "drop it"
+                )
+            elif not end["enter"]:
+                errors.append(
+                    f"{where}.enter is empty, so nobody goes in by it: that is an end with no "
+                    "'to', a way out only; write it that way"
+                )
+        if "moved_by" in end and _players_problem(end["moved_by"]):
+            errors.append(
+                f"{where}.moved_by must be a list of distinct players, drawn from 0 and 1 "
+                "([] for nobody)"
+            )
+        if "carries" in end:
+            if (problem := _carries_problem(end["carries"])) is not None:
+                errors.append(f"{where}.carries {problem}")
+            elif "to" not in end:
+                errors.append(
+                    f"{where}.carries says which pieces may go in, but the end leads nowhere "
+                    "(no 'to'); drop it"
+                )
 
 
 def _check_portal_coherence(
@@ -5186,7 +5754,7 @@ def _check_portal_coherence(
     """
     if "portals" not in rules or not isinstance(rules.get("portals"), list):
         return
-    pairs = portal_pairs(rules)
+    groups = portal_groups(rules)
     board = spec.get("board")
     width = board.get("width") if isinstance(board, dict) else None
     height = board.get("height") if isinstance(board, dict) else None
@@ -5227,7 +5795,7 @@ def _check_portal_coherence(
                 f"piece {pid!r} has a region, which rules.portals refuses in this schema: an "
                 "exit could put the piece outside it"
             )
-    clashing = sorted(set(portal_end_ids(len(pairs))) & set(declared))
+    clashing = sorted(set(portal_end_ids(groups)) & set(declared))
     if clashing:
         errors.append(
             f"piece id {', '.join(repr(c) for c in clashing)} is the name of a portal end "
@@ -5238,6 +5806,7 @@ def _check_portal_coherence(
     for pid in sorted(portal_ids & set(declared)):
         _check_portal_piece(pid, declared[pid], rules, orientation, errors)
         _check_portal_type_used_nowhere_else(spec, pid, pieces, rules, errors)
+    _check_fold_pieces(groups, declared, errors)
 
     # The squares: on the board, not a wall or an absent cell, empty in the setup, and no
     # two ends on one square.
@@ -5246,29 +5815,248 @@ def _check_portal_coherence(
     for pid in declared:
         occupied |= {(f, r) for _, f, r in _placed_squares(setup, pid, width, height, orientation)}
     seen: dict[str, str] = {}
-    for index, pair in enumerate(pairs):
-        for end in PORTAL_ENDS:
-            name = pair[end]
+    for group in groups:
+        for end in group["ends"]:
+            name = end["at"]
             coords = parse_square(name, width, height) if isinstance(name, str) else None
             if coords is None:
                 continue
-            loc = f"rules.portals[{index}].{end}"
+            loc = f"rules.portals[{group['index']}].{end['key']}"
             file, rank = coords
             if rank * width + file in walls:
                 errors.append(f"{loc} {name} is a wall or not on the board's shape")
-            if (file, rank) in occupied:
+            # Schema 22 (§3.2 rule 10): a fold is occupiable, so it may start under a piece.
+            if (file, rank) in occupied and group["kind"] != "fold":
                 errors.append(f"{loc} {name} is a square setup.placements puts a piece on")
             if name in seen:
                 errors.append(f"{loc} {name} is also {seen[name]}; two portals on one square")
             seen.setdefault(name, loc)
     # Schema 20: a bar on going straight back needs somebody to move an end, or it is one
     # game under two hashes (`_check_inert_rules`' argument).
-    for index, pair in enumerate(pairs):
-        if pair["no_straight_back"] and not any(pair["moved_by"][end] for end in PORTAL_ENDS):
+    for group in groups:
+        if group["no_straight_back"] and not any(end["moved_by"] for end in group["ends"]):
             errors.append(
-                f"rules.portals[{index}].no_straight_back is true but nobody may move either "
-                "end of the pair, so there is never a move to bar; drop it or set moved_by"
+                f"rules.portals[{group['index']}].no_straight_back is true but nobody may "
+                "move any end of the group, so there is never a move to bar; drop it or set "
+                "moved_by"
             )
+    _check_portal_carries(groups, declared, errors)
+
+
+def _refuse_a_one_square_lame_leap(spec: dict[str, Any], errors: list[str]) -> None:
+    """Q884: a ``lame`` vector of one square (``[1, 0]``, ``[0, 1]``, ``[1, 1]``, any signs).
+
+    A lame leap is blocked by a piece on the square it passes over (`compile._lame_path`),
+    and a one-square step passes over none: its leg is its own target. The compiler drops
+    such a move (``block in (target, square)``), so a spec that wrote one got a piece
+    silently lacking it. The xiangqi horse's ``[1, 2]`` and elephant's ``[2, 2]`` have a leg
+    and are untouched.
+
+    It runs only on a new spec (``validate_spec``'s ``new``), like
+    ``_refuse_a_portal_bar_no_move_meets``: the move was never played, so a stored spec that
+    carries one plays exactly as it always did and still builds its engine.
+    """
+    pieces = spec.get("pieces")
+    for p_index, piece in enumerate(pieces if isinstance(pieces, list) else ()):
+        moves = piece.get("moves") if isinstance(piece, dict) else None
+        for m_index, move in enumerate(moves if isinstance(moves, list) else ()):
+            vectors = move.get("vectors") if isinstance(move, dict) else None
+            if not isinstance(move, dict) or move.get("kind") != "lame":
+                continue
+            for v_index, vector in enumerate(vectors if isinstance(vectors, list) else ()):
+                if (
+                    isinstance(vector, list) and len(vector) == 2
+                    and all(isinstance(c, int) and not isinstance(c, bool) for c in vector)
+                    and vector != [0, 0] and max(abs(vector[0]), abs(vector[1])) == 1
+                ):
+                    errors.append(
+                        f"pieces[{p_index}].moves[{m_index}].vectors[{v_index}] {vector} is a "
+                        "one-square 'lame' leap, which has no square to be blocked on; use an "
+                        "ordinary 'leap' or a 'slide' of range 1 instead"
+                    )
+
+
+def _refuse_a_portal_bar_no_move_meets(spec: dict[str, Any], errors: list[str]) -> None:
+    """Q879: every ``no_straight_back`` some end of its group is moved by, asked whether a
+    move can ever meet it (`_check_portal_bar_can_bind`).
+
+    It runs only on a new spec (``validate_spec``'s ``new``), as
+    ``_refuse_a_promotion_rank_past_the_board`` does and for its reason: the bar never
+    removes a move, so a spec that already carries one plays as it always did, and a game
+    stored before the refusal -- a visitor's published page, its match replays, a corpus
+    entry -- still builds its engine. A group nobody moves is `_check_portal_coherence`'s,
+    refused always, as it was from schema 20.
+    """
+    for refusals in _portal_bar_refusals(spec):
+        errors.extend(refusals or ())
+
+
+def portal_bars_that_can_bind(spec: dict[str, Any]) -> tuple[bool, ...]:
+    """Per portal group, in `portal_groups` order: whether its ``no_straight_back`` can ever
+    bar a move -- false for a group without one, and for one `_check_portal_bar_can_bind`
+    finds no move can meet.
+
+    Q883: the compiler's reading of the bar (`engine.compile._compile_portals`), so a bar
+    the core keeps and keys is exactly one this refusal admits. A stored spec built with
+    ``new=False`` may carry an inert one; it compiles to no bar at all, so two positions
+    alike in everything that affects play get one key.
+    """
+    return tuple(bool(refusals == []) for refusals in _portal_bar_refusals(spec))
+
+
+def _portal_bar_refusals(spec: dict[str, Any]) -> list[list[str] | None]:
+    """Per portal group: ``None`` without a bar some end is moved by, else what
+    `_check_portal_bar_can_bind` says against it (empty when a move can meet it)."""
+    rules = spec.get("rules")
+    if not isinstance(rules, dict) or not isinstance(rules.get("portals"), list):
+        return []
+    groups = portal_groups(rules)
+    pieces = spec.get("pieces")
+    declared = {
+        piece["id"]: piece
+        for piece in (pieces if isinstance(pieces, list) else ())
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+    }
+    setup = spec.get("setup")
+    orientation = str(setup.get("orientation", "mirror")) if isinstance(setup, dict) else "mirror"
+    out: list[list[str] | None] = []
+    for group in groups:
+        if group["no_straight_back"] and any(end["moved_by"] for end in group["ends"]):
+            refusals: list[str] = []
+            _check_portal_bar_can_bind(group, groups, declared, rules, orientation, refusals)
+            out.append(refusals)
+        else:
+            out.append(None)
+    return out
+
+
+def _check_portal_bar_can_bind(
+    group: dict[str, Any], groups: list[dict[str, Any]], declared: dict[str, Any],
+    rules: dict[str, Any], orientation: str, errors: list[str],
+) -> None:
+    """A ``no_straight_back`` some end of its group is moved by, but no move can meet.
+
+    The bar binds one move only: the move straight after an end of the group was moved,
+    and only that end, back onto the square it left. So it can ever refuse a move only
+    where (a) whoever moves next may move the same end -- the other player, unless a turn
+    is longer than one move -- and (b) the end's own moves can undo one another. Both are
+    read off the spec: (a) from each end's ``moved_by`` and ``rules.turn``, (b) from the
+    group piece's directions. Each move a portal makes goes a whole number of its vector's
+    steps (a leap, a slide, a hop or a lame leap alike), so on a board with no wrap a move
+    back needs a direction and its opposite; that clause is not asked round a wrap (where
+    two steps one way can come back) or beside a fold (a move through one leaves the line).
+
+    Without the bar the game is the same game: the bar never removes a move. Before Q883 the
+    core still keyed the position by the bar it set, so a draw by repetition could read one
+    position as two; the compiler now reads this same check (`portal_bars_that_can_bind`)
+    and hands such a bar to the core as none, and the core keeps a bar only when the
+    player to move next may move that end. Sluice's draft
+    (Q844, `docs/reference/portal-showcase-ideas.md`) carried one: each gate moved by the
+    player it threatens alone.
+    """
+    loc = f"rules.portals[{group['index']}].no_straight_back is true but"
+    movers = [end for end in group["ends"] if end["moved_by"]]
+    if not turn_is_long(rules) and all(len(end["moved_by"]) < 2 for end in movers):
+        each = ", ".join(
+            f"{end['key']} only by player {next(iter(end['moved_by']))}" for end in movers
+        )
+        errors.append(
+            f"{loc} it could never bar a move: it binds only the very next move, which is "
+            f"always the other player's, and each end that moves is moved by one player "
+            f"only ({each}); drop it, or let both players move an end"
+        )
+        return
+    if _wrap_joins_an_edge(rules.get("wrap")) or any(g["kind"] == "fold" for g in groups):
+        return
+    piece = declared.get(group["piece"])
+    moves = piece.get("moves") if isinstance(piece, dict) else None
+    directions: set[tuple[int, int]] = set()
+    for move in moves if isinstance(moves, list) else ():
+        vectors = move.get("vectors") if isinstance(move, dict) else None
+        symmetry = move.get("symmetry", "none") if isinstance(move, dict) else None
+        if not isinstance(vectors, list) or symmetry not in SQUARE_SYMMETRIES:
+            return  # refused by name elsewhere; nothing to read a direction from
+        for vector in vectors:
+            if not (
+                isinstance(vector, list) and len(vector) == 2
+                and all(isinstance(c, int) and not isinstance(c, bool) for c in vector)
+                and vector != [0, 0]
+            ):
+                continue
+            for dx, dy in expand_symmetry((vector[0], vector[1]), symmetry):
+                step = gcd(dx, dy)
+                directions.add((dx // step, dy // step))
+                # The second player's reading, whichever way the setup turns it.
+                flipped = (-dx, -dy) if orientation == "rotate" else (dx, -dy)
+                directions.add((flipped[0] // step, flipped[1] // step))
+    if directions and not any((-dx, -dy) in directions for dx, dy in directions):
+        errors.append(
+            f"{loc} it could never bar a move: piece {group['piece']!r} has no move in the "
+            "opposite direction to another, so an end it moves can never go straight back "
+            "onto the square it left; drop it, or give the piece a move back"
+        )
+
+
+def _check_fold_pieces(
+    groups: list[dict[str, Any]], declared: dict[str, Any], errors: list[str],
+) -> None:
+    """Schema 22: what a fold's own piece may not say (`docs/plan-portals-2.md` §3.2).
+
+    A fold stands on no square of the board byte, so it has no unmoved state of its own:
+    the square's ``unmoved`` bit belongs to whatever piece stands in it. A ``first_move``
+    condition on a fold's moves would read the wrong thing, so it is refused.
+    """
+    for group in groups:
+        if group["kind"] != "fold" or group["piece"] not in declared:
+            continue
+        moves = declared[group["piece"]].get("moves")
+        for index, move in enumerate(moves if isinstance(moves, list) else ()):
+            condition = move.get("condition") if isinstance(move, dict) else None
+            if isinstance(condition, dict) and "first_move" in condition:
+                errors.append(
+                    f"piece {group['piece']!r} moves[{index}] may not have a first_move "
+                    f"condition: rules.portals[{group['index']}] is a fold, which stands on "
+                    "no square of its own and so has no first move"
+                )
+
+
+def _check_portal_carries(
+    groups: list[dict[str, Any]], declared: dict[str, Any], errors: list[str],
+) -> None:
+    """Schema 21: what an end's ``carries`` may name (`docs/plan-portals-2.md` §2.3).
+
+    Declared pieces that are not portals, royals included. Refused: a filter on an end
+    nobody may go in by (it states nothing), and one naming every piece that can move (it
+    lets in what no filter would). A promoted piece is filtered by what it is now, which is
+    the compiler's reading and needs nothing here.
+    """
+    portal_ids = {group["piece"] for group in groups}
+    movers = {pid for pid, piece in declared.items() if piece.get("moves")} - portal_ids
+    for group in groups:
+        for end in group["ends"]:
+            carries = end["carries"]
+            if carries is None:
+                continue
+            group_loc = f"rules.portals[{group['index']}]"
+            loc = (
+                f"{group_loc}.{end['key']}.carries" if group["spelling"] == "ends"
+                else f"{group_loc}.carries.{end['key']}"
+            )
+            for pid in sorted(carries):
+                if pid not in declared:
+                    errors.append(f"{loc} names {pid!r}, which is not a declared piece")
+                elif pid in portal_ids:
+                    errors.append(f"{loc} names {pid!r}, a portal; a portal never goes in")
+            if not end["enter"]:
+                errors.append(
+                    f"{loc} says which pieces may go in, but nobody may go in by this end; "
+                    "drop it"
+                )
+            elif movers and movers <= carries:
+                errors.append(
+                    f"{loc} names every piece that can move, so it lets in what no filter "
+                    "would; drop it"
+                )
 
 
 def _check_portal_piece(

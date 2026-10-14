@@ -1,9 +1,15 @@
-# The rule language
+# The rule language, schema version 25
 
-This is the whole language a game is written in, at schema version 20. A game
+This is the whole language a game is written in, at schema version 25. A game
 is one JSON file. It says how big the board is, what pieces there are and how each moves,
 where they start, and how the game is won; nothing about a game lives anywhere else. A
 person can write one by hand, or give this file to an AI and ask it for one.
+
+**Which version.** A game written from this reference should declare
+`"schema_version": 25`. A site or checkout running a later version still
+accepts it, because every version ever cut stays accepted, and a file may use only what
+the version it declares had. The site serves the reference for the version it runs at
+`/rules.md`; when that copy names a later version than this one, write from that copy.
 
 <!-- Generated from the schema by `uv run chess-variant-sandbox rules-reference --out RULES.md`. Do not edit by hand. -->
 
@@ -47,7 +53,7 @@ that silently does nothing.
 
 ## The top level
 
-- **`schema_version`**: integer from 1 to 20. Optional; default 20, the version this reference describes. Which version of this language the file is written in. A file may declare any version from 1 up, but may use only what that version had; declaring the version this reference describes makes every key below available.
+- **`schema_version`**: integer from 1 to 25. Optional; default 25, the version this reference describes. Which version of this language the file is written in. A file may declare any version from 1 up, but may use only what that version had; declaring the version this reference describes makes every key below available.
 - **`name`**: string, at least 1. Required. The game's name, shown wherever the game is listed. It must not be blank.
 - **`description`**: string. Optional; default empty. How the game plays and what makes it worth playing, in a few sentences.
 - **`board`**: object. Required. The size and shape of the board. See *board* below.
@@ -74,13 +80,14 @@ The size and shape of the board.
 - **`region`**: list of strings, at least 1. Optional. The only squares this piece may ever occupy, such as a palace or one bank of a river. Written for the first player and reflected. Algebraic squares such as a1 or e4.
 - **`promoted_from`**: string. Optional. The piece this one was promoted from. It only matters where captures go to hand, because a promoted piece returns as its modest original.
 - **`captures`**: list of strings. Optional; default the piece may capture any piece. The piece ids this one is allowed to capture. Omit it and the piece may capture anything, which is what every ordinary game means. State it and you get a dominance relation. Give rock ['S'], scissors ['P'] and paper ['R'] and no piece can take the one that takes it. An empty list is a piece that never captures.
-- **`facing`**: object. Optional. This piece has an orientation, and may spend a whole move turning to any other one instead of moving. Its move vectors are read rotated, so a pawn facing right advances east. Give it only to a piece whose moves are *not* symmetric under the turn -- a rook reads the same rays whichever way it faces, so turning one would be a move that does nothing, and the validator refuses that. A royal piece may not have one.
+- **`facing`**: object. Optional. This piece has an orientation, and (unless turns is false) may spend a whole move turning to any other one instead of moving. Its move vectors are read rotated, so a pawn facing right advances east. Give it only to a piece whose moves are *not* symmetric under the turn -- a rook reads the same rays whichever way it faces, so turning one would be a move that does nothing, and the validator refuses that. A royal piece may not have one.
   - **`axes`**: one of `2`, `4`. Required. How many directions this piece can point: 2 for forward and backward, 4 for the quarter turns.
   - **`initial`**: one of `"forward"`, `"right"`, `"backward"`, `"left"`. Optional; default `"forward"`. Which way it points at the start, relative to its own forward. It must be one the piece can turn back to, so a piece with 2 axes has only forward and backward.
+  - **`turns`**: boolean. Optional; default `true`. Whether a move may turn it. False is a facing no move turns: each piece points the way its placement says for the whole game, and one that enters play later points its initial way. A pawn placed facing backward stays a pawn going backward. Some placement must then point it a second way, or the facing would change nothing.
 
 ## `pieces[].moves`: one entry per way of moving
 
-- **`kind`**: one of `"slide"`, `"leap"`, `"hop"`, `"lame"`, `"sweep"`. Required. slide: step repeatedly, blocked by pieces. leap: jump straight to the target, ignoring anything between. hop: jump exactly one screening piece, then continue. lame: like leap, but blocked by a piece on the way, as the xiangqi horse is. sweep: jump to any square along the line, removing every piece passed over, friendly included; a piece it may not capture blocks, and a sweep that could pass over the enemy royal is check.
+- **`kind`**: one of `"slide"`, `"leap"`, `"hop"`, `"lame"`, `"sweep"`. Required. slide: step repeatedly, blocked by pieces. leap: jump straight to the target, ignoring anything between. hop: jump exactly one screening piece, then continue. lame: like leap, but blocked by a piece on the way, as the xiangqi horse is. A one-square vector has no square to be blocked on and is refused: use a leap or a range-1 slide. sweep: jump to any square along the line, removing every piece passed over, friendly included; a piece it may not capture blocks, and a sweep that could pass over the enemy royal is check.
 - **`vectors`**: list of `[dx, dy]` pairs (each number from -8 to 8), 1 to 8 entries. Required. The steps this move is made of, each `[dx, dy]` (see *Coordinates*). The symmetry turns each one into its images.
 - **`symmetry`**: one of `"none"`, `"lateral"`, `"rotate4"`, `"dihedral8"`, `"rotate6"`, `"dihedral12"`. Optional; default `"none"`. How the base vectors are expanded. none: as written. lateral: left-right mirror. rotate4: four right-angle rotations. dihedral8: all eight images, so [1,2] gives the knight. On a hex lattice only none, rotate6 (six 60-degree turns, so [1,0] gives the six neighbours) and dihedral12 (the six turns and their mirrors, so [1,2] gives the hex knight's twelve); the square's three turns are refused there, and the hex two on a square board.
 - **`range`**: integer from 0 to 16. Optional; default `0` for a slide, `0` for a hop, `1` for a leap, `1` for a lame, `0` for a sweep. Maximum distance of a slide or a hop; 0 means unlimited. Not for a leap or a lame leap, which are one jump per vector and refuse it. To reach further, list more vectors.
@@ -281,26 +288,37 @@ Each entry's keys:
 
 - **`piece`**: string. Required. A declared, non-royal piece id. The wild piece has that type's name, drawing and value, and eats what that type may capture; its moves are what it does in a player's hands, not how it walks.
 - **`route`**: list of strings, at least 1. Required. The squares it walks, in order and cyclically, starting on the first. Distinct squares, on no other wild piece's route, with no piece of the opening array on the first. One square is a wild piece that never moves. Algebraic squares such as a1 or e4.
+- **`also_at`**: list of strings, at least 1. Optional. More wild pieces of the same kind on this same route: the squares, other than the route's first, where each further one starts, listed in route order and with no piece of the opening array on any. Every one walks the route in step with the first; one that finds another in its way waits behind it. Leave the key out for one wild piece on the route. Algebraic squares such as a1 or e4.
 - **`bounty`**: number, at least 0. Optional; default the piece's value. What a player gains by taking it, read by rules.scoring with count 'points'. Defaults to the piece's value.
 - **`mirror`**: boolean. Optional; default `false`. Also place a second wild piece on the mirror image of the route, walking it in the same order. A route has a direction, so one wild piece is an asymmetry and a mirrored pair is not. Defaults to false.
 - **`immune`**: list of strings. Optional. The only piece ids that may take this wild piece; it is immune to every other. Leave the key out and anything may take it. Another wild piece is not bound by it. Not usable beside rules.drops, because capture permission is a fact about a type rather than about who owns it and the immunity would follow the piece out of a hand.
 
 ### `rules.portals`: portals
 
-*list of objects, 1 to 4 entries*. Leave it out for no such rule. Pairs of portals, numbered by their place in the list. A piece whose move ends on a portal end open to it does not stop there: it comes out of the pair's other end, one king's step beyond it in the direction it was travelling (right-and-up by any amounts comes out diagonally up and right), and its move ends there -- capturing, promoting or winning there as usual. A blocked exit (off the board, a wall, its own piece, a piece it may not take, another portal, or its own square) is no move. A portal is never captured. Not usable on a hex lattice or beside npcs, strike, contacts, explode_on_capture, territory, a sweep, or a piece region.
+*list of objects, 1 to 4 entries*. Leave it out for no such rule. Groups of portals, numbered by their place in the list (at most four groups and eight ends in all). A group is a pair (orange and blue, each leading to the other) or a map of ends (each leading to one other end of its group, or nowhere). A piece whose move ends on a portal end that lets it in does not stop there: it comes out of the end that one leads to, one king's step beyond it in the direction it was travelling (right-and-up by any amounts comes out diagonally up and right), and its move ends there -- capturing, promoting or winning there as usual. A blocked exit (off the board, a wall, its own piece, a piece it may not take, another portal, or its own square) is no move. An end that does not let a piece in is an uncapturable obstacle to it. A portal is never captured. A group with kind 'fold' works differently (see kind). Not usable on a hex lattice or beside npcs, strike, contacts, explode_on_capture, territory, a sweep, or a piece region.
 
 Each entry's keys:
 
-- **`piece`**: string. Required. A declared piece id whose moves the pair's ends use when a player moves one. It must be worth 0, not royal, not placed by setup.placements and named by no other rule; every move it has must say mode 'move' and read the same for both players. It may have no moves when nobody moves the pair.
-- **`orange`**: string. Required. Where the pair's orange end starts: an empty square, not a wall. Algebraic, such as c4.
-- **`blue`**: string. Required. Where the pair's blue end starts, likewise.
+- **`piece`**: string. Required. A declared piece id whose moves the group's ends use when a player moves one. It must be worth 0, not royal, not placed by setup.placements and named by no other rule; every move it has must say mode 'move' and read the same for both players. It may have no moves when nobody moves the group.
+- **`orange`**: string. Optional. Where the pair's first end starts: an empty square, not a wall. Algebraic, such as c4. The keys name the pair's two ends, this one first; both are drawn in the pair's colour.
+- **`blue`**: string. Optional. Where the pair's second end starts, likewise.
 - **`moved_by`**: object. Optional. Who may spend a turn moving each end of the pair, with the moves of the pair's `piece`. Leave it out and the portals never move.
-  - **`orange`**: list, each one of `0`, `1`. Optional; default `[]`, nobody. Which players may move the orange end, as a turn: [] for nobody (the default), [0], [1], or [0, 1] for either.
-  - **`blue`**: list, each one of `0`, `1`. Optional; default `[]`, nobody. Which players may move the blue end, as a turn: [] for nobody (the default), [0], [1], or [0, 1] for either.
+  - **`orange`**: list, each one of `0`, `1`. Optional; default `[]`, nobody. Which players may move the pair's first end (`orange` in the file), as a turn: [] for nobody (the default), [0], [1], or [0, 1] for either.
+  - **`blue`**: list, each one of `0`, `1`. Optional; default `[]`, nobody. Which players may move the pair's second end (`blue` in the file), as a turn: [] for nobody (the default), [0], [1], or [0, 1] for either.
 - **`passage`**: object. Optional. Which end each player's pieces may go in by. Leave it out and both ends work both ways for both players.
-  - **`0`**: one of `"both_ways"`, `"orange_to_blue"`, `"blue_to_orange"`, `"closed"`. Optional; default `"both_ways"`. Which end player 0's pieces may go in by: 'both_ways' (the default), 'orange_to_blue', 'blue_to_orange', or 'closed', when both ends are an uncapturable obstacle to that player.
-  - **`1`**: one of `"both_ways"`, `"orange_to_blue"`, `"blue_to_orange"`, `"closed"`. Optional; default `"both_ways"`. Which end player 1's pieces may go in by: 'both_ways' (the default), 'orange_to_blue', 'blue_to_orange', or 'closed', when both ends are an uncapturable obstacle to that player.
-- **`no_straight_back`**: boolean. Optional; default `false`. Schema 20. When true, a portal of this pair that has just been moved may not be moved straight back onto the square it came from on the very next move; it may go anywhere else, and back on the move after. Stops two players undoing each other's portal moves for ever. Needs somebody in moved_by. Default false.
+  - **`0`**: one of `"both_ways"`, `"orange_to_blue"`, `"blue_to_orange"`, `"closed"`. Optional; default `"both_ways"`. Which end player 0's pieces may go in by: 'both_ways' (the default), 'orange_to_blue' (in at the first end only), 'blue_to_orange' (in at the second end only), or 'closed', when both ends are an uncapturable obstacle to that player.
+  - **`1`**: one of `"both_ways"`, `"orange_to_blue"`, `"blue_to_orange"`, `"closed"`. Optional; default `"both_ways"`. Which end player 1's pieces may go in by: 'both_ways' (the default), 'orange_to_blue' (in at the first end only), 'blue_to_orange' (in at the second end only), or 'closed', when both ends are an uncapturable obstacle to that player.
+- **`carries`**: object. Optional. Schema 21. Which pieces may go in by each end of a pair, keyed by the end; an end not listed lets every piece in.
+  - **`orange`**: list of strings. Optional. Schema 21. The piece ids that may go in by the pair's first end; every other piece meets it as an uncapturable obstacle. Absent: every piece. Never empty, never every piece that can move, never a portal.
+  - **`blue`**: list of strings. Optional. Schema 21. The piece ids that may go in by the pair's second end; every other piece meets it as an uncapturable obstacle. Absent: every piece. Never empty, never every piece that can move, never a portal.
+- **`ends`**: list of objects, 3 to 8 entries. Optional. Schema 21. Three to eight ends, each leading to another of the group or nowhere: a ring (each to the next), a funnel (several to one way out), or any other map. Every end must lead somewhere or be led to. Two ends are a pair: write them as orange and blue instead.
+  - **`at`**: string. Required. Where this end starts: an empty square, not a wall. Algebraic, such as c4.
+  - **`to`**: integer from 0 to 7. Optional. The index in this group's ends of the end a piece that goes in here comes out of: never this end itself. Absent: a way out only, which nobody goes in by and pieces only come out of.
+  - **`enter`**: list, each one of `0`, `1`. Optional. Which players' pieces may go in by this end: [0], [1] or [0, 1] (the default). Only beside 'to'.
+  - **`moved_by`**: list, each one of `0`, `1`. Optional. Which players may move this end, as a turn: [] for nobody (the default), [0], [1] or [0, 1].
+  - **`carries`**: list of strings. Optional. The piece ids that may go in by this end; absent, every piece. Only beside 'to'.
+- **`no_straight_back`**: boolean. Optional; default `false`. Schema 20. When true, a portal of this group that has just been moved may not be moved straight back onto the square it came from on the very next move; it may go anywhere else, and back on the move after. Stops two players undoing each other's portal moves for ever. Needs an end that whoever moves next may move too (in moved_by for both players, or a turn longer than one move), and a portal piece with a move back; a bar no move can meet is refused. Default false.
+- **`kind`**: one of `"fold"`. Optional. Schema 24. 'fold' makes the group fold portals; absent, they are momentum portals (the default, never written). A fold is not a piece: its square may hold a piece of either side, which is captured there as anywhere, and may start under a piece. A move that ends on an empty fold that lets the piece in -- a leap, slide, hop or pawn's step -- may stay there, or go through and end on the end this one leads to instead, as a landing there: onto an empty square if the step could end on one, onto an enemy piece it may take (captured) if the step could capture, never onto its own piece or its own square, promoting by that square. One fold per move. A move that passes over a fold, or ends on one a piece stands in, is not changed by it. A fold that does not let a piece in, or leads nowhere, is plain floor to it. A fold moved by a player may land on a piece of either side (never on another portal), which then stands in it; moving it never moves that piece. Castling, drops and en passant never go through a fold, and a move through one opens no en passant.
 
 ### `rules.promote_on_entry`: promoting on arrival
 
@@ -445,7 +463,7 @@ example.
 
 ```json
 {
-  "schema_version": 20,
+  "schema_version": 25,
   "name": "Five by five",
   "description": "Chess on a five by five board: one rook, knight, bishop, queen and king a side behind five pawns. Pawns step one square and promote on the far rank; no castling, no en passant.",
   "board": {"width": 5, "height": 5},
@@ -526,7 +544,7 @@ example.
 
 ```json
 {
-  "schema_version": 20,
+  "schema_version": 25,
   "name": "Five by five with moving portals",
   "description": "The five by five game with a pair of portals on the middle rank, on b3 and d3. A piece whose move ends on one comes out one step beyond the other, in the direction it was going. Either player may spend a turn moving either portal one king's step to an empty square, but not straight back on the very next move.",
   "board": {"width": 5, "height": 5},

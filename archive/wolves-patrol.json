@@ -1,0 +1,325 @@
+{
+  "schema_version": 23,
+  "name": "wolf circuit",
+  "description": "Chess with two wolves on one patrol. A wolf belongs to neither player: it stands on the board from the first move and, after every move either player makes, steps to the next square of the patrol, eating whatever it finds there. The patrol is a sixteen-square circuit through the middle of the board: along the fourth row from a4 to h4, up to h5, back along the fifth row to a5, and down to a4 again. One wolf starts on a4 and the other on h5, half a lap apart, both walking the same way; a wolf that finds the other in its way waits behind it. A wolf is worth nothing to take, and only a knight can bring one down. A square a wolf will step to next is a square no king may stand on. Where wolves' four short patrols each keep to a wing, this one long walk sweeps the two middle rows, where the armies meet, and it eats more of both armies than wolves' four do.",
+  "board": {
+    "height": 8,
+    "width": 8
+  },
+  "pieces": [
+    {
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ],
+      "id": "P",
+      "moves": [
+        {
+          "kind": "slide",
+          "mode": "move",
+          "range": 1,
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ]
+        },
+        {
+          "condition": {
+            "from_rank": 1
+          },
+          "kind": "slide",
+          "min_range": 2,
+          "mode": "move",
+          "range": 2,
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ]
+        },
+        {
+          "kind": "leap",
+          "mode": "capture",
+          "symmetry": "lateral",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ]
+        }
+      ],
+      "name": "pawn",
+      "value": 1
+    },
+    {
+      "id": "N",
+      "moves": [
+        {
+          "kind": "leap",
+          "mode": "both",
+          "symmetry": "dihedral8",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ]
+        }
+      ],
+      "name": "knight",
+      "value": 3
+    },
+    {
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ],
+      "id": "B",
+      "moves": [
+        {
+          "kind": "slide",
+          "mode": "both",
+          "symmetry": "rotate4",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ]
+        }
+      ],
+      "name": "bishop",
+      "value": 3
+    },
+    {
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ],
+      "id": "R",
+      "moves": [
+        {
+          "kind": "slide",
+          "mode": "both",
+          "symmetry": "rotate4",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ]
+        }
+      ],
+      "name": "rook",
+      "value": 5
+    },
+    {
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ],
+      "id": "Q",
+      "moves": [
+        {
+          "kind": "slide",
+          "mode": "both",
+          "symmetry": "rotate4",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ]
+        }
+      ],
+      "name": "queen",
+      "value": 9
+    },
+    {
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ],
+      "id": "K",
+      "moves": [
+        {
+          "kind": "leap",
+          "mode": "both",
+          "symmetry": "rotate4",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ]
+        }
+      ],
+      "name": "king",
+      "royal": true,
+      "value": 0
+    },
+    {
+      "id": "W",
+      "moves": [
+        {
+          "kind": "leap",
+          "mode": "both",
+          "symmetry": "dihedral8",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ]
+        }
+      ],
+      "name": "wolf",
+      "value": 3
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "castling": {
+      "king": "K",
+      "king_steps": 2,
+      "rook": "R"
+    },
+    "en_passant": true,
+    "max_plies": 400,
+    "no_progress_draw": 100,
+    "npcs": [
+      {
+        "piece": "W",
+        "route": [
+          "a4",
+          "b4",
+          "c4",
+          "d4",
+          "e4",
+          "f4",
+          "g4",
+          "h4",
+          "h5",
+          "g5",
+          "f5",
+          "e5",
+          "d5",
+          "c5",
+          "b5",
+          "a5"
+        ],
+        "also_at": [
+          "h5"
+        ]
+      }
+    ],
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "repetition_draw": 3,
+    "stalemate": "draw",
+    "win": "checkmate"
+  },
+  "provenance": {
+    "added": "2026-10-11",
+    "origin": "human",
+    "source": "the user, 2026-10-08",
+    "history": "Q850 (2026-10-11): the user's game, \"two npc wolves go in a circuit. a4 to h4 then up to h5 and back to a5, and repeat. One would start the circuit at a4, the other at h5.\" archive/wolves with its four wolves replaced by one sixteen-square circuit carrying two (rules.npcs[].also_at, schema 23). Costed in docs/reference/designer-case-study-wolves.md; pre-registered in docs/reference/wolves-patrol.md before it was measured.",
+    "parents": [
+      "ceb4916bdabc"
+    ]
+  }
+}

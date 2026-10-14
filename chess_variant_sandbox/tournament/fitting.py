@@ -136,8 +136,10 @@ def ensure_fit(
     where the decision to reuse is actually taken; refusing would break every command
     that touches an older ruleset, and refitting unasked would spend minutes on a caller
     that only wanted a number. `FittedObjective.build` argues both halves at length. A
-    store that `check_fit` has reproduced on the loaded core is this core's answer, so it
-    is reused without the line.
+    store made or reproduced under the whole `reproduction_basis` -- this core, and this
+    game's tables, players and runner as they are now -- is this core's answer, so it is
+    reused without the line; any other gets `unverified_reason`'s, a store made on this
+    core under tables that have since moved included (Q892).
 
     **This is the only writer whose caller does not name a path**, which is why the
     default is resolved here rather than bound into the signature: `corpus.measure` calls
@@ -150,8 +152,8 @@ def ensure_fit(
     stored = load_fit(engine.spec.hash, procedure, store)
     if stored is not None:
         register_fit(stored, replace=True)
-        drifted = stale_verdict(stored)
-        if drifted is not None and _loaded_core() not in verified_cores(stored, store):
+        drifted = unverified_reason(stored, store, spec)
+        if drifted is not None:
             # stderr rather than a `report` callback: this is a warning about the thing
             # being returned rather than progress, every caller should see it, and the one
             # caller that has a reporter today (`corpus.measure`) would have to remember
@@ -161,7 +163,7 @@ def ensure_fit(
                   file=sys.stderr)
         return stored
     verdict = fit_ruleset(spec, workers=workers)
-    verdict.save(store_path(engine.spec.hash, procedure, store))
+    save_fit(verdict, spec, store)
     return verdict
 
 
@@ -419,25 +421,44 @@ def _record(
 # ------------------------------------------------------------------ reproduction (Q80b)
 #
 # `docs/reference/refit-repair.md` is the design, and `fit-reproduction.md` (Q231, Q270)
-# the method and its record. A stored fit names the core that made it and nothing else,
-# so on any other core the question "does this verdict still hold?" has had one answer:
-# re-derive it and compare. That costs a fit -- the regression is bit-deterministic in
-# its rows, so what depends on the core is the fit games and the acceptance match, which
-# is all of `fit_ruleset` -- and the saving is the *replay* a reproducing fit no longer
-# owes, not the refit.
+# the method and its record. A store says which core made it and nothing about what else
+# its games read, so on any other footing the question "does this verdict still hold?"
+# has one answer: re-derive it and compare. That costs a fit -- the regression is
+# bit-deterministic in its rows, so what can move is the fit games and the acceptance
+# match, which is all of `fit_ruleset` -- and the saving is the *replay* a reproducing fit
+# no longer owes, not the refit.
 #
-# What a check finds is written down so it is paid once per core:
+# **What a fit's games read** (Q892) is `reproduction_basis`: the core, this game's
+# compiled tables, what the runner hands the core for the fit's players, and the runner's
+# own source. Each can move without the others -- a compiler edit moves one game's tables
+# and no core (Q880 moved *quarry*'s, `docs/reference/replay-2026-10-13b.md`), an edit to
+# `agents/evaluation.py` moves the piece values the core is handed -- so a sidecar vouches
+# for the whole basis, and a store counts as verified on a core only where an entry for
+# that core matches every other part now. Until Q892 it recorded cores alone, and a
+# compiler-only change left *quarry*'s store unrederived until the next core arrived.
 #
-# - **reproduces**: the store is untouched and the loaded core joins the sidecar's
-#   `reproduced_on`. The store is not re-stamped: its `build` names the core whose games
-#   the numbers in it came from, and a second core that agrees is a different fact.
+# What a check finds is written down so it is paid once per basis:
+#
+# - **reproduces**: the store is untouched and the basis joins the sidecar's
+#   `verified_under` (and the core its `reproduced_on`, the history). The store is not
+#   re-stamped: its `build` names the core whose games the numbers in it came from, and a
+#   second core that agrees is a different fact.
 # - **does not**: the new fit replaces the store, exactly as `fit --force` would, and the
-#   sidecar, which vouched for a store that no longer exists, goes with it.
+#   sidecar, which vouched for a store that no longer exists, is replaced by one naming
+#   the new store's maker. So is the sidecar of any store a writer here makes.
+#
+# **A sidecar written before Q892 vouches for nothing**, maker included: it has no
+# `verified_under`, and neither it nor the store records the tables a check ran on. Nor
+# can `runs/` prove them: a replay's stamp names the tables it was played on, but its
+# `_fit_once` played nothing where the core was already listed -- which is exactly the
+# *quarry* case. So every such store is checked once, and `reproduced_on` is kept as the
+# record it is.
 #
 # The sidecar sits in a subdirectory because `fitted.load_all` globs `<store>/*.json`, and
 # it is not a field of the store because `FittedObjective` lives in `agents/`, which was in
 # `measurement.ENGINE_SOURCES` when this was written (since Q631 a field the core is not
-# handed stales nothing; `Basis.players`).
+# handed stales nothing; `Basis.players`), and because a new field would move every
+# store's digest and the site's field-by-field check of a visitor's sliced fit.
 
 # Q231's pre-registered tolerance. The same rows through the same solver give
 # bit-identical weights (Q109 G2, Q129), so it absorbs float noise and never a changed game.
@@ -452,11 +473,50 @@ REPRODUCED = "reproduced"
 REFIT = "refit"
 FITTED = "fitted"
 
+# The players whose native specs the fit's games are played with: the fit roster and the
+# acceptance match's reference. The candidate is the store's own vector, which the
+# sidecar's `store_digest` already ties it to.
+REPRODUCTION_PLAYERS: tuple[str, ...] = (*FIT_AGENTS, f"minimax:nodes={ACCEPT_NODES}")
+
+# The parts of `reproduction_basis`, in the order a sentence names them.
+BASIS_PARTS = ("core", "tables", "players", "runner")
+
 
 def _loaded_core() -> str:
     from chess_variant_sandbox.measurement import built_fingerprint
 
     return built_fingerprint()
+
+
+def reproduction_basis(spec: dict[str, Any]) -> dict[str, str]:
+    """Everything a fit of this ruleset's games reads that can move on its own.
+
+    - ``core``: the loaded build, which walks the tables and plays every seat.
+    - ``tables``: `measurement.tables_fingerprint`, what the compiler made of this game.
+    - ``players``: `measurement.players_fingerprint` over `REPRODUCTION_PLAYERS`, the
+      native specs and piece values the runner hands the core. Where it cannot say, the
+      agents' source stands in, as it does for `Basis.players`.
+    - ``runner``: the `engine` source set (`tournament/runner.py`, which fixes every
+      seed, and `play.py`), the half of `Basis.engine` that is not the core.
+
+    The harvest's own reading of a position is not a separate part: `agents/features.py`
+    is the oracle `eval.rs` is held to term for term (`tests/test_backends.py`), so a term
+    that reads differently moves the core with it. The regression is pure arithmetic over
+    the rows and the procedure digest pins its constants.
+    """
+    from chess_variant_sandbox.measurement import (
+        players_fingerprint,
+        source_fingerprint,
+        tables_fingerprint,
+    )
+
+    players = players_fingerprint(spec, REPRODUCTION_PLAYERS)
+    return {
+        "core": _loaded_core(),
+        "tables": tables_fingerprint(spec),
+        "players": players or "agents:" + source_fingerprint("agents"),
+        "runner": source_fingerprint("engine"),
+    }
 
 
 def store_digest(fit: FittedObjective) -> str:
@@ -472,33 +532,138 @@ def store_digest(fit: FittedObjective) -> str:
 
 
 def sidecar_path(ruleset_hash: str, procedure: str, root: str | Path) -> Path:
-    """Where the cores a store was reproduced on are recorded, beside the store."""
+    """Where the bases a store was made or reproduced under are recorded, beside it."""
     return Path(root) / REPRODUCED_DIR / f"{ruleset_hash}-{procedure}.json"
 
 
-def reproduced_on(fit: FittedObjective, root: str | Path) -> tuple[str, ...]:
-    """The cores a check found this store reproduces on, other than the one that made it.
+def _sidecar(fit: FittedObjective, root: str | Path) -> dict[str, Any]:
+    """The sidecar's record for this store, or an empty one if it vouches for another.
 
     A sidecar written for a different store -- one since refit by hand, say -- vouches for
-    nothing and reads as empty: the digest is what ties the two files together.
+    nothing: the digest is what ties the two files together.
     """
     path = sidecar_path(fit.ruleset_hash, fit.procedure, root)
     if not path.exists():
-        return ()
+        return {}
     data = json.loads(path.read_text(encoding="utf-8"))
-    if data.get("store_digest") != store_digest(fit):
-        return ()
-    return tuple(str(core) for core in data.get("reproduced_on", ()))
+    if not isinstance(data, dict) or data.get("store_digest") != store_digest(fit):
+        return {}
+    return data
 
 
-def verified_cores(fit: FittedObjective, root: str | Path) -> frozenset[str]:
-    """Every core this store is known to be the answer on: its maker and the reproduced.
+def reproduced_on(fit: FittedObjective, root: str | Path) -> tuple[str, ...]:
+    """The cores a check re-derived this store on, other than its maker: the history.
 
-    An unstamped store has no maker to count, and `fitted.stale_verdict`'s reading holds:
-    absent is unknown, never agreement.
+    Not a verification. An entry written before Q892 says only that the store reproduced
+    on that core at the tables of the day; `verified_cores` is what a reader trusts.
     """
-    made = {fit.build} if fit.build else set()
-    return frozenset(made | set(reproduced_on(fit, root)))
+    return tuple(str(core) for core in _sidecar(fit, root).get("reproduced_on", ()))
+
+
+def verified_under(fit: FittedObjective, root: str | Path) -> tuple[dict[str, str], ...]:
+    """Every basis this store was made or reproduced under, as the sidecar records them.
+
+    Empty for a sidecar written before Q892, which records cores and nothing else.
+    """
+    found = _sidecar(fit, root).get("verified_under", ())
+    return tuple(
+        {part: str(entry.get(part, "")) for part in BASIS_PARTS}
+        for entry in found
+        if isinstance(entry, dict)
+    )
+
+
+def _matches(entry: dict[str, str], basis: dict[str, str]) -> bool:
+    """Every part but the core agrees: the store is that core's answer on this footing."""
+    return all(entry[part] == basis[part] for part in BASIS_PARTS if part != "core")
+
+
+def verified_cores(
+    fit: FittedObjective, root: str | Path, spec: dict[str, Any] | None
+) -> frozenset[str]:
+    """Every core this store is known to be the answer on, under this game as it is now.
+
+    A core counts where the sidecar records a basis for it whose tables, players and runner
+    are today's: the maker's, written by whoever made the store here, or a check's. A store
+    whose sidecar predates Q892, or that has none, is verified nowhere -- absent is unknown,
+    never agreement, as `fitted.stale_verdict` reads an unstamped store. ``spec`` ``None``
+    cannot compare the tables and answers the same, the safe direction
+    `corpus.current_basis` takes for its own tables.
+    """
+    entries = verified_under(fit, root)
+    if spec is None or not entries:
+        return frozenset()
+    basis = reproduction_basis(spec)
+    return frozenset(entry["core"] for entry in entries if _matches(entry, basis))
+
+
+def _is_verified(fit: FittedObjective, root: str | Path, basis: dict[str, str]) -> bool:
+    return any(entry == basis for entry in verified_under(fit, root))
+
+
+def basis_gap(
+    fit: FittedObjective, root: str | Path, basis: dict[str, str]
+) -> tuple[bool, tuple[str, ...]]:
+    """What keeps this store from being verified under ``basis`` (Q894), as parts to name.
+
+    ``(False, ())`` where the sidecar records no basis at all -- a store saved before
+    Q892, by hand, or with no sidecar -- so nothing says what its games read. Otherwise
+    ``(True, parts)``: the `BASIS_PARTS` where the newest entry in `verified_under` differs
+    from ``basis``, in `BASIS_PARTS` order. Empty parts with a record means the store is
+    verified (or an older entry is), which callers have already ruled out. The sentences
+    that name these are written where they are shown, `measurement.Basis.stale_reasons` and
+    `cli._reproduction`; the parts are only ever read from here.
+    """
+    entries = verified_under(fit, root)
+    if not entries:
+        return False, ()
+    newest = entries[-1]
+    return True, tuple(part for part in BASIS_PARTS if newest[part] != basis[part])
+
+
+def unverified_reason(
+    fit: FittedObjective, root: str | Path, spec: dict[str, Any]
+) -> str | None:
+    """Why this store may not be the loaded core's answer for this game now, if it may not.
+
+    `fitted.stale_verdict`'s sentence where the core moved; otherwise the parts of the
+    basis that differ from the newest one recorded on this core, or that none is.
+    """
+    basis = reproduction_basis(spec)
+    if _is_verified(fit, root, basis):
+        return None
+    drifted = stale_verdict(fit)
+    if drifted is not None:
+        return drifted
+    here = [entry for entry in verified_under(fit, root) if entry["core"] == basis["core"]]
+    if not here:
+        return (
+            "this fit was made on the loaded core, but nothing records the tables, players "
+            "and runner its games read; `fit --check` re-derives it"
+        )
+    moved = [part for part in BASIS_PARTS if here[-1][part] != basis[part]]
+    return (
+        f"this fit was made or reproduced on the loaded core under other {', '.join(moved)}, "
+        "so the verdict may no longer hold; `fit --check` re-derives it"
+    )
+
+
+def record_made(fit: FittedObjective, spec: dict[str, Any], root: str | Path) -> Path:
+    """Write the sidecar a store just made here deserves: its maker's whole basis.
+
+    Called by every writer in this module and by `chess-variant-sandbox fit`, right after
+    the store is saved, so a store made on the loaded core is verified without being made
+    twice. Any older sidecar vouched for the store this one replaces and goes.
+    """
+    return _write_sidecar(fit, root, [], [reproduction_basis(spec)])
+
+
+def save_fit(fit: FittedObjective, spec: dict[str, Any], root: str | Path) -> Path:
+    """Save a store made here and record its maker's basis beside it."""
+    path = store_path(fit.ruleset_hash, fit.procedure, root)
+    fit.save(path)
+    record_made(fit, spec, root)
+    return path
 
 
 def differences(stored: FittedObjective, fresh: FittedObjective) -> list[str]:
@@ -548,6 +713,11 @@ class Reproduction:
     fresh: FittedObjective | None
     failures: tuple[str, ...] = ()
     sidecar: Path | None = None
+    # What kept the stored fit from being verified on the loaded core (`basis_gap`),
+    # read before anything was played: ``recorded`` False where the sidecar names no
+    # basis, else ``differs`` the parts of the newest one that are not today's.
+    recorded: bool = True
+    differs: tuple[str, ...] = ()
 
 
 def check_fit(
@@ -557,15 +727,17 @@ def check_fit(
 ) -> Reproduction:
     """Make this ruleset's stored fit the loaded core's answer, as cheaply as that can be.
 
-    - Made on the loaded core, or already reproduced on it: nothing is played.
-    - Otherwise the procedure runs on this core and meets Q231's three tests
-      (`differences`). A fit that reproduces adds the core to the sidecar; one that does
-      not is replaced by the new fit, as `fit --force` would.
+    - Already made or reproduced under the whole `reproduction_basis` -- the loaded core,
+      this game's tables, the players and the runner -- nothing is played.
+    - Otherwise the procedure runs here and meets Q231's three tests (`differences`). A fit
+      that reproduces adds the basis to the sidecar; one that does not is replaced by the
+      new fit, as `fit --force` would, with its maker's basis beside it.
     - No store at all: the ruleset is fitted, since a fresh fit is this core's answer by
       construction and the check's promise is only that the store is, on return.
     """
     store = fit_store() if store is None else store
-    core = _loaded_core()
+    basis = reproduction_basis(spec)
+    core = basis["core"]
     ruleset_hash = Engine(spec).spec.hash
     procedure = procedure_digest()
     path = store_path(ruleset_hash, procedure, store)
@@ -573,45 +745,65 @@ def check_fit(
 
     if stored is not None:
         register_fit(stored, replace=True)
-        if stored.build == core:
-            return Reproduction(MADE_HERE, core, path, stored, stored, None)
-        if core in reproduced_on(stored, store):
+        if _is_verified(stored, store, basis):
+            sidecar = sidecar_path(ruleset_hash, procedure, store)
+            if stored.build == core:
+                return Reproduction(MADE_HERE, core, path, stored, stored, None, sidecar=sidecar)
             return Reproduction(
-                REPRODUCED_BEFORE, core, path, stored, stored, None,
-                sidecar=sidecar_path(ruleset_hash, procedure, store),
+                REPRODUCED_BEFORE, core, path, stored, stored, None, sidecar=sidecar
             )
 
+    recorded, differs = (True, ()) if stored is None else basis_gap(stored, store, basis)
     fresh = fit_ruleset(spec, workers=workers)
     if stored is None:
-        _replace_store(fresh, path, store)
+        _replace_store(fresh, path, store, basis)
         return Reproduction(FITTED, core, path, fresh, None, fresh)
 
     failures = tuple(differences(stored, fresh))
     if failures:
-        _replace_store(fresh, path, store)
-        return Reproduction(REFIT, core, path, fresh, stored, fresh, failures)
+        _replace_store(fresh, path, store, basis)
+        return Reproduction(
+            REFIT, core, path, fresh, stored, fresh, failures,
+            recorded=recorded, differs=differs,
+        )
 
     # The store stands, and the registry holds it rather than the fresh copy, whose score
     # may differ in a way the tests above deliberately allow.
     register_fit(stored, replace=True)
-    sidecar = _add_core(stored, core, store)
-    return Reproduction(REPRODUCED, core, path, stored, stored, fresh, sidecar=sidecar)
+    sidecar = _add_basis(stored, basis, store)
+    return Reproduction(
+        REPRODUCED, core, path, stored, stored, fresh, sidecar=sidecar,
+        recorded=recorded, differs=differs,
+    )
 
 
-def _replace_store(fresh: FittedObjective, path: Path, store: str | Path) -> None:
+def _replace_store(
+    fresh: FittedObjective, path: Path, store: str | Path, basis: dict[str, str]
+) -> None:
     fresh.save(path)
-    sidecar_path(fresh.ruleset_hash, fresh.procedure, store).unlink(missing_ok=True)
+    _write_sidecar(fresh, store, [], [basis])
 
 
-def _add_core(stored: FittedObjective, core: str, store: str | Path) -> Path:
-    path = sidecar_path(stored.ruleset_hash, stored.procedure, store)
+def _add_basis(stored: FittedObjective, basis: dict[str, str], store: str | Path) -> Path:
     cores = list(reproduced_on(stored, store))
-    if core not in cores:
-        cores.append(core)
+    if basis["core"] != stored.build and basis["core"] not in cores:
+        cores.append(basis["core"])
+    entries = [entry for entry in verified_under(stored, store) if entry != basis]
+    return _write_sidecar(stored, store, cores, [*entries, basis])
+
+
+def _write_sidecar(
+    fit: FittedObjective,
+    store: str | Path,
+    cores: list[str],
+    entries: list[dict[str, str]],
+) -> Path:
+    path = sidecar_path(fit.ruleset_hash, fit.procedure, store)
     record = {
-        "store_digest": store_digest(stored),
-        "made_on": stored.build,
+        "store_digest": store_digest(fit),
+        "made_on": fit.build,
         "reproduced_on": cores,
+        "verified_under": [{part: entry[part] for part in BASIS_PARTS} for entry in entries],
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as handle:

@@ -25,7 +25,11 @@ from chess_variant_sandbox.spec.reference import (
     render_reference,
     schema_paths,
 )
-from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, validate_spec
+from chess_variant_sandbox.spec.schema import (
+    SCHEMA_VERSION,
+    SUPPORTED_SCHEMA_VERSIONS,
+    validate_spec,
+)
 
 RULES = Path(__file__).resolve().parents[1] / "RULES.md"
 _JSON_BLOCK = re.compile(r"```json\n(.*?)\n```", re.DOTALL)
@@ -55,6 +59,24 @@ class TestTheCommittedFile:
     def test_it_names_the_schema_version_it_describes(self) -> None:
         text = RULES.read_text(encoding="utf-8")
         assert f"at schema version {SCHEMA_VERSION}." in text
+
+    def test_its_title_names_the_current_schema_version(self) -> None:
+        """Q905, the user: the reference must say what version it is for. The first line,
+        so a copy anywhere (the public repository's, a reader's AI's) says it at once, and
+        from `SCHEMA_VERSION`, so a bump moves it."""
+        first = render_reference().splitlines()[0]
+        assert first == f"# The rule language, schema version {SCHEMA_VERSION}"
+        assert RULES.read_text(encoding="utf-8").splitlines()[0] == first
+
+    def test_it_says_once_what_a_game_declares_and_that_later_versions_accept_it(
+        self,
+    ) -> None:
+        text = render_reference()
+        said = f'should declare\n`"schema_version": {SCHEMA_VERSION}`.'
+        assert text.count(said) == 1
+        assert "running a later version still\naccepts it" in text
+        # True only while every version stays accepted, which is what lets it say so.
+        assert tuple(range(1, SCHEMA_VERSION + 1)) == SUPPORTED_SCHEMA_VERSIONS
 
     def test_its_examples_validate_and_build_a_game(self) -> None:
         blocks = _JSON_BLOCK.findall(RULES.read_text(encoding="utf-8"))

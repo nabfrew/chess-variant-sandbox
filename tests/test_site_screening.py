@@ -7,7 +7,7 @@ a core on the box for as long as it liked.
 
 `_slow_draft` is that draft: a 16 by 16 board of sliders under a ten-thousand-ply limit,
 a perfectly valid ruleset whose check costs seven and a half seconds at one worker on the
-development machine and far more on a small box. These tests give it a two-second clock
+development machine and far more on a small box. These tests give it a short clock
 and prove three things -- the check is refused, the refusal says what to change, and no
 file and no row are left behind.
 
@@ -39,8 +39,10 @@ from chess_variant_sandbox.web.server import REQUEST_HEADER, REQUEST_VALUE, Serv
 SERVE_FAST = {"poll_interval": 0.02}
 
 # Long enough that the clock runs out inside the screen rather than during the child's
-# half second of interpreter start, short enough that the test costs about two seconds.
-CLOCK = 2.0
+# half second of interpreter start, short enough that the test costs under two seconds:
+# the test waits out the whole clock, so the clock is its time. It was two seconds, 2.02 s
+# in the gate; one and a half (Q749) still gives the screen a second past the start.
+CLOCK = 1.5
 
 FILES = "abcdefghijklmnop"
 
@@ -220,7 +222,7 @@ class TestTheCheckHasAWallClock:
     ) -> None:
         """What the save does with a refusal. The refusal itself -- the real clock, the
         real kill -- is the test above, so the check here raises it at once rather than
-        waiting out a second two-second clock (Q377)."""
+        waiting out a second clock (Q377)."""
 
         def outran(spec: Any) -> dict[str, Any]:
             raise screening.TooSlow(screening.refusal(CLOCK))

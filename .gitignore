@@ -40,6 +40,9 @@ CLAUDE.local.md
 # Worktrees: the agents' and the refresher's (`refresher.WORKTREE`). Each is a checkout of
 # its own, which `git add -A` in the main checkout would otherwise add as an embedded repo.
 .claude/worktrees/
+# The public repository's clone and the export's scratch, kept by deploy/public.sh (Q907).
+# The clone is a repository of its own, like a worktree.
+.claude/public-export/
 
 # Calibration scratch: throwaway analysis scripts and logs, regenerated on demand.
 .scratch/

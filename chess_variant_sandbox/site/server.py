@@ -63,6 +63,7 @@ from chess_variant_sandbox.site import (
     correspondence,
     daily,
     db,
+    depths,
     designs,
     drafts,
     identity,
@@ -88,6 +89,7 @@ from chess_variant_sandbox.site import (
     screening,
     shortlist,
     showcase,
+    spine,
     stages,
     suggestions,
     terms,
@@ -114,6 +116,7 @@ from chess_variant_sandbox.web.server import (
     BROWSER_PREFIX,
     MAPPED,
     PAGE_PATHS,
+    RULES_ROUTE,
     VENDOR_PREFIX,
     WORKER_ROUTE,
     App,
@@ -127,6 +130,15 @@ from chess_variant_sandbox.web.server import _watching as watching_line
 # rather than a refusal. The box's unit names its port outright, so this default is a
 # convenience and never a deployment's answer.
 DEFAULT_PORT = 8766
+
+DESIGN_DRAIN_BYTES = 2 * 1024 * 1024
+"""How much of a designer body refused for its size is read and thrown away (Q841).
+
+The box's Caddy admits no body over 2 MB (`deploy/remote/Caddyfile`'s `max_size`), so on
+the box every refused body is drained and its 413 arrives; a body the drain would not
+cover never reaches the application there. Off the box a claim over this is closed on
+unread. Drained in pieces and kept nowhere, so it bounds bandwidth, not memory: the cap
+`quota.DESIGN_BODY_BYTES` still refuses before anything is parsed or held."""
 
 CHALLENGE_FIELDS = frozenset({"hash", "seat", "handle", "link", "rematch"})
 """Every field `/api/challenge` takes. Anything else is refused, so no field can carry a
@@ -732,12 +744,17 @@ class SiteApp(App):
             # *Leaderboard* draws it -- computer players by the picker's name, people by
             # handle, strongest first, the marks decided here -- so the page sorts nothing.
             roster = self.roster(digest)
+            # A library game is one read from `rulesets/` or `archive/`: the listing on
+            # disk also holds the drafts a save wrote under `runs/designed/`, which are
+            # members' games, rated on the site at publish (L5, `box`).
+            card = self.known().get(digest)
             standing["leaderboard"] = leaderboard.shown(
                 table,
                 named=named,
                 roster=roster,
                 viewer=self.viewer,
-                library=digest in self.known(),
+                library=card is not None and card.source in drafts.CORPUS_SOURCES,
+                box=spine.state(connection, digest),
             )
             # §2.3 of `docs/plan-understanding.md` (P6): signed in, each computer
             # player's distance from the reader, so the picker says *about 240 above
@@ -1619,7 +1636,7 @@ class SiteApp(App):
     def _admin_view(self) -> Any:
         """Everything the admin page draws, in one answer.
 
-        Six readings and one connection. The page redraws the whole thing after every
+        Many readings and one connection. The page redraws the whole thing after every
         act, because an act changes more than the row it was clicked on -- killing
         somebody empties their session count -- and a few small queries are cheaper than
         working out which cells moved. `usage` is `docs/plan-usage.md` §4.3's.
@@ -1631,6 +1648,9 @@ class SiteApp(App):
         """
         with self._connection() as connection:
             return {
+                # Q813. The box's disk and every queue's depth and oldest age, each against
+                # its threshold: the numbers `deploy/status.sh` prints (`site/depths.sql`).
+                "status": depths.view(connection, self.runs_dir),
                 "users": [person.as_dict() for person in admin.people(connection)],
                 "invites": [one.as_dict() for one in admin.invitations(connection)],
                 # Q831. Requests for an invitation nobody has answered yet, oldest
@@ -1874,7 +1894,7 @@ class SiteApp(App):
 
     # ------------------------------------------------------------ a draft somebody kept
 
-    def _save_design(self, body: dict[str, Any]) -> Any:
+    def _save_design(self, body: dict[str, Any], restate: bool = True) -> Any:
         """The playability check, then the local application's save, then the row.
 
         The designer badges are granted last, in the same transaction as the row they
@@ -1891,16 +1911,24 @@ class SiteApp(App):
         the local application), whether it was listed and why (`listed`, `said`), and
         which rung the check reached (`rung`, keyed as `candidacy.rungs` keys them, with
         `rungPassed`). The designer prints all three beside the save button.
+
+        A re-save of kept rules gives them its name and description only where
+        `drafts.restatable` allows it -- the designer's own unpublished draft (Q595); the
+        answer's `restated` names what changed, and otherwise `unchanged` names the words
+        that stayed and `keptAsIs` says why.
         """
         viewer = self._viewer()
+        digest = _draft_hash(body.get("spec"))
         # The two caps before the check, so a refused save costs the box nothing: room
         # for another draft (rules the store already holds need none), then the day's
         # count, which a refusal for room does not spend.
         with self._connection() as connection:
-            quota.check_new_draft(connection, viewer, _draft_hash(body.get("spec")))
+            quota.check_new_draft(connection, viewer, digest)
+            frozen = drafts.restatable(connection, digest, viewer) if digest else ""
+        restate = restate and not frozen
         self.saves.save(viewer)
         screened = screening.check(body.get("spec"))
-        kept = super()._save_design(body)
+        kept = super()._save_design(body, restate=restate)
         spec = load_spec(Path(str(kept["path"])))
         with self._connection() as connection:
             row = drafts.keep(
@@ -1910,10 +1938,12 @@ class SiteApp(App):
                 owner=viewer,
                 parent=str(body.get("parent") or ""),
                 passed=bool(screened.get("passed")),
+                restate=restate,
             )
             badges.grant_for_save(connection, viewer, row.hash)
         return {
             **kept,
+            "keptAsIs": frozen if kept.get("unchanged") else "",
             "listed": row.listed,
             "visibility": row.visibility,
             "screenPassed": row.screen_passed,
@@ -1950,9 +1980,11 @@ class SiteApp(App):
                 connection, digest, viewer, reading, _agreed(body.get("terms")),
                 checking=reading is None and provisional.checking(connection, digest),
             )
-        if done.waiting:
+        if done.waiting or done.rating:
             # The check may have ended between the read above and this commit; the runner
-            # settles every waiting publish on each pass, so a wake is all it needs.
+            # settles every waiting publish on each pass, so a wake is all it needs. A game
+            # listed now has its five standard players to rate (L5), which the same wake
+            # starts once the transaction above has committed the job.
             self.checks.wake()
         return {
             "hash": done.hash, "listed": not done.waiting, "waiting": done.waiting,
@@ -2093,7 +2125,8 @@ class SiteApp(App):
             }
 
     def _session_action(self, session_id: str, action: str, body: dict[str, Any]) -> Any:
-        """Move, let the computer player answer, take a move back, start again, or resign.
+        """Move, let the computer player answer, take a move back, start again, resign,
+        or offer a draw (Q790, answered by the core at once).
 
         `undo` and `restart` are sandbox's; `matches` refuses them on a leaderboard row
         in a sentence a player can read. A finish -- by the position ending or by a
@@ -2142,6 +2175,11 @@ class SiteApp(App):
             # at the board, so `matches` finds their seat itself.
             matches.resign(connection, session_id, by=self.viewer)
             return matches.session(connection, session_id).snapshot()
+        if action == "draw":
+            # Q790: the computer answers at once, by the strongest search the game has,
+            # asked of the core; a draw it accepts is finished and rated in this
+            # transaction, like any other finish.
+            return matches.offer_draw(connection, session_id, by=self.viewer)
         raise KeyError(f"no such action: {action}")
 
     def _mail_move(self, due: move_email.Due | None) -> None:
@@ -2274,7 +2312,8 @@ class SiteApp(App):
         Every act names its player, who is whoever is signed in; `correspondence`
         refuses somebody who is not one of the two. A move is sent only when the person
         presses *Send*, so what arrives here is final. `draw` offers a draw (or accepts
-        the other's standing offer), `accept` accepts one, `cancel` calls the game off
+        the other's standing offer), `accept` accepts one, `decline` declines it (Q790),
+        `cancel` calls the game off
         before both have moved. There is no take-back, restart or computer reply.
         """
         if not correspondence.may_read(found, self.viewer):
@@ -2288,6 +2327,8 @@ class SiteApp(App):
             correspondence.offer_draw(connection, found.id, viewer)
         elif action == "accept":
             correspondence.accept_draw(connection, found.id, viewer)
+        elif action == "decline":
+            correspondence.decline_draw(connection, found.id, viewer)
         elif action == "cancel":
             correspondence.cancel(connection, found.id, viewer)
         elif action in ("undo", "restart"):
@@ -2683,7 +2724,7 @@ def served_elsewhere(path: str) -> bool:
     """
     return (
         path.startswith(("/api/", VENDOR_PREFIX, shell.FONT_PREFIX, BROWSER_PREFIX))
-        or path in (*PAGE_PATHS, shell.SHELL_SCRIPT_ROUTE, WORKER_ROUTE)
+        or path in (*PAGE_PATHS, shell.SHELL_SCRIPT_ROUTE, WORKER_ROUTE, RULES_ROUTE)
         or path in shell.icons()
         or path in PAGE_SCRIPTS
     )
@@ -2760,9 +2801,14 @@ def site_handler_for(app: SiteApp) -> type[Any]:
         def _too_big(self) -> bool:
             """Refuse a designer POST whose body is over `quota.DESIGN_BODY_BYTES` (Q503a).
 
-            Read off `Content-Length` before the body is, so a large body costs no memory.
-            The body is drained as `_forged` drains one, which the base handler does up to
-            its own limit, and the connection closed.
+            Read off `Content-Length` before the body is, so a large body costs no memory:
+            nothing of it is parsed, kept or identified. Once the 413 is written the body
+            is drained in pieces and thrown away, up to `DESIGN_DRAIN_BYTES`, and the
+            connection closed. Without the drain the close finds the body still in the
+            socket and becomes an abort, which discards the 413 before the sender reads
+            it (WinError 10053 on Windows, a reset elsewhere; Q841): the designer would
+            see a failed request instead of the sentence saying how big a design may be.
+            A claim longer than the drain is closed on unread, as before.
             """
             parts = routes.split(urlparse(self.path).path)
             if parts[:2] != ("api", "design"):
@@ -2781,7 +2827,7 @@ def site_handler_for(app: SiteApp) -> type[Any]:
                     f"as the designer sends it; this one is {length // 1024} KB."
                 },
             )
-            self._discard_body()
+            self._discard_body(DESIGN_DRAIN_BYTES)
             return True
 
         def _note_source(self) -> None:

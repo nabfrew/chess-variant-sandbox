@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 import pytest
+from retired_specs import hex_glinski_promoting
 
 from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.spec import validate_spec
@@ -230,6 +231,22 @@ def _old_wrap_active(value: Any) -> bool:
     )
 
 
+# Every committed and archived grid spec, but schema 16's showcases (which the tests above
+# read), split by whether it states a seam: only a spec that states one can differ
+# from the old reading, and one case per spec of the others said nothing.
+GRIDS = [
+    path
+    for path in sorted((ROOT / "rulesets").glob("*.json"))
+    + sorted((ROOT / "archive").glob("*.json"))
+    if "shape" not in json.loads(path.read_text(encoding="utf-8"))["board"]
+]
+WRAPPED_GRIDS = [
+    path for path in GRIDS
+    if (json.loads(path.read_text(encoding="utf-8")).get("rules") or {}).get("wrap")
+]
+UNWRAPPED_GRIDS = [path for path in GRIDS if path not in WRAPPED_GRIDS]
+
+
 class TestAHexagonsSeamIsCharged:
     """Q281a4: a hexagon's pairs of sides cost `wrap`, and nothing else moved."""
 
@@ -257,24 +274,30 @@ class TestAHexagonsSeamIsCharged:
         def load(name: str) -> dict[str, Any]:
             return json.loads((ROOT / "archive" / f"{name}.json").read_text(encoding="utf-8"))
 
-        walled = measure_complexity(load("hex-glinski-promoting")).special_rules
+        walled = measure_complexity(hex_glinski_promoting()).special_rules
         native = measure_complexity(load("hex-glinski-hexagon")).special_rules
         assert walled - native == _RULE_COSTS["obstacles"]
 
-    # Every committed and archived spec but schema 16's showcases, which the tests above read.
     @pytest.mark.parametrize(
-        "path",
-        [
-            path
-            for path in sorted((ROOT / "rulesets").glob("*.json"))
-            + sorted((ROOT / "archive").glob("*.json"))
-            if "shape" not in json.loads(path.read_text(encoding="utf-8"))["board"]
-        ],
-        ids=lambda path: f"{path.parent.name}/{path.stem}",
+        "path", WRAPPED_GRIDS, ids=lambda path: f"{path.parent.name}/{path.stem}"
     )
     def test_every_committed_grid_reads_as_before(self, path: Path) -> None:
         from chess_variant_sandbox.spec.complexity import _RULE_ACTIVE
 
         spec = json.loads(path.read_text(encoding="utf-8"))
-        wrap = (spec.get("rules") or {}).get("wrap")
-        assert _RULE_ACTIVE["wrap"](wrap) is _old_wrap_active(wrap)
+        wrap = spec["rules"]["wrap"]
+        active = _old_wrap_active(wrap)
+        assert _RULE_ACTIVE["wrap"](wrap) is active
+        # And what that reading decides is the charge: 1.5, once, or nothing.
+        bare = json.loads(path.read_text(encoding="utf-8"))
+        del bare["rules"]["wrap"]
+        charged = measure_complexity(spec).special_rules - measure_complexity(bare).special_rules
+        assert charged == (1.5 if active else 0.0)
+
+    def test_a_grid_that_states_no_seam_is_not_charged_for_saying_none(self) -> None:
+        assert UNWRAPPED_GRIDS, "the corpus has grids without a seam; so does this test"
+        for path in UNWRAPPED_GRIDS:
+            spec = json.loads(path.read_text(encoding="utf-8"))
+            plain = measure_complexity(spec).special_rules
+            spec.setdefault("rules", {})["wrap"] = {"files": "none", "ranks": "none"}
+            assert measure_complexity(spec).special_rules == plain, path.stem

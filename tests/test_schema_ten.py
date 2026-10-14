@@ -72,11 +72,13 @@ from chess_variant_sandbox.spec.schema import (
     _schema_ten_uses,
     piece_has_stock,
     portal_end_ids,
-    portal_pairs,
+    portal_groups,
     portal_piece_ids,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+# Every committed and archived spec, for the walks that are one test per spec (Q749).
+CORPUS_PATHS = sorted((ROOT / "rulesets").glob("*.json")) + sorted((ROOT / "archive").glob("*.json"))
 
 
 @pytest.fixture(scope="module")
@@ -292,18 +294,19 @@ class TestRepetitionDrawMayBeNever:
             == measure_complexity(chess).rule_mass
         )
 
-    def test_fairy_refuses_it_by_name(self, chess: dict[str, Any]) -> None:
-        """Q94's warning, which no key guard could have raised.
+    def test_fairy_writes_it_as_no_fold_rule(self, chess: dict[str, Any]) -> None:
+        """Q94's warning, which no key guard could have raised, and Q703's translation.
 
         `repetition_draw` is in `_RULES_TRANSLATED`, so the exhaustive catch-all stopped
-        applying to it long ago and `_rule_lines` would have written
-        `nFoldRule = 4294967295` -- a variant definition stating a different game, with
-        `verify.py` still comparing move lists that agreed.
+        applying to it long ago, and a `_rule_lines` that wrote the compiled value would
+        have written `nFoldRule = 4294967295` -- a variant definition stating a different
+        game, with `verify.py` still comparing move lists that agreed. It was refused
+        until Q703 found `nFoldRule = 0` switches the rule off there.
         """
-        translate(compile_spec(chess))  # the numbered spelling still crosses
-        with pytest.raises(Untranslatable) as refusal:
-            translate(compile_spec(_never(chess)))
-        assert 'rules.repetition_draw "never"' in str(refusal.value)
+        assert "nFoldRule = 3" in translate(compile_spec(chess)).config
+        written = translate(compile_spec(_never(chess)))
+        assert "nFoldRule = 0" in written.config
+        assert str(NO_REPETITION_DRAW) not in written.config
 
     def test_the_json_schema_offers_it_to_a_proposer(self) -> None:
         """Otherwise the rule is in the schema and cannot be proposed at all."""
@@ -1099,16 +1102,16 @@ class TestAHandMayStartWithSomethingInIt:
             "there is never anything to drop" in error for error in validate_spec(empty)
         )
 
-    def test_fairy_refuses_both_halves_separately(self) -> None:
-        """Two reasons, not one, because a later bump may separate them.
-
-        A hand over there fills only from captures and no option seeds one; and a Betza
-        descriptor says what a piece does, with no term for a piece that does nothing.
-        """
+    def test_fairy_refuses_only_the_unlimited_half(self) -> None:
+        """The two halves did separate. A finite stock is the startFen's pocket (Q784),
+        and a piece with no moves is an empty notation (Q703). An unlimited slot is
+        still refused: a hand there counts down."""
         with pytest.raises(Untranslatable) as refusal:
             translate(compile_spec(_stone()))
         assert any("rules.drops.stock" in r for r in refusal.value.reasons)
-        assert any("a piece with no moves" in r for r in refusal.value.reasons)
+        assert not any("no moves" in r for r in refusal.value.reasons)
+        written = translate(compile_spec(_stone(3)))
+        assert f"= {written.chars[-1].lower()}:\n" in written.config
 
     def test_a_ruleset_without_a_stock_still_crosses(self) -> None:
         """Read off the compiled rule, so shogi and crazyhouse are untouched."""
@@ -1237,7 +1240,12 @@ class TestASupplyThatNeverRunsOutIsNotMaterial:
             state.board, mover
         ), "the board alone, which the term used to read, still pays for it"
 
-    def test_the_price_moves_only_where_a_spec_says_unlimited(self) -> None:
+    def test_the_walk_below_reads_the_whole_corpus(self) -> None:
+        assert len(CORPUS_PATHS) > 50, "the corpus moved out from under this test"
+
+    # One test per spec (Q749): the walk was one test of 3.3 s in the gate.
+    @pytest.mark.parametrize("path", CORPUS_PATHS, ids=lambda path: path.stem)
+    def test_the_price_moves_only_where_a_spec_says_unlimited(self, path: Path) -> None:
         """Inertness, over every committed and archived spec rather than by argument.
 
         A non-royal piece worth exactly nothing is the new branch and nothing else, so
@@ -1245,22 +1253,17 @@ class TestASupplyThatNeverRunsOutIsNotMaterial:
         fires the other way too, if some future derivation prices an ordinary piece at
         zero, which is the bug this fix would otherwise have introduced everywhere.
         """
-        paths = sorted((ROOT / "rulesets").glob("*.json")) + sorted(
-            (ROOT / "archive").glob("*.json")
-        )
-        assert len(paths) > 50, "the corpus moved out from under this test"
-        for path in paths:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-            spec = compile_spec(raw)
-            values = Evaluator.for_spec(spec).values
-            free = {i for i, v in enumerate(values) if v == 0.0}
-            free -= set(spec.royal_types)
-            # A portal (schema 19) is nobody's material by rule, not by supply: its declared
-            # type and its ends are left out, as the royals are (Q772a's showcases).
-            rules = raw.get("rules", {})
-            portals = portal_piece_ids(rules) | set(portal_end_ids(len(portal_pairs(rules))))
-            free -= {i for i, pid in enumerate(spec.piece_ids) if pid in portals}
-            assert free == inexhaustible_types(spec), path.name
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        spec = compile_spec(raw)
+        values = Evaluator.for_spec(spec).values
+        free = {i for i, v in enumerate(values) if v == 0.0}
+        free -= set(spec.royal_types)
+        # A portal (schema 19) is nobody's material by rule, not by supply: its declared
+        # type and its ends are left out, as the royals are (Q772a's showcases).
+        rules = raw.get("rules", {})
+        portals = portal_piece_ids(rules) | set(portal_end_ids(portal_groups(rules)))
+        free -= {i for i, pid in enumerate(spec.piece_ids) if pid in portals}
+        assert free == inexhaustible_types(spec), path.name
 
 
 class TestTheGoalWeightIsStatedInPiecesThatAreMaterial:
@@ -1303,7 +1306,13 @@ class TestTheGoalWeightIsStatedInPiecesThatAreMaterial:
         )
         assert diluted * GOAL_PIECES == pytest.approx(plain_eval.goal_weight * 5 / 6)
 
-    def test_the_unit_is_untouched_wherever_nothing_is_endless(self) -> None:
+    def test_the_corpus_is_the_one_the_count_below_reads(self) -> None:
+        assert len(CORPUS_PATHS) == 87, "the corpus moved out from under this test"  # 87 since Q844b
+
+    # One test per spec (Q749): the walk was one test of 2.9 s in the gate. `stones` is
+    # the only spec with an inexhaustible type, asked of each spec by name.
+    @pytest.mark.parametrize("path", CORPUS_PATHS, ids=lambda path: path.stem)
+    def test_the_unit_is_untouched_wherever_nothing_is_endless(self, path: Path) -> None:
         """Inert on 69 of 70, and on the stone game for a reason rather than by luck.
 
         The mean can only move on a spec with an inexhaustible type, and `stones` is the
@@ -1327,23 +1336,15 @@ class TestTheGoalWeightIsStatedInPiecesThatAreMaterial:
         race) but no inexhaustible type, so it joins the plain majority too, and Q782's two
         hex-symmetry showcases are won by checkmate and declare no `drops`.
         """
-        paths = sorted((ROOT / "rulesets").glob("*.json")) + sorted(
-            (ROOT / "archive").glob("*.json")
-        )
-        assert len(paths) == 98, "the corpus moved out from under this test"  # 98 since Q807
-
-        endless_specs = []
-        for path in paths:
-            spec = compile_spec(json.loads(path.read_text(encoding="utf-8")))
-            values = Evaluator.for_spec(spec).values
-            undiluted = _mean_non_royal(values, spec.royal_types, inexhaustible_types(spec))
-            diluted = _mean_non_royal(values, spec.royal_types)
-            if inexhaustible_types(spec):
-                endless_specs.append(path.stem)
-                assert not has_goal_terms(spec), path.stem
-            else:
-                assert undiluted == diluted, path.stem
-        assert endless_specs == ["stones"]
+        spec = compile_spec(json.loads(path.read_text(encoding="utf-8")))
+        values = Evaluator.for_spec(spec).values
+        undiluted = _mean_non_royal(values, spec.royal_types, inexhaustible_types(spec))
+        diluted = _mean_non_royal(values, spec.royal_types)
+        assert bool(inexhaustible_types(spec)) == (path.stem == "stones"), path.stem
+        if inexhaustible_types(spec):
+            assert not has_goal_terms(spec), path.stem
+        else:
+            assert undiluted == diluted, path.stem
 
 
 def _capture_then_redrop(
@@ -1550,7 +1551,43 @@ class TestACaptureThatChangesSidesIsCountedAtBothEnds:
         assert evaluator.hand_value(dropped.hands, mover) == pytest.approx(-0.25)
         assert evaluator.material(dropped, mover) == pytest.approx(0.0, abs=1e-12)
 
-    def test_the_term_is_inert_on_everything_that_holds_nothing(self) -> None:
+    # Q787's three showcases: `pawn-knockdown` declares no `drops` (72), and the two
+    # shogi ones hold a hand filled from captures, so they move with their parent.
+    # Q781's `einstein` and `omega` declare none (74), and Q783's `extinction-chess`
+    # and `grand` none either (76), and Q786's `jeson-mor` none (77), and Q782's
+    # `hex-glinski-turned` and `-turned-mirrored` none (79), and Q772a's seven portal
+    # showcases none (86), and Q807's `ferry-no-straight-back` none (87), and Q850's
+    # `wolves-patrol` none (88), and Q772e's `divide-two-way` none (89), and Q772f's
+    # `divide-fixed` none (90): every spec not named below, 90 of the 101. The library
+    # audit (Q868, 2026-10-12) retired fourteen of the ninety, none holding a hand: 76 of 87.
+    # Its second pass (Q870, 2026-10-13) retired four hexagon variants for `pinwheel`, none
+    # holding a hand, and `pinwheel` declares none: 73 of 84.
+    INERT = ("stones",)
+    MOVED = (
+        "crazyhouse",
+        "crazyhouse-torus",
+        "dobutsu",
+        # Q785's `kyoto` holds a hand filled from captures.
+        "kyoto",
+        # Q784's two placement showcases hold their armies in a stock.
+        "placement-chess",
+        "shogi",
+        "shogi-backward-drops",
+        "shogi-drop-promoted",
+        "sittuyin",
+        "three-stones",
+    )
+
+    def test_the_three_kinds_are_counted_on_the_whole_corpus(self) -> None:
+        assert len(CORPUS_PATHS) == 87, "the corpus moved out from under this test"  # 87 since Q844b
+        stems = {path.stem for path in CORPUS_PATHS}
+        assert set(self.INERT) | set(self.MOVED) <= stems
+        assert len(stems) - len(self.INERT) - len(self.MOVED) == 76  # 73 until Q844b's three portal showcases
+
+    # One test per spec (Q749): the walk was one test, 4.4 s in the gate once the two
+    # walks above stopped compiling the corpus first in the same worker.
+    @pytest.mark.parametrize("path", CORPUS_PATHS, ids=lambda path: path.stem)
+    def test_the_term_is_inert_on_everything_that_holds_nothing(self, path: Path) -> None:
         """The blast radius, over the corpus rather than by argument: 64, 1 and 5.
 
         64 of the 70 committed and archived specs declare no `drops` at all, so the hand
@@ -1571,53 +1608,24 @@ class TestACaptureThatChangesSidesIsCountedAtBothEnds:
         four schema-17 showcases to 71. Q781's two schema-18 showcases declare none either,
         and nor do Q783's two, nor Q786's `jeson-mor`, nor Q782's two hex showcases.
         """
-        paths = sorted((ROOT / "rulesets").glob("*.json")) + sorted(
-            (ROOT / "archive").glob("*.json")
-        )
-        assert len(paths) == 98, "the corpus moved out from under this test"  # 98 since Q807
-
-        no_hand: list[str] = []
-        inert: list[str] = []
-        moved: list[str] = []
-        for path in paths:
-            # Off the compiled spec rather than off a position, for the reason
-            # `inexhaustible_types` is: the question is "can this hold anything", which
-            # the rules settle, not "does it hold anything now".
-            spec = compile_spec(json.loads(path.read_text(encoding="utf-8")))
-            if spec.drops is None:
-                no_hand.append(path.stem)
-                continue
+        # Off the compiled spec rather than off a position, for the reason
+        # `inexhaustible_types` is: the question is "can this hold anything", which
+        # the rules settle, not "does it hold anything now".
+        spec = compile_spec(json.loads(path.read_text(encoding="utf-8")))
+        if spec.drops is None:
+            kind = "no hand"
+        else:
             values = Evaluator.for_spec(spec).values
             opening = 2.0 * sum(
                 values[piece_type] * count for piece_type, count in enumerate(spec.drops.stock)
             )
-            if opening == 0.0 and not spec.drops.from_captures:
-                inert.append(path.stem)
-            else:
-                moved.append(path.stem)
-
-        # Q787's three showcases: `pawn-knockdown` declares no `drops` (72), and the two
-        # shogi ones hold a hand filled from captures, so they move with their parent.
-        # Q781's `einstein` and `omega` declare none (74), and Q783's `extinction-chess`
-        # and `grand` none either (76), and Q786's `jeson-mor` none (77), and Q782's
-        # `hex-glinski-turned` and `-turned-mirrored` none (79), and Q772a's seven portal
-        # showcases none (86), and Q807's `ferry-no-straight-back` none (87).
-        assert len(no_hand) == 87
-        assert inert == ["stones"]
-        assert sorted(moved) == [
-            "crazyhouse",
-            "crazyhouse-torus",
-            "dobutsu",
-            # Q785's `kyoto` holds a hand filled from captures.
-            "kyoto",
-            # Q784's two placement showcases hold their armies in a stock.
-            "placement-chess",
-            "shogi",
-            "shogi-backward-drops",
-            "shogi-drop-promoted",
-            "sittuyin",
-            "three-stones",
-        ]
+            kind = "inert" if opening == 0.0 and not spec.drops.from_captures else "moved"
+        expected = (
+            "inert" if path.stem in self.INERT
+            else "moved" if path.stem in self.MOVED
+            else "no hand"
+        )
+        assert kind == expected, path.stem
 
 
 class _Spec:
@@ -2176,7 +2184,8 @@ class TestTheBumpIsInertOnEveryRulesetThatDoesNotUseIt:
             "stones": ["a piece with no moves of its own", "rules.drops.stock"],
             "succession": ["rules.contacts"],
             "three-stones": ["a piece with no moves of its own", "rules.drops.stock"],
-            "wolves-immune": ["rules.npcs[].immune"],
+            # Q876: the game built around the word, for which `wolves-immune` was retired.
+            "pitchfork": ["rules.npcs[].immune"],
             # Q772a's two showcases whose portals nobody moves declare the portal type with
             # no moves, schema 19's second exception to schema 10's rule.
             "carousel": ["a piece with no moves of its own"],

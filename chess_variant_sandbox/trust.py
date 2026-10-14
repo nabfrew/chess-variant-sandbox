@@ -277,11 +277,18 @@ def _ladder(stored: dict[str, Any] | None, state: str, date: str | None) -> Item
     # Some runs blind and some not: the score keeps the ladder (silent, the level unmoved),
     # but a visitor is told how many runs it rests on (plan-confidence.md §2.3.1).
     partly = not finds and 0 < blind < len(runs)
+    # A run the roster could not read keeps no total (`seeds.RunReading.from_result`), so the
+    # whole score rests on the runs that kept one; a run that lost only components keeps its
+    # total and only parts of the score rest on the others (`three-run-lean.md` §7).
+    rests_on = sum(1 for run in runs if run.get("index") is not None)
+    total_lost = partly and any(run.get("unreadable") and run.get("index") is None for run in runs)
+    sentence = ("ladder.withheld" if finds else
+                ("ladder.partly" if total_lost else "ladder.partly-parts") if partly
+                else "ladder.ordered")
     return Item(
         LADDER, state, FINDS_MORE if finds else SILENT,
-        count=Count(blind, len(runs), "runs"), date=date,
-        sentence="ladder.withheld" if finds else "ladder.partly" if partly else "ladder.ordered",
-        detail={"withheld": sorted(withheld or ())},
+        count=Count(blind, len(runs), "runs"), date=date, sentence=sentence,
+        detail={"withheld": sorted(withheld or ()), "rests_on": rests_on},
     )
 
 
@@ -495,9 +502,15 @@ _SAID: dict[str, str] = {
     "ladder.ordered": ("Its computer players get steadily stronger with more thinking time, "
                        "which is what the score needs."),
     # `{read}` of `{of}`: the runs that could read it (the count is the blind ones).
+    # `ladder.partly`: a blind run kept no total, so the whole score rests on `{rest}` runs
+    # (`three-run-lean.md` §7). `ladder.partly-parts`: the blind runs kept their totals and
+    # lost only components, so only parts of the score rest on the runs that read it.
     "ladder.partly": ("Its computer players got clearly stronger with more thinking time in "
-                      "only {read} of the {of} runs that measured this game, so parts of the "
-                      "score rest on {those} alone."),
+                      "only {read} of the {of} runs that measured this game, so the score "
+                      "rests on {rest} {runs} alone."),
+    "ladder.partly-parts": ("Its computer players got clearly stronger with more thinking "
+                            "time in only {read} of the {of} runs that measured this game, "
+                            "so parts of the score rest on {those} alone."),
     "ladder.withheld": ("Its computer players don't get clearly stronger with more thinking "
                         "time here, so parts of the score describe the players more than "
                         "the game."),
@@ -595,12 +608,14 @@ def said(item: Item, *, counted: bool = False, fairy_translates: bool | None = N
         if fairy_translates is None:
             return ""
         text = FAIRY_NOT_TRIED if fairy_translates else _SAID["fairy.not-played"]
-    elif item.sentence == "ladder.partly":
+    elif item.sentence in ("ladder.partly", "ladder.partly-parts"):
         if item.count is None:
             return ""
         read = item.count.of - item.count.n
-        those = "that run" if read == 1 else "those runs"
-        text = _SAID["ladder.partly"].format(read=read, of=item.count.of, those=those)
+        rest = int(item.detail.get("rests_on", read))
+        text = _SAID[item.sentence].format(
+            read=read, of=item.count.of, those="that run" if read == 1 else "those runs",
+            rest=rest, runs="run" if rest == 1 else "runs")
     else:
         text = _SAID.get(item.sentence, "")
     if not text:

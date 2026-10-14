@@ -1,4 +1,4 @@
-"""An independent reading of schema 19's portals, for tests only (Q771).
+"""An independent reading of schema 19's portals, for tests only (Q771; schema 21, Q843a).
 
 A declared test oracle under CLAUDE.md rule 3: it answers which moves go *through* a portal
 in a position, and whether a square is attacked through one, and nothing outside `tests/`
@@ -11,11 +11,13 @@ descriptors -- vectors, symmetry, mode, range, min_range, screens, the first-mov
 conditions -- and walks them over the board square by square with its own wrap and wall
 stepping, where the compiler resolves them once into tables and the core walks those. Only
 the spelling helpers of `spec/schema.py` are shared (`wrap_stated`, `promotion_squares`,
-`obstacle_squares`, `portal_pairs`): what a spec *says* is the validator's to read, and what
-it *means* is what is being checked.
+`obstacle_squares`, `portal_groups`): what a spec *says* is the validator's to read, and what
+it *means* is what is being checked. Schema 21 (`docs/plan-portals-2.md` §2): each end leads
+to the end its ``to`` names (a pair's to each other), or nowhere, and lets in a player's
+piece only when the player is in its ``enter`` and the piece in its ``carries``.
 
 A position is ``{square: (piece id, owner)}`` with owner 0 or 1 for the players and
-``"portal"`` for a portal end, whose id is its end's name (``1o``, ``1b``, ...). Squares are
+``"portal"`` for a portal end, whose id is its end's name (``1o``, ``1b``, ``2a``, ...). Squares are
 ``rank * width + file``. Not supported, because no portal game can have them: a hex lattice,
 facings, regions, strikes, sweeps, and drops.
 """
@@ -28,8 +30,7 @@ from chess_variant_sandbox.spec.schema import (
     obstacle_squares,
     parse_square,
     portal_end_ids,
-    portal_open_ends,
-    portal_pairs,
+    portal_groups,
     promotion_squares,
     wrap_stated,
 )
@@ -76,16 +77,20 @@ class PortalOracle:
         self.ranks = [
             (value in ("bottom", "both"), value in ("top", "both")) for value in stated["ranks"]
         ]
-        pairs = portal_pairs(rules)
-        names = portal_end_ids(len(pairs))
-        # end name -> (partner's name, may player 0 go in, may player 1 go in)
-        self.ends: dict[str, tuple[str, bool, bool]] = {}
-        for index, pair in enumerate(pairs):
-            opened = [portal_open_ends(pair["passage"][player]) for player in (0, 1)]
-            for side in (0, 1):
-                self.ends[names[2 * index + side]] = (
-                    names[2 * index + 1 - side], opened[0][side], opened[1][side]
-                )
+        self.groups = portal_groups(rules)
+        names = iter(portal_end_ids(self.groups))
+        # end name -> (its group, its place in it), and the name of the end it leads to.
+        self.where: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
+        named: dict[tuple[int, int], str] = {}
+        for group in self.groups:
+            for place, end in enumerate(group["ends"]):
+                name = next(names)
+                self.where[name] = (group, end)
+                named[(group["number"], place)] = name
+        self.dest: dict[str, str | None] = {
+            name: None if end["to"] is None else named[(group["number"], end["to"])]
+            for name, (group, end) in self.where.items()
+        }
         promotion = rules.get("promotion")
         entries = promotion if isinstance(promotion, list) else ([promotion] if promotion else [])
         self.promotion: dict[str, tuple[Any, Any]] = {}
@@ -132,12 +137,15 @@ class PortalOracle:
 
     # -- reaching a portal ----------------------------------------------------------
 
-    def _open(self, position: Position, square: int, player: int) -> bool:
+    def _open(self, position: Position, square: int, player: int, pid: str) -> bool:
+        """Whether ``player``'s piece ``pid`` may go in by the end on ``square``."""
         occupant = position.get(square)
         if occupant is None or occupant[1] != "portal":
             return False
-        _, p0, p1 = self.ends[occupant[0]]
-        return p1 if player else p0
+        _, end = self.where[occupant[0]]
+        if self.dest[occupant[0]] is None or player not in end["enter"]:
+            return False
+        return end["carries"] is None or pid in end["carries"]
 
     def entries(
         self, position: Position, player: int, unmoved: set[int], origin: int
@@ -168,7 +176,7 @@ class PortalOracle:
                     square: int, distance: int = 1, sign: int = sign, least: int = least,
                     modes: set[str] = modes,
                 ) -> None:
-                    if distance >= least and self._open(position, square, player):
+                    if distance >= least and self._open(position, square, player, pid):
                         found.setdefault(square, set()).update((sign, m) for m in modes)
 
                 if kind == "leap":
@@ -234,9 +242,10 @@ class PortalOracle:
     # -- coming out -------------------------------------------------------------------
 
     def _partner_square(self, position: Position, entry: int) -> int | None:
-        partner = self.ends[position[entry][0]][0]
+        """Where the end the entry end leads to stands, or ``None``."""
+        dest = self.dest[position[entry][0]]
         return next(
-            (sq for sq, (pid, owner) in position.items() if owner == "portal" and pid == partner),
+            (sq for sq, (pid, owner) in position.items() if owner == "portal" and pid == dest),
             None,
         )
 
@@ -310,18 +319,14 @@ class PortalOracle:
         may not go straight back -- read here from the move and the spec, not from any
         state the core keeps.
         """
-        rules = self.spec.get("rules", {})
-        pairs = portal_pairs(rules)
-        names = portal_end_ids(len(pairs))
         moved: set[tuple[int, int]] = set()
         for origin, (pid, owner) in position.items():
             if owner != "portal":
                 continue
-            index = names.index(pid)
-            pair = pairs[index // 2]
-            if player not in pair["moved_by"][("orange", "blue")[index % 2]]:
+            group, end = self.where[pid]
+            if player not in end["moved_by"]:
                 continue
-            for move in self.pieces[pair["piece"]]["moves"]:
+            for move in self.pieces[group["piece"]]["moves"]:
                 limit = move.get("range", 1 if move["kind"] == "leap" else 0)
                 for dx, dy in self._directions(move, player):
                     if move["kind"] == "leap":
@@ -335,7 +340,7 @@ class PortalOracle:
                             moved.add((origin, square))
         if last is not None and position.get(last[1], ("", None))[1] == "portal":
             pid = position[last[1]][0]
-            if pairs[names.index(pid) // 2]["no_straight_back"]:
+            if self.where[pid][0]["no_straight_back"]:
                 moved.discard((last[1], last[0]))
         return moved
 

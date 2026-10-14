@@ -1,7 +1,7 @@
 {
   "schema_version": 15,
-  "name": "shogi drop promoted",
-  "description": "Shogi, except that a piece dropped from hand into the far three ranks arrives already promoted: a pawn as a tokin, a silver as a promoted silver, a rook as a dragon. Everything else is shogi's, including every opening move. A pawn dropped on the last rank is no longer dead.",
+  "name": "promoted drop shogi",
+  "description": "Shogi, except that a piece dropped from hand into the far three ranks arrives already promoted: a pawn as a tokin, a silver as a promoted silver, a rook as a dragon. Everything else is shogi's, including every opening move. A pawn dropped on the last rank is no longer dead. A drop into the enemy camp hits harder than in shogi, and games end sooner.",
   "board": {
     "width": 9,
     "height": 9

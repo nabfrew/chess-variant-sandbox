@@ -173,9 +173,17 @@ class TestWhereItIsShown:
         assert "${volatilityHtml(s.volatility)}" in PAGE
 
     def test_the_local_scores_payload_carries_it(self, tmp_path: Path) -> None:
+        """Over two committed rulesets, not all of them (Q749): the survey asks each game's
+        tables fingerprint, a compile apiece, and the whole corpus was 4 s of it."""
+        import shutil
+
         from chess_variant_sandbox.web.server import App
 
-        server = App(ruleset_dir=measurement.ROOT / "rulesets", runs_dir=tmp_path / "runs",
+        rulesets = tmp_path / "rulesets"
+        rulesets.mkdir()
+        for name in ("chess", "gardner"):
+            shutil.copy(measurement.ROOT / "rulesets" / f"{name}.json", rulesets)
+        server = App(ruleset_dir=rulesets, runs_dir=tmp_path / "runs",
                      archive_dir=tmp_path / "archive")
         payload: dict[str, Any] = server.scoring()
         assert payload["games"]

@@ -295,6 +295,75 @@ def test_blocks_leaps_decides_whether_a_knight_may_vault_a_wall(
     assert square("e3") not in reached
 
 
+# A one-square stepper in all eight directions plus a knight, so one piece asks both
+# questions a wall can raise of a leap: what a step passes over, and what a jump does.
+STEPPER = [{"id": "S", "name": "stepper", "value": 3, "moves": [
+    {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"},
+    {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}]}]
+
+
+def _named(index: int) -> str:
+    return f"{chr(ord('a') + index % 8)}{index // 8 + 1}"
+
+
+def _stepper_reaches(at: str, walls: list[str]) -> set[str]:
+    """The squares a stepper on ``at`` reaches, under walls that ``blocks_leaps``."""
+    spec = probe(STEPPER, [{"piece": "S", "player": 0, "squares": [at]}],
+                 obstacles={"squares": walls, "blocks_leaps": True})
+    engine = Engine(spec)
+    state = engine.initial_state()
+    return {_named(move_to(m)) for m in engine.legal_moves(state)
+            if move_from(m) == square(at)}
+
+
+def _shift(name: str, dx: int, dy: int) -> str:
+    return f"{chr(ord(name[0]) + dx)}{int(name[1:]) + dy}"
+
+
+@pytest.mark.parametrize("diagonal", [(1, 1), (-1, 1), (1, -1), (-1, -1)])
+@pytest.mark.parametrize("beside", ["file", "rank"])
+def test_a_one_square_diagonal_step_passes_over_nothing(
+    diagonal: tuple[int, int], beside: str
+) -> None:
+    """Q880: a wall beside a piece never stops its diagonal step, on any diagonal.
+
+    ``_lame_path`` used to floor-divide the equal-axis midpoint, so ``(-1, 1)`` halved to
+    ``(-1, 0)`` and ``(1, -1)`` to ``(0, -1)``: a wall on the square beside stopped two of
+    the four diagonals and not their mirror images, which in Quarry kept a king on d5 off
+    c6 for c5's sake. A one-square step goes over no square at all.
+    """
+    dx, dy = diagonal
+    wall = _shift("d4", dx, 0) if beside == "file" else _shift("d4", 0, dy)
+    assert _shift("d4", dx, dy) in _stepper_reaches("d4", [wall])
+
+
+@pytest.mark.parametrize("wall", ["d4", "e5"])
+def test_a_walls_effect_on_a_leap_is_the_same_in_every_mirror(wall: str) -> None:
+    """Mirror the board, wall and piece together, and the moves mirror with them.
+
+    The stepper stands on each of the wall's eight neighbours (and a knight's leap from
+    there crosses it too), under the file, the rank and the point reflection. A wall
+    belongs to the board, and a rule that read one side of a wall and not the other
+    would be a rule nobody wrote.
+    """
+    def file_mirror(name: str) -> str:
+        return f"{chr(ord('h') - (ord(name[0]) - ord('a')))}{name[1:]}"
+
+    def rank_mirror(name: str) -> str:
+        return f"{name[0]}{9 - int(name[1:])}"
+
+    mirrors = (file_mirror, rank_mirror, lambda name: file_mirror(rank_mirror(name)))
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            if (dx, dy) == (0, 0):
+                continue
+            at = _shift(wall, dx, dy)
+            reached = _stepper_reaches(at, [wall])
+            for mirror in mirrors:
+                seen = _stepper_reaches(mirror(at), [mirror(wall)])
+                assert seen == {mirror(name) for name in reached}, (at, wall, mirror)
+
+
 def test_an_explosion_does_not_try_to_clear_a_wall() -> None:
     """A blast clears squares, and a wall is not a square that can be cleared."""
     spec = with_rules(
@@ -474,8 +543,13 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
     # 88 since Q786's `jeson-mor`, which does, aiming both sides at e5 (so the two
     # readings agree); 90 since Q782's two hex-symmetry showcases, which declare none;
     # 97 since Q772a's seven portal showcases, which declare none either; 98 since Q807's
-    # Ferry with no straight back, which does not either.
-    assert len(paths) == 98
+    # Ferry with no straight back, which does not either; 99 since Q850's `wolves-patrol`,
+    # which does not either; 100 since Q772e's `divide-two-way`, which does not either; 101
+    # since Q772f's `divide-fixed`, which does not either; 87 since the library audit
+    # (Q868, 2026-10-12) retired fourteen near copies, none of which declared `reach`; 84
+    # since its second pass (Q870) retired four hexagon variants for `pinwheel`, which
+    # declares none; 87 since Q844b's three portal showcases, which declare none either.
+    assert len(paths) == 87
 
     with_reach: dict[str, tuple[frozenset[int], frozenset[int]]] = {}
     for path in paths:

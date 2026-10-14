@@ -29,7 +29,6 @@ from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.schema import (
     DEFAULT_RANGE,
     MAX_MOVES_PER_TURN,
-    PORTAL_ENDS,
     REPETITION_NEVER,
     STOCK_UNLIMITED,
     WRAP_PAIRS,
@@ -38,11 +37,13 @@ from chess_variant_sandbox.spec.schema import (
     hex_distance,
     npc_immune_attackers,
     npc_routes,
+    npc_starts,
     obstacle_squares,
     parse_square,
+    portal_bars_that_can_bind,
     portal_end_ids,
-    portal_open_ends,
-    portal_pairs,
+    portal_groups,
+    portal_has_folds,
     portal_piece_ids,
     promotion_squares,
     promotion_targets,
@@ -50,6 +51,9 @@ from chess_variant_sandbox.spec.schema import (
     reflect_square,
     validate_or_raise,
     wrap_stated,
+)
+from chess_variant_sandbox.spec.schema import (
+    facing_turns as facing_turns_of,
 )
 
 MODE_MOVE = 1
@@ -606,14 +610,19 @@ class NpcRule:
     cycle of distinct squares and no square is on two routes, so *which square is next*
     is a fact about the square a wild piece stands on. That is what lets the core step
     every wild piece with one table read and never ask which one it is looking at, and
-    it is why the validator refuses two routes that share a square.
+    it is why the validator refuses two routes that share a square. Schema 23's
+    ``also_at`` puts several wild pieces on one route, which changes only ``starts``:
+    they share the route's type and bounty, so every per-square entry is still the
+    route's. The core steps the pieces of one route front first (``npc_step_order`` in
+    ``game.rs``).
 
     ``next[square]`` is the square a wild piece standing here steps to, ``-1`` off every
     route and the square itself for a one-square route (a piece that never moves).
     ``bounty[square]`` is what taking the wild piece that walks this square is worth,
     ``0.0`` off every route. ``piece[square]`` is its type, ``-1`` off every route.
-    ``starts`` is where each stands at ply zero, in ``rules.npcs`` order with a mirrored
-    entry following its original.
+    ``starts`` is where each stands at ply zero, in ``rules.npcs`` order -- per entry the
+    route's first square, then its ``also_at`` squares in route order -- with a mirrored
+    entry's starts following its original's.
 
     **No movement frames.** A wild piece never reads a movement table; its type's
     ``moves`` are what it does in a player's hands, which under ``drops`` is a real case.
@@ -657,12 +666,13 @@ def momentum_bits(step_x: int, step_y: int, mode: int) -> int:
 
 @dataclass(frozen=True)
 class PortalRule:
-    """Pairs of portals (schema 19, `docs/plan-portals.md` §2), resolved into tables.
+    """Groups of portals (schemas 19 and 21, `docs/plan-portals.md` §2,
+    `docs/plan-portals-2.md` §2.2), resolved into tables.
 
     **Each end is its own internal piece type**, appended after the declared pieces in
-    ``rules.portals`` order (pair 1 orange, pair 1 blue, pair 2 orange, ...) with its
-    declared portal piece's moves and the id ``portal_end_ids`` gives it (``1o``, ``1b``,
-    ...). It stands on the board as a byte of the third owner, the block a wild piece uses
+    ``rules.portals`` order, group then end (pair 1 orange, pair 1 blue, group 2's ends a,
+    b, c, ...), with its declared portal piece's moves and the id ``portal_end_ids`` gives
+    it (``1o``, ``1b``, ``2a``, ...). It stands on the board as a byte of the third owner, the block a wild piece uses
     -- nobody's -- which the validator keeps free by refusing ``npcs`` beside portals. So
     every reader that already leaves a wild piece out of the two armies leaves a portal out
     too, and the board byte names which end stands where.
@@ -678,13 +688,20 @@ class PortalRule:
     * ``attack_dirs[owner][square]`` -- the capture directions of every attack source, in
       ``attack_sources`` order, so check through a portal is read from the same table.
 
-    The rest is per type: ``partner`` (the other end's type, -1 for a piece that is not a
-    portal), ``open_to[type]`` (may each player's pieces go in by this end), ``movers``
-    (which players may move it).
+    The rest is per type: ``dest`` (the type of the end a piece that goes in here comes
+    out of; -1 for a way out only and for a piece that is not a portal), ``admits[type]``
+    (per player, a mask over the declared piece types: bit ``t`` set when that player's
+    pieces of type ``t`` may go in by this end, from the end's ``enter`` and ``carries``),
+    ``movers`` (which players may move it). ``group_of`` is each end's group, in end
+    order. For a pair, ``dest`` is the other end and ``admits`` is every declared type where
+    the passage opens the end: schema 19's ``partner`` and ``open_to``, renamed (schema 21).
 
-    Schema 20 (Q807): ``no_back[type]``, true on both ends of a pair that sets
+    Schema 20 (Q807): ``no_back[type]``, true on every end of a group that sets
     ``no_straight_back`` -- once moved, the end may not be moved straight back onto the
-    square it left on the very next move. The core holds the last such move as
+    square it left on the very next move. Q883: only where a move can meet the bar
+    (`schema.portal_bars_that_can_bind`, the reading Q879's refusal makes), so an inert
+    bar a stored spec carries compiles to none; the core keeps a bar it sets only when the
+    player to move next is one of the end's ``movers``. The core holds the last such move as
     ``Game::portal_bar`` and keys it with ``zobrist_bar`` (``[square]`` for the square the end
     left, ``[n_squares + square]`` for the one it stands on), drawn after every other key and
     only when some pair sets the flag, so no other key moves. Both empty otherwise.
@@ -693,9 +710,9 @@ class PortalRule:
     declared_types: int
     end_types: tuple[int, ...]
     squares: tuple[int, ...]
-    pair_of: tuple[int, ...]
-    partner: tuple[int, ...]
-    open_to: tuple[tuple[bool, bool], ...]
+    group_of: tuple[int, ...]
+    dest: tuple[int, ...]
+    admits: tuple[tuple[int, int], ...]
     movers: tuple[frozenset[int], ...]
     exits: tuple[tuple[tuple[int, ...], ...], ...]
     leap_dirs: Any
@@ -704,9 +721,45 @@ class PortalRule:
     attack_dirs: tuple[tuple[tuple[int, ...], ...], ...]
     no_back: tuple[bool, ...] = ()
     zobrist_bar: tuple[int, ...] = ()
+    # Schema 21: per type, whether the end names the pieces it carries -- for the page's
+    # words only (`viz.wrapped.portal_payload`); the core reads `admits`, which says it.
+    carried: tuple[bool, ...] = ()
+    # Schema 22 (Q843c): each end's rule set, in end order -- ``"momentum"`` or ``"fold"``
+    # -- and the fold tables (`FoldRule`), ``None`` where no group is a fold.
+    kinds: tuple[str, ...] = ()
+    folds: FoldRule | None = None
 
     def is_end(self, piece_type: int) -> bool:
-        return self.partner[piece_type] >= 0
+        return piece_type in self.end_types
+
+    def is_fold(self, piece_type: int) -> bool:
+        """Whether ``piece_type`` is a fold end (schema 22)."""
+        if piece_type not in self.end_types or not self.kinds:
+            return False
+        return self.kinds[self.end_types.index(piece_type)] == "fold"
+
+    def admitted(self, piece_type: int, player: int, mover: int) -> bool:
+        """Whether ``player``'s piece of type ``mover`` may go in by end ``piece_type``."""
+        return bool(self.admits[piece_type][player] >> mover & 1)
+
+
+@dataclass(frozen=True)
+class FoldRule:
+    """Fold portals (schema 22; revised at schema 24, `docs/plan-portals-2.md` §3R).
+
+    A fold end is an internal type like a momentum end (`PortalRule`), but it never stands
+    on the board byte: where each stands is game state (``Game::fold_at``), starting at
+    ``starts`` (one square per end in end order, -1 for a momentum end). A landing on an
+    empty fold may go through to the square of the end it leads to, which the core reads
+    off ``PortalRule.dest`` and ``fold_at``; nothing about a fold is geometry, so this is
+    all the compiler adds:
+
+    * ``zobrist`` -- ``[end * n_squares + square]``, where each fold stands, drawn after
+      every other key and only when a fold exists, so no other key moves.
+    """
+
+    starts: tuple[int, ...]
+    zobrist: tuple[int, ...]
 
 
 @dataclass(frozen=True)
@@ -1038,6 +1091,19 @@ class CompiledSpec:
     # Schema 19 (Q771): pairs of portals, or ``None`` -- every game before it, whose
     # boundary keys for the rule all cross empty. See ``PortalRule``.
     portals: PortalRule | None = None
+    # Schema 25 (Q869): [piece_type] -> whether a move may turn that type, for a spec in
+    # which some facing piece says ``turns: false``. Empty where every facing piece turns,
+    # which is every spec before schema 25 and what keeps their boundary bytes where they
+    # were; read it through ``turns``.
+    facing_turns: tuple[bool, ...] = ()
+
+    def turns(self, piece_type: int) -> bool:
+        """Whether a move may turn this type: it has more than one orientation and its
+        facing does not say ``turns: false``. What the core asks before it generates a
+        rotation (`Tables::turns_of`)."""
+        if self.facing_axes[piece_type] < 2:
+            return False
+        return not self.facing_turns or self.facing_turns[piece_type]
 
     def sweep_path(self, board: bytes, origin: int, target: int) -> tuple[int, ...]:
         """The squares a sweep from ``origin`` to ``target`` passes over, in ray order.
@@ -1200,6 +1266,176 @@ def _hexagon_radius(board: Any) -> int:
 
 def compile_spec(spec: dict[str, Any]) -> CompiledSpec:
     """Validate ``spec`` and build its tables. Raises ``SpecError`` if invalid."""
+    compiled, _ = _compile(spec, None)
+    assert compiled is not None  # only a shared frame pass can stop early
+    return compiled
+
+
+def compile_two_readings(
+    spec: dict[str, Any], restated: dict[str, Any]
+) -> tuple[CompiledSpec, CompiledSpec | None]:
+    """``spec`` compiled, and ``restated`` compiled beside it sharing what it can.
+
+    The one caller is `relate._orientation_played`, which asks whether a ``"rotate"``
+    spec's tables equal those of the same game ``restated`` under the default ``mirror``
+    with every placement and wall written square by square. That needed two whole
+    compiles, and the movement frames -- `_compile_square_full` once per frame, type and
+    square -- are most of each (Q866). This builds them once and a half:
+
+    * **The first player's frames are shared.** `_compile_square_full` reads the
+      orientation only for the second player (the step's reflection and
+      `_region_squares`), so wherever everything else it reads is equal (`_Frames.inputs`:
+      the pieces, the board, the wrap, the walls, the facings, the portals) the first
+      player's half of ``restated``'s frames *is* ``spec``'s, and is taken rather than
+      rebuilt. Where anything differs nothing is shared and both compile whole.
+    * **The second player's frames are compared as they are built**, and the first square
+      whose entries differ from ``spec``'s ends the restated compile: the answer is then
+      ``(compiled, None)``, meaning *the two compile to different tables*. That is exact,
+      not a heuristic. `bridge._flatten_entries` writes every slot's entries in frame,
+      type, square order, each with its landing count beside its landings and a mode per
+      landing (true of every entry built here: leaps, rays and lame legs alike), so two
+      flattenings are equal only when every slot's entries are, and the movement arrays
+      are canonical-table keys that `relate._played` keeps. Nothing after the frame pass
+      rewrites them (`_freeze` is the identity on content).
+
+    ``(compiled, compiled_restated)`` otherwise, and the restated one is exactly
+    `compile_spec(restated)`: the same frames, then the same everything else. Raises as
+    `compile_spec` does for ``spec``; for ``restated`` it raises only where its compile
+    gets that far, which for this caller is the same answer (any failure to ask keeps the
+    orientation as written). `tests/test_relate.py` holds the old two compiles against
+    this over every committed rotating spec.
+    """
+    compiled, frames = _compile(spec, None)
+    assert compiled is not None and frames is not None
+    restated_compiled, _ = _compile(restated, frames)
+    return compiled, restated_compiled
+
+
+@dataclass(frozen=True)
+class _Frames:
+    """One compile's movement frames, `[frame][type][square]`, and what they were built
+    from, so that `compile_two_readings` can share the first player's half."""
+
+    # Everything `_compile_square_full` reads but the player and the orientation.
+    inputs: tuple[Any, ...]
+    leaps: list[list[list[tuple[Entry, ...]]]]
+    slides: list[list[list[tuple[Entry, ...]]]]
+    hops: list[list[list[tuple[HopEntry, ...]]]]
+    sweeps: list[list[list[tuple[Entry, ...]]]]
+    dedup: list[list[frozenset[int]]]
+    # Schema 19: the momentum masks, parallel to leaps, slides and hops. Built only where
+    # there are portals; every other game compiles exactly as it did.
+    leap_dirs: list[list[list[Any]]]
+    slide_dirs: list[list[list[Any]]]
+    hop_dirs: list[list[list[Any]]]
+
+
+def _compile_frames(
+    pieces: list[dict[str, Any]],
+    n_facings: int,
+    n_squares: int,
+    width: int,
+    height: int,
+    orientation: str,
+    wrap: WrapRule | None,
+    obstacles: frozenset[int],
+    blocks_leaps: bool,
+    radius: int,
+    has_portals: bool,
+    share: _Frames | None,
+) -> _Frames | None:
+    """Every piece's entries on every square, one pass per *frame*.
+
+    A frame is (player, facing) flattened player-major, so with nothing facing it is the
+    player and this runs twice, exactly as it did before frames had a name.
+
+    ``share`` is another spec's frames (`compile_two_readings`). Where its inputs equal
+    these, the first player's frames are taken from it, and the second player's are
+    compared with it as they are built: ``None`` at the first square that differs, and a
+    square that does not differ takes its dedup flag from ``share`` (a function of the
+    entries alone, `_needs_runtime_dedup`).
+    """
+    inputs = (
+        pieces, n_facings, width, height, wrap, obstacles, blocks_leaps, radius,
+        has_portals,
+    )
+    shared = share if share is not None and share.inputs == inputs else None
+    frames = _Frames(inputs, [], [], [], [], [], [], [], [])
+    for frame in range(n_facings * 2):
+        player, facing = divmod(frame, n_facings)
+        if shared is not None and player == 0:
+            # Copied a level down, so that nothing appended here can reach `share`.
+            frames.leaps.append(list(shared.leaps[frame]))
+            frames.slides.append(list(shared.slides[frame]))
+            frames.hops.append(list(shared.hops[frame]))
+            frames.sweeps.append(list(shared.sweeps[frame]))
+            frames.dedup.append(list(shared.dedup[frame]))
+            frames.leap_dirs.append(list(shared.leap_dirs[frame]))
+            frames.slide_dirs.append(list(shared.slide_dirs[frame]))
+            frames.hop_dirs.append(list(shared.hop_dirs[frame]))
+            continue
+        frame_leaps: list[list[tuple[Entry, ...]]] = []
+        frame_slides: list[list[tuple[Entry, ...]]] = []
+        frame_hops: list[list[tuple[HopEntry, ...]]] = []
+        frame_sweeps: list[list[tuple[Entry, ...]]] = []
+        frame_dedup: list[frozenset[int]] = []
+        frame_dirs: tuple[list[Any], list[Any], list[Any]] = ([], [], [])
+        for piece_type, piece in enumerate(pieces):
+            type_leaps: list[tuple[Entry, ...]] = []
+            type_slides: list[tuple[Entry, ...]] = []
+            type_hops: list[tuple[HopEntry, ...]] = []
+            type_sweeps: list[tuple[Entry, ...]] = []
+            type_dirs: tuple[list[Any], list[Any], list[Any]] = ([], [], [])
+            ambiguous: set[int] = set()
+            for square in range(n_squares):
+                built, momentum = _compile_square_full(
+                    piece, player, square, width, height, orientation, wrap,
+                    obstacles, blocks_leaps,
+                    facing_quarter_turns(facing, n_facings),
+                    radius,
+                    momentum=has_portals,
+                )
+                type_leaps.append(built[0])
+                type_slides.append(built[1])
+                type_hops.append(built[2])
+                type_sweeps.append(built[3])
+                for kept, dirs in zip(type_dirs, momentum, strict=True):
+                    kept.append(dirs)
+                if shared is not None:
+                    if (
+                        built[0] != shared.leaps[frame][piece_type][square]
+                        or built[1] != shared.slides[frame][piece_type][square]
+                        or built[2] != shared.hops[frame][piece_type][square]
+                        or built[3] != shared.sweeps[frame][piece_type][square]
+                    ):
+                        return None
+                    if square in shared.dedup[frame][piece_type]:
+                        ambiguous.add(square)
+                elif _needs_runtime_dedup(*built):
+                    ambiguous.add(square)
+            frame_leaps.append(type_leaps)
+            frame_slides.append(type_slides)
+            frame_hops.append(type_hops)
+            frame_sweeps.append(type_sweeps)
+            frame_dedup.append(frozenset(ambiguous))
+            for kept_frame, kept_type in zip(frame_dirs, type_dirs, strict=True):
+                kept_frame.append(kept_type)
+        frames.leaps.append(frame_leaps)
+        frames.slides.append(frame_slides)
+        frames.hops.append(frame_hops)
+        frames.sweeps.append(frame_sweeps)
+        frames.dedup.append(frame_dedup)
+        frames.leap_dirs.append(frame_dirs[0])
+        frames.slide_dirs.append(frame_dirs[1])
+        frames.hop_dirs.append(frame_dirs[2])
+    return frames
+
+
+def _compile(
+    spec: dict[str, Any], share: _Frames | None
+) -> tuple[CompiledSpec | None, _Frames | None]:
+    """`compile_spec`, with its frames, and ``share`` as `_compile_frames` reads it:
+    ``(None, None)`` when a shared pass stopped at a frame that differs."""
     validate_or_raise(spec)
 
     board_spec = spec["board"]
@@ -1224,21 +1460,9 @@ def compile_spec(spec: dict[str, Any]) -> CompiledSpec:
     absent = absent_squares(board_spec)
     blocks_leaps = bool((rules.get("obstacles") or {}).get("blocks_leaps", False))
 
-    leaps: list[list[list[tuple[Entry, ...]]]] = []
-    slides: list[list[list[tuple[Entry, ...]]]] = []
-    hops: list[list[list[tuple[HopEntry, ...]]]] = []
-    sweeps: list[list[list[tuple[Entry, ...]]]] = []
+    # Schema 22: whether a portal group is a fold; every other game compiles as it did.
+    has_folds = has_portals and portal_has_folds(rules)
 
-    dedup: list[list[frozenset[int]]] = []
-    # Schema 19: the momentum masks, parallel to leaps, slides and hops. Built only where
-    # there are portals; every other game compiles exactly as it did.
-    leap_dirs: list[list[list[Any]]] = []
-    slide_dirs: list[list[list[Any]]] = []
-    hop_dirs: list[list[list[Any]]] = []
-
-    # One pass per *frame*. A frame is (player, facing) flattened player-major, so with
-    # nothing facing it is the player and this loop runs twice, exactly as it did before
-    # frames had a name.
     facing_axes = tuple(
         int((piece.get("facing") or {}).get("axes", 1)) for piece in pieces
     )
@@ -1248,53 +1472,25 @@ def compile_spec(spec: dict[str, Any]) -> CompiledSpec:
         // (4 // n_facings)
         for piece in pieces
     )
+    # Schema 25: a facing no move turns. Empty unless one says so (see the field).
+    facing_turns = (
+        tuple(facing_turns_of(piece) for piece in pieces)
+        if any(
+            isinstance(piece.get("facing"), dict) and not facing_turns_of(piece)
+            for piece in pieces
+        )
+        else ()
+    )
     n_frames = n_facings * 2
-    for frame in range(n_frames):
-        player, facing = divmod(frame, n_facings)
-        frame_leaps: list[list[tuple[Entry, ...]]] = []
-        frame_slides: list[list[tuple[Entry, ...]]] = []
-        frame_hops: list[list[tuple[HopEntry, ...]]] = []
-        frame_sweeps: list[list[tuple[Entry, ...]]] = []
-        frame_dedup: list[frozenset[int]] = []
-        frame_dirs: tuple[list[Any], list[Any], list[Any]] = ([], [], [])
-        for piece in pieces:
-            type_leaps: list[tuple[Entry, ...]] = []
-            type_slides: list[tuple[Entry, ...]] = []
-            type_hops: list[tuple[HopEntry, ...]] = []
-            type_sweeps: list[tuple[Entry, ...]] = []
-            type_dirs: tuple[list[Any], list[Any], list[Any]] = ([], [], [])
-            ambiguous: set[int] = set()
-            for square in range(n_squares):
-                built, momentum = _compile_square_full(
-                    piece, player, square, width, height, orientation, wrap,
-                    obstacles, blocks_leaps,
-                    facing_quarter_turns(facing, n_facings),
-                    radius,
-                    momentum=has_portals,
-                )
-                type_leaps.append(built[0])
-                type_slides.append(built[1])
-                type_hops.append(built[2])
-                type_sweeps.append(built[3])
-                for kept, dirs in zip(type_dirs, momentum, strict=True):
-                    kept.append(dirs)
-                if _needs_runtime_dedup(*built):
-                    ambiguous.add(square)
-            frame_leaps.append(type_leaps)
-            frame_slides.append(type_slides)
-            frame_hops.append(type_hops)
-            frame_sweeps.append(type_sweeps)
-            frame_dedup.append(frozenset(ambiguous))
-            for kept_frame, kept_type in zip(frame_dirs, type_dirs, strict=True):
-                kept_frame.append(kept_type)
-        leaps.append(frame_leaps)
-        slides.append(frame_slides)
-        hops.append(frame_hops)
-        sweeps.append(frame_sweeps)
-        dedup.append(frame_dedup)
-        leap_dirs.append(frame_dirs[0])
-        slide_dirs.append(frame_dirs[1])
-        hop_dirs.append(frame_dirs[2])
+    frames = _compile_frames(
+        pieces, n_facings, n_squares, width, height, orientation, wrap, obstacles,
+        blocks_leaps, radius, has_portals, share,
+    )
+    if frames is None:
+        return None, None
+    leaps, slides, hops, sweeps = frames.leaps, frames.slides, frames.hops, frames.sweeps
+    dedup = frames.dedup
+    leap_dirs, slide_dirs, hop_dirs = frames.leap_dirs, frames.slide_dirs, frames.hop_dirs
 
     capture_allowed = _apply_portal_immunity(
         _apply_npc_immunity(
@@ -1316,9 +1512,10 @@ def compile_spec(spec: dict[str, Any]) -> CompiledSpec:
         _portal_starts(spec, declared_types, width, height),
     )
     digest = spec_hash(spec)
-    zob_pieces, zob_side, zob_ep, zob_colour, zob_turn, zob_bar = _build_zobrist(
+    zob_pieces, zob_side, zob_ep, zob_colour, zob_turn, zob_bar, zob_fold = _build_zobrist(
         digest, n_squares, n_types, width, n_facings, n_owners,
-        portal_bar=any(pair["no_straight_back"] for pair in portal_pairs(rules)),
+        portal_bar=any(group["no_straight_back"] for group in portal_groups(rules)),
+        fold_ends=n_types - declared_types if has_folds else 0,
     )
     royal_types = tuple(i for i, p in enumerate(pieces) if p.get("royal", False))
     win = rules.get("win", "checkmate")
@@ -1365,6 +1562,7 @@ def compile_spec(spec: dict[str, Any]) -> CompiledSpec:
         third_block=has_portals,
         momentum=(leap_dirs, slide_dirs, hop_dirs) if has_portals else None,
         dirs_out=attack_dirs,
+        facing_axes=facing_axes,
     )
     one_way_types = _one_way_types(
         leaps,
@@ -1377,19 +1575,28 @@ def compile_spec(spec: dict[str, Any]) -> CompiledSpec:
         n_facings,
         width,
         sweeps,
+        facing_turns,
     )
     portals = None
     if has_portals:
         portals = _compile_portals(
             rules, declared_types, n_types, width, height, wrap, obstacles,
             (leap_dirs, slide_dirs, hop_dirs), attack_dirs or [], zob_bar,
+            piece_ids[:declared_types], portal_bars_that_can_bind(spec),
         )
+        if has_folds:
+            portals = replace(portals, folds=FoldRule(
+                starts=_fold_starts(rules, width, height), zobrist=zob_fold,
+            ))
         # Any type that can go in by a portal can come back to a square it left -- a pawn
-        # through a pair that runs down the board -- so no type is one-way in a game whose
-        # portals are open to anybody (`docs/plan-portals.md` §2.6). Without this a pawn
-        # move would clear the repetition window while a cycle through a portal exists.
-        if any(any(pair) for pair in portals.open_to):
-            one_way_types = frozenset(t for t in one_way_types if portals.is_end(t))
+        # through a pair that runs down the board -- so no type some end admits is one-way
+        # (`docs/plan-portals.md` §2.6). Without this a pawn move would clear the
+        # repetition window while a cycle through a portal exists. Schema 21
+        # (`plan-portals-2.md` §2.3): a type every filter keeps out stays one-way.
+        admitted = 0
+        for masks in portals.admits:
+            admitted |= masks[0] | masks[1]
+        one_way_types = frozenset(t for t in one_way_types if not admitted >> t & 1)
 
     compiled = CompiledSpec(
         name=spec["name"],
@@ -1428,6 +1635,7 @@ def compile_spec(spec: dict[str, Any]) -> CompiledSpec:
         n_facings=n_facings,
         facing_axes=facing_axes,
         facing_initial=facing_initial,
+        facing_turns=facing_turns,
         immobile_squares=tuple(
             tuple(
                 frozenset(
@@ -1522,7 +1730,7 @@ def compile_spec(spec: dict[str, Any]) -> CompiledSpec:
         _reject_walled_in(compiled)
     if compiled.has_facing:
         _reject_null_rotations(compiled)
-    return compiled
+    return compiled, frames
 
 
 def _reject_null_rotations(compiled: CompiledSpec) -> None:
@@ -1560,9 +1768,21 @@ def _reject_null_rotations(compiled: CompiledSpec) -> None:
             if table in seen:
                 first = FACING_NAMES[facing_quarter_turns(seen[table], compiled.n_facings)]
                 second = FACING_NAMES[facing_quarter_turns(facing, compiled.n_facings)]
+                name = compiled.piece_ids[piece_type]
+                if not compiled.turns(piece_type):
+                    # Schema 25: no pass to hand out, but a facing that changes no move
+                    # is the same game under a second hash, and a sentence a player is
+                    # told for nothing.
+                    raise SpecError(
+                        [
+                            f"piece {name!r} facing {second} moves exactly as it does "
+                            f"facing {first}, so its facing changes nothing. Give the "
+                            "facing to a piece whose moves are not symmetric under it."
+                        ]
+                    )
                 raise SpecError(
                     [
-                        f"piece {compiled.piece_ids[piece_type]!r} facing {second} moves "
+                        f"piece {name!r} facing {second} moves "
                         f"exactly as it does facing {first}, so turning between them "
                         "would be a move that does nothing -- which is a pass, and a "
                         "pass changes every game it is added to. Give the facing to a "
@@ -1636,12 +1856,25 @@ def _lame_path(dx: int, dy: int) -> tuple[int, int]:
     single rule gives the xiangqi horse its leg -- a (1,2) move blocked at (0,1) -- and
     the elephant its eye, a (2,2) move blocked at (1,1), which is how both are actually
     described.
+
+    **The midpoint is halved toward the mover, so a one-square diagonal step passes over
+    nothing**: ``(±1, ±1)`` halves to ``(0, 0)``, its own square, on all four diagonals
+    alike, as a one-square orthogonal step's "leg" is its own target. Q880: the halving
+    used to floor, so ``(-1, 1)`` went over ``(-1, 0)`` and ``(1, -1)`` over ``(0, -1)``
+    while their mirror images went over nothing, and a wall beside a king or a pawn under
+    ``blocks_leaps`` stopped its diagonal step on one side only (Quarry's d5 king could
+    not reach c6 for c5). Every even midpoint, the elephant's included, is unmoved.
     """
     if abs(dx) == abs(dy):
-        return dx // 2, dy // 2
+        return _halved_toward_zero(dx), _halved_toward_zero(dy)
     if abs(dx) > abs(dy):
         return (1 if dx > 0 else -1), 0
     return 0, (1 if dy > 0 else -1)
+
+
+def _halved_toward_zero(value: int) -> int:
+    """Half of ``value``, rounded toward zero, so ``-v`` halves to minus what ``v`` does."""
+    return value // 2 if value >= 0 else -(-value // 2)
 
 
 def _descriptor_directions(
@@ -1792,6 +2025,7 @@ def _compile_square_full(
     # so the shorter walk is a prefix of the longer one and this only ever extends --
     # and with a seam in play there is no arithmetic that could rebuild it.
     ray_squares: dict[_RayKey, list[int]] = {}
+    # Schema 22: each ray's mode at every distance a continued walk may reach.
 
     for descriptor in piece["moves"]:
         condition = descriptor.get("condition") or {}
@@ -1879,8 +2113,11 @@ def _compile_square_full(
                     continue
                 # The leg is a shorter step in the same direction, so it can only be off
                 # the board where the target was too -- unless the target wrapped and the
-                # leg did not reach the seam, which is a leap nobody can make.
-                if block is None or block == target:
+                # leg did not reach the seam, which is a leap nobody can make. A one-square
+                # step has no leg at all (``_lame_path`` puts it on the target, or on the
+                # piece's own square for a diagonal one), and is dropped on every side
+                # alike, as the orthogonal one always was.
+                if block is None or block in (target, square):
                     continue
                 # Expressed as a slide whose first square carries no mode: the generator
                 # already walks off a ray the moment it meets an occupied square it
@@ -2090,6 +2327,7 @@ def _build_attack_sources(
     third_block: bool = False,
     momentum: tuple[Any, Any, Any] | None = None,
     dirs_out: list[list[list[int]]] | None = None,
+    facing_axes: tuple[int, ...] = (),
 ) -> tuple[tuple[tuple[AttackSource, ...], ...], ...]:
     """Invert the move tables into "who could attack this square?".
 
@@ -2104,6 +2342,13 @@ def _build_attack_sources(
     simply another row and check detection needs no new dimension. The table grows with
     the facing count and nothing that reads it changes -- which is the same property that
     made a wrapped board and a walled one cost the core nothing.
+
+    **Only the frames a type can stand in** (Q869). The movement tables hold every type in
+    every frame, so a rook has a "facing backward" reading on a board where only the pawn
+    faces; no rook byte ever carries it, and a source for it fails its first comparison on
+    every check test. ``facing_axes`` leaves those out: on the rear guard they were half
+    the slider sources and a quarter of the perft time, and nothing reads a source whose
+    value never stands on a square, so no answer moves.
 
     **A third owner's block, from the routes rather than from the tables** (schema 9). A
     wild piece threatens exactly the square it will step to next, so its block is one
@@ -2144,6 +2389,10 @@ def _build_attack_sources(
         for piece_type in range(len(leaps[frame])):
             if piece_type in silent_types:
                 continue
+            if facing and piece_type < len(facing_axes) and facing % (
+                n_facings // facing_axes[piece_type]
+            ):
+                continue  # a facing this type can never be in
             piece_value = (player * n_facings + facing) * n_types + piece_type + 1
             for origin in range(n_squares):
                 for number, (targets, modes, unmoved) in enumerate(
@@ -3132,6 +3381,7 @@ def _one_way_types(
     n_facings: int,
     width: int,
     sweeps: Any = None,
+    facing_turns: tuple[bool, ...] = (),
 ) -> frozenset[int]:
     """Which piece types can never return to a square they left (Q113).
 
@@ -3156,7 +3406,9 @@ def _one_way_types(
 
     * **A facing makes a piece reversible.** The core generates a rotation to *any* other
       orientation in one move, so two rotations at one square are a two-cycle. The
-      decision's "no ``facing``" is a consequence, not a clause.
+      decision's "no ``facing``" is a consequence, not a clause. A facing no move turns
+      (schema 25, ``facing_turns``) has no rotation edges: each orientation is a graph of
+      its own, and a pawn placed facing backward is as one-way as one facing forward.
     * **A seam is answered exactly.** A rank seam under a forward-only piece is a cycle;
       a file seam under the same piece is not. Nothing here knows what a seam is --
       ``_compile_square`` already put it in the table.
@@ -3200,10 +3452,11 @@ def _one_way_types(
                     for square in rule.squares[player]
                 )
             )
+        turns = not facing_turns or facing_turns[piece_type]
         if all(
             _acyclic(
                 leaps, slides, hops, piece_type, player, facings,
-                n_squares, n_facings, sinks[player], sweeps,
+                n_squares, n_facings, sinks[player], sweeps, turns,
             )
             for player in (0, 1)
         ):
@@ -3222,6 +3475,7 @@ def _acyclic(
     n_facings: int,
     sinks: frozenset[int],
     sweeps: Any = None,
+    turns: bool = True,
 ) -> bool:
     """Whether one piece's move graph for one player holds no cycle, and any move at all.
 
@@ -3248,7 +3502,7 @@ def _acyclic(
                         moves += 1
                         if target not in sinks:
                             adjacency[node].append(slot * n_squares + target)
-            for other in range(len(facings)):
+            for other in range(len(facings) if turns else 0):
                 if other != slot:
                     adjacency[node].append(other * n_squares + origin)
     if not moves:
@@ -3602,27 +3856,28 @@ def _compile_contacts(
 
 
 def _portal_end_pieces(spec: dict[str, Any]) -> list[dict[str, Any]]:
-    """The internal piece types schema 19 adds, one per portal end, in pair order.
+    """The internal piece types schema 19 adds, one per portal end, in group order.
 
-    Each is its pair's declared portal piece under the end's own id (``1o``, ``1b``, ...),
-    so every table is built for it as for a declared piece: its moves are the declared
-    type's. Empty without ``rules.portals``, which is what keeps every other game's tables
-    the size they were.
+    Each is its group's declared portal piece under the end's own id (``1o``, ``1b``,
+    ``2a``, ...), so every table is built for it as for a declared piece: its moves are the
+    declared type's. Empty without ``rules.portals``, which is what keeps every other game's
+    tables the size they were.
     """
     rules = spec.get("rules") or {}
-    pairs = portal_pairs(rules)
-    if not pairs:
+    groups = portal_groups(rules)
+    if not groups:
         return []
     declared = {piece["id"]: piece for piece in spec["pieces"]}
-    ids = portal_end_ids(len(pairs))
+    ids = iter(portal_end_ids(groups))
     ends: list[dict[str, Any]] = []
-    for index, pair in enumerate(pairs):
-        portal = declared[pair["piece"]]
-        for side, end in enumerate(PORTAL_ENDS):
+    for group in groups:
+        portal = declared[group["piece"]]
+        for end in group["ends"]:
+            called = end["key"] if group["spelling"] == "pair" else end["letter"]
             ends.append(
                 {
-                    "id": ids[2 * index + side],
-                    "name": f"{portal.get('name', portal['id'])} {index + 1} {end}",
+                    "id": next(ids),
+                    "name": f"{portal.get('name', portal['id'])} {group['number']} {called}",
                     "value": 0,
                     "moves": portal.get("moves", []),
                 }
@@ -3633,13 +3888,32 @@ def _portal_end_pieces(spec: dict[str, Any]) -> list[dict[str, Any]]:
 def _portal_starts(
     spec: dict[str, Any], declared_types: int, width: int, height: int
 ) -> tuple[tuple[int, int], ...]:
-    """``(square, internal type)`` for every portal end at ply zero."""
+    """``(square, internal type)`` for every momentum portal end at ply zero.
+
+    A fold end (schema 22) never stands on the board byte, so it is left out here and
+    starts at `_fold_starts`' square instead.
+    """
     starts: list[tuple[int, int]] = []
-    for index, pair in enumerate(portal_pairs(spec.get("rules") or {})):
-        for side, end in enumerate(PORTAL_ENDS):
-            coords = parse_square(pair[end], width, height)
+    piece_type = declared_types
+    for group in portal_groups(spec.get("rules") or {}):
+        for end in group["ends"]:
+            coords = parse_square(end["at"], width, height)
             assert coords is not None  # guaranteed by validation
-            starts.append((coords[1] * width + coords[0], declared_types + 2 * index + side))
+            if group["kind"] != "fold":
+                starts.append((coords[1] * width + coords[0], piece_type))
+            piece_type += 1
+    return tuple(starts)
+
+
+def _fold_starts(rules: dict[str, Any], width: int, height: int) -> tuple[int, ...]:
+    """Schema 22: where each portal end starts if it is a fold, in end order; -1 for a
+    momentum end, which stands on the board byte instead (`_portal_starts`)."""
+    starts: list[int] = []
+    for group in portal_groups(rules):
+        for end in group["ends"]:
+            coords = parse_square(end["at"], width, height)
+            assert coords is not None  # guaranteed by validation
+            starts.append(coords[1] * width + coords[0] if group["kind"] == "fold" else -1)
     return tuple(starts)
 
 
@@ -3706,37 +3980,67 @@ def _compile_portals(
     momentum: tuple[Any, Any, Any],
     attack_dirs: list[list[list[int]]],
     zobrist_bar: tuple[int, ...] = (),
+    declared_ids: tuple[str, ...] = (),
+    bar_binds: tuple[bool, ...] = (),
 ) -> PortalRule:
-    """``rules.portals`` resolved into the tables `PortalRule` describes."""
-    pairs = portal_pairs(rules)
-    partner = [-1] * n_types
+    """``rules.portals`` resolved into the tables `PortalRule` describes.
+
+    Every group, in either spelling, through the one normaliser (`portal_groups`): an end's
+    ``dest`` is the type of the end its ``to`` names, and its ``admits`` mask per player is
+    every declared type its ``carries`` names (every declared type where it has none) when
+    the player is in its ``enter``, else nothing (`docs/plan-portals-2.md` §2.2-2.3).
+    """
+    groups = portal_groups(rules)
+    index_of = {pid: index for index, pid in enumerate(declared_ids)}
+    # Every declared piece but the portal pieces, which never stand on the board.
+    every = sum(
+        1 << index for index, pid in enumerate(declared_ids)
+        if pid not in {group["piece"] for group in groups}
+    )
+    dest = [-1] * n_types
     no_back = [False] * n_types
-    open_to = [(False, False)] * n_types
+    admits = [(0, 0)] * n_types
     movers: list[frozenset[int]] = [frozenset()] * n_types
+    carried = [False] * n_types
     end_types: list[int] = []
     squares: list[int] = []
-    pair_of: list[int] = []
-    for index, pair in enumerate(pairs):
-        opened = [portal_open_ends(pair["passage"][player]) for player in (0, 1)]
-        for side, end in enumerate(PORTAL_ENDS):
-            piece_type = declared_types + 2 * index + side
-            partner[piece_type] = declared_types + 2 * index + 1 - side
-            open_to[piece_type] = (opened[0][side], opened[1][side])
-            movers[piece_type] = pair["moved_by"][end]
-            no_back[piece_type] = pair["no_straight_back"]
+    group_of: list[int] = []
+    kinds: list[str] = []
+    first = declared_types
+    for index, group in enumerate(groups):
+        for place, end in enumerate(group["ends"]):
+            piece_type = first + place
+            if end["to"] is not None:
+                dest[piece_type] = first + end["to"]
+            named = end["carries"]
+            carried[piece_type] = named is not None
+            mask = every if named is None else sum(
+                1 << index_of[pid] for pid in named if pid in index_of
+            )
+            admits[piece_type] = (
+                mask if 0 in end["enter"] else 0, mask if 1 in end["enter"] else 0,
+            )
+            movers[piece_type] = end["moved_by"]
+            # Q883: only a bar a move can meet (`schema.portal_bars_that_can_bind`, Q879's
+            # refusal read as a flag), so a stored spec's inert bar compiles to none and
+            # stays out of the key.
+            no_back[piece_type] = index < len(bar_binds) and bar_binds[index]
             end_types.append(piece_type)
-            coords = parse_square(pair[end], width, height)
+            kinds.append(group["kind"])
+            coords = parse_square(end["at"], width, height)
             assert coords is not None  # guaranteed by validation
             squares.append(coords[1] * width + coords[0])
-            pair_of.append(index)
+            group_of.append(index)
+        first += len(group["ends"])
     leap_dirs, slide_dirs, hop_dirs = momentum
     return PortalRule(
         declared_types=declared_types,
         end_types=tuple(end_types),
         squares=tuple(squares),
-        pair_of=tuple(pair_of),
-        partner=tuple(partner),
-        open_to=tuple(open_to),
+        group_of=tuple(group_of),
+        dest=tuple(dest),
+        admits=tuple(admits),
+        carried=tuple(carried),
         movers=tuple(movers),
         exits=_portal_exits(width, height, wrap, obstacles),
         leap_dirs=_freeze(leap_dirs),
@@ -3749,6 +4053,7 @@ def _compile_portals(
         # game's tables are what they were.
         no_back=tuple(no_back) if any(no_back) else (),
         zobrist_bar=zobrist_bar if any(no_back) else (),
+        kinds=tuple(kinds),
     )
 
 
@@ -3778,7 +4083,6 @@ def _compile_npcs(
     nxt = [-1] * n_squares
     bounty = [0.0] * n_squares
     piece_of = [-1] * n_squares
-    starts: list[tuple[int, int]] = []
     for label, squares in npc_routes(rules, width, height, orientation):
         index = int(label.split("[")[1].split("]")[0])
         entry = npcs[index]
@@ -3789,10 +4093,13 @@ def _compile_npcs(
             nxt[square] = squares[(position + 1) % len(squares)]
             bounty[square] = worth
             piece_of[square] = piece_type
-        starts.append((squares[0], piece_type))
-    return NpcRule(
-        next=tuple(nxt), bounty=tuple(bounty), piece=tuple(piece_of), starts=tuple(starts)
+    # Schema 23: ``also_at`` is more starts on a route and nothing else -- the extra pieces
+    # share the entry's type and bounty, so the three tables above are the route's.
+    starts = tuple(
+        (square, index_of[npcs[index]["piece"]])
+        for index, _, square in npc_starts(rules, width, height, orientation)
     )
+    return NpcRule(next=tuple(nxt), bounty=tuple(bounty), piece=tuple(piece_of), starts=starts)
 
 
 def _compile_drops(
@@ -3917,11 +4224,13 @@ def _build_zobrist(
     n_facings: int = 1,
     n_owners: int = 2,
     portal_bar: bool = False,
+    fold_ends: int = 0,
 ) -> tuple[
     tuple[tuple[int, ...], ...],
     int,
     tuple[int, ...],
     tuple[tuple[int, ...], ...],
+    tuple[int, ...],
     tuple[int, ...],
     tuple[int, ...],
 ]:
@@ -3968,4 +4277,8 @@ def _build_zobrist(
     bar = (
         tuple(rng.getrandbits(64) for _ in range(2 * n_squares)) if portal_bar else ()
     )
-    return pieces, side, ep, colours, turns, bar
+    # Schema 22 (Q843c): where each fold stands, ``[end * n_squares + square]`` for every
+    # portal end (a momentum end's rows are never read). Drawn after the bar and only where a
+    # group is a fold, so no key above moves and no other game's tables grow.
+    fold = tuple(rng.getrandbits(64) for _ in range(fold_ends * n_squares))
+    return pieces, side, ep, colours, turns, bar, fold

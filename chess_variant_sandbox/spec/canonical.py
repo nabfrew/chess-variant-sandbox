@@ -36,19 +36,3 @@ def load_spec(path: str | Path) -> dict[str, Any]:
     with open(path, encoding="utf-8") as handle:
         spec: dict[str, Any] = json.load(handle)
     return spec
-
-
-def save_spec(spec: dict[str, Any], directory: str | Path) -> Path:
-    """Write ``spec`` into ``directory`` named by its content hash, and return the path.
-
-    Specs are immutable: if the file already exists its content is by definition
-    identical, so the write is skipped rather than repeated.
-    """
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
-    path = directory / f"{spec_hash(spec)}.json"
-    if not path.exists():
-        with open(path, "w", encoding="utf-8") as handle:
-            json.dump(spec, handle, indent=2, sort_keys=True, ensure_ascii=False)
-            handle.write("\n")
-    return path

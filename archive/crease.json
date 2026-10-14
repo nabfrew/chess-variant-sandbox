@@ -1,0 +1,369 @@
+{
+  "schema_version": 24,
+  "name": "crease",
+  "description": "Capablanca chess (ten by eight, with the archbishop and the chancellor) with the board creased twice: two fold pairs cross it, b4 with i5 and i4 with b5. A fold is a place, not a piece. A piece that ends its move on an empty fold may stay there, or go through and end on the other fold of its pair, capturing there as on any square: b2-b4 may put the pawn on i5. A piece standing in a fold shuts it, and a move that only passes over a fold treats it as an ordinary square. A piece in a fold is taken there like anywhere else. Either player may move any fold one step as a turn, onto a piece or not, never onto another fold and never straight back onto the square it has just left. Moving the far end of a pair under an enemy piece makes every capture onto the near end a threat to it.",
+  "board": {
+    "width": 10,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "A",
+      "name": "archbishop",
+      "value": 7,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "name": "chancellor",
+      "value": 8,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "O",
+      "name": "portal",
+      "value": 0,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "move"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2",
+          "i2",
+          "j2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "j1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "i1"
+        ]
+      },
+      {
+        "piece": "A",
+        "squares": [
+          "c1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "d1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "e1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "f1"
+        ]
+      },
+      {
+        "piece": "C",
+        "squares": [
+          "h1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "C",
+        "A",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 3
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "portals": [
+      {
+        "piece": "O",
+        "kind": "fold",
+        "orange": "b4",
+        "blue": "i5",
+        "moved_by": {
+          "orange": [
+            0,
+            1
+          ],
+          "blue": [
+            0,
+            1
+          ]
+        },
+        "no_straight_back": true
+      },
+      {
+        "piece": "O",
+        "kind": "fold",
+        "orange": "i4",
+        "blue": "b5",
+        "moved_by": {
+          "orange": [
+            0,
+            1
+          ],
+          "blue": [
+            0,
+            1
+          ]
+        },
+        "no_straight_back": true
+      }
+    ]
+  },
+  "provenance": {
+    "added": "2026-10-13",
+    "origin": "designed",
+    "source": "docs/reference/portal-showcase-ideas.md, Q844b: a game designed around folds",
+    "history": "Designed by Q844 (2026-10-11) under the first fold rules and rebuilt by Q844b on the revised ones (schema 24: a landing on a fold stays or goes through to the far end) as the game of rules.portals kind fold: Capablanca chess with two fold pairs crossing the board, every fold moved by either player, never straight back. Pre-registered in docs/reference/portal-showcase-ideas.md before it was measured.",
+    "parents": [
+      "2eefcd835b3b"
+    ]
+  }
+}

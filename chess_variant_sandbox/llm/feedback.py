@@ -21,6 +21,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
+from chess_variant_sandbox.metrics.components import held_type_indices
 from chess_variant_sandbox.metrics.index import IndexResult
 from chess_variant_sandbox.metrics.seat import SEAT_DECIDED_CHANCE
 
@@ -307,8 +308,17 @@ def _piece_lines(diagnostics: dict[str, Any], spec: dict[str, Any] | None) -> li
     if not totals or sum(totals) <= 0:
         return []
 
-    played = sum(totals)
+    # The pieces a player holds, read as the score reads them: `moves_by_type` follows the
+    # compiled types, which on a portal game run past the spec's piece list with one per
+    # portal end, and a portal belongs to the board (Q877, after Q875). Leaving it out also
+    # stops the proposer being told to give a portal a job.
     names = _piece_names(spec, len(totals))
+    held = held_type_indices(spec or {}, len(totals))
+    names = [names[index] for index in held]
+    totals = [totals[index] for index in held]
+    played = sum(totals)
+    if played <= 0:
+        return []
     ranked = sorted(zip(names, totals, strict=False), key=lambda pair: pair[1])
 
     lines = [

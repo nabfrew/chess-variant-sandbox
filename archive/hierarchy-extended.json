@@ -1,7 +1,7 @@
 {
   "schema_version": 6,
-  "name": "hierarchy extended",
-  "description": "hierarchy rise with three steps above the queen: A (amazon, queen plus knight), D (amazon whose diagonals leap over anything), Z (amazon whose diagonals and orthogonals both leap). A struck piece climbs one step and the two pieces exchange squares; nothing carries a piece above Z, which is taken outright. The pawn's rank promotion is chess's and stops at the queen, so the top three steps are reachable only by being struck.",
+  "name": "amazon ladder",
+  "description": "gift chess with three steps above the queen: A (amazon, queen plus knight), D (amazon whose diagonals leap over anything), Z (amazon whose diagonals and orthogonals both leap). A struck piece climbs one step and the two pieces exchange squares; nothing carries a piece above Z, which is taken outright. The pawn's rank promotion is chess's and stops at the queen, so the top three steps are reachable only by being struck. Three steps past the queen break the game: a struck queen comes back as an amazon on the square its attacker left, and the average game is over in about eight moves a side.",
   "board": {"width": 8, "height": 8},
   "pieces": [
     {

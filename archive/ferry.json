@@ -1,7 +1,7 @@
 {
   "schema_version": 19,
   "name": "ferry",
-  "description": "Los Alamos chess (six by six, no bishops, no pawn double step, no castling, no en passant) with two numbered pairs of portals on the two middle rows: pair 1 from b3 to e4, pair 2 from e3 to b4, crossing the centre. Any piece of either player may go in at either end of either pair and comes out one step beyond the other end of the same pair, in the direction it was travelling, capturing there as usual. Either player may move any portal instead of a piece: one step in any direction onto an empty square. A portal is never captured.",
+  "description": "Los Alamos chess (six by six, no bishops, no pawn double step, no castling, no en passant) with two numbered pairs of portals on the two middle rows: pair 1 from b3 to e4, pair 2 from e3 to b4, crossing the centre. Any piece of either player may go in at either end of either pair and comes out one step beyond the other end of the same pair, in the direction it was travelling, capturing there as usual. Either player may move any portal instead of a piece: one step in any direction onto an empty square. A portal is never captured. With nothing to stop it, the players often move one portal back and forth until the position repeats and the game is drawn; steady ferry is the same game with that one move forbidden.",
   "board": {
     "width": 6,
     "height": 6

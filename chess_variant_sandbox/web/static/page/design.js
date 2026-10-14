@@ -152,10 +152,51 @@ const STICK_GAP = 12;
 function fitSticky() {
   document.querySelectorAll('.designer .stick').forEach(column => {
     const sticks = window.getComputedStyle(column).position === 'sticky';
-    const room = window.innerHeight - column.offsetHeight - STICK_GAP;
+    const room = window.innerHeight - pickReach(column) - STICK_GAP;
     column.style.setProperty('--stick-top',
       (sticks ? Math.min(STICK_GAP, room) : STICK_GAP) + 'px');
   });
+}
+
+// How much of a column has to be on the screen. All of it, except the board's column while
+// squares are picked (Q854, the wolves walk step 6): then the board and the pick note under
+// it, so a column taller than the window sticks with the board in view instead of by its
+// foot, which left the board off the top while the card that started the pick was in view.
+function pickReach(column) {
+  const note = PICKING && column.id === 'boardSide' ? column.querySelector('.pickLine') : null;
+  if (!note) return column.offsetHeight;
+  return Math.ceil(note.getBoundingClientRect().bottom - column.getBoundingClientRect().top);
+}
+
+// The height the phone's foot bar takes off the bottom of the screen, or 0 where there is
+// none (it is in the verdict's panel there).
+function footbarRoom() {
+  const bar = document.getElementById('dActions');
+  return bar && footbarFixed() ? bar.offsetHeight : 0;
+}
+
+// Scrolls the page by as little as brings `node` whole onto the screen, above the phone's
+// foot bar; nothing where it is already.
+function keepInView(node) {
+  if (!node || typeof node.getBoundingClientRect !== 'function') return;
+  const box = node.getBoundingClientRect(), room = window.innerHeight - footbarRoom();
+  if (box.bottom > room) window.scrollBy(0, Math.min(box.bottom - room + 8, box.top - 8));
+  else if (box.top < 0) window.scrollBy(0, box.top - 8);
+}
+
+// *pick on the board* pressed on a card: the board, the pick note and its *a whole row*
+// are brought into view (Q854). Where the board's column sticks, the column sticks by its
+// top while the pick lasts (`pickReach`) and nothing scrolls; stacked, on a phone, the page
+// scrolls up to the board, from a card that can be eleven thousand pixels down the form.
+function boardToPick() {
+  fitSticky();
+  const figure = document.querySelector('#boardSide figure.benchBoard');
+  const line = document.querySelector('#boardSide .pickLine');
+  if (!figure || typeof figure.getBoundingClientRect !== 'function') return;
+  const top = figure.getBoundingClientRect().top;
+  const bottom = (line || figure).getBoundingClientRect().bottom;
+  if (top >= 0 && bottom <= window.innerHeight - footbarRoom()) return;
+  figure.scrollIntoView({ block: 'start' });
 }
 
 function wireSticky() {
@@ -220,11 +261,24 @@ const BENCH_MODES = [
 // invitation under the tab can name the other pair by what they say.
 const PLAY_AWAY = 'play it on its own page', WATCH_AWAY = 'watch it on its own page';
 
+// A button's words with what the two share set apart, so the bar at the foot of a phone
+// says *on its own page* once, before the pair, and fits *save it* and both on one row
+// (Q801: three buttons on two rows took 181 of 812 px). The button's name stays whole
+// for whoever cannot see the bar, and in the panel of a wide screen nothing changes.
+const AWAY_TAIL = ' on its own page';
+
+function awayLabel(words) {
+  const at = words.indexOf(AWAY_TAIL);
+  return at < 0 ? esc(words)
+    : `${esc(words.slice(0, at))}<span class="awayTail">${esc(AWAY_TAIL)}</span>`;
+}
+
 function benchMode(mode) {
   if (DRAFT_MODE === mode) return;
   DRAFT_MODE = mode;
   // A move being taught belongs to the mode it was begun in.
   if (mode !== 'teach') TEACHING = null;
+  if (mode !== 'setup') WILD_TOOL = null;
   // The editor is asking for the board back, so the game standing on it is over. Said
   // with no sentence: the person pressed the tab, and they know what they pressed.
   if (mode !== 'play') endBenchGame('');
@@ -301,8 +355,10 @@ function drawBoardSide() {
     node.onclick = () => benchMode(node.dataset.bench);
   });
   placeBenchSaid(side);
+  wireWildLinks(side);
   wirePalette(side);
   wirePortalRow(side);
+  wireWildRow(side);
   wirePieceTray(side);
   wireBoards(side);
   wireBenchPlay();
@@ -319,6 +375,11 @@ function drawBoardSide() {
 function benchBoardHtml(preview, shown) {
   const picked = pickedSquares(preview.width);
   const bench = benchMarks(shown);
+  // Each wild piece's walk is drawn on the set-up board, always (Q852), and on no other:
+  // *where it goes* is one piece's answer, and the walks would cross its dots.
+  if (shown !== 'setup') preview = Object.assign({}, preview, { walks: undefined });
+  // The walk being picked is drawn as the draft holds it, before the check is back (Q854).
+  else preview = pickedWalk(preview);
   if (shown !== 'teach') {
     return boardPreview(preview, shown === 'goes' ? liveMap() : null, picked, bench);
   }
@@ -349,8 +410,15 @@ function liveMap() {
 
 // What the board under it is showing, in one sentence, plus the controls that mode has.
 function benchSaysHtml(shown) {
-  const legend = benchLegendHtml();
-  if (shown === 'setup') return legend + paletteNoteHtml() + pickNoteHtml();
+  const legend = benchLegendHtml(shown);
+  // While squares are picked the note that says so comes first, under the board, with its
+  // *a whole row* and *done picking*; the tray's note is for the tray, which picking has
+  // put away (Q854).
+  if (shown === 'setup' && PICKING) {
+    return pickNoteHtml() + legend + walkLeapsHtml(pickedWalk(lastPreview()), true);
+  }
+  if (shown === 'setup' && WILD_TOOL) return wildToolHtml() + legend + walkLeapsHtml(lastPreview(), true);
+  if (shown === 'setup') return legend + walkLeapsHtml(lastPreview(), true) + paletteNoteHtml();
   const map = DRAFT_MAP;
   const piece = (DRAFT.pieces || [])[DRAFT_PIECE] || {};
   // Where a piece can come out of one end two ways round, it is said once (D6); and the
@@ -363,13 +431,15 @@ function benchSaysHtml(shown) {
 // The legend under the bench board, for the marks it draws beyond the engine's dots: the
 // rules' marks on squares, the walls and the portals, each named from its `MARK_KINDS` row
 // as the play board names it (S3).
-function benchLegendHtml() {
+function benchLegendHtml(shown) {
   const preview = lastPreview();
   if (!preview || typeof legendEntries !== 'function') return '';
   const kinds = new Set(boardKinds(preview.obstacles, preview.portals));
+  // The wild pieces' walks, where the set-up board draws them (Q852).
+  if (shown === 'setup' && walksDrawn(preview)) kinds.add('walk');
   const marks = squareMarks(preview, { zone: !zonesShown() });
   Object.keys(marks).forEach(square => marks[square].forEach(mark => kinds.add(mark.kind)));
-  const said = legendEntries(kinds, preview.wrap, '');
+  const said = legendEntries(kinds, preview.wrap, '', preview.portals);
   return said.length ? `<div class="frame-legend small benchLegend">on the board: ${said.join(' ')}</div>` : '';
 }
 
@@ -737,8 +807,8 @@ function portalPieceEditor(piece, index, on) {
   return `<div class="editorPiece portalPiece${on ? ' on' : ''}" data-piece="${index}">
     <div class="row" style="gap:8px">
       <div class="iconSlot"><svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">${
-        portalGlyph({ pair: 1, end: 'orange', movedBy: [], open: [true, true] }, null, null,
-                    0, 0, 32, {})}</svg></div>
+        portalGlyph({ pair: 1, end: 'orange', movedBy: [], open: [true, true] }, 0, 0, 32,
+                    {})}</svg></div>
       <b>${esc(piece.name || 'portal')}</b>
       <span class="muted small">(used by the portals; it moves as below)</span>
     </div>
@@ -2116,9 +2186,12 @@ function drawVerdict() {
         <div class="says">${gate}</div>
         <div class="row">
           <button class="primary" id="dSave">save it</button>
-          <button id="dPlay" title="the full board, with the move list; nothing is saved"
-            >${esc(PLAY_AWAY)}</button>
-          <button id="dWatch" title="${esc(watchTitle())}">${esc(WATCH_AWAY)}</button>
+          <span class="awayLead muted small">${esc(AWAY_TAIL.trim())}:</span>
+          <button id="dPlay" aria-label="${esc(PLAY_AWAY)}"
+            title="the full board, with the move list; nothing is saved"
+            >${awayLabel(PLAY_AWAY)}</button>
+          <button id="dWatch" aria-label="${esc(WATCH_AWAY)}" title="${esc(watchTitle())}"
+            >${awayLabel(WATCH_AWAY)}</button>
         </div>
       </div>
       <div class="muted small" style="margin-top:6px">
@@ -2847,7 +2920,18 @@ function moveKeyHtml() {
     <span style="color:var(--bad)">&#9711;</span> to take`;
   const W = map.width || 1;
   const here = map.from >= 0 ? squareName(map.from % W, Math.floor(map.from / W)) : '';
+  // A wild piece's type (the wolves walk, step 12): the wild one is on the board but is
+  // nobody's, so the answer is where its walk is written, not that none stands there.
+  const wild = map.live ? wildOnesWords(piece.id) : [];
+  const wildSaid = wild.length ? `The wild <b>${called}</b>: ${wild.join('; ')}. A wild
+    piece moves by itself after every move, and its walk is written on the
+    ${wildCardLinkHtml()} card.` : '';
   if (map.live && map.from < 0) {
+    if (wild.length) {
+      return `<div class="muted small" style="margin-top:6px" data-wildgoes>${wildSaid}
+        No player's <b>${called}</b> stands on the board in the opening position; one put
+        down under <i>set up</i> would be a player's.</div>`;
+    }
     return `<div class="muted small" style="margin-top:6px">No <b>${called}</b> stands on
       the board in the opening position, so there is nothing for it to do yet. Put one
       down under <i>set up</i>.</div>`;
@@ -2858,7 +2942,8 @@ function moveKeyHtml() {
       position, with ${dots}. Its own army, the pieces in its way and every other rule of
       this game are in that answer${map.standing.length > 1
         ? `. Click another ${called} to ask about that one` : ''}.${ACCOUNTS
-        ? '' : ' The engine answered it, not the page.'}</div>`;
+        ? '' : ' The engine answered it, not the page.'}${wildSaid
+        ? `<div data-wildgoes style="margin-top:4px">${wildSaid}</div>` : ''}</div>`;
   }
   return `<div class="muted small" style="margin-top:6px">
     The marks show where <b>${called}</b> could go from ${here} on an empty board, with
@@ -2891,6 +2976,26 @@ function saveRungHtml(kept) {
     these rules did not pass there.`;
 }
 
+// The save's first sentence: kept, kept already, or kept already with new words (Q595).
+// The rules are the game's hash and the name and description are not, so saving kept
+// rules with a new description is the same game with the new description -- said as
+// that, not as *Already saved*, which read as though the description had been dropped.
+// The site keeps a published game's words, or another member's, and says why (`keptAsIs`).
+function savedWordsHtml(kept) {
+  const name = `<b>${esc(kept.name)}</b>`;
+  if (kept.created) return `Saved as ${name}.`;
+  const restated = kept.restated || [];
+  if (restated.length) {
+    const what = restated.includes('name')
+      ? (restated.includes('description') ? 'name and description' : 'name')
+      : 'description';
+    return `Saved the new ${what} of ${name}. Its rules are the same, so it is the
+      same game.`;
+  }
+  const asIs = (kept.unchanged || []).length && kept.keptAsIs ? ` ${esc(kept.keptAsIs)}` : '';
+  return `Already saved as ${name}.${asIs}`;
+}
+
 // What the save did, beside the button that did it: whether the draft was kept, how far
 // the check got, and whether it was listed and why. The site answers the last two and
 // the local application, which has no listing, answers neither -- so each sentence is
@@ -2898,8 +3003,8 @@ function saveRungHtml(kept) {
 function savedHtml(kept) {
   const rung = saveRungHtml(kept);
   return `<div class="ok" style="margin-top:10px">
-    ${kept.created ? 'Saved' : 'Already saved'} as <b>${esc(kept.name)}</b>. An edit
-    from here is a new game, and its family will show it.
+    ${savedWordsHtml(kept)} A change to its rules from here is a new game, and its
+    family will show it.
     <a href="#/game/${esc(kept.hash)}">open its page</a> ${copyLinkHtml(kept.hash)}
     ${rung ? `<div style="margin-top:6px; color:${kept.rungPassed
       ? 'var(--ink)' : 'var(--bad)'}">${rung}</div>` : ''}

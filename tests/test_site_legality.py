@@ -27,19 +27,22 @@ from __future__ import annotations
 import itertools
 import json
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 import site_store
+from test_analysis import _turning_gardner
+from test_schema_twenty_four import GAMES
 
 from chess_variant_sandbox import corpus, measurement
 from chess_variant_sandbox.agents.evaluation import Evaluator
 from chess_variant_sandbox.agents.features import VOCABULARY
 from chess_variant_sandbox.agents.fitted import FittedObjective, procedure_digest
 from chess_variant_sandbox.engine import Engine
+from chess_variant_sandbox.engine.moves import MOVE_DROP, MOVE_FOLD, MOVE_ROTATE, move_type
 from chess_variant_sandbox.measurement import LEGAL, Basis
 from chess_variant_sandbox.site import db, legality, provisional
 from chess_variant_sandbox.site.legality import Refused
@@ -54,6 +57,22 @@ from chess_variant_sandbox.tournament.runner import TournamentConfig
 REPOSITORY = Path(__file__).resolve().parents[1]
 RULESETS = REPOSITORY / "rulesets"
 FILES = ("games.jsonl", "tournament.json", "analysis.json")
+
+# The games `TestTheWalkReadsAsTheCoreAndThePassDo` walks beside the pass, and the move
+# kinds a game must play for its place in the list to mean anything.
+WALKED: dict[str, Callable[[], dict[str, Any]]] = {
+    "dobutsu": lambda: load_spec(RULESETS / "dobutsu.json"),
+    "dull": lambda: load_spec(RULESETS / "dull.json"),
+    "fold_pair": GAMES["fold_pair"],
+    "beside": GAMES["beside"],
+    "turning": _turning_gardner,
+}
+WALKED_KINDS = {
+    "dobutsu": {MOVE_DROP},
+    "fold_pair": {MOVE_FOLD},
+    "beside": {MOVE_FOLD},
+    "turning": {MOVE_ROTATE},
+}
 
 
 # --------------------------------------------------------- a browser's measurement
@@ -543,19 +562,25 @@ class TestTheSlimForm:
 class TestTheWalkReadsAsTheCoreAndThePassDo:
     """The walk restates two readings, and each is held to the one it restates."""
 
-    @pytest.mark.parametrize("name", ["dobutsu", "dull"])
+    @pytest.mark.parametrize("name", list(WALKED))
     def test_series_analysis_and_trials_match_the_core_and_the_pass(self, name: str) -> None:
-        """Dobutsu drops pieces, so the drop half of the piece counting is read too."""
-        spec = load_spec(RULESETS / f"{name}.json")
+        """Dobutsu drops pieces, so the drop half of the piece counting is read too. The
+        fold pair and the fold pair beside a momentum pair (`test_schema_twenty_four`'s)
+        move their portals, a fold onto a piece among them, and the turning pawns rotate:
+        the three readings the walk once restated apart from the pass (Q875). Two random
+        games beside the searching ones, because a random player moves a portal or turns
+        a pawn where a searching one may never bother."""
+        spec = WALKED[name]()
         engine = Engine(spec)
         evaluator = Evaluator.for_engine(engine, mobility_weight=0.0)
         epsilon = analysis_pass._epsilon_for(engine)
+        pairs = [("greedy", "minimax:nodes=100"), ("minimax:nodes=100", "greedy")] * 3
         records = [
             play_game(engine, pair, seed)
-            for seed, pair in enumerate(
-                [("greedy", "minimax:nodes=100"), ("minimax:nodes=100", "greedy")] * 3
-            )
+            for seed, pair in enumerate(pairs + [("random", "random")] * 2)
         ]
+        kinds = {move_type(m) for record in records for m in record.moves}
+        assert WALKED_KINDS.get(name, set()) <= kinds, "the games play what they are here for"
         for index, record in enumerate(records):
             walked = legality.walk(
                 engine, evaluator, record, phase=slices.TOURNAMENT, game=index, series=True

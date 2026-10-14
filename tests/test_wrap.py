@@ -18,20 +18,22 @@ with the same twenty moves as chess, and its perft(2) is 392 rather than 400 bec
 four of White's first moves open a *wrapped* line that pins a Black pawn against its
 king -- the f1 bishop's diagonal f1-g2-h3-a4-b5-c6-d7 and the d1 queen's c2-b3-a4-h5-g6-f7.
 
-Nine boards are pinned here rather than the five schema 5 shipped with, and the file
-shift covers six of them -- every board whose files are joined in *both* directions. The
-other three are not gaps but the two reasons the shift has a precondition, and each is
-asserted rather than assumed:
+Six boards are pinned here, and the file shift covers four of them -- every board whose
+files are joined in *both* directions. The other two are not gaps but the reason the shift
+has a precondition, and it is asserted rather than assumed: `onewaycylinder` and
+`onewaytorus` join their files one way per player, which still leaves each player an
+*edge* in the other direction. An edge sits at an absolute file, so the army's position
+along the board matters and the shift is asserted to **change** its perft, exactly as it
+changes a board with no seam at all.
 
-* `onewaycylinder` joins its files one way per player, which still leaves each player an
-  *edge* in the other direction. An edge sits at an absolute file, so the army's position
-  along the board matters and the shift is asserted to **change** its perft, exactly as it
-  changes a board with no seam at all.
-* `tunnel-vertical` and `onewaytunnel` join *ranks* rather than files, and no
-  chess-descended board is rank-shiftable whatever its seam: a pawn has an absolute
-  forward direction and promotion names a rank. That axis is checked on a synthetic probe
-  with neither -- `_toroidal_probe`, rooks and kings only -- which is what that probe is
-  for.
+No chess-descended board is rank-shiftable whatever its seam: a pawn has an absolute
+forward direction and promotion names a rank. That axis is checked on a synthetic probe
+with neither -- `_toroidal_probe`, rooks and kings only -- which is what that probe is for.
+
+Ten boards were pinned here until the library audit (Q868, 2026-10-12,
+`docs/plan-library-audit.md`) reduced the wrap series to a canonical set and retired
+`tunnel-vertical`, `onewaytunnel`, `torus-extended` and `sardines-torus`; their ladders are
+kept in the comment above `WRAPPED`.
 """
 
 from __future__ import annotations
@@ -59,29 +61,28 @@ RULESETS = Path(__file__).resolve().parents[1] / "rulesets"
 # Q434 on 2026-09-25: its promotion rank lay past the board. Its ladder was
 # {1: 18, 2: 324, 3: 7_245, 4: 158_713}. `torus-less-extended` and `crazyhouse-torus`
 # keep an odd-width file seam under the shift below.
+# Q868, 2026-10-12, retired four more, with their ladders: `tunnel-vertical`
+# (`0268bb0926bf`, {1: 64, 2: 3_593, 3: 206_336}), `onewaytunnel` (`da7647bf02e1`,
+# {1: 47, 2: 2_209, 3: 106_034}), `torus-extended` (`fdadd9839d34`, {1: 45, 2: 2_013,
+# 3: 98_194, 4: 4_760_019}) and `sardines-torus` (`f5585062433b`, {1: 63, 2: 2_985,
+# 3: 170_616, 4: 8_030_690}).
 WRAPPED = (
     "cylinder",
     "onewaycylinder",
-    "tunnel-vertical",
-    "onewaytunnel",
     "torus",
     "onewaytorus",
     "torus-less-extended",
-    "torus-extended",
     "crazyhouse-torus",
-    "sardines-torus",
 )
 
 # This project's own numbers, frozen as regression pins. Depth 1 and 2 on `cylinder` are
 # hand-derived in the module docstring; everything else is pinned by the shift
-# isomorphism below rather than by an external engine -- which covers six of the nine,
+# isomorphism below rather than by an external engine -- which covers four of the six,
 # every board whose files are joined in both directions. See the module docstring for
 # what holds the other three up.
 OPENING_PERFT: dict[str, dict[int, int]] = {
     "cylinder": {1: 20, 2: 392, 3: 9_162, 4: 211_036},
     "onewaycylinder": {1: 20, 2: 396, 3: 9_051, 4: 204_095},
-    "tunnel-vertical": {1: 64, 2: 3_593, 3: 206_336},
-    "onewaytunnel": {1: 47, 2: 2_209, 3: 106_034},
     "torus": {1: 72, 2: 4_586, 3: 296_604},
     # **The first four depths are `onewaycylinder`'s exactly**, and the fifth is where
     # this board stops being that one. Its rank seam is one-way -- the first player may
@@ -92,12 +93,7 @@ OPENING_PERFT: dict[str, dict[int, int]] = {
     # pin a board indistinguishable from one already in this table.
     "onewaytorus": {1: 20, 2: 396, 3: 9_051, 4: 204_095, 5: 5_220_202},
     "torus-less-extended": {1: 36, 2: 1_296, 3: 52_563, 4: 2_112_956},
-    "torus-extended": {1: 45, 2: 2_013, 3: 98_194, 4: 4_760_019},
     "crazyhouse-torus": {1: 36, 2: 1_296, 3: 52_563, 4: 2_112_956},
-    # Q180 replaced `sardines-wraparound` with the sardines family's wrap cell: a full
-    # two-way torus rather than a one-way rank seam, and a different placement. The old
-    # ladder was {1: 46, 2: 2_127, 3: 94_871, 4: 4_374_240} under `f76f73bd5d6c`.
-    "sardines-torus": {1: 63, 2: 2_985, 3: 170_616, 4: 8_030_690},
 }
 
 
@@ -118,6 +114,13 @@ def _files_join_both_ways(name: str) -> bool:
 
 
 CYLINDRICAL = tuple(name for name in WRAPPED if _files_join_both_ways(name))
+# Every (board, offset) of the shift below, one test each (Q749): a whole board's seven
+# shifts, a compile and a perft apiece, were 2.2-2.3 s in the gate.
+SHIFTS = tuple(
+    pytest.param(name, by, id=f"{name}-{by}")
+    for name in CYLINDRICAL
+    for by in range(1, _load(name)["board"]["width"])
+)
 
 
 def _piece(spec: dict[str, Any], piece_id: str) -> int:
@@ -175,8 +178,8 @@ class TestTheShiftIsomorphism:
         spec["rules"].pop("castling", None)
         return spec
 
-    @pytest.mark.parametrize("name", CYLINDRICAL)
-    def test_a_file_shift_does_not_change_perft(self, name: str) -> None:
+    @pytest.mark.parametrize(("name", "by"), SHIFTS)
+    def test_a_file_shift_does_not_change_perft(self, name: str, by: int) -> None:
         """Every board whose files join both ways, at every offset along the seam.
 
         This is what the frozen ladders rest on. A pin derived from the engine and
@@ -186,11 +189,10 @@ class TestTheShiftIsomorphism:
         spec = self._without_castling(name)
         base = Engine(spec)
         expected = base.perft(base.initial_state(), 3)
-        for by in range(1, spec["board"]["width"]):
-            shifted = Engine(_shift_files(spec, by))
-            assert expected == shifted.perft(
-                shifted.initial_state(), 3
-            ), f"shifting {name} {by} files changed the move tree"
+        shifted = Engine(_shift_files(spec, by))
+        assert expected == shifted.perft(
+            shifted.initial_state(), 3
+        ), f"shifting {name} {by} files changed the move tree"
 
     @pytest.mark.parametrize("by", range(1, 8))
     def test_a_file_shift_is_not_an_isomorphism_with_edges(self, by: int) -> None:
@@ -594,7 +596,10 @@ class TestTheCorpus:
         plain = Engine(_load("torus-less-extended"))
         with_hand = Engine(_load("crazyhouse-torus"))
         assert plain.perft(plain.initial_state(), 5) == 94_701_949
-        assert with_hand.perft(with_hand.initial_state(), 5) == 95_547_475
+        # Q869: 95_547_475 while the hand held the rear pawn as a type of its own; since
+        # the respelling a captured rear pawn comes back facing forward, onto the front
+        # pawns' ranks. The plain game's number did not move: it is the same game.
+        assert with_hand.perft(with_hand.initial_state(), 5) == 95_545_239
 
     def test_an_eight_by_eight_torus_is_over_before_it_starts(self) -> None:
         """Why `torus.json` is played on the tall board, asserted rather than assumed.
@@ -673,10 +678,10 @@ class TestTheOtherSurfaces:
         spec = _load(name)
         without = copy.deepcopy(spec)
         del without["rules"]["wrap"]
-        assert (
-            measure_complexity(spec).special_rules
-            > measure_complexity(without).special_rules
-        )
+        counted, bare = measure_complexity(spec), measure_complexity(without)
+        assert counted.special_rules - bare.special_rules == 1.5
+        # Rule mass is what the index reads: a seam is 1.5 special rules at 6.0 apiece.
+        assert counted.rule_mass - bare.rule_mass == 9.0
 
     def test_a_board_with_edges_spelled_out_is_a_board_with_edges(self) -> None:
         """Every spelling of "no seam" is the game that was already there."""

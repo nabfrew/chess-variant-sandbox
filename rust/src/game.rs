@@ -342,7 +342,9 @@ pub struct Game<'t> {
     /// this one; `[-1, -1]` for no bar. Nothing on the board says what the last move was,
     /// so it is state: `make` sets it on such an end's own move and clears it on every
     /// other, `unmake` restores it from `portal_bar_log`, and it rides on `Snapshot` and
-    /// across the boundary.
+    /// across the boundary. Q883: set only where it can bar the next move -- the compiler's
+    /// `no_back` (false for a bar no move can ever meet) and the next mover among the end's
+    /// `movers` (`PortalTables::sets_bar`) -- so a bar that can bar nothing is never keyed.
     ///
     /// **In the key** (`PortalTables::bar_key`), as the en passant file is: two positions
     /// alike but for a bar have different legal moves, so the repetition rule and a
@@ -352,6 +354,13 @@ pub struct Game<'t> {
     /// `portal_bar` before each move still on the undo stack, oldest first: `goal_left_log`'s
     /// shape, empty and never touched without the rule.
     portal_bar_log: Vec<[i16; 2]>,
+    /// Schema 22 (Q843c): where each fold end stands, by end (`PortalTables`' end index),
+    /// and -1 for a momentum end and in every game without folds. A fold stands on no
+    /// square of the board byte -- a piece may stand in it -- so this is state of its own:
+    /// `make` moves one on its `MOVE_FOLD`, `unmake` moves it back from the move's origin,
+    /// it rides on `Snapshot` and across the boundary (`GameState.folds`), and it is **in
+    /// the key** (`FoldTables::key`).
+    pub fold_at: [i16; 8],
     /// Where each player's royal stands: a *hint*, not state.
     ///
     /// A hint because it is validated rather than invalidated -- `royal_square` checks
@@ -433,6 +442,16 @@ pub struct Snapshot {
     pub goal_left_by: i8,
     /// Schema 20 (Q807): the straight-back bar, `[-1, -1]` for none.
     pub portal_bar: [i16; 2],
+    /// Schema 22 (Q843c): where each fold end stands, -1 for none.
+    pub fold_at: [i16; 8],
+}
+
+/// Schema 22: where the folds start, from the tables; all -1 without folds.
+fn fold_starts(t: &Tables) -> [i16; 8] {
+    t.portals
+        .as_deref()
+        .and_then(|portals| portals.folds.as_ref())
+        .map_or([-1; 8], |folds| folds.starts)
 }
 
 impl<'t> Game<'t> {
@@ -473,6 +492,7 @@ impl<'t> Game<'t> {
             goal_left_by: -1,
             portal_bar: NO_BAR,
             portal_bar_log: Vec::new(),
+            fold_at: fold_starts(t),
             royal_hint: Cell::new([-1, -1]),
             royal_value: royal_values(t),
             check_memo: Cell::new([-1, -1]),
@@ -524,6 +544,7 @@ impl<'t> Game<'t> {
             goal_left_by: snapshot.goal_left_by,
             portal_bar: snapshot.portal_bar,
             portal_bar_log: Vec::new(),
+            fold_at: snapshot.fold_at,
             royal_hint: Cell::new([-1, -1]),
             royal_value: royal_values(t),
             check_memo: Cell::new([-1, -1]),
@@ -557,6 +578,7 @@ impl<'t> Game<'t> {
             points: self.points,
             goal_left_by: self.goal_left_by,
             portal_bar: self.portal_bar,
+            fold_at: self.fold_at,
         }
     }
 
@@ -596,6 +618,7 @@ impl<'t> Game<'t> {
         self.points = snapshot.points;
         self.goal_left_by = snapshot.goal_left_by;
         self.portal_bar = snapshot.portal_bar;
+        self.fold_at = snapshot.fold_at;
         // The check bits describe the position that just went away. The royal hint is
         // not cleared here and does not need to be: it is checked against the board
         // before it is believed.
@@ -678,6 +701,14 @@ impl<'t> Game<'t> {
         // Schema 20: the straight-back bar, zero without one and without the rule.
         if let Some(portals) = t.portals.as_deref() {
             digest ^= portals.bar_key(t.n_squares, self.portal_bar);
+            // Schema 22: where each fold stands.
+            if let Some(folds) = portals.folds.as_ref() {
+                for (end, square) in self.fold_at.iter().enumerate().take(portals.n_ends) {
+                    if *square >= 0 {
+                        digest ^= folds.key(t.n_squares, end, *square as usize);
+                    }
+                }
+            }
         }
         digest
     }
@@ -991,38 +1022,50 @@ impl<'t> Game<'t> {
     /// delivers, and a boar's threat is nobody's check.
     #[inline]
     fn threatened(&self, by: usize, square: usize) -> bool {
-        self.attacks_square(by, square)
-            || (self.t.has_npcs && self.attacks_square(WILD, square))
-            || self.attacks_through_portal(by, square)
+        self.attacks_any(by, square) || (self.t.has_npcs && self.attacks_square(WILD, square))
     }
 
     /// `threatened`, for the callers that mean a specific victim -- castling's transit
     /// squares, which are empty and would otherwise skip the capture matrix.
     #[inline]
     fn threatened_as(&self, by: usize, square: usize, victim: usize) -> bool {
-        self.attacks_square_as(by, square, victim)
-            || (self.t.has_npcs && self.attacks_square_as(WILD, square, victim))
-            || self
-                .t
-                .portals
-                .as_deref()
-                .is_some_and(|portals| self.portal_attacks(portals, by, square, victim))
+        (match self.t.portals.as_deref() {
+            None => self.attacks_square_as(by, square, victim),
+            Some(portals) => self.attacks_in_portal_game(portals, by, square, Some(victim)),
+        }) || (self.t.has_npcs && self.attacks_square_as(WILD, square, victim))
     }
 
-    /// Schema 19: whether `player` could capture on `square` by going in by a portal. A
-    /// check through a portal is a check, so every place a player's attack on a royal is
-    /// asked -- `threatened`, the check count, castling out of check, the drop-mate test --
-    /// asks this beside `attacks_square`. One null test where there are no portals.
+    /// Whether `player` attacks `square` by any way the game has: `attacks_square`, and in
+    /// a portal game (schema 19) through a portal too. A check through a portal is a check,
+    /// so every place a player's attack on a royal is asked -- `threatened`, the check
+    /// count, castling out of check, the drop-mate test -- asks this. One null test where
+    /// there are no portals, which is the whole of what chess pays for portals and folds
+    /// here: the fold game's answer is a statement of its own (`attacks_in_portal_game`),
+    /// so `attacks_square`, the hottest query, is the one it always was.
     #[inline(always)]
-    fn attacks_through_portal(&self, player: usize, square: usize) -> bool {
+    fn attacks_any(&self, player: usize, square: usize) -> bool {
         match self.t.portals.as_deref() {
-            Some(portals) => {
-                let occupant = self.board[square];
-                let victim = if occupant == 0 { usize::MAX } else { self.t.type_of(occupant) };
-                self.portal_attacks(portals, player, square, victim)
-            }
-            None => false,
+            None => self.attacks_square(player, square),
+            Some(portals) => self.attacks_in_portal_game(portals, player, square, None),
         }
+    }
+
+    /// `attacks_any` in a portal game: directly (a fold is floor to a source that crosses
+    /// it, schema 24), through a fold onto a far end (`fold_attacks`), or through a
+    /// momentum portal (`portal_attacks`). `victim` is the type a caller means, or `None`
+    /// for whatever stands on the square.
+    #[cold]
+    #[inline(never)]
+    fn attacks_in_portal_game(
+        &self, portals: &PortalTables, player: usize, square: usize, victim: Option<usize>,
+    ) -> bool {
+        let victim = victim.unwrap_or_else(|| {
+            let occupant = self.board[square];
+            if occupant == 0 { usize::MAX } else { self.t.type_of(occupant) }
+        });
+        self.attacks_square_as(player, square, victim)
+            || (portals.folds.is_some() && self.fold_attacks(portals, player, square, victim))
+            || self.portal_attacks(portals, player, square, victim)
     }
 
     /// Where each portal end stands: end `k` (type `first_type + k`) at index `k`, and
@@ -1041,7 +1084,7 @@ impl<'t> Game<'t> {
         for square in self.occupied[PORTAL_OWNER].iter() {
             found += self.note_portal(portals, &mut at, square);
         }
-        if found < portals.n_ends {
+        if found < portals.n_momentum {
             for square in 0..t.n_squares {
                 self.note_portal(portals, &mut at, square);
             }
@@ -1066,10 +1109,11 @@ impl<'t> Game<'t> {
     }
 
     /// Schema 19: whether `player` could take a piece of `victim` type (`usize::MAX` for
-    /// any) on `square` through a portal: some end open to `player` is reached by a
-    /// capture-capable source of `player`'s, travelling in a direction that brings it out
-    /// of the partner end onto `square`. The source tables are the ordinary ones read at
-    /// the entry square; the directions are the momentum the compiler gave each source.
+    /// any) on `square` through a portal: some end that admits the source's type for
+    /// `player` (schema 21's `admits`) is reached by a capture-capable source of
+    /// `player`'s, travelling in a direction that brings it out of the end this one leads
+    /// to (`dest`) onto `square`. The source tables are the ordinary ones read at the entry
+    /// square; the directions are the momentum the compiler gave each source.
     #[inline(never)]
     fn portal_attacks(
         &self, portals: &PortalTables, player: usize, square: usize, victim: usize,
@@ -1079,16 +1123,18 @@ impl<'t> Game<'t> {
         for end in 0..portals.n_ends {
             let entry = at[end];
             let entry_type = portals.first_type + end;
-            if entry == u16::MAX || !portals.open[entry_type][player] {
+            let admits = portals.admits[entry_type][player];
+            let to = portals.dest[entry_type];
+            if entry == u16::MAX || admits == 0 || to < 0 {
                 continue;
             }
-            let partner = at[portals.partner[entry_type] as usize - portals.first_type];
-            if partner == u16::MAX {
+            let far = at[to as usize - portals.first_type];
+            if far == u16::MAX {
                 continue;
             }
             let mut wanted = 0u8;
             for direction in 0..8 {
-                if portals.exit(t.n_squares, player, partner as usize, direction) == square as i16 {
+                if portals.exit(t.n_squares, player, far as usize, direction) == square as i16 {
                     wanted |= 1 << direction;
                 }
             }
@@ -1100,10 +1146,95 @@ impl<'t> Game<'t> {
                     || source.origin as usize == square
                     || self.board[source.origin as usize] != source.piece_value
                     || (source.requires_unmoved && !self.unmoved.get(source.origin as usize))
+                    || admits & (1 << t.type_of(source.piece_value)) == 0
                 {
                     continue;
                 }
                 if victim != usize::MAX && !t.may_capture(t.type_of(source.piece_value), victim) {
+                    continue;
+                }
+                if self.source_path_clear(player, source) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Schema 22: whether a fold stands on `square`. Eight compares, asked only in a game
+    /// with folds; every other game's `fold_at` is all -1.
+    #[inline(always)]
+    pub fn fold_on(&self, square: usize) -> bool {
+        self.fold_at.contains(&(square as i16))
+    }
+
+    /// Schema 22: the fold end standing on `square`, if one does.
+    #[inline(always)]
+    fn fold_end_at(&self, portals: &PortalTables, square: usize) -> Option<usize> {
+        (0..portals.n_ends).find(|&end| self.fold_at[end] == square as i16)
+    }
+
+    /// Schema 24: whether the fold on `square` lets `player`'s piece of `piece_type` go
+    /// through (`docs/plan-portals-2.md` §3R.1 rule 2): it admits it and leads somewhere.
+    /// The end and the square of the end it leads to, or `None`. Says nothing of either
+    /// square's occupant: `square` is empty where a landing asks, and what stands on the
+    /// far square is the landing's to judge.
+    #[inline]
+    fn fold_through(
+        &self, portals: &PortalTables, square: usize, piece_type: usize, player: usize,
+    ) -> Option<(usize, usize)> {
+        let end = self.fold_end_at(portals, square)?;
+        let entry = portals.first_type + end;
+        if portals.admits[entry][player] & (1 << piece_type) == 0 {
+            return None;
+        }
+        let to = portals.dest[entry];
+        if to < 0 {
+            return None;
+        }
+        let far = self.fold_at[to as usize - portals.first_type];
+        (far >= 0).then_some((end, far as usize))
+    }
+
+    /// Schema 24: whether `player` could take a piece of `victim` type (`usize::MAX` for
+    /// any) on `square` by going through a fold (`docs/plan-portals-2.md` §3R.1 rule 8): a
+    /// fold end stands on `square`, and some end leading to it stands on an empty square
+    /// that a capture step of `player`'s reaches -- an attack source onto that square whose
+    /// piece stands on its origin (unmoved where it must be), is not the piece on `square`,
+    /// is admitted by the end, may take `victim`, and whose path is clear. No board walk
+    /// and no ray: a source onto the near end *is* a capture step onto it. A piece standing
+    /// in a fold reaches nothing through it, so an occupied near end is skipped.
+    #[inline(never)]
+    fn fold_attacks(
+        &self, portals: &PortalTables, player: usize, square: usize, victim: usize,
+    ) -> bool {
+        let t = self.t;
+        let Some(arrival) = self.fold_end_at(portals, square) else {
+            return false;
+        };
+        let arrival_type = (portals.first_type + arrival) as i8;
+        for end in 0..portals.n_ends {
+            let entry = portals.first_type + end;
+            let near = self.fold_at[end];
+            if portals.dest[entry] != arrival_type || near < 0 || self.board[near as usize] != 0 {
+                continue;
+            }
+            let admits = portals.admits[entry][player];
+            if admits == 0 {
+                continue;
+            }
+            for source in t.attackers_of(player, near as usize) {
+                let attacker = t.type_of(source.piece_value);
+                if source.origin as usize == square
+                    || source.sweep != 0
+                    || self.board[source.origin as usize] != source.piece_value
+                    || (source.requires_unmoved && !self.unmoved.get(source.origin as usize))
+                    || admits & (1 << attacker) == 0
+                {
+                    continue;
+                }
+                if t.has_capture_matrix && victim != usize::MAX && !t.may_capture(attacker, victim)
+                {
                     continue;
                 }
                 if self.source_path_clear(player, source) {
@@ -1579,10 +1710,10 @@ impl<'t> Game<'t> {
     /// piece this one's *type* may not capture, read off schema 3's matrix exactly as a
     /// player's piece reads it.
     ///
-    /// The middle one is **unreachable while the validator holds**: a wild piece's next
-    /// square is on its own route, routes are pairwise disjoint, and one route carries
-    /// one wild piece. It is stated anyway because disjointness is a rule the validator
-    /// enforces and this is the core, which is handed tables rather than a spec.
+    /// The middle one is reachable since schema 23's `also_at` put several wild pieces on
+    /// one route: the piece behind waits for the one in front. Whether the one in front
+    /// has already gone this phase is `npc_step_order`'s business, not this function's --
+    /// it reads the board as the earlier steps left it.
     #[inline]
     fn npc_step_of(&self, square: usize) -> Option<usize> {
         let t = self.t;
@@ -1607,6 +1738,22 @@ impl<'t> Game<'t> {
         }
     }
 
+    /// Every wild piece standing now, in the order the phase steps them (schema 23).
+    ///
+    /// **Front first.** With several wild pieces on one route, a piece whose next square
+    /// holds a wild piece that has yet to step this phase goes after it, so a queue moves
+    /// as one when its front moves and waits as one when its front waits. Ascending order
+    /// alone would make that depend on board numbering: the piece behind would follow on
+    /// a turn where the one in front had the lower index and wait on a turn where it had
+    /// the higher. A route full from end to end has no front, and every piece on it waits
+    /// (each one's next square holds a piece that is not leaving). `NpcOrder` has the
+    /// passes; the order reads only this snapshot and `npc_next`, never what a step did,
+    /// so the real phase, the legality filter and `coming_phases` step in one order.
+    #[inline]
+    fn npc_step_order(&self) -> NpcOrder<'t> {
+        NpcOrder::new(self.t, self.npc_here())
+    }
+
     /// The phase, played for real: every wild piece walks, and every square written goes
     /// through `write` so the Zobrist key and the occupancy sets follow it.
     ///
@@ -1614,9 +1761,29 @@ impl<'t> Game<'t> {
     /// clock and the repetition window read. A quiet step is neither -- the route is a
     /// cycle, so the position will come round again, and that is what lets the repetition
     /// rule catch a game in which only the boar moves.
+    ///
+    /// **Cold and never inlined (Q857).** Schema 23's two monomorphs, inlined into `make`
+    /// behind `has_npcs`, cost chess 3% in code it never runs. Out of line, chess got it
+    /// back and the wild-piece games got faster too (*wolves patrol* perft(5) 10%):
+    /// `docs/reference/replay-2026-10-12.md`, *Q857*.
+    #[cold]
+    #[inline(never)]
     fn npc_phase(&mut self) -> bool {
+        if self.t.npc_queues {
+            let order = self.npc_step_order();
+            self.npc_phase_in(order)
+        } else {
+            let order = self.npc_here().iter();
+            self.npc_phase_in(order)
+        }
+    }
+
+    /// `npc_phase` over the wild pieces in `order`: monomorphised twice, so a game with one
+    /// wild piece per route runs exactly the ascending walk it ran before schema 23.
+    #[inline(always)]
+    fn npc_phase_in<I: Iterator<Item = usize>>(&mut self, order: I) -> bool {
         let mut ate = false;
-        for square in self.npc_here().iter() {
+        for square in order {
             let Some(next) = self.npc_step_of(square) else {
                 continue;
             };
@@ -1675,7 +1842,8 @@ impl<'t> Game<'t> {
         }
         let mut saved = Saved::new();
         for steps in phases.iter_mut() {
-            for square in self.npc_here().iter() {
+            // Once per drawn position, never in a search, so the one walk serves every game.
+            for square in self.npc_step_order() {
                 let Some(next) = self.npc_step_of(square) else {
                     continue;
                 };
@@ -1700,8 +1868,29 @@ impl<'t> Game<'t> {
     /// illegal, and so is one that leaves your royal standing where a boar steps next.
     /// Two squares per wild piece is more than `Saved`'s five inline entries, so this is
     /// the one heap allocation the rule pays, and only on the rulesets that have it.
+    ///
+    /// Cold and never inlined into `play_for_filter`, for `npc_phase`'s reason (Q857).
+    #[cold]
+    #[inline(never)]
     fn npc_phase_for_filter(&mut self, saved: &mut Saved) {
-        for square in self.npc_here().iter() {
+        if self.t.npc_queues {
+            let order = self.npc_step_order();
+            self.npc_phase_for_filter_in(saved, order);
+        } else {
+            let order = self.npc_here().iter();
+            self.npc_phase_for_filter_in(saved, order);
+        }
+    }
+
+    /// `npc_phase_for_filter` over the wild pieces in `order`, monomorphised as
+    /// `npc_phase_in` is.
+    #[inline(always)]
+    fn npc_phase_for_filter_in<I: Iterator<Item = usize>>(
+        &mut self,
+        saved: &mut Saved,
+        order: I,
+    ) {
+        for square in order {
             let Some(next) = self.npc_step_of(square) else {
                 continue;
             };
@@ -1736,6 +1925,11 @@ impl<'t> Game<'t> {
         let origin = move_from(m);
         let target = move_to(m);
         let kind = move_kind(m);
+        // Schema 22: a fold's own move touches no square of the board byte.
+        if kind == MOVE_FOLD {
+            self.make_fold(m);
+            return;
+        }
         let player = self.side;
 
         let previous_unmoved = self.unmoved;
@@ -1926,6 +2120,10 @@ impl<'t> Game<'t> {
             && captured == 0
             && kind != MOVE_PROMOTION
             && kind != MOVE_PORTAL
+            // Schema 22: a move that went through a fold opens no window (rule 9). Bits
+            // 25-31 are zero on every other move that gets here: a strike's landing index
+            // rides only on a capture.
+            && move_landing(m) == 0
         {
             // The square stepped over is a table fact, not arithmetic on the delta:
             // where the board's opposite edges are joined, a move's raw delta is not
@@ -2004,14 +2202,10 @@ impl<'t> Game<'t> {
         if t.check_limit > 0 {
             let opponent = 1 - player;
             let delivered = if t.multi_royal {
-                self.royal_squares(opponent).iter().any(|&royal| {
-                    self.attacks_square(player, royal) || self.attacks_through_portal(player, royal)
-                })
+                self.royal_squares(opponent).iter().any(|&royal| self.attacks_any(player, royal))
             } else {
                 let royal = self.royal_square(opponent);
-                royal >= 0
-                    && (self.attacks_square(player, royal as usize)
-                        || self.attacks_through_portal(player, royal as usize))
+                royal >= 0 && self.attacks_any(player, royal as usize)
             };
             if delivered {
                 self.checks[player] += 1;
@@ -2111,10 +2305,13 @@ impl<'t> Game<'t> {
 
         // Schema 20 (Q807): the straight-back bar. Set by a barring end's own move to
         // (where it stands now, where it came from), cleared by every other move, and
-        // keyed. Every game without the rule skips this on one flag.
+        // keyed. Every game without the rule skips this on one flag. Q883: set only when
+        // the player to move next may move that end (`sets_bar`); `remaining` is not yet
+        // spent, so the same player moves again exactly when more than one is left.
         if let Some(portals) = t.portals.as_deref().filter(|portals| portals.has_no_back) {
             self.portal_bar_log.push(self.portal_bar);
-            let bar = if kind == MOVE_NORMAL && portals.no_back[piece_type] {
+            let next = if t.turn.is_some() && self.remaining > 1 { player } else { 1 - player };
+            let bar = if kind == MOVE_NORMAL && portals.sets_bar(piece_type, next) {
                 [target as i16, origin as i16]
             } else {
                 NO_BAR
@@ -2198,6 +2395,10 @@ impl<'t> Game<'t> {
     pub fn unmake(&mut self) {
         let undo = self.undo.pop().expect("unmake without a matching make");
         self.history.pop();
+        if undo.kind == MOVE_FOLD {
+            self.unmake_fold(&undo);
+            return;
+        }
 
         // The phase, walked back before the player's move (schema 9). Newest step first,
         // and the wild piece's own value is read off the square it stands on now --
@@ -2297,6 +2498,166 @@ impl<'t> Game<'t> {
     }
 }
 
+impl<'t> Game<'t> {
+    /// Schema 22: stand fold end `end` on `square` (or nowhere, -1), keeping the set beside
+    /// it. Not the key: `make_fold` keys the move.
+    #[inline]
+    fn set_fold(&mut self, end: usize, square: i16) {
+        self.fold_at[end] = square;
+    }
+
+    /// Schema 22: play a fold's own move (`MOVE_FOLD`). The fold moves; nothing on the
+    /// board byte does, so no piece is taken or moved and no `unmoved` bit changes. It is
+    /// reversible (it neither clears the repetition window nor resets the no-progress
+    /// clock), as a momentum end's move is, and it is keyed. The rest is `make`'s
+    /// bookkeeping for a move that writes no square: the en passant window closes, a check
+    /// it uncovers is counted, the straight-back bar is set or cleared, the turn passes.
+    #[cold]
+    #[inline(never)]
+    fn make_fold(&mut self, m: u32) {
+        let t = self.t;
+        let origin = move_from(m);
+        let target = move_to(m);
+        let end = move_landing(m);
+        let player = self.side;
+        let portals = t.portals.as_deref().expect("a fold move without portals");
+        let folds = portals.folds.as_ref().expect("a fold move without folds");
+        let previous_ep = self.ep_target;
+        let previous_ep_victim = self.ep_victim;
+        let previous_checks = self.checks;
+        let previous_remaining = self.remaining;
+        let previous_turns = self.turns_taken;
+        let mut key = self.key ^ t.zobrist_side;
+        key ^= folds.key(t.n_squares, end, origin) ^ folds.key(t.n_squares, end, target);
+        self.set_fold(end, target as i16);
+        if previous_ep != NO_SQUARE {
+            key ^= t.zobrist_ep_file(previous_ep);
+        }
+        self.ep_target = NO_SQUARE;
+        self.ep_victim = NO_SQUARE;
+        if t.check_limit > 0 {
+            let opponent = 1 - player;
+            let delivered = if t.multi_royal {
+                self.royal_squares(opponent).iter().any(|&royal| self.attacks_any(player, royal))
+            } else {
+                let royal = self.royal_square(opponent);
+                royal >= 0 && self.attacks_any(player, royal as usize)
+            };
+            if delivered {
+                self.checks[player] += 1;
+            }
+        }
+        if t.reach_leaves {
+            self.goal_left_log.push(self.goal_left_by);
+            self.goal_left_by = -1;
+        }
+        if portals.has_no_back {
+            self.portal_bar_log.push(self.portal_bar);
+            let next = if t.turn.is_some() && self.remaining > 1 { player } else { 1 - player };
+            let bar = if portals.sets_bar(portals.first_type + end, next) {
+                [target as i16, origin as i16]
+            } else {
+                NO_BAR
+            };
+            key ^= portals.bar_key(t.n_squares, self.portal_bar) ^ portals.bar_key(t.n_squares, bar);
+            self.portal_bar = bar;
+        }
+        self.undo.push(Undo {
+            origin,
+            target,
+            kind: MOVE_FOLD,
+            moving: 0,
+            captured: 0,
+            captured_square: target,
+            target_before: self.board[target],
+            rook: None,
+            unmoved: self.unmoved,
+            ep_target: previous_ep,
+            ep_victim: previous_ep_victim,
+            halfmove: self.halfmove,
+            key: self.key,
+            window: self.window,
+            checks: previous_checks,
+            hand: None,
+            cleared: Vec::new(),
+            coloured: None,
+            remaining: previous_remaining,
+            turns_taken: previous_turns,
+            npc_log: self.npc_log.len() as u32,
+            placed: 0,
+        });
+        self.remaining = if t.turn.is_some() { self.remaining - 1 } else { 0 };
+        self.key = key;
+        self.halfmove += 1;
+        if self.remaining == 0 {
+            self.side = 1 - player;
+            self.turns_taken += 1;
+            self.remaining = t.turn.as_ref().map_or(1, |rule| rule.length_of(self.turns_taken));
+        }
+        if self.side == player {
+            self.key ^= t.zobrist_side;
+        }
+        self.key ^= t.zobrist_remaining(previous_remaining);
+        self.key ^= t.zobrist_remaining(self.remaining);
+        self.ply += 1;
+        self.history.push(self.key);
+        self.check_memo.set([-1, -1]);
+    }
+
+    /// Schema 22: take back a fold's own move: the fold that stands on the move's target
+    /// goes back to its origin, and every field `make_fold` wrote is restored.
+    #[cold]
+    #[inline(never)]
+    fn unmake_fold(&mut self, undo: &Undo) {
+        let end = (0..8)
+            .find(|&end| self.fold_at[end] == undo.target as i16)
+            .expect("no fold stands where the fold move put it");
+        self.set_fold(end, undo.origin as i16);
+        self.ep_target = undo.ep_target;
+        self.ep_victim = undo.ep_victim;
+        self.halfmove = undo.halfmove;
+        self.key = undo.key;
+        self.window = undo.window;
+        self.checks = undo.checks;
+        if self.turns_taken != undo.turns_taken {
+            self.side = 1 - self.side;
+        }
+        self.remaining = undo.remaining;
+        self.turns_taken = undo.turns_taken;
+        if self.t.reach_leaves {
+            self.goal_left_by =
+                self.goal_left_log.pop().expect("goal log shorter than the undo stack");
+        }
+        if self.t.portals.as_deref().is_some_and(|portals| portals.has_no_back) {
+            self.portal_bar =
+                self.portal_bar_log.pop().expect("bar log shorter than the undo stack");
+        }
+        self.ply -= 1;
+        self.check_memo.set([-1, -1]);
+    }
+}
+
+/// Schema 22: `dedup_segment` for a fold game (`docs/plan-portals-2.md` §3.3). Two words
+/// alike but for the fold end they went through (bits 25-31) reach one position, so they
+/// are one move: the first occurrence keeps its place and takes the lowest tag, which is
+/// the direct move's 0 where there is one, else the lowest fold end's.
+fn dedup_fold_segment(out: &mut Vec<u32>, start: usize) {
+    const WORD: u32 = (1 << 25) - 1;
+    let mut write = start;
+    for index in start..out.len() {
+        let m = out[index];
+        if let Some(kept) = out[start..write].iter_mut().find(|kept| **kept & WORD == m & WORD) {
+            if m >> 25 < *kept >> 25 {
+                *kept = m;
+            }
+            continue;
+        }
+        out[write] = m;
+        write += 1;
+    }
+    out.truncate(write);
+}
+
 /// Drop every repeat of a move already in `out[start..]`, keeping the first occurrence of
 /// each in the order it was generated.
 ///
@@ -2336,8 +2697,28 @@ impl<'t> Game<'t> {
     /// node on the path, which is the difference between one allocation per ply and
     /// one per node.
     pub fn generate_pseudo_legal(&self, out: &mut Vec<u32>) {
+        // Schema 22: one dispatch per call to a copy monomorphised on whether the game has
+        // folds, so chess and every game without them run the walks they always ran
+        // (`docs/plan-portals-2.md` §3.4).
+        if self.t.portals.as_deref().is_some_and(|portals| portals.folds.is_some()) {
+            return self.generate_folded(out);
+        }
+        self.generate_pseudo_legal_as::<false>(out)
+    }
+
+    /// Schema 22: `generate_pseudo_legal` for a game with folds, out of line so the copy
+    /// every other game runs is the one inlined.
+    #[cold]
+    #[inline(never)]
+    fn generate_folded(&self, out: &mut Vec<u32>) {
+        self.generate_pseudo_legal_as::<true>(out)
+    }
+
+    #[inline(always)]
+    fn generate_pseudo_legal_as<const FOLDS: bool>(&self, out: &mut Vec<u32>) {
         let t = self.t;
         let player = self.side;
+        let folded = if FOLDS { t.portals.as_deref() } else { None };
         // Schema 18 (Q784): the placement phase. While the side to move holds anything in
         // hand, a drop is its only move (Fairy-Stockfish's `mustDrop`). One `Option` test
         // for a ruleset with no hand, which is the price every other game pays.
@@ -2432,6 +2813,10 @@ impl<'t> Game<'t> {
                                 choosing,
                             );
                         }
+                        // Schema 24: a landing on an empty fold may also go through.
+                        if FOLDS && mode != 0 && self.fold_on(target) {
+                            self.push_through(out, origin, target, mode, piece_type, leaving);
+                        }
                         if mode & 1 == 0 {
                             continue;
                         }
@@ -2465,6 +2850,11 @@ impl<'t> Game<'t> {
                                 ep_victim as usize,
                                 choosing,
                             );
+                        }
+                        // Schema 24: a fold is floor to a slide that runs on past it;
+                        // one that may end on it may also go through.
+                        if FOLDS && mode != 0 && self.fold_on(target) {
+                            self.push_through(out, origin, target, mode, piece_type, leaving);
                         }
                         if mode & 1 == 0 {
                             continue;
@@ -2537,6 +2927,9 @@ impl<'t> Game<'t> {
                                 choosing,
                             );
                         }
+                        if FOLDS && mode != 0 && self.fold_on(target) {
+                            self.push_through(out, origin, target, mode, piece_type, leaving);
+                        }
                         if mode & 1 != 0 {
                             if promoting
                                 && (leaving || t.promotes_on(player, piece_type, target))
@@ -2602,7 +2995,12 @@ impl<'t> Game<'t> {
                 }
             }
 
-            if ambiguous {
+            // Schema 24: a go-through to a square also reached directly, or through two
+            // folds, is one move (`dedup_fold_segment`); only a segment holding a tagged
+            // word can have one.
+            if FOLDS && out[segment_start..].iter().any(|m| m >> 25 != 0) {
+                dedup_fold_segment(out, segment_start);
+            } else if ambiguous {
                 dedup_segment(out, segment_start);
             }
 
@@ -2611,8 +3009,9 @@ impl<'t> Game<'t> {
             // somewhere. A piece turns to any of its other orientations in one move --
             // three of them for a piece with four axes, one for a piece with two -- and
             // the compiler refuses a facing whose rotation changes nothing, so none of
-            // these is a pass.
-            let axes = if t.has_facing { t.facings_of(piece_type) } else { 1 };
+            // these is a pass. A facing no move turns (schema 25) has one orientation
+            // to turn through, so it gets none.
+            let axes = if t.has_facing { t.turns_of(piece_type) } else { 1 };
             if axes > 1 {
                 let step = t.n_facings / axes;
                 let facing = frame % t.n_facings;
@@ -2628,6 +3027,10 @@ impl<'t> Game<'t> {
         // portals pays: inside the loop, the same test per piece cost chess perft(6) 5%.
         if let Some(portals) = t.portals.as_deref() {
             self.push_portal_moves(out, portals);
+        }
+        // Schema 22: every fold the side may move, after the momentum ends' moves.
+        if let (true, Some(portals)) = (FOLDS, folded) {
+            self.push_fold_own_moves(out, portals);
         }
 
         if t.castling.is_some() {
@@ -2647,12 +3050,14 @@ impl<'t> Game<'t> {
     /// portal end as an uncapturable piece -- the compiler takes every end out of the
     /// capture matrix -- so a slide stopped there and a leap did not land; this walk asks
     /// what the piece would have done had it gone in. An end is entered where the walk
-    /// first meets it with a landing mode, and only if it is open to the side to move;
-    /// each entry ORs in the landing's momentum (`compile.momentum_bits`), so a piece that
-    /// reaches one end along two lines has two directions to come out in.
+    /// first meets it with a landing mode, and only if it admits this piece's type for the
+    /// side to move (schema 21's `admits`); each entry ORs in the landing's momentum
+    /// (`compile.momentum_bits`), so a piece that reaches one end along two lines has two
+    /// directions to come out in.
     ///
-    /// Each direction's exit is the partner end's neighbour under the mover's wrap
-    /// permission, read from the exit table. It is a move when the mode the piece arrived
+    /// Each direction's exit is the neighbour of the end this one leads to (`dest`) under
+    /// the mover's wrap permission, read from the exit table; an end that leads nowhere (a
+    /// way out only) admits nobody. It is a move when the mode the piece arrived
     /// with allows what stands there -- empty under a move-mode landing, a piece it may
     /// take under a capture-mode one -- and it is not the mover's own origin (a pass) or
     /// another portal (a chain, refused by the user's answer). Distinct exits are pushed in
@@ -2680,7 +3085,7 @@ impl<'t> Game<'t> {
             if bits == 0 || value == 0 || t.owner_of(value) != PORTAL_OWNER {
                 return;
             }
-            if !portals.open[t.type_of(value)][player] {
+            if portals.admits[t.type_of(value)][player] & (1 << piece_type) == 0 {
                 return;
             }
             for item in entered.iter_mut().take(n_entered) {
@@ -2702,6 +3107,8 @@ impl<'t> Game<'t> {
                 }
             }
         }
+        // Schema 24: a fold is floor to a ray that crosses it, so a slide or hop may reach
+        // a momentum end beyond one (`docs/plan-portals-2.md` §3R.1 rule 7).
         for entry in t.slides.entries(slot) {
             if entry.requires_unmoved && !origin_unmoved {
                 continue;
@@ -2752,8 +3159,12 @@ impl<'t> Game<'t> {
         let mut n_exits = 0;
         for &(entry, bits) in &entered[..n_entered] {
             let entry_type = t.type_of(self.board[entry as usize]);
-            let partner = at[portals.partner[entry_type] as usize - portals.first_type];
-            if partner == u16::MAX {
+            let to = portals.dest[entry_type];
+            if to < 0 {
+                continue;
+            }
+            let far = at[to as usize - portals.first_type];
+            if far == u16::MAX {
                 continue;
             }
             for direction in 0..8 {
@@ -2762,7 +3173,7 @@ impl<'t> Game<'t> {
                 if !quiet && !taking {
                     continue;
                 }
-                let exit = portals.exit(t.n_squares, player, partner as usize, direction);
+                let exit = portals.exit(t.n_squares, player, far as usize, direction);
                 if exit < 0 || exit as usize == origin {
                     continue;
                 }
@@ -2847,7 +3258,10 @@ impl<'t> Game<'t> {
                 }
                 let modes = t.leaps.modes(entry);
                 for (index, &target) in t.leaps.squares(entry).iter().enumerate() {
-                    if modes[index] & 1 != 0 && self.board[target as usize] == 0 {
+                    if modes[index] & 1 != 0
+                        && self.board[target as usize] == 0
+                        && !self.fold_on(target as usize)
+                    {
                         out.push(encode_move(origin, target as usize, MOVE_NORMAL, 0));
                     }
                 }
@@ -2861,7 +3275,7 @@ impl<'t> Game<'t> {
                     if self.board[target as usize] != 0 {
                         break;
                     }
-                    if modes[index] & 1 != 0 {
+                    if modes[index] & 1 != 0 && !self.fold_on(target as usize) {
                         out.push(encode_move(origin, target as usize, MOVE_NORMAL, 0));
                     }
                 }
@@ -2889,7 +3303,7 @@ impl<'t> Game<'t> {
                     length.min(index + entry.screen_range as usize)
                 };
                 while index < stop && self.board[squares[index] as usize] == 0 {
-                    if modes[index] & 1 != 0 {
+                    if modes[index] & 1 != 0 && !self.fold_on(squares[index] as usize) {
                         out.push(encode_move(origin, squares[index] as usize, MOVE_NORMAL, 0));
                     }
                     index += 1;
@@ -2911,6 +3325,150 @@ impl<'t> Game<'t> {
 }
 
 impl<'t> Game<'t> {
+    /// Schema 24 (`docs/plan-portals-2.md` §3R.1 rule 2): a landing step of the piece on
+    /// `origin` onto the empty fold on `square`, with the step's `mode`, also **goes
+    /// through**: the same step ends on the square of the end this one leads to, judged as
+    /// a landing there -- onto an empty square under a *move* mode, onto a piece it may
+    /// take under a *capture* mode (`may_land`: never the mover's own), never onto the
+    /// mover's own square (a pass). Only where the fold admits this piece for the side to
+    /// move and leads somewhere. Pushed as `push_arrival` would push a move ending there,
+    /// so promotion is the far square's, every word tagged with the end gone in by plus
+    /// one in bits 25 to 31 (which `make` reads to open no window). The caller has
+    /// already asked `fold_on`; a move goes through one fold at most, since it ends there.
+    #[cold]
+    #[inline(never)]
+    fn push_through(
+        &self, out: &mut Vec<u32>, origin: usize, square: usize, mode: u8, piece_type: usize,
+        leaving: bool,
+    ) {
+        let t = self.t;
+        let Some(portals) = t.portals.as_deref() else {
+            return;
+        };
+        let player = self.side;
+        let Some((end, far)) = self.fold_through(portals, square, piece_type, player) else {
+            return;
+        };
+        if far == origin {
+            return;
+        }
+        let occupant = self.board[far] as u16;
+        let lands = if occupant == 0 {
+            mode & 1 != 0
+        } else {
+            let low = t.value_low(player);
+            may_land(t, mode, piece_type, occupant, low, low + t.side_stride as u16)
+        };
+        if !lands {
+            return;
+        }
+        let promoting = t.is_promoting(piece_type);
+        let promo_optional = promoting && t.promotion_optional(piece_type);
+        let start = out.len();
+        self.push_arrival(
+            out, origin, far, piece_type, player, promoting, leaving, promo_optional, false,
+        );
+        let tag = (end as u32 + 1) << 25;
+        for word in &mut out[start..] {
+            *word |= tag;
+        }
+    }
+
+    /// Schema 22: every move of a fold end the side to move may move (rule 6), as
+    /// `MOVE_FOLD`, in ascending order of the fold's square: its group's piece's moves,
+    /// read in the mover's frame, landing on an empty square or on a piece of either side
+    /// (which then stands in it), never on another portal end of either kind. A fold's
+    /// slide stops at the first piece, and may land on it. The straight-back bar holds as
+    /// for a momentum end.
+    #[inline(never)]
+    fn push_fold_own_moves(&self, out: &mut Vec<u32>, portals: &PortalTables) {
+        let t = self.t;
+        let player = self.side;
+        let low = t.value_low(player);
+        let high = low + t.side_stride as u16;
+        let mut ends = [(u16::MAX, 0usize); 8];
+        let mut n_ends = 0;
+        for end in 0..portals.n_ends {
+            let square = self.fold_at[end];
+            if square >= 0 && portals.movers[portals.first_type + end] & (1 << player) != 0 {
+                ends[n_ends] = (square as u16, end);
+                n_ends += 1;
+            }
+        }
+        let ends = &mut ends[..n_ends];
+        ends.sort_unstable();
+        let lands = |target: usize| {
+            let value = self.board[target];
+            !self.fold_on(target) && (value == 0 || t.owner_of(value) != PORTAL_OWNER)
+        };
+        for &(square, end) in ends.iter() {
+            let origin = square as usize;
+            let piece_type = portals.first_type + end;
+            let slot = t.slot(player * t.n_facings, piece_type, origin);
+            let word = |target: usize| {
+                encode_move(origin, target, MOVE_FOLD, 0) | ((end as u32) << 25)
+            };
+            let segment_start = out.len();
+            for entry in t.leaps.entries(slot) {
+                let modes = t.leaps.modes(entry);
+                for (index, &target) in t.leaps.squares(entry).iter().enumerate() {
+                    if modes[index] & 1 != 0 && lands(target as usize) {
+                        out.push(word(target as usize));
+                    }
+                }
+            }
+            for entry in t.slides.entries(slot) {
+                let modes = t.slides.modes(entry);
+                for (index, &target) in t.slides.squares(entry).iter().enumerate() {
+                    if modes[index] & 1 != 0 && lands(target as usize) {
+                        out.push(word(target as usize));
+                    }
+                    if self.board[target as usize] != 0 {
+                        break;
+                    }
+                }
+            }
+            for entry in t.hops.entries(slot) {
+                let squares = t.hops.squares(entry);
+                let modes = t.hops.modes(entry);
+                let length = squares.len();
+                let mut index = 0;
+                while index < length && self.board[squares[index] as usize] == 0 {
+                    index += 1;
+                }
+                if index >= length
+                    || !screen_matches(entry.screen_owner, self.board[squares[index] as usize] as u16, low, high)
+                {
+                    continue;
+                }
+                index += 1;
+                let stop = if entry.screen_range == 0 {
+                    length
+                } else {
+                    length.min(index + entry.screen_range as usize)
+                };
+                while index < stop {
+                    let target = squares[index] as usize;
+                    if modes[index] & 1 != 0 && lands(target) {
+                        out.push(word(target));
+                    }
+                    if self.board[target] != 0 {
+                        break;
+                    }
+                    index += 1;
+                }
+            }
+            dedup_segment(out, segment_start);
+            // Schema 20 (Q807): the fold the last move carried here may not go straight back.
+            if self.portal_bar[0] == square as i16 {
+                let barred = word(self.portal_bar[1] as usize);
+                if let Some(index) = out[segment_start..].iter().position(|m| *m == barred) {
+                    out.remove(segment_start + index);
+                }
+            }
+        }
+    }
+
     /// Drop moves: pieces from hand onto the board.
     ///
     /// Never inlined (Q785). Schema 18e's second face made the body a nested loop, and
@@ -3006,14 +3564,15 @@ impl<'t> Game<'t> {
 
         let needs_safety = t.needs_check_filter();
         if needs_safety
-            && (self.attacks_square(1 - player, king_square)
-                || self.attacks_through_portal(1 - player, king_square))
+            && self.attacks_any(1 - player, king_square)
         {
             return;
         }
 
         let rank = king_square / width;
         let king_file = (king_square % width) as i32;
+        // Schema 24 (`docs/plan-portals-2.md` §3R.1 rule 9): a fold on the span is floor.
+        let blocked_at = |square: usize| self.board[square] != 0;
 
         for rook_file in 0..width as i32 {
             if rook_file == king_file {
@@ -3043,7 +3602,7 @@ impl<'t> Game<'t> {
                     if file == king_file || file == rook_file {
                         continue;
                     }
-                    if self.board[rank * width + file as usize] != 0 {
+                    if blocked_at(rank * width + file as usize) {
                         blocked = true;
                         break;
                     }
@@ -3086,7 +3645,7 @@ impl<'t> Game<'t> {
                 let mut file = king_file + step;
                 let mut blocked = false;
                 while file != rook_file {
-                    if self.board[rank * width + file as usize] != 0 {
+                    if blocked_at(rank * width + file as usize) {
                         blocked = true;
                         break;
                     }
@@ -3195,6 +3754,11 @@ impl<'t> Game<'t> {
         let target = move_to(m);
         let kind = move_kind(m);
 
+        // Schema 22: a fold's own move writes no square; its caller moves the fold
+        // (`shift_fold_for_filter`).
+        if kind == MOVE_FOLD {
+            return None;
+        }
         if kind == MOVE_DROP {
             saved.push((target, self.board[target]));
             // What arrives, not what was dropped (schema 9): a struck or dropped piece
@@ -3322,6 +3886,7 @@ impl<'t> Game<'t> {
 
         // Apply the move to the board, saving every square we touch.
         let target_before = self.play_for_filter(m, &mut saved);
+        let fold_moved = self.shift_fold_for_filter(m);
 
         // Explosion. Only after an ordinary move, and only where something was taken:
         // the target square of a rotation holds the piece that is turning, and reading
@@ -3341,8 +3906,10 @@ impl<'t> Game<'t> {
             }
         }
 
-        self.unmoved.clear(origin);
-        self.unmoved.clear(target);
+        if fold_moved.is_none() {
+            self.unmoved.clear(origin);
+            self.unmoved.clear(target);
+        }
 
         // Whether this move could have emptied a royal square at all (Q133). Only two
         // things take a piece off a square the move did not move it from: something being
@@ -3393,9 +3960,26 @@ impl<'t> Game<'t> {
         };
 
         saved.restore(&mut self.board);
+        if let Some((end, square)) = fold_moved {
+            self.set_fold(end, square);
+        }
         self.unmoved = saved_unmoved;
         self.scratch -= 1;
         attacked
+    }
+
+    /// Schema 22: for a legality filter, stand the fold a `MOVE_FOLD` moves on its target,
+    /// and say which end and where it stood, for the filter to put back. `None` for every
+    /// other move.
+    #[inline(always)]
+    fn shift_fold_for_filter(&mut self, m: u32) -> Option<(usize, i16)> {
+        if move_kind(m) != MOVE_FOLD {
+            return None;
+        }
+        let end = move_landing(m);
+        let before = self.fold_at[end];
+        self.set_fold(end, move_to(m) as i16);
+        Some((end, before))
     }
 }
 
@@ -3551,10 +4135,13 @@ impl<'t> Game<'t> {
                 let target = move_to(m);
                 let mut saved = Saved::new();
                 self.play_for_filter(m, &mut saved);
+                let fold_moved = self.shift_fold_for_filter(m);
 
                 let saved_unmoved = self.unmoved;
-                self.unmoved.clear(origin);
-                self.unmoved.clear(target);
+                if fold_moved.is_none() {
+                    self.unmoved.clear(origin);
+                    self.unmoved.clear(target);
+                }
 
                 // "Gives check" reads schema 9's definition too: a move that leaves
                 // the other royal standing where a boar steps next has left it in check,
@@ -3568,6 +4155,9 @@ impl<'t> Game<'t> {
                 };
 
                 saved.restore(&mut self.board);
+                if let Some((end, square)) = fold_moved {
+                    self.set_fold(end, square);
+                }
                 self.unmoved = saved_unmoved;
 
                 if !gives_check {
@@ -3587,6 +4177,12 @@ impl<'t> Game<'t> {
                 let m = out[index];
                 let target = move_to(m);
                 let kind = move_kind(m);
+                // Schema 22: a fold's own move moves no piece, so it strands none.
+                if kind == MOVE_FOLD {
+                    out[write] = m;
+                    write += 1;
+                    continue;
+                }
                 // The frame the piece will be reading *after* the move, which for a
                 // rotation is the whole content of the move: a piece may not turn itself
                 // into a position it could never leave, exactly as it may not step into
@@ -3698,12 +4294,10 @@ impl<'t> Game<'t> {
         let gives_check = if t.multi_royal {
             self.royal_squares(opponent)
                 .iter()
-                .any(|&r| self.attacks_square(player, r) || self.attacks_through_portal(player, r))
+                .any(|&r| self.attacks_any(player, r))
         } else {
             let r = self.royal_square(opponent);
-            r >= 0
-                && (self.attacks_square(player, r as usize)
-                    || self.attacks_through_portal(player, r as usize))
+            r >= 0 && self.attacks_any(player, r as usize)
         };
 
         if !gives_check {
@@ -4287,6 +4881,58 @@ fn decide(actor: usize, result: i8, reason: Reason) -> Outcome {
         _ => -1,
     };
     Outcome { winner, reason }
+}
+
+/// The wild pieces of one phase in stepping order (schema 23): `Game::npc_step_order`.
+///
+/// Passes over a pending set rather than a sort: each pass visits, ascending, every pending
+/// piece whose next square holds no pending piece. With one wild piece per route that is
+/// the first pass alone, ascending, the order the phase always had -- but the phase and the
+/// filter walk this only under `Tables::npc_queues` and otherwise walk `npc_here` directly
+/// (`npc_phase_in` is monomorphised for both): walking this everywhere cost wolves' perft
+/// 10%. Holds the tables and a snapshot, never the game, so the caller writes the board
+/// while it walks.
+pub struct NpcOrder<'t> {
+    t: &'t Tables,
+    pending: SquareSet,
+    pass: SquareIter,
+    deferred: bool,
+    stepped: bool,
+}
+
+impl<'t> NpcOrder<'t> {
+    #[inline]
+    fn new(t: &'t Tables, here: SquareSet) -> Self {
+        Self { t, pending: here, pass: here.iter(), deferred: false, stepped: false }
+    }
+}
+
+impl Iterator for NpcOrder<'_> {
+    type Item = usize;
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<usize> {
+        loop {
+            if let Some(square) = self.pass.next() {
+                let next = self.t.npc_next[square];
+                if next >= 0 && next as usize != square && self.pending.get(next as usize) {
+                    self.deferred = true;
+                    continue;
+                }
+                self.pending.clear(square);
+                self.stepped = true;
+                return Some(square);
+            }
+            // Nothing deferred: done. Nothing stepped while something was deferred: a full
+            // route, and every piece left waits.
+            if !self.deferred || !self.stepped {
+                return None;
+            }
+            self.pass = self.pending.iter();
+            self.deferred = false;
+            self.stepped = false;
+        }
+    }
 }
 
 #[cfg(test)]

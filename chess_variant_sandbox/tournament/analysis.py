@@ -39,7 +39,11 @@ from typing import Any
 from chess_variant_sandbox.agents.evaluation import WIN_SCORE, Evaluator
 from chess_variant_sandbox.engine import Engine, GameState
 from chess_variant_sandbox.engine.moves import (
+    MOVE_CASTLE,
     MOVE_DROP,
+    MOVE_FOLD,
+    MOVE_ROTATE,
+    move_fold,
     move_from,
     move_promotion,
     move_to,
@@ -312,9 +316,7 @@ def _analyse_game(
     # captured on its home square followed by an enemy piece moving off that square
     # credits the wrong army. Both are worth a handful of instances per game against a
     # denominator in the tens, and neither is worth a per-ply board diff to fix.
-    starting_squares = {
-        square for square in range(engine.spec.n_squares) if state.board[square] != 0
-    }
+    starting_squares = _starting_squares(engine, state.board)
     moved_squares: set[int] = set()
     seen_keys = {state.key}
     position_keys: list[int] = []
@@ -323,20 +325,15 @@ def _analyse_game(
 
     for index, move in enumerate(record.moves):
         board = state.board
-        if move_type(move) == MOVE_DROP:
-            kind = move_promotion(move) % n_types
-        else:
-            origin = move_from(move)
-            occupant = board[origin]
-            if occupant == 0:
-                # The record and the spec have drifted apart. Stop counting rather than
-                # inventing numbers; replay raises on the same condition with a message.
-                break
-            kind = (occupant - 1) % n_types
-            if origin in starting_squares:
-                moved_squares.add(origin)
+        kind = _mover_kind(engine, board, move)
+        if kind is None:
+            # The record and the spec have drifted apart. Stop counting rather than
+            # inventing numbers; replay raises on the same condition with a message.
+            break
+        if _moves_an_instance(move) and move_from(move) in starting_squares:
+            moved_squares.add(move_from(move))
         moves_by_type[kind] += 1
-        if board[move_to(move)] != 0:
+        if _takes(board, move):
             captures_by_type[kind] += 1
 
         if index % PLY_STRIDE == 0:
@@ -350,7 +347,7 @@ def _analyse_game(
                 # destination" is the same reading of a capture that
                 # `captures_by_type` uses two lines up; en passant is missed by both,
                 # consistently.
-                capture_counts.append(sum(1 for m in legal if board[move_to(m)] != 0))
+                capture_counts.append(sum(1 for m in legal if _takes(board, m)))
 
         state = engine.apply(state, move)
         walked += 1
@@ -373,6 +370,73 @@ def _analyse_game(
         starting_instances=len(starting_squares),
         moved_instances=len(moved_squares),
         position_keys=position_keys,
+    )
+
+
+def _mover_kind(engine: Engine, board: bytes, move: int) -> int | None:
+    """The internal type a move counts under in `moves_by_type`, or `None` from an empty
+    origin, which only a record that has drifted from its spec plays.
+
+    A drop counts under the type it drops. A fold's own move (schema 22, revised at 24)
+    counts under its end's internal type: a fold stands on no byte of the board, so its
+    origin holds nothing, or a piece standing in it that does not move (Q873, Q844's
+    finding: the pass used to stop here). Every other move counts under the type on its
+    origin, a momentum end's own move under its end's byte. `site/legality.py::walk` reads
+    a move through this too.
+    """
+    n_types = engine.spec.n_types
+    kind = move_type(move)
+    if kind == MOVE_DROP:
+        return move_promotion(move) % n_types
+    if kind == MOVE_FOLD:
+        portals = engine.spec.portals
+        assert portals is not None
+        return portals.end_types[move_fold(move)]
+    occupant = board[move_from(move)]
+    return None if occupant == 0 else (occupant - 1) % n_types
+
+
+def _moves_an_instance(move: int) -> bool:
+    """Whether a move moves the piece on its origin square: a drop moves none, and a fold's
+    own move leaves the piece standing in it where it is."""
+    return move_type(move) not in (MOVE_DROP, MOVE_FOLD)
+
+
+def _starting_squares(engine: Engine, board: bytes) -> set[int]:
+    """The squares of the opening board's pieces: the instances `instance_participation`
+    counts.
+
+    A portal is not one of them (Q875, `docs/reference/portal-showcase-ideas.md` beside
+    finding 1). It is part of the board that pieces move through, held by no player and
+    taken by no capture, so a fixed portal is not an idle piece and a moved one is not a
+    piece that played. A fold stands on no byte and was never counted; a momentum end
+    stands on its byte and is left out here, so the two kinds read alike.
+    """
+    portals = engine.spec.portals
+    n_types = engine.spec.n_types
+    return {
+        square
+        for square in range(engine.spec.n_squares)
+        if board[square] != 0
+        and (portals is None or not portals.is_end((board[square] - 1) % n_types))
+    }
+
+
+def _takes(board: bytes, move: int) -> bool:
+    """Whether a move is read as a capture: it ends on an occupied square, and is not one of
+    the three kinds that end on one and take nothing, as the core's `apply` reads them.
+
+    A rotation's target is its own square, which holds the piece that turns (Q875: it was
+    read as a capture, so a game whose pieces turn offered one in nearly every position).
+    A file-based castling can land the king on its own rook, or on its own square, and
+    moves the rook rather than removing it. A fold's own move may end on a piece and leave
+    it standing (`docs/plan-portals-2.md` §3R.1 rule 6). These are the three
+    `agents.rs::capture_gain` and `agents/minimax.py` leave out.
+    """
+    return board[move_to(move)] != 0 and move_type(move) not in (
+        MOVE_ROTATE,
+        MOVE_CASTLE,
+        MOVE_FOLD,
     )
 
 

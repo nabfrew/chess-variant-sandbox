@@ -488,6 +488,9 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
     # and the core divides `n_facings` by `facing_axes` once to find that out.
     facing_axes = list(spec.facing_axes) if spec.has_facing else []
     facing_initial = list(spec.facing_initial) if spec.has_facing else []
+    # Schema 25 (Q869): per type, 1 where a move may turn it. Empty -- every facing piece
+    # turns -- unless some facing says `turns: false`, so no earlier fingerprint moves.
+    facing_turns = [int(turns) for turns in spec.facing_turns]
 
     # --- Wild pieces (schema 9) ---
     # Two board-sized tables and a flag, and that is the whole rule at the boundary: the
@@ -518,15 +521,18 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         else []
     )
 
-    # --- Portals (schema 19) ---
-    # Per type: the partner end (-1 for a piece that is not a portal), may each player go
-    # in by it, and which players may move it (a bit per player). The exit table per
+    # --- Portals (schema 19; schema 21's map and filters) ---
+    # Per type: the end a piece that goes in here comes out of (-1 for a way out only and
+    # for a piece that is not a portal), the end's group (-1 for a piece that is not a
+    # portal), per player the mask of declared types that may go in by it, and which
+    # players may move it (a bit per player). The exit table per
     # player, square and direction, and the momentum masks parallel to the three movement
     # tables' landings and to the attack sources. Every one is empty and the flag false
     # without a portal, so no earlier ruleset's fingerprint moves.
     portals = spec.portals
-    portal_partner: list[int] = []
-    portal_open: list[int] = []
+    portal_dest: list[int] = []
+    portal_group: list[int] = []
+    portal_admits: list[int] = []
     portal_movers: list[int] = []
     portal_exits: list[int] = []
     leap_dirs: list[int] = []
@@ -538,10 +544,13 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
     portal_no_back: list[int] = []
     zobrist_portal_bar: list[int] = []
     if portals is not None:
-        portal_partner = list(portals.partner)
+        portal_dest = list(portals.dest)
+        portal_group = [-1] * len(portals.dest)
+        for piece_type, group in zip(portals.end_types, portals.group_of, strict=True):
+            portal_group[piece_type] = group
         portal_no_back = [int(flag) for flag in portals.no_back]
         zobrist_portal_bar = list(portals.zobrist_bar)
-        portal_open = [int(flag) for pair in portals.open_to for flag in pair]
+        portal_admits = [mask for masks in portals.admits for mask in masks]
         portal_movers = [sum(1 << player for player in who) for who in portals.movers]
         portal_exits = [
             square for player in portals.exits for row in player for square in row
@@ -552,6 +561,19 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         attack_dirs = [
             bits for owner in portals.attack_dirs for per_square in owner for bits in per_square
         ]
+
+    # --- Folds (schema 22; schema 24 cut them to this, `docs/plan-portals-2.md` §3R.4) ---
+    # Per type whether it is a fold end; per end where it starts (-1 for a momentum end); the
+    # fold's Zobrist keys. Every one empty without a fold, so no earlier ruleset's
+    # fingerprint moves.
+    folds = portals.folds if portals is not None else None
+    portal_kind: list[int] = []
+    fold_starts: list[int] = []
+    zobrist_fold: list[int] = []
+    if portals is not None and folds is not None:
+        portal_kind = [int(portals.is_fold(piece_type)) for piece_type in range(n_types)]
+        fold_starts = list(folds.starts)
+        zobrist_fold = list(folds.zobrist)
 
     # --- Extinction ---
     extinction = spec.extinction
@@ -706,6 +728,7 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         # Facing
         "facing_axes": facing_axes,
         "facing_initial": facing_initial,
+        "facing_turns": facing_turns,
         "has_strike": strike is not None,
         "strike_position": _STRIKE_POSITION[strike.position] if strike else 1,
         "strike_to": strike_to,
@@ -725,8 +748,9 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         "entry_promotion": entry_promotion,
         # Portals (schema 19)
         "has_portals": portals is not None,
-        "portal_partner": portal_partner,
-        "portal_open": portal_open,
+        "portal_dest": portal_dest,
+        "portal_group": portal_group,
+        "portal_admits": portal_admits,
         "portal_movers": portal_movers,
         "portal_exits": portal_exits,
         "leap_dirs": leap_dirs,
@@ -736,6 +760,10 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         # Portals' straight-back bar (schema 20)
         "portal_no_back": portal_no_back,
         "zobrist_portal_bar": zobrist_portal_bar,
+        # Fold portals (schema 22)
+        "portal_kind": portal_kind,
+        "fold_starts": fold_starts,
+        "zobrist_fold": zobrist_fold,
         "has_extinction": extinction is not None,
         "extinction_types": list(extinction.piece_types) if extinction else [],
         "extinction_any_piece": extinction.any_piece if extinction else False,
@@ -775,6 +803,7 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "n_frames": 2,
     "facing_axes": [],
     "facing_initial": [],
+    "facing_turns": [],
     "has_capture_matrix": False,
     "has_hop_attacks": False,
     "ep_type": -1,
@@ -874,8 +903,9 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "entry_promotion": [],
     # Schema 19 (Q771). Empty and false unless the spec has portals.
     "has_portals": False,
-    "portal_partner": [],
-    "portal_open": [],
+    "portal_dest": [],
+    "portal_group": [],
+    "portal_admits": [],
     "portal_movers": [],
     "portal_exits": [],
     "leap_dirs": [],
@@ -885,6 +915,10 @@ _INERT_DEFAULTS: dict[str, Any] = {
     # Schema 20 (Q807). Empty unless a portal pair sets ``no_straight_back``.
     "portal_no_back": [],
     "zobrist_portal_bar": [],
+    # Schema 22 (Q843c). Empty unless a portal group is a fold.
+    "portal_kind": [],
+    "fold_starts": [],
+    "zobrist_fold": [],
     "has_extinction": False,
     "extinction_types": [],
     "extinction_any_piece": False,

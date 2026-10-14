@@ -1,7 +1,7 @@
 {
   "schema_version": 12,
-  "name": "hierarchy rise throw",
-  "description": "Hierarchy rise with the third answer to where the two pieces stand. Taking a piece still promotes it -- a pawn to a knight, a knight to a bishop, a bishop to a rook, a rook to a queen, and a queen is taken outright -- but the attacker takes the square and throws the promoted piece onto any empty square a king's step from where it stood, choosing the worst one for it. A piece with every neighbouring square occupied cannot be taken at all.",
+  "name": "thrown gifts",
+  "description": "Gift chess with the third answer to where the two pieces stand. Taking a piece still promotes it -- a pawn to a knight, a knight to a bishop, a bishop to a rook, a rook to a queen, and a queen is taken outright -- but the attacker takes the square and throws the promoted piece onto any empty square a king's step from where it stood, choosing the worst one for it. A piece with every neighbouring square occupied cannot be taken at all. Throwing is the answer that makes the promoting chain decisive: the thrower chooses the worst square for what it struck, and games are shorter and won far more often than under gift chess's exchange of squares.",
   "board": {
     "width": 8,
     "height": 8

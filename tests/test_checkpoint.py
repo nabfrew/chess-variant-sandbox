@@ -117,6 +117,27 @@ def test_a_stage_is_named_by_what_it_computes_and_cut_by_its_units(campaign_dir:
     assert stages[one.name] == {"kind": "games", "pieces": len(one.pieces), "units": 2500, "label": ""}
 
 
+def test_a_fitted_seat_is_named_by_the_spec_it_plays(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`fit=` names a procedure, as `net=` does; what plays is the store's vector (Q900).
+
+    So a fitted seat's identity carries the native spec the core is handed, and a store
+    that changed between a crash and its resume names another stage. A seat with neither
+    names itself alone, so no stage named before Q900 moved.
+    """
+    from chess_variant_sandbox import agents
+
+    fitted = "minimax:fit=98f172aeac49,nodes=50"
+    vectors = iter([(1, (0.5, 0.25)), (1, (0.5, 0.25)), (1, (0.5, 0.75))])
+    monkeypatch.setattr(agents, "native_spec", lambda agent, ruleset_hash="": next(vectors))
+    first = checkpoint.agent_identity([fitted], "r")
+    assert first == checkpoint.agent_identity([fitted], "r")
+    assert first != checkpoint.agent_identity([fitted], "r")
+    assert first[0]["native_sha256"]
+    assert checkpoint.agent_identity(["greedy", "minimax:nodes=50"], "r") == [
+        {"agent": "greedy"}, {"agent": "minimax:nodes=50"},
+    ]
+
+
 def test_a_stage_plays_only_the_pieces_not_on_disk(campaign_dir: Path) -> None:
     campaign = Campaign.open(campaign_dir, build=BUILD)
     stage = campaign.stage("squares", {"n": 9}, list(range(9)), size=2)

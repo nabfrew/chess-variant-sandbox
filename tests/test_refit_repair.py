@@ -19,6 +19,7 @@ import pytest
 from chess_variant_sandbox.agents.features import VOCABULARY
 from chess_variant_sandbox.agents.fitted import FittedObjective, procedure_digest, store_path, unit
 from chess_variant_sandbox.corpus import fit_reading, player_digest
+from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.measurement import (
     BUILTIN_PLAYER,
     REPAIR_NAMES,
@@ -30,9 +31,11 @@ from chess_variant_sandbox.measurement import (
     fingerprinted,
     load,
 )
+from chess_variant_sandbox.spec import load_spec
 from chess_variant_sandbox.tournament import fitting
 
 FOREIGN = "0000000000000000"
+RULESETS = Path(__file__).resolve().parents[1] / "rulesets"
 ACCEPTED = "fit:aaaaaaaaaaaa"
 OTHER = "fit:bbbbbbbbbbbb"
 
@@ -200,19 +203,25 @@ class TestTheStoreReading:
     def test_no_store_is_no_reading(self, tmp_path: Path) -> None:
         assert fit_reading("0123456789ab", tmp_path) is None
 
-    def test_the_reading_names_the_maker_and_every_core_that_reproduced_it(
+    def test_the_reading_names_the_maker_and_every_core_verified_under_this_game(
         self, tmp_path: Path
     ) -> None:
-        fit = a_fit()
+        """Q892: a core counts only where the sidecar records it with this game's tables,
+        players and runner as they are now, so the reading needs the spec to say so."""
+        spec = load_spec(RULESETS / "gardner.json")
+        fit = a_fit(ruleset_hash=Engine(spec).spec.hash)
         fit.save(store_path(fit.ruleset_hash, fit.procedure, tmp_path))
-        reading = fit_reading(fit.ruleset_hash, tmp_path)
-        assert reading == FitReading(player_digest(fit), FOREIGN, frozenset({FOREIGN}))
+        reading = fit_reading(fit.ruleset_hash, tmp_path, spec)
+        assert reading == FitReading(player_digest(fit), FOREIGN, frozenset(), recorded=False)
 
-        fitting._add_core(fit, built_fingerprint(), tmp_path)
-        reading = fit_reading(fit.ruleset_hash, tmp_path)
+        fitting._add_basis(fit, fitting.reproduction_basis(spec), tmp_path)
+        reading = fit_reading(fit.ruleset_hash, tmp_path, spec)
         assert reading is not None
-        assert reading.verified_on == {FOREIGN, built_fingerprint()}
+        assert reading.verified_on == {built_fingerprint()}
         assert now(reading).fit == player_digest(fit)
+        # Without the spec the tables cannot be compared: verified nowhere.
+        blind = fit_reading(fit.ruleset_hash, tmp_path)
+        assert blind is not None and blind.verified_on == frozenset()
 
     def test_an_unreadable_store_is_no_reading(self, tmp_path: Path) -> None:
         path = store_path("0123456789ab", procedure_digest(), tmp_path)
@@ -222,15 +231,19 @@ class TestTheStoreReading:
 
 
 @pytest.mark.parametrize("reading", [None, "store"])
-def test_current_basis_reads_the_fit_store_by_hash_alone(
+def test_current_basis_finds_the_fit_store_by_hash_and_verifies_it_with_the_spec(
     reading: str | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from chess_variant_sandbox import corpus
     from chess_variant_sandbox.agents.fitted import STORE_ENV
 
     monkeypatch.setenv(STORE_ENV, str(tmp_path))
+    spec = load_spec(RULESETS / "gardner.json")
+    digest = Engine(spec).spec.hash
+    fit = a_fit(built_fingerprint(), ruleset_hash=digest)
     if reading:
-        fit = a_fit(built_fingerprint())
-        fit.save(store_path(fit.ruleset_hash, fit.procedure, tmp_path))
-    basis = corpus.current_basis("0123456789ab")
-    assert basis.fit == (player_digest(a_fit()) if reading else "")
+        fitting.save_fit(fit, spec, tmp_path)
+    basis = corpus.current_basis(digest, spec=spec)
+    assert basis.fit == (player_digest(fit) if reading else "")
+    blind = corpus.current_basis(digest)
+    assert blind.fit == (UNVERIFIED if reading else "")

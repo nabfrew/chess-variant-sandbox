@@ -45,11 +45,14 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_CASTLE,
     MOVE_DROP,
     MOVE_EN_PASSANT,
+    MOVE_FOLD,
+    MOVE_NORMAL,
     MOVE_PORTAL,
     MOVE_PROMOTION,
     MOVE_ROTATE,
     MOVE_SWEEP,
     decode_move,
+    move_fold,
     move_landing,
     move_portal,
 )
@@ -91,11 +94,11 @@ def _pack(state: GameState) -> tuple[Any, ...]:
         # elements, so the boundary has a hard ceiling and the next field joins a group.
         # Schema 9's bounty tally is the first field to meet that ceiling, so it joins
         # this group rather than taking a slot of its own, and schema 18's side that has
-        # just left a goal square (Q786) and schema 20's straight-back bar (Q807) join it
-        # the same way.
+        # just left a goal square (Q786), schema 20's straight-back bar (Q807) and schema
+        # 22's folds (Q843c) join it the same way.
         (
             state.colour, state.remaining, state.turns_taken, state.points,
-            state.goal_left_by, state.portal_bar,
+            state.goal_left_by, state.portal_bar, list(state.folds),
         ),
     )
 
@@ -123,6 +126,7 @@ def _unpack(packed: State) -> GameState:
         points=packed[11][3],
         goal_left_by=packed[11][4],
         portal_bar=(packed[11][5][0], packed[11][5][1]),
+        folds=tuple(packed[11][6]),
     )
 
 
@@ -377,7 +381,19 @@ class Engine:
                 f"{spec.piece_ids[promoted % spec.n_types]}@"
                 f"{_square_name(target, spec.width)}"
             )
+        if kind == MOVE_FOLD:
+            # Schema 22: a fold's own move names its group and end, as a momentum end's
+            # does (``2a:e3-f3``); a piece may be standing on either square.
+            portals = spec.portals
+            assert portals is not None
+            end = portals.end_types[move_fold(move)]
+            return (
+                f"{spec.piece_ids[end]}:{_square_name(origin, spec.width)}-"
+                f"{_square_name(target, spec.width)}"
+            )
         piece = spec.piece_ids[spec.type_of(state.board[origin])]
+        if kind in (MOVE_NORMAL, MOVE_PROMOTION) and move_fold(move) and self._has_folds:
+            return self._fold_text(state, move)
         if kind == MOVE_ROTATE:
             # A turn goes nowhere, so the "origin-dash-target" shape would read as a
             # piece moving to the square it is already on. It is written as the piece,
@@ -505,6 +521,64 @@ class Engine:
             text += f"={spec.piece_ids[promoted - 1]}"
         return text
 
+    @property
+    def _has_folds(self) -> bool:
+        return self.spec.portals is not None and self.spec.portals.folds is not None
+
+    def _start_folds(self) -> tuple[int, ...]:
+        """Schema 22: where the fold ends start, in end order; ``()`` without folds."""
+        portals = self.spec.portals
+        if portals is None or portals.folds is None:
+            return ()
+        return tuple(square for square in portals.folds.starts if square >= 0)
+
+    def fold_square(self, state: GameState, end: int) -> int | None:
+        """Schema 22: where fold end ``end`` (its index among the portal ends) stands in
+        ``state``, or ``None`` for an end that is not a fold. Read off ``state.folds``, the
+        fold ends' squares in end order (their starts where a hand-built state left it
+        empty)."""
+        portals = self.spec.portals
+        if portals is None or portals.folds is None or portals.folds.starts[end] < 0:
+            return None
+        squares = state.folds or self._start_folds()
+        return squares[sum(1 for square in portals.folds.starts[:end] if square >= 0)]
+
+    def fold_route(self, state: GameState, move: int) -> tuple[int, int] | None:
+        """Schema 22: ``(way in, way out)`` -- the squares of the fold a move went through
+        and of the end it leads to, which is where the move ends (schema 24) -- or ``None``
+        for a move that went through none."""
+        portals = self.spec.portals
+        _, _, kind, _ = decode_move(move)
+        tag = move_fold(move)
+        if portals is None or portals.folds is None or not tag or kind not in (
+            MOVE_NORMAL, MOVE_PROMOTION,
+        ):
+            return None
+        end = tag - 1
+        way_in = self.fold_square(state, end)
+        dest = portals.dest[portals.end_types[end]]
+        way_out = self.fold_square(state, portals.end_types.index(dest)) if dest >= 0 else None
+        if way_in is None or way_out is None:
+            return None
+        return way_in, way_out
+
+    def _fold_text(self, state: GameState, move: int) -> str:
+        """A move through a fold (schema 24, `docs/plan-portals-2.md` §3R.2): its way in, and
+        its way out, which is where it ends. ``Ra3-b3~e4`` (in at b3, out on e4); a capture
+        ``Ra3-b3~xe4``; a promotion ``Pc6-c7~f8=Q``. A stay is written as any move,
+        ``Ra3-b3``. Every text stays distinct, so ``find_move`` keeps working."""
+        spec = self.spec
+        origin, target, kind, promoted = decode_move(move)
+        piece = spec.piece_ids[spec.type_of(state.board[origin])]
+        route = self.fold_route(state, move)
+        way_in = route[0] if route is not None else origin
+        text = f"{piece}{_square_name(origin, spec.width)}-{_square_name(way_in, spec.width)}~"
+        text += "x" if state.board[target] else ""
+        text += _square_name(target, spec.width)
+        if kind == MOVE_PROMOTION:
+            text += f"={spec.piece_ids[promoted]}"
+        return text
+
     def portal_entry(self, state: GameState, move: int) -> int | None:
         """The square of the portal end a ``MOVE_PORTAL`` goes in by, read off the board.
 
@@ -592,13 +666,15 @@ class Engine:
         ep_victim: str | None = None,
         halfmove: int = 0,
         ply: int = 0,
+        folds: Iterable[str] = (),
     ) -> GameState:
         """Build a position directly, for tests, puzzles, and CLI setup.
 
         ``placement`` maps square names to ``(piece id, player)``. Everything placed
         counts as unmoved unless named in ``moved`` -- the convenient default for
         castling tests, and the reason this takes a list of exceptions rather than a
-        list of inclusions.
+        list of inclusions. ``folds`` (schema 22) names where each fold end stands, in end
+        order; left empty, the folds stand where they start.
         """
         spec = self.spec
         board = bytearray(spec.n_squares)
@@ -624,6 +700,7 @@ class Engine:
             # hand-built position with no colouring at all is the one place a
             # zero-length array could reach the core, and the core indexes it per square.
             colour=bytes(spec.n_squares) if spec.territory is not None else b"",
+            folds=tuple(self._square_index(name) for name in folds) or self._start_folds(),
         )
         key = self._compute_hash(state)
         return state.with_(key=key, repetition=(key,))

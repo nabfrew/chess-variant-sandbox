@@ -232,7 +232,7 @@ class PremiseBasis:
             games_per_pairing=0,
             seeds=(),
             tables=tables_fingerprint(spec) if spec is not None else "",
-            fit=corpus.fit_reading(digest),
+            fit=corpus.fit_reading(digest, spec=spec),
         )
         translates = spec is not None and _fairy_translates(spec)
         return cls(

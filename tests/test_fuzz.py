@@ -15,6 +15,8 @@ kind of oracle it did not have.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 import pytest
 
 from chess_variant_sandbox import fuzz
@@ -27,10 +29,13 @@ def test_the_generator_actually_produces_specs() -> None:
     silently generates nothing satisfies perfectly. This is the one test here that fails
     if the generator stops working.
     """
-    built = [fuzz.case(seed) for seed in range(20)]
+    # Twelve seeds, at the proportions twenty were held to (Q749): a case is 0.02 s, but a
+    # hexagon's children rotate and each is refused through two compiles
+    # (`relate._orientation_played`), and seeds 5 and 16 were 2.4 s of the test's 3.1.
+    built = [fuzz.case(seed) for seed in range(12)]
     made = [case for case in built if case is not None]
-    assert len(made) >= 18, "the generator is refusing most seeds"
-    assert sum(1 for case in made if case.operators) >= 15, "most cases were not mutated"
+    assert len(made) >= 11, "the generator is refusing most seeds"
+    assert sum(1 for case in made if case.operators) >= 9, "most cases were not mutated"
     assert len({case.spec.get("name") for case in made}) > 5, "the cases are all alike"
 
 
@@ -47,7 +52,7 @@ def test_a_seed_rebuilds_exactly_the_same_spec() -> None:
     assert first.operators == second.operators
 
 
-def _hexagons(seeds: range) -> list[fuzz.Case]:
+def _hexagons(seeds: Iterable[int]) -> list[fuzz.Case]:
     built = [fuzz.case(seed) for seed in seeds]
     return [
         case for case in built
@@ -55,6 +60,9 @@ def _hexagons(seeds: range) -> list[fuzz.Case]:
     ]
 
 
+# Slow (Q749): 64 generated cases, 9 s in the gate, nearly all of it the nine hexagons'
+# refused children (two compiles each). The oracle tests below build two known hexagons.
+@pytest.mark.slow
 def test_a_seeded_batch_builds_hexagons_joined_and_unjoined() -> None:
     """Schema 16 (Q281a5). No operator adds a shape, so the hexagons come in as parents.
 
@@ -70,11 +78,26 @@ def test_a_seeded_batch_builds_hexagons_joined_and_unjoined() -> None:
     assert "board.shape" in fuzz.Coverage().report()
 
 
+# Two hexagons the generator builds, one of each kind (the seeded batch above finds nine
+# among seeds 0-63): seed 29 unjoined, seed 36 joined, 0.3 s together where the batch took
+# 9 s (Q749). Asked of by name, so a generator that stops building them fails here.
+TWO_HEXAGONS = (29, 36)
+
+
+def _one_of_each() -> list[fuzz.Case]:
+    hexagons = _hexagons(TWO_HEXAGONS)
+    assert {"wrap" in fuzz.active_rules(case.spec) for case in hexagons} == {True, False}, (
+        "seeds 29 and 36 no longer build one hexagon of each kind; pick two again from"
+        " test_a_seeded_batch_builds_hexagons_joined_and_unjoined's batch"
+    )
+    return hexagons
+
+
 def test_the_obstacle_oracles_see_a_hexagon_s_corners() -> None:
     """Why the two obstacle oracles need no change: the corners are in `obstacles`."""
     from chess_variant_sandbox.engine.compile import compile_spec
 
-    for case in _hexagons(range(64)):
+    for case in _one_of_each():
         compiled = compile_spec(case.spec)
         assert compiled.absent, case.describe()
         assert compiled.absent <= compiled.obstacles, case.describe()
@@ -82,10 +105,7 @@ def test_the_obstacle_oracles_see_a_hexagon_s_corners() -> None:
 
 def test_a_hexagon_walks_under_every_oracle() -> None:
     """One of each kind walked here; the whole batch is in the slow run below."""
-    hexagons = _hexagons(range(64))
-    joined = next(case for case in hexagons if "wrap" in fuzz.active_rules(case.spec))
-    unjoined = next(case for case in hexagons if "wrap" not in fuzz.active_rules(case.spec))
-    for case in (joined, unjoined):
+    for case in _one_of_each():
         assert fuzz.walk(case.spec, case.seed) > 0, case.describe()
 
 

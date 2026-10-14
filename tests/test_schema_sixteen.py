@@ -29,6 +29,7 @@ from typing import Any
 
 import hex_geometry as oracle
 import pytest
+from retired_specs import REBUILT
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.bridge import canonical_tables
@@ -81,6 +82,8 @@ SHARED_SETTINGS: list[dict[str, str]] = [
 
 
 def _load(name: str) -> dict[str, Any]:
+    if name in REBUILT:  # retired by Q868 or Q870; rebuilt from a game in the library
+        return REBUILT[name]()
     return json.loads((ARCHIVE / f"{name}.json").read_text(encoding="utf-8"))
 
 

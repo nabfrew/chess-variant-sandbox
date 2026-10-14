@@ -60,6 +60,22 @@ visibility and its kill stamp. Saving somebody's killed rules again does not bri
 back, and a rename is not a new game. The one thing a later save can add is a pass: the
 check is a verdict on the rules, and the rules are the hash, so a pass by anybody's save
 is recorded on the row and a later failure does not take it back.
+
+## What a re-save changes
+
+The words, and only on the designer's own draft (Q595). The rules are the hash, so a save
+of kept rules never changes them; what it can change is the name and the description, which
+the hash ignores. A draft saved without a description used to keep that lack for ever
+(*Already saved*, and nothing written). Now its owner's re-save rewrites both in the row
+(`games.name`, `games.spec`) and in `runs/designed/` (`designing.save`), and says so.
+
+A **published** game keeps the words it was published with -- on trial, resting, or with a
+publish waiting for its check (`publish_asked`). Publishing dedicated *this game's rules,
+name and description* to the public domain (`terms.DEDICATION`), and people played it,
+voted on it and reported it under those words, so a later save leaves them as they were and
+says why (`AS_PUBLISHED`). A draft whose publish was called off is a draft again, and its
+words are its owner's. The words of rules somebody else saved first are theirs
+(`NOT_YOURS`), and a game taken off the site changes in nothing (`restatable`).
 """
 
 from __future__ import annotations
@@ -70,7 +86,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from chess_variant_sandbox.site import links, provisional, quota, resting, stages, terms
+from chess_variant_sandbox.site import links, provisional, quota, resting, spine, stages, terms
 from chess_variant_sandbox.spec import relate
 
 DESIGNED = "designed"
@@ -133,6 +149,15 @@ OUT_OF_DATE = (
 TAKEN_OFF = "The game has been taken off the site."
 """Why a waiting publish is called off, after `CALLED_OFF` (`settle`)."""
 
+AS_PUBLISHED = (
+    "Its name and description stay as they were published: publishing gave them to the "
+    "public domain with its rules. Change a rule to make a new game with new words."
+)
+"""What a re-save of a published game is told when it asked for other words (Q595)."""
+
+NOT_YOURS = "Somebody else saved these rules first, so the name and description stay theirs."
+"""What a re-save of rules another member saved first is told when its words differ."""
+
 CORPUS_SOURCES = ("committed", "archived")
 """What `library.discover` calls a card read from `rulesets/` or `archive/`."""
 
@@ -152,6 +177,38 @@ class Kept:
         return self.visibility == PUBLIC and not self.revoked
 
 
+def restatable(connection: Any, digest: str, owner: int) -> str:
+    """Whether a save by `owner` may give these rules its name and description (Q595).
+
+    The empty string when it may: no row holds the rules yet, or the row is `owner`'s own
+    draft, unlisted, with no publish waiting, not killed and not deleted. Otherwise the
+    sentence that says why not: `AS_PUBLISHED`, `NOT_YOURS`, or `GONE` for a game taken
+    off the site, the rest of whose story `why` tells.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select owner, visibility, publish_asked, revoked, deleted from games"
+            " where hash = %s",
+            (digest,),
+        )
+        found = cursor.fetchone()
+    if found is None:
+        return ""
+    who, visibility, asked, revoked, deleted = found
+    if revoked is not None or deleted is not None:
+        return GONE
+    if who is None or int(who) != owner:
+        return NOT_YOURS
+    if str(visibility) != UNLISTED or asked is not None:
+        return AS_PUBLISHED
+    return ""
+
+
+GONE = "Nothing about it changes."
+"""`restatable`'s answer for rules taken off the site: no words change, and `why` says
+the rest."""
+
+
 def keep(
     connection: Any,
     digest: str,
@@ -159,6 +216,7 @@ def keep(
     owner: int,
     parent: str = "",
     passed: bool = False,
+    restate: bool = False,
 ) -> Kept:
     """Write the draft's row, or find the one already there. Nothing commits.
 
@@ -172,6 +230,10 @@ def keep(
     against the seventy games the library holds costs about 50 milliseconds, which is why
     it is here rather than in the check's child process (`site/links.py`). Saving the same
     rules again writes no link either, because the pairs already carry this reading.
+
+    `restate` writes `spec`'s name and description over an existing row's, and only where
+    `restatable` still answers that it may (Q595); the rules in the row are not touched,
+    since they are the hash and are the same.
     """
     with connection.cursor() as cursor:
         cursor.execute(
@@ -192,6 +254,8 @@ def keep(
                     "update games set screen_passed = true where hash = %s", (digest,)
                 )
             screened = True
+        if restate and not restatable(connection, digest, owner):
+            _restate(connection, digest, spec)
         return Kept(
             digest,
             str(found[0]),
@@ -219,6 +283,20 @@ def keep(
         )
     links.write(connection, digest, dict(spec))
     return Kept(digest, UNLISTED, created=True, revoked=False, screen_passed=passed)
+
+
+def _restate(connection: Any, digest: str, spec: Mapping[str, Any]) -> None:
+    """The row's name and description, from `spec`; its rules stay the row's own."""
+    name = str(spec.get("name") or digest)
+    description = str(spec.get("description") or "")
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "update games set name = %s,"
+            " spec = jsonb_set(jsonb_set(spec, '{name}', to_jsonb(%s::text)),"
+            " '{description}', to_jsonb(%s::text))"
+            " where hash = %s",
+            (name, name, description, digest),
+        )
 
 
 def _held(connection: Any, digest: str) -> bool:
@@ -391,6 +469,8 @@ class Published:
     already: bool
     waiting: bool = False
     """The press was taken and waits for the site's check of the score (Q742)."""
+    rating: bool = False
+    """Its five standard computer players are now queued to be rated here (L5)."""
 
     @property
     def said(self) -> str:
@@ -398,7 +478,15 @@ class Published:
             return "Already on trial: listed with the other games."
         if self.waiting:
             return WAITING
-        return "Published. It is on trial: others can find it, play it and vote on it."
+        listed = "Published. It is on trial: others can find it, play it and vote on it."
+        return f"{listed} {RATING_NOW}" if self.rating else listed
+
+
+RATING_NOW = (
+    "Its five standard computer players are being rated on this site now, so rated games "
+    "open in a few minutes."
+)
+"""What a publish adds when it filed the game's spine rating (L5, `site/spine.py`)."""
 
 
 def publish(
@@ -498,7 +586,10 @@ def publish(
                 " publish_stopped = null where hash = %s",
                 (PUBLIC, terms.VERSION, digest),
             )
-    return Published(digest, already=False)
+    # L5 (`docs/plan-leaderboard.md` §2.6): the five standard computer players are rated on
+    # the site's runner as soon as the game is listed, once ever (`spine.file`), so a
+    # resting game that comes back keeps the table it had and is not rated again.
+    return Published(digest, already=False, rating=spine.file(connection, digest) is not None)
 
 
 @dataclass(frozen=True)

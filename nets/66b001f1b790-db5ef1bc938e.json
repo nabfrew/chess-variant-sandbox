@@ -1,0 +1,89 @@
+{
+  "procedure": "db5ef1bc938e",
+  "ruleset_hash": "66b001f1b790",
+  "inputs_version": 1,
+  "verdict": "accepted",
+  "weights_sha256": "17cd425eab7820767e078fa1fd13363e7be5c4eaa4483ee84c2ba005ffc9efea",
+  "build": "40d0e115de5a613d",
+  "digest": "17cd425eab78",
+  "trainer_version": 1,
+  "recipe": {
+    "agents": [
+      "minimax:nodes=1600"
+    ],
+    "games": 20000,
+    "seed": 0,
+    "opening_plies": 8,
+    "skip_plies": 2,
+    "stride": 1,
+    "result_weight": 0.0,
+    "label_nodes": 1200,
+    "label_depth": 8,
+    "td_lambda": 0.7,
+    "scale": 1.0,
+    "accumulator": 256,
+    "hidden1": 32,
+    "hidden2": 32,
+    "epochs": 8,
+    "batch": 1024,
+    "learning_rate": 0.001,
+    "init_seed": 0
+  },
+  "data": {
+    "digest": "c81827303c778bab3468ac70017d7794a5944d3631b8cae1efd96b0a390639f2",
+    "games": 20000,
+    "positions": 3792378,
+    "most_active": 30
+  },
+  "training": {
+    "loss_by_epoch": [
+      0.00810476,
+      0.00432901,
+      0.00401864,
+      0.00375137,
+      0.00356813,
+      0.00342794,
+      0.00332585,
+      0.00324301
+    ],
+    "w0_limit": 127,
+    "quantization_error": 0.140462
+  },
+  "acceptance": {
+    "candidate": "minimax:net=db5ef1bc938e,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 1000000,
+    "opening_plies": 8,
+    "score": 0.78125,
+    "error": 0.018154,
+    "games": 400,
+    "identical": 0,
+    "openings": 172,
+    "candidate_nodes": 121132095,
+    "reference_nodes": 120033504,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true,
+    "decided_after": 200,
+    "planned_pairs": 200
+  },
+  "confirmation": {
+    "candidate": "minimax:net=db5ef1bc938e,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 2000000,
+    "opening_plies": 8,
+    "score": 0.8075,
+    "error": 0.017247,
+    "games": 400,
+    "identical": 0,
+    "openings": 160,
+    "candidate_nodes": 122593475,
+    "reference_nodes": 122818204,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true,
+    "decided_after": 200,
+    "planned_pairs": 200,
+    "gate": "G-A2, plan-teacher.md \u00a78.3"
+  },
+  "kept": true,
+  "kept_by": "generation 0, the line's root and generation 1's parent: reference/pilot-plan.md \u00a712"
+}

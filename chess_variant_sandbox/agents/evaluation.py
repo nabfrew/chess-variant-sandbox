@@ -690,9 +690,11 @@ class Evaluator:
         threat, counted = table
         n_types = spec.n_types
         stride = spec.n_facings * n_types
+        # The two armies only, as the core walks ``all_occupied``: a portal end's byte is in
+        # the third owner's block (``WILD``), nobody's piece (Q846).
         present = [0, 0]
         for value in state.board:
-            if value:
+            if value and (value - 1) // stride != WILD:
                 present[(value - 1) // stride] |= 1 << ((value - 1) % n_types)
         if spec.drops is not None:
             for side in (0, 1):
@@ -715,7 +717,7 @@ class Evaluator:
             if value:
                 owner = (value - 1) // stride
                 piece_type = (value - 1) % n_types
-                if safe[owner] & (1 << piece_type):
+                if owner != WILD and safe[owner] & (1 << piece_type):
                     worth[owner] += self.values[piece_type]
         race = [0.0, 0.0]
         reach = spec.reach

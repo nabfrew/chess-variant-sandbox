@@ -822,6 +822,12 @@ const MARK_KINDS = {
   comingThen: { colour: 'var(--coming)', shape: 'arrow', faint: true,
                 name: 'faint dotted arrow', ink: 'var(--coming-ink)',
                 label: 'where it steps after the move after that' },
+  // Every wild piece's walk, in order (Q852): a path of arrows from square to square, one
+  // hue per walk (`--walk-N`, cased in `--walk-edge`), dashed where a step jumps to a square
+  // that does not touch. Drawn by a still board (`walksHtml`, off the payload's `walks`),
+  // never on one square, so `squareMarks` adds none; the row is the legend's.
+  walk: { colour: 'var(--walk-1)', shape: 'walk', name: 'coloured arrows', ink: 'var(--ink)',
+          label: "each wild piece's walk, in order, a colour per walk; a dashed arrow jumps to a square that does not touch" },
   // A wall (`obstacles`): a square drawn dark and crossed, which no piece may stand on.
   // Drawn by the board's own cell loop, never as a mark, so `squareMarks` adds none; the
   // row is the legend's, named where the board has a wall (Q772b). Its words are in ink,
@@ -830,10 +836,19 @@ const MARK_KINDS = {
           label: 'a wall: no piece may stand on it' },
   // A portal end (schema 19): drawn as a piece is, by `portalGlyph`, so `squareMarks`
   // adds none either; the row is the legend's, named where the game has portals. `ink`
-  // is the words' own colour on the page, the rim's orange being drawn for the wood.
-  portal: { colour: 'var(--portal-a)', shape: 'portal', name: 'orange or blue ring',
-            ink: 'var(--ink)',
-            label: 'a portal: a piece that moves onto one end comes out beside the other' },
+  // is the words' own colour on the page, the pair's colour being drawn for the wood.
+  // Its (i) (`gloss`, `GLOSS.portalKey`) draws four ends with their sentences (Q838c).
+  portal: { colour: 'var(--pair-1)', shape: 'portal', name: 'portal',
+            ink: 'var(--ink)', gloss: 'portalKey',
+            label: "pieces of the arms' colours go in, and come out of the same-coloured portal its beak points at" },
+  // A fold portal (schema 22, Q843d, `docs/plan-portals-2.md` §5.3): a pool lying in the
+  // board, drawn by the board's cell loop (`foldGlyph`), never a mark; the row is the
+  // legend's, named where the game has a fold. Its colour is the pool's bright centre, which
+  // only a fold paints. Its (i) (`GLOSS.foldKey`) draws a pool with a piece in it, and a pair
+  // whose beaks and map arrows say where a piece comes out (§5.3R).
+  fold: { colour: 'var(--fold-light)', shape: 'fold', name: 'fold portal',
+          ink: 'var(--ink)', gloss: 'foldKey',
+          label: 'a piece that stops here may stay, or come out of the end its beak points at' },
 };
 
 // The coming step's arrow, in fractions of a cell: it leaves the wild piece's square
@@ -918,6 +933,29 @@ function comingHtml(coming, cell, W, H, view, rule, then) {
   for (const step of coming) out += arrow(step, 'coming');
   return `<g data-coming="${coming.length}" data-coming-then="${then.length}"
       pointer-events="none">${out}</g>`;
+}
+
+// One step of a wild piece's walk (Q852), `(x1, y1)` to its tip at `(x2, y2)`: a shaft and
+// a chevron in the walk's `colour`, laid on a casing of `--walk-edge` twice as wide, which
+// is what holds it 3 : 1 on both woods whatever the hue. `dashed` for a jump between two
+// squares that do not touch. `attrs` goes on the group (the data a reader finds it by).
+const WALK_WIDTH = 0.075;
+const WALK_HEAD = 0.17;
+function walkLine(x1, y1, x2, y2, cell, colour, dashed, attrs) {
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  if (!length) return '';
+  const f = n => n.toFixed(3);
+  const ux = (x2 - x1) / length, uy = (y2 - y1) / length;
+  const head = Math.min(cell * WALK_HEAD, length * 0.6), width = cell * WALK_WIDTH;
+  const back = [x2 - ux * head, y2 - uy * head];
+  const left = [back[0] - uy * head * 0.75, back[1] + ux * head * 0.75];
+  const right = [back[0] + uy * head * 0.75, back[1] - ux * head * 0.75];
+  const shaft = `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2 - ux * width)}" y2="${f(y2 - uy * width)}"${
+    dashed ? ` stroke-dasharray="${f(cell * 0.16)} ${f(cell * 0.13)}"` : ''}/>`;
+  const chevron = `<path d="M${f(left[0])} ${f(left[1])}L${f(x2)} ${f(y2)}L${f(right[0])} ${f(right[1])}"/>`;
+  return `<g ${attrs || ''} fill="none" stroke-linecap="round" stroke-linejoin="round"
+      pointer-events="none"><g stroke="var(--walk-edge)" stroke-width="${f(width * 2.2)}">${shaft}${
+    chevron}</g><g stroke="${colour}" stroke-width="${f(width)}">${shaft}${chevron}</g></g>`;
 }
 
 // The corner of a ring at that inset, where its beads sit. The rounded corner's arc at
@@ -1088,17 +1126,32 @@ function squareBadge(x, y, cell, marks, view, tag) {
                         mark.kind);
       continue;
     }
+    // A walk's key, as a still board draws a step of one (Q852): only the legend comes here.
+    if (kind.shape === 'walk') {
+      out += walkLine(x + cell * 0.18, y + cell * 0.82, x + cell * 0.82, y + cell * 0.18, cell,
+                      kind.colour, false, `data-mark="${mark.kind}"`);
+      continue;
+    }
     // A wall and a portal are drawn by the board's cell loop, never as a mark: only the
-    // legend's key comes through here, the wall's square and an orange end.
+    // legend's key comes through here, the wall's square and a portal of the first pair.
     if (kind.shape === 'wall') {
       out += cellShape(x, y, cell, view, `fill="${kind.colour}" data-mark="${mark.kind}"`)
         + `<path d="${wallCross(x, y, cell, view)}" stroke="var(--ink)"
            stroke-width="${cell * 0.06}" opacity="0.5" pointer-events="none"/>`;
       continue;
     }
+    // The portal's key is the game's own first end where the legend knows it (`mark.end`,
+    // from `markKey`), else a fixed end of the first pair open to both.
     if (kind.shape === 'portal') {
-      out += portalGlyph({ pair: 1, end: 'orange', movedBy: [], open: [true, true] }, null,
-                         null, x, y, cell, { attrs: `data-mark="${mark.kind}"` });
+      out += portalGlyph(mark.end || { pair: 1, end: 'orange', movedBy: [], open: [true, true] },
+                         x, y, cell, { attrs: `data-mark="${mark.kind}"` });
+      continue;
+    }
+    // The fold's key: the game's own first fold where the legend knows it, else a fixed
+    // fold of the first group open to both.
+    if (kind.shape === 'fold') {
+      out += foldGlyph(mark.end || { pair: 1, end: 'orange', kind: 'fold', dest: 0, movedBy: [], open: [true, true] },
+                       x, y, cell, { attrs: `data-mark="${mark.kind}"`, plain: true });
       continue;
     }
     if (kind.shape === 'glow') {
@@ -1127,9 +1180,10 @@ function squareBadge(x, y, cell, marks, view, tag) {
 
 // A kind of mark drawn small, for the legend line: the kind's own drawing on one square
 // of the board's light shade, so the key *is* the mark rather than a description of it,
-// and a kind restyled in `MARK_KINDS` restyles its key with it.
-function markKey(kind) {
-  const marks = { 0: [{ kind: kind, sides: [] }] };
+// and a kind restyled in `MARK_KINDS` restyles its key with it. `end` is a portal's key: the
+// game's own first end (`portal_payload`), drawn as the board draws it.
+function markKey(kind, end) {
+  const marks = { 0: [{ kind: kind, sides: [], ...(end ? { end } : {}) }] };
   return `<svg class="key" viewBox="0 0 10 10" width="14" height="14" aria-hidden="true">${
     markDefs(marks, 'key')}<rect width="10" height="10" fill="var(--light)"/>${
     squareBadge(0, 0, 10, marks[0], null, 'key')}</svg>`;
@@ -1260,42 +1314,168 @@ function crossOpacity(leaving) {
 
 // ---------------------------------------------------------------------- a portal
 //
-// Schema 19 (`docs/plan-portals.md` §4, D3, D9): a portal end is drawn by the board, not
-// taken from the icon library, because what it must say depends on the ruleset and on who
-// is looking. One glyph, a disc inscribed in the cell (so it fits a hexagon's cell when
-// portals reach one, and never reads as the square rings the rules' marks are drawn as):
+// Schema 19, drawn as Q838b built it and Q838f corrected it after the cold read
+// (`docs/plan-portal-look.md` §2.3, direction B, the vortex, and §6; the misreads are
+// `docs/reference/portal-look-cold-read.md` §4): a portal end is drawn by the board, not taken from the icon library, because what
+// it must say depends on the ruleset. One glyph, a disc inscribed in the cell (so it fits a
+// hexagon's cell when portals reach one), every part of it the portal itself:
 //
-//   rim       a thick ring, orange for a pair's first end and blue for its second, edged
-//             inside and out by a near-black keyline that reads on both woods
-//             (`--portal-edge`), so the ring holds 3 : 1 against either square;
-//   double    the blue end's rim is split by a thin keyline, so the two ends of a pair
-//             differ in a grey picture and for a reader who cannot tell orange from blue;
-//   interior  who may move it: the first player's colour, the second's, the board seen
-//             through a hatch for both, flat stone for nobody;
-//   number    the pair's, in the centre, where the game has more than one pair;
-//   passage   for the player looking: chevrons pointing in on an end that player may only
-//             go in by, pointing out on one they only come out of, none on a two-way end,
-//             and the rim dashed on stone on an end closed to them.
+//   well      a hole in the pair's colour (`--pair-N`, the same at both ends: colour means
+//             the pair), falling to the near-black keyline's colour (`--portal-edge`) in the
+//             middle, and ringed in that keyline so it holds on both woods;
+//   arms      who may go in here (the payload's `open`): two spiral arms turning down into
+//             the eye, in the colours of the pieces that may go in -- one white and one black
+//             for both players, two of one colour for one. Nobody: no arms at all, a still
+//             well things only come out of (Q838f: faint dark arms were taken for Black's). The
+//             arms stop short of the rim (`PORTAL_REACH`), so the well's outermost ring is
+//             always the pair's colour and never an arm's: a white arm reaching the rim of a
+//             sunk well read as a white token's collar. A white arm is edged dark and a black
+//             one in the pair's colour, never light, so a black arm's edge is never taken for
+//             a white arm;
+//   stand     who may move it (`movedBy`): a token in the mover's colour under the well,
+//             raised like a piece with its shadow below it, a wide collar round a smaller well
+//             (half and half for both, the bottom half the player at the bottom of the board
+//             as drawn); for nobody, no token, the well sunk into the wood: a hole, the shadow
+//             of its top edge falling inside it (`pg-hole`), and no light rim anywhere (Q838f:
+//             the old lip's light lower edge read as a collar);
+//   number    the pair's, in the dark eye, in the pair's colour, where the game has more
+//             than one pair;
+//   beak      where it leads (schema 21, `docs/plan-portals-2.md` §5.1, Q843b): a pointed
+//             notch on the rim in the group's colour, cased in the keyline, aimed at the end
+//             it leads to as drawn (`options.aim`, `portalAim`). Only on an end somebody may
+//             go in by: a way out leads nowhere a piece goes from. A pair's two beaks point at
+//             each other, a ring's chase each other round, a funnel's all point at its way
+//             out. At or above `PORTAL_FINE_FROM` px a cell it stands outside the well
+//             (`pg-beak`), from `PORTAL_DETAIL_FROM` it is a wedge cut into the rim
+//             (`pg-beak-cut`), and under that neither is drawn: the group map carries it;
+//   filter    an end that lets only some pieces in (the payload's `filtered`, schema 21's
+//             `carries`): its arms are dashed, each broken into three strokes (§5.2). With
+//             `options.dim` (a picked piece it refuses) its arms and beak are dimmed to
+//             `PORTAL_DIM`, so the doors that piece may use are the bright ones;
+//   idle      on a live board (`options.idle`), the arms turn inwards once every
+//             `PORTAL_TURN` s, the two ends of a pair in step and pairs out of step
+//             (`portalPhase`). The turn is the stylesheet's (`.pg-idle`), on the arms' group
+//             inside the glyph, so the trip's pulse on the outer group (Q836) composes with
+//             it, and it is off under reduced motion. An end nobody goes in by has no arms,
+//             so nothing on it turns.
 //
 // Every fact is the compiled payload's (`viz.wrapped.portal_payload`); nothing here reads
 // the DSL or works out where a piece goes. The parts carry classes so a small board can
-// put them away (D9): the chevrons (`pg-arrow`) under `PORTAL_ARROWS_FROM` px a cell, the
-// double rim and the hatch (`pg-double`, `pg-hatch`) under `PORTAL_DETAIL_FROM`; the
-// number (`pg-num`) is never drawn smaller than `PORTAL_NUMBER_LEAST` px.
-const PORTAL_ARROWS_FROM = 28;
+// change them (D9, the board's `data-portals` tier): under `PORTAL_FINE_FROM` px a cell the
+// arms' edges are held at one screen pixel, which is what keeps a black arm on violet;
+// under `PORTAL_DETAIL_FROM` the arms (`pg-arm`) give way to two broad wedges
+// (`pg-wedge`); the number (`pg-num`) is never drawn smaller than `PORTAL_NUMBER_LEAST` px,
+// and its eye (`pg-eye`) grows to hold it. The token and the hole are drawn at every size.
+const PORTAL_FINE_FROM = 28;
 const PORTAL_DETAIL_FROM = 20;
 const PORTAL_NUMBER_LEAST = 10;
-// The glyph's radii, in cells: the rim's middle and width, and the keylines either side.
-const PORTAL_RIM = 0.355;
-const PORTAL_BAND = 0.13;
+// The glyph's radii, in cells: the token, the well on a token and sunk, the eye, and the
+// keyline round the well. The token's collar is the difference, 0.17 of a cell.
+const PORTAL_TOKEN = 0.46;
+const PORTAL_WELL_RAISED = 0.29;
+const PORTAL_WELL_SUNK = 0.38;
+const PORTAL_EYE = 0.13;
 const PORTAL_KEYLINE = 0.024;
-// The pair's number, as a share of a cell.
-const PORTAL_NUMBER = 0.3;
+// How far out the arms reach, as a share of the well's radius (the rest is the pair's ring);
+// their width at the widest, as a share of it; and how deep the hole's shadow falls inside a
+// sunk well, in cells.
+const PORTAL_REACH = 0.78;
+const PORTAL_ARM_WIDTH = 0.42;
+const PORTAL_HOLE = 0.1;
+// The pair's number, as a share of a cell; and the eye's least radius, as a share of the
+// number's least size, wide enough to hold a digit when the number is held up.
+const PORTAL_NUMBER = 0.24;
+const PORTAL_EYE_LEAST = 0.55;
+// One turn of the arms, in seconds (the stylesheet's `.pg-idle` says the same).
+const PORTAL_TURN = 14;
+// The arms drawn by mass (Q838h, `docs/reference/portal-look-cold-read.md` §7.5): at the mid
+// tier and on a phone (the stylesheet's `pg-mass`), each arm this share of the well's
+// radius at its widest, a white arm edged in the group's colour rather than dark, so it is
+// never a white sliver in a dark outline that reads as a dark arm.
+const PORTAL_MASS_WIDTH = 0.62;
+// The beak, in cells: outside the well at the full size, its tip `PORTAL_BEAK_OUT` beyond
+// the well's rim and its base `PORTAL_BEAK_HALF` either side of its line; at the mid size a
+// wedge cut into the rim, from `PORTAL_CUT_IN` inside it to `PORTAL_CUT_OUT` outside.
+const PORTAL_BEAK_OUT = 0.13;
+const PORTAL_BEAK_HALF = 0.1;
+const PORTAL_CUT_IN = 0.11;
+const PORTAL_CUT_OUT = 0.07;
+const PORTAL_CUT_HALF = 0.1;
+// How far an end a picked piece may not go in by is dimmed: its arms and its beak.
+const PORTAL_DIM = 0.35;
+// A filtered end's arm in three strokes: the stretches of its length drawn, from the rim (0)
+// to the eye (1).
+const PORTAL_DASHES = [[0, 0.27], [0.365, 0.635], [0.73, 1]];
+// The pieces' colours.
+const PORTAL_SIDE = ['var(--p0)', 'var(--p1)'];
+let PORTAL_WELLS = 0;
 
-// The end's partner: the other end of the same pair, read off the same payload.
+// The end this one leads to (schema 21's `dest`), read off the same payload: for a pair,
+// its partner; for an end of a map, the end its `to` names; null for a way out only. A
+// payload from before schema 21 has no `dest`, and the partner is the pair's other end.
 function portalPartner(portals, end) {
   if (!portals || !end) return null;
+  if (end.dest !== undefined) {
+    return end.dest === null ? null : portals.ends.find(other => other.type === end.dest) || null;
+  }
   return portals.ends.find(other => other.pair === end.pair && other.end !== end.end) || null;
+}
+
+// The ends that lead to this one (schema 21): the ways in to the square a piece comes out
+// beside. Empty for a payload from before schema 21.
+function portalSources(portals, end) {
+  if (!portals || !end) return [];
+  return portals.ends.filter(other => other.dest !== undefined && other.dest === end.type);
+}
+
+// Whether an end belongs to a map rather than a pair (schema 21): it leads nowhere, or the
+// end it leads to does not lead back. A pair's words are the ones it has always had.
+function portalMapped(end, partner) {
+  return !!end && (end.dest === null
+    || (!!partner && partner.dest !== undefined && partner.dest !== end.type));
+}
+
+// Squares or piece ids as a list in a sentence: *b3*, *b3 and c6*, *b3, c6 and f2*.
+function portalList(names) {
+  return names.length < 2 ? (names[0] || '')
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+// The filter's words (schema 21's `carries`): which pieces may go in here, where the end
+// names them (*Only knights and bishops may go in here*, §5.2); empty otherwise. `nameOf`
+// names a piece id as the ruleset calls its pieces, many of them (`portalNamer`); without
+// it the ids are said.
+function portalFilterWords(end, nameOf) {
+  if (!end || !end.filtered) return '';
+  const ids = [...new Set([...((end.admits || [])[0] || []), ...((end.admits || [])[1] || [])])];
+  const said = ids.map(id => (nameOf && nameOf(id)) || id);
+  return said.length ? ` Only ${portalList(said)} may go in here.` : '';
+}
+
+// A piece's name, many of it: *knights*, *bishops*, *ferzes*.
+function portalPlural(name) {
+  const word = String(name || '');
+  if (!word) return word;
+  if (/(s|x|z|ch|sh)$/i.test(word)) return word + 'es';
+  if (/[^aeiou]y$/i.test(word)) return word.slice(0, -1) + 'ies';
+  return word + 's';
+}
+
+// `nameOf` for `portalFilterWords`, from a payload's piece ids and names in type order.
+function portalNamer(pieceIds, pieceNames) {
+  if (!pieceIds || !pieceNames) return null;
+  return id => {
+    const at = pieceIds.indexOf(id);
+    return at >= 0 && pieceNames[at] ? portalPlural(pieceNames[at]) : null;
+  };
+}
+
+// Whether the page is on a phone's width, where the arms are drawn by mass (Q838h).
+const PORTAL_PHONE = 480;
+function portalPhone() {
+  try {
+    return typeof window !== 'undefined' && window.innerWidth > 0 && window.innerWidth <= PORTAL_PHONE;
+  } catch (err) { return false; }
 }
 
 // How many pairs the game has, which is whether an end shows its number.
@@ -1304,8 +1484,8 @@ function portalPairs(portals) {
 }
 
 // How one player's pieces may use this end: `both` (in here or in at the partner),
-// `in` (in here only), `out` (they only come out beside it) or `closed`. Null for a
-// player who is neither seat, which draws no passage at all.
+// `in` (in here only), `out` (they only come out beside it) or `closed`, as the words
+// say it (`portalWords`). Null for a player who is neither seat.
 function portalPassage(end, partner, player) {
   if (player !== 0 && player !== 1) return null;
   const here = !!(end.open || [])[player];
@@ -1313,94 +1493,531 @@ function portalPassage(end, partner, player) {
   return here && there ? 'both' : here ? 'in' : there ? 'out' : 'closed';
 }
 
-// What the glyph keeps at a cell this many pixels across: `full`, `mid` (no chevrons) or
-// `small` (rim and number). Unknown, it is drawn whole.
+// What the glyph keeps at a cell this many pixels across: `full`, `mid` (no lip, the arms'
+// edges a pixel) or `small` (the arms as two wedges). Unknown, it is drawn whole.
 function portalTier(px) {
-  if (!(px > 0) || px >= PORTAL_ARROWS_FROM) return 'full';
+  if (!(px > 0) || px >= PORTAL_FINE_FROM) return 'full';
   return px >= PORTAL_DETAIL_FROM ? 'mid' : 'small';
 }
 
-// The glyph for one end, as SVG, in the cell whose corner is (x, y). `viewer` is the
-// player whose passage it shows (0, 1, or null for none). `options.numbered` draws the
-// pair's number; `options.label` is its words for a screen reader; `options.attrs` goes on
-// the group (the board's `data-piece`).
-function portalGlyph(end, partner, viewer, x, y, cell, options) {
+// Where a pair's arms are in their turn, as the turn's `animation-delay`, in seconds: read
+// off the document's clock, so a board drawn again carries on from where it was rather than
+// jumping back, and offset by the pair's number, so the two ends of a pair turn in step and
+// different pairs out of step with each other.
+function portalPhase(pair) {
+  let now = 0;
+  try {
+    const timeline = typeof document !== 'undefined' && document.timeline;
+    now = Number(timeline && timeline.currentTime) || 0;
+  } catch (err) { now = 0; }
+  const at = (now / 1000 + pair * 5.3) % PORTAL_TURN;
+  return -at;
+}
+
+// One spiral arm as a filled, tapering shape: from radius `outer` at angle `start` in to
+// radius `inner`, turning `sweep` radians on the way (clockwise on screen), `width` at its
+// widest and tapering at both ends. `from` and `to` (0 to 1, the whole arm by default) draw
+// only that stretch of it, its taper the whole arm's, so three stretches are a dashed arm.
+function portalArm(cx, cy, outer, inner, start, sweep, width, from, to) {
+  const t0 = from === undefined ? 0 : from, t1 = to === undefined ? 1 : to;
+  const steps = Math.max(4, Math.round(18 * (t1 - t0))), left = [], right = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = t0 + (t1 - t0) * i / steps;
+    const r = outer + (inner - outer) * t, a = start + sweep * t;
+    const r2 = outer + (inner - outer) * (t + 0.01), a2 = start + sweep * (t + 0.01);
+    const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a);
+    const dx = cx + r2 * Math.cos(a2) - x, dy = cy + r2 * Math.sin(a2) - y;
+    const len = Math.hypot(dx, dy) || 1;
+    const w = width * (0.25 + 0.75 * Math.sin(Math.PI * Math.min(1, t * 1.15 + 0.08)));
+    left.push([x - dy / len * w / 2, y + dx / len * w / 2]);
+    right.push([x + dy / len * w / 2, y - dx / len * w / 2]);
+  }
+  const points = [...left, ...right.reverse()];
+  return 'M' + points.map(p => `${p[0].toFixed(3)} ${p[1].toFixed(3)}`).join('L') + 'Z';
+}
+
+// An arm whole, or (`dashed`, a filtered end's) as its three strokes in one path.
+function portalArmPath(cx, cy, outer, inner, start, sweep, width, dashed) {
+  if (!dashed) return portalArm(cx, cy, outer, inner, start, sweep, width);
+  return PORTAL_DASHES.map(([from, to]) =>
+    portalArm(cx, cy, outer, inner, start, sweep, width, from, to)).join('');
+}
+
+// Where a beak points: the angle on screen, in radians (0 to the right, a quarter turn
+// clockwise straight down, as SVG's y runs), from an end drawn centred on (ax, ay) to the
+// end it leads to drawn centred on (bx, by); null where the two are drawn on one spot. Pure,
+// of two drawn positions, so where a beak points is something a test can hold.
+function portalAim(ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  if (!(Math.hypot(dx, dy) > 1e-9)) return null;
+  return Math.atan2(dy, dx);
+}
+
+// The centre of the copy of `square` drawn nearest the point (cx, cy) -- the square itself
+// or a ghost of it round a wrapping board (the beak and the map aim at the nearest copy,
+// §5.1) -- in a drawing whose cells are `cell` across in `view`.
+function portalNearestCentre(square, cx, cy, cell, view) {
+  const centre = (u, v) => { const xy = cellXY(u, v, cell, view); return [xy[0] + cell / 2, xy[1] + cell / 2]; };
+  const own = squareCell(square, view);
+  let best = centre(own[0], own[1]);
+  let far = Math.hypot(best[0] - cx, best[1] - cy);
+  if (view && (view.files.rings || view.ranks.rings || view.cut)) {
+    for (const ghost of ghostCells(view)) {
+      if (ghost.square !== square) continue;
+      const at = centre(ghost.u, ghost.v);
+      const d = Math.hypot(at[0] - cx, at[1] - cy);
+      if (d < far) { best = at; far = d; }
+    }
+  }
+  return best;
+}
+
+// The beak's aim for an end drawn in the cell whose corner is (x, y), leading to the end
+// standing on `there` (-1: not on the board), or null for none: an end nobody may go in by
+// has no beak, since nothing goes from it.
+function portalAimFor(end, there, x, y, cell, view) {
+  if (!end || !(there >= 0) || !(end.open || []).some(Boolean)) return null;
+  const cx = x + cell / 2, cy = y + cell / 2;
+  const [bx, by] = portalNearestCentre(there, cx, cy, cell, view);
+  return portalAim(cx, cy, bx, by);
+}
+
+// One arrow of the group map (the play board's and the designer's bench's), from the end drawn at (ax, ay) to the end drawn at (bx, by):
+// bowed to the left of its way, so a pair's two arrows, one each way, never lie on each
+// other; held back from both glyphs, its head at the end it leads to. `pair` is the group's
+// number (its colour).
+function portalArrowHtml(ax, ay, bx, by, cell, pair, said) {
+  const length = Math.hypot(bx - ax, by - ay);
+  if (!(length > cell)) return '';
+  const ux = (bx - ax) / length, uy = (by - ay) / length;
+  const bow = Math.min(length * 0.2, cell * 1.2);
+  const qx = (ax + bx) / 2 + uy * bow, qy = (ay + by) / 2 - ux * bow;
+  const toward = (px, py, r) => {
+    const d = Math.hypot(qx - px, qy - py) || 1;
+    return [px + (qx - px) / d * r, py + (qy - py) / d * r];
+  };
+  const [sx, sy] = toward(ax, ay, cell * 0.46);
+  const [ex, ey] = toward(bx, by, cell * 0.5);
+  // The head, along the curve's own direction where it ends.
+  const hx = ex - qx, hy = ey - qy, hl = Math.hypot(hx, hy) || 1;
+  const tx = hx / hl, ty = hy / hl, size = cell * 0.2;
+  const n = v => v.toFixed(3);
+  const head = `M${n(ex + tx * size * 0.35)} ${n(ey + ty * size * 0.35)}L${n(ex - tx * size + ty * size * 0.6)} ${
+    n(ey - ty * size - tx * size * 0.6)}L${n(ex - tx * size - ty * size * 0.6)} ${n(ey - ty * size + tx * size * 0.6)}Z`;
+  const d = `M${n(sx)} ${n(sy)}Q${n(qx)} ${n(qy)} ${n(ex)} ${n(ey)}`;
+  return `<g data-way="${said}"><path d="${d}" fill="none" stroke="var(--portal-edge)" stroke-width="${
+    n(cell * 0.12)}" stroke-linecap="round" opacity="0.6"/><path d="${d}" fill="none" stroke="var(--pair-${pair})"
+    stroke-width="${n(cell * 0.055)}" stroke-linecap="round"/><path d="${head}" fill="var(--pair-${pair})"
+    stroke="var(--portal-edge)" stroke-width="${n(cell * 0.03)}" stroke-linejoin="round" paint-order="stroke"/></g>`;
+}
+
+// One beak as a filled triangle along `angle` from the centre (cx, cy): its base `base`
+// out, `half` either side, its tip `tip` out.
+function portalBeakPath(cx, cy, angle, base, tip, half) {
+  const ux = Math.cos(angle), uy = Math.sin(angle);
+  const n = v => v.toFixed(3);
+  const bx = cx + ux * base, by = cy + uy * base;
+  return `M${n(cx + ux * tip)} ${n(cy + uy * tip)}L${n(bx - uy * half)} ${n(by + ux * half)}L${
+    n(bx + uy * half)} ${n(by - ux * half)}Z`;
+}
+
+// The glyph for one end, as SVG, in the cell whose corner is (x, y). `options.numbered`
+// draws the pair's number; `options.label` is its words for a screen reader;
+// `options.attrs` goes on the group (the board's `data-piece`); `options.idle` turns its
+// arms (a live board's, never a still's); `options.flipped` says the board is drawn turned
+// round, so the second player is at the bottom; `options.aim` is where its beak points
+// (`portalAim`; absent or null, no beak); `options.dim` dims its arms and beak (a picked
+// piece it refuses, §5.2).
+function portalGlyph(end, x, y, cell, options) {
   const opts = options || {};
   const cx = x + cell / 2, cy = y + cell / 2;
-  const hue = end.end === 'blue' ? 'var(--portal-b)' : 'var(--portal-a)';
+  const hue = `var(--pair-${end.pair})`;
   const edge = 'var(--portal-edge)';
   const movers = end.movedBy || [];
-  const both = movers.includes(0) && movers.includes(1);
-  const passage = portalPassage(end, partner, viewer);
-  const closed = passage === 'closed';
-  const ring = (r, attrs) => `<circle cx="${cx}" cy="${cy}" r="${(cell * r).toFixed(3)}" ${attrs}/>`;
-  const inner = PORTAL_RIM - PORTAL_BAND / 2, outer = PORTAL_RIM + PORTAL_BAND / 2;
-  const k = cell * PORTAL_KEYLINE;
+  const open = end.open || [];
+  const low = opts.flipped ? 1 : 0;
+  const n = v => v.toFixed(3);
+  const circle = (r, attrs) => `<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(cell * r)}" ${attrs}/>`;
+  const dim = opts.dim ? ` opacity="${PORTAL_DIM}"` : '';
+  const aim = typeof opts.aim === 'number' && isFinite(opts.aim) && open.some(Boolean) ? opts.aim : null;
+  const beak = (cls, base, tip, half) => `<path class="${cls}" d="${portalBeakPath(cx, cy, aim,
+    cell * base, cell * tip, cell * half)}" fill="${hue}" stroke="${edge}" stroke-width="${
+    n(cell * 0.03)}" stroke-linejoin="round" paint-order="stroke"${dim}/>`;
   let out = '';
-  // The interior first, so the rim's keyline lies over its edge: who may move this end.
-  if (both) {
-    // See-through: the board shows, washed a little so the number reads, and hatched.
-    out += ring(inner, `fill="var(--p0)" fill-opacity="0.3"`);
-    const r = cell * inner;
-    for (const d of [-0.16, -0.055, 0.055, 0.16]) {
-      const o = cell * d, half = Math.sqrt(Math.max(0, r * r - o * o));
-      const mx = cx + o / Math.SQRT2, my = cy + o / Math.SQRT2;
-      const tx = half / Math.SQRT2;
-      out += `<line class="pg-hatch" x1="${(mx - tx).toFixed(3)}" y1="${(my + tx).toFixed(3)}"
-        x2="${(mx + tx).toFixed(3)}" y2="${(my - tx).toFixed(3)}" stroke="${edge}"
-        stroke-width="${(cell * 0.018).toFixed(3)}" opacity="0.45"/>`;
+  const well = movers.length ? PORTAL_WELL_RAISED : PORTAL_WELL_SUNK;
+  if (movers.length) {
+    // The token, raised: its shadow falls below it, as a piece's would, and its colour is
+    // whose it is to move, as a piece's is.
+    const r = cell * PORTAL_TOKEN;
+    out += `<g class="pg-token" data-moved="${movers.join(' ')}">`;
+    out += `<circle cx="${n(cx + cell * 0.025)}" cy="${n(cy + cell * 0.06)}" r="${n(r)}"
+      fill="${edge}" opacity="0.45"/>`;
+    if (movers.includes(0) && movers.includes(1)) {
+      // Half and half: the bottom half the player at the bottom of the board as drawn.
+      out += `<path d="M${n(cx - r)} ${n(cy)}A${n(r)} ${n(r)} 0 0 0 ${n(cx + r)} ${n(cy)}Z"
+        fill="${PORTAL_SIDE[low]}"/>`;
+      out += `<path d="M${n(cx - r)} ${n(cy)}A${n(r)} ${n(r)} 0 0 1 ${n(cx + r)} ${n(cy)}Z"
+        fill="${PORTAL_SIDE[1 - low]}"/>`;
+    } else {
+      out += circle(PORTAL_TOKEN, `fill="${PORTAL_SIDE[movers.includes(0) ? 0 : 1]}"`);
     }
-  } else {
-    const fill = movers.includes(0) ? 'var(--p0)' : movers.includes(1) ? 'var(--p1)'
-      : 'var(--portal-stone)';
-    out += ring(inner, `fill="${fill}"`);
+    out += circle(PORTAL_TOKEN, `fill="none" stroke="${edge}" stroke-width="${n(cell * PORTAL_KEYLINE)}"`);
+    out += '</g>';
   }
-  // The rim: the pair's colour, or on an end closed to the player looking, the colour in
-  // dashes over stone.
-  if (closed) {
-    const around = 2 * Math.PI * cell * PORTAL_RIM;
-    out += ring(PORTAL_RIM, `fill="none" stroke="var(--portal-stone)"
-      stroke-width="${(cell * PORTAL_BAND).toFixed(3)}"`);
-    out += ring(PORTAL_RIM, `fill="none" stroke="${hue}" stroke-width="${
-      (cell * PORTAL_BAND).toFixed(3)}" stroke-dasharray="${(around / 16).toFixed(3)} ${
-      (around / 16).toFixed(3)}" data-rim="${end.end}"`);
-  } else {
-    out += ring(PORTAL_RIM, `fill="none" stroke="${hue}" stroke-width="${
-      (cell * PORTAL_BAND).toFixed(3)}" data-rim="${end.end}"`);
+  // The beak at the full size, outside the well (over a token's collar), drawn before the
+  // well so the well's rim covers its base.
+  if (aim !== null) {
+    out += beak('pg-beak', well - 0.04, well + PORTAL_BEAK_OUT, PORTAL_BEAK_HALF);
   }
-  out += ring(outer + PORTAL_KEYLINE / 2, `fill="none" stroke="${edge}" stroke-width="${k.toFixed(3)}"`);
-  out += ring(inner, `fill="none" stroke="${edge}" stroke-width="${k.toFixed(3)}"`);
-  if (end.end === 'blue') {
-    out += ring(PORTAL_RIM, `class="pg-double" fill="none" stroke="${edge}" stroke-width="${
-      (k * 0.9).toFixed(3)}"`);
+  // The well: the pair's colour out to the rim from 45% of the radius, falling to the edge's
+  // near-black in the eye, from 14% in (Q838f: the old well, dark out to 78%, hid a black arm
+  // on violet but for its light edge, which then read as a white arm).
+  const id = `pgwell${++PORTAL_WELLS}`;
+  out += `<defs><radialGradient id="${id}"><stop offset="0" style="stop-color:${edge}"/>
+    <stop offset="0.14" style="stop-color:${edge}"/><stop offset="0.45" style="stop-color:${hue}"/>
+    <stop offset="1" style="stop-color:${hue}"/></radialGradient></defs>`;
+  out += circle(well, `class="pg-well" fill="url(#${id})"`);
+  // The arms: whose pieces may go in here. Both: the arm from the bottom is the bottom
+  // player's. One: two of that colour. Nobody: none, and nothing turns.
+  const who = [0, 1].filter(p => open[p]);
+  const colours = who.length === 2 ? [low, 1 - low] : who.length === 1 ? [who[0], who[0]] : [];
+  const edges = [edge, hue];
+  const dashed = !!end.filtered;
+  // On a half-and-half token each arm starts beside the collar's other half (Q838h, §7.5 of
+  // the cold read): the bottom player's arm from the top, by the top player's half, so
+  // neither arm lies beside its own colour and vanishes into it on a still.
+  const split = movers.includes(0) && movers.includes(1) && colours.length === 2 ? 1 : 0;
+  let arms = '';
+  colours.forEach((p, i) => {
+    const start = Math.PI * 0.5 + (i + split) * Math.PI;
+    const paint = `fill="${PORTAL_SIDE[p]}" stroke="${edges[p]}" stroke-width="${
+      n(cell * 0.018)}" stroke-linejoin="round"`;
+    const said = ` data-arm="${p}"`;
+    arms += `<path class="pg-arm"${said} d="${portalArmPath(cx, cy, cell * well * PORTAL_REACH,
+      cell * 0.05, start, Math.PI * 1.25, cell * well * PORTAL_ARM_WIDTH, dashed)}" ${paint}/>`;
+    // By mass (Q838h): the mid tier's and a phone's, wider, a white arm edged in the
+    // group's colour.
+    arms += `<path class="pg-mass"${said} d="${portalArmPath(cx, cy, cell * well * PORTAL_REACH,
+      cell * 0.05, start, Math.PI * 1.25, cell * well * PORTAL_MASS_WIDTH, dashed)}" fill="${
+      PORTAL_SIDE[p]}" stroke="${hue}" stroke-width="${n(cell * 0.018)}" stroke-linejoin="round"/>`;
+    // The small tier's: a broad wedge, a quarter turn, which still reads as a swirl when
+    // the arm would be a hairline.
+    arms += `<path class="pg-wedge"${said} d="${portalArmPath(cx, cy, cell * well * 0.68,
+      cell * 0.04, start, Math.PI * 0.75, cell * well * 0.75, dashed)}" ${paint}/>`;
+  });
+  if (colours.length) {
+    const idle = opts.idle
+      ? ` style="transform-origin:${n(cx)}px ${n(cy)}px;animation-delay:${portalPhase(end.pair).toFixed(2)}s"`
+      : '';
+    out += `<g class="pg-arms${opts.idle ? ' pg-idle' : ''}" data-turn="in"${
+      dashed ? ' data-filtered=""' : ''}${idle}${dim}>${arms}</g>`;
   }
-  // Passage, for the player looking: four chevrons on the rim's diagonals.
-  if (passage === 'in' || passage === 'out') {
-    const reach = cell * 0.04, spread = cell * 0.055;
-    for (let i = 0; i < 4; i++) {
-      const angle = Math.PI / 4 + i * Math.PI / 2;
-      const ux = Math.cos(angle), uy = Math.sin(angle);
-      const tip = passage === 'in' ? -reach : reach;
-      const ax = cx + ux * (cell * PORTAL_RIM + tip), ay = cy + uy * (cell * PORTAL_RIM + tip);
-      const bx = cx + ux * (cell * PORTAL_RIM - tip), by = cy + uy * (cell * PORTAL_RIM - tip);
-      out += `<path class="pg-arrow" d="M${(bx - uy * spread).toFixed(3)} ${(by + ux * spread).toFixed(3)
-        }L${ax.toFixed(3)} ${ay.toFixed(3)}L${(bx + uy * spread).toFixed(3)} ${
-        (by - ux * spread).toFixed(3)}" fill="none" stroke="${edge}" stroke-width="${
-        (cell * 0.03).toFixed(3)}" stroke-linecap="round" stroke-linejoin="round"/>`;
-    }
+  if (!movers.length) {
+    // Sunk: a hole cut into the board, lit from above, so the shadow of its top edge falls
+    // inside it, over the arms. Nothing light rings it: that is a token's collar.
+    const r = cell * well, d = cell * PORTAL_HOLE;
+    const sx = Math.sqrt(r * r - d * d / 4), sy = cy + d / 2;
+    out += `<path class="pg-hole" d="M${n(cx - sx)} ${n(sy)}A${n(r)} ${n(r)} 0 1 1 ${n(cx + sx)} ${
+      n(sy)}A${n(r)} ${n(r)} 0 0 0 ${n(cx - sx)} ${n(sy)}Z" fill="${edge}" opacity="0.7"/>`;
+  }
+  out += circle(well, `fill="none" stroke="${edge}" stroke-width="${n(cell * PORTAL_KEYLINE)}"`);
+  // The beak at the mid size: a wedge cut into the rim, over it.
+  if (aim !== null) {
+    out += beak('pg-beak-cut', well - PORTAL_CUT_IN, well + PORTAL_CUT_OUT, PORTAL_CUT_HALF);
   }
   if (opts.numbered) {
-    const ink = both ? edge : movers.includes(0) ? 'var(--p0-ink)'
-      : movers.includes(1) ? 'var(--p1-ink)' : edge;
-    const halo = both ? ` stroke="var(--p0)" stroke-width="${(cell * 0.06).toFixed(3)}"
-      paint-order="stroke"` : '';
-    out += `<text class="pg-num" x="${cx}" y="${cy}" font-size="${(cell * PORTAL_NUMBER).toFixed(3)}"
-      data-em="${PORTAL_NUMBER}" fill="${ink}"${halo} font-weight="700" text-anchor="middle"
+    out += circle(PORTAL_EYE, `class="pg-eye" fill="${edge}" data-em="${PORTAL_EYE}"`);
+    out += `<text class="pg-num" x="${n(cx)}" y="${n(cy)}" font-size="${n(cell * PORTAL_NUMBER)}"
+      data-em="${PORTAL_NUMBER}" fill="${hue}" font-weight="700" text-anchor="middle"
       dominant-baseline="central">${end.pair}</text>`;
   }
   const label = opts.label ? ` role="img" aria-label="${String(opts.label).replace(/"/g, '&quot;')}"` : '';
-  return `<g data-portal="${end.pair}${end.end[0]}" data-passage="${passage || ''}"${label}${
-    opts.attrs ? ' ' + opts.attrs : ''}>${out}</g>`;
+  const said = aim !== null ? ` data-aim="${(aim * 180 / Math.PI).toFixed(1)}"` : '';
+  return `<g data-portal="${end.id || end.pair + end.end[0]}" data-pair="${end.pair}"${said}${
+    opts.dim ? ' data-dim=""' : ''}${label}${opts.attrs ? ' ' + opts.attrs : ''}>${out}</g>`;
+}
+
+// ---------------------------------------------------------------------- a fold
+//
+// Schema 22's fold portal (`docs/plan-portals-2.md` §5.3, Q843d): the pool, the face-on
+// version of a luminous portal, lying in the board. The vortex is a hole things fall into;
+// the pool is a surface light comes through, so the two are told apart at a glance and in a
+// grey picture (one is dark in the middle, the other bright). It is drawn in the board's
+// square layer, after the square's tints and before its piece, because a piece stands in it:
+//
+//   pool      a disc 0.9 of a cell across in the group's colour, near white at the centre
+//             (`--fold-light`) through the hue to a saturated, ragged rim; the rim's edge is
+//             displaced by turbulence (`pf-rim`), which is what reads as liquid, not a disc;
+//             and a soft glow in the hue that spills onto the neighbouring squares
+//             (`foldGlowHtml`, laid over the board after its squares, since a later square
+//             would cover it);
+//   bands     who may use it (the payload's `open`): two soft spiral bands turning in it, one
+//             white where White's pieces may, one near-black where Black's may (two of one for
+//             one side): the vortex's arms in the pool's own medium, drawn by mass (§5.3 asked
+//             for bands of the hue edged in the side's colour; two cold readers could not read
+//             an edge at a board's size, `docs/reference/portal-look-cold-read.md` §8). A fold that leads nowhere has plain bands and turns outward. A
+//             filtered end's bands are dashed (§5.2), and `options.dim` dims them and the beak;
+//   collar    who may move it (`movedBy`): a ring just inside the cell's edge in the mover's
+//             colour (half and half for both, the bottom half the player at the bottom of
+//             the board as drawn). The pool cannot stand on a token, since a piece stands in
+//             it. A fixed fold has none;
+//   beak      where it leads, as on the vortex (`options.aim`, `portalAim`; `pg-beak` at the
+//             full size, `pg-beak-cut` at the mid, neither smaller), on the rim;
+//   number    the group's, in the bright centre in the keyline's near-black, where the game
+//             has more than one group; with a piece standing in the fold (`options.occupied`)
+//             it moves to the cell's top-right corner as a badge (`foldBadgeHtml`), drawn
+//             over the piece so it is not hidden;
+//   idle      on a live board (`options.idle`), the bands turn once every `FOLD_TURN` s and
+//             the rim churns once every `FOLD_WOBBLE` s, a group's ends in step
+//             (`foldPhase`); the stylesheet's (`.pf-idle`, `.pf-wobble`), off under reduced
+//             motion.
+//
+// Where a fold leads is said by its beak and the portal map, as for a momentum end; since
+// schema 24 nothing is drawn on the far end (`docs/plan-portals-2.md` §5.3R: the echo went).
+// Every fact is the compiled payload's (`portal_payload`, `fold_payload`); nothing here works
+// out a move.
+const FOLD_POOL = 0.45;
+const FOLD_KEYLINE = 0.018;
+const FOLD_RIM = 0.07;
+const FOLD_COLLAR = 0.44;
+const FOLD_COLLAR_WIDTH = 0.11;
+// The glow, a ring in the hue from inside the rim out past the cell's edge, in cells.
+const FOLD_GLOW_IN = 0.4;
+const FOLD_GLOW_OUT = 0.64;
+// The bands, as a share of the pool's radius: how far out they start, how far in they end,
+// and their width at the widest.
+const FOLD_BAND_OUT = 0.9;
+const FOLD_BAND_IN = 0.1;
+const FOLD_BAND_WIDTH = 0.5;
+// A band's edge, in cells.
+const FOLD_EDGE = 0.022;
+// One turn of the bands and one churn of the rim, in seconds (the stylesheet's say the same).
+const FOLD_TURN = 12;
+const FOLD_WOBBLE = 8;
+// The number's badge with a piece standing in the fold: its radius and centre, in cells.
+const FOLD_BADGE = 0.15;
+const FOLD_BADGE_AT = [0.84, 0.16];
+let FOLD_POOLS = 0;
+
+// Whether a payload end is a fold (schema 22's `kind`); every end before it is momentum.
+function isFold(end) { return !!end && end.kind === 'fold'; }
+
+// A group's place in its bands' turn, as `portalPhase` is for the arms: off the document's
+// clock and the group's number, so every end of a group turns in step.
+function foldPhase(pair) {
+  let now = 0;
+  try {
+    const timeline = typeof document !== 'undefined' && document.timeline;
+    now = Number(timeline && timeline.currentTime) || 0;
+  } catch (err) { now = 0; }
+  return -((now / 1000 + pair * 4.1) % FOLD_TURN);
+}
+
+function foldGlyph(end, x, y, cell, options) {
+  const opts = options || {};
+  const cx = x + cell / 2, cy = y + cell / 2;
+  const hue = `var(--pair-${end.pair})`;
+  const edge = 'var(--portal-edge)';
+  const movers = end.movedBy || [];
+  const open = end.open || [];
+  const low = opts.flipped ? 1 : 0;
+  const n = v => v.toFixed(3);
+  const r = cell * FOLD_POOL;
+  const circle = (radius, attrs) => `<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(radius)}" ${attrs}/>`;
+  const dim = opts.dim ? ` opacity="${PORTAL_DIM}"` : '';
+  const aim = typeof opts.aim === 'number' && isFinite(opts.aim) && open.some(Boolean) ? opts.aim : null;
+  const id = ++FOLD_POOLS;
+  let out = `<defs><radialGradient id="pfcore${id}"><stop offset="0" style="stop-color:var(--fold-light);stop-opacity:1"/>
+    <stop offset="0.36" style="stop-color:var(--fold-light);stop-opacity:0.95"/>
+    <stop offset="0.8" style="stop-color:var(--fold-light);stop-opacity:0"/></radialGradient>`;
+  // The rim's liquid edge: turbulence displacing it, scaled to the cell (`baseFrequency` is
+  // in the drawing's units). A thumbnail keeps the plain rim.
+  if (!opts.plain) {
+    out += `<filter id="pfwob${id}" x="-25%" y="-25%" width="150%" height="150%">
+      <feTurbulence type="fractalNoise" baseFrequency="${(3 / cell).toFixed(4)}" numOctaves="2" seed="${end.pair * 7 + 3}"/>
+      <feDisplacementMap in="SourceGraphic" scale="${n(cell * 0.11)}" xChannelSelector="R" yChannelSelector="G"/></filter>`;
+  }
+  out += '</defs>';
+  // The pool: the hue, lit from within.
+  out += circle(r, `class="pf-pool" fill="${hue}"`);
+  out += circle(r, `fill="url(#pfcore${id})"`);
+  // The bands: whose pieces may use it. Both: the bottom player's edge first.
+  const who = [0, 1].filter(p => open[p]);
+  const edges = who.length === 2 ? [low, 1 - low] : who.length === 1 ? [who[0], who[0]] : [null, null];
+  const dashed = !!end.filtered;
+  const turn = who.length ? 'in' : 'out';
+  let bands = '';
+  edges.forEach((p, i) => {
+    const start = Math.PI * 0.5 + i * Math.PI;
+    const d = portalArmPath(cx, cy, r * FOLD_BAND_OUT, r * FOLD_BAND_IN, start, Math.PI * 1.2,
+                            r * FOLD_BAND_WIDTH, dashed);
+    // By mass (the second cold read, `docs/reference/portal-look-cold-read.md` §8.5: an edge
+    // did not read at a board's size): a band in the colour of the pieces that may use it, a
+    // white one edged in the keyline so it holds against the pool's light middle, a near-black
+    // one in the hue; a fold that leads nowhere has bands of its own hue.
+    const paint = p === null ? `fill="${hue}" fill-opacity="0.6" stroke="none"`
+      : `fill="${PORTAL_SIDE[p]}" fill-opacity="0.92" stroke="${p === 0 ? edge : hue}" stroke-width="${
+        n(cell * FOLD_EDGE)}" stroke-linejoin="round"`;
+    bands += `<path class="pf-band"${p === null ? '' : ` data-band="${p}"`} d="${d}" ${paint}/>`;
+  });
+  const spin = opts.idle
+    ? ` style="transform-origin:${n(cx)}px ${n(cy)}px;animation-delay:${foldPhase(end.pair).toFixed(2)}s"` : '';
+  out += `<g class="pf-bands${opts.idle ? ' pf-idle' : ''}" data-turn="${turn}"${
+    dashed ? ' data-filtered=""' : ''}${spin}${dim}>${bands}</g>`;
+  // The rim: saturated, ragged and churning, cased in a faint keyline so it holds on both
+  // woods (no hue holds against both).
+  const wobble = opts.idle
+    ? ` style="transform-origin:${n(cx)}px ${n(cy)}px"` : '';
+  const lumps = `stroke-dasharray="${n(cell * 0.16)} ${n(cell * 0.09)} ${n(cell * 0.07)} ${n(cell * 0.12)}"`;
+  out += `<g class="pf-rim"${opts.plain ? '' : ` filter="url(#pfwob${id})"`}><g class="${
+    opts.idle ? 'pf-wobble' : ''}"${wobble}>${
+    circle(r - cell * FOLD_RIM / 2, `fill="none" stroke="${hue}" stroke-width="${n(cell * FOLD_RIM)}"`)}${
+    circle(r - cell * 0.01, `fill="none" stroke="${hue}" stroke-width="${n(cell * 0.05)}" ${lumps}`)}</g></g>`;
+  out += circle(r, `fill="none" stroke="${edge}" stroke-width="${n(cell * FOLD_KEYLINE)}" opacity="0.6"`);
+  // The collar: who may move it. Above the pool, under any piece.
+  if (movers.length) {
+    const cr = cell * FOLD_COLLAR, w = cell * FOLD_COLLAR_WIDTH;
+    out += `<g class="pf-collar" data-moved="${movers.join(' ')}">`;
+    out += circle(cr, `fill="none" stroke="${edge}" stroke-width="${n(w + cell * 0.03)}"`);
+    if (movers.includes(0) && movers.includes(1)) {
+      const arc = (sweep, colour) => `<path d="M${n(cx - cr)} ${n(cy)}A${n(cr)} ${n(cr)} 0 0 ${sweep} ${
+        n(cx + cr)} ${n(cy)}" fill="none" stroke="${colour}" stroke-width="${n(w)}"/>`;
+      out += arc(0, PORTAL_SIDE[low]) + arc(1, PORTAL_SIDE[1 - low]);
+    } else {
+      out += circle(cr, `fill="none" stroke="${PORTAL_SIDE[movers.includes(0) ? 0 : 1]}" stroke-width="${n(w)}"`);
+    }
+    out += '</g>';
+  }
+  // The beak, on the rim, over the collar: past it at the full size, cut into it at the mid.
+  if (aim !== null) {
+    const beak = (cls, base, tip, half) => `<path class="${cls}" d="${portalBeakPath(cx, cy, aim,
+      cell * base, cell * tip, cell * half)}" fill="${hue}" stroke="${edge}" stroke-width="${
+      n(cell * 0.025)}" stroke-linejoin="round" paint-order="stroke"${dim}/>`;
+    out += beak('pg-beak', FOLD_POOL - 0.07, FOLD_POOL + 0.06, 0.085);
+    out += beak('pg-beak-cut', FOLD_POOL - 0.14, FOLD_POOL + 0.03, 0.09);
+  }
+  if (opts.numbered && !opts.occupied) {
+    out += `<text class="pg-num" x="${n(cx)}" y="${n(cy)}" font-size="${n(cell * PORTAL_NUMBER)}"
+      data-em="${PORTAL_NUMBER}" fill="${edge}" font-weight="700" text-anchor="middle"
+      dominant-baseline="central">${end.pair}</text>`;
+  }
+  const label = opts.label ? ` role="img" aria-label="${String(opts.label).replace(/"/g, '&quot;')}"` : '';
+  const said = aim !== null ? ` data-aim="${(aim * 180 / Math.PI).toFixed(1)}"` : '';
+  return `<g class="fold" data-fold="${end.type}" data-portal="${end.id || end.pair + String(end.end)[0]}" data-pair="${
+    end.pair}"${said}${opts.dim ? ' data-dim=""' : ''}${label}${opts.attrs ? ' ' + opts.attrs : ''}>${out}</g>`;
+}
+
+// The group's number with a piece standing in the fold: a small badge in the cell's
+// top-right corner, drawn over the piece (§5.3).
+function foldBadgeHtml(end, x, y, cell) {
+  const bx = x + cell * FOLD_BADGE_AT[0], by = y + cell * FOLD_BADGE_AT[1];
+  const n = v => v.toFixed(3);
+  return `<g class="pf-badge" data-badge="${end.pair}" pointer-events="none"><circle class="pg-eye" cx="${n(bx)}" cy="${
+    n(by)}" r="${n(cell * FOLD_BADGE)}" data-em="${FOLD_BADGE}" fill="var(--pair-${end.pair})"
+    stroke="var(--portal-edge)" stroke-width="${n(cell * 0.025)}"/><text class="pg-num" x="${n(bx)}" y="${
+    n(by)}" font-size="${n(cell * 0.2)}" data-em="0.2" fill="var(--portal-edge)" font-weight="700"
+    text-anchor="middle" dominant-baseline="central">${end.pair}</text></g>`;
+}
+
+// The glow a pool spills onto the squares round it, laid over the board after its squares
+// (a square drawn later would cover it): a ring in the hue, clear inside the rim so it never
+// tints the piece standing in the fold, fading out past the cell's edge.
+function foldGlowHtml(x, y, cell, pair) {
+  const id = ++FOLD_POOLS;
+  const cx = x + cell / 2, cy = y + cell / 2, n = v => v.toFixed(3);
+  const from = FOLD_GLOW_IN / FOLD_GLOW_OUT, peak = (FOLD_POOL + 0.04) / FOLD_GLOW_OUT;
+  return `<g class="pf-glow" data-glow="${pair}" pointer-events="none"><defs><radialGradient id="pfglow${id}">
+    <stop offset="${n(from)}" style="stop-color:var(--pair-${pair});stop-opacity:0"/>
+    <stop offset="${n(peak)}" style="stop-color:var(--pair-${pair});stop-opacity:0.55"/>
+    <stop offset="1" style="stop-color:var(--pair-${pair});stop-opacity:0"/></radialGradient></defs>
+    <circle cx="${n(cx)}" cy="${n(cy)}" r="${n(cell * FOLD_GLOW_OUT)}" fill="url(#pfglow${id})"/></g>`;
+}
+
+// A fold end in words (§5.1's words, a fold's rule): the head as a momentum end's, and what
+// it does. `there` names the end it leads to by square; `fromSquares` the ends leading here.
+function foldWords(end, square, pairs, sideOf, there, fromSquares, nameOf) {
+  const cap = text => text.charAt(0).toUpperCase() + text.slice(1);
+  const open = end.open || [];
+  const whose = open[0] && open[1] ? "both sides'"
+    : open[0] ? `${sideOf(0)}'s` : open[1] ? `${sideOf(1)}'s` : null;
+  const colour = pairs > 1 && PORTAL_PAIR_NAMES[end.pair - 1] ? ` (${PORTAL_PAIR_NAMES[end.pair - 1]})` : '';
+  const head = `${cap(portalName(end, pairs))}${colour} on ${square}`;
+  const movers = end.movedBy || [];
+  const moved = !movers.length ? 'Nobody moves it.'
+    : movers.length > 1 ? 'Either side may move it, as its turn, even under a piece.'
+      : `Only ${sideOf(movers[0])} may move it, as a turn, even under a piece.`;
+  // Schema 24 (`docs/plan-portals-2.md` §5.3R): a piece that ends its move on a fold may
+  // stay, or come out on the end it leads to; nothing else about a move changes.
+  const from = (fromSquares || []).length ? ` Pieces come out here from ${portalList(fromSquares)}.` : '';
+  const who = whose === "both sides'" ? 'a piece of either side' : `a piece of ${whose}`;
+  const rule = whose && end.dest !== null
+    ? `A fold: ${who} that ends its move on ${square} may stay there, or come out on ${
+      there || 'the end it leads to'}, taking a piece there as any move does. A move that passes`
+      + ` over it is not changed.${portalFilterWords(end, nameOf)}${from} ${moved}`
+    : `A fold that leads nowhere: nothing goes through here.${from} ${moved}`;
+  return { head: head, label: `${head}. ${rule}`, says: rule };
+}
+
+// The legend's (i) for a fold (Q843d; revised by Q867c, `docs/plan-portals-2.md` §5.3R): the
+// pools drawn as the board draws them, each with its sentence. First a pool with a piece
+// standing in it, then a pair whose beaks and map arrows say where a piece comes out (no
+// echo: the user found it clutter), then the bands (whose pieces may go through) and the
+// collar (who may move it), each row changing one thing, as the vortex's key teaches its
+// facts apart. An end's `at` is its cell along the row (its index where absent); an
+// example's `arrows` are the group map's, `[from, to]` by those cells.
+const FOLD_KEY_ROWS = [
+  { head: 'A pool of light lying in the board', wide: true, examples: [
+    { ends: [{ pair: 1, end: 'orange', movedBy: [], open: [true, true], aim: 0, piece: true }],
+      says: () => 'A piece can stand in a fold, and is taken there as anywhere. A piece that'
+        + ' ends its move on an empty fold may stay there, or come out on the end its beak points'
+        + ' at, taking a piece there as any move does. A move that passes over it is not changed.' }] },
+  { head: 'Its beak and the portal map: where a piece comes out', wide: true, examples: [
+    { ends: [{ pair: 1, end: 'orange', movedBy: [], open: [true, true], aim: 0, at: 0 },
+             { pair: 1, end: 'blue', movedBy: [], open: [true, true], aim: Math.PI, at: 2 }],
+      arrows: [[0, 2], [2, 0]],
+      says: () => 'The beak points at the end a piece comes out of, and the portal map draws'
+        + ' the same as arrows. The same colour and number are one group: a pool is a fold'
+        + ' whatever its colour.' }] },
+  { head: 'Its bands: whose pieces may go through', examples: [
+    { ends: [{ movedBy: [], open: [true, false] }], says: (s, c) => `${portalCap(c[0])} bands: ${s[0]}'s.` },
+    { ends: [{ movedBy: [], open: [false, true] }], says: (s, c) => `${portalCap(c[1])} bands: ${s[1]}'s.` },
+    { ends: [{ movedBy: [], open: [true, true] }], says: () => "One of each: both sides'." },
+    { ends: [{ movedBy: [], open: [false, false] }], says: () => 'Plain: it leads nowhere.' }] },
+  { head: 'Its collar: who may move it', examples: [
+    { ends: [{ movedBy: [], open: [true, true] }], says: () => 'No collar: nobody.' },
+    { ends: [{ movedBy: [0], open: [true, true] }], says: (s, c) => `A ${c[0]} collar: ${s[0]}.` },
+    { ends: [{ movedBy: [1], open: [true, true] }], says: (s, c) => `A ${c[1]} collar: ${s[1]}.` },
+    { ends: [{ movedBy: [0, 1], open: [true, true] }], says: () => 'Half and half: either side.' }] },
+];
+
+function foldKeyFigure(sides, icon) {
+  const named = sides && sides.length === 2 ? sides : ['white', 'black'];
+  const names = named.map(portalCap);
+  const colours = named[0] === 'white' ? ['white', 'black'] : ['light', 'dark'];
+  const cell = 48;
+  // The piece standing in the pool: one of the game's own (`icon`, its first side's drawing,
+  // as the board draws it), else the first side's disc.
+  const piece = x => icon && icon.href
+    ? `<image href="${String(icon.href).replace(/"/g, '&quot;')}" x="${x + cell * 0.06}" y="${cell * 0.06}" width="${cell * 0.88}"
+        height="${cell * 0.88}" preserveAspectRatio="xMidYMid meet"/>`
+    : `<circle cx="${x + cell / 2}" cy="${cell / 2}" r="${cell * 0.27}" fill="var(--p0)"
+        stroke="var(--ink)" stroke-width="1.2"/>`;
+  return `<div class="portal-figure fold-figure">${FOLD_KEY_ROWS.map(row => `<span class="portal-head">${
+    row.head}</span><div class="portal-row${row.wide ? ' portal-pairs' : ''}">${
+    row.examples.map(example => {
+      const cellOf = (end, index) => (end.at === undefined ? index : end.at);
+      const width = cell * (Math.max(...example.ends.map(cellOf)) + 1);
+      const glyphs = example.ends.map((end, index) => {
+        const x = cellOf(end, index) * cell;
+        return foldGlyph({ pair: 1, end: 'orange', kind: 'fold', dest: 0, ...end }, x, 0, cell,
+          { numbered: example.ends.length > 1, aim: end.aim, occupied: !!end.piece, plain: true })
+          + (end.piece ? piece(x) + foldBadgeHtml({ pair: end.pair || 1 }, x, 0, cell) : '');
+      }).join('') + (example.arrows || []).map(([from, to]) => portalArrowHtml(
+        from * cell + cell / 2, cell / 2, to * cell + cell / 2, cell / 2, cell, 1, `${from}>${to}`)).join('');
+      return `<div class="portal-example"><svg viewBox="0 0 ${width} ${cell}" width="${width}"
+        height="${cell}" aria-hidden="true"><rect width="${width}" height="${cell}"
+        fill="var(--light)"/>${glyphs}</svg><span>${example.says(names, colours)}</span></div>`;
+    }).join('')}</div>`).join('')}</div>`;
 }
 
 // The ways out of a portal, by the direction the engine says the piece came out in
@@ -1417,44 +2034,185 @@ function portalStep(direction, flipped) {
 }
 
 // What a portal is called in a sentence: by its number where the game has several pairs.
+// Never by which end of the pair it is: both ends are drawn alike, and the square says which
+// one is meant (Q838c, `docs/plan-portal-look.md` §5).
 function portalName(end, pairs) {
   return pairs > 1 ? `portal ${end.pair}` : 'the portal';
 }
 
-// One player's (or both players') passage through this end, as a clause.
-function passageWords(kind, whose, other) {
-  if (kind === 'both') return `${whose} pieces go in at either end and come out beside the other`;
-  if (kind === 'in') return `${whose} pieces go in here and come out beside the ${other} end`;
-  if (kind === 'out') return `${whose} pieces come out beside this end, going in at the ${other} end`;
+// The pairs' colours as a person calls them, by number, `--pair-1` to `--pair-4`'s order
+// (`web/page/tokens.py`). Said once, beside the number, as a friendly name; never the only
+// way a pair is named, since the colours are hardest for the readers colour fails. Cyan and
+// vermilion, not the two old end colours' names, which would say *which end* again.
+const PORTAL_PAIR_NAMES = ['violet', 'yellow', 'cyan', 'vermilion'];
+
+// The square a portal end of this type stands on in `board` (values as the core sends
+// them, `nTypes` to an army), or -1. Where an end stands is the board's, as every piece's
+// square is; this finds it and works nothing out.
+function portalSquareIn(board, nTypes, type) {
+  if (!board || !(nTypes > 0)) return -1;
+  for (let square = 0; square < board.length; square++) {
+    const value = board[square];
+    if (value && (value - 1) % nTypes === type) return square;
+  }
+  return -1;
+}
+
+// One player's (or both players') passage through this end, as a clause. `there` names the
+// partner by its square: *its partner on e4*, or *its partner* where the square is unknown.
+function passageWords(kind, whose, there) {
+  if (kind === 'both') return `${whose} pieces go in here or at ${there}, and come out beside the other`;
+  if (kind === 'in') return `${whose} pieces go in here and come out beside ${there}`;
+  if (kind === 'out') return `${whose} pieces come out beside this end, going in at ${there}`;
   return `${whose} pieces cannot go through: to them it is a solid block`;
 }
 
 // An end in words, for the label a screen reader reads, the tooltip on its square and the
 // line under the board (D9: a person never has to decode the icon to know the rule).
-// `square` is its name; `sideOf(player)` the side's name as the ruleset says it. Returns
-// `{head, label, says}`: which end it is, the label (that and its rule), and the rule
-// with how a piece comes out, for the line under the board after the head.
-function portalWords(end, partner, square, pairs, sideOf) {
+// `square` is its name and `partnerSquare` its partner's (null where unknown);
+// `sideOf(player)` the side's name as the ruleset says it. Returns `{head, label, says}`:
+// which end it is (*Portal 1 (violet) on b3*, *The portal on e3*), the label (that and its
+// rule), and the rule with how a piece comes out, for the line under the board after the
+// head. The pair's colour is said once, in the head, and only where there are several pairs.
+// `nameOf` names the pieces a filtered end lets in (`portalNamer`).
+function portalWords(end, partner, square, pairs, sideOf, partnerSquare, fromSquares, nameOf) {
   const cap = text => text.charAt(0).toUpperCase() + text.slice(1);
-  const other = partner ? partner.end : (end.end === 'orange' ? 'blue' : 'orange');
+  if (portalMapped(end, partner)) {
+    return portalMapWords(end, square, pairs, sideOf, partnerSquare, fromSquares || [], nameOf);
+  }
+  const there = partnerSquare ? `its partner on ${partnerSquare}` : 'its partner';
   const first = portalPassage(end, partner, 0), second = portalPassage(end, partner, 1);
-  const clauses = first === second ? [passageWords(first, "both sides'", other)]
-    : [passageWords(first, `${sideOf(0)}'s`, other), passageWords(second, `${sideOf(1)}'s`, other)];
+  const clauses = first === second ? [passageWords(first, "both sides'", there)]
+    : [passageWords(first, `${sideOf(0)}'s`, there), passageWords(second, `${sideOf(1)}'s`, there)];
   const movers = end.movedBy || [];
   const moved = !movers.length ? 'Nobody moves it.'
     : movers.length > 1 ? 'Either side may move it, as its turn.'
       : `Only ${sideOf(movers[0])} may move it, as a turn.`;
-  const head = `${cap(portalName(end, pairs))}, ${end.end} end, on ${square}`;
+  const colour = pairs > 1 && PORTAL_PAIR_NAMES[end.pair - 1]
+    ? ` (${PORTAL_PAIR_NAMES[end.pair - 1]})` : '';
+  const head = `${cap(portalName(end, pairs))}${colour} on ${square}`;
   const rule = `${clauses.map(cap).join('. ')}. ${moved}`;
   const through = first === 'closed' && second === 'closed' ? ''
     : ' A piece comes out one step beyond the other end, in the direction it was going.';
+  const filter = portalFilterWords(end, nameOf);
+  return { head: head, label: `${head}. ${rule}${filter}`, says: rule + filter + through };
+}
+
+// An end of a map in words (schema 21, `docs/plan-portals-2.md` §5.1), by square: whose
+// pieces go in here and which square they come out beside, or *Nothing goes in here*, and
+// where pieces come out here from. `fromSquares` names the ends that lead here.
+function portalMapWords(end, square, pairs, sideOf, partnerSquare, fromSquares, nameOf) {
+  const cap = text => text.charAt(0).toUpperCase() + text.slice(1);
+  const open = end.open || [];
+  const whose = open[0] && open[1] ? "both sides'"
+    : open[0] ? `${sideOf(0)}'s` : open[1] ? `${sideOf(1)}'s` : null;
+  const beside = partnerSquare ? `beside ${partnerSquare}` : 'beside the portal it leads to';
+  const from = fromSquares.length ? `pieces come out here from ${portalList(fromSquares)}` : '';
+  const into = whose ? `${cap(whose)} pieces go in here and come out ${beside}`
+    : `Nothing goes in here${from ? `: ${from}` : ''}`;
+  const clauses = whose && from ? [into, cap(from)] : [into];
+  const movers = end.movedBy || [];
+  const moved = !movers.length ? 'Nobody moves it.'
+    : movers.length > 1 ? 'Either side may move it, as its turn.'
+      : `Only ${sideOf(movers[0])} may move it, as a turn.`;
+  const colour = pairs > 1 && PORTAL_PAIR_NAMES[end.pair - 1]
+    ? ` (${PORTAL_PAIR_NAMES[end.pair - 1]})` : '';
+  const head = `${cap(portalName(end, pairs))}${colour} on ${square}`;
+  const rule = `${clauses.join('. ')}.${portalFilterWords(end, nameOf)} ${moved}`;
+  const through = whose
+    ? ' A piece comes out one step beyond the portal it leads to, in the direction it was going.'
+    : '';
   return { head: head, label: `${head}. ${rule}`, says: rule + through };
+}
+
+// The status line's words when the end on `square` has just been moved and may not go
+// straight back (schema 20's `no_straight_back`): the core's bar (`portalBar`, `{standing,
+// left}` off the state) names the end and the square it left, and the engine has already
+// left that move out; this only says so. `name(square)` names a square. Empty otherwise.
+function portalBarWords(bar, square, end, pairs, name) {
+  if (!bar || !end || bar.standing !== square || !(bar.left >= 0)) return '';
+  const said = portalName(end, pairs);
+  return `${said.charAt(0).toUpperCase() + said.slice(1)} has just moved and may not go `
+    + `straight back to ${name(bar.left)} this turn`;
+}
+
+// The legend's (i) for a portal (Q838c, §5; two rows since Q838f): the ends drawn as the
+// board draws them, each with its sentence, so the vortex is learnt once from pictures
+// rather than from words. The two facts are taught apart, as two rows that each change one
+// thing: what an end stands on (who may move it), every stand with the same arms; and its
+// arms (whose pieces go in), every one on the same sunk well. The cold read
+// (`docs/reference/portal-look-cold-read.md` §4) took the old key's one picture of white arms
+// on a white token for *white arms mean White's token*, and guessed at the stands it never
+// drew. Last, two ends of one pair. `sides` are the two sides' names (`viz.pieces.side_names`:
+// white and black, or first and second for a set told apart by turning). Returns markup.
+// The `end` fields are the payload's names for the two ends of a pair, never words.
+const portalCap = text => String(text).charAt(0).toUpperCase() + String(text).slice(1);
+const PORTAL_KEY_ROWS = [
+  { head: 'What it stands on: who may move it', examples: [
+    { ends: [{ movedBy: [0], open: [true, true] }],
+      says: (s, c) => `On a ${c[0]} token: ${s[0]} moves it.` },
+    { ends: [{ movedBy: [1], open: [true, true] }],
+      says: (s, c) => `On a ${c[1]} token: ${s[1]} moves it.` },
+    { ends: [{ movedBy: [0, 1], open: [true, true] }],
+      says: () => 'Half and half: either side moves it.' },
+    { ends: [{ movedBy: [], open: [true, true] }],
+      says: () => 'Sunk into the board: nobody moves it.' }] },
+  { head: 'Its arms: whose pieces go in', examples: [
+    { ends: [{ movedBy: [], open: [true, false] }],
+      says: (s, c) => `${portalCap(c[0])} arms: ${s[0]}'s pieces go in.` },
+    { ends: [{ movedBy: [], open: [false, true] }],
+      says: (s, c) => `${portalCap(c[1])} arms: ${s[1]}'s pieces go in.` },
+    { ends: [{ movedBy: [], open: [true, true] }],
+      says: () => "One of each: both sides' pieces go in." },
+    { ends: [{ movedBy: [], open: [false, false] }],
+      says: () => 'No arms: nobody goes in. It is a way out.' }] },
+  // Q843b (schema 21, `docs/plan-portals-2.md` §5.1, §5.2): the beak, taught on a pair whose
+  // beaks point at each other and on a funnel whose beaks all point at its way out; and the
+  // dashed arms of an end that lets only some pieces in.
+  { head: 'Its colour, number and beak: where it leads', wide: true, examples: [
+    { ends: [{ pair: 2, end: 'orange', movedBy: [], open: [true, true], aim: 0 },
+             { pair: 2, end: 'blue', movedBy: [], open: [true, true], aim: Math.PI }],
+      says: () => 'The same colour and number are one group. The beak points where you come'
+        + ' out: in at one, out beside the end it points at.' },
+    { ends: [{ pair: 3, end: 'a', movedBy: [], open: [true, true], aim: 0 },
+             { pair: 3, end: 'b', movedBy: [], open: [true, true], aim: 0 },
+             { pair: 3, end: 'c', movedBy: [], open: [false, false] }],
+      says: () => 'Several beaks may point at one end: pieces come out beside it, and it has'
+        + ' no arms, since nothing goes in there.' }] },
+  { head: 'Dashed arms: only some pieces', examples: [
+    { ends: [{ pair: 1, end: 'orange', movedBy: [], open: [true, true], filtered: true }],
+      says: () => 'Dashed arms: only some pieces may go in. The words under the board say'
+        + ' which, and when you pick a piece the doors it may not use go dim.' }] },
+];
+
+function portalKeyFigure(sides) {
+  const named = sides && sides.length === 2 ? sides : ['white', 'black'];
+  const plain = named[0] === 'white';
+  const names = named.map(portalCap);
+  const colours = plain ? ['white', 'black'] : ['light', 'dark'];
+  const cell = 48;
+  return `<div class="portal-figure">${PORTAL_KEY_ROWS.map(row => `<span class="portal-head">${
+    row.head}</span><div class="portal-row${row.wide || row.examples.length === 1 ? ' portal-pairs' : ''}">${
+    row.examples.map(example => {
+      const width = cell * example.ends.length;
+      const glyphs = example.ends.map((end, at) => portalGlyph(
+        { pair: 1, end: 'orange', ...end }, at * cell, 0, cell,
+        { numbered: example.ends.length > 1, aim: end.aim })).join('');
+      return `<div class="portal-example"><svg viewBox="0 0 ${width} ${cell}" width="${width}"
+        height="${cell}" aria-hidden="true"><rect width="${width}" height="${cell}"
+        fill="var(--light)"/>${glyphs}</svg><span>${example.says(names, colours)}</span></div>`;
+    }).join('')}</div>`).join('')}</div>`;
 }
 
 // The kinds a board carries beyond its square marks, for the legend line: a wall where
 // the rules put one (`obstacles`), and a portal where the game has them.
 function boardKinds(walls, portals) {
-  return [...(walls && walls.length ? ['wall'] : []), ...(portals ? ['portal'] : [])];
+  // Schema 22: a momentum end is a *portal*, a fold a *fold portal*, each named where the
+  // game has one (a payload from before schema 22 has no `kind`: every end is momentum).
+  const ends = (portals && portals.ends) || [];
+  return [...(walls && walls.length ? ['wall'] : []),
+          ...(portals && (!ends.length || !ends.every(isFold)) ? ['portal'] : []),
+          ...(ends.some(isFold) ? ['fold'] : [])];
 }
 
 // The copy of `square` drawn nearest the cell (u, v): the square itself, or one of its

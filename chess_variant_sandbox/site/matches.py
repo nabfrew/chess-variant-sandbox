@@ -111,7 +111,7 @@ from pathlib import Path
 from typing import Any
 
 from chess_variant_sandbox.site import finishes, pinning, quota, rating, usage
-from chess_variant_sandbox.web import opponents
+from chess_variant_sandbox.web import draw_offer, opponents
 from chess_variant_sandbox.web.human import HUMAN, RESIGNED, HumanGame, summarise
 from chess_variant_sandbox.web.library import Game, engine_for
 from chess_variant_sandbox.web.play import Session
@@ -752,6 +752,7 @@ def session(connection: Any, match_id: str) -> Session:
         seed=found.seed,
         state=engine_for(spec).initial_state(),
         played_by=(nets[0] or "", nets[1] or ""),
+        draw_offers=draw_offers(connection, match_id),
     )
     for move, depth in _moves(connection, match_id):
         built.replay(move, depth)
@@ -1075,7 +1076,7 @@ def restart(connection: Any, match_id: str) -> dict[str, Any]:
 
     It is the same match rather than another one, so the daily allowance is not asked
     again. The strong-seat cap is, when the game had sat or ended, because a restart
-    makes it live (Q410).
+    makes it live (Q410). The draw offers go with the moves (Q790): the game starts again.
     """
     found = _sandbox_only(connection, match_id, "restarted")
     _retake_seats(connection, found)
@@ -1092,8 +1093,8 @@ def restart(connection: Any, match_id: str) -> dict[str, Any]:
     standing = _standing(connection, found.game, found.mode, seats, person)
     with connection.cursor() as cursor:
         cursor.execute(
-            "update matches set started = now(), takebacks = 0, standing = %s::jsonb"
-            " where id = %s",
+            "update matches set started = now(), takebacks = 0, standing = %s::jsonb,"
+            " draw_offers = null where id = %s",
             (None if standing is None else json.dumps(standing), match_id),
         )
     return session(connection, match_id).snapshot()
@@ -1156,6 +1157,73 @@ def resign(
     # resigning scores 0, seat 1 resigning leaves seat 0 with the point.
     _finish(connection, match_id, result=float(seat), reason=RESIGNED, left=left)
     return row(connection, match_id)
+
+
+def draw_offers(connection: Any, match_id: str) -> list[dict[str, Any]]:
+    """Every draw offer made on this row, in order (`0035_draw_offers.sql`, Q790).
+
+    Read on its own rather than in `_ROW_COLUMNS`, as `played` is, so a row still reads
+    on a store that has not taken the migration yet. Empty where nobody has offered one.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute("select draw_offers from matches where id = %s", (match_id,))
+        found = cursor.fetchone()
+    if found is None or found[0] is None:
+        return []
+    return [dict(entry) for entry in found[0]]
+
+
+def note_draw_offer(connection: Any, match_id: str, entry: dict[str, Any]) -> None:
+    """Append one offer to the row's log. Both kinds of game write through here."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "update matches set draw_offers = coalesce(draw_offers, '[]'::jsonb)"
+            " || jsonb_build_array(%s::jsonb) where id = %s",
+            (json.dumps(entry), match_id),
+        )
+
+
+def offer_draw(connection: Any, match_id: str, by: int | None = None) -> dict[str, Any]:
+    """The person offers the computer a draw, and the computer answers at once (Q790).
+
+    The rule is `docs/reference/intransitive-quiet-endgame.md` §e.1, and the answer is the
+    core's: `draw_offer.judge` asks the strongest search the game has for its value of the
+    position and reads *level* off it, whatever computer player sits in the seat. Python
+    looks at no square. The offer is made on the person's own turn, from ply 40, and at
+    most once in ten plies; a refusal says which, in the page's words, and costs nothing.
+
+    Every offer is logged on the row with what the core said (`draw_offers`), accepted or
+    not. An accepted one finishes the match as a draw, `reason = agreed`, through the same
+    `_finish` a checkmate goes through, so a rated game's table moves on it as a draw.
+    `by` is checked as `resign` checks it: a signed-in person who is not in the game is
+    refused, and a visitor's sandbox board is the only person's seat it has.
+    """
+    found = row(connection, match_id)
+    seats = (found.seat0, found.seat1)
+    if all(seat is not None and seat.user is not None for seat in seats):
+        raise MatchError(
+            "this is a game between two people, so a draw is offered by one of its players "
+            "to the other"
+        )
+    if not found.running:
+        raise MatchError("this game is over")
+    if found.is_computer(0) == found.is_computer(1):
+        raise MatchError("nobody is playing this game, so there is nobody to offer a draw")
+    seat = 1 if found.is_computer(0) else 0
+    if by is not None and found.seat_of(rating.person(by)) != seat:
+        raise MatchError(f"user {by} is not in this game")
+    game = session(connection, match_id)
+    ply = game.state.ply
+    refusal = draw_offer.against_computer_refusal(
+        game.draw_offers, seat, ply, game.state.side_to_move
+    )
+    if refusal is not None:
+        raise MatchError(refusal)
+    verdict = draw_offer.judge(game.engine, game.state, game.seed + ply)
+    note_draw_offer(connection, match_id, verdict.as_entry(seat, ply))
+    if verdict.accepted:
+        _finish(connection, match_id, result=0.5, reason=AGREED, left=False)
+    return session(connection, match_id).snapshot()
 
 
 def _loser(found: Row, by: int | None) -> int:

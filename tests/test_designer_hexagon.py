@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from retired_specs import hex_glinski_flanks, hex_glinski_flanks_one_way, hex_glinski_promoting
 from test_designer import _HAND_TRIP, _ROUND_TRIP, _kit_setup, _run_page
 
 from chess_variant_sandbox.engine.compile import compile_spec
@@ -133,7 +134,7 @@ class TestTheWrapCardShowsTheBoardsOwnSides:
         }
 
     def test_a_hexagon_gets_three_rows_and_no_axis(self) -> None:
-        html = _wrap_card(load_spec(ARCHIVE / "hex-glinski-flanks.json"))
+        html = _wrap_card(hex_glinski_flanks())
         paths = _paths(html)
         assert {"wrap.n_s", "wrap.ne_sw", "wrap.nw_se"} <= paths
         assert not {"wrap.files", "wrap.ranks"} & paths
@@ -143,7 +144,7 @@ class TestTheWrapCardShowsTheBoardsOwnSides:
         assert "the side edges" not in html and "the top and bottom edges" not in html
 
     def test_the_rows_are_in_the_boards_words(self) -> None:
-        html = _wrap_card(load_spec(ARCHIVE / "hex-glinski-flanks.json"))
+        html = _wrap_card(hex_glinski_flanks())
         for words in ("top and bottom", "not joined", "both ways",
                       "one way, out by the top", "one way, out by the lower left",
                       "one way, out by the upper left"):
@@ -275,7 +276,7 @@ class TestTeachReachesAcrossTheSeam:
     def test_a_step_off_the_lower_right_comes_in_on_the_upper_left(self) -> None:
         """The spec's second worked crossing: `k3` stepping right lands on `a8`. A raw
         difference of file and rank is ten files left and five ranks up."""
-        offers = _teach(load_spec(ARCHIVE / "hex-glinski-flanks.json"), "k3", ["a8"])
+        offers = _teach(hex_glinski_flanks(), "k3", ["a8"])
         assert offers and offers[0]["exact"]
         assert offers[0]["move"] == {"kind": "leap", "vectors": [[1, 0]]}
         assert offers[0]["says"] == "one square right"
@@ -286,7 +287,7 @@ class TestTeachReachesAcrossTheSeam:
 
     def test_a_one_way_seam_is_crossed_only_the_way_the_first_player_may(self) -> None:
         """`nw_se_by_player {"0": "se"}`: out by the lower right, never the upper left."""
-        spec = load_spec(ARCHIVE / "hex-glinski-flanks-one-way.json")
+        spec = hex_glinski_flanks_one_way()
         assert spec["rules"]["wrap"]["nw_se_by_player"]["0"] == "se"
         across = _teach(spec, "k3", ["a8"])
         assert across and across[0]["move"] == {"kind": "leap", "vectors": [[1, 0]]}
@@ -294,7 +295,7 @@ class TestTeachReachesAcrossTheSeam:
         assert all(offer["move"]["vectors"] != [[-1, 0]] for offer in back)
 
     def test_every_offset_comes_from_the_compilers_copies(self) -> None:
-        spec = designing.settled(load_spec(ARCHIVE / "hex-glinski-flanks.json"))
+        spec = designing.settled(hex_glinski_flanks())
         geometry = designing._geometry(json.dumps(spec, sort_keys=True))
         joined = {one.side: one.vector for one in geometry.copies if one.permission[0]}
         assert set(joined) == {"nw", "se"}
@@ -332,7 +333,7 @@ class TestASquareSeamIsCrossedTheShortWay:
         assert torus["top"] == ((0, 12), (True, True))
         assert torus["left+top"] == ((-8, 12), (True, True))
         assert listed("onewaytorus")["left"] == ((-8, 0), (True, False))
-        hexagon = compile_spec(load_spec(ARCHIVE / "hex-glinski-flanks.json"))
+        hexagon = compile_spec(hex_glinski_flanks())
         assert hexagon.grid_copies == () and hexagon.copies
 
     def test_a_step_off_the_a_file_comes_in_on_the_h_file(self) -> None:
@@ -375,7 +376,7 @@ class TestABoardChangeKeepsAValidDraft:
 
     def test_a_walled_rhombus_made_a_hexagon_loses_its_corner_walls(self) -> None:
         """Glinski's rhombus walls its corners; on a hexagon those are not cells at all."""
-        spec = load_spec(ARCHIVE / "hex-glinski-promoting.json")
+        spec = hex_glinski_promoting()
         done = _reshaped(spec, ("shape", "hexagon"))
         assert "obstacles" not in done["draft"]["rules"]
         assert done["said"].startswith("The board change took away the walls at a1, a2")
@@ -385,7 +386,7 @@ class TestABoardChangeKeepsAValidDraft:
 
     def test_the_server_names_only_what_is_off(self) -> None:
         """A wall the hexagon still has a cell for is kept, and a valid draft has none."""
-        spec = load_spec(ARCHIVE / "hex-glinski-promoting.json")
+        spec = hex_glinski_promoting()
         spec["rules"]["obstacles"]["squares"].append("f6")
         draft = {**spec, "board": _board_after(spec["board"], ("shape", "hexagon"))}
         (walls,) = designing.off_board(draft)

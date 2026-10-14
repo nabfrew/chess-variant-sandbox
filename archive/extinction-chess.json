@@ -1,6 +1,6 @@
 {
   "schema_version": 18,
-  "name": "extinction-chess",
+  "name": "extinction chess",
   "description": "Extinction chess: a side loses when it has no king, no queen, no rooks, no bishops, no knights or no pawns left. The king is an ordinary piece that may be taken, castles as in chess, and a pawn may promote to a king.",
   "board": {
     "width": 8,

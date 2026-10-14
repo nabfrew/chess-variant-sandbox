@@ -69,14 +69,21 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
     ),
     "pieces.facing": (
         "points a way",
-        "This piece points in a direction, and may spend a whole move turning instead of "
-        "moving. Its moves turn with it, so a pawn pointing right advances to the right. "
-        "Give it only to a piece whose moves change when it turns: a rook moves the same "
+        "This piece points in a direction, and unless it may not turn, may spend a whole "
+        "move turning instead of moving. Its moves turn with it, so a pawn pointing right "
+        "advances to the right. Give it only to a piece whose moves change when it turns: a rook moves the same "
         "whichever way it points, so turning one would be a move that does nothing, and "
         "that is refused. A royal piece may not have one.",
     ),
     "pieces.facing.axes": ("how many ways it can point", None),
     "pieces.facing.initial": ("which way it points at the start", None),
+    "pieces.facing.turns": (
+        "may turn",
+        "Whether this piece may spend a move turning. Switch it off and each one points the "
+        "way it was placed for the whole game, as a rear guard of pawns placed facing "
+        "backwards does; one that comes into play later points the way it starts. Some "
+        "must then be placed pointing another way, or the pointing would change nothing.",
+    ),
     "pieces.moves.screen_range": ("how far past the piece it jumps", None),
     "pieces.moves.screen": (
         "whose piece it jumps",
@@ -282,8 +289,16 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
     "rules.npcs.route": (
         "its walk",
         "The squares it walks, in order and round again, starting on the first. Different "
-        "squares, on no other wild piece's walk, and none of the starting pieces on the "
-        "first. One square is a wild piece that never moves.",
+        "squares, on no other wild piece's walk (for a second one on this walk, use 'more "
+        "on this walk'), and none of the starting pieces on the first. One square is a "
+        "wild piece that never moves.",
+    ),
+    "rules.npcs.also_at": (
+        "more on this walk",
+        "More wild pieces of the same kind on this same walk: the squares, other than the "
+        "walk's first, where each further one starts, in the walk's order. They walk it "
+        "in step, and one that finds another in its way waits behind it. Leave it empty "
+        "for one wild piece on the walk.",
     ),
     "rules.npcs.bounty": (
         "worth taking",
@@ -319,43 +334,95 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "Every move it has goes only onto an empty square and is the same seen from either "
         "side. It may have no moves when nobody moves the pair.",
     ),
+    # Q838c: a pair's two ends are its *first* and *second*, never a colour. The file's keys
+    # and its one-way passage values keep their names, since renaming them would rehash
+    # every portal game; the words go from the page.
     "rules.portals.orange": (
-        "orange portal on",
-        "Where the pair's orange portal starts: an empty square, not a wall.",
+        "first end on",
+        "Where the pair's first end starts: an empty square, not a wall.",
     ),
     "rules.portals.blue": (
-        "blue portal on",
-        "Where the pair's blue portal starts: an empty square, not a wall.",
+        "second end on",
+        "Where the pair's second end starts: an empty square, not a wall.",
     ),
-    "rules.portals.moved_by": ("who may move each portal", None),
+    "rules.portals.moved_by": ("who may move each end", None),
     "rules.portals.moved_by.orange": (
-        "the orange one",
-        "Which players may spend a turn moving the orange portal: nobody, the usual "
+        "the first end",
+        "Which players may spend a turn moving the pair's first end: nobody, the usual "
         "choice, either one of them, or both.",
     ),
     "rules.portals.moved_by.blue": (
-        "the blue one",
-        "Which players may spend a turn moving the blue portal: nobody, the usual choice, "
-        "either one of them, or both.",
+        "the second end",
+        "Which players may spend a turn moving the pair's second end: nobody, the usual "
+        "choice, either one of them, or both.",
     ),
-    "rules.portals.passage": ("whose pieces may go in by which portal", None),
+    "rules.portals.passage": ("whose pieces may go in at which end", None),
     "rules.portals.passage.0": (
         "the first player's pieces",
-        "both ways: in by either portal, the usual choice. orange to blue: in by the "
-        "orange one only. blue to orange: in by the blue one only. closed: neither, and "
-        "both portals are solid blocks to these pieces.",
+        "both ways: in at either end, the usual choice. One way: in at the pair's first "
+        "end only, or only at its second. closed: neither, and both ends are solid blocks "
+        "to these pieces.",
     ),
     "rules.portals.passage.1": (
         "the second player's pieces",
-        "both ways: in by either portal, the usual choice. orange to blue: in by the "
-        "orange one only. blue to orange: in by the blue one only. closed: neither, and "
-        "both portals are solid blocks to these pieces.",
+        "both ways: in at either end, the usual choice. One way: in at the pair's first "
+        "end only, or only at its second. closed: neither, and both ends are solid blocks "
+        "to these pieces.",
     ),
     "rules.portals.no_straight_back": (
         "no moving a portal straight back",
         "When on, a portal that has just been moved may not be moved straight back where it "
         "came from on the very next move: it can go anywhere else, and back the move after. "
         "It stops two players undoing each other's portal moves until the game is drawn.",
+    ),
+    # Schema 21 (Q843a): which pieces may go in, and a map of ends in place of a pair.
+    "rules.portals.carries": (
+        "which pieces may go in",
+        "Which pieces may go in at each end of the pair; an end with no list lets every "
+        "piece in.",
+    ),
+    "rules.portals.carries.orange": (
+        "at the first end",
+        "The only pieces that may go in at the pair's first end; every other piece meets it "
+        "as a solid block. Leave it out and every piece may.",
+    ),
+    "rules.portals.carries.blue": (
+        "at the second end",
+        "The only pieces that may go in at the pair's second end; every other piece meets "
+        "it as a solid block. Leave it out and every piece may.",
+    ),
+    "rules.portals.ends": (
+        "portals and where each leads",
+        "Three to eight portals, each leading to another of them or nowhere: a ring, where "
+        "each leads to the next, or a funnel, where several lead to one way out. Two "
+        "portals that lead to each other are a pair.",
+    ),
+    "rules.portals.ends.at": ("on", "Where this portal starts: an empty square, not a wall."),
+    "rules.portals.ends.to": (
+        "leads to",
+        "The portal a piece that goes in here comes out beside, counted from 0 in this "
+        "list. Leave it out for a way out only, which nobody goes in by.",
+    ),
+    "rules.portals.ends.enter": (
+        "whose pieces may go in",
+        "Which players' pieces may go in here: both, the usual choice, or one of them.",
+    ),
+    "rules.portals.ends.moved_by": (
+        "who may move it",
+        "Which players may spend a turn moving this portal: nobody, the usual choice, "
+        "either one of them, or both.",
+    ),
+    # Schema 22 (Q843c): the second rule set.
+    "rules.portals.kind": (
+        "how it works",
+        "Fold portals, where momentum portals are the usual kind: a piece may stand in a "
+        "fold, and a move that ends on an empty fold may stay there or come out on the fold "
+        "it leads to, taking a piece there as any move does.",
+    ),
+    "rules.portals.ends.carries": (
+        "which pieces may go in",
+        "The only pieces that may go in here; every other piece meets it as a solid block. "
+        "Leave it out and every piece may.",
     ),
     "rules.promote_on_entry": (
         "promoting on arrival",
@@ -643,6 +710,14 @@ def plain_problem(problem: str, spec: Any = None) -> str:
         kind = "leap" if leap.group(3) == "leap" else "blockable leap"
         return (f"{where}: '{label}' does nothing on a {kind}. "
                 "To reach further, add more directions.")
+    lame_step = re.match(
+        r"^(\S+)\.vectors\[\d+\] \[-?\d+, -?\d+\] is a one-square 'lame' leap, "
+        r"which has no square to be blocked on; use an ordinary 'leap' or a 'slide' of "
+        r"range 1 instead$", text)
+    if lame_step:
+        where, _ = _where(lame_step.group(1), spec)
+        return (f"{where}: a one-square blockable leap has no square to be blocked on. "
+                "Make it an ordinary leap, or a slide of range 1, instead.")
     taken = re.match(r"^(\S+) '([^']*)' is already occupied by '([^']*)'$", text)
     if taken:
         where, _ = _where(taken.group(1), spec)

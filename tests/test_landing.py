@@ -57,6 +57,9 @@ class TestTheMarkup:
 
     def test_the_intention_in_the_users_words(self) -> None:
         assert "vibe-coded playground for designing chess-like strategy games" in landing.HTML
+        # The user's words, 2026-10-13: the next sentence in the same paragraph.
+        assert ("wrote the code, so expect a rough edge here and there. If it had been hand "
+                "crafted, it would have been immaculate, obviously.</p>") in landing.HTML
 
     def test_the_score_is_an_estimate_and_its_ingredients_start_shut(self) -> None:
         score = landing.HTML[landing.HTML.index('id="landing-score"'):]

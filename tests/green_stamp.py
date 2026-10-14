@@ -100,12 +100,18 @@ XDIST_KEY = "green_stamp"
 # merge runs it anyway. The other two name the queue as a path to classify and as a file in a
 # scratch repository. Counted, they made every queue commit on main a new tree, so a gate
 # after one never matched the worker's stamp (2026-10-09).
+#
+# `prune_worktrees.py branches` reads the *main checkout's* queue when a coordinator closes,
+# never the tree under test, and its tests give it inline text or a scratch repository's
+# (Q845), so neither makes the suite's outcome depend on this tree's queue.
 NOT_READERS = (
     "tests/green_stamp.py",
     "tests/test_green_stamp.py",
     "docs_tests/",
     "tests/test_docs_only.py",
     "tests/test_export_public.py",
+    ".claude/scripts/prune_worktrees.py",
+    "tests/test_prune_worktrees.py",
 )
 # Where Markdown can be cleared as unread (`unread`).
 PROSE = ("docs/", ".claude/")

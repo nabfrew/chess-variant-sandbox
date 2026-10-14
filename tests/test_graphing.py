@@ -7,7 +7,7 @@ something, a faint one where nothing else reaches, and a coordinate for every no
 The specs are written here rather than read from `rulesets/`, because what is under test
 is the shape of a library and not what any game happens to be. One test at the end reads
 the committed corpus, because the plan's acceptance is a claim about that corpus, and it
-is marked slow: it compiles seventy specs.
+is marked slow: it compiles sixty specs.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from retired_specs import REBUILT, RETIRED_HASHES
 
 from chess_variant_sandbox.spec import relate, validate_spec
 from chess_variant_sandbox.spec.canonical import spec_hash
@@ -170,7 +171,8 @@ def spelt_out(name: str) -> dict[str, Any]:
 
     Saying *this piece may take all three* is saying what the game does anyway, so the two
     files compile to the same tables. No comparison of two written descriptions can know
-    that, and the corpus's one pair of twins is this shape.
+    that, and the one twin pair the library had (`wolves` and `wolves-immune`, retired by
+    Q876) was this shape.
     """
     made = spec(name)
     made["schema_version"] = 3
@@ -1902,25 +1904,35 @@ def test_the_map_modules_name_no_piece_and_no_game() -> None:
 
 #: The corpus `docs/archive/plan-game-graph.md` G2 and `plan-graph-map.md` S1 were measured
 #: over, by mechanics hash: the 70 committed and archived specs of 2026-09-25 (after Q434
-#: retired `tunnel-horizontal`). `TestTheCommittedCorpus` pins the plans' numbers on this
+#: retired `tunnel-horizontal`), less what the library has retired since (below) and with two
+#: respelt games under their new hash. `TestTheCommittedCorpus` pins the plans' numbers on this
 #: set, not on whatever the library holds today, so a game added later (Q281a4's three hex
 #: showcases, 2026-09-28, were the first) cannot turn it red; the live library is
 #: `TestTheWholeLibrary`'s, which reads its counts from the corpus. A game of this set
 #: that is retired or edited in place fails `plan_corpus` by name: that is a re-read of the
 #: plans (`plan-graph-map.md` §8), not a re-aim.
+#:
+#: Re-read at Q878 (2026-10-13), 60 of the 70, every pinned number re-derived on them:
+#: Q868's audit retired ten of the seventy with nothing to rebuild them from (`tunnel-vertical`
+#: 0268bb0926bf, `onewaytunnel` da7647bf02e1, `sardines-torus` f5585062433b,
+#: `torus-extended` fdadd9839d34, `weathervane-torus` 9777cd6c9ed1, `hierarchy-fall-swap`
+#: f1fdbb539699, `wolves-rotated` 213f7b6604e4, `-2` 8ec0ce4678e9, `-3` 2e94e1688601, `-4`
+#: 87a488975531), and Q869 respelt two in place, so their hashes moved: `crazyhouse-torus`
+#: ab865f3f954a -> 9598e603241d, `torus-less-extended` 3194d3a2251b -> 8d9fb1b4c0b4. Two
+#: retired games are kept, rebuilt from their twins by `retired_specs` (`REBUILT`): `hex-glinski-
+#: promoting` (Q868) and `wolves-immune` (Q876), the corpus's one twin pair, which is what keeps
+#: the merge claimed in the plans measured on a real pair and not only on `TestTwins`' made ones.
 PLAN_CORPUS = frozenset({
-    "0268bb0926bf", "03aa7c3f2f18", "0b96463ffba7", "0be72e61ef24", "1442513d38d7", "14a126b38a1a",
-    "151582aed409", "15593fc47f6d", "1ba3d61e5961", "213f7b6604e4", "2261f8203948", "279f92a97530",
-    "29d5213b02b2", "2e94e1688601", "2eefcd835b3b", "313c913a5b3b", "3194d3a2251b", "328cab4db5cc",
-    "3c639d277808", "3ec1560124c3", "42bd7d06828d", "482ddc556331", "4c1922ffae26", "50a3da8f75e7",
-    "51d9b36b4e93", "54b38fb8cba8", "54c731ca6e95", "57667d7861ad", "57c73975c905", "5f9c1bfcf85a",
-    "66b001f1b790", "67270a8805a0", "6bd4d9c5769e", "71912ea8ba7f", "78130df01edd", "82a4788c02f0",
-    "85555467a4ca", "87a488975531", "8ec0ce4678e9", "8fc3939243d5", "93b02b591c87", "9574b0bf9095",
-    "975dde173f01", "9777cd6c9ed1", "9c26a04f1ca5", "9f538ab85a77", "a2193fb37097", "a2f0c65ceedf",
-    "a7b6f22e6b73", "a9306688fe57", "ab865f3f954a", "add543cc28c3", "b02bbe8da72c", "b1f536573c22",
+    "03aa7c3f2f18", "0b96463ffba7", "0be72e61ef24", "1442513d38d7", "14a126b38a1a", "151582aed409",
+    "15593fc47f6d", "1ba3d61e5961", "2261f8203948", "279f92a97530", "29d5213b02b2", "2eefcd835b3b",
+    "313c913a5b3b", "328cab4db5cc", "3c639d277808", "3ec1560124c3", "42bd7d06828d", "482ddc556331",
+    "4c1922ffae26", "50a3da8f75e7", "51d9b36b4e93", "54b38fb8cba8", "54c731ca6e95", "57667d7861ad",
+    "57c73975c905", "5f9c1bfcf85a", "66b001f1b790", "67270a8805a0", "6bd4d9c5769e", "71912ea8ba7f",
+    "78130df01edd", "82a4788c02f0", "85555467a4ca", "8d9fb1b4c0b4", "8fc3939243d5", "93b02b591c87",
+    "9574b0bf9095", "9598e603241d", "975dde173f01", "9c26a04f1ca5", "9f538ab85a77", "a2193fb37097",
+    "a2f0c65ceedf", "a7b6f22e6b73", "a9306688fe57", "add543cc28c3", "b02bbe8da72c", "b1f536573c22",
     "bb5d97520084", "bdf2801ade24", "c0e0c35f78b1", "c2925e027455", "c6ff883e5919", "ceb4916bdabc",
-    "da7647bf02e1", "df2fbba0ca76", "e7293070b5be", "eaa48ed29ad7", "f1fdbb539699", "f5585062433b",
-    "fcbb53d53ce4", "fdadd9839d34", "fe7c42772c71", "ffc7b604bea0",
+    "df2fbba0ca76", "e7293070b5be", "eaa48ed29ad7", "fcbb53d53ce4", "fe7c42772c71", "ffc7b604bea0",
 })
 
 
@@ -1937,8 +1949,18 @@ def library_games() -> list[library.Game]:
 
 @pytest.fixture(scope="module")
 def corpus(library_games: list[library.Game]) -> list[library.Game]:
-    """The plans' corpus out of today's library: every game of `PLAN_CORPUS`, and only those."""
+    """The plans' corpus out of today's library: every game of `PLAN_CORPUS`, and only those.
+
+    A member the library retired comes back rebuilt from `tests/retired_specs.py` where that
+    module holds a rebuild, and only where it reproduces the member's hash.
+    """
     kept = [one for one in library_games if one.hash in PLAN_CORPUS]
+    for name, rebuild in REBUILT.items():
+        digest = RETIRED_HASHES[name]
+        if digest in PLAN_CORPUS:
+            made = rebuild()
+            assert spec_hash(made) == digest, name
+            kept.append(game(made, "archived"))
     missing = PLAN_CORPUS - {one.hash for one in kept}
     assert not missing, (
         f"the plans' corpus lost {sorted(missing)}: a game was retired or its mechanics "
@@ -1975,25 +1997,31 @@ def reached(
 class TestTheCommittedCorpus:
     """`docs/archive/plan-game-graph.md` §5 G2's acceptance, on the corpus it was written for.
 
-    Seventy spec files, sixty-nine nodes. Every number here was re-derived at Q329 and
+    Sixty spec files, fifty-nine nodes. Every number here was re-derived at Q329 and
     the plan's row was corrected to match; the figures it was written with came from the
     probe, before G1's folds moved four one-rule readings and before twins merged. Q434
     retired `tunnel-horizontal` (2026-09-25), which took one spec, one node and one gap
-    and moved nothing else here. Since Q743 (2026-10-05) the class draws `PLAN_CORPUS`, those
-    seventy by hash, so a game the library gains later does not move a number here.
+    and moved nothing else here. Since Q743 (2026-10-05) the class draws `PLAN_CORPUS`, the
+    plans' games by hash, so a game the library gains later does not move a number here.
+
+    Q878 (2026-10-13) re-derived them on the sixty that are left of the seventy. The
+    plans' figures were 69 nodes, 56 one-rule links, 54 gaps, 10 buildable, 10 lineage
+    arrows, 22 hub spokes and 23 operator sentences; the ten games the audit retired took
+    their one-rule links and gaps with them (most were near copies of a game that stays),
+    and the nearest-relative links (16) and the far games (19) did not move.
     """
 
     def test_the_counts_are_the_ones_the_plan_names(self, graph: graphing.Graph) -> None:
         assert graph.counts["specs"] == len(PLAN_CORPUS)
-        assert graph.counts["nodes"] == 69
+        assert graph.counts["nodes"] == 59
         assert graph.counts["twins"] == 1
-        assert graph.counts["oneRule"] == 56
-        assert graph.counts["gaps"] == 54
+        assert graph.counts["oneRule"] == 38
+        assert graph.counts["gaps"] == 29
         assert graph.counts["nearest"] == 16
-        assert graph.counts["lineage"] == 10
+        assert graph.counts["lineage"] == 9
         assert graph.counts["unlinked"] == 0
-        # G6: the gaps a game can be built in between, which is 10 of the 54.
-        assert graph.counts["between"] == 10
+        # G6: the gaps a game can be built in between, which is 6 of the 29.
+        assert graph.counts["between"] == 6
 
     def test_the_busiest_node_is_a_hub_of_one_rule_links(
         self, graph: graphing.Graph
@@ -2003,7 +2031,7 @@ class TestTheCommittedCorpus:
             link for link in graph.links
             if link.type == "rule" and hub.hash in (link.source, link.target)
         ]
-        assert len(spokes) == 22
+        assert len(spokes) == 21
 
     def test_the_one_pair_of_twins_takes_the_shorter_reading_to_the_hub(
         self, graph: graphing.Graph, corpus: list[library.Game]
@@ -2042,17 +2070,17 @@ class TestTheCommittedCorpus:
         assert {node.hash for node in graph.nodes if node.far} <= faint
         assert sum(1 for node in graph.nodes if node.far) == 19
 
-    def test_a_third_of_the_one_rule_links_carry_an_operator_sentence(
+    def test_some_of_the_one_rule_links_carry_an_operator_sentence(
         self, reached: graphing.Graph
     ) -> None:
-        """G5's acceptance. 23 of the 56, which is the figure the probe found too.
+        """G5's acceptance. 22 of the 38; the plans' 23 of the 56 was the probe's figure too.
 
         The rest cannot be reached and the reason is structural: sibling games mostly
         differ in a rule's *setting*, and no operator draws a piece that another game
         happens to have. A link with no sentence still says what differs.
         """
-        assert reached.counts["sentences"] == 23
-        assert reached.counts["oneRule"] == 56
+        assert reached.counts["sentences"] == 22
+        assert reached.counts["oneRule"] == 38
         assert all(
             link.type == "rule" for link in reached.links if link.reach
         )
@@ -2099,46 +2127,64 @@ class TestTheCommittedCorpus:
         assert closest >= 2 * graphing.NODE_RADIUS
 
     # `docs/archive/plan-graph-map.md` S1, on the corpus §3 and §4 were measured over. When the
-    # corpus grows these are re-read, not re-aimed (§8).
+    # corpus changes these are re-read, not re-aimed (§8). Q878 (2026-10-13) re-read them on
+    # the sixty games left of the seventy; each test's docstring says what the plan found.
 
     def test_the_default_cut_draws_the_lines_the_plan_found(
         self, graph: graphing.Graph
     ) -> None:
-        """90 lines at 512 and 17 games with none; the cliff either side of it."""
-        assert graph.counts["similar"] == 90
-        assert graph.counts["alone"] == 17
+        """64 lines at 512 and 18 games with none; the cliff either side of it.
+
+        The plan found 90 and 17 on the seventy, with 49, 54, 203 and 231 lines at the other
+        four cuts and 28, 25, 13 and 10 games alone: the retired near copies were most of the
+        lines, and the cliff from 35 to 64 lines at 512 is still the biggest step below 640.
+        """
+        assert graph.counts["similar"] == 64
+        assert graph.counts["alone"] == 18
         assert {level["cut"]: level["lines"] for level in graph.levels} == {
-            256: 49, 384: 54, 512: 90, 640: 203, 768: 231,
+            256: 30, 384: 35, 512: 64, 640: 168, 768: 182,
         }
         assert {level["cut"]: level["alone"] for level in graph.levels} == {
-            256: 28, 384: 25, 512: 17, 640: 13, 768: 10,
+            256: 31, 384: 28, 512: 18, 640: 13, 768: 10,
         }
 
     def test_louvain_finds_the_communities_the_plan_found(
         self, graph: graphing.Graph
     ) -> None:
-        """13 communities over the 52 joined games, 8 of them of three games or more."""
+        """11 communities over the 41 joined games, 6 of them of three games or more.
+
+        The plan found 13 over 52, 8 of three or more, on the seventy.
+        """
         sizes = [one["size"] for one in graph.communities]
-        assert sizes == [13, 6, 5, 5, 4, 3, 3, 3, 2, 2, 2, 2, 2]
-        assert sum(sizes) == 52
-        assert len({one["name"] for one in graph.communities}) == 13
+        assert sizes == [10, 6, 4, 4, 4, 3, 2, 2, 2, 2, 2]
+        assert sum(sizes) == 41
+        assert len({one["name"] for one in graph.communities}) == 11
 
     def test_the_games_that_take_without_moving_are_one_community(
         self, graph: graphing.Graph, corpus: list[library.Game]
     ) -> None:
-        """The five `strike` games a line reaches; the two it does not are in none."""
+        """The four `strike` games a line reaches; the one it does not is in none.
+
+        The plan found five joined and two not. `hierarchy-fall-swap`, one of the five, was
+        retired by Q868; `amazon ladder` is the one a line does not reach.
+        """
         held = self._involving(graph, corpus, "strike")
         joined = {digest: where for digest, where in held.items() if where}
-        assert len(joined) == 5
+        assert len(held) == 5
+        assert len(joined) == 4
         assert len(set(joined.values())) == 1
         community = self._community(graph, next(iter(joined.values())))
         assert set(community["members"]) == set(joined)
         assert community["name"] == relate.RULE_WORDS["strike"]
 
-    def test_the_joined_edge_boards_are_one_community_of_six(
+    def test_the_joined_edge_boards_are_two_communities_of_four_and_two(
         self, graph: graphing.Graph, corpus: list[library.Game]
     ) -> None:
-        """Three communities are named by joined edges; the biggest is the six boards."""
+        """Two communities are named by joined edges: four boards and two.
+
+        The plan found three, of six, three and two boards. Q868 retired five joined-edge
+        games (`tunnel-vertical`, `onewaytunnel`, `sardines-torus`, `torus-extended`,
+        `weathervane-torus`), eleven boards down to the six that are left."""
         held = self._involving(graph, corpus, "board.wrap")
         by_community: dict[str, int] = {}
         for where in held.values():
@@ -2149,13 +2195,13 @@ class TestTheCommittedCorpus:
             for where, count in by_community.items()
             if count == self._community(graph, where)["size"]
         ]
-        assert sorted(one["size"] for one in whole) == [2, 3, 6]
+        assert sorted(one["size"] for one in whole) == [2, 4]
         assert all(
             one["name"].startswith(relate.RULE_WORDS["wrap"] + " (") for one in whole
         )
 
     def test_a_game_with_no_line_is_in_no_community(self, graph: graphing.Graph) -> None:
-        assert sum(1 for node in graph.nodes if node.community is None) == 17
+        assert sum(1 for node in graph.nodes if node.community is None) == 18
 
     def test_the_communities_are_separate_knots(self, graph: graphing.Graph) -> None:
         """S2: every game nearer its own community's middle than any other's."""

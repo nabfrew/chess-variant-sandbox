@@ -582,7 +582,8 @@ def html_page(version: str = DEFAULT_WEIGHTS) -> str:
         _section("intent", "What this is", (
             "<p>A <b>vibe-coded playground for designing chess-like strategy games</b>. "
             "Vibe-coded means it was built by describing it, in plain language, to an AI that "
-            "wrote the code, so expect a rough edge here and there.</p>"
+            "wrote the code, so expect a rough edge here and there. If it had been hand "
+            "crafted, it would have been immaculate, obviously.</p>"
             "<p>It is a place to invent games, play them, and find the ones worth playing. "
             "Chess is here too, as a familiar point of comparison.</p>")),
         _section("palette", "Games are built from a palette of rules", (

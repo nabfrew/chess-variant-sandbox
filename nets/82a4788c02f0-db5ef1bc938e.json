@@ -79,5 +79,7 @@
     "bar": "score - 2 x error > 0.5",
     "accepted": true,
     "gate": "G-A2, plan-teacher.md \u00a78.3"
-  }
+  },
+  "kept": true,
+  "kept_by": "generation 0, the line's root and generation 1's parent: reference/pilot-plan.md \u00a711"
 }

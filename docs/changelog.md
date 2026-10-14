@@ -11,7 +11,191 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-13
+
+### The rules guide, current and versioned
+
+The designer's link to the rule language now opens the site's own copy, which always matches the rules the site checks, and its
+first line says which version of the language it describes. A game written from it, by hand or with your own AI, declares that
+version. The public copy of the code is now refreshed with every update to the site, so it stays in step too.
+
+### Stronger learned opponents
+
+Racing kings now has a learned computer opponent, trained on the game itself, and its second generation is much stronger
+still: it wins about nineteen games in twenty against the ordinary hardest opponent. In rps-v2 the learned opponent has been replaced by a newer generation that beats the old one, and wins
+nearly two games in three against the ordinary hard opponent. Both are offered as the experimental learned player.
+
+### A plainer note when a score rests on fewer runs
+
+When the computer players could not be told apart by strength on one of a game's measuring runs, that run gives no score,
+so the whole score rests on the others. The note under such a score now says so ("the score rests on 3 runs alone")
+instead of "parts of the score".
+
+### A quicker start for the library
+
+When the site restarts, including straight after an update, the library and the front page now appear in a few seconds
+rather than about a minute.
+
+### Rated opponents for the new games
+
+Pinwheel, Pitchfork, Sluice, Crease, Pawnproof Wormhole, rear guard torus chess and torus crazyhouse now have rated
+computer opponents, so each one has a leaderboard. Every game in the library now does. In Perpetual, Fairy-Stockfish has joined the
+leaderboard too.
+
+### Quarry's walls, the same on both sides
+
+In Quarry, a wall beside a piece used to stop its diagonal step on one side but not on the other. A king or pawn
+next to a wall can now step diagonally past it either way. Quarry's score barely moved.
+
+### Play Perpetual against Fairy-Stockfish
+
+Fairy-Stockfish can now be your opponent in Perpetual, the chess variant with no draw by repetition. And a new game
+whose portal rule against going straight back could never take effect is now turned away, with a sentence saying why; games
+already saved with one still load and play as before.
+
+### Three new portal games
+
+*Sluice* is chess with a funnel of portals for each side, several ways in leading to one way out. *Crease* is Capablanca chess with two pairs of folds that the players can move, and a piece that lands on a fold may stay or
+come out on the far side. *Pawnproof wormhole* is Wormhole with pawns kept out of the tunnel, which takes away the first player's
+head start.
+
+### Fairer scores for portal and turning games
+
+Two things the scores counted were wrong. A portal was being counted as one of a player's pieces that never moved,
+which made portal games look as if their armies sat idle, and a piece turning on the spot was being counted as a capture on
+offer. Every game has been measured again. Seven portal games score higher (carousel from 0.771 to 0.804), and no game's
+verdict changed.
+
+### Pitchfork
+
+A new game: chess with eight wolves circling the centre, and only a pawn can bring one down. The wolves walk in
+pairs, nose to tail, so a pawn that takes the leading wolf is usually eaten by the one behind it. It replaces *wolves immune*,
+which played the same as the plain wolves game.
+
+### Pawns that face backwards
+
+A piece can now be set facing one way for good, so that no move turns it round. In rear guard torus chess and
+torus crazyhouse the rear pawns are now ordinary pawns placed facing backwards, and every pawn is drawn pointing the way it
+walks, for both players. When you design a game, the pawn's card has a setting for whether it may turn.
+
+### Pinwheel, and clearer names
+
+A new hexagonal game, Pinwheel, replaces four variants of Glinski's hexagonal chess. Its knights are one-handed:
+each reaches only six of the twelve cells a hexagonal knight could, all turning the same way, and the board's two empty flanks are joined, one way for each player.
+Nineteen games have new names that say what they are, such as gift chess, wolf hunt, steady ferry and glinski hexagonal
+chess.
+
+### Folds, revised
+
+In games with fold portals, a piece that ends its move on a fold now chooses: stay there, or come out at the
+linked fold, capturing anything standing there. Pieces no longer reach out of a fold they stand in, and a sliding piece no
+longer carries on through one.
+
+### Folds on the board
+
+The far end of a fold no longer shows a ghost piece. Staying on a fold or going through it is an ordinary dot
+to tap. And if you have a piece picked up and tap a portal you could also move, the page now asks whether you mean to move the
+piece or the portal, instead of making the move.
+
+### A tidier library
+
+The library had several games that were near copies of each other, differing in a detail that barely changed
+how they play. Fourteen of them are gone, leaving 87 games, and 29 games have new descriptions that say what their
+difference does on the board.
+
+## 2026-10-12
+
+### Offer a draw
+
+Playing the computer, you can now offer a draw once the game is under way. The computer answers at once: it asks its
+strongest player how the position stands and accepts only if neither side is clearly ahead. Between two people, the other
+player can accept or decline. A draw by agreement counts as a draw on the leaderboard.
+
+### A saved design can be given a description later
+
+Saving a design again with a new name or description now keeps the new words, and the page says so, instead of answering
+that it was already saved. A published game keeps the words it was published with.
+
+Under *games near this one*, a piece the two games call by different names is now named both ways, so the sentence no
+longer names a piece the other game doesn't have.
+
+On a wide screen the map of games lists its communities once, with folding in each community's own panel, so the map
+starts higher. On a phone, the designer's bar for a game that plays is a single row of buttons.
+
+### The chancellor and the archbishop look like themselves
+
+The chancellor, which moves as a rook or a knight, was easy to mistake for a knight. It is now drawn as a rook's tower with
+a knight's head rising from its battlements, and the archbishop, which moves as a bishop or a knight, as a bishop with a
+small knight's head.
+
+### Two more versions of Divide
+
+*Divide*'s door was tried two other ways: open in both directions, and fixed in place. Both are in the library beside the
+original, with their scores and rated computer players. Neither plays better: strong players still mostly draw, and a much
+deeper search did not change that, so the walled board itself is what holds the game level. The original stays *Divide*.
+
+### Two wolves on one patrol
+
+A wild piece's walk can now carry more than one piece: in the designer's wild pieces card, *more on this walk* adds another
+start on the same route, and the pieces on one walk step in turn, the front one first. The library has a new game made this
+way, *wolves patrol*: two wolves circle the middle of the board, one starting from each end of their loop. It has a leaderboard and rated computer players, like every library game.
+
+### The designer explains wild pieces better
+
+Picking a piece from the tray that is also a wild piece in your game now says so, and points to the wild pieces card where
+its walk is set. Two walks that cross are refused in one sentence naming both, with the way to put a second piece on the
+same walk. The wild pieces card has one short introduction, and *add one* starts with the piece you added last.
+
+A wild piece's walk is now drawn on the board: coloured arrows show the way it goes, a jump between squares that do not
+touch is dashed and named under the board, and several pieces on one walk share one path. The designer draws it too, even
+while a draft is not yet a game.
+
+Picking a walk in the designer is quicker: the board stays in view, each square shows as you click it, and a whole row or
+column joins on from the end nearer the square you picked last, so a loop takes a few presses. A new *+ wild piece* button
+under the pieces puts a wild piece straight onto the board and starts its walk there.
+
 ## 2026-10-11
+
+### A design too big to save says so
+
+Saving or loading a design over the 64 KB limit now shows the site's message saying so, instead of a request that fails
+without a reason.
+
+### Portals in rings, funnels and folds
+
+A rule file can now link portals in more ways than pairs: a ring that passes a piece on round a loop, several portals
+leading into one, and portals only some kinds of piece may use. A portal's description says by square where it leads and
+which pieces may go in. There is also a second kind, the *fold*: a portal a piece can stand in, move out of from either
+end, and slide straight through. Every existing game plays exactly as before.
+
+On the board, each portal now has a small beak on its rim pointing to where a piece comes out, and a *portal map* button
+draws the arrows between them. A portal only some pieces may use has dashed arms and dims when you pick a piece it turns
+away. The designer's *+ portals* places a pair, a ring or a funnel, with a *leads to* choice for each end and a choice of
+which pieces may go in. On a phone, a portal's arms are easier to tell apart.
+
+A fold looks like a bright pool lying in the board: a piece standing in it shows faintly at the far end too, and a piece
+passing through sends a ripple across. The designer asks how each group of portals works, by momentum or as a fold, and
+its preview shows the moves that go through a fold.
+
+### Portals easier to read
+
+A first reading of the new portals showed one place people went wrong: a portal nobody can move looked as if it stood on
+a token. Such a portal is now drawn as a hole in the board, a portal nobody may enter has no arms and stays still, and the
+legend's (i) teaches the look in two rows: what a portal stands on (who may move it), and its arms (whose pieces may go in).
+
+### A member's game is rated as soon as it is published
+
+Publish a game and, within a few minutes, its five standard computer players are rated against each other: rated games
+and the game's leaderboard are open from the start, and the stronger computer players join once they have been rated too.
+A game too slow to rate quickly says so, and waits to be rated by the project's own machine.
+
+### Portals, redrawn
+
+Portals have a new look. Each pair has its own colour, the same at both ends, so you can see which portal leads where;
+games with several pairs show each in a different colour, with its number. Inside each portal, slowly turning arms show whose
+pieces may go in, and a portal either side may move stands on a white or black token, while one nobody can move is sunk into
+the board. Moves and messages now name a portal by its number and square, the legend's (i) shows four examples, and the
+designer builds pairs the same way: click a square for the first end, then another for the second.
 
 ### Write a game by hand, or with your own AI
 

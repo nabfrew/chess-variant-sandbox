@@ -18,10 +18,12 @@ corpus is a different quantity -- the rating prior pulls less and `skill_gradien
 **The interval comes from the runs' own bootstraps, not from the spread of the totals.**
 Four totals give a standard deviation on three degrees of freedom, whose own nine-in-ten
 range is 0.34 to 1.61 of the truth, and every separation test downstream would become a
-lottery. Each run's bootstrap rests on 1,024 resamples of 256 games and is right in the
-pool to 1.3%, so the runs' half-widths are added in quadrature instead. That is exact
-when each run's error is normal, it keeps a lopsided interval lopsided, and at one run it
-returns that run's own interval to the digit.
+lottery. Each run's bootstrap rests on 200 resamples of 256 games (`DEFAULT_RESAMPLES`;
+every stored run says 200) and is right in the pool: under `v12` the between-run sd over
+the bootstraps' own is R = 0.93, 0.83 to 1.03, which contains 1
+(`docs/reference/run-to-run-spread-published-sd.md`). So the runs' half-widths are added
+in quadrature instead. That is exact when each run's error is normal, it keeps a lopsided
+interval lopsided, and at one run it returns that run's own interval to the digit.
 
 **The seat is the one check the runs do not vote on.** Every other gate reads one run's
 256 games and the runs take a majority. The seat check reads 16 games a run, on which it
@@ -33,9 +35,12 @@ measurement has nothing to pool and keeps the per-run form.
 **A run either has a total or has a sentence saying why not.** A run the roster cannot
 read, and a run whose scorer raised, carry no number: they are never averaged, never
 published as 0.0, and never filled in from another run. A mean needs `MIN_TOTALS` of
-four, for the same reason a verdict does -- the runs that fail are the ones whose ladder
-came out unordered, which is the same draw that would have scored low on depth, so the
-survivors lean high and a mean of two is a mean of the lucky half.
+four, for the same reason a verdict does: a game that loses two ladders of four is one the
+roster reads about half the time, and a mean over its readable runs describes the roster's
+good days more than the game. The survivors' excess over the game's expected total is
+`p x gap` (how often the ladder fails times how far a failed run sits below a readable one),
+measured at 0.0014 to 0.0075 on the one library case and not removed by a fourth run;
+`docs/reference/three-run-lean.md` §6-7.
 """
 
 from __future__ import annotations
@@ -68,6 +73,9 @@ VOTE_RULES = (VOTE_TIE_REFUSES, VOTE_TIE_ADMITS, VOTE_POOLED_SEAT)
 # How many of a game's runs must carry a total before their mean is published. A number
 # needs what a verdict needs. Under `vote-tie-admits` a game can be viable on two runs of
 # four, so an answer of B lowers this to 2 in the same edit.
+# What three protects is the reading, not an unbiased mean: the excess of a three-run
+# mean is `p x gap`, 0.0014 to 0.0075 on `intransitive`, and a fourth run would not shrink
+# it (`docs/reference/three-run-lean.md` §6-7; the mark is `trust.py`'s `ladder.partly`).
 MIN_TOTALS = 3
 
 

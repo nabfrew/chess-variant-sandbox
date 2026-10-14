@@ -36,6 +36,7 @@ from typing import Any
 
 import pytest
 from fairy_shogi import SHOGI_ARRIVING, SHOGI_FORWARD, shogi_arriving, shogi_forward
+from retired_specs import REBUILT, hex_glinski_promoting
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.fairy import betza, position, variant
@@ -73,7 +74,6 @@ NO_COUNTERPART = {
     # 2026-09-06): the capture cycle is what is left with no counterpart, and it is
     # still the reason this ruleset cannot cross.
     "intransitive": "captures",
-    "sardines-torus": "wrap",
     # Q438: its silver, bishop and rook may promote leaving the zone over there, which no
     # option forbids. The committed shogi was this game until Q454 put `on_leaving` on
     # its entries, and it translates since; the game it was is derived (`fairy_shogi`).
@@ -457,14 +457,11 @@ class TestTheTranslationIsWellFormed:
 
     @pytest.mark.parametrize("name", MUST_TRANSLATE)
     def test_a_published_variant_translates(self, name: str) -> None:
+        """Translates, opens with its own name, and gives every piece one slot and one
+        letter (Q754 merged the two tests that translated the same variant)."""
         result = translate(_spec(name))
         assert result.config.startswith(f"[{result.name}]")
         assert "startFen = " in result.config
-
-    @pytest.mark.parametrize("name", MUST_TRANSLATE)
-    def test_every_piece_gets_exactly_one_definition_and_one_letter(self, name: str) -> None:
-        spec = _spec(name)
-        result = translate(spec)
         assert len(set(result.chars)) == len(result.chars)
         defined = [
             line.split(" = ")[0]
@@ -473,21 +470,20 @@ class TestTheTranslationIsWellFormed:
         ]
         assert len(defined) == len(set(defined)), "a slot is used twice"
 
-    def test_the_set_of_rulesets_that_translate_has_not_shrunk(self) -> None:
+    # One test per ruleset that must translate (Q749): the lower bound is each of them
+    # still translating, and the walk over every ruleset was 2 s in the gate.
+    @pytest.mark.parametrize("name", sorted(TRANSLATES))
+    def test_the_set_of_rulesets_that_translate_has_not_shrunk(self, name: str) -> None:
         """A ruleset that quietly stops translating is an opponent quietly withdrawn.
 
         Lower bound rather than equality: a new ruleset that translates is good news and
         should not fail a test. One that *stops* is a regression, and nothing else would
         report it -- the roster simply offers one fewer opponent.
         """
-        translating = set()
-        for path in sorted(RULESETS.glob("*.json")):
-            try:
-                translate(load_spec(path))
-            except Untranslatable:
-                continue
-            translating.add(path.stem)
-        assert set(TRANSLATES) <= translating, sorted(set(TRANSLATES) - translating)
+        try:
+            translate(load_spec(RULESETS / f"{name}.json"))
+        except Untranslatable as refused:
+            pytest.fail(f"{name} no longer translates: {refused}")
 
     def test_the_variant_name_is_the_mechanics_hash(self) -> None:
         """Two rulesets called the same thing must not load over one another."""
@@ -868,18 +864,19 @@ class TestTheTagTheOptionAndTheNoteReadOneRecord:
         self._with_verdict(monkeypatch, spec, ok=True, reasons=[])
         assert fairy.checked(spec) is fairy.verdict(spec)
 
+    # One test per ruleset (Q749): the walk was one test of 2.2 s in the gate.
+    @pytest.mark.parametrize("path", sorted(RULESETS.glob("*.json")), ids=lambda path: path.stem)
     def test_every_committed_card_is_tagged_exactly_where_the_translator_says_yes(
-        self,
+        self, path: Path
     ) -> None:
         """The survey, the cheap half: the tag *is* `supports`, ruleset for ruleset."""
         from chess_variant_sandbox import fairy
         from chess_variant_sandbox.web import library
 
-        for path in sorted(RULESETS.glob("*.json")):
-            spec = load_spec(path)
-            card = library._fairy(spec)
-            assert card["fairyTranslates"] is fairy.supports(spec), path.name
-            assert (card["fairyReasons"] == []) is fairy.supports(spec), path.name
+        spec = load_spec(path)
+        card = library._fairy(spec)
+        assert card["fairyTranslates"] is fairy.supports(spec), path.name
+        assert (card["fairyReasons"] == []) is fairy.supports(spec), path.name
 
     @pytest.mark.slow
     def test_every_committed_ruleset_is_offered_exactly_where_the_engine_agreed(
@@ -1064,6 +1061,7 @@ class TestARuleNobodyConsideredIsRefusedRatherThanDropped:
             "drops": schema._DROPS_KEYS,
             "explode_on_capture": schema._EXPLODE_KEYS,
             "extinction": schema._EXTINCTION_KEYS,
+            "obstacles": schema._OBSTACLES_KEYS,
             "promotion": schema._PROMOTION_KEYS,
             "reach": schema._REACH_KEYS,
         }
@@ -1201,6 +1199,8 @@ class TestAKeyOutsideTheRulesIsRefusedRatherThanDropped:
 
 
 def _archived(name: str) -> dict[str, Any]:
+    if name in REBUILT:  # retired by Q870 for `pinwheel`; rebuilt from the hexagon
+        return REBUILT[name]()
     return load_spec(RULESETS.parent / "archive" / f"{name}.json")
 
 
@@ -1224,18 +1224,19 @@ class TestAHexagonIsRefusedAsAHexagon:
         assert self.SHAPE in reasons
         assert not any(reason.startswith("rules.obstacles") for reason in reasons)
 
-    def test_the_walled_parent_is_still_refused_for_its_walls_alone(self) -> None:
-        reasons = self._reasons(_archived("hex-glinski-promoting"))
+    def test_the_walled_parent_is_refused_for_its_board_and_not_as_a_hexagon(self) -> None:
+        """Its thirty walls cross since Q703 (`*` in the FEN); its 11x11 board does not."""
+        reasons = self._reasons(hex_glinski_promoting())
         assert self.SHAPE not in reasons
-        assert any(reason.startswith("rules.obstacles") for reason in reasons)
+        assert not any(reason.startswith("rules.obstacles") for reason in reasons)
+        assert any("11x11" in reason for reason in reasons)
 
-    def test_a_wall_inside_a_hexagon_is_refused_as_a_wall_too(self) -> None:
+    def test_a_wall_inside_a_hexagon_is_refused_as_a_hexagon(self) -> None:
         spec = _archived("hex-glinski-hexagon")
         spec["rules"]["obstacles"] = {"squares": ["f6"]}
         assert validate_spec(spec) == []
         reasons = self._reasons(spec)
         assert self.SHAPE in reasons
-        assert any(reason.startswith("rules.obstacles") for reason in reasons)
 
     def test_a_joined_hexagon_names_both_the_shape_and_the_seam(self) -> None:
         reasons = self._reasons(_archived("hex-glinski-flanks"))
@@ -1938,8 +1939,6 @@ class TestTheReasonsAPageShowsAreInTheDesignersWords:
             "capture explodes and no option says which ones do",
             "piece.facing: a piece that turns has no counterpart; a Betza notation describes "
             "one piece and a facing makes it several",
-            "a piece with no moves: a Betza descriptor says what a piece does and there is no "
-            "term for a piece that does nothing",
             "move.min_range: Betza has no ride that starts past its first square",
             "piece 'x' move 1: no Betza notation for a hop along these vectors",
             "piece 'x': a sweep captures what it passes over, and Betza has no such piece",
@@ -1982,3 +1981,162 @@ class TestTheReasonsAPageShowsAreInTheDesignersWords:
                     reason, ("a path into the game's text", "Fairy-Stockfish's own terms")), reason
                 assert not re.search(r"\b[a-z]+_[a-z_]+\b", reason), reason
         assert refused >= 5, "the library's refusals are what this reads"
+
+
+# ------------------------------------------------- what the stock engine can already say
+
+
+def _with_walls(blocks_leaps: bool = False) -> dict[str, Any]:
+    """`quarry`'s four walls (c4, f4 and their mirrors) on chess, vaulted or not."""
+    spec = _archived("quarry")
+    spec["rules"]["obstacles"]["blocks_leaps"] = blocks_leaps
+    return spec
+
+
+def _h_file_walls_without_knights() -> dict[str, Any]:
+    """Walls on h4 and h5 that `blocks_leaps`, and nothing they can stop.
+
+    No knight, so nothing leaps further than one square, and a one-square step passes
+    over nothing (`compile._lame_path`, Q880). Before Q880 a diagonal step's
+    floor-divided "leg" was the square beside it, and the h file kept that off the board.
+    """
+    spec = copy.deepcopy(_spec("chess"))
+    spec["schema_version"] = 6
+    spec["rules"]["obstacles"] = {"squares": ["h4"], "mirror": True, "blocks_leaps": True}
+    spec["pieces"] = [piece for piece in spec["pieces"] if piece["id"] != "N"]
+    spec["setup"]["placements"] = [
+        row for row in spec["setup"]["placements"] if row["piece"] != "N"
+    ]
+    spec["rules"]["promotion"]["to"] = [p for p in spec["rules"]["promotion"]["to"] if p != "N"]
+    return spec
+
+
+def _five_checks() -> dict[str, Any]:
+    spec = _spec("threecheck")
+    spec["rules"]["check_limit"] = 5
+    return spec
+
+
+def _three_stones() -> dict[str, Any]:
+    """Chess plus three stones a side: a piece with no moves, from a finite stock.
+
+    `archive/three-stones` without its capture matrix, which is refused on its own
+    account; here a stone can be taken like anything else.
+    """
+    spec = _spec("chess")
+    spec["schema_version"] = 10
+    spec["pieces"].append({"id": "S", "name": "stone", "value": 1, "moves": []})
+    spec["rules"]["drops"] = {"from_captures": False, "stock": {"S": 3}}
+    return spec
+
+
+class TestWhatTheStockEngineCanAlreadySay:
+    """Q703 (`reference/general-fairy-fork.md` §1.3): refusals the engine did not need.
+
+    Each translation is held to `verify`'s legal-move agreement on a game that uses it,
+    and the refusals that stay are the ones where the two readings part.
+    """
+
+    @staticmethod
+    def _verify(spec: dict[str, Any], **kwargs: Any) -> Any:
+        from chess_variant_sandbox.fairy.verify import PyffishBackend, verify
+
+        _pyffish()
+        return verify(spec, PyffishBackend(), "", **kwargs)
+
+    def test_never_is_no_fold_rule_with_a_note_on_the_search(self) -> None:
+        written = translate(_archived("perpetual"))
+        assert "nFoldRule = 0" in written.config
+        assert str(0xFFFF_FFFF) not in written.config
+        assert any("search still scores" in note for note in written.notes)
+        assert "repetition_draw" not in written.approximates
+
+    def test_a_count_of_checks_is_the_fens(self) -> None:
+        written = translate(_five_checks())
+        assert "checkCounting = true" in written.config
+        assert " 5+5 " in written.config
+
+    def test_a_wall_is_a_star_in_every_fen(self) -> None:
+        written = translate(_with_walls())
+        start = written.config.split("startFen = ")[1].splitlines()[0]
+        assert start.split()[0].split("/")[3:5] == ["2*2*2", "2*2*2"]
+
+    def test_a_piece_with_no_moves_is_an_empty_notation(self) -> None:
+        written = translate(_three_stones())
+        stone = written.chars[-1].lower()
+        assert f"= {stone}:\n" in written.config
+        assert f"[{'S' * 3}{'s' * 3}]".upper() in written.config.upper()
+
+    def test_quarry_stays_refused_for_the_leaps_its_walls_stop(self) -> None:
+        with pytest.raises(Untranslatable) as caught:
+            translate(_archived("quarry"))
+        assert [r for r in caught.value.reasons if r.startswith("rules.obstacles")] == [
+            "rules.obstacles.blocks_leaps: a leap there passes over a wall, and here a wall "
+            "stops a leap this game makes"
+        ]
+
+    def test_blocks_leaps_that_stops_nothing_refuses_nothing(self) -> None:
+        """Asked of the compiler: no leap here passes over an h-file wall."""
+        translate(_h_file_walls_without_knights())
+
+    def test_a_wall_beside_a_hop_is_refused(self) -> None:
+        spec = _with_walls()
+        rook = next(piece for piece in spec["pieces"] if piece["id"] == "R")
+        rook["moves"].append(
+            {"kind": "hop", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "capture"}
+        )
+        assert validate_spec(spec) == []
+        with pytest.raises(Untranslatable) as caught:
+            translate(spec)
+        assert any(r.startswith("rules.obstacles beside a hop (R)") for r in caught.value.reasons)
+
+    def test_omega_is_refused_for_its_board_alone(self) -> None:
+        assert fairy_why_not(_archived("omega")) == [
+            "the board is 12x12; Fairy-Stockfish's large-board build stops at 12x10"
+        ]
+
+    def test_an_unlimited_stock_stays_refused(self) -> None:
+        spec = _three_stones()
+        spec["rules"]["drops"]["stock"]["S"] = "unlimited"
+        with pytest.raises(Untranslatable) as caught:
+            translate(spec)
+        assert any('stock "unlimited"' in r for r in caught.value.reasons)
+        assert not any("no moves" in r for r in caught.value.reasons)
+
+    @pytest.mark.parametrize(
+        "build",
+        [
+            lambda: _archived("perpetual"),
+            _five_checks,
+            _with_walls,
+            _h_file_walls_without_knights,
+            _three_stones,
+        ],
+        ids=["perpetual", "five-checks", "walls", "walls-blocking-nothing", "three-stones"],
+    )
+    def test_each_plays_the_same_game(self, build: Any) -> None:
+        result = self._verify(build(), depth=1, games=1, plies=40)
+        assert result.ok, result.summary()
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize(
+        "build",
+        [
+            lambda: _archived("perpetual"),
+            _five_checks,
+            _with_walls,
+            _h_file_walls_without_knights,
+            _three_stones,
+        ],
+        ids=["perpetual", "five-checks", "walls", "walls-blocking-nothing", "three-stones"],
+    )
+    def test_each_plays_the_same_game_to_the_fairy_commands_depth(self, build: Any) -> None:
+        """The `fairy` command's own check: depth 3 and three 400-ply games."""
+        result = self._verify(build(), depth=3, games=3, plies=400)
+        assert result.ok, result.summary()
+
+
+def fairy_why_not(spec: dict[str, Any]) -> list[str]:
+    from chess_variant_sandbox.fairy import why_not
+
+    return why_not(spec)

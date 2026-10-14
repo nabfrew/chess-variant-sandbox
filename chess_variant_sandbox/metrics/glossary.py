@@ -449,8 +449,8 @@ MEASUREMENTS: dict[str, Measurement] = {
         how="Normalised entropy over how many moves each piece *type* made, so a game "
             "with three types and a game with nine are comparable. It counts the types "
             "a player can hold (placed, stocked, promoted to, or taken into a hand), so "
-            "a wild piece nobody owns is not charged, and a held type that never moves "
-            "still is.",
+            "a wild piece nobody owns is not charged, nor is a portal, and a held type "
+            "that never moves still is.",
         reading="1.0 is every type pulling its weight; low means some pieces are "
                 "scenery. Its known blind spot is a game that collapses a piece's value "
                 "without leaving it idle -- an average entropy barely registers that, "
@@ -461,7 +461,7 @@ MEASUREMENTS: dict[str, Measurement] = {
         what="Whether the individual pieces are doing something, as opposed to their "
              "kinds.",
         how="From the analysis pass: the share of pieces on the board at the start that "
-            "ever moved.",
+            "ever moved. A portal is part of the board, not a piece, and is not counted.",
         reading="A band. Use of the army is an entropy over types and cannot see five "
                 "rooks sitting in the back while a sixth does all the work; this counts "
                 "instances. It is here because a designer playtesting a game the "

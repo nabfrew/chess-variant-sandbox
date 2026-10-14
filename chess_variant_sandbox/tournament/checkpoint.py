@@ -4,8 +4,8 @@
 <command> ...`` (or ``with checkpoint.active(DIR):`` in a script), under which every long
 unit of work the process runs is a *stage*:
 
-- the games of a schedule played by the core (a tournament, a self-play, a duel, a replay
-  set, with or without random openings): ``games``;
+- the games of a schedule played by the core (a tournament, each seed of a measurement, a
+  self-play, a duel, a replay set, with or without random openings): ``games``;
 - a harvest's positions: ``harvest``;
 - a training run: ``train``, saved every ``--checkpoint-minutes`` (default ten).
 
@@ -419,11 +419,15 @@ def active(
 
 
 def agent_identity(agents: Sequence[str], ruleset_hash: str) -> list[dict[str, Any]]:
-    """Each agent's name, and the SHA-256 of the net it plays where it names one.
+    """Each agent's name, and the SHA-256 of the net or fit it plays where it names one.
 
     A net's name is its procedure; the bytes are what plays, so a stage is keyed by them.
+    A fitted seat (``fit=<procedure>``, the library roster's, Q900) is the same: its name
+    is the procedure and the store's vector is what plays, so the stage is keyed by the
+    native spec the core is handed, and a store that changed between a crash and its
+    resume plays its pieces again rather than mixing two players under one name.
     """
-    from chess_variant_sandbox.agents import parse_agent
+    from chess_variant_sandbox.agents import native_spec, parse_agent
 
     out: list[dict[str, Any]] = []
     for agent in agents:
@@ -433,8 +437,19 @@ def agent_identity(agents: Sequence[str], ruleset_hash: str) -> list[dict[str, A
             from chess_variant_sandbox.agents.nets import net_bytes
 
             entry["net_sha256"] = hashlib.sha256(net_bytes(options, ruleset_hash)).hexdigest()
+        if "fit" in options:
+            entry["native_sha256"] = digest(_plain(native_spec(agent, ruleset_hash)))
         out.append(entry)
     return out
+
+
+def _plain(value: Any) -> Any:
+    """A native spec as JSON: tuples as lists, bytes as their SHA-256."""
+    if isinstance(value, bytes):
+        return "sha256:" + hashlib.sha256(value).hexdigest()
+    if isinstance(value, (tuple, list)):
+        return [_plain(item) for item in value]
+    return value
 
 
 def play_games(

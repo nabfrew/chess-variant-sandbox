@@ -10,6 +10,19 @@
     "13fbbe06736fae90",
     "f3e1bb0c7586c2a4",
     "1f812b55db2dba87",
-    "49565ddb722a1195"
+    "49565ddb722a1195",
+    "234d2bf85141905e",
+    "e87006fec876da20",
+    "d426a82e136d75da",
+    "4bed10accc7d501f",
+    "40d0e115de5a613d"
+  ],
+  "verified_under": [
+    {
+      "core": "40d0e115de5a613d",
+      "tables": "685dcd4a16589d0e",
+      "players": "b9f075c0b8198f63",
+      "runner": "204da7d0cb34fde5"
+    }
   ]
 }

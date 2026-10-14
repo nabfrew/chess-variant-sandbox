@@ -110,6 +110,12 @@ class GameState:
     # key, as the en passant file is: the same board with and without a bar has different
     # legal moves.
     portal_bar: tuple[int, int] = (-1, -1)
+    # Schema 22 (Q843c, fold portals): the square each fold end stands on, in end order.
+    # A fold stands on no square of ``board`` -- a piece may stand in it -- so where it is
+    # is state of its own, and it **is** in the Zobrist key. ``()`` for every ruleset
+    # without folds; a hand-built position that leaves it ``()`` has its folds where they
+    # start.
+    folds: tuple[int, ...] = ()
 
     def with_(self, **changes: Any) -> GameState:
         return replace(self, **changes)

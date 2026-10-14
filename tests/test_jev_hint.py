@@ -30,12 +30,17 @@ from typing import Any
 
 import node_session
 import pytest
+from retired_specs import hex_glinski_promoting
 
 from chess_variant_sandbox.spec import spec_hash
 from chess_variant_sandbox.web import designing, jev_hint
 from chess_variant_sandbox.web.server import App
 
 REPOSITORY = Path(__file__).resolve().parents[1]
+
+SAVE_ANSWER = {"hash", "name", "created", "path", "restated", "unchanged"}
+"""What the local application's save answers, hint or no hint (`restated` and `unchanged`
+are Q595's: which words a re-save of kept rules changed, or asked for and did not get)."""
 
 DESCRIPTION = (
     "Six soldiers a side on a six by six board. Soldiers may step backwards to take. "
@@ -197,11 +202,11 @@ class TestWithNoKeyNothingHappens:
         self, app: App, no_key: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         """The save path never imports the hint, with a key or without one, and says the
-        same four things it said before the hint existed."""
+        same things it says without the hint (`SAVE_ANSWER`)."""
         monkeypatch.delitem(sys.modules, "chess_variant_sandbox.web.jev_hint", raising=False)
         plain = _saved(app)
         assert "chess_variant_sandbox.web.jev_hint" not in sys.modules
-        assert set(plain) == {"hash", "name", "created", "path"}
+        assert set(plain) == SAVE_ANSWER
 
         monkeypatch.setenv(jev_hint.KEY_VAR, "test-key-not-a-real-one")
         _never_sent(monkeypatch)
@@ -470,7 +475,8 @@ class TestWhatIsAsked:
         """Q281b: a native hexagon's absent corners are folded into the compiled walls
         for the tables, and the facts count them as neither walls nor cells; its walled
         twin still says what it always said."""
-        assert jev_hint.facts(_archived(name))["board"] == board
+        spec = hex_glinski_promoting() if name == "hex-glinski-promoting" else _archived(name)
+        assert jev_hint.facts(spec)["board"] == board
 
     @pytest.mark.parametrize("name", ["stones", "three-stones"])
     def test_a_piece_with_no_capturing_move_is_said_to_take_nothing(self, name: str) -> None:
@@ -531,7 +537,7 @@ class TestTheCallSiteDisabled:
         _never_sent(monkeypatch)
         kept = _saved(app)
         assert kept["created"] is True
-        assert set(kept) == {"hash", "name", "created", "path"}
+        assert set(kept) == SAVE_ANSWER
         with pytest.raises(KeyError, match="no such endpoint"):
             app.post("/api/design/hint", {"hash": kept["hash"]})
         assert app.get(f"/api/design/standing/{kept['hash']}")["saved"] is True

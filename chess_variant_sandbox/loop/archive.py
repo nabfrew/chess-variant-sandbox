@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Iterator
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -277,6 +277,41 @@ class Archive:
         self._entries.append(entry)
         return entry
 
+    def restate(self, digest: str, name: str, description: str) -> None:
+        """Give one recorded game a new name and description, and change nothing else.
+
+        The one exception to append-only, and only for the words: the hash names the
+        mechanics and ignores both, so the game is the same game and its entries stay where
+        they are. The spec file is rewritten with the two words replaced, and every lineage
+        line for this hash takes the new name; any other line, a malformed one included,
+        is written back as it was read. Rewriting the lineage also moves its mtime, which is
+        what `library._scan` reads to see that a spec beside it changed (Q595: a designer
+        giving a saved draft the description it was saved without).
+        """
+        path = self.directory / SPEC_DIR / f"{digest}.json"
+        spec = self.load_spec(digest)
+        if spec is not None:
+            spec["name"] = name
+            spec["description"] = description
+            _replace(path, json.dumps(spec, indent=2, sort_keys=True) + "\n")
+        if not self.path.exists():
+            return
+        lines = []
+        for line in self.path.read_text(encoding="utf-8").splitlines():
+            try:
+                found = json.loads(line)
+            except json.JSONDecodeError:
+                found = None
+            if isinstance(found, dict) and found.get("hash") == digest:
+                found["name"] = name
+                line = json.dumps(found, separators=(",", ":"))
+            lines.append(line + "\n")
+        _replace(self.path, "".join(lines))
+        self._entries = [
+            replace(entry, name=name) if entry.hash == digest else entry
+            for entry in self._entries
+        ]
+
     def summary(self, revision: str | None = None) -> str:
         """The run in words: counts, the board, the grid and whether anything improved.
 
@@ -361,3 +396,11 @@ class Archive:
                 + ("" if wins else " -- this run has not yet found an improvement")
             )
         return "\n".join(lines)
+
+
+def _replace(path: Path, text: str) -> None:
+    """Write `text` to `path` through a sibling file, so a reader sees the old file or the
+    new one and never half of either."""
+    staged = path.with_name(path.name + ".restating")
+    staged.write_text(text, encoding="utf-8")
+    staged.replace(path)

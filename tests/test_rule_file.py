@@ -1,9 +1,11 @@
 """Q830b: the designer links to the rule language and takes a rule file somebody wrote.
 
 `docs/plan-website.md`'s *LLM co-design* decisions of 2026-10-10: the site offers no AI;
-the rule language is `RULES.md` in the public repository, linked from the designer, for
-people writing their own game files by hand or with their own AI, and the designer loads
-such a file.
+the rule language is `RULES.md`, linked from the designer, for people writing their own
+game files by hand or with their own AI, and the designer loads such a file. Since Q905
+the link is the running server's own `/rules.md`, rendered from the code it runs, so it
+names the schema version the validator reading the file accepts; the public repository's
+copy is a snapshot that can lag.
 
 Four claims. **The reading is the server's**: `designing.read_rule_file` holds a file to its
 size and depth, parses it, and asks the validator and the compiler the designer's check
@@ -11,8 +13,9 @@ asks; a valid file comes back as the settled draft, an invalid one as the valida
 lines, the ones `validate` prints. **The page decides nothing**: it sends the text, takes
 a valid answer as the draft and leaves the draft alone otherwise, and sends no more of a
 large file than the refusal needs. **The link is one string**, `reference.PUBLISHED`, sent
-with the kit and drawn to open in a new tab, beside the button `RULES.md` names. **On the
-site** the route is anybody's, writes nothing, and sits under the design POSTs' body cap.
+with the kit and drawn to open in a new tab, beside the button `RULES.md` names, and both
+servers answer it with the reference. **On the site** the route is anybody's, writes
+nothing, and sits under the design POSTs' body cap, and `/rules.md` is anybody's too.
 """
 
 from __future__ import annotations
@@ -20,19 +23,22 @@ from __future__ import annotations
 import copy
 import json
 import re
+from http.client import HTTPConnection
 from pathlib import Path
 from typing import Any
 
 import pytest
+from test_shell import _get
 from test_site_admin import Site, _template
 from test_site_admin import drafting as drafting  # noqa: F401  (the fixture, used by name)
 from test_web import _game_payload, _page_on
 from test_web import answers as answers  # noqa: F401  (the fixture, used by name)
 
-from chess_variant_sandbox.site import quota
+from chess_variant_sandbox.site import quota, routes
 from chess_variant_sandbox.spec import reference
-from chess_variant_sandbox.spec.schema import validate_spec
+from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, validate_spec
 from chess_variant_sandbox.web import designing
+from chess_variant_sandbox.web import server as web_server
 from chess_variant_sandbox.web.server import App
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -180,24 +186,45 @@ class TestTheLocalRoute:
             "bytes": designing.RULE_FILE_BYTES,
         }
 
+    def test_the_server_serves_the_reference_its_code_renders(self) -> None:
+        """Q905: `/rules.md` is `render_reference()` of the running code, as Markdown, and
+        its first line names the schema version this validator writes and accepts."""
+        ((status, headers, body),) = _get(reference.PUBLISHED)
+        assert status == 200
+        assert headers["Content-Type"] == "text/markdown; charset=utf-8"
+        assert headers["Cache-Control"] == "public, max-age=300"
+        assert headers["Content-Security-Policy"] == web_server.CONTENT_SECURITY_POLICY
+        text = body.decode("utf-8")
+        assert text == reference.render_reference()
+        assert text.splitlines()[0] == f"# The rule language, schema version {SCHEMA_VERSION}"
+
 
 # --------------------------------------------------------------------- the link
 
 
 class TestTheLink:
-    def test_it_is_the_public_repositorys_rules_file(self) -> None:
-        assert reference.PUBLISHED == (
-            "https://github.com/nabfrew/chess-variant-sandbox/blob/main/RULES.md")
+    def test_it_is_the_servers_own_route_not_the_public_repositorys_copy(self) -> None:
+        """Q905: a path on whichever server drew the page, so on the site it is the site's
+        `/rules.md` and on a checkout the checkout's, each the reference for the validator
+        behind it. The public repository's copy is an export, and lags until refreshed."""
+        assert reference.PUBLISHED == "/rules.md"
+        assert web_server.RULES_ROUTE == reference.PUBLISHED
+        assert reference.PUBLISHED in routes.STATIC
+        assert designing.rule_file_kit()["rulesUrl"] == reference.PUBLISHED
 
     def test_it_is_spelt_in_one_place(self) -> None:
-        """Nowhere in the package but `reference.py`; the page draws the kit's."""
-        spelt = [
-            path.relative_to(PACKAGE).as_posix()
-            for path in PACKAGE.rglob("*")
-            if path.suffix in {".py", ".js", ".html", ".css"}
-            and "chess-variant-sandbox/blob" in path.read_text(encoding="utf-8")
-        ]
-        assert spelt == ["spec/reference.py"]
+        """Nowhere in the package but `reference.py`, and the site's table of everything it
+        serves (`routes.STATIC`, which imports nothing; the test above holds it to the
+        constant). The page draws the kit's and the servers answer the constant. And no
+        link to the public repository's copy is left."""
+        sources = [path for path in PACKAGE.rglob("*")
+                   if path.suffix in {".py", ".js", ".html", ".css"}]
+        spelt = [path.relative_to(PACKAGE).as_posix() for path in sources
+                 if '"/rules.md"' in path.read_text(encoding="utf-8")]
+        assert spelt == ["site/routes.py", "spec/reference.py"]
+        linked = [path.relative_to(PACKAGE).as_posix() for path in sources
+                  if "chess-variant-sandbox/blob" in path.read_text(encoding="utf-8")]
+        assert linked == []
 
     def test_rules_md_names_the_button_and_the_box_the_designer_draws(self) -> None:
         trying = (ROOT / "RULES.md").read_text(encoding="utf-8").split("## Trying a game")[1]
@@ -350,6 +377,29 @@ class TestOnTheSite:
             "/api/design/load", {"text": "x" * quota.DESIGN_BODY_BYTES})
         assert answer.status == 413
         assert f"at most {quota.DESIGN_BODY_BYTES // 1024} KB" in answer.payload["error"]
+
+    def test_the_site_serves_its_own_reference_to_a_visitor(
+        self, drafting: Site  # noqa: F811
+    ) -> None:
+        """Q905: no cookie, no account; the reference of the code the site runs, as
+        Markdown, cached briefly, under the one policy, and nothing written."""
+        connection = HTTPConnection("127.0.0.1", drafting.port, timeout=30)
+        try:
+            connection.request("GET", reference.PUBLISHED)
+            found = connection.getresponse()
+            body = found.read()
+        finally:
+            connection.close()
+        assert found.status == 200
+        assert found.headers["Content-Type"] == "text/markdown; charset=utf-8"
+        assert found.headers["Cache-Control"] == "public, max-age=300"
+        assert found.headers.get_all("Content-Security-Policy") == [
+            web_server.CONTENT_SECURITY_POLICY]
+        assert found.headers.get("Set-Cookie") is None
+        text = body.decode("utf-8")
+        assert text == reference.render_reference()
+        assert text.splitlines()[0] == f"# The rule language, schema version {SCHEMA_VERSION}"
+        assert drafting.count("games") == 0
 
     def test_the_sites_kit_carries_the_link(self, drafting: Site) -> None:  # noqa: F811
         kit = drafting.browser().get("/api/design").payload

@@ -1,0 +1,80 @@
+{
+  "procedure": "2205c65c11b2",
+  "ruleset_hash": "71912ea8ba7f",
+  "inputs_version": 1,
+  "verdict": "refused",
+  "weights_sha256": "4d4ed13d3f453b797a93d199eb936ffdfabae3456f53212e6c541c951064f513",
+  "build": "40d0e115de5a613d",
+  "digest": "4d4ed13d3f45",
+  "trainer_version": 1,
+  "recipe": {
+    "agents": [
+      "minimax:net=db5ef1bc938e,nodes=1600",
+      "minimax:nodes=1600"
+    ],
+    "games": 5000,
+    "seed": 0,
+    "opening_plies": 8,
+    "skip_plies": 2,
+    "stride": 1,
+    "result_weight": 0.0,
+    "label_nodes": 6400,
+    "label_depth": 8,
+    "td_lambda": 0.7,
+    "label_search": "parent",
+    "scale": 1.0,
+    "accumulator": 256,
+    "hidden1": 32,
+    "hidden2": 32,
+    "epochs": 8,
+    "batch": 1024,
+    "learning_rate": 0.001,
+    "init_seed": 0,
+    "parent": {
+      "procedure": "db5ef1bc938e",
+      "weights_sha256": "9c02aa19e53ca3ac3cdefbc1ea20e2d49851a3dd2e4f43e44e39da013f461461"
+    }
+  },
+  "data": {
+    "digest": "58a1a5cc8ddc713e1881cb3e7ff3ecfe4ba7f88f3a7fdf1d209516d2ab2f97f6",
+    "games": 20000,
+    "positions": 1546408,
+    "most_active": 63
+  },
+  "training": {
+    "loss_by_epoch": [
+      0.03459987,
+      0.02114549,
+      0.01817021,
+      0.01614953,
+      0.01473464,
+      0.0135423,
+      0.01253742,
+      0.01166381
+    ],
+    "w0_limit": 127,
+    "quantization_error": 0.152636
+  },
+  "acceptance": {
+    "candidate": "minimax:net=2205c65c11b2,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 1000000,
+    "opening_plies": 8,
+    "score": 0.53875,
+    "error": 0.02469,
+    "games": 400,
+    "identical": 0,
+    "openings": 172,
+    "candidate_nodes": 79840000,
+    "reference_nodes": 80857600,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": false,
+    "decided_after": 200,
+    "planned_pairs": 200
+  },
+  "lineage": {
+    "parent": "db5ef1bc938e",
+    "parent_weights_sha256": "9c02aa19e53ca3ac3cdefbc1ea20e2d49851a3dd2e4f43e44e39da013f461461",
+    "teacher": "parent:9c02aa19e53c"
+  }
+}

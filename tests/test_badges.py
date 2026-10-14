@@ -1120,8 +1120,25 @@ class TestSpeaksFromExperience:
     """
 
     def test_a_rating_after_three_finished_games_earns_the_first_step(self) -> None:
-        found = _rated_due(_three_on("alpha"), [_rating("alpha", 9)])
+        """One input, five facts about the row it earns (Q754 merged five tests of it)."""
+        rows = _three_on("alpha")
+        found = _rated_due(rows, [_rating("alpha", 9)])
         assert [(award.tier, award.earned) for award in found] == [(1, _day(9))]
+        # It sits on the person and not on a game, under the thresholds it was earned under.
+        assert found[0].holder == ADA
+        assert found[0].game is None
+        assert found[0].rule == {"steps": [1, 5, 10, 25], "played": 3}
+        # It holds the games and the three matches under each, and no star value.
+        assert set(found[0].evidence) == {"games", "ratings"}
+        assert "stars" not in json.dumps(found[0].evidence)
+        assert found[0].evidence["games"] == ["alpha"]
+        assert found[0].evidence["ratings"] == [
+            {
+                "game": "alpha",
+                "rated": _day(9).isoformat(),
+                "matches": [row.id for row in rows],
+            }
+        ]
 
     def test_a_rating_after_two_earns_nothing(self) -> None:
         rows = _three_on("alpha")[:2]
@@ -1167,23 +1184,6 @@ class TestSpeaksFromExperience:
         assert not hasattr(badges.Rated, "stars")
         assert "stars" not in badges.Rated.__dataclass_fields__
 
-    def test_the_row_holds_no_star_value(self) -> None:
-        found = _rated_due(_three_on("alpha"), [_rating("alpha", 9)])
-        assert set(found[0].evidence) == {"games", "ratings"}
-        assert "stars" not in json.dumps(found[0].evidence)
-
-    def test_the_row_holds_the_games_and_the_three_matches_under_each(self) -> None:
-        rows = _three_on("alpha")
-        found = _rated_due(rows, [_rating("alpha", 9)])
-        assert found[0].evidence["games"] == ["alpha"]
-        assert found[0].evidence["ratings"] == [
-            {
-                "game": "alpha",
-                "rated": _day(9).isoformat(),
-                "matches": [row.id for row in rows],
-            }
-        ]
-
     def test_only_the_first_three_matches_travel_with_the_rating(self) -> None:
         rows = _three_on("alpha") + [_row("alpha", EASY, 0.0, 5)]
         found = _rated_due(rows, [_rating("alpha", 9)])
@@ -1217,15 +1217,6 @@ class TestSpeaksFromExperience:
     def test_what_is_already_held_is_not_offered_again(self) -> None:
         held = awards.Award(kind=badges.SPEAKS_FROM_EXPERIENCE, tier=1, holder=ADA)
         assert _rated_due(_three_on("alpha"), [_rating("alpha", 9)], held=(held,)) == []
-
-    def test_the_badge_sits_on_the_person_and_not_on_a_game(self) -> None:
-        found = _rated_due(_three_on("alpha"), [_rating("alpha", 9)])
-        assert found[0].holder == ADA
-        assert found[0].game is None
-
-    def test_the_row_keeps_the_thresholds_it_was_earned_under(self) -> None:
-        found = _rated_due(_three_on("alpha"), [_rating("alpha", 9)])
-        assert found[0].rule == {"steps": [1, 5, 10, 25], "played": 3}
 
     def test_the_rule_sentence_says_play_comes_first_and_the_stars_are_not_read(
         self,

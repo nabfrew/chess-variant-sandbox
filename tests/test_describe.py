@@ -70,7 +70,7 @@ def chess_moves() -> dict[str, tuple[str, ...]]:
 
 @pytest.fixture(scope="module")
 def hex_moves() -> dict[str, tuple[str, ...]]:
-    return _moves(ROOT / "archive" / "hex-glinski-promoting.json")
+    return _moves(ROOT / "archive" / "hex-glinski-hexagon.json")
 
 
 def _said(move: dict[str, Any], hexy: bool = False) -> str:

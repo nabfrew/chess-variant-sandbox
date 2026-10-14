@@ -268,7 +268,7 @@ SCRIPTS: dict[str, Path] = {
 }
 
 
-TAGLINE = "chess-like games, invented and measured here"
+TAGLINE = shell.TAGLINE  # the application's header line, one spelling for both
 
 # What each milestone is called on the page, and how its line joins the game it was
 # completed on. Box A2 of `docs/archive/plan-meta-game.md`. The keys are the kinds
@@ -1112,6 +1112,16 @@ def admin(handle: str, players: bool = False, *, user: int | None = None) -> str
         '<p class="note" id="note"></p>\n'
         '<p class="under">Signing everybody out leaves every account intact; they come '
         "back with the password they already have.</p>\n"
+        # Q813. The box's disk and the queues, each against the age that makes it a
+        # problem; the same lines `deploy/status.sh` prints from the maintainer's machine.
+        "<h2>Status</h2>\n"
+        '<p class="under" id="status-said"></p>\n'
+        '<p class="under" id="status-disk"></p>\n'
+        '<div class="scroller"><table><thead><tr><th>queue</th><th>waiting</th>'
+        "<th>oldest</th><th>a problem past</th><th>why that limit</th></tr></thead>\n"
+        '<tbody id="status-queues"></tbody></table></div>\n'
+        '<p class="under">A queue reads as a problem when its oldest has waited past the '
+        "limit; depth alone only means slower.</p>\n"
         "<h2>People</h2>\n"
         '<p class="under">A killed account cannot sign in and its open sessions stop '
         "working at once. Forgetting keeps the privacy notice's promise and cannot be "
@@ -1225,7 +1235,9 @@ def admin(handle: str, players: bool = False, *, user: int | None = None) -> str
         "<h2>The refresher</h2>\n"
         '<p class="under">The refresher keeps the library\'s scores up to date by itself, '
         "one game at a time, from its own copy of the code "
-        "(<code>chess-variant-sandbox refresh --library --watch</code>). A game it refused "
+        "(<code>chess-variant-sandbox refresh --library --watch</code>), and once no score "
+        "is owed it rates the games' computer players, one ladder at a time. A game or "
+        "ladder it refused "
         "is not tried again until its measurement changes or "
         "<code>refresh --forget</code> clears it. Visitors do not see this.</p>\n"
         '<ul id="refresher-said"></ul>\n'

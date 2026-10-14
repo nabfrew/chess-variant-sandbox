@@ -14,7 +14,9 @@ that a replay is never quietly downgraded to a re-score.
 
 from __future__ import annotations
 
+import ast
 import json
+import os
 import random
 from pathlib import Path
 
@@ -208,7 +210,61 @@ class TestTheFingerprintsPointAtSomething:
 # is unmoved). It was "5da33cbfe349e4b7" after Q771. The core moves the build fingerprint
 # in the same change, so the library owes one replay, which re-analyses and re-scores
 # under this value (`STALE_WINDOW` holds the library's stamp until it lands).
-FROZEN_METRICS = "c33efb470398b44f"
+#
+# **Moved 2026-10-11 by Q843a (schema 21, portal maps and filters)**: `complexity.py`
+# charges a map of ends and a filter (no library spec writes either, so no `rule_mass`
+# moves). It was "c33efb470398b44f" after Q807. The core moves the build fingerprint in the
+# same change, so the library owes one replay, batched with Q843c's, which re-analyses and
+# re-scores under this value (`STALE_WINDOW` holds the library's stamp until it lands).
+#
+# **Moved 2026-10-11 by Q843c (schema 22, fold portals)**: `complexity.py` charges a fold
+# group, and the boundary's `folds` crosses in `engine.py` and `state.py` (with the fold move
+# text and `MOVE_FOLD` in `moves.py`); no library spec writes a fold, so no `rule_mass` or
+# move text of a library game moves. It was "e6aaa52a77b6097f" after Q843a. The core moves the
+# build fingerprint in the same change, so the library owes one replay, batched with
+# Q843a's (Q843r), which re-analyses and re-scores under this value (`STALE_WINDOW` holds
+# the library's stamp until it lands).
+#
+# **Moved 2026-10-11 by Q846 (the evaluator oracle on momentum portals)**:
+# `agents/evaluation.py::Evaluator.immunity` skips a portal end's third-owner byte, as
+# `eval.rs` does; before, it raised IndexError on one. A board byte in the third owner's
+# block exists only beside portals or wild pieces, and the term is undefined beside wild
+# pieces, so no number of a game the old oracle could evaluate moves, and the core, which
+# scores the library, is untouched (no build fingerprint move). It was "cfffc0d7c5f19c35"
+# after Q843c. Q847 re-analysed and re-scored the library under it (no replay), 2026-10-11:
+# every `canonical.json` equal outside `basis`, no score, interval or verdict moved.
+#
+# **Moved 2026-10-13 by Q867b (schema 24, folds revised)**: the comment above
+# `complexity._PORTAL_FOLD` says the revised rule (its weight unchanged), and `engine.py`'s
+# move text writes a move through a fold the new way; no library spec writes a fold, so no
+# `rule_mass` or move text of a library game moves. It was "4f58577892896e3d" after Q846. The
+# core moves the build fingerprint in the same change, so the library owes one replay (Q867r),
+# which re-analyses and re-scores under this value (`STALE_WINDOW` holds the library's stamp
+# until it lands).
+#
+# **Moved 2026-10-13 by Q873 (the analysis pass reads a fold's own move)**:
+# `tournament/analysis.py` counts a `MOVE_FOLD` under its end's type, credits it no instance
+# and no capture, and walks on, where it stopped at the empty origin. No library spec writes a
+# fold, so no number of a library game moves. It was "66014a3376e6c295" after Q867b; the
+# replay Q867b owes (Q867r) re-analyses and re-scores under this value.
+#
+# **Moved 2026-10-13 by Q875 (rotations take nothing; a portal is not part of the army)**:
+# `tournament/analysis.py` reads a rotation (and a castling onto its own rook) as no capture,
+# and leaves a momentum end out of the starting instances; `metrics/components.py` counts
+# only a player's declared types in `piece_utilisation`, where a portal game's longer count
+# vector had kept every index. Library numbers move at the replay: `capture_availability`
+# (unweighted) on the four rotation games (chess with turning pawns, backward drop shogi,
+# about face, weathervane), and `piece_utilisation` and `instance_participation` on the
+# seven portal games (wormhole, cylinder wormhole, shut wormhole, carousel, divide, ferry,
+# steady ferry). It was "5182a7e993216dee" after Q873; Q867r's replay re-analyses and
+# re-scores under this value.
+#
+# **Moved 2026-10-13 by Q877 (a portal is no idle piece)**: `metrics/components.py` counts
+# `idle_piece_types` over the held types, as `piece_utilisation` does, where it took every
+# entry of a portal game's longer count vector (and any wild-only type) for a piece. A
+# diagnostic only, shown to the proposer; no component, score or weight reads it. It was
+# "f8a2637a683e942a" after Q875; Q867r's replay re-analyses and re-scores under this value.
+FROZEN_METRICS = "9547343221dc0dc2"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -375,7 +431,27 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # **Moved 2026-10-10 by Q807**: schema 20's bar crosses the boundary in `engine.py` and
 # `state.py` (see `FROZEN_METRICS`). It was "a0ed8e3487536646" after Q771; the replay Q807
 # owes is the re-analysis.
-FROZEN_ANALYSIS = "bc59672c7e718716"
+#
+# **Moved 2026-10-11 by Q843c**: schema 22's folds cross the boundary in `engine.py` and
+# `state.py`, and `engine.py`'s move text names a fold's moves (see `FROZEN_METRICS`). It was
+# "bc59672c7e718716" after Q807; the replay batched with Q843a's (Q843r) is the re-analysis.
+#
+# **Moved 2026-10-11 by Q846**: `agents/evaluation.py`'s immunity term skips a portal end's
+# byte (see `FROZEN_METRICS`); it moves no number the core computes. It was
+# "84d3505a6a0baa2c" after Q843c; Q847 re-analysed the library under it.
+#
+# **Moved 2026-10-13 by Q867b**: schema 24's move text through a fold in `engine.py` (see
+# `FROZEN_METRICS`). It was "2aa42b5d8a26bb74" after Q846; the replay Q867b owes (Q867r) is
+# the re-analysis.
+#
+# **Moved 2026-10-13 by Q873**: `tournament/analysis.py` reads a fold's own move to the end
+# of the game (see `FROZEN_METRICS`). It was "f6b69603d9aa0c1c" after Q867b; Q867r's replay
+# is the re-analysis.
+#
+# **Moved 2026-10-13 by Q875**: `tournament/analysis.py` reads a rotation as no capture and
+# a momentum end as no instance (see `FROZEN_METRICS`). It was "8c26b090cb82ab85" after
+# Q873; Q867r's replay is the re-analysis.
+FROZEN_ANALYSIS = "3c06f1e7c404993c"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:
@@ -1073,7 +1149,8 @@ class TestWhatMakesAMeasurementStale:
             ("analysis", "moved", "reanalyse"),
             # The games stand; only the number derived from them moved.
             ("weights_version", "v7", "rescore"),
-            ("metrics", "moved", "rescore"),
+            # `metrics` is held by `test_a_change_to_the_scorer_alone_is_a_rescore`, which
+            # asserts the same `needs` and the reason's words as well (Q754).
         ],
     )
     def test_each_field_is_compared_and_costs_what_it_should(
@@ -1659,3 +1736,172 @@ class TestTheTablesCacheOnDisk:
         compiles = _Compiles(monkeypatch)
         assert [measurement.tables_fingerprint(spec) for spec in specs] == fresh
         assert compiles.calls == 0
+
+
+def _ast_module(dotted: str) -> Path | None:
+    """The file a dotted name imports, spelled exactly, or ``None`` for a name in a module.
+
+    The independent half of `TestTheImportClosure`: `os.listdir`, not `measurement`'s
+    listing, so the two share no code.
+    """
+    *parents, last = dotted.split(".")
+    folder = measurement.ROOT.joinpath(*parents)
+    try:
+        names = set(os.listdir(folder))
+    except OSError:
+        return None
+    if f"{last}.py" in names:
+        return (folder / f"{last}.py").resolve()
+    if last in names and "__init__.py" in os.listdir(folder / last):
+        return (folder / last / "__init__.py").resolve()
+    return None
+
+
+def _ast_imports(path: Path) -> set[Path]:
+    """Every package file one source's import statements reach, read off its syntax tree,
+    the parent packages each import runs included."""
+    package = path.parent.relative_to(measurement.ROOT.resolve()).parts
+    found: set[Path] = set()
+    for node in ast.walk(ast.parse(path.read_bytes())):
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if node.level:
+                base = ".".join(package[: len(package) - node.level + 1])
+                module = f"{base}.{module}" if module else base
+            names = [module, *(f"{module}.{alias.name}" for alias in node.names)]
+        else:
+            continue
+        for dotted in names:
+            parts = dotted.split(".")
+            if parts[0] != "chess_variant_sandbox":
+                continue
+            for end in range(1, len(parts) + 1):
+                target = _ast_module(".".join(parts[:end]))
+                if target is not None:
+                    found.add(target)
+    return found
+
+
+def _ast_closure(entries: tuple[str, ...]) -> set[Path]:
+    queue = []
+    for entry in entries:
+        path = (measurement.ROOT / entry).resolve()
+        queue.append(path)
+        parts = path.parent.relative_to(measurement.ROOT.resolve()).parts
+        queue += [
+            target
+            for end in range(1, len(parts) + 1)
+            if (target := _ast_module(".".join(parts[:end]))) is not None
+        ]
+    found: set[Path] = set()
+    while queue:
+        path = queue.pop()
+        if path not in found:
+            found.add(path)
+            queue += _ast_imports(path)
+    return found
+
+
+class TestTheImportClosure:
+    """`_closure` finds every package import a file makes, as the syntax tree reads them.
+
+    Q887 found the old pattern's `[\\w\\s,]+` after `import` running on across the newline,
+    so of two consecutive `from chess_variant_sandbox... import` lines it saw only the
+    first, and `values_sources` lacked twelve files (Q889).
+    """
+
+    def _tree(self, tmp_path, monkeypatch, files: dict[str, str]) -> set[str]:
+        for name, body in files.items():
+            target = tmp_path / "chess_variant_sandbox" / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(body)
+        monkeypatch.setattr(measurement, "ROOT", tmp_path)
+        found = measurement._closure(("chess_variant_sandbox/entry.py",))
+        assert found == _ast_closure(("chess_variant_sandbox/entry.py",))
+        package = (tmp_path / "chess_variant_sandbox").resolve()
+        return {path.relative_to(package).as_posix() for path in found}
+
+    def test_every_form_of_import_is_followed(self, tmp_path, monkeypatch) -> None:
+        found = self._tree(tmp_path, monkeypatch, {
+            "__init__.py": "",
+            "entry.py": (
+                "from chess_variant_sandbox.a import one\n"
+                "from chess_variant_sandbox.b import two\n"
+                "from chess_variant_sandbox.c import (\n"
+                "    three,  # a comment, with a comma\n"
+                "    four as quatre,\n"
+                ")\n"
+                "import chess_variant_sandbox.d.deep as deep, chess_variant_sandbox.e\n"
+                "import os; from chess_variant_sandbox.f import six\n"
+                "from chess_variant_sandbox.g import \\\n    seven\n"
+                "def later():\n"
+                "    from chess_variant_sandbox.h import eight\n"
+                "    from . import nine\n"
+                "from .pkg import ten\n"
+            ),
+            "a.py": "", "b.py": "",
+            "c/__init__.py": "", "c/three.py": "", "c/four.py": "",
+            "d/__init__.py": "", "d/deep.py": "", "e.py": "", "f.py": "",
+            "g/__init__.py": "", "g/seven.py": "", "h.py": "", "nine.py": "",
+            "pkg/__init__.py": "from .inner import x\nfrom .. import eleven\n",
+            "pkg/inner.py": "", "eleven.py": "",
+            "unread.py": "",
+        })
+        assert found == {
+            "__init__.py", "entry.py", "a.py", "b.py",
+            "c/__init__.py", "c/three.py", "c/four.py", "d/__init__.py", "d/deep.py",
+            "e.py", "f.py", "g/__init__.py", "g/seven.py", "h.py", "nine.py",
+            "pkg/__init__.py", "pkg/inner.py", "eleven.py",
+        }
+
+    def test_a_name_is_a_module_only_spelled_exactly(self, tmp_path, monkeypatch) -> None:
+        """`Path.is_file` is case-blind on Windows: `import Grid` (a class) is no `grid.py`."""
+        found = self._tree(tmp_path, monkeypatch, {
+            "__init__.py": "",
+            "entry.py": "from chess_variant_sandbox.helpers import Grid\n",
+            "helpers/__init__.py": "", "helpers/grid.py": "",
+        })
+        assert found == {"__init__.py", "entry.py", "helpers/__init__.py"}
+
+    def test_prose_and_comments_import_nothing(self, tmp_path, monkeypatch) -> None:
+        found = self._tree(tmp_path, monkeypatch, {
+            "__init__.py": "",
+            "entry.py": (
+                "# from chess_variant_sandbox import a\n"
+                "x = 1  # import chess_variant_sandbox.b\n"
+            ),
+            "a.py": "", "b.py": "",
+        })
+        assert found == {"__init__.py", "entry.py"}
+
+    @pytest.mark.parametrize("entries", ["_COMPILE_ENTRIES", "_VALUES_ENTRIES"])
+    def test_every_closure_is_the_syntax_trees(self, entries: str) -> None:
+        """Every closure `measurement` builds, against the walk of the package's syntax."""
+        starts = getattr(measurement, entries)
+        assert measurement._closure(starts) == _ast_closure(starts)
+
+    def test_the_values_sources_hold_what_the_old_pattern_missed(self) -> None:
+        names = {path.relative_to(measurement.ROOT).as_posix()
+                 for path in measurement.values_sources()}
+        for missed in ("agents/heuristics.py", "agents/minimax.py", "agents/objective.py",
+                       "fairy/variant.py", "fairy/verify.py"):
+            assert f"chess_variant_sandbox/{missed}" in names, missed
+
+    @pytest.mark.slow
+    def test_every_package_file_imports_what_its_syntax_tree_says(self) -> None:
+        """Not only the closures' files: any file a future entry reaches (about 5 s here)."""
+        disagree = []
+        for path in sorted((measurement.ROOT / "chess_variant_sandbox").rglob("*.py")):
+            path = path.resolve()
+            ours = {
+                target.resolve()
+                for dotted in measurement.package_imports(
+                    path.read_bytes(), measurement._package_of(path)
+                )
+                if (target := measurement._module_file(dotted)) is not None
+            }
+            if ours != _ast_imports(path):
+                disagree.append(path.relative_to(measurement.ROOT).as_posix())
+        assert not disagree, disagree

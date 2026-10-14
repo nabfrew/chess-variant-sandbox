@@ -27,16 +27,71 @@ def _minimal_spec(rules: dict[str, Any], pieces: list[dict[str, Any]] | None = N
     return {"pieces": pieces or [], "rules": rules}
 
 
+# The test's own table of what a stated rule costs, written out here and read from nowhere
+# in the package. It is the weights of `complexity._RULE_COSTS`, so a change to a weight
+# fails this file until the table is changed with it, on purpose.
+COSTS: dict[str, float] = {
+    "win": 1.0, "stalemate": 1.0, "checkmate": 1.0,
+    "promotion": 1.0, "en_passant": 1.0, "castling": 1.0,
+    "drops": 2.0, "reach": 1.0, "extinction": 1.0, "bare_royal": 1.0, "check_limit": 1.0,
+    "must_capture": 1.0, "forbid_check": 1.0, "royal_facing": 1.0,
+    "explode_on_capture": 1.5, "forbid_immobility": 1.0, "scoring": 1.5, "territory": 2.5,
+    "turn": 1.0, "wrap": 1.5, "obstacles": 1.0, "strike": 2.0, "contacts": 2.5,
+    "npcs": 2.5, "promote_on_entry": 1.0, "portals": 2.5,
+}
+DEFAULTS = {"win": "checkmate", "stalemate": "draw", "checkmate": "loss", "royal_facing": "allowed"}
+
+
+def _stated_and_live(key: str, value: Any) -> bool:
+    """Whether a rule is one a player is told: the plain reading, not `complexity`'s code.
+
+    A flag or block counts when it is present, not false or empty, and not the default.
+    Four keys have a spelling that is present and still no rule, and each is read here
+    the short way, which is enough for what the committed specs state.
+    """
+    if key in DEFAULTS:
+        return bool(value != DEFAULTS[key])
+    if key == "turn":
+        return isinstance(value, dict) and (
+            value.get("moves", 1) > 1 or any(length > 1 for length in value.get("ramp", []))
+        )
+    if key == "wrap":
+        edges = [edge for name, edge in value.items() if not name.endswith("_by_player")]
+        for table in (edge for name, edge in value.items() if name.endswith("_by_player")):
+            edges.extend(table.values())
+        return any(edge != "none" for edge in edges)
+    if key == "strike":
+        return (
+            value.get("effect", "capture") != "capture"
+            or value.get("position") in ("stay", "home")
+            or bool(value.get("switches_sides"))
+        )
+    return bool(value)
+
+
+def _independent_keys(spec: dict[str, Any]) -> set[str]:
+    return {
+        key for key, value in spec.get("rules", {}).items()
+        if key in COSTS and _stated_and_live(key, value)
+    }
+
+
 @pytest.mark.parametrize("path", ALL_SPECS, ids=lambda path: path.stem)
 def test_used_rule_keys_cost_the_same_as_count_special_rules(path: Path) -> None:
     spec = load_spec(path)
-    rule_keys = rules_used.used(spec) - set(schema.MOVE_KINDS)
-    total = sum(complexity._RULE_COSTS[key] for key in rule_keys)
+    # `used()` decides each key by asking `complexity._count_special_rules`, so checking its
+    # keys against that function would check the function against itself. Both are
+    # checked against `COSTS` and `_independent_keys` above, which share nothing with them.
+    expected_keys = _independent_keys(spec)
+    assert rules_used.used(spec) - set(schema.MOVE_KINDS) == expected_keys
+    rules = spec.get("rules", {})
     # `portals` costs a flat rate per key plus what one key cannot say (a further pair, a
     # mover, a one-way or closed passage), charged by `_portal_extras` (Q771); the first
-    # specs to state any of those are Q772a's showcases.
-    total += complexity._portal_extras(spec.get("rules", {}).get("portals"))
-    assert total == complexity._count_special_rules(spec.get("rules", {}))
+    # specs to state any of those are Q772a's showcases. Its own tests are in test_complexity.
+    extras = complexity._portal_extras(rules.get("portals"))
+    assert complexity._count_special_rules(rules) == (
+        sum(COSTS[key] for key in expected_keys) + extras
+    )
 
 
 @pytest.mark.parametrize(

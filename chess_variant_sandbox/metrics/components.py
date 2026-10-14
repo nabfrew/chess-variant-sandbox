@@ -1415,14 +1415,22 @@ def _draw_slope(decisive: dict[str, float]) -> float:
 # --------------------------------------------------- engine-derived second pass
 
 
-def _held_type_indices(spec: dict[str, Any], n_types: int) -> list[int]:
+def held_type_indices(spec: dict[str, Any], n_types: int) -> list[int]:
     """Indices into ``moves_by_type`` of the types a player can hold.
 
-    ``moves_by_type`` follows the spec's piece order. A count vector whose length does
-    not match the spec keeps every index rather than guess which entry is which.
+    ``moves_by_type`` follows the compiled types: the spec's piece order, then one internal
+    type per portal end (schema 19), which the compiler adds after the declared ones. A
+    portal is held by no player, so neither its declared piece nor an end's type is
+    counted (Q875, `docs/reference/portal-showcase-ideas.md` beside finding 1): until
+    then the vector's length kept every index, and a portal game was charged a zero for
+    its portal piece and for every fixed end, and credited a moved end as army. Any other
+    length that does not match the spec keeps every index rather than guess which entry
+    is which.
     """
     pieces = spec.get("pieces") or []
-    if len(pieces) != n_types:
+    rules = spec.get("rules")
+    has_portals = isinstance(rules, dict) and bool(rules.get("portals"))
+    if len(pieces) != n_types and not (has_portals and n_types > len(pieces)):
         return list(range(n_types))
     held = pieces_a_player_can_hold(spec)
     return [index for index, piece in enumerate(pieces) if piece.get("id") in held]
@@ -1459,7 +1467,7 @@ def _analysis_components(
         # The entropy runs over the types a player can hold. A type only the wild phase
         # owns has no player to move it, so it is left out. A held type that never moves
         # stays in as a zero, which is how an idle army is charged.
-        held = _held_type_indices(spec, len(totals))
+        held = held_type_indices(spec, len(totals))
         counts = [totals[index] for index in held]
         # One piece type is a degenerate case, not a bad one: the single type is
         # trivially the one being used, so it scores full marks here. That is not a free
@@ -1469,9 +1477,12 @@ def _analysis_components(
         # with rule_mass.
         raw["piece_utilisation"] = _normalised_entropy(counts) if len(counts) > 1 else 1.0
         diagnostics["held_piece_types"] = len(counts)
-        played = sum(totals)
-        diagnostics["idle_piece_types"] = sum(
-            1 for count in totals if count / played < IDLE_PIECE_SHARE
+        # Idle is judged on the army, the same held types the entropy reads: a portal is
+        # the board's, so neither it nor an end counts as an idle piece, and the share is
+        # of the army's moves (Q877; the board's own moves are in `moves_by_type`).
+        played = sum(counts)
+        diagnostics["idle_piece_types"] = (
+            sum(1 for count in counts if count / played < IDLE_PIECE_SHARE) if played else 0
         )
         diagnostics["moves_by_type"] = totals
 

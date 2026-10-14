@@ -1,6 +1,6 @@
 {
   "schema_version": 13,
-  "name": "chess sweeping bishops",
+  "name": "sweeping bishop chess",
   "description": "Chess with one change: a bishop sweeps. It moves along its diagonals to any square on them, jumping whatever stands between, and every piece it passes over is removed, its own included. A bishop that could land beyond the enemy king is giving check.",
   "board": {
     "width": 8,

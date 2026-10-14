@@ -58,3 +58,37 @@ def test_a_check_only_parses() -> None:
     does not, because nothing runs."""
     assert node_session.run("let = ;", check=True).returncode == 1
     assert node_session.run("throw new Error('not run');", check=True).returncode == 0
+
+
+# A job that asks the node itself how much heap is live after a full collection. `require`
+# is the host's, so `v8` and `vm` are reachable from a check; `gc` is made reachable the way
+# `--expose-gc` would, in a context of its own.
+_LIVE_HEAP = (
+    "const v8 = require('v8'); v8.setFlagsFromString('--expose-gc');"
+    "require('vm').runInNewContext('gc')();"
+    "console.log(v8.getHeapStatistics().used_heap_size);"
+)
+
+
+def test_a_check_s_context_is_let_go_when_it_ends() -> None:
+    """Q749: thirty checks of a megabyte each leave no more live heap than one did.
+
+    V8's compilation cache held every compiled script, and with it the context it was
+    compiled into, for the life of the node; `test_web.py` alone grew it to a gigabyte.
+    `NODE_FLAGS` turns the cache off. Without that flag the thirty leave 30 MB live.
+    """
+    node_session.release()
+    node_session.run("console.log(1);")
+    before = int(node_session.run(_LIVE_HEAP).stdout)
+    padding = "// " + "x" * (1 << 20) + "\n"
+    for each in range(30):
+        assert node_session.run(f"{padding}console.log({each});").stdout == f"{each}\n"
+    after = int(node_session.run(_LIVE_HEAP + "//again").stdout)
+    assert after - before < 16 * 2**20, f"{(after - before) >> 20} MB still live after 30 checks"
+
+
+def test_a_released_node_is_started_again_by_the_next_check() -> None:
+    node_session.run("console.log('started');")
+    assert node_session.release()
+    assert not node_session.release()
+    assert node_session.run("console.log('again');").stdout == "again\n"

@@ -218,6 +218,22 @@ async function showBoard(snapshot, how) {
         .then(s => applySnapshot(s, false)).catch(error => fail(error, 'resign'));
     };
   }
+  // A draw offered to the computer (Q790). An offer the rules do not allow yet is answered
+  // here with the server's own sentence from the snapshot, costing no request; one that
+  // goes is answered by the core, and a decline stays in the strip until the next move.
+  const offerDraw = document.getElementById('draw');
+  if (offerDraw && !between) offerDraw.onclick = () => {
+    const offer = SESSION && SESSION.drawOffer;
+    if (offer && !offer.may) { fail(new Error(offer.why), offerDraw); return; }
+    offerDraw.disabled = true;
+    api('/api/session/' + snapshot.id + '/draw', {})
+      .then(s => {
+        applySnapshot(s, false);
+        const said = s.drawOffer && s.drawOffer.said;
+        if (said && !s.outcome) { NOTE = said; drawStatus(); }
+      })
+      .catch(error => { drawStatus(); fail(error, offerDraw); });
+  };
   // Scoped to whatever this board was drawn into, because an inline one has no tabs of
   // its own and the view around it may.
   root.querySelectorAll('[data-tab]').forEach(node => {
@@ -290,8 +306,15 @@ async function showBoard(snapshot, how) {
 // resignation in, so it offers none; a game nobody sits at is nobody's to give up.
 //
 // A game between two people (Q570, `between`) has no take-back, ever; its bar gains
-// *offer a draw* and, until both have moved, *cancel the game*, with resign still last
-// and still the one danger button (docs/plan-return.md §1.8).
+// *offer a draw* (and *decline the draw* while the other's offer stands, Q790) and, until
+// both have moved, *cancel the game*, with resign still last and still the one danger
+// button (docs/plan-return.md §1.8).
+//
+// A game against the computer gains *offer a draw* too, before resign (Q790): the
+// computer answers at once, accepting only where the strongest search the game has reads
+// the position as level (`web/draw_offer.py`, docs/reference/intransitive-quiet-endgame.md
+// §e.1). When an offer may be made is the snapshot's (`drawOffer.may`, `drawOffer.why`), and
+// the answer its sentence (`drawOffer.said`); the page judges nothing.
 //
 // V4 gave it its look, in plan-visual.md §3.3's order: the status strip, the board, the
 // control bar, the legend line. The square names stand outside the squares (`drawCoords`),
@@ -320,12 +343,17 @@ function frameHtml(inline, mode, watched, between) {
       <button id="flip" class="quiet" title="turn the board around">${barWords('flip', 'flip')}</button>
       <span class="row shift" id="shift"></span>
       ${between && between.you !== null ? `<button id="draw" class="quiet"
-        title="offer a draw; it stands until the other player accepts it or moves"
-        >${barWords('draw', 'offer a draw')}</button>${between.mayCancel ? `<button id="cancel" class="quiet"
+        title="offer a draw; it stands until the other player accepts it, declines it or moves"
+        >${barWords('draw', 'offer a draw')}</button><button id="declineDraw" class="quiet" hidden
+        title="say no to the other player's draw offer; the game goes on"
+        >${barWords('decline', 'decline the draw')}</button>${between.mayCancel ? `<button id="cancel" class="quiet"
         title="call the game off; possible until both of you have moved, and it counts for nothing"
         >${barWords('cancel', 'cancel the game')}</button>` : ''}<button id="rematch" hidden
         title="challenge the other player to this game again, with the sides swapped"
         >${barWords('again', 'rematch')}</button>` : ''}
+      ${ends && !between ? `<button id="draw" class="quiet"
+        title="offer the computer a draw; it answers at once, by the strongest search this game has"
+        >${barWords('draw', 'offer a draw')}</button>` : ''}
       ${ends && !(between && between.you === null) ? `<button id="resign" class="danger"
         title="${rated ? 'give the game up; it is recorded as a loss and your rating moves'
           : 'give the game up and end it here; a sandbox game counts for nothing'}"
@@ -346,6 +374,7 @@ const FRAME_ICONS = {
   edit: '<path d="M15 5l4 4L9 19H5v-4z"/><path d="m13 7 4 4"/>',
   draw: '<path d="M5 12h14"/><circle cx="12" cy="7" r="1.4"/><circle cx="12" cy="17" r="1.4"/>',
   cancel: '<circle cx="12" cy="12" r="8"/><path d="m9 9 6 6M15 9l-6 6"/>',
+  decline: '<path d="M5 12h14"/><path d="m7 19 10-14"/>',
   again: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/>',
 };
 
@@ -695,6 +724,9 @@ function pieceOf(value) {
 // another would be two answers to one question.
 function position() { return AT ? AT.board : SESSION.board; }
 function tint() { return (AT ? AT.colour : SESSION.colour) || []; }
+// Schema 22: where the folds stand, `{square, type, pair}` each (`fold_payload`); a
+// reviewed beat that does not say keeps the game's own.
+function foldsShown() { return (AT && AT.folds) || SESSION.folds || []; }
 
 function pieceAt(square) { return pieceOf(position()[square]); }
 
@@ -715,21 +747,29 @@ function portalOn(square) {
   const portals = SESSION.ruleset.portals;
   const partner = portalPartner(portals, end);
   const W = SESSION.ruleset.width;
-  const words = portalWords(end, partner, squareName(square % W, Math.floor(square / W)),
-                            portalPairs(portals), sideName);
+  const name = at => squareName(at % W, Math.floor(at / W));
+  const there = partner ? portalSquare(partner.type) : -1;
+  const from = portalSources(portals, end).map(source => portalSquare(source.type))
+    .filter(at => at >= 0).map(name);
+  const words = portalWords(end, partner, name(square), portalPairs(portals), sideName,
+                            there >= 0 ? name(there) : null, from,
+                            portalNamer(SESSION.ruleset.pieceIds, SESSION.ruleset.pieceNames));
   return { end, partner, words };
 }
 
-// Whose passage a portal end shows (`docs/plan-portals.md` §4): the seat the person plays
-// on this page; between two people, the reader's own; otherwise -- a game between
-// machines, two people at one board, a replay -- the side to move on the board on screen.
-function portalViewer() {
-  if (!SESSION) return null;
-  const toMove = AT ? AT.sideToMove : SESSION.sideToMove;
-  const between = SESSION.correspondence;
-  if (between) return between.you === 0 || between.you === 1 ? between.you : toMove;
-  const people = [0, 1].filter(player => (SESSION.seats || [])[player] === 'human');
-  return people.length === 1 ? people[0] : toMove;
+// Schema 21 (`docs/plan-portals-2.md` §5.2): whether the piece picked on the board may not
+// go in by this end, so the end is dimmed and the doors it may use are the bright ones.
+// Only in a game where some end lets only some pieces in: elsewhere the arms' colours say
+// whose pieces go in, and a pair game looks as it always has. Read off the payload's
+// `admits` (the compiled filter), never worked out.
+function portalRefuses(end) {
+  const portals = SESSION && SESSION.ruleset && SESSION.ruleset.portals;
+  if (!portals || !end || SELECTED === null || AT) return false;
+  if (!portals.ends.some(one => one.filtered)) return false;
+  const piece = pieceAt(SELECTED);
+  if (!piece || (piece.player !== 0 && piece.player !== 1) || portalEnd(piece.type)) return false;
+  const id = (SESSION.ruleset.pieceIds || [])[piece.type];
+  return !(((end.admits || [])[piece.player]) || []).includes(id);
 }
 
 // Schema 19: what the reader is looking at among the portals. `INSPECT` is the end last
@@ -756,17 +796,46 @@ function toggleLinks() {
 function linkToggleHtml(shown) {
   const lit = shown ? ' style="border-color:var(--act);color:var(--act)"' : '';
   return `<button id="linktoggle" aria-pressed="${!!shown}"${lit}
-    title="a line from a portal under the pointer to the other end of its pair">pair links</button>`;
+    title="an arrow from each portal to the one a piece going in there comes out beside">portal map</button>`;
 }
 
-// Where an end of this type stands in the position on screen, or -1.
+// Where an end of this type stands in the position on screen, or -1: a momentum end on the
+// board, a fold (schema 22) where the position's `folds` say.
 function portalSquare(type) {
+  if (isFold(portalEnd(type))) return foldSquare(type);
   const board = position();
   for (let square = 0; square < board.length; square++) {
     const piece = pieceOf(board[square]);
     if (piece && piece.type === type && portalEnd(piece.type)) return square;
   }
   return -1;
+}
+
+// Schema 22 (Q843d): where a fold end of this type stands in the position on screen, or -1.
+function foldSquare(type) {
+  const fold = foldsShown().find(one => one.type === type);
+  return fold ? fold.square : -1;
+}
+
+// The fold lying on a square of the position on screen, with the end it leads to (`partner`,
+// standing on `there`, -1 for none) and its words, or null. A fold is no board byte, so it
+// is found in the position's `folds` (`fold_payload`), never in the board.
+function foldOn(square) {
+  if (square === null || square === undefined || !SESSION) return null;
+  const fold = foldsShown().find(one => one.square === square);
+  const end = fold ? portalEnd(fold.type) : null;
+  if (!end) return null;
+  const portals = SESSION.ruleset.portals;
+  const partner = portalPartner(portals, end);
+  const W = SESSION.ruleset.width;
+  const name = at => squareName(at % W, Math.floor(at / W));
+  const there = partner ? foldSquare(partner.type) : -1;
+  const from = portalSources(portals, end).map(source => foldSquare(source.type))
+    .filter(at => at >= 0).map(name);
+  const words = foldWords(end, name(square), portalPairs(portals), sideName,
+                          there >= 0 ? name(there) : null, from,
+                          portalNamer(SESSION.ruleset.pieceIds, SESSION.ruleset.pieceNames));
+  return { end, partner, there, words };
 }
 
 function boardCentre(square, cell) {
@@ -787,49 +856,92 @@ function trimmedLine(ax, ay, bx, by, trimA, trimB, cell, attrs) {
 // A move through a portal in its two legs (§4): the piece's own way to the end it went in
 // by, and the king's step out from the other end to where it stands. Each leg is drawn
 // along the step the mover took (`wrapStep`, its own seams), ending at the square, so a
-// leg through a seam runs in from the far side as the piece did. Amber, the last move's
-// colour, cased in the glyph's edge so it reads on both woods.
+// leg through a seam runs in from the far side as the piece did; and the way in is the way
+// the engine says the piece went (`exitDir`, `portalWayIn`, as the trip slides it), which
+// round a seam is not always the shortest (Q839). In the pair's colour (`--pair-N`, Q838b:
+// which pair it went through, and never the last move's yellow-amber, which pair 2's hue
+// is close to), cased in the glyph's edge so it reads on both woods.
 function portalLegsHtml(last, cell, W, H) {
   if (!last || last.portal === undefined || last.portalOut === undefined
       || last.from === null || last.from === undefined) return '';
   const allow = wrapAllow(SESSION.ruleset.wrap, last.player);
-  const leg = (from, to, trimFrom, trimTo) => {
+  const way = portalOn(last.portal) || portalOn(last.portalOut);
+  const ink = way ? `var(--pair-${way.end.pair})` : 'var(--hl-last)';
+  const leg = (step, to, trimFrom, trimTo) => {
     const [bx, by] = boardCentre(to, cell);
-    const [dx, dy] = stepXY(wrapStep(from, to, W, H, allow), cell, FRAME);
+    const [dx, dy] = stepXY(step, cell, FRAME);
     const ax = bx - dx, ay = by - dy;
     const cased = trimmedLine(ax, ay, bx, by, trimFrom, trimTo, cell,
       `stroke="var(--portal-edge)" stroke-width="${cell * 0.12}" stroke-linecap="round" opacity="0.55"`);
     if (!cased) return '';
     return cased + trimmedLine(ax, ay, bx, by, trimFrom, trimTo, cell,
-      `stroke="var(--hl-last)" stroke-width="${cell * 0.065}" stroke-linecap="round"`);
+      `stroke="${ink}" stroke-width="${cell * 0.065}" stroke-linecap="round"`);
   };
+  const into = portalWayIn(wrapStep(last.from, last.portal, W, H, allow), last.exitDir, W, H);
   return `<g data-legs="${last.portal}" pointer-events="none">${
-    leg(last.from, last.portal, 0.1, 0.45)}${leg(last.portalOut, last.to, 0.45, 0.3)}</g>`;
+    leg(into, last.portal, 0.1, 0.45)}${
+    leg(wrapStep(last.portalOut, last.to, W, H, allow), last.to, 0.45, 0.3)}</g>`;
 }
 
-// The pair link (§4): a faint line from an end to the other end of its pair, for the end
-// tapped, a portal picked to move, and, with links on, the end under the pointer. Laid
-// over the drawing rather than in it, so the pointer moving draws no board.
+// A move through a fold at rest (schema 24, `docs/plan-portals-2.md` §5.3R): one leg in the
+// group's colour, cased in the edge, from where it stood to the fold it went in by, and the
+// ripple's ring on that fold. The move ended on the end the fold leads to, which takes the
+// ordinary last-move mark as any landing does. The squares are the engine's (`foldIn`,
+// `fold_transit`).
+function foldLegsHtml(last, cell, W, H) {
+  if (!last || last.foldIn === undefined || last.foldOut === undefined
+      || last.from === null || last.from === undefined) return '';
+  const allow = wrapAllow(SESSION.ruleset.wrap, last.player);
+  const ink = `var(--pair-${last.foldPair || 1})`;
+  const cased = `stroke="var(--portal-edge)" stroke-linecap="round" opacity="0.55"`;
+  const [bx, by] = boardCentre(last.foldIn, cell);
+  const [dx, dy] = stepXY(wrapStep(last.from, last.foldIn, W, H, allow), cell, FRAME);
+  const line = attrs => trimmedLine(bx - dx, by - dy, bx, by, 0.1, 0.42, cell, attrs);
+  const under = line(`${cased} stroke-width="${cell * 0.12}"`);
+  const leg = under ? under + line(`stroke="${ink}" stroke-width="${cell * 0.065}" stroke-linecap="round"`) : '';
+  const ring = `<circle cx="${bx}" cy="${by}" r="${cell * 0.4}" fill="none" ${cased} stroke-width="${cell * 0.11}"/>`
+    + `<circle cx="${bx}" cy="${by}" r="${cell * 0.4}" fill="none" stroke="${ink}" stroke-width="${cell * 0.055}"/>`;
+  return `<g data-foldlegs="${last.foldIn}" pointer-events="none">${leg}${ring}</g>`;
+}
+
+// The group map (schema 21, `docs/plan-portals-2.md` §5.1; the pair link of §4 before it):
+// an arrow from an end to the end it leads to, in the group's colour cased in the edge.
+// With the map on (`LINKS`, the reader's, off by default) every end somebody may go in by
+// has its arrow; the end tapped, a portal picked to move, and the end under the pointer
+// show their own way out and every way in. Laid over the drawing rather than in it, so the
+// pointer moving draws no board.
 function paintLinks() {
   const svg = document.getElementById('board');
   if (!svg || !SESSION || !FRAME || typeof svg.querySelector !== 'function') return;
   const old = svg.querySelector('[data-link]');
   if (old) old.remove();
-  if (!SESSION.ruleset.portals) return;
-  const ends = new Set();
-  if (LINKS && HOVER_END !== null) ends.add(HOVER_END);
-  if (INSPECT !== null) ends.add(INSPECT);
-  if (SELECTED !== null && portalOn(SELECTED)) ends.add(SELECTED);
+  const portals = SESSION.ruleset.portals;
+  if (!portals) return;
+  const ways = new Map();
+  const add = (from, to) => {
+    if (from && to && (from.open || []).some(Boolean)) ways.set(`${from.type}>${to.type}`, [from, to]);
+  };
+  if (LINKS) for (const end of portals.ends) add(end, portalPartner(portals, end));
+  const own = new Set();
+  if (LINKS && HOVER_END !== null) own.add(HOVER_END);
+  if (INSPECT !== null) own.add(INSPECT);
+  if (SELECTED !== null && (portalOn(SELECTED) || foldOn(SELECTED))) own.add(SELECTED);
+  for (const square of own) {
+    const here = portalOn(square) || foldOn(square);
+    if (!here) continue;
+    add(here.end, here.partner);
+    for (const source of portalSources(portals, here.end)) add(source, here.end);
+    // A payload from before schema 21 names no sources: a pair's partner leads back.
+    if (here.partner && here.end.dest === undefined) add(here.partner, here.end);
+  }
   const cell = 100 / Math.max(SESSION.ruleset.width, SESSION.ruleset.height);
   let out = '';
-  for (const square of ends) {
-    const here = portalOn(square);
-    const there = here && here.partner ? portalSquare(here.partner.type) : -1;
-    if (there < 0) continue;
-    const [ax, ay] = boardCentre(square, cell), [bx, by] = boardCentre(there, cell);
-    out += trimmedLine(ax, ay, bx, by, 0.46, 0.46, cell, `stroke="var(--portal-edge)"
-      stroke-width="${cell * 0.04}" stroke-dasharray="${cell * 0.12} ${cell * 0.08}"
-      stroke-linecap="round" opacity="0.6"`);
+  for (const [from, to] of ways.values()) {
+    const a = portalSquare(from.type), b = portalSquare(to.type);
+    if (a < 0 || b < 0) continue;
+    const [ax, ay] = boardCentre(a, cell);
+    const [bx, by] = portalNearestCentre(b, ax, ay, cell, FRAME);
+    out += portalArrowHtml(ax, ay, bx, by, cell, from.pair, `${from.type}>${to.type}`);
   }
   if (!out) return;
   const group = document.createElementNS(SVGNS, 'g');
@@ -935,7 +1047,7 @@ function lightExit(move) {
 
 // How big a cell is drawn, which is how much of a portal's glyph it keeps (D9): the
 // board's `data-portals` tier, read by the stylesheet, and the pair's number held at
-// `PORTAL_NUMBER_LEAST` px however small the cell.
+// `PORTAL_NUMBER_LEAST` px however small the cell, its dark eye grown to hold it.
 function fitPortals(svg) {
   if (!svg || !SESSION || !SESSION.ruleset.portals) return;
   if (typeof svg.getBoundingClientRect !== 'function') return;
@@ -945,10 +1057,17 @@ function fitPortals(svg) {
   const cell = 100 / Math.max(SESSION.ruleset.width, SESSION.ruleset.height);
   const perUnit = width / box[2];
   svg.setAttribute('data-portals', portalTier(cell * perUnit));
+  // Q838h: on a phone the arms are drawn by mass, as at the mid size (`pg-mass`).
+  if (portalPhone()) svg.setAttribute('data-phone', '');
+  else if (typeof svg.removeAttribute === 'function') svg.removeAttribute('data-phone');
   const least = PORTAL_NUMBER_LEAST / perUnit;
   for (const text of svg.querySelectorAll('.pg-num')) {
     const em = Number(text.dataset.em || PORTAL_NUMBER) * cell;
     text.setAttribute('font-size', Math.max(em, least).toFixed(3));
+  }
+  for (const eye of svg.querySelectorAll('.pg-eye')) {
+    const r = Number(eye.dataset.em || PORTAL_EYE) * cell;
+    eye.setAttribute('r', Math.max(r, least * PORTAL_EYE_LEAST).toFixed(3));
   }
 }
 
@@ -961,16 +1080,25 @@ function drawPiece(piece, x, y, cell, square) {
   const pair = piece.player > 1 ? null : (SESSION.ruleset.icons || [])[piece.type];
   const icon = pair ? pair[piece.player] : null;
   const tag = square === undefined ? '' : ` data-piece="${square}"`;
-  // Schema 19: a portal end is drawn by the board (`portalGlyph`): its rim, its pair's
-  // number where there are several, who may move it and, for the player looking, which
-  // way through it is open. Its words go on the glyph for a screen reader.
+  // Schema 19: a portal end is drawn by the board (`portalGlyph`, the vortex of Q838b): its
+  // pair's colour and, where there are several, its number; whose pieces may go in, by its
+  // arms; who may move it, by what it stands on. Its words go on the glyph for a screen
+  // reader. The end on its own square turns, idly; a ghost copy of it, and the copy a
+  // move's animation carries, stand still, so a board turns one swirl per end.
+  // Schema 21 (Q843b): its beak points at the end it leads to as drawn, the nearest copy on
+  // a wrapping board, from wherever this copy is drawn; and it is dimmed where the piece
+  // picked may not go in by it.
   const portal = portalEnd(piece.type);
   if (portal) {
     const portals = SESSION.ruleset.portals;
-    const partner = portalPartner(portals, portal);
     const said = square === undefined ? null : portalOn(square);
-    return portalGlyph(portal, partner, portalViewer(), x, y, cell, {
+    const to = portalPartner(portals, portal);
+    const there = to && FRAME ? portalSquare(to.type) : -1;
+    return portalGlyph(portal, x, y, cell, {
       numbered: portalPairs(portals) > 1, label: said ? said.words.label : '',
+      idle: square !== undefined, flipped: FLIPPED,
+      aim: FRAME ? portalAimFor(portal, there, x, y, cell, FRAME) : null,
+      dim: portalRefuses(portal),
       attrs: `${tag.trim()} pointer-events="none"` });
   }
   let inner;
@@ -1075,7 +1203,8 @@ function drawLegend(marks, drawn) {
   }
   // A seam is drawn on the board's edges rather than on a square, so it is read off the
   // rules the board was drawn from, and then named from its row like every other kind.
-  const said = legendEntries(kinds, SESSION.ruleset.wrap, zoneWords(SESSION.ruleset.zones));
+  const said = legendEntries(kinds, SESSION.ruleset.wrap, zoneWords(SESSION.ruleset.zones),
+                             SESSION.ruleset.portals);
   row.innerHTML = said.length ? 'on the board: ' + said.join(' ') : '';
   showLegendRow();
 }
@@ -1084,8 +1213,10 @@ function drawLegend(marks, drawn) {
 // row's own words: the play board's line above and the game page's start position (K1)
 // both say them from here, so a mark has one name wherever it is drawn. A seam is read
 // off the rules' `wrap`, since it lies on the board's edges rather than on a square;
-// `zoneMore` is the zone's clause where the caller has one.
-function legendEntries(kinds, wrap, zoneMore) {
+// `zoneMore` is the zone's clause where the caller has one; `portals` the game's
+// `portal_payload`, whose first end is the portal's key. A row with a `gloss` carries its
+// (i) after its words: the portal's draws four ends with their sentences (Q838c).
+function legendEntries(kinds, wrap, zoneMore, portals) {
   const seams = seamAxes(wrap);
   if (seams.files || seams.ranks || cutSeams(wrap).barrier.length) kinds.add('seam');
   const said = [];
@@ -1093,8 +1224,13 @@ function legendEntries(kinds, wrap, zoneMore) {
     if (!kinds.has(kind)) continue;
     const look = MARK_KINDS[kind];
     const more = kind === 'zone' ? zoneMore || '' : '';
-    said.push(`<span class="entry" data-legend="${kind}">${markKey(kind)}<b
-      style="color:${look.ink || look.colour}">${esc(look.name)}</b> ${esc(look.label)}${esc(more)}</span>`);
+    // A portal's key is the game's first momentum end, a fold's its first fold (schema 22).
+    const sample = (kind === 'portal' || kind === 'fold') && portals && portals.ends
+      ? portals.ends.find(end => isFold(end) === (kind === 'fold')) : undefined;
+    const gloss = look.gloss && typeof info === 'function' ? ' ' + info(look.gloss) : '';
+    said.push(`<span class="entry" data-legend="${kind}">${markKey(kind, sample)}<b
+      style="color:${look.ink || look.colour}">${esc(look.name)}</b> ${esc(look.label)}${
+      esc(more)}${gloss}</span>`);
   }
   return said;
 }
@@ -1226,14 +1362,18 @@ function drawBoard(previous) {
   const targets = new Set(movesFrom(picked).map(m => m.to));
   if (held && SELECTED === null) { targets.delete(held.to); targets.delete(held.dest); }
   // Schema 19: the picked piece's ways through a portal (`docs/plan-portals.md` §4). Each
-  // square it comes out on takes a dot in the colour of the end it goes in by (`through`),
+  // square it comes out on takes a dot in the colour of the pair it goes in by (`through`),
   // beside the plain dot where it can also get there directly (`direct`); each end it can
   // go in by is ringed, since a tap there is a way in (`entries`, D6).
   const through = new Map(), direct = new Set(), entries = new Set();
   for (const m of movesFrom(picked)) {
+    // Schema 24 (`docs/plan-portals-2.md` §5.3R, the user: *"as simple as selecting which
+    // square to land on, just as any other landing square"*): a move through a fold ends on
+    // the far end, so that square takes the ordinary dot, or ring, like any landing; staying
+    // is the ordinary dot on the fold. No hue, no chooser: the two targets differ.
     if (m.portal === undefined) { direct.add(m.to); continue; }
     const way = portalOn(m.portal);
-    through.set(m.to, way && way.end.end === 'blue' ? 'var(--portal-b)' : 'var(--portal-a)');
+    through.set(m.to, way ? `var(--pair-${way.end.pair})` : 'var(--dot)');
     entries.add(m.portal);
   }
   const dropTargets = DROP === null ? new Set()
@@ -1241,6 +1381,8 @@ function drawBoard(previous) {
   const last = AT ? AT.lastMove : SESSION.lastMove;
   const colour = tint();
   const walls = new Set(SESSION.obstacles || []);
+  const folds = new Map(foldsShown().map(fold => [fold.square, fold]));
+  const groups = rules.portals ? portalPairs(rules.portals) : 0;
   const lit = HIGHLIGHT === null ? null : HIGHLIGHT;
 
   // Squares the rules single out, a list per square: the ones a game ends on when a
@@ -1283,7 +1425,7 @@ function drawBoard(previous) {
     const shade = cellShade(file, rank, FRAME);
     // A portal end's words are its square's tooltip (D9), on the square itself because the
     // glyph, like every piece, takes no pointer.
-    const portal = portalOn(square);
+    const portal = portalOn(square) || foldOn(square);
     const base = cellShape(x, y, cell, FRAME, `fill="${shade}" data-square="${square}"`);
     let out = (portal ? base.replace(/\/>$/, `><title>${esc(portal.words.label)}</title></${
       FRAME.hex ? 'path' : 'rect'}>`) : base) + wood.cell(x, y, FRAME, square, shade);
@@ -1297,6 +1439,20 @@ function drawBoard(previous) {
       out += cellShape(x, y, cell, FRAME, `pointer-events="none"
                fill="${colour[square] === 1 ? 'var(--claim0)' : 'var(--claim1)'}" opacity="0.3"`);
     }
+    // Schema 22: a fold lies in the board, under any piece standing in it: the pool
+    // (`foldGlyph`, Q843d, `docs/plan-portals-2.md` §5.3), its beak aimed at the end it leads
+    // to as drawn, its number a badge over the piece when one stands in it (below). The one
+    // on its own square turns, idly; a ghost copy stands still and plain.
+    const fold = folds.get(square);
+    const foldEnd = fold ? portalEnd(fold.type) : null;
+    if (foldEnd) {
+      const there = portal && portal.there !== undefined ? portal.there : -1;
+      out += foldGlyph(foldEnd, x, y, cell, {
+        numbered: groups > 1, occupied: !!pieceAt(square), idle: real, plain: !real,
+        flipped: FLIPPED, aim: portalAimFor(foldEnd, there, x, y, cell, FRAME),
+        dim: portalRefuses(foldEnd), label: real && portal ? portal.words.label : '',
+        attrs: `${real ? `data-fold-at="${square}" ` : ''}pointer-events="none"` });
+    }
     // Under the piece, because a square that ends the game is a square pieces arrive
     // on, and the piece standing there has to stay the thing you see first.
     if (SQUARE_MARKS[square]) out += squareBadge(x, y, cell, SQUARE_MARKS[square], FRAME, 'board');
@@ -1304,7 +1460,8 @@ function drawBoard(previous) {
     // legs, origin to entry and exit to landing, its pair's two cells marked); the legs
     // themselves are drawn over the board (`portalLegsHtml`).
     if (last && (square === last.from || square === last.to
-        || (last.portal !== undefined && (square === last.portal || square === last.portalOut)))) {
+        || (last.portal !== undefined && (square === last.portal || square === last.portalOut))
+        || (last.foldIn !== undefined && (square === last.foldIn || square === last.foldOut)))) {
       out += mark(x, y, cell, 'var(--hl-last)', 0.34);
     }
     // Where the wild piece walked, in its own hand and not the mover's: a dashed
@@ -1323,14 +1480,16 @@ function drawBoard(previous) {
       const lifted = held && (square === held.from || square === held.to || square === held.dest);
       const drawn = drawPiece(piece, x, y, cell, real ? square : undefined);
       out += lifted ? `<g opacity="${HELD_FADE}">${drawn}</g>` : drawn;
+      // The fold's number, moved off the piece standing in it to the cell's corner.
+      if (foldEnd && groups > 1) out += foldBadgeHtml(foldEnd, x, y, cell);
     }
     if (held && (square === held.from || square === held.dest)) {
       out += heldOutline(x, y, cell, square === held.dest);
     }
     const way = through.get(square);
     if (way && !direct.has(square) && !piece) {
-      // Reached only through a portal: the dot in the entry end's colour, edged so it
-      // holds on both woods.
+      // Reached only through a portal: the dot in the pair's colour, edged so it holds on
+      // both woods.
       out += `<circle cx="${x + cell / 2}" cy="${y + cell / 2}" r="${cell * 0.13}"
                fill="${way}" stroke="var(--portal-edge)" stroke-width="${cell * 0.03}"
                data-square="${square}" data-through="1"/>`;
@@ -1339,8 +1498,8 @@ function drawBoard(previous) {
                r="${piece ? cell * 0.44 : cell * 0.13}" fill="${piece ? 'none' : 'var(--dot)'}"
                stroke="var(--dot)" stroke-width="${cell * 0.05}" opacity="0.8"
                data-square="${square}"/>`;
-      // And through a portal too, or a capture there: a small dot of the entry's colour
-      // on the square's corner, clear of the piece.
+      // And through a portal too, or a capture there: a small dot of the pair's colour on
+      // the square's corner, clear of the piece.
       if (way) {
         out += `<circle cx="${x + cell * 0.8}" cy="${y + cell * 0.2}" r="${cell * 0.09}"
                  fill="${way}" stroke="var(--portal-edge)" stroke-width="${cell * 0.025}"
@@ -1375,6 +1534,14 @@ function drawBoard(previous) {
   // The outline, then the seam over it. The outline stands down on an axis whose seam
   // is a fact of the game, so a reader is never offered two boundaries on one axis with
   // only one of them meaning anything.
+  // The glow each pool spills onto the squares round it, over them (a later square would
+  // cover it), clear of the piece standing in the pool.
+  for (const fold of foldsShown()) {
+    if (!portalEnd(fold.type) || cellAbsent(fold.square, FRAME)) continue;
+    const place = squareCell(fold.square, FRAME);
+    const corner = cellXY(place[0], place[1], cell, FRAME);
+    out += foldGlowHtml(corner[0], corner[1], cell, fold.pair);
+  }
   out += outlineHtml(cell, FRAME, rules.wrap) + barrierHtml(cell, FRAME, rules.wrap);
   // Where each wild piece steps next, over everything: a dotted arrow from the edge of
   // the piece to short of the square's middle, so it never covers the piece or a
@@ -1386,7 +1553,7 @@ function drawBoard(previous) {
   // The held move over everything: its arrow, then its piece where it would land.
   if (held) out += heldHtml(held, cell, W, H, rules.wrap);
   // A move through a portal, in its two legs (§4), over the squares it tinted.
-  out += portalLegsHtml(last, cell, W, H);
+  out += portalLegsHtml(last, cell, W, H) + foldLegsHtml(last, cell, W, H);
 
   svg.innerHTML = markDefs(SQUARE_MARKS, 'board') + wood.defs() + out;
   // A piece is drawn `pointer-events="none"`, the held move's faded one too, so a tap on
@@ -1399,7 +1566,7 @@ function drawBoard(previous) {
   svg.onpointerover = event => {
     const node = event.target.closest ? event.target.closest('[data-square]') : null;
     const square = node ? Number(node.dataset.square) : null;
-    const hover = portalOn(square) ? square : null;
+    const hover = portalOn(square) || foldOn(square) ? square : null;
     if (hover !== HOVER_END) { HOVER_END = hover; paintLinks(); }
   };
   svg.onpointerleave = () => { if (HOVER_END !== null) { HOVER_END = null; paintLinks(); } };
@@ -1523,6 +1690,16 @@ const PACE = {
   // With reduced motion: no slide, no spin, no scale; the piece fades from where it was
   // and into where it lands, the two overlapping, in this long all told.
   portalStill: 300,
+  // A move through a fold (schema 24, `docs/plan-portals-2.md` §5.3R), laid out by
+  // `foldJourney`: the slide onto the fold is the portal's approach; then the sink into the
+  // pool (no spin: it goes through a surface, not down a drain) ...
+  foldSink: 240,
+  // ... the instant under the surface ...
+  foldUnder: 60,
+  // ... and the rise out of the far end, where the move ends.
+  foldRise: 260,
+  // A ring of ripple in the hue, where it sinks and where it rises.
+  foldRipple: 520,
 };
 const SVGNS = 'http://www.w3.org/2000/svg';
 let BUSY_UNTIL = 0;
@@ -1691,6 +1868,19 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
     // goes in by, shrinks and spins down into it, grows and spins up out of the other end,
     // and settles one step on, where it lands, and takes there. Each leg along the
     // mover's own step.
+    // Schema 22 (Q843d): a move through a fold is one journey too, a ripple in place of the
+    // spin: onto the fold, down into the pool, and up out of the far end, where it ends
+    // (`foldTrip`, schema 24).
+    if (last && last.foldIn !== undefined && last.foldOut !== undefined
+        && from === last.from && to === last.to && !swallowed.has(to)) {
+      const time = foldTrip(svg, node, pieceOf(before[from]), before, last, cell, W, H, view);
+      traveller = node;
+      blows.set(to, time.blow);
+      lastBlow = Math.max(lastBlow, time.blow.at);
+      landed = Math.max(landed, time.landed);
+      busy = Math.max(busy, time.landed);
+      continue;
+    }
     if (last && last.portal !== undefined && last.portalOut !== undefined
         && from === last.from && to === last.to && !swallowed.has(to)) {
       const time = portalTrip(svg, node, pieceOf(before[from]), before, last, cell, W, H,
@@ -1926,19 +2116,20 @@ function portalWayIn(step, exitDir, W, H) {
 }
 
 // What the swirl over the portal end standing on a square of `board` is drawn as: `ink`,
-// the colour it falls back to, today the rim's own, and `mark`, `pair` and `end`, the same
-// names the glyph carries (`data-portal`), for a stylesheet to key a look on. The one place
-// the trip asks what an end looks like, so a new glyph changes this and no timing.
+// the colour it falls back to, the pair's own (`--pair-N`, Q838b: in at yellow, out at
+// yellow), and `mark`, `pair` and `end`, the same names the glyph carries (`data-portal`),
+// for a stylesheet to key a look on. The one place the trip asks what an end looks like,
+// so a new glyph changes this and no timing.
 function portalLook(board, square) {
   const end = portalEnd((pieceOf(board[square]) || {}).type);
   return {
-    ink: end && end.end === 'blue' ? 'var(--portal-b)' : 'var(--portal-a)',
+    ink: end ? `var(--pair-${end.pair})` : 'var(--portal-edge)',
     mark: end ? `${end.pair}${end.end[0]}` : '', pair: end ? end.pair : '',
     end: end ? end.end : '',
   };
 }
 
-// A dashed ring in an end's colour, edged so it reads on both woods, turning the way the
+// A dashed ring in its pair's colour, edged so it reads on both woods, turning the way the
 // piece turns: drawn in towards the centre as the piece goes down (`inward`), thrown out
 // from it as the piece comes up. Laid under `under` when there is one, so the piece is
 // seen inside it. Gone when it is done; invisible before it starts.
@@ -1997,7 +2188,7 @@ function portalPulse(svg, square, cell, view, frames, at, duration) {
 
 // A move through a portal as one journey (Q836). A ghost of the piece, drawn on the end it
 // goes in by, slides there from where it stood, squashes against the rim, and shrinks and
-// spins down into it while a swirl in the end's colour closes over it and the end gulps.
+// spins down into it while a swirl in the pair's colour closes over it and the end gulps.
 // The piece the board already drew where it lands is held unseen at the other end until
 // then, and comes up out of it spinning the same way, overshooting its size, hops the one
 // step on, overshoots that and settles with a small squash, while that end kicks and a
@@ -2099,12 +2290,133 @@ function portalTrip(svg, node, piece, before, last, cell, W, H, view) {
   return { landed: plan.landed, blow: { at: plan.strike, dx: odx, dy: ody } };
 }
 
+// A trip through a fold (schema 24, `docs/plan-portals-2.md` §5.3R), as times in
+// milliseconds from the start of the move: the slide onto the fold it goes in by
+// (`approach`), the sink into the pool (`sink`), starting before the slide is quite over,
+// the instant under the surface, and the rise out of the far end (`rise`), where the move
+// ends: nothing slides on. A piece standing there is struck once the rise is done (`strike`),
+// the ordinary capture beat, and the piece is at rest then too (`landed`). `inDistance` is
+// the slide's length in viewBox units. Pure, as `portalJourney` is, so the order of the steps
+// is something a test can hold.
+function foldJourney(inDistance) {
+  const approach = Math.min(PACE.portalApproachMax,
+                            PACE.portalApproachMin + inDistance * PACE.portalApproachPerUnit);
+  const sink = { at: approach * PACE.portalOverlap, for: PACE.foldSink };
+  const rise = { at: sink.at + sink.for + PACE.foldUnder, for: PACE.foldRise };
+  const landed = rise.at + rise.for;
+  return { approach: { at: 0, for: approach }, sink: sink, rise: rise, strike: landed, landed: landed };
+}
+
+// A ring of ripple on a pool, in its group's colour cased in the edge: spreading out from
+// the middle and fading as a piece sinks in (`inward`) or rises out. Laid under `under` when
+// there is one, so the piece is seen inside it. Gone when it is done; unseen before it starts.
+function foldRipple(svg, cx, cy, cell, pair, inward, at, under) {
+  const ring = document.createElementNS(SVGNS, 'g');
+  ring.setAttribute('data-journey', inward ? 'ripple-in' : 'ripple-out');
+  ring.setAttribute('class', 'fold-ripple');
+  ring.setAttribute('data-pair', String(pair));
+  ring.setAttribute('pointer-events', 'none');
+  const circle = (r, stroke, width) => `<circle cx="${cx}" cy="${cy}" r="${cell * r}" fill="none"
+    stroke="${stroke}" stroke-width="${cell * width}"/>`;
+  ring.innerHTML = circle(0.2, 'var(--portal-edge)', 0.07) + circle(0.2, `var(--pair-${pair})`, 0.04)
+    + circle(0.34, 'var(--portal-edge)', 0.06) + circle(0.34, `var(--pair-${pair})`, 0.03);
+  ring.style.opacity = '0';
+  ring.style.transformOrigin = `${cx}px ${cy}px`;
+  if (under && under.parentNode === svg) svg.insertBefore(ring, under);
+  else svg.appendChild(ring);
+  const run = ring.animate([
+    { opacity: 0.95, transform: 'scale(0.5)' },
+    { opacity: 0.7, transform: 'scale(1.05)', offset: 0.45 },
+    { opacity: 0, transform: 'scale(1.5)' },
+  ], { duration: PACE.foldRipple, delay: at, fill: 'forwards', easing: 'cubic-bezier(.2,.6,.35,1)' });
+  run.onfinish = () => ring.remove();
+  return at + PACE.foldRipple;
+}
+
+// The pool itself answering: a dip as the piece sinks in, a swell as one rises out. The pool
+// the board drew (`data-fold-at`, its outer group, as the vortex's pulse is), scaled about its
+// own centre and given back untouched.
+function foldPulse(svg, square, cell, view, frames, at, duration) {
+  const pool = svg.querySelector(`[data-fold-at="${square}"]`);
+  if (!pool || typeof pool.animate !== 'function') return 0;
+  const [x, y] = squareXY(square, cell, view);
+  pool.style.transformOrigin = `${x + cell / 2}px ${y + cell / 2}px`;
+  const run = pool.animate(frames, { duration: duration, delay: at, easing: 'ease-in-out' });
+  run.onfinish = () => { pool.style.transformOrigin = ''; };
+  return at + duration;
+}
+
+// A move through a fold as one journey (Q843d; Q867c, §5.3R). A ghost of the piece, drawn
+// on the fold it goes in by, slides there from where it stood, dips against the surface and
+// sinks into the pool, smaller and fading, with no turn, as a ring of ripple spreads and the
+// pool dips. The piece the board already drew on the far end, where the move ends, is held
+// unseen until then and rises out of it with the answering ripple and swell, and takes a
+// piece standing there once it is up. The slide along the mover's own step. Returns when it
+// lands and the blow, struck along the way the piece went in.
+function foldTrip(svg, node, piece, before, last, cell, W, H, view) {
+  const at = sq => squareXY(sq, cell, view);
+  const allow = wrapAllow(SESSION.ruleset.wrap, last.player);
+  const stepOf = (from, to) => wrapStep(from, to, W, H, allow);
+  const [sx, sy] = at(last.foldIn), [tx, ty] = at(last.to);
+  const into = stepOf(last.from, last.foldIn);
+  const [idx, idy] = stepXY(into, cell, view);
+  const plan = foldJourney(Math.hypot(idx, idy));
+  const pair = last.foldPair || 1;
+  const scx = sx + cell / 2, scy = sy + cell / 2;
+
+  if (piece) {
+    const goer = ghostAt(svg, piece, sx, sy, cell);
+    goer.setAttribute('data-journey', 'approach');
+    portalSlide(goer, -idx, -idy, pathHops(before, last.from, into, W, H, view), plan.approach.for);
+    // The sink, on the drawing inside the ghost, about the fold's centre: a dip against the
+    // surface, then down and away, no turn.
+    const inner = goer.firstElementChild || goer;
+    if (inner !== goer) inner.setAttribute('data-journey', 'sink');
+    inner.style.transformOrigin = `${scx}px ${scy}px`;
+    const sink = inner.animate([
+      { opacity: 1, transform: 'translate(0px, 0px) scale(1, 1)', easing: 'cubic-bezier(.3,.6,.5,1)' },
+      { opacity: 1, transform: `translate(0px, ${cell * 0.04}px) scale(1.08, 0.9)`, offset: 0.25,
+        easing: 'cubic-bezier(.5,0,.85,.5)' },
+      { opacity: 0.55, transform: `translate(0px, ${cell * 0.08}px) scale(0.7)`, offset: 0.65,
+        easing: 'cubic-bezier(.5,0,1,.6)' },
+      { opacity: 0, transform: `translate(0px, ${cell * 0.1}px) scale(0.4)` },
+    ], { duration: plan.sink.for, delay: plan.sink.at, fill: 'forwards' });
+    sink.onfinish = () => goer.remove();
+    foldRipple(svg, scx, scy, cell, pair, true, plan.sink.at, goer);
+  }
+  foldPulse(svg, last.foldIn, cell, view, [
+    { transform: 'scale(1)' }, { transform: 'scale(0.9)', offset: 0.4 },
+    { transform: 'scale(1.04)', offset: 0.75 }, { transform: 'scale(1)' },
+  ], plan.sink.at, plan.sink.for + 120);
+
+  // Out of the far end, where the move ends: the pool swells and the ripple answers there.
+  const ocx = tx + cell / 2, ocy = ty + cell / 2;
+  foldPulse(svg, last.foldOut, cell, view, [
+    { transform: 'scale(1)' }, { transform: 'scale(1.1)', offset: 0.4 },
+    { transform: 'scale(0.97)', offset: 0.75 }, { transform: 'scale(1)' },
+  ], Math.max(0, plan.rise.at - 30), 340);
+  foldRipple(svg, ocx, ocy, cell, pair, false, Math.max(0, plan.rise.at - 20), node);
+  // The piece itself, about its own centre: held small and unseen on the far end until its
+  // moment (`backwards`), rising past full size and settling. No fill after: at rest it is
+  // exactly what the board drew.
+  node.style.transformOrigin = `${ocx}px ${ocy}px`;
+  const rise = node.animate([
+    { opacity: 0, transform: 'scale(0.4)', easing: 'cubic-bezier(.2,.75,.35,1)' },
+    { opacity: 1, transform: 'scale(1.08)', offset: 0.7, easing: 'ease-out' },
+    { opacity: 1, transform: 'scale(1)' },
+  ], { duration: plan.rise.for, delay: plan.rise.at, fill: 'backwards' });
+  rise.onfinish = () => { node.style.transformOrigin = ''; };
+  return { landed: plan.landed, blow: { at: plan.strike, dx: idx, dy: idy } };
+}
+
 // With reduced motion, a trip through a portal is a crossfade and nothing else: the
 // piece fades from the square it left while it fades in on the square it landed on, and
 // a piece taken there fades as it arrives. No slide, no turn, no change of size. Any
 // other move draws at once, as it always has with motion reduced; this returns 0 for it.
 function portalStill(svg, before, after, last, cell, view) {
-  if (!last || last.portal === undefined || last.from === null || last.from === undefined
+  // Schema 22 (Q843d): a trip through a fold, too.
+  if (!last || (last.portal === undefined && last.foldIn === undefined)
+      || last.from === null || last.from === undefined
       || before[last.from] === after[last.from] || !after[last.to]) return 0;
   const node = svg.querySelector(`[data-piece="${last.to}"]`);
   if (!node) return 0;
@@ -2766,7 +3078,7 @@ function drawPieceSays() {
   // Schema 19: a portal end picked or tapped says what it does, in the words its label
   // and its square's tooltip carry (`portalWords`), and how a piece comes out of it.
   const looked = SELECTED !== null && !AT && portalOn(SELECTED) ? SELECTED : INSPECT;
-  const portal = looked !== null ? portalOn(looked) : null;
+  const portal = looked !== null ? portalOn(looked) || foldOn(looked) : null;
   if (portal) {
     line.hidden = false;
     line.innerHTML = `<b>${esc(portal.words.head)}</b>. ${esc(portal.words.says)}`;
@@ -2862,6 +3174,13 @@ function drawStrip() {
   // already left -- the store refuses both, and the button says so before it is pressed.
   const resign = document.getElementById('resign');
   if (resign) resign.disabled = !!AT || !!SESSION.outcome;
+  // A draw offered to the computer (Q790) is made on the person's own turn, of the game
+  // as it stands: not while the computer thinks, not over a reviewed position.
+  const offerDraw = document.getElementById('draw');
+  if (offerDraw && !SESSION.correspondence) {
+    offerDraw.disabled = !!AT || !!SESSION.outcome || !SESSION.drawOffer
+      || !!SESSION.awaitingAgent;
+  }
 
   // A reviewed position is one the game has already left, so neither whose move it is
   // nor how the game ended is true of what is on screen. Saying either here would be
@@ -2980,7 +3299,9 @@ function drawHand() {
 function clickSquare(square) {
   // Schema 19: a tap on a portal end says what it does, under the board (D9), whoever's
   // turn it is and whatever position is on screen; a tap anywhere else puts that away.
-  const inspected = portalOn(square) ? square : null;
+  // A fold (schema 22) says what it does when nothing stands in it; a piece standing in one
+  // is picked, as anywhere.
+  const inspected = portalOn(square) || (foldOn(square) && !pieceAt(square)) ? square : null;
   if (inspected !== INSPECT && !PROMO) {
     INSPECT = inspected;
     drawPieceSays();
@@ -3004,32 +3325,27 @@ function clickSquare(square) {
     DROP = null;
   }
 
-  // Schema 19: a tap on an end the picked piece can go in by is that way in: the move
-  // itself where it comes out on one square, else the choice of where it comes out (D6).
+  // Schema 19: a tap on an end the picked piece can go in by is that way in (`takeWays`);
+  // else a tap on a square it can reach is that move, or the choice among the moves that
+  // reach it (`takeLanding`).
   const ways = movesFrom(SELECTED).filter(m => m.portal === square);
-  if (ways.length && ways.every(m => m.to === ways[0].to)) {
-    if (ways.length === 1) return send(ways[0].move);
-    return choosePromotion(ways);
-  }
-  if (ways.length) return chooseExit(ways);
-
   const candidates = movesFrom(SELECTED).filter(m => m.to === square);
-  if (candidates.length === 1) return send(candidates[0].move);
-  // Schema 19: one square reached more than one way -- directly and through a portal, or
-  // through two -- is a choice of route (`docs/plan-portals.md` §2.3), each the engine's
-  // own move named by its text.
-  if (candidates.length > 1 && candidates.some(m => m.portal !== undefined)
-      && new Set(candidates.map(m => m.portal === undefined ? -1 : m.portal)).size > 1)
-    return chooseRoute(candidates);
-  // A strike that places its survivor: one move per landing square (and per promotion).
-  if (candidates.length > 1 && candidates[0].landing !== undefined)
-    return chooseLanding(candidates);
-  // Several moves share these two squares: a promotion, and the player picks what to
-  // become. Anything else sharing a square pair would be a bug in the generator.
-  if (candidates.length > 1 && candidates[0].promotion !== undefined)
-    return choosePromotion(candidates);
-  if (candidates.length > 1 && candidates[0].rotation !== undefined)
-    return chooseRotation(candidates);
+  // Schema 22: a piece standing in a fold its side may move, and a square both can reach --
+  // the piece's move or the fold's own -- is a choice of which to move, in the user's words
+  // (`docs/plan-portals-2.md` §5.3R): *Move the piece* or *Move the portal*, never both.
+  const folded = candidates.filter(m => m.kind === 'fold');
+  if (folded.length && folded.length < candidates.length) {
+    return choosePieceOrPortal(candidates.filter(m => m.kind !== 'fold'), folded, SELECTED, square);
+  }
+  // Q867c, the user's misplay (§5.3R, 2026-10-12): with a piece picked, a tap on a portal the
+  // player to move may move, where that piece may also land or go in, meant *pick the
+  // portal* as often as *land there*. It asks the same question, *Move the piece* or *Move
+  // the portal*; every other landing stays one tap.
+  const movable = SELECTED !== null && SELECTED !== square ? portalMovesFrom(square) : [];
+  if (movable.length && (ways.length || candidates.length)) {
+    return choosePieceOrPortal(ways.length ? ways : candidates, null, square, square);
+  }
+  if (takeWays(ways) || takeLanding(candidates)) return;
 
   // On the first click, if the piece has rotation moves, show the rotation chooser
   // immediately instead of requiring a second click on the same square.
@@ -3052,7 +3368,62 @@ function clickSquare(square) {
   NOTE = !fromHere.length && piece && piece.player === SESSION.sideToMove
     ? `that ${pieceWord(piece)} has no legal move${
         SESSION.inCheck ? ' - your side is in check' : ''}${portalsOnlyWords()}` : '';
+  // Schema 20: a portal the player to move may move, picked just after it was moved, says
+  // why the square it came from has no dot (Q838c). The bar is the core's (`portalBar`).
+  NOTE = NOTE || barNote(square);
   drawBoard();
+}
+
+// A tap's ways in by one portal end (schema 19): the move itself where it comes out on one
+// square, else the choice of where it comes out (D6). False when there are none.
+function takeWays(ways) {
+  if (!ways.length) return false;
+  if (!ways.every(m => m.to === ways[0].to)) chooseExit(ways);
+  else if (ways.length === 1) send(ways[0].move);
+  else choosePromotion(ways);
+  return true;
+}
+
+// A tap's moves onto one square: the move itself, else the choice among them. False where
+// nothing is played or asked, and the tap picks instead.
+function takeLanding(candidates) {
+  if (candidates.length === 1) { send(candidates[0].move); return true; }
+  if (candidates.length < 2) return false;
+  // Schema 19: one square reached more than one way -- directly and through a portal, or
+  // through two -- is a choice of route (`docs/plan-portals.md` §2.3), each the engine's
+  // own move named by its text.
+  if (candidates.some(m => m.portal !== undefined)
+      && new Set(candidates.map(m => m.portal === undefined ? -1 : m.portal)).size > 1) {
+    chooseRoute(candidates);
+  } else if (candidates[0].landing !== undefined) {
+    // A strike that places its survivor: one move per landing square (and per promotion).
+    chooseLanding(candidates);
+  } else if (candidates[0].promotion !== undefined) {
+    // Several moves share these two squares: a promotion, and the player picks what to
+    // become. Anything else sharing a square pair would be a bug in the generator.
+    choosePromotion(candidates);
+  } else if (candidates[0].rotation !== undefined) {
+    chooseRotation(candidates);
+  } else {
+    return false;
+  }
+  return true;
+}
+
+// The moves of the portal standing on a square that the player to move may make now: a
+// momentum end's (it is the piece there), or a fold's own (`MOVE_FOLD`) from under any piece
+// standing in it. Read off the engine's list.
+function portalMovesFrom(square) {
+  if (portalOn(square)) return movesFrom(square);
+  return foldOn(square) ? movesFrom(square).filter(m => m.kind === 'fold') : [];
+}
+
+function barNote(square) {
+  const at = portalOn(square);
+  if (!at || !(at.end.movedBy || []).includes(SESSION.sideToMove)) return '';
+  const W = SESSION.ruleset.width;
+  return portalBarWords(SESSION.portalBar, square, at.end, portalPairs(SESSION.ruleset.portals),
+                        left => squareName(left % W, Math.floor(left / W)));
 }
 
 function pieceWord(piece) {
@@ -3113,6 +3484,7 @@ function choosePromotion(candidates) {
   PROMO_LOOKING = false;
   PROMO_PIECE = null;
   PROMO_ROUTE = false;
+  PROMO_WHICH = null;
   drawPromotion();
 }
 
@@ -3127,7 +3499,44 @@ function chooseRoute(candidates) {
   PROMO_LOOKING = false;
   PROMO_PIECE = null;
   PROMO_ROUTE = true;
+  PROMO_WHICH = null;
   drawPromotion();
+}
+
+// Schema 22 and Q867c (`docs/plan-portals-2.md` §5.3R): the piece or the portal, in the user's
+// words, *Move the piece* or *Move the portal*, never both at once (no move carries a piece
+// and its fold together; the core holds that). Asked where one tap means either: a piece
+// standing in a fold its side may move, both reaching `to` (`portal` the fold's own moves
+// there, played as they are); or a piece picked and a tap on a portal its side may move,
+// where the piece may land or go in (`portal` null: *Move the portal* picks it, to choose
+// where it goes). `at` is the portal's square, `piece` the piece's moves.
+let PROMO_WHICH = null;
+function choosePieceOrPortal(piece, portal, at, to) {
+  if (!document.getElementById('promo')) return;
+  PROMO = piece.concat(portal || []);
+  PROMO_LOOKING = false;
+  PROMO_PIECE = null;
+  PROMO_ROUTE = false;
+  PROMO_EXIT = false;
+  PROMO_WHICH = { piece: piece, portal: portal, at: at, to: to };
+  drawPromotion();
+}
+
+// The answer: the piece's move (or the choice among its moves), or the portal's own move,
+// or the portal picked.
+function pickWhich(which) {
+  const chosen = PROMO_WHICH;
+  closePromotion();
+  if (!chosen) return;
+  if (which === 'portal' && !chosen.portal) {
+    SELECTED = chosen.at;
+    NOTE = '';
+    drawBoard();
+    return;
+  }
+  const moves = which === 'portal' ? chosen.portal : chosen.piece;
+  const ways = moves.filter(m => m.portal === chosen.to);
+  if (!(ways.length ? takeWays(ways) : takeLanding(moves))) drawBoard();
 }
 
 // Schema 19: where a piece comes out of a portal it can reach two ways (D6, §2.3): one
@@ -3140,6 +3549,7 @@ function chooseExit(candidates) {
   PROMO_LOOKING = false;
   PROMO_PIECE = null;
   PROMO_ROUTE = false;
+  PROMO_WHICH = null;
   PROMO_EXIT = true;
   drawPromotion();
 }
@@ -3193,11 +3603,45 @@ function drawExits(box) {
   promotionInView(box, box.querySelector('.promo-bar'), box.querySelector('[data-exit]'));
 }
 
+// A route by its portal's number and square (Q838c): *through portal 2 on e3*, or with one
+// pair *through the portal on e3*. Never by colour: the square already says which end.
 function routeWords(m) {
   if (m.portal === undefined) return 'directly';
   const end = portalEnd(pieceAt(m.portal) ? pieceAt(m.portal).type : -1);
-  return end ? `through portal ${end.pair}, the ${end.end} one on ${m.portalName}`
-    : `through the portal on ${m.portalName}`;
+  const name = end ? portalName(end, portalPairs(SESSION.ruleset.portals)) : 'the portal';
+  return `through ${name} on ${m.portalName}`;
+}
+
+// The piece-or-portal card (§5.3R): two tiles, the piece as the board draws it and the
+// portal as the board draws it, each with the user's words and, where it is one move, the
+// engine's text for it.
+function whichCard(mover, word, still) {
+  const W = SESSION.ruleset.width;
+  const where = squareName(PROMO_WHICH.to % W, Math.floor(PROMO_WHICH.to / W));
+  const head = 'Move the piece or the portal?';
+  // A momentum end is a way in, not a square the piece stops on.
+  const goesIn = PROMO_WHICH.piece.some(m => m.portal === PROMO_WHICH.to);
+  const says = (PROMO_WHICH.portal
+    ? `Your ${esc(word)} and the portal it stands in can both go to ${esc(where)}.`
+    : `Your ${esc(word)} can ${goesIn ? 'go in by' : 'go to'} ${esc(where)}, and you may move the portal there.`)
+    + ' Tap the one you want.' + still;
+  const piece = mover ? { player: mover.player, type: mover.type, facing: mover.facing || 0 } : null;
+  const at = foldOn(PROMO_WHICH.at) || portalOn(PROMO_WHICH.at);
+  const end = at ? at.end : null;
+  const tile = drawn => `<svg class="promo-piece" viewBox="0 0 100 100" aria-hidden="true">${drawn}</svg>`;
+  const portalTile = !end ? '' : tile(isFold(end)
+    ? foldGlyph(end, 0, 0, 100, { plain: true, numbered: true })
+    : portalGlyph(end, 0, 0, 100, { numbered: true }));
+  const one = moves => (moves && moves.length === 1 ? moves[0].text : '');
+  const button = (which, drawn, words, text) => `<button type="button"
+    class="promo-pick promo-route promo-which" data-which="${which}" aria-label="${esc(words)}${
+    text ? `, ${esc(text)}` : ''}">${drawn}<span class="promo-way">${esc(words)}</span>${
+    text ? `<span class="promo-text">${esc(text)}</span>` : ''}</button>`;
+  const picks = `<div class="promo-pieces promo-routes">${
+    button('piece', piece ? tile(drawPiece(piece, 0, 0, 100)) : '', 'Move the piece', one(PROMO_WHICH.piece))}${
+    button('portal', portalTile, 'Move the portal',
+           PROMO_WHICH.portal ? one(PROMO_WHICH.portal) : 'then choose where it goes')}</div>`;
+  return { head, says, picks };
 }
 
 // ----- where a strike's survivor goes (Q769)
@@ -3230,6 +3674,7 @@ function promotionPieces(candidates) {
 // strike's survivor goes, from the moves the piece picked leaves).
 function promotionStage() {
   if (PROMO && PROMO_EXIT) return 'exit';
+  if (PROMO && PROMO_WHICH) return 'which';
   if (PROMO && PROMO_ROUTE) return 'route';
   if (!PROMO || PROMO[0].landing === undefined) return 'piece';
   return promotionPieces(PROMO).length > 1 && PROMO_PIECE === null ? 'piece' : 'square';
@@ -3267,13 +3712,15 @@ function drawPromotion() {
   if (box.setAttribute) box.setAttribute('aria-modal', PROMO_LOOKING ? 'false' : 'true');
   if (PROMO_LOOKING) {
     box.innerHTML = `<div class="promo-bar">
-      <span class="promo-wait" id="promoHead">${stage === 'route'
+      <span class="promo-wait" id="promoHead">${stage === 'which'
+        ? 'Your move is waiting: the piece or the portal.'
+        : stage === 'route'
         ? `Your ${esc(word)} is waiting for its way.`
         : stage === 'square'
         ? `The ${taken} you took is waiting to be placed.`
         : `Your ${esc(word)} is waiting to become a new piece.`}</span>
       <span class="promo-row"><button type="button" class="primary" id="promoBack">${
-        stage === 'route' ? 'Choose the way'
+        stage === 'which' ? 'Choose which' : stage === 'route' ? 'Choose the way'
         : stage === 'square' ? 'Choose the square' : 'Choose the new piece'}</button>
       <button type="button" class="quiet" id="promoCancel">Cancel</button></span>
     </div>`;
@@ -3289,7 +3736,9 @@ function drawPromotion() {
   const between = !!SESSION.correspondence;
   const still = between ? ' You can still change your move until you send it.' : '';
   let head, says, picks, back = '';
-  if (stage === 'route') {
+  if (stage === 'which') {
+    ({ head, says, picks } = whichCard(mover, word, still));
+  } else if (stage === 'route') {
     head = `Choose how your ${esc(word)} gets there`;
     says = 'This square can be reached more than one way. Tap the way you want.' + still;
     // Each way is the promotion's card: the piece drawn in the tile, as the promotion
@@ -3350,11 +3799,14 @@ function drawPromotion() {
   box.querySelectorAll('[data-piece]').forEach(node => {
     node.onclick = () => pickPiece(Number(node.dataset.piece));
   });
+  box.querySelectorAll('[data-which]').forEach(node => {
+    node.onclick = () => pickWhich(node.dataset.which);
+  });
   if (back) document.getElementById('promoPiece').onclick = () => { PROMO_PIECE = null; drawPromotion(); };
   document.getElementById('promoLook').onclick = () => { PROMO_LOOKING = true; drawPromotion(); };
   document.getElementById('promoCancel').onclick = () => cancelPromotion();
   promotionInView(box, box.querySelector('.promo-card'), box.querySelector('[data-move]')
-    || box.querySelector('[data-piece]'));
+    || box.querySelector('[data-piece]') || box.querySelector('[data-which]'));
 }
 
 // On a phone the board may be half off the screen when the pawn arrives: the board is
@@ -3384,6 +3836,7 @@ function closePromotion() {
   PROMO_PIECE = null;
   PROMO_ROUTE = false;
   PROMO_EXIT = false;
+  PROMO_WHICH = null;
   lightExit(null);
   const box = document.getElementById('promo');
   if (!box) return;
@@ -3406,7 +3859,7 @@ function promotionKeys(event) {
   if (!box || !PROMO) return;
   const stops = [...box.querySelectorAll('button')];
   const picks = stops.filter(node => node.dataset.move !== undefined
-    || node.dataset.piece !== undefined);
+    || node.dataset.piece !== undefined || node.dataset.which !== undefined);
   const at = stops.indexOf(document.activeElement);
   if (event.key === 'Escape') {
     event.preventDefault();
@@ -3558,6 +4011,9 @@ function beatEntry(kind, board, steps, snapshot, plies, walkers, coming) {
     // whole of what the phase changes.
     colour: (snapshot.colour || []).slice(),
     hands: (snapshot.hands || []).map(hand => hand.slice()),
+    // Schema 22 (Q843d): where the folds stood once this ply was made (the move's own
+    // `folds`), else the snapshot's: a fold is no board byte, so a step back draws them here.
+    folds: ((move && move.folds) || snapshot.folds || []).slice(),
   };
 }
 
@@ -3672,7 +4128,8 @@ function showBeat(index) {
 function reviewTrip(was, to) {
   if (to !== was + 1 || !TIMELINE[was] || !TIMELINE[to]) return null;
   const beat = TIMELINE[to];
-  if (beat.kind !== 'move' || !beat.lastMove || beat.lastMove.portal === undefined) return null;
+  if (beat.kind !== 'move' || !beat.lastMove
+      || (beat.lastMove.portal === undefined && beat.lastMove.foldIn === undefined)) return null;
   return { board: TIMELINE[was].board, review: true };
 }
 
@@ -3877,12 +4334,15 @@ function corrApply(snapshot) {
 function refreshCorrControls() {
   const between = SESSION.correspondence;
   const draw = document.getElementById('draw');
+  const theirs = between.drawOffer !== null && between.drawOffer !== between.you;
   if (draw) {
-    const theirs = between.drawOffer !== null && between.drawOffer !== between.you;
     const mine = between.drawOffer !== null && between.drawOffer === between.you;
     sayOn(draw, theirs ? 'accept the draw' : mine ? 'draw offered' : 'offer a draw');
     draw.disabled = mine || !!SESSION.outcome;
   }
+  // Q790: the other's standing offer can be said no to without a move.
+  const decline = document.getElementById('declineDraw');
+  if (decline) decline.hidden = !theirs || !!SESSION.outcome;
   const cancel = document.getElementById('cancel');
   if (cancel) cancel.hidden = !between.mayCancel || !!SESSION.outcome;
   // Q571. Once the game is over, *rematch* replaces the draw offer: a challenge to the
@@ -3905,8 +4365,15 @@ function wireCorr() {
   if (draw) draw.onclick = () => {
     const between = SESSION.correspondence;
     const theirs = between.drawOffer !== null && between.drawOffer !== between.you;
+    // One offer in any five of your own moves (Q790): the server's sentence, unasked.
+    if (!theirs && between.mayOffer === false && between.offerWhy) {
+      fail(new Error(between.offerWhy), draw);
+      return;
+    }
     act(theirs ? 'accept' : 'draw');
   };
+  const decline = document.getElementById('declineDraw');
+  if (decline) decline.onclick = () => act('decline');
   // Calling the game off asks once, like resign: it ends the game for both people.
   const cancel = document.getElementById('cancel');
   if (cancel) cancel.onclick = () => {

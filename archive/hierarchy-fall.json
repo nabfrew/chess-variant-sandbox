@@ -1,6 +1,6 @@
 {
   "schema_version": 6,
-  "name": "hierarchy fall",
+  "name": "demotion chess",
   "description": "Chess in which taking a piece demotes it rather than removing it: a queen becomes a rook, a rook a bishop, a bishop a knight, a knight a pawn, and only a pawn is taken outright. The attacker stands fast, so a capture is a blow struck rather than a square won. Material drains four times more slowly than in chess and a queen has four lives.",
   "board": {
     "width": 8,

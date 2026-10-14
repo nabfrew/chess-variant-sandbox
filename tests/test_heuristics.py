@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import statistics
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -337,6 +338,21 @@ class TestTheBuiltInPathIsUntouched:
         assert by_heuristic == by_builtin
 
 
+# Each term that its gloss says holds "only where" a rule is declared, and how a spec
+# declares that rule. Terms with no entry (material, mobility, ...) read on every game.
+DECLARED_BY: dict[str, Any] = {
+    "territory_margin": lambda spec: "territory" in spec["rules"],
+    "score_margin": lambda spec: "scoring" in spec["rules"],
+    "score_urgency": lambda spec: "scoring" in spec["rules"],
+    "check_margin": lambda spec: "check_limit" in spec["rules"],
+    "extinction_margin": lambda spec: "extinction" in spec["rules"],
+    "hand_material": lambda spec: "drops" in spec["rules"],
+    "promotion_occupancy": lambda spec: bool(spec["rules"].get("promotion")),
+    "reach_progress": lambda spec: "reach" in spec["rules"],
+    "facing_alignment": lambda spec: any("facing" in piece for piece in spec["pieces"]),
+}
+
+
 class TestTheVocabulary:
     """Every term reads a declared rule, and nothing hardcodes a game."""
 
@@ -367,7 +383,8 @@ class TestTheVocabulary:
     )
     def test_every_term_evaluates_on_every_committed_ruleset(self, name: str) -> None:
         """A term whose rule the ruleset does not declare reads zero and is inert."""
-        engine = Engine(load(name))
+        raw = load(name)
+        engine = Engine(raw)
         context = feature_context(engine.spec)
         state = engine.initial_state()
         count = len(engine.legal_moves(state))
@@ -377,6 +394,11 @@ class TestTheVocabulary:
             value = FeatureEvaluator(context, tuple(weights)).evaluate(engine, state, 0, count)
             assert value == value, f"{term} is NaN on {name}"
             assert abs(value) <= 2.0, f"{term} is {value} on {name}, outside its stated range"
+            # The docstring's claim, asserted: a term tied to a rule this spec does not
+            # declare is exactly zero. `DECLARED_BY` is written here, from the glosses'
+            # "only where ..." sentences, and shares nothing with the evaluator.
+            if term in DECLARED_BY and not DECLARED_BY[term](raw):
+                assert value == 0.0, f"{term} reads {value} on {name}, which declares no such rule"
 
     def test_no_term_names_a_piece(self) -> None:
         """The same rule `tests/test_dsl_generality.py` enforces on the engine.
@@ -1082,3 +1104,144 @@ class TestPieceValues:
         ).as_dict()
         assert "piece_ids" not in bare
         assert HeuristicSet.from_dict(bare, spec.piece_ids).piece_ids == ()
+
+
+class TestThePass:
+    """`chess-variant-sandbox heuristics`, the pass's one caller, and what it measures
+    (Q751, plan-tests F9: `measure_heuristics` and every helper under it had never run).
+
+    On `dull` (one piece type, a small board), where the first rung of `NODE_LADDER`
+    already clears `MIN_DEPTH`, so the whole pass is a few dozen short games."""
+
+    ARGS = ("--k", "3", "--games", "1", "--workers", "1")
+
+    def test_the_command_writes_the_set_and_the_report(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from chess_variant_sandbox import cli
+        from chess_variant_sandbox.tournament.heuristics import (
+            MIN_DEPTH,
+            NODE_LADDER,
+            HeuristicReport,
+        )
+
+        spec = RULESETS / "dull.json"
+        out = tmp_path / "report.json"
+        argv = ["heuristics", str(spec), *self.ARGS, "--store", str(tmp_path / "sets"),
+                "--out", str(out)]
+        assert cli.main(argv) == 0
+        printed = capsys.readouterr().out
+        compiled = Engine(load(spec.stem)).spec
+
+        assert (tmp_path / "sets" / f"{compiled.hash}.json").is_file()
+        stored = json.loads(out.read_text(encoding="utf-8"))
+        report = HeuristicReport.load(out)
+        assert report.as_dict() == stored
+        assert report.ruleset_hash == compiled.hash
+        assert report.k == 3 and report.games_per_pairing == 1 and report.baseline == ""
+        # The budget is chosen, not given: the smallest rung at which the deep arm is deep.
+        assert report.nodes == NODE_LADDER[0]
+        assert report.depth_reached >= MIN_DEPTH and report.measurable
+        # Index 0 is the built-in objective, which no sample produced.
+        assert report.rows[0].digest == anchor(compiled).digest
+        for row, saved in zip(report.rows, stored["rows"], strict=True):
+            for score in (row.deep_score, row.legibility, row.agreement_shallow,
+                          row.agreement_deep):
+                assert 0.0 <= score <= 1.0
+            assert saved["headroom"] == round(max(0.0, min(1.0, 2 * (row.deep_score - 0.5))), 4)
+            assert saved["agreement"] == round(min(row.agreement_shallow, row.agreement_deep), 4)
+        assert f"at {NODE_LADDER[0]} nodes" in printed
+        for name, value in heuristic_components(report).items():
+            assert f"{name:<28}{value}" in printed
+
+        # A second run reads the committed set back rather than writing another.
+        assert cli.main(argv) == 0
+        assert "reusing" in capsys.readouterr().out
+        assert HeuristicReport.load(out).as_dict() == stored
+
+    def test_the_report_does_not_depend_on_the_worker_count(self) -> None:
+        from chess_variant_sandbox.tournament.heuristics import measure_heuristics
+
+        spec = load("dull")
+        chosen = handwritten_set(Engine(spec).spec, k=2)
+        one = measure_heuristics(spec, chosen, games=1, nodes=6_400, workers=1)
+        two = measure_heuristics(spec, chosen, games=1, nodes=6_400, workers=2)
+        assert one.as_dict() == two.as_dict()
+
+    def test_the_budget_climbs_the_ladder_until_the_deep_arm_is_deep(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from chess_variant_sandbox.tournament import heuristics as passing
+
+        engine = Engine(load("dull"))
+        chosen = handwritten_set(engine.spec, k=1)
+        tried: list[int] = []
+
+        def depth(at: dict[int, float]) -> None:
+            tried.clear()
+
+            def reached(_engine: Any, _heuristic: Any, nodes: int, _seed: int) -> float:
+                tried.append(nodes)
+                return at[nodes]
+
+            monkeypatch.setattr(passing, "_depth_reached", reached)
+
+        low, high, top = passing.NODE_LADDER
+        depth({low: 2.0, high: passing.MIN_DEPTH, top: 9.0})
+        assert passing._choose_budget(engine, chosen, 0) == high
+        assert tried == [low, high]  # it stops at the first rung that is deep enough
+        # A ruleset no rung can search ends on the top rung, which the report then calls
+        # unmeasured (`measurable`) rather than shallow.
+        depth({low: 1.0, high: 2.0, top: 3.0})
+        assert passing._choose_budget(engine, chosen, 0) == top
+
+    def test_the_shallow_arm_is_two_plies_on_any_board(self) -> None:
+        """The yardstick's claim: `SHALLOW_NODES` is always enough to complete
+        `SHALLOW_DEPTH`, so the arm is the same length on every board."""
+        from chess_variant_sandbox.tournament.heuristics import (
+            SHALLOW_DEPTH,
+            _shallow,
+            plies_completed,
+        )
+
+        for name in ("dull", "gardner", "dobutsu"):
+            engine = Engine(load(name))
+            assert plies_completed(engine, _shallow(None), 0) == SHALLOW_DEPTH, name
+
+    def test_the_agreement_arms_differ_only_in_their_objective(self) -> None:
+        from chess_variant_sandbox.tournament.heuristics import _shallow
+
+        plain, digest, fit = _shallow(None), _shallow("abc"), _shallow(None, "f1")
+        assert plain == "minimax:max_depth=2,nodes=20000"
+        assert digest == "minimax:h=abc,max_depth=2,nodes=20000"
+        assert fit == "minimax:fit=f1,max_depth=2,nodes=20000"
+        # A heuristic and a fit are two answers to one question; an arm never names both.
+        assert _shallow("abc", "f1") == digest
+
+    def test_the_diagnostics_say_what_the_components_leave_out(self) -> None:
+        from chess_variant_sandbox.tournament.heuristics import (
+            HeuristicReport,
+            MatchRow,
+            heuristic_diagnostics,
+        )
+
+        def row(plan: str, deep: float, legible: float, agrees: float) -> MatchRow:
+            return MatchRow(plan, plan, plan, deep_score=deep, legibility=legible,
+                            agreement_shallow=agrees, agreement_deep=1.0)
+
+        rows = [row("built-in", 0.6, 0.7, 0.5), row("a", 1.0, 0.9, 0.8), row("b", 0.5, 0.4, 0.2)]
+        report = HeuristicReport("h", "s", nodes=6_400, depth_reached=5.0, rows=rows)
+        said = heuristic_diagnostics(report)
+        assert said["k"] == 3 and said["measurable"] is True
+        assert (said["headroom_best"], said["headroom_worst"], said["headroom_builtin"]) == (
+            1.0, 0.0, 0.2)
+        assert said["best_plan"] == "a" and said["beats_random"] == 0.9
+        assert said["headroom_legibility_correlation"] == round(
+            statistics.correlation([0.2, 1.0, 0.0], [0.7, 0.9, 0.4]), 3)
+        # Under three rows, or nothing varying, there is no correlation to report.
+        assert heuristic_diagnostics(
+            HeuristicReport("h", "s", 6_400, 5.0, rows[:2]))["headroom_legibility_correlation"] is None
+        flat = [row("x", 0.6, 0.5, 0.1), row("y", 0.9, 0.5, 0.1), row("z", 0.7, 0.5, 0.1)]
+        assert heuristic_diagnostics(
+            HeuristicReport("h", "s", 6_400, 5.0, flat))["headroom_legibility_correlation"] is None
+        assert heuristic_diagnostics(None) == {}

@@ -45,8 +45,13 @@ def _measured(
     world: dict[str, Path],
     unreadable: tuple[tuple[str, ...], ...] = ((), (), (), ()),
     basis: dict[str, Any] | None = None,
+    kept_total: tuple[bool, ...] = (True, True, True, True),
 ) -> dict[str, Any]:
-    """A stored library score, stamped with today's basis unless told otherwise."""
+    """A stored library score, stamped with today's basis unless told otherwise.
+
+    ``kept_total`` says per run whether it kept a total (a run the roster could not read
+    keeps none: its ``index`` is ``null``).
+    """
     stamped = _basis() if basis is None else basis
     out = corpus.measurement_dir(DIGEST, world["runs"])
     out.mkdir(parents=True, exist_ok=True)
@@ -57,9 +62,10 @@ def _measured(
         "games": 256 * len(seeds), "index": 0.7, "totals_used": 4, "sd": 0.02,
         "viable": True, "violations": [], "weights_version": DEFAULT_WEIGHTS,
         "families": {}, "standings": [],
-        "runs": [{"seed": seed, "index": 0.7, "sd": 0.02, "viable": True, "violations": [],
+        "runs": [{"seed": seed, "index": 0.7 if kept else None, "sd": 0.02 if kept else None,
+                  "viable": True, "violations": [],
                   "unreadable": list(withheld), "origin": "played"}
-                 for seed, withheld in zip(seeds, unreadable, strict=True)],
+                 for seed, withheld, kept in zip(seeds, unreadable, kept_total, strict=True)],
         "basis": stamped,
     }), encoding="utf-8")
     return stamped
@@ -175,14 +181,17 @@ class TestTheLadder:
         assert ladder.reading == trust.SILENT
         assert ladder.count == trust.Count(1, 4, "runs")
 
-    @pytest.mark.parametrize(("blind", "read", "those"), [
-        (1, 3, "those runs"), (2, 2, "those runs"), (3, 1, "that run")])
-    def test_a_partly_blind_ladder_says_how_many_runs_read_it(
-        self, world, blind: int, read: int, those: str
+    @pytest.mark.parametrize(("blind", "read", "rest", "runs"), [
+        (1, 3, 3, "runs"), (2, 2, 2, "runs"), (3, 1, 1, "run")])
+    def test_a_run_that_kept_no_total_says_the_score_rests_on_the_others(
+        self, world, blind: int, read: int, rest: int, runs: str
     ) -> None:
         # Q793 (`plan-confidence.md` §2.3.1): *dull* is blind on 2 of 4 runs and read
         # *steadily stronger*. Words only: the item stays silent and the level unmoved.
-        _measured(world, unreadable=(("skill_gradient",),) * blind + ((),) * (4 - blind))
+        # Q896 (`three-run-lean.md` §7): a blind run keeps no total, so the whole score
+        # rests on the others, not parts of it.
+        _measured(world, unreadable=(("skill_gradient",),) * blind + ((),) * (4 - blind),
+                  kept_total=(False,) * blind + (True,) * (4 - blind))
         read_ = _read(world)
         ladder = read_.item(trust.LADDER)
         assert (ladder.reading, ladder.sentence) == (trust.SILENT, "ladder.partly")
@@ -190,7 +199,25 @@ class TestTheLadder:
         assert read_.level == trust.EARLY
         text = trust.said(ladder)
         assert f"in only {read} of the 4 runs that measured this game" in text
-        assert text.endswith(f"rest on {those} alone.")
+        assert text.endswith(f"so the score rests on {rest} {runs} alone.")
+        assert "parts of" not in text
+        assert "steadily" not in text
+
+    @pytest.mark.parametrize(("blind", "read", "those"), [
+        (1, 3, "those runs"), (2, 2, "those runs"), (3, 1, "that run")])
+    def test_a_run_that_lost_only_components_keeps_parts_of_the_score(
+        self, world, blind: int, read: int, those: str
+    ) -> None:
+        # The other case: the blind runs kept their totals and lost a component, so only
+        # parts of the score rest on the runs that read the ladder.
+        _measured(world, unreadable=(("skill_gradient",),) * blind + ((),) * (4 - blind))
+        read_ = _read(world)
+        ladder = read_.item(trust.LADDER)
+        assert (ladder.reading, ladder.sentence) == (trust.SILENT, "ladder.partly-parts")
+        assert read_.level == trust.EARLY
+        text = trust.said(ladder)
+        assert f"in only {read} of the 4 runs that measured this game" in text
+        assert text.endswith(f"so parts of the score rest on {those} alone.")
         assert "steadily" not in text
 
     def test_no_blind_run_keeps_the_ordered_sentence(self, world) -> None:

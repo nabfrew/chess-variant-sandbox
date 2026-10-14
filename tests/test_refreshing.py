@@ -135,6 +135,122 @@ class TestTheStates:
             "1 hour ago", "2 hours ago", "3 days ago"]
 
 
+class TestTheLadders:
+    """Q860: the ladder work Q822 put in the status file, worded beside the score work.
+
+    One fixture file per case the task names: no ladder owed, ladders owed, a refused
+    ladder, a file whose ladders wait on a score, and an old file without the keys. The
+    panel reads the keys as written and works out no ladder state itself.
+    """
+
+    def test_none_owed(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        _ledger(runs, state="idle", owed_counts={}, refused_owed=0, ladders_owed=[],
+                ladder_counts={"ladder": 0, "top-up": 0, "re-rate": 0}, ladders_refused=0)
+        view = refreshing.view(runs)
+        assert view["ladders"] == "read"
+        assert view["laddersOwed"] == 0 and view["ladderCounts"] == {}
+        assert view["laddersRefused"] == 0
+        assert "No computer-player ladder was owed at its last look." in view["said"]
+        assert not any("ladders are owed and refused" in line for line in view["said"])
+
+    def test_owed_says_how_many_of_each_kind_in_order(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        _ledger(runs, state="working", owed_counts={}, refused_owed=0,
+                doing={**GAME, "needs": "top-up", "started": refresher._now()},
+                ladders_owed=[{**GAME, "needs": "top-up"}],
+                ladder_counts={"re-rate": 1, "ladder": 2, "top-up": 3}, ladders_refused=0)
+        view = refreshing.view(runs)
+        assert view["ladderCounts"] == {"ladder": 2, "top-up": 3, "re-rate": 1}
+        assert view["laddersOwed"] == 6
+        assert ("6 computer-player ladders were owed at its last look: "
+                "2 missing, 3 short, 1 to rate again.") in view["said"]
+        assert view["said"][0] == ("The refresher is working on alpha: topping up its "
+                                   "computer players, since just now.")
+        assert view["doing"]["needs"] == "topping up its computer players"
+        # The score lines are unchanged beside them, and come first.
+        said = view["said"]
+        assert said.index("No game was out of date at its last look.") < said.index(
+            "6 computer-player ladders were owed at its last look: "
+            "2 missing, 3 short, 1 to rate again.")
+        _ledger(runs, ladder_counts={"ladder": 1, "top-up": 0, "re-rate": 0})
+        assert ("1 computer-player ladder was owed at its last look: 1 missing."
+                in refreshing.view(runs)["said"])
+
+    def test_a_refused_ladder_says_the_game_the_work_and_why(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        ledger = refresher.Ledger(runs)
+        score = refresher.Item(hash=GAME["hash"], name="alpha", needs="replay",
+                               reason="", tier=3, measured="", stored="d1")
+        ladder = refresher.Item(hash=GAME["hash"], name="alpha", needs="re-rate",
+                                reason="old players", tier=3, measured="",
+                                stored=refresher.LADDER_STORED + "absent")
+        ledger.refuse(score, refresher.Outcome(
+            hash=GAME["hash"], needs="replay", refusal=refresher.ERROR, reason="boom"))
+        ledger.refuse(ladder, refresher.Outcome(
+            hash=GAME["hash"], needs="re-rate", refusal=refresher.ERROR,
+            reason="rated, and its ladder still owes top-up: short: minimax"))
+        ledger.update(state="idle", owed_counts={}, refused_owed=1, ladders_owed=[],
+                      ladder_counts={"ladder": 0, "top-up": 0, "re-rate": 0},
+                      ladders_refused=1)
+        view = refreshing.view(runs)
+        assert view["laddersRefused"] == 1 and view["laddersOwed"] == 0
+        assert ("1 more ladder is owed and refused, so it does not try them again."
+                in view["said"])
+        rows = {row["ladder"]: row for row in view["refused"]}
+        assert set(rows) == {True, False}
+        assert rows[True]["needs"] == "rating its computer players again"
+        assert rows[True]["why"] == "measuring it failed"
+        assert rows[True]["reason"].startswith("rated, and its ladder still owes")
+        assert rows[False]["needs"] == "playing again"
+        assert view["lastRefusal"]["ladder"] is True
+
+    def test_ladders_wait_while_a_score_is_owed(self, tmp_path: Path) -> None:
+        """The refresher writes the keys as `None` when a score is owed; that is said."""
+        runs = tmp_path / "runs"
+        _ledger(runs, state="idle", owed_counts={"rescore": 1}, refused_owed=0,
+                ladders_owed=None, ladder_counts=None, ladders_refused=2)
+        view = refreshing.view(runs)
+        assert view["ladders"] == "waiting"
+        assert view["laddersOwed"] is None and view["ladderCounts"] is None
+        assert view["laddersRefused"] is None
+        assert ("Computer players' ladders: not read while a score is owed (scores first)."
+                in view["said"])
+
+    def test_an_old_file_without_the_keys_says_nothing_of_ladders(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        _written(runs, 10, state="idle", owed_counts={"rescore": 2}, refused_owed=0)
+        view = refreshing.view(runs)
+        assert view["ladders"] == "unknown"
+        assert view["laddersOwed"] is None and view["ladderCounts"] is None
+        assert view["laddersRefused"] is None
+        assert not any("ladder" in line for line in view["said"])
+        assert view["said"][1] == "2 games out of date at its last look: 2 scoring again."
+        assert all(row["ladder"] is False for row in view["refused"])
+
+    def test_no_file_carries_the_ladder_keys_empty(self, tmp_path: Path) -> None:
+        view = refreshing.view(tmp_path / "runs")
+        assert view["ladders"] == "unknown" and view["laddersOwed"] is None
+
+    def test_a_ladder_done_last_shows_no_score(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        _ledger(runs, state="idle", owed_counts={}, ladder_counts={},
+                last_done={**GAME, "needs": "ladder", "index": None})
+        assert ("Last done: alpha, rating its computer players."
+                in refreshing.view(runs)["said"])
+
+    def test_every_ladder_kind_has_plain_words(self) -> None:
+        assert set(refreshing.LADDERS) == set(refresher.LADDER_ORDER)
+        assert set(refreshing.LADDER_COUNTED) == set(refresher.LADDER_ORDER)
+
+    def test_the_panel_works_out_no_ladder_state(self) -> None:
+        """It reads the status file only: never `ladder_items` or `deploy/`."""
+        source = (measurement.ROOT / "chess_variant_sandbox/web/refreshing.py").read_text(
+            encoding="utf-8")
+        for call in ("ladder_items", "ladder_work", "ladders_check", "_deploy", "opponents"):
+            assert call not in source, call
+
+
 class TestWhereItIsDrawn:
     def test_the_local_application_sends_it_with_the_scores(self, tmp_path: Path) -> None:
         for name in ("rulesets", "runs", "archive"):

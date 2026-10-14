@@ -62,6 +62,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from retired_specs import REBUILT
 from test_schema_nine import FROZEN
 
 from chess_variant_sandbox.engine import Engine
@@ -93,8 +94,12 @@ from chess_variant_sandbox.spec.transform import set_obstacle, settle_schema_ver
 ROOT = Path(__file__).resolve().parents[1]
 SHOWCASES = (
     "einstein", "omega", "extinction-chess", "grand", "placement-chess", "sittuyin", "kyoto",
-    "jeson-mor", "hex-glinski-turned", "hex-glinski-turned-mirrored",
+    "jeson-mor", "hex-glinski-turned", "hex-glinski-turned-mirrored", "pinwheel",
 )
+# Q870: the two turned showcases left the library for `pinwheel`, which writes a one-handed
+# knight `rotate6` beside `dihedral12` officers; the tests read them rebuilt
+# (`tests/retired_specs.py`).
+RETIRED_SHOWCASES = frozenset({"hex-glinski-turned", "hex-glinski-turned-mirrored"})
 KEEPING = "rules.contacts.mover_to=mover(promotion)"
 WALLED = "rules.castling(walled rank)"
 PER_TYPE = "rules.extinction.per_type"
@@ -117,10 +122,13 @@ FEATURE = {
     "jeson-mor": {LEAVE},
     "hex-glinski-turned": {ROTATE6},
     "hex-glinski-turned-mirrored": {DIHEDRAL12},
+    "pinwheel": {ROTATE6, DIHEDRAL12},
 }
 
 
 def _load(name: str) -> dict[str, Any]:
+    if name in REBUILT:  # retired by Q868 or Q870; rebuilt from a game in the library
+        return REBUILT[name]()
     folder = "rulesets" if name == "chess" else "archive"
     return json.loads((ROOT / folder / f"{name}.json").read_text(encoding="utf-8"))
 
@@ -239,7 +247,7 @@ class TestTheBumpMovedNothing:
         users = {
             Path(path).stem for path in FROZEN if _schema_eighteen_uses(load_spec(ROOT / path))
         }
-        assert users == set(SHOWCASES)
+        assert users == set(SHOWCASES) - RETIRED_SHOWCASES
 
 
 class TestTheKeepingLink:
@@ -425,7 +433,9 @@ class TestTheOtherSurfaces:
         assert distance(games["einstein"], _without_keeping(games["einstein"])) > 0.0
 
     @pytest.mark.parametrize(
-        ("name", "key"), [("einstein", "rules.contacts"), ("omega", "rules.obstacles")]
+        ("name", "key"),
+        # Omega's walls cross since Q703 (`*` in the FEN); its 12x12 board does not.
+        [("einstein", "rules.contacts"), ("omega", "the board is 12x12")],
     )
     def test_fairy_refuses_it_by_name(
         self, games: dict[str, dict[str, Any]], name: str, key: str

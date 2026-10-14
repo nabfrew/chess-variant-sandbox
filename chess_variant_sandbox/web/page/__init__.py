@@ -80,7 +80,7 @@ from pathlib import Path
 
 from chess_variant_sandbox.viz.wrapped import WRAPPED_FILE
 from chess_variant_sandbox.web import landing
-from chess_variant_sandbox.web.page.shell import brand, footer, head_links, sections
+from chess_variant_sandbox.web.page.shell import TAGLINE, brand, footer, head_links, sections
 from chess_variant_sandbox.web.page.style import STYLE
 
 # Where the page's scripts are served, and where they are read from.
@@ -119,7 +119,7 @@ _BETWEEN = f"""
 <div class="wrap">
   <header class="top">
     <h1 id="home" class="brand">{brand()}</h1>
-    <span class="muted tagline" id="tagline">chess-like games, invented and measured here</span>
+    <span class="muted tagline" id="tagline">{TAGLINE}</span>
     <span class="grow"></span>
     {sections()}
     <span class="muted" id="runs"></span>

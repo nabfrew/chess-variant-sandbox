@@ -41,12 +41,13 @@ use crate::tables::{SquareSet, Tables, MAX_SQUARES};
 /// **Schema 9 is the first field to meet that ceiling.** The bounty tally joins slot 11
 /// as a fourth element rather than taking a slot of its own, which is the shape the
 /// docstring promised. Schema 18's side that has just left a goal square (Q786) joins
-/// it as a fifth, and schema 20's straight-back bar (Q807) as a sixth.
+/// it as a fifth, and schema 20's straight-back bar (Q807) as a sixth. Schema 22's folds
+/// (Q843c) are the seventh: the square of each fold end, in end order, empty without folds.
 type StateIn = (
     Vec<u8>, u8, Vec<u8>, i16, i16, u32, u32, u64, Vec<u64>,
     (u32, u32),
     (Vec<u32>, Vec<u32>),
-    (Vec<u8>, u32, u32, (f64, f64), i8, (i16, i16)),
+    (Vec<u8>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>),
 );
 type StateOut<'py> = (
     Bound<'py, PyBytes>,
@@ -60,7 +61,7 @@ type StateOut<'py> = (
     Vec<u64>,
     (u32, u32),
     (Vec<u32>, Vec<u32>),
-    (Bound<'py, PyBytes>, u32, u32, (f64, f64), i8, (i16, i16)),
+    (Bound<'py, PyBytes>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>),
 );
 
 /// What the wild-piece phase did on the way to a position (schema 9): one
@@ -142,7 +143,38 @@ fn snapshot_from(t: &Tables, state: &StateIn) -> Snapshot {
         points: [state.11.3.0, state.11.3.1],
         goal_left_by: state.11.4,
         portal_bar: [state.11.5.0, state.11.5.1],
+        fold_at: folds_in(t, &state.11.6),
     }
+}
+
+/// Schema 22: the folds as Python holds them -- one square per fold end, in end order --
+/// as `Game::fold_at`, indexed by end. An empty tuple is where the folds start, which is
+/// what a position built by hand without saying where they stand means.
+fn folds_in(t: &Tables, folds: &[i16]) -> [i16; 8] {
+    let Some(starts) = t.portals.as_deref().and_then(|p| p.folds.as_ref()).map(|f| f.starts)
+    else {
+        return [-1; 8];
+    };
+    if folds.is_empty() {
+        return starts;
+    }
+    let mut at = [-1i16; 8];
+    let mut given = folds.iter();
+    for end in 0..8 {
+        if starts[end] >= 0 {
+            at[end] = given.next().copied().unwrap_or(starts[end]);
+        }
+    }
+    at
+}
+
+/// Schema 22: `Game::fold_at` as Python holds it, the fold ends' squares in end order.
+fn folds_out(game: &Game<'_>) -> Vec<i16> {
+    let Some(starts) = game.t.portals.as_deref().and_then(|p| p.folds.as_ref()).map(|f| f.starts)
+    else {
+        return Vec::new();
+    };
+    (0..8).filter(|end| starts[*end] >= 0).map(|end| game.fold_at[end]).collect()
 }
 
 fn state_out<'py>(py: Python<'py>, game: &Game<'_>) -> StateOut<'py> {
@@ -165,6 +197,7 @@ fn state_out<'py>(py: Python<'py>, game: &Game<'_>) -> StateOut<'py> {
             (game.points[0], game.points[1]),
             game.goal_left_by,
             (game.portal_bar[0], game.portal_bar[1]),
+            folds_out(game),
         ),
     )
 }

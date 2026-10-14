@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from retired_specs import hex_glinski_promoting
 
 from chess_variant_sandbox.spec.describe import (
     HEXAGON_WRAP_CHOICES,
@@ -54,7 +55,7 @@ def _key(path: Path) -> str:
 
 def _parent() -> dict[str, Any]:
     """Glinski's hexagon as the library has it: an 11 by 11 rhombus cut by thirty walls."""
-    return _load(ROOT / "archive" / "hex-glinski-promoting.json")
+    return hex_glinski_promoting()
 
 
 def _twin(wrap: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -87,7 +88,20 @@ def _wrap_lines(wrap: dict[str, Any], **rules: Any) -> list[str]:
 def test_the_twin_is_what_the_spec_says() -> None:
     parent, twin = _parent(), _twin()
     assert parent["rules"]["obstacles"]["squares"]
-    assert absent_squares(twin["board"]) and "obstacles" not in twin["rules"]
+    assert "obstacles" not in twin["rules"]
+    # The twin's missing cells are the parent's walls, cell for cell. Worked out here from
+    # the names (file letter, rank number, `width` per rank) and the 180-degree mirror the
+    # parent states, without the package's own square reader.
+    width = parent["board"]["width"]
+    cells = width * parent["board"]["height"]
+    walls = {
+        (int(name[1:]) - 1) * width + (ord(name[0]) - ord("a"))
+        for name in parent["rules"]["obstacles"]["squares"]
+    }
+    assert parent["rules"]["obstacles"]["mirror"] is True
+    walls |= {cells - 1 - cell for cell in walls}
+    assert len(walls) == 30
+    assert set(absent_squares(twin["board"])) == walls
 
 
 # ------------------------------------------------------------------------ describe
@@ -208,54 +222,51 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "archive/rifle": "7ea1669e4e1aa9e2",  # Q540, schema 17
     "archive/einstein": "d3b6b02f8466f39b",  # Q781, schema 18
     "archive/omega": "9c2b1ac6dbc35c11",  # Q781, schema 18
-    "archive/extinction-chess": "ed5f3e3428a44bcc",  # Q783, schema 18
+    "archive/extinction-chess": "4519aa68596fcce2",  # Q783, schema 18; Q870: its name (was ed5f3e3428a44bcc)
     "archive/grand": "8cd64b4fc05a23fe",  # Q783, schema 18
-    "archive/placement-chess": "86a5bb2444f119a3",  # Q784, schema 18
+    "archive/placement-chess": "ffe73cd78d4fcd2b",  # Q784, schema 18; Q870: its name (was 86a5bb2444f119a3)
     "archive/sittuyin": "51b0f5043e170580",  # Q784, schema 18
     "archive/kyoto": "042d5726eb291356",  # Q785, schema 18
-    "archive/jeson-mor": "051d25a135b04a2c",  # Q786, schema 18
-    "archive/hex-glinski-turned": "b592a4deec6f7850",  # Q782, schema 18
-    "archive/hex-glinski-turned-mirrored": "0833f5eb9004204c",  # Q782, schema 18
-    "archive/shogi-drop-promoted": "b9a76d36e4533433",  # Q787
-    "archive/shogi-backward-drops": "7146e06d789e999e",  # Q787
+    "archive/jeson-mor": "a0e909de195b7cdd",  # Q786, schema 18; Q870: its name (was 051d25a135b04a2c)
+    # Q870, 2026-10-13: `archive/hex-glinski-turned` and `-turned-mirrored` retired for `pinwheel`,
+    # which has a board shape and so is not read here (rows were 95f213b4e8e9fdbe and 93933865b7a20464).
+    "archive/shogi-drop-promoted": "05d18683734a423a",  # Q787; Q868: its description (was b9a76d36e4533433); Q870: its name (was 39a59b08b86fe4c4)
+    "archive/shogi-backward-drops": "20c148872b016efc",  # Q787; Q870: its name (was 7146e06d789e999e)
     "archive/pawn-knockdown": "16b16f92f478e283",  # Q787
-    "archive/divide": "9bb463b570c037d6",  # Q772a, schema 19
-    "archive/ferry": "78f34d021bf69c60",  # Q772a, schema 19
-    "archive/ferry-no-straight-back": "6496a58a9f77bd62",  # Q807, schema 20
-    "archive/carousel": "adca05bb14f01944",  # Q772a, schema 19
-    "archive/wormhole": "f9e39fb07aaf10ef",  # Q772a, schema 19
-    "archive/wormhole-adrift": "bfe66dbf1f9be1bd",  # Q772a, schema 19
-    "archive/shut-wormhole": "899a44ea1a70e016",  # Q772a, schema 19
-    "archive/cylinder-wormhole": "956c4052a0efe3b2",  # Q772a, schema 19
+    "archive/divide": "15a420404366711e",  # Q772a, schema 19; Q838c, ends by square (was 9bb463b570c037d6)
+    "archive/ferry": "4f48a98c36e1d7e0",  # Q772a, schema 19; Q838c, ends by square (was 78f34d021bf69c60); Q868: its description (was 70ab6aac9fbc846d); Q870: its description names a renamed sibling (was 5e31c8eaabf21a3f)
+    "archive/ferry-no-straight-back": "5623aae081bef87d",  # Q807, schema 20; Q838c, ends by square (was 6496a58a9f77bd62); Q868: its description (was b699b6c35bdc886e); Q870: its name (was 278d1cb91060be73)
+    "archive/wolves-patrol": "d55a2b2a6e6d718a",  # Q850, schema 23; Q868: its description (was f66264efa6c41bae); Q870: its name (was 2c530701f62d18cb)
+    "archive/carousel": "8f53c1f079a65be6",  # Q772a, schema 19; Q838c, ends by square (was adca05bb14f01944)
+    "archive/wormhole": "0fc9054ce1fcadd3",  # Q772a, schema 19; Q838c, ends by square (was f9e39fb07aaf10ef); Q868: its description (was c472a28083096dd3)
+    "archive/shut-wormhole": "5d7ca7fae57d4ab3",  # Q772a, schema 19; Q838c, ends by square (was 899a44ea1a70e016); Q868: its description (was 88f92f6683674ae0)
+    "archive/cylinder-wormhole": "376857daebed08d9",  # Q772a, schema 19; Q838c, ends by square (was 956c4052a0efe3b2); Q868: its description (was 7754feef3dc87a15)
     "archive/cannonade": "fc242c00df9a0b1d",
-    "archive/chess-sweeping-bishops": "e1fbb67c85b726f2",  # Q614 (W7): its description, for a player
-    "archive/hex-glinski-promoting": "85e8bb4ab13a3462",
-    "archive/hierarchy-extended": "087f7e3e22095b4c",  # Q614 (W7): its description, for a player
-    "archive/hierarchy-fall": "f1d5f72ada58ae25",
-    "archive/hierarchy-fall-swap": "c9b272f208f0a3d9",  # Q614 (W7): its description, for a player
-    "archive/hierarchy-rise": "c721be4ecb12edac",
-    "archive/hierarchy-rise-stay": "d35f81c844ab404f",
-    "archive/hierarchy-rise-throw": "88b88b82ae4f29b7",
+    "archive/chess-sweeping-bishops": "be9ce1bb3ec7ee78",  # Q614 (W7): its description, for a player; Q870: its name (was e1fbb67c85b726f2)
+    "archive/hierarchy-extended": "0983c06122def826",  # Q614 (W7): its description, for a player; Q868: its description (was 087f7e3e22095b4c); Q870: its name (was bb3b5cc5749a560a)
+    "archive/hierarchy-fall": "c037a03e23f19bb7",  # Q870: its name (was f1d5f72ada58ae25)
+    "archive/hierarchy-rise": "b9bbbd571d6dc0cf",  # Q868: its description, what its difference does in play (was c721be4ecb12edac); Q870: its name (was 788cb832f824d4c5)
+    "archive/hierarchy-rise-stay": "57e401ef6336674b",  # Q868: its description, what its difference does in play (was d35f81c844ab404f); Q870: its name (was 3e40bfc19ce12d65)
+    "archive/hierarchy-rise-throw": "b33ef01792e81397",  # Q868: its description, what its difference does in play (was 88b88b82ae4f29b7); Q870: its name (was e2b782eb98c6fe7b)
     "archive/marchfield": "89eefc6a7516e09b",
     "archive/merger": "775d28c68e353d04",
     "archive/perpetual": "d97bd86bed5df13e",  # Q614 (W7): its description, for a player
     "archive/quarry": "60c027a1e10f03e8",
-    "archive/queen-bomb": "09626cff98a6e6da",
-    "archive/queens-wake": "b3819b504d9d5fb7",
+    "archive/queen-bomb": "603f5a2cedbda769",  # Q868: its description, what its difference does in play (was 09626cff98a6e6da)
+    "archive/queens-wake": "66793be5645ffbde",  # Q868: its description, what its difference does in play (was b3819b504d9d5fb7)
     "archive/reckoning": "eae10ebfaeb450f3",
     "archive/stones": "bd40338d79eed295",
     "archive/succession": "7e7db2cbe4838f68",  # Q614 (W7): its description, for a player
-    "archive/three-stones": "e40fb77acc50ada9",
-    "archive/weathervane": "4ff3b030a4c709e3",  # Q614 (W7): its description, for a player
-    "archive/weathervane-half-turn": "fa4e204bfcd6f14f",
-    "archive/weathervane-torus": "115d74e3f641a1eb",  # Q614 (W7): its description, for a player
+    "archive/three-stones": "61cffe49585683c2",  # Q868: its description, what its difference does in play (was e40fb77acc50ada9)
+    "archive/weathervane": "2744ceba2d0228a6",  # Q614 (W7): its description, for a player; Q868: its description (was 4ff3b030a4c709e3)
+    "archive/weathervane-half-turn": "6e700527b18ec2d0",  # Q868: its description, what its difference does in play (was fa4e204bfcd6f14f); Q870: its name (was bde88ee9a56cd9e4)
     "archive/wolves": "15b776a6a5da9ea3",
-    "archive/wolves-bounty": "cc3b8b85d632ee54",
-    "archive/wolves-immune": "1452db3af7e3ac4f",  # Q614 (W7): its description, for a player
-    "archive/wolves-rotated": "43fff0176bfacc95",
-    "archive/wolves-rotated-2": "36fa8bed6f255e4a",
-    "archive/wolves-rotated-3": "81fe661f455c4d7b",
-    "archive/wolves-rotated-4": "52ea530c2c3d6252",
+    "archive/wolves-bounty": "22b8244382fe4c96",  # Q868: its description, what its difference does in play (was cc3b8b85d632ee54); Q870: its name (was 9e521a672dbe4e25)
+    # Q876, 2026-10-13: `archive/wolves-immune` retired for `pitchfork` (the row was b871ae8b0daf46ac).
+    "archive/pitchfork": "a9f1a80e6430496a",  # Q876, schema 25
+    "archive/sluice": "6468eb19d0ea6cf1",  # Q844b, schema 21
+    "archive/crease": "39881186e149674a",  # Q844b, schema 24
+    "archive/pawnproof-wormhole": "4769876a3f4f76e3",  # Q844b, schema 21
     "rulesets/almost": "0ea224823977572d",
     "rulesets/antichess": "74c73dff0811c4a6",
     "rulesets/atomic": "e77e414d76c510af",
@@ -263,10 +274,10 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "rulesets/berolina": "32995edcf561f5e3",  # Q614 (W7): its description, for a player
     "rulesets/capablanca": "d828fec94fd054ae",
     "rulesets/chess": "9d9595bc228f1a31",  # Q614 (W7): its description, for a player
-    "rulesets/chess-oriented-pawns": "e6142ab640c179da",
+    "rulesets/chess-oriented-pawns": "e5f76b8db6fdd732",  # Q868: its description, what its difference does in play (was e6142ab640c179da); Q870: its name (was e47286e8484e42c2)
     "rulesets/courier": "e05e5ce959b9dc4a",
     "rulesets/crazyhouse": "16e10ba0206002db",
-    "rulesets/crazyhouse-torus": "bade932232d89bc0",
+    "rulesets/crazyhouse-torus": "2081116914528e2a",  # Q869: the rear pawn respelled as a fixed facing, its pieces, setup and description (was 7ce10112bc1451ad); Q868: its description, what its difference does in play (was bade932232d89bc0); Q870: its name (was b729ce8de185148e)
     "rulesets/cylinder": "05ba8b9746256db8",  # Q614 (W7): its description, for a player
     "rulesets/dobutsu": "27c16c4bde91223c",
     "rulesets/dull": "69ec95c7a39e4b21",  # Q614 (W7): its description, for a player
@@ -277,9 +288,8 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "rulesets/knightmate": "85ebf632b6c8ee77",
     "rulesets/losalamos": "db5abe9fee8431d2",
     "rulesets/makruk": "c49065a985ace362",
-    "rulesets/onewaycylinder": "b75662db94554476",
-    "rulesets/onewaytorus": "df8b34635ed44d36",
-    "rulesets/onewaytunnel": "dbe9377cd44a9274",
+    "rulesets/onewaycylinder": "cfdba2286a0599e5",  # Q868: its description, what its difference does in play (was b75662db94554476)
+    "rulesets/onewaytorus": "ef3a79c884c820b5",  # Q868: its description, what its difference does in play (was df8b34635ed44d36)
     "rulesets/racingkings": "320df46297d70604",
     "rulesets/rps-hierarchy-chess": "b49fdbd4c30baca8",
     "rulesets/rps-v1": "d482b0f390f351bc",  # Q614 (W7): its description, for a player
@@ -288,14 +298,11 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "rulesets/rps-v4": "9143427c049ab048",
     "rulesets/rps-v5": "79d5d8b4b48ee0c3",  # Q614 (W7): its description, for a player
     "rulesets/sardines": "63de85e559ca5e19",  # Q614 (W7): its description, for a player
-    "rulesets/sardines-torus": "4ba9ae8ccd5eab9d",  # Q614 (W7): its description, for a player
     "rulesets/shatranj": "828ec1dae768fb98",  # Q614 (W7): its description, for a player
     "rulesets/shogi": "1d9b14e68510b70a",
     "rulesets/threecheck": "b20a73916fc5ffa6",
-    "rulesets/torus": "b04e8dda82800fe1",
-    "rulesets/torus-extended": "3dbeb32be35c33f2",
-    "rulesets/torus-less-extended": "ca1ff7ab3635f952",
-    "rulesets/tunnel-vertical": "07cf9dfaf24593cd",  # Q614 (W7): its description, for a player
+    "rulesets/torus": "4762590e8cff1d7e",  # Q868: its description, what its difference does in play (was b04e8dda82800fe1); Q870: its description names a renamed sibling (was d9c59025017f94c5)
+    "rulesets/torus-less-extended": "fe44d3b1896efe3d",  # Q869: the rear pawn respelled as a fixed facing, its pieces, setup and description (was da67440bc118259c); Q868: its description, what its difference does in play (was ca1ff7ab3635f952); Q870: its name (was 5d8ae197d82a2302)
     "rulesets/xiangqi": "c661457848db5457",
 }
 

@@ -1,7 +1,7 @@
 {
   "schema_version": 19,
   "name": "wormhole",
-  "description": "Gardner's five by five minichess with one fixed pair of portals on the middle row, on b3 and d3. Any piece of either player that ends its move on one end comes out one step beyond the other, in the direction it was travelling, capturing there as usual: a pawn pushed into b3 comes out on d4, a queen sliding up into d3 comes out on b4. Nobody moves the portals and they are never captured.",
+  "description": "Gardner's five by five minichess with one fixed pair of portals on the middle row, on b3 and d3. Any piece of either player that ends its move on one end comes out one step beyond the other, in the direction it was travelling, capturing there as usual: a pawn pushed into b3 comes out on d4, a queen sliding up into d3 comes out on b4. Nobody moves the portals and they are never captured. On so small a board the door is a race: a pawn that goes through lands a step from promotion, and the first player usually gets there first.",
   "board": {
     "width": 5,
     "height": 5

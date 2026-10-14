@@ -249,7 +249,10 @@ const CARD_DEFAULTS = {
   'rules.promotion[]': card => CARD_DEFAULTS['rules.promotion'](card),
   'rules.obstacles': card => Object.assign({}, card, { squares: [openSquare(false)] }),
   'rules.reach': card => Object.assign({}, card, { squares: [openSquare(true)] }),
-  'rules.npcs[]': card => Object.assign({}, card, { route: [openSquare(false)] }),
+  // A second wild piece is most often another of the first one's kind (the wolves walk,
+  // step 13), so it arrives as the entry above it, on a square nothing names yet.
+  'rules.npcs[]': card => Object.assign({}, card, { route: [openSquare(false)] },
+    lastWildPiece() ? { piece: lastWildPiece() } : {}),
   // A link starts at a piece a strike reaches, which a royal piece is not (it is immune),
   // and ends at a piece that is not royal, for the reason a promotion does.
   'rules.strike.chain[]': link => {
@@ -322,6 +325,14 @@ function dottedPath(root, path) {
 
 function pieceIds() {
   return (DRAFT.pieces || []).map(p => p.id);
+}
+
+// The piece of the draft's last wild piece, while that is still one of its pieces.
+function lastWildPiece() {
+  const npcs = (DRAFT.rules || {}).npcs;
+  const last = Array.isArray(npcs) && npcs.length ? npcs[npcs.length - 1] : null;
+  const id = last && typeof last.piece === 'string' ? last.piece : '';
+  return pieceIds().includes(id) ? id : '';
 }
 
 // The piece the draft marks royal, if it marks one.
@@ -757,8 +768,14 @@ function rulesCardsHtml(out) {
     // The portals have a card of their own, in sentences, one per pair (P3, D4); the
     // generated one stays reachable as the game's text.
     if (key === 'portals' && Array.isArray(rules.portals)) return portalCardsHtml(out);
-    const field = byKey[key];
     const fixed = model.fixed.includes(key);
+    // One paragraph says what the rule is (the wolves walk, step 4): the rule's own words
+    // where it has them. A list, card or map rule's description is about the whole rule
+    // too, so beside those words it is the same thing said twice, and so is any
+    // description that is those words again. A choice's description, which says what
+    // the choices mean, stays.
+    const field = ruleSaysTwice(key, byKey[key])
+      ? Object.assign({}, byKey[key], { says: '' }) : byKey[key];
     const inner = fieldHtml(field, rules[key], [key], 'rules', out, '');
     return `<div class="ruleCard" data-rule="${esc(key)}">
       <div class="cardHead"><b>${esc(ruleTitle(key, field.label))}</b>${fixed ? '' : `<button class="cardShow"
@@ -776,6 +793,14 @@ function rulesCardsHtml(out) {
       ? 'a rule' : 'rules'} the editor doesn't know (${esc(unknown.join(', '))}); only the
       game's text below can change ${unknown.length === 1 ? 'it' : 'them'}.</div>` : ''}
     <div id="dRuleMenu">${ruleMenuHtml()}</div>`;
+}
+
+function ruleSaysTwice(key, field) {
+  const said = ruleSays(key);
+  if (!said || !field || !field.says) return false;
+  if (['list', 'card', 'map'].includes(field.control)) return true;
+  const bare = text => String(text).toLowerCase().replace(/[^a-z0-9]+/g, '');
+  return bare(said) === bare(field.says);
 }
 
 // The menu of rules not in the draft, and the ones that cannot go in it. Its own function
@@ -1054,14 +1079,17 @@ function wireCards(form) {
   form.querySelectorAll('[data-cpick]').forEach(node => {
     node.onclick = event => {
       event.preventDefault();
-      const next = { root: node.dataset.crootPick, path: JSON.parse(node.dataset.cpick),
-                     label: node.dataset.clabel };
+      const root = node.dataset.crootPick, path = JSON.parse(node.dataset.cpick);
+      const next = Object.assign({ root, path, fromCard: true },
+                                 pickNamed(root, path, node.dataset.clabel));
       const same = PICKING && PICKING.root === next.root
         && JSON.stringify(PICKING.path) === JSON.stringify(next.path);
       PICKING = same ? null : next;
-      if (PICKING) PLACING = null;
+      if (PICKING) { PLACING = null; PICK_LINE = ''; WILD_TOOL = null; }
       drawDesigner();
       drawVerdict();
+      // The clicks go on the board, which may be a long way up the page (Q854).
+      if (PICKING) boardToPick();
     };
   });
   form.querySelectorAll('[data-cshow]').forEach(node => {
@@ -1175,8 +1203,34 @@ function pickedSquares(W) {
     .filter(i => i >= 0), takes: [] };
 }
 
+// The list being picked, by name, for the pick note and the status line. With two wild
+// pieces both their walks were *its walk* (the wolves walk, step 8,
+// `docs/reference/designer-case-study-wolves.md`), so a field inside one entry of a rule's
+// list is named as that entry's, the way its card heads it (*wild pieces 2's walk*), and
+// the entry's piece comes with it where it names one (`piece`: *W*). Read off the draft's
+// own entry; nothing here knows which rule it is.
+function pickNamed(root, path, label) {
+  const plain = { label: label || 'these squares', piece: '' };
+  if (root !== 'rules' || path.length < 3 || typeof path[1] !== 'number') return plain;
+  const key = String(path[0]);
+  const owner = `${ruleTitle(key, key.replace(/_/g, ' '))} ${path[1] + 1}`;
+  const said = plain.label;
+  const named = /^its /.test(said) ? `${owner}'s ${said.slice(4)}` : `${said} of ${owner}`;
+  const entry = getIn(DRAFT.rules || {}, path.slice(0, 2));
+  return { label: named,
+           piece: entry && typeof entry.piece === 'string' ? entry.piece : '' };
+}
+
+// What the pick note calls the list: its name and, where it has one, its piece's letter.
+function pickCalled() {
+  return PICKING.piece ? `${PICKING.label}, ${PICKING.piece}` : PICKING.label;
+}
+
 // A click on the opening board while a list is being picked: the square joins the list,
-// or leaves it. A route is in click order, so a square joins at the end.
+// or leaves it. A route is in click order, so a square joins at the end. The board is
+// drawn again at once, from the draft (`pickedWalk`), and not only when the server's
+// check comes back: two quick clicks used to aim the second at a picture a click behind
+// (the wolves walk, step 7).
 function pickSquare(square) {
   const preview = lastPreview();
   if (!PICKING || !preview || offBoard(preview, square)) return;
@@ -1188,12 +1242,93 @@ function pickSquare(square) {
     const at = next.indexOf(name);
     if (at >= 0) next.splice(at, 1); else next.push(name);
     setIn(target, PICKING.path, next);
+    benchSay(at >= 0 ? `Took ${name} out of ${PICKING.label}.`
+      : `Added ${name} to ${PICKING.label}${next.length > 1 ? `, after ${next[next.length - 2]}` : ''}.`);
   });
+  drawBoardSide();
+}
+
+// The wild piece's walk being picked, as the board draws it before the server's check of
+// the click is back (Q854). The walk is the squares the draft's entry names, in the order
+// it names them, which is what a route is (`schema.npc_routes`, unmirrored): the preview's
+// walk for that entry is swapped for them, its pieces' rings and faint drawings move to the
+// walk's starts, and a wild piece the preview still stands on a square that is no longer a
+// start is not drawn there. The jumps kept are the server's own, where the step they name
+// is still a step; a new jump is dashed when the answer comes. Once the answer agrees with
+// the draft, its walk is drawn unchanged. Anything else being picked, the preview as it is.
+function pickedWalk(preview) {
+  const path = PICKING && PICKING.root === 'rules' ? PICKING.path : null;
+  if (!preview || !path || path.length !== 3 || path[0] !== 'npcs' || path[2] !== 'route'
+      || typeof path[1] !== 'number') return preview;
+  const entry = path[1];
+  const npc = ((DRAFT.rules || {}).npcs || [])[entry];
+  if (!npc || typeof npc !== 'object') return preview;
+  const W = preview.width, cells = W * preview.height;
+  const absent = new Set(preview.absent || []);
+  const index = name => squareIndex(name, W);
+  const fits = at => at >= 0 && at < cells && !absent.has(at);
+  const squares = [];
+  (Array.isArray(npc.route) ? npc.route : []).map(index).forEach(at => {
+    if (fits(at) && !squares.includes(at)) squares.push(at);
+  });
+  const walks = (preview.walks || []).slice();
+  const at = walks.findIndex(walk => walk.entry === entry && !walk.mirrored);
+  const held = at >= 0 ? walks[at] : null;
+  if (held && JSON.stringify(held.squares || []) === JSON.stringify(squares)) return preview;
+  const starts = squares.length ? [squares[0]] : [];
+  (Array.isArray(npc.also_at) ? npc.also_at : []).map(index).forEach(start => {
+    if (squares.includes(start) && !starts.includes(start)) starts.push(start);
+  });
+  const steps = new Set(squares.map((from, i) => `${from}>${squares[(i + 1) % squares.length]}`));
+  const leaps = ((held && held.leaps) || []).filter(leap => steps.has(`${leap.from}>${leap.to}`));
+  const type = (DRAFT.pieces || []).findIndex(piece => piece.id === npc.piece);
+  const walk = {
+    name: held ? held.name : `${ruleTitle('npcs', 'wild pieces')} ${entry + 1}`,
+    entry, mirrored: false, piece: typeof npc.piece === 'string' ? npc.piece : null,
+    type: type >= 0 && type < (preview.nTypes || 0) ? type : (held ? held.type : null),
+    squares, starts, leaps,
+    says: held && leaps.length === (held.leaps || []).length ? held.says : null,
+  };
+  if (held) walks[at] = walk;
+  else {
+    const after = walks.findIndex(other => other.entry > entry);
+    walks.splice(after < 0 ? walks.length : after, 0, walk);
+  }
+  // The wild piece the preview stands on an old start, taken off this drawing only: the
+  // faint one `walksHtml` draws on each new start stands in for it until the answer.
+  const stride = preview.sideStride || preview.nTypes || 0;
+  const board = (preview.board || []).slice();
+  ((held && held.starts) || []).forEach(square => {
+    if (!starts.includes(square) && board[square] > 2 * stride) board[square] = 0;
+  });
+  return Object.assign({}, preview, { walks, board });
 }
 
 function pickNoteHtml() {
   if (!PICKING) return '';
-  return `<div class="muted small" style="margin-top:6px">You are picking squares for <b>${
-    esc(PICKING.label)}</b>. Click squares on the opening board, and click one again to take
-    it back. Squares are written for the first player.</div>${pickLineHtml()}`;
+  return `<div class="small pickNote" data-picknote style="margin-top:6px"><span class="muted">You
+    are picking squares for</span> <b>${esc(pickCalled())}</b><span class="muted">. Click squares
+    on the opening board, and click one again to take it back. Squares are written for the
+    first player.</span> <button class="small" data-pickdone>done picking</button></div>${
+    pickLineHtml()}`;
+}
+
+// *done picking* under the board: the same as the card's own button, and a pick begun on
+// the card brings the card back into view where the board had taken its place (a phone,
+// Q854). One begun beside the board (*+ wild piece*) stays there.
+function donePicking() {
+  if (!PICKING) return;
+  const was = PICKING;
+  PICKING = null;
+  PICK_LINE = '';
+  drawDesigner();
+  drawVerdict();
+  if (!was.fromCard) return;
+  const button = [...document.querySelectorAll('[data-cpick]')].find(node =>
+    node.dataset.crootPick === was.root && node.dataset.cpick === JSON.stringify(was.path));
+  if (!button || typeof button.getBoundingClientRect !== 'function') return;
+  const box = button.getBoundingClientRect();
+  if (box.top < 0 || box.bottom > window.innerHeight - footbarRoom()) {
+    button.scrollIntoView({ block: 'center' });
+  }
 }

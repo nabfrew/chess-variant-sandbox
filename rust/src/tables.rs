@@ -51,6 +51,12 @@ pub const MOVE_SWEEP: u32 = 6;
 /// promotion field holds the promoted type plus one (0 for none), because one kind field
 /// cannot say both "portal" and "promotion".
 pub const MOVE_PORTAL: u32 = 7;
+/// Schema 22: a fold's own move. Origin and target are the fold's squares, bits 25 to 31
+/// the end (its index among the portal ends), and nothing on the board byte changes: a
+/// fold stands on no square of it (`Game::fold_at`). An ordinary move that went through
+/// a fold -- landed on it and came out on the end it leads to, its target (schema 24) --
+/// carries the end it went in by plus one in the same bits.
+pub const MOVE_FOLD: u32 = 8;
 /// The owner a portal end's board byte belongs to: the third block, nobody's, which a wild
 /// piece uses too. The validator refuses the two rules together, so a game's third block
 /// holds one or the other (`compile.PortalRule`).
@@ -352,7 +358,8 @@ pub struct AttackSource {
     pub dirs: u8,
 }
 
-/// Schema 19: pairs of portals, as the compiler resolved them (`compile.PortalRule`).
+/// Schema 19: groups of portals, as the compiler resolved them (`compile.PortalRule`);
+/// schema 21 made a pair one case of a map (`docs/plan-portals-2.md` §2.2).
 ///
 /// Boxed behind one `Option` on `Tables`, so a game without portals pays one pointer and
 /// one null test per piece in move generation, and the struct the movegen reads at every
@@ -360,12 +367,14 @@ pub struct AttackSource {
 pub struct PortalTables {
     /// The first end's internal type; end `k` is type `first_type + k`.
     pub first_type: usize,
-    /// How many ends: two per pair, at most eight.
+    /// How many ends, across every group: at least two, at most eight.
     pub n_ends: usize,
-    /// `partner[type]` -> the other end's type, or -1 for a type that is not a portal.
-    pub partner: [i8; MAX_PIECE_TYPES],
-    /// `open[type][player]` -> may that player's pieces go in by this end.
-    pub open: [[bool; 2]; MAX_PIECE_TYPES],
+    /// `dest[type]` -> the type of the end a piece that goes in here comes out of, or -1
+    /// for a way out only and for a type that is not a portal.
+    pub dest: [i8; MAX_PIECE_TYPES],
+    /// `admits[type][player]` -> a bit per declared piece type that may go in by this end:
+    /// the end's `enter` and `carries`, compiled. Zero where that player may not go in.
+    pub admits: [[u32; 2]; MAX_PIECE_TYPES],
     /// `movers[type]` -> a bit per player who may move this end.
     pub movers: [u8; MAX_PIECE_TYPES],
     /// `[(player * n_squares + square) * 8 + direction]` -> the square one king's step away
@@ -385,25 +394,11 @@ pub struct PortalTables {
     /// The bar's Zobrist keys: `[left]` for the square the end left, `[n_squares +
     /// standing]` for the one it stands on. Empty without the rule.
     pub zobrist_bar: Vec<u64>,
-}
-
-impl PortalTables {
-    /// The key term of a straight-back bar: the end standing on `bar[0]` may not move to
-    /// `bar[1]`. Zero for no bar, and for every game without the rule.
-    #[inline]
-    pub fn bar_key(&self, n_squares: usize, bar: [i16; 2]) -> u64 {
-        if bar[0] < 0 || self.zobrist_bar.is_empty() {
-            0
-        } else {
-            self.zobrist_bar[bar[1] as usize] ^ self.zobrist_bar[n_squares + bar[0] as usize]
-        }
-    }
-
-    /// The square one king's step from `square` in `direction`, for `player`, or -1.
-    #[inline(always)]
-    pub fn exit(&self, n_squares: usize, player: usize, square: usize, direction: usize) -> i16 {
-        self.exits[(player * n_squares + square) * 8 + direction]
-    }
+    /// Schema 22: how many ends are momentum ends, which stand on the board byte and are
+    /// what `portal_squares` looks for. `n_ends` when no group is a fold.
+    pub n_momentum: usize,
+    /// Schema 22: the fold tables, or `None` where no group is a fold.
+    pub folds: Option<FoldTables>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -743,6 +738,10 @@ pub struct Tables {
     /// play*: dropped from hand, promoted into, or left behind by a strike. One rule,
     /// three callers. Empty when nothing turns.
     pub facing_initial: Vec<usize>,
+    /// Schema 25 (Q869): `facing_turns[type]` -> whether a move may turn that type.
+    /// Empty where every facing piece turns, which is every ruleset before schema 25;
+    /// read it through `turns_of`.
+    pub facing_turns: Vec<bool>,
     pub has_facing: bool,
     /// `[board value] -> owner`, `-> frame`, `-> piece type`.
     ///
@@ -934,6 +933,12 @@ pub struct Tables {
     /// The ceiling `features.rs` measures a points gap against, and 0.0 when nothing is
     /// wild.
     pub npc_bounty_total: f64,
+    /// Whether any route carries more than one wild piece at ply zero (schema 23's
+    /// `also_at`). Derived here from the opening board and `npc_next`, so nothing new
+    /// crosses the boundary. Only then can one wild piece wait for another, and only then
+    /// does the phase need `Game::npc_step_order`'s passes; every other game steps its
+    /// wild pieces in one ascending pass, as before the bump, at no extra cost.
+    pub npc_queues: bool,
 
     /// Schema 19: the portal tables, or `None` for every game without portals.
     pub portals: Option<Box<PortalTables>>,
@@ -1113,6 +1118,16 @@ impl Tables {
         match self.facing_axes.get(piece_type) {
             Some(axes) => *axes,
             None => 1,
+        }
+    }
+
+    /// How many orientations a move may turn this type through: its `facings_of`, or 1
+    /// for a facing no move turns (schema 25), whose orientation is the setup's alone.
+    #[inline(always)]
+    pub fn turns_of(&self, piece_type: usize) -> usize {
+        match self.facing_turns.get(piece_type) {
+            Some(false) => 1,
+            _ => self.facings_of(piece_type),
         }
     }
 
@@ -1872,6 +1887,10 @@ impl Tables {
         let side_stride = n_facings * n_types;
         let facing_axes: Vec<usize> = field(source, keys::FACING_AXES)?;
         let facing_initial: Vec<usize> = field(source, keys::FACING_INITIAL)?;
+        let facing_turns: Vec<bool> = field::<Vec<usize>>(source, keys::FACING_TURNS)?
+            .into_iter()
+            .map(|turns| turns != 0)
+            .collect();
 
         // --- Wild pieces (schema 9) ---
         // Three owners share the one byte once anything is wild, which is what the bound
@@ -1984,6 +2003,7 @@ impl Tables {
             has_facing: n_facings > 1,
             facing_axes,
             facing_initial,
+            facing_turns,
             value_owner,
             value_frame,
             value_type,
@@ -2070,6 +2090,7 @@ impl Tables {
             npc_bounty,
             npc_squares,
             npc_bounty_total: 0.0,
+            npc_queues: false,
             portals: None,
             entry_promotion,
             piece_values,
@@ -2148,6 +2169,24 @@ impl Tables {
                 })
                 .map(|square| tables.npc_bounty[square])
                 .sum();
+            // One key per route, its lowest square; two wild pieces meeting in a key queue.
+            let mut seen: Vec<usize> = Vec::new();
+            for square in 0..tables.n_squares {
+                let value = tables.initial_board[square];
+                if value == 0 || tables.owner_of(value) != WILD || tables.npc_next[square] < 0 {
+                    continue;
+                }
+                let mut lowest = square;
+                let mut cursor = tables.npc_next[square] as usize;
+                while cursor != square {
+                    lowest = lowest.min(cursor);
+                    cursor = tables.npc_next[cursor] as usize;
+                }
+                if seen.contains(&lowest) {
+                    tables.npc_queues = true;
+                }
+                seen.push(lowest);
+            }
         }
 
         if has_portals {
@@ -2164,28 +2203,38 @@ impl Tables {
     fn portal_tables(source: &Bound<'_, PyDict>, tables: &Tables) -> PyResult<PortalTables> {
         let fail = |what: String| Err(pyo3::exceptions::PyValueError::new_err(what));
         let n_types = tables.n_types;
-        let partner_raw: Vec<i32> = field(source, keys::PORTAL_PARTNER)?;
-        let open_raw: Vec<u8> = field(source, keys::PORTAL_OPEN)?;
+        let dest_raw: Vec<i32> = field(source, keys::PORTAL_DEST)?;
+        let group_raw: Vec<i32> = field(source, keys::PORTAL_GROUP)?;
+        let admits_raw: Vec<u32> = field(source, keys::PORTAL_ADMITS)?;
         let movers_raw: Vec<u8> = field(source, keys::PORTAL_MOVERS)?;
-        if partner_raw.len() != n_types || open_raw.len() != 2 * n_types
-            || movers_raw.len() != n_types
+        if dest_raw.len() != n_types || group_raw.len() != n_types
+            || admits_raw.len() != 2 * n_types || movers_raw.len() != n_types
         {
             return fail(format!("portal tables are not one row per each of {n_types} types"));
         }
-        let mut partner = [-1i8; MAX_PIECE_TYPES];
-        let mut open = [[false; 2]; MAX_PIECE_TYPES];
+        let mut dest = [-1i8; MAX_PIECE_TYPES];
+        let mut admits = [[0u32; 2]; MAX_PIECE_TYPES];
         let mut movers = [0u8; MAX_PIECE_TYPES];
         for piece_type in 0..n_types {
-            partner[piece_type] = partner_raw[piece_type] as i8;
-            open[piece_type] = [open_raw[2 * piece_type] != 0, open_raw[2 * piece_type + 1] != 0];
+            dest[piece_type] = dest_raw[piece_type] as i8;
+            admits[piece_type] = [admits_raw[2 * piece_type], admits_raw[2 * piece_type + 1]];
             movers[piece_type] = movers_raw[piece_type];
         }
-        let ends: Vec<usize> = (0..n_types).filter(|t| partner[*t] >= 0).collect();
+        // The ends are the types with a group; every `dest` names another of them.
+        let ends: Vec<usize> = (0..n_types).filter(|t| group_raw[*t] >= 0).collect();
         let first_type = ends.first().copied().unwrap_or(0);
-        if ends.is_empty() || ends.len() > 8 || !ends.len().is_multiple_of(2)
+        if ends.len() < 2 || ends.len() > 8
             || ends.iter().enumerate().any(|(k, t)| *t != first_type + k)
         {
             return fail("portal ends are not two to eight contiguous types".to_string());
+        }
+        let is_end = |t: usize| t >= first_type && t < first_type + ends.len();
+        if (0..n_types).any(|t| {
+            let to = dest[t];
+            (to >= 0 && (!is_end(t) || !is_end(to as usize) || to as usize == t))
+                || (!is_end(t) && admits[t] != [0, 0])
+        }) {
+            return fail("portal_dest or portal_admits names a type that is not an end".to_string());
         }
         let exits: Vec<i16> = field::<Vec<i32>>(source, keys::PORTAL_EXITS)?
             .into_iter()
@@ -2224,11 +2273,18 @@ impl Tables {
                 ));
             }
         }
+        let folds = Self::fold_tables(source, tables, first_type, ends.len())?;
+        let n_momentum = match folds.as_ref() {
+            Some(found) => found.starts.iter().take(ends.len()).filter(|s| **s < 0).count(),
+            None => ends.len(),
+        };
         Ok(PortalTables {
+            n_momentum,
+            folds,
             first_type,
             n_ends: ends.len(),
-            partner,
-            open,
+            dest,
+            admits,
             movers,
             exits,
             leap_dirs,
@@ -2302,6 +2358,91 @@ mod tests {
         assert_eq!(empty.len(), 90 - 6);
         assert!(empty.iter().all(|square| square < 90 && !mine.get(square) && !theirs.get(square)));
         assert!(SquareSet::EMPTY.iter().next().is_none());
+    }
+}
+
+/// Schema 22: fold portals, as the compiler resolved them (`compile.FoldRule`); schema 24
+/// (Q867b) cut them to where each starts and the key (`docs/plan-portals-2.md` §3R.3).
+///
+/// A fold end never stands on the board byte: where each stands is `Game::fold_at`, from
+/// `starts`. A landing on an empty fold goes through to the square of the end it leads to
+/// (`PortalTables::dest`), so the core needs no geometry of its own for a fold.
+pub struct FoldTables {
+    /// Where each portal end starts if it is a fold, by end; -1 for a momentum end.
+    pub starts: [i16; 8],
+    /// `[end * n_squares + square]`: a fold standing on `square`, in the key.
+    pub zobrist: Vec<u64>,
+}
+
+impl FoldTables {
+    /// The key of fold end `end` standing on `square`.
+    #[inline(always)]
+    pub fn key(&self, n_squares: usize, end: usize, square: usize) -> u64 {
+        self.zobrist[end * n_squares + square]
+    }
+}
+
+impl PortalTables {
+    /// Q883: whether a move by an end of type `piece_type` sets the straight-back bar,
+    /// given who moves next (`next`): the end bars going back (`no_back`, which the
+    /// compiler leaves false where no move can ever meet the bar) and `next` may move it.
+    /// A bar nobody can meet on the next move is no bar, so it is never set, and two
+    /// positions alike in everything that affects play are not keyed apart by it.
+    #[inline]
+    pub fn sets_bar(&self, piece_type: usize, next: usize) -> bool {
+        self.no_back[piece_type] && self.movers[piece_type] & (1 << next) != 0
+    }
+
+    /// The key term of a straight-back bar: the end standing on `bar[0]` may not move to
+    /// `bar[1]`. Zero for no bar, and for every game without the rule.
+    #[inline]
+    pub fn bar_key(&self, n_squares: usize, bar: [i16; 2]) -> u64 {
+        if bar[0] < 0 || self.zobrist_bar.is_empty() {
+            0
+        } else {
+            self.zobrist_bar[bar[1] as usize] ^ self.zobrist_bar[n_squares + bar[0] as usize]
+        }
+    }
+
+    /// The square one king's step from `square` in `direction`, for `player`, or -1.
+    #[inline(always)]
+    pub fn exit(&self, n_squares: usize, player: usize, square: usize, direction: usize) -> i16 {
+        self.exits[(player * n_squares + square) * 8 + direction]
+    }
+}
+
+impl Tables {
+    /// Schema 22: read the fold tables, or `None` where no portal group is a fold. Cold and
+    /// out of line: it runs once per ruleset, and folded into `portal_tables` it moved chess's
+    /// perft by the code it shifted, though chess never reaches it.
+    #[cold]
+    #[inline(never)]
+    fn fold_tables(
+        source: &Bound<'_, PyDict>, tables: &Tables, first_type: usize, n_ends: usize,
+    ) -> PyResult<Option<FoldTables>> {
+        let fail = |what: String| Err(pyo3::exceptions::PyValueError::new_err(what));
+        let kind: Vec<u8> = field(source, keys::PORTAL_KIND)?;
+        if kind.is_empty() {
+            return Ok(None);
+        }
+        let n_squares = tables.n_squares;
+        let starts_raw: Vec<i32> = field(source, keys::FOLD_STARTS)?;
+        if kind.len() != tables.n_types || starts_raw.len() != n_ends {
+            return fail("portal_kind or fold_starts is not one row per type or end".to_string());
+        }
+        let mut starts = [-1i16; 8];
+        for (end, square) in starts_raw.iter().enumerate() {
+            let fold = kind[first_type + end] != 0;
+            if fold != (*square >= 0) || *square >= n_squares as i32 {
+                return fail(format!("fold_starts[{end}] does not match portal_kind"));
+            }
+            starts[end] = *square as i16;
+        }
+        let zobrist: Vec<u64> = field(source, keys::ZOBRIST_FOLD)?;
+        if zobrist.len() != n_ends * n_squares {
+            return fail("the fold tables do not fit the shapes they index".to_string());
+        }
+        Ok(Some(FoldTables { starts, zobrist }))
     }
 }
 
@@ -2385,10 +2526,12 @@ pub mod keys {
         EXTINCTION_PER_TYPE => "extinction_per_type",
         EXTINCTION_RESULT => "extinction_result",
         EXTINCTION_TYPES => "extinction_types",
+        FOLD_STARTS => "fold_starts",
         FACING_AXES => "facing_axes",
         FACING_ENTRIES => "facing_entries",
         FACING_INDEX => "facing_index",
         FACING_INITIAL => "facing_initial",
+        FACING_TURNS => "facing_turns",
         FACING_PATHS => "facing_paths",
         FORBID_CHECK => "forbid_check",
         FORBID_IMMOBILITY => "forbid_immobility",
@@ -2434,11 +2577,13 @@ pub mod keys {
         NPC_NEXT => "npc_next",
         ONE_WAY_TYPES => "one_way_types",
         PIECE_VALUES => "piece_values",
+        PORTAL_ADMITS => "portal_admits",
+        PORTAL_DEST => "portal_dest",
         PORTAL_EXITS => "portal_exits",
+        PORTAL_GROUP => "portal_group",
+        PORTAL_KIND => "portal_kind",
         PORTAL_MOVERS => "portal_movers",
         PORTAL_NO_BACK => "portal_no_back",
-        PORTAL_OPEN => "portal_open",
-        PORTAL_PARTNER => "portal_partner",
         PROMO_ON_LEAVING => "promo_on_leaving",
         PROMO_ONLY_LOST => "promo_only_lost",
         PROMO_OPENING => "promo_opening",
@@ -2480,6 +2625,7 @@ pub mod keys {
         WIN => "win",
         ZOBRIST_COLOUR => "zobrist_colour",
         ZOBRIST_EP => "zobrist_ep",
+        ZOBRIST_FOLD => "zobrist_fold",
         ZOBRIST_PIECES => "zobrist_pieces",
         ZOBRIST_PORTAL_BAR => "zobrist_portal_bar",
         ZOBRIST_SIDE => "zobrist_side",

@@ -645,3 +645,56 @@ def test_every_translation_agrees_on_the_result_or_differs_only_as_noted(name: s
     assert result.ok, result.summary()
     assert "max_plies" in result.admitted
     assert set(result.admitted) <= written.approximates
+
+
+class TestTheStockEnginesNewTranslationsEndAsOurs:
+    """Q703: the results of what crossed in place of a refusal (`general-fairy-fork.md` §1.3)."""
+
+    @staticmethod
+    def _perpetual() -> dict[str, Any]:
+        return load_spec(RULESETS.parent / "archive" / "perpetual.json")
+
+    def test_no_repetition_is_in_play_under_never(self) -> None:
+        assert "repetition_draw" not in in_play(Engine(self._perpetual()).spec)
+        assert "repetition_draw" in in_play(Engine(_spec("chess")).spec)
+
+    def test_a_position_repeated_past_three_folds_goes_on_in_both(self) -> None:
+        spec = self._perpetual()
+        result = check_results(spec, _referee(translate(spec)), games=0)
+        assert result.ok, result.summary()
+        assert "repetition_draw" not in result.unreached
+
+    def test_a_fold_rule_left_on_there_is_caught(self) -> None:
+        """The probe has to be able to fail: the default three folds, written back in."""
+        spec = self._perpetual()
+        result = check_results(spec, _Substituting("nFoldRule = 0", "nFoldRule = 3"), games=0)
+        assert not result.ok
+        assert {difference.key for difference in result.differences} == {"repetition_draw"}
+
+    def test_five_checks_are_counted_alike(self) -> None:
+        spec = _spec("threecheck", check_limit=5)
+        result = check_results(spec, _referee(translate(spec)), games=2)
+        assert result.ok, result.summary()
+        assert result.agreed.get("check_limit", 0) >= 1
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("name", ["perpetual", "quarry-vaulting", "three-stones-takeable"])
+def test_each_new_translation_agrees_on_the_result(name: str) -> None:
+    """Q703's games at the `fairy` command's result depth (`DEFAULT_GAMES`)."""
+    import copy
+
+    if name == "perpetual":
+        spec = load_spec(RULESETS.parent / "archive" / "perpetual.json")
+    elif name == "quarry-vaulting":
+        spec = load_spec(RULESETS.parent / "archive" / "quarry.json")
+        spec["rules"]["obstacles"]["blocks_leaps"] = False
+    else:
+        spec = copy.deepcopy(_spec("chess"))
+        spec["schema_version"] = 10
+        spec["pieces"].append({"id": "S", "name": "stone", "value": 1, "moves": []})
+        spec["rules"]["drops"] = {"from_captures": False, "stock": {"S": 3}}
+    written = translate(spec)
+    result = check_results(spec, _referee(written))
+    assert result.ok, result.summary()
+    assert set(result.admitted) <= written.approximates

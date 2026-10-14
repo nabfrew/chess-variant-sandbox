@@ -46,7 +46,7 @@ class TestTheLaunchSet:
     def test_the_nine_in_the_plans_order(self) -> None:
         assert [entry.name for entry in launch.LAUNCH_SET] == [
             "dobutsu", "los alamos", "cylinder chess", "three-check", "crazyhouse",
-            "quarry", "reckoning", "wolves", "hex glinski hexagon",
+            "quarry", "reckoning", "wolves", "glinski hexagonal chess",
         ]
         assert [entry.name for entry in launch.RESERVES] == [
             "intransitive", "atomic", "one-way cylinder chess", "succession", "shogi",
@@ -347,7 +347,7 @@ class TestThisMonthsGame:
         assert launch.month_name(date(2026, 10, 1)) == "reckoning"
         assert launch.month_name(date(2026, 10, 31)) == "reckoning"
         assert launch.month_name(date(2026, 11, 1)) == "quarry"
-        assert launch.month_name(date(2027, 1, 15)) == "hex glinski hexagon"
+        assert launch.month_name(date(2027, 1, 15)) == "glinski hexagonal chess"
 
     def test_each_of_the_nine_takes_a_month_in_turn(self) -> None:
         assert sorted(launch.MONTHLY) == sorted(entry.name for entry in launch.LAUNCH_SET)

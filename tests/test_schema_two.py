@@ -535,7 +535,16 @@ def test_a_forbidden_drop_mate_does_not_ask_itself_the_same_question_forever() -
     assert engine.terminal(state) is None
 
 
-def test_every_committed_ruleset_plays_a_game_through() -> None:
+_EVERY_RULESET = sorted(RULESETS.glob("*.json")) + sorted((RULESETS.parent / "archive").glob("*.json"))
+
+
+def test_the_walk_below_reads_the_whole_corpus() -> None:
+    assert len(_EVERY_RULESET) > 40, "the corpus moved; this test is reading the wrong tree"
+
+
+# One test per committed spec (Q749): the walk was one test of 4 s in the gate.
+@pytest.mark.parametrize("path", _EVERY_RULESET, ids=lambda path: f"{path.parent.name}/{path.stem}")
+def test_every_committed_ruleset_plays_a_game_through(path: Path) -> None:
     """The whole stack, not the generator alone: compile, the core, movegen, apply,
     terminal detection and the incremental key.
 
@@ -554,24 +563,20 @@ def test_every_committed_ruleset_plays_a_game_through() -> None:
     """
     import random
 
-    archive = RULESETS.parent / "archive"
-    paths = sorted(RULESETS.glob("*.json")) + sorted(archive.glob("*.json"))
-    assert len(paths) > 40, "the corpus moved; this test is reading the wrong tree"
-    for path in paths:
-        spec = load_spec(path)
-        engine = Engine(spec)
-        # One rule, two vocabularies: a drift either way changes which specs schema 1 admits.
-        assert royalty_can_multiply(spec) is engine.spec.multi_royal, (
-            f"{path.name}: the validator and the compiler disagree on whether royalty multiplies"
-        )
-        rng = random.Random(7)
-        state = engine.initial_state()
-        for _ in range(20):
-            moves = engine.legal_moves(state)
-            if engine.terminal(state, moves) is not None:
-                break
-            state = engine.apply(state, rng.choice(moves))
-            assert state.key == engine._compute_hash(state), f"{path.stem} hash drifted"
+    spec = load_spec(path)
+    engine = Engine(spec)
+    # One rule, two vocabularies: a drift either way changes which specs schema 1 admits.
+    assert royalty_can_multiply(spec) is engine.spec.multi_royal, (
+        f"{path.name}: the validator and the compiler disagree on whether royalty multiplies"
+    )
+    rng = random.Random(7)
+    state = engine.initial_state()
+    for _ in range(20):
+        moves = engine.legal_moves(state)
+        if engine.terminal(state, moves) is not None:
+            break
+        state = engine.apply(state, rng.choice(moves))
+        assert state.key == engine._compute_hash(state), f"{path.stem} hash drifted"
 
 
 # ------------------------------------------------------- a stated ending's result ----

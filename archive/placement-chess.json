@@ -1,6 +1,6 @@
 {
   "schema_version": 18,
-  "name": "placement-chess",
+  "name": "placement chess",
   "description": "Placement chess: the pawns start where chess's do and every other piece starts in hand. While a player still holds a piece, a move is placing one on an empty square of their own back rank; once both have placed all eight, the game is chess without castling.",
   "board": {
     "width": 8,

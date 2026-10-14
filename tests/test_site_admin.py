@@ -27,8 +27,11 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 import secrets
+import socket
 import threading
+import time
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from http.client import HTTPConnection
@@ -395,6 +398,12 @@ class TestWhoIsAnAdmin:
         assert [person["handle"] for person in payload["users"]] == ["boss"]
         assert [game["hash"] for game in payload["games"]] == [DULL_HASH]
         assert payload["limits"], "the page has no numbers to show"
+        # Q813. The disk and every queue of `site/depths.sql`, none past its limit here.
+        status = payload["status"]
+        assert [one["queue"] for one in status["queues"]] == [
+            "checks", "publishes", "ratings", "sweep", "asks", "reports", "training"]
+        assert not any(one["problem"] for one in status["queues"])
+        assert status["disk"] is None or status["disk"]["said"].endswith(" GB free")
 
     # Q744: it lists the committed corpus and the home page through `Browser`'s 30 s
     # socket, so the process's cold first listing is paid in setup (`corpus_listed`); it
@@ -1330,6 +1339,31 @@ def drafting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Site]:
         yield running
 
 
+def _raw_design_post(port: int, declared: int, body: bytes | None) -> bytes:
+    """A designer POST over a bare socket, declaring `declared` bytes: the headers, a
+    pause long enough for the refusal to be written, then `body` (none if `None`). Returns
+    everything read until the server closes; a lost refusal fails the test, naming why."""
+    headers = (
+        b"POST /api/design/save HTTP/1.1\r\n"
+        b"Host: 127.0.0.1\r\n"
+        b"Content-Type: application/json\r\n"
+        + f"{REQUEST_HEADER}: {REQUEST_VALUE}\r\n".encode("ascii")
+        + f"Content-Length: {declared}\r\n\r\n".encode("ascii")
+    )
+    answer = b""
+    with socket.create_connection(("127.0.0.1", port), timeout=10) as client:
+        try:
+            client.sendall(headers)
+            if body is not None:
+                time.sleep(0.05)
+                client.sendall(body)
+            while more := client.recv(65536):
+                answer += more
+        except OSError as error:
+            pytest.fail(f"the refusal was lost: {type(error).__name__}: {error}")
+    return answer
+
+
 def _screened(
     monkeypatch: pytest.MonkeyPatch, passed: bool, reasons: tuple[str, ...] = ()
 ) -> None:
@@ -1492,6 +1526,128 @@ class TestADraftSavedOnTheSite:
                 (first,),
             )
             assert cursor.fetchone() == ("ada",)
+
+    def _words(self, drafting: Site, digest: str) -> tuple[Any, ...]:
+        """The row's name and description, the game page's, and the saved file's."""
+        with drafting.store.cursor() as cursor:
+            cursor.execute(
+                "select name, spec->>'name', spec->>'description' from games where hash = %s",
+                (digest,),
+            )
+            row = cursor.fetchone()
+        drafting.store.commit()
+        page = drafting.browser().get(f"/api/game/{digest}").payload
+        saved = json.loads(
+            (drafting.app.runs_dir / "designed" / "specs" / f"{digest}.json")
+            .read_text(encoding="utf-8")
+        )
+        return (*row, page["name"], page["description"], saved["name"],
+                saved.get("description", ""))
+
+    def test_a_draft_saved_without_a_description_gets_one_when_saved_again(
+        self, drafting: Site, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Q595: the owner's re-save of an unpublished draft gives it the new words, in
+        the row, on the page and in the file, and says so -- one row, the same hash."""
+        _screened(monkeypatch, passed=True)
+        ada = drafting.signed_in("ada")
+        spec = _template(name="ada's draft")
+        spec["description"] = ""
+        digest = _saved(ada, spec).payload["hash"]
+
+        spec["description"] = "Now it says what it is."
+        again = _saved(ada, spec).payload
+
+        assert again["hash"] == digest and again["created"] is False
+        assert (again["restated"], again["unchanged"], again["keptAsIs"]) == (
+            ["description"], [], ""
+        )
+        assert drafting.count("games", f"hash = '{digest}'") == 1
+        assert self._words(drafting, digest) == (
+            "ada's draft", "ada's draft", "Now it says what it is.",
+            "ada's draft", "Now it says what it is.",
+            "ada's draft", "Now it says what it is.",
+        )
+
+        spec["name"] = "ada's better name"
+        renamed = _saved(ada, spec).payload
+        assert (renamed["restated"], renamed["name"]) == (["name"], "ada's better name")
+        assert self._words(drafting, digest)[::2] == (
+            "ada's better name", "Now it says what it is.", "Now it says what it is.",
+            "Now it says what it is."
+        )
+
+    @pytest.mark.parametrize("how", ["on trial", "waiting"])
+    def test_a_published_game_keeps_the_words_it_was_published_with(
+        self, drafting: Site, monkeypatch: pytest.MonkeyPatch, how: str
+    ) -> None:
+        """Q595: publishing gave the rules, name and description to the public domain
+        (`terms.DEDICATION`), so a later save keeps all three and says why. A publish still
+        waiting for its check counts: the press agreed to these words."""
+        _screened(monkeypatch, passed=True)
+        ada = drafting.signed_in("ada")
+        spec = _template(name="ada's game")
+        spec["description"] = "As published."
+        digest = _saved(ada, spec).payload["hash"]
+        if how == "on trial":
+            site_store.on_trial(drafting.store, digest)
+        else:
+            with drafting.store.cursor() as cursor:
+                cursor.execute(
+                    "update games set publish_asked = now() where hash = %s", (digest,)
+                )
+            drafting.store.commit()
+
+        spec["name"], spec["description"] = "another name", "Other words."
+        again = _saved(ada, spec).payload
+
+        assert again["hash"] == digest and again["created"] is False
+        assert again["name"] == "ada's game"
+        assert (again["restated"], again["unchanged"], again["keptAsIs"]) == (
+            [], ["name", "description"], drafts.AS_PUBLISHED
+        )
+        assert self._words(drafting, digest) == (
+            "ada's game", "ada's game", "As published.",
+            "ada's game", "As published.", "ada's game", "As published.",
+        )
+
+    def test_a_draft_whose_publish_was_called_off_is_a_draft_again(
+        self, drafting: Site, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _screened(monkeypatch, passed=True)
+        ada = drafting.signed_in("ada")
+        spec = _template(name="ada's game")
+        digest = _saved(ada, spec).payload["hash"]
+        with drafting.store.cursor() as cursor:
+            cursor.execute(
+                "update games set publish_stopped = 'a reason', terms_accepted = now(),"
+                " terms_version = 1"
+                " where hash = %s",
+                (digest,),
+            )
+        drafting.store.commit()
+
+        spec["description"] = "Fixed before trying again."
+        assert _saved(ada, spec).payload["restated"] == ["description"]
+        assert self._words(drafting, digest)[2] == "Fixed before trying again."
+
+    def test_somebody_elses_rules_keep_their_words(
+        self, drafting: Site, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _screened(monkeypatch, passed=True)
+        spec = _template(name="ada's draft")
+        spec["description"] = ""
+        digest = _saved(drafting.signed_in("ada"), spec).payload["hash"]
+
+        spec["name"], spec["description"] = "bob's name", "bob's words"
+        bob = _saved(drafting.signed_in("bob"), spec).payload
+
+        assert (bob["restated"], bob["unchanged"], bob["keptAsIs"]) == (
+            [], ["name", "description"], drafts.NOT_YOURS
+        )
+        assert self._words(drafting, digest) == (
+            "ada's draft", "ada's draft", "", "ada's draft", "", "ada's draft", "",
+        )
 
     def test_a_fork_names_its_parent_when_the_store_holds_it(
         self, drafting: Site, monkeypatch: pytest.MonkeyPatch
@@ -1922,9 +2078,16 @@ class TestTheSaveCaps:
     saves a person makes in a day."""
 
     def test_a_design_body_over_the_cap_is_refused_before_it_is_read(
-        self, drafting: Site
+        self, drafting: Site, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Refused off `Content-Length`: the body is never parsed, nobody is identified,
+        nothing is dispatched or stored -- and the 413 reaches the sender, because the
+        body is drained unread after it rather than left to turn the close into an abort
+        (Q841: WinError 10053 about two runs in five before the drain)."""
         ada = drafting.signed_in("ada")
+        reached: list[str] = []
+        monkeypatch.setattr(drafting.app, "post", lambda path, body: reached.append(path))
+        monkeypatch.setattr(drafting.app, "identify", lambda token: reached.append("who"))
         spec = _template()
         spec["description"] = "x" * quota.DESIGN_BODY_BYTES
 
@@ -1932,7 +2095,39 @@ class TestTheSaveCaps:
 
         assert answer.status == 413
         assert f"at most {quota.DESIGN_BODY_BYTES // 1024} KB" in answer.payload["error"]
+        assert reached == []
         assert drafting.count("games") == 0
+
+    def test_the_refusal_survives_a_body_that_arrives_after_its_headers(
+        self, drafting: Site, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The ordering the flake met by chance, forced: the 413 is written while the
+        body is still in flight. A megabyte, well over the cap and inside the drain."""
+        reached: list[str] = []
+        monkeypatch.setattr(drafting.app, "post", lambda path, body: reached.append(path))
+        size = 1024 * 1024
+        answer = _raw_design_post(drafting.port, size, body=b"x" * size)
+        assert answer.startswith(b"HTTP/1.0 413") or answer.startswith(b"HTTP/1.1 413")
+        assert f"at most {quota.DESIGN_BODY_BYTES // 1024} KB".encode() in answer
+        assert reached == []
+
+    def test_a_claim_longer_than_the_drain_is_answered_without_waiting_for_it(
+        self, drafting: Site
+    ) -> None:
+        """The drain is bounded by what the sender *declares*: past
+        `DESIGN_DRAIN_BYTES` the server reads none of it. No body is sent, so a server
+        that tried to drain would sit waiting and this read would time out."""
+        answer = _raw_design_post(drafting.port, site_server.DESIGN_DRAIN_BYTES + 1, body=None)
+        assert b" 413 " in answer.split(b"\r\n", 1)[0]
+
+    def test_the_drain_covers_every_body_the_box_admits(self) -> None:
+        """Caddy refuses a body over its `max_size` before the application sees it, so a
+        drain at least that long means every 413 on the box is delivered, not aborted."""
+        caddy = (REPOSITORY / "deploy" / "remote" / "Caddyfile").read_text(encoding="utf-8")
+        found = re.search(r"^\s*max_size\s+(\d+)MB\s*$", caddy, re.MULTILINE)
+        assert found is not None
+        admitted = int(found.group(1)) * 1024 * 1024
+        assert admitted <= site_server.DESIGN_DRAIN_BYTES
 
     def test_the_cap_is_the_designers_alone(self, drafting: Site) -> None:
         """Another route's large body is that route's business: a suggestion over the

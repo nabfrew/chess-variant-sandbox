@@ -151,6 +151,14 @@ def _tree(root: Path) -> list[str]:
     return sorted(str(path.relative_to(root)).replace("\\", "/") for path in root.rglob("*"))
 
 
+def _contents(root: Path) -> dict[str, bytes | None]:
+    """Every path under `root` with the bytes of each file: names alone miss a rewrite."""
+    return {
+        str(path.relative_to(root)).replace("\\", "/"): path.read_bytes() if path.is_file() else None
+        for path in root.rglob("*")
+    }
+
+
 # The basis a stronger roster would stamp: the same spelling playing a net (`Basis.net`).
 NET = {"net": "1d160257b8e5=net:abababababab"}
 
@@ -265,9 +273,10 @@ class TestASameBasisReRunKeepsNothing:
 
     def test_a_current_measurement_is_not_touched_by_refresh(self, world, game) -> None:  # noqa: F811
         _stored(world, index=0.8)
-        before = _tree(world["runs"])
+        before = _contents(world["runs"])
+        assert before, "nothing stored, so nothing to leave alone"
         corpus.refresh(game, runs_dir=world["runs"], workers=1)
-        assert _tree(world["runs"]) == before
+        assert _contents(world["runs"]) == before
 
 
 class TestNothingInHistoryIsAHeadline:

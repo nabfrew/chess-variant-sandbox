@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from retired_specs import hex_glinski_promoting
 
 from chess_variant_sandbox.agents.features import feature_context
 from chess_variant_sandbox.engine import Engine
@@ -58,7 +59,7 @@ FAR_EDGE = ["a11", "b11", "c11", "d11", "e11", "f11", "g10", "h9", "i8", "j7", "
 
 @pytest.fixture(scope="module")
 def showcase() -> dict[str, Any]:
-    return json.loads((ROOT / "archive" / "hex-glinski-promoting.json").read_text(encoding="utf-8"))
+    return hex_glinski_promoting()
 
 
 @pytest.fixture(scope="module")

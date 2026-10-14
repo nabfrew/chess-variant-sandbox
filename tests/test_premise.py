@@ -113,6 +113,8 @@ class TestTheCheck:
         assert TINY.spelled().endswith("; curtailed")
         assert played["basis"]["player"] == "minimax:nodes=24"
 
+    # Slow (Q749): two six-pair checks, Fairy-Stockfish's duel in each, 11-12 s in the gate.
+    @pytest.mark.slow
     @pytest.mark.parametrize("workers", [1, 4])
     def test_curtailed_it_gives_the_full_check_s_verdict(
         self, played: dict[str, Any], workers: int
@@ -130,6 +132,8 @@ class TestTheCheck:
         assert cut["ceiling"]["pairs"] == whole["ceiling"]["pairs"][:k]
         assert cut["basis"]["rule"] != whole["basis"]["rule"]
 
+    # Slow (Q749): a second whole check, 2 s in the gate, most of it Fairy-Stockfish's.
+    @pytest.mark.slow
     def test_it_is_a_pure_function_of_the_game_the_roster_and_the_rule(
         self, played: dict[str, Any]
     ) -> None:
@@ -378,6 +382,7 @@ class TestFairyStockfish:
         reason="no Fairy-Stockfish binary here; Q502d2 runs this locally "
         "(general-player.md §4.2, Q502d)",
     )
+    @pytest.mark.slow  # a whole check against the engine, 2.2 s in the gate (Q749)
     def test_the_real_duel_where_a_binary_is_installed(self) -> None:
         if not fairy.playable(SPEC):
             pytest.skip("the installed Fairy-Stockfish does not play this game as ours does")

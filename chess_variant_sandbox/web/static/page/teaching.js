@@ -231,7 +231,7 @@ function paletteHtml() {
   return rows + `<div class="row small palette">
     <button data-placing="erase" class="${PLACING && PLACING.erase ? 'on' : ''}"
       title="click a square to lift what is standing on it; on a portal, it takes off the whole pair">take off</button>
-  </div>${portalRowHtml()}`;
+  </div>${portalRowHtml()}${wildRowHtml()}`;
 }
 
 // The same strip, for the modes that ask about one piece rather than put pieces down:
@@ -266,15 +266,264 @@ function wirePieceTray(root) {
   });
 }
 
-// What the tray is for, said under the board.
+// What the tray is for, said under the board. Its own element, so a piece picked in the
+// tray is said at once without redrawing the board.
 function paletteNoteHtml() {
+  return `<div data-palettenote>${paletteNoteBodyHtml()}</div>`;
+}
+
+function paletteNoteBodyHtml() {
   return `${freshNoteHtml(freshUnplaced())}<div class="muted small" style="margin-top:6px">${PLACING
     ? 'Click or drag onto the board. Click the same square again to lift what is there.'
     : 'Pick a piece from the tray, then click squares on the board or drag it there.'}
     ${(DRAFT.setup || {}).mirror !== false
       ? 'The second player gets the same army, so every piece you put down is put down'
         + ' for both.'
-      : 'Each player is placed separately, and the tray has a row each.'}</div>`;
+      : 'Each player is placed separately, and the tray has a row each.'}</div>${
+    wildTrayNoteHtml()}`;
+}
+
+// ------------------------------------------------------------ a wild piece's type
+
+// A type the draft's wild pieces are made of is also in the tray, and the tray's one is a
+// player's (the wolves walk, steps 10-12, docs/reference/designer-case-study-wolves.md):
+// so picking it, and asking where it goes, say which of the two it is and where the
+// other is written. Read off the draft's own `rules.npcs`, entry by entry; no square is
+// worked out here, only the ones the entry names.
+
+// The piece ids the draft's wild pieces are, in the order their entries come.
+function wildTypes() {
+  const npcs = (DRAFT.rules || {}).npcs;
+  if (!Array.isArray(npcs)) return [];
+  const out = [];
+  npcs.forEach(npc => {
+    if (npc && typeof npc.piece === 'string' && !out.includes(npc.piece)) out.push(npc.piece);
+  });
+  return out;
+}
+
+// A walk as it is written, as HTML, shortened past six squares to its first three, its
+// last and its length.
+function walkWords(route) {
+  const squares = (route || []).filter(square => typeof square === 'string').map(esc);
+  if (squares.length <= 6) return squares.join(', ');
+  return `${squares.slice(0, 3).join(', ')} &hellip; ${squares[squares.length - 1]}
+    (${squares.length} squares)`;
+}
+
+// The wild pieces of type `id`, one phrase per entry: where it starts, the others on its
+// walk, its mirror, and the walk itself.
+function wildOnesWords(id) {
+  const npcs = (DRAFT.rules || {}).npcs;
+  if (!Array.isArray(npcs)) return [];
+  return npcs.filter(npc => npc && npc.piece === id && Array.isArray(npc.route)
+                     && npc.route.length).map(npc => {
+    const more = Array.isArray(npc.also_at) ? npc.also_at.filter(s => typeof s === 'string') : [];
+    const where = [npc.route[0]].concat(more).map(esc).join(' and ');
+    const stands = more.length ? `the ones on ${where}` : `the one on ${where}`;
+    const walks = more.length ? 'walk' : 'walks';
+    const mirrored = npc.mirror === true ? ', with a mirrored one,' : '';
+    if (npc.route.length === 1) return `${stands}${mirrored} never moves`;
+    return `${stands}${mirrored} ${walks} ${walkWords(npc.route)}`;
+  });
+}
+
+function wildCardLinkHtml() {
+  return '<a href="#" data-wildcard>wild pieces</a>';
+}
+
+// The tray's piece, when its type is a wild piece's too: one line, under the tray's own.
+function wildTrayNoteHtml() {
+  if (!PLACING || PLACING.erase) return '';
+  const piece = (DRAFT.pieces || [])[PLACING.piece];
+  if (!piece || !wildTypes().includes(piece.id)) return '';
+  const called = esc(piece.name || piece.id);
+  const sides = (lastPreview() || {}).sides || ['first', 'second'];
+  const whose = (DRAFT.setup || {}).mirror !== false ? 'one for each player'
+    : `for the ${esc(sides[PLACING.player] || 'first')} player`;
+  return `<div class="small wildNote" data-wildnote style="margin-top:6px">The
+    <b>${called}</b> is also a wild piece in this game. The tray puts down a player's ${called}, ${whose};
+    a wild ${called} and its walk are on the ${wildCardLinkHtml()} card.</div>`;
+}
+
+// The *wild pieces* link: the rule's card, scrolled to. It is a long way down the form.
+function wireWildLinks(root) {
+  (root || document).querySelectorAll('[data-wildcard]').forEach(node => {
+    node.onclick = event => {
+      event.preventDefault();
+      const card = document.querySelector('.ruleCard[data-rule="npcs"]');
+      if (card && typeof card.scrollIntoView === 'function') {
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    };
+  });
+}
+
+// ------------------------------------------------------------ + wild piece (Q855)
+//
+// The wolves walk (`designer-case-study-wolves.md` §1 steps 2-3, §3 fix 6) found the wild
+// pieces' only way in on a card eleven thousand pixels under the board. The tray's own row
+// starts one beside the board, as *+ portals* does: pressed, a type picked under the board
+// (one of the draft's pieces, or one out of the library), then a click on the square it
+// starts on, which is its walk's first; the card's entry is written and its walk's picker
+// opened, so the next clicks are the squares it walks. Only squares clicked are named.
+
+let WILD_TOOL = null;   // { piece: id or '' }: a wild piece being started
+
+// The draft's pieces a wild piece can be: not royal (the validator's rule), and not the
+// portals' piece.
+function wildCandidates() {
+  return (DRAFT.pieces || []).map((piece, index) => ({ piece, index }))
+    .filter(({ piece, index }) => piece && !piece.royal && !isPortalPiece(index));
+}
+
+// Why *+ wild piece* cannot start one here, or '' when it can.
+function wildToolRefused() {
+  return draftPortals().length ? "Wild pieces can't be used together with portals yet." : '';
+}
+
+function wildRowHtml() {
+  const refused = wildToolRefused();
+  const on = !!WILD_TOOL;
+  return `<div class="row small palette wildRow" data-wildrow>
+    <span class="muted trayWho">Wild</span>
+    <button data-wildadd class="${on ? 'on' : ''}" aria-pressed="${on}"${refused
+      ? ` disabled title="${esc(refused)}"` : ' title="a piece neither player owns, walking'
+        + ' squares you pick: choose its type, then click where it starts"'}>+ wild piece</button>
+  </div>`;
+}
+
+// Under the board while one is being started: which type, and what the next click does.
+function wildToolHtml() {
+  if (!WILD_TOOL) return '';
+  const preview = lastPreview() || {};
+  const lattice = (DRAFT.board || {}).lattice || 'square';
+  const library = ((DESIGN_KIT && DESIGN_KIT.palette) || [])
+    .filter(entry => entry.lattice === lattice)
+    .slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const chips = wildCandidates().map(({ piece, index }) => {
+    const icon = ((preview.icons || [])[index] || [])[0];
+    const picked = WILD_TOOL.piece === piece.id;
+    return `<button data-wildtype="${esc(piece.id)}" class="${picked ? 'on' : ''}"
+      aria-pressed="${picked}" title="${esc(piece.name || piece.id)}">${icon
+        ? `<img src="${esc(icon.href)}" alt="${esc(piece.name || piece.id)}">` : esc(piece.id)}</button>`;
+  }).join('');
+  const piece = (DRAFT.pieces || []).find(one => one.id === WILD_TOOL.piece);
+  const next = piece
+    ? `Now click the square the wild <b>${esc(piece.name || piece.id)}</b> starts on: the
+       first square of its walk.`
+    : 'Pick what it is, then click the square it starts on.';
+  return `<div class="small wildTool" data-wildtool style="margin-top:6px">
+    <div><b>A wild piece</b> <span class="muted">belongs to neither player and walks the
+      squares you pick, round and round.</span> ${next}</div>
+    <div class="row small palette wildTypes" style="margin-top:6px">${chips}
+      ${library.length ? `<select data-wildlib aria-label="a piece out of the library">
+        <option value="">or one from the library…</option>
+        ${library.map(entry => `<option value="${esc(entry.key)}">${esc(entry.name)}</option>`).join('')}
+      </select>` : ''}
+      <button data-wildcancel>put away</button></div></div>`;
+}
+
+function startWildTool() {
+  if (wildToolRefused()) return;
+  const types = wildTypes();
+  WILD_TOOL = { piece: types.length ? types[types.length - 1] : '' };
+  PLACING = null;
+  PICKING = null;
+  PICK_LINE = '';
+  PORTAL_TOOL = null;
+  PORTAL_LIFT = null;
+  if (DRAFT_MODE !== 'setup') { DRAFT_MODE = 'setup'; TEACHING = null; endBenchGame(''); }
+  benchSay('');
+}
+
+function endWildTool() {
+  if (!WILD_TOOL) return false;
+  WILD_TOOL = null;
+  return true;
+}
+
+// A piece out of the library, taken for a wild one: added to the draft as the library's
+// *take one* adds it (its moves are a player's, should the tray put one down), and not
+// made the tray's piece, because it is wanted wild.
+function wildFromLibrary(key) {
+  const entry = ((DESIGN_KIT && DESIGN_KIT.palette) || []).find(one => one.key === key);
+  if (!entry || !WILD_TOOL) return;
+  const id = freeLetter(entry.id);
+  DRAFT.pieces = DRAFT.pieces || [];
+  DRAFT.pieces.push(Object.assign(JSON.parse(JSON.stringify(entry.piece)), { id }));
+  WILD_TOOL.piece = id;
+  drawDesigner();
+  checkDraft();
+}
+
+// The click on the board: the entry written, its walk one square long, and its picker open.
+function wildAt(square) {
+  const preview = lastPreview();
+  if (!WILD_TOOL || !preview || offBoard(preview, square)) return;
+  const piece = (DRAFT.pieces || []).find(one => one.id === WILD_TOOL.piece);
+  if (!piece) { benchSay('Pick what the wild piece is first, under the board.'); return; }
+  const W = preview.width;
+  const name = squareName(square % W, Math.floor(square / W));
+  if ((preview.board || [])[square]) {
+    benchSay(`A piece already stands on ${name}. A wild piece starts on an empty square.`);
+    return;
+  }
+  const rules = DRAFT.rules = DRAFT.rules || {};
+  rules.npcs = Array.isArray(rules.npcs) ? rules.npcs : [];
+  const entry = rules.npcs.length;
+  rules.npcs.push({ piece: piece.id, route: [name] });
+  WILD_TOOL = null;
+  const path = ['npcs', entry, 'route'];
+  PICKING = Object.assign({ root: 'rules', path }, pickNamed('rules', path, 'its walk'));
+  drawDesigner();
+  checkDraft();
+  drawBoardSide();
+  benchSay(`${PICKING.label[0].toUpperCase()}${PICKING.label.slice(1)} starts on ${name}.`
+    + ' Click the squares it walks to, in order, and done picking when it is all there.');
+}
+
+function wireWildRow(root) {
+  if (!root || !root.querySelectorAll) return;
+  root.querySelectorAll('[data-wildadd]').forEach(node => {
+    node.onclick = () => {
+      if (!endWildTool()) startWildTool();
+      drawDesigner();
+      drawBoardSide();
+      // The type is picked under the board, below a tall tray (Q855).
+      keepInView(document.querySelector('[data-wildtool]'));
+    };
+  });
+  root.querySelectorAll('[data-wildtype]').forEach(node => {
+    node.onclick = () => {
+      if (!WILD_TOOL) return;
+      WILD_TOOL.piece = node.dataset.wildtype;
+      drawBoardSide();
+    };
+  });
+  root.querySelectorAll('[data-wildlib]').forEach(node => {
+    node.onchange = () => { if (node.value) wildFromLibrary(node.value); drawBoardSide(); };
+  });
+  root.querySelectorAll('[data-wildcancel]').forEach(node => {
+    node.onclick = () => { endWildTool(); drawBoardSide(); };
+  });
+}
+
+// A piece picked from the tray takes the board from a square list being picked, as
+// starting the picker takes it from the tray (`cards.js`, `data-cpick`): one tool at a
+// time, and the click goes where the lit button says. The board goes back to *set up*,
+// where the tray is.
+function endPickingForTray() {
+  const wild = endWildTool();
+  if (!PICKING) return wild;
+  PICKING = null;
+  PICK_LINE = '';
+  if (DRAFT_MODE !== 'setup') {
+    DRAFT_MODE = 'setup';
+    TEACHING = null;
+    endBenchGame('');
+  }
+  return true;
 }
 
 function wirePalette(root) {
@@ -287,13 +536,22 @@ function wirePalette(root) {
     node.onclick = () => {
       const next = picked();
       PLACING = PLACING && JSON.stringify(PLACING) === JSON.stringify(next) ? null : next;
-      // A piece picked from the tray is the board's tool now, so a pair being put down
-      // or an end lifted is put away.
+      // A piece picked from the tray is the board's tool now, so a pair being put down,
+      // an end lifted, or a walk being picked is put away.
+      if (endPickingForTray()) {
+        PORTAL_TOOL = null;
+        PORTAL_LIFT = null;
+        drawDesigner();
+        drawBoardSide();
+        return;
+      }
       if (PORTAL_TOOL || PORTAL_LIFT) { PORTAL_TOOL = null; PORTAL_LIFT = null; drawBoardSide(); }
       refreshPalette();
     };
-    // Not redrawn here: replacing the node being dragged cancels the drag.
+    // Not redrawn here: replacing the node being dragged cancels the drag. The drop's
+    // own redraw shows the picker gone.
     node.ondragstart = event => {
+      endPickingForTray();
       PLACING = picked();
       if (event.dataTransfer) event.dataTransfer.setData('text/plain', node.dataset.placing);
     };
@@ -305,6 +563,11 @@ function refreshPalette() {
     box.innerHTML = paletteHtml();
     wirePalette(box);
     wirePortalRow(box);
+    wireWildRow(box);
+  });
+  document.querySelectorAll('[data-palettenote]').forEach(box => {
+    box.innerHTML = paletteNoteBodyHtml();
+    wireWildLinks(box);
   });
 }
 
@@ -397,6 +660,7 @@ function wireBoards(root) {
       BENCH_FOCUS = -1;
       if (PICKING && PICK_LINE) pickLine(s);
       else if (PICKING) pickSquare(s);
+      else if (WILD_TOOL) wildAt(s);
       else if (DRAFT_MODE === 'goes') askWhereItGoes(s);
       else if (portalClick(s)) return;
       else if (PLACING) placeAt(s);
@@ -446,6 +710,7 @@ function wireBoards(root) {
       drawBoardSide();
     };
   });
+  root.querySelectorAll('[data-pickdone]').forEach(node => { node.onclick = donePicking; });
   const byId = id => root.querySelector('#' + id);
   if (byId('dTeach')) byId('dTeach').onclick = startTeaching;
   if (!TEACHING) return;

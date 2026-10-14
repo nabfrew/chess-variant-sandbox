@@ -185,13 +185,16 @@ class TestTheBumpMovedNothing:
     def test_only_the_showcases_use_schema_nineteen(self) -> None:
         """Nothing written before the bump uses it: the users are exactly Q772a's seven
         showcases (`docs/reference/portal-showcases.md`), all in `archive/`, and schema
-        20's Ferry beside them (Q807)."""
+        20's Ferry beside them (Q807). Q772e's two-way and Q772f's fixed Divide, and
+        `wormhole-adrift`, left the library on 2026-10-12 (Q868). Q844b's three portal
+        showcases of schemas 21 and 24 joined them on 2026-10-13."""
         assert sorted(
             path for path in FROZEN if _schema_nineteen_uses(load_spec(ROOT / path))
         ) == sorted(
             f"archive/{name}.json"
-            for name in ("carousel", "cylinder-wormhole", "divide", "ferry",
-                         "ferry-no-straight-back", "shut-wormhole", "wormhole", "wormhole-adrift")
+            for name in ("carousel", "crease", "cylinder-wormhole", "divide", "ferry",
+                         "ferry-no-straight-back", "pawnproof-wormhole", "shut-wormhole",
+                         "sluice", "wormhole")
         )
 
     def test_a_game_without_portals_sends_every_portal_key_empty(self) -> None:

@@ -170,25 +170,32 @@ def _calls(tree: ast.Module) -> Iterator[tuple[str, str]]:
                 yield function.name, name
 
 
+@pytest.fixture(scope="module")
+def package_calls() -> list[tuple[Path, list[tuple[str, str]]]]:
+    """Every call in the package, by module: parsed and walked once for the two tests that
+    read it, where each walked the whole package itself, 2.1-2.4 s apiece (Q749)."""
+    return [(path, list(_calls(tree))) for path, tree in _package()]
+
+
 class TestTestThree:
     """Every message the package builds is an invitation or a move email, and a move
     email is built in one place, which reads the box first."""
 
-    def test_messages_are_built_only_by_the_two_builders(self) -> None:
+    def test_messages_are_built_only_by_the_two_builders(self, package_calls) -> None:
         built = {
             (path.name, function)
-            for path, tree in _package()
-            for function, name in _calls(tree)
+            for path, calls in package_calls
+            for function, name in calls
             if name == "Message"
         }
         assert built == {("mail.py", "invitation"), ("mail.py", "your_move")}
 
-    def test_each_builder_has_one_caller(self) -> None:
+    def test_each_builder_has_one_caller(self, package_calls) -> None:
         callers: dict[str, set[tuple[str, str]]] = {"invitation": set(), "your_move": set()}
-        for path, tree in _package():
+        for path, calls in package_calls:
             if path.name == "mail.py":
                 continue
-            for function, name in _calls(tree):
+            for function, name in calls:
                 if name in callers:
                     callers[name].add((path.name, function))
         assert callers == {
@@ -197,7 +204,7 @@ class TestTestThree:
         }
 
     def test_nothing_else_reaches_the_sending_service(self) -> None:
-        for path, _tree in _package():
+        for path in sorted(PACKAGE.rglob("*.py")):  # the text, so nothing is parsed
             text = path.read_text(encoding="utf-8")
             if path.name == "mail.py":
                 continue

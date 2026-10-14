@@ -52,6 +52,7 @@ from chess_variant_sandbox.measurement import (
     players_fingerprint,
     stale_build,
     tables_fingerprint,
+    warm_fingerprints,
 )
 from chess_variant_sandbox.measurement import load as load_measurement
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS, load_weights, score_ruleset
@@ -60,8 +61,14 @@ from chess_variant_sandbox.metrics.seat import seat_details
 from chess_variant_sandbox.metrics.seeds import VOTE_POOLED_SEAT, RunReading, combine
 from chess_variant_sandbox.spec.canonical import load_spec, spec_hash
 from chess_variant_sandbox.spec.schema import validate_spec
-from chess_variant_sandbox.tournament import TournamentConfig, run_tournament
+from chess_variant_sandbox.tournament import TournamentConfig
 from chess_variant_sandbox.tournament.analysis import CorpusAnalysis, analyse_corpus
+
+# Q900: the runner's `run_tournament` outside a campaign, and resumable from its sealed
+# pieces inside one (`--checkpoint DIR measure`, `checkpoint.active`). Until Q900 this was
+# the runner's own, so a campaign given to `measure` was opened and ignored, and a
+# measurement killed partway replayed every game (`docs/reference/campaign-checkpoints.md`).
+from chess_variant_sandbox.tournament.checkpoint import run_tournament
 from chess_variant_sandbox.tournament.fitting import (
     FITTED,
     MADE_HERE,
@@ -69,7 +76,9 @@ from chess_variant_sandbox.tournament.fitting import (
     REPRODUCED,
     REPRODUCED_BEFORE,
     Reproduction,
+    basis_gap,
     check_fit,
+    reproduction_basis,
     verified_cores,
 )
 
@@ -196,17 +205,6 @@ class Candidate:
 
 
 # ------------------------------------------------------------------ finding a game
-
-
-def stage_of(
-    digest: str, ruleset_dir: Path = RULESET_DIR, archive_dir: Path = ARCHIVE_DIR
-) -> str:
-    """Where a game already sits: ``committed``, ``archived`` or ``candidate``."""
-    if _committed_paths(ruleset_dir).get(digest):
-        return "committed"
-    if _committed_paths(archive_dir).get(digest):
-        return "archived"
-    return "candidate"
 
 
 def find(
@@ -337,12 +335,18 @@ def player_digest(fit: FittedObjective) -> str:
     return "fit:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
 
 
-def fit_reading(digest: str, store: str | Path | None = None) -> FitReading | None:
+def fit_reading(
+    digest: str,
+    store: str | Path | None = None,
+    spec: dict[str, Any] | None = None,
+) -> FitReading | None:
     """This ruleset's fit store as the basis taken now needs it, or ``None`` if it has none.
 
-    The store under today's procedure and the cores its sidecar says it was reproduced on
-    (`fitting.verified_cores`). Needs only the hash, so a reader holding no spec still
-    gets an answer. A store this procedure cannot read is read as none, as
+    The store under today's procedure and the cores it is verified on: those its sidecar
+    records it made or reproduced under, with this game's tables, players and runner as
+    they are now (`fitting.verified_cores`, Q892). Needs only the hash to find the store,
+    so a reader holding no spec still gets an answer; without ``spec`` the tables cannot
+    be compared and it is verified nowhere, the direction `current_basis` takes. A store this procedure cannot read is read as none, as
     `fitted.load_all` skips one: it is not a verdict anything would play.
     """
     root = fit_store() if store is None else store
@@ -353,10 +357,15 @@ def fit_reading(digest: str, store: str | Path | None = None) -> FitReading | No
         fit = FittedObjective.load(path)
     except (FitError, OSError, ValueError, KeyError):
         return None
+    recorded, differs = (
+        (True, ()) if spec is None else basis_gap(fit, root, reproduction_basis(spec))
+    )
     return FitReading(
         player=player_digest(fit),
         made_on=fit.build,
-        verified_on=verified_cores(fit, root),
+        verified_on=verified_cores(fit, root, spec),
+        recorded=recorded,
+        differs=differs,
     )
 
 
@@ -387,8 +396,9 @@ def current_basis(
 
     **The one thing read from disk is the fit store** (Q80c), by hash alone, because
     which objective the roster's fitted rungs play is decided by it and nothing else:
-    `fitted/<hash>-<procedure>.json` and the cores its sidecar says it was reproduced on.
-    A ruleset with no store records no fit, and the check is skipped.
+    `fitted/<hash>-<procedure>.json` and the cores its sidecar says it was made or
+    reproduced on under this spec's tables, players and runner (Q892). A ruleset with no
+    store records no fit, and the check is skipped.
     """
     return Basis.current(
         ruleset_hash=digest,
@@ -399,7 +409,7 @@ def current_basis(
         tables=tables_fingerprint(spec) if spec is not None else "",
         verdict_rule=VERDICT_RULE,
         known_seed_sets=KNOWN_SEED_SETS,
-        fit=fit_reading(digest),
+        fit=fit_reading(digest, spec=spec),
         # What the runner would hand the core (Q631); `""`, *cannot say*, without a spec.
         players=players_fingerprint(spec, CANONICAL_AGENTS) if spec is not None else "",
     )
@@ -587,6 +597,9 @@ def survey(
                 spec = load_spec(path)
                 known[digest] = (str(spec.get("name", path.stem)), stage, spec)
 
+    # A cold tables cache is filled by a process pool before the games are read one by one
+    # (Q904); it changes no answer, only when each is computed.
+    warm_fingerprints([known[d][2] for d in digests if d in known])
     found: list[ScoringStatus] = []
     for digest in digests:
         try:

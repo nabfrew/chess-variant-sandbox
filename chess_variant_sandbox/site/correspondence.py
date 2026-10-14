@@ -56,6 +56,7 @@ from typing import Any
 
 from chess_variant_sandbox.site import identity, matches, quota, rating
 from chess_variant_sandbox.site.matches import AGREED, BETWEEN_PEOPLE, CANCELLED, MatchError, Row
+from chess_variant_sandbox.web import draw_offer
 
 PRACTICE = matches.SANDBOX
 """The mode a game between two people takes on rules with no rated computer players."""
@@ -72,7 +73,8 @@ NOT_HERE = "There is no game at this address."
 RULES = (
     "There is no clock: each of you moves when you like.",
     "A move you pick is held until you send it, and a sent move is final.",
-    "Either of you may offer a draw; it stands until the other accepts it or moves.",
+    "Either of you may offer a draw; it stands until the other accepts it, declines it or "
+    "moves. Each of you may offer one in any five of your own moves.",
     "Either of you may cancel the game until both of you have moved; it then counts for "
     "nothing.",
     f"The player to move loses after {quota.CORRESPONDENCE_IDLE_SAID}.",
@@ -238,6 +240,9 @@ def view(
         "marks": [identity.mark_of(user, handle) for user, handle in zip(seated, players, strict=True)],
         "rated": found.mode == matches.LEADERBOARD,
         "drawOffer": None if offer is None or not found.running else offer.seat,
+        # Whether the viewer may make an offer now, and why not (Q790): accepting the
+        # other's standing offer is always open, a second offer of one's own is not.
+        **_may_offer(connection, found, you, offer),
         "mayCancel": found.running and not _both_moved(connection, found.id),
         "times": times_of(connection, found.id),
         "started": found.started.isoformat(),
@@ -245,6 +250,22 @@ def view(
         "toMove": _to_move(connection, found, you, players, mover, at),
         "rules": list(RULES),
     }
+
+
+def _may_offer(
+    connection: Any, found: Row, you: int, offer: Offer | None
+) -> dict[str, Any]:
+    """`mayOffer` and `offerWhy` for the viewer's seat (Q790, the one-in-ten rule)."""
+    if you < 0 or not found.running:
+        return {"mayOffer": False, "offerWhy": None}
+    if offer is not None:
+        mine = offer.seat == you
+        return {
+            "mayOffer": not mine,
+            "offerWhy": "Your offer stands until the other player answers it." if mine else None,
+        }
+    refusal = draw_offer.gap_refusal(matches.draw_offers(connection, found.id), you, found.plies)
+    return {"mayOffer": refusal is None, "offerWhy": refusal}
 
 
 def _to_move(
@@ -465,11 +486,17 @@ def offer_draw(connection: Any, match_id: str, user: int | None) -> Offer | None
         return None
     if standing is not None:
         return standing
+    # One offer in any ten plies a side (Q790, §e.1 of
+    # `docs/reference/intransitive-quiet-endgame.md`), counted from the last one made.
+    refusal = draw_offer.gap_refusal(matches.draw_offers(connection, match_id), seat, found.plies)
+    if refusal is not None:
+        raise MatchError(refusal)
     with connection.cursor() as cursor:
         cursor.execute(
             "update matches set draw_offer = %s, draw_offer_ply = %s where id = %s",
             (seat, found.plies, match_id),
         )
+    matches.note_draw_offer(connection, match_id, {"seat": seat, "ply": found.plies})
     return Offer(seat=seat, ply=found.plies)
 
 
@@ -481,6 +508,21 @@ def accept_draw(connection: Any, match_id: str, user: int | None) -> Row:
         raise MatchError("there is no draw offer from the other player to accept")
     _clear_offer(connection, match_id)
     matches._finish(connection, match_id, result=0.5, reason=AGREED, left=False)
+    return matches.row(connection, match_id)
+
+
+def decline_draw(connection: Any, match_id: str, user: int | None) -> Row:
+    """Decline the other person's standing offer (Q790). The game goes on as it was.
+
+    Moving declines it too, as it always has; this is the same answer without a move, so
+    the person to move is not made to choose a move to say no. The offerer may offer
+    again once ten plies have passed since the offer (`draw_offer.GAP`).
+    """
+    _found, seat = _running(connection, match_id, user)
+    standing = offer_of(connection, match_id)
+    if standing is None or standing.seat == seat:
+        raise MatchError("there is no draw offer from the other player to decline")
+    _clear_offer(connection, match_id)
     return matches.row(connection, match_id)
 
 

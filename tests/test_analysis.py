@@ -9,19 +9,49 @@ measurements meaning what their names say.
 
 from __future__ import annotations
 
-import pytest
+import copy
+from pathlib import Path
 
-from chess_variant_sandbox.metrics.components import _normalised_entropy, compute_components
+import pytest
+from test_schema_twenty_four import GAMES
+
+from chess_variant_sandbox.agents.evaluation import Evaluator
+from chess_variant_sandbox.engine import Engine
+from chess_variant_sandbox.engine.compile import WILD
+from chess_variant_sandbox.engine.moves import (
+    MOVE_DROP,
+    MOVE_FOLD,
+    MOVE_ROTATE,
+    move_fold,
+    move_from,
+    move_to,
+    move_type,
+)
+from chess_variant_sandbox.metrics.components import (
+    _analysis_components,
+    _normalised_entropy,
+    compute_components,
+    held_type_indices,
+)
+from chess_variant_sandbox.spec import load_spec
+from chess_variant_sandbox.spec.reachability import pieces_a_player_can_hold
+from chess_variant_sandbox.spec.transform import settle_schema_version
 from chess_variant_sandbox.tournament.analysis import (
     BLUNDER_FRACTION,
     BLUNDER_SAMPLE,
+    PLY_STRIDE,
     BlunderTrial,
     CorpusAnalysis,
+    GameAnalysis,
+    _analyse_game,
+    _epsilon_for,
     analyse_corpus,
 )
-from chess_variant_sandbox.tournament.play import play_game
+from chess_variant_sandbox.tournament.play import play_game, replay
 from chess_variant_sandbox.tournament.ratings import rate
+from chess_variant_sandbox.tournament.record import GameRecord
 
+RULESETS = Path(__file__).resolve().parents[1] / "rulesets"
 
 @pytest.fixture(scope="module")
 def corpus(chess_spec, chess):
@@ -246,7 +276,7 @@ class TestOnePositionCalls:
     the same numbers.
     """
 
-    def test_the_core_probe_matches_the_python_probe(self, chess, chess_spec) -> None:
+    def test_the_core_probe_matches_the_python_probe(self, chess) -> None:
         from chess_variant_sandbox.agents.evaluation import Evaluator
         from chess_variant_sandbox.tournament.analysis import (
             PROBE_MAX_DEPTH,
@@ -355,7 +385,7 @@ class TestWorkerIndependence:
             assert again.as_dict() == by_seed[record.seed].as_dict()
 
     def test_position_keys_do_not_depend_on_the_worker_count(
-        self, chess_spec, capsys: pytest.CaptureFixture[str]
+        self, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Serial and pooled analyses of one corpus persist identical keys.
 
@@ -390,3 +420,222 @@ class TestWorkerIndependence:
         first = analyse_corpus(spec, records, blunder_sample=4, seed=0, workers=1)
         second = analyse_corpus(spec, records, blunder_sample=4, seed=17, workers=1)
         assert first.as_dict() != second.as_dict()
+
+
+def _pieces(engine: Engine, board: bytes) -> int:
+    """The players' pieces on a board: every byte but an empty square and the third owner's
+    (a momentum end; a fold is on no byte)."""
+    return sum(1 for value in board if value and engine.spec.owner_of(value) != WILD)
+
+
+def _a_game_whose_folds_move(engine: Engine) -> GameRecord:
+    """The first random game, by seed, in which a fold moves onto a piece with plies after it.
+
+    Random players, because they move a fold where a searching player may never bother; the
+    pass reads any record handed to it (`analyse_corpus` is what leaves random games out).
+    """
+    portals = engine.spec.portals
+    assert portals is not None
+    momentum = any(not portals.is_fold(t) for t in portals.end_types)
+    for seed in range(40):
+        record = play_game(engine, ("random", "random"), seed, collect_series=False)
+        states = replay(engine, record)
+        plies = list(enumerate(record.moves[:-1]))
+        onto_a_piece = any(
+            move_type(m) == MOVE_FOLD and states[ply].board[move_to(m)] for ply, m in plies
+        )
+        # Beside a momentum pair, a momentum end's own move too: a move from its byte.
+        an_end_moves = not momentum or any(
+            move_type(m) not in (MOVE_DROP, MOVE_FOLD)
+            and states[ply].board[move_from(m)]
+            and engine.spec.owner_of(states[ply].board[move_from(m)]) == WILD
+            for ply, m in plies
+        )
+        if onto_a_piece and an_end_moves:
+            return record
+    raise AssertionError("no game in 40 seeds moves a fold onto a piece (and a momentum end)")
+
+
+@pytest.fixture(scope="module", params=["fold_pair", "beside"])
+def walked(request) -> tuple[Engine, GameRecord, GameAnalysis]:
+    """One game of each spec whose folds move, and the pass's reading of it."""
+    engine = Engine(GAMES[request.param]())
+    record = _a_game_whose_folds_move(engine)
+    evaluator = Evaluator.for_engine(engine, mobility_weight=0.0)
+    return engine, record, _analyse_game(engine, evaluator, record, _epsilon_for(engine))
+
+
+class TestAMovedPortalIsReadToTheEnd:
+    """Q873, Q844's finding (`docs/reference/portal-showcase-ideas.md`): a fold's own move
+    starts on a square no byte of the board holds it on, so the pass, which took an empty
+    origin for a record gone astray, stopped there and read only the plies before it.
+
+    Two specs from `test_schema_twenty_four`: a movable fold pair, and a fold pair beside a
+    momentum pair, every end movable, so a momentum end's own move is read in the same game.
+    Every count is held to what the positions the core walked say, never to a reading of
+    the move word: a ply is read when its key is the core's, a capture is a ply after which
+    fewer pieces stand, an offered capture is a legal move after which fewer pieces stand.
+    """
+
+    def test_every_ply_is_walked(self, walked) -> None:
+        engine, record, game = walked
+        states = replay(engine, record)
+        assert game.walked_plies == record.plies
+        assert game.position_keys == [state.key for state in states[1:]]
+        assert sum(game.moves_by_type) == record.plies
+
+    def test_a_folds_move_counts_under_its_end_and_takes_nothing(self, walked) -> None:
+        engine, record, game = walked
+        portals = engine.spec.portals
+        assert portals is not None and portals.folds is not None
+        ends = [move_fold(m) for m in record.moves if move_type(m) == MOVE_FOLD]
+        assert ends, "the game moves no fold"
+        for index, piece_type in enumerate(portals.end_types):
+            if portals.is_fold(piece_type):
+                assert game.moves_by_type[piece_type] == ends.count(index)
+                assert game.captures_by_type[piece_type] == 0
+
+    def test_captures_are_the_plies_after_which_fewer_pieces_stand(self, walked) -> None:
+        engine, record, game = walked
+        states = replay(engine, record)
+        taken = sum(
+            1 for before, after in zip(states, states[1:], strict=False)
+            if _pieces(engine, after.board) < _pieces(engine, before.board)
+        )
+        assert sum(game.captures_by_type) == taken
+
+    def test_offered_captures_are_the_moves_after_which_fewer_pieces_stand(
+        self, walked
+    ) -> None:
+        engine, record, game = walked
+        states = replay(engine, record)
+        offered: list[int] = []
+        for ply, state in enumerate(states[:-1]):
+            legal = engine.legal_moves(state)
+            if ply % PLY_STRIDE or len(legal) < 2:
+                continue
+            here = _pieces(engine, state.board)
+            offered.append(
+                sum(1 for m in legal if _pieces(engine, engine.apply(state, m).board) < here)
+            )
+        assert game.capture_counts == offered
+
+    def test_no_portal_is_an_instance_and_a_folds_move_moves_none(self, walked) -> None:
+        """A fold stands on no byte, so it is not one of the pieces on the opening board,
+        and its move leaves the piece standing in it unmoved. A momentum end stands on its
+        byte and is no instance either (Q875): a portal is the board's, not an army's, so
+        the instances are the players' pieces (no spec here has a wild piece)."""
+        engine, record, game = walked
+        states = replay(engine, record)
+        start = states[0].board
+        assert game.starting_instances == _pieces(engine, start)
+        moved = {
+            move_from(m) for m in record.moves
+            if move_type(m) not in (MOVE_DROP, MOVE_FOLD)
+            and start[move_from(m)]
+            and engine.spec.owner_of(start[move_from(m)]) != WILD
+        }
+        assert game.moved_instances == len(moved)
+
+
+def _turning_gardner() -> dict:
+    """Gardner whose pawns turn: a pawn has four facings, so almost every position offers
+    rotations, each a move whose target is the occupied square it starts on. Gardner has no
+    castling and no en passant, so a capture is exactly a ply after which fewer pieces stand.
+    """
+    spec = copy.deepcopy(load_spec(RULESETS / "gardner.json"))
+    spec["name"] = "gardner with turning pawns"
+    spec["pieces"][0]["facing"] = {"axes": 4}
+    return settle_schema_version(spec)
+
+
+@pytest.fixture(scope="module")
+def turned() -> list[tuple[Engine, GameRecord, GameAnalysis]]:
+    engine = Engine(_turning_gardner())
+    evaluator = Evaluator.for_engine(engine, mobility_weight=0.0)
+    epsilon = _epsilon_for(engine)
+    games = []
+    for seed in range(2):
+        record = play_game(engine, ("random", "random"), seed, collect_series=False)
+        games.append((engine, record, _analyse_game(engine, evaluator, record, epsilon)))
+    return games
+
+
+class TestARotationTakesNothing:
+    """Q875: a rotation's target is its own square, which holds the piece that turns, and
+    the pass read every move ending on an occupied square as a capture. So each rotation
+    played counted in `captures_by_type`, and each one offered in `capture_counts`, which
+    `capture_availability` reads: on a game whose pieces turn, a capture on offer in nearly
+    every position. Held, as the fold's readings are, to what the core's positions say."""
+
+    def test_the_games_turn_pieces(self, turned) -> None:
+        for engine, record, _ in turned:
+            assert any(move_type(m) == MOVE_ROTATE for m in record.moves)
+            assert any(
+                move_type(m) == MOVE_ROTATE
+                for state in replay(engine, record)[:-1]
+                for m in engine.legal_moves(state)
+            )
+
+    def test_captures_are_the_plies_after_which_fewer_pieces_stand(self, turned) -> None:
+        for engine, record, game in turned:
+            states = replay(engine, record)
+            taken = sum(
+                1 for before, after in zip(states, states[1:], strict=False)
+                if _pieces(engine, after.board) < _pieces(engine, before.board)
+            )
+            assert sum(game.captures_by_type) == taken
+
+    def test_offered_captures_are_the_moves_after_which_fewer_pieces_stand(
+        self, turned
+    ) -> None:
+        for engine, record, game in turned:
+            offered: list[int] = []
+            for ply, state in enumerate(replay(engine, record)[:-1]):
+                legal = engine.legal_moves(state)
+                if ply % PLY_STRIDE or len(legal) < 2:
+                    continue
+                here = _pieces(engine, state.board)
+                offered.append(
+                    sum(1 for m in legal if _pieces(engine, engine.apply(state, m).board) < here)
+                )
+            assert game.capture_counts == offered
+
+    def test_a_rotation_is_still_a_move_of_its_piece(self, turned) -> None:
+        """It counts under the type that turns, and the piece that turned has moved."""
+        for engine, record, game in turned:
+            assert sum(game.moves_by_type) == record.plies
+            start = replay(engine, record)[0].board
+            moved = {move_from(m) for m in record.moves if start[move_from(m)]}
+            assert game.moved_instances == len(moved)
+
+
+class TestAPortalIsNotPartOfTheArmy:
+    """Q875's decision (`docs/reference/portal-showcase-ideas.md`, beside finding 1): a
+    portal counts in neither `piece_utilisation` nor `instance_participation`. Both ask
+    whether the armies' pieces play, and a portal is the board's: held by no player, taken
+    by no capture. `TestAMovedPortalIsReadToTheEnd` holds the instances; this holds the
+    types. The count vector is the compiled types, the declared pieces and then one type per
+    portal end, so its length never matched the spec's and every index was kept: the
+    portal piece and every fixed end entered the entropy as zeros, a moved end as army."""
+
+    @pytest.mark.parametrize("name", ["fold_pair", "beside"])
+    def test_utilisation_reads_only_the_declared_types_a_player_holds(self, name: str) -> None:
+        spec = GAMES[name]()
+        engine = Engine(spec)
+        portals = engine.spec.portals
+        assert portals is not None
+        n_types = engine.spec.n_types
+        held = pieces_a_player_can_hold(spec)
+        declared = [i for i, piece in enumerate(spec["pieces"]) if piece["id"] in held]
+        portal_pieces = {group["piece"] for group in spec["rules"]["portals"]}
+        assert held_type_indices(spec, n_types) == declared
+        assert not set(declared) & set(portals.end_types)
+        assert not {spec["pieces"][i]["id"] for i in declared} & portal_pieces
+
+        counts = list(range(1, n_types + 1))
+        game = GameAnalysis(seed=0, agents=("a", "b"), moves_by_type=counts)
+        raw = _analysis_components(CorpusAnalysis(games=[game]), {}, spec)
+        assert raw["piece_utilisation"] == pytest.approx(
+            _normalised_entropy([counts[i] for i in declared])
+        )

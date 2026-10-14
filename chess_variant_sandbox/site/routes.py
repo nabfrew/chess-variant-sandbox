@@ -114,9 +114,10 @@ ALLOWED: tuple[Route, ...] = (
     Route(
         "POST",
         "/api/session/<id>/<action>",
-        "move, agent, undo, restart, resign; undo and restart are sandbox mode's alone; "
-        "a game between two people (Q570) takes move, resign, draw, accept and cancel "
-        "from its own players only",
+        "move, agent, undo, restart, resign, draw; undo and restart are sandbox mode's "
+        "alone, and draw is a draw offered to the computer, which the core judges (Q790); "
+        "a game between two people (Q570) takes move, resign, draw, accept, decline and "
+        "cancel from its own players only",
     ),
     Route("GET", "/api/design", "what a draft can start from, and the vocabulary"),
     Route("GET", "/api/design/<hash>", "an existing game as a starting point"),
@@ -175,7 +176,9 @@ ALLOWED: tuple[Route, ...] = (
         "/api/design/save",
         "keep a draft in runs/designed/ and as an unlisted games row, recording whether "
         "it passed the playability check, which the save runs first and under a wall "
-        "clock (Q276). A save lists nothing since Q503a; *Publish* does. Capped at "
+        "clock (Q276). A save lists nothing since Q503a; *Publish* does. Saving kept rules "
+        "again gives the saver's own unpublished draft the new name and description, and "
+        "nothing else (Q595, drafts.restatable). Capped at "
         "quota.DRAFTS_A_PERSON rows and quota.SAVES_A_DAY saves",
         visitor="Sign in to save a draft. Playing it without saving needs no account.",
     ),
@@ -472,6 +475,9 @@ MAIL_OFF = "/mail/off/"
 #   `/apple-touch-icon.png`, made from the drawing in `web/page/shell.py`.
 # - `/static/measure-worker.js`, the browser's measuring worker, from the package
 #   (`docs/plan-client-compute.md` B3). A 404 while the package carries none.
+# - `/rules.md`, the rule language's reference (`RULES.md`) as the running code renders it,
+#   `text/markdown`, cached five minutes (Q905). The designer links it (`reference.PUBLISHED`),
+#   so a person writing a game reads the version this site's validator accepts.
 # - `/browser/`, the browser build -- Pyodide and this package's wheel -- from the
 #   app's `browser_dir`, `build/browser/` (B1, B4). Only what that build's
 #   `manifest.json` names, and nothing while it has none. On the box Caddy answers
@@ -483,6 +489,7 @@ MAIL_OFF = "/mail/off/"
 STATIC: tuple[str, ...] = (
     "/static/vendor/", "/static/page/", "/static/site/", "/static/measure-worker.js", "/browser/",
     "/static/fonts/", "/static/shell.js", "/favicon.svg", "/favicon.ico", "/apple-touch-icon.png",
+    "/rules.md",
 )
 
 # The pages whose answer depends on who is asking, and so the only ones the cookie is

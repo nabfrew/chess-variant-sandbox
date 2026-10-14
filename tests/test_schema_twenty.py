@@ -53,6 +53,23 @@ def ferry_barred() -> dict[str, Any]:
     return barred(ferry())
 
 
+def _sluice_draft() -> dict[str, Any]:
+    """Sluice as Q844 drafted it (`40cdef319293`): the archived game plus a bar per group."""
+    spec = load_spec(ROOT / "archive" / "sluice.json")
+    for group in spec["rules"]["portals"]:
+        group["no_straight_back"] = True
+    return spec
+
+
+def _one_way_ferry() -> dict[str, Any]:
+    """The barred Ferry, its portal stepping only towards the h-file (the same seen from
+    either side of a mirrored setup)."""
+    spec = ferry_barred()
+    portal = next(piece for piece in spec["pieces"] if piece["id"] == "O")
+    portal["moves"] = [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "none", "mode": "move"}]
+    return spec
+
+
 def _portal_move(engine: Engine, state: Any, origin: str, target: str) -> int:
     return next(
         move for move in engine.legal_moves(state)
@@ -70,8 +87,8 @@ def _has(engine: Engine, state: Any, origin: str, target: str) -> bool:
 
 
 class TestTheVersionIsBumped:
-    def test_the_schema_version_is_twenty(self) -> None:
-        assert SCHEMA_VERSION == 20
+    def test_the_schema_version_is_twenty_or_later(self) -> None:
+        assert SCHEMA_VERSION >= 20
 
     def test_the_collector_names_the_key_whatever_its_value(self) -> None:
         assert _schema_twenty_uses(ferry()) == set()
@@ -110,6 +127,57 @@ class TestTheValidator:
             "rules.portals[0].no_straight_back is true but nobody may move" in error
             for error in validate_spec(spec)
         )
+
+    def test_a_bar_only_one_player_meets_is_refused(self) -> None:
+        """Q879: Sluice's draft (Q844). Each gate is moved by the player it threatens alone,
+        so the move after a gate moves is never its mover's: a bar no move can meet."""
+        errors = validate_spec(_sluice_draft())
+        for index, player in ((0, 1), (1, 0)):
+            assert (
+                f"rules.portals[{index}].no_straight_back is true but it could never bar a "
+                "move: it binds only the very next move, which is always the other "
+                "player's, and each end that moves is moved by one player only "
+                f"(ends[2] only by player {player}); drop it, or let both players move an end"
+            ) in errors
+        assert len(errors) == 2
+
+    def test_a_stored_spec_with_such_a_bar_still_builds_its_engine(self) -> None:
+        """The refusal admits no new one; a game kept before it (a visitor's page, a
+        corpus entry) loads, and the bar never removes one of its moves."""
+        spec = _sluice_draft()
+        assert validate_spec(spec, new=False) == []
+        assert Engine(spec).legal_moves(Engine(spec).initial_state())
+
+    def test_a_bar_both_players_meet_is_accepted(self) -> None:
+        spec = _sluice_draft()
+        spec["rules"]["portals"][0]["ends"][2]["moved_by"] = [0, 1]
+        errors = validate_spec(spec)
+        assert not any("rules.portals[0]" in error for error in errors)
+        assert any("rules.portals[1].no_straight_back" in error for error in errors)
+
+    def test_a_bar_a_long_turn_meets_is_accepted(self) -> None:
+        """A turn of two moves lets the gate's one mover move it again at once."""
+        spec = _sluice_draft()
+        spec["rules"].pop("en_passant")  # refused beside a long turn, for its own reason
+        spec["rules"]["turn"] = {"moves": 2}
+        assert validate_spec(spec) == []
+
+    def test_a_bar_no_move_of_the_piece_reverses_is_refused(self) -> None:
+        """A portal that only ever steps one way never stands next to the square it left."""
+        spec = _one_way_ferry()
+        for index in (0, 1):
+            assert (
+                f"rules.portals[{index}].no_straight_back is true but it could never bar a "
+                "move: piece 'O' has no move in the opposite direction to another, so an end "
+                "it moves can never go straight back onto the square it left; drop it, or "
+                "give the piece a move back"
+            ) in validate_spec(spec)
+
+    def test_round_a_wrap_the_reach_is_not_asked(self) -> None:
+        """Round a seam two steps one way can come back, so the validator does not refuse."""
+        spec = _one_way_ferry()
+        spec["rules"]["wrap"] = {"files": "both"}
+        assert not any("could never bar" in error for error in validate_spec(spec))
 
     def test_false_is_the_default_spelled_out(self) -> None:
         spec = ferry()
@@ -254,3 +322,77 @@ class TestTheOracleAgreesOnRandomWalks:
                 state = engine.apply(state, move)
                 assert state.key == engine._compute_hash(state)
         assert bars > 50
+
+
+def _play(engine: Engine, line: list[tuple[str, str]]) -> list[Any]:
+    """Every state along ``line`` (each move named by its origin and target), first move's
+    result first."""
+    state = engine.initial_state()
+    states = []
+    for origin, target in line:
+        state = engine.apply(state, _portal_move(engine, state, origin, target))
+        assert state.key == engine._compute_hash(state)
+        states.append(state)
+    return states
+
+
+class TestABarNoMoveCanMeetIsNoBar:
+    """Q883: a bar the next move can never meet stays out of the state and the key.
+
+    Q879 refuses such a bar in a new spec; a stored one (Sluice's draft, built with
+    ``new=False``) still loads, and before Q883 the core keyed the square it barred, so a
+    position after a gate's move and the same position after a knight's were two."""
+
+    # The knights out (a first move is irreversible: it spends the piece's unmoved bit),
+    # then White's gate on e4 (moved by White alone) steps, then the knights shuffle.
+    OPENING = [("g1", "f3"), ("g8", "f6"), ("e4", "f4")]
+    SHUFFLE = [("f6", "h5"), ("f3", "h4"), ("h5", "f6"), ("h4", "f3")]
+
+    def test_the_compiler_hands_over_no_bar(self) -> None:
+        tables = build_tables(compile_spec(_sluice_draft()))
+        assert tables["portal_no_back"] == []
+        assert tables["zobrist_portal_bar"] == []
+
+    def test_one_position_reached_two_ways_has_one_key(self) -> None:
+        engine = Engine(_sluice_draft())
+        states = _play(engine, [*self.OPENING, *self.SHUFFLE])
+        assert states[2].portal_bar == (-1, -1)
+        assert states[2].board == states[6].board
+        assert states[2].key == states[6].key
+
+    def test_and_the_repetition_is_counted(self) -> None:
+        engine = Engine(_sluice_draft())
+        states = _play(engine, [*self.OPENING, *self.SHUFFLE, *self.SHUFFLE])
+        assert engine.terminal(states[6]) is None
+        outcome = engine.terminal(states[10])
+        assert outcome is not None and outcome.reason == "repetition"
+
+    def test_a_long_turn_keeps_only_the_bar_its_mover_meets(self) -> None:
+        """Two moves a turn: the gate's first step bars its mover's second move; the second
+        step is followed by Black's move, who may not move the gate, so it bars nothing."""
+        spec = _sluice_draft()
+        spec["rules"].pop("en_passant")  # refused beside a long turn, for its own reason
+        spec["rules"]["turn"] = {"moves": 2}
+        engine = Engine(spec)
+        first, second = _play(engine, [("e4", "f4"), ("f4", "g4")])
+        assert first.portal_bar == (engine._square_index("f4"), engine._square_index("e4"))
+        assert not _has(engine, first, "f4", "e4")
+        assert second.side_to_move == 1
+        assert second.portal_bar == (-1, -1)
+
+
+class TestABarAMoveCanMeetIsStillKeyed:
+    """The other half: where the next mover may move the end, the bar is a different
+    position, with a different key and a different move list."""
+
+    def test_the_same_board_after_a_portal_and_after_a_knight(self) -> None:
+        engine = Engine(ferry_barred())
+        line = [("b3", "c3"), ("b6", "a4"), ("b1", "a3"), ("a4", "b6"), ("a3", "b1")]
+        states = _play(engine, line)
+        barred, free = states[0], states[4]
+        assert barred.board == free.board and barred.side_to_move == free.side_to_move
+        assert barred.portal_bar == (engine._square_index("c3"), engine._square_index("b3"))
+        assert free.portal_bar == (-1, -1)
+        assert barred.key != free.key
+        assert not _has(engine, barred, "c3", "b3")
+        assert _has(engine, free, "c3", "b3")

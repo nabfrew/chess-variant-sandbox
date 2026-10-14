@@ -112,16 +112,10 @@ from chess_variant_sandbox.agents.evaluation import Evaluator
 from chess_variant_sandbox.agents.features import VOCABULARY
 from chess_variant_sandbox.agents.fitted import FitError, FittedObjective
 from chess_variant_sandbox.engine import Engine
-from chess_variant_sandbox.engine.moves import (
-    MOVE_DROP,
-    move_from,
-    move_promotion,
-    move_to,
-    move_type,
-)
+from chess_variant_sandbox.engine.moves import move_from
 from chess_variant_sandbox.measurement import Basis, built_fingerprint
 from chess_variant_sandbox.metrics.scoring import WeightsError
-from chess_variant_sandbox.site import provisional, quota, spotcheck
+from chess_variant_sandbox.site import provisional, quota, spine, spotcheck
 from chess_variant_sandbox.site.provisional import ProvisionalError
 from chess_variant_sandbox.tournament import runner, slices
 from chess_variant_sandbox.tournament.analysis import (
@@ -131,6 +125,10 @@ from chess_variant_sandbox.tournament.analysis import (
     BlunderTrial,
     CorpusAnalysis,
     GameAnalysis,
+    _mover_kind,
+    _moves_an_instance,
+    _starting_squares,
+    _takes,
 )
 from chess_variant_sandbox.tournament.record import GameRecord
 from chess_variant_sandbox.tournament.runner import TournamentConfig
@@ -701,7 +699,7 @@ def walk(
     target = int(len(moves) * BLUNDER_FRACTION)
 
     state = engine.initial_state()
-    starting = {sq for sq in range(engine.spec.n_squares) if state.board[sq] != 0}
+    starting = _starting_squares(engine, state.board)
     moved: set[int] = set()
     seen = {state.key}
     keys: list[int] = []
@@ -746,21 +744,25 @@ def walk(
             material.append(round(evaluator.material(state, 0), 4))
 
         board = state.board
-        kind = _mover_kind(move, board, n_types) if counting else None
+        # The pass's own readings of a move (`analysis._mover_kind`, `_moves_an_instance`,
+        # `_starting_squares`, `_takes`), so the two cannot drift apart again as they did
+        # over a fold's own move (Q875).
+        kind = _mover_kind(engine, board, move) if counting else None
         if kind is None:
             # `_analyse_game` stops counting at a move from an empty square, saying the
-            # record and the spec have drifted apart. A legal move does not start on one,
-            # so this is kept only so that the two read every game alike.
+            # record and the spec have drifted apart. A legal move does not start on one
+            # (a fold's own move is read by its end, not its origin), so this is kept only
+            # so that the two read every game alike.
             counting = False
         else:
-            if move_type(move) != MOVE_DROP and move_from(move) in starting:
+            if _moves_an_instance(move) and move_from(move) in starting:
                 moved.add(move_from(move))
             moves_by_type[kind] += 1
-            if board[move_to(move)] != 0:
+            if _takes(board, move):
                 captures_by_type[kind] += 1
             if ply % PLY_STRIDE == 0 and len(legal) > 1:
                 legal_counts.append(len(legal))
-                capture_counts.append(sum(1 for m in legal if board[move_to(m)] != 0))
+                capture_counts.append(sum(1 for m in legal if _takes(board, m)))
 
         successor = engine.apply(state, move)
         if series:
@@ -830,14 +832,6 @@ def walk(
         blunder_side=blunder[0],
         blunder_choices=blunder[1],
     )
-
-
-def _mover_kind(move: int, board: bytes, n_types: int) -> int | None:
-    """The type of the piece a move moves or drops, or `None` from an empty square."""
-    if move_type(move) == MOVE_DROP:
-        return move_promotion(move) % n_types
-    occupant = board[move_from(move)]
-    return None if occupant == 0 else (occupant - 1) % n_types
 
 
 def _ending(winner: int | None, reason: str) -> str:
@@ -1375,6 +1369,8 @@ class Checker:
         every: float = 60.0,
         cpu_cap: float = quota.SAMPLE_JOB_CPU,
         wall_cap: float = quota.SAMPLE_JOB_WALL,
+        rates: bool = True,
+        spine_caps: spine.Caps | None = None,
     ) -> None:
         self.connect = connect
         self.runs_dir = Path(runs_dir)
@@ -1384,6 +1380,10 @@ class Checker:
         # A spot check's caps (`quota.SAMPLE_JOB_CPU`, `SAMPLE_JOB_WALL`); a test lowers them.
         self.cpu_cap = cpu_cap
         self.wall_cap = wall_cap
+        # L5: whether this runner rates a member's spine at publish (`site/spine.py`), and
+        # under what caps (`quota.SPINE_*`); a test lowers them, or turns the rating off.
+        self.rates = rates
+        self.spine_caps = spine_caps
         self._wake = threading.Event()
         self._stopping = threading.Event()
         self._thread: threading.Thread | None = None
@@ -1392,7 +1392,9 @@ class Checker:
         """Run every queued job, then delete what the finished ones no longer need.
 
         Tier one first, every time: a spot check is claimed only when no legality job is
-        queued, so a submission is never kept waiting behind somebody else's replay.
+        queued, so a submission is never kept waiting behind somebody else's replay. A
+        member's spine rating (L5, `rate`) comes last, one game a round, after the waiting
+        publishes are settled; it is not in the answer.
         """
         done: list[Finished | spotcheck.Outcome] = []
         while True:
@@ -1404,16 +1406,21 @@ class Checker:
                 continue
             with self.connect() as connection:
                 check = spotcheck.claim(connection, self.worker)
-            if check is None:
-                break
-            with self.connect() as connection:
-                done.append(
-                    spotcheck.run(
-                        connection, self.runs_dir, check, self.worker, self.basis,
-                        self.cpu_cap, self.wall_cap,
+            if check is not None:
+                with self.connect() as connection:
+                    done.append(
+                        spotcheck.run(
+                            connection, self.runs_dir, check, self.worker, self.basis,
+                            self.cpu_cap, self.wall_cap,
+                        )
                     )
-                )
-        self.settle()
+                continue
+            # Every check is done, so every waiting *Publish* can be settled, and a game it
+            # puts on trial has its spine rating filed. Then one spine job, and round again,
+            # so a check filed while it played goes first.
+            self.settle()
+            if self.rate() is None:
+                break
         if done:
             with self.connect() as connection:
                 sweep(connection, self.runs_dir)
@@ -1436,6 +1443,25 @@ class Checker:
             print(f"legality: the publish of {settled.hash} {settled.state}")
         return moved
 
+    def rate(self) -> spine.Outcome | None:
+        """Rate one member's spine (L5, `site/spine.py`), or `None` when there is none to
+        rate, rating is off, or a legality walk or spot check is queued (those go first).
+
+        Its outcome is printed, not returned by `drain`: `drain` answers for the checks of
+        people's measurements, and a spine rating is the site's own work.
+        """
+        if not self.rates:
+            return None
+        with self.connect() as connection:
+            if spine.waiting_ahead(connection):
+                return None
+            job = spine.claim(connection, self.worker)
+        if job is None:
+            return None
+        rated = spine.run(self.connect, self.runs_dir, job, self.spine_caps)
+        print(f"legality: the spine of {rated.hash} {rated.state}: {rated.said}")
+        return rated
+
     def requeue(self) -> int:
         """Put back what a stopped process left `running`; this is the only runner."""
         with self.connect() as connection, connection.cursor() as cursor:
@@ -1444,7 +1470,11 @@ class Checker:
                 " where kind = %s and state = %s",
                 (QUEUED, KIND, RUNNING),
             )
-            return int(cursor.rowcount or 0) + spotcheck.requeue(connection)
+            return (
+                int(cursor.rowcount or 0)
+                + spotcheck.requeue(connection)
+                + spine.requeue(connection)
+            )
 
     def wake(self) -> None:
         self._wake.set()
@@ -1458,6 +1488,16 @@ class Checker:
                 provisional.mark_stale(connection, self.basis)
         except Exception as error:  # noqa: BLE001 - a stale stamp is not worth the site
             print(f"legality: the stale readings could not be stamped: {error}")
+        # L5: a member's game on trial with no computer player rated and no spine job --
+        # one published before this existed -- is filed now, oldest publish first.
+        if self.rates:
+            try:
+                with self.connect() as connection:
+                    owed = spine.file_owed(connection)
+                if owed:
+                    print(f"legality: {len(owed)} published game(s) owed a spine rating")
+            except Exception as error:  # noqa: BLE001 - nor is a backfill
+                print(f"legality: the owed spine ratings could not be filed: {error}")
         self._thread = threading.Thread(target=self._run, name="legality", daemon=True)
         self._thread.start()
         return self._thread

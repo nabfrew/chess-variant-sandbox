@@ -471,6 +471,13 @@ class TestTheSurfaces:
         from chess_variant_sandbox.llm.propose import SCHEMA_PREAMBLE
 
         assert "`rules.promote_on_entry`" in SCHEMA_PREAMBLE
+        # And the paragraph says the point: what it does, and what it needs.
+        paragraph = next(
+            line for line in SCHEMA_PREAMBLE.splitlines()
+            if line.startswith("`rules.promote_on_entry`")
+        )
+        assert "promotes at once" in paragraph
+        assert "needs `promotion`" in paragraph and "`drops`" in paragraph
 
     def test_fairy_stockfish_refuses_it_by_name_and_false_refuses_nothing(
         self, dobutsu_entry: dict[str, Any]

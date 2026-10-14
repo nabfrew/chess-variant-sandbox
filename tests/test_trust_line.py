@@ -56,6 +56,8 @@ ORDERED = _item(trust.LADDER, trust.SILENT, "ladder.ordered", count=trust.Count(
 WITHHELD = _item(trust.LADDER, trust.FINDS_MORE, "ladder.withheld",
                  count=trust.Count(4, 4, "runs"), withheld=["skill_gradient"])
 PARTLY = _item(trust.LADDER, trust.SILENT, "ladder.partly", count=trust.Count(2, 4, "runs"))
+PARTLY_PARTS = _item(trust.LADDER, trust.SILENT, "ladder.partly-parts",
+                     count=trust.Count(2, 4, "runs"))
 FAIRY_HELD = _item(trust.FAIRY, trust.AGREES, "fairy.held-its-own",
                    count=trust.Count(12, 32, "games"), date="2026-10-02", score=0.37)
 FAIRY_BEATS = _item(trust.FAIRY, trust.FINDS_MORE, "fairy.beats-ours",
@@ -86,6 +88,10 @@ class TestTheWords:
         shown = trust.shown(_trust(PARTLY))
         assert shown is not None and shown["said"] == trust.EARLY_SAID
         assert shown["more"][0] == (
+            "Its computer players got clearly stronger with more thinking time in only 2 of "
+            "the 4 runs that measured this game, so the score rests on 2 runs alone.")
+        parts = trust.shown(_trust(PARTLY_PARTS))
+        assert parts is not None and parts["more"][0] == (
             "Its computer players got clearly stronger with more thinking time in only 2 of "
             "the 4 runs that measured this game, so parts of the score rest on those runs "
             "alone.")
@@ -199,7 +205,7 @@ class TestTheWords:
                      (trust.NET, trust.SILENT, "net.refused"),
                      (trust.CONVERGENCE, trust.FINDS_MORE, "convergence.moved"))}
         readings = [
-            _trust(ORDERED), _trust(WITHHELD), _trust(PARTLY), _trust(FAIRY_HELD), _trust(FAIRY_BEATS, NET),
+            _trust(ORDERED), _trust(WITHHELD), _trust(PARTLY), _trust(PARTLY_PARTS), _trust(FAIRY_HELD), _trust(FAIRY_BEATS, NET),
             _trust(*stale.values()),
             _trust(_item(trust.CONVERGENCE, trust.AGREES, "convergence.held")),
             _trust(_item(trust.NET, trust.SILENT, "net.in-the-score")),

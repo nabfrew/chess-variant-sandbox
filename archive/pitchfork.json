@@ -1,0 +1,102 @@
+{
+  "schema_version": 25,
+  "name": "pitchfork",
+  "description": "Chess with eight wolves in the middle of the board, and only a pawn can bring one down. A wolf belongs to neither player. The wolves walk in pairs, nose to tail, round four rings of five squares that fill the centre: on each wing one ring in each player's half, b4 c5 d4 c3 b3 and g4 f5 e4 f3 g3 and their mirror images on the other side of the board. After every move either player makes, every wolf steps to the next square of its ring and eats whatever it finds there. A knight, bishop, rook, queen or king may not take a wolf; a pawn may, diagonally forward, as it takes anything else. So the squares where the knights and bishops would come out are the wolves' ground until the pawns clear it, and the hunt has a price: a pawn that takes the leading wolf of a pair stands on the square the one behind it steps to next, and is eaten at once. A square a wolf will step to next is a square no king may stand on. A wolf is worth nothing to take and there is no score to collect. The rest is chess: castling, en passant and promotion as usual; checkmate wins and stalemate is a draw.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {"kind": "slide", "mode": "move", "range": 1, "vectors": [[0, 1]]},
+        {"kind": "slide", "mode": "move", "range": 2, "min_range": 2, "vectors": [[0, 1]], "condition": {"from_rank": 1}},
+        {"kind": "leap", "mode": "capture", "symmetry": "lateral", "vectors": [[1, 1]]}
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {"kind": "leap", "mode": "both", "symmetry": "dihedral8", "vectors": [[1, 2]]}
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {"kind": "slide", "mode": "both", "symmetry": "rotate4", "vectors": [[1, 1]]}
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {"kind": "slide", "mode": "both", "symmetry": "rotate4", "vectors": [[1, 0]]}
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {"kind": "slide", "mode": "both", "symmetry": "rotate4", "vectors": [[1, 0], [1, 1]]}
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {"kind": "leap", "mode": "both", "symmetry": "rotate4", "vectors": [[1, 0], [1, 1]]}
+      ]
+    },
+    {
+      "id": "W",
+      "name": "wolf",
+      "value": 3,
+      "moves": [
+        {"kind": "leap", "mode": "both", "symmetry": "dihedral8", "vectors": [[1, 0], [1, 1]]}
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2"]},
+      {"piece": "R", "squares": ["a1", "h1"]},
+      {"piece": "N", "squares": ["b1", "g1"]},
+      {"piece": "B", "squares": ["c1", "f1"]},
+      {"piece": "Q", "squares": ["d1"]},
+      {"piece": "K", "squares": ["e1"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "castling": {"king": "K", "rook": "R", "king_steps": 2},
+    "en_passant": true,
+    "promotion": {"piece": "P", "rank": "last", "to": ["Q", "R", "B", "N"]},
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "npcs": [
+      {"piece": "W", "route": ["b4", "c5", "d4", "c3", "b3"], "also_at": ["c5"], "mirror": true, "immune": ["P"]},
+      {"piece": "W", "route": ["g4", "f5", "e4", "f3", "g3"], "also_at": ["f5"], "mirror": true, "immune": ["P"]}
+    ]
+  },
+  "provenance": {
+    "added": "2026-10-13",
+    "origin": "designed",
+    "source": "docs/plan-library-audit.md, Q876: a new game instead of a variant",
+    "history": "Designed by Q876 to replace wolves immune, which was wolves written with rules.npcs[].immune and played it move for move, so the word was in the library without doing anything. Here it decides the game: the wolves may be taken by pawns and by nothing else, and they stand where the pawns' advance meets them from the first move, so the cheapest piece is the hunter and every capture of a wolf is a pawn's. The rings are the centre rings Q68's screen tried (docs/reference/wild-piece-that-matters.md), each holding two wolves (schema 23's also_at). Pre-registered in docs/plan-library-audit.md before it was measured.",
+    "parents": ["ceb4916bdabc"]
+  }
+}

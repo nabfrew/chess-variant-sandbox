@@ -241,7 +241,8 @@ function mapLegendHtml() {
 
 // One chip per community, in the payload's order, each with its colour, its name and
 // how many games it holds. Pressing one lights that community and fades the rest; the
-// names are the server's.
+// names are the server's. This is the one list of them: folding one is in its panel
+// (Q801), and a folded one's chip says so.
 function mapCommunitiesHtml() {
   const communities = mapCommunities();
   if (!communities.length) return '';
@@ -252,15 +253,16 @@ function mapCommunitiesHtml() {
       title="${esc(community.names.join(', '))}">${colour
         ? `<span class="dot" style="background:${esc(colour)}"></span>`
         : mapDotSwatch('var(--panel)', 'var(--muted)')}${esc(community.name)}
-      <span class="muted">${community.size}</span></button>`;
+      <span class="muted">${community.size}</span><span class="muted" data-folded
+        hidden>&middot; folded</span></button>`;
   }).join('');
   // Folded on a phone, where thirteen chips are a screen of their own above the map.
   return `<details id="mapCommunitiesBox"${window.innerWidth > 720 ? ' open' : ''}>
     <summary class="muted small">${communities.length} communities, drawn together and in
       one colour</summary>
     <div class="muted small" style="margin:6px 0">The lines inside each are tighter than
-      its lines to the rest. Click one to light it. Coloured by community, a hollow dot is
-      a game in a pair or in none.</div>
+      its lines to the rest. Click one to light it; its panel folds it into one dot.
+      Coloured by community, a hollow dot is a game in a pair or in none.</div>
     <div class="chips" id="mapCommunities">${chips}</div></details>`;
 }
 
@@ -709,6 +711,9 @@ function mapCommunityPanel(community) {
     <div class="small">${community.size} games, drawn together because the lines between
       them are tighter than their lines to the rest of the library. ${why}${centre
         ? ` The one most like the rest of them is <b>${esc(centre.name)}</b>.` : ''}</div>
+    ${community.size >= MAP_COLOURED ? `<div class="row" style="margin-top:10px">
+      <button data-fold-group="${esc(community.id)}">fold it into one dot</button></div>`
+      : ''}
     <div class="links">${community.members.map((hash, at) => `
       <button class="linkRow" data-node-row="${esc(hash)}">
         <b>${esc(community.names[at])}</b></button>`).join('')}</div>`;

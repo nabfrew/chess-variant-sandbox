@@ -33,6 +33,7 @@ from chess_variant_sandbox import corpus, history
 from chess_variant_sandbox.measurement import stale_build
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS
 from chess_variant_sandbox.spec import describe, spec_hash, validate_spec
+from chess_variant_sandbox.spec import reference as rule_reference
 from chess_variant_sandbox.web import (
     candidacy,
     cards,
@@ -121,6 +122,26 @@ BROWSER_TYPES = {
 # B3's worker script, one real file inside the package. `no-store`, like every answer
 # but the two immutable kinds, because its name does not change when its bytes do.
 WORKER_ROUTE = "/static/measure-worker.js"
+
+# The rule language's reference, `RULES.md`, as the code this server runs renders it (Q905):
+# the designer links it (`reference.PUBLISHED` is this path), so the page a reader opens
+# describes the validator that will read their file, never an older export. A constant of
+# the running code, served to anybody on both servers; cached briefly, since a deploy can
+# change it under the same address.
+RULES_ROUTE = rule_reference.PUBLISHED
+RULES_TYPE = "text/markdown; charset=utf-8"
+RULES_CACHE = "public, max-age=300"
+
+
+def rules_markdown() -> bytes:
+    """The reference's bytes, rendered once per process: the schema cannot change under a
+    running server."""
+    held = getattr(rules_markdown, "held", None)
+    if held is None:
+        held = rule_reference.render_reference().encode("utf-8")
+        rules_markdown.held = held  # type: ignore[attr-defined]
+    return held
+
 
 # The addresses the single page answers (Q723). `/` is the landing page and `/game` the
 # games, for everybody; the page itself tells them apart (`web/static/page/core.js`'s
@@ -352,6 +373,10 @@ class App:
         what a second listing always cost, about 0.03 s over the whole corpus, seconds
         cheaper than the 7-13 s a cold first listing pays (Q415, in
         `docs/reference/fast-suite-review.md`).
+
+        Those per-game answers (and the card's still board) also outlive the process:
+        `library.CardAnswers` keeps them on disk under the code that decides them, so a
+        restart that changed none of it lists without compiling a game (Q887).
         """
         with self._warming:
             games = self.refresh()
@@ -367,6 +392,9 @@ class App:
             art: dict[str, str] = {}
             for game in games:
                 art.update(library.piece_art(game))
+            # The cards' rule answers this listing worked out, written once for the next
+            # process to read instead of compiling every game again (Q887).
+            library.save_card_answers()
             return {"games": cards,
                     "pieceArt": art,
                     # The leaderboard's header (EV3): how many of those numbers are
@@ -858,7 +886,7 @@ class App:
         back = body.get("back")
         return designing.draft_steps(spec, [back] if isinstance(back, dict) else [])
 
-    def _save_design(self, body: dict[str, Any]) -> Any:
+    def _save_design(self, body: dict[str, Any], restate: bool = True) -> Any:
         """Keep a hand-built game as a candidate, and let the library see it at once.
 
         The parent travels as a *spec* and not only as a hash, because the refusal that
@@ -866,6 +894,10 @@ class App:
         hash rather than the one its filename was derived from. A parent this library has
         never heard of is not an error: the draft is simply not a fork of anything it can
         compare against, and `designing.save` falls back to the hash it was given.
+
+        `restate` is whether a re-save of kept rules may give them its name and
+        description (Q595). Here it always may: the local application is one person's.
+        The site says no for rules somebody else saved first and for a published game.
         """
         parent = str(body.get("parent", ""))
         known = self.known().get(parent) if parent else None
@@ -876,6 +908,7 @@ class App:
             note=str(body.get("note", "")),
             parent_spec=None if known is None else known.spec,
             parent_name="" if known is None else known.name,
+            restate=restate,
         )
         self.refresh()
         return kept
@@ -1370,6 +1403,9 @@ def handler_for(app: App) -> type[BaseHTTPRequestHandler]:
             if parsed.path == WORKER_ROUTE:
                 self._worker()
                 return
+            if parsed.path == RULES_ROUTE:
+                self._send(200, rules_markdown(), RULES_TYPE, cache=RULES_CACHE)
+                return
             if parsed.path in SCRIPTS:
                 self._script(SCRIPTS[parsed.path])
                 return
@@ -1476,7 +1512,7 @@ def handler_for(app: App) -> type[BaseHTTPRequestHandler]:
             self._discard_body()
             return True
 
-        def _discard_body(self) -> None:
+        def _discard_body(self, limit: int = DRAIN_LIMIT) -> None:
             """Read a refused request's body and throw it away, before the close.
 
             Measured on Windows 2026-09-19: a body still in the socket when the handler
@@ -1484,13 +1520,23 @@ def handler_for(app: App) -> type[BaseHTTPRequestHandler]:
             gets WinError 10053 instead of the 403 already written to it. Reproduced
             20 times in 20 by sending the headers and the body as two writes, which is
             what the suite hit on a busy machine when its own read came late.
+
+            Only a body whose declared length is at most `limit` is drained; a longer
+            claim is closed on unread, as before. It is read in pieces of at most
+            `DRAIN_LIMIT` and none is kept, so a caller may pass a limit larger than it
+            would ever hold, and a sender that stops short ends the drain.
             """
             try:
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:
                 return
-            if 0 < length <= DRAIN_LIMIT:
-                self.rfile.read(length)
+            if not 0 < length <= limit:
+                return
+            while length > 0:
+                piece = self.rfile.read(min(length, DRAIN_LIMIT))
+                if not piece:
+                    return
+                length -= len(piece)
 
         def do_POST(self) -> None:  # noqa: N802 - the stdlib's naming
             if self._forged():

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import node_session
 import pytest
+from retired_specs import REBUILT, hex_glinski_promoting
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.spec import load_spec
@@ -575,7 +576,7 @@ class TestAHexBoardIsDrawnAsHexagons:
         assert seen["squareShade"] == "var(--dark)"
 
     def test_the_replay_is_sent_the_lattice(self, tmp_path: Path) -> None:
-        hexed = load_spec(RULESETS.parent / "archive" / "hex-glinski-promoting.json")
+        hexed = hex_glinski_promoting()
         page = render_position(hexed, Engine(hexed).initial_state(), tmp_path / "hex.html")
         assert _payload(page)["lattice"] == "hex"
         chess = load_spec(RULESETS / "chess.json")
@@ -1452,7 +1453,10 @@ def _hexagon(name: str, wrap: dict | None = None) -> dict:
     place."""
     from chess_variant_sandbox.viz.wrapped import walls_payload, wrap_payload
 
-    spec = json.loads((ARCHIVE / f"{name}.json").read_text("utf-8"))
+    if name in REBUILT:  # retired by Q870 for `pinwheel`; rebuilt from the hexagon
+        spec = REBUILT[name]()
+    else:
+        spec = json.loads((ARCHIVE / f"{name}.json").read_text("utf-8"))
     if wrap is not None:
         spec["rules"]["wrap"] = wrap
     compiled = Engine(spec).spec
@@ -1486,7 +1490,7 @@ class TestAHexagonIsDrawnAsAHexagon:
     def test_the_walled_twin_still_sends_its_corners_as_walls(self) -> None:
         from chess_variant_sandbox.viz.wrapped import walls_payload
 
-        spec = json.loads((ARCHIVE / "hex-glinski-promoting.json").read_text("utf-8"))
+        spec = hex_glinski_promoting()
         sent = walls_payload(Engine(spec).spec)
         assert (len(sent["obstacles"]), sent["absent"]) == (30, [])
 
@@ -1660,7 +1664,9 @@ class TestAHexagonIsDrawnAsAHexagon:
     def test_the_replay_sends_the_corners_apart_and_skips_them(
         self, name: str, tmp_path: Path
     ) -> None:
-        spec = json.loads((ARCHIVE / f"{name}.json").read_text("utf-8"))
+        spec = REBUILT[name]() if name in REBUILT else json.loads(
+            (ARCHIVE / f"{name}.json").read_text("utf-8")
+        )
         page = render_position(spec, Engine(spec).initial_state(), tmp_path / "hex.html")
         data = _payload(page)
         assert (data["obstacles"], len(data["absent"])) == ([], 30)
@@ -1712,7 +1718,9 @@ class TestAHexagonsSeamRunsOnAcrossItsGhosts:
         assert not seen["still"], "a still has no ghosts, so no seam between them"
 
     @pytest.mark.parametrize(("name", "wrap", "outline"), [
-        ("hex-glinski-flanks", _TORUS, 6),
+        # Slow (Q749): compiling a hexagon with all three pairs joined, which nothing else
+        # here builds, is 2.9 s of the test's 3.
+        pytest.param("hex-glinski-flanks", _TORUS, 6, marks=pytest.mark.slow),
         ("hex-glinski-flanks-one-way", None, 0),
         ("hex-glinski-flanks", None, 2),
     ])
@@ -1724,3 +1732,84 @@ class TestAHexagonsSeamRunsOnAcrossItsGhosts:
                   barrierHtml(10, view, P.wrap).includes('data-ghost-seam')];
         """, wrap)
         assert seen == [outline, False]
+
+
+def test_the_chancellor_is_a_tower_with_a_knights_head() -> None:
+    """The chancellor (rook + knight) is drawn tower first (first-visit study N2).
+
+    Commons' compound is a whole knight on a sliver of upturned battlements, and a
+    first-time visitor read it as a knight. The library's own drawing is Cburnett's rook,
+    shortened, with his knight's head on its battlements, so both parts are in the file:
+    the rook's crenellated top and the knight's head. It is recorded in `fetch.py` as
+    drawn here, so a rebuild keeps it rather than fetching Commons' one again, and it is
+    credited to the artist whose parts it is made of, under his licence.
+    """
+    from importlib.util import module_from_spec, spec_from_file_location
+
+    from chess_variant_sandbox.viz import pieces
+
+    if icon_for("chancellor", 0) is None:  # the library is optional
+        pytest.skip("icon library not fetched")
+    found = spec_from_file_location("fetch", pieces.ASSET_ROOT / "fetch.py")
+    assert found is not None and found.loader is not None
+    fetch = module_from_spec(found)
+    found.loader.exec_module(fetch)
+    assert "chancellor" not in fetch.CBURNETT
+
+    battlements = "L 15,16.5 L 15,18.5 L 20,18.5 L 20,16.5 L 25,16.5 L 25,18.5 L 30,18.5 L 30,16.5"
+    head = "C 14.5,6.5 16.5,10 16.5,10 L 18.5,10"
+    manifest = json.loads((pieces.ASSET_ROOT / "manifest.json").read_text(encoding="utf-8"))
+    for colour in ("white", "black"):
+        stem = f"chancellor-{colour}"
+        drawing = (pieces.ASSET_ROOT / "svg" / f"{stem}.svg").read_text(encoding="utf-8")
+        assert battlements in drawing and head in drawing, stem
+        assert stem in fetch.DERIVED
+        entry = manifest[stem]
+        assert (entry["author"], entry["licence"]) == ("Cburnett", "CC BY-SA 3.0")
+        assert entry["modified"].startswith("drawn for this repository from Cburnett's")
+        assert entry["bytes"] == len(drawing.encode("utf-8"))
+    assert icon_for("chancellor", 0)["href"] != icon_for("knight", 0)["href"]
+
+
+def test_the_archbishop_is_a_mitre_with_a_knights_head() -> None:
+    """The archbishop (bishop + knight) is drawn mitre first, as the chancellor is tower first.
+
+    Commons' compound is a whole knight standing on a bishop's foot, the chancellor's
+    mistake again (first-visit study N2). The library's own drawing is Cburnett's bishop,
+    at nine tenths, with his knight's head rising from behind the mitre's point, so both
+    parts are in the file: the mitre with its slit and the knight's head. It is recorded in
+    `fetch.py` as drawn here, so a rebuild keeps it rather than fetching Commons' one again,
+    and it is credited to the artist whose parts it is made of, under his licence.
+    """
+    from importlib.util import module_from_spec, spec_from_file_location
+
+    from chess_variant_sandbox.viz import pieces
+
+    if icon_for("archbishop", 0) is None:  # the library is optional
+        pytest.skip("icon library not fetched")
+    found = spec_from_file_location("fetch", pieces.ASSET_ROOT / "fetch.py")
+    assert found is not None and found.loader is not None
+    fetch = module_from_spec(found)
+    found.loader.exec_module(fetch)
+    assert "archbishop" not in fetch.CBURNETT
+
+    mitre = "C 33,24.5 33.5,14.5 22.5,10.5 C 11.5,14.5 12,24.5 17.5,26"
+    slit = "M 22.5,15.5 L 22.5,20.5 M 20,18 L 25,18"
+    head = "C 14.5,6.5 16.5,10 16.5,10 L 18.5,10"
+    manifest = json.loads((pieces.ASSET_ROOT / "manifest.json").read_text(encoding="utf-8"))
+    for colour in ("white", "black"):
+        stem = f"archbishop-{colour}"
+        drawing = (pieces.ASSET_ROOT / "svg" / f"{stem}.svg").read_text(encoding="utf-8")
+        assert mitre in drawing and slit in drawing and head in drawing, stem
+        # the head is the smaller part, at the chancellor's 0.6; the bishop near whole
+        assert "matrix(0.6,0,0,0.6," in drawing and "matrix(0.9,0,0,0.9," in drawing, stem
+        assert stem in fetch.DERIVED
+        entry = manifest[stem]
+        assert (entry["author"], entry["licence"]) == ("Cburnett", "CC BY-SA 3.0")
+        assert entry["modified"].startswith("drawn for this repository from Cburnett's")
+        assert "bishop" in entry["modified"]
+        assert entry["bytes"] == len(drawing.encode("utf-8"))
+    credits = (pieces.ASSET_ROOT / "CREDITS.md").read_text(encoding="utf-8")
+    assert "| `archbishop-white.svg` | Cburnett |" in credits
+    hrefs = {name: icon_for(name, 0)["href"] for name in ("archbishop", "knight", "bishop", "chancellor")}
+    assert len(set(hrefs.values())) == 4, hrefs

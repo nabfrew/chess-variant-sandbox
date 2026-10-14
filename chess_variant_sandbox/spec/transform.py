@@ -26,6 +26,7 @@ from typing import Any
 from chess_variant_sandbox.spec.schema import (
     STOCK_UNLIMITED,
     drop_face_pairs,
+    portal_piece_ids,
     strike_is_live,
     strike_states_nothing,
     strike_survives_anything,
@@ -130,6 +131,100 @@ def drop_piece(spec: dict[str, Any], piece_id: str | None) -> dict[str, Any]:
 
     _forget_piece(spec, piece_id)
     return spec
+
+
+def _filters(rules: dict[str, Any]) -> list[tuple[dict[str, Any], str, str]]:
+    """Schema 21: every ``carries`` list as written, ``(holder, key, square)``.
+
+    The holder is a pair's ``carries`` object (keyed by end) or a map's end (keyed
+    ``"carries"``); the square is the end's, for a sentence. Read from the spelling rather
+    than through ``portal_groups``, because the edit has to land on what is written.
+    """
+    found: list[tuple[dict[str, Any], str, str]] = []
+    portals = rules.get("portals")
+    for group in portals if isinstance(portals, list) else ():
+        if not isinstance(group, dict):
+            continue
+        carries = group.get("carries")
+        if isinstance(carries, dict):
+            found.extend(
+                (carries, end, str(group.get(end)))
+                for end in carries if isinstance(carries[end], list)
+            )
+        for end in group.get("ends") or ():
+            if isinstance(end, dict) and isinstance(end.get("carries"), list):
+                found.append((end, "carries", str(end.get("at"))))
+    return found
+
+
+def _drop_filter(rules: dict[str, Any], holder: dict[str, Any], key: str) -> None:
+    """Take one ``carries`` list away, and a pair's ``carries`` object with its last."""
+    holder.pop(key)
+    for group in rules.get("portals") or ():
+        if isinstance(group, dict) and group.get("carries") is holder and not holder:
+            group.pop("carries")
+
+
+def empties_a_filter(spec: dict[str, Any], piece_id: str) -> bool:
+    """Whether removing ``piece_id`` leaves some portal end's ``carries`` naming nobody.
+
+    A filter naming only that piece means *only it goes in here*; with it gone, the end
+    lets nobody in, which the validator will not take written as an empty filter
+    (`plan-portals-2.md` §2.3: say it with who may ``enter`` instead). ``drop_piece`` drops
+    such a filter, which is a valid spec but a wider door than the parent's, so an operator
+    that removes a piece asks this first and refuses the draw (Q849).
+    """
+    rules = spec.get("rules")
+    if not isinstance(rules, dict):
+        return False
+    return any(
+        piece_id in holder[key] and not set(holder[key]) - {piece_id}
+        for holder, key, _ in _filters(rules)
+    )
+
+
+def settle_carries(spec: dict[str, Any]) -> list[str]:
+    """Drop every ``carries`` that names every piece that can move, and say where.
+
+    `schema._check_portal_carries` refuses such a filter: it lets in what no filter would,
+    so the spec without it is the same game under one hash. An edit to the piece set (a
+    piece removed, a mover made a stone) can leave a filter there that the parent's did
+    not, and this is the repair, read with the validator's own ``movers``. A no-op on any
+    spec the validator accepts. Returns the squares of the ends whose filter went.
+    """
+    rules = spec.get("rules")
+    listed = spec.get("pieces")
+    if not isinstance(rules, dict) or not isinstance(listed, list):
+        return []
+    portal_ids = portal_piece_ids(rules)
+    movers = {
+        piece["id"] for piece in listed
+        if isinstance(piece, dict) and piece.get("moves") and isinstance(piece.get("id"), str)
+    } - portal_ids
+    if not movers:
+        return []
+    gone: list[str] = []
+    for holder, key, square in _filters(rules):
+        if movers <= set(holder[key]):
+            _drop_filter(rules, holder, key)
+            gone.append(square)
+    return gone
+
+
+def _forget_carried(rules: dict[str, Any], piece_id: str) -> None:
+    """Schema 21: the dropped piece out of every end's ``carries``.
+
+    A filter left naming nothing goes, as `castling` does with its rook, and the end then
+    lets every piece in: the only spelling of it that validates without rewriting who may
+    enter, and the reading the metrics' ablations want. The design loop's operators refuse
+    that draw instead (``empties_a_filter``), since it widens a door. A filter left naming
+    every piece that can move goes too (``settle_carries``), the same door unfiltered.
+    """
+    for holder, key, _ in _filters(rules):
+        if piece_id in holder[key]:
+            holder[key] = [pid for pid in holder[key] if pid != piece_id]
+            if not holder[key]:
+                _drop_filter(rules, holder, key)
 
 
 def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
@@ -241,6 +336,7 @@ def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
         ]
         if kept_pairs:
             rules["portals"] = kept_pairs
+            _forget_carried(rules, piece_id)
         else:
             rules.pop("portals", None)
 
@@ -324,6 +420,9 @@ def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
     for key in ("strike", "contacts"):
         if strike_states_nothing(rules.get(key), key, remaining):
             rules.pop(key, None)
+    # Schema 21 (Q849): a filter that kept out only the dropped piece now names every piece
+    # that can move, which the validator refuses as no filter written the long way.
+    settle_carries(spec)
 
 
 def set_moves_to(spec: dict[str, Any], source_id: str | None) -> dict[str, Any]:
@@ -486,12 +585,11 @@ def promote_early(spec: dict[str, Any], steps: int = 2) -> dict[str, Any]:
 def restrict_captures(
     spec: dict[str, Any], piece_id: str | None, allowed: list[str]
 ) -> dict[str, Any]:
-    """Say which enemy types one piece may capture, or hand the permission back.
+    """Say which enemy types one piece may capture.
 
     ``allowed`` of ``None`` is not accepted, because the difference between "may take
     everything" and "may take nothing" is the whole feature and an ambiguous argument
-    would eventually be passed the wrong one. Removing the restriction is
-    ``free_captures``.
+    would eventually be passed the wrong one.
 
     A schema-3 edit, so it bumps the declared version. A spec that says 2 and carries a
     capture list is rejected by the validator, which is what the version is for.
@@ -502,22 +600,6 @@ def restrict_captures(
         if piece.get("id") == piece_id:
             piece["captures"] = list(allowed)
             spec["schema_version"] = max(int(spec.get("schema_version", 1)), 3)
-            return spec
-    return spec
-
-
-def free_captures(spec: dict[str, Any], piece_id: str | None) -> dict[str, Any]:
-    """Let one piece capture anything again.
-
-    The declared version is left where it is: the spec may still hold other schema-3
-    pieces, and lowering it on the strength of one edit would produce a spec that says 2
-    and validates as 3.
-    """
-    if piece_id is None:
-        return spec
-    for piece in pieces(spec):
-        if piece.get("id") == piece_id:
-            piece.pop("captures", None)
             return spec
     return spec
 
@@ -677,7 +759,8 @@ def settle_inert_rules(spec: dict[str, Any]) -> list[str]:
     chain pruned down to its immune links, and this holds any other.
 
     Returns the rules removed, as ``rules`` keys, ``"promotion:<id>"`` for one promotion
-    rule out of several and ``"immune:<id>"`` for a wild type's immunity; empty when
+    rule out of several, ``"immune:<id>"`` for a wild type's immunity and
+    ``"carries:<square>"`` for a portal end's filter (``settle_carries``); empty when
     nothing moved.
     """
     listed = spec.get("pieces")
@@ -875,6 +958,9 @@ def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) 
             key = f"immune:{npc.get('piece')}"
             if key not in dropped:
                 dropped.append(key)
+    # A portal end's ``carries`` naming every piece that can move (Q849): an edit that
+    # turns a mover into a stone, or removes the one type a filter kept out, leaves one.
+    dropped.extend(f"carries:{square}" for square in settle_carries(spec))
     return dropped
 
 
@@ -1097,10 +1183,8 @@ def settle_schema_version(spec: dict[str, Any]) -> dict[str, Any]:
     invalid for some reason that is not the stamp, and moving the number would only
     change which complaint the validator makes.
 
-    Deliberately not applied by `free_captures`, which documents the opposite choice for
-    a reason that still holds: it drops the restriction from *one* piece and the spec may
-    carry others, so it cannot say anything about the version on its own. This can,
-    because it asks about the whole spec.
+    An edit to *one* piece cannot lower the version on its own (the spec may carry other
+    pieces that need it); this can, because it asks about the whole spec.
     """
     from chess_variant_sandbox.spec.schema import SUPPORTED_SCHEMA_VERSIONS, validate_spec
 

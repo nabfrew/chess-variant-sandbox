@@ -309,3 +309,49 @@ class TestTheScreensReasonsAreAVisitors:
         for reason in said:
             assert not _hits(reason), (reason, _hits(reason))
             assert "budget" not in reason, reason
+
+
+class TestAVersionStampIsSaidInTheFeaturesWords:
+    """A draft that uses a feature its declared version predates draws the validator's
+    *uses X, added in schema N* (`schema.validate_spec`). The site never names the version
+    (`designing._worth_saying` settles it once the rest is a game), so `plain_problem` says
+    what is used in the words the form draws it by: a rule by its card's title, a piece's
+    field by its label, a path by its place. Each of the three ways `_used` names a thing is
+    one case here (Q751, plan-tests F9: none of them had run)."""
+
+    @staticmethod
+    def _stamp(change: Any) -> tuple[str, str]:
+        spec = load_spec(ROOT / "rulesets" / "chess.json")
+        assert spec["schema_version"] < 4
+        change(spec)
+        stamps = [p for p in validate_spec(spec) if ", added in schema " in p]
+        assert len(stamps) == 1, stamps
+        return stamps[0], plain_problem(stamps[0], spec)
+
+    def test_two_rules_are_named_by_their_cards_titles(self) -> None:
+        raw, said = self._stamp(lambda s: s["rules"].update(territory={}, turn={}))
+        assert raw.startswith("rules uses territory, turn, added in schema 4")
+        assert said == ("Using the rule 'claiming ground' and the rule 'more than one move "
+                        "a turn' needs the rest of the draft to be a game first.")
+
+    def test_a_pieces_field_is_named_by_its_label(self) -> None:
+        raw, said = self._stamp(lambda s: s.update(schema_version=7)
+                                or s["pieces"][0].update(facing={}))
+        assert raw.startswith("a piece uses facing, added in schema 8")
+        assert said == "Using 'points a way' needs the rest of the draft to be a game first."
+
+    def test_a_path_is_named_by_its_place(self) -> None:
+        raw, said = self._stamp(lambda s: s.update(schema_version=7)
+                                or s["setup"]["placements"][0].update(facing=0))
+        assert raw.startswith("a piece uses setup.placements[].facing, added in schema 8")
+        assert said == ("Using where they start, 'pointing' needs the rest of the draft to be "
+                        "a game first.")
+
+    @pytest.mark.parametrize("change", [
+        lambda s: s["rules"].update(territory={}, turn={}),
+        lambda s: s.update(schema_version=7) or s["pieces"][0].update(facing={}),
+    ])
+    def test_the_words_never_name_the_version_or_a_key(self, change: Any) -> None:
+        _, said = self._stamp(change)
+        assert "schema" not in said and "_version" not in said
+        assert not _hits(said), _hits(said)

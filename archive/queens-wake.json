@@ -1,7 +1,7 @@
 {
   "schema_version": 10,
   "name": "queens wake",
-  "description": "Atomic chess in which only the taking of a queen explodes. Whoever captures a queen destroys everything standing on the eight squares around it, pawns excepted, and goes up with it; every other capture is an ordinary capture. Everything else is atomic chess, including that a king caught in a blast loses the game.",
+  "description": "Atomic chess in which only the taking of a queen explodes. Whoever captures a queen destroys everything standing on the eight squares around it, pawns excepted, and goes up with it; every other capture is an ordinary capture. Everything else is atomic chess, including that a king caught in a blast loses the game. Narrowing it the other way, to the taking of a queen, does the opposite of queen bomb: offering the queen becomes an opening trap, and the average game is over in under twenty moves a side.",
   "board": {
     "width": 8,
     "height": 8

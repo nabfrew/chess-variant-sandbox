@@ -215,7 +215,7 @@ class TestWhatAClickCouldMean:
         offered as itself and turned six ways, and no square turn is offered. That is the
         schema's rule rather than the designer's."""
         hexed = load_spec(Path(__file__).resolve().parent.parent / "archive"
-                          / "hex-glinski-promoting.json")
+                          / "hex-glinski-hexagon.json")
         width = hexed["board"]["width"]
         offers = _offers(hexed, 0, "f6", ["f7"], width=width)
         assert offers, "a hex board offered nothing at all"
@@ -906,7 +906,7 @@ class TestRuleCardsComeFromTheSchema:
 
     def test_a_square_list_is_picked_on_the_board(self) -> None:
         picked = _run_page(
-            _kit_setup() + "drawDesigner = () => {}; checkDraft = () => {};"
+            _kit_setup() + "drawDesigner = () => {}; checkDraft = () => {}; drawBoardSide = () => {};"
             " DRAFT = { pieces: [], rules: { win: 'none', reach: { squares: ['e4'] } } };"
             " DRAFT_CHECK = { preview: { width: 8, height: 8 } };"
             " PICKING = { root: 'rules', path: ['reach', 'squares'], label: 'squares' };"
@@ -1067,7 +1067,7 @@ class TestANewCardArrivesValid:
     def test_a_landing_arrives_as_the_step_the_draft_already_writes(self) -> None:
         """Not eight offsets worked out here: a hex board's neighbours are not the
         square board's, and the page is not where that is known."""
-        hexy = load_spec(ARCHIVE / "hex-glinski-promoting.json")
+        hexy = load_spec(ARCHIVE / "hex-glinski-hexagon.json")
         royal = next(p for p in hexy["pieces"] if p.get("royal"))
         landing = _run_page(
             _kit_setup() + f"DRAFT = {json.dumps(hexy)}; DRAFT_CHECK = null;",
@@ -1106,10 +1106,10 @@ class TestTheLibraryRoundTripsThroughTheForm:
         corpus losing either one fails here rather than passing on what is left.
         """
         specs = {f"{p.parent.name}/{p.stem}": load_spec(p) for p in LIBRARY}
-        assert {"archive/chess-sweeping-bishops", "archive/hex-glinski-promoting"} <= set(specs)
+        assert {"archive/chess-sweeping-bishops", "archive/pinwheel"} <= set(specs)
         setup = _kit_setup() + f"const SPECS = {json.dumps(specs)};"
         result = _run_page(setup + _HAND_TRIP, "handTrip(SPECS)")
-        assert {"archive/hex-glinski-hexagon", "archive/hex-glinski-flanks"} <= set(specs)
+        assert {"archive/hex-glinski-hexagon", "archive/pinwheel"} <= set(specs)
         assert {name: r["missing"] for name, r in result.items() if r["missing"]} == {}
         assert sorted(name for name, r in result.items() if r["spec"] != specs[name]) == []
 
@@ -2225,8 +2225,8 @@ class TestTwoWaysOfPlayingSayWhichIsWhich:
         verdict = DESIGN[DESIGN.index("function drawVerdict("):]
         verdict = verdict[: verdict.index("\nfunction ", 1)]
         assert '<button id="dPlay"' in verdict
-        assert "${esc(PLAY_AWAY)}</button>" in verdict
-        assert "${esc(WATCH_AWAY)}</button>" in verdict
+        assert "${awayLabel(PLAY_AWAY)}</button>" in verdict
+        assert "${awayLabel(WATCH_AWAY)}</button>" in verdict
         assert "play it, without saving" not in DESIGN
 
     def test_the_board_played_here_is_not_framed_twice(self) -> None:

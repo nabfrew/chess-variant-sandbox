@@ -34,7 +34,10 @@ from chess_variant_sandbox.spec.schema import (
     STOCK_UNLIMITED,
     WRAP_PAIRS,
     absent_squares,
+    facing_turns,
     obstacle_squares,
+    portal_groups,
+    portal_map_shape,
     promotion_squares,
     strike_changes_anything,
     wrap_stated,
@@ -178,6 +181,9 @@ _SCALES: dict[str, float] = {
     # those are as different from each other as a demotion chain is from its reverse.
     "has_facing": 1.0,
     "turns_freely": 1.0,
+    # Schema 25 (Q869): a facing no move turns. Without it a rear guard placed facing
+    # backwards reads as the same game as one whose pawns may turn round, and they are not.
+    "facing_fixed": 1.0,
     # Schema 9, and three for the reason the strike has three. A wild piece that walks
     # and blocks is a moving wall; one that eats is a hunter; one worth points is an
     # objective. Those are different games on the same board with the same army, and
@@ -241,6 +247,22 @@ _SCALES: dict[str, float] = {
     # Schema 20 (Q807). Whether any pair bars moving a portal straight back: charged once
     # in `complexity`, so Ferry and its twin with the bar need this to read as two games.
     "portals_no_back": 1.0,
+    # Schema 21 (Q843a, `plan-portals-2.md` §6). The map's shape beside the pair (a ring, a
+    # funnel, any other map) and whether any end filters which pieces go in: each charged
+    # once in `complexity`, so a ring and its twin as pairs, or a filtered pair and the
+    # open one, need these to read as two games.
+    "portals_ring": 1.0,
+    "portals_funnel": 1.0,
+    "portals_other_map": 1.0,
+    "portals_filtered": 1.0,
+    # Schema 22 (Q843c). The share of groups that are folds: charged per fold group in
+    # `complexity`, so a fold pair and the momentum pair on the same squares read as two
+    # games.
+    "portals_fold": 1.0,
+    # Schema 23 (Q850). Whether any route carries more than one wild piece (`also_at`): the
+    # tables are the one-piece route's, so without it a patrol and its twin with a second
+    # wolf read as one game and the loop would skip the tournament.
+    "npcs_share_a_walk": 1.0,
 }
 
 
@@ -374,27 +396,27 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
 
 
 def _portal_features(portals: Any) -> dict[str, float]:
-    """Schema 19: the pair count as a share of four, and the per-pair modifiers (schema
-    20's bar on going straight back the third)."""
-    pairs = [pair for pair in portals if isinstance(pair, dict)] if isinstance(
-        portals, list
-    ) else []
-    moved = any(
-        isinstance(pair.get("moved_by"), dict)
-        and any(pair["moved_by"].get(end) for end in ("orange", "blue"))
-        for pair in pairs
-    )
-    one_way = any(
-        isinstance(pair.get("passage"), dict)
-        and any(word != "both_ways" for word in pair["passage"].values())
-        for pair in pairs
-    )
+    """Schema 19: the group count as a share of four, and the per-group modifiers (schema
+    20's bar on going straight back the third; schema 21's map shapes and filters), read
+    through `portal_groups`."""
+    groups = portal_groups({"portals": portals})
+    ends = [end for group in groups for end in group["ends"]]
+    shapes = {portal_map_shape(group) for group in groups}
     return {
-        "portal_pairs": len(pairs) / 4,
-        "portals_move": 1.0 if moved else 0.0,
-        "portals_one_way": 1.0 if one_way else 0.0,
+        "portal_pairs": len(groups) / 4,
+        "portals_move": 1.0 if any(end["moved_by"] for end in ends) else 0.0,
+        "portals_one_way": 1.0 if any(
+            end["enter"] != {0, 1} for end in ends if end["to"] is not None
+        ) else 0.0,
         "portals_no_back": (
-            1.0 if any(pair.get("no_straight_back") is True for pair in pairs) else 0.0
+            1.0 if any(group["no_straight_back"] for group in groups) else 0.0
+        ),
+        "portals_ring": 1.0 if "ring" in shapes else 0.0,
+        "portals_funnel": 1.0 if "funnel" in shapes else 0.0,
+        "portals_other_map": 1.0 if "other" in shapes else 0.0,
+        "portals_filtered": 1.0 if any(end["carries"] is not None for end in ends) else 0.0,
+        "portals_fold": (
+            sum(1 for group in groups if group["kind"] == "fold") / len(groups) if groups else 0.0
         ),
     }
 
@@ -443,12 +465,13 @@ def _npc_features(pieces: list[Any], npcs: Any) -> dict[str, float]:
     reading too.
     """
     absent = {
-        "has_npcs": 0.0, "npcs_bite": 0.0, "npcs_pay": 0.0, "npcs_are_hard_to_kill": 0.0
+        "has_npcs": 0.0, "npcs_bite": 0.0, "npcs_pay": 0.0, "npcs_are_hard_to_kill": 0.0,
+        "npcs_share_a_walk": 0.0,
     }
     if not isinstance(npcs, list) or not npcs:
         return absent
     by_id = {p.get("id"): p for p in pieces if isinstance(p, dict)}
-    bites = pays = immune = False
+    bites = pays = immune = shared = False
     for npc in npcs:
         if not isinstance(npc, dict):
             continue
@@ -461,26 +484,31 @@ def _npc_features(pieces: list[Any], npcs: Any) -> dict[str, float]:
             pays = True
         if isinstance(npc.get("immune"), list):
             immune = True
+        if npc.get("also_at"):
+            shared = True
     return {
         "has_npcs": 1.0,
         "npcs_bite": 1.0 if bites else 0.0,
         "npcs_pay": 1.0 if pays else 0.0,
         "npcs_are_hard_to_kill": 1.0 if immune else 0.0,
+        "npcs_share_a_walk": 1.0 if shared else 0.0,
     }
 
 
 def _facing_features(pieces: list[Any]) -> dict[str, float]:
-    """Whether anything turns, and how many ways it can point."""
-    axes = [
-        piece["facing"].get("axes")
+    """Whether anything turns, how many ways it can point, and whether a facing is fixed."""
+    facing = [
+        piece
         for piece in pieces
         if isinstance(piece, dict) and isinstance(piece.get("facing"), dict)
     ]
-    if not axes:
-        return {"has_facing": 0.0, "turns_freely": 0.0}
+    if not facing:
+        return {"has_facing": 0.0, "turns_freely": 0.0, "facing_fixed": 0.0}
+    axes = [piece["facing"].get("axes") for piece in facing]
     return {
         "has_facing": 1.0,
         "turns_freely": 1.0 if max(a for a in axes if isinstance(a, int)) > 2 else 0.0,
+        "facing_fixed": 1.0 if any(not facing_turns(piece) for piece in facing) else 0.0,
     }
 
 

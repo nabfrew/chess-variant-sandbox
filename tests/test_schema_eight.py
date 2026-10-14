@@ -549,17 +549,18 @@ class TestTheBoardCanBeRead:
 class TestTheShowcase:
     """`weathervane` is `sardines` with directional pawns and nothing else changed.
 
-    Since Q180 (2026-09-11) all four are cells of one family, built by one generator from
+    Since Q180 (2026-09-11) all four were cells of one family, built by one generator from
     one placement procedure, so the equalities below hold by construction rather than by
-    a test noticing afterwards. The positions differ between cells -- each cell picked
+    a test noticing afterwards. The two wrap cells, `sardines-torus` and
+    `weathervane-torus`, left the library on 2026-10-12 (Q868, `docs/plan-library-audit.md`):
+    the wrap changed nothing a reader could see on a full board, so the family is now
+    `sardines` and its facing cell. The positions differ between cells -- each cell picked
     its own seed on the screen -- and the equalities are over board, rules and pieces,
     which is where a feature lives. `docs/reference/sardines-family.md` is the campaign.
     """
 
     FAMILY = {
-        "rulesets/sardines-torus.json": "wrap",
         "archive/weathervane.json": "facing",
-        "archive/weathervane-torus.json": "both",
     }
 
     def test_it_validates_and_compiles(self) -> None:
@@ -590,7 +591,7 @@ class TestTheShowcase:
     def test_each_cell_differs_from_the_plain_one_by_its_feature_alone(
         self, path: str
     ) -> None:
-        """The same control over the whole 2x2: wrap, facing, or both, and nothing else.
+        """The same control over every cell: its feature, and nothing else.
 
         A cell that gained a rule elsewhere would still pass the pairwise check above
         while breaking the family, so each cell is read against `sardines` directly.

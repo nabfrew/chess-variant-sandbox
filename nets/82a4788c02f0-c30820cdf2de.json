@@ -1,0 +1,100 @@
+{
+  "procedure": "c30820cdf2de",
+  "ruleset_hash": "82a4788c02f0",
+  "inputs_version": 1,
+  "verdict": "accepted",
+  "weights_sha256": "a9617bf4e4aa06136b589cfddd08309c1b65a9241a17df562afcee8b83815fdb",
+  "build": "40d0e115de5a613d",
+  "digest": "a9617bf4e4aa",
+  "trainer_version": 1,
+  "recipe": {
+    "agents": [
+      "minimax:net=db5ef1bc938e,nodes=1600",
+      "minimax:nodes=1600"
+    ],
+    "games": 5000,
+    "seed": 0,
+    "opening_plies": 8,
+    "skip_plies": 2,
+    "stride": 1,
+    "result_weight": 0.0,
+    "label_nodes": 6400,
+    "label_depth": 8,
+    "td_lambda": 0.7,
+    "label_search": "parent",
+    "scale": 1.0,
+    "accumulator": 256,
+    "hidden1": 32,
+    "hidden2": 32,
+    "epochs": 8,
+    "batch": 1024,
+    "learning_rate": 0.001,
+    "init_seed": 0,
+    "parent": {
+      "procedure": "db5ef1bc938e",
+      "weights_sha256": "2171ddcbc08b9c3d7c0062cb7216db5697670efa56e0efdc2efda3be856566aa"
+    }
+  },
+  "data": {
+    "digest": "2f7b3a23c3881a52da2dca52d75633ed6f8b5ae3170047efd518261dfeaf3f7b",
+    "games": 20000,
+    "positions": 1700722,
+    "most_active": 106
+  },
+  "training": {
+    "loss_by_epoch": [
+      0.00789067,
+      0.00334882,
+      0.00234212,
+      0.00188711,
+      0.00164395,
+      0.00146043,
+      0.00132365,
+      0.00122323
+    ],
+    "w0_limit": 127,
+    "quantization_error": 0.050878
+  },
+  "acceptance": {
+    "candidate": "minimax:net=c30820cdf2de,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 1000000,
+    "opening_plies": 8,
+    "score": 0.6325,
+    "error": 0.023902,
+    "games": 400,
+    "identical": 0,
+    "openings": 172,
+    "candidate_nodes": 108704000,
+    "reference_nodes": 108364800,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true,
+    "decided_after": 200,
+    "planned_pairs": 200
+  },
+  "lineage": {
+    "parent": "db5ef1bc938e",
+    "parent_weights_sha256": "2171ddcbc08b9c3d7c0062cb7216db5697670efa56e0efdc2efda3be856566aa",
+    "teacher": "parent:2171ddcbc08b"
+  },
+  "confirmation": {
+    "candidate": "minimax:net=c30820cdf2de,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 2000000,
+    "opening_plies": 8,
+    "score": 0.67375,
+    "error": 0.022847,
+    "games": 400,
+    "identical": 0,
+    "openings": 162,
+    "candidate_nodes": 109078610,
+    "reference_nodes": 108643008,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true,
+    "decided_after": 200,
+    "planned_pairs": 200,
+    "gate": "G-A2, plan-teacher.md \u00a78.3"
+  },
+  "kept": true,
+  "kept_by": "generation 1, kept by R5-1 (G-A, G-A2, G-P, G-P2, G-N; G-S5 not read): reference/pilot-plan.md \u00a711"
+}

@@ -322,6 +322,33 @@ SAMPLE_JOB_WALL = 600.0
 """The most wall-clock seconds one spot check may take: ten minutes, at `nice 19` on the
 site's one runner thread, so the box's other core stays the site's."""
 
+SPINE_CPU = 300.0
+"""The most processor time the site spends rating one member's game at publish (L5).
+
+`docs/plan-leaderboard.md` §2.6 step 1: the five standard players' 40 games, in a child
+process the kernel stops at this many CPU-seconds (`RLIMIT_CPU`). Measured at one thread on
+the development machine (Q820, 2026-10-11): dull 0.25 s, chess 5.6, shogi 25, divide 47,
+the slowest spine §2.2's records hold (88 s there); the box is a few times slower a core,
+so the heaviest library game still fits. A game past it gets no rating here and waits for
+the 16-core machine, and its page says so. It is the site's own work and nobody's
+`CHECK_CPU_A_DAY`: the job has no requester, and `PUBLISHES_A_DAY` already caps how often
+one person can ask for it.
+"""
+
+SPINE_WALL = 900.0
+"""The most wall-clock seconds that rating may take: fifteen minutes. It runs at `nice 19`
+on the site's one runner thread, after every legality and spot-check job, and under the
+unit's `CPUQuota` beside the site, so its clock is looser than its CPU cap by three times.
+"""
+
+SPINE_MEMORY = 512 * 1024 * 1024
+"""The most memory, in bytes, that rating's child may take (`RLIMIT_DATA`).
+
+Measured at a peak of about 50 MB on chess, shogi and dull (Q820), so ten times that, and
+well under the unit's `MemoryHigh=1G` that the site itself lives under: a game that would
+need more is refused like a slow one, rather than the box's memory going to it.
+"""
+
 CHECK_CPU_A_DAY = 1500.0
 """The checking one person's submissions may cost the box in a rolling day, in CPU-seconds.
 

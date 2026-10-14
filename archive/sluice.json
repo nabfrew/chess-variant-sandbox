@@ -1,0 +1,311 @@
+{
+  "schema_version": 21,
+  "name": "sluice",
+  "description": "Chess with a sluice for each side: two doors and one gate. White's doors are a3 and h3. A White piece that ends its move on either door comes out one step beyond White's gate, which starts on e5 in Black's half, in the direction it was travelling, and captures there as usual: a2-a3 puts the pawn on e6, and the knight from b1 lands on d6. Black's doors are a6 and h6, into Black's gate on e4. Only the owner goes in by a door; to the other side a door is a block. A gate is a block nobody passes or takes, and the side it threatens moves it: as a turn, Black may move White's gate one step, never onto a piece, and White moves Black's. The doors never move. So the attacker picks the door and the moment, and the defender picks where the raid lands.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "O",
+      "name": "portal",
+      "value": 0,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "move"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "portals": [
+      {
+        "piece": "O",
+        "ends": [
+          {
+            "at": "a3",
+            "to": 2,
+            "enter": [
+              0
+            ]
+          },
+          {
+            "at": "h3",
+            "to": 2,
+            "enter": [
+              0
+            ]
+          },
+          {
+            "at": "e5",
+            "moved_by": [
+              1
+            ]
+          }
+        ]
+      },
+      {
+        "piece": "O",
+        "ends": [
+          {
+            "at": "a6",
+            "to": 2,
+            "enter": [
+              1
+            ]
+          },
+          {
+            "at": "h6",
+            "to": 2,
+            "enter": [
+              1
+            ]
+          },
+          {
+            "at": "e4",
+            "moved_by": [
+              0
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "provenance": {
+    "added": "2026-10-13",
+    "origin": "designed",
+    "source": "docs/reference/portal-showcase-ideas.md, Q844b: a game designed around portal maps",
+    "history": "Designed by Q844 (2026-10-11) and built by Q844b as the game of schema 21's portal maps (rules.portals ends, to and enter): a funnel a side, two doors only its owner may use leading to one way out in the enemy's half, and that way out moved by the side it threatens. A map no pair can write. Pre-registered in docs/reference/portal-showcase-ideas.md before it was measured.",
+    "parents": [
+      "4c1922ffae26"
+    ]
+  }
+}

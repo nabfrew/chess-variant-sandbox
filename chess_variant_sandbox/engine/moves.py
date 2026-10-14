@@ -14,7 +14,10 @@ access. The layout is fixed here so the Rust core can reproduce it exactly.
     bits 25-31  landing index (schema 12): which entry of the compiled landing list a
                 struck piece is placed on under ``position: "choose"``, zero otherwise;
                 under MOVE_PORTAL (schema 19) the internal type of the portal end the
-                piece went in by, and bits 20-24 then hold the promoted type plus one
+                piece went in by, and bits 20-24 then hold the promoted type plus one;
+                under MOVE_FOLD (schema 22) the fold end that moves (its index among
+                the portal ends), and on an ordinary move in a fold game the fold end
+                it went through plus one (``move_fold``), zero for a direct move
 
 Square indices are ``rank * width + file``, so the layout supports boards up to
 16x16 (256 squares), matching ``spec.schema.MAX_BOARD_DIM``.
@@ -49,6 +52,10 @@ MOVE_SWEEP = 6
 # (``move_portal``), and the promotion field holds the promoted type *plus one*, 0 for
 # none, because the kind field cannot say both "portal" and "promotion".
 MOVE_PORTAL = 7
+# Schema 22: a fold's own move. Origin and target are the fold's squares and nothing on the
+# board byte changes, since a fold stands on no square of it (``GameState.folds``); bits
+# 25-31 hold the end (its index among the portal ends, ``move_fold``).
+MOVE_FOLD = 8
 
 MOVE_TYPE_NAMES = {
     MOVE_NORMAL: "normal",
@@ -59,6 +66,7 @@ MOVE_TYPE_NAMES = {
     MOVE_ROTATE: "rotate",
     MOVE_SWEEP: "sweep",
     MOVE_PORTAL: "portal",
+    MOVE_FOLD: "fold",
 }
 
 
@@ -96,6 +104,12 @@ def move_landing(move: int) -> int:
 
 def move_portal(move: int) -> int:
     """The internal type of the portal end a ``MOVE_PORTAL`` went in by (schema 19)."""
+    return (move >> 25) & 0x7F
+
+
+def move_fold(move: int) -> int:
+    """Schema 22: bits 25-31 read as a fold end. A ``MOVE_FOLD``'s end; on an ordinary move in
+    a fold game, the end it went through plus one, 0 for a direct move."""
     return (move >> 25) & 0x7F
 
 

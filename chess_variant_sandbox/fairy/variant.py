@@ -35,12 +35,12 @@ schema's later additions are exactly what it has no words for:
 |---|---|
 | `board.shape: "hexagon"` | nothing -- its boards are rectangles |
 | `wrap` | nothing -- a board with no edges is not a shape it has |
-| `obstacles` | nothing that also blocks a slider |
+| `obstacles` beside a hop, or stopping a leap over it | a wall there is a screen, and a leap passes over it |
 | `strike`, `contacts` | nothing -- a capture removes, and it never changes the taker |
 | `territory`, `scoring` | nothing -- no square changes hands |
 | `turn` | nothing -- a side moves once |
 | `piece.captures` | nothing -- what may be taken is not a piece property |
-| `piece.facing` | nothing -- a notation describes one piece, a facing makes it several |
+| `piece.facing` | nothing -- a notation describes one piece, a facing makes it several; a fixed one (`turns: false`) would be one piece per facing, and the translator writes one per type |
 | a board over 12x10 | a compile-time ceiling |
 | several promoting pieces, one able to leave its zone (shogi) | a promotion on the way out too |
 
@@ -184,6 +184,7 @@ def translate(spec: dict[str, Any] | CompiledSpec) -> Variant:
 
     _check_board(compiled, reasons)
     _check_unsupported_rules(compiled, rules, reasons)
+    _check_walls(source, compiled, reasons)
     _check_unconsidered_keys(source, reasons)
 
     chars = _assign_chars(compiled, reasons)
@@ -267,9 +268,11 @@ def _check_board(compiled: CompiledSpec, reasons: list[str]) -> None:
 
 # Written into the variant definition, or into a `note` where the two only nearly agree.
 # A rule here may still be refused for a *value* it cannot carry -- `check_limit` crosses
-# as `checkCounting` and is refused for any count but three, and beside a royal outside
-# the king slot (`_royal_mode`) -- because being in this list
-# says the translator reads the rule, not that every game it can express survives.
+# as `checkCounting` with the count in the FEN, and is refused beside a royal outside
+# the king slot (`_royal_mode`); `obstacles` crosses as `*` walls in the FEN, and is
+# refused beside a hop or where `blocks_leaps` stops a leap (`_check_walls`) -- because
+# being in this list says the translator reads the rule, not that every game it can
+# express survives.
 _RULES_TRANSLATED = frozenset(
     {
         "castling",
@@ -284,6 +287,7 @@ _RULES_TRANSLATED = frozenset(
         "max_plies",
         "must_capture",
         "no_progress_draw",
+        "obstacles",
         "promotion",
         "reach",
         "repetition_draw",
@@ -298,7 +302,6 @@ _RULES_REFUSED = frozenset(
     {
         "bare_royal",
         "npcs",
-        "obstacles",
         "portals",
         "promote_on_entry",
         "scoring",
@@ -341,6 +344,9 @@ _RULE_OBJECT_KEYS: dict[str, frozenset[str]] = {
     # than the whole job. The branch that decides what they mean is in
     # `_check_unsupported_rules`, and it refuses them.
     "explode_on_capture": frozenset({"immune", "radius", "by", "of"}),
+    # Schema 6 (Q703). `squares` and `mirror` are read off the compiled walls, which
+    # `position.py` writes as `*`; `blocks_leaps` is asked of the compiler by `_check_walls`.
+    "obstacles": frozenset({"blocks_leaps", "mirror", "squares"}),
     # `per_type` is schema 18 (Q783): read off the compiled rule by `_ending_lines`, which
     # writes it as the per-type count `extinctionPieceTypes` always was over there.
     "extinction": frozenset({"min_count", "pieces", "per_type", "result"}),
@@ -381,11 +387,6 @@ def _check_unsupported_rules(
         # walled hex board would be refused as one with walls, for a rule it does not have.
         # Read off the compiled cells, so `"shape": "grid"` written out refuses nothing.
         reasons.append("board.shape: Fairy-Stockfish has no hexagonal board")
-    if compiled.obstacles - compiled.absent:
-        reasons.append(
-            "rules.obstacles: Fairy-Stockfish's walls do not block a slider the way "
-            "a compiled obstacle does"
-        )
     if compiled.strike is not None:
         # Schema 6 and schema 10 (Q19a) land in the same compiled slot, so one branch
         # refuses both -- but it names the key the spec actually wrote, because an error
@@ -410,11 +411,9 @@ def _check_unsupported_rules(
         reasons.append("more than one royal piece: there is one king slot")
     if compiled.bare_royal:
         reasons.append("rules.bare_royal: no counterpart in the current variant options")
-    if compiled.check_limit and compiled.check_limit != 3:
-        reasons.append(
-            f"rules.check_limit is {compiled.check_limit}; the check-counting rule there "
-            "counts to three"
-        )
+    # `check_limit` other than three crosses since Q703: the count is the FEN's
+    # (`position.fen` writes the checks remaining, `5+5` for five), as the built-in
+    # `5check` has it, so nothing in the variant names the number.
     explosion = compiled.explosion
     if explosion is not None and rules.get("explode_on_capture", {}).get("radius", 1) != 1:
         reasons.append("rules.explode_on_capture.radius other than 1: the blast there is adjacent")
@@ -435,10 +434,22 @@ def _check_unsupported_rules(
         # turning is a move -- there is nothing over there that a Betza notation could
         # say it with, because a notation describes one piece and this is a piece that
         # is several depending on which way it is pointing.
-        reasons.append(
-            "piece.facing: a piece that turns has no counterpart; a Betza notation "
-            "describes one piece and a facing makes it several"
-        )
+        if any(compiled.turns(t) for t in range(compiled.n_types)):
+            reasons.append(
+                "piece.facing: a piece that turns has no counterpart; a Betza notation "
+                "describes one piece and a facing makes it several"
+            )
+        else:
+            # Schema 25 (Q869). A facing no move turns could be written as one Fairy
+            # piece per facing, but one type held as two would part the hand (a captured
+            # piece comes back in its initial facing) and every promotion rule from the
+            # spec's; refused rather than half-translated. Every committed game that uses
+            # it wraps, which is refused beside it anyway.
+            reasons.append(
+                "piece.facing.turns: a facing no move turns would be a separate "
+                "Fairy-Stockfish piece for each way it points, and each kind of piece is "
+                "written as one"
+            )
     if compiled.npcs is not None:
         # Schema 9. A wild piece belongs to neither side and moves when nobody is to
         # move. Fairy-Stockfish has two colours and a side to move, and nothing in a
@@ -451,8 +462,9 @@ def _check_unsupported_rules(
         # Schema 19 (Q771). Fairy-Stockfish has no square that sends a piece somewhere
         # else, and no option approximates one (`docs/plan-portals.md` §5); its walling
         # rules place a wall, and a wall is not a door. Read off the compiled spec, so an
-        # empty or absent rule refuses nothing. `tests/portal_oracle.py` is the second
-        # implementation the core's transits are held against instead.
+        # empty or absent rule refuses nothing; schema 21's maps and filters live under
+        # it. `tests/portal_oracle.py` is the second implementation the core's transits
+        # are held against instead.
         reasons.append(
             "rules.portals: a square that sends a piece out of another has no counterpart; "
             "no variant option moves a piece anywhere but where its move ends"
@@ -469,35 +481,16 @@ def _check_unsupported_rules(
             'rules.drops.stock "unlimited": a hand there counts down, and no option makes '
             "a slot inexhaustible"
         )
-    if compiled.moveless_types:
-        # The relaxation the stock gates, refused on its own account: a Betza descriptor
-        # says what a piece does, and there is no term for *nothing*. Refused separately
-        # from the stock because a later bump may let a moveless piece in by another
-        # route, and this reason would still hold.
-        reasons.append(
-            "a piece with no moves: a Betza descriptor says what a piece does and there "
-            "is no term for a piece that does nothing"
-        )
-    if compiled.repetition_draw == NO_REPETITION_DRAW:
-        # Schema 10, and the one refusal in this function that no key guard could have
-        # asked for. `repetition_draw` is in `_RULES_TRANSLATED` and stays there -- the
-        # key does cross -- so the catch-all stopped applying to it long ago, and
-        # `_rule_lines` writes `nFoldRule = {compiled.repetition_draw}` from whatever it
-        # is handed. A widened *value* domain therefore passes straight through: the
-        # sentinel would be written out as a fold count, and the two engines would play
-        # different games while `verify.py` compared move lists that still agreed.
-        #
-        # Read off the compiled spec like every other named refusal here, so a spec
-        # spelling a number refuses nothing.
-        #
-        # There is no `nFoldRule` value over there that means "no repetition rule":
-        # Fairy-Stockfish's repetition handling is in the search rather than in the
-        # variant, and a large fold count is a different game rather than the same one
-        # written the long way.
-        reasons.append(
-            'rules.repetition_draw "never": no variant option there removes the draw by '
-            "repetition, and a fold count large enough to look like one is a different game"
-        )
+    # A piece with no moves (schema 10's relaxation, which the stock gates) crosses since
+    # Q703 as an empty notation, `customPieceN = x:`: the engine's own `immobile` piece is
+    # `from_betza("")`, and a probe on `pyffish` 0.0.90 dropped one and found it made no
+    # moves (`reference/general-fairy-fork.md` §1.3).
+    #
+    # `repetition_draw: "never"` crosses since Q703 as `nFoldRule = 0` (`_rule_lines`),
+    # which switches the rule off over there (`position.cpp`, `if (n_fold_rule())`). It is
+    # the sentinel `NO_REPETITION_DRAW` that `_rule_lines` must never write as a count: a
+    # widened value under a listed key passes the key guard, and the two engines would
+    # play different games while `verify` compared move lists that agreed (Q86).
     if compiled.entry_promotion is not None:
         # Schema 9's second key. Over there a dropped piece is never promoted and a
         # capture removes what it takes, so there is no event for the rule to fire on
@@ -625,8 +618,8 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
         "squares": (_TRANSLATED, "through the compiled opening board"),
         "facing": (
             _REFUSED,
-            "the compiler reads it only for a piece that turns, and such a piece is "
-            "refused as piece.facing",
+            "the compiler reads it only for a piece that has a facing, and such a piece "
+            "is refused as piece.facing",
         ),
     },
     "piece": {
@@ -733,6 +726,60 @@ def _check_unconsidered_keys(source: dict[str, Any], reasons: list[str]) -> None
             f"{level}.{key}: this translator has never been through it, so it would be "
             "dropped rather than refused and the variant would state a different game "
             "than the spec does"
+        )
+
+
+def _check_walls(
+    source: dict[str, Any], compiled: CompiledSpec, reasons: list[str]
+) -> None:
+    """Refuse the walls a `*` in the FEN does not stand for (Q703).
+
+    Over there a `*` is a square nothing stands on and nothing takes. A slider stops
+    before it, a leap cannot land on it, a lame leap whose leg is on it is blocked, and
+    no piece is dropped there, which is what a compiled obstacle is here (probed on
+    `pyffish` 0.0.90; `reference/general-fairy-fork.md` §1.3). Two readings part:
+
+    * **A hop.** Their wall is an occupied square, so a cannon may use one as its screen.
+      Ours ends the hop's line at a wall (`compile._compile_square_full`: *a wall is not a
+      screen*). Refused wherever a piece hops, since which hops meet a wall is the
+      compiler's geometry and not this file's.
+    * **`blocks_leaps`.** Their leap passes over a wall. Ours stops a leap whose
+      `_lame_path` square is a wall. Asked of the compiler, as `_check_skipped_squares`
+      asks it of `min_range`: the spec compiled without the key is the game the walls
+      describe there, and only equal tables translate. Quarry's knights are stopped, so
+      it stays refused; a `blocks_leaps` that stops nothing refuses nothing.
+
+    Castling across a wall is the schema's to refuse (`castling_rank_walled_beyond_its_spans`),
+    and a blast leaves a wall standing in both engines. What else a wall touches is
+    `verify`'s question, as for every translation.
+    """
+    if not compiled.obstacles - compiled.absent:
+        return
+    hoppers = sorted(
+        str(piece.get("id"))
+        for piece in source["pieces"]
+        if any(move.get("kind") == "hop" for move in piece["moves"])
+    )
+    if hoppers:
+        reasons.append(
+            f"rules.obstacles beside a hop ({', '.join(hoppers)}): a wall there is a screen "
+            "a hop may jump, and a wall here ends the hop's line"
+        )
+    walls = source.get("rules", {}).get("obstacles") or {}
+    if not walls.get("blocks_leaps"):
+        return
+    from chess_variant_sandbox.engine.compile import compile_spec
+
+    vaulted = copy.deepcopy(source)
+    vaulted["rules"]["obstacles"].pop("blocks_leaps")
+    try:
+        same = _rule_tables(compile_spec(vaulted)) == _rule_tables(compiled)
+    except SpecError:
+        same = False
+    if not same:
+        reasons.append(
+            "rules.obstacles.blocks_leaps: a leap there passes over a wall, and here a wall "
+            "stops a leap this game makes"
         )
 
 
@@ -1590,7 +1637,20 @@ def _rule_lines(
             approximates.add("no_progress_draw")
     else:
         lines.append("nMoveRule = 0")
-    if compiled.repetition_draw:
+    if compiled.repetition_draw == NO_REPETITION_DRAW:
+        # `"never"` (Q703). `nFoldRule = 0` switches the rule off there, so no position
+        # ends by repetition in either engine, and the result check asks theirs at a
+        # position repeated past three folds (`results._Asker.repetition`). Their search
+        # is another matter: its cycle detection (`has_game_cycle`) does not read the
+        # option and still scores a returning line as a draw. That is how their engine
+        # plays the game, not which game it plays, so it is a note and not a key in
+        # `approximates`: no ending of theirs differs from ours for `admits` to expect.
+        lines.append("nFoldRule = 0")
+        notes.append(
+            "a position may repeat without a draw in both engines, but the opponent's "
+            "search still scores a line that returns to a position as a draw"
+        )
+    elif compiled.repetition_draw:
         lines.append(f"nFoldRule = {compiled.repetition_draw}")
 
     if compiled.max_plies:

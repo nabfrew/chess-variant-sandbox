@@ -1,7 +1,7 @@
 {
   "schema_version": 6,
-  "name": "hierarchy rise by standing",
-  "description": "hierarchy rise with the attacker standing fast instead of advancing: taking a piece still promotes it, but the attacker holds the square it came from and the upgraded defender stays where it was. The fourth cell of the 2x2.",
+  "name": "gift from afar",
+  "description": "Gift chess with the attacker standing fast instead of advancing: taking a piece still promotes it, but the attacker holds the square it came from and the upgraded defender stays where it was. Where the two pieces end up matters as much as which way the chain runs: a capture here neither wins ground nor removes anything, so games run half as long again as gift chess's and nearly two thirds of them are drawn.",
   "board": {
     "width": 8,
     "height": 8

@@ -27,10 +27,13 @@ class TestCalibrationFigures:
         assert "4 of" in body or "only 4" in body
 
     def test_stale_v10_figures_are_gone(self) -> None:
-        body = _body("The interval is wider than the gaps, not most of them")
-        # v10's band (44 members, 43 adjacent pairs, none separating) is not v11's.
-        assert "43 adjacent" not in body
-        assert "is zero" not in body
+        # v10's band (44 members, 43 adjacent pairs, none separating) is not v11's, in
+        # this entry or in any other: the stale figure was quoted wherever the band was.
+        for entry in HOW_IT_WORKS:
+            body = entry["body"]
+            assert "43 adjacent" not in body, entry["heading"]
+            assert "44 members" not in body, entry["heading"]
+        assert "is zero" not in _body("The interval is wider than the gaps, not most of them")
 
     def test_figure_is_dated(self) -> None:
         # A number this volatile (it moves with every replay) is only honest if it

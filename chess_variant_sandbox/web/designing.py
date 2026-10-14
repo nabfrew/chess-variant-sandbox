@@ -69,23 +69,23 @@ from chess_variant_sandbox.spec.plain import plain_problem as _spec_plain_proble
 from chess_variant_sandbox.spec.schema import (
     HEX_SYMMETRIES,
     MAX_PIECE_TYPES,
-    MAX_PORTAL_PAIRS,
+    MAX_PORTAL_ENDS,
+    MAX_PORTAL_GROUPS,
     PORTAL_ENDS,
     SQUARE_SYMMETRIES,
     portal_end_ids,
-    portal_pairs,
+    portal_groups,
+    portal_map_shape,
 )
 from chess_variant_sandbox.spec.transform import settle_schema_version
-from chess_variant_sandbox.viz.heading import directional_types
-from chess_variant_sandbox.viz.pieces import icons_for, side_names
+from chess_variant_sandbox.viz.pieces import icons_for
+from chess_variant_sandbox.viz.walks import walk_payload
 from chess_variant_sandbox.viz.wrapped import (
-    goal_payload,
-    portal_payload,
+    fold_transit,
     portal_transit,
     walls_payload,
-    wrap_payload,
-    zone_payload,
 )
+from chess_variant_sandbox.web.card_rules import preview as _preview
 
 # Where a game built in the browser goes. One directory, shared by everything designed
 # by hand, because it is an archive in the same sense a design run's is -- an append-only
@@ -655,6 +655,12 @@ def board_preview(spec: Any) -> dict[str, Any] | None:
         except (SpecError, ValueError):
             continue
         preview = {**_preview(engine, state, stand_in), "standIn": True}
+        # The draft's own wild pieces' walks, on the stand-in's board (Q852): drawn while
+        # the rules are not a game yet too, so a refusal about a walk can be seen, though
+        # the stand-in that compiled may be one that dropped them.
+        preview.pop("walks", None)
+        if walks := walk_payload(spec, engine.spec):
+            preview["walks"] = walks
         if nobody:
             preview["board"] = [0] * len(preview["board"])
         return preview
@@ -717,53 +723,6 @@ def opening_preview(spec: dict[str, Any]) -> dict[str, Any]:
     return _preview(engine, engine.initial_state(), spec)
 
 
-def _preview(engine: Any, state: Any, spec: dict[str, Any]) -> dict[str, Any]:
-    """Enough for the editor to draw an opening position with the page's board."""
-    art = icons_for(
-        engine.spec.piece_names,
-        engine.spec.piece_ids,
-        (spec.get("appearance") or {}).get("icons"),
-    )
-    return {
-        "width": engine.spec.width,
-        "height": engine.spec.height,
-        "lattice": engine.spec.lattice,
-        "board": list(state.board),
-        # Whose move it is in this position, the state's own: the game page's start
-        # position names the side that moves first from it (K1).
-        "toMove": int(state.side_to_move),
-        **walls_payload(engine.spec),
-        "pieceIds": list(engine.spec.piece_ids),
-        "pieceNames": list(engine.spec.piece_names),
-        "nTypes": engine.spec.n_types,
-        "sideStride": engine.spec.side_stride,
-        "facingAngles": [list(row) for row in engine.spec.facing_headings()],
-        "directional": list(directional_types(engine.spec)),
-        "icons": art,
-        "sides": list(side_names(art)),
-        # The same three compiled rules the play board reads, so the still preview
-        # draws the goal ring, the promotion band and the seam rather than a bare
-        # grid the draft's own rules are invisible on. Compiled, per player: the
-        # spec spells these as square names, a keyword and edge names, and
-        # `engine/compile.py` is the one place that means anything by them.
-        # What each player holds at ply zero, the way the state carries it: a count
-        # per piece type. A drops game's hand is part of its opening position, and a
-        # still that drew only the board read as a game with no hand at all.
-        "hands": [list(state.hands[0]), list(state.hands[1])],
-        "handsUsed": engine.spec.drops is not None,
-        "handsFromCaptures": bool(
-            engine.spec.drops is not None and engine.spec.drops.from_captures
-        ),
-        "goals": goal_payload(engine.spec.reach),
-        "zones": zone_payload(engine.spec.promotions),
-        "wrap": wrap_payload(engine.spec.wrap, engine.spec.copies),
-        # Schema 19: each portal end's pair, colour, movers and doors, compiled, so a
-        # still draws an end as the play board does (`portalGlyph`). Absent without
-        # portals, which keeps every other game's still as it was.
-        **({"portals": portals} if (portals := portal_payload(engine.spec)) else {}),
-    }
-
-
 # ------------------------------------------------------------------ portals in the designer
 #
 # P3 of `docs/plan-portals.md` (Q772c): the pair's card in sentences (D4), the refusals in
@@ -772,14 +731,20 @@ def _preview(engine: Any, state: Any, spec: dict[str, Any]) -> dict[str, Any]:
 # from the spec's own fields through a table of phrasings, never what a position allows;
 # the one count read off a board -- how many squares an end can let a piece out onto -- is
 # the compiled exit table's (`PortalRule.exits`), so nothing here works out a square.
+#
+# An end is named by its square, never by which end of the pair it is: both ends of a pair
+# are drawn alike, in the pair's colour (Q838d, `docs/plan-portal-look.md` §5). The file's
+# keys `orange` and `blue` stay; they are data, not words. Where an end has no square to
+# name (it is off the board), it is the pair's *first* or *second* end, the order the
+# designer put them down in.
+_END_ORDER = {"orange": "first", "blue": "second"}
 
-# The four ways through a pair, in the card's order, with each one's name on its button.
-PORTAL_WAYS: tuple[tuple[str, str], ...] = (
-    ("both_ways", "both ways"),
-    ("orange_to_blue", "one way: orange to blue"),
-    ("blue_to_orange", "one way: blue to orange"),
-    ("closed", "no way"),
-)
+
+def _end_at(pair: dict[str, Any], end: str) -> str:
+    """An end as a sentence names it: *the end on b2*."""
+    square = pair.get(end)
+    return f"the end on {square}" if isinstance(square, str) and square else \
+        f"the {_END_ORDER[end]} end"
 
 # The move a portal piece is given the first time somebody may move an end: one step in
 # any direction, onto an empty square (D4). The same both ways up, as a portal's must be.
@@ -814,35 +779,88 @@ def _movers_words(movers: Any, sides: tuple[str, str]) -> str:
     return side.capitalize() if side in ("white", "black") else f"the {side} player"
 
 
-def portal_cards(spec: Any, sides: Any = None, engine: Any = None) -> list[dict[str, Any]]:
-    """One card per pair, in the designer's sentences (D4) with its warnings (D7, N4).
+def _pair_view(group: dict[str, Any]) -> dict[str, Any]:
+    """A group written as a pair, in the shape this module's sentences read: the two ends'
+    squares under ``orange`` and ``blue``, and who moves each by the same names."""
+    ends = group["ends"]
+    return {
+        "piece": group["piece"],
+        "orange": ends[0]["at"],
+        "blue": ends[1]["at"],
+        "passage": group["passage"],
+        "moved_by": {end: ends[side]["moved_by"] for side, end in enumerate(PORTAL_ENDS)},
+        "no_straight_back": group["no_straight_back"],
+    }
 
-    Read off ``rules.portals`` as the validator and the compiler read it (`portal_pairs`),
-    so a pair means one thing to all three. ``engine``, where the draft compiles, gives the
+
+def _piece_plural(name: str) -> str:
+    """A piece's name, many of it, as the page's `portalPlural` says it."""
+    if re.search(r"(s|x|z|ch|sh)$", name, re.I):
+        return name + "es"
+    if re.search(r"[^aeiou]y$", name, re.I):
+        return name[:-1] + "ies"
+    return name + "s"
+
+
+def _list_words(names: list[str]) -> str:
+    """*a*, *a and b*, *a, b and c*."""
+    return names[0] if len(names) < 2 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def _filter_sentence(spec: Any, carries: Any, at: str) -> str:
+    """Which pieces may go in at an end, by their names (schema 21's ``carries``, §5.2)."""
+    names = [_piece_plural(_piece_called(spec, pid)) for pid in sorted(carries)]
+    if not names:
+        return f"No piece may go in at {at} yet."
+    return f"Only {_list_words(names)} may go in at {at}."
+
+
+def _group_called(group: dict[str, Any]) -> str:
+    """A group as a sentence names it: *pair 1* for two ends, *group 2* for more."""
+    return f"{'pair' if len(group['ends']) == 2 else 'group'} {group['number']}"
+
+
+def portal_cards(spec: Any, sides: Any = None, engine: Any = None) -> list[dict[str, Any]]:
+    """One card per group, in the designer's sentences (D4) with its warnings (D7, N4).
+
+    Read off ``rules.portals`` as the validator and the compiler read it (`portal_groups`),
+    so a group means one thing to all three. ``engine``, where the draft compiles, gives the
     exits each end has on the board as set up (N4); without one the cards carry no counts
-    and so no warning about them. Empty for a draft without portals.
+    and so no warning about them. Empty for a draft without portals. A pair's card is the
+    one it has always had, with its filters said; a group of three or more ends (schema 21,
+    `docs/plan-portals-2.md` §5.4, Q843b) says where each end leads, whose pieces go in by
+    it, which pieces, and who moves it (`_map_card`). Each card carries its group's number
+    (``pair``), which is how the page finds it.
     """
     if not isinstance(spec, dict):
         return []
     rules = spec.get("rules")
-    pairs = portal_pairs(rules)
-    if not pairs:
+    groups = portal_groups(rules)
+    if not groups:
         return []
     named = _sides_of(sides)
     exits = _portal_exit_counts(engine)
     piece_moves = _portal_piece_moves(spec)
     cards: list[dict[str, Any]] = []
-    for index, pair in enumerate(pairs):
+    first = 0
+    for group in groups:
+        start, first = first, first + len(group["ends"])
+        if group["spelling"] != "pair":
+            cards.append(_fold_card(group, named,
+                                    _map_card(spec, group, named, exits[start: first], piece_moves)))
+            continue
+        index = group["number"] - 1
+        pair = _pair_view(group)
         passage = [pair["passage"][0], pair["passage"][1]]
         same = passage[0] == passage[1]
-        ways = _passage_sentences(passage, named)
+        ways = _passage_sentences(passage, named, pair)
         movers = {end: sorted(pair["moved_by"][end]) for end in PORTAL_ENDS}
-        moves = _moved_by_sentence(movers, named, piece_moves.get(pair["piece"]))
+        moves = _moved_by_sentence(movers, named, piece_moves.get(pair["piece"]), pair)
         if pair["no_straight_back"] and any(movers.values()):
             # Schema 20 (Q807): the bar, said where who may move the pair is said.
             moves += (" A portal that has just been moved can't be moved straight back where "
                       "it came from on the very next move.")
-        counts = exits[2 * index: 2 * index + 2] if len(exits) >= 2 * index + 2 else []
+        counts = exits[start: start + 2] if len(exits) >= start + 2 else []
         cards.append({
             "pair": index + 1,
             "piece": pair["piece"],
@@ -856,14 +874,123 @@ def portal_cards(spec: Any, sides: Any = None, engine: Any = None) -> list[dict[
             "solid": ways["solid"],
             "moves": moves,
             "exits": dict(zip(PORTAL_ENDS, counts, strict=True)) if counts else None,
-            "warnings": _portal_warnings(passage, counts),
+            "warnings": _portal_warnings(passage, counts, pair),
+            "spelling": "pair",
+            "filters": [_filter_sentence(spec, end["carries"], _end_at(pair, key))
+                        for key, end in zip(PORTAL_ENDS, group["ends"], strict=True)
+                        if end["carries"] is not None],
         })
+        cards[-1] = _fold_card(group, named, cards[-1])
     return cards
 
 
-def _passage_sentences(passage: list[str], sides: tuple[str, str]) -> dict[str, list[str]]:
+def _fold_card(group: dict[str, Any], sides: tuple[str, str], card: dict[str, Any]) -> dict[str, Any]:
+    """A group's card with its kind (schema 22, Q843d, `docs/plan-portals-2.md` §5.4): a
+    momentum group's card as it was, with ``kind`` said; a fold's ways in a fold's words. A
+    fold is not a door a piece is thrown through: a piece that ends its move on it may stay,
+    or come out on the end it leads to (schema 24, `docs/plan-portals-2.md` §5.3R), and one
+    a piece may not use is plain floor to it, never solid. Nothing comes out *beside* a
+    fold, so the momentum card's exit counts and their warnings do not apply. Ends by
+    square, as every card names them."""
+    if group["kind"] != "fold":
+        return {**card, "kind": "momentum"}
+    ends = group["ends"]
+    at = [f"the end on {end['at']}" if isinstance(end["at"], str) and end["at"]
+          else f"end {place + 1}" for place, end in enumerate(ends)]
+    both = "White's and Black's" if sides == ("white", "black") else "both players'"
+    ways: list[str] = []
+    for place, end in enumerate(ends):
+        if end["to"] is not None and end["enter"]:
+            who = both if len(end["enter"]) == 2 else _whose(sides[min(end["enter"])])
+            ways.append(f"{who} pieces that stop on {at[place]} may stay there, or come out "
+                        f"on {at[end['to']]}.")
+            continue
+        sources = [at[other] for other, one in enumerate(ends) if one["to"] == place]
+        if sources:
+            ways.append(f"{at[place].capitalize()} leads nowhere: nothing goes through it, "
+                        "and pieces come out of it from "
+                        f"{_list_words(sources).replace('the end on ', '')}.")
+    moves = str(card.get("moves") or "").replace(
+        ", always onto an empty square", ", onto an empty square or under a piece")
+    return {**card, "kind": "fold", "ways": ways, "solid": [], "moves": moves,
+            "warnings": [], "exits": None}
+
+
+def _map_card(
+    spec: Any, group: dict[str, Any], sides: tuple[str, str], counts: list[int],
+    piece_moves: dict[str, list[str]],
+) -> dict[str, Any]:
+    """A group of three or more ends (schema 21's ``ends``), in the card's sentences: where
+    each end leads and whose pieces go in by it, which ends are only ways out, who may move
+    each, which pieces each lets in, and what makes an end useless (N4). Ends by square."""
+    ends = group["ends"]
+    at = [f"the end on {end['at']}" if isinstance(end["at"], str) and end["at"]
+          else f"end {place + 1}" for place, end in enumerate(ends)]
+    both = "White's and Black's" if sides == ("white", "black") else "both players'"
+    ways: list[str] = []
+    solid: list[str] = []
+    for place, end in enumerate(ends):
+        if end["to"] is not None:
+            who = both if len(end["enter"]) == 2 else _whose(sides[min(end["enter"])])
+            ways.append(f"{who} pieces can go in at {at[place]} and come out by {at[end['to']]}.")
+            for player in (0, 1):
+                if player not in end["enter"]:
+                    solid.append(f"{at[place].capitalize()} is solid to {_whose(sides[player])} "
+                                 "pieces: they can't stand on it, take it, or slide through it.")
+            continue
+        sources = [at[other] for other, one in enumerate(ends) if one["to"] == place]
+        if sources:
+            ways.append(f"Nothing goes in at {at[place]}: pieces come out by it from "
+                        f"{_list_words(sources).replace('the end on ', '')}.")
+            solid.append(f"{at[place].capitalize()} is solid to every piece: nothing can stand "
+                         "on it, take it, or slide through it.")
+    movers = [sorted(end["moved_by"]) for end in ends]
+    words = [_movers_words(players, sides) for players in movers]
+    if len(set(words)) == 1:
+        moves = ("Nobody moves these portals." if words[0] == "nobody"
+                 else f"{words[0].capitalize()} may spend a turn moving any of them.")
+    else:
+        moves = " ".join(f"Nobody moves {at[place]}." if who == "nobody"
+                         else f"{who.capitalize()} may spend a turn moving {at[place]}."
+                         for place, who in enumerate(words))
+    if any(movers):
+        ways_moved = [way.removesuffix(", not to take") for way in piece_moves.get(group["piece"]) or []]
+        how = ("; ".join(ways_moved) + ", always onto an empty square" if ways_moved
+               else "not at all yet: the portal piece has no move")
+        moves += (f" A portal moves {how}. To change how portals move, open the portal on the "
+                  "piece list.")
+        if group["no_straight_back"]:
+            moves += (" A portal that has just been moved can't be moved straight back where "
+                      "it came from on the very next move.")
+    warnings = []
+    for place in range(len(ends)):
+        led = any(one["to"] == place for one in ends)
+        if counts and len(counts) == len(ends) and not counts[place] and led:
+            warnings.append(f"Nothing can come out of {at[place]}: every square beside it is off "
+                            "the board or a wall.")
+    return {
+        "pair": group["number"],
+        "piece": group["piece"],
+        "spelling": "ends",
+        "shape": portal_map_shape(group),
+        "ends": [{"at": end["at"], "to": end["to"], "enter": sorted(end["enter"]),
+                  "movedBy": movers[place]} for place, end in enumerate(ends)],
+        "noStraightBack": group["no_straight_back"],
+        "ways": ways,
+        "solid": solid,
+        "moves": moves,
+        "exits": counts or None,
+        "warnings": warnings,
+        "filters": [_filter_sentence(spec, end["carries"], at[place])
+                    for place, end in enumerate(ends) if end["carries"] is not None],
+    }
+
+
+def _passage_sentences(
+    passage: list[str], sides: tuple[str, str], pair: dict[str, Any]
+) -> dict[str, list[str]]:
     """Which way pieces go through, one sentence per player (one when both are the same),
-    and what *solid* means wherever an end is solid to somebody (D4)."""
+    and what *solid* means wherever an end is solid to somebody (D4). Ends by square."""
     same = passage[0] == passage[1]
     whose = (["White's and Black's" if sides == ("white", "black")
               else "both players'"] if same else [_whose(side) for side in sides])
@@ -875,10 +1002,10 @@ def _passage_sentences(passage: list[str], sides: tuple[str, str]) -> dict[str, 
             ways.append(f"{who} pieces can go in at either end and come out of the other.")
         elif word in ("orange_to_blue", "blue_to_orange"):
             into, out = ("orange", "blue") if word == "orange_to_blue" else ("blue", "orange")
-            ways.append(f"{who} pieces can go in at the {into} end and come out by the {out} "
-                        "end, not back.")
-            solid.append(f"The {out} end is solid to {who} pieces: they can't stand on it, "
-                         "take it, or slide through it.")
+            ways.append(f"{who} pieces can go in at {_end_at(pair, into)} and come out by "
+                        f"{_end_at(pair, out)}, not back.")
+            solid.append(f"{_end_at(pair, out).capitalize()} is solid to {who} pieces: they "
+                         "can't stand on it, take it, or slide through it.")
         else:
             ways.append(f"{who} pieces can't use these portals: to them both ends are solid "
                         "blocks, like a wall.")
@@ -888,21 +1015,22 @@ def _passage_sentences(passage: list[str], sides: tuple[str, str]) -> dict[str, 
 
 
 def _moved_by_sentence(
-    movers: dict[str, list[int]], sides: tuple[str, str], moves: list[str] | None
+    movers: dict[str, list[int]], sides: tuple[str, str], moves: list[str] | None,
+    pair: dict[str, Any],
 ) -> str:
     """Who may move each end, as one sentence for both, and how a portal moves where
-    anybody may (D4)."""
-    orange, blue = (_movers_words(movers[end], sides) for end in PORTAL_ENDS)
-    if orange == blue:
-        said = ("Nobody moves these portals." if orange == "nobody"
-                else f"{orange.capitalize()} may spend a turn moving either end.")
+    anybody may (D4). Ends by square."""
+    first, second = (_movers_words(movers[end], sides) for end in PORTAL_ENDS)
+    if first == second:
+        said = ("Nobody moves these portals." if first == "nobody"
+                else f"{first.capitalize()} may spend a turn moving either end.")
     else:
         parts = []
-        for end, who in (("orange", orange), ("blue", blue)):
-            parts.append(f"Nobody moves the {end} end." if who == "nobody"
-                         else f"{who.capitalize()} may spend a turn moving the {end} end.")
+        for end, who in zip(PORTAL_ENDS, (first, second), strict=True):
+            parts.append(f"Nobody moves {_end_at(pair, end)}." if who == "nobody"
+                         else f"{who.capitalize()} may spend a turn moving {_end_at(pair, end)}.")
         said = " ".join(parts)
-    if orange == "nobody" and blue == "nobody":
+    if first == "nobody" and second == "nobody":
         return said
     # A portal's every move is *move only* (the validator's), so the sentence says where it
     # may go -- an empty square -- once, rather than *not to take* after each way.
@@ -949,7 +1077,7 @@ def _portal_exit_counts(engine: Any) -> list[int]:
     return counts
 
 
-def _portal_warnings(passage: list[str], counts: list[int]) -> list[str]:
+def _portal_warnings(passage: list[str], counts: list[int], pair: dict[str, Any]) -> list[str]:
     """What the card says when a setting is legal but makes a portal useless (D7)."""
     if passage[0] == "closed" and passage[1] == "closed":
         return ["Nobody can go through these portals, so they are just two solid blocks. If "
@@ -962,8 +1090,8 @@ def _portal_warnings(passage: list[str], counts: list[int]) -> list[str]:
         other = 1 - side
         entered = any(_opens(word)[other] for word in passage)
         if entered:
-            warnings.append(f"Nothing can come out of the {end} end: every square beside it "
-                            "is off the board or a wall.")
+            warnings.append(f"Nothing can come out of {_end_at(pair, end)}: every square "
+                            "beside it is off the board or a wall.")
     return warnings
 
 
@@ -974,7 +1102,7 @@ def _opens(word: str) -> tuple[bool, bool]:
 
 
 def portal_tool(spec: Any) -> dict[str, Any]:
-    """Whether *+ portal pair* can add another pair to this draft, and if not, why (D2).
+    """Whether *+ portals* can add another group to this draft, and if not, why (D2).
 
     Asked of the validator: a trial draft with one more pair, whose squares do not matter,
     since only the refusals that are about the game around the portals are read. The
@@ -987,15 +1115,19 @@ def portal_tool(spec: Any) -> dict[str, Any]:
         return {"open": False, "why": ""}
     rules: dict[str, Any] = spec["rules"] if isinstance(spec.get("rules"), dict) else {}
     held: list[Any] = rules["portals"] if isinstance(rules.get("portals"), list) else []
-    if len(held) >= MAX_PORTAL_PAIRS:
-        return {"open": False, "why": "A game can have at most four pairs of portals."}
+    if len(held) >= MAX_PORTAL_GROUPS:
+        return {"open": False, "why": "A game can have at most four groups of portals."}
+    if sum(len(group["ends"]) for group in portal_groups(rules)) + 2 > MAX_PORTAL_ENDS:
+        return {"open": False, "why": "A game can have at most eight portals."}
     trial = copy.deepcopy(spec)
     trial_rules = trial.setdefault("rules", {})
     if not isinstance(trial_rules, dict):
         return {"open": False, "why": ""}
     pieces: list[Any] = trial["pieces"] if isinstance(trial.get("pieces"), list) else []
     taken = {piece.get("id") for piece in pieces if isinstance(piece, dict)}
-    taken |= set(portal_end_ids(len(held) + 1))
+    taken |= set(portal_end_ids(portal_groups(
+        {"portals": [*held, {"piece": "", "orange": "a1", "blue": "b1"}]}
+    )))
     used = {pair.get("piece") for pair in held if isinstance(pair, dict)}
     piece = next(iter(sorted(pid for pid in used if isinstance(pid, str))), None)
     if piece is None:
@@ -1026,45 +1158,123 @@ def portal_problem(problem: str, spec: Any = None, sides: Any = None) -> dict[st
     """
     named = _sides_of(sides)
     text = problem.strip()
-    end_at = re.match(_P_PAIR + r"\.(orange|blue) (\S+) (.*)$", text)
+    groups = {group["index"]: group for group in portal_groups(
+        spec.get("rules") if isinstance(spec, dict) else None)}
+
+    def called(index: int) -> str:
+        """*Pair 1* or *Group 2*, as the group's size says (schema 21)."""
+        group = groups.get(index)
+        return (_group_called(group) if group else f"pair {index + 1}").capitalize()
+
+    def square_of(index: int, place: int) -> str:
+        group = groups.get(index)
+        ends = group["ends"] if group else []
+        at = ends[place]["at"] if place < len(ends) else None
+        return at if isinstance(at, str) and at else "?"
+
+    end_at = re.match(_P_PAIR + r"\.(orange|blue|ends\[(\d+)\]) (\S+) (.*)$", text)
     if end_at:
-        pair, end, square, rest = int(end_at.group(1)) + 1, end_at.group(2), end_at.group(3), \
-            end_at.group(4)
-        place = {"pair": pair, "end": end, "square": square}
+        index, end, square, rest = int(end_at.group(1)), end_at.group(2), end_at.group(4), \
+            end_at.group(5)
+        pair, who = index + 1, called(index)
+        place = {"pair": pair, "end": end, "square": square,
+                 "place": int(end_at.group(3)) if end_at.group(3) else PORTAL_ENDS.index(end)}
+        # An end is named by its square (Q838d): both ends of a pair look alike.
         if rest == "is a wall or not on the board's shape":
-            return {**place, "says": f"Pair {pair}'s {end} end is on a wall ({square}). Move it "
+            return {**place, "says": f"{who} has an end on a wall ({square}). Move it "
                     "to an empty square."}
         if rest == "is a square setup.placements puts a piece on":
-            return {**place, "says": f"Pair {pair}'s {end} end is on {square}, where a piece "
+            return {**place, "says": f"{who} has an end on {square}, where a piece "
                     "starts. A portal needs an empty square: move it, or take the piece off "
                     "first."}
-        other = re.match(r"is also " + _P_PAIR + r"\.(orange|blue); two portals on one square$",
-                         rest)
+        other = re.match(r"is also " + _P_PAIR + r"\.(orange|blue|ends\[\d+\]); two portals on "
+                         r"one square$", rest)
         if other:
-            return {**place, "says": f"Pair {pair}'s {end} end is on {square}, which is pair "
-                    f"{int(other.group(1)) + 1}'s {other.group(2)} end. Two portals can't "
-                    "share a square."}
+            return {**place, "says": f"{who} has an end on {square}, where "
+                    f"{called(int(other.group(1)))[0].lower() + called(int(other.group(1)))[1:]} "
+                    "has one too. Two portals can't share a square."}
+    # Schema 21's refusals of a group of three or more ends (D7's new rows, Q843b).
+    map_end = re.match(_P_PAIR + r"\.ends\[(\d+)\](\.\w+)? (.*)$", text)
+    if map_end:
+        index, end_place, rest = int(map_end.group(1)), int(map_end.group(2)), map_end.group(4)
+        square = square_of(index, end_place)
+        place = {"pair": index + 1, "end": f"ends[{end_place}]", "place": end_place,
+                 "square": square}
+        who = called(index)
+        if rest.startswith("leads nowhere and no end leads to it"):
+            return {**place, "says": f"{who}'s end on {square} leads nowhere and no end leads "
+                    "to it, so no piece can use it. Lead it to another end, or lead another end "
+                    "to it."}
+        if rest.startswith("is the end itself"):
+            return {**place, "says": f"{who}'s end on {square} leads to itself. Choose another "
+                    "end for it to lead to."}
+        if rest.startswith("must be the index of another end"):
+            return {**place, "says": f"{who}'s end on {square} leads to an end that isn't in "
+                    "the group. Choose one of its own ends."}
+        also = re.match(r"(\S+) is also .*ends\[\d+\]; a group's ends need squares", rest)
+        if also:
+            return {**place, "square": also.group(1), "says": f"{who} has two ends on "
+                    f"{also.group(1)}. Each end goes on a square of its own."}
+        off_map = re.match(r"must be a square on the board, got (.*)$", rest)
+        if off_map:
+            return {**place, "says": f"{who} has an end that isn't on a square of this board "
+                    f"({off_map.group(1).strip(chr(39))}). Put it on an empty square."}
+    filtered = re.match(_P_PAIR + r"\.(?:carries\.(orange|blue)|ends\[(\d+)\]\.carries) (.*)$",
+                        text)
+    if filtered:
+        index, rest = int(filtered.group(1)), filtered.group(4)
+        end_place = (PORTAL_ENDS.index(filtered.group(2)) if filtered.group(2)
+                     else int(filtered.group(3)))
+        square = square_of(index, end_place)
+        place = {"pair": index + 1, "place": end_place, "square": square,
+                 "end": filtered.group(2) or f"ends[{end_place}]"}
+        if rest.startswith("names every piece that can move"):
+            return {**place, "says": f"The end on {square} lets every piece in, so its filter "
+                    "keeps nothing out. Untick the pieces it keeps out, or choose all."}
+        if rest.startswith("is empty"):
+            return {**place, "says": f"The end on {square} has no piece ticked, so nothing "
+                    "could go in by it. Tick the pieces it lets in, or choose all."}
+        if "nobody may go in by this end" in rest or "the end leads nowhere" in rest:
+            return {**place, "says": f"Nobody goes in by the end on {square}, so it has no "
+                    "pieces to choose. Choose all, or let somebody go in there."}
     off = re.match(_P_PAIR + r"\.(orange|blue) must be a square on the board, got (.*)$", text)
     if off:
         pair, end = int(off.group(1)) + 1, off.group(2)
-        return {"pair": pair, "end": end, "says": f"Pair {pair}'s {end} end isn't on a square "
-                f"of this board ({off.group(3).strip(chr(39))}). Put it on an empty square."}
+        return {"pair": pair, "end": end, "says": f"Pair {pair}'s {_END_ORDER[end]} end isn't "
+                f"on a square of this board ({off.group(3).strip(chr(39))}). Put it on an "
+                "empty square."}
     both = re.match(_P_PAIR + r" puts both ends on (\S+); a pair needs two squares$", text)
     if both:
         pair = int(both.group(1)) + 1
         return {"pair": pair, "end": "blue", "square": both.group(2), "says": f"Pair {pair} "
-                f"has both ends on {both.group(2)}. The blue end goes on a different square."}
+                f"has both ends on {both.group(2)}. The second end goes on a different square."}
     barred = re.match(_P_PAIR + r"\.no_straight_back is true but nobody may move", text)
     if barred:
         pair = int(barred.group(1)) + 1
         return {"pair": pair, "says": f"Pair {pair} says a portal can't be moved straight "
                 "back, but nobody may move its portals. Let somebody move them, or untick "
                 "'not straight back'."}
-    if re.match(r"rules\.portals holds \d+ pairs; at most", text):
-        return {"says": "A game can have at most four pairs of portals.", "beside": True}
-    if re.match(rf"at most {MAX_PIECE_TYPES} piece types, and rules\.portals adds two", text):
-        return {"says": "This game has too many kinds of piece for another portal pair: each "
-                "pair counts as two.", "beside": True}
+    never_met = re.match(
+        _P_PAIR + r"\.no_straight_back is true but it could never bar a move: (.*)$", text
+    )
+    if never_met:
+        pair = int(never_met.group(1)) + 1
+        if never_met.group(2).startswith("it binds only"):
+            return {"pair": pair, "says": f"Pair {pair} says a portal can't be moved straight "
+                    "back, but each end is moved by one player only, so the next move is always "
+                    "the other player's and the rule never applies. Let both players move an "
+                    "end, or untick 'not straight back'."}
+        return {"pair": pair, "says": f"Pair {pair} says a portal can't be moved straight back, "
+                "but the portal piece has no move back, so it could never go straight back "
+                "anyway. Give the portal piece a move in the opposite direction, or untick "
+                "'not straight back'."}
+    if re.match(r"rules\.portals holds \d+ groups; at most", text):
+        return {"says": "A game can have at most four groups of portals.", "beside": True}
+    if re.match(r"rules\.portals has \d+ ends; at most", text):
+        return {"says": "A game can have at most eight portals.", "beside": True}
+    if re.match(rf"at most {MAX_PIECE_TYPES} piece types, and rules\.portals adds one", text):
+        return {"says": "This game has too many kinds of piece for more portals: each end "
+                "counts as one.", "beside": True}
     if text.startswith("rules.portals is refused on a hex lattice"):
         return {"says": "Portals can't be used on a hexagon board yet. Take off one of them: "
                 "the portals, or the hexagons.", "beside": True}
@@ -1139,15 +1349,17 @@ def _portal_piece_problem(
         return {"says": "Anyone may move a portal, so its moves must be the same both ways up."}
     if rest.startswith("has no moves, but rules.portals lets a player move"):
         rules = spec.get("rules") if isinstance(spec, dict) else None
-        for index, pair in enumerate(portal_pairs(rules)):
-            if pair["piece"] != own.group(1):
+        for group in portal_groups(rules):
+            if group["piece"] != own.group(1) or group["spelling"] != "pair":
                 continue
+            index, pair = group["number"] - 1, _pair_view(group)
             for end in PORTAL_ENDS:
                 if pair["moved_by"][end]:
                     who = _movers_words(pair["moved_by"][end], sides)
-                    return {"pair": index + 1, "end": end, "says": f"Pair {index + 1}'s {end} "
-                            f"end may be moved by {who}, but the portal piece has no way to "
-                            'move. Give it a move, or set the end to "nobody".'}
+                    return {"pair": index + 1, "end": end, "says": f"Pair {index + 1}'s "
+                            f"{_end_at(pair, end).removeprefix('the ')} may be moved by {who}, "
+                            "but the portal piece "
+                            'has no way to move. Give it a move, or set the end to "nobody".'}
         return {"says": "Somebody may move a portal, but the portal piece has no way to move."}
     if rest == "may not be royal":
         return {"says": "A portal belongs to nobody, so it can't be royal."}
@@ -1173,8 +1385,72 @@ def plain_problem(problem: str, spec: Any = None, sides: Any = None) -> str:
 
 
 def plain_problems(problems: list[str], spec: Any = None, sides: Any = None) -> list[str]:
-    """`plain_problem` over a list, in order and one for one."""
-    return [plain_problem(problem, spec, sides) for problem in problems]
+    """`plain_problem` over a list, in order and one for one, except that two wild pieces'
+    walks that overlap are one sentence per pair (`walk_overlaps`), where the validator
+    says one per shared square."""
+    out: list[str] = []
+    overlaps_said = False
+    for problem in problems:
+        if _WALK_OVERLAP.match(problem) is None:
+            out.append(plain_problem(problem, spec, sides))
+        elif not overlaps_said:
+            out.extend(walk_overlaps(problems))
+            overlaps_said = True
+    return out
+
+
+# The validator's sentence for two wild pieces' walks on one square
+# (`schema._check_npc_coherence`): one per square, with the reason the compiler's tables
+# give. Sixteen of them for two wolves on one circuit, and a reason about tables, was the
+# designer's refusal in the wolves walk (step 13, `docs/reference/designer-case-study-wolves.md`).
+_WALK_OVERLAP = re.compile(
+    r"^rules\.npcs\[(?P<later>\d+)\](?P<later_mirror> \(mirrored\))? and "
+    r"rules\.npcs\[(?P<earlier>\d+)\](?P<earlier_mirror> \(mirrored\))? both walk "
+    r"(?P<square>\S+?); routes may not share a square"
+)
+
+
+def walk_overlaps(problems: Iterable[str]) -> list[str]:
+    """The overlapping walks among a draft's problems, one sentence per pair of walks:
+    both wild pieces by the card's names (*wild pieces 2*, *wild pieces 1's mirror*), the
+    squares they share, and the way out, *more on this walk*."""
+    pairs: dict[tuple[tuple[int, bool], tuple[int, bool]], list[str]] = {}
+    for problem in problems:
+        found = _WALK_OVERLAP.match(problem)
+        if found is None:
+            continue
+        earlier = (int(found["earlier"]), bool(found["earlier_mirror"]))
+        later = (int(found["later"]), bool(found["later_mirror"]))
+        squares = pairs.setdefault((earlier, later), [])
+        if found["square"] not in squares:
+            squares.append(found["square"])
+    return [_overlap_sentence(earlier, later, squares)
+            for (earlier, later), squares in pairs.items()]
+
+
+def _overlap_sentence(earlier: tuple[int, bool], later: tuple[int, bool],
+                      squares: list[str]) -> str:
+    title = RULE_WORDS["npcs"][0]
+    if not earlier[1] and not later[1]:
+        both = f"{title.capitalize()} {earlier[0] + 1} and {later[0] + 1}"
+    else:
+        both = (f"{_walk_name(title, earlier).capitalize()} and "
+                f"{_walk_name(title, later)}")
+    if len(squares) == 1:
+        where = squares[0]
+    elif len(squares) <= 3:
+        where = ", ".join(squares[:-1]) + " and " + squares[-1]
+    else:
+        where = f"{squares[0]} … {squares[-1]} ({len(squares)} squares)"
+    mirror = earlier[1] or later[1]
+    return (f"{both} both walk {where}. Two wild pieces can't share a square of their "
+            "walks. To put a second one on the same walk, use 'more on this walk'"
+            f"{' instead of the mirror' if mirror else ''}.")
+
+
+def _walk_name(title: str, entry: tuple[int, bool]) -> str:
+    index, mirrored = entry
+    return f"{title} {index + 1}'s mirror" if mirrored else f"{title} {index + 1}"
 
 
 def portal_errors(problems: list[str], spec: Any = None, sides: Any = None) -> list[dict[str, Any]]:
@@ -1184,7 +1460,8 @@ def portal_errors(problems: list[str], spec: Any = None, sides: Any = None) -> l
     for problem in problems:
         said = portal_problem(problem, spec, sides)
         if said:
-            out.append({key: said[key] for key in ("says", "pair", "end", "square") if key in said})
+            out.append({key: said[key] for key in ("says", "pair", "end", "square", "place")
+                        if key in said})
     return out
 
 
@@ -1496,6 +1773,27 @@ def move_map(
     said which destinations are takes -- and the square defaults to the first one this
     kind of piece stands on rather than to the middle of the board.
     """
+    engine = _draft_engine(spec)
+    if not (0 <= piece < engine.spec.n_types):
+        raise DesignError("That piece isn't in the game any more.")
+    if not alone:
+        return _live_map(engine, piece, square)
+    return _alone_map(engine, piece, square)
+
+
+def alone_maps(spec: dict[str, Any]) -> tuple[Engine, list[dict[str, Any]]]:
+    """`move_map(spec, piece)` for every piece in turn, from one compile, with the engine
+    that answered them.
+
+    The library's piece maps (`library.piece_maps`) ask this of every game after a
+    process's first listing; asked a piece at a time they compiled the rules once per
+    piece, 661 compiles over the 87-game library where 87 do (Q890)."""
+    engine = _draft_engine(spec)
+    return engine, [_alone_map(engine, piece, -1) for piece in range(engine.spec.n_types)]
+
+
+def _draft_engine(spec: dict[str, Any]) -> Engine:
+    """The draft settled, validated and compiled, or the `DesignError` that says why not."""
     spec = settled(spec)
     # A draft the validator refuses is a refusal about the draft, a 400 with its first
     # sentences, and not the `SpecError` the compiler would raise into a 500 (Q541: a
@@ -1510,22 +1808,27 @@ def move_map(
     # the draft, so the same 400 and not a 500 (Q792, five of them on the live site on
     # 2026-10-05).
     try:
-        engine = Engine(spec)
+        return Engine(spec)
     except SpecError as error:
         raise DesignError(
             "These rules aren't a complete game yet: " + " ".join(_errors_of(error, spec)[:2])
         ) from error
+
+
+def _alone_map(engine: Engine, piece: int, square: int) -> dict[str, Any]:
+    """`move_map`'s answer with ``alone``: the piece by itself on an empty board."""
     compiled = engine.spec
-    if not (0 <= piece < compiled.n_types):
-        raise DesignError("That piece isn't in the game any more.")
     width, height = compiled.width, compiled.height
-    if not alone:
-        return _live_map(engine, piece, square)
     base = engine.initial_state()
     # N5 (`docs/plan-portals.md`, schema 19): the lone board keeps the portals where the
     # setup puts them, as it keeps the walls, so the engine's answer shows the transits.
     # Their board bytes are the opening position's own.
-    kept = {at: base.board[at] for at in (compiled.portals.squares if compiled.portals else ())}
+    # A fold (schema 22) is no board byte: it stays where the opening state's `folds` put it,
+    # and a piece may be stood in it, so its square is no kept square (Q843d's fold preview).
+    folded = compiled.portals.folds.starts if compiled.portals and compiled.portals.folds else ()
+    kept = {at: base.board[at]
+            for end, at in enumerate(compiled.portals.squares if compiled.portals else ())
+            if not (end < len(folded) and folded[end] >= 0)}
     if square < 0 or square >= width * height:
         square = (height // 2) * width + width // 2
     if square in compiled.obstacles or square in kept:
@@ -1603,7 +1906,13 @@ def _note_transit(
     through = portal_transit(engine, state, move)
     to = move_to_square(move)
     if through is None:
-        direct.add(to)
+        # Schema 22 (Q843d): a move through a fold is a transit too, its way in and out the
+        # engine's (`fold_transit`); since schema 24 it ends where it comes out.
+        folded = fold_transit(engine, state, move)
+        if folded is None:
+            direct.add(to)
+            return
+        transits.setdefault((to, folded["foldIn"]), {"to": to, **folded})
         return
     transits.setdefault((to, through["portal"]), {"to": to, **through})
 
@@ -2704,6 +3013,7 @@ def save(
     note: str = "",
     parent_spec: dict[str, Any] | None = None,
     parent_name: str = "",
+    restate: bool = True,
 ) -> dict[str, Any]:
     """Write a hand-built game into the designed-games archive, as a candidate.
 
@@ -2713,6 +3023,15 @@ def save(
     A game already known under this hash is returned rather than written again. The hash
     covers mechanics only, so re-saving a draft you have only renamed is not a new game,
     which is the same rule that stops a design run spending a tournament on a rename.
+
+    **What a re-save may still change is the words** (Q595). A draft saved without a
+    description used to keep that lack for ever: saving it again with one answered
+    *Already saved* and wrote nothing. Now a re-save whose name or description differs
+    from the kept one rewrites them in place (`Archive.restate`) and says which in
+    `restated` -- the hash, and so the game, is unchanged. `restate=False` is the site's,
+    for rules somebody else saved first or a game already published (`site/drafts.py`
+    *What a re-save changes*); the words then stay, and `unchanged` names the ones the
+    save asked for and did not get.
 
     **A fork that changed no rule is refused by name**, which is a different case from
     that one and used to be the worst behaviour in the editor. *Make one like this* on
@@ -2754,7 +3073,22 @@ def save(
     archive = Archive(Path(runs_dir) / DESIGNED_RUN)
     existing = next((e for e in archive.entries if e.hash == digest), None)
     if existing is not None:
-        return {"hash": digest, "name": existing.name, "created": False,
+        kept = archive.load_spec(digest) or {}
+        name = str(spec.get("name") or digest)
+        description = str(spec.get("description") or "")
+        differs = [
+            word for word, was, now in (
+                ("name", existing.name, name),
+                ("description", str(kept.get("description") or ""), description),
+            )
+            if was != now
+        ]
+        if differs and restate:
+            archive.restate(digest, name, description)
+        return {"hash": digest, "name": name if differs and restate else existing.name,
+                "created": False,
+                "restated": differs if restate else [],
+                "unchanged": [] if restate else differs,
                 "path": str(Path(runs_dir) / DESIGNED_RUN / "specs" / f"{digest}.json")}
 
     archive.record(
@@ -2775,6 +3109,7 @@ def save(
         spec,
     )
     return {"hash": digest, "name": str(spec.get("name") or digest), "created": True,
+            "restated": [], "unchanged": [],
             "path": str(Path(runs_dir) / DESIGNED_RUN / "specs" / f"{digest}.json")}
 
 
@@ -2839,7 +3174,8 @@ def live_terms(spec: dict[str, Any]) -> list[str]:
         "hand_material": compiled.drops is not None,
         "promotion_occupancy": bool(compiled.promotions),
         "reach_progress": compiled.reach is not None,
-        "facing_alignment": compiled.has_facing,
+        # Schema 25: a facing no move turns is out of the term, so it alone keeps it dead.
+        "facing_alignment": any(compiled.turns(t) for t in range(compiled.n_types)),
     }
     return [name for name in VOCABULARY if has.get(name, True)]
 

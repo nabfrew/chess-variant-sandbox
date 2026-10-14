@@ -85,10 +85,16 @@ FROZEN: dict[str, tuple[str, str]] = {
     # was empty both sides of the edit, which is the whole reason the rule was inert.
     # `runs/86efa5819135-0` is a measurement of the spec as it was and is deliberately
     # kept; measuring the spec as it is now is Q103.
-    "rulesets/chess-oriented-pawns.json": ("57c73975c905", "711c14261a57f2dc"),
+    # Q869, 2026-10-13: the attack sources keep only the frames a type can stand in, so a
+    # piece that faces no way loses its sources for the facings it never holds; the same
+    # games move for move (played and perft-compared both ways). was 711c14261a57f2dc
+    "rulesets/chess-oriented-pawns.json": ("57c73975c905", "d3841caf15b539ee"),
     "rulesets/chess.json": ("4c1922ffae26", "94a4a49ab238a4e2"),
     "rulesets/courier.json": ("0b96463ffba7", "43c2fe4fb1ab1401"),
-    "rulesets/crazyhouse-torus.json": ("ab865f3f954a", "db15f09d67ddd2d1"),
+    # Q869, 2026-10-13: the rear pawn `V` respelled as a pawn placed facing backwards with a
+    # facing no move turns (schema 25), so the hand holds one kind of pawn and returns it
+    # facing forward: a new game, `runs/ab865f3f954a-*` kept. was ab865f3f954a / db15f09d67ddd2d1
+    "rulesets/crazyhouse-torus.json": ("9598e603241d", "5842b620af27402b"),
     "rulesets/crazyhouse.json": ("bb5d97520084", "97ab14ffca01037a"),
     "rulesets/cylinder.json": ("a9306688fe57", "6a56433c2492eaf3"),
     "rulesets/dobutsu.json": ("a2f0c65ceedf", "d158e949aa940a34"),
@@ -119,7 +125,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     "rulesets/makruk.json": ("eaa48ed29ad7", "fc1b479eb1a32a55"),
     "rulesets/onewaycylinder.json": ("b02bbe8da72c", "0449ce95d1a9ac76"),
     "rulesets/onewaytorus.json": ("c6ff883e5919", "05787a033547e413"),
-    "rulesets/onewaytunnel.json": ("da7647bf02e1", "fac342b6c6256f3c"),
+    # Q868, 2026-10-12: `rulesets/onewaytunnel.json` (`da7647bf02e1`/`fac342b6c6256f3c`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
     "rulesets/racingkings.json": ("66b001f1b790", "48c162212370a86a"),
     "rulesets/rps-hierarchy-chess.json": ("c0e0c35f78b1", "cee254479fe50d0f"),
     "rulesets/rps-v1.json": ("2261f8203948", "b079ab1b18c454a6"),
@@ -134,7 +140,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     # `sardines-wraparound.json` (`f76f73bd5d6c`/`551032910084b2d6`), whose rank seam was
     # one-way per side; this one is the full torus, so the rename carries a new game and
     # not only a new name. `runs/f76f73bd5d6c-0` stays as the old game's measurement.
-    "rulesets/sardines-torus.json": ("f5585062433b", "6f3802cc1cdb323a"),
+    # Q868, 2026-10-12: `rulesets/sardines-torus.json` (`f5585062433b`/`6f3802cc1cdb323a`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
     # Re-frozen 2026-09-11 by Q180, on the `stones` / `chess-oriented-pawns` footing: a
     # spec replaced on purpose, so both numbers move together and it is a different game
     # rather than a compiler regression. The four cells of the sardines family now come
@@ -154,15 +160,18 @@ FROZEN: dict[str, tuple[str, str]] = {
     # was 630828e31147 / e748341e571a98b9
     "rulesets/shogi.json": ("54c731ca6e95", "ae0af217d07baaa2"),
     "rulesets/threecheck.json": ("b1f536573c22", "72cf8d36fe5262ee"),
-    "rulesets/torus-extended.json": ("fdadd9839d34", "213502f4d3c8b294"),
-    "rulesets/torus-less-extended.json": ("3194d3a2251b", "83d672ca1a180146"),
+    # Q868, 2026-10-12: `rulesets/torus-extended.json` (`fdadd9839d34`/`213502f4d3c8b294`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    # Q869, 2026-10-13: the rear pawn `V` respelled as a pawn placed facing backwards with a
+    # facing no move turns (schema 25); the same game move for move (perft and random walks
+    # agree), a new hash, `runs/3194d3a2251b-*` kept. was 3194d3a2251b / 83d672ca1a180146
+    "rulesets/torus-less-extended.json": ("8d9fb1b4c0b4", "802c13af5c7fbcf1"),
     "rulesets/torus.json": ("5f9c1bfcf85a", "e10795221943c852"),
     # Q434, 2026-09-25: `rulesets/tunnel-horizontal.json` (`195564f716ec`/
     # `d974a81ecff48da0`) was retired here, by the user's decision: its lone promotion
     # `rank: 9` lay past its 8-high board, so its pawns could never promote, and other
     # near-chess wraparound games cover its ground. Its four runs stay in the main
     # checkout (`runs/195564f716ec`), and the validator now refuses such a rank.
-    "rulesets/tunnel-vertical.json": ("0268bb0926bf", "b74629fce0f2c511"),
+    # Q868, 2026-10-12: `rulesets/tunnel-vertical.json` (`0268bb0926bf`/`b74629fce0f2c511`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
     # Q313, 2026-09-18: re-frozen from `2437aaa92bb15dba`, and the mechanics hash does
     # not move because no spec file was edited. `compile.py` used to walk a piece's
     # direction *set*, whose tuple hash is 64 bits here and 32 under Emscripten, and a
@@ -194,7 +203,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     # sits at its inert default and is dropped, so the tables are byte-identical to the
     # schema-8 compiler's by construction -- the same argument the test below makes.
     "archive/hierarchy-extended.json": ("57667d7861ad", "0da72ea2e0260133"),
-    "archive/hierarchy-fall-swap.json": ("f1fdbb539699", "d1bbe2c7ea75dc5a"),
+    # Q868, 2026-10-12: `archive/hierarchy-fall-swap.json` (`f1fdbb539699`/`d1bbe2c7ea75dc5a`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
     "archive/hierarchy-fall.json": ("3c639d277808", "c98f538601b4afe5"),
     "archive/hierarchy-rise-stay.json": ("482ddc556331", "353b16ba98f79721"),
     "archive/hierarchy-rise.json": ("1ba3d61e5961", "f5326430599d6230"),
@@ -214,7 +223,11 @@ FROZEN: dict[str, tuple[str, str]] = {
     # otherwise move no committed ruleset's tables and pass in silence.
     "archive/merger.json": ("85555467a4ca", "d4079562891aafd2"),
     "archive/perpetual.json": ("df2fbba0ca76", "3f3573664d563043"),
-    "archive/quarry.json": ("51d9b36b4e93", "b03c53fbdc1c2346"),
+    # Q880, 2026-10-13: a one-square diagonal step passes over nothing under
+    # `blocks_leaps` (`compile._lame_path` halves toward zero, not floor), so a wall
+    # beside a king or a pawn no longer stops two of its four diagonals. Quarry is the
+    # only spec in the tree that moved; re-measured, the old score kept under `previous/`.
+    "archive/quarry.json": ("51d9b36b4e93", "7bed2a6503798054"),  # was b03c53fbdc1c2346
     "archive/queen-bomb.json": ("313c913a5b3b", "fa021e91cdc7782d"),
     "archive/queens-wake.json": ("328cab4db5cc", "185b194e58d513eb"),
     "archive/reckoning.json": ("ffc7b604bea0", "165fff189589d44f"),
@@ -235,40 +248,46 @@ FROZEN: dict[str, tuple[str, str]] = {
     # The sardines family's wrap-and-facing cell, Q180, 2026-09-11, seed 20262067. It
     # replaces `weathervane-chaos-torus.json` (`a6ebba755d77`/`26fdee19415a4509`), which
     # the user landed in `95e1495` that morning from a generator of its own.
-    "archive/weathervane-torus.json": ("9777cd6c9ed1", "910ad7686ab0c31d"),
+    # Q868, 2026-10-12: `archive/weathervane-torus.json` (`9777cd6c9ed1`/`910ad7686ab0c31d`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
     # Q28b, 2026-09-13: `weathervane` with a two-axis pawn whose `initial` is backward,
     # rows 15 and 16 of `docs/reference/schema-showcase-coverage.md`. The only spec in the
     # tree that compiles a two-axis piece, so this row pins that path.
-    "archive/weathervane-half-turn.json": ("8fc3939243d5", "0664986abe7f9b25"),
+    # Q869, 2026-10-13: the attack sources keep only the frames a type can stand in, so a
+    # piece that faces no way loses its sources for the facings it never holds; the same
+    # games move for move (played and perft-compared both ways). was 0664986abe7f9b25
+    "archive/weathervane-half-turn.json": ("8fc3939243d5", "7e9a6e3b57386450"),
     # The family's facing cell, Q180, seed 20261254. Re-frozen from
     # `b88e98dab286`/`55501435ca71e297`, which was the pre-edit sardines plus facing and
     # so had stopped being the plain cell's control. This one is `rulesets/sardines`'
     # army and rules with `facing` on the pawn, by construction rather than by a test
     # noticing afterwards, which is what `test_only_the_pawn_differs_from_sardines` reads.
-    "archive/weathervane.json": ("1442513d38d7", "462cb3cb5476254f"),
+    # Q869, 2026-10-13: the attack sources keep only the frames a type can stand in, so a
+    # piece that faces no way loses its sources for the facings it never holds; the same
+    # games move for move (played and perft-compared both ways). was 462cb3cb5476254f
+    "archive/weathervane.json": ("1442513d38d7", "ba2232e42e5b3915"),
     "archive/wolves.json": ("ceb4916bdabc", "5a0c6e8ef7f53176"),
     # `wolves-immune` is `wolves` re-spelled with `npcs[].immune` and its tables are
     # `wolves`' but for the Zobrist draws, which the fingerprint covers -- so the two
     # rows differ, and that difference is the mechanics hash reseeding the draw rather
     # than any rule compiling differently.
-    "archive/wolves-immune.json": ("a2193fb37097", "5f1cc21fe83d08c8"),
+    # Q876, 2026-10-13: `archive/wolves-immune.json` (`a2193fb37097`/`5f1cc21fe83d08c8`) retired by the library audit's second pass for `archive/pitchfork.json` (`docs/plan-library-audit.md`, Q876); its runs stay.
     # Q76, 2026-09-13: `wolves` plus `scoring.count: "points"` and a bounty of 1, rows 19
     # and 22 of `docs/reference/schema-showcase-coverage.md`. The only spec in the tree
     # that compiles a non-default bounty and a points count, so this row pins that path.
     "archive/wolves-bounty.json": ("54b38fb8cba8", "6435d2c15d411b4d"),
     # Q77, 2026-09-14: `wolves` with both routes rotated by one square.
-    "archive/wolves-rotated.json": ("213f7b6604e4", "0db063d05e21dd56"),
+    # Q868, 2026-10-12: `archive/wolves-rotated.json` (`213f7b6604e4`/`0db063d05e21dd56`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
     # Q222, 2026-09-14: the other three rotations, by two, three and four squares.
-    "archive/wolves-rotated-2.json": ("8ec0ce4678e9", "112bb4d97b35232f"),
-    "archive/wolves-rotated-3.json": ("2e94e1688601", "e71396ec37a17a5f"),
-    "archive/wolves-rotated-4.json": ("87a488975531", "7863f23a3bbd4b4e"),
+    # Q868, 2026-10-12: `archive/wolves-rotated-2.json` (`8ec0ce4678e9`/`112bb4d97b35232f`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    # Q868, 2026-10-12: `archive/wolves-rotated-3.json` (`2e94e1688601`/`e71396ec37a17a5f`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    # Q868, 2026-10-12: `archive/wolves-rotated-4.json` (`87a488975531`/`7863f23a3bbd4b4e`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
     # Q229, 2026-09-15: schema 14's showcase, Glinski-style hexagonal chess on an axial
     # rhombus with thirty walls, `lattice: "hex"` declared and a promotion zone on the
     # hexagon's far edge. The only spec in the tree that compiles a zone that is not whole
     # ranks, so this row pins that path. `docs/reference/hex-convention.md`.
     # Q280, 2026-09-17: the square-grid parent `archive/hex-glinski.json`
     # (`5228694f93bd`) was retired here; schema 14 made its convention a declaration.
-    "archive/hex-glinski-promoting.json": ("279f92a97530", "b429acf0d4a10f89"),
+    # Q868, 2026-10-12: `archive/hex-glinski-promoting.json` (`279f92a97530`/`b429acf0d4a10f89`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
     # Q281a4, 2026-09-28: schema 16's showcases. `hex-glinski-hexagon` is the parent above
     # with `board.shape: "hexagon"` for its thirty walls. Its tables are the parent's
     # array by array but for the five Zobrist arrays, drawn from the mechanics hash as
@@ -276,8 +295,8 @@ FROZEN: dict[str, tuple[str, str]] = {
     # (`tests/test_schema_sixteen.py::TestTheTwin`). `flanks` joins its empty flanks
     # (`nw_se: "both"`), `flanks-one-way` the same seam one way per player.
     "archive/hex-glinski-hexagon.json": ("6eaaad41673b", "502b6c432a0489b4"),
-    "archive/hex-glinski-flanks.json": ("5ba53615c752", "e615ab9b05ef7ce9"),
-    "archive/hex-glinski-flanks-one-way.json": ("2edcd9a30022", "4b8332fedb7ee7a7"),
+    # Q870, 2026-10-13: `archive/hex-glinski-flanks.json` (`5ba53615c752`/`e615ab9b05ef7ce9`) retired by the library audit's second pass for `archive/pinwheel.json` (`docs/plan-library-audit.md`, Q870); its runs stay.
+    # Q870, 2026-10-13: `archive/hex-glinski-flanks-one-way.json` (`2edcd9a30022`/`4b8332fedb7ee7a7`) retired by the library audit's second pass for `archive/pinwheel.json` (`docs/plan-library-audit.md`, Q870); its runs stay.
     # Q540, 2026-10-09: schema 17's showcases, chess with one rule each about what a
     # capture leaves behind (rifle, circe, Andernach, kamikaze).
     "archive/rifle.json": ("f7a789809758", "0fb33501ce9f14b3"),
@@ -288,7 +307,10 @@ FROZEN: dict[str, tuple[str, str]] = {
     # of `docs/reference/schema-showcase-coverage.md`): shogi plus `promote_on_entry`, shogi
     # with a backward-facing dropped pawn, and chess with a pawn that knocks pieces down.
     "archive/shogi-drop-promoted.json": ("ffb9a99dbd01", "6811d5a31d92a207"),
-    "archive/shogi-backward-drops.json": ("8478a3301cfd", "b70216a4c181360f"),
+    # Q869, 2026-10-13: the attack sources keep only the frames a type can stand in, so a
+    # piece that faces no way loses its sources for the facings it never holds; the same
+    # games move for move (played and perft-compared both ways). was b70216a4c181360f
+    "archive/shogi-backward-drops.json": ("8478a3301cfd", "fd7946431f88a7cb"),
     "archive/pawn-knockdown.json": ("d50c552b49da", "89578d839100f40d"),
     # Q781, 2026-10-09: schema 18a's showcases, Q533's audit specs with the rule each could
     # not say: Einstein chess's keeping link and Omega chess's castling on a walled rank.
@@ -313,23 +335,58 @@ FROZEN: dict[str, tuple[str, str]] = {
     # move written once and turned by the hexagon's `rotate6`, and by `dihedral12`. Their
     # tables are the parent's array by array but for the five Zobrist draws, which the
     # mechanics hash seeds (`tests/test_schema_eighteen.py::TestHexSymmetries`).
-    "archive/hex-glinski-turned.json": ("30c1003b9a61", "88ab61fbcf782f93"),
-    "archive/hex-glinski-turned-mirrored.json": ("461e29677d6d", "af0f34c7a089f751"),
+    # Q870, 2026-10-13: `archive/hex-glinski-turned.json` (`30c1003b9a61`/`88ab61fbcf782f93`) retired by the library audit's second pass for `archive/pinwheel.json` (`docs/plan-library-audit.md`, Q870); its runs stay.
+    # Q870, 2026-10-13: `archive/hex-glinski-turned-mirrored.json` (`461e29677d6d`/`af0f34c7a089f751`) retired by the library audit's second pass for `archive/pinwheel.json` (`docs/plan-library-audit.md`, Q870); its runs stay.
+    # Q843a, 2026-10-11: the eight portal rows' fingerprints were re-frozen (the old one on
+    # each row's comment). Schema 21 renamed and re-encoded two boundary keys,
+    # `portal_partner` -> `portal_dest` and `portal_open` (a bool per player) ->
+    # `portal_admits` (a piece-type mask per player), and added `portal_group`; every other
+    # array of the eight is unchanged, `dest` equals the old `partner` and `admits` is
+    # non-zero exactly where `open` was true (compared against the schema 20 core), and every
+    # perft of the eight is unchanged (`tests/test_schema_twenty_one.py::FROZEN_PERFT`). No
+    # mechanics hash moved (`docs/plan-portals-2.md` §2.4).
     # Q772a, 2026-10-10: schema 19's showcases (`plan-portals.md` §7 P4): the three games
     # Divide (capablanca on a walled 10x11), Ferry (losalamos, two pairs either player
     # moves) and Carousel (losalamos on a 6x8 cylinder, a private lift each), and the four
     # one-feature specs: Wormhole on gardner, its `moved_by` and `passage` arms, and a
     # two-exit pair on cylinder (`docs/reference/portal-showcases.md`).
-    "archive/divide.json": ("1f85f50a23f6", "d0ab03b90fdc996f"),
-    "archive/ferry.json": ("1501615e08e2", "6a3e2afa90281e2e"),
-    "archive/carousel.json": ("f1e40e35a6d9", "77a125f71060e8d6"),
-    "archive/wormhole.json": ("3732e55621b1", "b0b3d89367aea3fe"),
-    "archive/wormhole-adrift.json": ("22cc8982bc90", "3c974d08f97ae3cf"),
-    "archive/shut-wormhole.json": ("58afebca2286", "a4db7f4ed8334ea1"),
-    "archive/cylinder-wormhole.json": ("5abb0b804cf6", "44ff210388e3b982"),
+    "archive/divide.json": ("1f85f50a23f6", "b2afc37a1693de09"),  # was d0ab03b90fdc996f
+    "archive/ferry.json": ("1501615e08e2", "e7770d3fc50aee5a"),  # was 6a3e2afa90281e2e
+    "archive/carousel.json": ("f1e40e35a6d9", "69a08feee1d2d3ae"),  # was 77a125f71060e8d6
+    "archive/wormhole.json": ("3732e55621b1", "f19895f2038e8832"),  # was b0b3d89367aea3fe
+    # Q868, 2026-10-12: `archive/wormhole-adrift.json` (`22cc8982bc90`/`2929f116a0b775bb`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    "archive/shut-wormhole.json": ("58afebca2286", "70627853a1fe6053"),  # was a4db7f4ed8334ea1
+    "archive/cylinder-wormhole.json": ("5abb0b804cf6", "f4527ef755dee62c"),  # was 44ff210388e3b982
     # Q807, 2026-10-10: schema 20's showcase, Ferry with `no_straight_back` on both pairs
     # (`plan-portals.md` *Ferry's shuffle*), a new game beside Ferry, whose row is unmoved.
-    "archive/ferry-no-straight-back.json": ("dd17d71412a7", "1fdb2020deedb6d1"),
+    # was 1fdb2020deedb6d1
+    "archive/ferry-no-straight-back.json": ("dd17d71412a7", "0bdeb43fbc2e4d7d"),
+    # Q850, 2026-10-11: schema 23's showcase, the user's game -- two wolves on one
+    # sixteen-square circuit, `also_at` (`designer-case-study-wolves.md` §2.2). New.
+    "archive/wolves-patrol.json": ("b2011455c4af", "5b144080a51061e1"),
+    # Q772e, 2026-10-12: Divide's option B, the two-way door (`plan-portals.md` *Divide's
+    # return rule*): `divide` with the pair's `passage` removed, a new game beside it. New.
+    # Q868, 2026-10-12: `archive/divide-two-way.json` (`2fa712feb218`/`61e519fb59ea4574`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    # Q772f, 2026-10-12: Divide's option C, both ends fixed (`plan-portals.md` *Divide's
+    # return rule*): `divide-two-way` with the pair's `moved_by` removed, a new game. New.
+    # Q868, 2026-10-12: `archive/divide-fixed.json` (`31ead85da009`/`f5bf221dce8ccfe8`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    # Q870, 2026-10-13: the hexagon set's designed game, built around what four retired
+    # variants of `hex-glinski-hexagon` were kept to show: a one-handed knight written
+    # `rotate6` beside `dihedral12` officers, and a one-way seam on a 61-cell hexagon
+    # (`docs/plan-library-audit.md`; `tests/test_pinwheel.py`). New.
+    "archive/pinwheel.json": ("61c4e247dc3c", "9cc78fa02cf12867"),
+    # Q876, 2026-10-13: the game built around `npcs[].immune` in place of `wolves-immune`:
+    # eight wolves in pairs (`also_at`) on the centre rings, and only a pawn may take one
+    # (`docs/plan-library-audit.md`; `tests/test_pitchfork.py`). New.
+    "archive/pitchfork.json": ("d2a722b461ff", "f7fe75d2793c461a"),
+    # Q844b, 2026-10-13: the portal showcases on the rules as they now stand
+    # (`docs/reference/portal-showcase-ideas.md`; `tests/test_portal_showcases_q844b.py`):
+    # Sluice, chess with a momentum funnel a side (schema 21's maps), Crease, Capablanca
+    # with two fold pairs (schema 24), and pawnproof wormhole, `wormhole` with `carries`.
+    # New (Q844's drafts of 2026-10-11 were never committed to main).
+    "archive/sluice.json": ("f3c624d2f297", "f84bca5f42fba51f"),
+    "archive/crease.json": ("0448722861a3", "ac98338606812bdf"),
+    "archive/pawnproof-wormhole.json": ("feaad3754a7e", "fa4f817969d2b144"),
 }
 
 
@@ -874,7 +931,7 @@ class TestTheFuzzOracles:
         fuzz.the_points_are_the_bounties_of_the_npcs_that_are_gone(
             engine, SimpleNamespace(board=gone, points=(0.0, 3.0))
         )
-        with pytest.raises(fuzz.OracleFailure, match="empty routes are worth 3"):
+        with pytest.raises(fuzz.OracleFailure, match="missing wild pieces are worth 3"):
             fuzz.the_points_are_the_bounties_of_the_npcs_that_are_gone(
                 engine, SimpleNamespace(board=gone, points=(0.0, 0.0))
             )

@@ -371,21 +371,38 @@ def every_piece_is_in_an_orientation_it_may_be_in(engine: Engine, state: Any) ->
         )
 
 
+def _route_key(npcs: Any, square: int) -> int:
+    """The lowest square of the route through ``square``: one key per route, whichever of
+    its squares a wild piece stands on."""
+    lowest = square
+    cursor = npcs.next[square]
+    while cursor != square:
+        lowest = min(lowest, cursor)
+        cursor = npcs.next[cursor]
+    return lowest
+
+
 def every_npc_stands_on_its_own_route(engine: Engine, state: Any) -> None:
-    """Every wild piece is on a route square, and no route holds two.
+    """Every wild piece is on a route square, and no route holds more than it started with.
 
     Schema 9's `rules.npcs` names squares a piece stands on -- the class item 5 said owes
     an oracle here -- and the phase that walks them is the first code in the core that
     writes the board when nobody is to move. Three things it could get wrong that no
-    self-consistency oracle would see: a wild piece stepping off its route, two wild
-    pieces on one loop (one stepped onto the other rather than waiting), and a wild
-    byte appearing where no route runs. Cheap when nothing is wild: one `is None`.
+    self-consistency oracle would see: a wild piece stepping off its route, a wild piece
+    stepping onto another rather than waiting (two become one, so a route holds fewer --
+    or, before schema 23, two on one loop), and a wild byte appearing where no route runs.
+    Schema 23's ``also_at`` starts several on one route, so the bound is the route's count
+    of starts rather than one. Cheap when nothing is wild: one `is None`.
     """
     spec = engine.spec
     npcs = spec.npcs
     if npcs is None:
         return
-    routes_seen: dict[int, int] = {}
+    allowed: dict[int, int] = {}
+    for start, _ in npcs.starts:
+        key = _route_key(npcs, start)
+        allowed[key] = allowed.get(key, 0) + 1
+    on_route: dict[int, list[int]] = {}
     for square in range(spec.n_squares):
         value = state.board[square]
         if value == 0 or spec.owner_of(value) != WILD:
@@ -398,28 +415,24 @@ def every_npc_stands_on_its_own_route(engine: Engine, state: Any) -> None:
                 f"{spec.piece_ids[spec.type_of(value)]!r}, and that route belongs to a "
                 f"{spec.piece_ids[npcs.piece[square]]!r}"
             )
-        # Walk to a canonical square of this route -- its lowest -- so two wild pieces on
-        # the same loop meet in one key whatever squares they stand on.
-        lowest = square
-        cursor = npcs.next[square]
-        while cursor != square:
-            lowest = min(lowest, cursor)
-            cursor = npcs.next[cursor]
-        if lowest in routes_seen:
+        on_route.setdefault(_route_key(npcs, square), []).append(square)
+    for key, squares in on_route.items():
+        if len(squares) > allowed.get(key, 0):
             raise OracleFailure(
-                f"two wild pieces walk one route, on squares {routes_seen[lowest]} and {square}"
+                f"{len(squares)} wild pieces walk one route, on squares {squares}, which "
+                f"started {allowed.get(key, 0)}"
             )
-        routes_seen[lowest] = square
 
 
 def the_points_are_the_bounties_of_the_npcs_that_are_gone(engine: Engine, state: Any) -> None:
-    """The two tallies add up to the bounties of the routes with no wild piece on them.
+    """The two tallies add up to the bounties of the wild pieces no longer on the board.
 
     A wild piece leaves the board by being taken and by nothing else -- not by a blast
     (refused beside `npcs`), not by a strike (refused), never by another wild piece -- and
     every taking pays exactly its route's bounty to somebody. So the sum of the tallies is
-    the sum of the bounties of the empty routes, whoever collected them. Which player
-    collected which is not recoverable from the board, and that is why the tally is state.
+    what the missing wild pieces were worth, route by route (a route holds as many as
+    started on it, schema 23), whoever collected them. Which player collected which is not
+    recoverable from the board, and that is why the tally is state.
 
     **Fails loudly, not quietly, on a state with no tally.** Q9b lifts the core's refusal
     and lands `points` in the same change; a wild ruleset reaching this oracle on a state
@@ -432,23 +445,18 @@ def the_points_are_the_bounties_of_the_npcs_that_are_gone(engine: Engine, state:
     points = getattr(state, "points", None)
     if points is None:
         raise OracleFailure("a wild ruleset is being played on a state that carries no tally")
-    standing: set[int] = set()
+    missing: dict[int, int] = {}
+    for start, _ in npcs.starts:
+        key = _route_key(npcs, start)
+        missing[key] = missing.get(key, 0) + 1
     for square in range(spec.n_squares):
         value = state.board[square]
         if value and spec.owner_of(value) == WILD:
-            standing.add(square)
-    owed = 0.0
-    for start, _ in npcs.starts:
-        route = [start]
-        cursor = npcs.next[start]
-        while cursor != start:
-            route.append(cursor)
-            cursor = npcs.next[cursor]
-        if not any(square in standing for square in route):
-            owed += npcs.bounty[start]
+            missing[_route_key(npcs, square)] -= 1
+    owed = sum(npcs.bounty[key] * count for key, count in missing.items())
     if abs(sum(points) - owed) > 1e-9:
         raise OracleFailure(
-            f"the tallies sum to {sum(points):g} and the empty routes are worth {owed:g}"
+            f"the tallies sum to {sum(points):g} and the missing wild pieces are worth {owed:g}"
         )
 
 

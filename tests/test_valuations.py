@@ -310,17 +310,18 @@ def test_a_valuation_from_another_procedure_version_is_refused_rather_than_reuse
         Valuation.load(path)
 
 
-@pytest.mark.parametrize("accepted", [True, False])
-def test_a_weight_vector_from_another_vocabulary_is_refused_at_load(tmp_path, accepted):
+def test_a_weight_vector_from_another_vocabulary_is_refused_at_load(tmp_path):
     """Q430. Every store searched before `facing_alignment` carried fourteen weights, and
     the loader let them through: the procedure digest does not cover the vocabulary, so
     the file sat at the current path, and the core refused it on the first move of a
-    game against it. Refused here, accepted or not, as a fit store is."""
+    game against it. Refused here, accepted or not, as a fit store is. Run on an accepted
+    table only: `from_dict` measures the weights before it reads `accepted` at all, so the
+    `[False]` case ran the same lines (Q754)."""
     from chess_variant_sandbox.agents.features import VOCABULARY
     from chess_variant_sandbox.agents.valuations import load_all
 
     _spec, spec_c = compiled("gardner")
-    current = valuation_for(spec_c, identity_table(spec_c), accepted=accepted)
+    current = valuation_for(spec_c, identity_table(spec_c), accepted=True)
     assert len(current.weights) == len(VOCABULARY)
     stale = Valuation(**{**current.__dict__, "weights": current.weights[:-1]})
     path = stale.save(store_path(spec_c.hash, stale.procedure, tmp_path))
@@ -490,3 +491,101 @@ def test_no_committed_heuristic_set_prices_the_pieces():
             f"{path.name}:{h.name}" for h in stored.heuristics if h.values
         ]
     assert not offenders
+
+
+# ---------------------------------------------------------------- the search itself
+#
+# `tournament/valuing.py` and `chess-variant-sandbox values`, its one caller, had never run in
+# the suite (Q751, plan-tests F9). `SEARCH` plays thousands of games, so each test runs a
+# procedure small enough to finish in a fraction of a second: 200 nodes, two seed-pairs, one
+# coarse step. Gardner, because it has five priced pieces and a royal one.
+
+def _tiny(accept_sigma: float, max_comparisons: int) -> SearchProcedure:
+    return SearchProcedure(nodes=200, pairs=2, steps=(4.0,), sweeps=1,
+                           max_comparisons=max_comparisons, accept_sigma=accept_sigma,
+                           accept_nodes=200, accept_pairs=2)
+
+
+# Any candidate whose games differ from the incumbent's is kept: the bar is a billion
+# standard errors *below* a half. It makes a search that takes steps, which is the path
+# under test, without depending on whether a 200-node step happens to help.
+EAGER = _tiny(-1e9, 3)
+
+
+def test_the_command_searches_writes_the_verdict_and_then_reuses_it(
+    tmp_path, capsys, monkeypatch
+):
+    from chess_variant_sandbox import cli
+    from chess_variant_sandbox.agents import valuations
+    from chess_variant_sandbox.measurement import built_fingerprint
+    from chess_variant_sandbox.tournament import valuing
+
+    monkeypatch.setattr(valuations, "SEARCH", EAGER)
+    argv = ["values", str(RULESETS / "gardner.json"), "--store", str(tmp_path),
+            "--workers", "1", "--quiet"]
+    code = cli.main(argv)
+    printed = capsys.readouterr().out
+    spec = Engine(load_spec(RULESETS / "gardner.json")).spec
+    path = store_path(spec.hash, EAGER.digest, tmp_path)
+    found = Valuation.load(path)  # written whether accepted or refused
+    # The exit code is the verdict, and the verdict is strictly better or nothing.
+    assert code == (0 if found.accepted else 1)
+    assert found.accepted == (found.accept_score > 0.5)
+
+    derived = tuple(Evaluator.for_spec(spec).values)
+    assert found.derived == derived and found.piece_ids == spec.piece_ids
+    # Coordinate ascent: one piece at a time, by one step up or down, and a piece the
+    # search kept a step for is one accepted step. Five priced pieces take more than the
+    # three comparisons allowed, so the search runs out, and says so.
+    ratios = [v / d if d else None for v, d in zip(found.vector, derived, strict=True)]
+    assert all(r in (None, 1.0, 4.0, 0.25) for r in ratios), ratios
+    assert found.accepted_steps == sum(r not in (None, 1.0) for r in ratios)
+    assert (found.comparisons, found.exhausted) == (3, True)
+    assert "(ran out of comparisons)" in printed
+    # The royal piece is pinned at zero and never tried.
+    assert found.vector[spec.piece_ids.index("K")] == 0.0
+    # A pawn worth four pawns plays different games at 200 nodes, so a step is kept and
+    # the verdict is a held-out match that was played, with the ladder number beside it.
+    assert found.accepted_steps >= 1
+    assert found.accept_games == 2 * EAGER.accept_pairs
+    assert set(found.plies) == {str(b) for b in valuing.PROBE_BUDGETS}
+    assert found.build == built_fingerprint()
+    verdict = "accepted" if found.accepted else "REFUSED, falls back to the derived table"
+    assert f"over {found.accept_games} games -- {verdict}" in printed
+
+    # A stored verdict is read, not searched again.
+    def no_search(*_: object, **__: object) -> None:
+        raise AssertionError("searched again")
+
+    monkeypatch.setattr(valuing, "timed_search", no_search)
+    assert cli.main(argv) == code
+    assert f"reusing {path}" in capsys.readouterr().out
+
+
+def test_a_search_that_moves_nothing_is_refused_without_a_match():
+    """It *is* the derived table, so the match would report exactly 0.5 for a hundred
+    games, and a refusal that played would look like a search that tried and lost."""
+    from chess_variant_sandbox.agents.valuations import registered_valuations
+    from chess_variant_sandbox.tournament.valuing import search_valuation
+
+    # An infinite bar: no candidate clears it, not even one that won every game.
+    stubborn = _tiny(float("inf"), 2)
+    found = search_valuation(load_spec(RULESETS / "gardner.json"), stubborn, workers=1)
+    assert found.vector == found.derived
+    assert (found.comparisons, found.accepted_steps) == (2, 0)
+    assert not found.accepted
+    assert (found.accept_games, found.accept_score, found.ladder_score) == (0, 0.5, 0.5)
+    # Nothing was registered under the procedure, so nothing can play it.
+    assert (stubborn.digest, found.ruleset_hash) not in registered_valuations()
+
+
+def test_the_search_is_a_function_of_the_spec_and_the_procedure_alone():
+    """The same table at one worker or two: the schedule fixes every seed first."""
+    from chess_variant_sandbox.agents.valuations import registered_valuations
+    from chess_variant_sandbox.tournament.valuing import search_valuation
+
+    spec = load_spec(RULESETS / "gardner.json")
+    one = search_valuation(spec, EAGER, workers=1)
+    # A search that played its acceptance match registers its verdict by its real name.
+    assert registered_valuations()[(EAGER.digest, one.ruleset_hash)] == one
+    assert search_valuation(spec, EAGER, workers=2) == one

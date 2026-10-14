@@ -46,6 +46,8 @@ from chess_variant_sandbox.tournament.play import choose_move, eval_values
 from chess_variant_sandbox.viz.heading import directional_types
 from chess_variant_sandbox.viz.pieces import icons_for, side_names
 from chess_variant_sandbox.viz.wrapped import (
+    fold_payload,
+    fold_transit,
     goal_payload,
     portal_payload,
     portal_transit,
@@ -53,6 +55,7 @@ from chess_variant_sandbox.viz.wrapped import (
     wrap_payload,
     zone_payload,
 )
+from chess_variant_sandbox.web import draw_offer
 from chess_variant_sandbox.web.library import Game, engine_for
 
 HUMAN = "human"
@@ -135,6 +138,12 @@ def _reply(
     return move, depth
 
 
+def _portal_bar(state: GameState) -> dict[str, int] | None:
+    """Schema 20: the state's straight-back bar as `{standing, left}`, or ``None``."""
+    standing, left = state.portal_bar
+    return {"standing": standing, "left": left} if standing >= 0 and left >= 0 else None
+
+
 def _coming(engine: Any, state: GameState) -> dict[str, list[dict[str, Any]]]:
     """Where each wild piece steps next from ``state``, and after that, as the core plays it.
 
@@ -205,6 +214,12 @@ class Session:
     # no answer to it and this is not the page working one out -- it is the store saying
     # what happened, and it is used only where the engine reports no outcome of its own.
     verdict: dict[str, Any] | None = None
+
+    # Every draw offer made in this game, as the store logged it (Q790,
+    # `0035_draw_offers.sql`): `seat` and `ply`, and against the computer what the core
+    # said. Read for when the next offer may be made and what the last one was answered;
+    # empty in the local application, which keeps no result and offers no draw.
+    draw_offers: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def engine(self) -> Any:
@@ -337,6 +352,15 @@ class Session:
             # the side flips on every move; a player owed a second move needs telling.
             "remaining": self.state.remaining,
             "sideToMove": mover,
+            # Schema 20 (`no_straight_back`): the end the last move carried, standing on
+            # `standing`, may not go straight back to `left` this move; `None` where nothing
+            # is barred. The state's own bar (`GameState.portal_bar`), read and never worked
+            # out: the engine already leaves the move out, and the page only says so (Q838c).
+            "portalBar": _portal_bar(self.state),
+            # Schema 22: where each fold stands (`viz.wrapped.fold_payload`), `[]` without
+            # folds. A fold is not on the board byte, so the page reads it here, and draws
+            # it under the pieces.
+            "folds": fold_payload(engine, self.state),
             "ply": self.state.ply,
             "inCheck": engine.in_check(self.state, mover) if outcome is None else False,
             "moves": [] if ended else self._offer(engine, legal),
@@ -349,11 +373,38 @@ class Session:
             # move, so nothing is coming.
             **({"coming": [], "comingThen": []} if ended else _coming(engine, self.state)),
             "outcome": ended,
+            # Whether the person may offer the computer a draw now, why not, and the
+            # computer's answer to an offer made in this position (Q790); `None` where no
+            # such offer is made: the local application, a watch, a game between two
+            # people (whose own block says it) and a finished game.
+            "drawOffer": self._draw_offer(ended),
             # The page uses this to decide whether to ask for the opponent's reply. It
             # is deliberately not the same call: a human move should land on the board
             # before an agent starts searching, or the interface freezes for the length
             # of the search.
             "awaitingAgent": ended is None and self.seats[mover] != HUMAN,
+        }
+
+    def _draw_offer(self, ended: dict[str, Any] | None) -> dict[str, Any] | None:
+        """A draw offer to the computer as the page offers it (Q790), or None.
+
+        `may` and `why` are `draw_offer`'s rule (own turn, from ply 40, one in ten plies),
+        `said` the sentence for the core's answer to an offer made at this very ply -- a
+        decline, since an accepted offer ends the game and the banner says so.
+        """
+        if not self.mode or ended is not None or list(self.seats).count(HUMAN) != 1:
+            return None
+        seat = list(self.seats).index(HUMAN)
+        ply = self.state.ply
+        refusal = draw_offer.against_computer_refusal(
+            self.draw_offers, seat, ply, self.state.side_to_move
+        )
+        last = draw_offer.last_offer(self.draw_offers, seat)
+        answered = last if last is not None and int(last.get("ply", -1)) == ply else None
+        return {
+            "may": refusal is None,
+            "why": refusal,
+            "said": draw_offer.answer_said(answered),
         }
 
     @staticmethod
@@ -421,6 +472,9 @@ class Session:
                 entry.update(portal_transit(engine, self.state, move) or {})
                 if move_promotion(move):
                     entry["promotion"] = move_promotion(move) - 1
+            # Schema 22: a move through a fold, its way in and out and the group's colour
+            # (`viz.wrapped.fold_transit`), for the dot where only a fold reaches (Q843d).
+            entry.update(fold_transit(engine, self.state, move) or {})
             # Schema 12: a strike under `choose` is one move per landing square, so the
             # page offers the square, named here rather than worked out there.
             landing = engine.landing_square(self.state, move)
@@ -534,6 +588,12 @@ class Session:
                 # drawn in two legs and the move animated in two beats, on a position
                 # stepped back to as on the live one. Absent for every other move.
                 **(portal_transit(engine, self.state, move) or {}),
+                # Schema 22 (Q843d): a move through a fold, its way in and out
+                # (`viz.wrapped.fold_transit`), for the ripple and the trail; and where the
+                # folds stand once it is made (`fold_payload`), so a position stepped back to
+                # draws them where they were then. Absent and empty without folds.
+                **(fold_transit(engine, self.state, move) or {}),
+                **({"folds": folds} if (folds := fold_payload(engine, state)) else {}),
                 # How many moves ahead the machine's search got before it chose this
                 # one, counting both sides', from the core. `None` for a person's move
                 # and wherever `_reply` has nothing to report. A game rebuilt from its

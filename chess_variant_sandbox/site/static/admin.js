@@ -653,11 +653,36 @@ document.getElementById('pair-form').addEventListener('submit', (event) => {
   }, 'between-note');
 });
 
+// Q813. The disk and every queue, as `site/depths.sql` judged them; a row past its limit
+// is marked, and nothing here decides what a problem is.
+function status(reading) {
+  if (!reading) return;
+  document.getElementById('status-said').textContent = reading.said;
+  const disk = reading.disk;
+  document.getElementById('status-disk').textContent = disk
+    ? 'Disk: ' + disk.said + (disk.problem ? ' \u2014 a problem, ' : ' (a problem at ')
+      + disk.limit + '% used' + (disk.problem ? '.' : ').')
+    : 'Disk: could not be read.';
+  const body = document.getElementById('status-queues');
+  body.replaceChildren();
+  for (const queue of reading.queues) {
+    const row = document.createElement('tr');
+    cell(row, queue.label);
+    cell(row, queue.depth, 'num');
+    cell(row, queue.oldest || '\u2014', 'num');
+    cell(row, queue.problem ? queue.limit + ' \u2014 a problem now' : queue.limit);
+    cell(row, queue.why);
+    labelled(row, ['', 'waiting', 'oldest', 'a problem past', 'why that limit']);
+    body.appendChild(row);
+  }
+}
+
 async function draw() {
   let answer;
   try { answer = await read('/api/admin'); } catch (error) { say(error.message); return; }
   if (!answer.ok) { say('This page is the maintainer\'s.'); return; }
   const payload = answer.data;
+  status(payload.status);
   people(payload.users);
   invites(payload.invites);
   asks(payload.asks || [], payload.asksAnswered);

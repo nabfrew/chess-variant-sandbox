@@ -661,12 +661,12 @@ LEAVE = {"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "mo
 # Schema 19: the shape of a pair, and what a portal type may not be.
 PORTAL = [
     pytest.param(
-        {"rules.portals": []}, "rules.portals must be a non-empty array of portal pairs",
+        {"rules.portals": []}, "rules.portals must be a non-empty array of portal groups",
         id="portals-empty",
     ),
     pytest.param(
         {"rules.portals.1": "b4"},
-        "rules.portals[1] must be an object with 'piece', 'orange' and 'blue'",
+        "rules.portals[1] must be an object with 'piece' and either 'orange' and 'blue' or 'ends'",
         id="pair-type",
     ),
     pytest.param(
@@ -860,7 +860,7 @@ def test_portal_ends_count_against_the_piece_type_limit() -> None:
     extra = [{"id": f"X{i}", "moves": [STEP]} for i in range(declared - len(PORTALS["pieces"]))]
     spec = _patched(PORTALS, {"pieces": PORTALS["pieces"] + extra})
     assert (
-        f"at most {MAX_PIECE_TYPES} piece types, and rules.portals adds two per pair: "
+        f"at most {MAX_PIECE_TYPES} piece types, and rules.portals adds one per end: "
         f"{declared} declared and 2 portal ends"
     ) in validate_spec(spec)
 

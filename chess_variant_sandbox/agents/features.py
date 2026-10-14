@@ -199,9 +199,10 @@ class FeatureContext:
     # before schema 8 and `has_facing` is false.
     n_facings: int
     has_facing: bool
-    # How many orientations each *type* has, which is 1 for a type that cannot turn even
-    # in a spec where something else can. A piece with one orientation has no facing to
-    # read, so it is in neither half of `facing_alignment`.
+    # How many orientations each *type* can turn through, which is 1 for a type that cannot
+    # turn even in a spec where something else can -- one with no facing, or (schema 25) a
+    # facing no move turns. Such a piece has no facing to choose, so it is in neither half
+    # of `facing_alignment`; `features.rs` asks `Tables::turns_of` the same question.
     facing_axes: tuple[int, ...]
     n_squares: int
     width: int
@@ -294,7 +295,10 @@ def feature_context(spec: CompiledSpec) -> FeatureContext:
         side_stride=spec.n_facings * spec.n_types,
         n_facings=spec.n_facings,
         has_facing=spec.has_facing,
-        facing_axes=tuple(spec.facing_axes),
+        facing_axes=tuple(
+            spec.facing_axes[piece_type] if spec.turns(piece_type) else 1
+            for piece_type in range(spec.n_types)
+        ),
         n_squares=spec.n_squares,
         width=spec.width,
         height=spec.height,
@@ -829,7 +833,9 @@ class FeatureEvaluator:
         A ruleset where nothing turns returns `0.0` before any arithmetic -- the term is
         then constant, and a constant is not a feature. A *type* with one orientation is
         in neither the sum nor the count, for the same reason: it has no frame to read,
-        and counting it would add a fixed `+1` per piece that varies with nothing. And a
+        and counting it would add a fixed `+1` per piece that varies with nothing. A
+        facing no move turns (schema 25) is out on the same argument: its frame is the
+        setup's, so it prices where a piece was placed rather than a choice anyone makes. And a
         wild piece is in neither, on `advance`'s argument -- it walks a fixed route, so
         it is turned towards nobody's far side, and `owner == player` is false for it
         whoever asks, which would cost both players the same piece and break antisymmetry.

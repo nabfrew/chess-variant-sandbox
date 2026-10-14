@@ -23,6 +23,8 @@ DATA.moves.forEach((move, index) => {
   }
 });
 let at = 0, timer = null;
+// Schema 22: where the folds lie in the position on screen (`DATA.folds`, one list a ply).
+let FOLDS_SHOWN = [];
 // Which repeat of a wrapping board is on screen. Zero is the frame the squares are
 // named in, and nothing else -- see the shared module above.
 let SHIFT = { files: 0, ranks: 0 };
@@ -62,23 +64,20 @@ function tintFor(player) {
        : ['var(--p2)', 'var(--p2-ink)'];
 }
 
-// Whose passage a portal end shows on a beat: the side to move from that position, the
-// one that made the next move, or after the last move the other side (§4).
-function viewerAt(beat) {
-  const next = DATA.moves[beat.ply];
-  if (next && next.player !== undefined) return next.player;
-  const last = DATA.moves[DATA.moves.length - 1];
-  return last && last.player !== undefined ? 1 - last.player : 0;
-}
-
-function drawPiece(piece, x, y, viewer) {
+function drawPiece(piece, x, y, idle) {
   const cx = x + CELL / 2, cy = y + CELL / 2;
-  // Schema 19: a portal end, drawn as the play board draws it.
+  // Schema 19: a portal end, drawn as the play board draws it (Q838b's vortex), its arms
+  // turning idly on its own square and still on a ghost copy or a piece being moved.
+  // Its beak (schema 21) points at the end it leads to on the board on screen, the nearest
+  // copy round a wrapping board.
   const end = DATA.portals ? DATA.portals.ends.find(one => one.type === piece.type) : null;
   if (end) {
-    return portalGlyph(end, portalPartner(DATA.portals, end),
-                       viewer === undefined ? null : viewer, x, y, CELL,
-                       { numbered: portalPairs(DATA.portals) > 1 });
+    const to = portalPartner(DATA.portals, end);
+    const shown = BEATS && BEATS[at] ? BEATS[at].board : null;
+    const there = to && shown ? portalSquareIn(shown, DATA.nTypes, to.type) : -1;
+    return portalGlyph(end, x, y, CELL, { numbered: portalPairs(DATA.portals) > 1,
+                                          idle: !!idle, flipped: FRAME.flipped,
+                                          aim: portalAimFor(end, there, x, y, CELL, FRAME) });
   }
   const icon = iconFor(piece);
   if (icon) {
@@ -127,12 +126,21 @@ function cellHtml(board, marked, square, u, v, depth) {
   }
   // Under the piece, because a square that ends the game is a square pieces arrive on.
   if (SQUARE_MARKS[square]) out += squareBadge(x, y, CELL, SQUARE_MARKS[square], FRAME, 'replay');
+  // Schema 22 (Q843d): a fold, under any piece standing in it, as the play board draws it.
+  const fold = (FOLDS_SHOWN || []).find(one => one.square === square);
+  const foldEnd = fold && DATA.portals ? DATA.portals.ends.find(one => one.type === fold.type) : null;
+  if (foldEnd) {
+    const to = portalPartner(DATA.portals, foldEnd);
+    const there = to ? ((FOLDS_SHOWN || []).find(one => one.type === to.type) || { square: -1 }).square : -1;
+    out += foldGlyph(foldEnd, x, y, CELL, { numbered: portalPairs(DATA.portals) > 1,
+      occupied: !!pieceAt(board, square), idle: depth === 0, plain: depth !== 0,
+      flipped: FRAME.flipped, aim: portalAimFor(foldEnd, there, x, y, CELL, FRAME) });
+  }
   const piece = pieceAt(board, square);
   if (piece) {
-    const viewer = viewerAt(BEATS[at]);
     out += depth === 0
-      ? `<g data-piece="${square}">${drawPiece(piece, x, y, viewer)}</g>`
-      : drawPiece(piece, x, y, viewer);
+      ? `<g data-piece="${square}">${drawPiece(piece, x, y, true)}</g>`
+      : drawPiece(piece, x, y);
   }
   if (depth === 0) return out + coordsHtml(square, x, y, CELL, FRAME);
   return `<g opacity="${ghostFade(depth).toFixed(3)}">${out}</g>`;
@@ -144,11 +152,17 @@ function draw() {
   const move = beat.ply > 0 ? DATA.moves[beat.ply - 1] : null;
   const marked = new Set(beat.kind === 'phase' ? beat.steps.flatMap(s => [s.from, s.to])
                          : move ? [move.from, move.to] : []);
-  // A move through a portal marks the two ends it passed too (schema 19).
+  // A move through a portal marks the two ends it passed too (schema 19), and a move
+  // through a fold the fold and the end it leads to (schema 22).
   if (beat.kind !== 'phase' && move && move.portal !== undefined) {
     marked.add(move.portal);
     marked.add(move.portalOut);
   }
+  if (beat.kind !== 'phase' && move && move.foldIn !== undefined) {
+    marked.add(move.foldIn);
+    marked.add(move.foldOut);
+  }
+  FOLDS_SHOWN = DATA.folds ? DATA.folds[beat.ply] || [] : [];
   FRAME = boardView(W, H, AXES, SHIFT, false, DATA.lattice, CUT);
   svg.setAttribute('viewBox', viewBox(FRAME, CELL));
 

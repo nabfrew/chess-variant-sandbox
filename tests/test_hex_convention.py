@@ -16,18 +16,17 @@ Axial coordinates: file ``q``, rank ``r``. The six neighbours are ``(+-1, 0)``,
 from __future__ import annotations
 
 import collections
-import json
 from pathlib import Path
 from typing import Any
 
 import pytest
+from retired_specs import hex_glinski_promoting
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.moves import move_from
 from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, obstacle_squares, validate_spec
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC_PATH = ROOT / "archive" / "hex-glinski-promoting.json"
 SIZE = 11
 
 NEIGHBOURS = {(1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)}
@@ -36,7 +35,7 @@ DIAGONALS = {(1, 1), (-1, -1), (2, -1), (-2, 1), (1, -2), (-1, 2)}
 
 @pytest.fixture(scope="module")
 def spec() -> dict[str, Any]:
-    return json.loads(SPEC_PATH.read_text(encoding="utf-8"))
+    return hex_glinski_promoting()
 
 
 @pytest.fixture(scope="module")

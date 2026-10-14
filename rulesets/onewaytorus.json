@@ -1,7 +1,7 @@
 {
   "schema_version": 5,
   "name": "one-way torus chess",
-  "description": "The same torus, but each side may cross the join in only one direction: White leaves by the a-file and returns on the h-file, Black leaves by the h-file and returns on the a-file. The two armies therefore move under different geometry while the game stays exactly fair, because reflecting the board turns one player's rule into the other's.",
+  "description": "Torus chess on chess's own board, made playable by one-way joins. Both pairs of edges are joined, and each player may cross each join in one direction only: White leaves by the a-file and returns on the h-file, and leaves by the top edge and returns at the bottom; Black does the reverse of both. With two-way joins an eight by eight torus puts the kings next to each other through the seam before a move is made (torus chess needs buffer ranks for that reason); here no piece can use the rank join until it has fought its way past the enemy's back rank. The game stays exactly fair, because reflecting the board turns one player's rules into the other's.",
   "board": {
     "width": 8,
     "height": 8

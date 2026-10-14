@@ -413,6 +413,9 @@ class TestTheKey:
         assert git(root, "status", "--porcelain") == before == "?? new.py"
 
 
+# Slow (Q749): each run starts real xdist workers, 3.5-3.8 s a test on one core and 4-6 s
+# in the gate; the gate itself stamps through the same controller every run.
+@pytest.mark.slow
 class TestUnderXdist:
     """How the fast suite runs since Q377c: `-n`, with only the controller stamping.
 

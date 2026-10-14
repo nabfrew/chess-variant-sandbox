@@ -88,8 +88,8 @@ class TestTheRouteChooser:
         hidden, text, picks = _run("open();", "[BOX.hidden, said(), BOX.picks.length]")
         assert hidden is False and picks == 2
         assert text.startswith("Choose how your knight gets there")
-        assert "through portal 1, the orange one on b3" in text
-        assert "through portal 1, the blue one on d3" in text
+        assert "through the portal on b3" in text
+        assert "through the portal on d3" in text
 
     def test_a_pick_is_the_move(self) -> None:
         sent = _run("open(); BOX.picks[1].click();", "CALLS.map(c => c[1].move)")
@@ -111,8 +111,8 @@ class TestTheRouteChooser:
         assert html.count('<svg class="promo-piece"') == 2 and "promo-sq" not in html
         for button in html.split('class="promo-pick promo-route"')[1:]:
             tile = button[button.index("<svg"):button.index("</svg>")]
-            assert "through portal" not in tile
-            assert '<span class="promo-way">through portal 1, the ' in button
+            assert "through the portal" not in tile
+            assert '<span class="promo-way">through the portal on ' in button
         from chess_variant_sandbox.web.page import style
         rule = style.RULES[style.RULES.index(".promo-route .promo-way {"):]
         rule = rule[:rule.index("}")]
@@ -120,3 +120,53 @@ class TestTheRouteChooser:
         route = style.RULES[style.RULES.index(".promo-pieces .promo-pick.promo-route {"):]
         route = route[:route.index("}")]
         assert "overflow-wrap: break-word" in route and "width: 156px" in route
+
+
+# ------------------------------------------------------------------ the misplay (Q867c)
+#
+# The user (2026-10-12, `docs/plan-portals-2.md` §5.3R): a piece picked to see its moves,
+# then a tap on a portal meant to pick the portal, played the piece in by it. Every movable
+# portal, momentum ends too: the Wormhole's pair, either side moving it, and the knight on
+# c1, which goes in by b3 and comes out on c4.
+
+def _movable_session() -> Session:
+    from test_schema_nineteen import STEP, _with_portals
+
+    spec = _with_portals("gardner", [{"piece": "O", "orange": "b3", "blue": "d3",
+                                      "moved_by": {"orange": [0, 1], "blue": [0, 1]}}], [STEP])
+    engine = engine_for(spec)
+    state = engine.make_state({
+        "b3": ("1o", WILD), "d3": ("1b", WILD), "e1": ("K", 0), "a5": ("K", 1),
+        "c1": ("N", 0),
+    })
+    game = Game(hash=spec_hash(spec), name=str(spec["name"]), description="",
+                path=None, source="scratch", spec=spec)  # type: ignore[arg-type]
+    return Session(id="g3", game=game, seats=("human", "medium"), seed=0, state=state)
+
+
+def _misplay(steps: str, expression: str) -> Any:
+    setup = (f"SESSION = {json.dumps(_movable_session().snapshot())};\n" + _HARNESS
+             + "clickSquare(2); clickSquare(11);\n")
+    return _in_page(setup + steps, expression)
+
+
+class TestTheMisplayThroughAMomentumEnd:
+    def test_the_tap_asks_and_plays_nothing(self) -> None:
+        hidden, sent, ways, text = _misplay(
+            "", "[BOX.hidden, CALLS.length, BOX.picks.map(b => b.dataset.which), said()]")
+        assert hidden is False and sent == 0 and ways == ["piece", "portal"]
+        assert text.startswith("Move the piece or the portal?")
+        assert "Your knight can go in by b3, and you may move the portal there." in text
+
+    def test_move_the_portal_picks_it(self) -> None:
+        assert _misplay("BOX.picks[1].click();", "[SELECTED, CALLS.length]") == [11, 0]
+
+    def test_move_the_piece_goes_in(self) -> None:
+        sent = _misplay("BOX.picks[0].click();", "CALLS.map(c => textOf(c[1].move))")
+        assert sent == ["Nc1-b3>c4"]
+
+    def test_a_fixed_portal_is_still_one_tap(self) -> None:
+        setup = f"SESSION = {json.dumps(_SNAPSHOT)};\n" + _HARNESS
+        sent = _in_page(setup + "clickSquare(2); clickSquare(11);",
+                        "[BOX.hidden, CALLS.map(c => textOf(c[1].move))]")
+        assert sent == [True, ["Nc1-b3>c4"]]

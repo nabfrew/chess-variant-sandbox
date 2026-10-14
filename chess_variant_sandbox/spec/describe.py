@@ -36,6 +36,7 @@ from chess_variant_sandbox.spec.schema import (
     SpecError,
     absent_squares,
     obstacle_squares,
+    portal_groups,
     wrap_stated,
 )
 
@@ -468,11 +469,20 @@ def _describe_piece(
             else "forward or backward"
         )
         initial = facing.get("initial", "forward")
-        where = "" if initial == "forward" else f", and starts facing {initial}"
-        notes.append(
-            f"points {turns}, and forward above means whichever way it points; instead "
-            f"of moving it may spend a whole move turning to face another way{where}"
-        )
+        if facing.get("turns", True) is False:
+            # Schema 25 (Q869): the facing is the setup's, and the sentence says where a
+            # piece that was never placed points, since that is the only other way in.
+            notes.append(
+                f"points {turns}, and forward above means whichever way it points; no "
+                "move turns it, so each one points the way it was placed for the whole "
+                f"game, and one that enters play later points {initial}"
+            )
+        else:
+            where = "" if initial == "forward" else f", and starts facing {initial}"
+            notes.append(
+                f"points {turns}, and forward above means whichever way it points; instead "
+                f"of moving it may spend a whole move turning to face another way{where}"
+            )
     moves = piece.get("moves") or []
     if not moves:
         # Schema 10 (Q51). Without this the piece renders as a name and nothing else,
@@ -875,6 +885,15 @@ def _hex_family(directions: frozenset[tuple[int, int]]) -> _Aim | None:
         return _Aim("in all twelve directions")
     if directions == _HEX_OFF_LINE:
         return _Aim("to the twelve cells three steps out that lie along no line", False)
+    if len(directions) == 6 and directions <= _HEX_OFF_LINE and directions == expand_symmetry(
+        min(directions), "rotate6"
+    ):
+        # One hand of the twelve (Q870's `pinwheel`): only `rotate6` writes it in one vector.
+        return _Aim(
+            "to every other one of the twelve cells three steps out that lie along no line,"
+            " the six that all turn the same way round",
+            False,
+        )
     if directions <= _HEX_SIDES and len(directions) <= 3:
         return _Aim(" or ".join(_HEX_STEP_NAMES[step] for step in sorted(directions)))
     return None
@@ -1073,8 +1092,9 @@ RULE_WORDS: dict[str, tuple[str, str]] = {
     "npcs": (
         "wild pieces",
         "Wild pieces belong to neither player. After every move each one steps to the "
-        "next square of its route and eats whatever stands there, and taking one is "
-        "worth its bounty.",
+        "next square of its route and eats whatever stands there that its piece may "
+        "take, or waits if it may not. A royal piece where one steps next is in check "
+        "from it, and taking one is worth its bounty.",
     ),
     "portals": (
         "portals",
@@ -1648,8 +1668,23 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
             if isinstance(bounty, (int, float)) and not isinstance(bounty, bool) and bounty
             else "Taking it is worth nothing."
         )
+        # Schema 23: more wild pieces of this kind on the same route, in step.
+        also = [name for name in npc.get("also_at") or [] if isinstance(name, str)]
+        more = ""
+        if also:
+            count = "Another" if len(also) == 1 else f"{_count(len(also)).capitalize()} more"
+            more = (
+                f" {count} {'starts' if len(also) == 1 else 'start'} on {_squares(also)} and "
+                f"{'walks' if len(also) == 1 else 'walk'} the same route the same way, in "
+                "step; a wild piece that finds another in its way waits behind it, and "
+                "follows it when it moves on."
+            )
         mirrored = (
-            " A second one walks the mirror image of that route." if npc.get("mirror") else ""
+            " A second one walks the mirror image of that route."
+            if npc.get("mirror") and not also
+            else " The same again walks the mirror image of that route."
+            if npc.get("mirror")
+            else ""
         )
         # Schema 10. The fifth thing a player has to be told about a wild piece, and the
         # one that decides how the whole board plays around it: which of their pieces can
@@ -1665,32 +1700,46 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
                 else " Nothing may take it."
             )
         lines.append(
-            f"A wild {name} belongs to neither player. It {walk}. {eats}.{taken} "
+            f"A wild {name} belongs to neither player. It {walk}.{more} {eats}.{taken} "
             f"{worth}{mirrored}"
         )
     return lines
 
 
-_PASSAGE_WORDS = {
-    "both_ways": "may go in by either end",
-    "orange_to_blue": "may go in only by the orange end",
-    "blue_to_orange": "may go in only by the blue end",
-    "closed": "may not go in at all: to them both ends are solid blocks",
-}
+def _passage_words(way: Any, first: Any, second: Any) -> str:
+    """One player's way through a pair, naming its ends by the squares they start on.
+
+    The file's keys call the two ends ``orange`` and ``blue``; a reader is never told that
+    (Q838c, `docs/plan-portal-look.md` §5): both ends are drawn in the pair's one colour,
+    and the square says which end is meant.
+    """
+    if way == "orange_to_blue":
+        return f"may go in only at {first}"
+    if way == "blue_to_orange":
+        return f"may go in only at {second}"
+    if way == "closed":
+        return "may not go in at all: to them both ends are solid blocks"
+    return "may go in at either end"
 
 
 def _describe_portals(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
-    """Schema 19: pairs of portals, said the way a player has to be told them.
+    """Schemas 19 and 21: groups of portals, said the way a player has to be told them.
 
-    One sentence for what a portal does, then one per pair: where its two ends start, who
-    may move them, and whose pieces may go in by which end. "First player" and "second
-    player" because the sides' own names are the page's; `plain` and the board say White
-    and Black where the ruleset does.
+    One sentence for what a portal does, then one per group: where its ends start, where
+    each leads, who may move them, and whose pieces (and which pieces) may go in by which
+    end. Read through `portal_groups`, the one reader of the spelling; a pair keeps the
+    sentence it has had since schema 19, so a pair's prose reads as it always has. "First
+    player" and "second player" because the sides' own names are the page's; `plain` and
+    the board say White and Black where the ruleset does.
     """
-    portals = rules.get("portals")
-    if not isinstance(portals, list) or not portals:
+    groups = portal_groups(rules)
+    if not groups:
         return []
-    lines = [
+    # Schema 22 (Q843c), revised at schema 24 (Q867b): a fold is the second rule set, said
+    # in its own sentence; the momentum sentence is said only where a momentum group is.
+    momentum = [group for group in groups if group["kind"] != "fold"]
+    paired = all(group["spelling"] == "pair" for group in momentum)
+    lines = [] if not momentum else [
         "A piece whose move ends on a portal does not stop there: it comes out of the other "
         "portal of the same pair, one step beyond it in the direction it was travelling "
         "(a move up and to the right by any amounts comes out diagonally up and to the "
@@ -1699,39 +1748,98 @@ def _describe_portals(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         "another portal or the square it started from, the move cannot be made. Where it "
         "could arrive from two directions, the player chooses. A portal is never captured, "
         "and moving one is a move onto an empty square."
+        if paired else
+        "A piece whose move ends on a portal that lets it in does not stop there: it comes "
+        "out of the portal that one leads to, one step beyond it in the direction it was "
+        "travelling (a move up and to the right by any amounts comes out diagonally up and "
+        "to the right), and its move ends there, capturing, promoting or winning as on any "
+        "square. If that square is off the board, a wall, its own piece, a piece it may not "
+        "take, another portal or the square it started from, the move cannot be made. "
+        "Where it could arrive from two directions, the player chooses. A portal that does "
+        "not let a piece in is a solid block to it. A portal is never captured, and moving "
+        "one is a move onto an empty square."
     ]
+    if len(momentum) < len(groups):
+        lines.append(
+        "A fold is a portal of another kind: it is not a piece, so a piece of either side "
+        "may stand in it, and is captured there as anywhere. A move that ends on an empty "
+        "fold that lets the piece in -- a leap, a slide or a hop -- may stay "
+        "there, or go through and end instead on the fold that one leads to, as a move "
+        "landing there: onto an empty square if the step could end on an empty square, onto "
+        "an enemy piece it may take, which is captured, if the step could capture, never "
+        "onto its own piece or back onto the square it started from, and promoting by the "
+        "square it ends on. A move goes through one fold at most. A move that passes over "
+        "a fold, or ends on one a piece stands in, is not changed by it, and a fold that "
+        "does not let a piece in, or leads nowhere, is plain floor to it. A fold a player "
+        "moves may land on a piece of either side, which then stands in it, but never on "
+        "another portal; moving a fold never moves the piece in it. Castling, a drop and an "
+        "en passant capture never go through a fold, and a move that went through one "
+        "opens no en passant."
+        )
     players = ("the first player", "the second player")
-    for number, pair in enumerate(portals, start=1):
-        if not isinstance(pair, dict):
-            continue
-        moved_by: dict[str, Any] = (
-            pair["moved_by"] if isinstance(pair.get("moved_by"), dict) else {}
-        )
+    for group in groups:
+        ends = group["ends"]
         movers = []
-        for end in ("orange", "blue"):
-            who = [players[p] for p in moved_by.get(end) or [] if p in (0, 1)]
+        for end in ends:
+            who = [players[p] for p in sorted(end["moved_by"])]
             if who:
-                movers.append(f"the {end} end may be moved by {' or '.join(who)}")
-        moved = "; ".join(movers) if movers else "nobody moves either end"
-        passage: dict[str, Any] = (
-            pair["passage"] if isinstance(pair.get("passage"), dict) else {}
-        )
-        ways = [
-            f"{players[p]}'s pieces {_PASSAGE_WORDS.get(passage.get(str(p), 'both_ways'), '')}"
-            for p in (0, 1)
-        ]
+                movers.append(f"the end on {end['at']} may be moved by {' or '.join(who)}")
         # Schema 20 (Q807): the bar on going straight back.
         barred = (
-            " A portal of this pair that has just been moved may not be moved straight back "
-            "onto the square it came from on the very next move, by either player."
-            if pair.get("no_straight_back") is True
+            f" A portal of this {'pair' if group['spelling'] == 'pair' else 'group'} that "
+            "has just been moved may not be moved straight back onto the square it came "
+            "from on the very next move, by either player."
+            if group["no_straight_back"]
             else ""
         )
+        filters = "".join(
+            f" Only {_listed_ids(end['carries'])} may go in at {end['at']}."
+            for end in ends if end["carries"] is not None and end["enter"]
+        )
+        if group["spelling"] == "pair":
+            # The ends by the squares they start on; `orange` and `blue` are only the
+            # file's keys.
+            first, second = ends[0]["at"], ends[1]["at"]
+            moved = "; ".join(movers) if movers else "nobody moves either end"
+            ways = [
+                f"{players[p]}'s pieces "
+                f"{_passage_words(group['passage'][p], first, second)}"
+                for p in (0, 1)
+            ]
+            lines.append(
+                f"{_group_word(group, 'pair')} {group['number']} joins {first} and {second}: "
+                f"{moved}; {ways[0]}, and {ways[1]}.{barred}{filters}"
+            )
+            continue
+        leads = []
+        for end in ends:
+            if end["to"] is None:
+                leads.append(f"the end on {end['at']} is only a way out")
+                continue
+            whose = (
+                "" if end["enter"] == {0, 1}
+                else f" ({players[min(end['enter'])]}'s pieces only)"
+            )
+            leads.append(f"the end on {end['at']} leads to {ends[end['to']]['at']}{whose}")
+        moved = "; ".join(movers) if movers else "nobody moves any end"
+        squares = [end["at"] for end in ends]
         lines.append(
-            f"Portal pair {number} has its orange end on {pair.get('orange')} and its blue "
-            f"end on {pair.get('blue')}: {moved}; {ways[0]}, and {ways[1]}.{barred}"
+            f"{_group_word(group, 'group')} {group['number']} has ends on "
+            f"{', '.join(squares[:-1])} and {squares[-1]}: {'; '.join(leads)}; "
+            f"{moved}.{barred}{filters}"
         )
     return lines
+
+
+def _group_word(group: dict[str, Any], shape: str) -> str:
+    """*Portal pair*, *Portal group*, or for a fold (schema 22) *Fold pair*, *Fold group*."""
+    return f"{'Fold' if group['kind'] == 'fold' else 'Portal'} {shape}"
+
+
+def _listed_ids(ids: Any) -> str:
+    """Piece ids as a list in a sentence: *N*, *N and B*, *N, B and R*."""
+    named = sorted(str(pid) for pid in ids)
+    return named[0] if len(named) == 1 else f"{', '.join(named[:-1])} and {named[-1]}"
 
 
 def _describe_wrap(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:

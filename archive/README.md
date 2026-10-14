@@ -78,7 +78,10 @@ were added after the first pair measured and before anything was concluded from 
 because a pair that differs in two things at once cannot attribute either result -- and
 the finding they produced, that the position rule is as large a lever as the chain's
 direction, was reachable no other way. What they all measured is written up in
-`docs/reference/schema-6.md`.
+`docs/reference/schema-6.md`. **`hierarchy-fall-swap` was retired on 2026-10-12** by the
+library audit (Q868, `docs/plan-library-audit.md`): under `v12` it plays and scores as
+`hierarchy-fall` does, and the position rule's lever is shown by the three `rise` games.
+The table above is the `v9` record and stays as it was measured.
 
 `hierarchy-extended.json` -- `hierarchy-rise` with the chain continued three rungs past
 the queen, `Q->A->D->Z` (queen plus knight, then leaping diagonals, then leaping
@@ -107,7 +110,9 @@ seeds 20261254 and 20262067 of a campaign pre-registered in
 construction now rather than by a test noticing afterwards, which is what
 `tests/test_schema_eight.py::TestTheShowcase` reads off the specs. `weathervane-torus`
 replaced `weathervane-chaos-torus.json` (`a6ebba755d77`, 0.8557), and `runs/a6ebba755d77-0`
-stays as that game's measurement.
+stays as that game's measurement. **`weathervane-torus` was retired on 2026-10-12** (Q868)
+with the family's other wrap cell, `rulesets/sardines-torus`: wrapping a full board changed
+nothing a player could see, so the family is now `sardines` and `weathervane`.
 
 | index `v10`, canonical seed | sardines `9f538ab85a77` | weathervane `1442513d38d7` | weathervane torus `9777cd6c9ed1` |
 |---|---|---|---|
@@ -196,7 +201,10 @@ is the first-player advantage, which fell instead of rising. The account is
 `docs/reference/wild-piece-that-matters.md`
 §*Q76*.
 
-## `wolves-rotated.json` — the same wolves, one step later
+## `wolves-rotated.json` — the same wolves, one step later (retired)
+
+**Retired on 2026-10-12** with its three siblings by the library audit (Q868): an experiment's
+arms that found no effect. The specs are in git history at `1ebf1313`; the record below stands.
 
 `213f7b6604e4`, Q77, 2026-09-14. `wolves` with both routes rotated by one square, so every
 wolf starts one step further along its patrol. Nothing else changes. It asks whether
@@ -215,7 +223,7 @@ account is
 `docs/reference/wild-piece-that-matters.md`
 §*Q77*.
 
-## `wolves-rotated-2.json`, `-3.json`, `-4.json` — the other three phases
+## `wolves-rotated-2.json`, `-3.json`, `-4.json` — the other three phases (retired)
 
 Q222, 2026-09-14. `wolves` with both routes rotated by two, three and four squares. Both
 routes have five squares, so with `wolves` and `wolves-rotated` these five specs are every
@@ -235,7 +243,12 @@ edge was a draw at the edge of its interval. The account is
 `docs/reference/wild-piece-that-matters.md`
 §*Q222*.
 
-## `hex-glinski-promoting.json` — schema 14, hexagonal chess
+## `hex-glinski-promoting.json` — schema 14, hexagonal chess (retired)
+
+**Retired on 2026-10-12 for its native twin `hex-glinski-hexagon`** (Q281e, decided inside
+the library audit, Q868): the same game move for move, drawn with thirty walls. The tests
+that read the walled spelling rebuild it from the twin (`tests/retired_specs.py`); the spec
+is in git history at `1ebf1313`.
 
 `279f92a97530`, Q229, 2026-09-15. Glinski's 91-cell hexagon and army on an 11x11 axial
 rhombus, `board.lattice: "hex"` declared and thirty walls cutting the rhombus to the
@@ -251,7 +264,12 @@ It scores **0.8020 +/- 0.0229 under `v10`, viable**, against chess's 0.7943, wit
 is `docs/reference/corpus-replay-2026-09-15.md`
 §*`hex-glinski-promoting` against its own pre-registration*.
 
-## `hex-glinski-hexagon.json` and the two flanks — schema 16, the native hexagon
+## `hex-glinski-hexagon.json` and the two flanks — schema 16, the native hexagon (flanks retired)
+
+**The two flanks were retired on 2026-10-13 for `pinwheel`** (Q870, the library audit's second
+pass): Glinski's game with a seam tagged on, which a game built around a hexagon's one-way seam
+shows better (below). The tests that read them rebuild them from the hexagon
+(`tests/retired_specs.py`); the specs are in git history at `542bd2de`.
 
 Q281a4, 2026-09-28, all three unmeasured (Q281d measures them). Each adds one thing to the
 game above, and the pre-registration is `docs/game-ideas.md` §*Q281 specified*, *The
@@ -259,6 +277,7 @@ showcases*.
 
 - `hex-glinski-hexagon.json` (`6eaaad41673b`) is `hex-glinski-promoting` with
   `board.shape: "hexagon"` in place of its thirty walls: the corners are not cells at all.
+  Since the walled parent's retirement (Q868) it is the library's Glinski game.
   It compiles to the parent's tables but for the Zobrist draws, so its score is predicted
   to equal the parent's to the last printed digit.
 - `hex-glinski-flanks.json` (`5ba53615c752`) joins the hexagon's upper-left and lower-right
@@ -269,7 +288,12 @@ showcases*.
   the first player leaving by the lower right and the second by the upper left, which is
   the rule turned half a turn. Predicted: at least 0.3 of games cross.
 
-## `hex-glinski-turned.json` and `hex-glinski-turned-mirrored.json` — schema 18b, hex symmetries
+## `hex-glinski-turned.json` and `hex-glinski-turned-mirrored.json` — schema 18b, hex symmetries (retired)
+
+**Retired on 2026-10-13 for `pinwheel`** (Q870): on Glinski's pieces `rotate6` and `dihedral12`
+write the same moves, so both played the hexagon game move for move. `pinwheel`'s one-handed
+knight is the first piece on which the two spellings differ. The tests rebuild both from the
+walled game (`tests/retired_specs.py`); the specs are in git history at `542bd2de`.
 
 Q782, 2026-10-10. `hex-glinski-promoting` with every officer's move written once and turned
 by the hexagon's own symmetries, one feature each: `hex-glinski-turned` (`30c1003b9a61`) by
@@ -279,6 +303,23 @@ same game: tables equal to the parent's but for the Zobrist draws, and measured,
 of each's 1,024 games the parent's move for move, 0.9248, viable, as pre-registered
 (`docs/reference/schema-showcase-coverage.md` rows 51 and 52). The committed hex specs keep
 their listed vectors, since rewriting them would make new hashes and orphan their runs.
+Their walled parent is retired (Q868); the two stay because each is the only game using its
+symmetry, and their descriptions say they are the hexagon game written the short way.
+
+## `pinwheel.json` — the hexagon set's designed game (Q870)
+
+`61c4e247dc3c`, 2026-10-13. Built to show what four retired variants of `hex-glinski-hexagon`
+were kept for, in one game: a 61-cell hexagon, Glinski's army scaled to it (seven pawns), the
+rook, bishop, queen and king written once and `dihedral12`, and a knight written as one jump
+`[[1, 2]]` turned `rotate6`, so it reaches the six cells of one hand of the hexagonal knight's
+twelve and never their mirror images. The two empty flanks are joined one way per player, as
+`hex-glinski-flanks-one-way`'s were, so both armies go round the board the same way, and the
+half turn keeps both the knights' hand and the seam's direction the same for both players.
+Pre-registered in `docs/plan-library-audit.md` (*`pinwheel`*) before it was measured;
+`tests/test_pinwheel.py` holds the demonstration clauses. Measured 2026-10-13 (v12, four runs,
+the schema-24 core): **0.895 [0.878, 0.920], viable (4-0)**, against the parent's 0.925; all
+five measured clauses hit: the seam crossed in 0.93 of games, knights made 10% of the moves,
+games averaged 74 plies. The second player leads (first-player score 0.406).
 
 ## Schema 10's seven — one feature each, and two of them broken on purpose
 
@@ -299,7 +340,7 @@ rather than repairs.
 | `queen-bomb` | `explode_on_capture.by` | atomic 0.6631 | 0.7294 +/- 0.0248 | 0.1064 of captures explode |
 | `queens-wake` | `explode_on_capture.of` | atomic 0.6631 | **0.7464 +/- 0.0207, not viable** | 0.0818 of captures explode |
 | `perpetual` | `repetition_draw: "never"` | chess 0.7943 | 0.8113 +/- 0.0185 | 0 games end by repetition |
-| `wolves-immune` | `npcs[].immune` | wolves 0.7548 | 0.7647 +/- 0.0192 | identical tables |
+| `wolves-immune` (retired, Q876) | `npcs[].immune` | wolves 0.7548 | 0.7647 +/- 0.0192 | identical tables |
 | `stones` | `drops.stock: "unlimited"` | chess 0.7943 | **0.3144 +/- 0.0563, not viable** | 0.5198 of moves are drops |
 | `three-stones` | `drops.stock` as a count | stones 0.3144 | 0.8058 +/- 0.0151 | 0.8398 of seats spend all three |
 
@@ -350,7 +391,8 @@ non-game.
 > board that cannot be unfilled, and a full board is a stalemate. "The rule is not to blame"
 > was true of the number it was written about and false of the game.
 
-**`wolves-immune` reproduced `wolves` game for game**, all 256 move lists identical, every
+**`wolves-immune` reproduced `wolves` game for game** (and for that reason the library audit
+retired it on 2026-10-13 for `pitchfork`, a game in which the key changes the play; Q876), all 256 move lists identical, every
 non-elegance family equal to four decimals. The record had said it would not, because the
 Zobrist seed is the mechanics hash and a shorter spelling reseeds it; the tables do differ
 in all five draws and not one game changed. So the whole of 0.7548 → 0.7647 is the elegance
@@ -529,7 +571,8 @@ the first mover gets there first. Divide's strong players draw on the no-progres
 (the plan's named miss), and Ferry's players shuffle portals into repetition (0.404 of
 games). `docs/reference/portal-showcases.md` has the clauses and the misses;
 `tests/test_showcases_q772a.py` shows each feature acting, and that no move crosses Divide's
-wall but through the door.
+wall but through the door. **`wormhole-adrift` was retired on 2026-10-12** (Q868): movable
+portals are shown by `ferry` in a playable game, and the tests rebuild it from `wormhole`.
 
 ## `ferry-no-straight-back.json` — schema 20, no straight back
 
@@ -543,3 +586,118 @@ pre-registered band; repetition 0.072 of games (Ferry 0.404, Los Alamos 0.091), 
 removing a legal move at 0.457 of plies, the strongest two deciding 26 of 32 cross games.
 `docs/reference/portal-showcases.md` *Q807* has the clauses; `tests/test_schema_twenty.py`
 holds the rule against `tests/portal_oracle.py`.
+
+## `divide-two-way.json` — schema 19, Divide's two-way door (retired)
+
+Q772e, 2026-10-12, `2fa712feb218`. Divide's option B (`docs/plan-portals.md` *Divide's return
+rule*): `divide` with the pair's `passage` removed and nothing else changed, so either
+player's pieces may go in at either end and a raider can come home by the door it came out
+beside; each end is still moved only by the player in whose half it stands. A new game beside
+`divide`, which keeps its own number. Pre-registered and measured 2026-10-12 (v12, four runs,
+the schema-23 core): **0.671 [0.636, 0.686], viable (3-1)**, A's numbers on every family. The
+door is used both ways (a return in 0.25 of games), and the strong players still draw: 4 of
+their 32 cross games decided against a bar of 0.4, so neither Divide is kept as the answer and
+option C is owed. `docs/reference/portal-showcases.md` *Q772e* has the clauses;
+`tests/test_showcases_q772a.py` holds the wall and the return.
+
+## `divide-fixed.json` — schema 19, Divide's fixed door (retired)
+
+Q772f, 2026-10-12, `31ead85da009`. Divide's option C (`docs/plan-portals.md` *Divide's return
+rule*): `divide-two-way` with the pair's `moved_by` removed and nothing else changed, so the
+ends stand on e3 and e9 for the whole game, nobody may move them, and either player's pieces may
+go in at either end. Pre-registered and measured 2026-10-12 (v12, four runs, the schema-23
+core): **0.605 [0.565, 0.626], not viable (1-3)**, the weak half of the ladder parking in three
+runs. The strongest two decide none of their 32 cross games, so by the pre-registered rule
+**`divide` (option A) is kept as Divide** and this game and `divide-two-way` stayed beside it as
+the record that no door rule fixed the draws, until the library audit retired both on
+2026-10-12 (Q868; the specs are in git history at `1ebf1313` and the tests rebuild them from
+`divide`); a sixteen-fold search budget on `divide` decided
+4 of 24 cross games, so the draw is the walled board's. `docs/reference/portal-showcases.md`
+*Q772f* has the clauses; `tests/test_showcases_q772a.py` holds the wall, the return and the
+fixed ends.
+
+## `wolves-patrol.json` — schema 23, two wolves on one walk
+
+Q850, 2026-10-12, `b2011455c4af`. **The user's game** (2026-10-08): two wild wolves walk one
+sixteen-square circuit through the middle of the board, `a4` to `h4`, up to `h5`, back to
+`a5`, and round again, one starting on `a4` and one on `h5`, half a lap apart. The rule
+language could not say it until schema 23's `rules.npcs[].also_at`
+(`docs/reference/designer-case-study-wolves.md`); everything else is `wolves`' (a wolf eats
+anything but a wolf, only a knight may take one, no bounty). Pre-registered and measured
+2026-10-12 (v12, four runs, the schema-23 core): **0.911 [0.893, 0.930], viable (4-0)**,
+beside `wolves`' 0.907. Five of six clauses hit; the headline missed: both wolves stand in
+0.656 of positions (bar 0.80), because knights take 0.53 wolves a game. The walk eats 6.8
+player pieces a game. `docs/reference/wolves-patrol.md` has the clauses;
+`tests/test_schema_twenty_three.py` holds the rule (the queue rule, which never fires here,
+included).
+
+## `pitchfork.json` — wolves only a pawn may take (Q876)
+
+`d2a722b461ff`, 2026-10-13. Built to show what `wolves-immune` was kept for, `npcs[].immune`,
+doing something in play: chess plus **eight wolves**, two to a ring, nose to tail, on the two
+centre rings of Q68's screen (`b4 c5 d4 c3 b3` and `g4 f5 e4 f3 g3`, both `mirror: true`;
+`also_at` puts the second wolf on each ring), and `immune: ["P"]`, so **only a pawn may take
+one**. The rings hold the squares the knights and bishops would come out to, so the pawns
+clear the way, and a pawn that takes the leading wolf of a pair is eaten at once by the one
+behind. No bounty, no score. Pre-registered in `docs/plan-library-audit.md` (*`pitchfork`*)
+before it was measured; `tests/test_pitchfork.py` holds the demonstration clauses (the word's
+three readings on one position, the five lists it stands for, the pair's price, random play).
+Measured 2026-10-13 (v12, four runs): **0.907 [0.885, 0.928], viable (4-0)**, beside `wolves`'
+0.907; all five clauses hit: **3.84 wolves taken a game, every one of 3,929 by a pawn**, a wolf
+on the board at 0.978 of plies and 4.16 of 8 left at the end, half the takers eaten by the
+pair's second wolf. With the key deleted the officers clear the centre instead (a 100-game
+screen: 5.87 taken a game, 0.38 of them by pawns).
+
+## `sluice.json`, `crease.json`, `pawnproof-wormhole.json` — schemas 21 and 24, portal maps, filters and folds (Q844b)
+
+2026-10-13. The showcases of what `docs/plan-portals-2.md` added, on the rules as they now
+stand; `docs/reference/portal-showcase-ideas.md` has the decision on each of Q844's seven ideas
+(two games and one variant kept, four dropped, each with its reason), the designs and the
+predictions, written before anything was measured, and `tests/test_portal_showcases_q844b.py`
+the demonstration clauses.
+
+- **`sluice`** (`f3c624d2f297`): chess with a funnel a side, the game of schema 21's maps
+  (`ends`, `to`, `enter`). White's doors a3 and h3 lead, for White only, one step beyond White's
+  gate on e5, a block in Black's half that Black moves; Black's doors a6 and h6 lead beyond
+  Black's gate on e4, which White moves. The attacker picks the door, the defender where the
+  raid lands.
+- **`crease`** (`0448722861a3`): Capablanca chess with two fold pairs crossing the board, b4
+  with i5 and i4 with b5, every fold moved by either player, never straight back: the game of
+  schema 24's folds. A landing on an empty fold stays or goes through to the other end,
+  capturing there.
+- **`pawnproof-wormhole`** (`feaad3754a7e`): `wormhole` with `carries` on its pair naming every
+  piece but the pawn, kept as a variant because the contrast is the point: Wormhole's first
+  player wins the pawn's race through the door, and the filter takes the race away.
+
+Measured 2026-10-13 (v12, four runs each, one campaign), all three **viable (4-0)**: Sluice
+**0.848 [0.822, 0.869]**, all six clauses hit (a transit in 0.991 of games, every door in two
+games of three, the gates moved at 0.155 of plies); Crease **0.901 [0.878, 0.918]**, five of
+eight hit (folds moved at 0.328 of plies and onto a piece in 0.589 of games, but by both players
+in only 0.786 of games, and a go-through
+in 0.700 of games against 0.9 predicted, and a capture through in 0.368 against 0.5); pawnproof
+wormhole **0.572 [0.546, 0.606]**, all five hit (no pawn transit, the first seat 23 of the top
+band's 46 decided games against Wormhole's 33 of 33).
+
+## Retired by the library audit (Q868, 2026-10-12)
+
+The user asked for a library in which every game has a purpose (`docs/plan-library-audit.md`,
+which has a verdict for each of the 101 games). Fourteen near copies left the tree, ten of
+them from here: `wolves-rotated`, `-2`, `-3` and `-4`, `hex-glinski-promoting`,
+`divide-two-way`, `divide-fixed`, `wormhole-adrift`, `hierarchy-fall-swap` and
+`weathervane-torus` (and `rulesets/sardines-torus`, `tunnel-vertical`, `onewaytunnel` and
+`torus-extended`). Their runs stay in `runs/`, their specs are in git history at `1ebf1313`,
+and on the site each is *retired*: off the listing and refused for a new match, with its page,
+its matches and its ratings kept. The kept near copies' descriptions now say what their one
+difference does in play.
+
+## The audit's second pass (Q870, 2026-10-13)
+
+The user asked whether a near copy kept for its extra rule would show that rule better as a
+game built around it, and whether the names said what the games are. Four hexagon variants
+left the tree for one designed game, `pinwheel` (above): `hex-glinski-flanks`,
+`hex-glinski-flanks-one-way`, `hex-glinski-turned` and `hex-glinski-turned-mirrored`. Eighteen
+games were renamed (only `name` moved, so no hash, link, run or rating did), among them the
+hierarchy games, which are now *demotion chess*, *gift chess*, *gift from afar*, *thrown
+gifts* and *amazon ladder*; `docs/plan-library-audit.md` has the table and the reason for each.
+The pass's last item, Q876, retired `wolves-immune` for a designed game, `pitchfork` (above); its
+spec is in git history at `c91613a3`, and the tests rebuild it from `wolves`.

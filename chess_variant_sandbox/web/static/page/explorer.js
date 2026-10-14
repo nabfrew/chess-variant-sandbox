@@ -249,7 +249,6 @@ function explorerBodyHtml() {
     ${mapLegendHtml()}
     ${explorerSizeHtml()}
     ${explorerKeepHtml()}
-    ${explorerGroupsHtml()}
     </details>
     <div class="mapView">
       <div class="mapFrame" id="exploreFrame">
@@ -478,14 +477,15 @@ function explorerSizeNow() {
 
 function explorerSizeHtml() {
   const sizes = explorerSizes();
-  if (!sizes.length) return '';
+  if (!sizes.length) return `<div class="row mapCtl mapEnds"><span></span>${explorerResetHtml()}</div>`;
   const options = sizes.map(size => `<option value="${esc(size.key)}"${
     size.key === EXPLORER_SIZE ? ' selected' : ''}>${esc(size.label)}</option>`).join('');
   return `<div class="row mapCtl">
     <label class="pick">size the dots by
       <select id="exploreSize" aria-label="what the size of a dot says">${
         options}</select></label>
-    <span class="muted small" id="exploreSizeSay"></span>
+    <span class="muted small mapSay" id="exploreSizeSay"></span>
+    ${explorerResetHtml()}
   </div>`;
 }
 
@@ -541,28 +541,14 @@ function explorerPaintSizes() {
   explorerPaintNames();
 }
 
-// The communities that fold, and the control over the picture as a whole. One chip per
-// community of three or more folds it into a dot and presses again to open it; *reset*
-// gives the server's picture back. Folded on a phone, as the community chips are, because
-// eight chips are a screen of their own above the map.
-function explorerGroupsHtml() {
-  const groups = mapGroups();
-  const chips = groups.map((group, index) => `
-    <button class="chip${EXPLORER_FOLDED.has(group.id) ? ' on' : ''}" data-fold="${index}"
-      title="${esc(group.names.join(', '))}"><span class="dot"
-      style="background:${esc(mapCommunityColour(group.id))}"></span>${esc(group.name)}
-      <span class="muted">${group.size}</span></button>`).join('');
-  const folds = groups.length ? `<details id="exploreFolds"${
-      window.innerWidth > 720 ? ' open' : ''}>
-      <summary class="muted small">fold a community into one dot</summary>
-      <div class="chips">${chips}</div></details>` : '';
-  return `<div class="row mapCtl mapEnds">
-    <div class="mapFolds">${folds}</div>
-    <div class="row">
-      <button id="exploreReset" title="Every community open, every game back where it
-        started, and the lines the page opened with.">reset</button>
-    </div>
-  </div>`;
+// The control over the picture as a whole: *reset* gives the server's picture back. It
+// sits at the end of the dots' size row rather than on a row of its own. A community is
+// folded into one dot from its own panel (`mapCommunityPanel`'s *fold it into one dot*),
+// and opened again from the folded dot's: the communities are listed once, as the key,
+// so the sheet does not push the drawing down with a second copy of them (Q801).
+function explorerResetHtml() {
+  return `<button id="exploreReset" title="Every community open, every game back where it
+      started, and the lines the page opened with.">reset</button>`;
 }
 
 // Every game as a button, in the payload's own order, because a drawing on a canvas has
@@ -1160,15 +1146,18 @@ function explorerGroupLines(home) {
 }
 
 // Folding one group, or opening it. A pick that the press takes off the drawing moves to
-// what replaced it: a game in a group that has just folded is held up as that group, and
-// a group that has just opened lets go.
+// what replaced it: a game in a group that has just folded, or the community lit when its
+// panel's *fold it into one dot* is pressed, is held up as that group, and a group that
+// has just opened lets go.
 function explorerFoldToggle(index) {
   const group = mapGroupAt(index);
   if (!group) return;
   const folding = !EXPLORER_FOLDED.has(group.id);
   if (folding) EXPLORER_FOLDED.add(group.id); else EXPLORER_FOLDED.delete(group.id);
   const held = MAP_PICK && MAP_PICK.kind === 'node' && MAP_DATA.nodes[MAP_PICK.at];
-  if (folding && held && group.members.includes(held.hash)) {
+  const lit = MAP_PICK && MAP_PICK.kind === 'community'
+    && (mapCommunityAt(MAP_PICK.at) || {}).id === group.id;
+  if (folding && (lit || (held && group.members.includes(held.hash)))) {
     MAP_PICK = { kind: 'group', at: index };
     MAP_ON = mapLit();
   } else if (!folding && MAP_PICK && MAP_PICK.kind === 'group' && MAP_PICK.at === index) {
@@ -1182,10 +1171,7 @@ function explorerFoldToggle(index) {
 // the panel. The lines are repainted first because which of them are hidden decides which
 // the folded dot counts.
 function explorerFoldDone() {
-  view.querySelectorAll('[data-fold]').forEach(chip => {
-    const group = mapGroupAt(Number(chip.dataset.fold));
-    chip.classList.toggle('on', !!group && EXPLORER_FOLDED.has(group.id));
-  });
+  explorerPaintCommunityChips();
   explorerPaintLines();
   explorerFoldPaint();
   explorerPaintPick();
@@ -1762,18 +1748,34 @@ function explorerPick(pick) {
   MAP_ON = mapLit();
   explorerPaintPick();
   explorerPaintLit();
-  view.querySelectorAll('#mapCommunities [data-community]').forEach(chip => {
-    const picked = MAP_PICK && MAP_PICK.kind === 'community'
-      && Number(chip.dataset.community) === MAP_PICK.at;
-    chip.classList.toggle('on', !!picked);
-  });
+  explorerPaintCommunityChips();
   explorerPaintPanel();
 }
 
-// A community chip is a toggle: pressing the one already up lets it go.
+// The key's chips: the one held up is on, whether as its community or as its folded dot,
+// and a folded one says so.
+function explorerPaintCommunityChips() {
+  view.querySelectorAll('#mapCommunities [data-community]').forEach(chip => {
+    const community = mapCommunityAt(Number(chip.dataset.community));
+    const id = community && community.id;
+    const group = MAP_PICK && MAP_PICK.kind === 'group' && mapGroupAt(MAP_PICK.at);
+    const picked = MAP_PICK && MAP_PICK.kind === 'community'
+      ? Number(chip.dataset.community) === MAP_PICK.at : !!group && group.id === id;
+    chip.classList.toggle('on', !!picked);
+    const folded = chip.querySelector('[data-folded]');
+    if (folded) folded.hidden = !EXPLORER_FOLDED.has(id);
+  });
+}
+
+// A community chip is a toggle: pressing the one already up lets it go. A folded
+// community is held up as its dot, whose panel opens it again.
 function explorerPickCommunity(index) {
-  const same = MAP_PICK && MAP_PICK.kind === 'community' && MAP_PICK.at === index;
-  explorerPick(same ? null : { kind: 'community', at: index });
+  const community = mapCommunityAt(index);
+  const at = community && EXPLORER_FOLDED.has(community.id)
+    ? mapGroups().findIndex(group => group.id === community.id) : -1;
+  const pick = at >= 0 ? { kind: 'group', at } : { kind: 'community', at: index };
+  const same = MAP_PICK && MAP_PICK.kind === pick.kind && MAP_PICK.at === pick.at;
+  explorerPick(same ? null : pick);
 }
 
 // The panel is the map's, and what the explorer has that the map has not is the site's
@@ -1873,9 +1875,6 @@ function explorerKey(event) {
 function wireExplorer() {
   view.querySelectorAll('[data-kind], [data-line]').forEach(chip => {
     chip.onclick = () => explorerToggle(chip.dataset.kind || chip.dataset.line);
-  });
-  view.querySelectorAll('[data-fold]').forEach(chip => {
-    chip.onclick = () => explorerFoldToggle(Number(chip.dataset.fold));
   });
   view.querySelectorAll('#mapCommunities [data-community]').forEach(chip => {
     chip.onclick = () => explorerPickCommunity(Number(chip.dataset.community));
@@ -2050,9 +2049,10 @@ function wireExplorerPanel() {
       explorerCentre(index);
       return explorerPick({ kind: 'node', at: index });
     }
-    const opened = event.target.closest('[data-open-group]');
+    const opened = event.target.closest('[data-open-group], [data-fold-group]');
     if (opened) {
-      const at = mapGroups().findIndex(one => one.id === opened.dataset.openGroup);
+      const id = opened.dataset.openGroup || opened.dataset.foldGroup;
+      const at = mapGroups().findIndex(one => one.id === id);
       if (at >= 0) explorerFoldToggle(at);
       return;
     }

@@ -201,15 +201,19 @@ class UciEngine:
         process = getattr(self, "_process", None)
         if process is None or process.poll() is not None:
             return
+        # An engine that died after the poll above (a variant that crashed it, Q703) has a
+        # broken pipe: the `quit` fails and so does flushing stdin on close. Neither is
+        # news by then, and raising it out of `__exit__` would hide the verdict.
         try:
             self._send("quit")
             process.wait(timeout=5)
-        except (OSError, subprocess.TimeoutExpired):
+        except (OSError, FairyEngineError, subprocess.TimeoutExpired):
             process.kill()
         finally:
             for stream in (process.stdin, process.stdout):
                 if stream is not None:
-                    stream.close()
+                    with contextlib.suppress(OSError):
+                        stream.close()
 
     def __enter__(self) -> UciEngine:
         return self

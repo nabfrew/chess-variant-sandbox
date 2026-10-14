@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import statistics
 from pathlib import Path
 
@@ -102,6 +103,25 @@ MIN_CORPUS_RUNS = 8
 MIN_LABELLED_RUNS = 4
 
 
+# Subtrees of `RUNS` that hold history, never a corpus: `history.deliver` keeps the score it
+# replaces under `<hash>/previous/<n>/`, and a replay keeps the runs it supersedes under
+# `replaced/`. Together they are over half the files in `runs/` (23k of 51k on the main
+# checkout, 2.7 s of walking against 0.7 s without them), and the audit paid that walk
+# twice per run of the file. A corpus is a directory a campaign wrote its fresh runs into.
+_HISTORY_DIRECTORIES = frozenset({"previous", "replaced"})
+
+
+def _scored_files(directory: Path, version: str) -> list[Path]:
+    """Every `index-<version>.json` under `directory`, history subtrees left unvisited."""
+    name = f"index-{version}.json"
+    found = []
+    for here, children, files in os.walk(directory):
+        children[:] = [child for child in children if child not in _HISTORY_DIRECTORIES]
+        if name in files:
+            found.append(Path(here) / name)
+    return sorted(found)
+
+
 def _corpus(version: str) -> Path:
     """The labelled corpus scored under one weights version: one subdirectory of `RUNS`.
 
@@ -118,7 +138,7 @@ def _corpus(version: str) -> Path:
     for directory in sorted(RUNS.iterdir()) if RUNS.is_dir() else []:
         if not directory.is_dir():
             continue
-        scored = list(directory.rglob(f"index-{version}.json"))
+        scored = _scored_files(directory, version)
         labelled = [p for p in scored if (p.parent / "mutant.json").exists()]
         if len(scored) >= MIN_CORPUS_RUNS and len(labelled) >= MIN_LABELLED_RUNS:
             candidates.append(directory)
@@ -133,20 +153,11 @@ def _corpus(version: str) -> Path:
     return candidates[0]
 
 
-def _scored_runs(version: str) -> list[dict]:
-    """Every persisted score under one weights version, from its labelled corpus."""
-    found = []
-    for path in sorted(_corpus(version).rglob(f"index-{version}.json")):
-        with open(path, encoding="utf-8") as handle:
-            found.append(json.load(handle))
-    return found
-
-
 def _labelled_runs(version: str) -> list[dict]:
     """Scored runs with the label the calibration corpus assigns them."""
     controls = CONTROL_RULESETS
     found = []
-    for path in sorted(_corpus(version).rglob(f"index-{version}.json")):
+    for path in _scored_files(_corpus(version), version):
         with open(path, encoding="utf-8") as handle:
             result = json.load(handle)
         meta = path.parent / "mutant.json"
@@ -238,7 +249,9 @@ class TestComponentAudit:
     @pytest.fixture(scope="class")
     @classmethod
     def scores(cls) -> list[dict]:
-        return _scored_runs(cls.version)
+        # Labelled once: the corpus is found by walking `runs/`, the one slow step, and
+        # the arms that rank negatives against real games need the labels as well.
+        return _labelled_runs(cls.version)
 
     def test_no_component_is_a_constant(self, scores: list[dict]) -> None:
         weights = load_weights(self.version)
@@ -308,7 +321,7 @@ class TestComponentAudit:
         mutant corpus does not contain; a large one is not.
         """
         weights = load_weights(self.version)
-        labelled = _labelled_runs(self.version)
+        labelled = scores
         humans = [r for r in labelled if r["_label"] == "human"
                   and r["raw"].get("ladder_monotonicity", 1.0) >= 0.5]
         broken = [r for r in labelled if r["_label"] in ("worse", "control")]
@@ -744,7 +757,11 @@ class TestTheSeatGateOnTheStoredCorpus:
         if not games.exists():
             pytest.skip(f"needs {games}")
         records = list(read_records(games))
-        spec = load_spec(Path(__file__).resolve().parents[1] / "rulesets" / f"{name}.json")
+        # `tunnel-vertical` left the library on 2026-10-12 (Q868, `docs/plan-library-audit.md`);
+        # its spec stays beside this file, byte for byte, for the stored games it played.
+        here = Path(__file__).resolve().parent
+        retired = here / f"_retired_{name.replace('-', '_')}.json"
+        spec = load_spec(retired if retired.exists() else here.parent / "rulesets" / f"{name}.json")
         return compute_components(spec, records, rate(records))
 
     def test_tunnel_vertical_is_refused_by_the_pair_on_its_stored_run(self) -> None:

@@ -40,6 +40,17 @@ nothing; this is what makes them *current* again, with nobody starting a campaig
    beside its status file (`read_slow_tier`). A failure is recorded, never acted on: it
    repairs nothing, refuses nothing and moves no score. Committed files the run changed are
    put back and named. A one-pass `--library` or an `--only` run never runs it.
+8. **The ladders, after scores** (L7, `docs/plan-leaderboard.md` §2.2). Only when no score
+   is owed (scores keep priority) does it read each library game's picker ladder, as
+   `deploy/ladders_check.py` reads it (`ladder_items`), and take one ladder a lease, under
+   `heavy`: a missing ladder first (`ladder`), then a short one a top-up can pay
+   (`top-up`), then one with old players or short with no kept games (`re-rate`); within
+   each, the launch set, then the oldest ladder, then the hash. The work is L3's own code,
+   called and never repeated: `ladders.rate(..., top_up=...)` and `ladders.rerate`, in a
+   child of the worktree writing straight into the main checkout's `runs/opponents/` as
+   `ladders.py --runs` does (`rate_ladder`). A ladder is never delivered: `rerate` moves
+   the old one aside and puts it back if the rating fails. A rating that fails, or that
+   leaves the ladder still owing, is refused like a game, keyed on the ladder file.
 
 **What it writes**, beside the measurements in the main checkout's `runs/`:
 `refresh-status.json` (what it is doing, what is owed, the last game, the last refusal,
@@ -83,6 +94,19 @@ REPAIR_ORDER = ("refit", "rescore", "reanalyse", "replay")
 # `quiet` for a re-score, whose bootstrap takes the whole machine for its seconds.
 LEASE_FOR = {"refit": "heavy", "rescore": "quiet", "reanalyse": "heavy", "replay": "heavy"}
 
+# Point 8 below: the ladder work, after every score (`docs/plan-leaderboard.md` §2.2, L7).
+# A game with no picker ladder is rated; a short one is topped up (its newcomers play the
+# spine only); one with old players, or short and keeping no games to top up, is rated
+# again whole (`deploy/ladders.py --rerate`). Each is a tournament, under `heavy`, as
+# `ladders.py` takes.
+LADDER_ORDER = ("ladder", "top-up", "re-rate")
+LEASE_FOR.update({needs: "heavy" for needs in LADDER_ORDER})
+# The whole queue's first key: every score repair before any ladder.
+QUEUE_ORDER = REPAIR_ORDER + LADDER_ORDER
+# A ladder item's `stored` is its ladder file hashed under this prefix, never to be
+# mistaken for its game's `canonical.json` digest.
+LADDER_STORED = "ladder:"
+
 # Leases another worktree may hold that keep the refresher waiting: a replay, a training
 # run, a campaign or a timed bench has the machine (the task's *never while a replay or
 # another heavy job holds the machine*). A build or the fast suite does not: the lease's
@@ -101,7 +125,7 @@ LAUNCH_SET = (
     "quarry",
     "reckoning",
     "wolves",
-    "hex glinski hexagon",
+    "glinski hexagonal chess",
 )
 # Tier 0 the launch set; 1 the top quarter of the leaderboard by its last number, current
 # or provisional; 2 within one interval of a gate; 3 the rest.
@@ -206,7 +230,12 @@ class Item:
     @property
     def key(self) -> tuple[int, int, str, str]:
         # A game never measured has no date and sorts as the oldest.
-        return (REPAIR_ORDER.index(self.needs), self.tier, self.measured, self.hash)
+        return (QUEUE_ORDER.index(self.needs), self.tier, self.measured, self.hash)
+
+    @property
+    def ladder(self) -> bool:
+        """Whether this is ladder work (point 8), not a score repair."""
+        return self.needs in LADDER_ORDER
 
     @property
     def lease(self) -> str:
@@ -302,6 +331,9 @@ class Outcome:
     commit: str = ""
     seconds: float = 0.0
     lines: tuple[str, ...] = ()
+    # What a refusal is keyed on when it is not the item's own `stored`: a ladder rated
+    # and still owing is refused as the file it now is, so it is not taken again.
+    stored: str = ""
 
     @property
     def refused(self) -> bool:
@@ -321,6 +353,7 @@ class Outcome:
             viable=data.get("viable") if isinstance(data.get("viable"), bool) else None,
             commit=str(data.get("commit", "")), seconds=float(data.get("seconds") or 0.0),
             lines=tuple(str(line) for line in data.get("lines") or ()),
+            stored=str(data.get("stored") or ""),
         )
 
 
@@ -425,24 +458,29 @@ class Ledger:
 
     def refuse(self, item: Item, outcome: Outcome) -> dict[str, Any]:
         record = {"hash": item.hash, "name": item.name, "needs": item.needs,
-                  "stored": item.stored, "kind": outcome.refusal, "reason": outcome.reason,
-                  "commit": outcome.commit, "at": _now()}
-        kept = [r for r in self.refusals if r.get("hash") != item.hash]
+                  "stored": outcome.stored or item.stored, "kind": outcome.refusal,
+                  "reason": outcome.reason, "commit": outcome.commit, "at": _now()}
+        # A game's score refusal and its ladder's are two: one never replaces the other.
+        kept = [r for r in self.refusals
+                if r.get("hash") != item.hash or _is_ladder(r) != item.ladder]
         self.status["refusals"] = [*kept, record]
         self.status["last_refusal"] = record
         return record
 
-    def lapse(self, owed: Iterable[Item]) -> list[dict[str, Any]]:
+    def lapse(self, owed: Iterable[Item], ladders: bool = False) -> list[dict[str, Any]]:
         """Drop the refusals that no longer stand, and return them.
 
         A refusal is of one stored file (`refused`): once the game's file has changed, or
         the game is owed nothing at all, it refuses nothing, and a standing count or an
         `/admin` row that still showed it would say a game is held back that is not
-        (Q693r's first real run). ``owed`` is the whole survey, before `--only`.
+        (Q693r's first real run). ``owed`` is the whole survey, before `--only`: the score
+        survey's, or with ``ladders`` the ladder survey's, and only refusals of that kind
+        are read against it.
         """
         still = {(item.hash, item.stored) for item in owed}
-        kept = [r for r in self.refusals if (r.get("hash"), r.get("stored")) in still]
-        gone = [r for r in self.refusals if (r.get("hash"), r.get("stored")) not in still]
+        gone = [r for r in self.refusals if _is_ladder(r) == ladders
+                and (r.get("hash"), r.get("stored")) not in still]
+        kept = [r for r in self.refusals if r not in gone]
         if gone:
             self.status["refusals"] = kept
         return gone
@@ -472,6 +510,10 @@ class Ledger:
         line = {"at": _now(), "event": event, **fields}
         with (self.runs_dir / LOG_FILE).open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(line, sort_keys=True) + "\n")
+
+
+def _is_ladder(record: Mapping[str, Any]) -> bool:
+    return record.get("needs") in LADDER_ORDER
 
 
 def read_status(runs_dir: Path) -> dict[str, Any] | None:
@@ -510,6 +552,157 @@ def owed_counts(items: Iterable[Item]) -> dict[str, int]:
     for item in items:
         counts[item.needs] += 1
     return counts
+
+
+def ladder_counts(items: Iterable[Item]) -> dict[str, int]:
+    counts = {needs: 0 for needs in LADDER_ORDER}
+    for item in items:
+        counts[item.needs] += 1
+    return counts
+
+
+# ------------------------------------------------------------------- the ladders (L7)
+
+# This checkout: its `deploy/` holds L3's ladder code, run by the code of the same commit.
+REPOSITORY = Path(__file__).resolve().parent.parent
+
+
+def _deploy(name: str) -> Any:
+    """`deploy/<name>.py` of this checkout, or ``None`` where there is no `deploy/` (the
+    public export ships none, and owes no ladders).
+
+    Imported by its plain name, as `deploy/ladders.py` imports `ladders_check`, so both
+    read one module and a test's stand-in for `ladders_check.roster` reaches both.
+    """
+    import importlib
+
+    directory = REPOSITORY / "deploy"
+    if not (directory / f"{name}.py").is_file():
+        return None
+    if str(directory) not in sys.path:
+        sys.path.insert(0, str(directory))
+    return importlib.import_module(name)
+
+
+def ladder_stored(digest: str, runs_dir: Path) -> str:
+    """The ladder file's bytes, hashed: what a ladder's refusal is keyed on."""
+    try:
+        body = (Path(runs_dir) / "opponents" / f"{digest}.json").read_bytes()
+    except OSError:
+        return LADDER_STORED + "absent"
+    return LADDER_STORED + hashlib.sha256(body).hexdigest()[:16]
+
+
+def ladder_work(found: Any) -> tuple[str, str] | None:
+    """What one `ladders_check.Ladder` is owed next, as ``(needs, reason)``, or ``None``.
+
+    L3's reading decides, never a second one: `owes` (missing, short, old players) and
+    `top_up` (whether a short one can be paid by its newcomers' games alone). A short
+    ladder a top-up cannot pay is rated again whole, with the old players.
+    """
+    if not found.owes:
+        return None
+    if not found.present:
+        return "ladder", "missing: no picker ladder"
+    names = ", ".join((found.names or {}).get(agent, agent) for agent in found.short)
+    if found.top_up:
+        return "top-up", f"short: {names}"
+    why = []
+    if found.old:
+        why.append(f"old players: rated {found.rated or 'on an unknown date'}, before "
+                   f"{found.old[-1][0]}")
+    if found.short:
+        why.append(f"short: {names}" + ("" if found.kept else " (no kept games)"))
+    return "re-rate", "; ".join(why)
+
+
+def ladder_items(runs_dir: Path, root: Path | None = None) -> list[Item]:
+    """The ladder work this tree owes over ``runs_dir``, in order. Reads; spends nothing.
+
+    The library is ``root``'s (default the working directory, as `corpus.survey` reads
+    it); each game read by `ladders_check.ladder`, the check `deploy/ladders.py` acts on.
+    """
+    checks = _deploy("ladders_check")
+    if checks is None:
+        return []
+    root = Path(root) if root is not None else Path.cwd()
+    items = []
+    for game in checks.library(root):
+        found = checks.ladder(game, Path(runs_dir), root)
+        work = ladder_work(found)
+        if work is None:
+            continue
+        needs, reason = work
+        items.append(Item(
+            hash=game.digest, name=game.name, needs=needs, reason=reason,
+            tier=value_tier(game.name, game.digest, set(), Stored()),
+            measured=found.rated or "", stored=ladder_stored(game.digest, runs_dir),
+        ))
+    return sorted(items, key=lambda item: item.key)
+
+
+def rate_ladder(
+    digest: str,
+    runs_dir: Path,
+    root: Path | None = None,
+    say: Callable[[str], None] | None = None,
+) -> Outcome:
+    """Pay what one game's ladder owes now, or say why not: what `refresh <hash> --ladder`
+    runs.
+
+    L3's calls do the work (`ladders.rate`, with ``top_up`` for a short ladder, and
+    `ladders.rerate`), into ``runs_dir``'s `opponents/` as `ladders.py --runs` writes. A
+    stale build is refused first, as for a score. A rating that fails is an error (and
+    `rerate` has put the old ladder back); one that finishes and leaves the ladder still
+    owing is refused as the file it left, so the loop does not rate it again and again.
+    """
+    from chess_variant_sandbox.measurement import stale_build
+
+    lines: list[str] = []
+    started = time.monotonic()
+    runs = Path(runs_dir)
+
+    def note(line: str) -> None:
+        lines.append(str(line).strip())
+        if say is not None:
+            say(str(line))
+
+    def done(needs: str, refusal: str = "", reason: str = "", **rest: Any) -> Outcome:
+        return Outcome(hash=digest, needs=needs, refusal=refusal, reason=reason,
+                       seconds=round(time.monotonic() - started, 1), lines=tuple(lines),
+                       **rest)
+
+    behind = stale_build()
+    if behind is not None:
+        return done("", STALE_BUILD, behind)
+    needs = ""
+    try:
+        checks, ladders = _deploy("ladders_check"), _deploy("ladders")
+        if checks is None or ladders is None:
+            return done("", ERROR, "this checkout has no deploy/ladders.py")
+        root = Path(root) if root is not None else Path.cwd()
+        games = [game for game in checks.library(root) if game.digest == digest]
+        if not games:
+            return done("", ERROR, f"no library game has the hash {digest}")
+        game = games[0]
+        work = ladder_work(checks.ladder(game, runs, root))
+        if work is None:
+            note(f"{game.name}: its ladder owes nothing")
+            return done("")
+        needs = work[0]
+        if needs == "re-rate":
+            finished = ladders.rerate(game, root, runs, say=note)
+        else:
+            finished = ladders.rate(game, root, runs, say=note, top_up=needs == "top-up")
+        if not finished:
+            return done(needs, ERROR, f"the rating did not finish: {lines[-1] if lines else ''}")
+        after = ladder_work(checks.ladder(game, runs, root))
+    except Exception as error:  # noqa: BLE001 - every failure is a logged refusal
+        return done(needs, ERROR, f"{type(error).__name__}: {error}")
+    if after is not None:
+        return done(needs, ERROR, f"rated, and its ladder still owes {after[0]}: {after[1]}",
+                    stored=ladder_stored(digest, runs))
+    return done(needs)
 
 
 # ------------------------------------------------------------------ the slow tier
@@ -657,7 +850,8 @@ class Machine(Protocol):
     def acquire(self, profile: str, tag: str) -> bool: ...
     def release(self) -> None: ...
     def survey(self) -> list[Item]: ...  # the queue, at the worktree's commit
-    def repair(self, item: Item) -> Outcome: ...  # one game, at the worktree's commit
+    def ladders(self) -> list[Item]: ...  # the ladder work, at the worktree's commit
+    def repair(self, item: Item) -> Outcome: ...  # one game or ladder, at that commit
     def deliver(self, item: Item) -> None: ...  # `history.deliver` into main's runs/
     def changed(self) -> list[str]: ...  # committed files the last repair changed
     def keep(self, item: Item, paths: list[str]) -> str: ...  # commit them; the sha
@@ -771,6 +965,14 @@ class Refresher:
             owed=[item.as_dict() for item in todo], owed_counts=owed_counts(todo),
             refused_owed=len(items) - len(todo),
         )
+        if todo:
+            # Scores keep priority: the ladders are not even read while one is owed.
+            self.ledger.update(ladders_owed=None, ladder_counts=None)
+        else:
+            try:
+                todo = self._ladders()
+            except Exception as error:  # noqa: BLE001 - logged; main moving is the way on
+                return self._halt(f"the ladder survey failed: {error}", kind=ERROR)
         if not todo:
             if self._slow_tier_due():
                 return self._slow_tier()
@@ -789,6 +991,21 @@ class Refresher:
         finally:
             self.machine.release()
         return self._settle(item, outcome)
+
+    def _ladders(self) -> list[Item]:
+        """Point 8: the ladder work owed, once no score is, written to the status file."""
+        items = self.machine.ladders()
+        for record in self.ledger.lapse(items, ladders=True):
+            self.ledger.log("lapsed", hash=record.get("hash"), name=record.get("name"),
+                            kind=record.get("kind"), stored=record.get("stored"))
+        if self.only is not None:
+            items = [item for item in items if item.hash in self.only]
+        todo = [item for item in items if not self.ledger.refused(item)]
+        self.ledger.update(
+            ladders_owed=[item.as_dict() for item in todo], ladder_counts=ladder_counts(todo),
+            ladders_refused=len(items) - len(todo),
+        )
+        return todo
 
     def _settle(self, item: Item, outcome: Outcome) -> str:
         changed = self.machine.changed()
@@ -809,14 +1026,16 @@ class Refresher:
             self.say(f"  refused ({outcome.refusal}): {outcome.reason}")
             return "refused"
         try:
-            self.machine.deliver(item)
+            # A ladder was written in place, into main's `runs/opponents/` (point 8).
+            if not item.ladder:
+                self.machine.deliver(item)
         except Exception as error:  # noqa: BLE001 - logged; nothing is retried
             return self._halt(f"the delivery failed: {error}", item, kind=ERROR)
         kept = ""
         if changed:
             kept = self.machine.keep(item, changed)
             self.ledger.status["owed_merge"] = [*self.ledger.status["owed_merge"], kept]
-        last = {"hash": item.hash, "name": item.name, "needs": item.needs,
+        last = {"hash": item.hash, "name": item.name, "needs": outcome.needs or item.needs,
                 "index": outcome.index, "viable": outcome.viable, "commit": outcome.commit,
                 "seconds": outcome.seconds, "at": _now(), **({"kept": kept} if kept else {})}
         self.ledger.log("repaired", **last)
@@ -1006,10 +1225,18 @@ class GitMachine:
         self._lease("release")
 
     def survey(self) -> list[Item]:
-        args = ["refresh", "--plan", "--json", "--runs", str(self.main_runs)]
+        args = ["refresh", "--plan", "--part", "scores", "--json", "--runs",
+                str(self.main_runs)]
         done = self._child(*args, *(["--weights", self.weights] if self.weights else []))
         if done.returncode != 0:
             raise RuntimeError(f"the survey failed: {done.stderr.strip()[-400:]}")
+        return [Item.from_dict(row) for row in json.loads(done.stdout)]
+
+    def ladders(self) -> list[Item]:
+        done = self._child("refresh", "--plan", "--part", "ladders", "--json",
+                           "--runs", str(self.main_runs))
+        if done.returncode != 0:
+            raise RuntimeError(f"the ladder survey failed: {done.stderr.strip()[-400:]}")
         return [Item.from_dict(row) for row in json.loads(done.stdout)]
 
     def stage(self, digest: str) -> None:
@@ -1018,10 +1245,16 @@ class GitMachine:
 
     def repair(self, item: Item) -> Outcome:
         commit = self.head()
-        self.stage(item.hash)
-        args = ["refresh", item.hash, "--json", "--runs", str(self.staging),
-                "--workers", str(self.workers)]
-        done = self._child(*args, *(["--weights", self.weights] if self.weights else []))
+        if item.ladder:
+            # Rated in place into main's `runs/opponents/`, as `ladders.py --runs` writes:
+            # a ladder has no history to deliver through, and `rerate` keeps the old one.
+            done = self._child("refresh", item.hash, "--ladder", "--json",
+                               "--runs", str(self.main_runs))
+        else:
+            self.stage(item.hash)
+            args = ["refresh", item.hash, "--json", "--runs", str(self.staging),
+                    "--workers", str(self.workers)]
+            done = self._child(*args, *(["--weights", self.weights] if self.weights else []))
         after = self.head()
         try:
             outcome = Outcome.from_dict(json.loads(done.stdout.strip().splitlines()[-1]))
@@ -1168,10 +1401,25 @@ def plain_status(status: Mapping[str, Any] | None) -> list[str]:
     refused_owed = int(status.get("refused_owed") or 0)
     lines.append("owed: " + (", ".join(owed) or "nothing")
                  + (f" ({refused_owed} more owed and refused)" if refused_owed else ""))
+    following = list(status.get("owed") or []) + list(status.get("ladders_owed") or [])
+    if following:
+        first = following[0]
+        lines.append(f"next: {first.get('name')} [{first.get('hash')}] {first.get('needs')}"
+                     f" ({first.get('reason')})")
+    ladders = status.get("ladder_counts")
+    if isinstance(ladders, Mapping):
+        owed_ladders = [f"{ladders[k]} {k}" for k in LADDER_ORDER if ladders.get(k)]
+        refused_ladders = int(status.get("ladders_refused") or 0)
+        lines.append("ladders owed: " + (", ".join(owed_ladders) or "nothing")
+                     + (f" ({refused_ladders} more owed and refused)"
+                        if refused_ladders else ""))
+    elif counts and any(counts.values()):
+        lines.append("ladders: read once no score is owed (scores first)")
     last = status.get("last_done")
     if last:
-        lines.append(f"last: {last.get('name')} [{last.get('hash')}] {last.get('needs')} "
-                     f"index {last.get('index')}")
+        lines.append(f"last: {last.get('name')} [{last.get('hash')}] {last.get('needs')}"
+                     + ("" if last.get("needs") in LADDER_ORDER
+                        else f" index {last.get('index')}"))
     refusal = status.get("last_refusal")
     if refusal:
         lines.append(f"last refusal: {refusal.get('name', '')} [{refusal.get('hash', '')}] "

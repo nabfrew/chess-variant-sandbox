@@ -196,7 +196,31 @@ LIBRARY = test_index_quality.RUNS
 # game, file or score moved), so every `canonical.json` carries the tree's own reading again.
 # The replaced measurements, with the stamp this window held, are kept under each game's
 # `runs/<hash>/previous/` (`docs/reference/replay-2026-10-10b.md`).
-STALE_WINDOW: dict[str, str] = {}
+#
+# **Opened 2026-10-11 by Q843a** (schema 21, portal maps and filters): `complexity.py` charges
+# a map of ends and a filter (no library spec writes either, so no `rule_mass` moves), which
+# moves `metrics` with no number on a library game; `analysis` is unmoved; the core moves the
+# build fingerprint. The window is the stamp the library carries now (Q810's replay); **the
+# library replay Q843a owes, batched with Q843c's, empties it**.
+#
+# **Widened 2026-10-11 by Q843c** (schema 22, fold portals): the boundary's `folds` and the
+# fold move text (`engine.py`, `state.py`, `moves.py`) move `analysis` as well as `metrics`,
+# with no number on a library game, and the core moves the build fingerprint again. The
+# window now holds the whole stamp the library carries (Q810's replay); **the one replay for
+# schemas 21 and 22 (Q843r) empties it**.
+#
+# **Emptied 2026-10-11 by Q843r**, that replay: all 98 library games re-played, re-analysed and
+# re-scored on build `234d2bf85141905e` under `metrics` "cfffc0d7c5f19c35" and `analysis`
+# "84d3505a6a0baa2c" (no game, score or verdict moved), so every `canonical.json` carries the
+# tree's own reading again. The replaced measurements, with the stamp this window held, are
+# kept under each game's `runs/<hash>/previous/` (`docs/reference/replay-2026-10-11.md`).
+# (Q846 then moved both, and Q847 re-analysed and re-scored the library under them, no replay.)
+#
+# **Opened 2026-10-13 by Q867b** (schema 24, folds revised): the `complexity.py` comment and
+# the move text through a fold (`engine.py`) move `metrics` and `analysis` with no number on a
+# library game, and the core moves the build fingerprint. The window is the stamp the library
+# carries now (Q847's); **the library replay Q867b owes (Q867r) empties it**.
+STALE_WINDOW: dict[str, str] = {"metrics": "4f58577892896e3d", "analysis": "2aa42b5d8a26bb74"}
 
 
 @pytest.fixture(scope="module")

@@ -81,11 +81,19 @@ class TestDescriptors:
 
     def test_every_cell_can_be_described_in_english(self, cells) -> None:
         """The description is what a model is given, so it has to read as a brief."""
-        for name in ("chess", "shogi", "dobutsu", "racingkings"):
-            text = grid.describe_cell(cells[name])
+        texts: dict[tuple[int, ...], str] = {}
+        for name, cell in cells.items():
+            text = grid.describe_cell(cell)
+            texts[cell] = text
             assert "board of" in text
-            assert "won by" in text
             assert "_" not in text and "cell" not in text
+            if name in ("chess", "shogi", "dobutsu", "racingkings"):
+                assert "won by" in text
+            # Every axis is said: none is dropped from the sentence it is built into.
+            for answer in grid.describe_axes(cell):
+                assert answer["means"] in text, f"{name}: {answer['axis']} is missing"
+        # And two different kinds of game never read as the same sentence.
+        assert len(set(texts.values())) == len(texts)
 
     def test_a_drop_ruleset_is_filed_apart_from_one_without(self, cells) -> None:
         assert cells["crazyhouse"] != cells["chess"]

@@ -90,14 +90,14 @@ class TestTheMapsControls:
         opened = body.index('<details class="panel mapControls" id="mapControls" open>')
         closed = body.index("</details>")
         for part in ("explorerLinesHtml()", "mapLegendHtml()", "explorerSizeHtml()",
-                     "explorerKeepHtml()", "explorerGroupsHtml()"):
+                     "explorerKeepHtml()"):
             assert opened < body.index(part) < closed, part
         assert closed < body.index('<div class="mapView">')
 
     def test_its_rows_are_a_class_not_inline_spacing(self) -> None:
         assert EXPLORER.count('class="row mapCtl') == 4
         assert 'style="gap:10px; margin:8px 0; flex-wrap:wrap"' not in EXPLORER
-        assert "flex: 1 1 320px" in _rule(".mapFolds") and "min-width: 0" in _rule(".mapFolds")
+        assert "flex: 1 1 200px" in _rule(".mapSay") and "min-width: 0" in _rule(".mapSay")
 
     def test_it_folds_on_a_phone_so_the_drawing_is_on_the_first_screen(self) -> None:
         assert "controls.open = window.innerWidth > 720;" in EXPLORER
@@ -179,3 +179,78 @@ class TestMarkedLinesHangUnderTheirWords:
         shortlist = shortlist[:shortlist.index("\n}\n")]
         for body in (publish, shortlist):
             assert "display:inline-block; width:1.4em" not in body
+
+
+def _body(text: str, start: str) -> str:
+    """One function of a script, from its `start` to the brace that closes it."""
+    body = text[text.index(start):]
+    return body[:body.index("\n}\n")]
+
+
+class TestTheCommunitiesAreListedOnce:
+    """At 1400 x 900 the sheet listed the communities twice, as the key and as the chips
+    that fold them, and the drawing started at y 675 (Q777's look). The key is the one
+    list (Q801): a community folds from its panel, opens from its folded dot's, and its
+    chip in the key says it is folded."""
+
+    def test_no_second_list_of_chips_folds_them(self) -> None:
+        assert "exploreFolds" not in EXPLORER and "explorerGroupsHtml" not in EXPLORER
+        assert 'data-fold="' not in EXPLORER
+        assert "mapFolds" not in EXPLORER and ".mapFolds" not in _RULES
+
+    def test_a_community_of_three_or_more_folds_from_its_panel(self) -> None:
+        panel = _body(GRAPH, "function mapCommunityPanel")
+        assert "community.size >= MAP_COLOURED" in panel
+        assert 'data-fold-group="${esc(community.id)}">fold it into one dot</button>' in panel
+        assert "[data-open-group], [data-fold-group]" in EXPLORER
+
+    def test_folding_the_lit_community_holds_up_its_dot(self) -> None:
+        toggle = _body(EXPLORER, "function explorerFoldToggle")
+        assert "MAP_PICK.kind === 'community'" in toggle and "lit ||" in toggle
+        pick = _body(EXPLORER, "function explorerPickCommunity")
+        assert "EXPLORER_FOLDED.has(community.id)" in pick and "kind: 'group'" in pick
+
+    def test_a_folded_communitys_chip_says_so(self) -> None:
+        assert re.search(r"data-folded\s+hidden>&middot; folded</span>", GRAPH)
+        paint = _body(EXPLORER, "function explorerPaintCommunityChips")
+        assert "folded.hidden = !EXPLORER_FOLDED.has(id)" in paint
+        assert EXPLORER.count("explorerPaintCommunityChips();") == 2
+
+    def test_reset_ends_the_size_row(self) -> None:
+        size = _body(EXPLORER, "function explorerSizeHtml")
+        assert size.count("${explorerResetHtml()}") == 2
+        assert 'class="muted small mapSay" id="exploreSizeSay"' in size
+
+
+class TestTheBarForAGameThatPlays:
+    """At 375 px the bar for a game that plays took 181 of 812 px: the verdict in its own
+    box on two lines, then *save it*, *play it on its own page* and *watch it on its own
+    page* on two rows (Q777's look). In the bar (Q801) *on its own page* is said once,
+    before the pair, so the three buttons fit one row, and the verdict is a sentence in the
+    good colour with no box of its own; the button's name stays whole."""
+
+    def _narrow(self) -> str:
+        at = SECTION.index("@media (max-width: 900px) {\n    .designer .footbar {")
+        return SECTION[at:SECTION.index("\n  }\n", at)]
+
+    def test_the_bar_says_on_its_own_page_once(self) -> None:
+        verdict = DESIGN[DESIGN.index("function drawVerdict("):]
+        verdict = verdict[:verdict.index("\nfunction ", 1)]
+        assert '<span class="awayLead muted small">${esc(AWAY_TAIL.trim())}:</span>' in verdict
+        for words in ("PLAY_AWAY", "WATCH_AWAY"):
+            assert f'aria-label="${{esc({words})}}"' in verdict
+            assert f">${{awayLabel({words})}}</button>" in verdict
+        assert "const AWAY_TAIL = ' on its own page';" in DESIGN
+
+    def test_only_the_narrow_bar_swaps_the_words(self) -> None:
+        assert "display: none" in _rule(".designer .footbar .awayLead")
+        narrow = self._narrow()
+        assert ".designer .footbar .awayLead { display: inline;" in narrow
+        assert ".designer .footbar .awayTail { display: none; }" in narrow
+
+    def test_the_verdict_that_plays_is_no_box_in_the_bar(self) -> None:
+        narrow = self._narrow()
+        ok = narrow[narrow.index(".designer .footbar > .says > .ok {"):]
+        ok = ok[:ok.index("}")]
+        assert "border: none" in ok and "padding: 2px 0 0" in ok
+

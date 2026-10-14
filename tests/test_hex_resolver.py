@@ -17,6 +17,7 @@ from typing import Any
 
 import hex_geometry as oracle
 import pytest
+from retired_specs import hex_glinski_promoting
 
 from chess_variant_sandbox.loop.grid import _edges
 from chess_variant_sandbox.spec.distance import _wrap_features, features
@@ -157,7 +158,7 @@ class TestAbsentSquares:
         assert cells == set(range(size * size)) - absent
 
     def test_at_r5_they_are_glinskis_thirty_walls(self) -> None:
-        spec = _load(ROOT / "archive" / "hex-glinski-promoting.json")
+        spec = hex_glinski_promoting()
         walls = obstacle_squares(spec["rules"], 11, 11, spec["setup"]["orientation"])
         assert len(walls) == 30
         assert absent_squares(_hexagon(5)["board"]) == walls
@@ -262,7 +263,7 @@ class TestTheValidatorStillRefusesIt:
 
     @staticmethod
     def _glinski() -> dict[str, Any]:
-        return _load(ROOT / "archive" / "hex-glinski-promoting.json")
+        return hex_glinski_promoting()
 
     def test_board_shape(self) -> None:
         spec = self._glinski()
@@ -290,6 +291,10 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "wins_by_leaving",  # Q786
     "portal_pairs", "portals_move", "portals_one_way",  # Q771
     "portals_no_back",  # Q807
+    "portals_ring", "portals_funnel", "portals_other_map", "portals_filtered",  # Q843a
+    "portals_fold",  # Q843c
+    "npcs_share_a_walk",  # Q850
+    "facing_fixed",  # Q869
 })
 _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/almost": "9035530ccf64d8cd",
@@ -301,7 +306,7 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/chess-oriented-pawns": "f1530cae8408d901",
     "rulesets/chess": "c638843d0cbb3fe4",
     "rulesets/courier": "425cdfa92363dc89",
-    "rulesets/crazyhouse-torus": "a0afec7cf0db257c",
+    "rulesets/crazyhouse-torus": "efcaa301e7874eff",  # Q869: the rear pawn respelled as a fixed facing (was a0afec7cf0db257c)
     "rulesets/crazyhouse": "89bef2937fd67dd5",
     "rulesets/cylinder": "fe858992498b3166",
     "rulesets/dobutsu": "291093f5f614ed54",
@@ -315,7 +320,6 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/makruk": "e91699390ef310ea",
     "rulesets/onewaycylinder": "ff6c7bc9512dedfa",
     "rulesets/onewaytorus": "d97610a080d2797a",
-    "rulesets/onewaytunnel": "d9ad7b3e041609e7",
     "rulesets/racingkings": "e36e3c227d55b6cc",
     "rulesets/rps-hierarchy-chess": "34e88e16719159cf",
     "rulesets/rps-v1": "9d62600de20d2821",
@@ -323,15 +327,12 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/rps-v3": "34ee8433fa237eea",
     "rulesets/rps-v4": "c272f0494f483dcf",
     "rulesets/rps-v5": "b91364abfa8fc2c9",
-    "rulesets/sardines-torus": "6ed1e1ef9e57b89c",
     "rulesets/sardines": "de0716da8f51261b",
     "rulesets/shatranj": "291e3c37e50edd01",
     "rulesets/shogi": "9399bd9c1e2cc449",
     "rulesets/threecheck": "d193b87292055a74",
-    "rulesets/torus-extended": "af4c4e0838fd7aa5",
-    "rulesets/torus-less-extended": "0870ea5726ae3adf",
+    "rulesets/torus-less-extended": "1dcc63ed58bc931e",  # Q869: the rear pawn respelled as a fixed facing (was 0870ea5726ae3adf)
     "rulesets/torus": "a9b670d4a057ad89",
-    "rulesets/tunnel-vertical": "f68684b1faa90d54",
     "rulesets/xiangqi": "51cec6a3a851bc63",
     "archive/andernach": "352d33d9f6b29010",  # Q540, schema 17
     "archive/circe": "352d33d9f6b29010",  # Q540, schema 17
@@ -343,9 +344,9 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "archive/divide": "24d51a6b605d2aa5",  # Q772a, schema 19
     "archive/ferry": "62007817ab0c2bfb",  # Q772a, schema 19
     "archive/ferry-no-straight-back": "3cd0008b2552d704",  # Q807, schema 20
+    "archive/wolves-patrol": "ad7a6f1e406f28f3",  # Q850, schema 23
     "archive/carousel": "cce67fce00c2207f",  # Q772a, schema 19
     "archive/wormhole": "a82a1c3ee0f4049b",  # Q772a, schema 19
-    "archive/wormhole-adrift": "8a7ee8f749713bb5",  # Q772a, schema 19
     "archive/shut-wormhole": "8a7ee8f749713bb5",  # Q772a, schema 19
     "archive/cylinder-wormhole": "af2b3931c3b0dda1",  # Q772a, schema 19
     "archive/einstein": "5b12c7cca128a3a7",  # Q781, schema 18
@@ -356,13 +357,11 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "archive/sittuyin": "f3a43bd577292f85",  # Q784, schema 18
     "archive/kyoto": "2aed5b07a6185d43",  # Q785, schema 18
     "archive/jeson-mor": "2a87f67280ed3538",  # Q786, schema 18
-    "archive/hex-glinski-turned": "cb415ec30ffc72bd",  # Q782, schema 18
-    "archive/hex-glinski-turned-mirrored": "eaa3e61fd8e5cd3a",  # Q782, schema 18
+    # Q870, 2026-10-13: `archive/hex-glinski-turned` and `-turned-mirrored` retired for `pinwheel`,
+    # which has a board shape and so is not read here (rows were cb415ec30ffc72bd and eaa3e61fd8e5cd3a).
     "archive/cannonade": "9e78a35b5d909262",
     "archive/chess-sweeping-bishops": "980b6362973afb82",
-    "archive/hex-glinski-promoting": "a7853bea41ae9ca1",
     "archive/hierarchy-extended": "157ab1f4fa7f0800",
-    "archive/hierarchy-fall-swap": "bb5ebcd341443b1d",
     "archive/hierarchy-fall": "352d33d9f6b29010",
     "archive/hierarchy-rise-stay": "f3506f940053ff23",
     "archive/hierarchy-rise-throw": "9a8baa7002b61992",
@@ -378,14 +377,13 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "archive/succession": "2b280a64cd4dcfbf",
     "archive/three-stones": "4b5ae063d0a8a24d",
     "archive/weathervane-half-turn": "2446af4757bc9152",
-    "archive/weathervane-torus": "682429cc7157de60",
     "archive/weathervane": "48a037bdc8b167d9",
     "archive/wolves-bounty": "d4069a814edcdb9e",
-    "archive/wolves-immune": "63b9005f18b28cdf",
-    "archive/wolves-rotated-2": "ad7a6f1e406f28f3",
-    "archive/wolves-rotated-3": "ad7a6f1e406f28f3",
-    "archive/wolves-rotated-4": "ad7a6f1e406f28f3",
-    "archive/wolves-rotated": "ad7a6f1e406f28f3",
+    # Q876, 2026-10-13: `archive/wolves-immune` retired for `pitchfork` (the row was 63b9005f18b28cdf).
+    "archive/pitchfork": "63b9005f18b28cdf",  # Q876, schema 25
+    "archive/sluice": "29e224df70ed859d",  # Q844b, schema 21
+    "archive/crease": "f4debbefb2770d57",  # Q844b, schema 24
+    "archive/pawnproof-wormhole": "8a7ee8f749713bb5",  # Q844b, schema 21
     "archive/wolves": "ad7a6f1e406f28f3",
 }
 

@@ -24,6 +24,7 @@ from chess_variant_sandbox.engine.moves import (
     MOVE_CASTLE,
     MOVE_DROP,
     MOVE_EN_PASSANT,
+    MOVE_FOLD,
     MOVE_PORTAL,
     MOVE_PROMOTION,
     MOVE_ROTATE,
@@ -339,7 +340,8 @@ class MinimaxAgent:
         either would never come to rest.
         """
         _, target, kind, promoted = decode_move(move)
-        if kind not in (MOVE_ROTATE, MOVE_CASTLE) and state.board[target]:
+        # Schema 22: a fold moved onto a piece takes nothing either.
+        if kind not in (MOVE_ROTATE, MOVE_CASTLE, MOVE_FOLD) and state.board[target]:
             return True
         # Schema 19: a transit that promotes at its exit, as `agents.rs::is_loud` reads it.
         return kind in (MOVE_EN_PASSANT, MOVE_PROMOTION, MOVE_SWEEP) or (
@@ -441,7 +443,7 @@ class MinimaxAgent:
         on `weathervane` most of the move list is rotations, so the two searches would
         cut off in different places and play different games under one name.
         """
-        if move_type(move) in (MOVE_ROTATE, MOVE_CASTLE):
+        if move_type(move) in (MOVE_ROTATE, MOVE_CASTLE, MOVE_FOLD):
             return 0.0
         spec = self.engine.spec
         values = self.evaluator.values

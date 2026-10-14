@@ -176,16 +176,27 @@ LIGHT: dict[str, str] = {
     # theme, and a third piece has to read as *off* that axis rather than as a shade
     # between them. It never takes an army's icon, so a wild piece is always the disc.
     "p2": "#c08a3e", "p2-ink": "#16171a",
-    # A portal end (schema 19, `docs/plan-portals.md` §4, D3, D9): the rim of a pair's
-    # first end and of its second, orange and blue, the pair the common colour-blind
-    # readings still tell apart (and the blue end's rim is drawn double, so a grey picture
-    # does too). Neither can hold 3 : 1 against both woods and still be orange or blue, so
-    # the rim is edged inside and out in `portal-edge`, a near-black that does, and each
-    # hue holds 3 : 1 against that edge (`FLOORS`). `portal-stone` is the flat interior of
-    # an end nobody moves, and the rim of an end closed to the player looking, under its
-    # hue in dashes. The board does not invert (S8), so dark sets only the stone.
-    "portal-a": "#e8590c", "portal-b": "#2a86e0", "portal-edge": "#1e140c",
-    "portal-stone": "#b3aca1",
+    # A portal end (schema 19, `docs/plan-portals.md` §4, D3, D9; drawn since Q838b as the
+    # vortex of `docs/plan-portal-look.md` §2.3). No pair's hue can hold 3 : 1 against both
+    # woods and still be its hue, so the well is ringed in `portal-edge`, a near-black that
+    # does, and falls to it in the eye. `portal-stone` is the ground of the designer's end
+    # being put down. The board does not invert (S8), so dark sets only the stone.
+    "portal-edge": "#1e140c", "portal-stone": "#b3aca1",
+    # Q838b (`docs/plan-portal-look.md` §2.1): colour means the pair. Each pair's well, at
+    # both its ends, the trail through it and the dots where it lets a piece out, in one
+    # hue: violet, yellow, blue, orange, in that order because every two-pair game uses the
+    # first two, the most distinct pair (violet against yellow, the blue-yellow axis that
+    # survives red-green colour blindness, and far apart in lightness too). Each holds 3 : 1
+    # against `portal-edge`, which rings the well (`FLOORS`), and every two stay apart under
+    # simulated colour blindness (`tests/test_portal_palette.py`). The board does not invert,
+    # so dark sets none. The designer draws a pair in these too (Q838d): its chip, its card's
+    # icon, the end being put down and the ways on its card.
+    "pair-1": "#7b4fd6", "pair-2": "#efc12b", "pair-3": "#22b8cf", "pair-4": "#d55e00",
+    # A fold portal's pool (schema 22, Q843d, `docs/plan-portals-2.md` §5.3): the light in its
+    # middle, near white, through the group's hue to its rim, so a fold is bright in the middle
+    # where the vortex is dark, told apart in a grey picture too. On the board, which does not
+    # invert, so dark sets none.
+    "fold-light": "#fffbe8",
     # Where a wild piece steps after the next move (Q660): a dotted arrow, in a deep violet
     # that is none of the board's other marks (not the wild piece's ochre, which its trail
     # already draws in) and reads as a graphic, 3 : 1, on both woods in both themes.
@@ -193,6 +204,15 @@ LIGHT: dict[str, str] = {
     # Its name in the legend line, which sits on the page rather than the wood: the same
     # violet in light, a lighter one on a dark page (AA in `FLOORS`).
     "coming-ink": "#3d1f6e",
+    # Every wild piece's walk, in order (Q852, `viz/walks.py`): a path of arrows per walk,
+    # each walk in its own hue, cased in `walk-edge`, a near-black that holds 3 : 1 on both
+    # woods, as a portal's well is ringed, since no four hues can hold it on both woods and
+    # still be four hues. Each hue holds 3 : 1 against the casing (`FLOORS`). Blue, orange,
+    # magenta, gold: none is the coming arrow's violet or the wild piece's ochre. The board
+    # does not invert, so dark sets the same values (the page's views read a token set in
+    # both themes).
+    "walk-1": "#648fff", "walk-2": "#fe6100", "walk-3": "#dc267f", "walk-4": "#ffb000",
+    "walk-edge": "#1e140c",
     # --- a rule's ground on the board ---
     "claim0": "#4f8a5b", "claim1": "#7a5ea8",
     # A square the rules end the game on when it is reached. Teal because every other
@@ -249,6 +269,9 @@ DARK: dict[str, str] = {
     "p0": "#f0ede7", "p1": "#3b3f45", "p2": "#8f6a2f", "p2-ink": "#f4f2ee",
     "portal-stone": "#9b948a",
     "coming": "#341a5e", "coming-ink": "#b9a3ec",
+    # A walk's hues and casing, on the board, which does not invert: the light ones (Q852).
+    "walk-1": "#648fff", "walk-2": "#fe6100", "walk-3": "#dc267f", "walk-4": "#ffb000",
+    "walk-edge": "#1e140c",
     "claim0": "#6fae7c", "claim1": "#a98fd6",
     "goal": "#5cc9bd", "seam": "#74a6ef", "zone": "#e58cc4",
     "kind-board": "#74a6ef", "kind-pieces": "#e58cc4", "kind-setup": "#5cc9bd",
@@ -302,12 +325,13 @@ FLOORS: tuple[tuple[str, str, float], ...] = (
     # The legend's name for a wild piece's coming step (Q660), on the page and a panel.
     ("coming-ink", "panel", 4.5),
     ("coming-ink", "bg", 4.5),
-    # A portal's rim (Q772b): each hue against the keyline that edges it, a graphic, and
-    # the pair's number on an interior nobody moves, which is text. The keyline against
-    # the woods is read over their worst streak in `TestContrast`.
-    ("portal-a", "portal-edge", 3.0),
-    ("portal-b", "portal-edge", 3.0),
+    # A portal (Q772b): the keyline on the stone of the designer's end being put down. The
+    # keyline against the woods is read over their worst streak in `TestContrast`.
     ("portal-edge", "portal-stone", 4.5),
+    # A pair's well (Q838b): its hue against the keyline that rings it.
+    *((f"pair-{n}", "portal-edge", 3.0) for n in range(1, 5)),
+    # A wild piece's walk (Q852): each hue against the casing it is drawn on.
+    *((f"walk-{n}", "walk-edge", 3.0) for n in range(1, 5)),
     # A member's mark (R3): each of its eight hues, a graphic, on the page and a panel.
     *((f"mk-{n}", back, 3.0) for n in range(1, 9) for back in ("panel", "bg")),
 )

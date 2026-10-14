@@ -732,6 +732,41 @@ const GLOSS = {
     "Three quick tests a draft passes before the site keeps it: its rules are a complete"
     + " game, a game of it plays and comes to an end, and a computer player that thinks ahead can"
     + " win it."],
+  // Q838c (`docs/plan-portal-look.md` §5): the legend's (i) for a portal. The popover draws
+  // four ends (`figure`, `viz/wrapped.js`'s `portalKeyFigure`, as the board draws them), each
+  // with its sentence; the text here is the same reading in words, for a hover and a reader
+  // who cannot see the drawing.
+  portalKey: ['How to read a portal',
+    "What a portal stands on is who may move it: a white token White, a black token Black, a"
+    + " half-and-half token either side, and one sunk into the board nobody. Its arms are whose"
+    + " pieces may go in: white arms White's, black arms Black's, one of each both sides'. One"
+    + " with no arms lets nobody in: it is only a way out. The same colour and number are one"
+    + " group, and the beak on an end's rim points where you come out: a piece goes in at one"
+    + " end and comes out one step beyond the end its beak points at, in the direction it was"
+    + " going. Several beaks may point at one way out. Dashed arms let only some pieces in.",
+    { figure: () => portalKeyFigure(typeof SESSION !== 'undefined' && SESSION && SESSION.ruleset
+      ? SESSION.ruleset.sides : null) }],
+  // Q843d, revised by Q867c (`docs/plan-portals-2.md` §5.3R): the legend's (i) for a fold
+  // portal, drawn as the board draws it (`viz/wrapped.js`'s `foldKeyFigure`): a pool with a
+  // piece in it, a pair whose beaks and map arrows say where a piece comes out, then its bands
+  // and its collar. The text is the same reading in words.
+  foldKey: ['How to read a fold portal',
+    "A fold is a pool of light lying in the board. A piece can stand in it, and is taken there"
+    + " as anywhere. A piece that ends its move on an empty fold may stay there, or come out on"
+    + " the end the fold's beak points at, taking a piece there as any move does; a move that"
+    + " passes over a fold is not changed. Its bands are whose pieces may go through: white White's,"
+    + " black Black's, one of each both sides', plain nobody's. Its collar is who may move"
+    + " it, even from under a piece: none nobody, white White, black Black, half and half either"
+    + " side. The same colour and number are one group, and the portal map draws where each"
+    + " end leads as arrows.",
+    { figure: () => {
+      const rules = typeof SESSION !== 'undefined' && SESSION && SESSION.ruleset ? SESSION.ruleset : null;
+      // The game's first piece that is no portal end, as its first side draws it.
+      const ends = new Set(((rules && rules.portals && rules.portals.ends) || []).map(end => end.type));
+      const icon = rules ? ((rules.icons || []).find((pair, type) => !ends.has(type) && pair && pair[0])
+        || [])[0] : null;
+      return foldKeyFigure(rules ? rules.sides : null, icon);
+    } }],
 };
 
 // What the site says instead, where the local application's sentence is the maintainer's
@@ -1086,12 +1121,15 @@ function seatLeanText(score) {
 function glossBubble(key, more) {
   const entry = glossEntry(key);
   if (!entry) return '';
-  const { more: further = [], link } = entry[2] || {};
+  const { more: further = [], link, figure } = entry[2] || {};
   const said = text => {
     const words = esc(String(text).replace(/\s+/g, ' '));
     return link ? words.replace(esc(link[1]),
       `<a href="${esc(link[0])}">${esc(link[1])}</a>`) : words;
   };
+  // A `figure` is drawn markup (the portal's four ends) shown in place of the text, which
+  // stays the button's `title`; it is the page's own drawing, never anything a person wrote.
+  if (figure) return `<b>${esc(entry[0])}</b>${figure()}`;
   return `<b>${esc(entry[0])}</b><p>${said(entry[1])}</p>${
     more ? `<p>${esc(more)}</p>` : ''}${further.length ? `<details><summary>more</summary>${
     further.map(text => `<p>${said(text)}</p>`).join('')}</details>` : ''}`;
@@ -1150,6 +1188,13 @@ function wireInfo() {
     bubble.style.width = width + 'px';
     bubble.style.left = Math.max(12, Math.min(box.left, window.innerWidth - width - 12)) + 'px';
     bubble.style.top = (box.bottom + window.scrollY + 6) + 'px';
+    // Above the (i) where it would run off the foot of the screen and fits above (Q838c: the
+    // portal's drawn key, under a legend near the foot of the page, was cut off, and
+    // scrolling to it closes it).
+    const tall = bubble.offsetHeight || 0;
+    if (box.bottom + 6 + tall > window.innerHeight && box.top - 6 - tall >= 0) {
+      bubble.style.top = (box.top + window.scrollY - 6 - tall) + 'px';
+    }
   }
 }
 

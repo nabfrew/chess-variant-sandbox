@@ -317,6 +317,7 @@ class TestTheShelfDrawsTheGamesOwnPieces:
     """Q762: the shelf's boards carry the same pieces as the game's card and its own page,
     square for square, on a first visit to the landing page."""
 
+    @pytest.mark.slow  # four cold cards and their pages, 3.1 s on one core (Q749)
     def test_on_the_local_listing(self, tmp_path: Path) -> None:
         from chess_variant_sandbox.web.server import App
 

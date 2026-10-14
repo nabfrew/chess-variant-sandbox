@@ -167,6 +167,12 @@ _RULE_COSTS: dict[str, float] = {
     # of the feature and it is not this table's doing -- what it removes is five per-piece
     # `captures` lists, each of which `measure_complexity` counts as a
     # `capture_restriction` and each of which is real rule text a player has to read.
+    #
+    # Schema 23's `npcs[].also_at` is **not** costed either, on `immune`'s grounds and on
+    # `mirror`'s: a second wolf on the patrol is one more actor of a kind the rule already
+    # counts, as a mirrored entry's second wolf is, and what a player is told about it is
+    # the clause "and another starts on h5", plus the queue rule (one waits behind
+    # another), which is the waiting rule they were already told.
     "npcs": 2.5,
     # Schema 9. One sentence -- "a pawn dropped or struck onto the far rank is a queen at
     # once" -- and an exception rather than a parameter of `promotion`: it changes what a
@@ -194,29 +200,60 @@ _PORTAL_PAIR = 0.5
 _PORTAL_MOVED = 1.0
 _PORTAL_PASSAGE = 1.0
 _PORTAL_NO_BACK = 0.5
+# Schema 21 (Q843a, `plan-portals-2.md` §6): a map written with `ends` is a second reading
+# of where a portal leads -- not "the other one" but "the one its arrow names" -- learnt
+# once (1.0), and each end past a pair's two is one more place to read (0.25 each); a
+# filter on which pieces may go in is one exception per end a player has to remember,
+# charged once (1.0) as a passage is. A pair, the rule as first stated, costs as before.
+_PORTAL_MAP = 1.0
+_PORTAL_END = 0.25
+_PORTAL_FILTER = 1.0
+# Schema 22 (Q843c, `plan-portals-2.md` §6), revised at schema 24 (Q867b, §3R): a fold
+# group is the second rule set -- a portal a piece may stand in, where a move that ends on
+# an empty one may stay or come out on the end it leads to -- read per group, as the plan
+# charges it: each fold group is one more place where a move does not end where the board
+# says (1.0 each; the revision left the weight as it was).
+_PORTAL_FOLD = 1.0
 
 
 def _portal_extras(portals: Any) -> float:
-    """The part of `rules.portals`' charge `_RULE_COSTS` cannot say: see `_PORTAL_PAIR`."""
+    """The part of `rules.portals`' charge `_RULE_COSTS` cannot say: see `_PORTAL_PAIR`.
+
+    Read off the spelling here rather than through `schema.portal_groups`: this file is in
+    `measurement.METRICS_SOURCES` and `schema.py` is not, so a score must not depend on it
+    (`tests/test_measurement.py`). The charges are the same either way.
+    """
     if not isinstance(portals, list) or not portals:
         return 0.0
-    pairs = [pair for pair in portals if isinstance(pair, dict)]
-    total = _PORTAL_PAIR * max(len(pairs) - 1, 0)
+    groups = [group for group in portals if isinstance(group, dict)]
+    total = _PORTAL_PAIR * max(len(groups) - 1, 0)
+    pairs = [group for group in groups if "ends" not in group]
+    maps = [
+        [end for end in group["ends"] if isinstance(end, dict)]
+        for group in groups if isinstance(group.get("ends"), list)
+    ]
     if any(
         any((pair.get("moved_by") or {}).get(end) for end in ("orange", "blue"))
         for pair in pairs
         if isinstance(pair.get("moved_by"), dict)
-    ):
+    ) or any(end.get("moved_by") for ends in maps for end in ends):
         total += _PORTAL_MOVED
     if any(
         word != "both_ways"
         for pair in pairs
         if isinstance(pair.get("passage"), dict)
         for word in pair["passage"].values()
-    ):
+    ) or any("enter" in end for ends in maps for end in ends):
         total += _PORTAL_PASSAGE
-    if any(pair.get("no_straight_back") is True for pair in pairs):
+    if any(group.get("no_straight_back") is True for group in groups):
         total += _PORTAL_NO_BACK
+    if maps:
+        total += _PORTAL_MAP + _PORTAL_END * sum(max(len(ends) - 2, 0) for ends in maps)
+    if any("carries" in pair for pair in pairs) or any(
+        "carries" in end for ends in maps for end in ends
+    ):
+        total += _PORTAL_FILTER
+    total += _PORTAL_FOLD * sum(1 for group in groups if group.get("kind") == "fold")
     return total
 
 # Keys whose cost applies only when they depart from the engine's default. Stating

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 from chess_variant_sandbox import corpus
 from chess_variant_sandbox.agents import available_agents
 from chess_variant_sandbox.engine import Engine
-from chess_variant_sandbox.measurement import stale_build
+from chess_variant_sandbox.measurement import named, stale_build
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS, score_ruleset
 from chess_variant_sandbox.spec import load_spec, measure_complexity, spec_hash, validate_spec
 from chess_variant_sandbox.tournament import (
@@ -58,6 +58,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.checkpoint is None:
             return args.handler(args)
+        refusal = _checkpoint_refusal(args)
+        if refusal:
+            print(f"error: {refusal}", file=sys.stderr)
+            return 2
         # Q732: a campaign directory; every long stage of the command is resumable there.
         from chess_variant_sandbox.tournament import checkpoint
 
@@ -68,6 +72,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (ValueError, LookupError, FileNotFoundError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
+
+
+def _checkpoint_refusal(args: argparse.Namespace) -> str:
+    """Why ``--checkpoint`` cannot take effect on this command, or ``""`` (Q900).
+
+    A campaign is this process's: a command whose work runs in other processes would open
+    the directory, log into it and resume nothing. The refresher is one: each game is a
+    child `refresh <hash>` in its own worktree, given no campaign, so a game it loses is
+    played again from its start (`docs/reference/campaign-checkpoints.md`).
+    """
+    if args.handler is _cmd_refresh and not args.hash:
+        return (
+            "--checkpoint resumes a repair in this process, and the refresher repairs each "
+            "game in a child process that never sees it; give --checkpoint to a named "
+            "repair (refresh <hash>) or to measure"
+        )
+    return ""
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -652,7 +673,13 @@ def _build_parser() -> argparse.ArgumentParser:
     refresh.add_argument("--no-slow-tier", action="store_true",
                          help="with --watch, skip the weekly `pytest -m slow` run")
     refresh.add_argument("--plan", action="store_true",
-                         help="print the queue, in order, and run nothing")
+                         help="print the queue, in order, and run nothing: the scores, "
+                              "then the ladder work")
+    refresh.add_argument("--part", choices=("all", "scores", "ladders"), default="all",
+                         help="with --plan, only the scores or only the ladder work")
+    refresh.add_argument("--ladder", action="store_true",
+                         help="with a named game, pay what its picker ladder owes instead "
+                              "of its score (what the refresher runs for each ladder)")
     refresh.add_argument("--status", action="store_true",
                          help="print what the refresher is doing, from its status file")
     refresh.add_argument("--forget", default="", metavar="HASH",
@@ -1605,12 +1632,18 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
         print("a named game is repaired here; --library, --plan, --status and --forget "
               "name no game", file=sys.stderr)
         return 2
+    if args.ladder and not args.hash:
+        print("--ladder names a game: refresh <hash> --ladder", file=sys.stderr)
+        return 2
     if args.hash:
         runs = args.runs or RUNS_DIR
-        outcome = refresher.repair(
-            args.hash, runs, args.weights, workers=args.workers,
-            say=None if args.json else print,
-        )
+        if args.ladder:
+            outcome = refresher.rate_ladder(args.hash, runs, say=None if args.json else print)
+        else:
+            outcome = refresher.repair(
+                args.hash, runs, args.weights, workers=args.workers,
+                say=None if args.json else print,
+            )
         if args.json:
             print(json.dumps(outcome.as_dict()))
         elif outcome.refused:
@@ -1618,14 +1651,19 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
         return 1 if outcome.refused else 0
 
     if args.plan:
-        items = refresher.queue(args.runs or RUNS_DIR, args.weights)
+        runs = args.runs or RUNS_DIR
+        items = (refresher.queue(runs, args.weights) if args.part != "ladders" else [])
+        items += refresher.ladder_items(runs) if args.part != "scores" else []
         if args.json:
             print(json.dumps([item.as_dict() for item in items]))
             return 0
         for item in items:
             print(f"  {item.needs:9} tier {item.tier}  {item.name:22} [{item.hash}] "
                   f"{item.lease}: {item.reason}")
-        print(f"\n{len(items)} owed")
+        scores = sum(1 for item in items if not item.ladder)
+        print(f"\n{len(items)} owed: {scores} scores, then {len(items) - scores} ladders"
+              + (" (the ladders wait until no score is owed)" if scores and len(items) > scores
+                 else ""))
         return 0
 
     main = refresher.main_checkout_of(Path.cwd())
@@ -2141,12 +2179,15 @@ def _cmd_fit(args: argparse.Namespace) -> int:
     from chess_variant_sandbox.agents.fitted import (
         FittedObjective,
         procedure_digest,
-        stale_verdict,
         store_path,
     )
     from chess_variant_sandbox.engine import Engine
-    from chess_variant_sandbox.measurement import built_fingerprint
-    from chess_variant_sandbox.tournament.fitting import check_fit, fit_ruleset, verified_cores
+    from chess_variant_sandbox.tournament.fitting import (
+        check_fit,
+        fit_ruleset,
+        save_fit,
+        unverified_reason,
+    )
 
     spec = load_spec(args.ruleset)
     compiled = Engine(spec).spec
@@ -2164,7 +2205,7 @@ def _cmd_fit(args: argparse.Namespace) -> int:
     else:
         started = time.perf_counter()
         fit = fit_ruleset(spec, workers=args.workers)
-        fit.save(path)
+        save_fit(fit, spec, args.store)
         print(f"{compiled.name}: fitted in {time.perf_counter() - started:.1f}s -> {path}")
 
     verdict = "accepted" if fit.accepted else "REFUSED, falls back to the built-in objective"
@@ -2177,9 +2218,9 @@ def _cmd_fit(args: argparse.Namespace) -> int:
     # Reported, never enforced, exactly as `values` reports it. A verdict taken on
     # another core is still a real number about a real player; what it is no longer is a
     # number about *this* engine, and a reader has to be told which they are looking at.
-    # A store a check has reproduced on this core is this core's answer, whoever made it.
-    reproduced = built_fingerprint() in verified_cores(fit, args.store)
-    drifted = None if reproduced else stale_verdict(fit)
+    # A store made or reproduced under this core and this game's tables, players and
+    # runner as they are now is this core's answer, whoever made it (Q892).
+    drifted = unverified_reason(fit, args.store, spec)
     if drifted:
         print(f"  NOTE: {drifted}")
     for term, weight in zip(VOCABULARY, fit.vector, strict=True):
@@ -2523,6 +2564,15 @@ def _reproduction(found: Reproduction, seconds: float) -> str:
     from chess_variant_sandbox.tournament import fitting
 
     made = f"made on core {found.stored.build or 'unknown'}" if found.stored else ""
+    if found.stored and found.stored.build == found.core:
+        # The loaded core made it, so "reproduces on" it would say nothing; say what the
+        # check was for: the basis the store's games read (Q894).
+        if not found.recorded:
+            made += ", the loaded one, with no record of the tables, players and runner it read"
+        elif found.differs:
+            made += (
+                f", the loaded one, last verified where the {named(found.differs)} differ"
+            )
     if found.outcome == fitting.MADE_HERE:
         return f"{made}, the loaded one; nothing to check -> {found.path}"
     if found.outcome == fitting.REPRODUCED_BEFORE:

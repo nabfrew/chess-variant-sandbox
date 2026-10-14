@@ -20,6 +20,18 @@ per-check helpers did with fixed names under `tests/`.
 A context is not a process. A check cannot leak globals into the next one, but a check that
 never lets go -- an interval nobody clears -- would hang this node where it would have hung
 its own; `pytest-timeout` is the guard in both cases.
+
+**What the node holds, and for how long** (Q749). V8's compilation cache keeps every
+script it compiles, keyed by source, and a script compiled into a `vm` context keeps that
+context: so each check's context, with the 1.3 MB page script in it, lived as long as the
+node. Asked by `test_web.py` alone, the node grew to 1.0 GB, and the four a fast run keeps
+held 2.0-2.3 GB at its peak (F4's after, `docs/plan-tests.md`). Started with
+`--no-compilation-cache` it holds about 160 MB on the same file, for no measurable time: every
+check compiles into a fresh context anyway. `--max-old-space-size` is the backstop, so a leak
+found later costs a crash naming this file rather than a gigabyte per worker. And the node is
+released when the last test of a module that used it ends (`pytest_runtest_teardown` below,
+this file being a plugin `conftest.py` names), so a worker in the rest of the suite holds none;
+the next check starts another, at about a tenth of a second.
 """
 
 from __future__ import annotations
@@ -30,9 +42,16 @@ import json
 import shutil
 import subprocess
 import threading
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 import pytest
+
+# The heap a check may use. A check's live heap is tens of megabytes; this is a ceiling a
+# leak hits, well above what any check needs. The `suite` lease's booking (`SUITE_PEAK_MB` in
+# `.claude/scripts/compute_lease.py`) was measured with each node at 100-125 MB.
+HEAP_MB = 256
+NODE_FLAGS = ("--no-compilation-cache", f"--max-old-space-size={HEAP_MB}")
 
 # The server half. It reads one JSON job per line and answers one JSON line per job, in
 # order. Everything a job prints goes into its own buffers, never to this process's stdout,
@@ -182,7 +201,7 @@ class _Node:
     def __init__(self, node: str) -> None:
         self.lock = threading.Lock()
         self.process = subprocess.Popen(
-            [node, "-e", _SERVER],
+            [node, *NODE_FLAGS, "-e", _SERVER],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -197,7 +216,11 @@ class _Node:
             self.process.stdin.flush()
             line = self.process.stdout.readline()
         if not line:
-            raise RuntimeError("the session's node exited")
+            code = self.process.wait()
+            raise RuntimeError(
+                f"the session's node exited ({code}); a check that needs more than"
+                f" {HEAP_MB} MB of heap ends it, so see HEAP_MB in tests/node_session.py"
+            )
         answer = json.loads(line)
         return Ran(answer["returncode"], answer["stdout"], answer["stderr"])
 
@@ -240,3 +263,29 @@ def run(source: str, *, check: bool = False) -> Ran:
         atexit.register(_node.close)
     answer = _answers[key] = _node.ask(source, check)
     return answer
+
+
+def release() -> bool:
+    """End the session's node, if one is running; the next `run` starts another.
+
+    True when there was one to end. The answers already given are kept.
+    """
+    global _node
+    if _node is None:
+        return False
+    held, _node = _node, None
+    held.close()
+    return True
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> Iterator[None]:
+    """When a module's last test (on this worker) is torn down, its node goes with it.
+
+    After the teardown, so a module-scoped fixture that asks node in its finaliser still
+    has one. The next module that asks starts its own: a worker switches out of a module
+    that used node 4-10 times in a fast run (Q749), at about a tenth of a second each.
+    """
+    yield
+    if nextitem is None or nextitem.path != item.path:
+        release()

@@ -58,10 +58,11 @@ class TestEveryLibraryFileSaysWhenItJoined:
             ("archive/rifle.json", "2026-10-09"),
             ("archive/carousel.json", "2026-10-10"),
             ("archive/wormhole.json", "2026-10-10"),
-            # A file renamed keeps the day of the name it arrived under:
-            # `sardines-wraparound` (2026-08-29) became `sardines-torus` on 2026-09-11.
-            ("rulesets/sardines-torus.json", "2026-08-29"),
-            ("rulesets/tunnel-vertical.json", "2026-08-28"),
+            # The schema-5 boards of the corpus's second week. Two renamed files kept the
+            # day of the name they arrived under (`sardines-torus`, `tunnel-vertical`); both
+            # left the library on 2026-10-12 (Q868).
+            ("rulesets/cylinder.json", "2026-08-28"),
+            ("rulesets/onewaytorus.json", "2026-08-30"),
             # One of the five files that had no provenance block at all.
             ("rulesets/rps-v2.json", "2026-08-21"),
         ],
@@ -69,11 +70,17 @@ class TestEveryLibraryFileSaysWhenItJoined:
     def test_the_backfill_wrote_the_day_git_first_saw_it(self, name: str, day: str) -> None:
         assert load_spec(ROOT / name)["provenance"]["added"] == day
 
-    def test_the_card_carries_it(self) -> None:
-        found = library.discover(library.RULESET_DIR, library.RUNS_DIR, library.ARCHIVE_DIR)
-        cards = {game.name: game.summary() for game in found if game.source != "evolved"}
-        assert cards["chess"]["added"] == "2026-08-19"
-        assert cards["circe"]["added"] == "2026-10-09"
+    def test_the_card_carries_it(self, tmp_path: Path) -> None:
+        # The two cards asked about, not all of them: a card's summary runs the library's
+        # smoke gate on its game, 23 s of processor time over the whole corpus (Q749).
+        # Listed over an empty `runs/` (Q893): the day does not come from a measurement,
+        # and a `runs/` that holds them makes the listing ask `tables_fingerprint` of every
+        # game, which compiles the library in whichever test lists first (15.7 s here
+        # with no seed; 9.6 s in a gate, 2026-10-13).
+        found = library.discover(library.RULESET_DIR, tmp_path, library.ARCHIVE_DIR)
+        games = {game.name: game for game in found if game.source != "evolved"}
+        assert games["chess"].summary()["added"] == "2026-08-19"
+        assert games["circe"].summary()["added"] == "2026-10-09"
 
 
 class TestTheFieldMovesNoGame:
@@ -89,8 +96,8 @@ class TestTheFieldMovesNoGame:
             wrong = {**spec, "provenance": {**spec["provenance"], "added": bad}}
             assert any("provenance.added" in problem for problem in validate_spec(wrong)), bad
 
-    def test_only_a_library_file_speaks_for_its_day(self) -> None:
-        game = library.discover(library.RULESET_DIR, library.RUNS_DIR, library.ARCHIVE_DIR)[0]
+    def test_only_a_library_file_speaks_for_its_day(self, tmp_path: Path) -> None:
+        game = library.discover(library.RULESET_DIR, tmp_path, library.ARCHIVE_DIR)[0]
         assert library.added(game) is not None
         for source in ("designed", "evolved", "retired"):
             assert library.added(_Stand(source, game.spec)) is None, source

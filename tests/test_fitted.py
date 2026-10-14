@@ -311,15 +311,22 @@ class TestTheStoreNamesTheCoreThatMadeIt:
     def test_a_verdict_made_on_this_core_is_reused_without_a_word(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """An anti-false-positive: a warning on every reuse is a warning nobody reads."""
+        """An anti-false-positive: a warning on every reuse is a warning nobody reads.
+
+        Saved as every writer here saves one, with its maker's basis beside it (Q892):
+        a store that records its core and not its tables is checked, not trusted
+        (`tests/test_fit_check.py::TestTheBasis`).
+        """
         from chess_variant_sandbox.measurement import built_fingerprint
-        from chess_variant_sandbox.tournament.fitting import ensure_fit
+        from chess_variant_sandbox.tournament.fitting import ensure_fit, save_fit
 
         spec = load_spec(RULESETS / "gardner.json")
         digest = Engine(spec).spec.hash
-        FittedObjective(
-            **{**a_fit(digest).__dict__, "build": built_fingerprint()}
-        ).save(store_path(digest, procedure_digest(), tmp_path))
+        save_fit(
+            FittedObjective(**{**a_fit(digest).__dict__, "build": built_fingerprint()}),
+            spec,
+            tmp_path,
+        )
 
         ensure_fit(spec, store=str(tmp_path))
         assert capsys.readouterr().err == ""

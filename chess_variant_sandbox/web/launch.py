@@ -65,7 +65,7 @@ LAUNCH_SET: tuple[Launch, ...] = (
     Launch("wolves", "ceb4916bdabc",
            "Chess with four wolves that belong to nobody: they walk their paths after every "
            "move and eat what they find."),
-    Launch("hex glinski hexagon", "6eaaad41673b",
+    Launch("glinski hexagonal chess", "6eaaad41673b",
            "Chess on a board of hexagons, where pieces move in six and twelve directions."),
 )
 
@@ -107,7 +107,7 @@ MONTHLY: tuple[str, ...] = (
     FIRST_MONTH_GAME,
     "quarry",
     "wolves",
-    "hex glinski hexagon",
+    "glinski hexagonal chess",
     "dobutsu",
     "los alamos",
     "cylinder chess",

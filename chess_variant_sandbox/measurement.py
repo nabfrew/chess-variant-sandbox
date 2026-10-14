@@ -65,6 +65,7 @@ import ast
 import contextlib
 import io
 import json
+import os
 import re
 import tokenize
 from collections.abc import Callable
@@ -714,22 +715,107 @@ _COMPILE_ENTRIES = (
     "chess_variant_sandbox/engine/bridge.py",
 )
 
-# `import chess_variant_sandbox.x.y` and `from chess_variant_sandbox.x import a, b`,
-# anywhere in a file, deferred imports included. The names after `import` are kept so a
-# submodule imported by name is found too.
-_PACKAGE_IMPORT = re.compile(
-    rb"(?:^|\s)(?:from\s+(chess_variant_sandbox(?:\.\w+)*)\s+import\s+\(?([\w\s,]+)"
-    rb"|import\s+(chess_variant_sandbox(?:\.\w+)*))"
+# One import statement a match, anywhere in a file, deferred imports included:
+# `from chess_variant_sandbox.x import a, b`, a parenthesised list over several lines,
+# `from . import a` and `from ..x import a` (resolved against the file's own package), and
+# `import chess_variant_sandbox.x.y as z, chess_variant_sandbox.w`. The names after
+# `import` are kept so a submodule imported by name is found too.
+#
+# Anchored at a line's start (or a `;`), and a name list ends at its line or its `)`. The
+# pattern this replaced (Q889) read `[\w\s,]+` after `import`, which ran on across the
+# newline and swallowed the next line's `from chess_variant_sandbox`, so of two
+# consecutive imports it saw only the first: `values_sources` lacked twelve files.
+# `tests/test_measurement.py` holds every closure here to a walk of the syntax tree; the
+# pattern stays because parsing every file costs ten times what reading it does, on every
+# start that asks for a cache key.
+_FROM_IMPORT = re.compile(
+    rb"(?:^|;)[ \t]*from[ \t]+(\.*)[ \t]*(\w+(?:\.\w+)*)?[ \t]+import[ \t]*"
+    rb"(\([^)]*\)|[^\r\n#;]*)",
+    re.MULTILINE,
 )
+_PLAIN_IMPORT = re.compile(rb"(?:^|;)[ \t]*import[ \t]+([^\r\n#;]*)", re.MULTILINE)
+_CONTINUED = re.compile(rb"\\\r?\n")
+_PACKAGE = "chess_variant_sandbox"
 
 
-def _module_file(dotted: str) -> Path | None:
-    """The source file a dotted package name refers to, or ``None`` for an attribute."""
-    base = ROOT.joinpath(*dotted.split("."))
-    for candidate in (base.with_suffix(".py"), base / "__init__.py"):
-        if candidate.is_file():
-            return candidate
+def package_imports(body: bytes, package: tuple[str, ...]) -> set[str]:
+    """Every package module a source file's import statements can name, parents included.
+
+    ``package`` is the dotted package the file sits in (its directory under `ROOT`), which
+    a relative import counts up from. A name is returned whether or not it is a module --
+    `from x import f` gives `x.f` -- and `_module_file` tells the two apart.
+    """
+    body = _CONTINUED.sub(b" ", body)
+    named: list[str] = []
+    for match in _FROM_IMPORT.finditer(body):
+        dots = len(match.group(1))
+        module = (match.group(2) or b"").decode("ascii")
+        if dots:
+            if dots > len(package):
+                continue
+            base = list(package[: len(package) - dots + 1])
+            module = ".".join([*base, module] if module else base)
+        elif not module:
+            continue
+        named.append(module)
+        names = match.group(3).decode("utf-8", "replace").strip("()")
+        for line in names.splitlines():
+            for name in line.split("#")[0].split(","):
+                word = name.strip().split(" ")[0]
+                if word.isidentifier():
+                    named.append(f"{module}.{word}")
+    for match in _PLAIN_IMPORT.finditer(body):
+        for name in match.group(1).decode("utf-8", "replace").split(","):
+            word = name.strip().split(" ")[0]
+            if word.split(".")[0] == _PACKAGE:
+                named.append(word)
+    found: set[str] = set()
+    for dotted in named:
+        parts = dotted.split(".")
+        if parts[0] != _PACKAGE:
+            continue
+        # Importing `a.b.c` runs `a/__init__.py` and `a/b/__init__.py` first.
+        found.update(".".join(parts[:end]) for end in range(1, len(parts) + 1))
+    return found
+
+
+def _listing(directory: Path, listings: dict[Path, frozenset[str]]) -> frozenset[str]:
+    """The exact names of the files in one directory, none for a missing one."""
+    found = listings.get(directory)
+    if found is None:
+        try:
+            found = frozenset(entry.name for entry in os.scandir(directory) if entry.is_file())
+        except OSError:
+            found = frozenset()
+        listings[directory] = found
+    return found
+
+
+def _module_file(
+    dotted: str, listings: dict[Path, frozenset[str]] | None = None
+) -> Path | None:
+    """The source file a dotted package name refers to, or ``None`` for an attribute.
+
+    Spelled exactly, against the directory's own listing: `Path.is_file` is case-blind on
+    Windows, so `from chess_variant_sandbox.engine import Engine` (a class) would find
+    `engine/Engine.py`, the same file as `engine/engine.py` under a second name (Q887 met
+    this in `web/library.py`'s key).
+    """
+    listings = {} if listings is None else listings
+    *parents, stem = dotted.split(".")
+    base = ROOT.joinpath(*parents)
+    for directory, name in ((base, f"{stem}.py"), (base / stem, "__init__.py")):
+        if name in _listing(directory, listings):
+            return directory / name
     return None
+
+
+def _package_of(path: Path) -> tuple[str, ...]:
+    """The dotted package a source file under `ROOT` sits in, as its parts."""
+    try:
+        return path.parent.relative_to(ROOT.resolve()).parts
+    except ValueError:
+        return ()
 
 
 def compile_sources() -> list[Path]:
@@ -753,35 +839,35 @@ def compile_sources() -> list[Path]:
 
 
 def _closure(entries: tuple[str, ...]) -> set[Path]:
-    """Every package file ``entries`` import, followed to closure, the entries included."""
+    """Every package file ``entries`` import, followed to closure, the entries included.
+
+    The entries' own packages too: importing `a.b.c` runs `a/__init__.py` and
+    `a/b/__init__.py` before `c.py`.
+    """
+    listings: dict[Path, frozenset[str]] = {}
+    queue: list[Path] = []
+    for entry in entries:
+        path = (ROOT / entry).resolve()
+        queue.append(path)
+        parts = _package_of(path)
+        for end in range(1, len(parts) + 1):
+            target = _module_file(".".join(parts[:end]), listings)
+            if target is not None:
+                queue.append(target.resolve())
     found: set[Path] = set()
-    queue = [(ROOT / entry).resolve() for entry in entries]
-    seen: set[Path] = set()
     while queue:
         path = queue.pop()
-        if path in seen:
+        if path in found:
             continue
-        seen.add(path)
         found.add(path)
         try:
             body = path.read_bytes()
         except OSError:
             continue
-        for match in _PACKAGE_IMPORT.finditer(body):
-            module = (match.group(1) or match.group(3)).decode("ascii")
-            names = [
-                name.strip()
-                for name in (match.group(2) or b"").decode("ascii").split(",")
-                if name.strip()
-            ]
-            parts = module.split(".")
-            # Importing `a.b.c` runs `a/__init__.py` and `a/b/__init__.py` first.
-            parents = [".".join(parts[:end]) for end in range(1, len(parts))]
-            named = [f"{module}.{name.split()[0]}" for name in names]
-            for dotted in [*parents, module, *named]:
-                target = _module_file(dotted)
-                if target is not None:
-                    queue.append(target.resolve())
+        for dotted in package_imports(body, _package_of(path)):
+            target = _module_file(dotted, listings)
+            if target is not None:
+                queue.append(target.resolve())
     return found
 
 
@@ -854,21 +940,74 @@ def _read_disk(state: dict[str, Any], path: Path, key: str) -> dict[str, str]:
 
     An answer stored under any other source key is dropped, never consulted: the file
     holds one key's answers at a time, and a key that moved means every one of them may
-    be wrong.
+    be wrong. A file with nothing under this key is seeded from the main checkout's, when
+    that one is under this key (`_seeded`).
     """
     if state["path"] == path and state["key"] == key:
         return dict(state["tables"])
-    tables: dict[str, str] = {}
+    tables = _stored_under(path, key)
+    if not tables:
+        tables = _seeded(path, key)
+        if tables:
+            _store(path, key, tables)
+    state.update(path=path, key=key, tables=tables)
+    return dict(tables)
+
+
+def _stored_under(path: Path, key: str) -> dict[str, str]:
+    """What the cache file at ``path`` holds under ``key``; nothing under any other."""
     try:
         stored = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        stored = None
+        return {}
     if isinstance(stored, dict) and stored.get("sources") == key:
         found = stored.get("tables")
         if isinstance(found, dict):
-            tables = {str(k): str(v) for k, v in found.items()}
-    state.update(path=path, key=key, tables=tables)
-    return dict(tables)
+            return {str(k): str(v) for k, v in found.items()}
+    return {}
+
+
+def main_runs_dir() -> Path | None:
+    """The main checkout's `runs/`, read from git's common directory, or `None`.
+
+    In a worktree `<root>/.git` is a file naming `<main>/.git/worktrees/<name>`, and that
+    directory's `commondir` names `<main>/.git`; the main checkout is its parent. Read
+    from those two files rather than by running git, because this is asked on every cold
+    start. In the main checkout `.git` is a directory and there is nothing to seed from.
+    """
+    try:
+        pointer = (ROOT / ".git").read_text(encoding="utf-8").strip()
+        if not pointer.startswith("gitdir:"):
+            return None
+        gitdir = Path(pointer[len("gitdir:"):].strip())
+        if not gitdir.is_absolute():
+            gitdir = ROOT / gitdir
+        common = Path((gitdir / "commondir").read_text(encoding="utf-8").strip())
+        if not common.is_absolute():
+            common = gitdir / common
+        main = common.resolve().parent
+    except (OSError, ValueError):
+        return None
+    return main / "runs" if main != ROOT.resolve() else None
+
+
+def _seeded(path: Path, key: str) -> dict[str, str]:
+    """The main checkout's answers in a cache file of the same name, if under ``key``.
+
+    **Read only, and only under the same key.** The key hashes every compile source by
+    path relative to the checkout and by exact bytes, so a match means this tree compiles
+    what main's did and its answers are this tree's own; any other key gives nothing.
+    Only the default location seeds: a cache moved by `TABLES_CACHE_ENV` (a test's, a
+    scratch directory's) is its owner's, and main's file is never written from here.
+    """
+    import os
+
+    if os.environ.get(TABLES_CACHE_ENV):
+        return {}
+    runs = main_runs_dir()
+    if runs is None or (runs / path.name).resolve() == path.resolve():
+        return {}
+    return _stored_under(runs / path.name, key)
 
 
 def _remember_tables(digest: str, answer: str) -> None:
@@ -877,7 +1016,14 @@ def _remember_tables(digest: str, answer: str) -> None:
 
 
 def _write_disk(state: dict[str, Any], path: Path, key: str, digest: str, answer: str) -> None:
-    """Add one answer to an on-disk cache, best effort.
+    """Add one answer to an on-disk cache, best effort."""
+    _write_disk_many(state, path, key, {digest: answer})
+
+
+def _write_disk_many(
+    state: dict[str, Any], path: Path, key: str, answers: dict[str, str]
+) -> None:
+    """Add answers to an on-disk cache, best effort.
 
     Written whole to a temporary file and renamed over the old one, so a reader never sees
     half a file. Two processes missing at once can each write, and the later rename
@@ -885,21 +1031,20 @@ def _write_disk(state: dict[str, Any], path: Path, key: str, digest: str, answer
     since every answer in either file is the compile's own. A `runs/` that cannot be
     written (a read-only install) leaves the cache in memory only.
     """
+    tables = _read_disk(state, path, key)
+    tables.update(answers)
+    # Pick up what another process stored meanwhile, under the same key.
+    tables = {**_stored_under(path, state["key"]), **tables}
+    state["tables"] = tables
+    _store(path, state["key"], tables)
+
+
+def _store(path: Path, key: str, tables: dict[str, str]) -> None:
+    """Write one cache file whole, best effort (see `_write_disk_many`)."""
     import os
 
-    tables = _read_disk(state, path, key)
-    tables[digest] = answer
-    # Pick up what another process stored meanwhile, under the same key.
-    try:
-        stored = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(stored, dict) and stored.get("sources") == state["key"]:
-            tables = {**{str(k): str(v) for k, v in stored.get("tables", {}).items()},
-                      **tables}
-    except (OSError, ValueError, AttributeError):
-        pass
-    state["tables"] = tables
     payload = json.dumps(
-        {"sources": state["key"], "tables": dict(sorted(tables.items()))},
+        {"sources": key, "tables": dict(sorted(tables.items()))},
         indent=0, separators=(",", ":"),
     )
     temporary = path.with_name(f"{path.name}.{os.getpid()}.tmp")
@@ -949,6 +1094,14 @@ def tables_fingerprint(spec: dict[str, Any]) -> str:
         _TABLES[digest] = found
         return found
 
+    answer = _compute_tables(spec, digest)
+    _TABLES[digest] = answer
+    _remember_tables(digest, answer)
+    return answer
+
+
+def _compute_tables(spec: dict[str, Any], digest: str) -> str:
+    """`tables_fingerprint`'s answer, compiled and hashed, with no cache read or written."""
     from chess_variant_sandbox.engine.bridge import canonical_tables
 
     tables = canonical_tables(_compiled(spec, digest))
@@ -961,10 +1114,7 @@ def tables_fingerprint(spec: dict[str, Any]) -> str:
         separators=(",", ":"),
         default=lambda value: value.hex() if isinstance(value, bytes) else repr(value),
     )
-    answer = _fnv1a([blob.encode("utf-8")])
-    _TABLES[digest] = answer
-    _remember_tables(digest, answer)
-    return answer
+    return _fnv1a([blob.encode("utf-8")])
 
 
 # The last ruleset compiled here, so `players_fingerprint` asking right after
@@ -990,8 +1140,6 @@ def values_fingerprint(spec: dict[str, Any]) -> str:
     Cached as `tables_fingerprint` is, on the mechanics hash in memory and on disk under
     `values_source_key`, so a check that finds nothing changed compiles nothing.
     """
-    import hashlib
-
     from chess_variant_sandbox.spec.canonical import spec_hash
 
     digest = spec_hash(spec)
@@ -1004,13 +1152,105 @@ def values_fingerprint(spec: dict[str, Any]) -> str:
         _VALUES[digest] = found
         return found
 
-    from chess_variant_sandbox.tournament.play import eval_values
-
-    values = eval_values(_compiled(spec, digest))
-    answer = hashlib.sha256(json.dumps(list(values)).encode("utf-8")).hexdigest()[:16]
+    answer = _compute_values(spec, digest)
     _VALUES[digest] = answer
     _write_disk(_VALUES_DISK, path, key, digest, answer)
     return answer
+
+
+def _compute_values(spec: dict[str, Any], digest: str) -> str:
+    """`values_fingerprint`'s answer, compiled and hashed, with no cache read or written."""
+    import hashlib
+
+    from chess_variant_sandbox.tournament.play import eval_values
+
+    values = eval_values(_compiled(spec, digest))
+    return hashlib.sha256(json.dumps(list(values)).encode("utf-8")).hexdigest()[:16]
+
+
+# A cold cache is filled by a process pool (Q904). The default is the cores less one, at
+# most four: the smallest booked profile (`suite`) holds four slots, so a caller with any
+# lease may spend four, and a caller with none is not asked for more than the machine can
+# spare. A caller with a larger lease widens it with the variable.
+FINGERPRINT_WORKERS_ENV = "CHESS_VARIANT_SANDBOX_FINGERPRINT_WORKERS"
+_POOL_CAP = 4
+# Below this many cold specs a pool costs more than it saves: each worker imports the
+# package (about a second) before it compiles anything.
+POOL_MIN_SPECS = 3
+
+
+def fingerprint_workers() -> int:
+    """How many processes a cold fill may use: the variable, else the cores less one, at most four."""
+    import os
+
+    try:
+        asked = int(os.environ.get(FINGERPRINT_WORKERS_ENV, ""))
+    except ValueError:
+        asked = 0
+    if asked >= 1:
+        return asked
+    return max(1, min(_POOL_CAP, (os.cpu_count() or 2) - 1))
+
+
+def _cold_pair(job: tuple[dict[str, Any], str]) -> tuple[str, str, str]:
+    """One pool task: a spec's tables and values answers, compiled once."""
+    spec, digest = job
+    return digest, _compute_tables(spec, digest), _compute_values(spec, digest)
+
+
+def warm_fingerprints(specs: list[dict[str, Any]], workers: int | None = None) -> int:
+    """Fill the tables and values caches for ``specs`` in a process pool, returning how many it did.
+
+    Only specs missing from either cache are compiled, and only when at least
+    `POOL_MIN_SPECS` are: for fewer, the ordinary lazy path in `tables_fingerprint` is
+    cheaper and nothing is done here. Each answer is `_compute_tables` / `_compute_values`
+    on that spec, the very functions the serial path calls, so it is byte-identical to it
+    whatever ``workers`` is; the workers read and write no cache, and this process records
+    all answers at the end in one write per file, which also settles any race. A spec the
+    compiler rejects, or a pool that breaks, leaves its answers to the lazy path, which
+    raises (or succeeds) exactly as it did before.
+    """
+    from concurrent.futures import ProcessPoolExecutor
+
+    from chess_variant_sandbox.spec.canonical import spec_hash
+
+    cold: dict[str, dict[str, Any]] = {}
+    tables_path, tables_key = tables_cache_path(), compile_source_key()
+    values_path, values_key = values_cache_path(), values_source_key()
+    on_disk_tables = _read_disk(_DISK, tables_path, tables_key)
+    on_disk_values = _read_disk(_VALUES_DISK, values_path, values_key)
+    for spec in specs:
+        digest = spec_hash(spec)
+        if digest in cold:
+            continue
+        if (digest in _TABLES or digest in on_disk_tables) and (
+            digest in _VALUES or digest in on_disk_values
+        ):
+            continue
+        cold[digest] = spec
+    resolved = workers if workers is not None else fingerprint_workers()
+    if resolved <= 1 or len(cold) < POOL_MIN_SPECS:
+        return 0
+    jobs = [(spec, digest) for digest, spec in cold.items()]
+    tables: dict[str, str] = {}
+    values: dict[str, str] = {}
+    try:
+        with ProcessPoolExecutor(max_workers=min(resolved, len(jobs))) as pool:
+            futures = [pool.submit(_cold_pair, job) for job in jobs]
+            for future in futures:
+                try:
+                    digest, table, value = future.result()
+                except Exception:  # noqa: BLE001 -- a spec that will not compile
+                    continue  # left to the lazy path, which raises or succeeds as before
+                tables[digest], values[digest] = table, value
+    except Exception:  # noqa: BLE001 -- no pool here (a daemonic worker), or a broken one
+        pass  # what finished is kept below; the rest is the lazy path's
+    for digest in tables:
+        _TABLES[digest], _VALUES[digest] = tables[digest], values[digest]
+    if tables:
+        _write_disk_many(_DISK, tables_path, tables_key, tables)
+        _write_disk_many(_VALUES_DISK, values_path, values_key, values)
+    return len(tables)
 
 
 def _seat(native: tuple[Any, ...]) -> list[Any]:
@@ -1161,6 +1401,42 @@ class FitReading:
     player: str
     made_on: str = ""
     verified_on: frozenset[str] = frozenset()
+    # Why the store is not verified on the loaded core, read from the same sidecar
+    # (Q894, `fitting.basis_gap`). ``recorded`` False: the sidecar names no basis, so
+    # nothing says what the games read. ``differs``: the parts (core, tables, players,
+    # runner) where the newest recorded basis is not today's. The defaults are "not read",
+    # which keeps the older sentence.
+    recorded: bool = True
+    differs: tuple[str, ...] = ()
+
+
+def named(parts: tuple[str, ...]) -> str:
+    """`tables`, `core and tables`, `core, tables and runner`."""
+    if len(parts) <= 1:
+        return "".join(parts)
+    return f"{', '.join(parts[:-1])} and {parts[-1]}"
+
+
+def _fit_unverified(reading: FitReading, loaded: str) -> str:
+    """The `stale (refit)` sentence: what of the fit's basis is not the loaded one (Q894)."""
+    if not reading.recorded:
+        if reading.made_on == loaded:
+            return (
+                f"its fit was made on this core ({loaded}), but nothing records the "
+                "tables, players and runner its games read, so it has not been re-derived "
+                "under them"
+            )
+    elif reading.differs and reading.differs != ("core",):
+        return (
+            f"its fit was last verified where the {named(reading.differs)} differ, "
+            "and has not been re-derived on this one"
+        )
+    if reading.made_on:
+        return (
+            f"its fit was made on core {reading.made_on} and has not been re-derived "
+            "on this one"
+        )
+    return "its fit records no core and has not been re-derived on this one"
 
 
 def _core_of(engine: str) -> str:
@@ -1592,12 +1868,7 @@ class Basis:
         if reading is not None and current.fit:
             if current.fit == UNVERIFIED:
                 refit = True
-                reasons.append(
-                    f"its fit was made on core {reading.made_on} and has not been "
-                    "re-derived on this one"
-                    if reading.made_on
-                    else "its fit records no core and has not been re-derived on this one"
-                )
+                reasons.append(_fit_unverified(reading, _core_of(current.engine)))
             else:
                 # Absent is every stamp written before the field. The store says which
                 # objective played where the core that played the games made or

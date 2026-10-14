@@ -1,7 +1,7 @@
 {
   "schema_version": 19,
   "name": "cylinder wormhole",
-  "description": "Cylinder chess (the a-file and h-file joined) with one fixed pair of portals in the middle of the board, on d4 and d5. A piece that ends its move on one end comes out one step beyond the other, in the direction it was travelling: a pawn pushed into d4 comes out on d6, a rook sliding right into d4 comes out on e5. Because the files wrap, a piece can reach an end from both sides along its rank, and then the player chooses which side of the other end it comes out on. Nobody moves the portals and they are never captured.",
+  "description": "Cylinder chess (the a-file and h-file joined) with one fixed pair of portals in the middle of the board, on d4 and d5. A piece that ends its move on one end comes out one step beyond the other, in the direction it was travelling: a pawn pushed into d4 comes out on d6, a rook sliding right into d4 comes out on e5. Because the files wrap, a piece can reach an end from both sides along its rank, and then the player chooses which side of the other end it comes out on. Nobody moves the portals and they are never captured. The door sits in the middle of the board from the first move, so both armies fight over it at once: a pawn pushed two squares to d4 already arrives on d6.",
   "board": {
     "width": 8,
     "height": 8

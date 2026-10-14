@@ -1,0 +1,330 @@
+{
+ "archive/andernach.json": [
+  "f9e5dbf3ff1f",
+  "cd77b68c74d17239"
+ ],
+ "archive/cannonade.json": [
+  "c2925e027455",
+  "950044e869d14d6b"
+ ],
+ "archive/carousel.json": [
+  "f1e40e35a6d9",
+  "cb0e8c4b0f60a0b8"
+ ],
+ "archive/chess-sweeping-bishops.json": [
+  "42bd7d06828d",
+  "ebd876e6788ef9e9"
+ ],
+ "archive/circe.json": [
+  "54a0a193da0f",
+  "ed1cbdc03678806f"
+ ],
+ "archive/cylinder-wormhole.json": [
+  "5abb0b804cf6",
+  "ee5dd2164580536c"
+ ],
+ "archive/divide.json": [
+  "1f85f50a23f6",
+  "deba52f8c96bbb6b"
+ ],
+ "archive/einstein.json": [
+  "d90706fec9c0",
+  "1b7f59b7ae790c11"
+ ],
+ "archive/extinction-chess.json": [
+  "ca1fdd0b00bb",
+  "dd5d587fd18c0757"
+ ],
+ "archive/ferry-no-straight-back.json": [
+  "dd17d71412a7",
+  "26ea76806b5371cd"
+ ],
+ "archive/ferry.json": [
+  "1501615e08e2",
+  "4392fd67a9dd64ff"
+ ],
+ "archive/grand.json": [
+  "393dfeada70d",
+  "04a0cd7881afc6c6"
+ ],
+ "archive/hex-glinski-hexagon.json": [
+  "6eaaad41673b",
+  "473f656fb0b5ba45"
+ ],
+ "archive/hierarchy-extended.json": [
+  "57667d7861ad",
+  "6206d72a45cd8780"
+ ],
+ "archive/hierarchy-fall.json": [
+  "3c639d277808",
+  "27a09e4a620bdb5e"
+ ],
+ "archive/hierarchy-rise-stay.json": [
+  "482ddc556331",
+  "8aba27fc0431a34b"
+ ],
+ "archive/hierarchy-rise-throw.json": [
+  "78130df01edd",
+  "62c97d399963c0a7"
+ ],
+ "archive/hierarchy-rise.json": [
+  "1ba3d61e5961",
+  "0dc3b588fce59770"
+ ],
+ "archive/jeson-mor.json": [
+  "fb8a67625131",
+  "3c3e743401b68bfb"
+ ],
+ "archive/kamikaze.json": [
+  "6cd3785c7246",
+  "efbe43c85d2cb2a8"
+ ],
+ "archive/kyoto.json": [
+  "a1805ac1adc1",
+  "ada54dde3ee6a2ee"
+ ],
+ "archive/marchfield.json": [
+  "0be72e61ef24",
+  "73ba287bb4399edf"
+ ],
+ "archive/merger.json": [
+  "85555467a4ca",
+  "58a6f4a489b30f72"
+ ],
+ "archive/omega.json": [
+  "c68b69c57219",
+  "eab7a1524be81143"
+ ],
+ "archive/pawn-knockdown.json": [
+  "d50c552b49da",
+  "84af2c34dc2ccc87"
+ ],
+ "archive/perpetual.json": [
+  "df2fbba0ca76",
+  "e966bae4a2516f10"
+ ],
+ "archive/placement-chess.json": [
+  "2cb9cb3c018c",
+  "08d02ec7e573e249"
+ ],
+ "archive/quarry.json": [
+  "51d9b36b4e93",
+  "4b653b1cd6529c8d"
+ ],
+ "archive/queen-bomb.json": [
+  "313c913a5b3b",
+  "291b3160c5d6e604"
+ ],
+ "archive/queens-wake.json": [
+  "328cab4db5cc",
+  "9cc5a5f44e01b041"
+ ],
+ "archive/reckoning.json": [
+  "ffc7b604bea0",
+  "e1a7cbcc77a2bcae"
+ ],
+ "archive/rifle.json": [
+  "f7a789809758",
+  "241daf753dda3f11"
+ ],
+ "archive/shogi-backward-drops.json": [
+  "8478a3301cfd",
+  "11760bb6c10019c2"
+ ],
+ "archive/shogi-drop-promoted.json": [
+  "ffb9a99dbd01",
+  "44b132adee6e1bf1"
+ ],
+ "archive/shut-wormhole.json": [
+  "58afebca2286",
+  "dfa778955716b214"
+ ],
+ "archive/sittuyin.json": [
+  "771c1a22e182",
+  "fd4e3ba293f185a0"
+ ],
+ "archive/stones.json": [
+  "93b02b591c87",
+  "d23280f439e22c1a"
+ ],
+ "archive/succession.json": [
+  "e7293070b5be",
+  "688f5f8f7ebf3129"
+ ],
+ "archive/three-stones.json": [
+  "03aa7c3f2f18",
+  "1af37e243450d466"
+ ],
+ "archive/weathervane-half-turn.json": [
+  "8fc3939243d5",
+  "84e6c813871bb6b2"
+ ],
+ "archive/weathervane.json": [
+  "1442513d38d7",
+  "d1e1693e36ce5acc"
+ ],
+ "archive/wolves-bounty.json": [
+  "54b38fb8cba8",
+  "54684d7e68d471fe"
+ ],
+ "archive/wolves-patrol.json": [
+  "b2011455c4af",
+  "8cd6bae99a8c2397"
+ ],
+ "archive/wolves.json": [
+  "ceb4916bdabc",
+  "86f4917e3ad52fe9"
+ ],
+ "archive/wormhole.json": [
+  "3732e55621b1",
+  "dd131f692bff771e"
+ ],
+ "rulesets/almost.json": [
+  "9c26a04f1ca5",
+  "37be7704343f0754"
+ ],
+ "rulesets/antichess.json": [
+  "3ec1560124c3",
+  "ccf22890a3278851"
+ ],
+ "rulesets/atomic.json": [
+  "6bd4d9c5769e",
+  "78defc0d325caece"
+ ],
+ "rulesets/bastion.json": [
+  "9574b0bf9095",
+  "8b585e9208a54bf2"
+ ],
+ "rulesets/berolina.json": [
+  "14a126b38a1a",
+  "6e2dc11eccddec07"
+ ],
+ "rulesets/capablanca.json": [
+  "2eefcd835b3b",
+  "f4d6b877db0487f4"
+ ],
+ "rulesets/chess-oriented-pawns.json": [
+  "57c73975c905",
+  "14634e9299b50c1f"
+ ],
+ "rulesets/chess.json": [
+  "4c1922ffae26",
+  "c85dc9547208ee27"
+ ],
+ "rulesets/courier.json": [
+  "0b96463ffba7",
+  "6a2c2b35ebd81aa9"
+ ],
+ "rulesets/crazyhouse-torus.json": [
+  "ab865f3f954a",
+  "3bfc5035e11fa70a"
+ ],
+ "rulesets/crazyhouse.json": [
+  "bb5d97520084",
+  "42992ca048591102"
+ ],
+ "rulesets/cylinder.json": [
+  "a9306688fe57",
+  "191aab250a822b04"
+ ],
+ "rulesets/dobutsu.json": [
+  "a2f0c65ceedf",
+  "5ef1773037dd1ea7"
+ ],
+ "rulesets/dull.json": [
+  "fe7c42772c71",
+  "16a780f70ecedb2c"
+ ],
+ "rulesets/gardner.json": [
+  "975dde173f01",
+  "025bd03dabcb5624"
+ ],
+ "rulesets/horde.json": [
+  "15593fc47f6d",
+  "e73289641b1e3950"
+ ],
+ "rulesets/intransitive.json": [
+  "29d5213b02b2",
+  "ac6f5101c8b1a62d"
+ ],
+ "rulesets/kingofthehill.json": [
+  "71912ea8ba7f",
+  "cda3e3ae9e07037d"
+ ],
+ "rulesets/knightmate.json": [
+  "50a3da8f75e7",
+  "429f9930003337e8"
+ ],
+ "rulesets/losalamos.json": [
+  "fcbb53d53ce4",
+  "7171f2eb01d91334"
+ ],
+ "rulesets/makruk.json": [
+  "eaa48ed29ad7",
+  "f0370a1c57428d08"
+ ],
+ "rulesets/onewaycylinder.json": [
+  "b02bbe8da72c",
+  "24381af9073370f7"
+ ],
+ "rulesets/onewaytorus.json": [
+  "c6ff883e5919",
+  "1c5023b466655b4e"
+ ],
+ "rulesets/racingkings.json": [
+  "66b001f1b790",
+  "61d5193da6f38a2e"
+ ],
+ "rulesets/rps-hierarchy-chess.json": [
+  "c0e0c35f78b1",
+  "9796ece45b8a3032"
+ ],
+ "rulesets/rps-v1.json": [
+  "2261f8203948",
+  "a3546bdaf18c33c2"
+ ],
+ "rulesets/rps-v2.json": [
+  "82a4788c02f0",
+  "3d448304283c2a1b"
+ ],
+ "rulesets/rps-v3.json": [
+  "bdf2801ade24",
+  "58394e65b11615b5"
+ ],
+ "rulesets/rps-v4.json": [
+  "add543cc28c3",
+  "e2342a91bd6f2f06"
+ ],
+ "rulesets/rps-v5.json": [
+  "a7b6f22e6b73",
+  "c7d1e39de6a41bdf"
+ ],
+ "rulesets/sardines.json": [
+  "9f538ab85a77",
+  "5aee4192139d1582"
+ ],
+ "rulesets/shatranj.json": [
+  "67270a8805a0",
+  "0b62ab3c80821445"
+ ],
+ "rulesets/shogi.json": [
+  "54c731ca6e95",
+  "4cd576abc653cb14"
+ ],
+ "rulesets/threecheck.json": [
+  "b1f536573c22",
+  "d8942d85f7547f77"
+ ],
+ "rulesets/torus-less-extended.json": [
+  "3194d3a2251b",
+  "9faa4ac2f961659a"
+ ],
+ "rulesets/torus.json": [
+  "5f9c1bfcf85a",
+  "23eaab8d3287cb14"
+ ],
+ "rulesets/xiangqi.json": [
+  "151582aed409",
+  "0b4106415504740e"
+ ]
+}

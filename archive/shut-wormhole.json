@@ -1,7 +1,7 @@
 {
   "schema_version": 19,
   "name": "shut wormhole",
-  "description": "Wormhole (Gardner's minichess with a fixed pair of portals on b3 and d3) with the pair closed to White: to White's pieces both ends are solid blocks that cannot be taken, while Black's pieces go through either way, coming out one step beyond the other end in the direction they were travelling. Black moves second and owns the only door.",
+  "description": "Wormhole (Gardner's minichess with a fixed pair of portals on b3 and d3) with the pair closed to White: to White's pieces both ends are solid blocks that cannot be taken, while Black's pieces go through either way, coming out one step beyond the other end in the direction they were travelling. Black moves second and owns the only door. Closing the door to one player is what changes wormhole: there the first player usually wins the race through it; here only the second player can use it, which turns the race round, and the lead changes hands far more often.",
   "board": {
     "width": 5,
     "height": 5

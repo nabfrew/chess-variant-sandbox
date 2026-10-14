@@ -83,18 +83,20 @@ const BOX = { hidden: true, html: '', buttons: [], looking: false, modal: null,
   set innerHTML(v) { this.html = v;
     this.buttons = [...v.matchAll(/<button([^>]*)>/g)].map(m => {
       const move = /data-move="(\\d+)"/.exec(m[1]), piece = /data-piece="(\\d+)"/.exec(m[1]);
-      const id = /id="(\\w+)"/.exec(m[1]);
-      const dataset = move ? { move: move[1] } : piece ? { piece: piece[1] } : {};
+      const id = /id="(\\w+)"/.exec(m[1]), which = /data-which="(\\w+)"/.exec(m[1]);
+      const dataset = move ? { move: move[1] } : piece ? { piece: piece[1] }
+        : which ? { which: which[1] } : {};
       return button({ id: id && id[1], dataset }); }); },
   get innerHTML() { return this.html; },
   get picks() { return this.buttons.filter(b => b.dataset.move !== undefined
-    || b.dataset.piece !== undefined); },
+    || b.dataset.piece !== undefined || b.dataset.which !== undefined); },
   byId(id) { return this.buttons.find(b => b.id === id) || null; },
   querySelectorAll(sel) {
     return sel === '[data-move]' ? this.buttons.filter(b => b.dataset.move !== undefined)
       : sel === '[data-piece]' ? this.buttons.filter(b => b.dataset.piece !== undefined)
+      : sel === '[data-which]' ? this.buttons.filter(b => b.dataset.which !== undefined)
       : sel === 'button' ? this.buttons : []; },
-  querySelector(sel) { return sel === '[data-move]' || sel === '[data-piece]'
+  querySelector(sel) { return sel === '[data-move]' || sel === '[data-piece]' || sel === '[data-which]'
     ? this.querySelectorAll(sel)[0] || null
     : sel === '.promo-card' || sel === '.promo-bar' ? {} : null; },
   contains(node) { return this.buttons.includes(node); } };

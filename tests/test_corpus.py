@@ -1334,6 +1334,9 @@ class TestAPooledRescoreIsTheSerialOne:
             out[name] = "\n".join(lines).encode("utf-8")
         return out
 
+    # Slow (Q749): a real pool of spawned workers, 2.2 s on one core and 2.7-3.5 s in the
+    # gate, most of it the workers starting.
+    @pytest.mark.slow
     def test_the_pool_writes_and_says_what_the_serial_path_does(
         self, library, monkeypatch, capsys
     ) -> None:

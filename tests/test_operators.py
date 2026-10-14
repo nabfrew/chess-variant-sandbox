@@ -10,6 +10,7 @@ real game, and the distance is zero only for descriptions that really are identi
 from __future__ import annotations
 
 import copy
+import functools
 import itertools
 import random
 from collections import defaultdict
@@ -19,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from retired_specs import hex_glinski_promoting
 
 from chess_variant_sandbox.loop.operators import OPERATORS, SAME_GAME, mutate, refusal
 from chess_variant_sandbox.loop.screen import screen
@@ -45,7 +47,8 @@ ALL_SPECS = sorted(
 )
 
 # Fixed, and six of them, because the point is a deterministic answer over the whole
-# corpus rather than a sample: 11,257 children over 70 specs and 34 operators at Q483, 63
+# corpus rather than a sample: 27,876 children over 101 specs and 46 operators at Q746,
+# which made it one test per spec (`test_every_operator_on_each_committed_spec`); 11,257 children over 70 specs and 34 operators at Q483, 63
 # refused (all `resize-the-board`'s) and 249 as the parent's game -- twelve fewer than Q436's
 # 11,269, all `promote-what-arrives` on `stones` and `three-stones`, whose flag could never
 # fire beside a hand only the stone's stock fills; before that, the same 11,362 children every run over 71 specs and 33
@@ -80,7 +83,8 @@ _NOT_REAL_GAMES = {"dull", "rps-hierarchy-chess"}
 _NUMBER_WORDS = {
     9: "nine", 10: "ten", 11: "eleven", 12: "twelve", 13: "thirteen", 14: "fourteen",
     15: "fifteen", 16: "sixteen", 17: "seventeen", 18: "eighteen", 19: "nineteen",
-    20: "twenty",
+    20: "twenty", 21: "twenty_one", 22: "twenty_two", 23: "twenty_three", 24: "twenty_four",
+    25: "twenty_five",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(SCHEMA_VERSION, SCHEMA_VERSION)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(schema, _COLLECTOR, None)
@@ -133,7 +137,40 @@ class _Child:
         return bool(self.errors) and not self.same_game
 
 
-def _sweep_over(parents: dict[str, dict]) -> list[_Child]:
+def _rotates(spec: dict) -> bool:
+    """Whether `relate.identity_key` compiles this spec's children to read their orientation.
+
+    `relate._orientation_played` compiles a ``"rotate"`` spec as written and with every
+    square stated (one and a half compiles since Q866, `compile.compile_two_readings`) to
+    ask whether rotating is a rule or a spelling, and returns at once for any other
+    orientation. On a drop or hex game that is 0.2-0.4 s a child. Q746
+    measured the corpus sweep at 217 s of one core over 101 specs, about 180 s of it the
+    13 rotating parents' `identity_key`; without it those 13 cost 7 s.
+    """
+    return (spec.get("setup") or {}).get("orientation") == "rotate"
+
+
+def _refusal_without_the_compile(parent: dict, child: dict) -> list[str]:
+    """`operators.refusal` less its `relate.identity_key` half: the validator, then the hash.
+
+    What the fast suite asks of a rotating parent (`_rotates`); the slow tier asks the
+    whole refusal (`test_the_rotating_specs_under_the_whole_refusal`). It refuses a
+    subset of what `refusal` refuses -- a child `identity_key` alone would call the parent's
+    game reads as valid -- so the validator's verdicts, the raises and every total loss the
+    validator or the hash causes are the same; only a parent handed back under another
+    spelling waits for the slow tier. `test_the_refusal_mutate_applies_is_the_one_the_sweep_counts`
+    pins the two halves this repeats.
+    """
+    errors = validate_spec(child)
+    if errors:
+        return errors
+    return [SAME_GAME] if spec_hash(child) == spec_hash(parent) else []
+
+
+def _sweep_over(
+    parents: dict[str, dict],
+    refuse: Callable[[dict, dict], list[str]] = refusal,
+) -> list[_Child]:
     """Every operator against every one of ``parents``, at the fixed seeds."""
     children: list[_Child] = []
     for name, parent in parents.items():
@@ -149,7 +186,7 @@ def _sweep_over(parents: dict[str, dict]) -> list[_Child]:
                         _Child(operator.name, name, seed, None, (), f"{type(exc).__name__}: {exc}")
                     )
                     continue
-                errors = () if summary is None else tuple(refusal(parent, child))
+                errors = () if summary is None else tuple(refuse(parent, child))
                 after = _inventory(child) if summary is not None and not errors else before
                 children.append(
                     _Child(
@@ -174,20 +211,79 @@ def _sweep_over(parents: dict[str, dict]) -> list[_Child]:
     return children
 
 
-@pytest.fixture(scope="module")
-def sweep() -> list[_Child]:
-    """Every operator against every committed spec, at six fixed seeds.
+# The corpus sweep, one committed spec at a time (Q746). It was one module fixture of
+# every operator over every committed spec: 27,876 children over 101 specs at Q746, 220 s
+# in one xdist worker that finished 215 s after the other three, holding every child. Now
+# each spec is its own test, so xdist deals them across the workers and nothing outlives
+# its spec; the questions that are about the whole corpus at once (is the documented
+# refusal still made somewhere, can an operator enter a feature anywhere) search it and
+# stop at the first answer. The parametrisation reads file names only, so collection
+# loads no spec.
+_SPEC_PATHS = {path.stem: path for path in ALL_SPECS}
 
-    About 11,400 children in a few seconds -- cheap enough for the fast suite, which is
-    the whole reason it can be a *test* rather than a thing somebody runs by hand once a
-    quarter. Computed once and read by the tests below, because the expensive half is
-    `operators.refusal` and they all want the same answers.
+
+@functools.cache
+def _cheap_first() -> list[tuple[str, dict]]:
+    """Every committed spec, the ones whose children are cheap to refuse first.
+
+    The order the whole-corpus questions search in. Order changes what a search costs,
+    never what it finds. Loaded once per worker and shared, so a reader deep-copies
+    before it edits, as `_sweep_over` and `_first_child` do.
     """
-    return _sweep_over({path.stem: load_spec(path) for path in ALL_SPECS})
+    loaded = [(path.stem, load_spec(path)) for path in ALL_SPECS]
+    return sorted(loaded, key=lambda pair: (_rotates(pair[1]), pair[0]))
+
+
+def _children_of(name: str, parent: dict, exact: bool = True) -> list[_Child]:
+    """Every operator against one parent at the fixed seeds, refused as `mutate` would.
+
+    ``exact=False`` refuses a rotating parent's children without `identity_key`'s compile
+    (`_refusal_without_the_compile`); any other parent is refused exactly either way, since
+    only a rotating spec pays for that half.
+    """
+    refuse = refusal if exact or not _rotates(parent) else _refusal_without_the_compile
+    return _sweep_over({name: parent}, refuse)
+
+
+def _first_child(
+    found: Callable[[dict, dict], bool],
+    operators: tuple[Any, ...] = OPERATORS,
+    likely: Callable[[dict], bool] = lambda spec: False,
+) -> str | None:
+    """Where one of ``operators`` first makes a child ``found`` holds of, corpus-wide.
+
+    Every committed spec (`_cheap_first`'s order, the ``likely`` ones before the rest) at
+    the sweep's seeds, stopping at the first ``found(parent, child)``, so an existence
+    question costs what it takes to answer and a missing answer costs the whole corpus.
+    ``None`` when no child satisfies it.
+    """
+    for name, parent in sorted(_cheap_first(), key=lambda pair: not likely(pair[1])):
+        for operator in operators:
+            for seed in _SWEEP_SEEDS:
+                child = copy.deepcopy(parent)
+                if operator.apply(child, random.Random(seed)) is None:
+                    continue
+                if found(parent, child):
+                    return f"{operator.name} on {name} seed {seed}"
+    return None
 
 
 class TestMutation:
-    @pytest.mark.parametrize("name", ["chess", "shogi", "xiangqi", "gardner", "dull"])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "chess",
+            "xiangqi",
+            "gardner",
+            "dull",
+            # The rotating case. Shogi's forty children cost 6 s, each refused through two
+            # compiles (`relate._orientation_played`); dobutsu's 0.1 s (Q749). Shogi's
+            # stays, in the slow tier, and the per-spec sweep above asks the validator of
+            # every operator on shogi in the fast suite.
+            "dobutsu",
+            pytest.param("shogi", marks=pytest.mark.slow),
+        ],
+    )
     def test_every_child_is_valid_and_different(self, specs, name) -> None:
         """The contract. An operator that emits invalid specs is a way of wasting a
         validation; one that emits the parent again is a way of wasting a tournament."""
@@ -226,18 +322,54 @@ class TestMutation:
         assert first.summary == second.summary
 
     def test_the_operators_are_reachable(self, specs) -> None:
-        """A named operator that never fires is dead weight pretending to be variety."""
-        rng = random.Random(3)
-        fired = set()
-        for name in ("chess", "shogi", "crazyhouse", "gardner"):
-            for _ in range(300):
-                child = mutate(specs[name], rng)
-                if child is not None:
-                    fired.add(child.operator)
-        missing = {operator.name for operator in OPERATORS} - fired
-        assert not missing, f"never fired: {sorted(missing)}"
+        """A named operator that never fires is dead weight pretending to be variety.
 
-    def test_a_child_is_never_its_parent_under_another_spelling(self, specs) -> None:
+        `mutate` draws its operator uniformly, so what can leave one out is an operator
+        that never produces a child `mutate` keeps. Each operator is asked on its own,
+        parent by parent and seed by seed, until it fires (Q749). It used to be one
+        shared draw of 300 children a parent until all had fired, 8 s in the gate, most
+        of it shogi's refusals; asked this way it is the same question, does not move
+        when an operator is added before another, and stops at each operator's first
+        child.
+        """
+        # Schema 21's three portal operators reshape or filter portals a game already has
+        # (`open-a-portal` is the one that puts them on), so the archived Wormhole is
+        # their parent here. Schema 23's `share-a-walk` adds a wild piece to a walk a game
+        # already has (Wolves). `promote-on-leaving` needs a piece that can leave its
+        # zone (Makruk's pawn); `either-face`, `move-a-placement` and
+        # `promote-what-arrives` a game that rotates (Dobutsu, then Shogi). Schema 25's
+        # `fix-a-facing` fixes or frees a facing a game already has (chess with turning
+        # pawns).
+        parents = [specs[name] for name in ("chess", "crazyhouse", "gardner")]
+        parents += [load_spec(ROOT / "archive" / f"{name}.json") for name in ("wormhole", "wolves")]
+        parents += [specs[name] for name in ("makruk", "dobutsu", "shogi")]
+        parents.append(load_spec(RULESETS / "chess-oriented-pawns.json"))
+
+        def fires(operator) -> bool:
+            return any(
+                mutate(parent, random.Random(seed), operators=(operator,), attempts=1)
+                is not None
+                for parent in parents
+                for seed in range(10)
+            )
+
+        missing = sorted(operator.name for operator in OPERATORS if not fires(operator))
+        assert not missing, f"never fired: {missing}"
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "chess",
+            "xiangqi",
+            "gardner",
+            # The rotating case: each identity is two compiles. Shogi's thirty children
+            # were 10 s of the test's 11 (Q749), dobutsu's are 0.3 s; shogi's run in the
+            # slow tier, beside `test_the_rotating_specs_under_the_whole_refusal`.
+            "dobutsu",
+            pytest.param("shogi", marks=pytest.mark.slow),
+        ],
+    )
+    def test_a_child_is_never_its_parent_under_another_spelling(self, specs, name) -> None:
         """A new hash is not a new game, so `mutate` asks `relate.identity_key` as well.
 
         `change-symmetry` can write a symmetry the vectors already have -- *none to
@@ -254,20 +386,20 @@ class TestMutation:
             for operator in OPERATORS
             if operator.name in ("change-symmetry", "add-a-direction")
         )
+        parent = specs[name]
+        mine = identity_key(parent)
         returned = 0
-        for name in ("chess", "shogi", "xiangqi", "gardner"):
-            parent = specs[name]
-            mine = identity_key(parent)
-            for seed in range(30):
-                child = mutate(parent, random.Random(seed), operators=restyle, attempts=1)
-                if child is None:
-                    continue
-                returned += 1
-                assert identity_key(child.spec) != mine, (
-                    f"{name} seed {seed}: {child.operator} returned the parent's game "
-                    f"({child.summary})"
-                )
-        assert returned > 40, f"only {returned} children; the test no longer reaches"
+        for seed in range(30):
+            child = mutate(parent, random.Random(seed), operators=restyle, attempts=1)
+            if child is None:
+                continue
+            returned += 1
+            assert identity_key(child.spec) != mine, (
+                f"{name} seed {seed}: {child.operator} returned the parent's game "
+                f"({child.summary})"
+            )
+        # 23-24 of 30 on each parent (Q749); the four together asked for over 40.
+        assert returned > 10, f"only {returned} children of {name}; the test no longer reaches"
 
     def test_the_refusal_mutate_applies_is_the_one_the_sweep_counts(self, specs) -> None:
         """`refusal` is the whole of what `mutate` discards a drawn child for, stated once
@@ -354,19 +486,27 @@ class TestMutation:
 
         parents = ["gardner", "chess", "courier", "shogi", "losalamos"]
         crossed: dict[str, set[str]] = {axis.name: set() for axis in AXES}
-        for operator in OPERATORS:
-            for name in parents:
-                parent = specs[name]
-                here = descriptor(parent)
-                rng = random.Random(4)
-                for _ in range(40):
-                    child = copy.deepcopy(parent)
+        here = {name: descriptor(specs[name]) for name in parents}
+        # Forty draws of each operator on each parent, each pair from its own
+        # `Random(4)`: the same children as ever, drawn round by round rather than pair by
+        # pair, so the search stops as soon as every axis has a crosser (Q746 stopped at
+        # whole operators). Every axis is crossed in the second round; drawn pair by pair
+        # it took 44 of 46 operators' forty draws, 13 s in the gate (Q749). A blind axis
+        # still costs the whole search before it fails.
+        draws = {(operator.name, name): random.Random(4) for operator in OPERATORS for name in parents}
+        for _ in range(40):
+            for operator in OPERATORS:
+                for name in parents:
+                    if all(crossed.values()):
+                        break
+                    child = copy.deepcopy(specs[name])
+                    rng = draws[operator.name, name]
                     if operator.apply(child, rng) is None or validate_spec(child):
                         continue
                     # Once per child: each call measures the spec's complexity.
                     there = descriptor(child)
                     for index, axis in enumerate(AXES):
-                        if here[index] != there[index]:
+                        if here[name][index] != there[index]:
                             crossed[axis.name].add(operator.name)
 
         blind = sorted(name for name, names in crossed.items() if not names)
@@ -847,7 +987,15 @@ class TestEveryOperatorOverTheWholeCorpus:
     separate that from a bug.
     """
 
-    def test_no_operator_raises(self, sweep) -> None:
+    # Which operators may be refused, and which may hand back the parent's game: exact in
+    # both directions. The subset half is asked of each spec by
+    # `test_every_operator_on_each_committed_spec`, the other half by the two tests that
+    # carry each entry's reason.
+    _REFUSED = frozenset({"resize-the-board"})
+    _HANDS_BACK = frozenset({"change-symmetry", "add-a-direction", "clip-a-slider"})
+
+    @staticmethod
+    def _no_operator_raises(children: list[_Child]) -> None:
         """The loudest failure and the cheapest to prevent.
 
         `mutate` does not guard `operator.apply`, so an exception is not a lost candidate
@@ -860,13 +1008,14 @@ class TestEveryOperatorOverTheWholeCorpus:
         because its table of prose subjects was written before schema 9 added the count
         `transform.set_scoring` picks for exactly those specs.
         """
-        raised = [child for child in sweep if child.raised]
+        raised = [child for child in children if child.raised]
         assert not raised, "operators raised:\n" + "\n".join(
             f"  {child.operator} on {child.spec} seed {child.seed}: {child.raised}"
             for child in raised[:20]
         )
 
-    def test_no_operator_is_a_total_loss_on_a_committed_spec(self, sweep) -> None:
+    @staticmethod
+    def _no_operator_is_a_total_loss(children: list[_Child]) -> None:
         """The module's own contract, in a test: *"what is checked here is only what
         would make **every** draw a rejection"* -- written twice in `operators.py` and
         true of neither operator that says it, before this.
@@ -881,7 +1030,7 @@ class TestEveryOperatorOverTheWholeCorpus:
         """
         applied: dict[tuple[str, str], int] = defaultdict(int)
         valid: dict[tuple[str, str], int] = defaultdict(int)
-        for child in sweep:
+        for child in children:
             if child.summary is None:
                 continue
             applied[(child.operator, child.spec)] += 1
@@ -898,7 +1047,63 @@ class TestEveryOperatorOverTheWholeCorpus:
             )
         )
 
-    def test_only_the_one_documented_operator_is_ever_refused(self, sweep) -> None:
+    @classmethod
+    def _refused_only_as_documented(cls, children: list[_Child]) -> None:
+        """No operator outside `_REFUSED` is refused by the validator (the subset half)."""
+        refused = {child.operator for child in children if child.invalid}
+        assert refused <= cls._REFUSED, (
+            f"operators refused by the validator: {sorted(refused)}; documented: "
+            f"{sorted(cls._REFUSED)}. Newly refused {sorted(refused - cls._REFUSED)} is a "
+            "defect (see `test_only_the_one_documented_operator_is_ever_refused`)."
+        )
+
+    @classmethod
+    def _hands_back_only_as_documented(cls, children: list[_Child]) -> None:
+        """No operator outside `_HANDS_BACK` hands back the parent's game (the subset half)."""
+        found = {child.operator for child in children if child.same_game}
+        assert found <= cls._HANDS_BACK, (
+            f"operators handing back the parent's game: {sorted(found)}; documented: "
+            f"{sorted(cls._HANDS_BACK)}. New {sorted(found - cls._HANDS_BACK)} (see "
+            "`test_only_the_documented_operators_hand_back_the_parent`)."
+        )
+
+    @classmethod
+    def _assert_clean(cls, children: list[_Child]) -> None:
+        cls._no_operator_raises(children)
+        cls._no_operator_is_a_total_loss(children)
+        cls._refused_only_as_documented(children)
+        cls._hands_back_only_as_documented(children)
+
+    @pytest.mark.parametrize("name", sorted(_SPEC_PATHS))
+    def test_every_operator_on_each_committed_spec(self, name: str) -> None:
+        """Every operator at six seeds on one committed spec, and the four questions.
+
+        No operator raises, none is a total loss on the spec, and only the documented
+        operators are refused by the validator or hand back the parent's game. Each is a
+        question about one spec, so each spec is its own test and xdist deals them across
+        its workers (Q746; one module fixture of every spec ran 220 s in one worker).
+
+        A rotating parent's children are refused here without `identity_key`'s compile
+        (`_rotates`, `_refusal_without_the_compile`): every verdict but *the parent under
+        another spelling* is the same, and that one is
+        `test_the_rotating_specs_under_the_whole_refusal`'s, in the slow tier.
+        """
+        self._assert_clean(_children_of(name, load_spec(_SPEC_PATHS[name]), exact=False))
+
+    @pytest.mark.slow
+    def test_the_rotating_specs_under_the_whole_refusal(self) -> None:
+        """The four questions on every rotating spec, refused exactly as `mutate` refuses.
+
+        The half the fast suite leaves out (Q746): a child of a rotating parent that only
+        `relate.identity_key` calls the parent's game. Asking it compiles each child twice,
+        about 180 s of one core over the 13 rotating specs of Q746's corpus.
+        """
+        rotating = [(name, spec) for name, spec in _cheap_first() if _rotates(spec)]
+        assert rotating, "no committed spec rotates; this test asks nothing"
+        children = [child for name, spec in rotating for child in _children_of(name, spec)]
+        self._assert_clean(children)
+
+    def test_only_the_one_documented_operator_is_ever_refused(self) -> None:
         """Which operators may be refused at all, stated rather than counted.
 
         The one entry is the validator doing its job on a shape the operator declines to
@@ -922,18 +1127,20 @@ class TestEveryOperatorOverTheWholeCorpus:
         `transform.settle_en_passant` rather than becoming the next entry here.
 
         Exact rather than a subset, in both directions. A new operator that starts
-        emitting refused children fails here, and so does a fix that makes this one
-        clean -- at which point the entry is stale and deleting it is the change.
+        emitting refused children fails `test_every_operator_on_each_committed_spec` on the
+        spec it is refused on; a fix that makes this one clean fails here -- at which
+        point the entry is stale and deleting it is the change. This half searches the
+        corpus at the sweep's seeds and stops at the first refusal.
         """
-        allowed = {"resize-the-board"}
-        refused = {child.operator for child in sweep if child.invalid}
-        assert refused == allowed, (
-            f"operators refused by the validator: {sorted(refused)}; documented: "
-            f"{sorted(allowed)}. Newly refused {sorted(refused - allowed)} is a defect; "
-            f"no longer refused {sorted(allowed - refused)} means this list is stale."
-        )
+        for name in sorted(self._REFUSED):
+            operator = next(op for op in OPERATORS if op.name == name)
+            assert _first_child(lambda parent, child: bool(validate_spec(child)), (operator,)), (
+                f"{name} is documented as refused, and no committed spec refuses it at "
+                "the sweep's seeds: the entry is stale, and deleting it is the change"
+            )
 
-    def test_only_the_documented_operators_hand_back_the_parent(self, sweep) -> None:
+    @pytest.mark.parametrize("operator", sorted(_HANDS_BACK))
+    def test_only_the_documented_operators_hand_back_the_parent(self, operator: str) -> None:
         """Which operators can write an edit that changes no game, stated, with why.
 
         `mutate` refuses such a child (`operators.SAME_GAME`), so it costs a draw rather
@@ -952,14 +1159,15 @@ class TestEveryOperatorOverTheWholeCorpus:
 
         Measured at Q327 over the corpus at six seeds: 119 of 420, 70 of 415 and 64 of
         378. An operator that learns to skip these deletes its row; a new one that hands
-        back its parent adds a row or is fixed.
+        back its parent adds a row or is fixed. The new one fails
+        `test_every_operator_on_each_committed_spec`; this is the other half, each row
+        still handing back some committed spec at the sweep's seeds, searched until the
+        first one does.
         """
-        allowed = {"change-symmetry", "add-a-direction", "clip-a-slider"}
-        found = {child.operator for child in sweep if child.same_game}
-        assert found == allowed, (
-            f"operators handing back the parent's game: {sorted(found)}; documented: "
-            f"{sorted(allowed)}. New {sorted(found - allowed)}; no longer "
-            f"{sorted(allowed - found)}."
+        chosen = (next(op for op in OPERATORS if op.name == operator),)
+        assert _first_child(lambda parent, child: refusal(parent, child) == [SAME_GAME], chosen), (
+            f"{operator} no longer hands back any committed spec at the sweep's seeds: "
+            "its row in `_HANDS_BACK` is stale, and deleting it is the change"
         )
 
 
@@ -1690,7 +1898,7 @@ class TestTheLastStructuralRefusals:
         writes the six neighbours under `none`."""
         from chess_variant_sandbox.spec.transform import HEX_STEP_LANDING, set_strike
 
-        parent = load_spec(ROOT / "archive" / "hex-glinski-promoting.json")
+        parent = hex_glinski_promoting()
         set_strike(parent, effect="demote", position="stay")
         _stamped(parent)
         assert validate_spec(parent) == [], validate_spec(parent)
@@ -1744,7 +1952,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `SCHEMA_VERSION`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 20
+_FEATURES_ARE_FOR_SCHEMA = 25
 
 
 @dataclass(frozen=True)
@@ -1775,6 +1983,10 @@ class _Feature:
     keeps_army: bool
     parent_name: str
     parent: Callable[[], dict]
+    # Where `test_an_operator_can_enter_the_feature` looks first (Q891): the specs where the
+    # feature is likeliest to be entered most cheaply, as a host rule's presence is for a
+    # modifier. Only the order of a search that stops at its first answer; never what it finds.
+    likely: Callable[[dict], bool] = lambda spec: False
 
 
 def _chess() -> dict:
@@ -1845,7 +2057,7 @@ def _parent_sweep() -> dict:
 
 def _parent_hex() -> dict:
     """The showcase with its promotion rule off, so the lattice is the only feature on."""
-    hexed = load_spec(ROOT / "archive" / "hex-glinski-promoting.json")
+    hexed = hex_glinski_promoting()
     hexed["rules"].pop("promotion")
     return hexed
 
@@ -1990,7 +2202,7 @@ def _parent_leaving() -> dict:
 def _parent_turned(symmetry: str) -> dict:
     """Glinski's hexagonal chess with the rook's six steps written once and turned: 18b's
     smallest edit, for `rotate6`, and the knight's twelve as one jump for `dihedral12`."""
-    hexy = load_spec(ROOT / "archive" / "hex-glinski-promoting.json")
+    hexy = hex_glinski_promoting()
     hexy["schema_version"] = 18
     piece, vectors = ("R", [[1, 0]]) if symmetry == "rotate6" else ("N", [[1, 2]])
     for move in next(p for p in hexy["pieces"] if p["id"] == piece)["moves"]:
@@ -2012,18 +2224,40 @@ def _portal_parent(version: int = 19, **pair: object) -> dict:
     return gardner
 
 
-# Schema 20's inventory (Q807, `plan-portals.md` *Ferry's shuffle*): one per-pair setting,
-# `no_straight_back`, entered and left by `open-a-portal` on a game with portals (it rides
-# on `portals`; entering it on a pair nobody moves lets either player move it, which needs
-# the portal piece's step, so it cannot keep the army). Schema 19's three rows (Q771)
-# retired with the bump; `open-a-portal` still enters and leaves all three.
+def _ring_parent(**first: object) -> dict:
+    """Gardner with a ring of three on the empty third rank, a3 to c3 to e3 and round
+    (`plan-portals-2.md` §2.1), plus whatever ``first`` sets on the first end: schema 21's
+    smallest edit."""
+    gardner = _portal_parent(21)
+    gardner["rules"]["portals"] = [{"piece": "O", "ends": [
+        {"at": "a3", "to": 1, **first}, {"at": "c3", "to": 2}, {"at": "e3", "to": 0},
+    ]}]
+    return gardner
+
+
+def _parent_one_patrol() -> dict:
+    """`archive/wolves-patrol` as archived: two wolves on one circuit, the showcase."""
+    return load_spec(ROOT / "archive" / "wolves-patrol.json")
+
+
+def _parent_rear_guard() -> dict:
+    """`rulesets/torus-less-extended` as committed: a rear guard of pawns placed facing
+    backwards that no move turns, the showcase."""
+    return load_spec(RULESETS / "torus-less-extended.json")
+
+
+# Schema 25's inventory (Q869, `plan-library-audit.md` *The rear pawn: a fixed facing*): a
+# facing's ``turns``. It rides on a piece's facing rather than on a `rules` key, so the host
+# is ``None``, and it keeps the army: `fix-a-facing` fixes a facing (pointing half of one
+# placement another way when they all agree) and frees a fixed one. Schema 24's row (Q867b)
+# retired with the bump; `fold-a-portal` still crosses it.
 _FEATURES: dict[str, _Feature] = {
-    "Q807 no straight back": _Feature(
-        "portals", frozenset({"rules.portals.no_straight_back"}), False,
-        "gardner+barred-portals",
-        lambda: _portal_parent(
-            20, moved_by={"orange": [0, 1], "blue": [0, 1]}, no_straight_back=True,
-        ),
+    "Q869 a fixed facing": _Feature(
+        None, frozenset({"pieces[].facing.turns"}), True,
+        "torus-less-extended", _parent_rear_guard,
+        # Q891: a facing is entered where facings already stand. Searched alphabetically the
+        # first hit was 10 specs in, 3.8 s; the four specs whose pieces carry one are 0.3 s each.
+        likely=lambda spec: any("facing" in piece for piece in spec.get("pieces", [])),
     ),
 }
 
@@ -2032,8 +2266,12 @@ _FEATURES: dict[str, _Feature] = {
 # `test_every_feature_of_this_schema_has_a_showcase` until its row goes. Empty since
 # Q454 put schema 15's flag on every promotion entry of `rulesets/shogi.json`, which is
 # that schema's showcase; empty again since Q772a archived schema 19's seven
-# (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel).
-_SHOWCASE_OWED: dict[str, str] = {}
+# (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
+# whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
+_SHOWCASE_OWED: dict[str, str] = {
+    # Empty again at schema 25: its showcase, `rulesets/torus-less-extended.json`, is the
+    # game the bump was for (Q869). Schema 24's fold is shown by `archive/crease.json` (Q844b).
+}
 
 
 # Every feature every schema from 9 on added, by the name its collector returns (Q791).
@@ -2074,6 +2312,15 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     }),
     19: frozenset({"rules.portals", "rules.portals.moved_by", "rules.portals.passage"}),
     20: frozenset({"rules.portals.no_straight_back"}),
+    21: frozenset({
+        "rules.portals.ends", "rules.portals.ends.to", "rules.portals.ends.enter",
+        "rules.portals.carries",
+    }),
+    # Schema 22's one name moved to 24 with the folds' revised rules (Q867b).
+    22: frozenset(),
+    23: frozenset({"rules.npcs.also_at"}),
+    24: frozenset({"rules.portals.kind"}),
+    25: frozenset({"pieces[].facing.turns"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -2082,6 +2329,9 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Schema 21's four names and schema 24's one went on 2026-10-13, when Q844b archived
+    # their showcases (`archive/sluice.json`, `pawnproof-wormhole`, `crease`; coverage rows
+    # 57 to 61, `reference/portal-showcase-ideas.md`).
     # Schema 19's three rows went on 2026-10-10, when Q772a archived its showcases
     # (`plan-portals.md` §7 P4, coverage rows 53 to 55).
     "schema 6: rules.strike.immune naming a non-royal piece": (
@@ -2512,26 +2762,49 @@ class TestEveryFeatureOfThisSchemaIsReachable:
         pytest.fail(f"{operator} never returned gardner to itself in 40 seeds")
 
     @pytest.mark.parametrize("feature", sorted(_FEATURES))
-    def test_an_operator_can_enter_the_feature(self, sweep, feature) -> None:
+    def test_an_operator_can_enter_the_feature(self, feature) -> None:
         """Some operator turns a spec that does not use the feature into one that does.
 
         Read off the whole corpus rather than off five parents, for
         `TestEveryOperatorOverTheWholeCorpus`'s reason: an operator that can reach a rule
         on one spec and no other is indistinguishable, from outside, from one that reaches
         it everywhere.
+
+        Searched to the first entry rather than read off a whole sweep (Q746): every
+        operator on every committed spec at the sweep's seeds, a child counting when it
+        gains a name, keeps the army where the row asks, and `mutate` would keep it. The
+        refusal is asked only of a child that gained, so a missing entry, the case a
+        `_CANNOT_ENTER` row states, costs a pass of the corpus without the refusals.
         """
         names = _FEATURES[feature].names
         keeps_army = _FEATURES[feature].keeps_army
-        who = sorted(
-            {
-                f"{c.operator} on {c.spec}"
-                for c in sweep
-                if c.gained & names and (c.same_army or not keeps_army)
-            }
+
+        def entered(parent: dict, child: dict) -> bool:
+            try:
+                gained = _inventory(child) - _inventory(parent)
+            except Exception:  # noqa: BLE001 -- a child the collector cannot read; ask the validator
+                if refusal(parent, child):
+                    return False
+                gained = _inventory(child) - _inventory(parent)
+            if not gained & names:
+                return False
+            army = [{piece.get("id") for piece in spec.get("pieces", [])} for spec in (parent, child)]
+            if keeps_army and army[0] != army[1]:
+                return False
+            return not refusal(parent, child)
+
+        # A spec that already carries the host rule is searched first, since a modifier is
+        # entered most cheaply where its host stands; any order finds the same answer.
+        host = _FEATURES[feature].host
+        first = _first_child(
+            entered,
+            likely=lambda spec: bool(host and (spec.get("rules") or {}).get(host))
+            or _FEATURES[feature].likely(spec),
         )
+        who = [first] if first else []
         gap = _CANNOT_ENTER.get(feature)
         assert bool(who) is (gap is None), (
-            f"{feature}: entered by {who[:6] or 'nothing'}, and _CANNOT_ENTER "
+            f"{feature}: entered by {who or 'nothing'}, and _CANNOT_ENTER "
             f"{'names it: ' + gap if gap else 'does not name it'}. An operator that "
             "closes a gap deletes the row; a feature that stops being reachable adds one."
         )
@@ -2979,12 +3252,22 @@ class TestSplittingAPiece:
 
     @staticmethod
     def _cells(spec: dict, ids: set[str], as_id: str) -> list[tuple]:
-        """Every starting piece of ``ids``, mirror applied, each read as ``as_id``."""
-        from chess_variant_sandbox.spec.relate import normal_form
+        """Every starting piece of ``ids``, mirror applied, each read as ``as_id``.
 
+        The normal form's own reading of the setup (`relate._setup_cells`, which is what
+        `normal_form(spec).cells` holds), without the rest of the normal form: on a
+        rotating spec that rest compiles the child twice, and shogi's fourteen splits were
+        most of this class's 5.6 s in the gate (Q749).
+        """
+        from chess_variant_sandbox.spec.relate import _int, _setup_cells
+
+        board = spec.get("board") or {}
+        width, height = _int(board.get("width"), 8), _int(board.get("height"), 8)
+        orientation = str((spec.get("setup") or {}).get("orientation", "mirror"))
+        cells = _setup_cells(spec, width, height, orientation)
         return sorted(
             (player, file_, rank, as_id, facing)
-            for player, file_, rank, pid, facing in normal_form(spec).cells
+            for player, file_, rank, pid, facing in cells
             if pid in ids
         )
 

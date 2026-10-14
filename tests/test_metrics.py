@@ -9,6 +9,7 @@ expensive ones, and a broken game averaging its way to a respectable score.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -20,6 +21,13 @@ from chess_variant_sandbox.metrics import (
 )
 from chess_variant_sandbox.metrics.components import Components
 from chess_variant_sandbox.metrics.scoring import DEFAULT_WEIGHTS, Curve
+
+# The committed rulesets that declare no capture matrix, on which one must be inert.
+_WITHOUT_A_MATRIX = [
+    path
+    for path in sorted((Path(__file__).resolve().parents[1] / "rulesets").glob("*.json"))
+    if not any("captures" in piece for piece in json.loads(path.read_text(encoding="utf-8"))["pieces"])
+]
 
 
 class TestCurves:
@@ -284,7 +292,10 @@ class TestStageTwelveMeasurements:
         assert cycle > _threat_asymmetry(compile_spec(load_spec(rulesets / "chess.json")))
         assert _threat_asymmetry(compile_spec(load_spec(rulesets / "dull.json"))) == 0.0
 
-    def test_a_capture_matrix_is_the_only_thing_that_moved(self) -> None:
+    # One test per committed ruleset without a matrix (Q749): the walk was one test of
+    # 3.8 s in the gate.
+    @pytest.mark.parametrize("path", _WITHOUT_A_MATRIX, ids=lambda path: path.stem)
+    def test_a_capture_matrix_is_the_only_thing_that_moved(self, path: Path) -> None:
         """Inert on every ruleset that does not declare one.
 
         Not a nicety: the whole corpus is scored under versions that predate this, and a
@@ -292,20 +303,15 @@ class TestStageTwelveMeasurements:
         longer has the games to be re-derived from.
         """
         import json
-        from pathlib import Path
 
         from chess_variant_sandbox.engine.compile import compile_spec
         from chess_variant_sandbox.metrics.components import _threat_asymmetry
         from chess_variant_sandbox.spec import load_spec
 
-        rulesets = Path(__file__).resolve().parents[1] / "rulesets"
-        for path in sorted(rulesets.glob("*.json")):
-            spec = json.loads(path.read_text(encoding="utf-8"))
-            if any("captures" in piece for piece in spec["pieces"]):
-                continue
-            assert _threat_asymmetry(compile_spec(load_spec(path))) == pytest.approx(
-                _geometry_only_asymmetry(spec)
-            ), path.name
+        spec = json.loads(path.read_text(encoding="utf-8"))
+        assert _threat_asymmetry(compile_spec(load_spec(path))) == pytest.approx(
+            _geometry_only_asymmetry(spec)
+        ), path.name
 
     def test_traversal_time_reads_movement_and_not_capture(self) -> None:
         """Found by measuring: a ruleset with captures switched off has no capture

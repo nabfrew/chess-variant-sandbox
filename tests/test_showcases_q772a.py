@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from retired_specs import REBUILT
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.compile import WILD
@@ -31,6 +32,10 @@ PLIES = 300
 
 
 def _spec(name: str) -> dict[str, Any]:
+    # Divide's two other doors and `wormhole-adrift` left the library on 2026-10-12 (Q868);
+    # their rules are still exercised here, rebuilt one key from the game each came from.
+    if name in REBUILT:
+        return REBUILT[name]()
     return load_spec(ROOT / "archive" / f"{name}.json")
 
 
@@ -106,10 +111,13 @@ def _bare(name: str, placement: dict[str, tuple[str, int]], side: int = 0) -> tu
 
 
 class TestDivideWall:
-    """N3: no move crosses rank 6 except a transit, and nothing stands on it."""
+    """N3: no move crosses rank 6 except a transit, and nothing stands on it. The wall holds
+    for any door rule, so it is read on option A (one way), Q772e's option B (two way) and
+    Q772f's option C (both ends fixed)."""
 
-    def test_only_a_transit_crosses_the_wall(self) -> None:
-        engine = _engine("divide")
+    @pytest.mark.parametrize("name", ["divide", "divide-two-way", "divide-fixed"])
+    def test_only_a_transit_crosses_the_wall(self, name: str) -> None:
+        engine = _engine(name)
         files = "abcdefghij"
         below, wall, above = (
             _squares(engine, files, range(1, 6)),
@@ -132,14 +140,15 @@ class TestDivideWall:
                 if move_type(move) == MOVE_PORTAL:
                     transited = True
                     end = _entered(engine, state, move)
-                    assert end == ("1o" if state.side_to_move == 0 else "1b"), (
-                        engine.describe_move(state, move)
-                    )
+                    if name == "divide":  # one way: each player goes in at its own end only
+                        assert end == ("1o" if state.side_to_move == 0 else "1b"), (
+                            engine.describe_move(state, move)
+                        )
             played += transited
         assert played >= 5
 
     def test_the_door_is_one_way(self) -> None:
-        """A white rook beside the blue end (e9) has no transit and no way home."""
+        """A white rook beside Black's end (e9) has no transit and no way home."""
         engine, state = _bare(
             "divide", {"e8": ("R", 0), "f1": ("K", 0), "a11": ("K", 1)}
         )
@@ -150,6 +159,32 @@ class TestDivideWall:
         assert not any(move_type(m) == MOVE_PORTAL for m in moves)
         assert not any(move_to(m) in below for m in moves)
         assert engine._square_index("e9") not in {move_to(m) for m in moves}
+
+    @pytest.mark.parametrize("name", ["divide-two-way", "divide-fixed"])
+    def test_the_two_way_door_brings_a_raider_home(self, name: str) -> None:
+        """Options B (Q772e) and C (Q772f): the same rook goes in at Black's end and comes out
+        beside White's (e3), one step on in the direction it travelled: home, on e4."""
+        engine, state = _bare(name, {"e8": ("R", 0), "f1": ("K", 0), "a11": ("K", 1)})
+        rook = engine._square_index("e8")
+        transits = [
+            m for m in engine.legal_moves(state)
+            if move_from(m) == rook and move_type(m) == MOVE_PORTAL
+        ]
+        assert [move_to(m) for m in transits] == [engine._square_index("e4")]
+        assert _entered(engine, state, transits[0]) == "1b"
+
+    def test_the_fixed_ends_never_move(self) -> None:
+        """Option C (Q772f): nobody may move an end, so in every position of a played game
+        e3 and e9 hold the ends and no legal move starts on either."""
+        engine = _engine("divide-fixed")
+        ends = {engine._square_index("e3"), engine._square_index("e9")}
+        plies = 0
+        for seed in SEEDS:
+            for state, moves, _move in _walk(engine, seed):
+                assert all(state.board[sq] for sq in ends)
+                assert not any(move_from(m) in ends for m in moves)
+                plies += 1
+        assert plies >= 100
 
 
 # ------------------------------------------------------------------------------- Ferry
@@ -271,7 +306,7 @@ class TestTheSmallSpecs:
 @pytest.mark.parametrize(
     "name",
     ["divide", "ferry", "carousel", "wormhole", "wormhole-adrift", "shut-wormhole",
-     "cylinder-wormhole"],
+     "cylinder-wormhole", "divide-two-way", "divide-fixed"],
 )
 def test_each_showcase_validates(name: str) -> None:
     assert validate_spec(_spec(name)) == []

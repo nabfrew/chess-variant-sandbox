@@ -1,6 +1,6 @@
 {
   "schema_version": 18,
-  "name": "jeson-mor",
+  "name": "jeson mor",
   "description": "Jeson Mor, the Mongolian knights game, on a nine-by-nine board: nine knights a side on the first and last ranks. A knight that moves off the centre square e5 wins, so a knight has to get to e5 and survive there a move before it can win by stepping away; standing on e5 decides nothing. Taking every enemy knight also wins, and a player with no legal move loses.",
   "board": {
     "width": 9,

@@ -1,6 +1,6 @@
 {
   "schema_version": 15,
-  "name": "shogi backward drops",
+  "name": "backward drop shogi",
   "description": "Shogi with pawns that face a way and can turn round. A pawn steps and captures one square in the way it faces, and may spend a move making a half turn. Every pawn starts facing the enemy, as in shogi, but a pawn dropped from hand arrives facing its own side and has to turn before it can advance: a dropped pawn is a defender first.",
   "board": {
     "width": 9,

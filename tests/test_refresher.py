@@ -271,6 +271,8 @@ class FakeMachine:
     # changed (`test_refresher_slow_tier.py`).
     tier: Any = None
     tier_changes: list[str] = field(default_factory=list)
+    # The ladder work (L7, `test_refresher_ladders.py`): game to (needs, stored digest).
+    ladders_owed: dict[str, tuple[str, str]] = field(default_factory=dict)
 
     def head(self) -> str:
         return self.commit
@@ -310,6 +312,13 @@ class FakeMachine:
         stored = {h: Stored(digest=digest) for h, (_needs, digest) in self.owed.items()}
         return refresher.order(rows, stored)
 
+    def ladders(self) -> list[Item]:
+        self.calls.append(("ladders", self.commit))
+        return sorted((Item(hash=h, name=h, needs=needs, reason="", tier=3, measured="",
+                            stored=digest)
+                       for h, (needs, digest) in self.ladders_owed.items()),
+                      key=lambda it: it.key)
+
     def repair(self, it: Item) -> Outcome:
         assert self.holding == it.lease
         start = self.commit
@@ -320,6 +329,10 @@ class FakeMachine:
         if it.hash in self.refuse:
             return Outcome(hash=it.hash, needs=it.needs, refusal=self.refuse[it.hash],
                            reason="because", commit=start)
+        if it.ladder:
+            # Rated in place: nothing is delivered.
+            self.ladders_owed.pop(it.hash, None)
+            return Outcome(hash=it.hash, needs=it.needs, commit=start)
         return Outcome(hash=it.hash, needs=it.needs, index=0.5, viable=True, commit=start)
 
     def deliver(self, it: Item) -> None:
@@ -844,9 +857,14 @@ class TestTheCommand:
         from chess_variant_sandbox.cli import main
 
         digest = library_game(library, SPEC, metrics="earlier")
-        assert main(["refresh", "--plan", "--json", "--runs", "runs"]) == 0
+        assert main(["refresh", "--plan", "--part", "scores", "--json", "--runs", "runs"]) == 0
         [row] = json.loads(capsys.readouterr().out)
         assert row["hash"] == digest and row["needs"] == "rescore" and row["lease"] == "quiet"
+        # The whole plan: the score first, then the game's missing ladder (L7).
+        assert main(["refresh", "--plan", "--json", "--runs", "runs"]) == 0
+        rows = json.loads(capsys.readouterr().out)
+        assert [(r["hash"], r["needs"], r["lease"]) for r in rows] == [
+            (digest, "rescore", "quiet"), (digest, "ladder", "heavy")]
 
     def test_one_game_as_json_is_one_line(self, library: Path, capsys) -> None:
         from chess_variant_sandbox.cli import main

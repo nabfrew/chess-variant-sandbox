@@ -262,6 +262,29 @@ class TestContrast:
                 apart = _delta_e(_rgb(theme["coming"]), _rgb(theme[name]))
                 assert apart >= 20, (dark, name, round(apart, 1))
 
+    def test_a_walk_reads_on_both_woods(self) -> None:
+        """Q852: a wild piece's walk is drawn in its hue on a casing of `--walk-edge`; the
+        casing reads 3 : 1 on both squares, bare and under their worst streak, in both
+        themes (each hue holds 3 : 1 on the casing, `FLOORS`)."""
+        for dark in (False, True):
+            theme = _theme(dark)
+            edge = _rgb(theme["walk-edge"])
+            for square in ("sq-lt", "sq-dk"):
+                for under in (_rgb(theme[square]), _grained(dark, square)):
+                    ratio = _ratio(edge, under)
+                    assert ratio >= tokens.DOT_FLOOR, (dark, square, round(ratio, 2))
+
+    def test_the_walks_are_told_apart(self) -> None:
+        """Four walks on one board (*wolves*: two patrols, each mirrored) are four hues, none
+        of them the coming arrow's violet or the wild piece's own ochre."""
+        hues = [f"walk-{n}" for n in range(1, 5)]
+        for dark in (False, True):
+            theme = _theme(dark)
+            for at, name in enumerate(hues):
+                for other in [*hues[at + 1:], "coming", "p2"]:
+                    apart = _delta_e(_rgb(theme[name]), _rgb(theme[other]))
+                    assert apart >= 20, (dark, name, other, round(apart, 1))
+
     def test_rgba_tokens_are_well_formed(self) -> None:
         for theme in (tokens.LIGHT, tokens.DARK):
             for name, value in theme.items():

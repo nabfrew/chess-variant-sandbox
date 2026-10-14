@@ -39,6 +39,8 @@ from chess_variant_sandbox.viz.heading import directional_types
 from chess_variant_sandbox.viz.pieces import credits_for, icons_for
 from chess_variant_sandbox.viz.wrapped import (
     WRAPPED,
+    fold_payload,
+    fold_transit,
     goal_payload,
     portal_payload,
     portal_transit,
@@ -74,6 +76,8 @@ def render_game(
                 # it passed, so the replay marks both (`viz.wrapped.portal_transit`).
                 "player": state.side_to_move,
                 **(portal_transit(engine, state, move) or {}),
+                # Schema 22 (Q843d): a move through a fold, its way in and out, marked too.
+                **(fold_transit(engine, state, move) or {}),
                 "material": record.material[index] if index < len(record.material) else None,
                 "branching": record.branching[index] if index < len(record.branching) else None,
             }
@@ -84,6 +88,7 @@ def render_game(
         engine,
         spec,
         boards=[list(s.board) for s in states],
+        folds=[fold_payload(engine, s) for s in states],
         frames=frames,
         meta={
             "agents": list(record.agents),
@@ -110,6 +115,7 @@ def render_position(
         engine,
         spec,
         boards=[list(state.board)],
+        folds=[fold_payload(engine, state)],
         frames=[],
         meta={
             "agents": ["-", "-"],
@@ -131,6 +137,7 @@ def _write_page(
     meta: dict[str, Any],
     out_path: str | Path,
     icons: bool = True,
+    folds: list[list[dict[str, Any]]] | None = None,
 ) -> Path:
     art = (
         icons_for(
@@ -173,6 +180,9 @@ def _write_page(
         "pieceIcons": art,
         "credits": credits_for(art),
         "boards": boards,
+        # Schema 22 (Q843d): where the folds lie in each position, no board byte, so the replay
+        # draws each pool under the piece standing in it. Absent without folds.
+        **({"folds": folds} if folds and any(folds) else {}),
         "moves": frames,
         "meta": {"ruleset": spec.get("name", "?"), "hash": spec_hash(spec), **meta},
     }
@@ -209,10 +219,14 @@ _TEMPLATE = """<!doctype html>
        promotes on. Blue and rose because the board's other colours are spoken
        for: amber, ochre, teal, and green and purple for ground held. */
     --seam: #3466ac; --zone: #b0468a;
-    /* A portal end (schema 19): its rim's two colours, the near-black that edges the
-       rim, and the stone of an end nobody moves; the play board's own values. */
-    --portal-a: #e8590c; --portal-b: #2a86e0; --portal-edge: #1e140c;
-    --portal-stone: #b3aca1;
+    /* A portal end (schema 19, drawn as Q838b's vortex): each pair's colour, the same
+       at both its ends and in both themes, the near-black that edges the well and falls
+       into its eye, and the stone of the designer's pending end; the play board's own
+       values. */
+    --pair-1: #7b4fd6; --pair-2: #efc12b; --pair-3: #22b8cf; --pair-4: #d55e00;
+    --portal-edge: #1e140c; --portal-stone: #b3aca1;
+    /* A fold portal's pool, lit near white in its middle (schema 22, Q843d). */
+    --fold-light: #fffbe8;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -256,6 +270,13 @@ _TEMPLATE = """<!doctype html>
   .stat span:first-child { color: var(--muted); }
   .credits { color: var(--muted); font-size: 11px; margin-top: 14px; }
   .credits div { padding: 1px 0; }
+  /* A portal's arms turn idly inwards, as on the play board (the page's `.pg-idle`), and
+     not at all under reduced motion; an end nobody may go in by has no arms to turn. The
+     replay draws the glyph whole: its beak outside the well, its arms by their edges. */
+  .pg-wedge, .pg-mass, .pg-beak-cut { display: none; }
+  .pg-idle { animation: pg-turn 14s linear infinite; }
+  @keyframes pg-turn { to { transform: rotate(-360deg); } }
+  @media (prefers-reduced-motion: reduce) { .pg-idle { animation: none; } }
 </style>
 </head>
 <body>

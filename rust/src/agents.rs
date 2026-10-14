@@ -22,7 +22,7 @@ use crate::net::{Net, NetEvaluator};
 use crate::rng::PyRandom;
 use crate::tables::{
     move_kind, move_from, move_promotion, move_to, Tables, MOVE_CASTLE, MOVE_DROP,
-    MOVE_EN_PASSANT, MOVE_PORTAL, MOVE_PROMOTION, MOVE_ROTATE, MOVE_SWEEP,
+    MOVE_EN_PASSANT, MOVE_FOLD, MOVE_PORTAL, MOVE_PROMOTION, MOVE_ROTATE, MOVE_SWEEP,
 };
 
 /// How deep a quiescence search may go past the horizon before it settles for the
@@ -837,7 +837,12 @@ impl Player {
         // is the square the turning piece stands on, and a file-based castling can send
         // the king to its own rook's square -- a quiescence search that chased either
         // would never come to rest.
-        if kind != MOVE_ROTATE && kind != MOVE_CASTLE && game.board[move_to(m)] != 0 {
+        // Schema 22: a fold moved onto a piece takes nothing either.
+        if kind != MOVE_ROTATE
+            && kind != MOVE_CASTLE
+            && kind != MOVE_FOLD
+            && game.board[move_to(m)] != 0
+        {
             return true;
         }
         // Schema 19: a transit that promotes at its exit adds material as a promotion does.
@@ -990,7 +995,7 @@ fn capture_gain(t: &Tables, board: &[u8; 256], m: u32, values: &[f64]) -> f64 {
     // the target would order both ahead of every quiet move by the value of the mover's
     // own piece.
     let kind = move_kind(m);
-    if kind == MOVE_ROTATE || kind == MOVE_CASTLE {
+    if kind == MOVE_ROTATE || kind == MOVE_CASTLE || kind == MOVE_FOLD {
         return 0.0;
     }
     let n_types = t.n_types;

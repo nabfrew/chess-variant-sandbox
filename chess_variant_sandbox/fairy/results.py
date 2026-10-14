@@ -22,7 +22,8 @@ the positions come from four places:
 * **The ply counter set to the limit.** Their game has no length, so this is expected to
   differ, and it is counted as admitted rather than reported.
 * **Two reversible moves played back and forth** until ours calls a repetition, with
-  their engine replaying the same moves.
+  their engine replaying the same moves. Under ``repetition_draw: "never"`` the pair is
+  played past three folds instead, and theirs must not call it either (Q703).
 
 **Two ways of asking theirs.** From our FEN of a position with no moves, which is the
 same position re-expressed. And from the FEN at the start of our repetition window with
@@ -71,6 +72,9 @@ CYCLE_TRIES = 400
 # How many kinds of move the no-progress probe plays from its position. Shogi has the
 # most in the corpus, about 36, and most rulesets have 10 to 20.
 MOVE_KINDS = 32
+# How many times the never-repetition probe has a position stand: one past the three
+# folds their engine draws at by default, so a rule left on there is a difference.
+NEVER_FOLDS = 4
 
 # Which `rules` key decides each ending of ours, by the reason the core gives.
 RESULT_KEYS: dict[str, str] = {
@@ -239,12 +243,15 @@ class ResultCheck:
 def in_play(compiled: CompiledSpec) -> list[str]:
     """The result keys that can decide a game of this ruleset.
 
-    The clocks and stalemate can decide any game. ``checkmate`` needs a royal in check,
+    The clocks and stalemate can decide any game, and a repetition can decide any game
+    but one under ``"never"`` (whose probe still asks theirs, Q703). ``checkmate`` needs a royal in check,
     so a rule forbidding check rules it out. ``win`` is listed only where its verdict
     is an ending of its own: under ``"checkmate"`` that ending is the ``checkmate`` key's,
     and ``"none"`` has none.
     """
-    keys = ["stalemate", "max_plies", "no_progress_draw", "repetition_draw"]
+    keys = ["stalemate", "max_plies", "no_progress_draw"]
+    if compiled.repetition_draw != NO_REPETITION_DRAW:
+        keys.append("repetition_draw")
     if compiled.royal_types and compiled.win == "checkmate" and not compiled.forbid_check:
         keys.append("checkmate")
     if compiled.win in ("royal_capture", "annihilation"):
@@ -758,8 +765,8 @@ class _Asker:
         our window with the same moves.
         """
         limit = self.engine.spec.repetition_draw
-        if limit == NO_REPETITION_DRAW:  # refused by the translator; never reached here
-            return True
+        if limit == NO_REPETITION_DRAW:
+            return self._never_repeated(uniform)
         last = len(uniform.states) - 1
         for index in sorted({0, *(step * last // 6 for step in range(1, 6))}):
             line = self._repeated(uniform.prefix(index), limit)
@@ -778,6 +785,42 @@ class _Asker:
             self.check.unreached["repetition_draw"] = (
                 "no pair of moves could be played back and forth into a repetition"
             )
+        return True
+
+    def _never_repeated(self, uniform: _Line) -> bool:
+        """Under ``"never"`` (Q703): a position repeated past three folds, still going on.
+
+        The same back-and-forth pair, played until the position has stood
+        `NEVER_FOLDS` times, which is past the fold count their engine would otherwise
+        draw at. Their engine is asked from the opening with every move since, so it has
+        the whole history to count over, at the last repetition and one ply before it. A
+        draw of theirs there is a difference under ``repetition_draw``.
+        """
+        last = len(uniform.states) - 1
+        for index in sorted({0, *(step * last // 6 for step in range(1, 6))}):
+            line = uniform.prefix(index)
+            if self.engine.terminal(line.states[-1]) is not None:
+                continue
+            cycle = _cycle(self.engine, line.states[-1])
+            if cycle is None:
+                continue
+            for step in range(4 * (NEVER_FOLDS - 1)):
+                move = cycle[step % 4]
+                if move not in self.engine.legal_moves(line.states[-1]):
+                    break
+                line = line.extended(self.engine, self.variant, move)
+                if self.engine.terminal(line.states[-1]) is not None:
+                    break
+            else:
+                end = len(line.states) - 1
+                about = "repetition_draw"
+                start = line.states[0]
+                return self.ask(
+                    line.states[end - 1], start, line.spelled[: end - 1], about=about
+                ) and self.ask(line.states[end], start, line.spelled, about=about)
+        self.check.unreached["repetition_draw"] = (
+            "no pair of moves could be played back and forth past three folds"
+        )
         return True
 
     def _repeated(self, line: _Line, limit: int) -> _Line | None:

@@ -107,7 +107,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "leap: jump straight to the target, ignoring anything between. "
                     "hop: jump exactly one screening piece, then continue. "
                     "lame: like leap, but blocked by a piece on the way, as the "
-                    "xiangqi horse is. "
+                    "xiangqi horse is. A one-square vector has no square to be blocked on "
+                    "and is refused: use a leap or a range-1 slide. "
                     "sweep: jump to any square along the line, removing every piece "
                     "passed over, friendly included; a piece it may not capture blocks, "
                     "and a sweep that could pass over the enemy royal is check."
@@ -252,12 +253,23 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "piece with 2 axes has only forward and backward."
                         ),
                     },
+                    "turns": {
+                        "type": "boolean",
+                        "description": (
+                            "Whether a move may turn it. False is a facing "
+                            "no move turns: each piece points the way its placement says "
+                            "for the whole game, and one that enters play later points "
+                            "its initial way. A pawn placed facing backward stays a pawn "
+                            "going backward. Some placement must then point it a second "
+                            "way, or the facing would change nothing."
+                        ),
+                    },
                 },
                 required=["axes"],
                 strict=strict,
                 description=(
-                    "This piece has an orientation, and may spend a whole move turning "
-                    "to any other one instead of moving. Its move vectors are read "
+                    "This piece has an orientation, and (unless turns is false) may spend "
+                    "a whole move turning to any other one instead of moving. Its move vectors are read "
                     "rotated, so a pawn facing right advances east. Give it only to a "
                     "piece whose moves are *not* symmetric under the turn -- a rook "
                     "reads the same rays whichever way it faces, so turning one would "
@@ -741,6 +753,14 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "with no piece of the opening array on the first. One square "
                             "is a wild piece that never moves."
                         ),
+                        "also_at": _squares(
+                            "More wild pieces of the same kind on this same route: the "
+                            "squares, other than the route's first, where each further one "
+                            "starts, listed in route order and with no piece of the opening "
+                            "array on any. Every one walks the route in step with the "
+                            "first; one that finds another in its way waits behind it. "
+                            "Leave the key out for one wild piece on the route."
+                        ),
                         "bounty": {
                             "type": "number",
                             "minimum": 0,
@@ -790,24 +810,25 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                         "piece": {
                             "type": "string",
                             "description": (
-                                "A declared piece id whose moves the pair's ends use when "
+                                "A declared piece id whose moves the group's ends use when "
                                 "a player moves one. It must be worth 0, not royal, not "
                                 "placed by setup.placements and named by no other rule; "
                                 "every move it has must say mode 'move' and read the same "
                                 "for both players. It may have no moves when nobody moves "
-                                "the pair."
+                                "the group."
                             ),
                         },
                         "orange": {
                             "type": "string",
                             "description": (
-                                "Where the pair's orange end starts: an empty square, not a "
-                                "wall. Algebraic, such as c4."
+                                "Where the pair's first end starts: an empty square, not a "
+                                "wall. Algebraic, such as c4. The keys name the pair's two "
+                                "ends, this one first; both are drawn in the pair's colour."
                             ),
                         },
                         "blue": {
                             "type": "string",
-                            "description": "Where the pair's blue end starts, likewise.",
+                            "description": "Where the pair's second end starts, likewise.",
                         },
                         "moved_by": _object(
                             {
@@ -815,12 +836,12 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                                     "type": "array",
                                     "items": {"type": "integer", "enum": [0, 1]},
                                     "description": (
-                                        f"Which players may move the {end} end, as a turn: "
-                                        "[] for nobody (the default), [0], [1], or [0, 1] "
-                                        "for either."
+                                        f"Which players may move the pair's {which} end "
+                                        f"(`{end}` in the file), as a turn: [] for nobody "
+                                        "(the default), [0], [1], or [0, 1] for either."
                                     ),
                                 }
-                                for end in ("orange", "blue")
+                                for end, which in (("orange", "first"), ("blue", "second"))
                             },
                             required=[],
                             strict=strict,
@@ -832,8 +853,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                                     "enum": list(PORTAL_PASSAGES),
                                     "description": (
                                         f"Which end player {player}'s pieces may go in by: "
-                                        "'both_ways' (the default), 'orange_to_blue', "
-                                        "'blue_to_orange', or 'closed', when both ends are "
+                                        "'both_ways' (the default), 'orange_to_blue' (in at "
+                                        "the first end only), 'blue_to_orange' (in at the "
+                                        "second end only), or 'closed', when both ends are "
                                         "an uncapturable obstacle to that player."
                                     ),
                                 }
@@ -842,32 +864,139 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             required=[],
                             strict=strict,
                         ),
-                        "no_straight_back": {
-                            "type": "boolean",
+                        "carries": _object(
+                            {
+                                end: {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": (
+                                        f"Schema 21. The piece ids that may go in by the "
+                                        f"pair's {which} end; every other piece meets it as "
+                                        "an uncapturable obstacle. Absent: every piece. "
+                                        "Never empty, never every piece that can move, "
+                                        "never a portal."
+                                    ),
+                                }
+                                for end, which in (("orange", "first"), ("blue", "second"))
+                            },
+                            required=[],
+                            strict=strict,
+                            description=(
+                                "Schema 21. Which pieces may go in by each end of a pair, "
+                                "keyed by the end; an end not listed lets every piece in."
+                            ),
+                        ),
+                        "ends": {
+                            "type": "array",
+                            "minItems": 3,
+                            "maxItems": 8,
+                            "items": _object(
+                                {
+                                    "at": {
+                                        "type": "string",
+                                        "description": (
+                                            "Where this end starts: an empty square, not a "
+                                            "wall. Algebraic, such as c4."
+                                        ),
+                                    },
+                                    "to": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 7,
+                                        "description": (
+                                            "The index in this group's ends of the end a "
+                                            "piece that goes in here comes out of: never "
+                                            "this end itself. Absent: a way out only, which "
+                                            "nobody goes in by and pieces only come out of."
+                                        ),
+                                    },
+                                    "enter": {
+                                        "type": "array",
+                                        "items": {"type": "integer", "enum": [0, 1]},
+                                        "description": (
+                                            "Which players' pieces may go in by this end: "
+                                            "[0], [1] or [0, 1] (the default). Only beside "
+                                            "'to'."
+                                        ),
+                                    },
+                                    "moved_by": {
+                                        "type": "array",
+                                        "items": {"type": "integer", "enum": [0, 1]},
+                                        "description": (
+                                            "Which players may move this end, as a turn: [] "
+                                            "for nobody (the default), [0], [1] or [0, 1]."
+                                        ),
+                                    },
+                                    "carries": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": (
+                                            "The piece ids that may go in by this end; "
+                                            "absent, every piece. Only beside 'to'."
+                                        ),
+                                    },
+                                },
+                                required=["at"],
+                                strict=strict,
+                            ),
                             "description": (
-                                "Schema 20. When true, a portal of this pair that has just "
-                                "been moved may not be moved straight back onto the square "
-                                "it came from on the very next move; it may go anywhere "
-                                "else, and back on the move after. Stops two players "
-                                "undoing each other's portal moves for ever. Needs somebody "
-                                "in moved_by. Default false."
+                                "Schema 21. Three to eight ends, each leading to another "
+                                "of the group or nowhere: a ring (each to the next), a "
+                                "funnel (several to one way out), or any other map. Every "
+                                "end must lead somewhere or be led to. Two ends are a "
+                                "pair: write them as orange and blue instead."
+                            ),
+                        },
+                        "no_straight_back": _NO_STRAIGHT_BACK,
+                        "kind": {
+                            "type": "string",
+                            "enum": ["fold"],
+                            "description": (
+                                "Schema 24. 'fold' makes the group fold portals; absent, they "
+                                "are momentum portals (the default, never written). A fold is "
+                                "not a piece: its square may hold a piece of either side, "
+                                "which is captured there as anywhere, and may start under a "
+                                "piece. A move that ends on an empty fold that lets the piece "
+                                "in -- a leap, slide, hop or pawn's step -- may stay there, or "
+                                "go through and end on the end this one leads to instead, as "
+                                "a landing there: onto an empty square if the step could end "
+                                "on one, onto an enemy piece it may take (captured) if the "
+                                "step could capture, never onto its own piece or its own "
+                                "square, promoting by that square. One fold per move. A move "
+                                "that passes over a fold, or ends on one a piece stands in, is "
+                                "not changed by it. A fold that does not let a piece in, or "
+                                "leads nowhere, is plain floor to it. A fold moved by a player "
+                                "may land on a piece of either side (never on another portal), "
+                                "which then stands in it; moving it never moves that piece. "
+                                "Castling, drops and en passant never go through a fold, and a "
+                                "move through one opens no en passant."
                             ),
                         },
                     },
-                    required=["piece", "orange", "blue"],
+                    required=["piece"],
                     strict=strict,
+                    description=(
+                        "One group: a pair, written with orange and blue (and moved_by, "
+                        "passage and carries keyed by them), or a map, written with ends "
+                        "alone. Never both."
+                    ),
                 ),
                 "minItems": 1,
                 "maxItems": 4,
                 "description": (
-                    "Pairs of portals, numbered by their place in the list. A piece whose "
-                    "move ends on a portal end open to it does not stop there: it comes out "
-                    "of the pair's other end, one king's step beyond it in the direction it "
+                    "Groups of portals, numbered by their place in the list (at most four "
+                    "groups and eight ends in all). A group is a pair (orange and blue, "
+                    "each leading to the other) or a map of ends (each leading to one "
+                    "other end of its group, or nowhere). A piece whose move ends on a "
+                    "portal end that lets it in does not stop there: it comes out of the "
+                    "end that one leads to, one king's step beyond it in the direction it "
                     "was travelling (right-and-up by any amounts comes out diagonally up "
                     "and right), and its move ends there -- capturing, promoting or winning "
                     "there as usual. A blocked exit (off the board, a wall, its own piece, a "
                     "piece it may not take, another portal, or its own square) is no move. "
-                    "A portal is never captured. Not usable on a hex lattice or beside "
+                    "An end that does not let a piece in is an uncapturable obstacle to it. "
+                    "A portal is never captured. A group with kind 'fold' works "
+                    "differently (see kind). Not usable on a hex lattice or beside "
                     "npcs, strike, contacts, explode_on_capture, territory, a sweep, or a "
                     "piece region."
                 ),
@@ -1208,6 +1337,19 @@ def _squares(description: str) -> dict[str, Any]:
         "minItems": 1,
         "description": f"{description} Algebraic squares such as a1 or e4.",
     }
+
+
+_NO_STRAIGHT_BACK: dict[str, Any] = {
+    "type": "boolean",
+    "description": (
+        "Schema 20. When true, a portal of this group that has just been moved may not be "
+        "moved straight back onto the square it came from on the very next move; it may go "
+        "anywhere else, and back on the move after. Stops two players undoing each other's "
+        "portal moves for ever. Needs an end that whoever moves next may move too (in "
+        "moved_by for both players, or a turn longer than one move), and a portal piece "
+        "with a move back; a bar no move can meet is refused. Default false."
+    ),
+}
 
 
 def _object(

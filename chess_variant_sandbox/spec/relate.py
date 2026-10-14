@@ -59,10 +59,13 @@ from chess_variant_sandbox.spec.schema import (
     wrap_stated,
 )
 
-# Bumped when a change here would move a stored count. A cached link carries it, so a
-# reader that cannot match it recomputes instead of showing an older reading.
+# Bumped when a change here would move a stored count or sentence. A cached link carries
+# it, so a reader that cannot match it recomputes instead of showing an older reading.
 # r2: direction sets sorted inside the key, and `orientation` read as played (Q503c2).
-RELATE_VERSION = "r2"
+# r3: a matched pair whose names differ is named from both sides (Q861). No count moves;
+# the bump is for the stored sentences, which the graph's pair file and the site's
+# `links` rows hold under this stamp and so recompute instead of showing the old words.
+RELATE_VERSION = "r3"
 
 # Which kind of rule each `rules` key is. Exhaustive over `schema._RULES_KEYS`, and a
 # test fails when the schema grows a key with no row here -- a link with no kind is a
@@ -265,6 +268,9 @@ class NormalForm:
     # Whether this game's rules could ever bring en passant into play. See `_compare`.
     en_passant_fires: bool = False
     key: str = ""
+    # What each piece is called, by id. Outside `key`, which a renaming does not move,
+    # but a sentence names pieces, so the pair cache is keyed on it too (`relate_forms`).
+    names: tuple[tuple[str, str], ...] = ()
 
 
 def normal_form(spec: dict[str, Any]) -> NormalForm:
@@ -319,6 +325,7 @@ def _build(spec: dict[str, Any]) -> NormalForm:
         rules=_live_rules(spec),
         en_passant_fires=_en_passant_fires(spec, pieces),
         key="",
+        names=tuple(sorted((pid, str(piece.get("name", pid))) for pid, piece in pieces.items())),
     )
     object.__setattr__(form, "key", _key_of(form))
     return form
@@ -370,42 +377,63 @@ def _orientation_played(
     tables the rotation was spelling. Any doubt -- a spec that does not compile, a table
     that differs anywhere -- keeps the orientation as written, which can only split one
     game into two keys, never join two games into one.
+
+    The two compiles are one and a half (Q866): `compile.compile_two_readings` builds the
+    first player's movement frames once, since only the second player reads the
+    orientation, and stops the restated compile at the first second-player square whose
+    entries differ, which is already a table that differs. Memoising could not have done
+    it (every design child is another spec), and neither could reflecting the rotated
+    reading into the mirrored one here, which is interpreting the DSL outside the
+    compiler.
     """
     if written != "rotate":
         return written
     try:
         from chess_variant_sandbox.engine.bridge import canonical_tables
-        from chess_variant_sandbox.engine.compile import compile_spec
+        from chess_variant_sandbox.engine.compile import compile_two_readings
 
-        stated = json.loads(json.dumps(spec))
-        placements: list[dict[str, Any]] = []
-        for player, file_, rank, pid, facing in sorted(cells):
-            row: dict[str, Any] = {
-                "piece": pid, "player": player, "squares": [format_square(file_, rank)],
-            }
-            if facing:
-                row["facing"] = facing
-            placements.append(row)
-        stated["setup"] = {"orientation": "mirror", "mirror": False, "placements": placements}
-        rules = stated.get("rules") or {}
-        obstacles = rules.get("obstacles")
-        if isinstance(obstacles, dict) and obstacles.get("squares"):
-            board = spec.get("board") or {}
-            width = _int(board.get("width"), 8)
-            walls = obstacle_squares(
-                spec.get("rules"), width, _int(board.get("height"), 8), written
-            )
-            rules["obstacles"] = {
-                **obstacles,
-                "mirror": False,
-                "squares": sorted(format_square(sq % width, sq // width) for sq in walls),
-            }
-        same = _played(canonical_tables(compile_spec(spec))) == _played(
-            canonical_tables(compile_spec(stated))
+        compiled, stated = compile_two_readings(spec, _restated(spec, written, cells))
+        same = stated is not None and _played(canonical_tables(compiled)) == _played(
+            canonical_tables(stated)
         )
     except Exception:  # noqa: BLE001 -- any failure to ask is a "keep it as written"
         return written
     return "mirror" if same else written
+
+
+def _restated(
+    spec: dict[str, Any], written: str, cells: set[tuple[int, int, int, str, str]]
+) -> dict[str, Any]:
+    """``spec`` under the default orientation, both armies and every wall square by square.
+
+    The second spec `_orientation_played` compiles. It changes the spelling of the setup
+    and the walls and nothing else, so it differs from ``spec`` only in how the second
+    player reads what is written from the first player's side.
+    """
+    stated = json.loads(json.dumps(spec))
+    placements: list[dict[str, Any]] = []
+    for player, file_, rank, pid, facing in sorted(cells):
+        row: dict[str, Any] = {
+            "piece": pid, "player": player, "squares": [format_square(file_, rank)],
+        }
+        if facing:
+            row["facing"] = facing
+        placements.append(row)
+    stated["setup"] = {"orientation": "mirror", "mirror": False, "placements": placements}
+    rules = stated.get("rules") or {}
+    obstacles = rules.get("obstacles")
+    if isinstance(obstacles, dict) and obstacles.get("squares"):
+        board = spec.get("board") or {}
+        width = _int(board.get("width"), 8)
+        walls = obstacle_squares(
+            spec.get("rules"), width, _int(board.get("height"), 8), written
+        )
+        rules["obstacles"] = {
+            **obstacles,
+            "mirror": False,
+            "squares": sorted(format_square(sq % width, sq // width) for sq in walls),
+        }
+    return stated
 
 
 def _played(tables: dict[str, Any]) -> dict[str, Any]:
@@ -450,7 +478,8 @@ _PIECE_POSITIONS: dict[str, Any] = {
         "no_doubled": _IDS, "no_mate": _IDS, "stock": _KEYED, "region": _KEYED,
     },
     "npcs": [{"piece": _ID, "immune": _IDS}],
-    "portals": [{"piece": _ID}],
+    # Schema 21: an end's `carries`, on a pair keyed by the end, on a map's end a list.
+    "portals": [{"piece": _ID, "carries": {_ANY: _IDS}, "ends": [{"carries": _IDS}]}],
     "strike": {"immune": _IDS, "chain": [{"from": _ID, "to": _ID}], "switches_sides": _IDS},
     "contacts": {
         "immune": _IDS,
@@ -818,10 +847,14 @@ def relate(first: dict[str, Any], second: dict[str, Any]) -> Relation:
 
 
 def relate_forms(first: NormalForm, second: NormalForm) -> Relation:
-    """`relate` over two normal forms already in hand, memoised on their identity keys."""
+    """`relate` over two normal forms already in hand, memoised on their identity keys.
+
+    And on the pieces' names: two spellings of one game share a key, and a sentence read
+    for one of them would name the other's pieces.
+    """
     if first.key == second.key:
         return Relation(())
-    pair = (first.key, second.key)
+    pair = (first.key, first.names, second.key, second.names)
     held = _PAIRS.get(pair)
     if held is None:
         # Whichever way of pairing the two armies finds the fewest rules. A tie keeps the
@@ -848,7 +881,7 @@ def units(first: dict[str, Any], second: dict[str, Any]) -> int:
 # millisecond, and a library of 500 games is 125,000 pairs, which is what the bound is
 # sized for. `RELATE_VERSION` is not in the key because a process runs one version of
 # this file; a *stored* link carries it.
-_PAIRS: dict[tuple[str, str], Relation] = {}
+_PAIRS: dict[tuple[Any, ...], Relation] = {}
 _PAIRS_KEPT = 200_000
 
 
@@ -888,32 +921,31 @@ def _compare(
     for id_a, id_b in sorted(back.items()):
         one, other = first.pieces[id_a], second.pieces[id_b]
         name = str(one.get("name", id_a))
+        words = _PairWords(name, str(other.get("name", id_b)))
         moved = first.forms[id_a] != second.forms[id_b]
         crowned = bool(one.get("royal")) != bool(other.get("royal"))
         if moved:
-            found.append(Difference("pieces", "piece.moves", f"the {name} moves differently"))
+            found.append(Difference("pieces", "piece.moves", words.moves()))
         if crowned:
-            found.append(Difference("ending", "piece.royal", f"whether the {name} is royal"))
+            found.append(Difference(
+                "ending", "piece.royal", words.royal(bool(other.get("royal")))
+            ))
         # A price follows what a piece is. A piece whose movement or royalty changed and
         # whose price changed with it is one edit, not two.
         if one.get("value") != other.get("value") and not (moved or crowned):
-            found.append(Difference(
-                "valuation", "piece.value", f"the {name} is priced differently"
-            ))
+            found.append(Difference("valuation", "piece.value", words.priced()))
         if _folded(one.get("captures"), _IDS, ids_a) != _folded(
             other.get("captures"), _IDS, ids_b
         ):
             takers.append(name)
         if _frozen(one.get("facing")) != _frozen(other.get("facing")):
             turns = True
-            found.append(Difference("pieces", "piece.facing", f"whether the {name} turns"))
+            found.append(Difference("pieces", "piece.facing", words.turns()))
         rest = ("region", "promoted_from")
         if _folded(_stated(one, rest), _PIECE_FIELDS, ids_a) != _folded(
             _stated(other, rest), _PIECE_FIELDS, ids_b
         ):
-            found.append(Difference(
-                "pieces", "piece.other", f"where the {name} may stand"
-            ))
+            found.append(Difference("pieces", "piece.other", words.stands()))
     # Who may take whom is one rule however many pieces carry a list. `chess / wolves`
     # declares it on five pieces and costs 55 JSON leaves for one decision.
     if takers:
@@ -928,6 +960,55 @@ def _compare(
     _setup_differences(first, second, mapping, gone_a, gone_b, turns, found)
     _rule_differences(first, second, ids_a, ids_b, found)
     return found
+
+
+@dataclass(frozen=True)
+class _PairWords:
+    """The sentences about one matched pair of pieces, from the second game's side.
+
+    Pieces are matched by what they do, not by what they are called, so a pair can carry
+    two names: chess's knight against a draft's *diagonal knight*. A sentence reads as
+    what the second game does differently (`Difference`), so where the names differ it
+    names the second game's piece as *its* and the first game's beside it -- *its knight
+    moves differently from the diagonal knight* on the draft's page, under chess. Naming
+    only one would name the page's own piece in a row about the other game, which is
+    what F9 of `docs/reference/first-visit-study.md` found. Where the names agree the
+    sentence names the piece once, as it always has.
+    """
+
+    first: str
+    second: str
+
+    @property
+    def same(self) -> bool:
+        return self.first.strip().casefold() == self.second.strip().casefold()
+
+    def moves(self) -> str:
+        if self.same:
+            return f"the {self.first} moves differently"
+        return f"its {self.second} moves differently from the {self.first}"
+
+    def royal(self, second_is: bool) -> str:
+        if self.same:
+            return f"whether the {self.first} is royal"
+        if second_is:
+            return f"its {self.second} is royal where the {self.first} is not"
+        return f"its {self.second} is not royal where the {self.first} is"
+
+    def priced(self) -> str:
+        if self.same:
+            return f"the {self.first} is priced differently"
+        return f"its {self.second} is priced differently from the {self.first}"
+
+    def turns(self) -> str:
+        if self.same:
+            return f"whether the {self.first} turns"
+        return f"its {self.second} turns differently from the {self.first}"
+
+    def stands(self) -> str:
+        if self.same:
+            return f"where the {self.first} may stand"
+        return f"its {self.second} may stand in other places than the {self.first}"
 
 
 def _board_differences(

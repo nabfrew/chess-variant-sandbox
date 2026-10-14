@@ -694,11 +694,47 @@ RULES = """
   .promo-exit-bar > * { flex: 1 1 100%; }
   .promo-exit-bar .promo-row { align-items: center; }
   .promo-esc { font-size: 13px; }
-  /* A portal end drawn small (D9): under 28 px a cell its chevrons go, under 20 px its
-     double rim and hatch too, and the label and the line under the board say the rest. */
-  svg[data-portals="mid"] .pg-arrow, svg[data-portals="small"] .pg-arrow,
-  svg[data-portals="small"] .pg-double, svg[data-portals="small"] .pg-hatch,
-  .pg-small .pg-arrow, .pg-small .pg-double, .pg-small .pg-hatch { display: none; }
+  /* A portal end (Q838b, `docs/plan-portal-look.md` §2.3, the vortex; Q838f). On a live
+     board its arms turn inwards, once every 14 s, on the arms' own group so the trip's
+     pulse on the glyph composes with it; never under reduced motion. An end nobody may go
+     in by has no arms, so nothing on it turns. Drawn small (D9): the token and the sunk
+     hole stay at every size; under 28 px a cell the arms' edges are held at one screen
+     pixel (scaled, they would vanish, and a black arm on violet with them), under 20 px
+     the arms give way to two broad wedges, edged the same (a thumbnail's `pg-small` too),
+     and the label and the line under the board say the rest. Q838h: at the mid size and on
+     a phone (`data-phone`) the arms are drawn by mass (`pg-mass`: wider, a white arm edged
+     in the group's colour), so a white arm's dark edge never reads as a dark arm. Q843b: the
+     beak where an end leads stands outside the well at the full size (`pg-beak`), is a wedge
+     cut into the rim at the mid size (`pg-beak-cut`) and is not drawn smaller. */
+  .pg-idle { animation: pg-turn 14s linear infinite; }
+  @keyframes pg-turn { to { transform: rotate(-360deg); } }
+  @media (prefers-reduced-motion: reduce) { .pg-idle { animation: none; } }
+  .pg-wedge, .pg-mass, .pg-beak-cut { display: none; }
+  svg[data-portals="mid"] .pg-arm, svg[data-phone] .pg-arm { display: none; }
+  svg[data-portals="mid"] .pg-mass, svg[data-phone] .pg-mass {
+    display: inline; vector-effect: non-scaling-stroke; stroke-width: 1px; }
+  svg[data-portals="mid"] .pg-beak { display: none; }
+  svg[data-portals="mid"] .pg-beak-cut {
+    display: inline; vector-effect: non-scaling-stroke; stroke-width: 1px; }
+  svg[data-portals="small"] .pg-arm, .pg-small .pg-arm,
+  svg[data-portals="small"] .pg-mass, .pg-small .pg-mass,
+  svg[data-portals="small"] .pg-beak, .pg-small .pg-beak { display: none; }
+  svg[data-portals="small"] .pg-wedge, .pg-small .pg-wedge {
+    display: inline; vector-effect: non-scaling-stroke; stroke-width: 1px; }
+  /* A fold portal's pool (Q843d, `docs/plan-portals-2.md` §5.3): on a live board its bands
+     turn once every 12 s (inwards, or outwards where it leads nowhere) and its rim churns
+     once every 8 s, a group's ends in step; never under reduced motion. Its beak takes the
+     vortex's classes, so the same sizes show it. Small, the bands' edges are held at two screen
+     pixels, so a white band still shows on the pool's light middle. */
+  .pf-idle { animation: pf-turn 12s linear infinite; }
+  .pf-idle[data-turn="out"] { animation-name: pf-turn-out; }
+  .pf-wobble { animation: pf-wobble 8s linear infinite; }
+  @keyframes pf-turn { to { transform: rotate(-360deg); } }
+  @keyframes pf-turn-out { to { transform: rotate(360deg); } }
+  @keyframes pf-wobble { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .pf-idle, .pf-wobble { animation: none; } }
+  svg[data-portals="mid"] .pf-band, svg[data-phone] .pf-band, svg[data-portals="small"] .pf-band {
+    vector-effect: non-scaling-stroke; stroke-width: 2px; }
   .frame-controls { margin-top: 8px; gap: 6px; }
   .frame-controls .shift { gap: 6px; }
   .frame-controls .shift:empty { display: none; }
@@ -939,6 +975,18 @@ RULES = """
   .bubble p { margin: 0; color: var(--muted); }
   .bubble p + p, .bubble details p, .bubble details { margin-top: 6px; }
   .bubble summary { cursor: pointer; color: var(--ink); }
+  /* The portal's (i), Q838c, in rows since Q838f: what an end stands on, four drawings in a
+     row each over its sentence; then its arms, the same; then one pair, its two ends beside
+     their sentence. Each drawn on the board's light square. */
+  .portal-figure { display: grid; gap: 6px; }
+  .portal-head { font-weight: 600; font-size: 12px; margin-top: 4px; }
+  .portal-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .portal-example { display: flex; flex-direction: column; align-items: center; gap: 4px;
+    text-align: center; font-size: 12px; line-height: 1.3; }
+  .portal-row.portal-pairs { grid-template-columns: 1fr; }
+  .portal-pairs .portal-example { flex-direction: row; text-align: left; gap: 10px; }
+  .portal-example svg { border-radius: 4px; flex: none; }
+  .portal-example span { color: var(--muted); }
 
   /* --- narrowing and ordering the library --- */
   .controls { display: grid; gap: 10px; margin-bottom: 14px; }
@@ -1039,6 +1087,15 @@ RULES = """
   .portalRow .portalChip { padding: 1px 3px; }
   .portalRow .portalChip svg { display: block; }
   .portalRefused { font-size: 11px; max-width: 14em; }
+  /* Beside the board, the tray is a column as wide as its widest row, and the refusal's
+     14em made it that wide on every draft with wild pieces, which squeezed a chess board
+     at 1400 px to 153 px (Q854). There the sentence wraps to the buttons' width instead. */
+  @media (min-width: 761px) {
+    .designer.bench:not(.hexBench) .tray .portalRefused { contain: inline-size; min-width: 7em; }
+  }
+  .tray .wildRow { margin-top: 2px; padding-top: 6px; border-top: 1px solid var(--line);
+                   flex-wrap: wrap; align-items: center; }
+  .wildTypes { flex-wrap: wrap; align-items: center; }
   .linkish { border: 0; background: none; padding: 0; min-height: 0; color: var(--ink);
              text-decoration: underline; cursor: pointer; font: inherit; }
   .pairCard { border: 1px solid var(--line); border-radius: var(--r-ctl); padding: 8px 10px; margin-top: 8px; }
@@ -1046,7 +1103,7 @@ RULES = """
   .pairHead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .pairHead .grow { flex: 1 1 0; }
   .pairPick { padding: 0; border: 0; background: none; min-height: 0; line-height: 0; }
-  .pairPart { margin-top: 10px; }
+  .pairPart { margin-top: 7px; }
   .pairSays { color: var(--ink); }
   .pairError { margin-top: 6px; }
   .pairStale { opacity: .55; }
@@ -1055,21 +1112,46 @@ RULES = """
   .wayChoice { display: flex; flex-direction: column; align-items: center; gap: 2px;
                padding: 6px 4px; font-size: 12px; line-height: 1.25; white-space: normal; }
   .wayChoice.on { border-color: var(--act); background: var(--act-tint); color: var(--ink); font-weight: 600; }
+  .wayChoice svg { max-width: 100%; height: auto; }
   .wayFor { margin-top: 6px; }
   .moverRow { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin-top: 4px; }
   .moverEnd { min-width: 11em; }
   .moverRadios { display: inline-flex; flex-wrap: wrap; gap: 2px 10px; }
   .moverMenu { display: none; }
-  .pairLooks { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 8px; }
-  .pairLook { display: inline-flex; align-items: center; gap: 6px; }
   .portalKey { display: flex; gap: 10px; align-items: flex-start; margin-top: 8px;
                padding: 4px 0 4px 9px; border-left: 3px solid var(--note); }
   .portalKeyGrid { display: grid; grid-template-columns: repeat(3, 1.4em); text-align: center;
                    line-height: 1.4em; color: var(--muted); flex: none; }
   .portalKeyGrid .on { color: var(--ink); font-weight: 700; }
   .pickLine { margin-top: 6px; gap: 6px; }
+  /* A group's shape, where each end leads and which pieces may go in (schema 21, Q843b,
+     `docs/plan-portals-2.md` §5.4): the three named shapes as drawn buttons, *your own map*
+     beside them when the rows make none of them, a row per end, and the pieces' icons with
+     a tick each when an end lets only some in. */
+  .shapeChoices { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* How it works (schema 22, Q843d, §5.4): *momentum* or *fold*, each a small button with its
+     glyph and its word, on the line above the shapes, so a group's card still fits a screen;
+     44 px targets on a phone. */
+  .kindLine { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+  .kindChoices { display: inline-flex; gap: 6px; }
+  .kindChoice { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; min-height: 22px; }
+  .kindChoice.on { border-color: var(--act); background: var(--act-tint); color: var(--ink); font-weight: 600; }
+  .kindChoice svg { flex: none; display: block; }
+  .shapeOwn { border: 1px solid var(--act); border-radius: var(--r-ctl); justify-content: center; }
+  .leadsRow { margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--line); }
+  .leadsRow select { margin-left: 4px; min-height: var(--ctl-h-sm); padding: 3px 6px; max-width: 13em; }
+  .leadsMore { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; }
+  .filterRow { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin-top: 4px; }
+  .filterSays { flex-basis: 100%; color: var(--ink); }
+  .filterPieces { display: flex; flex-wrap: wrap; gap: 4px; flex-basis: 100%; }
+  .filterPiece { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px; min-width: 44px; }
+  .filterPiece img { width: 26px; height: 26px; display: block; }
+  .filterPiece.on { border-color: var(--act); background: var(--act-tint); }
+  .filterTick { font-weight: 700; min-width: 0.8em; }
   @media (max-width: 760px) {
     .wayChoices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .shapeChoices { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .kindChoice { min-height: 44px; }
     .wayChoice { min-height: 44px; }
     .moverRadios { display: none; }
     .moverMenu { display: inline; }
@@ -1146,6 +1228,9 @@ RULES = """
      around it is already a box. Written here rather than on the element so that the bar
      can take it back below. */
   .designer .footbar > .says > .ok, .designer .footbar > .says > .error { margin: 10px 0; }
+  /* *on its own page*, said once before the two buttons that open it, only in the bar at
+     the foot of a phone; in the panel each button says it whole (Q801). */
+  .designer .footbar .awayLead { display: none; }
   @media (max-width: 900px) {
     .designer .footbar {
       position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; max-height: 40vh;
@@ -1158,7 +1243,13 @@ RULES = """
        the buttons have to stay on the screen whichever it is -- so the sentence scrolls
        inside the bar and the buttons never move. */
     .designer .footbar > .says { min-height: 0; overflow-y: auto; }
+    /* A game that plays is a sentence in the good colour, not a box inside the bar: the
+       bar is the box (Q801). The verdict that does not finish keeps its box and scrolls. */
     .designer .footbar > .says > .ok, .designer .footbar > .says > .error { margin: 0; }
+    .designer .footbar > .says > .ok { border: none; padding: 2px 0 0; font-size: 14px;
+                                       line-height: 1.35; }
+    .designer .footbar .awayLead { display: inline; align-self: center; }
+    .designer .footbar .awayTail { display: none; }
     /* The first thing to fix, at most two lines in the bar; the whole list is the tap. */
     .designer .footbar .notGameFirst { display: -webkit-box; -webkit-line-clamp: 2;
                                         -webkit-box-orient: vertical; overflow: hidden; }
@@ -1204,6 +1295,13 @@ RULES = """
   .paletteGames { white-space: nowrap; }
   /* What each player holds off the board, under a still of the opening position. */
   .stillHand { gap: 5px; margin-top: 6px; align-items: baseline; }
+  /* Q852: the line under a still board naming each wild piece's walk that jumps, with a
+     swatch of the walk's own hue. */
+  .walkLeaps { margin-top: 6px; color: var(--ink); }
+  .walkLeaps > div { margin-top: 2px; }
+  .walkName { display: inline-block; margin-right: 10px; white-space: nowrap; }
+  .walkSwatch { display: inline-block; width: 10px; height: 10px; margin-right: 6px;
+    border-radius: 50%; border: 1px solid var(--walk-edge); vertical-align: -1px; }
   .stillHand .chip { padding: 2px 8px; min-height: 0; }
   /* The design steps that apply to the draft, one sentence each. Thirty of them on an
      ordinary game, so the list scrolls inside the panel rather than pushing the rules in
@@ -1361,7 +1459,9 @@ RULES = """
   .mapControls[open] > summary { margin-bottom: 4px; }
   .mapCtl { gap: 8px 16px; margin: 8px 0; }
   .mapEnds { justify-content: space-between; }
-  .mapFolds { flex: 1 1 320px; min-width: 0; }
+  /* The size row's sentence takes the room between its menu and *reset*, which ends the
+     row; the communities are listed once, as the key, and fold from their panel (Q801). */
+  .mapSay { flex: 1 1 200px; min-width: 0; }
   .mapKinds { border-top: 1px solid var(--line); padding-top: 8px; }
   .mapKinds > summary { min-height: var(--hit); display: flex; align-items: center; }
   .mapControls .mapLegend { margin-bottom: 4px; }

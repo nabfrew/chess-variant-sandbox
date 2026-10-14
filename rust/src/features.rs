@@ -613,7 +613,8 @@ fn facing_alignment(game: &Game<'_>, player: usize) -> f64 {
         let piece_type = (value - 1) % t.n_types;
         let owner = frame / t.n_facings;
         debug_assert!(owner != WILD, "a wild piece reached facing_alignment");
-        if t.facings_of(piece_type) < 2 {
+        // A facing no move turns (schema 25) is out with the types that have none.
+        if t.turns_of(piece_type) < 2 {
             continue;
         }
         let aligned = ALIGNMENT[(frame % t.n_facings) * step];

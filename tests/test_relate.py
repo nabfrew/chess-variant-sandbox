@@ -27,6 +27,10 @@ from chess_variant_sandbox.spec.relate import (
     RULE_WORDS,
     SETTING_WEIGHT,
     SIMILARITY_RATIO,
+    _orientation_played,
+    _played,
+    _restated,
+    _setup_cells,
     identity_key,
     mechanisms,
     normal_form,
@@ -37,7 +41,7 @@ from chess_variant_sandbox.spec.relate import (
     similarity,
     units,
 )
-from chess_variant_sandbox.spec.schema import _RULES_KEYS
+from chess_variant_sandbox.spec.schema import _RULES_KEYS, SpecError
 from chess_variant_sandbox.spec.transform import rename_everything, reorder_pieces
 
 # A two-piece game on a small board, with a promoting walker that can double-step, so
@@ -235,33 +239,46 @@ def test_a_spelling_twin_shares_its_identity_key() -> None:
     assert identity_key(BASE) != identity_key(changed(stalemate="loss"))
 
 
-def test_no_committed_spec_moves_under_a_relettering() -> None:
+_LETTERS = "abcdefghijklmnopqrstuvwxyz"
+
+
+def _relettered(spec: dict) -> dict | None:
+    """``spec`` with every piece id replaced by a letter it does not use, everywhere it
+    appears; ``None`` where there are too few letters or the rewrite is not a valid spec."""
+    ids = [str(entry["id"]) for entry in spec.get("pieces", [])]
+    spare = [c.upper() for c in _LETTERS if c.upper() not in ids and c not in ids]
+    if len(spare) < len(ids):
+        return None
+    twin = _rewrite(copy.deepcopy(spec), dict(zip(ids, spare, strict=False)))
+    return None if validate_spec(twin) else twin
+
+
+# One test per committed spec (Q749): the walk was one test of 6 s in the gate, the specs
+# that rotate costing two compiles each in `units` and `similarity`.
+@pytest.mark.parametrize(
+    ("stem", "spec"), [pytest.param(stem, spec, id=stem) for stem, spec in corpus_specs()]
+)
+def test_no_committed_spec_moves_under_a_relettering(stem: str, spec: dict) -> None:
     """The three spelling nulls over the whole corpus, which is where they were measured.
 
     A re-lettering is the strongest of them: every piece id replaced at once, everywhere
     it appears. `docs/reference/game-graph-probe.md` ran these by hand beside the probe
     and they are the first thing this module owes.
     """
-    letters = "abcdefghijklmnopqrstuvwxyz"
     moved: list[str] = []
-    relettered = 0
-    for stem, spec in corpus_specs():
-        for make in (rename_everything, reorder_pieces):
-            if units(spec, make(copy.deepcopy(spec))):
-                moved.append(f"{stem} under {make.__name__}")
-        ids = [str(entry["id"]) for entry in spec.get("pieces", [])]
-        spare = [c.upper() for c in letters if c.upper() not in ids and c not in ids]
-        if len(spare) < len(ids):
-            continue
-        mapping = dict(zip(ids, spare, strict=False))
-        twin = _rewrite(copy.deepcopy(spec), mapping)
-        if validate_spec(twin):
-            continue
-        relettered += 1
-        if units(spec, twin) or similarity(spec, twin).index:
-            moved.append(f"{stem} under a re-lettering")
+    for make in (rename_everything, reorder_pieces):
+        if units(spec, make(copy.deepcopy(spec))):
+            moved.append(f"{stem} under {make.__name__}")
+    twin = _relettered(spec)
+    if twin is not None and (units(spec, twin) or similarity(spec, twin).index):
+        moved.append(f"{stem} under a re-lettering")
     assert not moved
-    assert relettered > 50
+
+
+def test_the_relettering_reaches_most_of_the_corpus() -> None:
+    """The walk above re-letters a spec only where letters suffice and the rewrite is
+    valid; it must still reach over fifty of them, or it has stopped asking."""
+    assert sum(_relettered(spec) is not None for _, spec in corpus_specs()) > 50
 
 
 def _rewrite(value, mapping: dict[str, str]):
@@ -489,6 +506,118 @@ def test_two_specs_that_differ_in_nothing_have_no_link_to_draw() -> None:
     assert relate_forms(normal_form(BASE), normal_form(BASE)).units == 0
 
 
+class TestAMatchedPairIsNamedFromBothSides:
+    """F9 of `docs/reference/first-visit-study.md`, which Q595 reproduced and Q861 fixed.
+
+    Pieces are matched by what they do, so a pair can carry two names. A sentence is
+    about the second game, so it names the second game's piece as *its* and the first's
+    beside it; naming one alone named the page's own piece in a row about the other
+    game. Each kind is asked from both sides of the pair, and with the names the same.
+    """
+
+    @staticmethod
+    def edited(edit, renamed: bool) -> dict:
+        spec = copy.deepcopy(BASE)
+        if renamed:
+            piece(spec, "R")["name"] = "castle"
+        edit(piece(spec, "R"))
+        return spec
+
+    @staticmethod
+    def said(first: dict, second: dict, unit: str) -> str:
+        relation = relate(first, second)
+        found = [one for one in relation.differences if one.unit == unit]
+        assert len(found) == 1, relation.differences
+        return found[0].sentence
+
+    EDITS = {
+        "piece.moves": lambda entry: entry["moves"][0].__setitem__("range", 2),
+        "piece.royal": lambda entry: entry.__setitem__("royal", True),
+        "piece.value": lambda entry: entry.__setitem__("value", 9),
+        "piece.facing": lambda entry: entry.__setitem__("facing", {"axes": 4}),
+        "piece.other": lambda entry: entry.__setitem__("region", ["a1", "b1", "c1"]),
+    }
+
+    DIFFERING = {
+        "piece.moves": (
+            "its castle moves differently from the tower",
+            "its tower moves differently from the castle",
+        ),
+        "piece.royal": (
+            "its castle is royal where the tower is not",
+            "its tower is not royal where the castle is",
+        ),
+        "piece.value": (
+            "its castle is priced differently from the tower",
+            "its tower is priced differently from the castle",
+        ),
+        "piece.facing": (
+            "its castle turns differently from the tower",
+            "its tower turns differently from the castle",
+        ),
+        "piece.other": (
+            "its castle may stand in other places than the tower",
+            "its tower may stand in other places than the castle",
+        ),
+    }
+
+    SAME = {
+        "piece.moves": "the tower moves differently",
+        "piece.royal": "whether the tower is royal",
+        "piece.value": "the tower is priced differently",
+        "piece.facing": "whether the tower turns",
+        "piece.other": "where the tower may stand",
+    }
+
+    def test_every_per_piece_kind_is_covered(self) -> None:
+        assert set(self.EDITS) == set(self.DIFFERING) == set(self.SAME)
+
+    @pytest.mark.parametrize("unit", sorted(DIFFERING))
+    def test_differing_names_are_both_said_from_either_side(self, unit: str) -> None:
+        draft = self.edited(self.EDITS[unit], renamed=True)
+        under_draft, under_base = self.DIFFERING[unit]
+        assert self.said(BASE, draft, unit) == under_draft
+        assert self.said(draft, BASE, unit) == under_base
+
+    @pytest.mark.parametrize("unit", sorted(SAME))
+    def test_one_name_is_said_once_from_either_side(self, unit: str) -> None:
+        draft = self.edited(self.EDITS[unit], renamed=False)
+        assert self.said(BASE, draft, unit) == self.SAME[unit]
+        assert self.said(draft, BASE, unit) == self.SAME[unit]
+
+    def test_a_name_differing_only_in_case_is_one_name(self) -> None:
+        draft = self.edited(self.EDITS["piece.value"], renamed=False)
+        piece(draft, "R")["name"] = "Tower"
+        assert self.said(BASE, draft, "piece.value") == self.SAME["piece.value"]
+
+    def test_a_renamed_spelling_does_not_borrow_the_other_spellings_words(self) -> None:
+        """Renaming moves no identity key, so the pair cache is keyed on the names too."""
+        renamed = self.edited(self.EDITS["piece.value"], renamed=True)
+        same = self.edited(self.EDITS["piece.value"], renamed=False)
+        assert identity_key(renamed) == identity_key(same)
+        assert self.said(BASE, renamed, "piece.value") == self.DIFFERING["piece.value"][0]
+        assert self.said(BASE, same, "piece.value") == self.SAME["piece.value"]
+        assert self.said(BASE, renamed, "piece.value") == self.DIFFERING["piece.value"][0]
+
+    def test_the_reproduction_reads_right_on_both_pages(self) -> None:
+        """Q595's case on its own terms: a knight renamed and made a (2,2) leaper."""
+        root = Path(__file__).resolve().parents[1]
+        chess = json.loads((root / "rulesets" / "chess.json").read_text(encoding="utf-8"))
+        draft = copy.deepcopy(chess)
+        knight = next(entry for entry in draft["pieces"] if entry["id"] == "N")
+        original = knight["name"]
+        knight["name"] = f"diagonal {original}"
+        knight["moves"] = [{"kind": "leap", "vectors": [[2, 2]], "symmetry": "rotate4"}]
+        # The draft's page lists chess under it: the sentences are about chess.
+        assert self.said(draft, chess, "piece.moves") == (
+            f"its {original} moves differently from the diagonal {original}"
+        )
+        # Chess's page lists the draft under it: the sentences are about the draft.
+        assert self.said(chess, draft, "piece.moves") == (
+            f"its diagonal {original} moves differently from the {original}"
+        )
+
+
 # --------------------------------------------------------------- the library's own hub
 
 
@@ -496,10 +625,19 @@ def test_two_specs_that_differ_in_nothing_have_no_link_to_draw() -> None:
 def test_the_committed_corpus_has_one_hub() -> None:
     """`docs/archive/plan-game-graph.md`'s acceptance, named by game because the plan names it.
 
-    Chess is where the library's variants hang from, and 22 of the other 70 games differ
+    Chess is where the library's variants hang from, and 26 of the other 83 games differ
     from it in exactly one rule. The probe measured 21 before the folds; the
-    twenty-second is `wolves-immune`, which is chess plus a wild piece and is the one
-    pair the probe's operator sweep reached and its diff did not.
+    twenty-second was `wolves-immune`, which was chess plus a wild piece and the one
+    pair the probe's operator sweep reached and its diff did not; since Q876 retired it,
+    `pitchfork` is chess plus wild pieces, one rule from it.
+
+    The pin read 22 of 70 from Q326 (2026-09-18). It reads 26 of 83 at Q878 (2026-10-13),
+    re-derived by running today's `relate` over the library as of the old pin (which still
+    gives 22, so `relate` moved nothing): twenty of the twenty-two stayed, two left, six joined. Left (Q868, Q876): `hierarchy-fall-swap`, retired as a near copy, and
+    `wolves-immune`, retired for `pitchfork`, which is the one that took its place. Joined
+    (new games, each chess plus one rule, so each belongs): `rifle`, `circe`, `andernach` and
+    `kamikaze` (Q540's capture-rule showcases, 2026-10-09), `pawn-knockdown` (Q787,
+    2026-10-09) and `pitchfork` (Q876). No neighbour is there that should not be.
     """
     specs = corpus_specs()
     forms = {stem: normal_form(spec) for stem, spec in specs}
@@ -508,8 +646,8 @@ def test_the_committed_corpus_has_one_hub() -> None:
         stem for stem, form in forms.items()
         if stem != "chess" and relate_forms(mine, form).units == 1
     )
-    assert len(near) == 22, near
-    assert "wolves-immune" in near
+    assert len(near) == 26, near
+    assert "pitchfork" in near
     # Nothing else in the library comes close to that degree.
     others = max(
         sum(
@@ -687,7 +825,6 @@ NEAR = [
     ("chess", "perpetual"),
     ("chess", "almost"),
     ("chess", "knightmate"),
-    ("wolves", "wolves-rotated"),
     ("hierarchy-rise", "hierarchy-rise-stay"),
     ("rps-v2", "rps-v4"),
 ]
@@ -727,7 +864,6 @@ COUNTED: dict[tuple[str, str], tuple[int, ...]] = {
     ("chess", "almost"): (0, 0, 0, 1, 0, 0),
     ("chess", "knightmate"): (0, 0, 0, 2, 0, 0),
     ("courier", "shatranj"): (0, 0, 1, 3, 29, 1),
-    ("wolves", "wolves-rotated"): (0, 1, 0, 0, 0, 0),
     ("hierarchy-rise", "hierarchy-rise-stay"): (0, 1, 0, 0, 0, 0),
     ("rps-v2", "rps-v4"): (0, 1, 0, 0, 0, 0),
     ("hierarchy-rise", "hierarchy-fall"): (0, 1, 0, 0, 0, 0),
@@ -763,7 +899,6 @@ INDICES: dict[tuple[str, str], int] = {
     ("chess", "almost"): 8,
     ("chess", "knightmate"): 16,
     ("courier", "shatranj"): 118,
-    ("wolves", "wolves-rotated"): 256,
     ("chess", "capablanca"): 289,
     ("chess", "berolina"): 392,
     ("chess", "kingofthehill"): 512,
@@ -828,15 +963,18 @@ def test_the_bands_and_the_ordered_claims_pass_their_marks() -> None:
     assert sum(1 for a, b in ORDERED if index(a) < index(b)) >= 6
 
 
-def test_no_committed_spec_is_apart_from_its_own_respelling() -> None:
+# One test per committed spec (Q749): the walk was one test of 2.6 s in the gate.
+@pytest.mark.parametrize(
+    ("stem", "spec"), [pytest.param(stem, spec, id=stem) for stem, spec in corpus_specs()]
+)
+def test_no_committed_spec_is_apart_from_its_own_respelling(stem: str, spec: dict) -> None:
     """The spelling nulls again, on the index rather than on the count.
 
     A respelling is the one thing the index must never see, and it is where a tier built
     out of sets rather than out of `relate`'s differences could go wrong on its own.
     """
-    for stem, spec in corpus_specs():
-        for make in (rename_everything, reorder_pieces):
-            assert similarity(spec, make(copy.deepcopy(spec))).index == 0, stem
+    for make in (rename_everything, reorder_pieces):
+        assert similarity(spec, make(copy.deepcopy(spec))).index == 0, stem
 
 
 def test_the_index_module_names_no_piece_and_no_game() -> None:
@@ -879,3 +1017,136 @@ def test_the_index_module_names_no_piece_and_no_game() -> None:
         if re.search(rf"\b{re.escape(word)}\b", code)
     )
     assert not found, found
+
+
+# ------------------------------------------- the orientation question, once and a half
+#
+# Q866: `_orientation_played` compiled a rotating spec and its restatement whole, and now
+# asks `compile.compile_two_readings`, which builds the first player's frames once and
+# stops at the first second-player square that differs. The two whole compiles are kept
+# here as the oracle the shared one is held to, over every committed spec that rotates.
+
+
+def _two_whole_compiles(spec: dict) -> str:
+    """`_orientation_played` as it was before Q866: both specs compiled whole."""
+    from chess_variant_sandbox.engine.bridge import canonical_tables
+    from chess_variant_sandbox.engine.compile import compile_spec
+
+    board = spec["board"]
+    cells = _setup_cells(spec, board["width"], board["height"], "rotate")
+    try:
+        same = _played(canonical_tables(compile_spec(spec))) == _played(
+            canonical_tables(compile_spec(_restated(spec, "rotate", cells)))
+        )
+    except Exception:  # noqa: BLE001 -- as the original: any failure keeps it as written
+        return "rotate"
+    return "mirror" if same else "rotate"
+
+
+def _question(spec: dict) -> str:
+    board = spec["board"]
+    cells = _setup_cells(spec, board["width"], board["height"], "rotate")
+    return _orientation_played(spec, "rotate", cells)
+
+
+_ROTATING = [
+    pytest.param(
+        stem, spec, id=stem, marks=() if stem == "dobutsu" else pytest.mark.slow
+    )
+    for stem, spec in corpus_specs()
+    if (spec.get("setup") or {}).get("orientation") == "rotate"
+]
+
+
+def _one_sided(spec: dict) -> dict:
+    """``spec`` with its first piece stepping forward and to the right only, which the
+    two orientations read differently for the second player: a rule, not a spelling."""
+    twin = copy.deepcopy(spec)
+    twin["pieces"][0]["moves"] = [{"kind": "leap", "vectors": [[1, 1]], "mode": "both"}]
+    return twin
+
+
+def test_the_rotating_corpus_is_what_the_shared_compile_is_held_over() -> None:
+    assert len(_ROTATING) >= 5, "the oracle below would hold the shared compile to nothing"
+
+
+@pytest.mark.parametrize(("stem", "spec"), _ROTATING)
+def test_the_shared_compile_answers_as_the_two_whole_ones_did(stem: str, spec: dict) -> None:
+    from chess_variant_sandbox.engine.bridge import canonical_tables
+    from chess_variant_sandbox.engine.compile import compile_spec, compile_two_readings
+
+    assert _question(spec) == _two_whole_compiles(spec), stem
+    board = spec["board"]
+    restated = _restated(
+        spec, "rotate", _setup_cells(spec, board["width"], board["height"], "rotate")
+    )
+    try:
+        compiled, stated = compile_two_readings(spec, restated)
+    except SpecError:
+        # A restatement the validator refuses (a hex lattice must rotate) is refused by
+        # both, before any frame is built, and the question keeps "rotate".
+        with pytest.raises(SpecError):
+            compile_spec(restated)
+        return
+    assert canonical_tables(compiled) == canonical_tables(compile_spec(spec)), stem
+    if stated is not None:
+        # Zobrist keys included: a restated compile that shares is `compile_spec`'s.
+        assert canonical_tables(stated) == canonical_tables(compile_spec(restated)), stem
+
+
+def test_a_one_sided_piece_is_answered_as_the_two_whole_compiles_answer_it() -> None:
+    spec = _one_sided(library()["dobutsu"])
+    assert validate_spec(spec) == []
+    assert _question(spec) == _two_whole_compiles(spec) == "rotate"
+
+
+def _square_builds(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Counts `_compile_square_full` calls: the compile's unit of work, once per frame,
+    type and square."""
+    from chess_variant_sandbox.engine import compile as compiler
+
+    calls = [0]
+    real = compiler._compile_square_full
+
+    def counted(*args: object, **kwargs: object) -> object:
+        calls[0] += 1
+        return real(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(compiler, "_compile_square_full", counted)
+    return calls
+
+
+@pytest.mark.fresh_compile
+def test_the_question_builds_the_first_players_frames_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rotation that is spelling: every second-player square is built under both
+    readings and compared, and the first player's are built once, so the question costs
+    one and a half compiles where it cost two."""
+    from chess_variant_sandbox.engine.compile import compile_spec
+
+    spec = library()["dobutsu"]
+    calls = _square_builds(monkeypatch)
+    compile_spec(spec)
+    whole = calls[0]
+    calls[0] = 0
+    assert _question(spec) == "mirror"
+    assert calls[0] * 2 == whole * 3
+
+
+@pytest.mark.fresh_compile
+def test_the_question_stops_at_the_first_square_that_differs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rotation that is a rule: the restated compile ends inside the second player's
+    first piece, at the first square whose entries the two readings disagree on."""
+    from chess_variant_sandbox.engine.compile import compile_spec
+
+    spec = _one_sided(library()["dobutsu"])
+    calls = _square_builds(monkeypatch)
+    compile_spec(spec)
+    whole = calls[0]
+    calls[0] = 0
+    assert _question(spec) == "rotate"
+    board = spec["board"]
+    assert whole < calls[0] <= whole + board["width"] * board["height"]

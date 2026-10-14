@@ -1,7 +1,7 @@
 {
   "schema_version": 6,
-  "name": "hierarchy rise",
-  "description": "The same board and army as hierarchy fall with the chain reversed: taking a piece promotes it. A struck pawn becomes a knight, a knight a bishop, a bishop a rook, a rook a queen, and a queen is taken outright. The two pieces exchange squares, so a capture hands the defender a better piece and a square deeper in your position. The brainstorm's own question is whether the strategy becomes forcing captures in order to upgrade.",
+  "name": "gift chess",
+  "description": "The same board and army as demotion chess with the chain reversed: taking a piece promotes it. A struck pawn becomes a knight, a knight a bishop, a bishop a rook, a rook a queen, and a queen is taken outright. The two pieces exchange squares, so a capture hands the defender a better piece and a square deeper in your position. The brainstorm's own question is whether the strategy becomes forcing captures in order to upgrade. Reversing the chain turns a capture into a gift, and the game with it: where demotion chess is decided nearly every time, about half of these games are drawn.",
   "board": {
     "width": 8,
     "height": 8

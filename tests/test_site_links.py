@@ -41,6 +41,7 @@ from typing import Any
 
 import pytest
 import site_store
+from retired_specs import REBUILT
 
 from chess_variant_sandbox.site import (
     admin,
@@ -1078,6 +1079,8 @@ ARCHIVED = (
 
 
 def _corpus_spec(stem: str) -> dict[str, Any]:
+    if stem in REBUILT:  # `wolves-immune`, retired by Q876 for `pitchfork`; rebuilt from `wolves`
+        return REBUILT[stem]()
     folder = library.RULESET_DIR if stem in COMMITTED else library.ARCHIVE_DIR
     return dict(json.loads((folder / f"{stem}.json").read_text(encoding="utf-8")))
 

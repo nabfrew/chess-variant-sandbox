@@ -236,7 +236,12 @@ def test_what_a_capture_leaves_behind_is_played_the_same_way_on_both_sides(
 
 
 def _hexagon(name: str) -> Engine:
-    """Schema 16's native hexagon (Q281a4): the twin, or its flanks joined by a seam."""
+    """Schema 16's native hexagon (Q281a4): the twin, or its flanks joined by a seam (retired
+    by Q870 for `pinwheel`, and rebuilt from the twin)."""
+    from retired_specs import REBUILT
+
+    if name in REBUILT:
+        return Engine(REBUILT[name]())
     return Engine(load_spec(RULESETS.parent / "archive" / f"{name}.json"))
 
 
@@ -444,12 +449,22 @@ GOAL_ARMS: list[tuple[str, Any]] = [
 ]
 
 
-@pytest.mark.parametrize("label,build", GOAL_ARMS, ids=[arm[0] for arm in GOAL_ARMS])
-@pytest.mark.parametrize(
-    "agents",
-    [("minimax:nodes=150", "greedy"), ("minimax:nodes=150", "minimax:nodes=150")],
-    ids=lambda pair: f"{pair[0]}-vs-{pair[1]}",
-)
+def _goal_arm_cases() -> list[Any]:
+    """Every arm against both pairs of players. The capture matrix's minimax pair is the
+    one case over 2 s in the gate (2.1 s, Q749), so it runs in the slow tier; the same arm
+    against greedy, and every other arm's minimax pair, stay."""
+    cases = []
+    for agents in (("minimax:nodes=150", "greedy"), ("minimax:nodes=150", "minimax:nodes=150")):
+        for label, build in GOAL_ARMS:
+            slow = label == "capture-matrix" and agents[1] != "greedy"
+            cases.append(pytest.param(
+                label, build, agents, id=f"{agents[0]}-vs-{agents[1]}-{label}",
+                marks=[pytest.mark.slow] if slow else [],
+            ))
+    return cases
+
+
+@pytest.mark.parametrize(("label", "build", "agents"), _goal_arm_cases())
 def test_a_game_won_by_something_other_than_capture_is_searched_the_same_way(
     label: str, build: Any, agents: tuple[str, str]
 ) -> None:
@@ -1820,8 +1835,9 @@ def test_a_core_built_after_a_field_was_added_is_caught_too() -> None:
     """The direction that raises nothing at all, and so would otherwise play on.
 
     A core *newer* than the package -- an older branch checked out over a fresh build --
-    hands back a field the package does not read. Nothing throws: `_unpack` takes the six
-    it knows (five until schema 20's `portal_bar`) and drops the seventh on the floor. It is caught because the position that goes
+    hands back a field the package does not read. Nothing throws: `_unpack` takes the seven
+    it knows (five until schema 20's `portal_bar`, six until schema 22's `folds`) and drops
+    the eighth on the floor. It is caught because the position that goes
     back in is a field shorter than the one that came out, which is a comparison that
     needs no version number on either side to make.
     """
@@ -1834,7 +1850,7 @@ def test_a_core_built_after_a_field_was_added_is_caught_too() -> None:
 
     message = core_boundary_mismatch(newer, _unpack, _pack)
     assert message is not None
-    assert "slot 11 carries 7 fields where this package writes 6" in message
+    assert "slot 11 carries 8 fields where this package writes 7" in message
     assert "maturin develop --release" in message
 
 

@@ -144,7 +144,7 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::make": "sets the en passant window after the promoting piece's two-square "
         "move; `ep_passes` holds no entry for a piece that cannot double-step, and a piece "
         "that never stands never moves",
-        "game.rs::generate_pseudo_legal": "`capturable_ep`, the three arms that take in "
+        "game.rs::generate_pseudo_legal_as": "`capturable_ep`, the three arms that take in "
         "passing; they need a window, which nothing under either refusal opens",
     },
     # -- case 3.
@@ -169,7 +169,7 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::initial": "the opening hands: empty, since the refusals need no stock",
         "game.rs::make": "the drop branch and the fill; the fill is behind `captured != 0` "
         "and `from_captures`, which the two refusals switch off between them",
-        "game.rs::generate_pseudo_legal": "calls `generate_drops`, which returns at once on "
+        "game.rs::generate_pseudo_legal_as": "calls `generate_drops`, which returns at once on "
         "an empty hand; schema 18's placement gate (Q784) fires only on a non-empty one",
         "game.rs::royal_in_hand": "asks `royal_stocked` first (Q784), which needs a royal in "
         "the stock; the refusals need no stock, so it answers false",
@@ -200,6 +200,8 @@ READERS: dict[str, dict[str, str]] = {
     "check_limit": {
         "game.rs::make": "`delivered`; false at every ply with no royal (case 8) or with "
         "no move allowed to give check (case 11, which excludes an explosion)",
+        "game.rs::make_fold": "schema 22: `make`'s `delivered` for a fold's own move, the same "
+        "count under the same two cases",
         "game.rs::schema_two_ending": "the ending, on a count that never advances",
         "tables.rs::has_v2_endings": "the gate; see `bare_royal`",
         "tables.rs::has_goal_terms": "the evaluator's gate, a disjunction matching "
@@ -228,7 +230,7 @@ READERS: dict[str, dict[str, str]] = {
     "facing_path()": {"game.rs::royals_face": "behind the same royal-square guard"},
     # -- case 12.
     "castling": {
-        "game.rs::generate_pseudo_legal": "only calls `generate_castling`, below",
+        "game.rs::generate_pseudo_legal_as": "only calls `generate_castling`, below",
         "game.rs::generate_castling": "needs an unmoved king and an unmoved rook on the "
         "king's own rank, and the `unmoved` mask is only ever cleared after ply zero",
         "game.rs::castling_partner": "answers a `MOVE_CASTLE`, which is never generated",
@@ -283,7 +285,9 @@ READERS: dict[str, dict[str, str]] = {
         "`Seal::of` read: what a type on the board can become. A phantom target widens a "
         "threat only if its own type stands to promote",
     },
-    "promo_optional": {"tables.rs::promotion_optional": "the accessor; its callers are followed"},
+    "promo_optional": {
+        "tables.rs::promotion_optional": "the accessor; its callers are followed",
+    },
     "promo_flags": {"tables.rs::is_promoting": "the accessor; its callers are followed"},
     "promo_leaving_flags": {"tables.rs::promotes_on_leaving": "the accessor; its callers are followed"},
     "promo_piece_types": {"features.rs::new": "copied as `promotable`"},
@@ -291,28 +295,30 @@ READERS: dict[str, dict[str, str]] = {
         "features.rs::promotion_occupancy": "`PROMOTION_OCCUPANCY`, over pieces on the board",
     },
     "is_promoting()": {
-        "game.rs::generate_pseudo_legal": "asked of the moving piece",
+        "game.rs::generate_pseudo_legal_as": "asked of the moving piece",
         "game.rs::push_transits": "asked of the moving piece (schema 19)",
         "game.rs::push_portal_moves": "asked of each piece before its transits (schema 19)",
+        "game.rs::push_through": "asked of the moving piece going through a fold (schema 24)",
         "features.rs::promotion_occupancy": "asked of a piece on the board",
     },
     "promotes_on()": {
-        "game.rs::generate_pseudo_legal": "asked of a moving piece's origin",
+        "game.rs::generate_pseudo_legal_as": "asked of a moving piece's origin",
         "game.rs::push_arrival": "asked of a moving piece's target",
         "game.rs::push_transits": "asked of a moving piece's exit (schema 19)",
         "game.rs::push_portal_moves": "asked of a moving piece's origin (schema 19)",
         "features.rs::promotion_occupancy": "asked of a piece on the board",
     },
     "promotes_on_leaving()": {
-        "game.rs::generate_pseudo_legal": "asked of the moving piece",
+        "game.rs::generate_pseudo_legal_as": "asked of the moving piece",
         "game.rs::push_portal_moves": "asked of each piece before its transits (schema 19)",
     },
     "promotion_optional()": {
-        "game.rs::generate_pseudo_legal": "asked of the moving piece",
+        "game.rs::generate_pseudo_legal_as": "asked of the moving piece",
         "game.rs::push_transits": "asked of the moving piece (schema 19)",
+        "game.rs::push_through": "asked of the moving piece going through a fold (schema 24)",
     },
     "promotion_targets()": {
-        "game.rs::generate_pseudo_legal": "asked of the moving piece",
+        "game.rs::generate_pseudo_legal_as": "asked of the moving piece",
         "game.rs::push_arrival": "asked of the moving piece",
         "game.rs::push_transits": "asked of the moving piece (schema 19)",
     },
@@ -334,6 +340,7 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::in_check_at": "whether any standing royal is attacked",
         "game.rs::compute_in_check": "the same, memoised",
         "game.rs::make": "`delivered`, over standing royals",
+        "game.rs::make_fold": "schema 22: the same `delivered` after a fold's own move",
         "game.rs::leaves_royal_attacked": "the legality filter, over standing royals",
         "game.rs::generate_legal": "the pin shortcut's single-royal premise",
         "game.rs::restrict": "`forbid_check`'s filter, over standing royals",

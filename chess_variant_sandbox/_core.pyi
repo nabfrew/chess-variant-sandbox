@@ -25,11 +25,11 @@ from typing import Any
 
 # (board, side_to_move, unmoved, ep_target, ep_victim, halfmove, ply, key,
 #  repetition, checks, hands,
-#  (colour, remaining, turns_taken, points, goal_left_by, portal_bar))
+#  (colour, remaining, turns_taken, points, goal_left_by, portal_bar, folds))
 State = tuple[
     bytes, int, bytes, int, int, int, int, int, list[int],
     tuple[int, int], tuple[list[int], list[int]],
-    tuple[bytes, int, int, tuple[float, float], int, tuple[int, int]],
+    tuple[bytes, int, int, tuple[float, float], int, tuple[int, int], list[int]],
 ]
 
 # What the wild-piece phase did on the way to a position (schema 9): one

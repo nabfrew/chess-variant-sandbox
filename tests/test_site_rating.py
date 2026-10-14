@@ -144,24 +144,26 @@ class TestAWinAgainstTheTop:
         assert machine.rating - by_newcomer.rating < machine.rating - by_settled.rating
         assert 10.0 < machine.rating - by_newcomer.rating < 30.0
 
-    def test_a_draw_is_half_a_point_each(self) -> None:
-        """And clears nothing; the user's word is *beaten*, which is 1.5's to enforce."""
+    @pytest.mark.parametrize(
+        ("result", "person_moves", "machine_moves"),
+        [(0.5, "up", "down"), (0.0, "down", None)],
+        ids=["a-draw", "a-loss"],
+    )
+    def test_a_draw_or_a_loss_moves_the_person_the_way_it_should(
+        self, result: float, person_moves: str, machine_moves: str | None
+    ) -> None:
+        """A draw is half a point each, and clears nothing; the user's word is *beaten*,
+        which is 1.5's to enforce. A loss costs the person rating, which is what keeps the
+        *Unbeaten* list from clearing in an afternoon (§5). Q754 merged the two tests."""
         person = r.Player(r.person(1), 1500.0, 120.0, 0.06)
         machine = r.Player(r.computer("greedy"), 1800.0, 100.0, 0.0)
         after, _ = r.apply_match(
-            _table(person, machine), r.Finished("m", person.key, machine.key, 0.5)
+            _table(person, machine), r.Finished("m", person.key, machine.key, result)
         )
-        assert after[person.key].rating > person.rating
-        assert after[machine.key].rating < machine.rating
-
-    def test_a_loss_costs_the_person_rating(self) -> None:
-        """What keeps the *Unbeaten* list from clearing in an afternoon (§5)."""
-        person = r.Player(r.person(1), 1500.0, 120.0, 0.06)
-        machine = r.Player(r.computer("greedy"), 1800.0, 100.0, 0.0)
-        after, _ = r.apply_match(
-            _table(person, machine), r.Finished("m", person.key, machine.key, 0.0)
-        )
-        assert after[person.key].rating < person.rating
+        assert (after[person.key].rating > person.rating) == (person_moves == "up")
+        assert (after[person.key].rating < person.rating) == (person_moves == "down")
+        if machine_moves == "down":
+            assert after[machine.key].rating < machine.rating
 
 
 class TestDeviation:
@@ -448,24 +450,24 @@ class TestTheFold:
         assert first == second
         assert set(first) == set(seeds) | {r.person(1), r.person(2)}
 
-    def test_the_seed_is_not_mutated_by_a_replay(self) -> None:
-        """Otherwise the second replay would start somewhere the first did not."""
+    def test_a_replay_leaves_the_seed_alone_and_reads_the_order(self) -> None:
+        """Three facts about one seed table and one list of matches (Q754 merged the tests).
+
+        The seed is not mutated by a replay, otherwise the second replay would start
+        somewhere the first did not; a seeded computer player keeps its seed when no match
+        names it; and the fold is sequential, so a different finish order is a different
+        table, which is why `finished` orders by the timestamp with the id behind it.
+        """
         seeds = r.seeds_from_ladder(r.rungs(LADDER))
         before = dict(seeds)
-        r.replay(seeds, MATCHES)
+        forwards = r.replay(seeds, MATCHES)
         assert seeds == before
 
-    def test_a_seeded_computer_player_keeps_its_seed_when_no_match_names_it(self) -> None:
-        seeds = r.seeds_from_ladder(r.rungs(LADDER))
         played = [match for match in MATCHES if r.computer("greedy") not in (match.seat0, match.seat1)]
         table = r.replay(seeds, played)
         assert table[r.computer("greedy")] == seeds[r.computer("greedy")]
 
-    def test_order_is_what_the_fold_reads(self) -> None:
-        """Sequential, so a different finish order is a different table. That is why
-        `finished` orders by the timestamp with the id behind it."""
-        forwards = r.replay(r.seeds_from_ladder(r.rungs(LADDER)), MATCHES)
-        backwards = r.replay(r.seeds_from_ladder(r.rungs(LADDER)), tuple(reversed(MATCHES)))
+        backwards = r.replay(seeds, tuple(reversed(MATCHES)))
         assert forwards != backwards
 
     def test_a_person_enters_at_1500_when_their_first_match_lands(self) -> None:
@@ -644,29 +646,24 @@ class TestTheStore:
             assert after0 == pytest.approx(moved.seat0.after.rating)
             assert after1 == pytest.approx(moved.seat1.after.rating)
 
-    def test_a_sandbox_match_moves_nothing(self) -> None:
+    @pytest.mark.parametrize(
+        ("match_id", "outcome", "extra"),
+        [("s1", 1.0, {"mode": "sandbox"}), ("r1", None, {})],
+        ids=["a-sandbox-match", "a-match-still-running"],
+    )
+    def test_a_match_that_is_not_rated_moves_nothing(
+        self, match_id: str, outcome: float | None, extra: dict[str, str]
+    ) -> None:
+        """A sandbox match, and a match still running (`outcome` None), are finished by
+        no one's rating (Q754 merged the two tests of it)."""
         with _store() as connection:
             first, _ = _people(connection)
             r.seed(connection, GAME, LADDER)
             before = r.load(connection, GAME)
             _match(
-                connection,
-                "s1",
-                r.person(first),
-                r.computer("greedy"),
-                1.0,
-                mode="sandbox",
+                connection, match_id, r.person(first), r.computer("greedy"), outcome, **extra
             )
-            assert r.finish(connection, "s1") is None
-            assert r.load(connection, GAME) == before
-
-    def test_a_match_still_running_moves_nothing(self) -> None:
-        with _store() as connection:
-            first, _ = _people(connection)
-            r.seed(connection, GAME, LADDER)
-            before = r.load(connection, GAME)
-            _match(connection, "r1", r.person(first), r.computer("greedy"), None)
-            assert r.finish(connection, "r1") is None
+            assert r.finish(connection, match_id) is None
             assert r.load(connection, GAME) == before
 
     def test_a_local_app_row_is_rated_by_nothing(self) -> None:

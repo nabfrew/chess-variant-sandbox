@@ -1,7 +1,7 @@
 {
-  "schema_version": 5,
-  "name": "torus chess crazyhouse",
-  "description": "Torus chess x crazyhouse",
+  "schema_version": 25,
+  "name": "torus crazyhouse",
+  "description": "Rear guard torus chess with crazyhouse's hand: a captured piece changes sides and may later be put back on the board as a move. A pawn comes back as a pawn facing forward, whichever way it faced when it was taken, onto the ranks in front of its army, so a rear guard that falls is not rebuilt. On chess the hand makes a sharp game sharper (crazyhouse); on a board with no corner to trap a king in it goes too far: every capture comes back, there are more than twice as many moves to choose from, and the lead changes hands more often than in any other wrapped game, which makes a sharp game but a hard one to read.",
   "board": {
     "width": 7,
     "height": 14
@@ -35,7 +35,7 @@
           "min_range": 2,
           "mode": "move",
           "condition": {
-            "from_rank": 4
+            "first_move": true
           }
         },
         {
@@ -49,51 +49,11 @@
           "symmetry": "lateral",
           "mode": "capture"
         }
-      ]
-    },
-    {
-      "id": "V",
-      "name": "rear pawn",
-      "value": 1,
-      "moves": [
-        {
-          "kind": "slide",
-          "vectors": [
-            [
-              0,
-              -1
-            ]
-          ],
-          "range": 1,
-          "mode": "move"
-        },
-        {
-          "kind": "slide",
-          "vectors": [
-            [
-              0,
-              -1
-            ]
-          ],
-          "range": 2,
-          "min_range": 2,
-          "mode": "move",
-          "condition": {
-            "from_rank": 2
-          }
-        },
-        {
-          "kind": "leap",
-          "vectors": [
-            [
-              1,
-              -1
-            ]
-          ],
-          "symmetry": "lateral",
-          "mode": "capture"
-        }
-      ]
+      ],
+      "facing": {
+        "axes": 2,
+        "turns": false
+      }
     },
     {
       "id": "N",
@@ -211,7 +171,7 @@
         ]
       },
       {
-        "piece": "V",
+        "piece": "P",
         "squares": [
           "a3",
           "b3",
@@ -220,7 +180,8 @@
           "e3",
           "f3",
           "g3"
-        ]
+        ],
+        "facing": "backward"
       },
       {
         "piece": "R",
@@ -259,28 +220,19 @@
   "rules": {
     "win": "checkmate",
     "stalemate": "draw",
-    "promotion": [
-      {
-        "piece": "P",
-        "rank": 12,
-        "to": [
-          "Q",
-          "R",
-          "B",
-          "N"
-        ]
-      },
-      {
-        "piece": "V",
-        "rank": 13,
-        "to": [
-          "Q",
-          "R",
-          "B",
-          "N"
-        ]
-      }
-    ],
+    "promotion": {
+      "piece": "P",
+      "ranks": [
+        12,
+        13
+      ],
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
     "castling": {
       "king": "K",
       "rook": "R",
@@ -339,50 +291,6 @@
           "e10",
           "f10",
           "g10"
-        ],
-        "V": [
-          "a3",
-          "b3",
-          "c3",
-          "d3",
-          "e3",
-          "f3",
-          "g3",
-          "a2",
-          "b2",
-          "c2",
-          "d2",
-          "e2",
-          "f2",
-          "g2",
-          "a1",
-          "b1",
-          "c1",
-          "d1",
-          "e1",
-          "f1",
-          "g1",
-          "a14",
-          "b14",
-          "c14",
-          "d14",
-          "e14",
-          "f14",
-          "g14",
-          "a13",
-          "b13",
-          "c13",
-          "d13",
-          "e13",
-          "f13",
-          "g13",
-          "a12",
-          "b12",
-          "c12",
-          "d12",
-          "e12",
-          "f12",
-          "g12"
         ]
       }
     }
@@ -392,12 +300,11 @@
     "origin": "generated",
     "author": "stage 25",
     "theme": "a board with no corners",
-    "history": "Increasing piece unbalance can solve the lack of corners to trap in"
+    "history": "Increasing piece unbalance can solve the lack of corners to trap in. Q869 (2026-10-13): the rear pawn respelled as a pawn placed facing backwards with a facing no move turns (schema 25), so the hand holds one kind of pawn and returns it facing forward; was ab865f3f954a"
   },
   "appearance": {
     "icons": {
       "P": "pawn",
-      "V": "inverted-pawn",
       "N": "knight",
       "B": "bishop",
       "R": "rook",

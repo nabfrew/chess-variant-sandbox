@@ -2,6 +2,19 @@
   "store_digest": "6e4333b1dea37662",
   "made_on": "1f812b55db2dba87",
   "reproduced_on": [
-    "49565ddb722a1195"
+    "49565ddb722a1195",
+    "234d2bf85141905e",
+    "e87006fec876da20",
+    "d426a82e136d75da",
+    "4bed10accc7d501f",
+    "40d0e115de5a613d"
+  ],
+  "verified_under": [
+    {
+      "core": "40d0e115de5a613d",
+      "tables": "f19895f2038e8832",
+      "players": "e1012b630df30e75",
+      "runner": "204da7d0cb34fde5"
+    }
   ]
 }

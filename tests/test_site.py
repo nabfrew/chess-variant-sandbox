@@ -906,7 +906,7 @@ class TestTheDescriptionHintOnTheSite:
     """
 
     SAVED = {"hash", "name", "created", "path", "listed", "visibility", "screenPassed", "said",
-             "rung", "rungPassed"}
+             "rung", "rungPassed", "restated", "unchanged", "keptAsIs"}
 
     def test_with_no_key_the_save_is_unchanged_and_the_hint_is_off(
         self, designer: SiteApp, recorded: FakeConnection, monkeypatch: pytest.MonkeyPatch
@@ -1334,6 +1334,9 @@ STORE: dict[str, tuple[str, ...]] = {
         # `0033_pinned_and_alarm.sql`, Q768 (H4). Who the computer seats were beyond their
         # agent strings: the core's build, the tables and the values, per identity.
         "pinned",
+        # `0035_draw_offers.sql`, Q790. Every draw offer made on the row, with the core's
+        # judgement where the computer answered it.
+        "draw_offers",
     ),
     "votes": ("voter", "game", "stars", "tags", "note", "updated"),
     "jobs": (
@@ -2937,8 +2940,8 @@ class TestTheMaintainersPageOnAPhone:
     def test_every_table_scrolls_inside_its_own_box(self) -> None:
         page = page_text.inlined(site_pages.admin("boss"))
         assert page.count("<table") == page.count('<div class="scroller">')
-        assert page.count("<table") == 19, (
-            "people, invites, requests for an invitation, games, earlier scores, how much scores moved, people "
+        assert page.count("<table") == 20, (
+            "status, people, invites, requests for an invitation, games, earlier scores, how much scores moved, people "
             "beating the strongest, the training queue, computer players on people's "
             "scale, the refresher's refusals, the round, "
             "reports, dismissed reports, flagged accounts, suggestions, limits, by day, "

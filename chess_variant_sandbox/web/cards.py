@@ -69,6 +69,10 @@ PIECE_PATHS = frozenset({
     "rules.npcs[].piece",
     "rules.npcs[].immune",
     "rules.portals[].piece",
+    # Schema 21: which pieces may go in by an end.
+    "rules.portals[].carries.orange",
+    "rules.portals[].carries.blue",
+    "rules.portals[].ends[].carries",
     "rules.reach.piece",
     "rules.extinction.pieces",
     "rules.drops.no_doubled",
@@ -87,6 +91,8 @@ TEXT_PATHS = frozenset({
     # on the board (`docs/plan-portals.md` D2).
     "rules.portals[].orange",
     "rules.portals[].blue",
+    # Schema 21: a map's end, typed as written until Q843b's designer places it.
+    "rules.portals[].ends[].at",
 })
 
 # What the hand-written form already edits. Every other key gets a generated field.
@@ -322,11 +328,22 @@ def _options(values: list[Any], description: str) -> list[dict[str, Any]]:
             for v in values]
 
 
+# Values whose spelling names a thing the page never shows: a portal pair's ends are drawn
+# alike, in the pair's colour, so a menu says which end by the order they were put down
+# in, never by the file's keys (Q838d, `docs/plan-portal-look.md` §5).
+_VALUE_WORDS: dict[str, str] = {
+    "orange_to_blue": "one way, first end to second",
+    "blue_to_orange": "one way, second end to first",
+}
+
+
 def _value_label(value: Any) -> str:
     if value is True:
         return "yes"
     if value is False:
         return "no"
+    if isinstance(value, str) and value in _VALUE_WORDS:
+        return _VALUE_WORDS[value]
     return str(value).replace("_", " ")
 
 

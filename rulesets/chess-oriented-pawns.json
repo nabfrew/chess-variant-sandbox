@@ -1,7 +1,7 @@
 {
   "schema_version": 8,
-  "name": "chess oriented",
-  "description": "Chess, but with oriented pawns.",
+  "name": "chess with turning pawns",
+  "description": "Chess in which every pawn has a facing. A pawn steps one square the way it faces, never two, and captures one square diagonally ahead of it; instead of moving it may spend its move turning a quarter turn. Every pawn starts facing the enemy. A pawn that turns can guard sideways or backwards, and with every pawn able to spend a move turning, games run longer than chess and more of them are drawn.",
   "board": {
     "width": 8,
     "height": 8

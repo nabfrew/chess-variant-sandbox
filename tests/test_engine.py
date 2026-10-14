@@ -604,14 +604,17 @@ class TestEveryEffectIsInTheKey:
         assert self._walk(engine, 0, 80) > 20
 
     @pytest.mark.parametrize("name", [
-        "hierarchy-fall", "hierarchy-rise", "hierarchy-fall-swap", "hierarchy-rise-stay",
+        "hierarchy-fall", "hierarchy-rise", "hierarchy-rise-stay", "hierarchy-rise-throw",
     ])
     def test_the_key_holds_through_a_strike(self, name: str) -> None:
-        """All four cells of the 2x2, because the position rule is what moves squares.
+        """Every position rule a strike game has, because the position rule is what moves
+        squares.
 
         `stay` leaves the attacker where it was and the survivor where it stood; `swap`
-        exchanges them. Those write different squares, so they are different deltas, and
-        a log that got one right could get the other wrong.
+        exchanges them; `choose` (`hierarchy-rise-throw`) throws the survivor onto a square
+        its player picks. Those write different squares, so they are different deltas, and
+        a log that got one right could get another wrong. (`hierarchy-fall-swap`, the 2x2's
+        fourth cell, left the library on 2026-10-12, Q868; `hierarchy-rise` covers `swap`.)
         """
         from chess_variant_sandbox.measurement import ROOT
         from chess_variant_sandbox.spec import load_spec

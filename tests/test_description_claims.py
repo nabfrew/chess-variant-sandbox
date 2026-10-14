@@ -439,7 +439,7 @@ RECORD_READ = {
     "E": {
         "rulesets/almost.json", "rulesets/berolina.json", "rulesets/cylinder.json",
         "rulesets/gardner.json", "rulesets/losalamos.json", "rulesets/makruk.json",
-        "rulesets/shatranj.json", "archive/hex-glinski-promoting.json",
+        "rulesets/shatranj.json", "archive/hex-glinski-hexagon.json",
     },
 }  # fmt: skip
 

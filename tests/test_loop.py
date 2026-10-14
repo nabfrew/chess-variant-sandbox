@@ -180,6 +180,31 @@ class TestArchive:
             handle.write("{not json\n")
         assert len(Archive(tmp_path).entries) == 1
 
+    def test_a_restatement_changes_the_words_and_nothing_else(self, tmp_path) -> None:
+        """Q595: a saved draft's new name and description, in place. The entries stay
+        where they were, other hashes' lines are untouched, and a corrupt line is written
+        back as it was read rather than lost."""
+        archive = Archive(tmp_path)
+        spec = {**PLAYABLE, "name": "old", "description": ""}
+        archive.record(Entry(hash="a", name="old", generation=0, parent=None,
+                             status="proposed"), spec=spec)
+        archive.record(Entry(hash="b", name="other", generation=0, parent=None,
+                             status="proposed"))
+        with open(archive.path, "a", encoding="utf-8") as handle:
+            handle.write("{not json\n")
+        before = archive.path.read_text(encoding="utf-8").splitlines()
+
+        archive.restate("a", "new", "now it has one")
+
+        after = archive.path.read_text(encoding="utf-8").splitlines()
+        assert after[1:] == before[1:]
+        assert json.loads(after[0])["name"] == "new"
+        reread = Archive(tmp_path)
+        assert [(e.hash, e.name) for e in reread.entries] == [("a", "new"), ("b", "other")]
+        assert [(e.hash, e.name) for e in archive.entries] == [("a", "new"), ("b", "other")]
+        kept = reread.load_spec("a")
+        assert kept == {**PLAYABLE, "name": "new", "description": "now it has one"}
+
 
 class TestEveryNumberSaysItsRuns:
     """Q416: the design archive's numbers name the runs they rest on, or are not shown.
@@ -297,7 +322,8 @@ def test_feedback_never_leaks_the_scoring_function() -> None:
             "blunder_changed_result": 0.31,
         }
         spec = {"pieces": [{"id": "K", "name": "captain"}, {"id": "R", "name": "lancer"},
-                           {"id": "E", "name": "elephant"}]}
+                           {"id": "E", "name": "elephant"}],
+                "setup": {"placements": [{"piece": p, "squares": ["a1"]} for p in "KRE"]}}
         result = score_components(
             "h", "g", Components(raw=raw, diagnostics=diagnostics), weights
         )
@@ -595,7 +621,8 @@ def test_feedback_names_the_pieces_nobody_played() -> None:
         ),
         weights,
     )
-    spec = {"pieces": [{"id": "K", "name": "king"}, {"id": "R"}, {"id": "H", "name": "herald"}]}
+    spec = {"pieces": [{"id": "K", "name": "king"}, {"id": "R"}, {"id": "H", "name": "herald"}],
+            "setup": {"placements": [{"piece": p, "squares": ["a1"]} for p in "KRH"]}}
     text = describe(result, spec)
 
     assert "herald" in text
@@ -633,6 +660,33 @@ def test_failed_siblings_reach_the_proposer(tmp_path) -> None:
     # informative of the three kinds.
     assert "fortress" in text and "played and disqualified" in text
     assert "elsewhere" not in text
+
+    # And the sentence reaches the model: `_produce` is what hands `failures` to the
+    # proposer, so ask the prompt it sends rather than the text it was given.
+    import random
+
+    from chess_variant_sandbox.loop.orchestrator import LoopConfig, _produce
+
+    class Recorder:
+        model = "claude-opus-4-8"
+
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+
+        def structured(self, system, user, schema, max_tokens=16000):
+            self.prompts.append(user)
+            return copy.deepcopy(PLAYABLE)
+
+    recorder = Recorder()
+    _produce(
+        1, LoopConfig(mechanical_rate=0.0, directory=tmp_path), archive, random.Random(0),
+        recorder, archive.entries[0], PLAYABLE, "", "", lambda _: None,
+    )
+    prompt = recorder.prompts[0]
+    assert "Already tried from here" in prompt
+    assert "wide open" in prompt and "no game reached a winner" in prompt
+    assert "fortress" in prompt and "played and disqualified" in prompt
+    assert "elsewhere" not in prompt
 
 
 # --------------------------------------------------------- what the API will accept
@@ -1283,3 +1337,88 @@ def test_feedback_reads_the_seat_from_the_verdict_and_never_from_the_figure() ->
     assert "moving first is a large" not in text
     assert "evenly matched" not in text
 
+
+
+class TestAPortalIsNotListedAmongThePieces:
+    """Q877, after Q875: the count vector follows the compiled types, the declared pieces and
+    then one type per portal end, so it runs past the spec's piece list on a portal game. The
+    feedback's piece lines and the `idle_piece_types` diagnostic took every entry for a piece
+    and named the ends "piece 6", "piece 7" (a fixed end as barely used). A portal is the
+    board's, held by no player, and both now read the vector as `piece_utilisation` does."""
+
+    @staticmethod
+    def _beside():
+        from test_schema_twenty_four import GAMES
+
+        from chess_variant_sandbox.engine import Engine
+
+        spec = GAMES["beside"]()
+        n_types = Engine(spec).spec.n_types
+        assert n_types > len(spec["pieces"]), "the spec must carry portal ends"
+        return spec, n_types
+
+    def test_the_piece_lines_name_only_the_declared_pieces_a_player_holds(self) -> None:
+        from chess_variant_sandbox.llm.feedback import _piece_lines
+        from chess_variant_sandbox.metrics.components import held_type_indices
+
+        spec, n_types = self._beside()
+        held = held_type_indices(spec, n_types)
+        # Every type plays, so that nothing is idle for want of moves, and the board's own
+        # moves (the ends) are many, so that counting them would shift every percentage.
+        totals = [100 if index in held else 40 for index in range(n_types)]
+        text = " ".join(_piece_lines({"moves_by_type": totals}, spec))
+
+        assert "piece " not in text.replace("Moves played by piece:", "")
+        for index, piece in enumerate(spec["pieces"]):
+            name = str(piece.get("name") or piece["id"])
+            assert (name in text) == (index in held), (name, text)
+        assert f"({100 / (100 * len(held)) * 100:.0f}%)" in text
+
+    def test_a_fixed_end_is_not_barely_used(self) -> None:
+        from chess_variant_sandbox.llm.feedback import _piece_lines
+        from chess_variant_sandbox.metrics.components import held_type_indices
+
+        spec, n_types = self._beside()
+        held = held_type_indices(spec, n_types)
+        totals = [100 if index in held else 0 for index in range(n_types)]
+        assert not any("Barely used" in line for line in _piece_lines(
+            {"moves_by_type": totals}, spec
+        ))
+
+    def test_idle_piece_types_counts_only_the_army(self) -> None:
+        from chess_variant_sandbox.metrics.components import (
+            _analysis_components,
+            held_type_indices,
+        )
+        from chess_variant_sandbox.tournament.analysis import CorpusAnalysis, GameAnalysis
+
+        spec, n_types = self._beside()
+        held = held_type_indices(spec, n_types)
+        totals = [100 if index in held else 0 for index in range(n_types)]
+        game = GameAnalysis(seed=0, agents=("a", "b"), moves_by_type=totals)
+        diagnostics: dict = {}
+        _analysis_components(CorpusAnalysis(games=[game]), diagnostics, spec)
+
+        assert diagnostics["held_piece_types"] == len(held)
+        assert diagnostics["idle_piece_types"] == 0
+
+
+def test_the_prompt_states_the_portal_bar_as_the_validator_enforces_it() -> None:
+    """Q881: the bar is refused when no move can meet it (Q879), and the prompt says when."""
+    from chess_variant_sandbox.llm.propose import SCHEMA_PREAMBLE
+    from chess_variant_sandbox.spec.schema import validate_spec
+
+    assert "only on a pair somebody moves" not in SCHEMA_PREAMBLE
+    assert "either both players must be able to move an end" in SCHEMA_PREAMBLE
+    assert "a turn must be two moves" in SCHEMA_PREAMBLE
+    assert "the portal piece must have a move back" in SCHEMA_PREAMBLE
+    # The sentence is pinned to the validator's words for each refusal.
+    from test_schema_twenty import _sluice_draft
+
+    errors = validate_spec(_sluice_draft())
+    assert any("each end that moves is moved by one player only" in e for e in errors)
+    spec = _sluice_draft()
+    spec["rules"]["portals"][0]["ends"][2]["moved_by"] = [0, 1]
+    spec["rules"]["turn"] = {"moves": 2}
+    spec["rules"].pop("en_passant", None)
+    assert not any("rules.portals[0].no_straight_back" in e for e in validate_spec(spec))

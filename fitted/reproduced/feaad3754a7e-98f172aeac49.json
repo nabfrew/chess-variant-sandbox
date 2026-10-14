@@ -1,0 +1,15 @@
+{
+  "store_digest": "204d43c104883533",
+  "made_on": "4bed10accc7d501f",
+  "reproduced_on": [
+    "40d0e115de5a613d"
+  ],
+  "verified_under": [
+    {
+      "core": "40d0e115de5a613d",
+      "tables": "fa4f817969d2b144",
+      "players": "e1012b630df30e75",
+      "runner": "204da7d0cb34fde5"
+    }
+  ]
+}

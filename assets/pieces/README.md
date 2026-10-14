@@ -19,7 +19,8 @@ Everything in `svg/` is committed, so nothing here runs at build time. `fetch.py
 is provenance: it records which Wikimedia Commons file each icon came from and
 re-checks each licence against an allowlist.
 
-100 files: 12 standard chess, 40 fairy, 6 inverted, 14 shogi, 28 xiangqi.
+106 files: 12 standard chess, 46 fairy (six of them rock, paper and scissors), 6
+inverted, 14 shogi, 28 xiangqi.
 
 ## Naming
 
@@ -32,7 +33,12 @@ side. It comes in two forms: `xiangqi-cannon-*` is the Han character and
 `xiangqi-pictorial-cannon-*` the western-readable drawing on the same disc.
 
 The western pieces are Cburnett's set and its fairy extensions: one style, 45×45,
-transparent background. Alfil, camel and wazir are Quivira glyphs, a second and
+transparent background. The chancellor is drawn here from two of his pieces, the
+rook's tower with the knight's head on its battlements, because Commons' own
+chancellor (a whole knight on a sliver of upturned battlements) read as a knight
+to a first-time visitor; the archbishop, by the same rule, is his bishop's mitre
+with the knight's head rising from behind its point, where Commons' is a whole
+knight on a bishop's foot. Alfil, camel and wazir are Quivira glyphs, a second and
 slightly different style. The shogi set is Hari Seldon's westernised tiles; the
 xiangqi set is Inductiveload's discs. Mixing the families on one board will look
 like several sets, because it is.
@@ -85,10 +91,12 @@ tournament, not the metrics.
 
 Every file is under a free licence, and `fetch.py` fails rather than downloading
 anything outside its allowlist. As it stands: 54 CC BY-SA 3.0, 28 public domain,
-11 CC BY-SA 4.0, 6 CC0, 1 GFDL. `CREDITS.md` names the author, licence and source
+11 CC BY-SA 4.0, 12 CC0, 1 GFDL. `CREDITS.md` names the author, licence and source
 page for each one.
 
-The 72 non-xiangqi files are redistributed byte-for-byte unmodified. The 28
+Of the 78 non-xiangqi files, 68 are redistributed byte-for-byte unmodified; the
+two chancellor files are Cburnett's rook and knight rearranged and the two
+archbishop files his bishop and knight, under his CC BY-SA 3.0, and the six rock, paper and scissors files are originals released CC0. The 28
 xiangqi files are each one disc cut out of a four-up source sheet; that source is
 public domain, so the cut carries no obligation, and `CREDITS.md` records it in
 its notes column anyway.

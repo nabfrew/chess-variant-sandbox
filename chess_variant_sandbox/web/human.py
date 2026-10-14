@@ -30,14 +30,13 @@ that turned out to be wrong.
 from __future__ import annotations
 
 import json
-import math
 import threading
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from chess_variant_sandbox.tournament.ratings import ELO_PER_LOG10, PRIOR_GAMES, expected_score
+from chess_variant_sandbox.tournament.ratings import PRIOR_GAMES, expected_score
 
 HUMAN = "human"
 
@@ -360,10 +359,3 @@ def picker_ratings(table: dict[str, Any] | None) -> dict[str, float]:
         if isinstance(name, str) and isinstance(rating, (int, float)):
             out[name] = float(rating)
     return out
-
-
-def elo_gap(first: float, second: float) -> float:
-    """How many Elo apart two scores are, for a reader who thinks in score rather than Elo."""
-    first = min(max(first, 1e-6), 1.0 - 1e-6)
-    second = min(max(second, 1e-6), 1.0 - 1e-6)
-    return ELO_PER_LOG10 * (math.log10(first / (1 - first)) - math.log10(second / (1 - second)))
