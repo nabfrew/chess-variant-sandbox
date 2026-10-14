@@ -13,6 +13,10 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-14
 
+### The learned player on the leaderboard
+
+On Intransitive, racing kings, gardner, king of the hill and rps-v2, the learned player is no longer an experimental practice opponent: you can play it for rating, and it has its own place on the game's one leaderboard, beside people and the other computer players. On Intransitive and racing kings it is now the strongest player there. Earlier games against it stay as practice.
+
 ### Five games measured by their learned players
 
 Where a game has a trained computer player that has proved itself, that player now does the measuring in place of the ordinary one. Five games were measured again this way. Racing kings changed most: with players that understand it, it now passes as a proper game where before it was ruled out. The other four moved only a little. Each score keeps its earlier value in its history.

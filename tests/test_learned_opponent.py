@@ -79,16 +79,19 @@ def _learned(roster: list[opponents.Opponent]) -> list[opponents.Opponent]:
 
 
 class TestIntransitivesNet:
-    def test_the_menu_offers_it_once_at_the_duels_budget_and_practice_only(self) -> None:
+    def test_the_menu_offers_it_once_at_the_duels_budget_and_rated(self) -> None:
+        """Since Q913 its net is the game's rated one (Q502h), so it is rated like any
+        other player and drops *experimental*; `test_rated_learned_player.py` has the rest."""
         spec = _spec("intransitive")
         assert spec_hash(spec) == INTRANSITIVE
         roster = opponents.for_game(INTRANSITIVE, spec=spec, nets=ROOT / STORE_DIR)
         (entry,) = _learned(roster)
         assert entry.agent == OFFERED_AGENT
-        assert entry.practice_only and entry.as_dict()["practiceOnly"] is True
-        assert entry.name == opponents.LEARNED_NAME
+        assert not entry.practice_only and entry.as_dict()["practiceOnly"] is False
+        assert entry.name == opponents.RATED_LEARNED_NAME
         assert entry.about == "looks at 6,400 positions before each move"
-        assert "not rated" in entry.plan and "practice" in entry.plan
+        assert "rated like the other computer players" in entry.plan
+        assert "practice" not in entry.plan
         assert "94%" in entry.plan and "400 games" in entry.plan
         for words in (entry.label, entry.plan, entry.group):
             assert not site_words.hits(words), words
@@ -97,17 +100,22 @@ class TestIntransitivesNet:
             e.agent for e in opponents.for_game(INTRANSITIVE, spec=spec, nets=ROOT / "absent")
         ]
 
-    def test_it_is_never_put_up_for_rating(self) -> None:
+    def test_it_is_put_up_for_rating_as_the_games_rated_net(self) -> None:
+        """Q913: rated on its own game, where it is the rated net; any other net of the
+        game, and every net read without a game, stays practice only (Q683)."""
         spec = _spec("intransitive")
         roster = opponents.for_game(INTRANSITIVE, spec=spec, nets=ROOT / STORE_DIR)
-        assert OFFERED_AGENT in [entry.agent for entry in roster]
-        assert OFFERED_AGENT not in opponents.agents_of(roster)
+        assert OFFERED_AGENT in opponents.agents_of(roster)
+        assert not opponents.never_rated(OFFERED_AGENT, INTRANSITIVE, ROOT / STORE_DIR)
+        assert opponents.never_rated(AGENT, INTRANSITIVE, ROOT / STORE_DIR)
         assert opponents.never_rated(OFFERED_AGENT)
         assert not opponents.never_rated("minimax:nodes=6400")
-        seeded = rating.seeds_from_ladder(
-            [rating.Rung(OFFERED_AGENT, 300.0), rating.Rung("minimax:nodes=6400", 100.0)]
-        )
+        ladder = [rating.Rung(OFFERED_AGENT, 300.0), rating.Rung(AGENT, 250.0),
+                  rating.Rung("minimax:nodes=6400", 100.0)]
+        seeded = rating.seeds_from_ladder(ladder)
         assert [key.agent for key in seeded] == ["minimax:nodes=6400"]
+        seeded = rating.seeds_from_ladder(ladder, game=INTRANSITIVE)
+        assert [key.agent for key in seeded] == [OFFERED_AGENT, "minimax:nodes=6400"]
 
     def test_only_a_ruleset_with_an_accepted_net_is_offered_one(self) -> None:
         """Derived from `nets/*.json`: every committed ruleset, and the entry exactly where
@@ -197,6 +205,10 @@ class TestTheGenericPath:
         (entry,) = opponents.learned_for(digest, tmp_path, tiny)
         assert entry.agent == "minimax:net=aaaaaaaaaaa1,nodes=400"
         assert "75%" in entry.plan and "easy" in entry.plan
+        # Accepted and never confirmed on a second seed set: not a rated net, so the
+        # experiment of Q683, practice only.
+        assert entry.practice_only and entry.name == opponents.LEARNED_NAME
+        assert "not rated" in entry.plan and "practice" in entry.plan
         assert native_spec(entry.agent, digest)[10] == weights
         session = Sessions().start(_game(tiny), (entry.agent, "human"))
         assert len(session.play_agent()["history"]) == 1

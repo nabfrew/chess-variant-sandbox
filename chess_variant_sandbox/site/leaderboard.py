@@ -16,8 +16,11 @@ Who is a row:
 - **every person with at least one finished rated game on this game**, by handle. A person
   row with none (a seat the table holds and nobody has finished a game from) is not a row,
   so nobody is ever shown last at 1500 for having played nothing;
-- **never a practice-only player** (the learned player, Q683): no game against it is rated,
-  so it has no place on a table of ratings, whether or not the table holds a row for it.
+- **never a practice-only player** (the experimental learned player, Q683): no game against
+  it is rated, so it has no place on a table of ratings, whether or not the table holds a row
+  for it. The learned player whose net is the game's rated one is rated like any other
+  player and is a row (Q913); a net player's row the picker does not offer is a row only
+  where people have played it (a generation since replaced keeps the games people played).
 
 Columns: the name, the rating rounded, a `?` where a person's deviation is still at or over
 `rating.ESTABLISHED_DEVIATION` (the table's own *established* line, about ten to fifteen
@@ -51,11 +54,22 @@ def _practice_only(roster: Iterable[opponents.Opponent]) -> frozenset[str]:
     return frozenset(entry.agent for entry in roster if entry.practice_only)
 
 
-def _counted(player: rating.Player, practice: frozenset[str]) -> bool:
-    """Whether this row of the table is a row of the leaderboard."""
+def _counted(
+    player: rating.Player, practice: frozenset[str], offered: frozenset[str]
+) -> bool:
+    """Whether this row of the table is a row of the leaderboard.
+
+    A net player's row (`opponents.never_rated` without a game) is one where the picker
+    offers it rated -- the game's rated net, Q913 -- or where people have played it, as a
+    generation since replaced has been; a seed of a net nobody offers rated, or a row
+    written by hand, is not.
+    """
     if player.is_computer:
         agent = player.key.agent or ""
-        return agent not in practice and not opponents.never_rated(agent)
+        if agent in practice:
+            return False
+        return (not opponents.never_rated(agent) or agent in offered
+                or player.matches >= 1)
     return player.matches >= 1
 
 
@@ -68,8 +82,9 @@ def rows(
 ) -> list[dict[str, Any]]:
     """The leaderboard's rows, strongest first, each as the page draws it."""
     practice = _practice_only(roster)
-    kept = {key: player for key, player in table.items() if _counted(player, practice)}
     offered = {entry.agent: entry.name for entry in roster if entry.agent != opponents.HUMAN}
+    kept = {key: player for key, player in table.items()
+            if _counted(player, practice, frozenset(offered))}
     strongest = {player.key for player in rating.top(kept)}
     you = rating.person(viewer) if viewer is not None else None
 

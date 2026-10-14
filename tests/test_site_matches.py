@@ -875,6 +875,44 @@ class TestLeaderboard:
             unregister_net("aaaaaaaaaaaa", SHORT_HASH)
         assert practice.mode == m.SANDBOX
 
+    def test_the_games_rated_net_is_rated_like_any_other_player(
+        self, store: Scratch, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Q913: where the learned player's net is the game's rated one (`nets.rated_net`),
+        a rated game against it starts as against any player the table holds; another net
+        on the same game is still refused by `never_rated`."""
+        from chess_variant_sandbox.agents import nets
+        from chess_variant_sandbox.agents.nets import (
+            ACCEPTED,
+            Layout,
+            NetRecord,
+            random_net,
+            register_net,
+            unregister_net,
+        )
+        from chess_variant_sandbox.web.library import engine_for
+
+        learned = "minimax:net=aaaaaaaaaaaa,nodes=400"
+        other = "minimax:net=bbbbbbbbbbbb,nodes=400"
+        monkeypatch.setattr(
+            nets, "rated_net",
+            lambda digest, root=nets.STORE_DIR: "aaaaaaaaaaaa" if digest == SHORT_HASH else "",
+        )
+        r.store(store.connection, SHORT_HASH,
+                [r.Player(r.computer(agent), 1500.0, 50.0, r.COMPUTER_VOLATILITY)
+                 for agent in (learned, other)])
+        user = store.user("ada")
+        with pytest.raises(m.MatchError) as error:
+            m.start(store.connection, SHORT_HASH, m.LEADERBOARD, ["human", other], user)
+        assert str(error.value) == m.NEVER_RATED
+        layout = Layout.of(engine_for(SHORT).spec).n_inputs
+        register_net(NetRecord("aaaaaaaaaaaa", SHORT_HASH, ACCEPTED, random_net(layout, seed=1)))
+        try:
+            rated = m.start(store.connection, SHORT_HASH, m.LEADERBOARD, ["human", learned], user)
+        finally:
+            unregister_net("aaaaaaaaaaaa", SHORT_HASH)
+        assert rated.mode == m.LEADERBOARD
+
     def test_the_top_bit_is_written_at_the_start_and_does_not_move(
         self, store: Scratch
     ) -> None:

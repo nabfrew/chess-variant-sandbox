@@ -463,7 +463,9 @@ class Seeding:
 
 
 def seeding(
-    standings: Sequence[Rung], table: Mapping[PlayerKey, Player] | None = None
+    standings: Sequence[Rung],
+    table: Mapping[PlayerKey, Player] | None = None,
+    game: str | None = None,
 ) -> Seeding:
     """The computer players this ladder seats, at their seats on the site's scale.
 
@@ -476,6 +478,9 @@ def seeding(
 
     Idempotent: the shift reads only played rows, which this never writes, so a second
     reading of the same ladder computes the same seats and writes nothing.
+
+    A learned net's player is seated only where it is `game`'s rated net (Q913,
+    `opponents.never_rated`); without a game, none is.
     """
     from chess_variant_sandbox.web.opponents import never_rated
 
@@ -486,8 +491,9 @@ def seeding(
     kept = 0
     for rung in standings:
         key = computer(rung.name)
-        # Q683: a learned net's player is practice only, so no ladder seats it here.
-        if never_rated(rung.name):
+        # Q683: a learned net's player is practice only, so no ladder seats it here --
+        # unless it is this game's rated net (Q913), rated like any other player.
+        if never_rated(rung.name, game):
             continue
         held = existing.get(key)
         seat = Player(key, rung.rating + shift, COMPUTER_DEVIATION, COMPUTER_VOLATILITY)
@@ -501,10 +507,12 @@ def seeding(
 
 
 def seeds_from_ladder(
-    standings: Sequence[Rung], table: Mapping[PlayerKey, Player] | None = None
+    standings: Sequence[Rung],
+    table: Mapping[PlayerKey, Player] | None = None,
+    game: str | None = None,
 ) -> Table:
     """The rows this ladder writes, added and reseeded, keyed by player (`seeding`)."""
-    return {player.key: player for player in seeding(standings, table).written}
+    return {player.key: player for player in seeding(standings, table, game).written}
 
 
 # ----------------------------------------------------------------------- the top query
@@ -625,7 +633,7 @@ def reseed(connection: Any, game: str, ladder: Mapping[str, Any]) -> Seeding:
     second run over the same file writes nothing, which is that task's own acceptance; a
     newer ladder adds the players the table lacks and replaces the rows nobody has played.
     """
-    found = seeding(rungs(ladder), load(connection, game))
+    found = seeding(rungs(ladder), load(connection, game), game)
     store(connection, game, found.written)
     return found
 

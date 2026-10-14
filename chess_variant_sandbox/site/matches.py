@@ -150,10 +150,11 @@ WATCH_IS_SANDBOX = (
 """Why leaderboard mode is refused a watch, in the words the page shows them."""
 
 NEVER_RATED = (
-    "the learned player is never rated, so a game against it is practice; play it as "
-    "practice, or pick another computer player for a rated game"
+    "the experimental learned player is not rated, so a game against it is practice; play "
+    "it as practice, or pick another computer player for a rated game"
 )
-"""Why leaderboard mode is refused against a learned net (Q683), in the page's words."""
+"""Why leaderboard mode is refused against a learned net other than the game's rated one
+(Q683, Q913), in the page's words."""
 
 UNPLAYABLE = (
     "the learned player cannot be loaded on this game right now, so it will not play; "
@@ -447,8 +448,9 @@ def start(
         if user is None:
             raise MatchError(NEEDS_AN_ACCOUNT)
         agent = seats[1 - list(seats).index(HUMAN)]
-        if opponents.never_rated(agent):
-            # Q683: the learned player is offered as practice only, whatever a table holds.
+        if opponents.never_rated(agent, game):
+            # Q683: a learned player is practice only, whatever a table holds, unless its
+            # net is this game's rated one (Q913), which is rated like any other player.
             raise MatchError(NEVER_RATED)
         table = rating.load(connection, game)
         if not rating.computers(table):

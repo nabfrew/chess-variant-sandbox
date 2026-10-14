@@ -186,10 +186,12 @@ class Opponent:
     # label as its name.
     name: str = ""
     about: str = ""
-    # A player no game against is ever rated (Q683): the learned player. It is kept out
-    # of the on-demand rating run (`agents_of`), so it never reaches the picker's table
-    # and from there the site's; the site refuses a rated game against it by its agent
-    # string (`never_rated`); and the page sets the game to practice when it is chosen.
+    # A player no game against is ever rated (Q683): the learned player, where its net is
+    # not the game's rated one (Q913: where it is, it is rated like any other player). It
+    # is kept out of the on-demand rating run (`agents_of`), so it never reaches the
+    # picker's table and from there the site's; the site refuses a rated game against it
+    # by its agent string and game (`never_rated`); and the page sets the game to
+    # practice when it is chosen.
     practice_only: bool = False
 
     def __post_init__(self) -> None:
@@ -249,6 +251,10 @@ def table_name(agent: str) -> str:
         return name_of(agent)
     nodes = config.options.get("nodes")
     if config.kind == "minimax" and isinstance(nodes, (int, float)):
+        if config.options.get("net") is not None:
+            # A learned net's player, by its budget (Q913): the site's learned player
+            # where no roster names it, and each rung of a ladder that plays a net (Q502h).
+            return f"the learned player at {int(nodes):,} positions"
         return f"the {int(nodes):,}-position player"
     if config.kind == "mcts" and isinstance(nodes, (int, float)):
         return f"the {int(nodes):,}-game tree search"
@@ -664,26 +670,44 @@ def _valued_plan(valuation: Any) -> str:
 # ------------------------------------------------------------ the learned player (Q683)
 
 # What the picker calls the learned player, and the heading it sits under. One player per
-# game at most, so the name says which kind of thing it is rather than which net.
+# game at most, so the name says which kind of thing it is rather than which net. Where
+# its net is the game's rated one (`nets.rated_net`, Q913) it is a rated player like the
+# others and its name drops *experimental*; elsewhere it is the practice-only experiment
+# the user asked for (Q683).
 LEARNED_NAME = "the learned player (experimental)"
+RATED_LEARNED_NAME = "the learned player"
 LEARNED_GROUP = "that taught itself this game"
 
 
-def never_rated(agent: str) -> bool:
-    """Whether a game against this player can never be rated: one that plays a learned net.
+def never_rated(
+    agent: str, ruleset_hash: str | None = None, nets: str | Path = NET_DIR
+) -> bool:
+    """Whether a game against this player can never be rated: one that plays a learned
+    net other than this game's rated one.
 
-    Read off the agent string, so it holds wherever a seat is checked -- the site's
-    `matches.start` and its rating seeds -- without a roster in hand. A net player's name
-    does not say which net sat down (`agents/nets.py`), so no number it earned could be
-    filed under it honestly, and the user asked for it as an experiment to try (Q683).
+    Read off the agent string and the game, so it holds wherever a seat is checked -- the
+    site's `matches.start` and its rating seeds -- without a roster in hand. A net player's
+    name says which training procedure it is, and on one game that names one store whose
+    weights are checked against their record; the game's **rated net** (`nets.rated_net`:
+    kept, or accepted and confirmed on fresh seeds, the newest such) is the one the
+    measuring roster already plays and rates (Q502h), so the site rates it too (Q913).
+    Any other net -- one accepted and not confirmed, or one the plan did not keep -- stays
+    the experiment the user asked for (Q683), and without a game every net player is.
     """
     from chess_variant_sandbox.agents.base import parse_agent
+    from chess_variant_sandbox.agents.nets import normalise_procedure, rated_net
 
     try:
         config = parse_agent(agent)
     except ValueError:
         return False
-    return config.options.get("net") is not None
+    named = config.options.get("net")
+    if named is None:
+        return False
+    if ruleset_hash is None:
+        return True
+    rated = rated_net(ruleset_hash, nets)
+    return not rated or normalise_procedure(named) != rated
 
 
 @dataclass(frozen=True)
@@ -803,19 +827,28 @@ def learned_for(
     (`nets.net_bytes` reads the registry first) -- listing a player and being able to
     play it are one call, as for a rule of thumb.
 
-    It is **practice only**: never rated, never in the on-demand rating run, and the plan
-    says so in the sentence a person reads under the menu.
+    **Where the game has a rated net** (`nets.rated_net`, the net its measuring roster
+    plays, Q502h) **that net is the one offered, and it is rated** (Q913): a player of the
+    picker's ladder like any other, so it reaches the game's one leaderboard
+    (`docs/plan-leaderboard.md` §2.1), named *the learned player*. Anywhere else it is
+    **practice only**: never rated, never in the on-demand rating run, named *the learned
+    player (experimental)*, and the plan says so in the sentence a person reads under the
+    menu.
     """
-    from chess_variant_sandbox.agents.nets import NetError, load_net
+    from chess_variant_sandbox.agents.nets import NetError, load_net, rated_net
 
     records = [
         found
         for path in sorted(Path(root).glob(f"{ruleset_hash}-*.json"))
         if (found := _learned_record(path, ruleset_hash)) is not None
     ]
-    chosen = _kept(records)
+    rated = rated_net(ruleset_hash, root)
+    chosen = next((entry for entry in records if entry.procedure == rated), None)
+    if chosen is None:
+        chosen = _kept(records)
     if chosen is None:
         return []
+    is_rated = bool(rated) and chosen.procedure == rated
     try:
         stored = load_net(ruleset_hash, chosen.procedure, root=root)
     except (NetError, OSError, ValueError):
@@ -823,16 +856,17 @@ def learned_for(
     if stored is None or not stored.playing or not _fits(stored.weights, spec):
         return []
     about = _rung_about(chosen.agent, "")
+    name = RATED_LEARNED_NAME if is_rated else LEARNED_NAME
     return [
         Opponent(
             agent=chosen.agent,
-            label=labelled(LEARNED_NAME, about),
+            label=labelled(name, about),
             group=LEARNED_GROUP,
-            plan=_learned_plan(chosen),
+            plan=_learned_plan(chosen, rated=is_rated),
             store="learned",
-            name=LEARNED_NAME,
+            name=name,
             about=about,
-            practice_only=True,
+            practice_only=not is_rated,
         )
     ]
 
@@ -879,20 +913,27 @@ def _parsed(weights: bytes) -> Any:
 _PARSED: dict[str, Any] = {}
 
 
-def _learned_plan(learned: _Learned) -> str:
-    """What the learned player is, why it is here, and that a game against it is practice.
+def _learned_plan(learned: _Learned, rated: bool = False) -> str:
+    """What the learned player is, why it is here, and whether a game against it is rated.
 
     In a visitor's words: no net, no procedure, no node count beyond the strength line
     above it. The share is the acceptance duel's, the number that is the reason it is
     offered, as the fitted and valued players' plans give theirs.
     """
     rung = _against(learned.nodes, ordinary=True)
-    return (
+    taught = (
         "It taught itself this game by playing against itself, and it took "
         f"{learned.score * 100:.0f}% of the points from {rung} over "
-        f"{learned.games} games, both looking at the same number of positions. It is "
-        "not rated, so a game against it is practice: it counts towards nobody's rating "
-        "and no game's score."
+        f"{learned.games} games, both looking at the same number of positions."
+    )
+    if rated:
+        return (
+            f"{taught} It is rated like the other computer players here, and it is one "
+            "of the players this game's score is measured with."
+        )
+    return (
+        f"{taught} It is not rated, so a game against it is practice: it counts towards "
+        "nobody's rating and no game's score."
     )
 
 
@@ -1070,11 +1111,15 @@ def agents_of(roster: list[Opponent]) -> list[str]:
     """The agent strings in a roster to rate, minus the seat a person sits in.
 
     Minus a practice-only player too (Q683): what this feeds is the on-demand rating run,
-    and a table that held the learned player would seed it on the site as a rated one.
+    and a table that held the practice-only learned player would seed it on the site as a
+    rated one. A net player is rated only as the learned player `learned_for` offers
+    rated (Q913), the one entry that has asked `nets.rated_net`; a net player in any other
+    entry is left out as before.
     """
     return [
         entry.agent for entry in roster
-        if entry.agent != HUMAN and not entry.practice_only and not never_rated(entry.agent)
+        if entry.agent != HUMAN and not entry.practice_only
+        and (entry.store == "learned" or not never_rated(entry.agent))
     ]
 
 
