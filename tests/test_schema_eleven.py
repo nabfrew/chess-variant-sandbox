@@ -274,3 +274,65 @@ class TestTheOtherSurfaces:
         contacts = rule_spec_schema()["properties"]["rules"]["properties"]["contacts"]
         link = contacts["properties"]["links"]["items"]
         assert link["properties"]["own"]["type"] == "boolean"
+
+
+# ------------------------------------------------ Q922: the contact table's pair axis
+
+
+def _contact_axes(links: list[dict[str, Any]]) -> dict[str, float]:
+    from chess_variant_sandbox.spec.distance import _contact_features
+
+    pieces = [{"id": i, "value": v} for i, v in (("P", 1), ("N", 3), ("B", 3))]
+    return _contact_features(pieces, {"position": "stay", "links": links})
+
+
+class TestTheVampireAxisKeysOnWhoMeetsWhat:
+    """One victim left as two different things is `contacts_by_pair`, unless the two links
+    are on different sides of the `own` line: a contact with your own piece is another rule.
+    """
+
+    @pytest.mark.parametrize(
+        ("second", "by_pair"),
+        [
+            ({"mover": "B", "onto": "N", "onto_to": "B"}, 1.0),            # same victim, another result
+            ({"mover": "B", "onto": "N", "onto_to": "P", "own": True}, 0.0),  # own is a rule apart
+            ({"mover": "B", "onto": "N", "onto_to": "B", "own": False}, 1.0),  # False is no own
+            ({"mover": "B", "onto": "B", "onto_to": "B"}, 0.0),            # another victim
+        ],
+        ids=["same", "own", "explicit-false", "other-victim"],
+    )
+    def test_the_pair_axis(self, second: dict[str, Any], by_pair: float) -> None:
+        first = {"mover": "P", "onto": "N", "onto_to": "P"}
+        assert _contact_axes([first, second])["contacts_by_pair"] == by_pair
+
+    def test_two_own_links_to_one_victim_are_a_pair(self) -> None:
+        links = [
+            {"mover": "P", "onto": "N", "onto_to": "P", "own": True},
+            {"mover": "B", "onto": "N", "onto_to": "B", "own": True},
+        ]
+        assert _contact_axes(links)["contacts_by_pair"] == 1.0
+
+
+class TestAPerPlayerSeamIsReadOnlyWhenItSaysSomething:
+    """`wrap_stated` falls back to the shared word for a player the table leaves out, and
+    to the shared word for both when the table is empty or not a table at all."""
+
+    @pytest.mark.parametrize(
+        ("wrap", "files"),
+        [
+            ({"files": "wrap"}, ("wrap", "wrap")),
+            ({"files": "wrap", "files_by_player": {}}, ("wrap", "wrap")),
+            ({"files": "wrap", "files_by_player": ["x"]}, ("wrap", "wrap")),
+            ({"files": "wrap", "files_by_player": "x"}, ("wrap", "wrap")),
+            ({"files": "wrap", "files_by_player": {"1": "none"}}, ("wrap", "none")),
+            ({"files": "wrap", "files_by_player": {"0": "none"}}, ("none", "wrap")),
+            ({"files_by_player": {"0": "wrap", "1": "none"}}, ("wrap", "none")),
+            ({}, ("none", "none")),
+            ("junk", ("none", "none")),
+        ],
+        ids=str,
+    )
+    def test_the_two_players_words(self, wrap: Any, files: tuple[str, str]) -> None:
+        from chess_variant_sandbox.spec.schema import wrap_stated
+
+        assert wrap_stated(wrap)["files"] == files

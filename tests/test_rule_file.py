@@ -221,10 +221,12 @@ class TestTheLink:
                    if path.suffix in {".py", ".js", ".html", ".css"}]
         spelt = [path.relative_to(PACKAGE).as_posix() for path in sources
                  if '"/rules.md"' in path.read_text(encoding="utf-8")]
-        assert spelt == ["site/routes.py", "spec/reference.py"]
+        # `rglob` lists in the filesystem's order (Windows: sorted; Linux: directory order),
+        # so the comparison is of sets of paths, not of a sequence.
+        assert sorted(spelt) == ["site/routes.py", "spec/reference.py"]
         linked = [path.relative_to(PACKAGE).as_posix() for path in sources
                   if "chess-variant-sandbox/blob" in path.read_text(encoding="utf-8")]
-        assert linked == []
+        assert sorted(linked) == []
 
     def test_rules_md_names_the_button_and_the_box_the_designer_draws(self) -> None:
         trying = (ROOT / "RULES.md").read_text(encoding="utf-8").split("## Trying a game")[1]

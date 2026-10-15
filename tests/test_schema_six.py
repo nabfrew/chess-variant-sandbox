@@ -1294,3 +1294,41 @@ def test_the_showcase_rulesets_play_a_whole_game_through() -> None:
         assert record.plies > 0
         assert record.reason, "the game reached a stated verdict"
         assert len(record.moves) == record.plies
+
+
+# ------------------------------------------------ Q922: the strike checks' edges
+
+
+class TestEveryRoyalIsCheckedAgainstTheImmuneList:
+    """`_check_strike_coherence` visits every royal: a spared one does not end the walk."""
+
+    @staticmethod
+    def _errors(immune: list[str], chain: list[dict[str, str]]) -> list[str]:
+        from chess_variant_sandbox.spec.schema import _check_strike_coherence
+
+        pieces = [{"id": "A", "royal": True}, "junk", {"id": "N"}, {"id": "B", "royal": True}]
+        rules = {"strike": {"effect": "demote", "chain": chain, "immune": immune}}
+        errors: list[str] = []
+        _check_strike_coherence(pieces, rules, errors)
+        return errors
+
+    def test_a_spared_royal_ahead_of_an_unspared_one(self) -> None:
+        (error,) = self._errors(["A"], [{"from": "N", "to": "N"}])
+        assert error.startswith("the royal piece 'B' is not in rules.strike.immune")
+
+    def test_a_spared_royal_ahead_of_one_the_chain_names(self) -> None:
+        (error,) = self._errors(["A"], [{"from": "B", "to": "N"}])
+        assert error.startswith("rules.strike.chain names the royal piece 'B'")
+
+    def test_every_royal_spared_is_no_error(self) -> None:
+        assert self._errors(["A", "B"], [{"from": "N", "to": "N"}]) == []
+
+
+@pytest.mark.parametrize("junk", ["capture", ["position"], 3, True])
+@pytest.mark.parametrize("key", ["strike", "contacts"])
+def test_a_strike_that_is_not_a_table_states_nothing(junk: Any, key: str) -> None:
+    """The shape check refuses it; this one must not crash asking what it states."""
+    from chess_variant_sandbox.spec.schema import strike_states_nothing
+
+    assert strike_states_nothing(junk, key, ["P", "N"]) == []
+    assert strike_states_nothing({}, key, ["P", "N"]) == []

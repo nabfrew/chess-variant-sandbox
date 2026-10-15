@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import replace
@@ -25,15 +26,18 @@ from typing import Any
 
 import pytest
 from test_corpus import SPEC
+from test_rated_nets import ROLLED_OUT
+from test_rated_nets import _store as rated_store
 
-from chess_variant_sandbox import cli, fairy, measurement, premise
-from chess_variant_sandbox.spec import spec_hash
+from chess_variant_sandbox import cli, corpus, fairy, measurement, premise
+from chess_variant_sandbox.spec import load_spec, spec_hash
 from chess_variant_sandbox.tournament import duel as duel_module
 from chess_variant_sandbox.tournament.duel import Curtailed, Duel
 
 ROSTER = ("random", "greedy", "minimax:nodes=12", "minimax:nodes=24")
 TINY = premise.Rule(pairs=2, fairy_pairs=2)
 DIGEST = spec_hash(SPEC)
+ROOT = Path(__file__).resolve().parent.parent
 
 
 @pytest.fixture(scope="module")
@@ -86,6 +90,69 @@ class TestThePlayers:
     def test_a_roster_with_no_search_is_refused(self) -> None:
         with pytest.raises(ValueError, match="no searching player"):
             premise.top_rung(("random", "greedy"))
+
+
+class TestTheGamesOwnRoster:
+    """Q912: the check's top rung is the game's measuring roster's, `corpus.canonical_agents`.
+
+    Before Q912 the default roster was `CANONICAL_AGENTS` for every game, so a basis taken
+    with that roster spelled out is what the check stamped then (same code, same reading).
+    """
+
+    def test_a_game_without_a_rated_net_is_unchanged_to_the_byte(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(corpus, "NETS_DIR", tmp_path)
+        now = premise.PremiseBasis.current(DIGEST, SPEC)
+        then = premise.PremiseBasis.current(DIGEST, SPEC, corpus.CANONICAL_AGENTS)
+        assert json.dumps(now.as_dict()) == json.dumps(then.as_dict())
+        assert now.player == corpus.CANONICAL_AGENTS[-1]
+
+    def test_a_rated_net_is_checked_by_its_own_top_rung(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        then = premise.PremiseBasis.current(DIGEST, SPEC, corpus.CANONICAL_AGENTS)
+        blob = rated_store(tmp_path, "000000000001")
+        monkeypatch.setattr(corpus, "NETS_DIR", tmp_path)
+        now = premise.PremiseBasis.current(DIGEST, SPEC)
+        assert now.player == "minimax:net=000000000001,nodes=6400"
+        assert now.net == "000000000001=net:" + hashlib.sha256(blob).hexdigest()[:12]
+        # The score's rule: a net ladder plays no fitted objective, so it reads no fit.
+        assert now.fit == ""
+        assert premise.ceiling_of(now.player, 8) == "minimax:net=000000000001,nodes=51200"
+        assert premise.fairy_of(now.player) == "fairystockfish:nodes=6400"
+        reasons = then.stale_against(now)
+        assert any("strongest player was minimax:fit=" in reason for reason in reasons)
+        assert any("its nets were none" in reason for reason in reasons)
+
+    def test_on_the_library_the_stamp_moves_for_the_rated_net_games_alone(self) -> None:
+        """Every committed and archived game: the basis moves exactly where a net is rated
+        (`test_rated_nets.ROLLED_OUT`, the five of Q502h), and only in who played.
+
+        Taken without the spec (no tables, no Fairy-Stockfish half), which reads none of the
+        roster: what is left to differ is what the roster decides (0.1 s, against 17 s with it)."""
+        moved: dict[str, set[str]] = {}
+        seen: set[str] = set()
+        for directory in ("rulesets", "archive"):
+            for path in sorted((ROOT / directory).rglob("*.json")):
+                try:
+                    spec = load_spec(path)
+                except Exception:  # noqa: BLE001 - not a spec (an archive's index)
+                    continue
+                digest = spec_hash(spec)
+                if digest in seen:
+                    continue
+                seen.add(digest)
+                now = premise.PremiseBasis.current(digest, None).as_dict()
+                then = premise.PremiseBasis.current(
+                    digest, None, corpus.CANONICAL_AGENTS
+                ).as_dict()
+                differs = {key for key in now if now[key] != then[key]}
+                if differs:
+                    moved[digest] = differs
+        assert set(moved) == set(ROLLED_OUT)
+        for digest, differs in moved.items():
+            assert {"player", "net"} <= differs <= {"player", "net", "fit"}, digest
 
 
 # ------------------------------------------------------------------ end to end
@@ -369,6 +436,18 @@ class TestFairyStockfish:
         assert payload["fairy"]["passes"] is False
         assert payload["verdict"] == premise.FAILS
         assert payload["basis"]["fairy_engine"] == "Stand-in@000000000000"
+
+    def test_a_reach_goal_is_asked_like_any_other_rule(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Q915 lifted Q912's guard: a reach game plays Fairy-Stockfish wherever
+        `fairy.checked` passes it, and the check is what refuses a goal the build cannot
+        read (`fairy/unread.py`)."""
+        reach = {"piece": "K", "squares": ["c5"], "mirror": False, "result": "win"}
+        spec = {**SPEC, "rules": {**SPEC["rules"], "reach": reach}}
+        assert not hasattr(premise, "REACH_BLIND")
+        monkeypatch.setattr(fairy, "checked", lambda spec: object())
+        assert premise._fairy_plays(spec) == ""
 
     def test_a_game_it_does_not_translate_leaves_it_out(
         self, monkeypatch: pytest.MonkeyPatch

@@ -11,6 +11,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-15
+
+### The rules guide matches what the site accepts
+
+The rules guide and the designer no longer say a piece may move in at most eight directions, or that every piece needs a move of its own. Neither was ever enforced when a game was checked, and some games in the library already go beyond both. A piece that only ever enters the board from the hand may now be written with no moves at all.
+
 ## 2026-10-14
 
 ### The learned player on the leaderboard

@@ -20,9 +20,11 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.reachability import (
+    _in,
     _pieces_that_can_stand,
     _promotion_entries,
     _promotion_target_ids,
+    _str_set,
 )
 from chess_variant_sandbox.spec.reachability import (
     pieces_a_player_can_hold as pieces_a_player_can_hold,
@@ -1008,7 +1010,8 @@ def validate_spec(spec: Any, *, new: bool = True) -> list[str]:
              for key in V8_PIECE_KEYS.intersection(piece)}
             if isinstance(pieces, list) else set()
         )
-        placements = (spec.get("setup") or {}).get("placements")
+        setup = spec.get("setup")
+        placements = setup.get("placements") if isinstance(setup, dict) else None
         if isinstance(placements, list) and any(
             isinstance(placement, dict) and "facing" in placement
             for placement in placements
@@ -1786,7 +1789,8 @@ def _check_only_lost_coherence(
     # the side starts with it as surely as with one placed.
     if isinstance(drops, dict) and drops.get("placement") is True:
         for player in (0, 1):
-            for piece, held in (drops.get("stock") or {}).items():
+            stock = drops.get("stock")
+            for piece, held in (stock if isinstance(stock, dict) else {}).items():
                 if isinstance(held, int) and not isinstance(held, bool):
                     counts[player][piece] = counts[player].get(piece, 0) + held
     for entry in flagged:
@@ -2126,9 +2130,10 @@ def _check_sweep_coherence(
     also why no sweeper is ever the en passant piece.
     """
     sweepers = {
-        piece.get("id")
+        piece["id"]
         for piece in pieces
         if isinstance(piece, dict)
+        and isinstance(piece.get("id"), str)
         and isinstance(piece.get("moves"), list)
         and any(isinstance(m, dict) and m.get("kind") == "sweep" for m in piece["moves"])
     }
@@ -2291,7 +2296,11 @@ def royalty_can_multiply(spec: dict[str, Any]) -> bool:
     rules = spec.get("rules")
     if not isinstance(rules, dict):
         rules = {}
-    royal_ids = {p.get("id") for p in pieces if isinstance(p, dict) and p.get("royal")}
+    royal_ids = {
+        p["id"]
+        for p in pieces
+        if isinstance(p, dict) and p.get("royal") and isinstance(p.get("id"), str)
+    }
     if not royal_ids:
         return False
     if len(royal_ids) > 1:
@@ -2305,11 +2314,13 @@ def royalty_can_multiply(spec: dict[str, Any]) -> bool:
         # that player the same count rather than a further one.
         per_player: dict[Any, int] = {}
         for placement in placements:
-            if not isinstance(placement, dict) or placement.get("piece") not in royal_ids:
+            if not isinstance(placement, dict) or not _in(placement.get("piece"), royal_ids):
                 continue
             squares = placement.get("squares")
             if isinstance(squares, list):
                 player = placement.get("player", 0)
+                if not isinstance(player, (int, str)):
+                    player = repr(player)
                 per_player[player] = per_player.get(player, 0) + len(squares)
         if any(count > 1 for count in per_player.values()):
             return True
@@ -2542,7 +2553,11 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
 
     setup = spec.get("setup")
     if has_royal and isinstance(setup, dict) and isinstance(setup.get("placements"), list):
-        royal_ids = {p["id"] for p in pieces if isinstance(p, dict) and p.get("royal")}
+        royal_ids = {
+            p["id"]
+            for p in pieces
+            if isinstance(p, dict) and p.get("royal") and isinstance(p.get("id"), str)
+        }
         placed = {
             p.get("piece")
             for p in setup["placements"]
@@ -2592,8 +2607,8 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
         castling = rules["castling"]
         king_id = castling.get("king")
         if has_royal and king_id is not None:
-            royal_ids = {p["id"] for p in pieces if isinstance(p, dict) and p.get("royal")}
-            if king_id not in royal_ids:
+            royal_ids = _str_set(p.get("id") for p in pieces if isinstance(p, dict) and p.get("royal"))
+            if not _in(king_id, royal_ids):
                 errors.append(
                     f"rules.castling.king {king_id!r} is not a royal piece; castling protects "
                     "royalty, so pointing it at a common piece is almost always a mistake"
@@ -2648,15 +2663,16 @@ def _check_fixed_facings(spec: dict[str, Any], pieces: list[Any], errors: list[s
     round with no facing -- two spellings of one game under two hashes, and a facing a
     player is told about that never matters. Refused by name, as a null rotation is.
     """
-    placements = (spec.get("setup") or {}).get("placements")
+    setup = spec.get("setup")
+    placements = setup.get("placements") if isinstance(setup, dict) else None
     for index, piece in enumerate(pieces):
         if not isinstance(piece, dict) or not isinstance(piece.get("facing"), dict):
             continue
         if facing_turns(piece):
             continue
         initial = piece["facing"].get("initial", "forward")
-        held = {initial} | {
-            placement.get("facing", initial)
+        held = {repr(initial)} | {
+            repr(placement.get("facing", initial))
             for placement in (placements if isinstance(placements, list) else ())
             if isinstance(placement, dict) and placement.get("piece") == piece.get("id")
         }
@@ -3179,29 +3195,29 @@ def _check_strike_coherence(
             )
 
     immune = strike.get("immune")
-    immune_ids = set(immune) if isinstance(immune, list) else set()
+    immune_ids = _str_set(immune) if isinstance(immune, list) else set()
     chain = strike.get("chain")
-    struck_ids = {
+    struck_ids = _str_set(
         link.get("from")
         for link in (chain if isinstance(chain, list) else [])
         if isinstance(link, dict)
-    }
+    )
     switching = strike.get("switches_sides")
-    switching_ids = set(switching) if isinstance(switching, list) else set()
+    switching_ids = _str_set(switching) if isinstance(switching, list) else set()
     for piece in pieces:
         if not isinstance(piece, dict) or not piece.get("royal"):
             continue
         pid = piece.get("id")
         # Schema 17: a royal that changed sides would leave one side with two kings and
         # the other with none, which is not a rule anyone states on purpose.
-        if pid in switching_ids:
+        if _in(pid, switching_ids):
             errors.append(
                 f"rules.strike.switches_sides names the royal piece {pid!r}; a royal "
                 "never changes sides, so leave it out of the list"
             )
-        if pid in immune_ids:
+        if _in(pid, immune_ids):
             continue
-        if pid in struck_ids:
+        if _in(pid, struck_ids):
             errors.append(
                 f"rules.strike.chain names the royal piece {pid!r}; a struck royal must "
                 "be a captured royal, so list it in rules.strike.immune instead"
@@ -3232,6 +3248,8 @@ def _check_contact_coherence(
     contacts = rules.get("contacts")
     if not isinstance(contacts, dict) or not contacts.get("links"):
         return
+    if not isinstance(contacts["links"], list):
+        return
 
     if rules.get("strike"):
         errors.append(
@@ -3250,7 +3268,7 @@ def _check_contact_coherence(
             )
 
     immune = contacts.get("immune")
-    immune_ids = set(immune) if isinstance(immune, list) else set()
+    immune_ids = _str_set(immune) if isinstance(immune, list) else set()
     links = [link for link in contacts["links"] if isinstance(link, dict)]
     # Schema 11: `must_capture` asks whether a move takes an enemy piece, and nothing
     # settles whether a move onto an own piece is one. Refused rather than guessed.
@@ -3259,19 +3277,19 @@ def _check_contact_coherence(
             "rules.contacts has a link onto an own piece beside rules.must_capture; "
             "whether moving onto your own piece counts as a capture is not settled"
         )
-    met = {link.get("onto") for link in links}
+    met = _str_set(link.get("onto") for link in links)
     for piece in pieces:
         if not isinstance(piece, dict) or not piece.get("royal"):
             continue
         pid = piece.get("id")
-        if pid not in immune_ids:
+        if not _in(pid, immune_ids):
             errors.append(
                 f"the royal piece {pid!r} is not in rules.contacts.immune; a struck "
                 "royal must be a captured royal, so every royal piece has to be named "
                 "immune"
                 + (
                     f" -- and rules.contacts.links names {pid!r} on the 'onto' side"
-                    if pid in met
+                    if _in(pid, met)
                     else ""
                 )
             )
@@ -3334,11 +3352,12 @@ def _check_npc_coherence(
     setup: dict[str, Any] = raw_setup if isinstance(raw_setup, dict) else {}
     orientation = setup.get("orientation", "mirror")
 
-    by_id = {p["id"]: p for p in pieces if isinstance(p, dict) and "id" in p}
+    by_id = {p["id"]: p for p in pieces if isinstance(p, dict) and isinstance(p.get("id"), str)}
     for index, npc in enumerate(npcs):
         if not isinstance(npc, dict):
             continue
-        piece = by_id.get(npc.get("piece"))
+        npc_piece = npc.get("piece")
+        piece = by_id.get(npc_piece) if isinstance(npc_piece, str) else None
         if piece is not None and piece.get("royal"):
             errors.append(
                 f"rules.npcs[{index}].piece {npc.get('piece')!r} is royal; a wild royal "
@@ -3367,7 +3386,8 @@ def _check_npc_coherence(
         for placement in placements:
             if not isinstance(placement, dict):
                 continue
-            for name in placement.get("squares") or []:
+            named = placement.get("squares")
+            for name in named if isinstance(named, list) else []:
                 coords = parse_square(name, width, height) if isinstance(name, str) else None
                 if coords is None:
                     continue
@@ -3909,8 +3929,8 @@ def _check_inert_rules(
         and isinstance(board, dict)
         and isinstance(board.get("width"), int)
         and isinstance(board.get("height"), int)
-        and castling.get("king") in declared
-        and castling.get("rook") in declared
+        and _in(castling.get("king"), declared)
+        and _in(castling.get("rook"), declared)
     ):
         width, height = board["width"], board["height"]
         orientation = raw_setup.get("orientation", "mirror")
@@ -3944,7 +3964,7 @@ def _check_inert_rules(
     reach = rules.get("reach")
     if isinstance(reach, dict):
         piece_id = reach.get("piece")
-        if piece_id in declared and piece_id not in standing:
+        if _in(piece_id, declared) and piece_id not in standing:
             errors.append(
                 f"rules.reach is about {piece_id!r}, which can never stand on the "
                 f"board: {_NEVER_ON_THE_BOARD}"
@@ -3954,7 +3974,7 @@ def _check_inert_rules(
         if not isinstance(entry, dict):
             continue
         piece_id = entry.get("piece")
-        if piece_id in declared and piece_id not in standing:
+        if _in(piece_id, declared) and piece_id not in standing:
             where = (
                 f"rules.promotion[{index}]" if isinstance(promotion, list)
                 else "rules.promotion"
@@ -4007,7 +4027,7 @@ def _capture_is_possible(pieces: list[Any], declared: set[str]) -> bool:
         allowed = attacker.get("captures")
         if not isinstance(allowed, list):
             return bool(declared)  # absent means every piece
-        if declared.intersection(allowed):
+        if declared.intersection(_str_set(allowed)):
             return True
     return False
 
@@ -4640,6 +4660,8 @@ def _validate_setup(
         return
 
     mirror = setup.get("mirror", True)
+    # With a mirror the second army is derived, so only one army is placed; without
+    # one the two armies share the board and a square holds one piece whoever's it is.
     seen: dict[tuple[int, str], str] = {}
     for index, placement in enumerate(placements):
         loc = f"setup.placements[{index}]"
@@ -4671,7 +4693,7 @@ def _validate_setup(
             declared = next(
                 (
                     p.get("facing")
-                    for p in (pieces_by_id or [])
+                    for p in (pieces_by_id if isinstance(pieces_by_id, list) else [])
                     if isinstance(p, dict) and p.get("id") == piece
                 ),
                 None,
@@ -4686,7 +4708,7 @@ def _validate_setup(
             if not isinstance(square, str) or parse_square(square, width, height) is None:
                 errors.append(f"{loc}.squares entry {square!r} is not a square on this board")
                 continue
-            key = (player if isinstance(player, int) else 0, square)
+            key = (player if mirror and isinstance(player, int) else 0, square)
             if key in seen:
                 errors.append(f"{loc}.squares {square!r} is already occupied by {seen[key]!r}")
             else:
@@ -4819,11 +4841,12 @@ def _validate_rules(
             )
             if isinstance(entry, dict):
                 piece = entry.get("piece")
-                if piece in seen:
+                if isinstance(piece, str) and piece in seen:
                     errors.append(
                         f"rules.promotion has two rules for {piece!r}; a piece promotes one way"
                     )
-                seen.add(piece)
+                if isinstance(piece, str):
+                    seen.add(piece)
         if len(promotion) > 1 and rules.get("en_passant"):
             errors.append(
                 "rules.en_passant needs a single promoting piece to be defined against, "
@@ -5082,7 +5105,7 @@ def _validate_extinction(extinction: Any, piece_ids: list[str], errors: list[str
             "rules.extinction.per_type counts each listed type on its own, and 'any' lists "
             "no types; name the types, or drop per_type"
         )
-    elif per_type and isinstance(pieces, list) and len(set(pieces)) < 2:
+    elif per_type and isinstance(pieces, list) and len(_str_set(pieces)) < 2:
         errors.append(
             "rules.extinction.per_type counts each listed type on its own, and with one "
             "type listed that is the count the rule already makes; list two or more "
@@ -5278,7 +5301,7 @@ def piece_has_stock(rules: Any, piece_id: Any) -> bool:
     if not isinstance(drops, dict):
         return False
     stock = drops.get("stock")
-    return isinstance(stock, dict) and piece_id in stock
+    return isinstance(stock, dict) and _in(piece_id, stock)
 
 
 def npc_immune_attackers(
@@ -5301,11 +5324,11 @@ def npc_immune_attackers(
     if not isinstance(npc, dict) or not isinstance(npc.get("immune"), list):
         return set()
     npcs = (rules or {}).get("npcs") if isinstance(rules, dict) else None
-    wild = {
+    wild = _str_set(
         entry.get("piece")
-        for entry in (npcs or [])
+        for entry in (npcs if isinstance(npcs, list) else [])
         if isinstance(entry, dict)
-    }
+    )
     named = {pid for pid in npc["immune"] if isinstance(pid, str)}
     return {pid for pid in piece_ids if pid not in named and pid not in wild}
 
@@ -5968,7 +5991,7 @@ def _check_portal_bar_can_bind(
         return
     if _wrap_joins_an_edge(rules.get("wrap")) or any(g["kind"] == "fold" for g in groups):
         return
-    piece = declared.get(group["piece"])
+    piece = declared.get(group["piece"]) if isinstance(group["piece"], str) else None
     moves = piece.get("moves") if isinstance(piece, dict) else None
     directions: set[tuple[int, int]] = set()
     for move in moves if isinstance(moves, list) else ():
@@ -6007,7 +6030,7 @@ def _check_fold_pieces(
     condition on a fold's moves would read the wrong thing, so it is refused.
     """
     for group in groups:
-        if group["kind"] != "fold" or group["piece"] not in declared:
+        if group["kind"] != "fold" or not _in(group["piece"], declared):
             continue
         moves = declared[group["piece"]].get("moves")
         for index, move in enumerate(moves if isinstance(moves, list) else ()):
@@ -6030,7 +6053,7 @@ def _check_portal_carries(
     lets in what no filter would). A promoted piece is filtered by what it is now, which is
     the compiler's reading and needs nothing here.
     """
-    portal_ids = {group["piece"] for group in groups}
+    portal_ids = _str_set(group["piece"] for group in groups)
     movers = {pid for pid, piece in declared.items() if piece.get("moves")} - portal_ids
     for group in groups:
         for end in group["ends"]:
@@ -6331,9 +6354,13 @@ def _compiled_strike(rule: Any, key: str, piece_ids: Sequence[str]) -> StrikeRul
     listed = "chain" if key == "strike" else "links"
     links = rule.get(listed)
     immune = rule.get("immune")
+    switching = rule.get("switches_sides")
     readable = {
         **rule,
         "immune": [p for p in immune if names_declared(p)] if isinstance(immune, list) else [],
+        "switches_sides": (
+            [p for p in switching if names_declared(p)] if isinstance(switching, list) else []
+        ),
         listed: [
             link
             for link in (links if isinstance(links, list) else [])

@@ -2191,3 +2191,97 @@ class TestTheBumpIsInertOnEveryRulesetThatDoesNotUseIt:
             "carousel": ["a piece with no moves of its own"],
             "cylinder-wormhole": ["a piece with no moves of its own"],
         }
+
+
+# ------------------------------------------------ Q922: what an explosion block is read as
+
+
+@pytest.mark.parametrize(
+    ("explosion", "features_of_it"),
+    [
+        (None, (0.0, 0.0, 0.0)),
+        ({}, (0.0, 0.0, 0.0)),
+        ("yes", (0.0, 0.0, 0.0)),
+        ([1], (0.0, 0.0, 0.0)),
+        (True, (0.0, 0.0, 0.0)),
+        ({"by": []}, (0.0, 0.0, 0.0)),
+        ({"of": []}, (0.0, 0.0, 0.0)),
+        ({"by": ["N"], "of": []}, (0.0, 0.0, 0.0)),
+        ({"radius": 1}, (1.0, 0.0, 0.0)),
+        ({"by": ["N"]}, (1.0, 1.0, 0.0)),
+        ({"of": ["N"], "radius": 0}, (1.0, 1.0, 1.0)),
+        ({"radius": 0}, (1.0, 0.0, 1.0)),
+    ],
+    ids=str,
+)
+def test_an_explosion_block_is_read_as_the_compiler_reads_it(
+    explosion: Any, features_of_it: tuple[float, float, float]
+) -> None:
+    from chess_variant_sandbox.spec.distance import _explosion_features
+
+    got = _explosion_features(explosion)
+    assert (got["explodes"], got["explodes_selectively"], got["explodes_alone"]) == features_of_it
+
+
+# ------------------------------------------------ Q922: three refusals' edges
+
+
+def _plain_chess() -> dict[str, Any]:
+    return json.loads((ROOT / "rulesets" / "chess.json").read_text(encoding="utf-8"))
+
+
+class TestTheClocksAreCheckedPastANeverRepetition:
+    """`repetition_draw: "never"` is one clock's own spelling; the others are still read."""
+
+    @pytest.mark.parametrize("key", ["max_plies", "no_progress_draw"])
+    @pytest.mark.parametrize("bad", [0, 1, "soon", True, 10_001])
+    def test_a_bad_clock_is_refused_beside_never(self, key: str, bad: Any) -> None:
+        spec = _never(_plain_chess())
+        spec["rules"][key] = bad
+        assert any(error.startswith(f"rules.{key} must") for error in validate_spec(spec)), key
+
+    def test_never_beside_good_clocks_is_accepted(self) -> None:
+        spec = _never(_plain_chess())
+        spec["rules"].update({"max_plies": 200, "no_progress_draw": 50})
+        assert validate_spec(spec) == []
+
+
+class TestARoyalMetByAContactIsNamedOnItsSide:
+    @staticmethod
+    def _errors(links: list[dict[str, Any]]) -> list[str]:
+        spec = _contacts(_plain_chess(), links)
+        spec["rules"]["contacts"]["immune"] = []
+        return [e for e in validate_spec(spec) if e.startswith("the royal piece 'K' is not in")]
+
+    def test_a_royal_the_table_meets_is_named_as_met(self) -> None:
+        (error,) = self._errors([{"mover": "Q", "onto": "K", "onto_to": "Q"}])
+        assert error.endswith("-- and rules.contacts.links names 'K' on the 'onto' side")
+
+    def test_a_royal_the_table_never_meets_is_not(self) -> None:
+        (error,) = self._errors([{"mover": "Q", "onto": "R", "onto_to": "B"}])
+        assert error.endswith("so every royal piece has to be named immune")
+
+
+class TestAnImmuneWildPieceBesideADropsBlock:
+    @staticmethod
+    def _errors(drops: dict[str, Any]) -> list[str]:
+        spec = _hunted(_wolves())
+        spec["rules"]["drops"] = drops
+        return [e for e in validate_spec(spec) if ".immune beside rules.drops" in e]
+
+    @pytest.mark.parametrize(
+        ("drops", "refused"),
+        [
+            ({"stock": {"P": 1}}, True),                         # captures fill a hand by default
+            ({"from_captures": True}, True),
+            ({"from_captures": False}, False),
+            ({"from_captures": False, "stock": {"P": 1}}, False),  # a stock of another type
+            ({"from_captures": False, "stock": {"W": 1}}, True),   # the wild type itself, stocked
+        ],
+        ids=str,
+    )
+    def test_when_the_wild_piece_can_reach_a_hand(self, drops: dict, refused: bool) -> None:
+        spec = _hunted(_wolves())
+        wild = spec["rules"]["npcs"][0]["piece"]
+        drops = json.loads(json.dumps(drops).replace('"W"', json.dumps(wild)))
+        assert bool(self._errors(drops)) is refused

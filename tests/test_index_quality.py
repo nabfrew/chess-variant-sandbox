@@ -808,3 +808,317 @@ class TestTheSeatGateOnTheStoredCorpus:
         violations = seat_violations(components.raw, components.diagnostics)
         assert [v.split("=")[0] for v in violations] == [TOP_THREE_SEAT_DECIDED_CHANCE]
 
+
+
+# --------------------------------------------------------------------------
+# The mutant transforms, pinned to what they do (Q740, from the Q734m survivors in
+# `spec/transform.py`). Each runs on chess because chess is the one small spec whose
+# every piece and placement is written out; what is asserted is the transform's
+# contract, so the expected values are written here and not read from the code.
+# --------------------------------------------------------------------------
+
+
+def _chess() -> dict:
+    from chess_variant_sandbox.spec import load_spec
+
+    return copy.deepcopy(load_spec(Path(__file__).resolve().parents[1] / "rulesets" / "chess.json"))
+
+
+def _piece(spec: dict, piece_id: str) -> dict:
+    return next(p for p in spec["pieces"] if p["id"] == piece_id)
+
+
+def _squares(spec: dict, piece_id: str) -> list[str]:
+    return next(p["squares"] for p in spec["setup"]["placements"] if p["piece"] == piece_id)
+
+
+def _tiny(pieces: list[dict], placements: list[tuple[str, list[str]]]) -> dict:
+    """Just enough spec for the picking helpers, which never validate."""
+    return {
+        "pieces": pieces,
+        "setup": {"placements": [{"piece": p, "squares": s} for p, s in placements]},
+    }
+
+
+class TestPickingHelpers:
+    def test_the_most_numerous_piece_of_chess_is_the_pawn(self) -> None:
+        from chess_variant_sandbox.spec.transform import most_numerous
+
+        assert most_numerous(_chess()) == "P"
+
+    def test_the_royal_is_never_the_most_numerous(self) -> None:
+        from chess_variant_sandbox.spec.transform import most_numerous
+
+        spec = _tiny(
+            [{"id": "K", "royal": True}, {"id": "A"}],
+            [("K", ["a1", "b1", "c1"]), ("A", ["d1"])],
+        )
+        assert most_numerous(spec) == "A"
+
+    def test_most_numerous_has_an_answer_only_when_something_is_placed(self) -> None:
+        from chess_variant_sandbox.spec.transform import most_numerous
+
+        assert most_numerous(_tiny([{"id": "A"}], [])) is None
+        only_royal = _tiny([{"id": "K", "royal": True}], [("K", ["a1"])])
+        assert most_numerous(only_royal) is None
+
+    @pytest.mark.parametrize(
+        ("values", "expected"),
+        [
+            # an undeclared value ranks below 0.5 and above a value of 0 (declared)
+            ([("A", None), ("B", 0.5)], "B"),
+            ([("A", None), ("B", 0)], "A"),
+            ([("A", 2), ("B", 7), ("C", 3)], "B"),
+            ([("A", 4), ("B", 4)], "A"),
+        ],
+    )
+    def test_strongest_ranks_by_declared_value(self, values, expected) -> None:
+        from chess_variant_sandbox.spec.transform import strongest
+
+        pieces = [{"id": i} if v is None else {"id": i, "value": v} for i, v in values]
+        assert strongest({"pieces": pieces}) == expected
+
+    def test_the_strongest_piece_is_never_the_royal(self) -> None:
+        from chess_variant_sandbox.spec.transform import strongest
+
+        spec = {"pieces": [{"id": "K", "royal": True, "value": 99}, {"id": "A", "value": 1}]}
+        assert strongest(spec) == "A"
+        assert strongest({"pieces": [{"id": "K", "royal": True}]}) is None
+        assert strongest({}) is None
+
+
+class TestPiecewiseMutants:
+    def test_set_moves_to_gives_every_non_royal_piece_the_source_moves(self) -> None:
+        from chess_variant_sandbox.spec.transform import set_moves_to
+
+        original = _chess()
+        spec = set_moves_to(copy.deepcopy(original), "N")
+        knight_moves = _piece(original, "N")["moves"]
+        for piece in spec["pieces"]:
+            if piece["id"] == "K":
+                assert piece["moves"] == _piece(original, "K")["moves"]
+                assert piece["value"] == 0
+            else:
+                assert piece["moves"] == knight_moves
+                assert piece["value"] == 3
+        # separate copies, not one shared list
+        assert _piece(spec, "P")["moves"] is not _piece(spec, "R")["moves"]
+        assert "promotion" not in spec["rules"]
+        assert "en_passant" not in spec["rules"]
+        assert "castling" in spec["rules"]
+
+    def test_set_moves_to_writes_value_one_when_the_source_declares_none(self) -> None:
+        from chess_variant_sandbox.spec.transform import set_moves_to
+
+        spec = _chess()
+        del _piece(spec, "N")["value"]
+        set_moves_to(spec, "N")
+        assert {p["id"]: p["value"] for p in spec["pieces"]} == {
+            "P": 1, "N": 1, "B": 1, "R": 1, "Q": 1, "K": 0,
+        }
+
+    def test_set_moves_to_an_unknown_piece_changes_nothing(self) -> None:
+        from chess_variant_sandbox.spec.transform import set_moves_to
+
+        assert set_moves_to(_chess(), "Z") == _chess()
+        assert set_moves_to(_chess(), None) == _chess()
+
+    def test_omnipotent_piece_rewrites_the_strongest_and_only_that(self) -> None:
+        from chess_variant_sandbox.spec.transform import omnipotent_piece
+
+        original = _chess()
+        spec = omnipotent_piece(copy.deepcopy(original))
+        assert _piece(spec, "Q")["moves"] == [
+            {"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"},
+            {
+                "kind": "leap",
+                "vectors": [[1, 2], [1, 3], [2, 3]],
+                "symmetry": "dihedral8",
+                "mode": "both",
+            },
+        ]
+        assert _piece(spec, "Q")["value"] == 40
+        for piece in original["pieces"]:
+            if piece["id"] != "Q":
+                assert _piece(spec, piece["id"]) == piece
+        assert spec["rules"] == original["rules"]
+
+    def test_widen_royal_makes_the_king_a_slider_and_drops_castling(self) -> None:
+        from chess_variant_sandbox.spec.transform import widen_royal
+
+        original = _chess()
+        spec = widen_royal(copy.deepcopy(original), 6)
+        assert _piece(spec, "K")["moves"] == [
+            {"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4",
+             "mode": "both", "range": 6},
+        ]
+        for piece in original["pieces"]:
+            if piece["id"] != "K":
+                assert _piece(spec, piece["id"]) == piece
+        assert "castling" not in spec["rules"]
+        assert spec["rules"]["en_passant"] is True
+
+    def test_widen_royal_default_range_and_a_spec_without_rules(self) -> None:
+        from chess_variant_sandbox.spec.transform import widen_royal
+
+        spec = widen_royal(_chess())
+        assert _piece(spec, "K")["moves"][0]["range"] == 6
+        bare = {"pieces": [{"id": "K", "royal": True, "moves": [{"kind": "leap"}]}]}
+        assert widen_royal(bare, 3)["pieces"][0]["moves"] == [{"kind": "slide", "range": 3}]
+        assert "rules" not in bare
+
+    def test_widen_royal_leaves_a_castling_that_is_not_a_table(self) -> None:
+        from chess_variant_sandbox.spec.transform import widen_royal
+
+        spec = _chess()
+        spec["rules"]["castling"] = True
+        assert widen_royal(spec)["rules"]["castling"] is True
+
+    def test_rename_everything_numbers_the_pieces_in_declaration_order(self) -> None:
+        from chess_variant_sandbox.spec.transform import rename_everything
+
+        spec = rename_everything(_chess())
+        assert [(p["id"], p["name"]) for p in spec["pieces"]] == [
+            ("P", "piece 1"), ("N", "piece 2"), ("B", "piece 3"),
+            ("R", "piece 4"), ("Q", "piece 5"), ("K", "piece 6"),
+        ]
+
+    def test_reverse_backrank_mirrors_every_placement_left_to_right(self) -> None:
+        from chess_variant_sandbox.spec.transform import reverse_backrank
+
+        spec = reverse_backrank(_chess())
+        assert _squares(spec, "Q") == ["e1"]
+        assert _squares(spec, "K") == ["d1"]
+        assert _squares(spec, "N") == ["b1", "g1"]
+        assert _squares(spec, "R") == ["a1", "h1"]
+        assert _squares(spec, "B") == ["c1", "f1"]
+        assert _squares(spec, "P") == [f"{f}2" for f in "abcdefgh"]
+        assert "castling" not in spec["rules"]
+
+    def test_reverse_backrank_reads_the_board_width(self) -> None:
+        from chess_variant_sandbox.spec.transform import reverse_backrank
+
+        spec = {
+            "board": {"width": 5},
+            "setup": {"placements": [{"piece": "A", "squares": ["a1", "b3"]}]},
+        }
+        assert reverse_backrank(spec)["setup"]["placements"][0]["squares"] == ["d3", "e1"]
+
+
+class TestPromoteEarly:
+    def test_chess_promotes_two_ranks_past_the_pawn_start(self) -> None:
+        from chess_variant_sandbox.spec.transform import promote_early
+
+        spec = promote_early(_chess())
+        assert spec["rules"]["promotion"]["rank"] == 3
+        assert promote_early(_chess(), 4)["rules"]["promotion"]["rank"] == 5
+
+    def test_the_rank_follows_where_the_pieces_are_placed(self) -> None:
+        from chess_variant_sandbox.spec.transform import promote_early
+
+        spec = _chess()
+        _squares(spec, "P")[:] = [f"{f}4" for f in "abcdefgh"]
+        assert promote_early(spec)["rules"]["promotion"]["rank"] == 5
+
+    def test_the_highest_placed_square_decides(self) -> None:
+        from chess_variant_sandbox.spec.transform import promote_early
+
+        spec = _chess()
+        _squares(spec, "P")[:] = ["a2", "b4", "c3"]
+        assert promote_early(spec)["rules"]["promotion"]["rank"] == 5
+
+    def test_an_unplaced_promoter_falls_back_to_rank_one(self) -> None:
+        from chess_variant_sandbox.spec.transform import promote_early
+
+        spec = _chess()
+        spec["setup"]["placements"] = [
+            p for p in spec["setup"]["placements"] if p["piece"] != "P"
+        ]
+        assert promote_early(spec)["rules"]["promotion"]["rank"] == 3
+
+    @pytest.mark.parametrize(
+        ("pawn_square", "height", "expected"),
+        [("a6", 8, 7), ("a7", 8, 7), ("a5", 8, 6), ("a4", 8, 5), ("a4", 6, 5), ("a2", 3, 2)],
+    )
+    def test_the_rank_never_leaves_the_board(self, pawn_square, height, expected) -> None:
+        from chess_variant_sandbox.spec.transform import promote_early
+
+        spec = _chess()
+        _squares(spec, "P")[:] = [pawn_square]
+        spec["board"]["height"] = height
+        assert promote_early(spec)["rules"]["promotion"]["rank"] == expected
+
+    def test_a_board_without_a_height_is_eight_high(self) -> None:
+        from chess_variant_sandbox.spec.transform import promote_early
+
+        spec = _chess()
+        _squares(spec, "P")[:] = ["a7"]
+        del spec["board"]["height"]
+        assert promote_early(spec)["rules"]["promotion"]["rank"] == 7
+
+    def test_a_spec_with_no_promotion_table_is_returned_alone(self) -> None:
+        from chess_variant_sandbox.spec.transform import promote_early
+
+        spec = _chess()
+        spec["rules"]["promotion"] = "last"
+        assert promote_early(spec) == spec
+        assert promote_early({}) == {}
+
+
+class TestStampsAndConfinement:
+    def test_captures_come_back_stamps_schema_two_and_a_capture_hand(self) -> None:
+        from chess_variant_sandbox.spec.transform import captures_come_back
+
+        spec = captures_come_back(_chess())
+        assert spec["schema_version"] == 2
+        assert spec["rules"]["drops"] == {"from_captures": True}
+
+    def test_captures_come_back_never_lowers_a_higher_version(self) -> None:
+        from chess_variant_sandbox.spec.transform import captures_come_back
+
+        spec = _chess()
+        spec["schema_version"] = 9
+        assert captures_come_back(spec)["schema_version"] == 9
+
+    def test_the_idle_army_confines_exactly_the_pieces_not_named(self) -> None:
+        from chess_variant_sandbox.spec.transform import confine_all_but
+
+        original = _chess()
+        spec = confine_all_but(copy.deepcopy(original), "P", "K", "Q")
+        assert spec["schema_version"] == 2
+        regions = {p["id"]: p.get("region") for p in spec["pieces"]}
+        assert regions == {
+            "P": None, "K": None, "Q": None,
+            "N": ["b1", "g1"], "B": ["c1", "f1"], "R": ["a1", "h1"],
+        }
+
+    def test_the_idle_army_as_the_mutant_builds_it(self) -> None:
+        from chess_variant_sandbox.spec.transform import (
+            confine_all_but,
+            most_numerous,
+            royal_id,
+            strongest,
+        )
+
+        spec = _chess()
+        spec = confine_all_but(spec, most_numerous(spec), royal_id(spec), strongest(spec))
+        assert sorted(p["id"] for p in spec["pieces"] if "region" in p) == ["B", "N", "R"]
+
+    def test_confinement_skips_unplaced_pieces_and_none_names(self) -> None:
+        from chess_variant_sandbox.spec.transform import confine_all_but
+
+        spec = _chess()
+        spec["setup"]["placements"] = [
+            p for p in spec["setup"]["placements"] if p["piece"] != "B"
+        ]
+        confine_all_but(spec, None, "P")
+        regions = {p["id"]: p.get("region") for p in spec["pieces"]}
+        assert regions["B"] is None and regions["P"] is None
+        assert regions["Q"] == ["d1"]
+
+    def test_confinement_never_lowers_a_higher_version(self) -> None:
+        from chess_variant_sandbox.spec.transform import confine_all_but
+
+        spec = _chess()
+        spec["schema_version"] = 7
+        assert confine_all_but(spec, "P")["schema_version"] == 7

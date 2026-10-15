@@ -11,6 +11,11 @@ which asks both engines who won at the same positions (Q404). The one exception 
 an immediate ending of theirs that ours lacks, which empties their move list where the
 walk meets it. `docs/reference/fairy-stockfish.md` (Q96, Q404) names the keys.
 
+Before any position is compared, a backend that can say which keys of the definition it
+did not read (the binary, `UciEngine.unread_options`) is asked, and an unread key with no
+reason in `unread.UNREAD` refuses the translation (Q915). That is the one result question
+put to the binary: a goal it dropped in silence offered the same moves everywhere.
+
 One difference in the move lists is accepted, and only one: a drop that `drops.no_mate`
 forbids, which theirs lists as a move that loses and ours leaves out (`_tolerated`, Q453).
 Their engine is asked whether the drop mates; this never decides it.
@@ -49,6 +54,7 @@ from typing import Any, Protocol
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.fairy import position as fairy_position
+from chess_variant_sandbox.fairy.unread import reasons as unread_reasons
 from chess_variant_sandbox.fairy.variant import Untranslatable, Variant, translate
 
 # How deep the tree is compared, and how far the walk goes, when nobody says otherwise.
@@ -173,6 +179,19 @@ def verify(
         result.ok = False
         result.reasons.append(f"the engine would not load the variant: {error}")
         return result
+
+    # A key the build drops in silence changes the game it searches, often where no
+    # walk can see it: a goal square decides the result, not the legal moves (Q915).
+    # A backend that can say what it skipped (the binary, `UciEngine.unread_options`)
+    # is asked first; `pyffish` reads every key and has no such question.
+    asking = getattr(backend, "unread_options", None)
+    found = asking(config_path) if callable(asking) else None
+    if found:
+        said = unread_reasons(variant.config, found)
+        if said:
+            result.ok = False
+            result.reasons.extend(said)
+            return result
 
     state = engine.initial_state()
     if not _agree_here(engine, variant, backend, state, result):

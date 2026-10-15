@@ -25,12 +25,14 @@ from __future__ import annotations
 
 import copy
 import random
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.moves import MOVE_ROTATE, decode_move
+from chess_variant_sandbox.spec import load_spec
 from chess_variant_sandbox.spec.schema import SpecError, validate_spec
 
 
@@ -649,3 +651,95 @@ class TestTheShowcase:
                 if value:
                     step = spec.facing_step(spec.type_of(value))
                     assert spec.facing_of(value) % step == 0
+
+
+# ------------------------------------------------ Q922: the byte bound, from both sides
+
+
+def _board_value_errors(pieces: list, owners: int = 2, extra_types: int = 0) -> list[str]:
+    from chess_variant_sandbox.spec.schema import _check_facing_coherence
+
+    errors: list[str] = []
+    _check_facing_coherence(pieces, errors, owners=owners, extra_types=extra_types)
+    return errors
+
+
+def _facing(axes: object) -> dict:
+    return {"id": "X", "facing": {"axes": axes}}
+
+
+class TestTheByteBoundSitsAtTwoFiftySix:
+    """`owners * facings * types` must stay under 256: 255 is the last that fits."""
+
+    @pytest.mark.parametrize(
+        ("pieces", "owners", "extra", "refused"),
+        [
+            ([{"id": "X"}] * 127, 2, 0, False),  # 254
+            ([{"id": "X"}] * 128, 2, 0, True),   # 256: the boundary itself
+            ([{"id": "X"}] * 85, 3, 0, False),   # 255
+            ([{"id": "X"}] * 86, 3, 0, True),    # 258
+            ([{"id": "X"}] * 120, 2, 8, True),   # extra types count: 256
+            ([{"id": "X"}] * 120, 2, 7, False),  # 254
+            ([_facing(4)] + [{"id": "X"}] * 23, 2, 8, True),   # 4 facings, 32 types: 256
+            ([_facing(4)] + [{"id": "X"}] * 23, 2, 7, False),  # 31 types: 248
+            ([_facing(2)] + [{"id": "X"}] * 23, 2, 40, True),  # 2 facings, 64 types: 256
+            ([_facing(2)] + [{"id": "X"}] * 23, 2, 39, False),  # 63 types: 252
+        ],
+        ids=range(10),
+    )
+    def test_the_bound(self, pieces: list, owners: int, extra: int, refused: bool) -> None:
+        highest = owners * max(
+            (p["facing"]["axes"] for p in pieces if "facing" in p), default=1
+        ) * (len(pieces) + extra)
+        assert (highest >= 256) is refused  # the table's own arithmetic
+        assert bool(_board_value_errors(pieces, owners, extra)) is refused
+
+    def test_a_facing_count_that_is_not_a_whole_number_is_not_read(self) -> None:
+        """A bool or a None where the axes go is the facing check's to refuse, not a count."""
+        for axes in (None, "4", 2.5, False):
+            assert _board_value_errors([_facing(axes)] * 127) == []
+            assert _board_value_errors([_facing(axes)] * 128) != []
+
+    def test_the_message_names_the_owners_and_the_arithmetic(self) -> None:
+        (two,) = _board_value_errors([{"id": "X"}] * 128)
+        assert two == (
+            "128 piece types at 1 facings for two players need 257 board values, "
+            "and a square is one byte; reduce the piece count or the facings"
+        )
+        (three,) = _board_value_errors([{"id": "X"}] * 90, owners=3, extra_types=2)
+        assert "92 piece types at 1 facings for two players and a wild third owner need 277" in three
+
+
+class TestAWildOwnerOrAPortalIsAThirdOwner:
+    """The caller decides the owners: `validate_spec` passes three when anything is wild."""
+
+    @staticmethod
+    def _errors(n: int, rules: dict) -> list[str]:
+        from chess_variant_sandbox.spec import validate_spec
+
+        spec = load_spec(Path(__file__).resolve().parents[1] / "rulesets" / "chess.json")
+        spec["pieces"] = [
+            {"id": f"{chr(65 + i // 10)}{i % 10}", "moves": [{"kind": "leap", "vectors": [[1, 0]]}],
+             "facing": {"axes": 4}}
+            for i in range(n)
+        ]
+        spec["setup"] = {"placements": []}
+        spec["rules"] = rules
+        return [e for e in validate_spec(spec) if "board values" in e]
+
+    @pytest.mark.parametrize(
+        ("count", "rules", "refused"),
+        [
+            (24, {}, False),                  # 2 * 4 * 24 = 192
+            (31, {}, False),                  # 248: past the piece-count limit, still fits
+            (32, {}, True),                   # 256 (the piece count is refused apart)
+            (21, {"npcs": [{}]}, False),      # 3 * 4 * 21 = 252
+            (22, {"npcs": [{}]}, True),       # 264
+            (20, {"portals": [{}]}, True),    # two internal types a pair: 3 * 4 * 22 = 264
+            (19, {"portals": [{}]}, False),   # 3 * 4 * 21 = 252
+            (22, {"portals": []}, False),     # an empty list is no portals
+        ],
+        ids=str,
+    )
+    def test_the_owners_follow_the_rules(self, count: int, rules: dict, refused: bool) -> None:
+        assert bool(self._errors(count, rules)) is refused

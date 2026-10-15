@@ -350,7 +350,9 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "archive/shut-wormhole": "8a7ee8f749713bb5",  # Q772a, schema 19
     "archive/cylinder-wormhole": "af2b3931c3b0dda1",  # Q772a, schema 19
     "archive/einstein": "5b12c7cca128a3a7",  # Q781, schema 18
-    "archive/omega": "5e421c4ae0d238e9",  # Q781, schema 18
+    # Q781, schema 18. Q923, 2026-10-15: `promotion_zone_share` leaves its walled zone squares
+    # out, 0.1154 to 0.0962 (the one library spec it moves; was 5e421c4ae0d238e9).
+    "archive/omega": "a8d75e2022231e51",
     "archive/extinction-chess": "8f42396c44179f33",  # Q783, schema 18
     "archive/grand": "227f27e884fc2efc",  # Q783, schema 18
     "archive/placement-chess": "46bff0e6d06b6fa7",  # Q784, schema 18

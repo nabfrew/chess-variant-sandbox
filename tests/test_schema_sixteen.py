@@ -809,3 +809,94 @@ class TestTheOperators:
         for operator in OPERATORS:
             for seed in range(3):
                 operator.apply(copy.deepcopy(spec), random.Random(seed))
+
+
+# ------------------------------------------------ Q922: the hexagon refusals, edge by edge
+
+
+def _hexagon_errors(width: Any, rules: dict[str, Any], pieces: list[Any] | None = None) -> list[str]:
+    from chess_variant_sandbox.spec.schema import _check_hexagon_coherence
+
+    spec = {"board": {"shape": "hexagon", "width": width, "height": width}, "rules": rules}
+    errors: list[str] = []
+    _check_hexagon_coherence(spec, pieces or [], rules, errors)
+    return errors
+
+
+JOINED = {"wrap": {"n_s": "wrap"}}
+LEAP_AT = [{"id": "L", "moves": [{"kind": "leap", "vectors": [[2, 0]]}]}]
+
+
+class TestTheHexagonsFrameMustHaveARadius:
+    """No refusal below reads a radius from a frame that has none: it is refused elsewhere."""
+
+    @pytest.mark.parametrize("width", [None, "7", 7.0, True, 6, 8, 2])
+    def test_a_frame_with_no_centre_is_left_to_its_own_refusal(self, width: Any) -> None:
+        rules = {"obstacles": {"squares": [], "blocks_leaps": True}, **JOINED, "drops": {"no_doubled": True}}
+        assert _hexagon_errors(width, rules, LEAP_AT) == []
+
+    @pytest.mark.parametrize("width", [3, 5, 7, 9])
+    def test_an_odd_frame_is_read(self, width: Any) -> None:
+        errors = _hexagon_errors(width, {"obstacles": {"squares": [], "blocks_leaps": True}})
+        assert len(errors) == 1 and errors[0].startswith("rules.obstacles.blocks_leaps on a hexagon")
+
+
+class TestAStepAtMostOneBeyondTheRadiusIsFine:
+    """On a hexagon of radius R with a side joined, a step of hex length R + 1 is exact."""
+
+    @pytest.mark.parametrize(
+        ("vector", "refused"),
+        [([2, 0], False), ([3, 0], False), ([4, 0], True), ([2, 2], True), ([3, -3], False),
+         ([-2, -2], True), ([-3, 0], False), ([0, -4], True)],
+        ids=str,
+    )
+    def test_a_landing_vector_on_radius_two(self, vector: list[int], refused: bool) -> None:
+        # Width 5 is radius 2, so the bound is 3.
+        rules = {**JOINED, "strike": {"effect": "demote", "landing": {"vectors": [vector]}}}
+        assert bool(_hexagon_errors(5, rules)) is refused
+
+    @pytest.mark.parametrize(("vector", "refused"), [([3, 0], False), ([4, 0], True)], ids=str)
+    def test_a_move_vector_on_radius_two(self, vector: list[int], refused: bool) -> None:
+        pieces = [{"id": "L", "moves": [{"kind": "leap", "vectors": [vector]}]}]
+        assert bool(_hexagon_errors(5, JOINED, pieces)) is refused
+
+    @pytest.mark.parametrize(
+        ("explosion", "refused"),
+        [
+            ({}, False),                 # the default radius is one: 2 > 2 is not
+            ({"radius": 1}, False),
+            ({"radius": 2}, True),
+            ({"radius": True}, False),
+            ({"radius": "2"}, False),
+        ],
+        ids=str,
+    )
+    def test_a_blast_on_radius_one(self, explosion: dict, refused: bool) -> None:
+        # Width 3 is radius 1, so the bound is 2 and a blast of radius r needs 2r <= 2.
+        assert bool(_hexagon_errors(3, {**JOINED, "explode_on_capture": explosion})) is refused
+
+    def test_the_default_blast_on_a_single_cell_is_too_wide(self) -> None:
+        assert _hexagon_errors(1, {**JOINED, "explode_on_capture": {}}) != []
+        assert _hexagon_errors(1, {**JOINED, "explode_on_capture": {"radius": 0}}) == []
+
+
+class TestTheLongestVectorIgnoresWhatIsNotAVector:
+    @pytest.mark.parametrize(
+        ("vectors", "longest"),
+        [
+            ([[1, 0]], 1),
+            ([[2, -1]], 2),
+            ([[1, 1]], 2),
+            ([[1, 0], [5], [1, 2, 3], [1.5, 0], [True, 9], "ab", None, [0, "a"], [], [3, 0]], 3),
+            ([[5], [1, 2, 3], [True, 9], [1.5, 0]], 0),
+            ([], 0),
+            ("[1,0]", 0),
+            (None, 0),
+            ({"a": [1, 0]}, 0),
+        ],
+        ids=str,
+    )
+    def test_the_longest(self, vectors: Any, longest: int) -> None:
+        from chess_variant_sandbox.spec.schema import _longest_hex_vector
+
+        assert _longest_hex_vector(vectors) == longest

@@ -24,7 +24,7 @@ from retired_specs import hex_glinski_promoting
 
 from chess_variant_sandbox.loop.operators import OPERATORS, SAME_GAME, mutate, refusal
 from chess_variant_sandbox.loop.screen import screen
-from chess_variant_sandbox.spec import load_spec, schema, spec_hash, validate_spec
+from chess_variant_sandbox.spec import load_spec, schema, spec_hash, transform, validate_spec
 from chess_variant_sandbox.spec.distance import distance, features
 from chess_variant_sandbox.spec.schema import (
     CLOCK_BOUNDS,
@@ -3449,3 +3449,555 @@ class TestDistance:
             values = features(specs[name])
             assert all(isinstance(value, float) for value in values.values())
             assert all(value == value for value in values.values())  # no NaN
+
+
+
+# ---------------------------------------------------------------------------------------
+# Q735: what `distance` and `features` compute, pinned to the number (Q734m, `spec/`).
+# ---------------------------------------------------------------------------------------
+
+# Each feature's scale, written out here on purpose: the test pins what the code says, so
+# a changed scale fails it and the change is made here on purpose. A feature missing from
+# the table is not asserted (a new feature adds its row; `test_the_pinned_table_names_only_
+# features_distance_reads` holds the other direction).
+_PINNED_SCALES: dict[str, float] = {
+    "area": 100.0, "aspect": 1.0, "piece_types": 8.0, "army": 40.0, "rule_mass": 90.0,
+    "special_rules": 6.0, "vectors_per_piece": 8.0, "slide_share": 1.0, "leap_share": 1.0,
+    "hop_share": 1.0, "sweep_share": 1.0, "royal_types": 2.0, "royal_step": 2.0,
+    "royal_slides": 1.0, "move_orthogonal_share": 1.0, "capture_orthogonal_share": 1.0,
+    "mean_step": 3.0, "has_promotion": 1.0, "has_drops": 1.0, "has_stock": 1.0,
+    "stock_is_endless": 1.0, "drops_placement": 1.0, "drops_either_face": 1.0,
+    "has_a_moveless_piece": 1.0, "has_castling": 1.0, "win_is_capture": 1.0,
+    "wins_by_arrival": 1.0, "wins_by_check_count": 1.0, "wins_by_extinction": 1.0,
+    "wins_by_bare_royal": 1.0, "restricts_captures": 1.0, "has_territory": 1.0,
+    "repaints_territory": 1.0, "must_capture": 1.0, "wraps_files": 1.0, "wraps_ranks": 1.0,
+    "wraps_asymmetrically": 1.0, "wraps_n_s": 1.0, "wraps_ne_sw": 1.0, "wraps_nw_se": 1.0,
+    "explodes": 1.0, "explodes_selectively": 1.0, "has_obstacles": 1.0, "strikes": 1.0,
+    "strike_promotes": 1.0, "swaps_on_strike": 1.0, "contacts_by_pair": 1.0,
+    "contacts_change_the_mover": 1.0, "contacts_meet_own": 1.0, "contacts_keep_the_mover": 1.0,
+    "strike_places_the_survivor": 1.0, "strike_stays_put": 1.0, "strike_rebirths": 1.0,
+    "capturer_switches_sides": 1.0, "explodes_alone": 1.0, "has_facing": 1.0,
+    "turns_freely": 1.0, "facing_fixed": 1.0, "has_npcs": 1.0, "npcs_bite": 1.0,
+    "npcs_pay": 1.0, "npcs_are_hard_to_kill": 1.0, "promotes_on_entry": 1.0,
+    "no_repetition_draw": 1.0, "hex_lattice": 1.0, "promotion_zone_share": 1.0,
+    "promotes_on_leaving": 1.0, "extinction_per_type": 1.0, "promotes_only_lost": 1.0,
+    "wins_by_leaving": 1.0, "portal_pairs": 1.0, "portals_move": 1.0, "portals_one_way": 1.0,
+    "portals_no_back": 1.0, "portals_ring": 1.0, "portals_funnel": 1.0,
+    "portals_other_map": 1.0, "portals_filtered": 1.0, "portals_fold": 1.0,
+    "npcs_share_a_walk": 1.0,
+}
+
+
+def _gap_in_a_distance(monkeypatch: pytest.MonkeyPatch, name: str, gap: float) -> float:
+    """`distance` between two vectors equal but for ``name``, unrounded and not capped by
+    ``features``: the vectors are stood in for the specs, so one feature is isolated."""
+    import chess_variant_sandbox.spec.distance as module
+
+    vectors = {"left": {}, "right": {name: gap}}
+    monkeypatch.setattr(module, "features", lambda spec: vectors[spec["side"]])
+    monkeypatch.setattr(module, "round", lambda value, places: value, raising=False)
+    return module.distance({"side": "left"}, {"side": "right"})
+
+
+class TestDistanceIsPinnedToTheNumber:
+    def test_the_pinned_table_names_only_features_distance_reads(self) -> None:
+        from chess_variant_sandbox.spec.distance import _SCALES
+
+        assert set(_PINNED_SCALES) <= set(_SCALES)
+
+    @pytest.mark.parametrize("name", sorted(_PINNED_SCALES))
+    def test_a_feature_half_its_scale_apart_contributes_half_a_share(
+        self, monkeypatch: pytest.MonkeyPatch, name: str
+    ) -> None:
+        """Each feature is divided by its own scale: half a scale apart is half a share of
+        the mean, which a scale one off (a board of 100 squares read as 101) moves."""
+        from chess_variant_sandbox.spec.distance import _SCALES
+
+        got = _gap_in_a_distance(monkeypatch, name, _PINNED_SCALES[name] / 2)
+        assert got == pytest.approx(0.5 / len(_SCALES), rel=1e-9)
+
+    def test_a_gap_past_its_scale_is_capped_at_one_share(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A 3x4 board against a 12x10 one is 1.08 scales apart in area and counts as one:
+        no feature may outweigh the 1/len(_SCALES) it is worth."""
+        from chess_variant_sandbox.spec.distance import _SCALES
+
+        got = _gap_in_a_distance(monkeypatch, "area", _PINNED_SCALES["area"] * 1.08)
+        assert got == pytest.approx(1 / len(_SCALES), rel=1e-9)
+
+    def test_the_distance_is_rounded_to_four_places(self) -> None:
+        """Chess against its bare-royal twin differs in the flag (1/1), the rule mass (52
+        to 58, over 90) and the special rules (3 to 4, over 6): the mean over the 80
+        features is 0.015417, which rounds to 0.0154 and not to 0.015 or 0.01542."""
+        chess = _chess()
+        twin = copy.deepcopy(chess)
+        twin["rules"]["bare_royal"] = "win"
+        twin = _stamped(twin)
+        assert validate_spec(twin) == []
+        assert distance(chess, twin) == 0.0154
+
+
+def _one_leap_beside_a_stone() -> dict:
+    """The smallest valid spec with exactly one move descriptor, and a stone with none."""
+    return {
+        "schema_version": 10,
+        "name": "one-leap",
+        "board": {"width": 4, "height": 4},
+        "pieces": [
+            {"id": "S", "name": "stone", "moves": []},
+            {"id": "L", "name": "leaper", "moves": [
+                {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8"}
+            ]},
+        ],
+        "setup": {"mirror": True, "placements": [
+            {"piece": "S", "squares": ["a1"]}, {"piece": "L", "squares": ["b1"]},
+        ]},
+        "rules": {
+            "win": "none", "stalemate": "loss",
+            "drops": {"from_captures": False, "stock": {"S": "unlimited"}},
+        },
+    }
+
+
+class TestFeaturesReadTheSpecExactly:
+    def test_one_move_descriptor_is_the_whole_of_the_kinds(self) -> None:
+        spec = _one_leap_beside_a_stone()
+        assert validate_spec(spec) == []
+        read = features(spec)
+        assert read["leap_share"] == 1.0
+        assert read["slide_share"] == read["hop_share"] == read["sweep_share"] == 0.0
+
+    def test_a_spec_with_no_move_at_all_reads_zero_shares_and_no_step(self) -> None:
+        spec = _one_leap_beside_a_stone()
+        spec["pieces"].pop()
+        spec["setup"]["placements"].pop()
+        assert validate_spec(spec) == []
+        read = features(spec)
+        for name in ("slide_share", "leap_share", "hop_share", "sweep_share", "mean_step"):
+            assert read[name] == 0.0, name
+        # With nothing counted the orthogonal shares sit midway, not at either end.
+        assert read["move_orthogonal_share"] == 0.5
+        assert read["capture_orthogonal_share"] == 0.5
+
+    def test_a_royal_slides_only_beyond_one_square(self) -> None:
+        """A royal written as a slide of range 1 steps; of range 2 it slides."""
+        reads = {}
+        for reach in (1, 2):
+            spec = _chess()
+            spec["rules"].pop("castling")
+            king = _piece(spec, "K")
+            king["moves"] = [
+                {"kind": "slide", "vectors": [[1, 0], [1, 1]], "range": reach,
+                 "symmetry": "dihedral8"}
+            ]
+            assert validate_spec(spec) == []
+            reads[reach] = features(spec)["royal_slides"]
+        assert reads == {1: 0.0, 2: 1.0}
+
+    def test_bare_royal_is_its_own_feature(self) -> None:
+        chess = _chess()
+        twin = copy.deepcopy(chess)
+        twin["rules"]["bare_royal"] = "win"
+        assert features(chess)["wins_by_bare_royal"] == 0.0
+        assert features(twin)["wins_by_bare_royal"] == 1.0
+
+
+# ---------------------------------------------------------------------------------------
+# Q735: the edits in `spec/transform.py` that no test called directly (Q734m, `spec/`).
+# Every operator re-stamps its child with `settle_schema_version`, so an edit's own version
+# stamp, the defaults it writes and its guards against a malformed spec only show when the
+# function is called by itself on a spec that declares schema 1.
+# ---------------------------------------------------------------------------------------
+
+
+def _schema_one_chess() -> dict:
+    spec = _chess()
+    spec["schema_version"] = 1
+    return spec
+
+
+class TestAnEditStampsTheVersionItNeeds:
+    """The version an edit writes is a claim about the features the spec now uses: one too
+    low is refused by the validator, one too high overstates (and rehashes) the spec."""
+
+    @pytest.mark.parametrize(
+        ("edit", "stamp"),
+        [
+            (lambda s: transform.restrict_captures(s, "N", ["P"]), 3),
+            (lambda s: transform.set_scoring(s, "material"), 3),
+            (lambda s: transform.set_scoring(s, "points"), 9),
+            (lambda s: transform.set_territory(s), 4),
+            (lambda s: transform.set_turn(s), 4),
+            (lambda s: transform.set_obstacle(s, "e4"), 6),
+            (lambda s: transform.set_facing(s, "N"), 8),
+            (lambda s: transform.set_npc(s, "N", ["a3", "a4"]), 9),
+            (lambda s: transform.set_npc(s, "N", ["a3", "a4"], immune=["Q"]), 10),
+            (lambda s: transform.set_strike(s), 6),
+            (lambda s: transform.set_stone(s, "X"), 10),
+            (lambda s: transform.set_explosion(s), 2),
+            (lambda s: transform.set_explosion(s, by=["Q"]), 10),
+            (lambda s: transform.set_explosion(s, of=["Q"]), 10),
+            (lambda s: transform.set_explosion(s, by=[]), 10),
+            (lambda s: transform.set_contacts(s), 10),
+            (lambda s: transform.set_own_link(s, {"mover": "P", "onto": "N", "own": True,
+                                                  "mover_to": "B"}), 11),
+            (lambda s: transform.set_landing(transform.set_strike(s), "strike"), 12),
+        ],
+        ids=[
+            "restrict_captures", "scoring", "scoring-points", "territory", "turn", "obstacle",
+            "facing", "npc", "npc-immune", "strike", "stone", "explosion", "explosion-by",
+            "explosion-of", "explosion-by-empty", "contacts", "own-link", "landing",
+        ],
+    )
+    def test_the_stamp_on_schema_one_chess(self, edit: Callable[[dict], dict], stamp: int) -> None:
+        assert edit(_schema_one_chess())["schema_version"] == stamp
+
+    def test_an_edit_never_lowers_a_higher_stamp(self) -> None:
+        spec = _schema_one_chess()
+        spec["schema_version"] = 12
+        assert transform.set_territory(spec)["schema_version"] == 12
+
+
+class TestTheDefaultsAnEditWrites:
+    def test_the_explosion_defaults_to_atomics_radius(self) -> None:
+        spec = transform.set_explosion(_chess())
+        assert spec["rules"]["explode_on_capture"] == {"radius": 1}
+
+    def test_a_new_wall_is_mirrored(self) -> None:
+        spec = transform.set_obstacle(_chess(), "e4")
+        assert spec["rules"]["obstacles"] == {"squares": ["e4"], "mirror": True}
+
+    def test_a_wild_piece_carries_a_bounty_only_when_asked(self) -> None:
+        bare = transform.set_npc(_chess(), "N", ["a3", "a4"])
+        assert "bounty" not in bare["rules"]["npcs"][0]
+        paid = transform.set_npc(_chess(), "N", ["a3", "a4"], bounty=2)
+        assert paid["rules"]["npcs"][0]["bounty"] == 2
+
+    def test_a_territory_floor_is_a_bare_majority_of_the_smallest_board(self) -> None:
+        """A 2x2 board is four squares: a majority is three, and the floor is three."""
+        spec = _chess()
+        spec["board"] = {"width": 2, "height": 2}
+        assert transform.set_territory(spec)["rules"]["territory"]["win_at"] == 3
+
+    def test_a_split_moves_half_the_squares_by_default(self) -> None:
+        spec = transform.split_piece(_chess(), "P", "X")
+        held = {p["piece"]: p["squares"] for p in spec["setup"]["placements"]
+                if p["piece"] in ("P", "X")}
+        assert len(held["P"]) == 4
+        assert len(held["X"]) == 4
+
+    def test_a_split_of_an_undeclared_piece_changes_nothing(self) -> None:
+        before = _chess()
+        assert transform.split_piece(copy.deepcopy(before), "Z", "X") == before
+
+    def test_set_facing_gives_a_facing_to_that_piece_alone(self) -> None:
+        spec = transform.set_facing(_chess(), "N")
+        assert {p["id"]: p.get("facing") for p in spec["pieces"] if "facing" in p} == {
+            "N": {"axes": 4}
+        }
+
+
+class TestScoringChoosesTheCountTheValuesCanSupply:
+    def test_equal_values_count_pieces(self) -> None:
+        spec = _chess()
+        for piece in spec["pieces"]:
+            piece["value"] = 1
+        assert transform.set_scoring(spec)["rules"]["scoring"] == {"count": "pieces"}
+
+    def test_two_distinct_values_count_material(self) -> None:
+        spec = _chess()
+        for piece in spec["pieces"]:
+            piece["value"] = 1 if piece["id"] in ("P", "N", "B") else 3
+        assert transform.set_scoring(spec)["rules"]["scoring"] == {"count": "material"}
+
+
+class TestTheLadderRanksAPieceWithNoValueAsOne:
+    """`set_strike`, `set_contacts` and `merge_links` rank by declared value and read an
+    undeclared one as 1: against a 1.5 it ranks below, against a 0.5 above. A default of 2
+    flips the first order and a default of 0 the second."""
+
+    @staticmethod
+    def _ladder(*others: dict) -> dict:
+        spec = {"pieces": [{"id": "X"}, *others]}
+        return spec
+
+    def test_set_strike(self) -> None:
+        above = transform.set_strike(self._ladder({"id": "Y", "value": 1.5}))
+        assert above["rules"]["strike"]["chain"] == [{"from": "Y", "to": "X"}]
+        below = transform.set_strike(self._ladder({"id": "Z", "value": 0.5}))
+        assert below["rules"]["strike"]["chain"] == [{"from": "X", "to": "Z"}]
+
+    def test_set_contacts(self) -> None:
+        above = transform.set_contacts(self._ladder({"id": "Y", "value": 1.5}))
+        assert [(link["mover"], link["onto"]) for link in above["rules"]["contacts"]["links"]] == [("X", "Y")]
+        below = transform.set_contacts(self._ladder({"id": "Z", "value": 0.5}))
+        assert [(link["mover"], link["onto"]) for link in below["rules"]["contacts"]["links"]] == [("Z", "X")]
+
+    def test_merge_links(self) -> None:
+        above = transform.merge_links(self._ladder({"id": "Y", "value": 1.5}))
+        assert [(link["mover"], link["onto"], link["mover_to"]) for link in above] == [("X", "X", "Y")]
+        below = transform.merge_links(self._ladder({"id": "Z", "value": 0.5}))
+        assert [(link["mover"], link["onto"], link["mover_to"]) for link in below] == [("Z", "Z", "X")]
+
+
+class TestDroppingAPieceKeepsWhatStillStands:
+    def test_a_promotion_that_only_named_the_dropped_piece_goes_alone(self) -> None:
+        """P promotes only into X and N into Q: dropping X removes P's rule and keeps N's,
+        and the promoting piece N still holds en passant's premise."""
+        spec = _chess()
+        spec["pieces"].append({"id": "X", "name": "x", "moves": []})
+        spec["rules"]["promotion"] = [
+            {"piece": "P", "rank": "last", "to": ["X"]},
+            {"piece": "N", "rank": "last", "to": ["Q"]},
+        ]
+        spec = transform.drop_piece(spec, "X")
+        assert spec["rules"]["promotion"] == [{"piece": "N", "rank": "last", "to": ["Q"]}]
+        assert spec["rules"]["en_passant"] is True
+
+    def test_en_passant_survives_while_a_promoting_piece_does(self) -> None:
+        spec = transform.drop_piece(_chess(), "N")
+        assert spec["rules"]["promotion"]["to"] == ["Q", "R", "B"]
+        assert spec["rules"]["en_passant"] is True
+
+    def test_a_hand_that_fills_from_captures_by_default_survives(self) -> None:
+        """`from_captures` unwritten means true: the hand has something to fill it."""
+        spec = _chess()
+        spec["rules"]["drops"] = {"no_doubled": ["P"]}
+        spec = transform.drop_piece(spec, "N")
+        assert spec["rules"]["drops"] == {"no_doubled": ["P"]}
+
+    @pytest.mark.parametrize(
+        ("count", "survives"), [("points", False), ("material", True)]
+    )
+    def test_only_a_points_count_goes_with_the_last_wild_piece(
+        self, count: str, survives: bool
+    ) -> None:
+        spec = _chess()
+        spec["rules"]["npcs"] = [{"piece": "N", "route": ["a3", "a4"]}]
+        spec["rules"]["scoring"] = {"count": count}
+        spec = transform.drop_piece(spec, "N")
+        assert "npcs" not in spec["rules"]
+        assert ("scoring" in spec["rules"]) is survives
+
+    def test_a_strike_keeps_the_links_between_the_pieces_that_remain(self) -> None:
+        spec = transform.set_strike(_chess())
+        spec = transform.drop_piece(spec, "P")
+        assert spec["rules"]["strike"]["chain"] == [
+            {"from": "Q", "to": "R"}, {"from": "R", "to": "N"}, {"from": "N", "to": "B"},
+        ]
+        assert spec["rules"]["strike"]["immune"] == ["K"]
+
+    def test_the_bare_capture_spelling_is_not_judged_by_the_sides_it_switches(self) -> None:
+        """`{"effect": "capture"}` is the default said aloud and stays legal; it names no
+        piece, and dropping one is not a reason to read it as a strike that says nothing."""
+        spec = _chess()
+        spec["rules"]["strike"] = {"effect": "capture"}
+        spec = transform.drop_piece(spec, "P")
+        assert spec["rules"]["strike"] == {"effect": "capture"}
+
+    @pytest.mark.parametrize(
+        ("switching", "stays"), [(["Q"], True), (["P"], False)], ids=["still-live", "emptied"]
+    )
+    def test_a_capture_strike_lives_by_the_sides_it_still_switches(
+        self, switching: list[str], stays: bool
+    ) -> None:
+        """Dropping P empties a `switches_sides` naming only P, and a capture strike that
+        said nothing else goes with it; one that still switches Q stays."""
+        spec = _chess()
+        spec["rules"]["strike"] = {
+            "effect": "capture", "position": "advance", "immune": ["K"],
+            "chain": [{"from": "Q", "to": "R"}], "switches_sides": switching,
+        }
+        spec = transform.drop_piece(spec, "P")
+        assert ("strike" in spec["rules"]) is stays
+
+    def test_a_strike_with_no_link_left_is_no_rule(self) -> None:
+        spec = transform.set_strike(_chess())
+        for gone in ("P", "B", "N", "R"):
+            spec = transform.drop_piece(spec, gone)
+        assert "strike" not in spec["rules"]
+
+
+class TestTheGuardsAgainstAMalformedSpec:
+    def test_enpassant_without_a_promotion_is_left_alone(self) -> None:
+        spec = _chess()
+        spec["rules"].pop("promotion")
+        assert transform.settle_en_passant(copy.deepcopy(spec)) == spec
+
+    def test_pieces_that_can_stand_of_a_spec_missing_either_half(self) -> None:
+        assert transform.pieces_that_can_stand({"rules": {}}) == set()
+        assert transform.pieces_that_can_stand({"pieces": _chess()["pieces"]}) == set()
+
+    def test_wild_pieces_pay_of_a_spec_with_no_rules(self) -> None:
+        assert transform.wild_pieces_pay({"pieces": _chess()["pieces"]}) is False
+
+    def test_settle_inert_rules_of_a_spec_with_no_rules(self) -> None:
+        assert transform.settle_inert_rules({"pieces": _chess()["pieces"]}) == []
+
+    @pytest.mark.parametrize("junk", ["junk", {"name": "nameless"}], ids=["not-a-dict", "no-id"])
+    def test_a_piece_that_is_not_a_piece_is_skipped(self, junk: object) -> None:
+        spec = _chess()
+        spec["pieces"].append(junk)
+        assert transform.capture_is_possible(spec) is True
+        assert transform.settle_inert_rules(spec) == []
+
+    def test_keeps_a_survivor_skips_a_piece_with_no_id(self) -> None:
+        spec = transform.set_strike(_chess())
+        spec["pieces"].append({"name": "nameless"})
+        assert transform.keeps_a_survivor(spec, "strike") is True
+
+
+class TestSettlingInertRules:
+    def test_a_promotion_list_stays_a_list_when_one_entry_goes(self) -> None:
+        """An unplaced Z promoting into Q: only its entry goes, and the survivor keeps the
+        list spelling (a lone dict would be another spelling, and another hash)."""
+        spec = _chess()
+        spec["pieces"].append({"id": "Z", "name": "z", "moves": [
+            {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8"}]})
+        spec["rules"].pop("en_passant")
+        spec["rules"]["promotion"] = [
+            {"piece": "P", "rank": "last", "to": ["Q"]},
+            {"piece": "Z", "rank": "last", "to": ["Q"]},
+        ]
+        assert transform.settle_inert_rules(spec) == ["promotion:Z"]
+        assert spec["rules"]["promotion"] == [{"piece": "P", "rank": "last", "to": ["Q"]}]
+
+    def test_the_last_promotion_takes_en_passant_with_it(self) -> None:
+        """A promotion only an unplaced pawn-like Z has goes, and en passant with it, and
+        the two are reported in that order."""
+        spec = _chess()
+        spec["pieces"].append({"id": "Z", "name": "z", "moves": [
+            {"kind": "slide", "vectors": [[0, 1]], "range": 2, "mode": "move"}]})
+        spec["rules"]["promotion"] = {"piece": "Z", "rank": "last", "to": ["Q"]}
+        assert transform.settle_inert_rules(spec) == ["promotion:Z", "en_passant"]
+        assert "promotion" not in spec["rules"]
+        assert "en_passant" not in spec["rules"]
+
+
+class TestNeverForcedWithNoPlyLimit:
+    def test_the_no_progress_clock_is_the_default_ply_limit_and_no_limit_is_added(self) -> None:
+        spec = _chess()
+        spec["rules"].pop("max_plies")
+        rules = transform.never_forced(spec)["rules"]
+        assert rules["no_progress_draw"] == 400
+        assert "max_plies" not in rules
+
+
+class TestClearFacingTakesOnePieceBack:
+    def test_only_that_pieces_facing_and_starting_facing_go(self) -> None:
+        spec = load_spec(RULESETS / "chess-oriented-pawns.json")
+        spec["pieces"].reverse()
+        _piece(spec, "N")["facing"] = {"axes": 4}
+        spec["setup"]["placements"].append(
+            {"piece": "N", "squares": ["d4"], "player": 0, "facing": "forward"}
+        )
+        spec = transform.clear_facing(spec, "P")
+        assert {p["id"]: p.get("facing") for p in spec["pieces"] if "facing" in p} == {
+            "N": {"axes": 4}
+        }
+        faced = {p["piece"] for p in spec["setup"]["placements"] if "facing" in p}
+        assert faced == {"N"}
+
+
+class TestTheChainsAnEditWrites:
+    def test_a_demoting_strike_walks_down_the_values(self) -> None:
+        strike = transform.set_strike(_chess(), "demote")["rules"]["strike"]
+        assert strike["chain"] == [
+            {"from": "Q", "to": "R"}, {"from": "R", "to": "N"},
+            {"from": "N", "to": "B"}, {"from": "B", "to": "P"},
+        ]
+        assert strike["immune"] == ["K"]
+        assert strike["effect"] == "demote"
+        assert strike["position"] == "stay"
+
+    def test_a_promoting_strike_walks_up_the_values(self) -> None:
+        chain = transform.set_strike(_chess(), "promote")["rules"]["strike"]["chain"]
+        assert chain == [
+            {"from": "P", "to": "N"}, {"from": "N", "to": "B"},
+            {"from": "B", "to": "R"}, {"from": "R", "to": "Q"},
+        ]
+
+    def test_a_contact_table_links_each_rung_to_the_next(self) -> None:
+        contacts = transform.set_contacts(_chess(), "promote")["rules"]["contacts"]
+        assert contacts["links"] == [
+            {"mover": "P", "onto": "N", "mover_to": "N"},
+            {"mover": "N", "onto": "B", "mover_to": "B"},
+            {"mover": "B", "onto": "R", "mover_to": "R"},
+            {"mover": "R", "onto": "Q", "mover_to": "Q"},
+        ]
+        assert contacts["immune"] == ["K"]
+        assert contacts["position"] == "advance"
+
+    def test_a_demoting_contact_table_walks_down(self) -> None:
+        links = transform.set_contacts(_chess(), "demote")["rules"]["contacts"]["links"]
+        assert [(link["mover"], link["onto"]) for link in links] == [
+            ("Q", "R"), ("R", "N"), ("N", "B"), ("B", "P"),
+        ]
+
+
+def _struck_chess_with_a_link_only_from_the_immune_king() -> dict:
+    spec = _chess()
+    spec["rules"]["strike"] = {
+        "effect": "demote", "position": "stay",
+        "chain": [{"from": "K", "to": "Q"}], "immune": ["K"],
+    }
+    return spec
+
+
+class TestChoosingWhereTheSurvivorLands:
+    def test_a_strike_that_leaves_nobody_standing_is_not_given_a_landing(self) -> None:
+        spec = _struck_chess_with_a_link_only_from_the_immune_king()
+        assert transform.keeps_a_survivor(spec, "strike") is False
+        before = copy.deepcopy(spec)
+        assert transform.set_landing(spec, "strike") == before
+
+    def test_a_strike_that_still_keeps_a_survivor_is_left_under_choose(self) -> None:
+        spec = transform.set_landing(transform.set_strike(_chess()), "strike")
+        assert spec["rules"]["strike"]["position"] == "choose"
+        before = copy.deepcopy(spec)
+        assert transform.settle_landing(spec) == before
+
+    def test_a_choose_with_nothing_to_place_becomes_advance_without_its_landing(self) -> None:
+        spec = _struck_chess_with_a_link_only_from_the_immune_king()
+        spec["rules"]["strike"]["position"] = "choose"
+        spec["rules"]["strike"]["landing"] = transform.step_landing(spec)
+        rule = transform.settle_landing(spec)["rules"]["strike"]
+        assert rule["position"] == "advance"
+        assert "landing" not in rule
+
+    def test_a_landing_beside_another_position_is_dropped(self) -> None:
+        spec = transform.set_strike(_chess())
+        spec["rules"]["strike"]["landing"] = transform.step_landing(spec)
+        assert "landing" not in transform.settle_landing(spec)["rules"]["strike"]
+
+
+class TestMergingYourOwn:
+    def test_chess_offers_the_pawn_onto_each_rung_but_the_top(self) -> None:
+        assert transform.merge_links(_chess()) == [
+            {"mover": "P", "onto": "P", "own": True, "mover_to": "N"},
+            {"mover": "P", "onto": "N", "own": True, "mover_to": "B"},
+            {"mover": "P", "onto": "B", "own": True, "mover_to": "R"},
+            {"mover": "P", "onto": "R", "own": True, "mover_to": "Q"},
+        ]
+
+    def test_a_pair_that_has_an_own_link_is_not_offered_again(self) -> None:
+        spec = _chess()
+        spec["rules"]["contacts"] = {
+            "position": "advance", "immune": ["K"],
+            "links": [{"mover": "P", "onto": "N", "own": True, "mover_to": "B"}],
+        }
+        assert ("P", "N") not in {(link["mover"], link["onto"]) for link in transform.merge_links(spec)}
+
+    def test_a_foe_link_does_not_take_the_pair(self) -> None:
+        spec = _chess()
+        spec["rules"]["contacts"] = {
+            "position": "advance", "immune": ["K"],
+            "links": [{"mover": "P", "onto": "N", "mover_to": "B"}],
+        }
+        assert ("P", "N") in {(link["mover"], link["onto"]) for link in transform.merge_links(spec)}
+
+    def test_an_immune_piece_is_not_merged_onto(self) -> None:
+        spec = _chess()
+        spec["rules"]["contacts"] = {"position": "advance", "immune": ["K", "N"], "links": []}
+        assert "N" not in {link["onto"] for link in transform.merge_links(spec)}

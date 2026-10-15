@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import dataclasses
 import json
 import re
 from pathlib import Path
@@ -35,6 +36,10 @@ import pytest
 from chess_variant_sandbox.engine import compile_spec
 from chess_variant_sandbox.spec.describe import (
     RULE_WORDS,
+    PieceProse,
+    _Aim,
+    _board_words,
+    _describe_promotion,
     _landing_phrase,
     _move_descriptor,
     _move_sentence,
@@ -42,6 +47,8 @@ from chess_variant_sandbox.spec.describe import (
     describe_changes,
     describe_pieces,
     describe_rules,
+    describe_setup,
+    move_sentence,
     rule_choices,
     rule_words,
 )
@@ -806,3 +813,337 @@ class TestWhatAForkChanged:
         lines = describe_changes(parent, child)
         assert any(line.startswith("A new piece, zed") for line in lines), lines
         assert f"{gone['name']} is gone." in lines
+
+
+# ------------------------------------------------ Q737: the words a small spec must produce
+
+DULL = ROOT / "rulesets" / "dull.json"
+
+
+def _small(**rules: Any) -> dict[str, Any]:
+    """A one-piece game (`G`, 5 by 5) with ``rules`` merged over its own."""
+    spec = _spec(DULL)
+    spec["rules"].update(rules)
+    return spec
+
+
+def _move(kind: str, vectors: list[list[int]], **rest: Any) -> dict[str, Any]:
+    return {"kind": kind, "vectors": vectors, **rest}
+
+
+class TestTheProseValuesAreFrozen:
+    @pytest.mark.parametrize("value", [
+        PieceProse("A", "a", False, ("m",)),
+        _Aim("words", True, 1),
+    ], ids=["PieceProse", "_Aim"])
+    def test_the_dataclass_is_frozen_and_hashable(self, value: Any) -> None:
+        hash(value)
+        field = dataclasses.fields(value)[0].name
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            setattr(value, field, "other")
+
+
+class TestBoardSetupAndClocks:
+    @pytest.mark.parametrize("width, article", [(9, "a"), (8, "an"), (7, "a"), (11, "an"), (18, "an"), (12, "a")])
+    def test_a_plain_hex_grid_takes_the_article_its_number_wants(
+        self, width: int, article: str
+    ) -> None:
+        board = {"width": width, "height": width, "lattice": "hex"}
+        assert _board_words({"board": board, "rules": {}}) == (
+            f"a hexagonal board of {width * width} cells, {article} {width} by {width} "
+            "hex grid; every cell touches six others")
+
+    def test_a_setup_without_mirror_mirrors_the_first_army(self) -> None:
+        spec = _spec(DULL)
+        del spec["setup"]["mirror"]
+        assert describe_setup(spec) == [
+            "G on a1, b1, c1, d1, e1",
+            "The second player's army mirrors the first across the board.",
+        ]
+
+    def test_castling_without_steps_moves_two_squares(self) -> None:
+        lines = describe_rules(_small(castling={"king": "K", "rook": "R"}))
+        assert ("K may move 2 squares toward an unmoved R, which jumps to the square it "
+                "crossed.") in lines
+
+    def test_a_spec_without_clocks_gets_the_default_ones(self) -> None:
+        spec = _spec(DULL)
+        for key in ("no_progress_draw", "max_plies"):
+            del spec["rules"][key]
+        assert describe_rules(spec)[-1] == (
+            "The game is drawn after 3 repetitions, 100 turns without a capture or other "
+            "lasting change, or 400 turns in all.")
+
+
+class TestWhatAForkChangedExactly:
+    def test_a_new_piece_that_moves_is_named_with_its_moves(self) -> None:
+        parent = _spec(DULL)
+        child = copy.deepcopy(parent)
+        child["pieces"].append(
+            {"id": "Z", "name": "zed", "value": 1, "moves": [_move("leap", [[0, 1]])]})
+        assert describe_changes(parent, child) == [
+            "A new piece, zed, moving “one square forward”."]
+
+    def test_a_new_piece_without_moves_is_named_alone(self) -> None:
+        parent = _spec(DULL)
+        child = copy.deepcopy(parent)
+        child["pieces"].append({"id": "Z", "name": "zed", "value": 1})
+        assert describe_changes(parent, child) == ["A new piece, zed."]
+
+    def test_a_new_piece_does_not_hide_a_later_change(self) -> None:
+        parent = _spec(DULL)
+        child = copy.deepcopy(parent)
+        child["pieces"].insert(0, {
+            "id": "Z", "name": "zed", "value": 1,
+            "moves": [_move("leap", [[0, 1]], mode="move")]})
+        child["pieces"][1]["name"] = "grunter"
+        assert describe_changes(parent, child) == [
+            "A new piece, zed, moving “one square forward, not to take”.",
+            "grunt is now called grunter.",
+        ]
+
+
+class TestCapturingTypesOfAWalker:
+    @staticmethod
+    def _walker(route: list[str]) -> Any:
+        spec = _spec(DULL)
+        spec["schema_version"] = 25
+        for move in spec["pieces"][0]["moves"]:
+            move["mode"] = "move"
+        spec["rules"]["npcs"] = [{"piece": "G", "route": route}]
+        return compile_spec(spec)
+
+    def test_the_first_declared_type_walking_a_route_captures(self) -> None:
+        assert capturing_types(self._walker(["c3", "c4"])) == (True,)
+
+    def test_a_one_square_route_never_steps_and_captures_nothing(self) -> None:
+        assert capturing_types(self._walker(["c3"])) == (False,)
+
+
+class TestAMovelessPieceWithOtherNotes:
+    def test_the_moveless_sentence_comes_first(self) -> None:
+        spec = _spec(DULL)
+        piece = spec["pieces"][0]
+        piece.update({"moves": [], "captures": [], "region": ["a1", "b1"]})
+        assert describe_pieces(spec)[0].notes == (
+            "never moves: once it is on a square it stays there until it is taken",
+            "may never leave a1, b1",
+            "may never capture anything, and still blocks a line like any piece",
+        )
+
+
+class TestTheDescriptorOfAMove:
+    @pytest.mark.parametrize("move, text", [
+        (_move("leap", [[1, 2]], symmetry="dihedral8"),
+         "moves and captures along (+1,+2) in all eight directions, jumping directly, "
+         "ignoring anything in between [8 directions]"),
+        (_move("slide", [[0, 1]]),
+         "moves and captures along (+0,+1), any distance until blocked"),
+        (_move("slide", [[0, 1]], range=2, min_range=2),
+         "moves and captures along (+0,+1), exactly 2 squares, path must be clear"),
+        (_move("slide", [[0, 1]], range=1, min_range=1),
+         "moves and captures along (+0,+1), exactly 1 square, path must be clear"),
+        (_move("slide", [[0, 1]], range=3),
+         "moves and captures along (+0,+1), up to 3 squares"),
+        (_move("sweep", [[0, 1]]),
+         "moves and captures along (+0,+1), jumping any distance along the line, and "
+         "every piece it passes over, its own included, is removed; a piece it may not "
+         "capture stops it"),
+        (_move("sweep", [[0, 1]], range=2, min_range=2),
+         "moves and captures along (+0,+1), jumping exactly 2 squares along the line, "
+         "and every piece it passes over, its own included, is removed; a piece it may "
+         "not capture stops it"),
+        (_move("sweep", [[0, 1]], range=3),
+         "moves and captures along (+0,+1), jumping up to 3 squares along the line, and "
+         "every piece it passes over, its own included, is removed; a piece it may not "
+         "capture stops it"),
+        (_move("hop", [[0, 1]]),
+         "moves and captures along (+0,+1), leaping exactly one piece of either side, "
+         "then any distance until blocked"),
+        (_move("hop", [[0, 1]], screen_range=1),
+         "moves and captures along (+0,+1), leaping exactly one piece of either side, "
+         "landing immediately past it"),
+        (_move("hop", [[0, 1]], screen_range=2),
+         "moves and captures along (+0,+1), leaping exactly one piece of either side, "
+         "landing at most 2 squares past it"),
+        (_move("hop", [[0, 1]], screen="own", screen_range=1),
+         "moves and captures along (+0,+1), leaping one of your own pieces, landing "
+         "immediately past it"),
+        (_move("hop", [[0, 1]], screen="enemy", range=3),
+         "moves and captures along (+0,+1), leaping one enemy piece, then up to 3 squares"),
+    ])
+    def test_the_descriptor_says_the_vectors_the_reach_and_the_direction_count(
+        self, move: dict[str, Any], text: str
+    ) -> None:
+        assert _move_descriptor(move) == text
+
+
+class TestSayingNumbersAndSteps:
+    @pytest.mark.parametrize("count, word", [
+        (2, "two"), (3, "three"), (8, "eight"), (9, "nine"), (10, "ten"), (11, "eleven"),
+        (12, "twelve"), (13, "13"),
+    ])
+    def test_an_exact_slide_says_its_length_in_words_up_to_twelve(
+        self, count: int, word: str
+    ) -> None:
+        move = _move("slide", [[0, 1]], range=count, min_range=count)
+        assert move_sentence(move) == f"exactly {word} squares forward, stopped by anything in the way"
+
+    @pytest.mark.parametrize("vector, words", [
+        ([-1, 1], "diagonally forward and left"),
+        ([1, 1], "diagonally forward and right"),
+        ([-1, -1], "diagonally back and left"),
+        ([1, -1], "diagonally back and right"),
+        ([0, 1], "forward"),
+        ([0, -1], "back"),
+        ([-1, 0], "left"),
+        ([1, 0], "right"),
+    ])
+    def test_each_single_step_has_its_own_name(self, vector: list[int], words: str) -> None:
+        assert move_sentence(_move("leap", [vector])) == f"one square {words}"
+
+    def test_forward_and_back_is_one_family(self) -> None:
+        assert move_sentence(_move("slide", [[0, 1], [0, -1]], range=3)) == (
+            "up to three squares forward and back, stopped by anything in the way")
+        assert move_sentence(_move("slide", [[0, 1], [0, -1]])) == (
+            "any distance forward and back, stopped by anything in the way")
+
+    def test_four_named_steps_that_are_no_family_are_said_per_vector(self) -> None:
+        assert move_sentence(_move("leap", [[0, 1], [1, 0], [-1, 0], [1, 1]])) == (
+            "one square forward, and right, and left, and diagonally forward and right")
+
+    def test_a_run_of_two_distances_is_up_to_the_longer(self) -> None:
+        assert move_sentence(_move("leap", [[0, 1], [0, 2]], symmetry="rotate4")) == (
+            "leaps up to two squares forward, back, left and right, jumping over "
+            "whatever is in between")
+
+    def test_three_hex_sides_are_one_phrase(self) -> None:
+        assert move_sentence(_move("leap", [[-1, 1], [0, 1], [1, 0]]), hexy=True) == (
+            "one square forward-left or forward-right or right")
+
+
+class TestWhereTheVectorsAreTheBetterAnswer:
+    def test_a_one_step_oblique_sweep_keeps_its_vector_reading(self) -> None:
+        move = _move("sweep", [[1, 2]], symmetry="dihedral8", range=1)
+        assert move_sentence(move) == _move_descriptor(move)
+        assert "exactly 1 square along the line" in move_sentence(move)
+
+    def test_a_one_step_oblique_slide_is_the_leap_and_a_longer_one_is_not(self) -> None:
+        move = _move("slide", [[1, 2]], symmetry="dihedral8", range=1)
+        assert move_sentence(move) == (
+            "leaps two and one, in all eight directions, jumping over whatever is in between")
+        move["range"] = 2
+        assert move_sentence(move) == (
+            "up to two steps of two and one, in all eight directions, stopped by "
+            "anything in the way")
+
+    def test_a_one_step_slide_with_a_longer_aim_keeps_its_vector_reading(self) -> None:
+        move = _move("slide", [[0, 2]], range=1)
+        assert move_sentence(move) == (
+            "moves and captures along (+0,+2), exactly 1 square, path must be clear")
+
+    def test_a_hop_that_is_not_one_square_a_step_keeps_its_vector_reading(self) -> None:
+        for move in (_move("hop", [[0, 2]], symmetry="rotate4"),
+                     _move("hop", [[1, 2]], symmetry="dihedral8")):
+            assert move_sentence(move) == _move_descriptor(move)
+            assert "leaping exactly one piece" in move_sentence(move)
+
+    def test_an_unlimited_oblique_line_with_a_minimum_says_so(self) -> None:
+        move = _move("slide", [[1, 2]], symmetry="dihedral8", min_range=2)
+        assert move_sentence(move) == (
+            "two steps or more of two and one, in all eight directions, stopped by "
+            "anything in the way")
+        del move["min_range"]
+        assert move_sentence(move) == (
+            "any number of steps of two and one, in all eight directions, stopped by "
+            "anything in the way")
+
+
+class TestTurnsPromotionsAndWildPieces:
+    @pytest.mark.parametrize("turn, tail", [
+        ({"moves": 3, "ramp": [1]}, "taking 1 move before 3"),
+        ({"moves": 3, "ramp": [2]}, "taking 2 moves before 3"),
+        ({"moves": 3, "ramp": [1, 2]}, "taking 1, 2 moves before 3"),
+    ])
+    def test_the_ramp_is_said_in_the_right_number(self, turn: dict[str, Any], tail: str) -> None:
+        line = next(
+            line for line in describe_rules(_small(turn=turn)) if line.startswith("A turn"))
+        assert line == (
+            "A turn is 3 moves rather than one. The opening turns are shorter, "
+            f"{tail} for the rest of the game.")
+
+    @staticmethod
+    def _squares(count: int) -> list[str]:
+        return [f"{file}{rank}" for file in "abcde" for rank in range(1, 6)][:count]
+
+    def test_a_square_zone_lists_sixteen_and_summarises_seventeen(self) -> None:
+        sixteen = self._squares(16)
+        assert _describe_promotion({"piece": "G", "squares": sixteen, "to": ["Q"]}) == (
+            f"G reaching {', '.join(sixteen)} becomes one of Q")
+        seventeen = self._squares(17)
+        assert _describe_promotion({"piece": "G", "squares": seventeen, "to": ["Q"]}) == (
+            f"G reaching {', '.join(seventeen[:16])}, ... (17 squares) becomes one of Q")
+
+    @pytest.mark.parametrize("ranks, where", [([7], "rank 8"), ([6, 7], "ranks 7, 8")])
+    def test_ranks_are_one_based_and_plural_from_two(self, ranks: list[int], where: str) -> None:
+        assert _describe_promotion({"piece": "G", "ranks": ranks, "to": ["Q"]}) == (
+            f"G reaching {where} becomes one of Q")
+
+    def test_a_per_player_list_promotes_into_the_first_of_each(self) -> None:
+        rules = _small(promotion={
+            "piece": "G", "rank": "last",
+            "to_by_player": {"0": ["Q", "R"], "1": ["Q", "R"]},
+        }, promote_on_entry=True)
+        (line,) = [line for line in describe_rules(rules) if line.startswith("A piece that enters")]
+        assert "to the first piece listed (G to Q), whether" in line
+
+    def test_a_two_square_wild_route_is_walked_and_back(self) -> None:
+        spec = _small(npcs=[{"piece": "G", "route": ["d4", "d5"]}])
+        (line,) = [line for line in describe_rules(spec) if line.startswith("A wild")]
+        assert ("It starts on d4 and, after every move, steps along d4, d5 and back to d4."
+                ) in line
+
+    @pytest.mark.parametrize("npc, value, worth", [
+        ({}, None, "Taking it is worth 1 points."),
+        ({}, 3, "Taking it is worth 3 points."),
+        ({"bounty": 0}, 3, "Taking it is worth nothing."),
+        ({"bounty": 2.5}, 3, "Taking it is worth 2.5 points."),
+    ])
+    def test_the_bounty_defaults_to_the_value_then_one_and_zero_is_nothing(
+        self, npc: dict[str, Any], value: int | None, worth: str
+    ) -> None:
+        spec = _small(npcs=[{"piece": "G", "route": ["d4"], **npc}])
+        if value is None:
+            del spec["pieces"][0]["value"]
+        else:
+            spec["pieces"][0]["value"] = value
+        (line,) = [line for line in describe_rules(spec) if line.startswith("A wild")]
+        assert "It stands on d4 and never moves." in line
+        assert line.endswith(f" {worth}")
+
+
+class TestTheRemainingRuleDefaults:
+    def test_extinction_defaults_to_holding_fewer_than_one(self) -> None:
+        assert "Holding fewer than 1 of G is a loss." in describe_rules(
+            _small(extinction={"pieces": ["G"]}))
+
+    def test_drops_without_from_captures_say_captured_pieces_change_sides(self) -> None:
+        assert ("Captured pieces change sides and may be played back onto the board."
+                ) in describe_rules(_small(drops={"no_mate": ["G"]}))
+
+    def test_an_empty_explosion_says_nothing(self) -> None:
+        assert not any("destroys" in line for line in describe_rules(_small(explode_on_capture={})))
+
+    def test_a_territory_goal_of_one_square_is_a_way_to_win(self) -> None:
+        territory = {"mode": "final_rank", "win_at": 1}
+        (order,) = [line for line in describe_rules(_small(territory=territory))
+                    if line.startswith("When more than one")]
+        assert "then holding enough ground" in order
+        for win_at in (0, None):
+            if win_at is None:
+                del territory["win_at"]
+            else:
+                territory["win_at"] = win_at
+            assert not any(
+                line.startswith("When more than one")
+                for line in describe_rules(_small(territory=territory)))

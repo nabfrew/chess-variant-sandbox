@@ -264,7 +264,13 @@ class TestTheFingerprintsPointAtSomething:
 # entry of a portal game's longer count vector (and any wild-only type) for a piece. A
 # diagnostic only, shown to the proposer; no component, score or weight reads it. It was
 # "f8a2637a683e942a" after Q875; Q867r's replay re-analyses and re-scores under this value.
-FROZEN_METRICS = "9547343221dc0dc2"
+#
+# **Moved 2026-10-15 by Q926 (the validator refuses what it should)**: `spec/reachability.py`
+# reads a piece id through `_in`/`_str_set`, so a list where an id belongs is skipped by its
+# reachability walk instead of raising `TypeError`. No valid spec reads differently, so no
+# score changes; every run reads stale until the refresher re-scores it under this value. It
+# was "9547343221dc0dc2" after Q877.
+FROZEN_METRICS = "f8af43c0447b76b4"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:

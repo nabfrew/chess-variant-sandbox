@@ -1062,3 +1062,165 @@ class TestAWildPieceIsNobodys:
         assert wild.total_material == plain.total_material
         assert wild.initial_counts[: plain.n_types] == plain.initial_counts
         assert wild.initial_counts[wild.n_types - 1] == 0, "the boar type opens with none"
+
+
+# ------------------------------------------------ Q922: what a wild piece is worth by default
+
+
+class TestAWildPieceWithNoBountyPaysTheValueItDeclares:
+    @staticmethod
+    def _pays(piece: dict[str, Any], npc: dict[str, Any]) -> float:
+        from chess_variant_sandbox.spec.distance import _npc_features
+
+        return _npc_features([{"id": "X"}, piece], [{"piece": piece["id"], **npc}])["npcs_pay"]
+
+    def test_no_bounty_and_no_value_is_the_value_every_piece_has(self) -> None:
+        assert self._pays({"id": "W"}, {}) == 1.0
+
+    @pytest.mark.parametrize(
+        ("piece", "npc", "pays"),
+        [
+            ({"id": "W", "value": 0}, {}, 0.0),
+            ({"id": "W", "value": 4}, {}, 1.0),
+            ({"id": "W", "value": 4}, {"bounty": 0}, 0.0),
+            ({"id": "W", "value": 0}, {"bounty": 2}, 1.0),
+            ({"id": "W"}, {"bounty": True}, 0.0),
+            ({"id": "W"}, {"bounty": "lots"}, 0.0),
+        ],
+        ids=str,
+    )
+    def test_the_bounty_beats_the_value(self, piece: dict, npc: dict, pays: float) -> None:
+        assert self._pays(piece, npc) == pays
+
+
+# ------------------------------------------------ Q922: the named-square and wild-piece checks
+
+
+class TestANameThatIsNotASquareDoesNotEndTheList:
+    """Each reader skips a malformed name and goes on to the next, which is how the
+    validator can report every problem in a draft at once."""
+
+    BAD = ["z9", 3, None, "a0", ""]
+
+    def test_walls(self) -> None:
+        from chess_variant_sandbox.spec.schema import obstacle_squares
+
+        rules = {"obstacles": {"squares": [*self.BAD, "b2"]}}
+        assert obstacle_squares(rules, 3, 3) == {1 * 3 + 1}
+
+    def test_a_wild_pieces_route(self) -> None:
+        from chess_variant_sandbox.spec.schema import npc_routes
+
+        rules = {"npcs": [{"piece": "W", "route": [*self.BAD, "a1", "b1"]}]}
+        assert npc_routes(rules, 3, 3) == [("rules.npcs[0]", (0, 1))]
+
+    def test_where_a_piece_starts_and_where_it_is_mirrored_to(self) -> None:
+        from chess_variant_sandbox.spec.schema import _placed_ranks
+
+        setup = {"placements": [{"piece": "K", "squares": [*self.BAD, "a1"]}]}
+        assert _placed_ranks(setup, "K", 3, 4, "mirror") == {0, 3}
+        assert _placed_ranks({**setup, "mirror": False}, "K", 3, 4, "mirror") == {0}
+        assert _placed_ranks({**setup, "mirror": True}, "K", 3, 4, "rotate") == {0, 3}
+        assert _placed_ranks(setup, "Q", 3, 4, "mirror") == set()
+        assert _placed_ranks({"placements": "a1"}, "K", 3, 4, "mirror") == set()
+
+
+class TestNamedSquaresAgainstWalls:
+    """`_check_named_squares` on a 3x3 board whose wall (a3) is the mirror image of a1."""
+
+    @staticmethod
+    def _errors(setup: dict[str, Any], absent: bool = False) -> list[str]:
+        from chess_variant_sandbox.spec.schema import _check_named_squares
+
+        errors: list[str] = []
+        _check_named_squares({}, setup, 3, 3, "mirror", {6}, absent, errors)
+        return errors
+
+    @pytest.mark.parametrize(
+        ("setup", "refused"),
+        [
+            ({"placements": [{"piece": "P", "squares": ["a3"]}]}, True),            # on the wall
+            ({"placements": [{"piece": "P", "squares": ["a1"]}]}, True),            # its image, by default
+            ({"placements": [{"piece": "P", "squares": ["a1"]}], "mirror": True}, True),
+            ({"placements": [{"piece": "P", "squares": ["a1"]}], "mirror": False}, False),
+            ({"placements": [{"piece": "P", "squares": ["b1"]}]}, False),
+            ({"placements": [{"piece": "P", "squares": ["z9", "a3"]}]}, True),      # junk, then the wall
+            ({"placements": ["junk", {"piece": "P", "squares": ["a3"]}]}, True),
+            ({"placements": "a3"}, False),
+        ],
+        ids=str,
+    )
+    def test_a_placement(self, setup: dict[str, Any], refused: bool) -> None:
+        assert bool(self._errors(setup)) is refused
+
+    def test_a_hexagons_missing_corner_is_said_in_other_words(self) -> None:
+        setup = {"placements": [{"piece": "P", "squares": ["a3"]}]}
+        assert "not cells of this board" in self._errors(setup, absent=True)[0]
+        assert "nothing may occupy a wall" in self._errors(setup)[0]
+
+
+class TestWildPiecesAgainstTheRestOfTheSpec:
+    @staticmethod
+    def _errors(rules: dict[str, Any], pieces: list[Any] | None = None, **spec: Any) -> list[str]:
+        from chess_variant_sandbox.spec.schema import _check_npc_coherence
+
+        whole = {"board": {"width": 3, "height": 3}, **spec}
+        errors: list[str] = []
+        _check_npc_coherence(whole, pieces if pieces is not None else [], rules, errors)
+        return errors
+
+    POINTS = {"scoring": {"count": "points"}}
+
+    @pytest.mark.parametrize("npcs", [None, [], {}, "wolves", {"piece": "W"}], ids=str)
+    def test_points_with_no_wild_piece_list_count_nothing(self, npcs: Any) -> None:
+        rules = {**self.POINTS, **({} if npcs is None else {"npcs": npcs})}
+        (error,) = self._errors(rules)
+        assert error.startswith('rules.scoring.count "points" needs rules.npcs')
+
+    def test_junk_among_the_pieces_is_not_a_piece(self) -> None:
+        rules = {"npcs": [{"piece": "W", "route": ["a1", "b1"]}]}
+        assert self._errors(rules, [{"x": 1}, "grid", None, {"id": "W"}]) == []
+
+    def test_a_shared_square_is_named_by_its_file_and_rank(self) -> None:
+        rules = {"npcs": [{"piece": "W", "route": ["a1", "c2"]}, {"piece": "W", "route": ["c2", "b3"]}]}
+        (error,) = self._errors(rules)
+        assert error.startswith("rules.npcs[1] and rules.npcs[0] both walk c2;")
+
+    @pytest.mark.parametrize(
+        ("setup", "refused"),
+        [
+            ({"placements": [{"piece": "P", "squares": ["a1"]}]}, True),                  # under it
+            ({"placements": [{"piece": "P", "squares": ["a3"]}]}, True),                  # its image
+            ({"placements": [{"piece": "P", "squares": ["a3"]}], "mirror": False}, False),
+            ({"placements": [{"piece": "P", "squares": ["z9", 1, "a1"]}]}, True),
+            ({"placements": ["junk", {"piece": "P"}, {"piece": "P", "squares": ["a1"]}]}, True),
+            ({"placements": [{"piece": "P", "squares": ["c3"]}]}, False),
+        ],
+        ids=str,
+    )
+    def test_a_start_under_the_array(self, setup: dict[str, Any], refused: bool) -> None:
+        rules = {"npcs": [{"piece": "W", "route": ["a1", "b1"]}]}
+        errors = self._errors(rules, setup=setup)
+        assert bool(errors) is refused
+        assert all("needs an empty square to start from" in e for e in errors)
+
+    @pytest.mark.parametrize(
+        ("npc", "piece", "pays"),
+        [
+            ({}, {"id": "W"}, True),                         # no bounty, no value: one point
+            ({}, {"id": "W", "value": 3}, True),
+            ({}, {"id": "W", "value": 0}, False),
+            ({}, {"id": "W", "value": 0.5}, True),
+            ({}, {"id": "W", "value": "heavy"}, True),       # not a number: the default
+            ({}, {"id": "V"}, True),                         # the piece is not declared: the default
+            ({"bounty": 0}, {"id": "W", "value": 5}, False),
+            ({"bounty": 2}, {"id": "W", "value": 0}, True),
+            ({"bounty": True}, {"id": "W", "value": 0}, False),
+        ],
+        ids=str,
+    )
+    def test_what_a_wild_piece_pays(self, npc: dict, piece: dict, pays: bool) -> None:
+        rules = {**self.POINTS, "npcs": [{"piece": "W", "route": ["a1", "b1"], **npc}]}
+        errors = self._errors(rules, [piece])
+        assert bool(errors) is not pays
+        assert all("needs a wild piece with a bounty above zero" in e for e in errors)

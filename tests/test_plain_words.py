@@ -355,3 +355,79 @@ class TestAVersionStampIsSaidInTheFeaturesWords:
         _, said = self._stamp(change)
         assert "schema" not in said and "_version" not in said
         assert not _hits(said), _hits(said)
+
+
+# ------------------------------------------------ Q922: the survivors of the mutation report
+
+_TWO_PIECES: dict[str, Any] = {
+    "pieces": [{"id": "A", "name": "ant"}, {"id": "B"}],
+    "setup": {"placements": []},
+    "rules": {},
+}
+
+# A problem the validator can say about a draft, and the designer's sentence for it. The
+# paths reach one step past the end of what the draft holds, or stop one step short of a
+# further index, because those are the edges a path reader has to survive.
+PLAIN_SENTENCES = {
+    "a piece one past the end of the list": (
+        "pieces[2] must be an object", "Piece 3 is written wrongly."),
+    "a piece far past the end, with a field": (
+        "pieces[5].moves must be a list", "Piece 6: 'ways of moving' must be a list."),
+    "a named piece's field": (
+        "pieces[0].moves must be a list", "Piece 1 (ant): 'ways of moving' must be a list."),
+    "a field with no index on its way of moving": (
+        "pieces[1].moves must be a list", "Piece 2: 'ways of moving' must be a list."),
+    "a way of moving, by its number": (
+        "pieces[1].moves[2].kind must be one of 'leap', 'slide'",
+        "Piece 2, way of moving 3: 'how it travels' must be one of 'leap', 'slide'."),
+    "the placements list itself": (
+        "setup.placements must be a list", "Where they start must be a list."),
+    "one placement, whole": (
+        "setup.placements[0] must be an object", "Where they start, row 1 is written wrongly."),
+    "one placement's field, by its row": (
+        "setup.placements[3].squares must be a list",
+        "Where they start, row 4: 'squares' must be a list."),
+    "the setup, whole": ("setup must be an object", "Where they start is written wrongly."),
+    "a setup field": (
+        "setup.mirror must be a boolean",
+        "Where they start: 'mirror for the other player' must be yes or no."),
+    "the second of several promotion rules": (
+        "rules.promotion[1].to must be a list",
+        "The rule 'promotion', number 2: 'it may become' must be a list."),
+    "an index with no number": (
+        "rules.promotion[].to must be a list",
+        "The rule 'promotion': 'it may become' must be a list."),
+    "the first of several promotion rules, whole": (
+        "rules.promotion[0] must be an object",
+        "The rule 'promotion', number 1 is written wrongly."),
+    "an index inside a field already named": (
+        "rules.turn.ramp[2] must be a positive integer",
+        "The rule 'more than one move a turn': 'the opening turns' "
+        "must be a whole number, 1 or more."),
+    "a rule that opens a colon": (
+        "rules.max_plies: oops", "The rule 'the longest a game may run': oops."),
+    "a rule's value in quotes, no field": (
+        "rules.win 'foo' is not allowed",
+        "The rule 'how the game is won' 'foo' is not allowed."),
+    "a menu's values as the menu spells them": (
+        "rules.win must be one of 'checkmate', 'royal_capture'",
+        "The rule 'how the game is won' must be one of 'checkmate', 'royal capture'."),
+    "a bare word that is also a path root": (
+        "rules.max_plies must include the name of rules",
+        "The rule 'the longest a game may run' must include the name of rules."),
+    "no path at all": ("something odd happened", "Something odd happened."),
+    "a path run into the next character": (
+        "pieces[0]x must be fine", "Piece 1 (ant)x must be fine."),
+    "a path followed by a comma": (
+        "board.width, must be", "The board, 'board width', must be."),
+    "a missing key the words know": (
+        "pieces[0] is missing required key 'moves'", "Piece 1 (ant): 'ways of moving' is missing."),
+    "a missing key the words do not know": (
+        "pieces[0] is missing required key 'foo_bar'", "Piece 1 (ant): 'foo bar' is missing."),
+}
+
+
+@pytest.mark.parametrize("label", sorted(PLAIN_SENTENCES))
+def test_a_problem_is_said_in_the_designers_words(label: str) -> None:
+    problem, said = PLAIN_SENTENCES[label]
+    assert plain_problem(problem, _TWO_PIECES) == said

@@ -251,3 +251,97 @@ class TestTheValidatorReadsTheSameRoutes:
         hand["schema_version"] = 1
         assert royalty_can_multiply(hand)
         assert any("schema 2" in error for error in validate_spec(hand))
+
+
+# ------------------------------------------------ Q922: every branch of the spelling-level read
+
+
+def _bare(pieces: list[Any], setup: Any = None, **rules: Any) -> dict[str, Any]:
+    spec: dict[str, Any] = {"pieces": pieces, "rules": rules}
+    if setup is not None:
+        spec["setup"] = setup
+    return spec
+
+
+KING = {"id": "K", "royal": True}
+QUEEN = {"id": "Q"}
+RAVEN = {"id": "R", "royal": True}
+
+
+def _placed(*placements: Any) -> dict[str, Any]:
+    return {"placements": list(placements)}
+
+
+# Each case is a spec the spelling-level read must answer, with the answer.
+SPELLING_CASES = {
+    "no royal at all": (_bare([QUEEN]), False),
+    "one royal, nothing else": (_bare([KING, QUEEN]), False),
+    "two royal types": (_bare([KING, RAVEN]), True),
+    "pieces that are not a list": ({"pieces": "KQ", "rules": {}}, False),
+    "rules that are not a dict": ({"pieces": [KING], "rules": []}, False),
+    "one king placed on one square": (
+        _bare([KING], _placed({"piece": "K", "squares": ["e1"]})), False),
+    "one king on two squares": (
+        _bare([KING], _placed({"piece": "K", "squares": ["e1", "e2"]})), True),
+    "one king on three squares": (
+        _bare([KING], _placed({"piece": "K", "squares": ["e1", "e2", "e3"]})), True),
+    "two placements of one king, one square each, one player": (
+        _bare([KING], _placed({"piece": "K", "squares": ["e1"]},
+                              {"piece": "K", "squares": ["e2"]})), True),
+    "a placement that names the first player and one that leaves it out": (
+        _bare([KING], _placed({"piece": "K", "squares": ["e1"], "player": 0},
+                              {"piece": "K", "squares": ["e2"]})), True),
+    "one king for each player": (
+        _bare([KING], _placed({"piece": "K", "squares": ["e1"], "player": 0},
+                              {"piece": "K", "squares": ["e8"], "player": 1})), False),
+    "a non-royal placement ahead of two kings": (
+        _bare([KING, QUEEN], _placed({"piece": "Q", "squares": ["d1"]},
+                                     "junk",
+                                     {"piece": "K", "squares": ["e1", "e2"]})), True),
+    "a king whose squares are not a list": (
+        _bare([KING], _placed({"piece": "K", "squares": "e1"})), False),
+    "a setup that is not a dict": (_bare([KING], "e1"), False),
+    "placements that are not a list": (_bare([KING], {"placements": "e1"}), False),
+    "a contact that makes the mover a royal": (
+        _bare([KING, QUEEN], contacts={"links": ["junk", {"mover": "Q", "onto": "K", "mover_to": "K"}]}),
+        True),
+    "a contact that makes the piece met a royal": (
+        _bare([KING, QUEEN], contacts={"links": [{"mover": "Q", "onto": "Q", "onto_to": "K"}]}),
+        True),
+    "a contact that makes an immune piece a royal": (
+        _bare([KING, QUEEN],
+              contacts={"links": [{"mover": "Q", "onto": "Q", "onto_to": "K"}], "immune": ["Q"]}),
+        False),
+    "a contact that makes the piece met a royal, another type immune": (
+        _bare([KING, QUEEN],
+              contacts={"links": [{"mover": "Q", "onto": "Q", "onto_to": "K"}], "immune": ["K"]}),
+        True),
+    "a contact that makes nobody a royal": (
+        _bare([KING, QUEEN], contacts={"links": [{"mover": "Q", "onto": "Q", "onto_to": "Q"}]}),
+        False),
+    "contact links that are not a list": (_bare([KING, QUEEN], contacts={"links": "x"}), False),
+    "a royal taken, the game running on, a hand filled by captures": (
+        _bare([KING, {"id": "P"}], win="extinction", drops={"from_captures": True}), True),
+    "the same with a drops block that says nothing else": (
+        _bare([KING, {"id": "P"}], win="extinction", drops={}), True),
+    "the same, but the hand is not filled by captures": (
+        _bare([KING, {"id": "P"}], win="extinction", drops={"from_captures": False}), False),
+    "a royal taken under checkmate cannot be taken": (
+        _bare([KING, {"id": "P"}], win="checkmate", drops={"from_captures": True}), False),
+    "a royal taken under royal capture ends the game": (
+        _bare([KING, {"id": "P"}], win="royal_capture", drops={"from_captures": True}), False),
+    "a piece promoted from a royal returns royal": (
+        _bare([KING, {"id": "P", "promoted_from": "K"}], win="checkmate",
+              drops={"from_captures": True}), True),
+    "a piece promoted from an undeclared id returns as itself": (
+        _bare([KING, {"id": "P", "promoted_from": "Z"}], win="checkmate",
+              drops={"from_captures": True}), False),
+    "a piece with no id beside a royal taken in a running game": (
+        _bare([KING, {}], win="extinction", drops={}), True),
+}
+
+
+@pytest.mark.parametrize("label", sorted(SPELLING_CASES))
+def test_the_spelling_level_read_branch_by_branch(label: str) -> None:
+    spec, expected = SPELLING_CASES[label]
+    assert royalty_can_multiply(spec) is expected

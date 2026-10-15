@@ -12,6 +12,17 @@ from __future__ import annotations
 from typing import Any
 
 
+def _str_set(values: Any) -> set[str]:
+    """The strings among ``values``: a malformed entry is refused by its own shape check,
+    so the coherence checks that build a set of ids skip it instead of raising on it."""
+    return {value for value in values if isinstance(value, str)}
+
+
+def _in(value: Any, ids: Any) -> bool:
+    """``value in ids`` for a value that may not be hashable: only a string can be an id."""
+    return isinstance(value, str) and value in ids
+
+
 def pieces_a_player_can_hold(spec: dict[str, Any]) -> set[str]:
     """Every piece id a player can own at some point in a game, by any route.
 
@@ -38,7 +49,7 @@ def pieces_a_player_can_hold(spec: dict[str, Any]) -> set[str]:
     setup = spec.get("setup")
     placements = setup.get("placements") if isinstance(setup, dict) else None
     for placement in placements if isinstance(placements, list) else []:
-        if isinstance(placement, dict) and placement.get("piece") in declared:
+        if isinstance(placement, dict) and _in(placement.get("piece"), declared):
             held.add(placement["piece"])
     stock = (rules.get("drops") or {}).get("stock")
     if isinstance(stock, dict):
@@ -89,11 +100,11 @@ def _pieces_that_can_stand(
     setup = spec.get("setup")
     placements = setup.get("placements") if isinstance(setup, dict) else None
     for placement in placements if isinstance(placements, list) else []:
-        if isinstance(placement, dict) and placement.get("piece") in declared:
+        if isinstance(placement, dict) and _in(placement.get("piece"), declared):
             reachable.add(placement["piece"])
     npcs = rules.get("npcs")
     for npc in npcs if isinstance(npcs, list) else []:
-        if isinstance(npc, dict) and npc.get("piece") in declared:
+        if isinstance(npc, dict) and _in(npc.get("piece"), declared):
             reachable.add(npc["piece"])
     # Schema 10 (Q51): a stocked piece is in a hand from ply zero, so it is on the board
     # the moment somebody plays it. The sixth route, and the first one that does not need
@@ -107,13 +118,13 @@ def _pieces_that_can_stand(
     while True:
         grown = set(reachable)
         for entry in entries:
-            if entry.get("piece") in reachable:
+            if _in(entry.get("piece"), reachable):
                 grown |= declared.intersection(_promotion_target_ids(entry))
         for link in links:
-            if link.get("from") in reachable and link.get("to") in declared:
+            if _in(link.get("from"), reachable) and _in(link.get("to"), declared):
                 grown.add(link["to"])
         for link in contact_links:
-            if link.get("mover") not in reachable or link.get("onto") not in reachable:
+            if not _in(link.get("mover"), reachable) or not _in(link.get("onto"), reachable):
                 continue
             grown |= declared.intersection(
                 {
@@ -144,12 +155,12 @@ def _type_changes(
     links: list[dict[str, Any]] = []
     if isinstance(strike, dict) and strike.get("effect", "capture") != "capture":
         immune = strike.get("immune")
-        immune_ids = set(immune) if isinstance(immune, list) else set()
+        immune_ids = _str_set(immune) if isinstance(immune, list) else set()
         chain = strike.get("chain")
         links = [
             link
             for link in (chain if isinstance(chain, list) else [])
-            if isinstance(link, dict) and link.get("from") not in immune_ids
+            if isinstance(link, dict) and not _in(link.get("from"), immune_ids)
         ]
     # The seventh route (schema 10, Q19a): a contact puts a piece on the board on both
     # of its columns, and a link fires only when *both* of its pieces can be standing
@@ -158,11 +169,11 @@ def _type_changes(
     contact_links: list[dict[str, Any]] = []
     if isinstance(contacts, dict):
         immune = contacts.get("immune")
-        immune_ids = set(immune) if isinstance(immune, list) else set()
+        immune_ids = _str_set(immune) if isinstance(immune, list) else set()
         contact_links = [
             link
-            for link in (contacts.get("links") or [])
-            if isinstance(link, dict) and link.get("onto") not in immune_ids
+            for link in (contacts["links"] if isinstance(contacts.get("links"), list) else [])
+            if isinstance(link, dict) and not _in(link.get("onto"), immune_ids)
         ]
     drops = rules.get("drops")
     hands_fill = isinstance(drops, dict) and bool(drops) and drops.get("from_captures", True)

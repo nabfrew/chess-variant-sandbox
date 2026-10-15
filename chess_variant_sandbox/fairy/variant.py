@@ -1831,7 +1831,14 @@ def _ending_lines(
                 for square in sorted(reach.squares[player])
             )
             lines.append(f"flagRegion{label} = {squares if squares else '-'}")
+            # The installed 2021 build reads only the older spelling and ignored the line
+            # above in silence, so it searched these games with no goal at all: one move
+            # from it, it played on (Q912, Q915). Both are written, as `whiteDropRegion`
+            # is beside `dropRegion*` (Q784); `pyffish` reads either.
+            lines.append(f"{label.lower()}Flag = {squares if squares else '-'}")
         if reach.safe:
+            # No older spelling: the 2021 build has no `flagPieceSafe`, and
+            # `unread.reasons` refuses a translation that writes it there (Q915).
             lines.append("flagPieceSafe = true")
     return lines
 

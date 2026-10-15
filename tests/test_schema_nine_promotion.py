@@ -563,3 +563,136 @@ class TestTheFuzzOracle:
         fuzz.a_piece_that_entered_its_promotion_zone_has_promoted(
             engine, SimpleNamespace(board=engine.spec.initial_board, unmoved=0)
         )
+
+
+# ------------------------------------------------ Q922: promote_on_entry, branch by branch
+
+
+def _entry_errors(rules: dict[str, Any], board: Any = None, **spec: Any) -> list[str]:
+    """`_check_entry_promotion_coherence` over a three-wide, four-high board of P, Q and R."""
+    from chess_variant_sandbox.spec.schema import _check_entry_promotion_coherence
+
+    whole = {
+        "board": {"width": 3, "height": 4} if board is None else board,
+        "pieces": [{"id": "P"}, {"id": "Q"}, {"id": "R"}],
+        **spec,
+    }
+    errors: list[str] = []
+    _check_entry_promotion_coherence(whole, {"promote_on_entry": True, **rules}, errors)
+    return errors
+
+
+PROMOTE_Q = {"piece": "Q", "rank": "last", "to": ["R"]}
+
+
+class TestWhichPromotionsTheFlagReads:
+    def test_a_promotion_without_a_piece_is_no_promotion(self) -> None:
+        (error,) = _entry_errors({"promotion": [{"to": ["Q"]}, "junk", None, {"piece": 3}]})
+        assert error.startswith("rules.promote_on_entry needs rules.promotion")
+
+    def test_a_promotion_with_a_piece_is_one(self) -> None:
+        (error,) = _entry_errors({"promotion": ["junk", PROMOTE_Q]})
+        assert error.startswith("rules.promote_on_entry: nothing enters play except by moving")
+
+
+class TestAContactLinkFeedsTheFlagUnlessItsTargetIsImmune:
+    @staticmethod
+    def _errors(links: list[Any], immune: list[str]) -> list[str]:
+        rules = {"promotion": [PROMOTE_Q], "contacts": {"links": links, "immune": immune}}
+        return _entry_errors(rules)
+
+    def test_a_target_that_becomes_the_promoting_piece(self) -> None:
+        link = {"mover": "R", "onto": "P", "onto_to": "Q"}
+        assert self._errors(["junk", link], []) == []
+
+    def test_an_immune_target_never_becomes_anything(self) -> None:
+        link = {"mover": "R", "onto": "P", "onto_to": "Q"}
+        (error,) = self._errors([link], ["P"])
+        assert "nothing enters play except by moving" in error
+
+    def test_a_mover_that_becomes_the_promoting_piece(self) -> None:
+        link = {"mover": "R", "onto": "P", "mover_to": "Q"}
+        assert self._errors([link], ["P"]) == []
+
+    @pytest.mark.parametrize(
+        "link", [{"mover": "R", "onto": "P"}, {"mover": "R", "onto": "P", "onto_to": 3}], ids=str
+    )
+    def test_a_link_that_turns_nothing_into_anything(self, link: dict[str, Any]) -> None:
+        (error,) = self._errors([link], [])
+        assert "nothing enters play except by moving" in error
+
+
+class TestABoardTheFlagCannotMeasureIsLeftToItsOwnRefusal:
+    HAND = {"promotion": [PROMOTE_Q], "drops": {"region": {"Q": ["a1"]}}}
+
+    @pytest.mark.parametrize(
+        "board",
+        [{"width": None, "height": 4}, {"width": 3, "height": None},
+         {"width": "3", "height": 4}, {"width": 3, "height": 4.0}, "board", None],
+        ids=str,
+    )
+    def test_no_verdict(self, board: Any) -> None:
+        spec = {"board": board}
+        from chess_variant_sandbox.spec.schema import _check_entry_promotion_coherence
+
+        errors: list[str] = []
+        _check_entry_promotion_coherence(
+            {**spec, "pieces": [{"id": "P"}, {"id": "Q"}]}, {"promote_on_entry": True, **self.HAND},
+            errors,
+        )
+        assert errors == []
+
+    def test_the_same_hand_on_a_real_board_is_refused(self) -> None:
+        (error,) = _entry_errors(self.HAND)
+        assert "Q may not be dropped on rank 4" in error
+
+
+class TestWhereAPromotingPieceMayBeDropped:
+    """Width three, height four; the zone is rank 4, squares 9, 10 and 11."""
+
+    @pytest.mark.parametrize(
+        ("squares", "refused"),
+        [
+            (["a4"], False), (["b4"], False), (["c4"], False),
+            (["a3"], True), (["c3"], True), (["a1"], True), (["c1"], True),
+            (["a1", "c4"], False),
+            (["a1", 7, None, "z9"], True),
+            ("c4", True),
+            ([], True),
+        ],
+        ids=str,
+    )
+    def test_the_region_against_the_zone(self, squares: Any, refused: bool) -> None:
+        rules = {"promotion": [PROMOTE_Q], "drops": {"region": {"Q": squares}}}
+        assert bool(_entry_errors(rules)) is refused
+
+    def test_no_region_entry_means_anywhere(self) -> None:
+        rules = {"promotion": [PROMOTE_Q], "drops": {"region": {"R": ["a1"]}}}
+        assert _entry_errors(rules) == []
+
+    def test_the_orientation_is_read_when_there_is_a_setup_and_not_needed_when_there_is_none(
+        self,
+    ) -> None:
+        rules = {"promotion": [PROMOTE_Q], "drops": {"region": {"Q": ["a1"]}}}
+        for extra in ({}, {"setup": {}}, {"setup": {"orientation": "rotate"}}, {"setup": "x"}):
+            (error,) = _entry_errors(rules, **extra)
+            assert "Q may not be dropped on rank 4" in error, extra
+
+    def test_every_promoting_piece_is_judged_not_only_the_first(self) -> None:
+        """The first never reaches a hand; the second is kept out by its region."""
+        rules = {
+            "promotion": [PROMOTE_Q, {"piece": "R", "rank": "last", "to": ["P"]}],
+            "drops": {"from_captures": False, "stock": {"R": 1}, "region": {"R": ["a1"]}},
+        }
+        (error,) = _entry_errors(rules)
+        assert "Q never reaches a hand, since rules.drops.from_captures is false" in error
+        assert "; R may not be dropped on rank 4" in error
+
+    def test_captures_fill_a_hand_unless_it_says_they_do_not(self) -> None:
+        # No `from_captures` key: a captured Q can be dropped, so the region is the reason.
+        rules = {"promotion": [PROMOTE_Q], "drops": {"region": {"Q": ["a1"]}},
+                 "win": "extinction"}
+        spec_extra = {"setup": {"placements": [{"piece": "Q", "squares": ["a1"]}]}}
+        (error,) = _entry_errors(rules, **spec_extra)
+        assert "Q may not be dropped on rank 4" in error
+        assert "never reaches a hand" not in error

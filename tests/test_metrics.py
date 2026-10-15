@@ -2136,3 +2136,81 @@ class TestTheSeatBandCountsDistinctGames:
         varied, sixteen = violations(lambda game: [1, 2, game])
         assert (one, sixteen) == (1, 16)
         assert replayed and replayed == varied
+
+
+class TestWhatAPlayerCanHoldIsReadOffEachRoute:
+    """Q922: `pieces_a_player_can_hold`, one route at a time, on inline specs.
+
+    The walk reads only `pieces`, `setup.placements` and `rules`, so each case names the
+    ids a player owns from ply zero (`A`) and the one route that adds a second type.
+    """
+
+    @staticmethod
+    def _spec(rules: dict, *, placed: tuple[str, ...] = ("A",), npcs: tuple[str, ...] = ()) -> dict:
+        ids = ("A", "B", "C", "D", "S")
+        return {
+            "pieces": [{"id": i} for i in ids],
+            "setup": {"placements": [{"piece": p, "square": "a1"} for p in placed]},
+            "rules": {**rules, **({"npcs": [{"piece": n} for n in npcs]} if npcs else {})},
+        }
+
+    CASES = {
+        "a held piece promotes": ({"promotion": [{"piece": "A", "to": ["B"]}]}, {"A", "B"}),
+        "a lone promotion rule, not a list": ({"promotion": {"piece": "A", "to": ["B"]}}, {"A", "B"}),
+        "an unheld piece promotes, which adds nothing": (
+            {"promotion": [{"piece": "C", "to": ["B"]}]},
+            {"A"},
+        ),
+        "promotion chains through its own target": (
+            {"promotion": [{"piece": "A", "to": ["B"]}, {"piece": "B", "to": ["C"]}]},
+            {"A", "B", "C"},
+        ),
+        "a held piece is struck down a chain": (
+            {"strike": {"effect": "demote", "chain": [{"from": "A", "to": "B"}]}},
+            {"A", "B"},
+        ),
+        "an unheld piece's chain link adds nothing": (
+            {"strike": {"effect": "demote", "chain": [{"from": "C", "to": "B"}]}},
+            {"A"},
+        ),
+        "a contact between two standing pieces changes the mover": (
+            {"contacts": {"links": [{"mover": "A", "onto": "S", "mover_to": "C"}]},
+             "drops": {"stock": {"S": 1}, "from_captures": False}},
+            {"A", "S", "C"},
+        ),
+        "a contact with an absent partner changes nothing": (
+            {"contacts": {"links": [{"mover": "A", "onto": "D", "mover_to": "C"}]}},
+            {"A"},
+        ),
+        "a contact whose partner stands only by stock still fires": (
+            {"contacts": {"links": [{"mover": "S", "onto": "A", "onto_to": "C"}]},
+             "drops": {"stock": {"S": 1}, "from_captures": False}},
+            {"A", "S", "C"},
+        ),
+    }
+
+    @pytest.mark.parametrize("label", sorted(CASES))
+    def test_each_route(self, label: str) -> None:
+        from chess_variant_sandbox.spec.reachability import pieces_a_player_can_hold
+
+        rules, expected = self.CASES[label]
+        assert pieces_a_player_can_hold(self._spec(rules)) == expected
+
+    @pytest.mark.parametrize(
+        ("drops", "filled"),
+        [
+            ({"stock": {"S": 1}}, True),
+            ({"stock": {"S": 1}, "from_captures": True}, True),
+            ({"stock": {"S": 1}, "from_captures": False}, False),
+            ({}, False),
+        ],
+        ids=["default", "explicit-true", "explicit-false", "empty"],
+    )
+    def test_a_hand_that_fills_by_default_holds_what_it_captures(
+        self, drops: dict, filled: bool
+    ) -> None:
+        """`from_captures` defaults to true, so a wild piece taken lands in a hand."""
+        from chess_variant_sandbox.spec.reachability import pieces_a_player_can_hold
+
+        held = pieces_a_player_can_hold(self._spec({"drops": drops}, npcs=("D",)))
+        assert ("D" in held) is filled

@@ -1475,3 +1475,44 @@ class TestDirectionWalkOrder:
             with pytest.MonkeyPatch.context() as patch:
                 patch.setattr(compile_module, "_descriptor_directions", walk)
                 assert compile_spec(spec) == reference
+
+
+# ------------------------------------------------ Q922: which descriptors can double-step
+
+
+_SLIDE = {"kind": "slide", "vectors": [[0, 1]]}
+
+
+@pytest.mark.parametrize(
+    ("piece", "can"),
+    [
+        ({"moves": []}, False),
+        ({"moves": [{"kind": "leap", "vectors": [[0, 2]]}]}, False),
+        ({"moves": [{"kind": "hop", "vectors": [[0, 1]]}]}, False),
+        ({"moves": [{"kind": "sweep", "vectors": [[0, 1]]}]}, False),
+        ({"moves": [{"kind": "lame", "vectors": [[1, 2]]}]}, True),
+        ({"moves": [{"kind": "teleport", "vectors": [[0, 1]]}]}, True),  # a kind not taught
+        ({"moves": [_SLIDE]}, True),                                      # unlimited range
+        ({"moves": [{**_SLIDE, "range": 1}]}, False),
+        ({"moves": [{**_SLIDE, "range": 2}]}, True),
+        ({"moves": [{**_SLIDE, "range": 2, "min_range": 2}]}, True),
+        ({"moves": [{**_SLIDE, "range": 2, "min_range": 3}]}, False),
+        ({"moves": [{**_SLIDE, "range": 1, "min_range": 3}]}, False),
+        ({"moves": [{**_SLIDE, "range": 2, "mode": "capture"}]}, False),
+        ({"moves": [{**_SLIDE, "range": 2, "mode": "move"}]}, True),
+        ({"moves": [{**_SLIDE, "range": True}]}, True),                   # malformed: refused elsewhere
+        ({"moves": [{**_SLIDE, "range": "2"}]}, True),
+        ({"moves": [{**_SLIDE, "range": 1, "min_range": "1"}]}, True),
+        ({"moves": [{**_SLIDE, "range": 1, "mode": "capture"}, _SLIDE]}, True),
+        ({"moves": [{"kind": "leap", "vectors": [[0, 1]]}, {**_SLIDE, "range": 1}]}, False),
+        ({"moves": ["junk"]}, True),
+        ({"moves": "slide"}, True),
+        ({}, True),
+    ],
+)
+def test_a_piece_can_double_step_when_a_slide_has_a_second_square(
+    piece: dict, can: bool
+) -> None:
+    from chess_variant_sandbox.spec.schema import can_double_step
+
+    assert can_double_step(piece) is can

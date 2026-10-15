@@ -989,3 +989,979 @@ class TestTheModelContractMatchesTheValidator:
         turn = rule_spec_schema()["properties"]["rules"]["properties"]["turn"]
         assert turn["properties"]["moves"]["maximum"] == MAX_MOVES_PER_TURN
         assert turn["properties"]["ramp"]["items"]["maximum"] == MAX_MOVES_PER_TURN
+
+
+# --- The schema's bounds, pinned (Q736; the survivors of `spec/jsonschema.py`) -------------
+#
+# `rule_spec_schema` is generated from the validator's constants, and the key-set tests above
+# never read a bound. Every number below is written out here, so a bound that drifts by one
+# fails against this table rather than against itself.
+
+_BOUND_KEYS = ("minimum", "maximum", "minItems", "maxItems", "minLength", "maxLength")
+
+
+def _bounds_in(node: object, path: str = "") -> dict[str, dict[str, int]]:
+    """Every node of the schema that carries a bound, by its path, with the bounds."""
+    found: dict[str, dict[str, int]] = {}
+    if isinstance(node, dict):
+        carried = {key: node[key] for key in _BOUND_KEYS if key in node}
+        if carried:
+            found[path] = carried
+        for key, value in node.items():
+            if key != "description":
+                found.update(_bounds_in(value, f"{path}/{key}"))
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            found.update(_bounds_in(value, f"{path}[{index}]"))
+    return found
+
+
+_P = "/properties"
+_PIECE = f"{_P}/pieces/items{_P}"
+_MOVE = f"{_PIECE}/moves/items{_P}"
+_RULES = f"{_P}/rules{_P}"
+_PROMO = f"{_RULES}/promotion/anyOf[0]{_P}"
+_PROMO_LIST = f"{_RULES}/promotion/anyOf[1]/items{_P}"
+_LANDING_STRIKE = f"{_RULES}/strike{_P}/landing{_P}/vectors"
+_LANDING_CONTACT = f"{_RULES}/contacts{_P}/landing{_P}/vectors"
+
+
+def _vector_bounds(at: str, many: dict[str, int]) -> dict[str, dict[str, int]]:
+    return {
+        at: many,
+        f"{at}/items": {"minItems": 2, "maxItems": 2},
+        f"{at}/items/items": {"minimum": -8, "maximum": 8},
+    }
+
+
+_AT_LEAST_ONE = {"minItems": 1}
+
+#: The whole table of bounds, as the validator states them. Kept literal on purpose.
+FROZEN_BOUNDS: dict[str, dict[str, int]] = {
+    f"{_P}/name": {"minLength": 1},
+    f"{_P}/board{_P}/width": {"minimum": 2, "maximum": 16},
+    f"{_P}/board{_P}/height": {"minimum": 2, "maximum": 16},
+    f"{_P}/pieces": {"minItems": 1, "maxItems": 24},
+    f"{_PIECE}/id": {"minLength": 1, "maxLength": 2},
+    f"{_PIECE}/value": {"minimum": 0, "maximum": 100},
+    # Q925: no minItems (a drop-stock piece or an unmoved portal type has no moves) and no
+    # cap on vectors (the validator has none; `archive/hex-glinski-hexagon.json` lists 12).
+    f"{_PIECE}/moves": {"maxItems": 12},
+    **_vector_bounds(f"{_MOVE}/vectors", _AT_LEAST_ONE),
+    f"{_MOVE}/range": {"minimum": 0, "maximum": 16},
+    f"{_MOVE}/min_range": {"minimum": 1, "maximum": 16},
+    f"{_MOVE}/screen_range": {"minimum": 0, "maximum": 16},
+    f"{_MOVE}/condition{_P}/from_rank": {"minimum": 0},
+    f"{_MOVE}/condition{_P}/region": _AT_LEAST_ONE,
+    f"{_PIECE}/region": _AT_LEAST_ONE,
+    f"{_P}/setup{_P}/placements": _AT_LEAST_ONE,
+    f"{_P}/setup{_P}/placements/items{_P}/squares": _AT_LEAST_ONE,
+    f"{_PROMO}/ranks": _AT_LEAST_ONE,
+    f"{_PROMO}/ranks/items": {"minimum": 0},
+    f"{_PROMO}/squares": _AT_LEAST_ONE,
+    f"{_PROMO}/to": _AT_LEAST_ONE,
+    f"{_PROMO}/to_by_player{_P}/0": _AT_LEAST_ONE,
+    f"{_PROMO}/to_by_player{_P}/1": _AT_LEAST_ONE,
+    f"{_RULES}/promotion/anyOf[1]": _AT_LEAST_ONE,
+    f"{_PROMO_LIST}/ranks": _AT_LEAST_ONE,
+    f"{_PROMO_LIST}/ranks/items": {"minimum": 0},
+    f"{_PROMO_LIST}/squares": _AT_LEAST_ONE,
+    f"{_PROMO_LIST}/to": _AT_LEAST_ONE,
+    f"{_PROMO_LIST}/to_by_player{_P}/0": _AT_LEAST_ONE,
+    f"{_PROMO_LIST}/to_by_player{_P}/1": _AT_LEAST_ONE,
+    f"{_RULES}/castling{_P}/king_steps": {"minimum": 1, "maximum": 4},
+    f"{_RULES}/check_limit": {"minimum": 1, "maximum": 20},
+    f"{_RULES}/territory{_P}/win_at": {"minimum": 0},
+    f"{_RULES}/turn{_P}/moves": {"minimum": 1, "maximum": 4},
+    f"{_RULES}/turn{_P}/ramp": {"minItems": 1, "maxItems": 8},
+    f"{_RULES}/turn{_P}/ramp/items": {"minimum": 1, "maximum": 4},
+    f"{_RULES}/obstacles{_P}/squares": _AT_LEAST_ONE,
+    f"{_RULES}/strike{_P}/chain": _AT_LEAST_ONE,
+    f"{_RULES}/strike{_P}/switches_sides": _AT_LEAST_ONE,
+    **_vector_bounds(_LANDING_STRIKE, _AT_LEAST_ONE),
+    f"{_RULES}/contacts{_P}/links": _AT_LEAST_ONE,
+    **_vector_bounds(_LANDING_CONTACT, _AT_LEAST_ONE),
+    f"{_RULES}/npcs": _AT_LEAST_ONE,
+    f"{_RULES}/npcs/items{_P}/route": _AT_LEAST_ONE,
+    f"{_RULES}/npcs/items{_P}/also_at": _AT_LEAST_ONE,
+    f"{_RULES}/npcs/items{_P}/bounty": {"minimum": 0},
+    f"{_RULES}/portals": {"minItems": 1, "maxItems": 4},
+    f"{_RULES}/portals/items{_P}/ends": {"minItems": 3, "maxItems": 8},
+    f"{_RULES}/portals/items{_P}/ends/items{_P}/to": {"minimum": 0, "maximum": 7},
+    f"{_RULES}/scoring{_P}/region": _AT_LEAST_ONE,
+    f"{_RULES}/reach{_P}/squares": _AT_LEAST_ONE,
+    f"{_RULES}/extinction{_P}/pieces/anyOf[1]": _AT_LEAST_ONE,
+    f"{_RULES}/extinction{_P}/min_count": {"minimum": 1, "maximum": 64},
+    f"{_RULES}/drops{_P}/region/additionalProperties": _AT_LEAST_ONE,
+    f"{_RULES}/drops{_P}/stock/additionalProperties/anyOf[0]": {"minimum": 1, "maximum": 32},
+    f"{_RULES}/explode_on_capture{_P}/radius": {"minimum": 0, "maximum": 3},
+    f"{_RULES}/max_plies": {"minimum": 2, "maximum": 10000},
+    f"{_RULES}/repetition_draw/anyOf[0]": {"minimum": 2, "maximum": 10},
+    f"{_RULES}/no_progress_draw": {"minimum": 2, "maximum": 1000},
+}
+
+
+def _schema_errors(instance: object, schema: dict, path: str = "$") -> list[str]:
+    """Where `instance` breaks `schema`: the vocabulary the generated schema uses, bounds
+    included (`tests/test_loop.py::_violations` stops at types, enums and keys)."""
+    if "anyOf" in schema:
+        if any(not _schema_errors(instance, arm, path) for arm in schema["anyOf"]):
+            return []
+        return [f"{path}: matches no arm"]
+    if "const" in schema:
+        return [] if instance == schema["const"] else [f"{path}: not {schema['const']!r}"]
+    kinds = schema.get("type")
+    if isinstance(kinds, list):
+        return _schema_errors(instance, {**schema, "anyOf": [{"type": k} for k in kinds]}, path)
+    bad: list[str] = []
+    if kinds == "object":
+        if not isinstance(instance, dict):
+            return [f"{path}: expected an object"]
+        properties = schema.get("properties", {})
+        extra = schema.get("additionalProperties")
+        bad += [f"{path}.{k}: required" for k in schema.get("required", []) if k not in instance]
+        for key, value in instance.items():
+            if key in properties:
+                bad += _schema_errors(value, properties[key], f"{path}.{key}")
+            elif isinstance(extra, dict):
+                bad += _schema_errors(value, extra, f"{path}.{key}")
+            elif extra is False:
+                bad.append(f"{path}.{key}: no such property")
+        return bad
+    if kinds == "array":
+        if not isinstance(instance, list):
+            return [f"{path}: expected an array"]
+        if len(instance) < schema.get("minItems", 0):
+            bad.append(f"{path}: fewer than {schema['minItems']} items")
+        if len(instance) > schema.get("maxItems", len(instance)):
+            bad.append(f"{path}: more than {schema['maxItems']} items")
+        for index, item in enumerate(instance):
+            bad += _schema_errors(item, schema.get("items", {}), f"{path}[{index}]")
+        return bad
+    if "enum" in schema and instance not in schema["enum"]:
+        bad.append(f"{path}: {instance!r} not in the enum")
+    numeric = isinstance(instance, (int, float)) and not isinstance(instance, bool)
+    if kinds == "integer" and not (isinstance(instance, int) and not isinstance(instance, bool)):
+        bad.append(f"{path}: expected an integer")
+    elif kinds == "number" and not numeric:
+        bad.append(f"{path}: expected a number")
+    elif kinds == "string" and not isinstance(instance, str):
+        bad.append(f"{path}: expected a string")
+    elif kinds == "boolean" and not isinstance(instance, bool):
+        bad.append(f"{path}: expected a boolean")
+    if numeric:
+        if "minimum" in schema and instance < schema["minimum"]:
+            bad.append(f"{path}: below {schema['minimum']}")
+        if "maximum" in schema and instance > schema["maximum"]:
+            bad.append(f"{path}: above {schema['maximum']}")
+    if isinstance(instance, str):
+        if len(instance) < schema.get("minLength", 0):
+            bad.append(f"{path}: shorter than {schema['minLength']}")
+        if len(instance) > schema.get("maxLength", len(instance)):
+            bad.append(f"{path}: longer than {schema['maxLength']}")
+    return bad
+
+
+def _as_proposed(spec: dict) -> dict:
+    """A spec as the model writes it: no `appearance` or `provenance`, the current version."""
+    proposed = copy.deepcopy(spec)
+    for withheld in ("appearance", "provenance"):
+        proposed.pop(withheld, None)
+    proposed["schema_version"] = SCHEMA_VERSION
+    return proposed
+
+
+def _all_nodes(node: dict):
+    """Every schema node under `node`, following `properties`, `items`, a map's value schema
+    and `anyOf` (a property *named* description is a name, not a node's description)."""
+    yield node
+    children = list(node.get("properties", {}).values())
+    children += [node["items"]] if isinstance(node.get("items"), dict) else []
+    children += (
+        [node["additionalProperties"]] if isinstance(node.get("additionalProperties"), dict) else []
+    )
+    children += node.get("anyOf", [])
+    for child in children:
+        yield from _all_nodes(child)
+
+
+class TestTheSchemaPinsEveryBound:
+    def test_the_bounds_are_exactly_the_frozen_table(self) -> None:
+        """Every min/max in the generated schema, by path. A drift of one in any of them,
+        or a bound that appears or goes, shows here."""
+        assert _bounds_in(rule_spec_schema()) == FROZEN_BOUNDS
+
+    def test_the_clock_bounds_are_the_validators(self) -> None:
+        """The three clocks the schema states are the three the validator holds."""
+        bounds = schema_module.CLOCK_BOUNDS
+        assert {
+            k: tuple(bounds[k]) for k in ("max_plies", "repetition_draw", "no_progress_draw")
+        } == {
+            "max_plies": (2, 10000),
+            "repetition_draw": (2, 10),
+            "no_progress_draw": (2, 1000),
+        }
+        rules = rule_spec_schema()["properties"]["rules"]["properties"]
+        assert (rules["max_plies"]["minimum"], rules["max_plies"]["maximum"]) == (2, 10000)
+        arm = rules["repetition_draw"]["anyOf"][0]
+        assert (arm["minimum"], arm["maximum"]) == (2, 10)
+        assert (rules["no_progress_draw"]["minimum"], rules["no_progress_draw"]["maximum"]) == (
+            2,
+            1000,
+        )
+
+    def test_chess_satisfies_the_schema(self, chess_spec: dict) -> None:
+        """The checker is not simply refusing everything."""
+        assert _schema_errors(_as_proposed(chess_spec), rule_spec_schema()) == []
+
+    @pytest.mark.parametrize(
+        ("label", "edit", "valid"),
+        [
+            ("a board of 2 wide", lambda s: s["board"].update(width=2, height=2), True),
+            ("a board 1 wide", lambda s: s["board"].update(width=1), False),
+            ("an empty name", lambda s: s.update(name=""), False),
+            ("a one-letter name", lambda s: s.update(name="x"), True),
+            ("no pieces", lambda s: s.update(pieces=[]), False),
+            ("a three-letter piece id", lambda s: s["pieces"][1].update(id="Kni"), False),
+            ("an empty piece id", lambda s: s["pieces"][1].update(id=""), False),
+            ("a two-letter piece id", lambda s: s["pieces"][1].update(id="Kn"), True),
+            ("a negative value", lambda s: s["pieces"][1].update(value=-1), False),
+            ("a value of 101", lambda s: s["pieces"][1].update(value=101), False),
+            ("a value of 100", lambda s: s["pieces"][1].update(value=100), True),
+            (
+                "a vector of one number",
+                lambda s: s["pieces"][1]["moves"][0].update(vectors=[[1]]),
+                False,
+            ),
+            (
+                "a vector of three numbers",
+                lambda s: s["pieces"][1]["moves"][0].update(vectors=[[1, 0, 0]]),
+                False,
+            ),
+            (
+                "a vector of -8",
+                lambda s: s["pieces"][1]["moves"][0].update(vectors=[[-8, 1]]),
+                True,
+            ),
+            ("a vector of 9", lambda s: s["pieces"][1]["moves"][0].update(vectors=[[9, 1]]), False),
+            (
+                "a move with no vectors",
+                lambda s: s["pieces"][1]["moves"][0].update(vectors=[]),
+                False,
+            ),
+            (
+                "a move of eight vectors",
+                lambda s: s["pieces"][1]["moves"][0].update(vectors=[[1, i] for i in range(8)]),
+                True,
+            ),
+            (
+                "a move of nine vectors",
+                lambda s: s["pieces"][1]["moves"][0].update(vectors=[[1, i] for i in range(9)]),
+                True,
+            ),
+            ("an unlimited range", lambda s: s["pieces"][1]["moves"][0].update(range=0), True),
+            ("a negative range", lambda s: s["pieces"][1]["moves"][0].update(range=-1), False),
+            ("a min_range of 1", lambda s: s["pieces"][1]["moves"][0].update(min_range=1), True),
+            ("a min_range of 0", lambda s: s["pieces"][1]["moves"][0].update(min_range=0), False),
+            (
+                "a cannon's screen_range",
+                lambda s: s["pieces"][1]["moves"][0].update(screen_range=0),
+                True,
+            ),
+            (
+                "a negative screen_range",
+                lambda s: s["pieces"][1]["moves"][0].update(screen_range=-1),
+                False,
+            ),
+            (
+                "a from_rank of 0",
+                lambda s: s["pieces"][1]["moves"][0].update(condition={"from_rank": 0}),
+                True,
+            ),
+            (
+                "a negative from_rank",
+                lambda s: s["pieces"][1]["moves"][0].update(condition={"from_rank": -1}),
+                False,
+            ),
+            (
+                "a piece with one move",
+                lambda s: s["pieces"][1].update(moves=s["pieces"][1]["moves"][:1]),
+                True,
+            ),
+            # Q925: the validator admits `moves: []` for a drop-stock piece or an unmoved
+            # portal type, a cross-reference no bound can state, so the schema admits it.
+            ("a piece with no moves", lambda s: s["pieces"][1].update(moves=[]), True),
+            ("an empty placement", lambda s: s["setup"]["placements"][0].update(squares=[]), False),
+            ("no placements", lambda s: s["setup"].update(placements=[]), False),
+            ("one castling step", lambda s: s["rules"]["castling"].update(king_steps=1), True),
+            ("four castling steps", lambda s: s["rules"]["castling"].update(king_steps=4), True),
+            ("no castling steps", lambda s: s["rules"]["castling"].update(king_steps=0), False),
+            ("five castling steps", lambda s: s["rules"]["castling"].update(king_steps=5), False),
+            (
+                "a territory win_at of 0",
+                lambda s: s["rules"].update(territory={"mode": "repaint", "win_at": 0}),
+                True,
+            ),
+            (
+                "a negative win_at",
+                lambda s: s["rules"].update(territory={"mode": "repaint", "win_at": -1}),
+                False,
+            ),
+            ("a turn of one move", lambda s: s["rules"].update(turn={"moves": 1}), True),
+            ("a turn of no moves", lambda s: s["rules"].update(turn={"moves": 0}), False),
+            ("a ramp of one", lambda s: s["rules"].update(turn={"moves": 2, "ramp": [1]}), True),
+            (
+                "a ramp with a zero",
+                lambda s: s["rules"].update(turn={"moves": 2, "ramp": [0]}),
+                False,
+            ),
+            ("an empty ramp", lambda s: s["rules"].update(turn={"moves": 2, "ramp": []}), False),
+            (
+                "a ramp of eight",
+                lambda s: s["rules"].update(turn={"moves": 2, "ramp": [1] * 8}),
+                True,
+            ),
+            (
+                "a ramp of nine",
+                lambda s: s["rules"].update(turn={"moves": 2, "ramp": [1] * 9}),
+                False,
+            ),
+            ("an empty promotion list", lambda s: s["rules"].update(promotion=[]), False),
+            (
+                "a promotion rank of 0",
+                lambda s: s["rules"].update(promotion={"piece": "P", "ranks": [0], "to": ["Q"]}),
+                True,
+            ),
+            (
+                "a negative promotion rank",
+                lambda s: s["rules"].update(promotion={"piece": "P", "ranks": [-1], "to": ["Q"]}),
+                False,
+            ),
+            (
+                "no promotion ranks",
+                lambda s: s["rules"].update(promotion={"piece": "P", "ranks": [], "to": ["Q"]}),
+                False,
+            ),
+            (
+                "no promotion targets",
+                lambda s: s["rules"].update(promotion={"piece": "P", "ranks": [7], "to": []}),
+                False,
+            ),
+            (
+                "one promotion target",
+                lambda s: s["rules"].update(promotion={"piece": "P", "ranks": [7], "to": ["Q"]}),
+                True,
+            ),
+            (
+                "a list of one promotion",
+                lambda s: s["rules"].update(promotion=[{"piece": "P", "ranks": [7], "to": ["Q"]}]),
+                True,
+            ),
+            (
+                "targets by player, none for the second",
+                lambda s: s["rules"].update(
+                    promotion={"piece": "P", "ranks": [7], "to_by_player": {"0": ["Q"], "1": []}}
+                ),
+                False,
+            ),
+            (
+                "targets by player, none for the first",
+                lambda s: s["rules"].update(
+                    promotion={"piece": "P", "ranks": [7], "to_by_player": {"0": [], "1": ["Q"]}}
+                ),
+                False,
+            ),
+            (
+                "targets by player, one each",
+                lambda s: s["rules"].update(
+                    promotion={"piece": "P", "ranks": [7], "to_by_player": {"0": ["Q"], "1": ["Q"]}}
+                ),
+                True,
+            ),
+            (
+                "an extinction of one type",
+                lambda s: s["rules"].update(extinction={"pieces": ["P"]}),
+                True,
+            ),
+            (
+                "an extinction of none",
+                lambda s: s["rules"].update(extinction={"pieces": []}),
+                False,
+            ),
+            (
+                "an extinction min_count of 64",
+                lambda s: s["rules"].update(extinction={"pieces": ["P"], "min_count": 64}),
+                True,
+            ),
+            (
+                "an extinction min_count of 65",
+                lambda s: s["rules"].update(extinction={"pieces": ["P"], "min_count": 65}),
+                False,
+            ),
+            (
+                "an extinction min_count of 0",
+                lambda s: s["rules"].update(extinction={"pieces": ["P"], "min_count": 0}),
+                False,
+            ),
+            ("a stock of one", lambda s: s["rules"].update(drops={"stock": {"P": 1}}), True),
+            ("a stock of none", lambda s: s["rules"].update(drops={"stock": {"P": 0}}), False),
+            (
+                "a blast of radius 3",
+                lambda s: s["rules"].update(explode_on_capture={"radius": 3}),
+                True,
+            ),
+            (
+                "a blast of radius 4",
+                lambda s: s["rules"].update(explode_on_capture={"radius": 4}),
+                False,
+            ),
+            (
+                "a negative blast",
+                lambda s: s["rules"].update(explode_on_capture={"radius": -1}),
+                False,
+            ),
+            (
+                "a blast of radius 0",
+                lambda s: s["rules"].update(explode_on_capture={"radius": 0}),
+                True,
+            ),
+            (
+                "an empty obstacle list",
+                lambda s: s["rules"].update(obstacles={"squares": []}),
+                False,
+            ),
+            ("one obstacle", lambda s: s["rules"].update(obstacles={"squares": ["e4"]}), True),
+            (
+                "an npc with a negative bounty",
+                lambda s: s["rules"].update(npcs=[{"piece": "P", "route": ["e4"], "bounty": -1}]),
+                False,
+            ),
+            (
+                "an npc with no bounty to pay",
+                lambda s: s["rules"].update(npcs=[{"piece": "P", "route": ["e4"], "bounty": 0}]),
+                True,
+            ),
+            ("no npcs", lambda s: s["rules"].update(npcs=[]), False),
+            (
+                "a strike of one link",
+                lambda s: s["rules"].update(
+                    strike={"effect": "demote", "chain": [{"from": "P", "to": "X"}]}
+                ),
+                True,
+            ),
+            (
+                "a strike of no links",
+                lambda s: s["rules"].update(strike={"effect": "demote", "chain": []}),
+                False,
+            ),
+            (
+                "contacts of one link",
+                lambda s: s["rules"].update(contacts={"links": [{"mover": "P", "onto": "P"}]}),
+                True,
+            ),
+            ("contacts of no links", lambda s: s["rules"].update(contacts={"links": []}), False),
+            (
+                "a landing of eight",
+                lambda s: s["rules"].update(
+                    strike={
+                        "effect": "capture",
+                        "position": "choose",
+                        "landing": {"vectors": [[1, i] for i in range(8)]},
+                    }
+                ),
+                True,
+            ),
+            (
+                "a landing of nine",
+                lambda s: s["rules"].update(
+                    strike={
+                        "effect": "capture",
+                        "position": "choose",
+                        "landing": {"vectors": [[1, i] for i in range(9)]},
+                    }
+                ),
+                True,
+            ),
+            (
+                "a landing of none",
+                lambda s: s["rules"].update(
+                    strike={"effect": "capture", "position": "choose", "landing": {"vectors": []}}
+                ),
+                False,
+            ),
+            (
+                "a contact landing of eight",
+                lambda s: s["rules"].update(
+                    contacts={
+                        "links": [{"mover": "P", "onto": "P"}],
+                        "position": "choose",
+                        "landing": {"vectors": [[1, i] for i in range(8)]},
+                    }
+                ),
+                True,
+            ),
+            (
+                "a contact landing of none",
+                lambda s: s["rules"].update(
+                    contacts={
+                        "links": [{"mover": "P", "onto": "P"}],
+                        "position": "choose",
+                        "landing": {"vectors": []},
+                    }
+                ),
+                False,
+            ),
+        ],
+    )
+    def test_each_edge_of_a_bound_is_accepted_or_refused(
+        self, chess_spec: dict, label: str, edit, valid: bool
+    ) -> None:
+        """The schema and the bound it states agree on both sides of each edge."""
+        spec = _as_proposed(chess_spec)
+        spec["pieces"].append(
+            {"id": "X", "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8"}]}
+        )
+        # Index 1 is the piece the edits aim at; make it the extra one.
+        spec["pieces"][1], spec["pieces"][-1] = spec["pieces"][-1], spec["pieces"][1]
+        edit(spec)
+        assert (_schema_errors(spec, rule_spec_schema()) == []) is valid, label
+
+
+# --- What the validator admits, the model contract admits (Q925) -------------------------
+#
+# The schema may be looser than `validate_spec` (it cannot state a cross-reference), never
+# stricter: a stricter contract hides a game the validator would play from every proposal,
+# and nothing fails. Q734m found two such places, a cap of 8 vectors and `minItems: 1` on
+# `moves`; every committed and archived spec is the cheap net for the next one.
+
+_REPO = Path(__file__).resolve().parent.parent
+_LIBRARY = sorted(
+    p for d in ("rulesets", "archive") for p in (_REPO / d).glob("*.json")
+)
+
+
+class TestTheContractAdmitsWhatTheValidatorAdmits:
+    @pytest.mark.parametrize("path", _LIBRARY, ids=lambda p: f"{p.parent.name}/{p.stem}")
+    def test_every_library_spec_satisfies_the_schema(self, path: Path) -> None:
+        spec = json.loads(path.read_text(encoding="utf-8"))
+        assert validate_spec(spec) == [], path.name
+        assert _schema_errors(_as_proposed(spec), rule_spec_schema()) == [], path.name
+
+    def test_the_library_still_holds_both_of_q925s_cases(self) -> None:
+        """The net above only catches what the library uses: keep it using both points."""
+        names = {p.name for p in _LIBRARY}
+        assert {"hex-glinski-hexagon.json", "stones.json"} <= names
+        glinski = json.loads((_REPO / "archive/hex-glinski-hexagon.json").read_text("utf-8"))
+        assert max(len(m["vectors"]) for p in glinski["pieces"] for m in p["moves"]) > 8
+        stones = json.loads((_REPO / "archive/stones.json").read_text("utf-8"))
+        assert any(p["moves"] == [] for p in stones["pieces"])
+
+    def test_a_piece_with_no_moves_is_the_validators_call(self, chess_spec: dict) -> None:
+        """Without a stock the validator refuses `moves: []`; the schema leaves that to it."""
+        spec = _as_proposed(chess_spec)
+        spec["pieces"].append({"id": "S", "name": "stone", "value": 1, "moves": []})
+        assert _schema_errors(spec, rule_spec_schema()) == []
+        assert any("moves must be a non-empty array" in e for e in validate_spec(spec))
+
+
+class TestTheSchemaClosesItsObjects:
+    def test_the_default_schema_is_strict(self) -> None:
+        """`rule_spec_schema()` closes every object it writes, so an invented key is refused."""
+        schema = rule_spec_schema()
+        objects = [n for n in _all_nodes(schema) if n.get("type") == "object"]
+        assert objects
+        closed = [n for n in objects if n.get("additionalProperties") is False]
+        # Only the maps (drops' region and stock) carry a value schema instead of False.
+        assert len(objects) - len(closed) == 2
+        assert all(isinstance(n["additionalProperties"], dict) for n in objects if n not in closed)
+
+    def test_a_loose_schema_closes_nothing(self) -> None:
+        loose = rule_spec_schema(strict=False)
+        objects = [n for n in _all_nodes(loose) if n.get("type") == "object"]
+        assert objects
+        assert all(n.get("additionalProperties") is not False for n in objects)
+
+    def test_an_invented_key_is_refused_and_a_known_one_is_not(self, chess_spec: dict) -> None:
+        spec = _as_proposed(chess_spec)
+        assert _schema_errors(spec, rule_spec_schema()) == []
+        spec["pieces"][0]["colour"] = "red"
+        assert _schema_errors(spec, rule_spec_schema()) == ["$.pieces[0].colour: no such property"]
+        assert _schema_errors(spec, rule_spec_schema(strict=False)) == []
+
+    def test_a_description_is_text_where_it_is_given_and_absent_elsewhere(self) -> None:
+        """`_object` writes a description only when it is given one, never a null."""
+        schema = rule_spec_schema()
+        for node in _all_nodes(schema):
+            if "description" in node:
+                assert isinstance(node["description"], str) and node["description"]
+        facing = schema["properties"]["pieces"]["items"]["properties"]["facing"]
+        assert "orientation" in facing["description"]
+        # An object given no description has none, rather than a null one.
+        assert "description" not in schema["properties"]["board"]
+
+
+# --- Q736: the survivors of `spec/canonical.py`, `schema.py` and `reachability.py` ---------
+
+
+def _with(base: dict, **changes: object) -> dict:
+    spec = copy.deepcopy(base)
+    spec.update(changes)
+    return spec
+
+
+def _leaper(piece_id: str, **extra: object) -> dict:
+    return {"id": piece_id, "moves": [{"kind": "leap", "vectors": [[1, 0]]}], **extra}
+
+
+class TestNonAsciiMechanicsAreHashedAsUtf8:
+    def test_a_non_ascii_name_is_written_raw_not_escaped(self) -> None:
+        from chess_variant_sandbox.spec.canonical import canonical_json
+
+        spec = {"pieces": [{"id": "P", "name": "Ölfant"}]}
+        assert canonical_json(spec) == '{"pieces":[{"id":"P","name":"Ölfant"}]}'
+        assert "\\u00d6" not in canonical_json(spec)
+
+    def test_the_hash_is_that_of_the_utf8_blob(self) -> None:
+        import hashlib
+
+        spec = {"board": {"width": 4, "height": 4}, "pieces": [{"id": "P", "name": "Ölfant"}]}
+        blob = '{"board":{"height":4,"width":4},"pieces":[{"id":"P","name":"Ölfant"}]}'
+        assert spec_hash(spec) == hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
+
+
+class TestTheLimitsAreEnforcedAtTheirEdge:
+    """The numeric bounds of `spec/schema.py`, each from both sides."""
+
+    def test_a_board_of_sixteen_is_allowed_and_seventeen_is_not(self) -> None:
+        assert validate_spec(_with(MINIMAL, board={"width": 16, "height": 16})) == []
+        errors = validate_spec(_with(MINIMAL, board={"width": 17, "height": 17}))
+        assert "board.width must be between 2 and 16, got 17" in errors
+        assert "board.height must be between 2 and 16, got 17" in errors
+
+    @pytest.mark.parametrize(("count", "fine"), [(24, True), (25, False)])
+    def test_piece_types_stop_at_twenty_four(self, count: int, fine: bool) -> None:
+        spec = copy.deepcopy(MINIMAL)
+        spec["pieces"] += [_leaper(f"A{chr(65 + i)}") for i in range(count - 1)]
+        errors = validate_spec(spec)
+        assert ("at most 24 piece types" in " ".join(errors)) is not fine
+        if fine:
+            assert errors == []
+
+    @pytest.mark.parametrize(("count", "fine"), [(12, True), (13, False)])
+    def test_a_piece_holds_at_most_twelve_move_descriptors(self, count: int, fine: bool) -> None:
+        spec = copy.deepcopy(MINIMAL)
+        spec["pieces"][0]["moves"] = [{"kind": "leap", "vectors": [[1, 0]]}] * count
+        errors = validate_spec(spec)
+        assert ("pieces[0].moves may hold at most 12 descriptors" in errors) is not fine
+        if fine:
+            assert errors == []
+
+    @pytest.mark.parametrize(("reach", "fine"), [(8, True), (9, False), (-8, True), (-9, False)])
+    def test_a_vector_component_stops_at_eight_either_way(self, reach: int, fine: bool) -> None:
+        spec = copy.deepcopy(MINIMAL)
+        spec["board"] = {"width": 16, "height": 16}
+        spec["pieces"][0]["moves"] = [{"kind": "leap", "vectors": [[reach, 0]]}]
+        errors = validate_spec(spec)
+        assert any("components must be within +/-8" in e for e in errors) is not fine
+        if fine:
+            assert errors == []
+
+
+class TestParseSquareStaysOnTheBoard:
+    @pytest.mark.parametrize(
+        ("square", "expected"),
+        [
+            ("a1", (0, 0)),
+            ("h8", (7, 7)),
+            ("a0", None),
+            ("a9", None),
+            ("i1", None),
+            ("A1", (0, 0)),
+            ("", None),
+            ("a", None),
+            ("1a", None),
+        ],
+    )
+    def test_the_edges_of_an_eight_by_eight_board(self, square: str, expected) -> None:
+        from chess_variant_sandbox.spec.schema import parse_square
+
+        assert parse_square(square, 8, 8) == expected
+
+    def test_a_placement_on_rank_zero_or_past_the_top_is_refused(self) -> None:
+        for square in ("a0", "a5"):
+            spec = copy.deepcopy(MINIMAL)
+            spec["setup"]["placements"][0]["squares"] = [square]
+            assert any("is not a square on this board" in e for e in validate_spec(spec)), square
+        spec = copy.deepcopy(MINIMAL)
+        spec["setup"]["placements"][0]["squares"] = ["a4"]
+        assert validate_spec(spec) == []
+
+
+class TestTheReachMirrorDefault:
+    def test_a_reach_with_no_mirror_reflects_by_rank(self) -> None:
+        from chess_variant_sandbox.spec.schema import reach_reflection
+
+        assert reach_reflection({"squares": ["a8"]}) == "mirror"
+        assert reach_reflection({"squares": ["a8"], "mirror": True}) == "mirror"
+        assert reach_reflection({"squares": ["a8"], "mirror": "rotate"}) == "rotate"
+        assert reach_reflection({"squares": ["a8"], "mirror": False}) is None
+        assert reach_reflection("not a reach") is None
+
+    def test_the_rotate_spelling_was_added_in_schema_seven(self) -> None:
+        spec = copy.deepcopy(MINIMAL)
+        spec["rules"] = {
+            "win": "reach",
+            "reach": {"piece": "K", "squares": ["d4"], "mirror": "rotate"},
+        }
+        spec["schema_version"] = 6
+        assert any("was added in schema 7" in e for e in validate_spec(spec))
+        spec["schema_version"] = 7
+        assert not any("was added in schema 7" in e for e in validate_spec(spec))
+
+
+class TestAppearanceAndProvenanceAreChecked:
+    @pytest.mark.parametrize(
+        ("appearance", "fragment"),
+        [
+            ({"icons": {"Z": "x"}}, "appearance.icons names unknown piece 'Z'"),
+            ({"icons": {"K": ""}}, "appearance.icons['K'] must be a non-empty string"),
+            ({"icons": {"K": "  "}}, "appearance.icons['K'] must be a non-empty string"),
+            ({"icons": {"K": ["a", ""]}}, "appearance.icons['K'] must be a non-empty string"),
+            ({"icons": {"K": ["a"]}}, "as a list must hold exactly two entries"),
+            ({"icons": ["K"]}, "appearance.icons must be an object"),
+            ("icons", "appearance must be an object"),
+        ],
+    )
+    def test_a_bad_icon_is_refused(self, appearance: object, fragment: str) -> None:
+        errors = validate_spec(_with(MINIMAL, appearance=appearance))
+        assert any(fragment in e for e in errors), errors
+
+    @pytest.mark.parametrize(
+        "appearance",
+        [{}, {"icons": {}}, {"icons": {"K": "crown"}}, {"icons": {"K": ["white", "black"]}}],
+    )
+    def test_a_good_appearance_is_not(self, appearance: dict) -> None:
+        assert validate_spec(_with(MINIMAL, appearance=appearance)) == []
+
+    @pytest.mark.parametrize("parents", ["abc", [1], [None], {"a": 1}])
+    def test_parents_must_be_a_list_of_hashes(self, parents: object) -> None:
+        errors = validate_spec(_with(MINIMAL, provenance={"parents": parents}))
+        assert "provenance.parents must be a list of ruleset hashes" in errors
+
+    @pytest.mark.parametrize("parents", [[], ["abc123def456"]])
+    def test_a_list_of_hashes_is_fine(self, parents: list) -> None:
+        assert validate_spec(_with(MINIMAL, provenance={"parents": parents})) == []
+
+
+class TestPieceCoherenceReportsRatherThanCrashing:
+    def test_a_royal_missing_from_an_otherwise_placed_setup_is_named(self) -> None:
+        spec = copy.deepcopy(MINIMAL)
+        spec["pieces"].append(_leaper("P"))
+        spec["setup"]["placements"] = [{"piece": "P", "squares": ["a2"]}]
+        errors = validate_spec(spec)
+        assert any("no royal piece appears in setup.placements" in e for e in errors), errors
+
+    def test_a_piece_without_an_id_is_reported_not_a_keyerror(self) -> None:
+        spec = copy.deepcopy(MINIMAL)
+        spec["pieces"].append({"value": 1, "moves": [{"kind": "leap", "vectors": [[1, 0]]}]})
+        errors = validate_spec(spec)
+        assert any("id" in e for e in errors), errors
+
+    def test_a_promoted_from_must_name_a_declared_piece(self) -> None:
+        spec = copy.deepcopy(MINIMAL)
+        spec["pieces"].append(_leaper("N", promoted_from="Z"))
+        errors = validate_spec(spec)
+        assert any("promoted_from 'Z', which is not a declared piece" in e for e in errors)
+        spec["pieces"][1]["promoted_from"] = "K"
+        assert not any("promoted_from" in e for e in validate_spec(spec))
+
+    def test_a_non_object_board_leaves_no_width_for_a_file_to_fit(self) -> None:
+        spec = copy.deepcopy(MINIMAL)
+        spec["board"] = "x"
+        spec["rules"]["castling"] = {
+            "king": "K",
+            "rook": "K",
+            "king_file": {"kingside": "a", "queenside": "a"},
+            "rook_file": {"kingside": "a", "queenside": "a"},
+        }
+        errors = validate_spec(spec)
+        assert "rules.castling.king_file.kingside 'a' is not a file on this board" in errors
+
+    def test_a_refused_board_leaves_no_height_for_a_promotion_rank_to_miss(self) -> None:
+        """On a board that is itself refused, the promotion rank is not also reported."""
+        spec = copy.deepcopy(MINIMAL)
+        spec["pieces"].append(_leaper("N"))
+        spec["board"] = {"width": 99, "height": 4}
+        spec["rules"]["promotion"] = {"piece": "K", "rank": 1, "to": ["N"]}
+        spec["rules"]["castling"] = {
+            "king": "K",
+            "rook": "K",
+            "king_file": {"kingside": "a", "queenside": "a"},
+            "rook_file": {"kingside": "a", "queenside": "a"},
+        }
+        errors = validate_spec(spec)
+        assert any("board.width must be between" in e for e in errors)
+        assert not any("is not a rank on this board" in e for e in errors), errors
+        # ... and no file fits it either, so the castling files are reported as off the board.
+        assert "rules.castling.king_file.kingside 'a' is not a file on this board" in errors
+
+
+class TestPieceIdsAreOneOrTwoCharacters:
+    @pytest.mark.parametrize("piece_id", ["K", "NN", "n1"])
+    def test_one_or_two_characters_are_fine(self, piece_id: str) -> None:
+        spec = copy.deepcopy(MINIMAL)
+        spec["pieces"][0]["id"] = piece_id
+        spec["setup"]["placements"][0]["piece"] = piece_id
+        assert validate_spec(spec) == []
+
+    @pytest.mark.parametrize("piece_id", ["", "ABC", 5, None])
+    def test_anything_else_is_refused_without_raising(self, piece_id: object) -> None:
+        spec = copy.deepcopy(MINIMAL)
+        spec["pieces"][0]["id"] = piece_id
+        errors = validate_spec(spec)
+        assert "pieces[0].id must be a string of 1-2 characters" in errors
+
+
+class TestCanDoubleStep:
+    @staticmethod
+    def _ask(*moves: dict) -> bool:
+        from chess_variant_sandbox.spec.schema import can_double_step
+
+        return can_double_step({"moves": list(moves)})
+
+    def test_a_capture_only_slide_before_the_double_step_does_not_hide_it(self) -> None:
+        capture = {"kind": "slide", "vectors": [[1, 1]], "range": 1, "mode": "capture"}
+        advance = {"kind": "slide", "vectors": [[0, 1]], "range": 2}
+        assert self._ask(capture, advance) is True
+        assert self._ask(capture) is False
+
+    def test_a_malformed_distance_counts_as_qualifying(self) -> None:
+        assert self._ask({"kind": "slide", "vectors": [[0, 1]], "range": True}) is True
+        assert self._ask({"kind": "slide", "vectors": [[0, 1]], "min_range": "x"}) is True
+
+    def test_a_single_step_never_qualifies(self) -> None:
+        assert self._ask({"kind": "slide", "vectors": [[0, 1]], "range": 1}) is False
+        assert self._ask({"kind": "leap", "vectors": [[0, 2]]}) is False
+
+
+class TestACaseThirteenRefusalFollowsEveryRoute:
+    """`rules.reach` about a piece that can never stand is refused (inert-rule case 13).
+
+    The routes into play are placement, a promotion, a strike link, a contact, a hand and a
+    wild piece; a piece stands if any of them reaches it from a piece that stands.
+    """
+
+    @staticmethod
+    def _errors(
+        *, strike=None, contacts=None, drops=None, npcs=None, promotion=None, placed=(), extra=()
+    ) -> list[str]:
+        spec = copy.deepcopy(MINIMAL)
+        spec["schema_version"] = SCHEMA_VERSION
+        spec["board"] = {"width": 8, "height": 8}
+        spec["pieces"] += [_leaper("X"), _leaper("Y"), _leaper("P"), *extra]
+        spec["setup"]["placements"] += [{"piece": p, "squares": [s]} for p, s in placed]
+        spec["rules"] = {"win": "reach", "reach": {"piece": "Y", "squares": ["d4"]}}
+        for key, value in (
+            ("strike", strike),
+            ("contacts", contacts),
+            ("drops", drops),
+            ("npcs", npcs),
+            ("promotion", promotion),
+        ):
+            if value is not None:
+                spec["rules"][key] = value
+        return validate_spec(spec)
+
+    @staticmethod
+    def _refused(errors: list[str]) -> bool:
+        return any("rules.reach is about 'Y', which can never stand" in e for e in errors)
+
+    def test_with_no_route_it_is_refused(self) -> None:
+        assert self._refused(self._errors())
+
+    def test_a_placement_is_a_route(self) -> None:
+        assert not self._refused(self._errors(placed=[("Y", "d1")]))
+
+    def test_a_strike_link_from_a_piece_that_stands_is_a_route(self) -> None:
+        strike = {"effect": "demote", "chain": [{"from": "P", "to": "Y"}]}
+        assert not self._refused(self._errors(strike=strike, placed=[("P", "a2")]))
+
+    def test_a_strike_link_from_a_piece_that_never_stands_is_not(self) -> None:
+        strike = {"effect": "demote", "chain": [{"from": "X", "to": "Y"}]}
+        assert self._refused(self._errors(strike=strike, placed=[("P", "a2")]))
+
+    def test_a_contact_between_standing_pieces_is_a_route(self) -> None:
+        contacts = {"links": [{"mover": "P", "onto": "K", "mover_to": "Y"}]}
+        assert not self._refused(self._errors(contacts=contacts, placed=[("P", "a2")]))
+
+    def test_a_contact_onto_a_piece_that_never_stands_is_not(self) -> None:
+        contacts = {"links": [{"mover": "P", "onto": "X", "mover_to": "Y"}]}
+        assert self._refused(self._errors(contacts=contacts, placed=[("P", "a2")]))
+
+    def test_a_contact_from_a_piece_that_never_stands_is_not(self) -> None:
+        contacts = {"links": [{"mover": "X", "onto": "P", "mover_to": "Y"}]}
+        assert self._refused(self._errors(contacts=contacts, placed=[("P", "a2")]))
+
+    def test_a_dead_link_does_not_hide_a_live_one_after_it(self) -> None:
+        contacts = {
+            "links": [
+                {"mover": "X", "onto": "P", "mover_to": "X"},
+                {"mover": "P", "onto": "K", "mover_to": "Y"},
+            ]
+        }
+        assert not self._refused(self._errors(contacts=contacts, placed=[("P", "a2")]))
+
+    def test_a_promotion_target_is_a_route_only_from_a_piece_that_stands(self) -> None:
+        def promotion(piece: str) -> dict:
+            return {"piece": piece, "rank": "last", "to": ["Y"]}
+
+        assert not self._refused(self._errors(placed=[("P", "a2")], promotion=promotion("P")))
+        assert self._refused(self._errors(placed=[("P", "a2")], promotion=promotion("X")))
+
+    def test_a_stocked_piece_is_a_route(self) -> None:
+        errors = self._errors(placed=[("P", "a2")], drops={"stock": {"Y": 1}})
+        assert not self._refused(errors)
+
+    def test_a_wild_piece_is_a_route(self) -> None:
+        npcs = [{"piece": "Y", "route": ["e4", "e5"]}]
+        spec_errors = self._errors(placed=[("P", "a2")], npcs=npcs)
+        assert not self._refused(spec_errors)
+
+    def test_a_captured_piece_returns_to_a_hand_as_its_base(self) -> None:
+        promoted = _leaper("Z", promoted_from="Y")
+        kwargs = {"placed": [("Z", "a2")], "extra": [promoted]}
+        assert not self._refused(self._errors(drops={"from_captures": True}, **kwargs))
+        assert self._refused(self._errors(drops={"from_captures": False}, **kwargs))
+        assert self._refused(self._errors(**kwargs))
+
+
+class TestRoutesAreReadFromMalformedEntries:
+    """`validate_spec` collects errors rather than stopping, so the reachability walk is fed
+    entries that are not objects and must not crash on them."""
+
+    @pytest.mark.parametrize(
+        "change",
+        [
+            {"setup": {"placements": ["x"]}},
+            {"rules": {"win": "reach", "reach": {"piece": "K", "squares": ["d4"]}, "npcs": ["x"]}},
+            {
+                "rules": {
+                    "win": "reach",
+                    "reach": {"piece": "K", "squares": ["d4"]},
+                    "strike": {"effect": "demote", "chain": ["x"]},
+                }
+            },
+            {
+                "rules": {
+                    "win": "reach",
+                    "reach": {"piece": "K", "squares": ["d4"]},
+                    "contacts": {"links": ["x"]},
+                }
+            },
+        ],
+    )
+    def test_a_non_object_entry_is_an_error_not_an_exception(self, change: dict) -> None:
+        spec = copy.deepcopy(MINIMAL)
+        spec["schema_version"] = SCHEMA_VERSION
+        spec.update(copy.deepcopy(change))
+        assert validate_spec(spec)

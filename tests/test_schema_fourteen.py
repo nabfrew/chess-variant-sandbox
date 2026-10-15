@@ -468,3 +468,116 @@ class TestEverySurfaceReadsIt:
             return [line for line in translate(spec).config.splitlines() if "promotion" in line]
 
         assert promotion_lines(restated) == promotion_lines(chess)
+
+
+# ------------------------------------------------ Q922: the zone's edges and its share
+
+
+class TestAPromotionRankIsOnTheBoardOrNothing:
+    @pytest.mark.parametrize(
+        ("stated", "ranks_hit"),
+        [
+            ([0], {0}),
+            ([3], {3}),
+            ([4], set()),
+            ([-1], set()),
+            ([0, 4, -1, 3], {0, 3}),
+            ([True], set()),
+            (["1"], set()),
+        ],
+        ids=str,
+    )
+    def test_ranks(self, stated: list, ranks_hit: set[int]) -> None:
+        from chess_variant_sandbox.spec.schema import promotion_squares
+
+        first, _ = promotion_squares({"ranks": stated}, 3, 4)
+        assert first == {rank * 3 + file for rank in ranks_hit for file in range(3)}
+
+
+class TestTheZoneShareIsOverTheCellsThatAreLeft:
+    @staticmethod
+    def _share(walls: list[str], zone: list[str], orientation: str | None = None) -> float:
+        from chess_variant_sandbox.spec.distance import _promotion_zone_share
+
+        spec: dict[str, Any] = {
+            "board": {"width": 2, "height": 2},
+            "rules": {
+                "promotion": {"squares": zone, "to": ["N"]},
+                "obstacles": {"squares": walls},
+            },
+        }
+        if orientation:
+            spec["setup"] = {"orientation": orientation}
+        return _promotion_zone_share(spec)
+
+    def test_one_cell_left_is_a_share_of_the_whole(self) -> None:
+        assert self._share(["a1", "b1", "a2"], ["b2"]) == 1.0
+
+    def test_no_cell_left_is_nothing_not_an_error(self) -> None:
+        assert self._share(["a1", "b1", "a2", "b2"], ["b2"]) == 0.0
+
+    def test_two_cells_left_halve_it(self) -> None:
+        assert self._share(["a1", "b1"], ["b2"]) == 0.5
+
+    def test_a_walled_zone_square_is_not_in_the_zone(self) -> None:
+        """Q923: the zone is counted over the cells left, so a wall in it is out of both
+        sides of the share. Three cells, one of the two zone squares walled: a third."""
+        assert self._share(["a2"], ["a2", "b2"]) == pytest.approx(1 / 3)
+
+    def test_the_share_never_passes_one(self) -> None:
+        """Q923: one free cell and a two-square zone that is all wall read 2.0 before."""
+        assert self._share(["a2", "b1", "b2"], ["a2", "b2"]) == 0.0
+        for walls in ([], ["a1"], ["a2"], ["a1", "b2"], ["a2", "b2"], ["a1", "b1", "a2"]):
+            assert 0.0 <= self._share(walls, ["a2", "b2"]) <= 1.0, walls
+
+    def test_a_mirrored_wall_lands_where_the_setup_orientation_puts_it(self) -> None:
+        """A wall on a 3x3 board's left edge, centre rank, is its own image under a flip and
+        has a partner on the far edge under a half turn: one wall or two."""
+        from chess_variant_sandbox.spec.distance import _promotion_zone_share
+
+        spec = {
+            "board": {"width": 3, "height": 3},
+            "rules": {
+                "promotion": {"squares": ["a3"], "to": ["N"]},
+                "obstacles": {"squares": ["a2"], "mirror": True},
+            },
+        }
+        assert _promotion_zone_share(spec) == 1 / 8
+        spec["setup"] = {"orientation": "rotate"}
+        assert _promotion_zone_share(spec) == 1 / 7
+
+
+class TestARefusedBoardReportsNoSize:
+    """`_validate_board` answers `(width, height, lattice)`, with zeros wherever it refused."""
+
+    @staticmethod
+    def _board(board: Any) -> tuple[tuple[int, int, str], list[str]]:
+        from chess_variant_sandbox.spec.schema import _validate_board
+
+        errors: list[str] = []
+        return _validate_board(board, errors), errors
+
+    def test_a_board_that_is_not_an_object(self) -> None:
+        for board in (None, [8, 8], "8x8"):
+            answer, errors = self._board(board)
+            assert answer == (0, 0, "square") and len(errors) == 1
+
+    @pytest.mark.parametrize(
+        "board",
+        [{"width": "8", "height": 8}, {"width": 8, "height": True}, {"width": 1, "height": 8},
+         {"width": 8, "height": 17}, {"height": 8}],
+        ids=str,
+    )
+    def test_a_size_that_is_refused_is_no_size(self, board: dict) -> None:
+        answer, errors = self._board(board)
+        assert answer == (0, 0, "square") and errors
+        answer, _ = self._board({**board, "lattice": "hex"})
+        assert answer == (0, 0, "hex")
+
+    def test_a_good_size_is_returned_with_its_lattice(self) -> None:
+        assert self._board({"width": 8, "height": 5}) == ((8, 5, "square"), [])
+        assert self._board({"width": 2, "height": 16, "lattice": "hex"}) == ((2, 16, "hex"), [])
+
+    def test_an_unknown_lattice_is_the_square_one(self) -> None:
+        answer, errors = self._board({"width": 8, "height": 8, "lattice": "triangle"})
+        assert answer == (8, 8, "square") and len(errors) == 1

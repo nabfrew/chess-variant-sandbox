@@ -1325,3 +1325,59 @@ class TestCastlingIsNotACapture:
         # Nothing left the board, so the no-progress clock has not been reset either.
         assert sum(1 for v in after.board if v) == sum(1 for v in state.board if v)
         assert after.halfmove == state.halfmove + 1
+
+
+# ------------------------------------------------ Q922: what schema 1 may not use, per piece
+
+
+class TestASchemaOnePieceMayNotUseSchemaTwo:
+    """`_validate_version_one_stays_within_version_one`, over inline pieces.
+
+    It reads only the pieces' own keys, so each case is a list of pieces and the one
+    sentence it must produce (or nothing). The junk entries are what `validate_spec`
+    feeds it while it is still collecting errors about them.
+    """
+
+    TAIL = ", added in schema 2; declare \"schema_version\": 2 to use it"
+    LEAP = {"kind": "leap", "vectors": [[1, 0]]}
+
+    CASES = {
+        "a plain piece": ([{"id": "P", "moves": [LEAP]}], []),
+        "a piece confined to a region": (
+            [{"id": "P", "region": "x", "moves": [LEAP]}], ["a piece uses region"]),
+        "a move with a screen range": (
+            [{"id": "P", "moves": [{**LEAP, "screen_range": 2}]}], ["a piece uses screen_range"]),
+        "a lame move": (
+            [{"id": "P", "moves": [{"kind": "lame", "vectors": [[1, 2]]}]}],
+            ["a piece uses the 'lame' move kind"]),
+        "a condition with a region": (
+            [{"id": "P", "moves": [{**LEAP, "condition": {"region": "x"}}]}],
+            ["a piece uses region"]),
+        "a condition that is not a dict": (
+            [{"id": "P", "moves": [{**LEAP, "condition": "region"}]}], []),
+        "the second move of the second piece": (
+            [{"id": "A", "moves": [LEAP]},
+             {"id": "B", "moves": [LEAP, {**LEAP, "screen_range": 1}]}],
+            ["a piece uses screen_range"]),
+        "several uses are one sentence, sorted": (
+            [{"id": "P", "region": "x", "moves": [{"kind": "lame", "vectors": [[1, 2]]},
+                                                  {**LEAP, "screen_range": 1}]}],
+            ["a piece uses region, screen_range, the 'lame' move kind"]),
+        "junk pieces and junk moves are skipped": (
+            ["junk", None, {"id": "P", "moves": ["junk", None, {**LEAP, "screen_range": 1}]}],
+            ["a piece uses screen_range"]),
+        "a region on a piece whose moves are not a list is not read": (
+            [{"id": "P", "region": "x", "moves": "x"}], []),
+        "a region on a piece with no moves is not read": ([{"id": "P", "region": "x"}], []),
+    }
+
+    @pytest.mark.parametrize("label", sorted(CASES))
+    def test_what_is_reported(self, label: str) -> None:
+        from chess_variant_sandbox.spec.schema import (
+            _validate_version_one_stays_within_version_one,
+        )
+
+        pieces, wanted = self.CASES[label]
+        errors: list[str] = []
+        _validate_version_one_stays_within_version_one({"pieces": pieces}, errors)
+        assert errors == [w + self.TAIL for w in wanted]

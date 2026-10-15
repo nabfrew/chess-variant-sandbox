@@ -46,6 +46,8 @@ import subprocess
 import threading
 from typing import TYPE_CHECKING
 
+from chess_variant_sandbox.fairy.unread import parse_check
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from chess_variant_sandbox.fairy.variant import Variant
 
@@ -398,6 +400,40 @@ class UciEngine:
                 if line.startswith("Checkers:"):
                     return bool(line[len("Checkers:"):].strip())
         return False
+
+    def unread_options(self, config_path: str) -> frozenset[str] | None:
+        """The keys of ``config_path`` this build does not take, by its own account.
+
+        Asked of a second process, ``<binary> check <file>``, which parses the file as a
+        ``VariantPath`` is parsed and names each key it skipped (`unread.parse_check`).
+        Loading never says: a key the build does not know is dropped in silence, which
+        is how the 2021 release came to play racingkings with no goal (Q915). ``None``
+        where the build could not be asked; memoised on the binary and the file's text.
+        """
+        try:
+            with open(config_path, encoding="utf-8") as stream:
+                text = stream.read()
+        except OSError:
+            return None
+        key = (self.path, text)
+        if key not in _UNREAD:
+            try:
+                ran = subprocess.run(  # noqa: S603 - the path is the user's own
+                    [self.path, "check", config_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=TIMEOUT,
+                    encoding="utf-8",
+                    errors="replace",
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                return None
+            _UNREAD[key] = parse_check(ran.stdout + ran.stderr)
+        return _UNREAD[key]
+
+
+_UNREAD: dict[tuple[str, str], frozenset[str] | None] = {}
 
 
 def _start_fen(config: str) -> str:

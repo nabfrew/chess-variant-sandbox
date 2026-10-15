@@ -77,7 +77,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
     # and `contacts`, which compile to one rule.
     landing = _object(
         {
-            "vectors": {"type": "array", "items": vector, "minItems": 1, "maxItems": 8},
+            "vectors": {"type": "array", "items": vector, "minItems": 1},
             "symmetry": {
                 "type": "string",
                 "enum": list(SYMMETRIES),
@@ -114,7 +114,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "and a sweep that could pass over the enemy royal is check."
                 ),
             },
-            "vectors": {"type": "array", "items": vector, "minItems": 1, "maxItems": 8},
+            "vectors": {"type": "array", "items": vector, "minItems": 1},
             "symmetry": {
                 "type": "string",
                 "enum": list(SYMMETRIES),
@@ -205,11 +205,20 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "description": "Losing every royal piece loses the game.",
             },
             "value": {"type": "number", "minimum": 0, "maximum": 100},
+            # No minItems (Q925): the validator admits `moves: []` for a piece
+            # `rules.drops.stock` puts in a hand and for a portal type nobody moves
+            # (`schema.piece_has_stock`, `portal_type_needs_no_moves`), and a cross-reference
+            # is not something a JSON Schema bound can say, so the condition is in words.
             "moves": {
                 "type": "array",
                 "items": move,
-                "minItems": 1,
                 "maxItems": MAX_MOVE_DESCRIPTORS,
+                "description": (
+                    "The ways this piece may move, each one a separate entry; the piece "
+                    "may make any one of them on its turn. A piece may have none only when "
+                    "it starts in a player's hand (rules.drops.stock) or is a portal "
+                    "nobody moves."
+                ),
             },
             "region": _squares(
                 "The only squares this piece may ever occupy, such as a palace or one "

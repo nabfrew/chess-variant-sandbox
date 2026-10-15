@@ -32,6 +32,8 @@ from chess_variant_sandbox.spec.schema import (
     ORIENTATIONS,
     SCHEMA_VERSION,
     STOCK_UNLIMITED,
+    npc_routes,
+    parse_file,
 )
 
 STEP = {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}
@@ -1021,3 +1023,358 @@ def test_en_passant_is_called_inert_only_when_that_is_a_fact(
     changes: dict[str, Any], refusals: list[str]
 ) -> None:
     assert validate_spec(_patched(BASE, {**NO_DOUBLE_STEP, **changes})) == refusals
+
+
+# ------------------------------------------------------------------ the edges of each bound
+#
+# Q739 (mutation testing of `spec/`, `docs/reference/mutation/spec.md`): a bound that moved
+# by one, or a loop that stopped at its first bad entry, failed nothing. Each ACCEPTED row
+# is a spec on the permitted side of a bound and must validate clean; each EDGE_REFUSED row
+# is the neighbouring value or the second of two faults, and must draw the exact words.
+
+WARP = {"kind": "warp", "vectors": [[1, 0]]}  # a kind the validator refuses, so range defaults
+HOP = {"kind": "hop", "vectors": [[1, 0]]}
+PLAIN_PLACEMENTS = [
+    {"piece": "K", "squares": ["c1"]},
+    {"piece": "R", "squares": ["a1"]},
+]
+UNMIRRORED = {
+    "setup": {
+        "mirror": False,
+        "placements": [
+            {"piece": "K", "squares": ["c1"]},
+            {"piece": "K", "squares": ["c5"], "player": 1},
+            {"piece": "R", "squares": ["c2"], "player": 1},
+        ],
+    },
+}
+TWO_ROUTES = [
+    {"piece": "R", "route": ["b3", "c3"], "immune": ["K"]},
+    {"piece": "R", "route": ["d3", "d4"], "immune": ["K"]},
+]
+LINK = {"mover": "R", "onto": "K", "onto_to": "R"}
+
+ACCEPTED = [
+    pytest.param({"pieces.1.value": 0}, id="piece-value-zero"),
+    pytest.param({"pieces.1.value": 100}, id="piece-value-hundred"),
+    pytest.param(
+        {"pieces.1.moves": [ROOK] * MAX_MOVE_DESCRIPTORS}, id="descriptors-at-the-limit"
+    ),
+    pytest.param({"pieces.1.moves.0.range": 0}, id="range-zero-is-unlimited"),
+    pytest.param({"pieces.1.moves.0.range": 16}, id="range-at-the-limit"),
+    pytest.param(
+        {"pieces.1.moves.0": {**ROOK, "range": 0, "min_range": 2}},
+        id="min-range-beyond-an-unlimited-range",
+    ),
+    pytest.param(
+        {"pieces.1.moves.0": {**HOP, "screen_range": 16}}, id="screen-range-at-the-limit"
+    ),
+    pytest.param({"pieces.1.moves.0.vectors": [[8, -8]]}, id="vector-component-at-the-limit"),
+    pytest.param({"pieces.1.moves.0.condition": {"from_rank": 0}}, id="from-rank-zero"),
+    pytest.param(UNMIRRORED, id="one-square-two-players-unmirrored"),
+    pytest.param({"rules.max_plies": 2}, id="clock-at-its-low-bound"),
+    pytest.param({"rules.check_limit": 1}, id="check-limit-one"),
+    pytest.param({"rules.check_limit": 20}, id="check-limit-twenty"),
+    pytest.param(
+        {"rules.en_passant": True, "rules.promotion": [{"piece": "R", "to": ["K"]}]},
+        id="en-passant-beside-one-promotion-in-a-list",
+    ),
+    pytest.param(
+        {"rules.promotion": [{"piece": "R", "to": ["K"]}, {"piece": "K", "to": ["R"]}]},
+        id="two-promotions-without-en-passant",
+    ),
+    pytest.param({"rules.explode_on_capture": {"radius": 0}}, id="radius-zero"),
+    pytest.param({"rules.explode_on_capture": {"radius": 3}}, id="radius-three"),
+    pytest.param({"rules.reach": {"squares": ["c3", "a1"]}}, id="reach-squares-on-the-board"),
+    pytest.param({"rules.extinction": {"pieces": ["R"], "min_count": 1}}, id="min-count-one"),
+    pytest.param({"rules.extinction": {"pieces": ["R"], "min_count": 64}}, id="min-count-64"),
+    pytest.param({"rules.turn": {"moves": 1}}, id="turn-moves-one"),
+    pytest.param({"rules.turn": {"moves": 4}}, id="turn-moves-four"),
+    pytest.param({"rules.turn": {"moves": 2, "ramp": [1] * 8}}, id="ramp-of-eight"),
+    pytest.param({"rules.turn": {"moves": 2, "ramp": [1, 4]}}, id="ramp-entries-at-the-bounds"),
+    pytest.param({"rules.territory": {"mode": "repaint", "win_at": 0}}, id="win-at-zero"),
+    pytest.param({"rules.territory": {"mode": "repaint", "win_at": 25}}, id="win-at-every-square"),
+    pytest.param({"rules.promotion": {"piece": "R", "to": ["K"], "rank": 0}}, id="rank-zero"),
+    pytest.param({"rules.promotion": {"piece": "R", "to": ["K"], "rank": 4}}, id="rank-top"),
+    pytest.param(
+        {"rules.promotion": {"piece": "R", "to": ["K"], "ranks": [0, 4]}}, id="ranks-on-the-board"
+    ),
+    pytest.param({"rules.castling": {"king": "K", "rook": "R", "king_steps": 1}}, id="steps-one"),
+    pytest.param({"rules.castling": {"king": "K", "rook": "R", "king_steps": 4}}, id="steps-four"),
+    pytest.param(
+        {"rules.castling": {"king": "K", "rook": "R",
+                            "king_file": {"kingside": "a", "queenside": "e"}}},
+        id="castling-files-at-the-board-edges",
+    ),
+]
+
+
+@pytest.mark.parametrize("changes", ACCEPTED)
+def test_a_value_on_the_permitted_side_of_a_bound_is_accepted(changes: dict[str, Any]) -> None:
+    assert validate_spec(_patched(BASE, changes)) == []
+
+
+EDGE_REFUSED = [
+    pytest.param(
+        {"pieces.1.value": -1}, "pieces[1].value must be between 0 and 100", id="value-below-zero"
+    ),
+    pytest.param(
+        {"pieces.1.moves": [ROOK] * (MAX_MOVE_DESCRIPTORS + 1)},
+        f"pieces[1].moves may hold at most {MAX_MOVE_DESCRIPTORS} descriptors",
+        id="one-descriptor-too-many",
+    ),
+    pytest.param(
+        {"pieces.1.moves.0.range": 17}, "pieces[1].moves[0].range may not exceed 16",
+        id="range-past-the-limit",
+    ),
+    pytest.param(
+        {"pieces.1.moves.0": {**WARP, "min_range": 2}},
+        "pieces[1].moves[0].min_range (2) may not exceed range (1)",
+        id="min-range-past-the-default-range",
+    ),
+    pytest.param(
+        {"pieces.1.moves.0": {**ROOK, "range": 1, "min_range": 2}},
+        "pieces[1].moves[0].min_range (2) may not exceed range (1)",
+        id="min-range-past-a-range-of-one",
+    ),
+    pytest.param(
+        {"pieces.1.moves.0": {**HOP, "screen_range": 17}},
+        "pieces[1].moves[0].screen_range may not exceed 16",
+        id="screen-range-past-the-limit",
+    ),
+    pytest.param(
+        {"pieces.1.moves.0.vectors": [[1], [1, 2, 3]]},
+        "pieces[1].moves[0].vectors entries must be [dx, dy] integer pairs, got [1, 2, 3]",
+        id="vectors-second-bad-pair-is-still-said",
+    ),
+    pytest.param(
+        {"pieces.1.moves.0.vectors": [[0, -9]]},
+        "pieces[1].moves[0].vectors components must be within +/-8, got [0, -9]",
+        id="vector-component-below-the-limit",
+    ),
+    pytest.param(
+        {"pieces.1.moves.0.vectors": [[9, 0]]},
+        "pieces[1].moves[0].vectors components must be within +/-8, got [9, 0]",
+        id="vector-component-above-the-limit",
+    ),
+    pytest.param(
+        {"pieces.1.moves.0.condition": {"from_rank": "1"}},
+        "pieces[1].moves[0].condition.from_rank must be a non-negative integer",
+        id="from-rank-a-string",
+    ),
+    pytest.param(
+        {"setup.mirror": DROP, "setup.placements.1.player": 1},
+        "setup.placements[1].player must be 0 when setup.mirror is true "
+        "(the second player's army is derived by reflection)",
+        id="mirror-is-on-unless-said-otherwise",
+    ),
+    pytest.param(
+        {"setup.placements.1.squares": ["z9", "y9"]},
+        "setup.placements[1].squares entry 'y9' is not a square on this board",
+        id="second-bad-square-is-still-said",
+    ),
+    pytest.param(
+        {"setup.mirror": False, "setup.placements.1.player": "x",
+         "setup.placements.1.squares": ["c1"]},
+        "setup.placements[1].squares 'c1' is already occupied by 'K'",
+        id="a-player-that-is-not-a-number-sits-with-player-zero",
+    ),
+    pytest.param(
+        {"rules.no_progress_draw": 1}, "rules.no_progress_draw must be between 2 and 1000, got 1",
+        id="a-later-clock-is-checked-when-an-earlier-one-is-absent",
+    ),
+    pytest.param(
+        {"rules.check_limit": 0}, "rules.check_limit must be an integer between 1 and 20",
+        id="check-limit-zero",
+    ),
+    pytest.param(
+        {"rules.check_limit": "3"}, "rules.check_limit must be an integer between 1 and 20",
+        id="check-limit-a-string",
+    ),
+    pytest.param(
+        {"rules.explode_on_capture": {"radius": -1}},
+        "rules.explode_on_capture.radius must be an integer between 0 and 3",
+        id="radius-below-zero",
+    ),
+    pytest.param(
+        {"rules.drops": {"stock": {"K": STOCK_UNLIMITED, "R": 0}}},
+        f"rules.drops.stock['R'] must be between 1 and {MAX_STOCK}, got 0",
+        id="a-stock-after-an-unlimited-one-is-still-checked",
+    ),
+    pytest.param(
+        {"rules.reach": {"squares": ["c3", "z9"]}},
+        "rules.reach.squares entry 'z9' is not a square on this board",
+        id="reach-square-off-the-board",
+    ),
+    pytest.param(
+        {"rules.reach": {"squares": ["c3", 7]}},
+        "rules.reach.squares entry 7 is not a square on this board",
+        id="reach-square-not-a-string",
+    ),
+    pytest.param(
+        {"rules.extinction": {"pieces": "R"}},
+        "rules.extinction.pieces must be 'any' or a non-empty array of piece ids",
+        id="extinction-pieces-a-string",
+    ),
+    pytest.param(
+        {"rules.extinction": {"pieces": ["R"], "min_count": 65}},
+        "rules.extinction.min_count must be an integer between 1 and 64",
+        id="min-count-65",
+    ),
+    pytest.param(
+        {"rules.extinction": {}}, "rules.extinction is missing required key 'pieces'",
+        id="a-required-key-is-named-when-missing",
+    ),
+    pytest.param(
+        {"rules.npcs": [TWO_ROUTES[0], {**TWO_ROUTES[1], "immune": []}]},
+        "rules.npcs has two wild 'R' with different 'immune' lists; capture permission is a "
+        "fact about a piece type, so one type has one immunity. Declare a second type if "
+        "the two hazards differ.",
+        id="two-wild-pieces-of-a-type-disagree-about-immunity",
+    ),
+    pytest.param(
+        {"rules.contacts": {"links": [LINK, LINK]}},
+        "rules.contacts.links has two links for 'R' onto 'K'; one meeting has one outcome",
+        id="contacts-twice-the-same-meeting",
+    ),
+    pytest.param(
+        {"rules.contacts": {"links": [{"mover": "R", "onto": "K", "onto_to": "Z"}]}},
+        "rules.contacts.links[0].onto_to 'Z' is not a declared piece",
+        id="contacts-onto-to-checked-when-mover-to-is-absent",
+    ),
+    pytest.param(
+        {"rules.turn": {"moves": 0}}, "rules.turn.moves must be an integer between 1 and 4",
+        id="turn-moves-zero",
+    ),
+    pytest.param(
+        {"rules.turn": {"moves": True}}, "rules.turn.moves must be an integer between 1 and 4",
+        id="turn-moves-a-boolean",
+    ),
+    pytest.param(
+        {"rules.turn": {"moves": 2, "ramp": [1] * 9}},
+        "rules.turn.ramp may describe at most eight opening turns",
+        id="ramp-of-nine",
+    ),
+    pytest.param(
+        {"rules.territory": {"mode": "repaint", "win_at": 26}},
+        "rules.territory.win_at is 26, which is more squares than the board has (25); "
+        "nobody could reach it",
+        id="win-at-one-past-the-board",
+    ),
+    pytest.param(
+        {"rules.promotion": {"piece": "R", "to": ["K"], "rank": "first"}},
+        "rules.promotion.rank must be 'last' or a non-negative integer",
+        id="rank-a-word",
+    ),
+    pytest.param(
+        {"rules.promotion": {"piece": "R", "to": ["K"], "ranks": "top"}},
+        "rules.promotion.ranks must be a non-empty array of ranks",
+        id="ranks-a-word",
+    ),
+    pytest.param(
+        {"rules.promotion": {"piece": "R", "to": ["K"], "ranks": [4, 5]}},
+        "rules.promotion.ranks entry 5 is not a rank on this board",
+        id="ranks-entry-one-past-the-top",
+    ),
+    pytest.param(
+        {"rules.promotion": {"piece": "R", "to": ["K"], "ranks": [-1]}},
+        "rules.promotion.ranks entry -1 is not a rank on this board",
+        id="ranks-entry-below-zero",
+    ),
+    pytest.param(
+        {"rules.promotion": {"piece": "R", "to": ["K"], "ranks": [True]}},
+        "rules.promotion.ranks entry True is not a rank on this board",
+        id="ranks-entry-a-boolean",
+    ),
+    pytest.param(
+        {"rules.promotion": {"piece": "R", "to": ["K"], "ranks": ["1"]}},
+        "rules.promotion.ranks entry '1' is not a rank on this board",
+        id="ranks-entry-a-string",
+    ),
+    pytest.param(
+        {"rules.promotion": {"piece": "R", "to": ["K"], "rank": 5}},
+        "rules.promotion.rank 5 is not a rank on this board",
+        id="rank-one-past-the-top",
+    ),
+    pytest.param(
+        {"rules.castling": {"king": "K", "rook": "R", "king_steps": 0}},
+        "rules.castling.king_steps must be an integer between 1 and 4",
+        id="steps-zero",
+    ),
+    pytest.param(
+        {"rules.castling": {"king": "K", "rook": "R", "king_file": {"queenside": "z"}}},
+        "rules.castling.king_file.queenside 'z' is not a file on this board",
+        id="castling-queenside-checked-when-kingside-is-missing",
+    ),
+    pytest.param(
+        {"rules.castling": {"king": "K", "rook": "R",
+                            "rook_file": {"kingside": "z", "queenside": "a"}}},
+        "rules.castling.rook_file.kingside 'z' is not a file on this board",
+        id="castling-rook-file-checked-when-king-file-is-absent",
+    ),
+    pytest.param(
+        {"board.height": 1, "setup": DROP, "rules.promotion": {"piece": "R", "to": ["K"],
+                                                               "ranks": [1]}},
+        "rules.promotion.ranks entry 1 is not a rank on this board",
+        id="ranks-entry-one-past-a-one-rank-board",
+    ),
+    pytest.param(
+        {"rules.castling": {"king": "K", "rook": "R",
+                            "king_file": {"kingside": "f", "queenside": "a"}}},
+        "rules.castling.king_file.kingside 'f' is not a file on this board",
+        id="castling-file-one-past-the-board",
+    ),
+]
+
+
+@pytest.mark.parametrize(("changes", "refusal"), EDGE_REFUSED)
+def test_the_value_past_a_bound_is_refused_in_the_exact_words(
+    changes: dict[str, Any], refusal: str
+) -> None:
+    errors = validate_spec(_patched(BASE, changes))
+    assert refusal in errors, errors
+
+
+def test_a_player_that_is_a_number_does_not_sit_with_player_zero() -> None:
+    # Without a mirror both armies share one board (Q924): player 1's rook on c1 beside
+    # player 0's king is two pieces on a square, and is refused by naming it.
+    clash = _patched(BASE, UNMIRRORED)
+    clash["setup"]["placements"][2]["squares"] = ["c1"]
+    errors = validate_spec(clash)
+    assert "setup.placements[2].squares 'c1' is already occupied by 'K'" in errors, errors
+
+
+def test_a_contact_between_unnamed_pieces_is_not_called_a_repeat() -> None:
+    link = {"mover": 1, "onto": "K", "onto_to": "R"}
+    errors = validate_spec(_patched(BASE, {"rules.contacts": {"links": [link, link]}}))
+    assert "rules.contacts.links[0].mover 1 is not a declared piece" in errors
+    assert not [e for e in errors if "has two links" in e], errors
+
+
+@pytest.mark.parametrize(
+    ("name", "width", "index"),
+    [("a", 5, 0), ("A", 5, 0), ("e", 5, 4), ("f", 5, None), ("1", 5, None), ("ab", 5, None)],
+)
+def test_a_file_letter_is_read_against_the_board_width(
+    name: str, width: int, index: int | None
+) -> None:
+    assert parse_file(name, width) == index
+
+
+def test_npc_routes_skips_what_is_not_a_route_and_expands_a_mirror() -> None:
+    rules = {"npcs": ["R", {"piece": "R", "route": "b2"},
+                      {"piece": "R", "route": ["b2", "c2"], "mirror": True}]}
+    assert npc_routes(rules, 5, 5) == [
+        ("rules.npcs[2]", (6, 7)),
+        ("rules.npcs[2] (mirrored)", (16, 17)),
+    ]
+
+
+def test_a_board_with_no_ranks_is_left_to_the_board_check() -> None:
+    # A height the board check refused reaches the promotion checks as 0: it is that
+    # check's to report, so a rank or a band is not also called off a board that has none.
+    spec = _patched(BASE, {"board.height": 1, "rules.promotion": {"piece": "R", "to": ["K"],
+                                                                 "rank": 0, "ranks": [0]}})
+    errors = validate_spec(spec)
+    assert "board.height must be between 2 and 16, got 1" in errors
+    assert not [e for e in errors if "is not a rank on this board" in e], errors

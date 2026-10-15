@@ -301,3 +301,74 @@ class TestAHexagonsSeamIsCharged:
             plain = measure_complexity(spec).special_rules
             spec.setdefault("rules", {})["wrap"] = {"files": "none", "ranks": "none"}
             assert measure_complexity(spec).special_rules == plain, path.stem
+
+
+# ------------------------------------------------ Q922: the survivors of the mutation report
+
+
+def _chess_like() -> dict[str, Any]:
+    return _archived("hierarchy-fall")
+
+
+def test_a_complexity_record_is_frozen_and_hashable() -> None:
+    import dataclasses
+
+    record = measure_complexity(_chess_like())
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        record.piece_types = 0  # type: ignore[misc]
+    assert hash(record) == hash(measure_complexity(_chess_like()))
+
+
+@pytest.mark.parametrize(
+    ("turn", "charged"),
+    [
+        ({"moves": 1}, False),
+        ({"moves": 2}, True),
+        ({"moves": 1, "ramp": [1, 1]}, False),
+        ({"moves": 1, "ramp": [1, 2]}, True),
+        ({"moves": 1, "ramp": [2]}, True),
+        ({"moves": 1, "ramp": []}, False),
+        ({"moves": 1, "ramp": [0, 1]}, False),
+    ],
+    ids=str,
+)
+def test_a_turn_rule_is_charged_only_when_a_turn_is_longer_than_one_move(
+    turn: dict[str, Any], charged: bool
+) -> None:
+    """The compiler drops every spelling of "one move, like every other game"."""
+    bare = _chess_like()
+    bare["rules"].pop("turn", None)
+    spec = json.loads(json.dumps(bare))
+    spec["rules"]["turn"] = turn
+    delta = measure_complexity(spec).special_rules - measure_complexity(bare).special_rules
+    assert delta == (COSTS_TURN if charged else 0.0)
+
+
+COSTS_TURN = 1.0
+
+
+def test_an_own_contact_link_reaches_an_immune_piece() -> None:
+    """`own` is how a contact gets past the immune list, so the table is still a rule."""
+    bare = _archived("succession")
+    bare["rules"].pop("contacts", None)
+    bare["rules"].pop("strike", None)
+    spec = json.loads(json.dumps(bare))
+    spec["rules"]["contacts"] = {
+        "position": "stay",
+        "links": [{"mover": "P", "onto": "N", "own": True, "onto_to": "P"}],
+        "immune": ["K", "N"],
+    }
+    delta = measure_complexity(spec).special_rules - measure_complexity(bare).special_rules
+    assert delta == COSTS["contacts"]
+    spec["rules"]["contacts"]["links"][0]["own"] = False
+    assert measure_complexity(spec).special_rules == measure_complexity(bare).special_rules
+
+
+def test_spec_bytes_counts_the_mechanics_and_not_the_words() -> None:
+    spec = _chess_like()
+    spec["description"] = "Short."
+    renamed = json.loads(json.dumps(spec))
+    renamed["name"] = "A quite different title, much longer than the first"
+    renamed["description"] = "Words that say nothing about how the pieces move. " * 5
+    assert measure_complexity(renamed).spec_bytes == measure_complexity(spec).spec_bytes
+    assert measure_complexity(renamed).description_words > measure_complexity(spec).description_words

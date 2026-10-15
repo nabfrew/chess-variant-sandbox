@@ -38,8 +38,12 @@ player, the nets), the rule by value, this check's own code, and Fairy-Stockfish
 identity. A mismatch is *stale*, with a reason, never a verdict. A failing verdict that has
 gone stale keeps its mark (`Premise.marked`): a stale fail is not a pass.
 
-A stronger player (a `net=` roster, Q502h) moves the roster, which moves the top rung,
-which stales every verdict; the re-check is then played by the stronger player.
+**Whose top rung.** The game's own measuring roster, `corpus.canonical_agents(hash)` (Q912):
+`CANONICAL_AGENTS` to the letter where no learned net is rated, and the net ladder
+(`minimax:net=<procedure>,nodes=N`, Q502h) where one is, so the check is played by the
+player that scores the game. A newly rated net moves that game's top rung, its `net` and
+its `fit` (a net ladder plays no fitted objective), which stales that game's verdict and no
+other's; the re-check is then played by the net.
 """
 
 from __future__ import annotations
@@ -175,7 +179,14 @@ def fairy_engine() -> str:
 
 
 def _fairy_plays(spec: dict[str, Any]) -> str:
-    """``""`` where the installed build plays these rules as ours does, else why not."""
+    """``""`` where the installed build plays these rules as ours does, else why not.
+
+    A goal square (`rules.reach`) is asked like any other rule since Q915. Q912 found the
+    2021 build blind to it, because it read the goal only under an older spelling; the
+    translation now writes both, and `fairy.checked` refuses a definition with a key the
+    build does not read (`fairy/unread.py`), which is where the one goal rule it has no
+    word for, `reach.safe`, is turned away.
+    """
     from chess_variant_sandbox import fairy
 
     if fairy.checked(spec) is not None:
@@ -221,10 +232,14 @@ class PremiseBasis:
         rule: Rule = RULE,
     ) -> PremiseBasis:
         """The basis a check taken now would carry. ``spec`` ``None`` cannot compare
-        tables and reads stale, as `corpus.current_basis` does."""
+        tables and reads stale, as `corpus.current_basis` does.
+
+        ``agents`` ``None`` is the game's own measuring roster (`corpus.canonical_agents`,
+        read off `nets/` as the score's is), and the fit is read only where that roster
+        plays one (`corpus.fits_its_roster`), the score's rule exactly (Q912)."""
         from chess_variant_sandbox import corpus
 
-        roster = tuple(corpus.CANONICAL_AGENTS if agents is None else agents)
+        roster = tuple(corpus.canonical_agents(digest) if agents is None else agents)
         score = Basis.current(
             ruleset_hash=digest,
             weights_version="",
@@ -232,7 +247,7 @@ class PremiseBasis:
             games_per_pairing=0,
             seeds=(),
             tables=tables_fingerprint(spec) if spec is not None else "",
-            fit=corpus.fit_reading(digest, spec=spec),
+            fit=corpus.fit_reading(digest, spec=spec) if corpus.fits_its_roster(roster) else None,
         )
         translates = spec is not None and _fairy_translates(spec)
         return cls(

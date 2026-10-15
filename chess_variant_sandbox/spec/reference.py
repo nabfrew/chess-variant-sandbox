@@ -88,11 +88,6 @@ NOTES: dict[str, str] = {
         "guess at how much a piece matters, and `rules.scoring` with count 'material' "
         "adds it up. A royal piece is usually 0."
     ),
-    "pieces[].moves": (
-        "The ways this piece may move, each one a separate entry; the piece may make any "
-        "one of them on its turn. A piece may have none only when it starts in a "
-        "player's hand (`rules.drops.stock`) or is a portal nobody moves."
-    ),
     "pieces[].moves[].vectors": (
         "The steps this move is made of, each `[dx, dy]` (see *Coordinates*). The "
         "symmetry turns each one into its images."

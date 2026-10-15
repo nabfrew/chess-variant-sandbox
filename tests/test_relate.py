@@ -29,8 +29,10 @@ from chess_variant_sandbox.spec.relate import (
     SIMILARITY_RATIO,
     _orientation_played,
     _played,
+    _reading,
     _restated,
     _setup_cells,
+    anchored,
     identity_key,
     mechanisms,
     normal_form,
@@ -41,7 +43,7 @@ from chess_variant_sandbox.spec.relate import (
     similarity,
     units,
 )
-from chess_variant_sandbox.spec.schema import _RULES_KEYS, SpecError
+from chess_variant_sandbox.spec.schema import _RULES_KEYS, SpecError, format_square, parse_square
 from chess_variant_sandbox.spec.transform import rename_everything, reorder_pieces
 
 # A two-piece game on a small board, with a promoting walker that can double-step, so
@@ -1150,3 +1152,566 @@ def test_the_question_stops_at_the_first_square_that_differs(
     assert _question(spec) == "rotate"
     board = spec["board"]
     assert whole < calls[0] <= whole + board["width"] * board["height"]
+
+
+# ------------------------------------------------- what the module promises beyond a count
+#
+# Q738: the survivors of a mutation sweep of `relate.py`. Each test below names the claim
+# it holds down; none reads a constant of the module to compare it with itself.
+
+
+def _extra(spec: dict, pid: str, moves: list[dict], **fields) -> dict:
+    """`spec` with one more piece that is placed nowhere (a promotion target only)."""
+    out = copy.deepcopy(spec)
+    out["pieces"].append({"id": pid, "name": f"extra {pid}", "moves": moves, **fields})
+    return out
+
+
+def _promoting_to(spec: dict, *targets: str) -> dict:
+    out = copy.deepcopy(spec)
+    out["rules"]["promotion"] = {"piece": "W", "rank": 5, "to": ["R", *targets]}
+    return out
+
+
+def _units_of(first: dict, second: dict) -> list[str]:
+    return [difference.unit for difference in relate(first, second).differences]
+
+
+@pytest.mark.parametrize(
+    "rules",
+    [
+        {"win": "checkmate"},
+        {"stalemate": "draw"},
+        {"max_plies": 400},
+        {"repetition_draw": 3},
+        {"no_progress_draw": 100},
+    ],
+)
+def test_writing_any_of_the_five_defaults_costs_nothing(rules: dict) -> None:
+    assert units(BASE, changed(**rules)) == 0
+
+
+def test_a_value_that_is_not_the_default_is_a_rule() -> None:
+    for rules in ({"repetition_draw": 2}, {"repetition_draw": 4}, {"no_progress_draw": 99}):
+        assert _units_of(BASE, changed(**rules)) == [f"rules.{next(iter(rules))}"]
+
+
+def test_the_values_the_comparison_hands_back_cannot_be_changed_in_place() -> None:
+    """Pair results, normal forms and readings are cached and shared between callers."""
+    from dataclasses import FrozenInstanceError
+
+    relation = relate(BASE, changed(stalemate="loss"))
+    held = [
+        (relation.differences[0], "kind"),
+        (relation, "differences"),
+        (normal_form(BASE), "size"),
+        (similarity(BASE, changed(check_limit=3)), "rules"),
+        (_reading(normal_form(BASE)), "rules"),
+    ]
+    for value, attribute in held:
+        with pytest.raises(FrozenInstanceError):
+            setattr(value, attribute, None)
+
+
+def test_the_comparison_values_are_hashable_where_they_are_declared_so() -> None:
+    relation = relate(BASE, changed(stalemate="loss"))
+    assert len({relation, relate(BASE, changed(stalemate="loss"))}) == 1
+    assert len({relation.differences[0]}) == 1
+    reading = similarity(BASE, changed(check_limit=3))
+    assert hash(reading) == hash(similarity(BASE, changed(check_limit=3)))
+    # A normal form is hashed by identity: it holds dicts, and a field-wise hash would raise.
+    assert len({normal_form(BASE), normal_form(BASE)}) == 1
+    assert {normal_form(BASE): 1}[normal_form(BASE)] == 1
+
+
+def _reordered(value):
+    """Every dict in `value` rebuilt with its keys in the opposite order."""
+    if isinstance(value, dict):
+        return {key: _reordered(value[key]) for key in reversed(list(value))}
+    if isinstance(value, list):
+        return [_reordered(item) for item in value]
+    return value
+
+
+def test_a_normal_form_is_memoised_on_what_the_spec_says_not_on_how_it_is_ordered() -> None:
+    spec = copy.deepcopy(BASE)
+    assert list(_reordered(spec)) != list(spec)
+    assert normal_form(spec) is normal_form(_reordered(spec))
+
+
+def test_an_identity_key_is_sixteen_hex_digits() -> None:
+    key = identity_key(BASE)
+    assert len(key) == 16
+    assert int(key, 16) >= 0
+    assert identity_key(changed(stalemate="loss")) != key
+
+
+def _rotated_with_a_wall() -> dict:
+    spec = copy.deepcopy(BASE)
+    spec["schema_version"] = 6
+    spec["setup"]["orientation"] = "rotate"
+    spec["rules"]["obstacles"] = {"squares": ["b3"], "mirror": True}
+    return spec
+
+
+def test_a_rotated_army_of_pieces_that_read_left_and_right_alike_is_mirrored_play() -> None:
+    """With a wall in play the restated spec has to carry the wall square by square, on
+    this board's width and not the default one, and not mirrored a second time."""
+    spec = _rotated_with_a_wall()
+    assert validate_spec(spec) == []
+    assert normal_form(spec).orientation == "mirror"
+    assert _orientation_played(spec, "rotate", _setup_cells(spec, 6, 6, "rotate")) == "mirror"
+
+
+def test_a_rotated_wall_on_a_non_square_board_is_still_spelling() -> None:
+    spec = _rotated_with_a_wall()
+    spec["board"] = {"width": 5, "height": 7}
+    spec["rules"]["promotion"] = {"piece": "W", "rank": 6, "to": ["R"]}
+    spec["setup"]["placements"] = [
+        {"piece": "K", "squares": ["c1"]},
+        {"piece": "R", "squares": ["a1", "e1"]},
+        {"piece": "W", "squares": ["a2", "b2", "c2", "d2", "e2"]},
+    ]
+    spec["rules"]["obstacles"] = {"squares": ["b4"], "mirror": True}
+    assert validate_spec(spec) == []
+    assert normal_form(spec).orientation == "mirror"
+
+
+def test_a_wall_that_only_one_army_sees_keeps_the_rotation() -> None:
+    spec = _rotated_with_a_wall()
+    piece(spec, "W")["moves"][0] = {"kind": "slide", "vectors": [[1, 1]], "mode": "move"}
+    assert normal_form(spec).orientation == "rotate"
+
+
+def _extra_pieces_pairing_case(first: list, second: list, promotes: tuple[str, str]) -> tuple:
+    """Two games that differ only in a pair of unplaced extras, and in which one the
+    promotion names, so a pairing that crosses the extras costs one more rule."""
+    one = BASE
+    two = BASE
+    for pid, moves, fields in first:
+        one = _extra(one, pid, moves, **fields)
+    for pid, moves, fields in second:
+        two = _extra(two, pid, moves, **fields)
+    return _promoting_to(one, promotes[0]), _promoting_to(two, promotes[1])
+
+
+def _orth(kind: str = "slide", **fields) -> list[dict]:
+    return [{"kind": kind, "vectors": [[1, 0]], "symmetry": "rotate4", **fields}]
+
+
+def test_the_closest_pairing_goes_by_kind_and_direction() -> None:
+    """A slider pairs with the slider that moves the same way, whatever the order declared.
+
+    P (slide) and Q (leap) against V (leap) and U (slide), declared the other way round and
+    differing from them in range and condition only: the promotion names P in one game and
+    U in the other, so the pairing that crosses them costs a third rule.
+    """
+    first, second = _extra_pieces_pairing_case(
+        [("P", _orth(range=2), {}), ("Q", _orth("leap"), {})],
+        [("V", _orth("leap", condition={"unmoved": True}), {}), ("U", _orth(range=3), {})],
+        ("P", "U"),
+    )
+    assert _units_of(first, second) == ["piece.moves", "piece.moves"]
+
+
+def test_the_closest_pairing_prefers_the_larger_share_of_directions() -> None:
+    """An orthogonal slider pairs with the orthogonal slider and not with the one that
+    also goes diagonally, though that one is declared first (a share is the directions
+    they have in common over all the directions either has, not a product of sizes)."""
+    first, second = _extra_pieces_pairing_case(
+        [("P", _orth(range=2), {}),
+         ("Q", [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4",
+                 "range": 2}], {})],
+        [("U", [{"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4",
+                 "range": 3}], {}),
+         ("V", _orth(range=3), {})],
+        ("P", "V"),
+    )
+    assert _units_of(first, second) == ["piece.moves", "piece.moves"]
+
+
+def test_a_stone_pairs_with_a_stone_before_a_royal_stone() -> None:
+    """Two pieces that move nowhere have everything in common; a stone and a mover do not."""
+    first, second = _extra_pieces_pairing_case(
+        [("P", [], {}), ("Q", _orth(range=2), {})],
+        [("U", _orth(range=3), {}), ("V", [], {"royal": True})],
+        ("P", "V"),
+    )
+    assert sorted(_units_of(first, second)) == ["piece.moves", "piece.royal"]
+
+
+def test_writing_the_default_minimum_range_costs_nothing() -> None:
+    spec = copy.deepcopy(BASE)
+    piece(spec, "R")["moves"][0]["min_range"] = 1
+    assert units(BASE, spec) == 0
+    for other in (0, 2):
+        piece(spec, "R")["moves"][0]["min_range"] = other
+        assert _units_of(BASE, spec) == ["piece.moves"]
+
+
+def test_a_move_that_needs_a_condition_differs_from_one_that_needs_its_opposite() -> None:
+    first, second = copy.deepcopy(BASE), copy.deepcopy(BASE)
+    piece(first, "R")["moves"][0]["condition"] = {"unmoved": True}
+    piece(second, "R")["moves"][0]["condition"] = {"unmoved": False}
+    assert _units_of(first, second) == ["piece.moves"]
+    assert _units_of(BASE, first) == ["piece.moves"]
+
+
+# ----------------------------------------------- a piece only one game has leaves a map
+
+
+def _stocked(spec: dict, **drops) -> dict:
+    out = copy.deepcopy(spec)
+    out["schema_version"] = 20
+    out["rules"]["drops"] = drops
+    return out
+
+
+def test_a_removed_piece_leaves_the_stock_it_was_listed_in() -> None:
+    """The piece sorts before the one that stays, so a fold that stops at the first gone
+    entry would lose the rest of the map."""
+    mover = _orth(range=2)
+    first = _stocked(_extra(BASE, "A", mover, value=2), stock={"A": 3, "R": 2})
+    second = _stocked(BASE, stock={"R": 2})
+    assert validate_spec(first) == [] and validate_spec(second) == []
+    assert _units_of(first, second) == ["piece.removed"]
+    assert _units_of(second, first) == ["piece.added"]
+
+
+def test_a_removed_piece_leaves_the_list_that_named_only_it() -> None:
+    """A list left empty by the removal leaves too, and the entries after it are still read."""
+    first = _stocked(_extra(BASE, "X", _orth(range=2), value=2), no_doubled=["X"], stock={"R": 2})
+    second = _stocked(BASE, stock={"R": 2})
+    assert validate_spec(first) == []
+    assert _units_of(first, second) == ["piece.removed"]
+    assert _units_of(second, first) == ["piece.added"]
+
+
+# ------------------------------------------------------------------ anchoring the armies
+
+
+def test_an_army_that_is_only_the_second_players_is_still_anchored() -> None:
+    cells = {(1, 2, 3, "X", "")}
+    assert anchored(cells, 8, 8, "mirror") == {(1, 0, 0, "X", "")}
+    assert anchored(set(), 8, 8, "mirror") == frozenset()
+
+
+def test_each_army_is_slid_to_its_own_corner_by_the_squares_it_leaves_empty() -> None:
+    cells = {(0, 3, 2, "X", ""), (0, 5, 4, "Y", ""), (1, 4, 6, "X", ""), (1, 2, 5, "Y", "")}
+    # Mirror: the second army reads (x, h - 1 - y), then both are slid to (0, 0).
+    assert anchored(cells, 8, 8, "mirror") == {
+        (0, 0, 0, "X", ""), (0, 2, 2, "Y", ""),
+        (1, 2, 0, "X", ""), (1, 0, 1, "Y", ""),
+    }
+
+
+def _moved_setup(spec: dict, files: int, ranks: int, width: int, height: int) -> dict:
+    out = copy.deepcopy(spec)
+    out["board"] = {"width": width, "height": height}
+    for placement in out["setup"]["placements"]:
+        squares = [parse_square(name, 6, 6) for name in placement["squares"]]
+        placement["squares"] = [format_square(x + files, y + ranks) for x, y in squares]
+    out["rules"]["promotion"] = {"piece": "W", "rank": height - 1, "to": ["R"]}
+    return out
+
+
+def test_a_setup_that_moves_with_the_board_is_not_a_setup_difference() -> None:
+    """The same armies one file right and two ranks up on a bigger board: the board is
+    the one thing that changed, however far from a1 the armies start."""
+    spec = _moved_setup(BASE, 1, 2, 8, 10)
+    assert validate_spec(spec) == []
+    relation = relate(BASE, spec)
+    assert [difference.unit for difference in relation.differences] == ["board.size"]
+    assert relation.differences[0].size == 8 * 10 - 6 * 6
+
+
+def test_the_size_of_a_resized_board_is_said_in_files_and_ranks() -> None:
+    first, second = copy.deepcopy(BASE), copy.deepcopy(BASE)
+    first["board"] = {"width": 6, "height": 8}
+    second["board"] = {"width": 7, "height": 9}
+    for spec, top in ((first, 7), (second, 8)):
+        spec["rules"]["promotion"] = {"piece": "W", "rank": top, "to": ["R"]}
+    relation = relate(first, second)
+    assert [difference.unit for difference in relation.differences] == ["board.size"]
+    assert relation.differences[0].sentence == "its board is 7x9 rather than 6x8"
+    assert relation.differences[0].size == 15
+    assert relate(second, first).differences[0].sentence == "its board is 6x8 rather than 7x9"
+    assert relate(second, first).differences[0].size == 15
+
+
+def test_a_game_with_no_promotion_has_no_en_passant_to_fire() -> None:
+    assert normal_form(BASE).en_passant_fires is True
+    assert normal_form(changed(promotion=None, en_passant=None)).en_passant_fires is False
+    assert normal_form(changed(promotion=None)).en_passant_fires is False
+
+
+# ------------------------------------------------------------- the piece matching, by stage
+
+
+def _leaper(*vectors: list[int]) -> list[dict]:
+    return [{"kind": "leap", "vectors": list(vectors), "symmetry": "rotate4"}]
+
+
+KNIGHT = _leaper([2, 1])
+DIAGONAL = [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4"}]
+TWO_STEP = _leaper([2, 0])
+
+
+def _game_with(*extras: tuple[str, list[dict], dict], **rules) -> dict:
+    spec = changed(**rules)
+    for pid, moves, fields in extras:
+        spec = _extra(spec, pid, moves, **fields)
+    return spec
+
+
+def test_a_piece_that_keeps_its_letter_and_movement_is_paired_with_itself() -> None:
+    """Two leapers of one shape, valued 5 and 3 and declared the other way round in the
+    second game, are still the same two pieces: the price of each travels with its letter."""
+    first = _game_with(
+        ("X", KNIGHT, {}), ("Y", DIAGONAL, {}),
+        ("P", TWO_STEP, {"value": 5}), ("Q", TWO_STEP, {"value": 3}),
+    )
+    second = _game_with(
+        ("X", DIAGONAL, {}), ("T", KNIGHT, {}),
+        ("Q", TWO_STEP, {"value": 3}), ("P", TWO_STEP, {"value": 5}),
+        stalemate="loss",
+    )
+    assert _units_of(first, second) == ["rules.stalemate"]
+
+
+def test_of_several_pieces_that_move_alike_the_first_one_declared_is_taken() -> None:
+    """Letters differ, so only movement can pair them, and the first that fits is the
+    one that is taken: P (5) takes U (5) and Q (3) takes V (3)."""
+    first = _game_with(
+        ("X", KNIGHT, {}), ("Y", DIAGONAL, {}),
+        ("P", TWO_STEP, {"value": 5}), ("Q", TWO_STEP, {"value": 3}),
+    )
+    second = _game_with(
+        ("X", DIAGONAL, {}), ("T", KNIGHT, {}),
+        ("U", TWO_STEP, {"value": 5}), ("V", TWO_STEP, {"value": 3}),
+        stalemate="loss",
+    )
+    assert _units_of(first, second) == ["rules.stalemate"]
+
+
+def test_a_letter_decides_a_pairing_that_movement_cannot() -> None:
+    """P and Q keep their letters and both change range, so no movement is shared; the
+    letters pair them, and the promotion that names P is then the same rule in both."""
+    first, second = _extra_pieces_pairing_case(
+        [("P", _orth(range=1), {}), ("Q", _orth(range=2), {})],
+        [("Q", _orth(range=4), {}), ("P", _orth(range=3), {})],
+        ("P", "P"),
+    )
+    assert _units_of(first, second) == ["piece.moves", "piece.moves"]
+
+
+# --------------------------------------------------------------------------- the caches
+
+
+def test_the_pair_cache_holds_more_than_the_last_pair() -> None:
+    pair_a = (BASE, changed(stalemate="loss"))
+    pair_b = (BASE, changed(must_capture=True))
+    held = relate(*pair_a)
+    relate(*pair_b)
+    assert relate(*pair_a) is held
+
+
+def test_the_reading_cache_holds_more_than_the_last_form() -> None:
+    first, second = normal_form(BASE), normal_form(changed(stalemate="loss"))
+    held = _reading(first)
+    _reading(second)
+    assert _reading(first) is held
+
+
+# ------------------------------------------------------------------ the facing of a piece
+
+
+def _facing(axes: int, placed: str) -> dict:
+    spec = copy.deepcopy(BASE)
+    spec["schema_version"] = 20
+    piece(spec, "W")["facing"] = {"axes": axes}
+    for placement in spec["setup"]["placements"]:
+        if placement["piece"] == "W":
+            placement["facing"] = placed
+    return spec
+
+
+def test_a_facing_written_on_a_placement_goes_with_the_facing_rule_when_that_differs() -> None:
+    first, second = _facing(4, "right"), _facing(2, "forward")
+    assert validate_spec(first) == [] and validate_spec(second) == []
+    assert _units_of(first, second) == ["piece.facing"]
+    assert _units_of(second, first) == ["piece.facing"]
+
+
+def test_a_facing_written_on_a_placement_is_a_setup_difference_when_the_rule_is_alone() -> None:
+    first, second = _facing(4, "right"), _facing(4, "forward")
+    assert _units_of(first, second) == ["setup.cells"]
+    assert _units_of(second, first) == ["setup.cells"]
+
+
+# ---------------------------------------------------------------- who may take whom, said
+
+
+def _takers(*pids: str) -> dict:
+    spec = copy.deepcopy(BASE)
+    for entry in spec["pieces"]:
+        if entry["id"] in pids:
+            entry["captures"] = ["W"]
+    return spec
+
+
+def test_who_may_take_whom_counts_the_pieces_that_declare_it_in_the_singular_and_plural() -> None:
+    one = relate(BASE, _takers("R")).differences[0]
+    assert (one.sentence, one.size) == ("who may take whom, declared on 1 piece", 1)
+    three = relate(BASE, _takers("K", "W", "R")).differences[0]
+    assert (three.sentence, three.size) == ("who may take whom, declared on 3 pieces", 3)
+    two = relate(BASE, _takers("K", "R")).differences[0]
+    assert two.sentence == "who may take whom, declared on 2 pieces"
+
+
+# ----------------------------------------------------------- a split read from the other side
+
+
+def test_taking_back_a_split_is_one_piece_removed() -> None:
+    split = copy.deepcopy(BASE)
+    split["pieces"].append({
+        "id": "B", "name": "runner", "value": 3,
+        "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4"}],
+    })
+    walkers = next(p for p in split["setup"]["placements"] if p["piece"] == "W")
+    walkers["squares"] = ["a2", "b2", "c2"]
+    split["setup"]["placements"].append({"piece": "B", "squares": ["d2", "e2", "f2"]})
+    assert _units_of(split, BASE) == ["piece.removed"]
+    assert _units_of(BASE, split) == ["piece.added"]
+
+
+def test_a_promotion_rank_that_follows_the_board_does_not_hide_the_next_rule() -> None:
+    spec = copy.deepcopy(BASE)
+    spec["board"] = {"width": 6, "height": 8}
+    spec["rules"]["promotion"] = {"piece": "W", "rank": 7, "to": ["R"]}
+    spec["rules"]["stalemate"] = "loss"
+    assert _units_of(BASE, spec) == ["board.size", "rules.stalemate"]
+
+
+# ------------------------------------------------------------ the index, in whole numbers
+
+
+def test_the_tiers_weigh_what_the_design_note_says_they_weigh() -> None:
+    """Eight squares to a piece, eight pieces to a mechanism, eight mechanisms to a rule,
+    written out here as numbers so that the ratio is pinned and not read back."""
+    assert SIMILARITY_RATIO == 8
+    assert SETTING_WEIGHT == 0.5
+    assert similarity(BASE, changed(check_limit=3)).index == 512
+    moved = changed(promotion={"piece": "W", "rank": 4, "to": ["R"]})
+    assert similarity(BASE, moved).index == 256
+    spec = copy.deepcopy(BASE)
+    piece(spec, "R")["moves"][0]["range"] = 3
+    reading = similarity(BASE, spec)
+    assert (reading.counts["mechanisms"], reading.counts["pieces"]) == (2, 1)
+    assert reading.index == 2 * 64 + 8
+    assert similarity(BASE, changed(max_plies=100)).index == 1
+    assert similarity(BASE, standing("W", ["a2", "b2", "c2", "d2", "e2"])).index == 2
+
+
+# ------------------------------------------------------------------ the rules a game involves
+
+
+def _wrapped() -> dict:
+    return changed(wrap={"files": "both"})
+
+
+def _walled() -> dict:
+    spec = copy.deepcopy(BASE)
+    spec["schema_version"] = 6
+    spec["rules"]["obstacles"] = {"squares": ["b3"]}
+    return spec
+
+
+def _hex() -> dict:
+    spec = copy.deepcopy(BASE)
+    spec["schema_version"] = 20
+    spec["board"] = {"width": 6, "height": 6, "lattice": "hex"}
+    return spec
+
+
+def _capturing() -> dict:
+    return _takers("R")
+
+
+@pytest.mark.parametrize(
+    ("spec", "extra"),
+    [
+        (BASE, set()),
+        (_wrapped(), {"board.wrap"}),
+        (_walled(), {"board.walls"}),
+        (_hex(), {"board.lattice.hex"}),
+        (_capturing(), {"piece.captures"}),
+    ],
+    ids=["none", "wrap", "walls", "hex", "captures"],
+)
+def test_the_rules_a_game_involves_are_its_rules_and_the_board_things_that_act_as_rules(
+    spec: dict, extra: set[str]
+) -> None:
+    kept = {"promotion", "en_passant"}
+    assert rules_involved(normal_form(BASE)) == kept
+    assert rules_involved(normal_form(spec)) == kept | extra
+
+
+# ------------------------------------------------ Q922: the memo tables are bounded
+
+
+class TestTheMemoTablesStayWithinTheirBound:
+    """`_PAIRS` and `_READINGS` empty themselves rather than grow without limit, and what
+    they answer after emptying is what they answered before. The bound is a constant of
+    two hundred thousand and five thousand; a test that fills that would be a minute of
+    work, so these shrink it. Real behaviour, since the bound is what holds a long-running
+    refresher's memory down, and an off-by-one in it lets one entry too many in."""
+
+    VARIANTS = (
+        {"en_passant": None},
+        {"win": "extinction"},
+        {"win": "royal_capture"},
+        {"en_passant": None, "win": "extinction"},
+        {"stalemate": "win"},
+    )
+
+    @staticmethod
+    def _specs() -> list[dict]:
+        return [BASE] + [changed(**variant) for variant in TestTheMemoTablesStayWithinTheirBound.VARIANTS]
+
+    def test_the_pair_table(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from chess_variant_sandbox.spec import relate as module
+
+        specs = self._specs()
+        expected = [module.relate(specs[0], other).differences for other in specs[1:]]
+        monkeypatch.setattr(module, "_PAIRS", {})
+        monkeypatch.setattr(module, "_PAIRS_KEPT", 2)
+        for round_ in range(2):
+            got = []
+            for number, other in enumerate(specs[1:]):
+                got.append(module.relate(specs[0], other).differences)
+                assert len(module._PAIRS) <= 2, round_
+                if round_ == 0:  # every call is a miss: fill to the bound, empty, fill again
+                    assert len(module._PAIRS) == number % 2 + 1
+            assert got == expected
+
+    def test_the_reading_table(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from chess_variant_sandbox.spec import relate as module
+
+        specs = self._specs()
+        forms = [module.normal_form(spec) for spec in specs]
+        expected = [module.similarity_forms(forms[0], other) for other in forms[1:]]
+        monkeypatch.setattr(module, "_READINGS", {})
+        monkeypatch.setattr(module, "_READINGS_KEPT", 2)
+        for round_ in range(2):
+            got, sizes = [], []
+            for other in forms[1:]:
+                got.append(module.similarity_forms(forms[0], other))
+                sizes.append(len(module._READINGS))
+                assert sizes[-1] <= 2, round_
+            assert got == expected
+            if round_ == 0:
+                # Each call reads the first spec (held once, lost whenever the table
+                # empties) and a new one. The table fills to two, then empties when the
+                # next new one arrives with it full, leaving that one alone.
+                assert sizes == [2, 1, 1, 1, 1]

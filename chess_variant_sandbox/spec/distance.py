@@ -441,7 +441,9 @@ def _promotes_on_leaving(rules: dict[str, Any]) -> float:
 
 def _promotion_zone_share(spec: dict[str, Any]) -> float:
     """The first player's promotion zone over the board's cells, walls and absent cells
-    excluded, so a hexagon and its rhombus cut by walls read alike."""
+    excluded from both sides, so a hexagon and its rhombus cut by walls read alike and
+    the share stays within 0-1 (Q923: a walled zone square was counted, and one free
+    cell under a two-square zone read 2.0)."""
     board = spec.get("board", {})
     width, height = int(board.get("width", 8)), int(board.get("height", 8))
     rules = spec.get("rules", {}) or {}
@@ -454,7 +456,7 @@ def _promotion_zone_share(spec: dict[str, Any]) -> float:
             zone |= promotion_squares(entry, width, height, orientation)[0]
     off = obstacle_squares(rules, width, height, orientation) | absent_squares(board)
     cells = width * height - len(off)
-    return len(zone) / cells if cells > 0 else 0.0
+    return len(zone - off) / cells if cells > 0 else 0.0
 
 
 def _npc_features(pieces: list[Any], npcs: Any) -> dict[str, float]:
