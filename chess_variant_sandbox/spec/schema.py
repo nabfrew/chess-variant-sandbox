@@ -33,7 +33,7 @@ from chess_variant_sandbox.spec.reachability import (
 if TYPE_CHECKING:
     from chess_variant_sandbox.engine.compile import StrikeRule
 
-SCHEMA_VERSION = 25
+SCHEMA_VERSION = 26
 
 # Every version is accepted, and the number a spec declares is a claim about which
 # feature set it uses rather than a date stamp. That is what keeps a bump cheap:
@@ -44,7 +44,7 @@ SCHEMA_VERSION = 25
 # the rules need.
 SUPPORTED_SCHEMA_VERSIONS = (
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-    25,
+    25, 26,
 )
 
 # The movement primitive table. Extending the design space means adding a row here,
@@ -779,7 +779,7 @@ _MOVE_KEYS = {
 _CONDITION_KEYS = {"from_rank", "first_move", "region"}
 _PIECE_KEYS = {
     "id", "name", "royal", "value", "moves", "region", "promoted_from", "captures",
-    "facing",
+    "facing", "beats",
 }
 # ``appearance`` and ``provenance`` are deliberately *outside* the mechanics.
 # ``canonical.MECHANIC_KEYS`` is what the content hash covers, so anything added inside
@@ -841,6 +841,7 @@ _RULES_KEYS = {
     "npcs",
     "promote_on_entry",
     "portals",
+    "simultaneous",
 }
 _OBSTACLES_KEYS = {"squares", "mirror", "blocks_leaps"}
 _STRIKE_KEYS = {"effect", "chain", "position", "immune", "landing", "switches_sides"}
@@ -1147,6 +1148,13 @@ def validate_spec(spec: Any, *, new: bool = True) -> list[str]:
             errors.append(
                 f"the spec uses {', '.join(sorted(used))}, added in schema 25; declare "
                 '"schema_version": 25 to use it'
+            )
+    if version < 26:
+        used = _schema_twenty_six_uses(spec)
+        if used:
+            errors.append(
+                f"the spec uses {', '.join(sorted(used))}, added in schema 26; declare "
+                '"schema_version": 26 to use it'
             )
 
     return errors
@@ -1629,6 +1637,291 @@ def _schema_twenty_five_uses(spec: dict[str, Any]) -> set[str]:
         if isinstance(facing, dict) and "turns" in facing:
             return {"pieces[].facing.turns"}
     return set()
+
+
+def _schema_twenty_six_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that schema 26 added, by name (Q918a, simultaneous moves).
+
+    `docs/plan-simultaneous.md` §5. Named whatever its value, because an older spec may not
+    write even the default:
+
+    * ``rules.simultaneous`` -- the game is played in rounds: both players choose a move on
+      the same board, in secret, and both are revealed and resolved together;
+    * ``rules.simultaneous.tie`` -- what decides a collision both pieces win or both lose
+      (absent: both are eliminated), with its value;
+    * ``pieces[].beats`` -- the pieces this one eliminates when the two collide.
+    """
+    used: set[str] = set()
+    rules = spec.get("rules")
+    if isinstance(rules, dict) and "simultaneous" in rules:
+        used.add("rules.simultaneous")
+        rule = rules["simultaneous"]
+        if isinstance(rule, dict) and "tie" in rule:
+            used.add(f"rules.simultaneous.tie {rule['tie']!r}")
+    pieces = spec.get("pieces")
+    for piece in pieces if isinstance(pieces, list) else ():
+        if isinstance(piece, dict) and "beats" in piece:
+            used.add("pieces[].beats")
+            break
+    return used
+
+
+# Schema 26 (Q918a): the values ``rules.simultaneous.tie`` may take. Absent is the user's
+# table, both pieces eliminated, and writing it out as ``"both"`` is refused so that one game
+# has one spelling (`docs/plan-simultaneous.md` §5.1).
+SIMULTANEOUS_TIES = ("initiative", "impossible")
+_SIMULTANEOUS_KEYS = {"tie"}
+
+
+def is_simultaneous(spec_or_rules: Any) -> bool:
+    """Whether a spec (or its ``rules``) is played in rounds (schema 26).
+
+    The one reader of the spelling: present as an object, the game is simultaneous."""
+    rules = spec_or_rules
+    if isinstance(spec_or_rules, dict) and "pieces" in spec_or_rules:
+        rules = spec_or_rules.get("rules")
+    return isinstance(rules, dict) and isinstance(rules.get("simultaneous"), dict)
+
+
+def beats_of(piece: dict[str, Any], declared: Iterable[str]) -> frozenset[str]:
+    """The ids ``piece`` eliminates in a collision: its ``beats``, else its ``captures``,
+    else every declared piece (`docs/plan-simultaneous.md` §2.3)."""
+    for key in ("beats", "captures"):
+        named = piece.get(key)
+        if isinstance(named, list):
+            return frozenset(entry for entry in named if isinstance(entry, str))
+    return frozenset(declared)
+
+
+def simultaneous_holdings(spec: dict[str, Any]) -> tuple[set[str], set[str]]:
+    """The piece ids each player can ever have on the board, for the ``impossible`` proof.
+
+    An over-approximation in the safe direction, per player: placements (both under a
+    mirrored setup), a stock, then the closure under promotion targets, a strike chain's
+    or a contact link's results, a side switch (the type joins the other player), and a
+    hand that fills from captures (the other player's types join). A pair it calls
+    possible may never meet in play; a pair it leaves out never can.
+    """
+    pieces = [piece for piece in spec.get("pieces") or [] if isinstance(piece, dict)]
+    declared = {piece["id"] for piece in pieces if isinstance(piece.get("id"), str)}
+    rules: dict[str, Any] = spec["rules"] if isinstance(spec.get("rules"), dict) else {}
+    held: list[set[str]] = [set(), set()]
+    setup: dict[str, Any] = spec["setup"] if isinstance(spec.get("setup"), dict) else {}
+    mirrored = setup.get("mirror", True) is not False
+    for placement in setup.get("placements") or []:
+        if not isinstance(placement, dict) or placement.get("piece") not in declared:
+            continue
+        players = (0, 1) if mirrored else (placement.get("player", 0),)
+        for player in players:
+            if player in (0, 1):
+                held[player].add(placement["piece"])
+    drops: dict[str, Any] | None = rules["drops"] if isinstance(rules.get("drops"), dict) else None
+    if drops is not None and isinstance(drops.get("stock"), dict):
+        for player in (0, 1):
+            held[player] |= declared.intersection(drops["stock"])
+    hands_fill = drops is not None and drops.get("from_captures", True) is not False
+    demoted = {
+        piece["id"]: piece["promoted_from"] for piece in pieces
+        if isinstance(piece.get("id"), str) and piece.get("promoted_from") in declared
+    }
+    promotions = rules.get("promotion")
+    promotions = promotions if isinstance(promotions, list) else [promotions]
+    strike: dict[str, Any] = rules["strike"] if isinstance(rules.get("strike"), dict) else {}
+    contacts: dict[str, Any] = (
+        rules["contacts"] if isinstance(rules.get("contacts"), dict) else {}
+    )
+    switches = set(strike.get("switches_sides") or []) & declared
+    while True:
+        before = (frozenset(held[0]), frozenset(held[1]))
+        for player in (0, 1):
+            for rule in promotions:
+                if not isinstance(rule, dict) or rule.get("piece") not in held[player]:
+                    continue
+                targets = rule.get("to")
+                by_player = rule.get("to_by_player")
+                if isinstance(by_player, dict):
+                    targets = by_player.get(str(player))
+                held[player] |= declared.intersection(targets or [])
+            for link in strike.get("chain") or []:
+                if isinstance(link, dict) and link.get("from") in held[player]:
+                    held[player] |= declared.intersection([link.get("to")])
+            for link in contacts.get("links") or []:
+                if not isinstance(link, dict):
+                    continue
+                if link.get("mover") in held[player]:
+                    held[player] |= declared.intersection([link.get("mover_to")])
+                if link.get("onto") in held[player]:
+                    held[player] |= declared.intersection([link.get("onto_to")])
+            held[1 - player] |= held[player] & switches
+            if hands_fill:
+                held[player] |= {demoted.get(pid, pid) for pid in held[1 - player]}
+        if (frozenset(held[0]), frozenset(held[1])) == before:
+            return held[0], held[1]
+
+
+def simultaneous_tie_pair(spec: dict[str, Any]) -> tuple[str, str] | None:
+    """The first pair of a player-0 type and a player-1 type whose collision is a tie (both
+    beat the other, or neither does), or ``None`` when no tie can occur (§3.1, F)."""
+    pieces = [piece for piece in spec.get("pieces") or [] if isinstance(piece, dict)]
+    by_id = {piece["id"]: piece for piece in pieces if isinstance(piece.get("id"), str)}
+    declared = list(by_id)
+    first, second = simultaneous_holdings(spec)
+    for x in sorted(first):
+        for y in sorted(second):
+            x_beats = y in beats_of(by_id[x], declared)
+            y_beats = x in beats_of(by_id[y], declared)
+            if x_beats == y_beats:
+                return x, y
+    return None
+
+
+def _check_simultaneous_coherence(
+    spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """Schema 26 (Q918a): the rule's own shape, ``beats``, and every combination §4 of
+    `docs/plan-simultaneous.md` refuses, each in words naming both rules."""
+    declared = [p["id"] for p in pieces if isinstance(p, dict) and isinstance(p.get("id"), str)]
+    if not is_simultaneous(rules):
+        if "simultaneous" in rules:
+            errors.append(
+                'rules.simultaneous must be an object, such as {} or {"tie": "initiative"}'
+            )
+        for index, piece in enumerate(pieces):
+            if isinstance(piece, dict) and "beats" in piece:
+                errors.append(
+                    f"pieces[{index}].beats says who wins a collision, and only matters in a "
+                    "simultaneous game (rules.simultaneous); leave it out"
+                )
+        return
+    rule = rules["simultaneous"]
+    _check_keys(rule, _SIMULTANEOUS_KEYS, "rules.simultaneous", errors)
+    tie = rule.get("tie")
+    if "tie" in rule:
+        if tie == "both":
+            errors.append(
+                'rules.simultaneous.tie "both" is the default (both pieces are eliminated); '
+                "leave it out"
+            )
+        elif tie not in SIMULTANEOUS_TIES:
+            errors.append(
+                f"rules.simultaneous.tie must be one of {SIMULTANEOUS_TIES}, got {tie!r}"
+            )
+    portal_ids = portal_piece_ids(rules)
+    for index, piece in enumerate(pieces):
+        if not isinstance(piece, dict) or not isinstance(piece.get("beats"), list):
+            continue
+        if piece.get("id") in portal_ids:
+            errors.append(
+                f"pieces[{index}].beats is on a portal, and a portal never collides; leave it out"
+            )
+        named = frozenset(entry for entry in piece["beats"] if isinstance(entry, str))
+        captures = piece.get("captures")
+        default = (
+            frozenset(entry for entry in captures if isinstance(entry, str))
+            if isinstance(captures, list) else frozenset(declared)
+        )
+        if named == default and len(named) == len(piece["beats"]):
+            errors.append(
+                f"pieces[{index}].beats is what the piece beats when beats is left out (its "
+                "captures, or every piece); leave it out"
+            )
+
+    def refuse(what: str, why: str) -> None:
+        errors.append(f"rules.simultaneous beside {what}: {why}")
+
+    if rules.get("win", "checkmate") == "checkmate":
+        refuse(
+            "rules.win 'checkmate'" + ("" if "win" in rules else " (the default)"),
+            "there is no check when both players move at once; use 'royal_capture', "
+            "'annihilation' or 'none'",
+        )
+    if "checkmate" in rules:
+        refuse("rules.checkmate", "there is no checkmate when both players move at once")
+    if rules.get("forbid_check") is True:
+        refuse("rules.forbid_check", "there is no check when both players move at once")
+    if rules.get("check_limit") is not None:
+        refuse("rules.check_limit", "there is no check when both players move at once")
+    if rules.get("royal_facing") == "forbidden":
+        refuse(
+            "rules.royal_facing 'forbidden'",
+            "two legal moves made together can open the file, which neither did alone",
+        )
+    if isinstance(rules.get("castling"), dict):
+        refuse("rules.castling", "castling moves two pieces in one move, and a round has one each")
+    if rules.get("en_passant") is True:
+        refuse(
+            "rules.en_passant",
+            "it reads the last move, and the pawn that stepped twice may move again this round",
+        )
+    if turn_is_long(rules):
+        refuse("a turn longer than one move", "a round is one secret move each")
+    if any(
+        isinstance(piece, dict) and any(
+            isinstance(move, dict) and move.get("kind") == "sweep"
+            for move in piece.get("moves") or []
+        )
+        for piece in pieces
+    ):
+        refuse(
+            "a sweep",
+            "which pieces a sweep removes depends on who stood on its path when, and a "
+            "round has no such time",
+        )
+    if any(end["moved_by"] for group in portal_groups(rules) for end in group["ends"]):
+        refuse(
+            "a portal a player moves (moved_by)",
+            "a piece going through a portal moved in the same round needs a third timing rule",
+        )
+    for key in ("strike", "contacts"):
+        stated = rules.get(key)
+        if not isinstance(stated, dict):
+            continue
+        position = stated.get("position", "advance")
+        if position == "choose":
+            refuse(
+                f"rules.{key}.position 'choose'",
+                "the square is chosen before the other player's move is known",
+            )
+        if key == "strike" and position == "stay":
+            refuse(
+                "rules.strike.position 'stay'",
+                "a captor that collided did move, so staying would mean going back",
+            )
+        if key == "contacts" and position == "swap" and any(
+            isinstance(link, dict) and link.get("own") is True
+            for link in stated.get("links") or []
+        ):
+            refuse(
+                "an own rules.contacts link with position 'swap'",
+                "the mover's own piece would be put on its origin before the meetings, "
+                "where the other player's piece may arrive",
+            )
+    drops = rules.get("drops")
+    if isinstance(drops, dict):
+        if drops.get("no_mate"):
+            refuse("rules.drops.no_mate", "it is about checkmate, and there is none")
+        stock = drops.get("stock")
+        royal_ids = {
+            p.get("id") for p in pieces if isinstance(p, dict) and p.get("royal") is True
+        }
+        if drops.get("placement") is True and isinstance(stock, dict) and royal_ids & set(stock):
+            refuse(
+                "a royal in a placement stock",
+                "both players place at once, and a royal could be traded before the game starts",
+            )
+    if tie in SIMULTANEOUS_TIES:
+        pair = simultaneous_tie_pair({**spec, "rules": rules, "pieces": pieces})
+        if tie == "impossible" and pair is not None:
+            errors.append(
+                f'rules.simultaneous.tie "impossible", but a {pair[0]} of the first player and '
+                f"a {pair[1]} of the second can collide and tie (each beats the other, or "
+                "neither does)"
+            )
+        if tie == "initiative" and pair is None:
+            errors.append(
+                'rules.simultaneous.tie "initiative" can never decide anything, since no '
+                'collision in this game can tie; write "impossible", or leave it out'
+            )
 
 
 def facing_turns(piece: Any) -> bool:
@@ -2602,6 +2895,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
         extra_types=portal_extra_types(rules),
     )
     _check_fixed_facings(spec, pieces, errors)
+    _check_simultaneous_coherence(spec, pieces, rules, errors)
 
     if isinstance(rules.get("castling"), dict):
         castling = rules["castling"]
@@ -4288,6 +4582,9 @@ def _validate_pieces(
     for index, piece in enumerate(pieces):
         if isinstance(piece, dict):
             _validate_captures(piece.get("captures"), f"pieces[{index}]", ids, errors)
+            _validate_captures(
+                piece.get("beats"), f"pieces[{index}]", ids, errors, key="beats"
+            )
 
     return ids
 
@@ -4360,7 +4657,7 @@ def _validate_facing(
 
 
 def _validate_captures(
-    captures: Any, where: str, piece_ids: list[str], errors: list[str]
+    captures: Any, where: str, piece_ids: list[str], errors: list[str], key: str = "captures"
 ) -> None:
     """Which enemy types this piece may take.
 
@@ -4372,16 +4669,16 @@ def _validate_captures(
     if captures is None:
         return
     if not isinstance(captures, list):
-        errors.append(f"{where}.captures must be an array of piece ids")
+        errors.append(f"{where}.{key} must be an array of piece ids")
         return
     for entry in captures:
         if not isinstance(entry, str):
-            errors.append(f"{where}.captures entry {entry!r} must be a piece id")
+            errors.append(f"{where}.{key} entry {entry!r} must be a piece id")
         elif entry not in piece_ids:
-            errors.append(f"{where}.captures entry {entry!r} is not a declared piece")
+            errors.append(f"{where}.{key} entry {entry!r} is not a declared piece")
     named = [entry for entry in captures if isinstance(entry, str)]
     if len(set(named)) != len(named):
-        errors.append(f"{where}.captures repeats a piece id")
+        errors.append(f"{where}.{key} repeats a piece id")
 
 
 def _validate_squares(

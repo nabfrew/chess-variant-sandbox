@@ -694,6 +694,17 @@ impl Objective {
         }
     }
 
+    /// Schema 26 (Q918b): the objective in a round, mobility mine minus theirs. Only the
+    /// built-in objective plays rounds (`AgentSpec::check_against` refuses the others on a
+    /// simultaneous game), so the other two arms are unreachable.
+    #[inline]
+    pub fn evaluate_round(&mut self, game: &Game<'_>, player: usize, counts: [usize; 2]) -> f64 {
+        match self {
+            Objective::Builtin(e) => e.evaluate_round(game, player, counts),
+            _ => unreachable!("check_against refuses a heuristic or net objective in a round"),
+        }
+    }
+
     /// The piece values capture ordering reads. Ordering is not the objective, so a
     /// heuristic never changes it.
     #[inline]

@@ -243,6 +243,20 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "one that takes it. An empty list is a piece that never captures."
                 ),
             },
+            "beats": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Schema 26. Only in a simultaneous game (rules.simultaneous): the piece "
+                    "ids this one eliminates when the two collide, both moving onto the same "
+                    "square in one round. Omit it and it is the piece's captures, or every "
+                    "piece where captures is omitted too; never write that list out. If "
+                    "exactly one of the two beats the other, that one stands on the square "
+                    "and the other is eliminated; if both do or neither does, it is a tie "
+                    "(rules.simultaneous.tie). An empty list loses every collision it does "
+                    "not tie. Never on a portal."
+                ),
+            },
             "facing": _object(
                 {
                     "axes": {
@@ -1010,6 +1024,45 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "piece region."
                 ),
             },
+            "simultaneous": _object(
+                {
+                    "tie": {
+                        "type": "string",
+                        "enum": ["initiative", "impossible"],
+                        "description": (
+                            "What decides a collision that is a tie, the two pieces each "
+                            "beating the other or neither beating the other. Leave it out "
+                            "and both are eliminated, leaving the square empty; never write "
+                            "that out. 'initiative': one player holds the initiative, the "
+                            "second player at the start; a tie goes to the holder's piece, "
+                            "and the initiative then passes to the other player. "
+                            "'impossible': a promise, checked, that no tie can ever occur, "
+                            "because for every piece each player can have, exactly one of "
+                            "the two beats the other (the armies use different pieces, "
+                            "such as a circle of rock, paper and scissors)."
+                        ),
+                    },
+                },
+                required=[],
+                strict=strict,
+                description=(
+                    "Schema 26. Both players move at once. Each round, each player chooses "
+                    "one of their own legal moves on the same board without seeing the "
+                    "other's; both are revealed and made together. Only two pieces moving "
+                    "onto the same square collide, and pieces.beats decides who survives. "
+                    "A piece that moves onto a square its target has just left lands "
+                    "there if its move could land on an empty square, and otherwise "
+                    "stays where it was (a capture-only move is void). Two such void "
+                    "moves at each other two rounds in a row bar that pair of moves for "
+                    "both players until either square changes. There is no check: "
+                    "rules.win must be 'royal_capture', 'annihilation' or 'none', and an "
+                    "ending reached by both players in the same round is a draw. A round "
+                    "counts as two moves on the clocks. Not usable beside castling, en "
+                    "passant, a sweep, check rules, a turn of more than one move, a "
+                    "portal a player moves, a strike or contact position 'choose', a "
+                    "strike position 'stay', or drops.no_mate."
+                ),
+            ),
             "promote_on_entry": {
                 "type": "boolean",
                 "description": (

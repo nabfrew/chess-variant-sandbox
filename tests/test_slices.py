@@ -220,7 +220,13 @@ LIBRARY = test_index_quality.RUNS
 # the move text through a fold (`engine.py`) move `metrics` and `analysis` with no number on a
 # library game, and the core moves the build fingerprint. The window is the stamp the library
 # carries now (Q847's); **the library replay Q867b owes (Q867r) empties it**.
-STALE_WINDOW: dict[str, str] = {"metrics": "4f58577892896e3d", "analysis": "2aa42b5d8a26bb74"}
+#
+# **Opened 2026-10-15 by Q918a** (schema 26, simultaneous moves): the boundary's round state
+# (`state.py`, `engine.py`) and the rule's cost (`complexity.py`) move `metrics` and
+# `analysis` with no number on a library game, and the core moves the build fingerprint. The
+# window is the stamp the library carries now (Q926's); **the library replay Q918a owes
+# empties it**.
+STALE_WINDOW: dict[str, str] = {"metrics": "f8af43c0447b76b4", "analysis": "3c06f1e7c404993c"}
 
 
 @pytest.fixture(scope="module")

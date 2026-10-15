@@ -16,6 +16,12 @@ use std::cell::Cell;
 
 use crate::tables::*;
 
+// Schema 26 (Q918a): rounds, a child of this module so it walks the same private state.
+// A file beside this one rather than under `game/`, because the build fingerprint
+// (`build.rs`, `measurement.py`) hashes `rust/src/*.rs` and nothing deeper.
+#[path = "rounds.rs"]
+mod rounds;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Reason {
     RoyalCaptured,
@@ -410,6 +416,20 @@ pub struct Game<'t> {
     /// at the top of every `make` and installed at the bottom. Separate from `key`
     /// because `Undo` stores the key as it was *before* the move and is pushed last.
     working_key: u64,
+    /// Schema 26 (Q918a): who holds the initiative (§3, E), or -1 where the tie is not
+    /// the initiative. In the key while player 1 holds it (`SimTables::zobrist_initiative`).
+    pub initiative: i8,
+    /// Schema 26: the void run (§2.7), the pair `[player 0's square, player 1's square]`
+    /// whose one void round was the last round, or `NO_BAR`. In the key.
+    pub void_run: [i16; 2],
+    /// Schema 26: the barred pairs (§2.7), ascending; empty in almost every position. In
+    /// the key.
+    pub bars: Vec<[i16; 2]>,
+    /// Schema 26: one `RoundUndo` per round still on the stack.
+    round_undo: Vec<rounds::RoundUndo>,
+    /// Schema 26: what the last round did, `(event, square, player)` (`rounds::EVENT_*`),
+    /// for the boundary to hand the page. Scratch, like `npc_log`.
+    pub round_log: Vec<(u8, usize, i8)>,
 }
 
 /// Everything needed to put a `Game` back where it was, for the tree search that
@@ -444,6 +464,15 @@ pub struct Snapshot {
     pub portal_bar: [i16; 2],
     /// Schema 22 (Q843c): where each fold end stands, -1 for none.
     pub fold_at: [i16; 8],
+    /// Schema 26 (Q918a): the initiative, the void run and the bars.
+    pub initiative: i8,
+    pub void_run: [i16; 2],
+    pub bars: Vec<[i16; 2]>,
+}
+
+/// Schema 26: who holds the initiative at the start, or -1 where the tie is not it.
+fn initiative_start(t: &Tables) -> i8 {
+    t.simultaneous.as_deref().filter(|sim| sim.tie == 1).map_or(-1, |sim| sim.initiative_start)
 }
 
 /// Schema 22: where the folds start, from the tables; all -1 without folds.
@@ -502,6 +531,11 @@ impl<'t> Game<'t> {
             goal_left_log: Vec::new(),
             checking_drop_mate: false,
             working_key: 0,
+            initiative: initiative_start(t),
+            void_run: NO_BAR,
+            bars: Vec::new(),
+            round_undo: Vec::new(),
+            round_log: Vec::new(),
         };
         game.key = game.compute_hash();
         game.history.push(game.key);
@@ -554,6 +588,11 @@ impl<'t> Game<'t> {
             goal_left_log: Vec::new(),
             checking_drop_mate: false,
             working_key: 0,
+            initiative: snapshot.initiative,
+            void_run: snapshot.void_run,
+            bars: snapshot.bars.clone(),
+            round_undo: Vec::new(),
+            round_log: Vec::new(),
         }
     }
 
@@ -579,6 +618,9 @@ impl<'t> Game<'t> {
             goal_left_by: self.goal_left_by,
             portal_bar: self.portal_bar,
             fold_at: self.fold_at,
+            initiative: self.initiative,
+            void_run: self.void_run,
+            bars: self.bars.clone(),
         }
     }
 
@@ -619,6 +661,11 @@ impl<'t> Game<'t> {
         self.goal_left_by = snapshot.goal_left_by;
         self.portal_bar = snapshot.portal_bar;
         self.fold_at = snapshot.fold_at;
+        self.initiative = snapshot.initiative;
+        self.void_run = snapshot.void_run;
+        self.bars.clone_from(&snapshot.bars);
+        self.round_undo.clear();
+        self.round_log.clear();
         // The check bits describe the position that just went away. The royal hint is
         // not cleared here and does not need to be: it is checked against the board
         // before it is believed.
@@ -710,6 +757,8 @@ impl<'t> Game<'t> {
                 }
             }
         }
+        // Schema 26: the initiative, the void run and the bars; zero in an alternating game.
+        digest ^= self.standoff_key();
         digest
     }
 
@@ -4321,7 +4370,12 @@ impl<'t> Game<'t> {
 
     pub fn legal_moves(&mut self) -> Vec<u32> {
         let mut moves = Vec::new();
-        self.generate_legal(&mut moves);
+        if self.t.simultaneous.is_some() {
+            // Schema 26: the side to move's own moves in a round, bars applied.
+            self.generate_legal_for(self.side, &mut moves);
+        } else {
+            self.generate_legal(&mut moves);
+        }
         moves
     }
 

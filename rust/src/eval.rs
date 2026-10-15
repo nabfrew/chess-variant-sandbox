@@ -764,14 +764,31 @@ impl Evaluator {
 
     /// Score the position for `player`. Higher is better. `move_count` is the mover's
     /// legal move count, which every caller already has in hand.
+    #[inline]
     pub fn evaluate(&self, game: &Game<'_>, player: usize, move_count: usize) -> f64 {
+        let mobility = if game.side == player {
+            move_count as f64
+        } else {
+            -(move_count as f64)
+        };
+        self.score(game, player, mobility)
+    }
+
+    /// `evaluate` in a simultaneous game (schema 26, Q918b): there is no side to move and
+    /// both players' moves are known, so mobility is mine minus theirs, both counted
+    /// (`docs/plan-simultaneous.md` §6.2). `counts` is each player's number of legal moves,
+    /// in seat order. `agents/evaluation.py::Evaluator.evaluate_round` is its oracle.
+    pub fn evaluate_round(&self, game: &Game<'_>, player: usize, counts: [usize; 2]) -> f64 {
+        let mobility = counts[player] as f64 - counts[1 - player] as f64;
+        self.score(game, player, mobility)
+    }
+
+    /// The objective with mobility already signed: the one body both callers share, so
+    /// the alternating game's arithmetic is the same sums in the same order as before.
+    #[inline]
+    fn score(&self, game: &Game<'_>, player: usize, mobility: f64) -> f64 {
         let mut score = self.material(game, player);
         if self.mobility_weight != 0.0 {
-            let mobility = if game.side == player {
-                move_count as f64
-            } else {
-                -(move_count as f64)
-            };
             score += self.mobility_weight * mobility;
         }
         if self.goal_weight != 0.0 && game.t.has_goal_terms() {

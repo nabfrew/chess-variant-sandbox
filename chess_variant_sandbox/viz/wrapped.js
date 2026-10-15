@@ -849,7 +849,51 @@ const MARK_KINDS = {
   fold: { colour: 'var(--fold-light)', shape: 'fold', name: 'fold portal',
           ink: 'var(--ink)', gloss: 'foldKey',
           label: 'a piece that stops here may stay, or come out of the end its beak points at' },
+  // Schema 26 (Q918c, `docs/plan-simultaneous.md` §2.7): two pieces of a game in rounds that
+  // could only take each other by a capture-only move, after one void round between them
+  // (`voidRun`, dashed, a "1" at its middle) and after two in a row (`barred`, solid, a bar
+  // across it), when that pair of moves is not offered until either square changes. Drawn
+  // between the two squares from the core's state (`standoffLine`, the round's `voidRun`
+  // and `bars`), never on a square; the rows are the legend's.
+  voidRun: { colour: 'var(--held)', shape: 'link', name: 'dashed link', ink: 'var(--ink)',
+             label: 'one void round between these two: a second in a row bars those moves' },
+  barred: { colour: 'var(--held)', shape: 'link', barred: true, name: 'barred link',
+            ink: 'var(--ink)',
+            label: 'two void rounds in a row: neither may take the other that way until one of the squares changes' },
 };
+
+// A standoff's link between the middles of two squares, `(x1, y1)` and `(x2, y2)`, in the
+// look of the mark kind `kind` (`voidRun` or `barred`): a dark line cased in `--held-halo`,
+// so it reads on both woods as the held move's arrow does; dashed with a "1" for a run of
+// one void round, solid with a bar across its middle once the pair is barred.
+function standoffLine(x1, y1, x2, y2, cell, kind) {
+  const f = n => n.toFixed(3);
+  const look = MARK_KINDS[kind] || MARK_KINDS.voidRun;
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  if (!length) return '';
+  const ux = (x2 - x1) / length, uy = (y2 - y1) / length;
+  const trim = Math.min(cell * 0.3, length / 3);
+  const ax = x1 + ux * trim, ay = y1 + uy * trim, bx = x2 - ux * trim, by = y2 - uy * trim;
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  const line = `x1="${f(ax)}" y1="${f(ay)}" x2="${f(bx)}" y2="${f(by)}"`;
+  const dash = look.barred ? '' : ` stroke-dasharray="${f(cell * 0.14)} ${f(cell * 0.1)}"`;
+  let out = `<line ${line} stroke="var(--held-halo)" stroke-width="${f(cell * 0.13)}"
+      opacity="0.85"/><line ${line} stroke="${look.colour}" stroke-width="${f(cell * 0.06)}"${
+      dash}/>`;
+  if (look.barred) {
+    const wx = -uy * cell * 0.17, wy = ux * cell * 0.17;
+    const bar = `x1="${f(mx + wx)}" y1="${f(my + wy)}" x2="${f(mx - wx)}" y2="${f(my - wy)}"`;
+    out += `<line ${bar} stroke="var(--held-halo)" stroke-width="${f(cell * 0.14)}"
+        stroke-linecap="round"/><line ${bar} stroke="${look.colour}"
+        stroke-width="${f(cell * 0.07)}" stroke-linecap="round"/>`;
+  } else {
+    out += `<circle cx="${f(mx)}" cy="${f(my)}" r="${f(cell * 0.13)}" fill="var(--held-halo)"
+        stroke="${look.colour}" stroke-width="${f(cell * 0.03)}"/><text x="${f(mx)}"
+        y="${f(my + cell * 0.055)}" text-anchor="middle" font-size="${f(cell * 0.16)}"
+        font-weight="700" fill="${look.colour}">1</text>`;
+  }
+  return `<g data-mark="${kind}" pointer-events="none" stroke-linecap="round">${out}</g>`;
+}
 
 // The coming step's arrow, in fractions of a cell: it leaves the wild piece's square
 // `COMING_FROM` out from the middle, clear of the piece's disc, and stops `COMING_SHORT`
@@ -1124,6 +1168,13 @@ function squareBadge(x, y, cell, marks, view, tag) {
     if (kind.shape === 'arrow') {
       out += comingLine(x + cell * 0.2, y + cell * 0.8, x + cell * 0.8, y + cell * 0.2, cell,
                         mark.kind);
+      continue;
+    }
+    // A standoff's key (schema 26): only the legend comes here; on a board the link runs
+    // between the two squares (`standoffLine`). Corner to corner, as an arrow's key.
+    if (kind.shape === 'link') {
+      out += standoffLine(x + cell * 0.12, y + cell * 0.88, x + cell * 0.88, y + cell * 0.12,
+                          cell, mark.kind);
       continue;
     }
     // A walk's key, as a still board draws a step of one (Q852): only the legend comes here.

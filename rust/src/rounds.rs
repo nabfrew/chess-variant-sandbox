@@ -1,0 +1,842 @@
+//! Simultaneous moves (schema 26, Q918a): a round of two secret moves, resolved together.
+//!
+//! `docs/plan-simultaneous.md` is the rule; this is its §6.1. A round is a new path beside
+//! `make`, never inside it, so the alternating game's hot path does not move. `make_round`
+//! reads both moves off the round's board, settles which moves are void from the two
+//! choices alone (§2.4), then writes the round in the plan's order (§4): departures, each
+//! move's own consequences, the meetings, what the captures cause, the explosions, the
+//! claims, the wild pieces, the void run and its bars. `unmake_round` puts back a snapshot:
+//! the simpler first form §6.1 names, an incremental undo being an optimisation for after
+//! it is right.
+//!
+//! `tests/simultaneous_oracle.py` is the declared oracle, and resolves a round the same way
+//! from the compiled tables and the two move words.
+
+use super::*;
+
+/// One round's undo: everything `make_round` may write, as it was before. A snapshot,
+/// not a delta (§6.1).
+pub(super) struct RoundUndo {
+    board: [u8; MAX_SQUARES],
+    occupied: [SquareSet; 3],
+    unmoved: SquareSet,
+    halfmove: u32,
+    ply: u32,
+    key: u64,
+    window: usize,
+    history_len: usize,
+    hands: [Vec<u32>; 2],
+    colour: Vec<u8>,
+    colour_counts: [u32; 2],
+    points: [f64; 2],
+    goal_left_by: i8,
+    initiative: i8,
+    void_run: [i16; 2],
+    bars: Vec<[i16; 2]>,
+    npc_log: usize,
+}
+
+/// One player's move of a round, read off the round's board.
+#[derive(Clone, Copy)]
+struct Plan {
+    m: u32,
+    kind: u32,
+    /// `None` for a drop, which has no origin.
+    origin: Option<usize>,
+    target: usize,
+    /// The piece as it stands before the move, or a drop's arriving value.
+    mover: u8,
+    /// Its type before the move (the dropped type for a drop): "a capture by P" means
+    /// the piece that set out, as `make` reads it.
+    piece_type: usize,
+}
+
+/// A capture the round's meetings decided (§2.3, §4 step 4), for what captures cause.
+#[derive(Clone, Copy)]
+struct Taking {
+    captor: usize,
+    captor_type: usize,
+    victim: u8,
+    square: usize,
+    origin: Option<usize>,
+    /// Whether the strike rule (or an enemy contact link) speaks for this capture: always
+    /// for a capture of a standing piece, and for a collision's only under `rules.strike`.
+    strikes: bool,
+    /// The captor was itself eliminated (a *yes/yes* tie under the default): it captured,
+    /// but there is no captor left to transform (§2.4, last bullet).
+    captor_gone: bool,
+}
+
+/// `Game::round_log` events, for the page to draw a round (§6.1, *The boundary*).
+/// `(event, square, player)`:
+pub const EVENT_COLLISION: u8 = 0; // square of the meeting, the winner or -1 for none
+pub const EVENT_VOID: u8 = 1; // the void piece's square, its player
+pub const EVENT_INITIATIVE: u8 = 2; // the meeting a tie the initiative decided, the holder
+pub const EVENT_BARRED: u8 = 3; // the barred pair's player-0 square, -1
+
+impl<'t> Game<'t> {
+    fn sim(&self) -> &'t SimTables {
+        self.t.simultaneous.as_deref().expect("a round in an alternating game")
+    }
+
+    /// Every move `player` may make on this board: the alternating generator for that
+    /// player, with no royal-safety filter (there is no check, §2.5), less the barred
+    /// capture-only moves (§2.7), before `restrict` so `must_capture` sees one fewer.
+    pub fn generate_legal_for(&mut self, player: usize, out: &mut Vec<u32>) {
+        debug_assert!(!self.t.needs_check_filter(), "a simultaneous game has no check");
+        let saved = self.side;
+        self.side = player;
+        let base = out.len();
+        self.generate_pseudo_legal(out);
+        if !self.bars.is_empty() {
+            let mut write = base;
+            for index in base..out.len() {
+                let m = out[index];
+                if !self.barred(player, m) {
+                    out[write] = m;
+                    write += 1;
+                }
+            }
+            out.truncate(write);
+        }
+        self.restrict(out, base);
+        self.side = saved;
+    }
+
+    /// Whether `m` is one of a barred pair's capture-only moves for `player` (§2.7).
+    fn barred(&mut self, player: usize, m: u32) -> bool {
+        if move_kind(m) == MOVE_DROP {
+            return false;
+        }
+        let origin = move_from(m) as i16;
+        let target = move_to(m) as i16;
+        let hit = self.bars.iter().any(|bar| bar[player] == origin && bar[1 - player] == target);
+        hit && !self.lands_if_empty(player, m)
+    }
+
+    /// Whether `m`'s origin and destination would be offered with the destination empty
+    /// (§5.3, `lands_if_empty`): the move could land on an empty square, so it survives
+    /// its victim's flight. Asked of the movement tables by generating `player`'s moves with
+    /// the one square emptied, which also finds a second pattern onto the same square (a
+    /// capture-only leap beside a quiet slide); a bit per table entry would miss it. Rare:
+    /// only a chase or a barred pair asks.
+    fn lands_if_empty(&mut self, player: usize, m: u32) -> bool {
+        let origin = move_from(m);
+        let target = move_to(m);
+        let standing = self.board[target];
+        let saved = self.side;
+        self.put(target, 0);
+        self.side = player;
+        let mut moves = Vec::new();
+        self.generate_pseudo_legal(&mut moves);
+        self.side = saved;
+        self.put(target, standing);
+        moves.iter().any(|&other| {
+            let kind = move_kind(other);
+            kind != MOVE_DROP && kind != MOVE_ROTATE && move_from(other) == origin
+                && move_to(other) == target
+        })
+    }
+
+    fn plan(&self, player: usize, m: u32) -> Plan {
+        let t = self.t;
+        let kind = move_kind(m);
+        let target = move_to(m);
+        if kind == MOVE_DROP {
+            let piece_type = move_promotion(m) as usize;
+            return Plan {
+                m, kind, origin: None, target,
+                mover: t.arriving_value(player, piece_type, target),
+                piece_type,
+            };
+        }
+        let origin = move_from(m);
+        let mover = self.board[origin];
+        Plan { m, kind, origin: Some(origin), target, mover, piece_type: t.type_of(mover) }
+    }
+
+    /// What a contact link (or the strike rule) says of `mover_type` meeting `victim`:
+    /// `(the victim becomes, the mover becomes, the mover switches sides)`, `-1` for
+    /// "leaves the board" and "stays itself".
+    fn meeting(&self, mover_type: usize, victim: u8, mover_owner: usize) -> (i32, i32, bool) {
+        let Some(strike) = self.t.strike.as_ref() else {
+            return (-1, -1, false);
+        };
+        let owner = self.t.owner_of(victim);
+        let cell = mover_type * strike.n_types + self.t.type_of(victim);
+        if owner == mover_owner {
+            (strike.own_to[cell], strike.own_mover_to[cell], false)
+        } else {
+            (strike.to[cell], strike.mover_to[cell], owner != WILD && strike.flips(cell))
+        }
+    }
+
+    /// Whether a move is a contact that leaves its mover on its origin (`contacts.position:
+    /// "stay"`) and fires on what stands on its target on the round's board.
+    fn stays_put(&self, plan: &Plan, player: usize) -> bool {
+        let Some(strike) = self.t.strike.as_ref() else {
+            return false;
+        };
+        if strike.position != StrikePosition::Stay || plan.origin.is_none() {
+            return false;
+        }
+        let victim = self.board[plan.target];
+        if victim == 0 || plan.origin == Some(plan.target) {
+            return false;
+        }
+        let (becomes, mover_becomes, flips) = self.meeting(plan.piece_type, victim, player);
+        becomes != -1 || mover_becomes >= 0 || flips
+    }
+
+    /// The part of the key a round's standoff state contributes (§5.3, `zobrist_standoff`).
+    pub(super) fn standoff_key(&self) -> u64 {
+        let Some(sim) = self.t.simultaneous.as_deref() else {
+            return 0;
+        };
+        let n = self.t.n_squares;
+        let mut key = 0u64;
+        if self.void_run != NO_BAR {
+            key ^= sim.standoff_key(n, self.void_run[0] as usize, self.void_run[1] as usize, 1);
+        }
+        for bar in &self.bars {
+            key ^= sim.standoff_key(n, bar[0] as usize, bar[1] as usize, 2);
+        }
+        if self.initiative == 1 {
+            key ^= sim.zobrist_initiative;
+        }
+        key
+    }
+
+    /// Play one round: `moves[0]` by player 0 and `moves[1]` by player 1, each legal for
+    /// its player on this board (`generate_legal_for`), resolved together (§2, §4).
+    pub fn make_round(&mut self, moves: [u32; 2]) {
+        let t = self.t;
+        let sim = self.sim();
+        debug_assert_eq!(sim.void_run, 2, "the run is kept as one pair at count one");
+        self.round_undo.push(RoundUndo {
+            board: self.board,
+            occupied: self.occupied,
+            unmoved: self.unmoved,
+            halfmove: self.halfmove,
+            ply: self.ply,
+            key: self.key,
+            window: self.window,
+            history_len: self.history.len(),
+            hands: self.hands.clone(),
+            colour: self.colour.clone(),
+            colour_counts: self.colour_counts,
+            points: self.points,
+            goal_left_by: self.goal_left_by,
+            initiative: self.initiative,
+            void_run: self.void_run,
+            bars: self.bars.clone(),
+            npc_log: self.npc_log.len(),
+        });
+        self.round_log.clear();
+        let standoff_before = self.standoff_key();
+        self.working_key = self.key;
+        let previous_unmoved = self.unmoved;
+        let npc_mark = self.npc_log.len();
+
+        // §2.2, §2.4: who moves, who stands, which moves are void -- from the two choices.
+        let plans = [self.plan(0, moves[0]), self.plan(1, moves[1])];
+        let raw = plans.map(|plan| plan.origin != Some(plan.target));
+        let stays = [self.stays_put(&plans[0], 0), self.stays_put(&plans[1], 1)];
+        let mut standing = [false; 2];
+        for i in 0..2 {
+            let j = 1 - i;
+            let own_target = stays[i] && t.owner_of(self.board[plans[i].target]) == i;
+            let vacated = raw[j] && !stays[j] && plans[j].origin == Some(plans[i].target);
+            standing[i] = plans[i].kind == MOVE_ROTATE || (stays[i] && (own_target || !vacated));
+        }
+        let moving = [raw[0] && !standing[0], raw[1] && !standing[1]];
+        let mut void = [false; 2];
+        for i in 0..2 {
+            let j = 1 - i;
+            void[i] = moving[i]
+                && moving[j]
+                && plans[i].origin.is_some()
+                && plans[j].origin == Some(plans[i].target)
+                && !self.lands_if_empty(i, plans[i].m);
+            if void[i] {
+                self.round_log.push((EVENT_VOID, plans[i].origin.unwrap_or(0), i as i8));
+            }
+        }
+        let arriving = [moving[0] && !void[0], moving[1] && !void[1]];
+
+        let mut touched = SquareSet::EMPTY;
+        let mut material_changed = false;
+        let mut promoted = false;
+        let mut one_way = false;
+        let mut irreversible_kind = false;
+        let mut initiative_passed = false;
+        for i in 0..2 {
+            let made = arriving[i] || standing[i];
+            if made {
+                one_way |= t.is_one_way(plans[i].piece_type);
+                let kind = plans[i].kind;
+                let plain_portal = kind == MOVE_PORTAL && move_promotion(plans[i].m) == 0;
+                irreversible_kind |= kind != MOVE_NORMAL && kind != MOVE_ROTATE && !plain_portal;
+                promoted |= kind == MOVE_PROMOTION
+                    || (kind == MOVE_PORTAL && move_promotion(plans[i].m) != 0);
+            }
+        }
+
+        // §4 step 2: departures.
+        for i in 0..2 {
+            if !arriving[i] {
+                continue;
+            }
+            match plans[i].origin {
+                Some(origin) => {
+                    self.write(origin, 0);
+                    touched.set(origin);
+                }
+                None => {
+                    let rule = t.drops.as_ref().expect("a drop without a drop rule");
+                    let slot = rule.slot_of(plans[i].piece_type);
+                    if !rule.is_unlimited(slot) {
+                        self.hands[i][slot] -= 1;
+                    }
+                }
+            }
+        }
+
+        // §4 step 3: each move's own consequences, as if alone, up to the meeting.
+        let mut arrival = [0u8; 2];
+        for i in 0..2 {
+            let plan = plans[i];
+            if plan.kind == MOVE_ROTATE {
+                let origin = plan.origin.expect("a rotation has an origin");
+                self.write(origin, t.piece_value(i, move_promotion(plan.m) as usize, plan.piece_type));
+                touched.set(origin);
+                continue;
+            }
+            if standing[i] {
+                let there = self.board[plan.target];
+                if there != 0 && t.owner_of(there) == i {
+                    material_changed |= self.contact_in_place(i, &plan, &mut touched);
+                }
+                continue;
+            }
+            if !arriving[i] {
+                continue;
+            }
+            let promotion = move_promotion(plan.m) as usize;
+            let mut value = match plan.kind {
+                MOVE_PROMOTION => t.entering_value(i, promotion),
+                MOVE_PORTAL if promotion != 0 => t.entering_value(i, promotion - 1),
+                _ => plan.mover,
+            };
+            let occupant = self.board[plan.target];
+            if occupant != 0 && t.owner_of(occupant) == i {
+                // An own merge under `advance` (§4, contacts `own`): the target leaves, the
+                // mover may change, and the merged piece is the one that meets.
+                let (_, mover_becomes, _) = self.meeting(plan.piece_type, occupant, i);
+                if mover_becomes >= 0 {
+                    value = t.arriving_value(i, mover_becomes as usize, plan.target);
+                }
+                self.write(plan.target, 0);
+                touched.set(plan.target);
+                material_changed = true;
+            }
+            arrival[i] = value;
+        }
+
+        // §4 step 4: the meetings. A collision first, then each other arrival, then the
+        // contacts whose movers stood still.
+        let mut takings: Vec<Taking> = Vec::new();
+        let collided = arriving[0] && arriving[1] && plans[0].target == plans[1].target;
+        if collided {
+            let square = plans[0].target;
+            touched.set(square);
+            material_changed = true;
+            let types = [t.type_of(arrival[0]), t.type_of(arrival[1])];
+            let beats = [
+                sim.beats(t.n_types, types[0], types[1]),
+                sim.beats(t.n_types, types[1], types[0]),
+            ];
+            let winner = match beats {
+                [true, false] => Some(0),
+                [false, true] => Some(1),
+                _ if sim.tie == 1 => {
+                    let holder = self.initiative as usize;
+                    self.initiative = (1 - holder) as i8;
+                    initiative_passed = true;
+                    self.round_log.push((EVENT_INITIATIVE, square, holder as i8));
+                    Some(holder)
+                }
+                _ => None,
+            };
+            // A standing piece on the meeting square can only be a wild one: the winner
+            // takes it; with no winner it goes with the two.
+            let standing_there = self.board[square];
+            match winner {
+                Some(w) => {
+                    if standing_there != 0 {
+                        takings.push(self.taking(w, &plans[w], standing_there, square, true));
+                    }
+                    self.write(square, arrival[w]);
+                    let mut taken = self.taking(w, &plans[w], arrival[1 - w], square, false);
+                    taken.strikes = sim.collision_strikes;
+                    takings.push(taken);
+                }
+                None => {
+                    self.write(square, 0);
+                    if beats[0] && beats[1] {
+                        for w in 0..2 {
+                            let mut taken = self.taking(w, &plans[w], arrival[1 - w], square, false);
+                            taken.strikes = sim.collision_strikes;
+                            taken.captor_gone = true;
+                            takings.push(taken);
+                        }
+                    }
+                }
+            }
+            self.round_log.push((EVENT_COLLISION, square, winner.map_or(-1, |w| w as i8)));
+        } else {
+            for i in 0..2 {
+                if !arriving[i] {
+                    continue;
+                }
+                let square = plans[i].target;
+                touched.set(square);
+                let occupant = self.board[square];
+                debug_assert!(occupant == 0 || t.owner_of(occupant) != i, "an arrival on its own piece");
+                if occupant != 0 {
+                    material_changed = true;
+                    takings.push(self.taking(i, &plans[i], occupant, square, true));
+                }
+                self.write(square, arrival[i]);
+            }
+        }
+        for i in 0..2 {
+            let plan = plans[i];
+            if !standing[i] || plan.kind == MOVE_ROTATE {
+                continue;
+            }
+            let victim = self.board[plan.target];
+            let origin = plan.origin.expect("a contact that stays has an origin");
+            if victim == 0 || t.owner_of(victim) == i || self.board[origin] != plan.mover {
+                continue;
+            }
+            material_changed |= self.contact_in_place(i, &plan, &mut touched);
+        }
+
+        // §4 step 5: what the captures cause.
+        for taken in &takings {
+            if let Some(rule) = t.drops.as_ref() {
+                if rule.from_captures && t.owner_of(taken.victim) != taken.captor {
+                    let slot = t.demotions[t.type_of(taken.victim)];
+                    if !rule.is_unlimited(slot) {
+                        self.hands[taken.captor][slot] += 1;
+                    }
+                }
+            }
+            if t.has_npcs && t.owner_of(taken.victim) == WILD {
+                self.points[taken.captor] += t.npc_bounty[taken.square];
+            }
+            if taken.strikes {
+                self.strike_after(taken, &mut touched);
+            }
+        }
+
+        // §4 step 6: every explosion at once.
+        if let Some(explosion) = t.explosion.as_ref() {
+            let mut centres = SquareSet::EMPTY;
+            let mut blast = SquareSet::EMPTY;
+            for taken in &takings {
+                if explosion.fires(taken.captor_type, t.type_of(taken.victim)) {
+                    centres.set(taken.square);
+                    for &square in &explosion.blast[taken.square] {
+                        blast.set(square);
+                    }
+                }
+            }
+            for square in 0..t.n_squares {
+                let value = self.board[square];
+                if value == 0 {
+                    continue;
+                }
+                let hit = centres.get(square)
+                    || (blast.get(square) && !explosion.immune_types[t.type_of(value)]);
+                if hit {
+                    self.write(square, 0);
+                    touched.set(square);
+                    material_changed = true;
+                }
+            }
+        }
+
+        // §4 step 7: claims, by the pieces that ended a move on a square and stand there.
+        let mut laid_permanent = false;
+        let mut key_extra = 0u64;
+        if let Some(rule) = t.territory.as_ref() {
+            for i in 0..2 {
+                let square = if plans[i].kind == MOVE_ROTATE {
+                    plans[i].origin.expect("a rotation has an origin")
+                } else if arriving[i] {
+                    plans[i].target
+                } else {
+                    continue;
+                };
+                let value = self.board[square];
+                if value == 0 || t.owner_of(value) != i {
+                    continue;
+                }
+                let want = (i + 1) as u8;
+                let before = self.colour[square];
+                if before != want && (rule.repaints || before == 0) {
+                    self.colour[square] = want;
+                    self.colour_counts[i] += 1;
+                    if before != 0 {
+                        self.colour_counts[before as usize - 1] -= 1;
+                    }
+                    if rule.repaints {
+                        key_extra ^= t.zobrist_colour(before, square) ^ t.zobrist_colour(want, square);
+                    } else {
+                        laid_permanent = true;
+                    }
+                }
+            }
+        }
+
+        // §4 step 8: the wild pieces, once a round.
+        if t.has_npcs && self.npc_phase() {
+            material_changed = true;
+        }
+        for &(from, to, _) in &self.npc_log[npc_mark..] {
+            touched.set(from);
+            touched.set(to);
+        }
+
+        // §4 step 9: the void run and the bars (§2.7).
+        let mut run = NO_BAR;
+        if void[0] && void[1] {
+            let pair = [
+                plans[0].origin.expect("a void move has an origin") as i16,
+                plans[1].origin.expect("a void move has an origin") as i16,
+            ];
+            if self.void_run == pair {
+                if !self.bars.contains(&pair) {
+                    self.bars.push(pair);
+                    self.bars.sort_unstable();
+                }
+                self.round_log.push((EVENT_BARRED, pair[0] as usize, -1));
+            } else {
+                run = pair;
+            }
+        }
+        if run != NO_BAR && (touched.get(run[0] as usize) || touched.get(run[1] as usize)) {
+            run = NO_BAR;
+        }
+        self.void_run = run;
+        self.bars.retain(|bar| !touched.get(bar[0] as usize) && !touched.get(bar[1] as usize));
+
+        // §4 step 10's bookkeeping: rights, the leaving goal, the clocks, the key.
+        for i in 0..2 {
+            if arriving[i] || standing[i] {
+                if let Some(origin) = plans[i].origin {
+                    self.unmoved.clear(origin);
+                }
+                self.unmoved.clear(plans[i].target);
+            }
+        }
+        if t.reach_leaves {
+            let reach = t.reach.as_ref().expect("reach_leaves without a reach rule");
+            let mut left = [false; 2];
+            for i in 0..2 {
+                let Some(origin) = plans[i].origin else { continue };
+                let value = self.board[plans[i].target];
+                left[i] = arriving[i]
+                    && reach.squares[i][origin]
+                    && (reach.piece_type < 0 || plans[i].piece_type == reach.piece_type as usize)
+                    && value != 0
+                    && t.owner_of(value) == i;
+            }
+            self.goal_left_by = match left {
+                [true, true] => 2,
+                [true, false] => 0,
+                [false, true] => 1,
+                _ => -1,
+            };
+        }
+        let rights_changed = self.unmoved != previous_unmoved;
+        let progress = material_changed || promoted || one_way || laid_permanent;
+        let irreversible =
+            progress || irreversible_kind || rights_changed || initiative_passed;
+        self.halfmove = if progress { 0 } else { self.halfmove + 2 };
+        self.ply += 2;
+        self.key = self.working_key ^ key_extra ^ standoff_before ^ self.standoff_key();
+        self.history.push(self.key);
+        if irreversible {
+            self.window = self.history.len() - 1;
+        }
+        self.check_memo.set([-1, -1]);
+    }
+
+    /// Take back the last `make_round`.
+    pub fn unmake_round(&mut self) {
+        let undo = self.round_undo.pop().expect("unmake_round without a matching make_round");
+        self.board = undo.board;
+        self.occupied = undo.occupied;
+        self.unmoved = undo.unmoved;
+        self.halfmove = undo.halfmove;
+        self.ply = undo.ply;
+        self.key = undo.key;
+        self.window = undo.window;
+        self.history.truncate(undo.history_len);
+        self.hands = undo.hands;
+        self.colour = undo.colour;
+        self.colour_counts = undo.colour_counts;
+        self.points = undo.points;
+        self.goal_left_by = undo.goal_left_by;
+        self.initiative = undo.initiative;
+        self.void_run = undo.void_run;
+        self.bars = undo.bars;
+        self.npc_log.truncate(undo.npc_log);
+        self.check_memo.set([-1, -1]);
+    }
+
+    fn taking(&self, captor: usize, plan: &Plan, victim: u8, square: usize, strikes: bool) -> Taking {
+        Taking {
+            captor,
+            captor_type: plan.piece_type,
+            victim,
+            square,
+            origin: plan.origin,
+            strikes: strikes && self.t.strike.is_some(),
+            captor_gone: false,
+        }
+    }
+
+    /// A contact whose mover stays on its origin (§4, contacts `stay`): the mover and its
+    /// target both change where they stand. Returns whether material changed.
+    fn contact_in_place(&mut self, player: usize, plan: &Plan, touched: &mut SquareSet) -> bool {
+        let t = self.t;
+        let origin = plan.origin.expect("a contact that stays has an origin");
+        let victim = self.board[plan.target];
+        let mover = self.board[origin];
+        let (becomes, mover_becomes, flips) = self.meeting(plan.piece_type, victim, player);
+        let as_type = if mover_becomes >= 0 { mover_becomes as usize } else { t.type_of(mover) };
+        let attacker = if flips {
+            t.arriving_value(1 - player, as_type, origin)
+        } else if mover_becomes >= 0 {
+            t.arriving_value(player, as_type, origin)
+        } else {
+            mover
+        };
+        let survivor =
+            if becomes >= 0 { t.arriving_value(t.owner_of(victim), becomes as usize, plan.target) } else { 0 };
+        self.write(origin, attacker);
+        self.write(plan.target, survivor);
+        touched.set(origin);
+        touched.set(plan.target);
+        let worth = |value: u8| if value == 0 { -1.0 } else { t.piece_values[t.type_of(value)] };
+        worth(attacker) != worth(mover) || worth(survivor) != worth(victim)
+    }
+
+    /// §4 step 5 for one capture under the strike rule or an enemy contact link: the
+    /// captor may change or switch sides where it stands, and a surviving victim goes home
+    /// (`home`) or to the captor's origin (`swap`) if that square is empty after the
+    /// meetings, else it is removed (circe's rule, §4).
+    fn strike_after(&mut self, taken: &Taking, touched: &mut SquareSet) {
+        let t = self.t;
+        let strike = t.strike.as_ref().expect("a strike without a strike rule");
+        let (becomes, mover_becomes, flips) = self.meeting(taken.captor_type, taken.victim, taken.captor);
+        let standing = self.board[taken.square];
+        if !taken.captor_gone
+            && standing != 0
+            && t.owner_of(standing) == taken.captor
+            && (mover_becomes >= 0 || flips)
+        {
+            let as_type = if mover_becomes >= 0 { mover_becomes as usize } else { t.type_of(standing) };
+            let owner = if flips { 1 - taken.captor } else { taken.captor };
+            self.write(taken.square, t.arriving_value(owner, as_type, taken.square));
+        }
+        if becomes < 0 {
+            return;
+        }
+        let owner = t.owner_of(taken.victim);
+        let place = match strike.position {
+            StrikePosition::Home => {
+                let home = strike.rebirth_square(owner, becomes as usize, taken.square);
+                (home >= 0).then_some(home as usize)
+            }
+            StrikePosition::Swap => taken.origin,
+            _ => None,
+        };
+        if let Some(square) = place {
+            if self.board[square] == 0 {
+                self.write(square, t.arriving_value(owner, becomes as usize, square));
+                touched.set(square);
+                if strike.position == StrikePosition::Home {
+                    self.unmoved.set(square);
+                } else {
+                    self.unmoved.clear(square);
+                }
+            }
+        }
+    }
+
+    /// The endings a simultaneous position declares, before the clocks (§2.6): the
+    /// alternating order, with no illegal-position test and every rule that fires for both
+    /// players in one round a draw at its place.
+    pub fn round_ending_before_the_clocks(&self) -> Option<Outcome> {
+        let t = self.t;
+        let both = |fired: [bool; 2], reason: Reason, result: i8| -> Option<Outcome> {
+            match fired {
+                [true, true] => Some(Outcome { winner: -1, reason }),
+                [true, false] => Some(decide(0, result, reason)),
+                [false, true] => Some(decide(1, result, reason)),
+                _ => None,
+            }
+        };
+        if !t.royal_types.is_empty() {
+            let lost = [0, 1].map(|side| t.royal_loss_ends_it(side) && self.royal_gone(side));
+            let reason = match t.win {
+                Win::RoyalCapture => Reason::RoyalCaptured,
+                _ => Reason::RoyalDestroyed,
+            };
+            if let Some(outcome) = both(lost, reason, -1) {
+                return Some(outcome);
+            }
+        }
+        if t.win == Win::Annihilation {
+            let gone = [0, 1].map(|side| !self.has_any_piece(side));
+            if let Some(outcome) = both(gone, Reason::Annihilated, -1) {
+                return Some(outcome);
+            }
+        }
+        if t.has_v2_endings() {
+            if let Some(reach) = t.reach.as_ref() {
+                let fired = if reach.leaves {
+                    match self.goal_left_by {
+                        2 => [true, true],
+                        0 => [true, false],
+                        1 => [false, true],
+                        _ => [false, false],
+                    }
+                } else {
+                    [0, 1].map(|side| {
+                        self.occupied()[side].iter().any(|square| {
+                            reach.squares[side][square]
+                                && (reach.piece_type < 0
+                                    || t.type_of(self.board[square]) == reach.piece_type as usize)
+                                && !(reach.safe && self.threatened(1 - side, square))
+                        })
+                    })
+                };
+                if let Some(outcome) = both(fired, Reason::Reached, reach.result) {
+                    return Some(outcome);
+                }
+            }
+            if let Some(extinction) = t.extinction.as_ref() {
+                let short = [0, 1].map(|side| {
+                    let mine = self.occupied()[side];
+                    if extinction.per_type {
+                        let mut counts = [0usize; MAX_PIECE_TYPES];
+                        for square in mine.iter() {
+                            counts[t.type_of(self.board[square])] += 1;
+                        }
+                        extinction.piece_types.iter().any(|&kind| counts[kind] < extinction.min_count)
+                    } else if extinction.any_piece {
+                        mine.len() < extinction.min_count
+                    } else {
+                        mine.iter().filter(|&sq| extinction.counts(t.type_of(self.board[sq]))).count()
+                            < extinction.min_count
+                    }
+                });
+                if let Some(outcome) = both(short, Reason::Extinction, extinction.result) {
+                    return Some(outcome);
+                }
+            }
+            if let Some(result) = t.bare_royal {
+                let bared = [0, 1].map(|side| {
+                    let mine = self.occupied()[side];
+                    !mine.is_empty() && !mine.iter().any(|sq| !t.is_royal(t.type_of(self.board[sq])))
+                });
+                if let Some(outcome) = both(bared, Reason::BareRoyal, result) {
+                    return Some(outcome);
+                }
+            }
+            if let Some(rule) = t.territory.as_ref().filter(|rule| rule.win_at > 0) {
+                let enough = [0, 1].map(|side| self.coloured_by(side) >= rule.win_at as usize);
+                if let Some(outcome) = both(enough, Reason::Coloured, 1) {
+                    return Some(outcome);
+                }
+            }
+        }
+        if !self.history.is_empty() && self.repetition_count() >= t.repetition_draw {
+            return Some(Outcome { winner: -1, reason: Reason::Repetition });
+        }
+        None
+    }
+
+    /// The half of a round's verdict that needs no move lists: the endings, then the
+    /// clocks (there is no mate to outrank them).
+    pub fn round_terminal_prefix(&self) -> Option<Outcome> {
+        if let Some(outcome) = self.round_ending_before_the_clocks() {
+            return Some(outcome);
+        }
+        self.clock_run_out().map(|reason| self.on_the_clock(reason))
+    }
+
+    /// The whole verdict from both players' move lists: a player with no legal move at the
+    /// start of a round gets `rules.stalemate`'s result; both without one is a draw (§2.6).
+    pub fn round_terminal_with(&self, lists: [&[u32]; 2]) -> Option<Outcome> {
+        if let Some(outcome) = self.round_terminal_prefix() {
+            return Some(outcome);
+        }
+        let stuck = [lists[0].is_empty(), lists[1].is_empty()];
+        let player = match stuck {
+            [true, true] => return Some(Outcome { winner: -1, reason: Reason::Stalemate }),
+            [true, false] => 0,
+            [false, true] => 1,
+            _ => return None,
+        };
+        Some(match self.t.stalemate {
+            Stalemate::Draw => Outcome { winner: -1, reason: Reason::Stalemate },
+            Stalemate::Loss => Outcome { winner: (1 - player) as i8, reason: Reason::StalemateLoss },
+            Stalemate::Win => Outcome { winner: player as i8, reason: Reason::StalemateWin },
+        })
+    }
+
+    /// The whole verdict, generating both lists.
+    pub fn round_terminal(&mut self) -> Option<Outcome> {
+        if let Some(outcome) = self.round_terminal_prefix() {
+            return Some(outcome);
+        }
+        let mut first = Vec::new();
+        let mut second = Vec::new();
+        self.generate_legal_for(0, &mut first);
+        self.generate_legal_for(1, &mut second);
+        self.round_terminal_with([&first, &second])
+    }
+
+    /// Joint perft (§6.1): positions after `depth` rounds, every pair of legal moves.
+    pub fn perft_round(&mut self, depth: u32, stop_at_terminal: bool) -> u64 {
+        if depth == 0 {
+            return 1;
+        }
+        if stop_at_terminal && self.round_terminal_prefix().is_some() {
+            return 0;
+        }
+        let mut first = Vec::new();
+        let mut second = Vec::new();
+        self.generate_legal_for(0, &mut first);
+        self.generate_legal_for(1, &mut second);
+        if depth == 1 {
+            return (first.len() * second.len()) as u64;
+        }
+        let mut total = 0u64;
+        for &a in &first {
+            for &b in &second {
+                self.make_round([a, b]);
+                total += self.perft_round(depth - 1, stop_at_terminal);
+                self.unmake_round();
+            }
+        }
+        total
+    }
+}

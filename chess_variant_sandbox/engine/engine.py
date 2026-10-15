@@ -99,6 +99,8 @@ def _pack(state: GameState) -> tuple[Any, ...]:
         (
             state.colour, state.remaining, state.turns_taken, state.points,
             state.goal_left_by, state.portal_bar, list(state.folds),
+            # Schema 26 (Q918a): the initiative, the void run and the bars.
+            (state.initiative, state.void_run, [tuple(bar) for bar in state.bars]),
         ),
     )
 
@@ -127,6 +129,9 @@ def _unpack(packed: State) -> GameState:
         goal_left_by=packed[11][4],
         portal_bar=(packed[11][5][0], packed[11][5][1]),
         folds=tuple(packed[11][6]),
+        initiative=packed[11][7][0],
+        void_run=(packed[11][7][1][0], packed[11][7][1][1]),
+        bars=tuple((bar[0], bar[1]) for bar in packed[11][7][2]),
     )
 
 
@@ -209,6 +214,35 @@ class Engine:
         """Moves that satisfy the piece rules, without the self-check filter."""
         return self.core.pseudo_legal_moves(_pack(state))
 
+    # ------------------------------------------------------------- simultaneous
+
+    @property
+    def simultaneous(self) -> bool:
+        """Whether this game is played in rounds (schema 26, ``rules.simultaneous``)."""
+        return self.spec.simultaneous is not None
+
+    def legal_moves_for(self, state: GameState, player: int) -> list[int]:
+        """Every move ``player`` may choose in a round on this board (schema 26)."""
+        return self.core.legal_moves_for(_pack(state), player)
+
+    def apply_round(self, state: GameState, first: int, second: int) -> GameState:
+        """The position after one round: ``first`` by player 0, ``second`` by player 1,
+        revealed and resolved together (`docs/plan-simultaneous.md` §2, §4)."""
+        return _unpack(self.core.apply_round(_pack(state), first, second)[0])
+
+    def apply_round_with_phase(
+        self, state: GameState, first: int, second: int
+    ) -> tuple[GameState, tuple[PhaseStep, ...], tuple[tuple[int, int, int], ...]]:
+        """``apply_round``, what the wild pieces did, and what the meetings did: one
+        ``(event, square, player)`` per collision (0, the winner or -1), void move (1),
+        tie the initiative decided (2) and pair barred (3), for a page to draw."""
+        packed, phase, events = self.core.apply_round(_pack(state), first, second)
+        return (
+            _unpack(packed),
+            tuple(PhaseStep(*step) for step in phase),
+            tuple((event, square, player) for event, square, player in events),
+        )
+
     # ---------------------------------------------------------------- application
 
     def apply(self, state: GameState, move: int) -> GameState:
@@ -283,6 +317,20 @@ class Engine:
         exercising two different players.
         """
         return self.core.select_move(_pack(state), agent, values, seed)
+
+    def select_round(
+        self,
+        state: GameState,
+        seat: int,
+        agent: tuple[Any, ...],
+        values: list[float],
+        seed: int = 0,
+    ) -> tuple[int | None, list[float], int, int]:
+        """Schema 26 (Q918b): what this agent plays for ``seat`` in a round on this board,
+        the mixed strategy over that seat's legal moves it drew it from (empty for
+        ``random``), the nodes it spent and its last finished pass. ``None`` for the move
+        where either player has none."""
+        return self.core.select_round(_pack(state), seat, agent, values, seed)
 
     def select_move_depth(
         self,
@@ -701,6 +749,8 @@ class Engine:
             # zero-length array could reach the core, and the core indexes it per square.
             colour=bytes(spec.n_squares) if spec.territory is not None else b"",
             folds=tuple(self._square_index(name) for name in folds) or self._start_folds(),
+            # Schema 26: the initiative where it starts, under that tie rule.
+            initiative=self.initial_state().initiative if self.simultaneous else -1,
         )
         key = self._compute_hash(state)
         return state.with_(key=key, repetition=(key,))

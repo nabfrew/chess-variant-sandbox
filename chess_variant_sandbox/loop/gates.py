@@ -106,6 +106,19 @@ def smoke_test(
             ],
         )
 
+    if engine.simultaneous:
+        # Schema 26: a game played in rounds has its computer players (Q918b: random, greedy
+        # and matrix:nodes=N), but the records, metrics and analysis pass read rounds only
+        # from Q918d, so no rung past this one could measure it. Refused by name, as a rule
+        # the core cannot play is, so an operator that reaches it costs a draw.
+        return SmokeResult(
+            passed=False,
+            reasons=[
+                "the score can't read one of these rules yet: both players moving at once, "
+                "which the measurement learns in a later step"
+            ],
+        )
+
     state = engine.initial_state()
     opening_moves = len(engine.legal_moves(state))
     if opening_moves == 0:

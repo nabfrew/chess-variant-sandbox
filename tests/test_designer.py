@@ -929,6 +929,7 @@ function addEveryRule(templates) {
       DRAFT = JSON.parse(JSON.stringify(held.spec));
       DRAFT_CHECK = { preview: held.preview };
       DRAFT.rules[field.key] = fieldDefault(field, [field.key], 'rules');
+      if (RULE_COMPANIONS[field.key]) RULE_COMPANIONS[field.key](DRAFT.rules);
       out[key][field.key] = DRAFT;
     }
   }

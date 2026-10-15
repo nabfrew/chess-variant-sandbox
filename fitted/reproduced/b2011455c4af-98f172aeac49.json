@@ -4,7 +4,8 @@
   "reproduced_on": [
     "d426a82e136d75da",
     "4bed10accc7d501f",
-    "40d0e115de5a613d"
+    "40d0e115de5a613d",
+    "273221deaf99f3c9"
   ],
   "verified_under": [
     {
@@ -12,6 +13,12 @@
       "tables": "5b144080a51061e1",
       "players": "035c5c60fd0e3746",
       "runner": "204da7d0cb34fde5"
+    },
+    {
+      "core": "273221deaf99f3c9",
+      "tables": "5b144080a51061e1",
+      "players": "035c5c60fd0e3746",
+      "runner": "8a4ff69df239b166"
     }
   ]
 }

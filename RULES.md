@@ -1,12 +1,12 @@
-# The rule language, schema version 25
+# The rule language, schema version 26
 
-This is the whole language a game is written in, at schema version 25. A game
+This is the whole language a game is written in, at schema version 26. A game
 is one JSON file. It says how big the board is, what pieces there are and how each moves,
 where they start, and how the game is won; nothing about a game lives anywhere else. A
 person can write one by hand, or give this file to an AI and ask it for one.
 
 **Which version.** A game written from this reference should declare
-`"schema_version": 25`. A site or checkout running a later version still
+`"schema_version": 26`. A site or checkout running a later version still
 accepts it, because every version ever cut stays accepted, and a file may use only what
 the version it declares had. The site serves the reference for the version it runs at
 `/rules.md`; when that copy names a later version than this one, write from that copy.
@@ -53,7 +53,7 @@ that silently does nothing.
 
 ## The top level
 
-- **`schema_version`**: integer from 1 to 25. Optional; default 25, the version this reference describes. Which version of this language the file is written in. A file may declare any version from 1 up, but may use only what that version had; declaring the version this reference describes makes every key below available.
+- **`schema_version`**: integer from 1 to 26. Optional; default 26, the version this reference describes. Which version of this language the file is written in. A file may declare any version from 1 up, but may use only what that version had; declaring the version this reference describes makes every key below available.
 - **`name`**: string, at least 1. Required. The game's name, shown wherever the game is listed. It must not be blank.
 - **`description`**: string. Optional; default empty. How the game plays and what makes it worth playing, in a few sentences.
 - **`board`**: object. Required. The size and shape of the board. See *board* below.
@@ -80,6 +80,7 @@ The size and shape of the board.
 - **`region`**: list of strings, at least 1. Optional. The only squares this piece may ever occupy, such as a palace or one bank of a river. Written for the first player and reflected. Algebraic squares such as a1 or e4.
 - **`promoted_from`**: string. Optional. The piece this one was promoted from. It only matters where captures go to hand, because a promoted piece returns as its modest original.
 - **`captures`**: list of strings. Optional; default the piece may capture any piece. The piece ids this one is allowed to capture. Omit it and the piece may capture anything, which is what every ordinary game means. State it and you get a dominance relation. Give rock ['S'], scissors ['P'] and paper ['R'] and no piece can take the one that takes it. An empty list is a piece that never captures.
+- **`beats`**: list of strings. Optional. Schema 26. Only in a simultaneous game (rules.simultaneous): the piece ids this one eliminates when the two collide, both moving onto the same square in one round. Omit it and it is the piece's captures, or every piece where captures is omitted too; never write that list out. If exactly one of the two beats the other, that one stands on the square and the other is eliminated; if both do or neither does, it is a tie (rules.simultaneous.tie). An empty list loses every collision it does not tie. Never on a portal.
 - **`facing`**: object. Optional. This piece has an orientation, and (unless turns is false) may spend a whole move turning to any other one instead of moving. Its move vectors are read rotated, so a pawn facing right advances east. Give it only to a piece whose moves are *not* symmetric under the turn -- a rook reads the same rays whichever way it faces, so turning one would be a move that does nothing, and the validator refuses that. A royal piece may not have one.
   - **`axes`**: one of `2`, `4`. Required. How many directions this piece can point: 2 for forward and backward, 4 for the quarter turns.
   - **`initial`**: one of `"forward"`, `"right"`, `"backward"`, `"left"`. Optional; default `"forward"`. Which way it points at the start, relative to its own forward. It must be one the piece can turn back to, so a piece with 2 axes has only forward and backward.
@@ -320,6 +321,14 @@ Each entry's keys:
 - **`no_straight_back`**: boolean. Optional; default `false`. Schema 20. When true, a portal of this group that has just been moved may not be moved straight back onto the square it came from on the very next move; it may go anywhere else, and back on the move after. Stops two players undoing each other's portal moves for ever. Needs an end that whoever moves next may move too (in moved_by for both players, or a turn longer than one move), and a portal piece with a move back; a bar no move can meet is refused. Default false.
 - **`kind`**: one of `"fold"`. Optional. Schema 24. 'fold' makes the group fold portals; absent, they are momentum portals (the default, never written). A fold is not a piece: its square may hold a piece of either side, which is captured there as anywhere, and may start under a piece. A move that ends on an empty fold that lets the piece in -- a leap, slide, hop or pawn's step -- may stay there, or go through and end on the end this one leads to instead, as a landing there: onto an empty square if the step could end on one, onto an enemy piece it may take (captured) if the step could capture, never onto its own piece or its own square, promoting by that square. One fold per move. A move that passes over a fold, or ends on one a piece stands in, is not changed by it. A fold that does not let a piece in, or leads nowhere, is plain floor to it. A fold moved by a player may land on a piece of either side (never on another portal), which then stands in it; moving it never moves that piece. Castling, drops and en passant never go through a fold, and a move through one opens no en passant.
 
+### `rules.simultaneous`: both players moving at once
+
+*object*. Leave it out for no such rule. Schema 26. Both players move at once. Each round, each player chooses one of their own legal moves on the same board without seeing the other's; both are revealed and made together. Only two pieces moving onto the same square collide, and pieces.beats decides who survives. A piece that moves onto a square its target has just left lands there if its move could land on an empty square, and otherwise stays where it was (a capture-only move is void). Two such void moves at each other two rounds in a row bar that pair of moves for both players until either square changes. There is no check: rules.win must be 'royal_capture', 'annihilation' or 'none', and an ending reached by both players in the same round is a draw. A round counts as two moves on the clocks. Not usable beside castling, en passant, a sweep, check rules, a turn of more than one move, a portal a player moves, a strike or contact position 'choose', a strike position 'stay', or drops.no_mate.
+
+Its keys:
+
+- **`tie`**: one of `"initiative"`, `"impossible"`. Optional. What decides a collision that is a tie, the two pieces each beating the other or neither beating the other. Leave it out and both are eliminated, leaving the square empty; never write that out. 'initiative': one player holds the initiative, the second player at the start; a tie goes to the holder's piece, and the initiative then passes to the other player. 'impossible': a promise, checked, that no tie can ever occur, because for every piece each player can have, exactly one of the two beats the other (the armies use different pieces, such as a circle of rock, paper and scissors).
+
 ### `rules.promote_on_entry`: promoting on arrival
 
 *boolean*. Default `false`. A piece that enters play inside its own promotion zone -- dropped there, or left standing there by a strike that turned it into a promoting piece -- promotes at once, to the first piece its promotion rule lists, even where promotion is otherwise optional. Needs rules.promotion and a way in: rules.drops, or a strike whose chain leaves a piece standing. Refused where no promoting piece could ever enter its zone, such as a pawn whose drop region stops short of it. False, the default, leaves such a piece standing where it arrived.
@@ -463,7 +472,7 @@ example.
 
 ```json
 {
-  "schema_version": 25,
+  "schema_version": 26,
   "name": "Five by five",
   "description": "Chess on a five by five board: one rook, knight, bishop, queen and king a side behind five pawns. Pawns step one square and promote on the far rank; no castling, no en passant.",
   "board": {"width": 5, "height": 5},
@@ -544,7 +553,7 @@ example.
 
 ```json
 {
-  "schema_version": 25,
+  "schema_version": 26,
   "name": "Five by five with moving portals",
   "description": "The five by five game with a pair of portals on the middle rank, on b3 and d3. A piece whose move ends on one comes out one step beyond the other, in the direction it was going. Either player may spend a turn moving either portal one king's step to an empty square, but not straight back on the very next move.",
   "board": {"width": 5, "height": 5},

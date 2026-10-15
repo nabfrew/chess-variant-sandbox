@@ -130,11 +130,12 @@ def test_a_movement_kind_is_used_when_a_piece_declares_it() -> None:
     assert rules_used.used(spec) == {"slide"}
 
 
-def test_available_holds_thirty_one_names_today() -> None:
-    # Thirty-one since schema 19 added `portals` (Q771).
+def test_available_holds_thirty_two_names_today() -> None:
+    # Thirty-one since schema 19 added `portals` (Q771); thirty-two since schema 26 added
+    # `simultaneous` (Q918a).
     names = rules_used.available()
-    assert len(names) == 31
-    assert len(set(names)) == 31
+    assert len(names) == 32
+    assert len(set(names)) == 32
     assert names[: len(schema.MOVE_KINDS)] == schema.MOVE_KINDS
 
 

@@ -151,6 +151,40 @@ def test_the_tree_search_agrees_move_for_move(name: str) -> None:
     _assert_same_game(name, ("mcts:nodes=30", "random"))
 
 
+# Schema 26 (Q918b): the round players. Q918a's test specs (`tests/_simultaneous_*.json`):
+# a mirrored Gardner-sized game, drops and promotion, an explosion, an own-merge contact, a
+# static portal pair beside a fold. The fast arms cut each game at 24 plies (twelve rounds);
+# the slow ones play it to its verdict.
+ROUND_SPECS = ["gardner", "shogi", "atomic", "merge", "portals"]
+ROUND_ROSTER = [
+    ("greedy", "random"),
+    ("matrix:nodes=250", "greedy"),
+]
+
+
+def _rounds(name: str, max_plies: int | None = None) -> Engine:
+    spec = load_spec(Path(__file__).parent / f"_simultaneous_{name}.json")
+    if max_plies is not None:
+        spec["rules"]["max_plies"] = max_plies
+    return Engine(spec)
+
+
+@pytest.mark.parametrize("name", ROUND_SPECS)
+@pytest.mark.parametrize("agents", ROUND_ROSTER, ids=lambda pair: f"{pair[0]}-vs-{pair[1]}")
+def test_a_round_game_is_identical_move_for_move(name: str, agents: tuple[str, str]) -> None:
+    _assert_same_played(_rounds(name, max_plies=24), agents)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("name", ROUND_SPECS)
+@pytest.mark.parametrize(
+    "agents", [("greedy", "greedy"), ("matrix:nodes=800", "greedy")],
+    ids=lambda pair: f"{pair[0]}-vs-{pair[1]}",
+)
+def test_a_whole_round_game_is_identical_move_for_move(name: str, agents: tuple[str, str]) -> None:
+    _assert_same_played(_rounds(name), agents)
+
+
 def _turned(name: str, **turn: Any) -> Engine:
     """The same ruleset with a longer turn, so the turn is the only thing that changed."""
     spec: dict[str, Any] = load_spec(RULESETS / f"{name}.json")
@@ -1850,7 +1884,7 @@ def test_a_core_built_after_a_field_was_added_is_caught_too() -> None:
 
     message = core_boundary_mismatch(newer, _unpack, _pack)
     assert message is not None
-    assert "slot 11 carries 8 fields where this package writes 7" in message
+    assert "slot 11 carries 9 fields where this package writes 8" in message
     assert "maturin develop --release" in message
 
 

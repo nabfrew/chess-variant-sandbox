@@ -48,8 +48,10 @@ from chess_variant_sandbox.spec.schema import (
     REPETITION_NEVER,
     SQUARE_SYMMETRIES,
     absent_squares,
+    beats_of,
     can_double_step,
     castling_spans,
+    is_simultaneous,
     obstacle_squares,
     opening_counts,
     parse_square,
@@ -59,6 +61,7 @@ from chess_variant_sandbox.spec.schema import (
     promoting_piece_ids,
     reach_reflection,
     reflect_square,
+    simultaneous_tie_pair,
     strike_is_live,
     sweep_conflicts,
     turn_is_long,
@@ -158,6 +161,7 @@ _GONE_WORDS = {
     "scoring": "the count of points at the clock",
     "contacts": "the table of what a capture turns pieces into",
     "keeping": "the links keeping a capturer as it was",
+    "tie": "the tie rule for collisions",
 }
 
 
@@ -167,6 +171,8 @@ def _gone_words(key: str) -> str:
         return f"the {key.split(':', 1)[1]}'s promotion"
     if key.startswith("immune:"):
         return f"the wild {key.split(':', 1)[1]}'s immunity"
+    if key.startswith("beats:"):
+        return f"the {key.split(':', 1)[1]}'s own collision table"
     if key.startswith("carries:"):
         return f"the filter on the portal at {key.split(':', 1)[1]}"
     return _GONE_WORDS.get(key, key.replace("_", " "))
@@ -697,6 +703,8 @@ def _drop_royalty(spec: dict[str, Any], rng: random.Random) -> str | None:
     current = rules.get("win", "checkmate")
     if royal_id(spec) is None:
         return None
+    if is_simultaneous(rules):
+        return None  # schema 26: there is no checkmate when both players move at once
     rules["win"] = "royal_capture" if current == "checkmate" else "checkmate"
     return f"the game is now won by {rules['win'].replace('_', ' ')}"
 
@@ -990,6 +998,8 @@ def _lengthen_the_turn(spec: dict[str, Any], rng: random.Random) -> str | None:
         # halves of a long turn and the validator says so by name. Every draw on
         # `archive/wolves` was refused before this.
         return None
+    if is_simultaneous(rules):
+        return None  # schema 26: a round is one secret move each
     had_en_passant = bool(rules.get("en_passant"))
     set_turn(spec)
     sentence = (
@@ -1207,6 +1217,8 @@ def _soften_the_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
         # was thrown away. `contacts` is the fourth and arrived the same way (Q108) --
         # a strike beside a contact table is refused as *two spellings of one rule*.
         return None
+    if is_simultaneous(rules):
+        return None  # schema 26: a strike that stays is refused beside rounds
     before = rules.get("strike")
     set_strike(spec, effect=rng.choice(("demote", "promote")), position="stay")
     if rules.get("strike") is before:
@@ -1702,6 +1714,99 @@ def _fix_a_facing(spec: dict[str, Any], rng: random.Random) -> str | None:
     piece["facing"]["turns"] = False
     settle_schema_version(spec)
     return f"{piece['id']} no longer turns: each one points the way it was placed{pointed}"
+
+
+# Schema 26 (Q918a): what a simultaneous game cannot be played beside and an operator may
+# simply drop on the way in -- each is one rule a round has no use for. Anything else §4 of
+# `docs/plan-simultaneous.md` refuses (a sweep, a moved portal, a strike that stays or
+# chooses, a long turn) is a design of its own, so the operator does not apply there.
+_DROPPED_FOR_ROUNDS = ("castling", "en_passant", "checkmate", "forbid_check", "check_limit")
+
+
+def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Make both players move at once, or make them alternate again (schema 26).
+
+    Into rounds: the checkmate win becomes royal capture (there is no check), and the
+    rules a round has no use for are dropped. Out: the rule, every `beats` and the tie go,
+    and the royal capture win stays, which an alternating game plays as it is.
+    """
+    rules = spec.setdefault("rules", {})
+    if is_simultaneous(rules):
+        del rules["simultaneous"]
+        for piece in spec.get("pieces", []):
+            if isinstance(piece, dict):
+                piece.pop("beats", None)
+        settle_schema_version(spec)
+        return "the players take turns again"
+    del rng
+    trial = copy.deepcopy(spec)
+    trial_rules = trial["rules"]
+    for key in _DROPPED_FOR_ROUNDS:
+        trial_rules.pop(key, None)
+    if trial_rules.get("royal_facing") == "forbidden":
+        trial_rules.pop("royal_facing")
+    if trial_rules.get("win", "checkmate") == "checkmate":
+        trial_rules["win"] = "royal_capture"
+    drops = trial_rules.get("drops")
+    if isinstance(drops, dict):
+        drops.pop("no_mate", None)
+    trial_rules["simultaneous"] = {}
+    settle_schema_version(trial)
+    # The rest of §4's refusals (a sweep, a moved portal, a strike that stays or chooses,
+    # a long turn, a royal in a placement stock) are designs of their own: not applied.
+    if any(error.startswith("rules.simultaneous beside") for error in validate_spec(trial)):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return "both players now move at once, each choosing a move without seeing the other's"
+
+
+def _set_a_collision(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Say who a piece beats when two pieces move onto one square, change it, or drop it
+    (schema 26's `pieces[].beats`). Only in a game played in rounds."""
+    if not is_simultaneous(spec):
+        return None
+    portals = portal_piece_ids(spec.get("rules"))
+    pieces = [p for p in spec.get("pieces", []) if isinstance(p, dict) and p.get("id") not in portals]
+    if not pieces:
+        return None
+    ids = [p["id"] for p in pieces]
+    stated = [p for p in pieces if isinstance(p.get("beats"), list)]
+    if stated and rng.random() < 0.5:
+        piece = rng.choice(stated)
+        piece.pop("beats")
+        settle_schema_version(spec)
+        return f"{piece['id']} beats in a collision what it may capture again"
+    piece = rng.choice(pieces)
+    default = beats_of({key: value for key, value in piece.items() if key != "beats"}, ids)
+    choices = [
+        sorted(set(ids) - {other}) for other in ids
+    ] + [[]] + [[other] for other in ids]
+    choices = [beats for beats in choices if frozenset(beats) != default and beats != piece.get("beats")]
+    if not choices:
+        return None
+    piece["beats"] = rng.choice(choices)
+    settle_schema_version(spec)
+    beaten = ", ".join(piece["beats"]) or "nothing"
+    return f"in a collision {piece['id']} now beats {beaten}"
+
+
+def _break_the_tie(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Decide a collision tie by the initiative, promise there is none, or eliminate both
+    again (schema 26's `rules.simultaneous.tie`)."""
+    del rng
+    if not is_simultaneous(spec):
+        return None
+    rule = spec["rules"]["simultaneous"]
+    if "tie" in rule:
+        del rule["tie"]
+        settle_schema_version(spec)
+        return "a tied collision eliminates both pieces again"
+    if simultaneous_tie_pair(spec) is None:
+        rule["tie"] = "impossible"
+        return "no collision can tie, and the file now says so"
+    rule["tie"] = "initiative"
+    return "a tied collision goes to the player holding the initiative, which then passes"
 
 
 def _hunt_the_wild(spec: dict[str, Any], rng: random.Random) -> str | None:
@@ -2753,7 +2858,9 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
         for entry in (promotion if isinstance(promotion, list) else [promotion])
     )
     # Schema 18c: circe gives back what `only_lost` counts as lost, so it is not offered.
-    choice = rng.choice(("stay", "switch") if only_lost else ("stay", "home", "switch"))
+    # Schema 26: a strike that stays is refused beside rounds, so it is not offered there.
+    stays = () if is_simultaneous(rules) else ("stay",)
+    choice = rng.choice((*stays, "switch") if only_lost else (*stays, "home", "switch"))
     if choice == "switch":
         if not switching:
             return None
@@ -2782,6 +2889,8 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     """
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
+    if is_simultaneous(spec) and not _movers(spec, "sweep"):
+        return None  # schema 26: a sweep is refused beside rounds
     sweeps = _movers(spec, "sweep")
     if sweeps:
         piece, move = rng.choice(sweeps)
@@ -2893,6 +3002,9 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("join-the-edges", _join_the_edges),
     Operator("turn-to-face", _turn_to_face),
     Operator("fix-a-facing", _fix_a_facing),
+    Operator("play-at-once", _play_at_once),
+    Operator("set-a-collision", _set_a_collision),
+    Operator("break-the-tie", _break_the_tie),
     Operator("sweep-a-slider", _sweep_a_slider),
 )
 

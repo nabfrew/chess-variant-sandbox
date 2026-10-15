@@ -21,6 +21,7 @@ from chess_variant_sandbox.agents.base import (
 )
 from chess_variant_sandbox.agents.evaluation import Evaluator
 from chess_variant_sandbox.agents.fairy_stockfish import FairyStockfishAgent
+from chess_variant_sandbox.agents.matrix import MatrixAgent
 from chess_variant_sandbox.agents.mcts import MCTSAgent
 from chess_variant_sandbox.agents.minimax import MinimaxAgent
 from chess_variant_sandbox.agents.simple import GreedyAgent, RandomAgent
@@ -34,6 +35,7 @@ __all__ = [
     "FairyStockfishAgent",
     "GreedyAgent",
     "MCTSAgent",
+    "MatrixAgent",
     "MinimaxAgent",
     "NativeSpec",
     "RandomAgent",

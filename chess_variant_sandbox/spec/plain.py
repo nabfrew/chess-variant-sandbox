@@ -413,6 +413,29 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "either one of them, or both.",
     ),
     # Schema 22 (Q843c): the second rule set.
+    # Schema 26 (Q918a): simultaneous moves.
+    "rules.simultaneous": (
+        "both players move at once",
+        "Each round both players choose a move without seeing the other's, and both are made "
+        "together. Only two pieces moving onto the same square collide, and who each piece "
+        "beats decides who stays. A piece whose target ran lands where it stood if its move "
+        "could end on an empty square, and otherwise stays where it was. There is no check, "
+        "so the game is won by taking the royal piece, by clearing an army, or by its other "
+        "endings, and an ending both players reach in one round is a draw.",
+    ),
+    "rules.simultaneous.tie": (
+        "when both beat or neither does",
+        "Leave it empty and both pieces go. The initiative: one player holds it, the second "
+        "at the start; a tie goes to that player's piece, and the initiative passes on. "
+        "Impossible: a promise, checked, that no two pieces that can meet ever tie, because "
+        "the two armies are different pieces in a ring of who beats whom.",
+    ),
+    "pieces.beats": (
+        "in a collision beats",
+        "Only when both players move at once: the pieces this one knocks out when both move "
+        "onto the same square. Leave it empty and it is the pieces it may take. If one of the "
+        "two beats the other it stays; if both do or neither does, it is a tie.",
+    ),
     "rules.portals.kind": (
         "how it works",
         "Fold portals, where momentum portals are the usual kind: a piece may stand in a "

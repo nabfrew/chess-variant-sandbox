@@ -35,6 +35,7 @@ from chess_variant_sandbox.spec.schema import (
     WRAP_PAIRS,
     SpecError,
     absent_squares,
+    is_simultaneous,
     obstacle_squares,
     portal_groups,
     wrap_stated,
@@ -184,6 +185,9 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     """Every rule beyond how the pieces move, each stated as a player would be told it."""
     rules = spec.get("rules", {})
     lines = [_describe_win(rules.get("win", "checkmate"))]
+    # Schema 26 (Q918a): first of all, because it changes what a turn is more than a long
+    # turn does, and every sentence below is read against it.
+    lines.extend(_describe_simultaneous(spec, rules))
 
     turn = rules.get("turn")
     if turn and int(turn.get("moves", 1)) > 1:
@@ -206,9 +210,10 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     lines.extend(_describe_portals(spec, rules))
 
     lines.append(
-        "A player with no legal move "
+        ("A player with no legal move at the start of a round " if is_simultaneous(rules)
+         else "A player with no legal move ")
         + {"draw": "draws", "loss": "loses", "win": "wins"}[rules.get("stalemate", "draw")]
-        + "."
+        + ("; both without one is a draw." if is_simultaneous(rules) else ".")
     )
     if rules.get("checkmate", "loss") == "win":
         lines.append("Being checkmated wins the game.")
@@ -342,13 +347,18 @@ def _describe_clocks(rules: dict[str, Any]) -> str:
         "change",
         f"or {rules.get('max_plies', 400)} turns in all",
     ]
+    # Schema 26: the clocks count each player's move, so a round is two of them.
+    rounds = " (a round counts as two)" if is_simultaneous(rules) else ""
     if repetition == REPETITION_NEVER:
         return (
             "Repeating a position is never a draw here. The game is drawn after "
             + ", ".join(clauses)
+            + rounds
             + "."
         )
-    return f"The game is drawn after {repetition} repetitions, " + ", ".join(clauses) + "."
+    return (
+        f"The game is drawn after {repetition} repetitions, " + ", ".join(clauses) + rounds + "."
+    )
 
 
 # -------------------------------------------------------------------------- pieces
@@ -1096,6 +1106,12 @@ RULE_WORDS: dict[str, tuple[str, str]] = {
         "take, or waits if it may not. A royal piece where one steps next is in check "
         "from it, and taking one is worth its bounty.",
     ),
+    "simultaneous": (
+        "both players moving at once",
+        "Both players choose a move at the same time, without seeing the other's, and both "
+        "are made together. Only two pieces moving onto one square collide, and each piece "
+        "says which pieces it beats when they do.",
+    ),
     "portals": (
         "portals",
         "Pairs of squares that send a piece on: a move that ends on one comes out of the "
@@ -1305,6 +1321,51 @@ def _capture_relation(spec: dict[str, Any]) -> str:
         + "; ".join(clauses)
         + ". Anything not listed blocks a line without being takeable."
     )
+
+
+def _describe_simultaneous(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """Schema 26 (Q918a): the round, the collision table, the tie, the void bar and what an
+    ending reached by both means (`docs/plan-simultaneous.md` §2, §3)."""
+    if not is_simultaneous(rules):
+        return []
+    tie = rules["simultaneous"].get("tie")
+    lines = [
+        "Both players move at once. Each round, each player chooses one of their own legal "
+        "moves on the same board without seeing the other's, and both are made together. "
+        "There is no check: a royal piece may be left where it can be taken.",
+        "Only two pieces moving onto the same square collide. A piece that moves onto a "
+        "square its target has just left lands there if that move could land on an empty "
+        "square, and otherwise stays where it was; paths that cross, and two pieces that "
+        "swap squares, do not collide.",
+    ]
+    clauses = []
+    for piece in spec.get("pieces") or []:
+        beats = piece.get("beats") if isinstance(piece, dict) else None
+        if isinstance(beats, list):
+            clauses.append(
+                f"{piece['id']} beats {', '.join(beats)}" if beats else f"{piece['id']} beats nothing"
+            )
+    who = (
+        "In a collision a piece beats what it may capture"
+        + (" unless it says otherwise: " + "; ".join(clauses) if clauses else "")
+        + ". If one beats the other it stands on the square and the other is eliminated; "
+    )
+    if tie == "initiative":
+        who += (
+            "if both or neither do, the player holding the initiative wins it, and the "
+            "initiative passes to the other player. The second player holds it at the start."
+        )
+    elif tie == "impossible":
+        who += "no two pieces that can meet ever both win or both lose."
+    else:
+        who += "if both or neither do, both are eliminated."
+    lines.append(who)
+    lines.append(
+        "Two pieces that could only take each other and miss two rounds in a row may not "
+        "try again until either of their squares changes. An ending both players reach in "
+        "the same round is a draw."
+    )
+    return lines
 
 
 def _describe_turn(turn: dict[str, Any]) -> str:

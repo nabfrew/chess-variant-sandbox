@@ -772,6 +772,27 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         # Schema 18 (Q783): each listed type counted on its own. False is the summed
         # count every game before it makes.
         "extinction_per_type": bool(extinction.per_type) if extinction else False,
+        # Schema 26 (Q918a): simultaneous moves. All three empty for an alternating game.
+        # `sim_rule` is `[tie, initiative_start, void_run, collision_strikes]`;
+        # `sim_collision` the `beats` matrix, `[a * n_types + b]`; `zobrist_sim` the
+        # initiative's key, then the standoff's squares (player 0's, then player 1's), then
+        # its states.
+        "sim_rule": (
+            [
+                sim.tie, sim.initiative_start, sim.void_run, int(sim.collision_strikes),
+            ] if (sim := spec.simultaneous) is not None else []
+        ),
+        "sim_collision": (
+            [int(flag) for flag in spec.simultaneous.collision_allowed]
+            if spec.simultaneous is not None else []
+        ),
+        "zobrist_sim": (
+            [
+                spec.simultaneous.zobrist_initiative,
+                *spec.simultaneous.zobrist_squares,
+                *spec.simultaneous.zobrist_states,
+            ] if spec.simultaneous is not None else []
+        ),
         # Zobrist
         "zobrist_pieces": [
             value for row in spec.zobrist_pieces for value in row
@@ -926,6 +947,10 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "extinction_result": -1,
     # Schema 18 (Q783). False unless the rule says `per_type`.
     "extinction_per_type": False,
+    # Schema 26 (Q918a). Empty unless the game is simultaneous.
+    "sim_rule": [],
+    "sim_collision": [],
+    "zobrist_sim": [],
 }
 
 # Keys that are part of what every game means, whatever rules it declares: the board's

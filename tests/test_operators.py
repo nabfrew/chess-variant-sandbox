@@ -84,7 +84,7 @@ _NUMBER_WORDS = {
     9: "nine", 10: "ten", 11: "eleven", 12: "twelve", 13: "thirteen", 14: "fourteen",
     15: "fifteen", 16: "sixteen", 17: "seventeen", 18: "eighteen", 19: "nineteen",
     20: "twenty", 21: "twenty_one", 22: "twenty_two", 23: "twenty_three", 24: "twenty_four",
-    25: "twenty_five",
+    25: "twenty_five", 26: "twenty_six",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(SCHEMA_VERSION, SCHEMA_VERSION)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(schema, _COLLECTOR, None)
@@ -201,7 +201,9 @@ def _sweep_over(
                         # Which rules the child still carries, so "crossed this feature's
                         # axis" can be told apart from "deleted the rule it rides on".
                         survived=frozenset(
-                            key for key, value in (child.get("rules") or {}).items() if value
+                            # Schema 26: `"simultaneous": {}` is a whole rule, not an empty one.
+                            key for key, value in (child.get("rules") or {}).items()
+                            if value or (key == "simultaneous" and isinstance(value, dict))
                         )
                         if summary is not None and not errors
                         else frozenset(),
@@ -344,6 +346,9 @@ class TestMutation:
         parents += [load_spec(ROOT / "archive" / f"{name}.json") for name in ("wormhole", "wolves")]
         parents += [specs[name] for name in ("makruk", "dobutsu", "shogi")]
         parents.append(load_spec(RULESETS / "chess-oriented-pawns.json"))
+        # Schema 26's `set-a-collision` and `break-the-tie` work on a game played in rounds,
+        # and none is committed until Q918e: the Gardner test spec stands in.
+        parents.append(load_spec(ROOT / "tests" / "_simultaneous_gardner.json"))
 
         def fires(operator) -> bool:
             return any(
@@ -1952,7 +1957,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `SCHEMA_VERSION`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 25
+_FEATURES_ARE_FOR_SCHEMA = 26
 
 
 @dataclass(frozen=True)
@@ -2246,18 +2251,70 @@ def _parent_rear_guard() -> dict:
     return load_spec(RULESETS / "torus-less-extended.json")
 
 
-# Schema 25's inventory (Q869, `plan-library-audit.md` *The rear pawn: a fixed facing*): a
-# facing's ``turns``. It rides on a piece's facing rather than on a `rules` key, so the host
-# is ``None``, and it keeps the army: `fix-a-facing` fixes a facing (pointing half of one
-# placement another way when they all agree) and frees a fixed one. Schema 24's row (Q867b)
-# retired with the bump; `fold-a-portal` still crosses it.
+def _parent_rounds(**extra: object) -> dict:
+    """Gardner played in rounds (`tests/_simultaneous_gardner.json`): schema 26's smallest
+    edit, plus whatever ``extra`` sets on the rule."""
+    gardner = load_spec(RULESETS / "gardner.json")
+    gardner["schema_version"] = 26
+    gardner["rules"]["win"] = "royal_capture"
+    gardner["rules"]["simultaneous"] = dict(extra)
+    return gardner
+
+
+def _parent_beats() -> dict:
+    """Rounds where a pawn beats nothing in a collision (§6.8's second showcase idea)."""
+    rounds = _parent_rounds()
+    next(p for p in rounds["pieces"] if p["id"] == "P")["beats"] = []
+    return rounds
+
+
+def _parent_circle() -> dict:
+    """Two armies of different pieces in a circle, so no collision can tie (§3.1, F)."""
+    steps = [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}]
+    pieces = [
+        {"id": "R", "moves": steps, "captures": ["s", "r"], "royal": True},
+        {"id": "S", "moves": steps, "captures": ["p", "s"]},
+        {"id": "P", "moves": steps, "captures": ["r", "p"]},
+        {"id": "r", "moves": steps, "captures": ["S"], "royal": True},
+        {"id": "s", "moves": steps, "captures": ["P"]},
+        {"id": "p", "moves": steps, "captures": ["R"]},
+    ]
+    return {
+        "schema_version": 26, "name": "circle", "board": {"width": 4, "height": 4},
+        "pieces": pieces,
+        "setup": {"mirror": False, "placements": [
+            {"piece": "R", "player": 0, "squares": ["a1"]},
+            {"piece": "S", "player": 0, "squares": ["b1"]},
+            {"piece": "P", "player": 0, "squares": ["c1"]},
+            {"piece": "r", "player": 1, "squares": ["d4"]},
+            {"piece": "s", "player": 1, "squares": ["c4"]},
+            {"piece": "p", "player": 1, "squares": ["b4"]},
+        ]},
+        "rules": {"win": "royal_capture", "simultaneous": {"tie": "impossible"}},
+    }
+
+
+# Schema 26's inventory (Q918a, `plan-simultaneous.md` §5): the rule, its tie with each
+# value, and a piece's `beats`. The rule is its own host; the tie and `beats` ride on it.
+# `play-at-once` crosses the rule, `break-the-tie` the tie, `set-a-collision` the list.
+# Schema 25's row (Q869) retired with the bump; `fix-a-facing` still crosses it.
+_ROUNDS = lambda spec: "simultaneous" in (spec.get("rules") or {})  # noqa: E731
 _FEATURES: dict[str, _Feature] = {
-    "Q869 a fixed facing": _Feature(
-        None, frozenset({"pieces[].facing.turns"}), True,
-        "torus-less-extended", _parent_rear_guard,
-        # Q891: a facing is entered where facings already stand. Searched alphabetically the
-        # first hit was 10 specs in, 3.8 s; the four specs whose pieces carry one are 0.3 s each.
-        likely=lambda spec: any("facing" in piece for piece in spec.get("pieces", [])),
+    "Q918a simultaneous moves": _Feature(
+        None, frozenset({"rules.simultaneous"}), True, "gardner+rounds", _parent_rounds,
+        likely=lambda spec: spec.get("name") == "gardner",
+    ),
+    "Q918a the initiative": _Feature(
+        "simultaneous", frozenset({"rules.simultaneous.tie 'initiative'"}), True,
+        "gardner+initiative", lambda: _parent_rounds(tie="initiative"), likely=_ROUNDS,
+    ),
+    "Q918a ties impossible": _Feature(
+        "simultaneous", frozenset({"rules.simultaneous.tie 'impossible'"}), True,
+        "circle", _parent_circle, likely=_ROUNDS,
+    ),
+    "Q918a beats": _Feature(
+        "simultaneous", frozenset({"pieces[].beats"}), True, "gardner+beats", _parent_beats,
+        likely=_ROUNDS,
     ),
 }
 
@@ -2269,6 +2326,12 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
+    # Schema 26's four are Q918e's, the showcase games (`plan-simultaneous.md` §6.8), which
+    # need the matrix players (Q918b) to be measured at all.
+    "Q918a simultaneous moves": "Q918e",
+    "Q918a the initiative": "Q918e",
+    "Q918a ties impossible": "Q918e",
+    "Q918a beats": "Q918e",
     # Empty again at schema 25: its showcase, `rulesets/torus-less-extended.json`, is the
     # game the bump was for (Q869). Schema 24's fold is shown by `archive/crease.json` (Q844b).
 }
@@ -2321,6 +2384,10 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     23: frozenset({"rules.npcs.also_at"}),
     24: frozenset({"rules.portals.kind"}),
     25: frozenset({"pieces[].facing.turns"}),
+    26: frozenset({
+        "rules.simultaneous", "rules.simultaneous.tie 'initiative'",
+        "rules.simultaneous.tie 'impossible'", "pieces[].beats",
+    }),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -2329,6 +2396,12 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Schema 26's four (Q918a) are owed by Q918e, the showcase games, which need the
+    # matrix players (Q918b) before a round can be measured; they go the day it lands.
+    "schema 26: rules.simultaneous": "owed by Q918e (plan-simultaneous.md §6.8)",
+    "schema 26: rules.simultaneous.tie 'initiative'": "owed by Q918e (plan-simultaneous.md §6.8)",
+    "schema 26: rules.simultaneous.tie 'impossible'": "owed by Q918e (plan-simultaneous.md §6.8)",
+    "schema 26: pieces[].beats": "owed by Q918e (plan-simultaneous.md §6.8)",
     # Schema 21's four names and schema 24's one went on 2026-10-13, when Q844b archived
     # their showcases (`archive/sluice.json`, `pawnproof-wormhole`, `crease`; coverage rows
     # 57 to 61, `reference/portal-showcase-ideas.md`).
@@ -2435,7 +2508,15 @@ def _feature_parents() -> dict[str, dict]:
 # back rank, and `omega` already has it), and no operator adds castling to a walled game.
 # It retired with schema 18's `_FEATURES` rows (Q771); schema 19's three are
 # `open-a-portal` both ways, so the tables are empty again.
-_CANNOT_ENTER: dict[str, str] = {}
+_CANNOT_ENTER: dict[str, str] = {
+    # Q918a: the tie and `beats` ride on a game played in rounds, and no committed or
+    # archived game is one until Q918e's showcases land. `break-the-tie` and
+    # `set-a-collision` enter both on any such game (`TestTheRoundOperators`); these rows go
+    # the day a showcase is committed.
+    "Q918a the initiative": "no committed game plays in rounds yet (Q918e)",
+    "Q918a ties impossible": "no committed game plays in rounds yet (Q918e)",
+    "Q918a beats": "no committed game plays in rounds yet (Q918e)",
+}
 _CANNOT_LEAVE: dict[str, str] = {}
 
 
@@ -2761,7 +2842,15 @@ class TestEveryFeatureOfThisSchemaIsReachable:
                 return
         pytest.fail(f"{operator} never returned gardner to itself in 40 seeds")
 
-    @pytest.mark.parametrize("feature", sorted(_FEATURES))
+    # A feature `_CANNOT_ENTER` names costs a whole pass of the corpus to show no operator
+    # enters it (schema 26's three, half a minute each), so its arm is the slow tier's.
+    @pytest.mark.parametrize(
+        "feature",
+        [
+            pytest.param(name, marks=pytest.mark.slow) if name in _CANNOT_ENTER else name
+            for name in sorted(_FEATURES)
+        ],
+    )
     def test_an_operator_can_enter_the_feature(self, feature) -> None:
         """Some operator turns a spec that does not use the feature into one that does.
 
@@ -4001,3 +4090,27 @@ class TestMergingYourOwn:
         spec = _chess()
         spec["rules"]["contacts"] = {"position": "advance", "immune": ["K", "N"], "links": []}
         assert "N" not in {link["onto"] for link in transform.merge_links(spec)}
+
+
+class TestTheRoundOperators:
+    """Schema 26 (Q918a): the operators that enter the tie and `beats` on a game played in
+    rounds, which the corpus-wide enter arm cannot reach until a committed game is one."""
+
+    @pytest.mark.parametrize(
+        ("operator", "parent", "name"),
+        [
+            ("break-the-tie", _parent_rounds, "rules.simultaneous.tie 'initiative'"),
+            ("break-the-tie", lambda: _parent_circle() | {"rules": {"win": "royal_capture", "simultaneous": {}}},
+             "rules.simultaneous.tie 'impossible'"),
+            ("set-a-collision", _parent_rounds, "pieces[].beats"),
+        ],
+    )
+    def test_it_enters_the_feature(self, operator: str, parent: Callable[[], dict], name: str) -> None:
+        apply = next(op for op in OPERATORS if op.name == operator)
+        for seed in _SWEEP_SEEDS:
+            child = parent()
+            if apply.apply(child, random.Random(seed)) is None:
+                continue
+            if name in _inventory(child) and not refusal(parent(), child):
+                return
+        raise AssertionError(f"{operator} never entered {name}")

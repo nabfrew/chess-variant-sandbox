@@ -270,7 +270,19 @@ class TestTheFingerprintsPointAtSomething:
 # reachability walk instead of raising `TypeError`. No valid spec reads differently, so no
 # score changes; every run reads stale until the refresher re-scores it under this value. It
 # was "9547343221dc0dc2" after Q877.
-FROZEN_METRICS = "f8af43c0447b76b4"
+#
+# **Moved 2026-10-15 by Q918a (schema 26, simultaneous moves)**: `engine/state.py` carries the
+# initiative, the void run and the bars, `engine/engine.py` packs them and plays a round, and
+# `spec/complexity.py` costs the rule and a piece's `beats`. No alternating game reads
+# differently; every run reads stale until the refresher re-scores it under this value (the
+# core build moved too, which is the refresher's replay). It was "f8af43c0447b76b4" after Q926.
+#
+# **Moved 2026-10-15 by Q918b (the computer players for rounds)**: `agents/evaluation.py` gains
+# `Evaluator.evaluate_round` (mobility mine minus theirs), with `evaluate` sharing its body in
+# the same arithmetic, and `engine/engine.py` gains `select_round`. No alternating game reads
+# differently; the library's replay owed for Q918a (batched as Q929) re-scores under this
+# value. It was "db5723c0687589a6" after Q918a.
+FROZEN_METRICS = "002cc354dbee7c2d"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -457,7 +469,13 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # **Moved 2026-10-13 by Q875**: `tournament/analysis.py` reads a rotation as no capture and
 # a momentum end as no instance (see `FROZEN_METRICS`). It was "8c26b090cb82ab85" after
 # Q873; Q867r's replay is the re-analysis.
-FROZEN_ANALYSIS = "3c06f1e7c404993c"
+#
+# **Moved 2026-10-15 by Q918a**: `engine/state.py` and `engine/engine.py` (see
+# `FROZEN_METRICS`). It was "3c06f1e7c404993c" after Q875.
+#
+# **Moved 2026-10-15 by Q918b**: `agents/evaluation.py` and `engine/engine.py` (see
+# `FROZEN_METRICS`). It was "3c32bdf6773b231e" after Q918a; Q929's replay is the re-analysis.
+FROZEN_ANALYSIS = "7dfe04cc79c30b1f"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

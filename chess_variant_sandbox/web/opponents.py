@@ -204,8 +204,31 @@ class Opponent:
                 "about": self.about, "practiceOnly": self.practice_only}
 
 
-def ladder() -> list[Opponent]:
-    """The roster that is the same on every board."""
+# Schema 26 (Q918c, `docs/plan-simultaneous.md` §6.2): the rungs of a game played in rounds.
+# `minimax:` and `mcts:` are refused there (one name never means two algorithms on one
+# game), and so is every stored objective (`h=`, `fit=`, `values=`, `net=`): the round
+# players read the built-in evaluator only (Q918b). The names are the ladder's, so *medium*
+# is the middle of the picker on both kinds of game; each is its own rated player, named
+# by its own agent string, never the alternating rung's.
+ROUND_RUNGS: tuple[tuple[str, str, str], ...] = (
+    (HUMAN, "you", ""),
+    ("random", "random", ""),
+    ("greedy", "greedy", ""),
+    ("matrix:nodes=400", "easy", ""),
+    ("matrix:nodes=1600", "medium", ""),
+    ("matrix:nodes=6400", "hard", ""),
+)
+
+
+def plays_in_rounds(spec: dict[str, Any] | None) -> bool:
+    """Whether a spec is a game played in rounds (schema 26, `rules.simultaneous`)."""
+    rules = (spec or {}).get("rules")
+    return isinstance(rules, dict) and isinstance(rules.get("simultaneous"), dict)
+
+
+def ladder(rounds: bool = False) -> list[Opponent]:
+    """The roster that is the same on every board: of every game that alternates, or with
+    `rounds`, of every game played in rounds."""
     return [
         Opponent(
             agent=agent,
@@ -216,9 +239,38 @@ def ladder() -> list[Opponent]:
             about=about,
         )
         for agent, name, about in (
-            (agent, name, _rung_about(agent, tail)) for agent, name, tail in RUNGS
+            (agent, name, _rung_about(agent, tail))
+            for agent, name, tail in (ROUND_RUNGS if rounds else RUNGS)
         )
     ]
+
+
+def seat_for(agent: str, roster: list[Opponent]) -> str:
+    """The player a request seats where it names `agent`: `agent` itself where the roster
+    offers it, else, for a rung of the alternating ladder on a game whose roster does not
+    hold it, the roster's rung of the same name (*medium* is `matrix:nodes=1600` in a game
+    played in rounds). A page that asks for *medium* by its usual agent string, which
+    every board but a round game's offers, sits the medium player down rather than being
+    refused; anything else is returned unchanged, for the caller to refuse by name.
+    """
+    agents = {entry.agent for entry in roster}
+    if agent in agents:
+        return agent
+    named = next((name for rung, name, _tail in RUNGS if rung == agent), None)
+    if named is None:
+        return agent
+    same = next(
+        (entry.agent for entry in roster if entry.store == "ladder" and entry.name == named),
+        None,
+    )
+    if same is not None:
+        return same
+    # The alternating ladder's stronger rungs have no round twin: the strongest offered.
+    if named in ("hardest", "tree search"):
+        top = [entry.agent for entry in roster if entry.store == "ladder" and entry.name == "hard"]
+        if top:
+            return top[0]
+    return agent
 
 
 def name_of(agent: str, roster: list[Opponent] | None = None) -> str:
@@ -290,6 +342,9 @@ def for_game(
     and only that entry (Q446); `_heuristic_stores` says why, and `refused_stores` puts
     its name on the page.
     """
+    if plays_in_rounds(spec):
+        # Nothing stored for a game that alternates plays rounds (`ROUND_RUNGS`).
+        return ladder(rounds=True)
     roster = ladder()
     roster.extend(fairy_stockfish_for(spec))
     roster.extend(fitted_for(ruleset_hash, fits))

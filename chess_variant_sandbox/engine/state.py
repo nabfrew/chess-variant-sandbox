@@ -116,6 +116,14 @@ class GameState:
     # without folds; a hand-built position that leaves it ``()`` has its folds where they
     # start.
     folds: tuple[int, ...] = ()
+    # Schema 26 (Q918a, simultaneous moves): who holds the initiative, -1 for every game
+    # whose tie is not the initiative; the void run, ``(player 0's square, player 1's
+    # square)`` of a pair whose one void round was the last round, ``(-1, -1)`` for none;
+    # and the barred pairs, ascending. All three are state the board does not show, and
+    # all three **are** in the Zobrist key (`docs/plan-simultaneous.md` §2.7, §5.3).
+    initiative: int = -1
+    void_run: tuple[int, int] = (-1, -1)
+    bars: tuple[tuple[int, int], ...] = ()
 
     def with_(self, **changes: Any) -> GameState:
         return replace(self, **changes)

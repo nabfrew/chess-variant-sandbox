@@ -861,7 +861,18 @@ def _cmd_play(args: argparse.Namespace) -> int:
     engine = Engine(spec)
     first, second = args.agents
     record = play_game(engine, (first, second), args.seed)
-    if not args.quiet:
+    if not args.quiet and engine.simultaneous:
+        # Schema 26 (Q918a): a round is the two moves together, player 0's first, each
+        # described on the board both players chose from.
+        state = engine.initial_state()
+        for index in range(0, len(record.moves), 2):
+            first, second = record.moves[index], record.moves[index + 1]
+            print(
+                f"{index // 2 + 1}. {engine.describe_move(state, first)} | "
+                f"{engine.describe_move(state, second)}"
+            )
+            state = engine.apply_round(state, first, second)
+    elif not args.quiet:
         state = engine.initial_state()
         for index, move in enumerate(record.moves):
             marker = "." if index % 2 == 0 else "..."

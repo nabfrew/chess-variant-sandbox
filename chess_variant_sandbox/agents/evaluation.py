@@ -655,11 +655,26 @@ class Evaluator:
         won by anything else. They are gated on the ruleset declaring the rule, so a
         game won by checkmate is scored by exactly the arithmetic it always was.
         """
-        score = self.material(state, player)
+        mobility = 0
         if self.mobility_weight:
             if move_count is None:
                 move_count = len(engine.legal_moves(state))
             mobility = move_count if state.side_to_move == player else -move_count
+        return self._score(state, player, mobility)
+
+    def evaluate_round(
+        self, engine: Engine, state: GameState, player: int, counts: tuple[int, int]
+    ) -> float:
+        """``evaluate`` in a simultaneous game (schema 26, Q918b): there is no side to
+        move, both players' moves are known, and mobility is mine minus theirs, both
+        counted (`docs/plan-simultaneous.md` §6.2). ``counts`` is each player's number of
+        legal moves on this board, in seat order. ``eval.rs::evaluate_round`` is the
+        same function."""
+        return self._score(state, player, counts[player] - counts[1 - player])
+
+    def _score(self, state: GameState, player: int, mobility: int) -> float:
+        score = self.material(state, player)
+        if self.mobility_weight:
             score += self.mobility_weight * mobility
         if self.goal_pieces and has_goal_terms(self.spec):
             score += self.goal_weight * self.goal_progress(state, player)

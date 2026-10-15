@@ -43,6 +43,7 @@ function leaveBoard() {
   TIMELINE_FOR = null;
   BOARD_INLINE = false;
   CORR_HELD = null;
+  ROUND_SENDING = false;
   PROMO = null;
   PROMO_LOOKING = false;
   PROMO_PIECE = null;
@@ -55,6 +56,7 @@ async function showBoard(snapshot, how) {
   stopPolling();
   stopCorrPoll();
   CORR_HELD = null;
+  ROUND_SENDING = false;
   PROMO = null;
   PROMO_LOOKING = false;
   PROMO_PIECE = null;
@@ -117,7 +119,7 @@ async function showBoard(snapshot, how) {
         ${inline ? `<div class="row small" style="margin-bottom:8px">
           <div>${seatHtml(0)}</div><span class="muted">vs</span><div>${seatHtml(1)}</div>
         </div>` : ''}
-        ${frameHtml(inline, snapshot.mode, watched, between)}
+        ${frameHtml(inline, snapshot.mode, watched, between, !!snapshot.round && !watched)}
         <div class="row" id="review" style="margin-top:8px"></div>
         ${between ? '' : `<div class="row" style="margin-top:8px">
           <button id="again">new game</button>
@@ -320,7 +322,7 @@ async function showBoard(snapshot, how) {
 // control bar, the legend line. The square names stand outside the squares (`drawCoords`),
 // a finished game puts its result on a banner over the board (`drawEnded`), and on a
 // phone the bar is a row of icons with the word under each (`FRAME_ICONS`).
-function frameHtml(inline, mode, watched, between) {
+function frameHtml(inline, mode, watched, between, rounds) {
   const rated = mode === 'leaderboard';
   const ends = (rated || mode === 'sandbox') && !watched;
   return `
@@ -331,7 +333,7 @@ function frameHtml(inline, mode, watched, between) {
       <div class="frame-ended" id="ended" hidden></div>
       <div class="promo" id="promo" data-frame="promotion" role="dialog" aria-modal="true"
         aria-labelledby="promoHead" hidden></div></div></div>
-    ${between && between.you !== null ? `<div class="corr-send" id="corrSend"
+    ${(between && between.you !== null) || rounds ? `<div class="corr-send" id="corrSend"
       data-frame="send" aria-live="polite"></div>` : ''}</div>
     <div id="hand" class="hand"></div>
     <div id="pieceSays" class="muted small piece-says" hidden></div>
@@ -558,6 +560,11 @@ function wireFit() {
 function applySnapshot(snapshot, animate = true) {
   const previous = SHOWN;
   keepDepths(SESSION, snapshot);
+  // An answer that moved nothing -- the computer sealing its move in a round (schema 26),
+  // which leaves the board as it was -- draws the board as it stands rather than playing
+  // the last move again.
+  const moved = !SESSION || SESSION.id !== snapshot.id
+    || (SESSION.history || []).length !== (snapshot.history || []).length;
   SESSION = snapshot;
   SELECTED = null;
   DROP = null;
@@ -577,7 +584,7 @@ function applySnapshot(snapshot, animate = true) {
   // new ply must not drag it forward. Everything that grew still grows: the move list,
   // and the review row's count of how far there now is to go.
   if (AT) { drawPane(); drawReview(); }
-  else { drawBoard(animate ? previous : null); drawPane(); }
+  else { drawBoard(animate && moved ? previous : null); drawPane(); }
   maybeAgent();
 }
 
@@ -1459,9 +1466,12 @@ function drawBoard(previous) {
     // A move through a portal tints the two ends it passed as well (§4: the trail in two
     // legs, origin to entry and exit to landing, its pair's two cells marked); the legs
     // themselves are drawn over the board (`portalLegsHtml`).
+    // A round (schema 26) tints both players' moves: `lastMove` is its second entry, and
+    // its `reveal` holds both.
     if (last && (square === last.from || square === last.to
         || (last.portal !== undefined && (square === last.portal || square === last.portalOut))
-        || (last.foldIn !== undefined && (square === last.foldIn || square === last.foldOut)))) {
+        || (last.foldIn !== undefined && (square === last.foldIn || square === last.foldOut))
+        || (last.reveal && last.reveal.moves.some(m => m.from === square || m.to === square)))) {
       out += mark(x, y, cell, 'var(--hl-last)', 0.34);
     }
     // Where the wild piece walked, in its own hand and not the mover's: a dashed
@@ -1550,6 +1560,10 @@ function drawBoard(previous) {
   const coming = AT ? AT.coming : SESSION.coming;
   const comingThen = AT ? AT.comingThen : SESSION.comingThen;
   out += comingHtml(coming, cell, W, H, FRAME, rules.wrap, comingThen);
+  // Schema 26: two pieces that can only take each other by a capture-only move, linked
+  // after a void round or two (`standoffHtml`, the core's `voidRun` and `bars`).
+  const standing = AT ? null : SESSION.round;
+  out += standoffHtml(standing, cell);
   // The held move over everything: its arrow, then its piece where it would land.
   if (held) out += heldHtml(held, cell, W, H, rules.wrap);
   // A move through a portal, in its two legs (§4), over the squares it tinted.
@@ -1609,6 +1623,7 @@ function drawBoard(previous) {
     ...(coming && coming.length ? ['coming'] : []),
     ...(comingThen && comingThen.length ? ['comingThen'] : []),
     ...boardKinds(SESSION.obstacles, SESSION.ruleset.portals),
+    ...standoffKinds(standing),
   ]);
   drawCoords(cell, outside);
   fitBoard();
@@ -1662,6 +1677,10 @@ const PACE = {
   explosion: 480,        // the fiery burst that marks an explosion
   resist: 500,           // the shield shimmer on a piece that survived the blast
   rotate: 350,           // a piece turning to a new facing
+  // A void move in a round (schema 26, Q918c): the piece steps toward the square it went
+  // for and back, in this long, reaching this share of the way.
+  voidStep: 460,
+  voidReach: 0.42,
   // The gap between a ply's two beats -- the move somebody made, and the wild-piece
   // phase the rules run after it. Not a delay put in to hide a race: the phase happens
   // after the move, so it is *drawn* after the move, and this is only the pause
@@ -1751,7 +1770,11 @@ function animateChange(svg, previous, cell, W, H, view, beats, last) {
   // Squares the phase moved onto: the piece the *page* draws there is the wild piece,
   // so anything the mover's beat puts there needs a ghost of its own.
   const swallowed = new Set(phase ? phase.map(step => step.to) : []);
-  const beat = animateMove(svg, before, after, swallowed, cell, W, H, view, last);
+  // Schema 26: a round is both players' moves at once, drawn from the core's account of it
+  // (`animateRound`, `simultaneous.js`).
+  const beat = last && last.reveal
+    ? animateRound(svg, before, after, last.reveal, cell, W, H, view)
+    : animateMove(svg, before, after, swallowed, cell, W, H, view, last);
   if (!phase) return beat.busy;
   return Math.max(beat.busy, animatePhase(svg, phase, after, beat, cell, W, H, view));
 }
@@ -2790,6 +2813,24 @@ function moveRows() {
   const rows = [];
   const outcome = SESSION.outcome;
   const last = SESSION.history.length - 1;
+  // Schema 26: a round is one row, both moves in seat order (`roundRowHtml`), its wild
+  // pieces' walk under it, as a ply's is.
+  if (SESSION.round) {
+    for (let i = 0; i + 1 < SESSION.history.length; i += 2) {
+      const first = SESSION.history[i], second = SESSION.history[i + 1];
+      const stripe = (i / 2) % 2 === 0;
+      rows.push({ plies: i + 2, kind: 'move', stripe: stripe,
+                  html: roundRowHtml(i / 2 + 1, first, second) });
+      if (!(second.phase || []).length) continue;
+      const beat = split.get(i + 2);
+      rows.push({ plies: i + 2, kind: 'phase', stripe: stripe,
+                  took: second.phase.some(step => step.eaten),
+                  html: esc(phaseText(second.phase, beat ? beat.walkers : null)) });
+    }
+    if (outcome) rows.push({ plies: last + 1, kind: 'result', stripe: false,
+                             html: `<b>${esc(verdictText(outcome))}</b>` });
+    return rows;
+  }
   SESSION.history.forEach((m, i) => {
     const stripe = i % 2 === 0;
     rows.push({ plies: i + 1, kind: 'move', stripe: stripe, html: `${
@@ -2869,7 +2910,7 @@ function seatHtml(player) {
     ? `<a href="/players/${esc(between.players[player])}">${mark}${esc(seatLabel(player))}</a>`
     : `${mark}${esc(seatLabel(player))}`;
   return `<b>${esc(sideName(player))}</b>
-    <span class="muted">${label}</span>${
+    <span class="muted">${label}</span>${initiativeHtml(player)}${
     strength ? `<div class="muted small">${esc(strength)}</div>` : ''}`;
 }
 
@@ -2883,6 +2924,12 @@ function seatHtml(player) {
 function lookedHtml(move) {
   const depth = move && move.depth;
   if (depth === null || depth === undefined) return '';
+  // Schema 26: a round player looks ahead in rounds, both players' moves at once (Q918b).
+  if (move.round !== undefined) {
+    const rounds = `${depth} round${depth === 1 ? '' : 's'}`;
+    return ` <span class="muted small" title="${esc(`it weighed every pair of moves ${rounds} ahead before it chose this one`)}">${
+      esc(`looked ${rounds} ahead`)}</span>`;
+  }
   const turns = `${depth} turn${depth === 1 ? '' : 's'}`;
   const said = depth === 0 ? 'played without looking ahead' : `looked ${turns} ahead`;
   const why = depth === 0
@@ -3141,8 +3188,10 @@ function thinkingHtml() {
   const mover = SESSION ? SESSION.sideToMove : 0;
   const slow = SESSION && AGENT_SLOW === SESSION.id
     ? `<span class="frame-note">${esc(SLOW_SAID)}</span>` : '';
+  // In a round (schema 26) the computer is choosing its sealed move, unseen.
+  const doing = SESSION && SESSION.round ? ' is choosing its move' : ' is thinking';
   return `<span class="spin"></span> ${SESSION ? seatDot(mover) + esc(sideName(mover)) + ' (' +
-    esc(seatName(SESSION.seats[mover])) + ') is thinking' : 'thinking'}${slow}`;
+    esc(seatName(SESSION.seats[mover])) + ')' + doing : 'thinking'}${slow}`;
 }
 
 // The side to move as a dot in its army's colour, before its name: the strip's first
@@ -3202,6 +3251,9 @@ function drawStrip() {
   } else if (SESSION.correspondence) {
     ended(false);
     status.innerHTML = corrStatus();
+  } else if (SESSION.round && !SESSION.awaitingAgent) {
+    ended(false);
+    status.innerHTML = roundStatusHtml();
   } else {
     ended(false);
     const more = SESSION.remaining > 1
@@ -3316,7 +3368,9 @@ function clickSquare(square) {
   // sent -- and until it is sent it can be changed on the board (Q740): see `corrRepick`.
   const between = SESSION.correspondence;
   if (between && (between.you !== SESSION.sideToMove || CORR_SENDING)) return;
-  if (between && CORR_HELD !== null && corrRepick(square)) return;
+  // Schema 26: a move picked in a round is held the same way until it is sealed.
+  if (SESSION.round && ROUND_SENDING) return;
+  if ((between || SESSION.round) && CORR_HELD !== null && corrRepick(square)) return;
   NOTE = '';
 
   if (DROP !== null) {
@@ -3927,7 +3981,7 @@ function send(move) {
   SELECTED = null;
   DROP = null;
   INSPECT = null;
-  if (SESSION.correspondence) { corrHold(move); return; }
+  if (SESSION.correspondence || SESSION.round) { (SESSION.round ? roundHold : corrHold)(move); return; }
   const id = SESSION.id, before = SESSION.history.length;
   const here = () => !!SESSION && SESSION.id === id;
   api('/api/session/' + id + '/move', { move }).then(s => applySnapshot(s))
@@ -4038,7 +4092,9 @@ function record(snapshot) {
   while (TIMELINE.length > 1 && TIMELINE[TIMELINE.length - 1].plies > plies) TIMELINE.pop();
   const tail = TIMELINE[TIMELINE.length - 1];
   if (tail.plies >= plies) return;         // a take-back, or a redraw of what is there
-  if (plies - tail.plies > 1) {
+  // A round (schema 26) is two plies, both moves at once, split into beats as one ply is.
+  const round = !!snapshot.round && plies - tail.plies === 2;
+  if (plies - tail.plies > 1 && !round) {
     // More than one ply between two snapshots, which nothing on this page does today.
     // A diff across several moves does not split into beats, so it is recorded as one
     // position rather than as a guess at the ones in between.
@@ -4161,6 +4217,15 @@ function pauseGame() {
 function beatLine(entry, at) {
   const where = ' - step ' + (at + 1) + ' of ' + TIMELINE.length;
   if (entry.kind === 'start') return 'the opening position' + where;
+  // Schema 26: a beat of a round names the round and both moves.
+  const move = entry.lastMove;
+  if (move && move.round !== undefined) {
+    const first = (SESSION.history || [])[entry.plies - 2];
+    const both = (first ? first.text + ' | ' : '') + move.text;
+    return (entry.kind === 'phase' ? 'round ' + (move.round + 1) + ', ' + both
+      + ', and then the wild pieces move' : 'after round ' + (move.round + 1) + ', ' + both)
+      + where;
+  }
   const number = (Math.floor((entry.plies - 1) / 2) + 1) + '.' + (entry.plies % 2 ? '' : '..');
   if (entry.kind === 'phase') {
     return number + ' ' + entry.text + ', and then the wild pieces move' + where;
@@ -4433,6 +4498,7 @@ function corrForget() {
 
 // Taking the held move back: nothing held, nothing picked, the board as the game stands.
 function corrPutBack() {
+  if (SESSION && SESSION.round) { roundPutBack(); return; }
   corrForget();
   SELECTED = null;
   DROP = null;
@@ -4575,7 +4641,7 @@ const HELD_FADE = 0.45;
 // and the piece as it would stand there -- its type after a promotion, its facing after a
 // turn. Nothing here works out what the move does to anything else on the board.
 function corrHeldDrawn() {
-  if (!SESSION || !SESSION.correspondence) return null;
+  if (!SESSION || !(SESSION.correspondence || SESSION.round)) return null;
   const entry = corrHeldEntry();
   if (!entry) return null;
   const from = entry.from === null || entry.from === undefined ? null : entry.from;
@@ -4666,6 +4732,7 @@ function drawCorrSend() {
   const slot = document.getElementById('corrSend');
   if (!slot || !SESSION) return;
   const between = SESSION.correspondence;
+  if (!between && SESSION.round) { drawRoundSend(slot); return; }
   if (!between || between.you === null || SESSION.outcome) {
     slot.hidden = true;
     slot.innerHTML = '';

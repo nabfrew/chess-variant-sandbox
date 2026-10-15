@@ -95,6 +95,9 @@ def strength(seat: str) -> str:
         return ""
     if config.kind == "mcts":
         return f"tries {budget:,} random games before each move"
+    if config.kind == "matrix":
+        # Schema 26 (Q918b): a node is one round resolved, both players' moves at once.
+        return f"weighs {budget:,} rounds before each move"
     if config.kind in ("minimax", "fairystockfish"):
         return f"looks at {budget:,} positions before each move"
     return ""
@@ -221,6 +224,13 @@ class Session:
     # empty in the local application, which keeps no result and offers no draw.
     draw_offers: list[dict[str, Any]] = field(default_factory=list)
 
+    # Schema 26 (Q918c, `docs/plan-simultaneous.md` §6.6): the moves sealed in the round
+    # now open, by seat, and the depth each computer seat reported beside its own. Never in
+    # a snapshot: a sealed move reaches the page only as `round.sealed`'s one boolean, and
+    # its move only at the reveal, as history. Empty of moves in every alternating game.
+    pending: list[int | None] = field(default_factory=lambda: [None, None])
+    pending_depths: list[int | None] = field(default_factory=lambda: [None, None])
+
     @property
     def engine(self) -> Any:
         return engine_for(self.game.spec)
@@ -239,9 +249,16 @@ class Session:
     def snapshot(self) -> dict[str, Any]:
         """Everything the page needs to draw the position and offer a move."""
         engine = self.engine
-        legal = engine.legal_moves(self.state)
-        outcome = engine.terminal(self.state, legal)
-        mover = self.state.side_to_move
+        # Schema 26: a game in rounds has no side to move. Whose choice the board offers,
+        # its moves, the verdict and whether a computer seat still owes its sealed move are
+        # `_round_view`'s; everything else in the snapshot is drawn as for any game.
+        rounds = self._round_view(engine) if engine.simultaneous else None
+        if rounds is None:
+            legal = engine.legal_moves(self.state)
+            outcome = engine.terminal(self.state, legal)
+            mover = self.state.side_to_move
+        else:
+            legal, outcome, mover = rounds["legal"], rounds["outcome"], rounds["mover"]
         # How this game ended, if it has. The engine's answer where the position has
         # one, and the row's where it does not, because a game somebody gave up is over
         # in a position that is still playable.
@@ -362,8 +379,17 @@ class Session:
             # it under the pieces.
             "folds": fold_payload(engine, self.state),
             "ply": self.state.ply,
-            "inCheck": engine.in_check(self.state, mover) if outcome is None else False,
-            "moves": [] if ended else self._offer(engine, legal),
+            # A game in rounds has no check (§2.5): a royal under attack may simply move.
+            "inCheck": (
+                engine.in_check(self.state, mover)
+                if outcome is None and rounds is None else False
+            ),
+            "moves": [] if ended else self._offer(engine, legal, mover),
+            # Schema 26 (§6.6): the round now open, as this game's viewers may see it --
+            # who has sealed (a boolean a seat, never the move), whose choice the board
+            # offers, the initiative, the void run and the bars. Absent in a game that
+            # alternates.
+            **({"round": rounds["block"]} if rounds is not None else {}),
             "history": self.history,
             "lastMove": self.history[-1] if self.history else None,
             # Where each wild piece steps after the coming move, if that move leaves its
@@ -377,12 +403,18 @@ class Session:
             # computer's answer to an offer made in this position (Q790); `None` where no
             # such offer is made: the local application, a watch, a game between two
             # people (whose own block says it) and a finished game.
-            "drawOffer": self._draw_offer(ended),
+            # A game in rounds offers none yet: the computer's answer is the alternating
+            # search's (`web/draw_offer.py`), which does not play rounds.
+            "drawOffer": self._draw_offer(ended) if rounds is None else None,
             # The page uses this to decide whether to ask for the opponent's reply. It
             # is deliberately not the same call: a human move should land on the board
             # before an agent starts searching, or the interface freezes for the length
-            # of the search.
-            "awaitingAgent": ended is None and self.seats[mover] != HUMAN,
+            # of the search. In a round, it asks for the computer's sealed move, which is
+            # chosen on the round's board before the person's is accepted.
+            "awaitingAgent": (
+                ended is None and self.seats[mover] != HUMAN
+                if rounds is None else ended is None and rounds["awaiting"]
+            ),
         }
 
     def _draw_offer(self, ended: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -437,14 +469,19 @@ class Session:
             "of": selection(ex.of_types),
         }
 
-    def _offer(self, engine: Any, legal: list[int]) -> list[dict[str, Any]]:
+    def _offer(self, engine: Any, legal: list[int], mover: int) -> list[dict[str, Any]]:
         """The legal moves, described well enough for a person to pick one.
 
         Promotions and drops are the two cases where a square pair is not a move: several
         moves share (from, to) and differ only in what the piece becomes, and a drop has
         no origin square at all. Both are handed to the page as separate options rather
         than resolved here, because which one a player wants is a question for the player.
+
+        `mover` is whose moves these are. In a game that alternates it is the side to
+        move; in a round (schema 26) it is the seat choosing, which the position does not
+        carry, so each move is described on the position as that seat sees it.
         """
+        state = _as_seat(self.state, mover)
         offered = []
         for move in legal:
             kind = move_type(move)
@@ -452,7 +489,7 @@ class Session:
                 "move": move,
                 "from": None if kind == MOVE_DROP else move_from(move),
                 "to": move_to(move),
-                "text": engine.describe_move(self.state, move),
+                "text": engine.describe_move(state, move),
                 "kind": MOVE_TYPE_NAMES.get(kind, "normal"),
             }
             if kind == MOVE_DROP:
@@ -469,15 +506,15 @@ class Session:
                 # Schema 19: the end it goes in by, the end it comes out beside and the
                 # way it comes out, named here (`viz.wrapped.portal_transit`); the target
                 # is the exit, and the promotion field carries the new piece plus one.
-                entry.update(portal_transit(engine, self.state, move) or {})
+                entry.update(portal_transit(engine, state, move) or {})
                 if move_promotion(move):
                     entry["promotion"] = move_promotion(move) - 1
             # Schema 22: a move through a fold, its way in and out and the group's colour
             # (`viz.wrapped.fold_transit`), for the dot where only a fold reaches (Q843d).
-            entry.update(fold_transit(engine, self.state, move) or {})
+            entry.update(fold_transit(engine, state, move) or {})
             # Schema 12: a strike under `choose` is one move per landing square, so the
             # page offers the square, named here rather than worked out there.
-            landing = engine.landing_square(self.state, move)
+            landing = engine.landing_square(state, move)
             if landing is not None:
                 entry["landing"] = landing
                 entry["landingName"] = square_name(landing, engine.spec.width)
@@ -487,8 +524,14 @@ class Session:
     # ------------------------------------------------------------------ writing
 
     def play(self, move: int) -> dict[str, Any]:
-        """Apply one move, which must be legal in the current position."""
+        """Apply one move, which must be legal in the current position.
+
+        In a game in rounds (schema 26) the move is a person's sealed choice for the round
+        now open (`seal`), and the round is revealed once every seat's is in.
+        """
         engine = self.engine
+        if engine.simultaneous:
+            return self.seal(move)
         if move not in engine.legal_moves(self.state):
             raise ValueError("that move is not legal in this position")
         self._apply(engine, move, by=self.seats[self.state.side_to_move])
@@ -507,8 +550,20 @@ class Session:
         chosen, which the store kept beside it (Q424), and `None` where it kept nothing --
         a game stored before it kept any shows none. A person's move never has one,
         whatever the store holds. No snapshot is made, since nothing reads one per move.
+
+        A game in rounds stores both moves of a round in seat order (§6.3's record), so a
+        replayed move is player 0's, sealed, or player 1's, which reveals the round.
         """
         engine = self.engine
+        if engine.simultaneous:
+            seat = 0 if self.pending[0] is None else 1
+            if move not in engine.legal_moves_for(self.state, seat):
+                raise ValueError("that move is not legal in this position")
+            self.pending[seat] = move
+            self.pending_depths[seat] = None if self.seats[seat] == HUMAN else depth
+            if seat == 1:
+                self._reveal(engine)
+            return
         if move not in engine.legal_moves(self.state):
             raise ValueError("that move is not legal in this position")
         by = self.seats[self.state.side_to_move]
@@ -527,6 +582,14 @@ class Session:
         narrow one looked the same from the other side of the board.
         """
         engine = self.engine
+        if engine.simultaneous:
+            # A round: every computer seat seals its move on the round's board, blind to
+            # anything a person has chosen, and a round with no person in it is revealed.
+            if engine.terminal(self.state) is None:
+                self._seal_computers(engine)
+                if None not in self.pending:
+                    self._reveal(engine)
+            return self.snapshot()
         seat = self.seats[self.state.side_to_move]
         if seat == HUMAN:
             raise ValueError("it is a person's turn")
@@ -556,6 +619,16 @@ class Session:
         # not survive the take-back that undid the position it was recorded in. The
         # store's row is reopened by the same call.
         self.verdict = None
+        if self.engine.simultaneous:
+            # A round is taken back whole (§6.6, *undo pops a round*), and with it any move
+            # sealed in the round that was open: the computer seals again on the board the
+            # take-back restores, as it would on any round's.
+            self.pending = [None, None]
+            self.pending_depths = [None, None]
+            if self.states:
+                self.state = self.states[-2]
+                del self.states[-2:], self.history[-2:], self.played[-2:]
+            return self.snapshot()
         watched = HUMAN not in self.seats
         while self.states:
             self.state = self.states.pop()
@@ -615,6 +688,280 @@ class Session:
             }
         )
         self.state = state
+
+    # ------------------------------------------------------------------ rounds
+    #
+    # Schema 26 (Q918c, `docs/plan-simultaneous.md` §6.6). A round is both seats choosing on
+    # one board, sealed, then revealed and resolved together by the core
+    # (`Engine.apply_round_with_phase`). The order this keeps is the whole of the rule's
+    # honesty at a board: **a computer seat seals before a person's move is accepted**,
+    # chosen by the core's own round player (`Engine.select_round`) from the round's
+    # position and nothing else, so it cannot answer a move it never saw. The page asks for
+    # it as the round opens (`awaitingAgent`, `play_agent`); `seal` asks again first, so a
+    # page that never asked still cannot get its move in ahead of the computer's.
+
+    def _choosing(self) -> int | None:
+        """The seat whose move the board offers: the first person yet to seal, else None.
+
+        Against the computer that is the person, every round. Between two people at one
+        screen it is the first player, then the second, and neither is shown the other's.
+        """
+        for seat in (0, 1):
+            if self.seats[seat] == HUMAN and self.pending[seat] is None:
+                return seat
+        return None
+
+    def _round_view(self, engine: Any) -> dict[str, Any]:
+        """What `snapshot` reads for a game in rounds: the choosing seat's moves, the
+        verdict, who the strip names, whether a computer seat owes its sealed move, and
+        the `round` block the page draws the round from."""
+        outcome = engine.terminal(self.state)
+        choosing = self._choosing()
+        owing = [
+            seat for seat in (0, 1)
+            if self.seats[seat] != HUMAN and self.pending[seat] is None
+        ]
+        # The seat the strip names: a computer still choosing first, since the board waits
+        # on it, then the person choosing.
+        mover = owing[0] if owing else choosing if choosing is not None else 0
+        legal = (
+            engine.legal_moves_for(self.state, choosing)
+            if choosing is not None and not owing else []
+        )
+        run = self.state.void_run
+        sim = engine.spec.simultaneous
+        block = {
+            # Rounds revealed so far, and this one's number, counted from one.
+            "number": len(self.played) // 2 + 1,
+            # Who has sealed this round. A boolean a seat: the move itself is never sent
+            # before the reveal, to anybody (§6.6, *the computer commits blind*).
+            "sealed": [move is not None for move in self.pending],
+            "choosing": choosing,
+            # The tie rule (§3): `both`, `initiative` or `impossible`, and who holds the
+            # initiative (-1 under any other rule), the core's state.
+            "tie": _TIE_WORDS.get(sim.tie, "both") if sim is not None else "both",
+            "initiative": self.state.initiative,
+            # The void run (§2.7): the two squares of a pair whose one void round was the
+            # last, player 0's first, or None; and every barred pair. The core's state,
+            # drawn and never worked out.
+            "voidRun": list(run) if run[0] >= 0 and run[1] >= 0 else None,
+            "bars": [list(bar) for bar in self.state.bars],
+        }
+        return {
+            "legal": legal,
+            "outcome": outcome,
+            "mover": mover,
+            "awaiting": bool(owing),
+            "block": block,
+        }
+
+    def seal(self, move: int) -> dict[str, Any]:
+        """A person's move for the round now open, sealed; the round revealed once every
+        seat's move is in.
+
+        The computer's is sealed first, on the round's board, if it is not in already. A
+        move cannot be sealed twice: against the computer the round is revealed the moment
+        the person's is in, and between two people at one screen the second player is
+        choosing by then.
+        """
+        engine = self.engine
+        if engine.terminal(self.state) is not None:
+            raise ValueError("this game is over")
+        seat = self._choosing()
+        if seat is None:
+            raise ValueError("no move is owed by a person in this round")
+        if move not in engine.legal_moves_for(self.state, seat):
+            raise ValueError("that move is not legal in this position")
+        self._seal_computers(engine)
+        self.pending[seat] = move
+        self.pending_depths[seat] = None
+        if None not in self.pending:
+            self._reveal(engine)
+        return self.snapshot()
+
+    def _seal_computers(self, engine: Any) -> None:
+        """Every computer seat's move for this round, chosen by the core on the round's
+        board and sealed. Blind by construction: `select_round` is handed the position and
+        the seat, and a person's sealed move is not in the position."""
+        for seat in (0, 1):
+            agent = self.seats[seat]
+            if agent == HUMAN or self.pending[seat] is not None:
+                continue
+            native = native_spec(agent, engine.spec.hash)
+            if native is None:
+                raise ValueError(f"{agent} does not play a game in rounds here")
+            move, _strategy, _nodes, depth = engine.select_round(
+                self.state, seat, native, eval_values(engine.spec), self.seed + self.state.ply
+            )
+            if move is None:
+                return  # a player with no move: the verdict says so (§2.6)
+            # How far it looked, in rounds, for the one player that deepens.
+            choices = len(engine.legal_moves_for(self.state, seat))
+            self.pending[seat] = move
+            self.pending_depths[seat] = depth if native[0] == "matrix" and choices > 1 else None
+
+    def _reveal(self, engine: Any) -> None:
+        """Both sealed moves, resolved together by the core, written as two history entries
+        in seat order -- the round's notation, `12. Nd5 | Nd5` -- the second carrying the
+        reveal: what each move did and the round's events in words (`round_words`)."""
+        first, second = self.pending[0], self.pending[1]
+        assert first is not None and second is not None
+        before = self.state
+        after, phase, events = engine.apply_round_with_phase(before, first, second)
+        art = icons_for(
+            engine.spec.piece_names,
+            engine.spec.piece_ids,
+            (self.game.spec.get("appearance") or {}).get("icons"),
+        )
+        reveal = round_reveal(engine, before, after, (first, second), events, side_names(art))
+        for seat, move in enumerate((first, second)):
+            seen = _as_seat(before, seat)
+            entry: dict[str, Any] = {
+                "ply": before.ply + seat,
+                "text": engine.describe_move(seen, move),
+                "from": None if move_type(move) == MOVE_DROP else move_from(move),
+                "to": move_to(move),
+                "by": self.seats[seat],
+                "player": seat,
+                # The wild pieces walk once a round, after both moves: the phase is the
+                # round's, on its second entry, which is the one `lastMove` names.
+                "phase": [step.as_dict() for step in phase] if seat == 1 else [],
+                **(portal_transit(engine, seen, move) or {}),
+                **(fold_transit(engine, seen, move) or {}),
+                "depth": self.pending_depths[seat],
+                "check": False,
+                # What this move came to: `void`, `won` or `lost` a collision, `both lost`.
+                "result": reveal["results"][seat],
+                "round": len(self.played) // 2,
+            }
+            if seat == 1:
+                entry["reveal"] = reveal
+                entry.update(_coming(engine, after))
+                if folds := fold_payload(engine, after):
+                    entry["folds"] = folds
+            self.states.append(before)
+            self.played.append(move)
+            self.history.append(entry)
+        self.state = after
+        self.pending = [None, None]
+        self.pending_depths = [None, None]
+
+
+# `SimRule.tie` in the words the page and the round's sentences use.
+_TIE_WORDS = {0: "both", 1: "initiative", 2: "impossible"}
+
+# `Engine.apply_round_with_phase`'s event kinds (`rust/src/rounds.rs`).
+_EVENT_COLLISION, _EVENT_VOID, _EVENT_INITIATIVE, _EVENT_BARRED = 0, 1, 2, 3
+
+
+def _as_seat(state: GameState, seat: int) -> GameState:
+    """The position as one seat sees it to choose a move: the same position, with that
+    seat named as the one moving, so a move of the second seat in a round (where the
+    state names nobody) is described from its own side. Unchanged where it already is."""
+    return state if state.side_to_move == seat else state.with_(side_to_move=seat)
+
+
+def round_reveal(
+    engine: Any,
+    before: GameState,
+    after: GameState,
+    moves: tuple[int, int],
+    events: tuple[tuple[int, int, int], ...],
+    sides: tuple[str, ...] | list[str],
+) -> dict[str, Any]:
+    """A revealed round, as the page draws it and a reader reads it.
+
+    Every fact here is the core's: the moves both seats sealed, and the events
+    `apply_round_with_phase` logged as it resolved them -- a collision and its winner, a
+    void move, a tie the initiative decided, a pair barred. This only names them: which
+    piece moved from where to where, and a sentence per event in the game's own names for
+    the pieces and the sides. Nothing here decides an outcome; a move with no event did
+    what it said, which the boards before and after show.
+
+    `moves` is each seat's `{from, to, void}`, `events` each event as `{kind, square,
+    player}`, `results` each seat's move in one word (`void`, `won`, `lost`, `both lost`,
+    or None), `words` the sentences, in the order the events came. `sides` is what the
+    board calls the two players (`viz.pieces.side_names`).
+    """
+    spec = engine.spec
+    width = spec.width
+
+    def piece(seat: int) -> str:
+        move = moves[seat]
+        if move_type(move) == MOVE_DROP:
+            kind = move_promotion(move) % spec.n_types
+        else:
+            kind = spec.type_of(before.board[move_from(move)])
+        return f"{sides[seat]}'s {spec.piece_names[kind]}"
+
+    def named(square: int) -> str:
+        return square_name(square, width)
+
+    origins = [None if move_type(m) == MOVE_DROP else move_from(m) for m in moves]
+    targets = [move_to(m) for m in moves]
+    voids = {player for kind, _square, player in events if kind == _EVENT_VOID}
+    results: list[str | None] = [None, None]
+    words: list[str] = []
+    if len(voids) == 2:
+        words.append(
+            f"{piece(0)} and {piece(1)} each went for the other, which had moved: "
+            f"both moves were void."
+        )
+    for kind, square, player in events:
+        if kind == _EVENT_VOID:
+            results[player] = "void"
+            if len(voids) == 1:
+                words.append(
+                    f"{piece(player)} on {named(square)} went for {named(targets[player])}, "
+                    f"which had moved: its move was void and it stayed."
+                )
+        elif kind == _EVENT_COLLISION:
+            meeting = f"{piece(0)} and {piece(1)} met on {named(square)}"
+            if player < 0:
+                results[0] = results[1] = "both lost"
+                words.append(f"{meeting}: both were lost.")
+            else:
+                results[player], results[1 - player] = "won", "lost"
+                words.append(f"{meeting}: {piece(player)} won, and {piece(1 - player)} was lost.")
+        elif kind == _EVENT_INITIATIVE:
+            words.append(
+                f"The tie went to {sides[player]}, who held the initiative; "
+                f"it passes to {sides[1 - player]}."
+            )
+        elif kind == _EVENT_BARRED:
+            pair = next((bar for bar in after.bars if bar[0] == square), None)
+            there = f"{named(pair[0])} and {named(pair[1])}" if pair else named(square)
+            words.append(
+                f"A second void round in a row for {there}: neither may take the other that "
+                f"way until one of the two squares changes."
+            )
+    swapped = (
+        origins[0] is not None and origins[1] is not None
+        and targets[0] == origins[1] and targets[1] == origins[0] and not voids
+    )
+    if swapped:
+        words.insert(
+            0, f"{piece(0)} and {piece(1)} swapped squares: each left the square the other took."
+        )
+    run = after.void_run
+    if run[0] >= 0 and run[1] >= 0 and voids:
+        words.append(
+            f"One void round for {named(run[0])} and {named(run[1])}: a second in a row "
+            f"bars those moves."
+        )
+    return {
+        "moves": [
+            {"from": origins[seat], "to": targets[seat], "player": seat, "void": seat in voids}
+            for seat in (0, 1)
+        ],
+        "events": [
+            {"kind": ("collision", "void", "initiative", "barred")[kind], "square": square,
+             "player": player}
+            for kind, square, player in events
+        ],
+        "results": results,
+        "words": words,
+    }
 
 
 def seats_played(seats: tuple[str, str], ruleset_hash: str) -> tuple[str, str]:

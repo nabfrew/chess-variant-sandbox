@@ -85,6 +85,40 @@ pub fn play_from(
     let mut legal = Vec::new();
 
     let started = Instant::now();
+    if t.simultaneous.is_some() {
+        // Schema 26 (Q918a): rounds. Both seats are asked on the same board, each from its
+        // own stream, and neither sees the other's choice; the record keeps both moves of a
+        // round in seat order, and every per-ply series twice, so a round is two plies.
+        let mut second = Vec::new();
+        let outcome = loop {
+            legal.clear();
+            second.clear();
+            game.generate_legal_for(0, &mut legal);
+            game.generate_legal_for(1, &mut second);
+            if let Some(outcome) = game.round_terminal_with([&legal, &second]) {
+                break outcome;
+            }
+            if let Some(evaluator) = &series_eval {
+                branching.push(legal.len() as u32);
+                branching.push(second.len() as u32);
+                let value = evaluator.material(&game, 0);
+                material.push(value);
+                material.push(value);
+            }
+            // Each seat sees both lists and the board, never the other's choice (Q918b).
+            let first = players[0].select_round(&mut game, 0, [&legal, &second], &mut rngs[0]);
+            let other = players[1].select_round(&mut game, 1, [&legal, &second], &mut rngs[1]);
+            game.make_round([first, other]);
+            if collect_series {
+                let quiet = u8::from(game.halfmove == 0);
+                captures.push(quiet);
+                captures.push(quiet);
+            }
+            moves.push(first);
+            moves.push(other);
+        };
+        return finish(outcome, moves, branching, material, captures, &players, started);
+    }
     let outcome = loop {
         legal.clear();
         game.generate_legal(&mut legal);
@@ -104,6 +138,18 @@ pub fn play_from(
         }
         moves.push(m);
     };
+    finish(outcome, moves, branching, material, captures, &players, started)
+}
+
+fn finish(
+    outcome: crate::game::Outcome,
+    moves: Vec<u32>,
+    branching: Vec<u32>,
+    material: Vec<f64>,
+    captures: Vec<u8>,
+    players: &[Player; 2],
+    started: Instant,
+) -> GameOutput {
     let duration_ms = started.elapsed().as_secs_f64() * 1000.0;
 
     GameOutput {
@@ -126,6 +172,26 @@ pub fn random_playout(t: &Tables, rng: &mut PyRandom) -> (u32, i8, &'static str,
     let mut legal = Vec::new();
     let mut branching_total = 0u64;
     let mut branching_samples = 0u64;
+
+    if t.simultaneous.is_some() {
+        // Schema 26: one stream, player 0's draw before player 1's each round.
+        let mut second = Vec::new();
+        let outcome = loop {
+            legal.clear();
+            second.clear();
+            game.generate_legal_for(0, &mut legal);
+            game.generate_legal_for(1, &mut second);
+            if let Some(outcome) = game.round_terminal_with([&legal, &second]) {
+                break outcome;
+            }
+            branching_total += (legal.len() + second.len()) as u64;
+            branching_samples += 2;
+            let first = rng.choice(&legal);
+            let other = rng.choice(&second);
+            game.make_round([first, other]);
+        };
+        return (game.ply, outcome.winner, outcome.reason.as_str(), branching_total, branching_samples);
+    }
 
     let outcome = loop {
         legal.clear();

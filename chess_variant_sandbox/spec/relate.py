@@ -101,6 +101,7 @@ RULE_KINDS: dict[str, str] = {
     "drops": "hand",
     "npcs": "wild",
     "turn": "turn",
+    "simultaneous": "turn",
 }
 
 # What each `rules` key is *about*, for the sentence on a link. Exhaustive over
@@ -138,6 +139,7 @@ RULE_WORDS: dict[str, str] = {
     "drops": "putting captured pieces back on the board",
     "npcs": "the pieces that belong to nobody",
     "turn": "how many moves a turn is",
+    "simultaneous": "whether both players move at once, and who survives a collision",
 }
 
 # The kinds, in the order a legend lists them. Every `Difference.kind` is one of these.
@@ -352,7 +354,7 @@ def _key_of(form: NormalForm) -> str:
                 _frozen({
                     key: piece.get(key)
                     for key in ("captures", "facing", "region", "promoted_from")
-                }),
+                } | ({"beats": piece["beats"]} if "beats" in piece else {})),
             )
             for pid, piece in form.pieces.items()
         )),
@@ -487,9 +489,9 @@ _PIECE_POSITIONS: dict[str, Any] = {
     },
 }
 
-# The same, for the two fields on a piece that name another piece. `region` is squares
-# and `facing` is an angle, so neither is here.
-_PIECE_FIELDS: dict[str, Any] = {"captures": _IDS, "promoted_from": _ID}
+# The same, for the fields on a piece that name another piece. `region` is squares
+# and `facing` is an angle, so neither is here. `beats` is schema 26's.
+_PIECE_FIELDS: dict[str, Any] = {"captures": _IDS, "promoted_from": _ID, "beats": _IDS}
 
 
 def _renamed(value: Any, shape: Any, ids: dict[str, str]) -> Any:
@@ -702,7 +704,8 @@ def _live_rules(spec: dict[str, Any]) -> dict[str, Any]:
         key: value
         for key, value in rules.items()
         if key not in ("wrap", "obstacles")
-        and value not in (None, False, 0, "", [], {})
+        # Schema 26: `"simultaneous": {}` is the whole rule, not an empty one.
+        and (value not in (None, False, 0, "", [], {}) or key == "simultaneous")
         and _WRITTEN_DEFAULTS.get(key) != value
     }
 
@@ -941,7 +944,7 @@ def _compare(
         if _frozen(one.get("facing")) != _frozen(other.get("facing")):
             turns = True
             found.append(Difference("pieces", "piece.facing", words.turns()))
-        rest = ("region", "promoted_from")
+        rest = ("region", "promoted_from", "beats")
         if _folded(_stated(one, rest), _PIECE_FIELDS, ids_a) != _folded(
             _stated(other, rest), _PIECE_FIELDS, ids_b
         ):

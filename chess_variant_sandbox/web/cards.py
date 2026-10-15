@@ -46,6 +46,8 @@ from chess_variant_sandbox.spec.schema import SHAPES, WRAP_PAIRS, wrap_axes
 PIECE_PATHS = frozenset({
     "pieces[].promoted_from",
     "pieces[].captures",
+    # Schema 26 (Q918a): who a piece beats in a collision, a list of piece ids as `captures`.
+    "pieces[].beats",
     "setup.placements[].piece",
     "rules.promotion.piece",
     "rules.promotion.to",

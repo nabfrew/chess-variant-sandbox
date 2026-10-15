@@ -279,7 +279,8 @@ TIMELINE = [{ kind: 'start', board: BEFORE, lastMove: null },
         assert "review ? AT.lastMove : SESSION.lastMove" in PAGE
         # A take-back draws the restored position whole (`applySnapshot(s, false)`).
         assert ".then(s => applySnapshot(s, false))" in PAGE
-        assert "drawBoard(animate ? previous : null)" in PAGE
+        # And an answer that moved nothing (a round's computer sealing, Q918c) plays nothing.
+        assert "drawBoard(animate && moved ? previous : null)" in PAGE
 
 
 def test_the_rook_lands_where_the_engine_says() -> None:

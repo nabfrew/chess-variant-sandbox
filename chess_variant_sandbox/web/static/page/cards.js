@@ -1116,10 +1116,21 @@ function wireCards(form) {
       if (!field) return;
       structural('rules', rules => {
         rules[field.key] = fieldDefault(field, [field.key], 'rules');
+        const companion = RULE_COMPANIONS[field.key];
+        if (companion) companion(rules);
       });
     };
   }
 }
+
+// What adding a rule changes beside it, where the rule cannot stand with the draft's
+// other rules as they are and one obvious change makes it stand. Schema 26 (Q918c,
+// `docs/plan-simultaneous.md` §2.5): a game in rounds has no check, so its win is the
+// royal's capture rather than mate -- the one-key change the designer would otherwise be
+// sent to make by the validator's refusal.
+const RULE_COMPANIONS = {
+  simultaneous: rules => { if (rules.win === 'checkmate') rules.win = 'royal_capture'; },
+};
 
 // ---------------------------------------------------------------- a changed letter
 

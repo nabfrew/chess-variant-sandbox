@@ -263,7 +263,8 @@ function openingHtml(game) {
     <div role="img" aria-label="The start position. Where each piece starts is also listed under The rules.">${
       boardPreview(preview, null)}</div>
     <figcaption class="muted small">The start position${
-      (game.sides || [])[opening.toMove] ? `: ${esc(game.sides[opening.toMove])} moves first` : ''}.</figcaption>
+      game.rounds ? ': both players move at once, every round'
+      : (game.sides || [])[opening.toMove] ? `: ${esc(game.sides[opening.toMove])} moves first` : ''}.</figcaption>
     ${said.length ? `<div class="frame-legend small" data-opening="legend">on the board: ${
       said.join(' ')}</div>` : ''}${walkLeapsHtml(preview)}
   </figure>`;
@@ -2366,7 +2367,8 @@ function sidePicker(game, options, table) {
     <div class="side">
       <div class="row" style="gap:7px">
         <b>${esc(names[player])}</b>
-        <span class="muted small">${player === 0 ? 'moves first' : 'moves second'}</span>
+        <span class="muted small">${game.rounds ? 'moves at the same time'
+          : player === 0 ? 'moves first' : 'moves second'}</span>
       </div>
       ${seatCardsHtml('seat' + player, options, player === 0 ? 'human' : secondSeat(game), table,
         game)}

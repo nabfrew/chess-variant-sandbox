@@ -34,6 +34,7 @@ from chess_variant_sandbox.spec.schema import (
     WRAP_PAIRS,
     SpecError,
     absent_squares,
+    beats_of,
     hex_distance,
     npc_immune_attackers,
     npc_routes,
@@ -49,6 +50,7 @@ from chess_variant_sandbox.spec.schema import (
     promotion_targets,
     reach_reflection,
     reflect_square,
+    strike_is_live,
     validate_or_raise,
     wrap_stated,
 )
@@ -846,6 +848,83 @@ class CastlingRule:
     rook_files: tuple[int, int] | None = None
 
 
+# Schema 26 (Q918a): two void rounds in a row bar the pair (`docs/plan-simultaneous.md` §2.7).
+# The user ruled it fixed, *"nor configurable"*, so it is a constant here and never a key.
+# It crosses as ``SimRule.void_run`` so the core reads it and never decides it; changing it
+# would change every simultaneous game under an unchanged hash, so it is never an edit.
+VOID_RUN = 2
+
+# Schema 26: ``SimRule.tie``. Absent is the user's table (both eliminated).
+TIE_BOTH = 0
+TIE_INITIATIVE = 1
+TIE_IMPOSSIBLE = 2
+
+
+@dataclass(frozen=True)
+class SimRule:
+    """Simultaneous moves (schema 26, Q918a; `docs/plan-simultaneous.md` §5.3).
+
+    * ``tie`` -- ``TIE_BOTH`` (absent: both eliminated), ``TIE_INITIATIVE`` or
+      ``TIE_IMPOSSIBLE`` (the validator proved no tie occurs; the core treats it as both).
+    * ``initiative_start`` -- who holds the initiative at the start: the second player (§3.1,
+      E), resolved here so the core never decides it. Read only under the initiative.
+    * ``void_run`` -- ``VOID_RUN``.
+    * ``collision_strikes`` -- whether a collision's loser goes through the strike rule:
+      true for ``rules.strike``, false for ``rules.contacts`` (a collision never fires a
+      contact link, §4) and where there is no rule.
+    * ``collision_allowed[a * n_types + b]`` -- a piece of type ``a`` eliminates one of
+      type ``b`` when they collide: ``pieces[].beats`` with its default (``captures``, else
+      every piece) resolved, over every type; a portal's row and column are false.
+    * ``zobrist`` -- the initiative's key (only under the initiative, else 0), then one key
+      per square for each of the two squares of a standoff entry (``[square]`` for player
+      0's square, ``[n_squares + square]`` for player 1's), then one per entry state (1, a
+      run of one void round; 2, barred). Drawn after every other key.
+    """
+
+    tie: int
+    initiative_start: int
+    void_run: int
+    collision_strikes: bool
+    collision_allowed: tuple[bool, ...]
+    zobrist_initiative: int
+    zobrist_squares: tuple[int, ...]
+    zobrist_states: tuple[int, ...]
+
+
+def _compile_simultaneous(
+    rules: dict[str, Any],
+    pieces: list[dict[str, Any]],
+    index_of: dict[str, int],
+    n_types: int,
+    draws: tuple[int, tuple[int, ...], tuple[int, ...]] | None,
+) -> SimRule | None:
+    """`SimRule` for a simultaneous spec, ``None`` for an alternating one (§5.3)."""
+    rule = rules.get("simultaneous")
+    if not isinstance(rule, dict) or draws is None:
+        return None
+    tie = {"initiative": TIE_INITIATIVE, "impossible": TIE_IMPOSSIBLE}.get(
+        str(rule.get("tie")), TIE_BOTH
+    )
+    declared = [piece["id"] for piece in pieces]
+    allowed = [False] * (n_types * n_types)
+    for piece in pieces:
+        beaten = beats_of(piece, declared)
+        for victim in beaten:
+            allowed[index_of[piece["id"]] * n_types + index_of[victim]] = True
+    source = rules.get("strike") if isinstance(rules.get("strike"), dict) else None
+    initiative, squares, states = draws
+    return SimRule(
+        tie=tie,
+        initiative_start=1,
+        void_run=VOID_RUN,
+        collision_strikes=source is not None and strike_is_live(source),
+        collision_allowed=tuple(allowed),
+        zobrist_initiative=initiative,
+        zobrist_squares=squares,
+        zobrist_states=states,
+    )
+
+
 @dataclass(frozen=True)
 class CompiledSpec:
     """Immutable, position-independent tables derived from one rule spec."""
@@ -1096,6 +1175,9 @@ class CompiledSpec:
     # which is every spec before schema 25 and what keeps their boundary bytes where they
     # were; read it through ``turns``.
     facing_turns: tuple[bool, ...] = ()
+    # Schema 26 (Q918a): simultaneous moves, or ``None`` -- every alternating game, whose
+    # boundary keys for the rule all cross empty. See ``SimRule``.
+    simultaneous: SimRule | None = None
 
     def turns(self, piece_type: int) -> bool:
         """Whether a move may turn this type: it has more than one orientation and its
@@ -1512,10 +1594,15 @@ def _compile(
         _portal_starts(spec, declared_types, width, height),
     )
     digest = spec_hash(spec)
-    zob_pieces, zob_side, zob_ep, zob_colour, zob_turn, zob_bar, zob_fold = _build_zobrist(
-        digest, n_squares, n_types, width, n_facings, n_owners,
-        portal_bar=any(group["no_straight_back"] for group in portal_groups(rules)),
-        fold_ends=n_types - declared_types if has_folds else 0,
+    simultaneous = rules.get("simultaneous")
+    zob_pieces, zob_side, zob_ep, zob_colour, zob_turn, zob_bar, zob_fold, zob_sim = (
+        _build_zobrist(
+            digest, n_squares, n_types, width, n_facings, n_owners,
+            portal_bar=any(group["no_straight_back"] for group in portal_groups(rules)),
+            fold_ends=n_types - declared_types if has_folds else 0,
+            simultaneous=isinstance(simultaneous, dict),
+            initiative=isinstance(simultaneous, dict) and simultaneous.get("tie") == "initiative",
+        )
     )
     royal_types = tuple(i for i, p in enumerate(pieces) if p.get("royal", False))
     win = rules.get("win", "checkmate")
@@ -1725,6 +1812,7 @@ def _compile(
         zobrist_colour=zob_colour,
         zobrist_turn=zob_turn,
         portals=portals,
+        simultaneous=_compile_simultaneous(rules, list(spec["pieces"]), index_of, n_types, zob_sim),
     )
     if obstacles:
         _reject_walled_in(compiled)
@@ -4225,6 +4313,8 @@ def _build_zobrist(
     n_owners: int = 2,
     portal_bar: bool = False,
     fold_ends: int = 0,
+    simultaneous: bool = False,
+    initiative: bool = False,
 ) -> tuple[
     tuple[tuple[int, ...], ...],
     int,
@@ -4233,6 +4323,7 @@ def _build_zobrist(
     tuple[int, ...],
     tuple[int, ...],
     tuple[int, ...],
+    tuple[int, tuple[int, ...], tuple[int, ...]] | None,
 ]:
     """Seed the Zobrist table from the spec hash.
 
@@ -4281,4 +4372,13 @@ def _build_zobrist(
     # portal end (a momentum end's rows are never read). Drawn after the bar and only where a
     # group is a fold, so no key above moves and no other game's tables grow.
     fold = tuple(rng.getrandbits(64) for _ in range(fold_ends * n_squares))
-    return pieces, side, ep, colours, turns, bar, fold
+    # Schema 26 (Q918a): the initiative's key, drawn last and only under the initiative,
+    # then the standoff's (`SimRule`), only in a simultaneous game: after every other draw,
+    # so no key above moves, and only where read, so no other game's tables grow.
+    sim = None
+    if simultaneous:
+        holder = rng.getrandbits(64) if initiative else 0
+        squares = tuple(rng.getrandbits(64) for _ in range(2 * n_squares))
+        states = tuple(rng.getrandbits(64) for _ in range(VOID_RUN))
+        sim = (holder, squares, states)
+    return pieces, side, ep, colours, turns, bar, fold, sim

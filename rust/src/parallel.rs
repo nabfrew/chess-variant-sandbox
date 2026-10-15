@@ -25,6 +25,10 @@ fn pool(threads: usize) -> rayon::ThreadPool {
 /// Count leaf nodes at `depth`, splitting the root moves across threads.
 pub fn perft(t: &Tables, snapshot: &Snapshot, depth: u32, threads: usize, stop_at_terminal: bool) -> u64 {
     let mut game = Game::from_snapshot(t, snapshot);
+    // Schema 26 (Q918a): a joint perft, every pair of legal moves a round, serially.
+    if t.simultaneous.is_some() {
+        return game.perft_round(depth, stop_at_terminal);
+    }
     if depth <= 1 || threads <= 1 {
         let mut arena = Vec::new();
         if stop_at_terminal {

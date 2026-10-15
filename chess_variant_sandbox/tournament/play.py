@@ -89,6 +89,11 @@ def play_game(
         )
         return build_record(engine, agents, seed, result)
     if engine.core is not None and (native[0] is not None or native[1] is not None):
+        if engine.simultaneous:
+            # Schema 26: a round asks both seats on one board, which the mixed loop (one
+            # move at a time) does not; a custom player in a round game plays the round
+            # loop with both seats built here.
+            return play_game_python(engine, agents, seed, collect_series=collect_series)
         return play_game_mixed(engine, agents, native, seed, collect_series=collect_series)
     return play_game_python(engine, agents, seed, collect_series=collect_series)
 
@@ -361,6 +366,8 @@ def play_game_python(
     players = [build_agent(agents[0], engine), build_agent(agents[1], engine)]
     rngs = [seat_rng(seed, 0), seat_rng(seed, 1)]
     evaluator = Evaluator.for_engine(engine, mobility_weight=0.0) if collect_series else None
+    if engine.simultaneous:
+        return _play_rounds_python(engine, agents, players, rngs, seed, evaluator)
 
     state = engine.initial_state()
     moves: list[int] = []
@@ -391,6 +398,70 @@ def play_game_python(
     return GameRecord(
         ruleset_hash=spec.hash,
         ruleset_name=spec.name,
+        seed=seed,
+        agents=(str(agents[0]), str(agents[1])),
+        moves=moves,
+        winner=outcome.winner,
+        reason=outcome.reason,
+        plies=len(moves),
+        branching=branching,
+        material=material,
+        captures=captures,
+        nodes=(players[0].stats.nodes, players[1].stats.nodes),
+        depth_sum=(players[0].stats.depth_sum, players[1].stats.depth_sum),
+        searches=(players[0].stats.searches, players[1].stats.searches),
+        duration_ms=round(duration, 2),
+    )
+
+
+def _play_rounds_python(
+    engine: Engine,
+    agents: tuple[AgentConfig | str, AgentConfig | str],
+    players: list[Any],
+    rngs: list[random.Random],
+    seed: int,
+    evaluator: Evaluator | None,
+) -> GameRecord:
+    """Schema 26 (Q918b): ``play_game_python``'s loop for a game played in rounds.
+
+    The oracle for `rust/src/play.rs`'s round loop: both seats asked on the same board,
+    each with its own stream and both lists, neither seeing the other's choice; the
+    record keeps both moves of a round in seat order and every per-ply series twice.
+    """
+    for seat, player in enumerate(players):
+        if not hasattr(player, "select_round_move"):
+            raise ValueError(
+                f"{agents[seat]} does not play a simultaneous game (rules.simultaneous); "
+                "random, greedy and matrix:nodes=N do"
+            )
+    state = engine.initial_state()
+    moves: list[int] = []
+    branching: list[int] = []
+    material: list[float] = []
+    captures: list[int] = []
+
+    started = time.perf_counter()
+    while True:
+        lists = (engine.legal_moves_for(state, 0), engine.legal_moves_for(state, 1))
+        outcome = engine.terminal(state)
+        if outcome is not None:
+            break
+        if evaluator is not None:
+            branching.extend((len(lists[0]), len(lists[1])))
+            value = round(evaluator.material(state, 0), 4)
+            material.extend((value, value))
+        first = players[0].select_round_move(state, 0, lists[0], lists[1], rngs[0])
+        second = players[1].select_round_move(state, 1, lists[1], lists[0], rngs[1])
+        state = engine.apply_round(state, first, second)
+        if evaluator is not None:
+            quiet = 1 if state.halfmove == 0 else 0
+            captures.extend((quiet, quiet))
+        moves.extend((first, second))
+
+    duration = (time.perf_counter() - started) * 1000.0
+    return GameRecord(
+        ruleset_hash=engine.spec.hash,
+        ruleset_name=engine.spec.name,
         seed=seed,
         agents=(str(agents[0]), str(agents[1])),
         moves=moves,

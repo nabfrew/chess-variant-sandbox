@@ -305,6 +305,7 @@ _RULES_REFUSED = frozenset(
         "portals",
         "promote_on_entry",
         "scoring",
+        "simultaneous",
         "strike",
         "contacts",
         "territory",
@@ -468,6 +469,16 @@ def _check_unsupported_rules(
         reasons.append(
             "rules.portals: a square that sends a piece out of another has no counterpart; "
             "no variant option moves a piece anywhere but where its move ends"
+        )
+    if compiled.simultaneous is not None:
+        # Schema 26 (Q918a). Fairy-Stockfish has a side to move and no round in which both
+        # players move at once (`docs/plan-simultaneous.md` §6.5). The per-side generator is
+        # still checked: the alternating twin, the same file without `simultaneous` and
+        # `beats`, offers each player exactly a round's moves, and `verify` reads the twin.
+        # `tests/simultaneous_oracle.py` holds the resolution instead.
+        reasons.append(
+            "rules.simultaneous: both players moving at once has no counterpart; "
+            "Fairy-Stockfish always has a side to move"
         )
     drops = compiled.drops
     if drops is not None and drops.unlimited:
@@ -655,6 +666,11 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
             "every capture refuses nothing",
         ),
         "facing": (_REFUSED, "piece.facing, read off the compiled frame count"),
+        "beats": (
+            _REFUSED,
+            "only beside rules.simultaneous, which is refused whole: Fairy-Stockfish has "
+            "no collision for it to decide",
+        ),
     },
     "move": {
         "kind": (

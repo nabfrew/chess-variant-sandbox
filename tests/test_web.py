@@ -6600,7 +6600,10 @@ class TestWhatReachesThePage:
         # circles of numbers and colour tokens, nothing from outside the page.
         # 127 since Q851: the tray's line under the board redrawn with the tray
         # (`paletteNoteBodyHtml`), the piece's name and side through `esc`.
-        assert len(sites) == 127
+        # 130 since Q918c: a game in rounds writes its strip (`roundStatusHtml`) and the
+        # slot under the board twice (`drawRoundSend`), every side, seat, move text and
+        # server sentence through `esc`.
+        assert len(sites) == 130
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
@@ -7756,7 +7759,7 @@ class TestTheBoardKnowsItsMode:
         from page_text import PAGE
 
         assert "const rated = mode === 'leaderboard';" in PAGE
-        assert "${frameHtml(inline, snapshot.mode, watched, between)}" in PAGE
+        assert "${frameHtml(inline, snapshot.mode, watched, between, !!snapshot.round && !watched)}" in PAGE
         # The frame's control row, directly under the board (Q577): a rated game's has
         # no take-back and has a resignation, the local application's (no mode) the
         # other way round, and a game nobody sits at offers nobody's resignation. A
@@ -8112,7 +8115,7 @@ class TestThePlayFrame:
     def test_both_chromes_draw_the_one_frame(self) -> None:
         from page_text import PAGE
 
-        assert PAGE.count("${frameHtml(inline, snapshot.mode, watched, between)}") == 1
+        assert PAGE.count("${frameHtml(inline, snapshot.mode, watched, between, !!snapshot.round && !watched)}") == 1
         assert PAGE.count('<svg id="board"') == 1
         inline = _in_page("", "frameHtml(true, '', false)")
         assert 'id="stopPlay"' in inline and 'data-frame="controls"' in inline
@@ -8479,7 +8482,10 @@ class TestTheBoardAnimation:
         from page_text import PAGE
 
         start = PAGE.index("const PACE = {")
-        return PAGE[start:PAGE.index("the side panel", start)]
+        # And a round's reveal (Q918c, `simultaneous.js`), which reads the same table.
+        rounds = PAGE.index("function animateRound(")
+        return PAGE[start:PAGE.index("the side panel", start)] + PAGE[
+            rounds:PAGE.index("\n}\n", rounds)]
 
     def pace(self) -> dict[str, float]:
         import re
@@ -8551,7 +8557,7 @@ class TestTheBoardAnimation:
             "the agent's reply is the draw that waits"
         # A person's own move is not one of them: it is the reason they clicked.
         send = PAGE.index("function send(move)")
-        assert "then(s => applySnapshot(s))" in PAGE[send:send + 330]
+        assert "then(s => applySnapshot(s))" in PAGE[send:send + 400]
 
     def test_nothing_animated_means_nothing_to_wait_for(self) -> None:
         """Every early return in `animateChange` has to report a duration, or the board
@@ -11187,8 +11193,10 @@ class TestBuildingAGameByHand:
         # became the first library spec to use it (row 21); the hand-built arm below keeps it.
         # `portals` (schema 19, Q771) joined it, and left on 2026-10-10 with Q772a's
         # showcases (`schema-showcase-coverage.md` rows 53 to 55).
+        # `simultaneous` (schema 26, Q918a) joined it; Q918e's showcases take it out (rows 64
+        # to 67).
         assert _RULES_KEYS - seen == {
-            "bare_royal", "checkmate", "turn",
+            "bare_royal", "checkmate", "turn", "simultaneous",
         }, "the rule keys nothing in the library uses have changed"
 
     def test_the_rule_keys_nothing_in_the_library_uses_are_not_refused_either(

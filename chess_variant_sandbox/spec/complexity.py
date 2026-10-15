@@ -187,6 +187,13 @@ _RULE_COSTS: dict[str, float] = {
     # exits -- so it is costed as `npcs` is. Each further pair, a stated mover and a
     # stated one-way or closed passage are charged on top by `_portal_extras`.
     "portals": 2.5,
+    # Schema 26 (Q918a). Both players move at once: the largest change to what a turn is
+    # the language has, and a player has to be taught four things -- the round, that only
+    # the same square is a collision and who survives one, that a capture whose victim ran
+    # lands or is void, and the void bar -- so it costs more than `territory` and `npcs`.
+    # The tie rule is one clause of the same sentence and costs nothing more; `beats` is
+    # costed per piece, as `captures` is (`capture_restrictions`).
+    "simultaneous": 3.0,
 }
 
 # Schema 19: what `rules.portals` costs beyond its first pair, and why. A further pair is
@@ -278,6 +285,9 @@ _WRAP_KEYS = ("files", "ranks", "n_s", "ne_sw", "nw_se")
 # and `{"moves": 1, "ramp": [1, 1]}` are both the game that was already there, and the
 # compiler drops both.
 _RULE_ACTIVE: dict[str, Any] = {
+    # Schema 26: present as an object is the rule, and `{}` is its whole default spelling,
+    # which the truthiness test below would read as absent.
+    "simultaneous": lambda value: isinstance(value, dict),
     "turn": lambda value: isinstance(value, dict)
     and (
         int(value.get("moves", 1)) > 1
@@ -397,6 +407,9 @@ def measure_complexity(spec: dict[str, Any]) -> SpecComplexity:
         # `screen_range` are not: it parameterises a primitive already counted as a move
         # descriptor, rather than adding an exception on top of one.
         if isinstance(piece.get("captures"), list):
+            capture_restrictions += 1
+        # Schema 26: a piece's collision table is a second such line, beside `captures`.
+        if isinstance(piece.get("beats"), list):
             capture_restrictions += 1
         # A facing is one more line in the rules table for this piece, on exactly the
         # argument `captures` is costed by: an exception a player has to be taught about

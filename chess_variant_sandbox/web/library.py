@@ -977,6 +977,9 @@ def detail(game: Game, others: Iterable[Game] | None = None) -> dict[str, Any]:
         "pieceMaps": piece_maps(game, reference_of(others)),
         "sides": list(sides(game)),
         "armies": armies(game),
+        # Schema 26 (Q918c): whether both players move at once, every round, so the page
+        # never says one of them moves first.
+        "rounds": isinstance((game.spec.get("rules") or {}).get("simultaneous"), dict),
         "ratings": game.ratings,
         # Which of the fourteen things an opponent can be told to care about are not
         # inert here. Six of them read a rule most rulesets do not declare, and a slider

@@ -997,8 +997,8 @@ class App:
         elif show is not None:
             raise ValueError('show must be "unfinished" or {"rule": <key>}')
         default = [HUMAN, HUMAN] if demo else [HUMAN, "minimax:nodes=1600"]
-        seats = body.get("seats") or default
         roster = opponents.for_game(digest, self.heuristics_dir, spec=spec)
+        seats = [opponents.seat_for(str(seat), roster) for seat in body.get("seats") or default]
         agents = [entry.agent for entry in roster]
         if len(seats) != 2 or any(seat not in agents for seat in seats):
             raise ValueError(f"seats must be two of: {', '.join(agents)}")
@@ -1262,8 +1262,13 @@ class App:
         return run.as_dict()
 
     def _start_session(self, body: dict[str, Any]) -> Any:
-        seats = body.get("seats") or ["human", "minimax:nodes=1600"]
-        agents = [entry.agent for entry in self.roster(str(body["hash"]))]
+        roster = self.roster(str(body["hash"]))
+        # A game played in rounds seats its own rung of the name asked for (Q918c).
+        seats = [
+            opponents.seat_for(str(seat), roster)
+            for seat in body.get("seats") or ["human", "minimax:nodes=1600"]
+        ]
+        agents = [entry.agent for entry in roster]
         if len(seats) != 2 or any(seat not in agents for seat in seats):
             raise ValueError(f"seats must be two of: {', '.join(agents)}")
         session = self.sessions.start(

@@ -25,6 +25,12 @@ use crate::tables::{
     MOVE_EN_PASSANT, MOVE_FOLD, MOVE_PORTAL, MOVE_PROMOTION, MOVE_ROTATE, MOVE_SWEEP,
 };
 
+// Schema 26 (Q918b): the players for rounds, a child of this module so they share the
+// player's private state (its objective, budget and counters).
+#[path = "matrix.rs"]
+mod matrix;
+pub use matrix::{solve, REGRET_ITERATIONS};
+
 /// How deep a quiescence search may go past the horizon before it settles for the
 /// standing evaluation. Bounded because a game where every move is a capture --
 /// antichess, under `must_capture` -- would otherwise let it run to the node budget on
@@ -123,6 +129,9 @@ pub enum Kind {
     Greedy,
     Minimax,
     Mcts,
+    /// Schema 26 (Q918b): `matrix:nodes=N`, iterative deepening on the matrix games of a
+    /// simultaneous game (`matrix.rs`). Rounds only.
+    Matrix,
 }
 
 #[derive(Clone, Debug)]
@@ -191,6 +200,7 @@ impl AgentSpec {
             "greedy" => Kind::Greedy,
             "minimax" => Kind::Minimax,
             "mcts" => Kind::Mcts,
+            "matrix" => Kind::Matrix,
             _ => {
                 return Err(format!(
                     "{name:?} has no native implementation; the Python agent loop handles it"
@@ -221,7 +231,7 @@ impl AgentSpec {
         let net = if net.is_empty() {
             None
         } else {
-            if !matches!(kind, Kind::Greedy | Kind::Minimax) {
+            if !matches!(kind, Kind::Greedy | Kind::Minimax | Kind::Matrix) {
                 return Err(format!("{name:?} has no evaluator for a net to replace"));
             }
             if !weights.is_empty() || !values.is_empty() {
@@ -256,6 +266,34 @@ impl AgentSpec {
     /// `lib.rs` where a failure can still be an ordinary Python exception naming the
     /// cause -- every path into `Player::new` comes through that boundary.
     pub fn check_against(&self, t: &Tables) -> Result<(), String> {
+        // Schema 26: a round is a matrix game (`plan-simultaneous.md` §6.2). `random`,
+        // `greedy` (its matrix arm) and `matrix:nodes=N` play one; `minimax` and `mcts` are
+        // refused, so one name never means two algorithms on one game. The round players
+        // read the built-in objective only: a heuristic, fitted, searched or learned one
+        // was made for one mover at a time. `matrix` plays rounds and nothing else.
+        if t.simultaneous.is_some() {
+            if matches!(self.kind, Kind::Minimax | Kind::Mcts) {
+                return Err(concat!(
+                    "a simultaneous game (rules.simultaneous) is played by random, greedy and ",
+                    "matrix:nodes=N; minimax and mcts search one mover at a time",
+                )
+                .to_string());
+            }
+            if !self.weights.is_empty() || !self.values.is_empty() || self.net.is_some() {
+                return Err(concat!(
+                    "a simultaneous game (rules.simultaneous) is played on the built-in ",
+                    "objective only; a heuristic, fitted, searched or learned objective ",
+                    "was made for alternating play",
+                )
+                .to_string());
+            }
+        } else if self.kind == Kind::Matrix {
+            return Err(concat!(
+                "matrix plays a simultaneous game (rules.simultaneous) only; on a game that ",
+                "alternates, the searching player is minimax",
+            )
+            .to_string());
+        }
         if let Some(net) = &self.net {
             net.check_against(t)?;
         }
@@ -338,6 +376,10 @@ pub struct Player {
     /// Q502i: which search this is, for `KEEP_TABLE`'s aging. Wraps; only equality with
     /// the current and the previous generation is ever asked.
     generation: u16,
+    /// Schema 26 (Q918b): the mixed strategy the last round decision drew from, over the
+    /// player's own moves in generation order; empty for `random`. Read by the probe
+    /// `Core.round_strategy`, never by play.
+    pub strategy: Vec<f64>,
 }
 
 /// How many plies from the root the killer table has room for. `MAX_DEPTH` is 64 and a
@@ -351,7 +393,7 @@ impl Player {
     /// business knowing that agents exist.
     pub fn new(t: &Tables, spec: AgentSpec, values: &[f64]) -> Self {
         let (mobility, goal, immune) = match spec.kind {
-            Kind::Greedy | Kind::Minimax => (spec.mobility, spec.goal, spec.immune),
+            Kind::Greedy | Kind::Minimax | Kind::Matrix => (spec.mobility, spec.goal, spec.immune),
             _ => (0.0, 0.0, 0.0),
         };
         // `values` is the derived table -- the same one for both seats, for the whole
@@ -380,6 +422,7 @@ impl Player {
             order_keys: Vec::new(),
             n_squares: t.n_squares,
             generation: 0,
+            strategy: Vec::new(),
         }
     }
 
@@ -393,6 +436,7 @@ impl Player {
             Kind::Greedy => self.select_greedy(game, moves, rng),
             Kind::Minimax => self.select_minimax(game, moves, rng),
             Kind::Mcts => self.select_mcts(game, moves, rng),
+            Kind::Matrix => unreachable!("check_against refuses matrix on a game that alternates"),
         }
     }
 }

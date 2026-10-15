@@ -13,6 +13,10 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-15
 
+### Games where both players move at once
+
+A game can now be played in rounds: both players choose a move in secret, the two moves are revealed together, and then both are made. When two pieces land on the same square, the game's own table decides which survives, or whether both are lost. The play page shows both moves arriving together, explains each clash, and marks a capture that has been barred for repeating. The computer opponent chooses its move without seeing yours, and two people can also play at one screen. You can try it from the designer by turning on *both players move at once*. Games built around this rule will come later.
+
 ### The rules guide matches what the site accepts
 
 The rules guide and the designer no longer say a piece may move in at most eight directions, or that every piece needs a move of its own. Neither was ever enforced when a game was checked, and some games in the library already go beyond both. A piece that only ever enters the board from the hand may now be written with no moves at all.

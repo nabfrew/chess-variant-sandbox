@@ -13,7 +13,12 @@ import random
 from typing import Any
 
 from chess_variant_sandbox.agents.base import NativeSpec, SearchStats, register, register_native
-from chess_variant_sandbox.agents.evaluation import GOAL_PIECES, IMMUNE_PIECES
+from chess_variant_sandbox.agents.evaluation import GOAL_PIECES, IMMUNE_PIECES, Evaluator
+from chess_variant_sandbox.agents.matrix import (
+    RoundSearch,
+    greedy_round,
+    refuse_alternating_objective,
+)
 from chess_variant_sandbox.agents.nets import require_net
 from chess_variant_sandbox.agents.objective import objective_for
 from chess_variant_sandbox.agents.objective_options import objective_values as _values
@@ -33,6 +38,19 @@ class RandomAgent:
         self.stats.moves += 1
         self.stats.nodes += len(moves)
         return rng.choice(moves)
+
+    def select_round_move(
+        self,
+        state: GameState,
+        seat: int,
+        mine: list[int],
+        theirs: list[int],
+        rng: random.Random,
+    ) -> int:
+        """Schema 26: uniform over this seat's own moves, one draw a round."""
+        self.stats.moves += 1
+        self.stats.nodes += len(mine)
+        return rng.choice(mine)
 
 
 class GreedyAgent:
@@ -57,6 +75,9 @@ class GreedyAgent:
         self.evaluator = objective_for(engine, mobility, goal, weights, values, immune, net)
         self.name = "greedy"
         self.stats = SearchStats()
+        # Schema 26 (Q918b): the round arm's matrix search, and the strategy it last drew from.
+        self._rounds: RoundSearch | None = None
+        self.strategy: list[float] = []
 
     def select_move(self, state: GameState, moves: list[int], rng: random.Random) -> int:
         engine = self.engine
@@ -79,6 +100,22 @@ class GreedyAgent:
                 best_moves.append(move)
         return rng.choice(best_moves)
 
+    def select_round_move(
+        self,
+        state: GameState,
+        seat: int,
+        mine: list[int],
+        theirs: list[int],
+        rng: random.Random,
+    ) -> int:
+        """Schema 26 (Q918b): the one-round matrix game, solved and drawn from
+        (`agents/matrix.py`; the oracle for `rust/src/matrix.rs::greedy_round`)."""
+        if self._rounds is None:
+            assert isinstance(self.evaluator, Evaluator), "a round plays the built-in objective"
+            self._rounds = RoundSearch(self.engine, self.evaluator)
+        move, self.strategy = greedy_round(self._rounds, self.stats, state, seat, mine, theirs, rng)
+        return move
+
 
 @register("random")
 def _build_random(engine: Engine, options: dict[str, Any]) -> RandomAgent:
@@ -92,6 +129,8 @@ def _native_random(options: dict[str, Any], ruleset_hash: str = "") -> NativeSpe
 
 @register("greedy")
 def _build_greedy(engine: Engine, options: dict[str, Any]) -> GreedyAgent:
+    if engine.simultaneous:
+        refuse_alternating_objective(options, "greedy")
     return GreedyAgent(
         engine,
         mobility=float(options.get("mobility", 0.05)),

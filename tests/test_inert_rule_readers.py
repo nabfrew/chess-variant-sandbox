@@ -163,6 +163,8 @@ READERS: dict[str, dict[str, str]] = {
         "eval.rs::of": "`Immunity::of` declines the immunity term under an explosion. "
         "**Evaluator, not rules**: with no capture the term's premise is gone anyway; "
         "re-read this site if case 4 is ever re-proven",
+        "rounds.rs::make_round": "schema 26's blast, over the round's captures, of which "
+        "there are none when nothing can be taken",
     },
     # -- cases 5 and 6.
     "drops": {
@@ -174,6 +176,8 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::royal_in_hand": "asks `royal_stocked` first (Q784), which needs a royal in "
         "the stock; the refusals need no stock, so it answers false",
         "game.rs::generate_drops": "walks the hand, which is empty for the life of the game",
+        "rounds.rs::make_round": "schema 26's drop branch and fill, as `make`'s: the fill "
+        "is behind a capture and `from_captures`",
         "game.rs::restrict": "the drop-mate filter; it filters drops, and there are none",
         "eval.rs::new": "`mean_non_royal` skips unlimited types; the refusals need no "
         "stock, so no type is unlimited and the mean is the undeclared one; also copies "
@@ -182,6 +186,8 @@ READERS: dict[str, dict[str, str]] = {
         "eval.rs::of": "`Immunity::of` skips unlimited drop types, of which there are none",
         "features.rs::new": "copies `has_drops` for `HAND_MATERIAL`",
     },
+    # Schema 26 (Q918a): a round mirrors `make`'s two readings.
+
     "eval.rs:has_drops": {
         "eval.rs::material": "adds the hand's value, which is zero with every hand empty",
         "eval.rs::immunity": "counts pieces in hand as present; there are none",
@@ -193,6 +199,8 @@ READERS: dict[str, dict[str, str]] = {
     "bare_royal": {
         "game.rs::schema_two_ending": "the arm asks for a non-empty set of royals (Q134); "
         "with no piece marked royal no board satisfies it",
+        "rounds.rs::round_ending_before_the_clocks": "schema 26's arm, the same test for "
+        "each side",
         "tables.rs::has_v2_endings": "the gate on `schema_two_ending`, a disjunction that "
         "matches its arms one for one, so it switches on nothing else",
     },
@@ -257,6 +265,9 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::make": "schema 18f (Q786): whether the move took the named piece off a goal "
         "square, read only under `reach_leaves`, from the mover as it set out, so a piece "
         "that never stands never leaves",
+        "rounds.rs::make_round": "schema 26's leaving test, `make`'s, per player",
+        "rounds.rs::round_ending_before_the_clocks": "schema 26's arm: the named piece on a "
+        "goal square, per side",
     },
     "goal_distance": {
         "eval.rs::goal_distance_of": "the distance of a piece that stands, for the race and "
@@ -270,11 +281,12 @@ READERS: dict[str, dict[str, str]] = {
         "features.rs::reach_progress": "the same normaliser, of a distance nobody has",
     },
     "has_goal_terms()": {
-        "eval.rs::evaluate": "gates `goal_progress`, whose terms are the ones above",
+        "eval.rs::score": "gates `goal_progress`, whose terms are the ones above",
     },
     "has_v2_endings()": {
         "game.rs::ending_before_the_clocks": "gates `schema_two_ending`, whose arms are the "
         "ones above",
+        "rounds.rs::round_ending_before_the_clocks": "schema 26's gate on the same arms",
     },
     # -- case 13, the `promotion` half: keyed on a piece standing on, arriving on or
     # leaving a square, which a piece that can never exist does not do.
@@ -330,6 +342,15 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::restrict": "the immobility filter, asking of a dropped piece as it "
         "stands after arrival",
         "game.rs::is_forbidden_drop_mate": "the dropped piece's value",
+        "rounds.rs::plan": "schema 26: a dropped piece's value, as `make`'s drop branch",
+        "rounds.rs::make_round": "schema 26: an own merge's mover, as `strike_writes`",
+        "rounds.rs::contact_in_place": "schema 26: a contact's two pieces, as `strike_writes`",
+        "rounds.rs::strike_after": "schema 26: a struck piece and its captor, as "
+        "`strike_writes`",
+    },
+    "rounds.rs:mover": {
+        "rounds.rs::make_round": "schema 26: the dropped piece's value `plan` read, placed "
+        "as `make` places it",
     },
     # `multi_royal` moves only where the spec declares a real royal promotion beside the
     # phantom one; every reader counts royals standing on the board.

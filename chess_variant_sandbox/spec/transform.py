@@ -961,6 +961,27 @@ def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) 
     # A portal end's ``carries`` naming every piece that can move (Q849): an edit that
     # turns a mover into a stone, or removes the one type a filter kept out, leaves one.
     dropped.extend(f"carries:{square}" for square in settle_carries(spec))
+    # Schema 26 (Q918a): a tie rule an edit has emptied -- the initiative where no collision
+    # can tie any more, or the promise that none can where one now does -- goes, leaving
+    # the default (both eliminated); and a `beats` an edit has made its own default.
+    rule = rules.get("simultaneous")
+    if isinstance(rule, dict) and rule.get("tie") in ("initiative", "impossible"):
+        from chess_variant_sandbox.spec.schema import simultaneous_tie_pair
+
+        can_tie = simultaneous_tie_pair(spec) is not None
+        if can_tie == (rule["tie"] == "impossible"):
+            rule.pop("tie")
+            dropped.append("tie")
+    if isinstance(rule, dict):
+        for piece in listed:
+            beats = piece.get("beats") if isinstance(piece, dict) else None
+            if not isinstance(beats, list) or not all(pid in declared for pid in beats):
+                continue
+            captures = piece.get("captures")
+            default = set(captures) if isinstance(captures, list) else set(declared)
+            if set(beats) == default and len(set(beats)) == len(beats):
+                piece.pop("beats")
+                dropped.append(f"beats:{piece.get('id')}")
     return dropped
 
 

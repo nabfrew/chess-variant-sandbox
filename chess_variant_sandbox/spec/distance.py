@@ -392,6 +392,24 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
             else 0.0
         ),
         **_portal_features(rules.get("portals")),
+        **_simultaneous_features(spec),
+    }
+
+
+def _simultaneous_features(spec: dict[str, Any]) -> dict[str, float]:
+    """Schema 26 (Q918a): the round itself, its tie rule, and the share of pieces whose
+    collision table (`beats`) is their own, so a spec differing only by any of them is not
+    at distance zero."""
+    rules: dict[str, Any] = spec["rules"] if isinstance(spec.get("rules"), dict) else {}
+    rule = rules.get("simultaneous")
+    tie = rule.get("tie") if isinstance(rule, dict) else None
+    pieces = [piece for piece in spec.get("pieces") or [] if isinstance(piece, dict)]
+    beats = sum(1 for piece in pieces if isinstance(piece.get("beats"), list))
+    return {
+        "simultaneous": 1.0 if isinstance(rule, dict) else 0.0,
+        "simultaneous_initiative": 1.0 if tie == "initiative" else 0.0,
+        "simultaneous_impossible": 1.0 if tie == "impossible" else 0.0,
+        "beats_share": beats / len(pieces) if pieces else 0.0,
     }
 
 

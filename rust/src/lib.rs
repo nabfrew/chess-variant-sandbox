@@ -47,8 +47,10 @@ type StateIn = (
     Vec<u8>, u8, Vec<u8>, i16, i16, u32, u32, u64, Vec<u64>,
     (u32, u32),
     (Vec<u32>, Vec<u32>),
-    (Vec<u8>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>),
+    (Vec<u8>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds),
 );
+/// Schema 26 (Q918a): the initiative, the void run and the bars, slot 11's eighth element.
+type Rounds = (i8, (i16, i16), Vec<(i16, i16)>);
 type StateOut<'py> = (
     Bound<'py, PyBytes>,
     u8,
@@ -61,7 +63,7 @@ type StateOut<'py> = (
     Vec<u64>,
     (u32, u32),
     (Vec<u32>, Vec<u32>),
-    (Bound<'py, PyBytes>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>),
+    (Bound<'py, PyBytes>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds),
 );
 
 /// What the wild-piece phase did on the way to a position (schema 9): one
@@ -72,6 +74,10 @@ type StateOut<'py> = (
 /// beside the position rather than inside it because the position is already at PyO3's
 /// twelve-slot ceiling -- and because it describes the *transition*, not the state.
 type PhaseOut = Vec<(u32, u32, u8)>;
+
+/// Schema 26 (Q918a): what a round's meetings did, `(event, square, player)` per
+/// `game::rounds::EVENT_*`, beside the position as the phase is.
+type RoundOut = Vec<(u8, u32, i8)>;
 
 /// `(kind, nodes, mobility, max_depth, rollout_depth, exploration, goal, weights,
 /// values)`, resolved by each agent's `register_native` resolver from the registry's own
@@ -144,6 +150,9 @@ fn snapshot_from(t: &Tables, state: &StateIn) -> Snapshot {
         goal_left_by: state.11.4,
         portal_bar: [state.11.5.0, state.11.5.1],
         fold_at: folds_in(t, &state.11.6),
+        initiative: state.11.7.0,
+        void_run: [state.11.7.1.0, state.11.7.1.1],
+        bars: state.11.7.2.iter().map(|&(a, b)| [a, b]).collect(),
     }
 }
 
@@ -198,6 +207,11 @@ fn state_out<'py>(py: Python<'py>, game: &Game<'_>) -> StateOut<'py> {
             game.goal_left_by,
             (game.portal_bar[0], game.portal_bar[1]),
             folds_out(game),
+            (
+                game.initiative,
+                (game.void_run[0], game.void_run[1]),
+                game.bars.iter().map(|bar| (bar[0], bar[1])).collect(),
+            ),
         ),
     )
 }
@@ -297,6 +311,16 @@ impl Core {
         state: StateIn,
         m: u32,
     ) -> PyResult<(StateOut<'py>, PhaseOut)> {
+        // Schema 26 (Q918a): one move alone is not a round, and `make` would play the game
+        // as if it alternated. Refused here, where it is still an ordinary exception.
+        if self.tables.simultaneous.is_some() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                concat!(
+                    "this game is played in rounds (rules.simultaneous); apply both players' ",
+                    "moves together with apply_round",
+                ),
+            ));
+        }
         let snapshot = snapshot_from(&self.tables, &state);
         let mut game = Game::from_snapshot(&self.tables, &snapshot);
         // A castling move names only the king's squares, so applying one to a position
@@ -321,6 +345,51 @@ impl Core {
             .map(|&(from, to, eaten)| (from as u32, to as u32, eaten))
             .collect();
         Ok((state_out(py, &game), phase))
+    }
+
+    /// Schema 26 (Q918a): every move `player` may choose in a round on this board.
+    fn legal_moves_for(&self, state: StateIn, player: u8) -> PyResult<Vec<u32>> {
+        if self.tables.simultaneous.is_none() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "legal_moves_for is for a simultaneous game; this one alternates",
+            ));
+        }
+        let snapshot = snapshot_from(&self.tables, &state);
+        let mut game = Game::from_snapshot(&self.tables, &snapshot);
+        let mut moves = Vec::new();
+        game.generate_legal_for(player as usize, &mut moves);
+        Ok(moves)
+    }
+
+    /// Schema 26 (Q918a): the position after one round, `first` by player 0 and `second` by
+    /// player 1, with what the wild-piece phase did and what the round's meetings did
+    /// (`(event, square, player)`, `game::EVENT_*`) for the page to draw.
+    fn apply_round<'py>(
+        &self,
+        py: Python<'py>,
+        state: StateIn,
+        first: u32,
+        second: u32,
+    ) -> PyResult<(StateOut<'py>, PhaseOut, RoundOut)> {
+        if self.tables.simultaneous.is_none() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "apply_round is for a simultaneous game; this one alternates",
+            ));
+        }
+        let snapshot = snapshot_from(&self.tables, &state);
+        let mut game = Game::from_snapshot(&self.tables, &snapshot);
+        game.make_round([first, second]);
+        let phase = game
+            .phase_steps()
+            .iter()
+            .map(|&(from, to, eaten)| (from as u32, to as u32, eaten))
+            .collect();
+        let events = game
+            .round_log
+            .iter()
+            .map(|&(event, square, player)| (event, square as u32, player))
+            .collect();
+        Ok((state_out(py, &game), phase, events))
     }
 
     /// What the next `count` wild-piece phases would do on the board as it stands (Q660,
@@ -350,6 +419,8 @@ impl Core {
         let snapshot = snapshot_from(&self.tables, &state);
         let mut game = Game::from_snapshot(&self.tables, &snapshot);
         let outcome = match moves {
+            // Schema 26: a round's verdict needs both players' lists, so it makes its own.
+            _ if self.tables.simultaneous.is_some() => game.round_terminal(),
             Some(moves) => game.terminal_with(&moves),
             None => game.terminal(),
         };
@@ -375,7 +446,12 @@ impl Core {
     fn terminal_prefix(&self, state: StateIn) -> Option<(Option<i8>, &'static str)> {
         let snapshot = snapshot_from(&self.tables, &state);
         let mut game = Game::from_snapshot(&self.tables, &snapshot);
-        game.terminal_prefix().map(|outcome| {
+        let outcome = if self.tables.simultaneous.is_some() {
+            game.round_terminal_prefix()
+        } else {
+            game.terminal_prefix()
+        };
+        outcome.map(|outcome| {
             (
                 if outcome.winner < 0 {
                     None
@@ -458,6 +534,51 @@ impl Core {
             let mut player = Player::new(&self.tables, spec, &values);
             let mut rng = PyRandom::for_seat(seed, 0);
             Some(player.select_move(&mut game, &legal, &mut rng))
+        }))
+    }
+
+    /// Schema 26 (Q918b): one seat's choice in a round, and what it was drawn from.
+    ///
+    /// `(move, strategy, nodes, depth)`: the move the agent plays for `seat` on this board,
+    /// the mixed strategy over that seat's legal moves (`legal_moves_for`'s order) it drew
+    /// it from -- empty for `random` -- the nodes it spent and its last finished pass. The
+    /// seat's stream is fresh, derived from `seed` and `seat` exactly as that seat's is at
+    /// the start of a game. `None` for the move where either player has none (the round
+    /// is over before anyone chooses). The probe the oracle's tests and the play page ask.
+    #[pyo3(signature = (state, seat, agent, values, seed = 0))]
+    fn select_round(
+        &self,
+        py: Python<'_>,
+        state: StateIn,
+        seat: u8,
+        agent: AgentIn,
+        values: Vec<f64>,
+        seed: u64,
+    ) -> PyResult<(Option<u32>, Vec<f64>, u64, u32)> {
+        if self.tables.simultaneous.is_none() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "select_round is for a simultaneous game; this one alternates",
+            ));
+        }
+        let seat = seat as usize;
+        if seat > 1 {
+            return Err(pyo3::exceptions::PyValueError::new_err("a seat is 0 or 1"));
+        }
+        let spec = agent_spec(&self.tables, &agent)?;
+        let snapshot = snapshot_from(&self.tables, &state);
+        Ok(py.detach(|| {
+            let mut game = Game::from_snapshot(&self.tables, &snapshot);
+            let mut first = Vec::new();
+            let mut second = Vec::new();
+            game.generate_legal_for(0, &mut first);
+            game.generate_legal_for(1, &mut second);
+            if first.is_empty() || second.is_empty() {
+                return (None, Vec::new(), 0, 0);
+            }
+            let mut player = Player::new(&self.tables, spec, &values);
+            let mut rng = PyRandom::for_seat(seed, seat);
+            let chosen = player.select_round(&mut game, seat, [&first, &second], &mut rng);
+            (Some(chosen), player.strategy.clone(), player.stats.nodes, player.stats.depth)
         }))
     }
 
@@ -698,13 +819,35 @@ impl Core {
 /// which is what keeps `agents.register` a real extension point.
 #[pyfunction]
 fn native_agent_kinds() -> Vec<&'static str> {
-    vec!["random", "greedy", "minimax", "mcts"]
+    vec!["random", "greedy", "minimax", "mcts", "matrix"]
+}
+
+/// Schema 26 (Q918b): the round players' solver on one matrix (row-major, the row
+/// player's payoff), for the oracle's test to hold `agents/matrix.py::solve` to it bit for
+/// bit. `iterations` defaults to the players' own count.
+#[pyfunction]
+#[pyo3(signature = (values, rows, cols, iterations = agents::REGRET_ITERATIONS))]
+fn regret_solve(
+    values: Vec<f64>,
+    rows: usize,
+    cols: usize,
+    iterations: u32,
+) -> PyResult<(Vec<f64>, Vec<f64>)> {
+    if rows == 0 || cols == 0 || values.len() != rows * cols {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "a {rows} by {cols} matrix has {} entries, not {}",
+            rows * cols,
+            values.len()
+        )));
+    }
+    Ok(agents::solve(&values, rows, cols, iterations))
 }
 
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Core>()?;
     m.add_function(wrap_pyfunction!(native_agent_kinds, m)?)?;
+    m.add_function(wrap_pyfunction!(regret_solve, m)?)?;
     // Which sources this extension was built from, hashed by `build.rs`. Python compares
     // it against the same hash taken from `rust/src/` on disk, which is the only way to
     // tell a current build from one that predates an edit to the core.
@@ -731,6 +874,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Q502i: the search repairs a minimax player takes unless it spells them, for the
     // same reason again.
     m.add("DEFAULT_REPAIRS", crate::agents::DEFAULT_REPAIRS)?;
+    // Q918b: the round players' solver iterations, for the same reason again.
+    m.add("REGRET_ITERATIONS", crate::agents::REGRET_ITERATIONS)?;
     m.add("__doc__", "Move generation, search and tournament execution.")?;
     Ok(())
 }

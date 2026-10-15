@@ -702,6 +702,52 @@ fn type_flags(types: &[usize]) -> [bool; MAX_PIECE_TYPES] {
     flags
 }
 
+/// Simultaneous moves (schema 26, Q918a; `docs/plan-simultaneous.md` §5.3), as the
+/// compiler resolved them (`compile.SimRule`). The core reads every number here and decides
+/// none of them.
+pub struct SimTables {
+    /// 0 both eliminated (the default), 1 the initiative, 2 impossible (read as 0).
+    pub tie: u8,
+    /// Who holds the initiative at the start, under the initiative.
+    pub initiative_start: i8,
+    /// How many void rounds of one pair in a row bar it (`compile.VOID_RUN`, 2).
+    pub void_run: u8,
+    /// Whether a collision's loser goes through the strike rule (`rules.strike`, never
+    /// `rules.contacts`).
+    pub collision_strikes: bool,
+    /// `[a * n_types + b]`: a type `a` eliminates a type `b` when they collide.
+    pub collision_allowed: Vec<bool>,
+    /// XORed in while player 1 holds the initiative (0 unless the tie is the initiative).
+    pub zobrist_initiative: u64,
+    /// `[square]` for a standoff entry's player-0 square, `[n_squares + square]` for its
+    /// player-1 square.
+    pub zobrist_squares: Vec<u64>,
+    /// `[state - 1]`: 1 a run of one void round, 2 barred.
+    pub zobrist_states: Vec<u64>,
+}
+
+impl SimTables {
+    /// Whether a type `a` eliminates a type `b` in a collision.
+    #[inline]
+    pub fn beats(&self, n_types: usize, a: usize, b: usize) -> bool {
+        self.collision_allowed[a * n_types + b]
+    }
+
+    /// The key of one standoff entry: a fixed mix (splitmix64's finaliser) of its two
+    /// squares' draws and its state's, so the bars `{(a, b), (c, d)}` and `{(a, d), (c, b)}`
+    /// hash apart while the tables stay the size of the board (§5.3).
+    #[inline]
+    pub fn standoff_key(&self, n_squares: usize, first: usize, second: usize, state: u8) -> u64 {
+        let mut z = self.zobrist_squares[first]
+            ^ self.zobrist_squares[n_squares + second]
+            ^ self.zobrist_states[state as usize - 1];
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        z ^ (z >> 31)
+    }
+}
+
+
 pub struct Tables {
     pub width: usize,
     pub height: usize,
@@ -942,6 +988,9 @@ pub struct Tables {
 
     /// Schema 19: the portal tables, or `None` for every game without portals.
     pub portals: Option<Box<PortalTables>>,
+    /// Schema 26 (Q918a): simultaneous moves, `None` for every alternating game. Boxed, as
+    /// the portals are, so an alternating game pays one pointer for it.
+    pub simultaneous: Option<Box<SimTables>>,
 
     /// Schema 9's second key, `rules.promote_on_entry`: what a piece that *enters play*
     /// on a square becomes, as `[player][piece_type][square]` flattened in that order,
@@ -2092,6 +2141,7 @@ impl Tables {
             npc_bounty_total: 0.0,
             npc_queues: false,
             portals: None,
+            simultaneous: None,
             entry_promotion,
             piece_values,
             must_capture,
@@ -2191,6 +2241,32 @@ impl Tables {
 
         if has_portals {
             tables.portals = Some(Box::new(Self::portal_tables(source, &tables)?));
+        }
+
+        let sim_rule: Vec<u32> = field(source, keys::SIM_RULE)?;
+        if !sim_rule.is_empty() {
+            let collision: Vec<u8> = field(source, keys::SIM_COLLISION)?;
+            let zobrist: Vec<u64> = field(source, keys::ZOBRIST_SIM)?;
+            let n = tables.n_squares;
+            let void_run = sim_rule[2] as usize;
+            if sim_rule.len() != 4
+                || collision.len() != tables.n_types * tables.n_types
+                || zobrist.len() != 1 + 2 * n + void_run
+            {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "the simultaneous tables do not fit this ruleset's types and squares",
+                ));
+            }
+            tables.simultaneous = Some(Box::new(SimTables {
+                tie: sim_rule[0] as u8,
+                initiative_start: sim_rule[1] as i8,
+                void_run: sim_rule[2] as u8,
+                collision_strikes: sim_rule[3] != 0,
+                collision_allowed: collision.iter().map(|flag| *flag != 0).collect(),
+                zobrist_initiative: zobrist[0],
+                zobrist_squares: zobrist[1..1 + 2 * n].to_vec(),
+                zobrist_states: zobrist[1 + 2 * n..].to_vec(),
+            }));
         }
 
         tables.hop_lines = tables.build_hop_lines();
@@ -2626,6 +2702,9 @@ pub mod keys {
         ZOBRIST_COLOUR => "zobrist_colour",
         ZOBRIST_EP => "zobrist_ep",
         ZOBRIST_FOLD => "zobrist_fold",
+        SIM_COLLISION => "sim_collision",
+        SIM_RULE => "sim_rule",
+        ZOBRIST_SIM => "zobrist_sim",
         ZOBRIST_PIECES => "zobrist_pieces",
         ZOBRIST_PORTAL_BAR => "zobrist_portal_bar",
         ZOBRIST_SIDE => "zobrist_side",

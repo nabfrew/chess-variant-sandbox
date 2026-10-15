@@ -2,7 +2,8 @@
   "store_digest": "80b7bc788b5c69bf",
   "made_on": "4bed10accc7d501f",
   "reproduced_on": [
-    "40d0e115de5a613d"
+    "40d0e115de5a613d",
+    "273221deaf99f3c9"
   ],
   "verified_under": [
     {
@@ -10,6 +11,12 @@
       "tables": "ac98338606812bdf",
       "players": "149536f652f59d0f",
       "runner": "204da7d0cb34fde5"
+    },
+    {
+      "core": "273221deaf99f3c9",
+      "tables": "ac98338606812bdf",
+      "players": "149536f652f59d0f",
+      "runner": "8a4ff69df239b166"
     }
   ]
 }
