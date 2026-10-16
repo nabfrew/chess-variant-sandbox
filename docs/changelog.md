@@ -11,6 +11,15 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-16
+
+### Standoffs in a round game have their own colours
+
+In a game where both players move at once, the board marks two kinds of standoff: a round in which nothing happened, and
+a pair of moves barred from being repeated. Both were drawn in the same dark green as a move you have picked but not
+yet sent, so the three were easy to confuse. A standoff after an empty round is now an umber dashed link, a barred pair a
+blue barred link, and your own picked move keeps its green, in light and dark themes.
+
 ## 2026-10-15
 
 ### Play a game in rounds against a friend, a round at a time

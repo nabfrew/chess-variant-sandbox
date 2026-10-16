@@ -1223,7 +1223,7 @@ def test_the_move_text_says_what_a_strike_actually_did() -> None:
     move = next(m for m in engine.legal_moves(state)
                 if move_from(m) == square("d4") and move_to(m) == square("d7"))
     text = engine.describe_move(state, move)
-    assert "->R" in text and "stands fast" in text, text
+    assert text == "Rd4xd7->R (stands fast)", text
 
 
 def test_the_board_draws_its_walls(tmp_path: Any) -> None:

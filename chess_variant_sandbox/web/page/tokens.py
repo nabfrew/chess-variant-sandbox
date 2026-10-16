@@ -164,6 +164,14 @@ LIGHT: dict[str, str] = {
     # woods. Not the last move's amber, never a fill: a sent move and an unsent one are
     # two kinds of mark, not two shades of one.
     "held": "#0c2e20", "held-halo": "#fff8ea",
+    # Two pieces of a game in rounds in a standoff (schema 26, Q918c; Q940): a link between
+    # their squares, cased in `held-halo` as the held move's arrow is, but never the held
+    # move's pine, so a held move and a standoff are two marks. An umber for one void round
+    # between them (a second in a row bars the pair) and a cobalt once the pair is barred:
+    # apart from the pine and from each other in lightness and on the blue-yellow axis, so
+    # under every simulated colour blindness too; each holds 4.5 : 1 on the casing, where
+    # the run's *1* is written (`FLOORS`).
+    "standoff-run": "#8a4a00", "standoff-bar": "#1d3f8a",
     # The board dimmed behind a choice drawn over it (Q765: what a promoting piece
     # becomes), so the card is the one lit thing in the reader's eye line.
     "scrim": "rgba(30, 20, 10, .6)",
@@ -265,6 +273,7 @@ DARK: dict[str, str] = {
     "grain-lt-a": ".2", "grain-dk-a": ".16",
     "dot": "#1e140c",
     "held": "#0a2519", "held-halo": "#f3e9d6",
+    "standoff-run": "#7f4400", "standoff-bar": "#1a3a80",
     "scrim": "rgba(0, 0, 0, .6)",
     "p0": "#f0ede7", "p1": "#3b3f45", "p2": "#8f6a2f", "p2-ink": "#f4f2ee",
     "portal-stone": "#9b948a",
@@ -330,6 +339,10 @@ FLOORS: tuple[tuple[str, str, float], ...] = (
     ("portal-edge", "portal-stone", 4.5),
     # A pair's well (Q838b): its hue against the keyline that rings it.
     *((f"pair-{n}", "portal-edge", 3.0) for n in range(1, 5)),
+    # A standoff's link (Q940): each colour against the casing it is drawn on, where the
+    # run's *1* is written in it.
+    ("standoff-run", "held-halo", 4.5),
+    ("standoff-bar", "held-halo", 4.5),
     # A wild piece's walk (Q852): each hue against the casing it is drawn on.
     *((f"walk-{n}", "walk-edge", 3.0) for n in range(1, 5)),
     # A member's mark (R3): each of its eight hues, a graphic, on the page and a panel.

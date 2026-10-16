@@ -1388,3 +1388,63 @@ def test_a_board_with_no_ranks_is_left_to_the_board_check() -> None:
     errors = validate_spec(spec)
     assert "board.height must be between 2 and 16, got 1" in errors
     assert not [e for e in errors if "is not a rank on this board" in e], errors
+
+
+# ----------------------------- F-spec-last (Q946): the last 11 missing `spec/` tests, `spec.md`
+
+
+@pytest.mark.parametrize("value", [True, "3", 2.5])
+def test_extinction_min_count_that_is_not_an_integer_is_refused_not_raised_on(value: Any) -> None:
+    errors = validate_spec(_patched(BASE, {"rules.extinction": {"pieces": ["R"], "min_count": value}}))
+    assert "rules.extinction.min_count must be an integer between 1 and 64" in errors, errors
+
+
+@pytest.mark.parametrize("value", [True, "3", 2.5])
+def test_territory_win_at_that_is_not_an_integer_is_refused_not_raised_on(value: Any) -> None:
+    errors = validate_spec(_patched(BASE, {"rules.territory": {"mode": "repaint", "win_at": value}}))
+    assert "rules.territory.win_at must be a non-negative integer" in errors, errors
+
+
+def test_a_drop_restriction_after_an_absent_one_is_still_checked() -> None:
+    # `no_doubled` is absent, so the loop must go on to `no_mate`, not stop there.
+    errors = validate_spec(_patched(BASE, {"rules.drops": {"no_mate": ["Z"]}}))
+    assert "rules.drops.no_mate entry 'Z' is not a declared piece" in errors, errors
+
+
+def test_a_malformed_wrap_by_player_does_not_stop_the_later_axes() -> None:
+    errors = validate_spec(
+        _patched(BASE, {"rules.wrap": {"files_by_player": "left", "ranks": "x"}})
+    )
+    assert "rules.wrap.files_by_player must be an object keyed by '0' and '1'" in errors, errors
+    assert any(e.startswith("rules.wrap.ranks must be one of") for e in errors), errors
+
+
+def test_a_non_integer_board_side_stops_the_wall_checks() -> None:
+    # The board check refuses the height; the wall check must not also try to read a
+    # square against it (parse_square would compare a rank to the string '8').
+    spec = _patched(BASE, {"board.height": "8", "rules.obstacles": {"squares": ["d4"]}})
+    errors = validate_spec(spec)
+    assert any(e.startswith("board.height") for e in errors), errors
+
+
+def test_a_non_integer_board_side_stops_the_wild_route_checks() -> None:
+    spec = _patched(
+        BASE, {"board.height": "8", "rules.npcs": [{"piece": "R", "route": ["b2", "c2"]}]}
+    )
+    errors = validate_spec(spec)
+    assert any(e.startswith("board.height") for e in errors), errors
+
+
+def test_a_whole_valued_float_for_facing_axes_is_refused() -> None:
+    # 4.0 == 4, so a bare membership test accepts it; the spelling has to be an integer.
+    errors = validate_spec(_patched(BASE, {"pieces.1.facing": {"axes": 4.0}}))
+    assert "pieces[1].facing.axes must be one of 2, 4" in errors, errors
+
+
+def test_a_placement_for_player_zero_point_zero_still_holds_its_square() -> None:
+    # 0.0 passes `player in (0, 1)`; under the default mirror it is filed with player 0,
+    # and c1 is already the king's.
+    spec = copy.deepcopy(BASE)
+    spec["setup"]["placements"].append({"piece": "R", "player": 0.0, "squares": ["c1"]})
+    errors = validate_spec(spec)
+    assert "setup.placements[2].squares 'c1' is already occupied by 'K'" in errors, errors

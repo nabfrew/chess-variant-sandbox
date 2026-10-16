@@ -75,6 +75,34 @@ def _lab(rgb: tuple[float, float, float]) -> tuple[float, float, float]:
     return 116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))
 
 
+# Machado, Oliveira and Fernandes (2009), severity 1, applied to linear RGB: the colours a
+# reader with protanopia or deuteranopia sees.
+_CVD: dict[str, tuple[tuple[float, float, float], ...]] = {
+    "protanopia": ((0.152286, 1.052583, -0.204868), (0.114503, 0.786281, 0.099216),
+                   (-0.003882, -0.048116, 1.051998)),
+    "deuteranopia": ((0.367322, 0.860646, -0.227968), (0.280085, 0.672501, 0.047413),
+                     (-0.011820, 0.042940, 0.968881)),
+}
+
+
+def _seen(rgb: tuple[float, float, float],
+          matrix: tuple[tuple[float, float, float], ...] | None) -> tuple[float, float, float]:
+    """`rgb` as a reader with that colour blindness sees it (`None`: as it is)."""
+    if matrix is None:
+        return rgb
+
+    def linear(c: float) -> float:
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    def gamma(c: float) -> float:
+        c = min(1.0, max(0.0, c))
+        return 12.92 * c if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055
+
+    flat = [linear(c) for c in rgb]
+    return tuple(gamma(sum(m * c for m, c in zip(row, flat, strict=True)))  # type: ignore[return-value]
+                 for row in matrix)
+
+
 def _delta_e(one: tuple[float, float, float], two: tuple[float, float, float]) -> float:
     """CIE76: the straight distance between two colours in CIELAB."""
     return float(sum((p - q) ** 2 for p, q in zip(_lab(one), _lab(two), strict=True)) ** 0.5)
@@ -248,6 +276,41 @@ class TestContrast:
             assert theme["held"] != theme["act"], dark
             apart = _delta_e(_rgb(theme["held"]), _rgb(theme["hl-last"]))
             assert apart >= 40, (dark, round(apart, 1))
+
+    def test_a_standoff_is_not_a_held_move(self) -> None:
+        """Q940: a held move, a void run's link and a barred pair's link are three marks in
+        three colours, each pair far apart in both themes, as seen and under simulated
+        protanopia and deuteranopia (Machado et al. 2009, severity 1), so neither a reader nor
+        the look check takes a held move for a standoff, or one standoff for the other."""
+        names = ("held", "standoff-run", "standoff-bar")
+        for dark in (False, True):
+            theme = _theme(dark)
+            for one, two in ((a, b) for i, a in enumerate(names) for b in names[i + 1:]):
+                for seen in (None, *_CVD.values()):
+                    apart = _delta_e(_seen(_rgb(theme[one]), seen), _seen(_rgb(theme[two]), seen))
+                    assert apart >= 30, (dark, one, two, seen is not None, round(apart, 1))
+
+    def test_each_mark_kind_paints_its_own_token(self) -> None:
+        """Q940: the look check knows a mark kind by the token it paints in, so no two of
+        `MARK_KINDS`' rows share one, but for the wild piece's two coming steps (one arrow
+        drawn fainter), and none paints in a token the board draws something that is not a
+        kind in (the held move's `--held`)."""
+        from page_text import WRAPPED
+
+        table = WRAPPED[WRAPPED.index("const MARK_KINDS = {"):]
+        table = table[:table.index("\n};\n")]
+        rows = dict(re.findall(r"^  (\w+): \{ colour: 'var\((--[\w-]+)\)'", table, re.M))
+        assert {"voidRun", "barred", "check", "goal", "coming"} <= rows.keys()
+        shared = {"coming", "comingThen"}
+        seen: dict[str, str] = {}
+        for kind, token in rows.items():
+            assert token not in ("--held", "--held-halo"), kind
+            if kind in shared:
+                continue
+            assert token not in seen, (kind, seen.get(token), token)
+            seen[token] = kind
+        for token in set(rows.values()):
+            assert token[2:] in tokens.LIGHT, token
 
     def test_a_coming_arrow_is_none_of_the_other_marks(self) -> None:
         """One colour, one meaning: the arrow is told apart from every other thing the

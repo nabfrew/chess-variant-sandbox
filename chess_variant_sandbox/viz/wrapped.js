@@ -854,17 +854,20 @@ const MARK_KINDS = {
   // (`voidRun`, dashed, a "1" at its middle) and after two in a row (`barred`, solid, a bar
   // across it), when that pair of moves is not offered until either square changes. Drawn
   // between the two squares from the core's state (`standoffLine`, the round's `voidRun`
-  // and `bars`), never on a square; the rows are the legend's.
-  voidRun: { colour: 'var(--held)', shape: 'link', name: 'dashed link', ink: 'var(--ink)',
+  // and `bars`), never on a square; the rows are the legend's. Each in a colour of its own,
+  // neither the held move's `--held` nor the other's (Q940): a kind is told by its colour,
+  // by a reader and by the look check, which read a held move as both kinds while they
+  // shared it.
+  voidRun: { colour: 'var(--standoff-run)', shape: 'link', name: 'dashed link', ink: 'var(--ink)',
              label: 'one void round between these two: a second in a row bars those moves' },
-  barred: { colour: 'var(--held)', shape: 'link', barred: true, name: 'barred link',
+  barred: { colour: 'var(--standoff-bar)', shape: 'link', barred: true, name: 'barred link',
             ink: 'var(--ink)',
             label: 'two void rounds in a row: neither may take the other that way until one of the squares changes' },
 };
 
 // A standoff's link between the middles of two squares, `(x1, y1)` and `(x2, y2)`, in the
-// look of the mark kind `kind` (`voidRun` or `barred`): a dark line cased in `--held-halo`,
-// so it reads on both woods as the held move's arrow does; dashed with a "1" for a run of
+// look of the mark kind `kind` (`voidRun` or `barred`): a line in the kind's own colour cased
+// in `--held-halo`, so it reads on both woods as the held move's arrow does; dashed with a "1" for a run of
 // one void round, solid with a bar across its middle once the pair is barred.
 function standoffLine(x1, y1, x2, y2, cell, kind) {
   const f = n => n.toFixed(3);

@@ -404,7 +404,7 @@ class TestTheOtherSurfaces:
         (move,) = _moves_between(engine, state, "e4", "d5")
         text = engine.describe_move(state, move)
         expected = {"rifle": "(stays)", "circe": "(reborn d7)", "andernach": "(changes sides)"}
-        assert expected[name] in text, text
+        assert text == f"Pe4xd5 {expected[name]}", text
 
     @pytest.mark.parametrize("name", SHOWCASES)
     def test_it_is_charged_and_has_a_distance_from_chess(

@@ -460,7 +460,7 @@ class TestTheMoveWord:
             move = encode_move(200, 255, MOVE_PROMOTION, 31, landing)
             assert decode_move(move) == (200, 255, MOVE_PROMOTION, 31)
             assert move_promotion(move) == 31 and move_landing(move) == landing
-        assert encode_move(3, 9) == encode_move(3, 9, landing=0)
+        assert encode_move(3, 9) == 3 | 9 << 8 == encode_move(3, 9, landing=0)
 
 
 class TestTheCorePlaysIt:

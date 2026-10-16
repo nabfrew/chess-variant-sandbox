@@ -23,6 +23,12 @@ fn pool(threads: usize) -> rayon::ThreadPool {
 }
 
 /// Count leaf nodes at `depth`, splitting the root moves across threads.
+///
+/// The split must answer what `Game::perft_stop` answers on one thread, root included:
+/// under `stop_at_terminal` a root that is already decided has no leaves. Until Q945 the
+/// split went straight to the root's moves, so a root decided by an ending some move
+/// undoes (an arrival taken off its square, a clock a capture resets) counted its live
+/// children on several threads and nothing on one.
 pub fn perft(t: &Tables, snapshot: &Snapshot, depth: u32, threads: usize, stop_at_terminal: bool) -> u64 {
     let mut game = Game::from_snapshot(t, snapshot);
     // Schema 26 (Q918a): a joint perft, every pair of legal moves a round, serially.
@@ -35,6 +41,10 @@ pub fn perft(t: &Tables, snapshot: &Snapshot, depth: u32, threads: usize, stop_a
             return game.perft_stop(&mut arena, depth, true);
         }
         return game.perft(&mut arena, depth);
+    }
+    // The root's half of `perft_stop`; an empty move list sums to 0 below, as it does there.
+    if stop_at_terminal && game.terminal_prefix().is_some() {
+        return 0;
     }
 
     let mut roots = Vec::new();

@@ -175,6 +175,56 @@ def test_three_check_stops_on_the_third_check() -> None:
     assert engine.perft(state, 3, stop_at_terminal=True) == 12_407
 
 
+def _decided_roots() -> list[Any]:
+    """Positions the game has already ended in, by an ending one of the side to move's
+    moves would undo.
+
+    That second half is what makes them a test. An ending that outlives every move (a
+    royal on its goal square, a banked third check) ends each child too, so a count
+    that skips the root's own ending still finds nothing under it. Here some children
+    are live: the arrival's piece can be taken off its goal square, and a capture
+    resets the no-progress clock that has just run out.
+    """
+    arrival = engine_for("rps-v3")
+    taken_off_the_goal = arrival.make_state(
+        {"e9": ("R", 0), "a1": ("S", 0), "e8": ("P", 1), "i5": ("R", 1)},
+        side_to_move=1,
+    )
+    clock = engine_for("kingofthehill")
+    run_out = clock.make_state(
+        {"a1": ("K", 0), "g7": ("R", 0), "h8": ("K", 1), "b7": ("P", 1)},
+        side_to_move=1,
+        moved=["a1", "g7", "h8"],
+        halfmove=100,
+        ply=120,
+    )
+    return [
+        pytest.param(arrival, taken_off_the_goal, id="arrival"),
+        pytest.param(clock, run_out, id="no-progress-clock"),
+    ]
+
+
+@pytest.mark.parametrize(("engine", "state"), _decided_roots())
+@pytest.mark.parametrize("depth", [1, 2, 3])
+def test_threads_never_change_a_perft_at_a_decided_root(
+    engine: Engine, state: Any, depth: int
+) -> None:
+    """A position that is already over has no leaves under ``stop_at_terminal``, on
+    one thread or four (CLAUDE.md: *threads never change an answer*).
+
+    The serial count asks the root's ending first; the split across threads used to go
+    straight to the root's moves and count every child, so ``threads=4`` answered a
+    different number from ``threads=1`` (Q945, the engine mutation report's side
+    finding 1). The plain perft is asked too, so the root is known to have moves to
+    count and the zero is the ending's, not an empty list's.
+    """
+    assert engine.terminal(state) is not None
+    assert engine.legal_moves(state)
+    assert engine.perft(state, depth, threads=1) == engine.perft(state, depth, threads=4) > 0
+    assert engine.perft(state, depth, threads=1, stop_at_terminal=True) == 0
+    assert engine.perft(state, depth, threads=4, stop_at_terminal=True) == 0
+
+
 # ---------------------------------------------------------------------- probes ----
 #
 # Rulesets that pin one schema-2 feature each and are not worth committing as games.

@@ -696,3 +696,15 @@ class TestWhereAPromotingPieceMayBeDropped:
         (error,) = _entry_errors(rules, **spec_extra)
         assert "Q may not be dropped on rank 4" in error
         assert "never reaches a hand" not in error
+
+
+def test_a_piece_with_no_id_is_passed_over_not_a_key_error() -> None:
+    """F-spec-last (Q946): `_never_in_a_hand` reads a spec the validator is still collecting
+    errors on, so a piece with no `id` is skipped, not looked up."""
+    from chess_variant_sandbox.spec.schema import _never_in_a_hand
+
+    spec = {"pieces": [{"id": "P"}, {"moves": []}, {"id": "Q", "promoted_from": "P"}]}
+    reason = _never_in_a_hand(spec, {}, {"from_captures": False}, "P")
+    assert reason is not None and "from_captures is false" in reason
+    # and the walk past it, with captures on, answers rather than raising
+    _never_in_a_hand(spec, {}, {}, "P")

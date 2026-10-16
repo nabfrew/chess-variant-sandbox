@@ -1680,12 +1680,19 @@ class TestParseSquareStaysOnTheBoard:
             ("", None),
             ("a", None),
             ("1a", None),
+            ("ab", None),
         ],
     )
     def test_the_edges_of_an_eight_by_eight_board(self, square: str, expected) -> None:
         from chess_variant_sandbox.spec.schema import parse_square
 
         assert parse_square(square, 8, 8) == expected
+
+    def test_a_route_with_no_readable_square_does_not_end_the_list(self) -> None:
+        from chess_variant_sandbox.spec.schema import npc_routes
+
+        rules = {"npcs": [{"piece": "R", "route": ["z9"]}, {"piece": "R", "route": ["b2", "c2"]}]}
+        assert npc_routes(rules, 5, 5) == [("rules.npcs[1]", (6, 7))]
 
     def test_a_placement_on_rank_zero_or_past_the_top_is_refused(self) -> None:
         for square in ("a0", "a5"):
