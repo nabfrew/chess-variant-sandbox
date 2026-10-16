@@ -25,6 +25,17 @@ When a sent move lands that makes it the other person's move, and only then:
 Nothing else sends one: not a challenge, a draw offer, a game's end, the five days running
 low or a game that waits. There is no reminder and no digest.
 
+## A game in rounds (Q918f)
+
+Both players owe a move from the moment a round opens, and a sent move is a seal, so the
+email goes to the other player on each seal, never to the one who sealed, on the same
+conditions as above: *their move is in*, naming no move, while the round is open; the
+round's result (both moves and what came of them, the core's words) when the seal revealed
+it, since the round that opens makes it their move again. The key is the game's length,
+which in a game in rounds is the round's first ply, per recipient: a person mailed that a
+round was revealed is not mailed again in that round that the other's move is in, so it is
+still one email a turn.
+
 ## A failed send never blocks a move
 
 `due` writes its row inside the move's transaction and returns the message; the server
@@ -48,6 +59,7 @@ from datetime import timedelta
 from typing import Any
 
 from chess_variant_sandbox.site import browse, identity, mail, matches, quota, rating
+from chess_variant_sandbox.site.mail import RoundSaid
 
 OPEN_FOR = timedelta(minutes=1)
 """How recently a player must have read a running match for it to count as open (§1.5)."""
@@ -141,19 +153,31 @@ class Due:
 
 
 def due(
-    connection: Any, match_id: str, mover: int, snapshot: dict[str, Any]
+    connection: Any,
+    match_id: str,
+    mover: int,
+    snapshot: dict[str, Any],
+    before: int | None = None,
 ) -> Due | None:
     """The move email this move sends, written down, or None when it sends none.
 
     `mover` is the seat that just moved and `snapshot` the position after it, whose side
     to move is the engine's. Every condition is the module's list; the row is written
-    under the cap's lock, and `(match, ply)` makes a second one for the same move
-    impossible.
+    under the cap's lock, and `(match, recipient, ply)` makes a second one for the same
+    turn impossible.
+
+    In a game in rounds (`snapshot` has a `round`, Q918f) the move was a seal, and the
+    email goes to the other player, never the one who sealed: *their move is in* (no move
+    named) when the round is still open, or the round's result when this seal revealed it
+    (`before`, the game's length before the seal, is shorter than it is now), since that
+    opens the next round and so makes it their move again.
     """
     found = matches.row(connection, match_id)
-    after = snapshot.get("sideToMove")
+    rounds = "round" in snapshot
+    after = 1 - mover if rounds else snapshot.get("sideToMove")
     if not found.running or after not in (0, 1) or after == mover:
         return None
+    revealed = rounds and before is not None and found.plies > before
     recipient = found.player(int(after)).user
     if recipient is None:
         return None
@@ -187,20 +211,37 @@ def due(
         to=str(email),
         game=browse.names(connection, [found.game]).get(found.game) or "a game",
         opponent=identity.handle_of(connection, moved_by or 0) or identity.FORMER,
-        played=played or "a move",
+        played=None if rounds else (played or "a move"),
         link=f"{site}/#/play/{found.id}",
         off=f"{site}/mail/off/{token}",
+        revealed=_round_said(history, int(after)) if revealed else None,
     )
     with connection.cursor() as cursor:
         cursor.execute(
             "insert into move_emails (match, recipient, ply) values (%s, %s, %s)"
-            " on conflict (match, ply) do nothing returning id",
+            " on conflict (match, recipient, ply) do nothing returning id",
             (found.id, recipient, found.plies),
         )
         written = cursor.fetchone()
     if written is None:
         return None
     return Due(id=int(written[0]), message=message)
+
+
+def _round_said(history: list[dict[str, Any]], reader: int) -> RoundSaid:
+    """The round just revealed, for the email to `reader`: its number, each move from the
+    reader's side (*you played*, *they played*) and the round's sentences, all the core's
+    as the reveal recorded them (`web.play.round_reveal`), none worked out here."""
+    pair = history[-2:]
+    mine = next((entry for entry in pair if entry.get("player") == reader), {})
+    theirs = next((entry for entry in pair if entry.get("player") != reader), {})
+    reveal = pair[-1].get("reveal") or {} if pair else {}
+    return RoundSaid(
+        number=int(pair[-1].get("round", 0)) + 1 if pair else 0,
+        yours=str(mine.get("text") or "a move"),
+        theirs=str(theirs.get("text") or "a move"),
+        words=tuple(str(line) for line in reveal.get("words") or ()),
+    )
 
 
 def failed(connection: Any, row: int, why: str) -> None:

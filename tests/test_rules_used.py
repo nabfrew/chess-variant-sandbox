@@ -38,6 +38,8 @@ COSTS: dict[str, float] = {
     "explode_on_capture": 1.5, "forbid_immobility": 1.0, "scoring": 1.5, "territory": 2.5,
     "turn": 1.0, "wrap": 1.5, "obstacles": 1.0, "strike": 2.0, "contacts": 2.5,
     "npcs": 2.5, "promote_on_entry": 1.0, "portals": 2.5,
+    # Schema 26 (Q918a); its first library specs are Q918e's showcases.
+    "simultaneous": 3.0,
 }
 DEFAULTS = {"win": "checkmate", "stalemate": "draw", "checkmate": "loss", "royal_facing": "allowed"}
 
@@ -46,11 +48,14 @@ def _stated_and_live(key: str, value: Any) -> bool:
     """Whether a rule is one a player is told: the plain reading, not `complexity`'s code.
 
     A flag or block counts when it is present, not false or empty, and not the default.
-    Four keys have a spelling that is present and still no rule, and each is read here
+    Four keys have a spelling that is present and still no rule (and `simultaneous` one that
+    is empty and still the rule), and each is read here
     the short way, which is enough for what the committed specs state.
     """
     if key in DEFAULTS:
         return bool(value != DEFAULTS[key])
+    if key == "simultaneous":
+        return isinstance(value, dict)  # `{}` is the whole rule (the default tie), not none
     if key == "turn":
         return isinstance(value, dict) and (
             value.get("moves", 1) > 1 or any(length > 1 for length in value.get("ramp", []))

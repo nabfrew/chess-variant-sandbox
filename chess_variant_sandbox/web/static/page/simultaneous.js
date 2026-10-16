@@ -122,6 +122,7 @@ function roundStatusHtml() {
     return `${number}<b>${esc(held.text)}</b> is your choice, not sealed yet. You can change
       it until you seal it.`;
   }
+  if (SESSION.correspondence) return roundCorrStatusHtml(number);
   const seat = round.choosing;
   if (seat === null || seat === undefined) return number;
   const other = 1 - seat;
@@ -135,14 +136,51 @@ function roundStatusHtml() {
   return `${number}${seatDot(seat)}${who(seat)} to choose. ${theirs}${note}`;
 }
 
+// The strip in a game in rounds between two people at two screens (Q918f): the round, the
+// reader's own sealed move if it is in (the server gives it to its own seat alone), whether
+// the other's is in (a boolean: never which), when the last round was revealed, the
+// server's sentence of the time left, and a draw offer. Nothing here is worked out: the
+// round's state is the snapshot's and the sentences are the server's.
+function roundCorrStatusHtml(number) {
+  const round = SESSION.round;
+  const between = SESSION.correspondence;
+  const you = between.you;
+  const left = between.toMove ? ` ${esc(between.toMove)}` : '';
+  if (you === null || you === undefined) {
+    return `${number}${esc(between.players[0])} and ${esc(between.players[1])} choose.${left}`;
+  }
+  const other = esc(between.players[1 - you]);
+  const offer = between.drawOffer === null || between.drawOffer === undefined ? ''
+    : between.drawOffer === you ? ' You have offered a draw.' : ` ${other} offers a draw.`;
+  const when = (between.times || [])[SESSION.history.length - 1];
+  const fact = SESSION.history.length
+    ? ` Round ${round.number - 1} was revealed${when ? ' ' + esc(corrAgoWords(when)) : ''}.`
+    : '';
+  if (round.yours) {
+    return `${number}<b>Your move is sealed:</b> ${esc(round.yours.text)}. ${other} has not
+      sealed theirs yet.${fact}${left}${offer}`;
+  }
+  const theirs = round.sealed[1 - you] ? ` ${other} has sealed a move, unseen.` : '';
+  const note = NOTE ? `<span class="frame-note">${esc(NOTE)}</span>` : '';
+  return `${number}<b>Your move.</b>${theirs}${fact}${left}${offer}${note}`;
+}
+
 // The slot under the board in a game in rounds with a person in it: *Seal my move* and
 // *Change my move* while a move is held; else what to do, and what the last round did.
+// Between two people at two screens (Q918f), a sealed move waits for the other's: the
+// slot says so, and that the page can be closed.
 function drawRoundSend(slot) {
   if (SESSION.outcome || AT) {
     const words = lastRoundWords();
     slot.hidden = !words;
     slot.classList.toggle('held', false);
     slot.innerHTML = words ? `<div class="send-says">${words}</div>` : '';
+    return;
+  }
+  const between = SESSION.correspondence || null;
+  if (between && (between.you === null || between.you === undefined)) {
+    slot.hidden = true;
+    slot.textContent = '';
     return;
   }
   slot.hidden = false;
@@ -156,6 +194,10 @@ function drawRoundSend(slot) {
     row = `<button id="sealHeld" class="primary send-big" title="seal it (Enter)">Seal my
       move</button><button id="changeHeld" class="send-change" title="put it back (Esc)"
       >Change my move</button>`;
+  } else if (between && between.you !== null && SESSION.round.yours) {
+    const other = esc(between.players[1 - between.you]);
+    says = `<b>Your move is sealed.</b> It is revealed with ${other}'s, once theirs is
+      in.<span class="more"> You can close this page.</span>`;
   } else {
     const words = lastRoundWords();
     says = words || `<b>Choose your move</b> on the board, then press <b>Seal my move</b>.<span
@@ -182,15 +224,20 @@ function lastRoundWords() {
 
 // ----- choosing and sealing
 
-// A move picked on the board, held until it is sealed.
+// A move picked on the board, held until it is sealed. Between two people at two screens
+// it is kept in this browser as an unsent move is (Q733, `keepHeld`), so leaving the page
+// and coming back finds it still held, still unsealed.
 function roundHold(move) {
   CORR_HELD = move;
+  const entry = SESSION.correspondence ? corrHeldEntry() : null;
+  if (entry) keepHeld(SESSION.id, SESSION.history.length, entry);
   drawStatus();
   drawBoard();
 }
 
 function roundPutBack() {
   if (ROUND_SENDING) return;
+  if (SESSION && SESSION.correspondence) forgetHeld(SESSION.id);
   CORR_HELD = null;
   SELECTED = null;
   DROP = null;
@@ -201,7 +248,10 @@ function roundPutBack() {
 
 // The held move, sealed. Against the computer the round is revealed in the same answer,
 // its move having been sealed as the round opened; between two people at one screen the
-// answer asks the other for theirs.
+// answer asks the other for theirs. Between two people at two screens (Q918f) the answer
+// is the reader's: their move sealed and waiting, or the round revealed if the other's was
+// in, and it goes through `corrApply`, which redraws the offer and cancel and starts the
+// asking for the other's move.
 function roundSeal() {
   const move = CORR_HELD;
   if (move === null || ROUND_SENDING || !SESSION) return;
@@ -213,6 +263,11 @@ function roundSeal() {
       ROUND_SENDING = false;
       if (!SESSION || SESSION.id !== id) return;
       CORR_HELD = null;
+      if (SESSION.correspondence) {
+        forgetHeld(id);
+        corrApply(fresh);
+        return;
+      }
       applySnapshot(fresh);
     })
     .catch(error => {

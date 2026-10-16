@@ -1337,6 +1337,10 @@ STORE: dict[str, tuple[str, ...]] = {
         # `0035_draw_offers.sql`, Q790. Every draw offer made on the row, with the core's
         # judgement where the computer answered it.
         "draw_offers",
+        # `0036_sealed_moves.sql`, Q918f. The one move sealed in a round between two
+        # people not yet revealed: its seat, the move and when; read by
+        # `site/correspondence.py` alone.
+        "sealed_move",
     ),
     "votes": ("voter", "game", "stars", "tags", "note", "updated"),
     "jobs": (

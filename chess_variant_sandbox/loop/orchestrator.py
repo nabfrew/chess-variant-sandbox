@@ -35,7 +35,7 @@ from chess_variant_sandbox.loop.gates import smoke_test
 from chess_variant_sandbox.loop.grid import describe_cell, descriptor, label
 from chess_variant_sandbox.loop.operators import mutate
 from chess_variant_sandbox.loop.preference import PreferenceLog
-from chess_variant_sandbox.loop.screen import screen
+from chess_variant_sandbox.loop.screen import roster_for, screen
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS, load_weights, score_ruleset
 from chess_variant_sandbox.metrics.bootstrap import clears
 from chess_variant_sandbox.spec.canonical import load_spec, spec_hash
@@ -782,10 +782,12 @@ def measure(
             "screen", 0.0
         )
     started = time.perf_counter()
+    # A game in rounds is played by the round players at the same budgets (Q932,
+    # `screen.round_roster`); the screen has already refused a roster that has none.
     tournament = run_tournament(
         spec,
         TournamentConfig(
-            agents=config.agents,
+            agents=roster_for(spec, config.agents),
             games_per_pairing=config.games_per_pairing,
             seed=config.seed,
             workers=config.workers,

@@ -239,7 +239,7 @@ class PremiseBasis:
         plays one (`corpus.fits_its_roster`), the score's rule exactly (Q912)."""
         from chess_variant_sandbox import corpus
 
-        roster = tuple(corpus.canonical_agents(digest) if agents is None else agents)
+        roster = tuple(corpus.canonical_agents(digest, spec=spec) if agents is None else agents)
         score = Basis.current(
             ruleset_hash=digest,
             weights_version="",

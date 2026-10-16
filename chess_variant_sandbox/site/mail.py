@@ -202,8 +202,26 @@ def invitation(to: str, link: str, inviter: str | None = None, days: int = 14) -
     )
 
 
+@dataclass(frozen=True)
+class RoundSaid:
+    """A round of a game in rounds, revealed, as the move email tells it (Q918f): its
+    number, the reader's move and the other's, and the round's sentences (the core's
+    events in words, `web.play.round_reveal`); none when both moves did what they said."""
+
+    number: int
+    yours: str
+    theirs: str
+    words: tuple[str, ...] = ()
+
+
 def your_move(
-    to: str, game: str, opponent: str, played: str, link: str, off: str
+    to: str,
+    game: str,
+    opponent: str,
+    played: str | None,
+    link: str,
+    off: str,
+    revealed: RoundSaid | None = None,
 ) -> Message:
     """The move email (Q572, `docs/plan-return.md` §1.5, s6 of the mock).
 
@@ -212,12 +230,32 @@ def your_move(
     POST beside it, so a mail program's own *unsubscribe* works too. Nothing else: no
     time left, no other game, no count. Built only for a person who switched it on
     (`site/move_email.py`).
+
+    In a game in rounds (Q918f) there is no move to name while the round is open:
+    `played` is None and the email says the other's move is in, sealed. `revealed` is the
+    round the reader's own seal was waiting on, now revealed, and the email says what both
+    moves were and what came of them.
     """
+    if revealed is not None:
+        said = " ".join(revealed.words)
+        opening = (
+            f"Round {revealed.number} of your game of {game} against {opponent} is "
+            f"revealed: you played {revealed.yours} and {opponent} played "
+            f"{revealed.theirs}.{' ' + said if said else ''} It's your move for the next "
+            "round:\n\n"
+        )
+    elif played is None:
+        opening = (
+            f"{opponent}'s move is in, sealed, in your game of {game}. It's your move: "
+            "seal yours, and both are made at once:\n\n"
+        )
+    else:
+        opening = f"{opponent} played {played} in your game of {game}. It's your move:\n\n"
     return Message(
         to=to,
         subject=f"Your move: {game} against {opponent}",
         body=(
-            f"{opponent} played {played} in your game of {game}. It's your move:\n\n"
+            f"{opening}"
             f"    {link}\n\n"
             "You get this because you switched on move emails: one email each time it "
             "becomes your move in a game against another person, and nothing else. "

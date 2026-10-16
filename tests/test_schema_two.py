@@ -571,6 +571,16 @@ def test_every_committed_ruleset_plays_a_game_through(path: Path) -> None:
     )
     rng = random.Random(7)
     state = engine.initial_state()
+    if engine.simultaneous:
+        # Schema 26 (Q918e, its first library specs): ten rounds, both players' moves at once.
+        for _ in range(10):
+            if engine.terminal(state) is not None:
+                break
+            first = rng.choice(engine.legal_moves_for(state, 0))
+            second = rng.choice(engine.legal_moves_for(state, 1))
+            state = engine.apply_round(state, first, second)
+            assert state.key == engine._compute_hash(state), f"{path.stem} hash drifted"
+        return
     for _ in range(20):
         moves = engine.legal_moves(state)
         if engine.terminal(state, moves) is not None:

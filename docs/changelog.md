@@ -13,9 +13,17 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-15
 
+### Play a game in rounds against a friend, a round at a time
+
+A game where both players move at once can now be played against another member by correspondence, like any other game between two people. Each round you choose your move and seal it; your opponent sees only that your move is in, never which, until theirs is in too, and then both are made at once. A sealed move is final, so the board lets you change your mind until you press *Seal my move*. If you switched on move emails, you get one when your opponent's move is in and one telling you how each round went. Each round has five days: whoever has not sealed by then loses, and if neither of you has, the game is drawn.
+
+### Previews: four games where both players move at once
+
+The games page has a new tab, *Previews*, with four games played in rounds: three versions of Gardner's five by five minichess, and the watering hole, a new game on a seven by seven board where elephants, cats, dogs and rats race for the water hole in the middle and every animal eats exactly one kind of the other side's. The watering hole is the one we think plays best. Each carries a *Preview* label: a new kind of game, still being tested. You can play any of them against the computer, at five strengths, or watch two computer players. For now every game on a preview is practice: previews have no leaderboard, are kept out of the library's rankings and comparisons, and their scores are a first reading, not yet trusted.
+
 ### Games where both players move at once
 
-A game can now be played in rounds: both players choose a move in secret, the two moves are revealed together, and then both are made. When two pieces land on the same square, the game's own table decides which survives, or whether both are lost. The play page shows both moves arriving together, explains each clash, and marks a capture that has been barred for repeating. The computer opponent chooses its move without seeing yours, and two people can also play at one screen. You can try it from the designer by turning on *both players move at once*. Games built around this rule will come later.
+A game can now be played in rounds: both players choose a move in secret, the two moves are revealed together, and then both are made. When two pieces land on the same square, the game's own table decides which survives, or whether both are lost. The play page shows both moves arriving together, explains each clash, and marks a capture that has been barred for repeating. The computer opponent chooses its move without seeing yours, and two people can also play at one screen. You can try it from the designer by turning on *both players move at once*, or play the four previews below.
 
 ### The rules guide matches what the site accepts
 

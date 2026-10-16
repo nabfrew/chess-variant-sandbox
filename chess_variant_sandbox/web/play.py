@@ -231,6 +231,15 @@ class Session:
     pending: list[int | None] = field(default_factory=lambda: [None, None])
     pending_depths: list[int | None] = field(default_factory=lambda: [None, None])
 
+    # Schema 26 by correspondence (Q918f, `site/correspondence.py::snapshot_for`): the seat
+    # this snapshot is drawn for, when each of two people reads the game at their own
+    # screen; -1 for a reader in neither seat, None everywhere else (one screen, the local
+    # application, a game against the computer). The board then offers that seat's moves
+    # alone, whatever the other has done. `sealed_unseen` is each seat whose move the store
+    # holds sealed and did not give this session: the reader learns it is in, never which.
+    viewer: int | None = None
+    sealed_unseen: tuple[bool, bool] = (False, False)
+
     @property
     def engine(self) -> Any:
         return engine_for(self.game.spec)
@@ -705,7 +714,14 @@ class Session:
 
         Against the computer that is the person, every round. Between two people at one
         screen it is the first player, then the second, and neither is shown the other's.
+        Between two people at two screens (`viewer`, Q918f) it is the reader, while their
+        own move is not in, and nobody once it is.
         """
+        if self.viewer is not None:
+            seat = self.viewer
+            if seat not in (0, 1) or self.pending[seat] is not None:
+                return None
+            return None if self.sealed_unseen[seat] else seat
         for seat in (0, 1):
             if self.seats[seat] == HUMAN and self.pending[seat] is None:
                 return seat
@@ -722,20 +738,29 @@ class Session:
             if self.seats[seat] != HUMAN and self.pending[seat] is None
         ]
         # The seat the strip names: a computer still choosing first, since the board waits
-        # on it, then the person choosing.
+        # on it, then the person choosing. A reader at their own screen whose move is in
+        # is waiting on the other seat, which the strip names instead (Q918f).
         mover = owing[0] if owing else choosing if choosing is not None else 0
+        reader = self.viewer if self.viewer in (0, 1) else None
+        if reader is not None and choosing is None:
+            mover = 1 - reader
         legal = (
             engine.legal_moves_for(self.state, choosing)
             if choosing is not None and not owing else []
         )
         run = self.state.void_run
         sim = engine.spec.simultaneous
+        mine = self.pending[reader] if reader is not None else None
         block = {
             # Rounds revealed so far, and this one's number, counted from one.
             "number": len(self.played) // 2 + 1,
             # Who has sealed this round. A boolean a seat: the move itself is never sent
-            # before the reveal, to anybody (§6.6, *the computer commits blind*).
-            "sealed": [move is not None for move in self.pending],
+            # before the reveal, to anybody (§6.6, *the computer commits blind*), but its
+            # own seat's reader (`yours`, below).
+            "sealed": [
+                move is not None or unseen
+                for move, unseen in zip(self.pending, self.sealed_unseen, strict=True)
+            ],
             "choosing": choosing,
             # The tie rule (§3): `both`, `initiative` or `impossible`, and who holds the
             # initiative (-1 under any other rule), the core's state.
@@ -747,6 +772,10 @@ class Session:
             "voidRun": list(run) if run[0] >= 0 and run[1] >= 0 else None,
             "bars": [list(bar) for bar in self.state.bars],
         }
+        if reader is not None and mine is not None:
+            # Q918f: the reader's own sealed move, described as an offered move is, so the
+            # board can draw it ghosted where it would land. Only ever the reader's seat.
+            block["yours"] = self._offer(engine, [mine], reader)[0]
         return {
             "legal": legal,
             "outcome": outcome,

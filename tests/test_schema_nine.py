@@ -387,6 +387,14 @@ FROZEN: dict[str, tuple[str, str]] = {
     "archive/sluice.json": ("f3c624d2f297", "f84bca5f42fba51f"),
     "archive/crease.json": ("0448722861a3", "ac98338606812bdf"),
     "archive/pawnproof-wormhole.json": ("feaad3754a7e", "fa4f817969d2b144"),
+    # Q918e, 2026-10-15: the showcases of schema 26's simultaneous moves
+    # (`docs/plan-simultaneous.md`, *Q918e*; `tests/test_showcases_q918e.py`): Gardner in
+    # rounds (the mechanics of `tests/_simultaneous_gardner.json`), with meek pawns
+    # (`beats`), with the initiative, and the watering hole (ties impossible). New.
+    "archive/gardner-in-rounds.json": ("e043fce6968e", "8a0183446ffc68f9"),
+    "archive/gardner-in-rounds-with-meek-pawns.json": ("ff1ccdaaf3cf", "95e105b3ac964b51"),
+    "archive/gardner-in-rounds-with-the-initiative.json": ("6278607c721b", "8c4ede64bdaf6f6e"),
+    "archive/watering-hole.json": ("5c0b017473f5", "f264b4cdd576ed0b"),
 }
 
 

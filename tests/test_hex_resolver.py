@@ -387,6 +387,11 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "archive/sluice": "29e224df70ed859d",  # Q844b, schema 21
     "archive/crease": "f4debbefb2770d57",  # Q844b, schema 24
     "archive/pawnproof-wormhole": "8a7ee8f749713bb5",  # Q844b, schema 21
+    "archive/gardner-in-rounds": "ef35aeadf82e3d4e",  # Q918e, schema 26
+    "archive/gardner-in-rounds-with-meek-pawns": "e30dc7de2f1226d9",  # Q918e, schema 26
+    # The same features as gardner in rounds: `distance.features` has none for the tie rule.
+    "archive/gardner-in-rounds-with-the-initiative": "ef35aeadf82e3d4e",  # Q918e, schema 26
+    "archive/watering-hole": "449300665f7cd831",  # Q918e, schema 26
     "archive/wolves": "ad7a6f1e406f28f3",
 }
 

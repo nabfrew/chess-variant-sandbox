@@ -3002,6 +3002,8 @@ const REASON_WORDS = {
   bare_royal: 'by leaving the royal piece alone',
   check_limit: 'by giving check enough times', coloured: 'on ground held',
   scored: 'on points', resigned: 'by resignation', agreed: 'by agreement',
+  // The store's too (Q918f): a game in rounds where neither player sealed a move in time.
+  unsealed: 'as neither player sealed a move in time',
 };
 
 function reasonWords(reason) {
@@ -4377,11 +4379,15 @@ function pollCorr() {
   }, CORR_EVERY);
 }
 
+// In a game in rounds (Q918f) a seal that does not reveal changes no move list, so who has
+// sealed is compared too: the booleans the reader is given, never the move.
 function corrChanged(was, now) {
   const a = was.correspondence || {};
   const b = now.correspondence || {};
+  const sealed = snapshot => String(((snapshot.round || {}).sealed) || '');
   return was.history.length !== now.history.length || !!was.outcome !== !!now.outcome
-    || a.drawOffer !== b.drawOffer || a.mayCancel !== b.mayCancel;
+    || a.drawOffer !== b.drawOffer || a.mayCancel !== b.mayCancel
+    || sealed(was) !== sealed(now);
 }
 
 // A new snapshot of a game between two people: the board as `applySnapshot` draws any
@@ -4640,14 +4646,21 @@ const HELD_FADE = 0.45;
 // square it names, where the piece comes to rest (a strike's landing, else that square),
 // and the piece as it would stand there -- its type after a promotion, its facing after a
 // turn. Nothing here works out what the move does to anything else on the board.
+//
+// In a game in rounds by correspondence (Q918f) the reader's own sealed move, which the
+// server gives back to its seat alone (`round.yours`), is drawn the same way while it waits
+// for the other's: it is the reader's move, not one made, and nothing else on the board
+// says what it is.
 function corrHeldDrawn() {
   if (!SESSION || !(SESSION.correspondence || SESSION.round)) return null;
-  const entry = corrHeldEntry();
+  const sealed = SESSION.round && SESSION.correspondence ? SESSION.round.yours || null : null;
+  const entry = corrHeldEntry() || sealed;
   if (!entry) return null;
   const from = entry.from === null || entry.from === undefined ? null : entry.from;
   const was = from === null ? null : pieceAt(from);
+  const mover = sealed && entry === sealed ? SESSION.correspondence.you : SESSION.sideToMove;
   const piece = entry.drop !== undefined
-    ? { player: SESSION.sideToMove, type: entry.drop, facing: 0 }
+    ? { player: mover, type: entry.drop, facing: 0 }
     : was ? Object.assign({}, was) : null;
   if (piece && entry.promotion !== undefined) piece.type = entry.promotion;
   if (piece && entry.rotation !== undefined) piece.facing = entry.rotation;
@@ -4732,7 +4745,8 @@ function drawCorrSend() {
   const slot = document.getElementById('corrSend');
   if (!slot || !SESSION) return;
   const between = SESSION.correspondence;
-  if (!between && SESSION.round) { drawRoundSend(slot); return; }
+  // A game in rounds, by correspondence too (Q918f): the seal's slot, not the send's.
+  if (SESSION.round) { drawRoundSend(slot); return; }
   if (!between || between.you === null || SESSION.outcome) {
     slot.hidden = true;
     slot.innerHTML = '';
@@ -4780,6 +4794,8 @@ function corrAgoWords(stamp) {
 }
 
 function corrStatus() {
+  // A game in rounds has no player to move: the round's own strip (Q918f).
+  if (SESSION.round) return roundStatusHtml();
   const between = SESSION.correspondence;
   const mover = SESSION.sideToMove;
   const check = SESSION.inCheck ? checkPill() : '';

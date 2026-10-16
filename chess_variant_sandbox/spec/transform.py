@@ -1837,6 +1837,16 @@ def split_piece(
     clone["name"] = f"{source.get('name', source_id)} variant"
     clone.pop("promoted_from", None)
     spec.setdefault("pieces", []).append(clone)
+    # Schema 26's `tie: "impossible"` promises that every opposing pair has exactly one
+    # winner, so the clone must be beaten by, and capturable by, whatever its source is, or
+    # the child breaks the promise and is refused (Q918e: `archive/watering-hole`, whose
+    # kinds each capture one opposing kind by name). Inert for every other spec.
+    if ((spec.get("rules") or {}).get("simultaneous") or {}).get("tie") == "impossible":
+        for piece in pieces(spec):
+            for key in ("captures", "beats"):
+                named = piece.get(key)
+                if isinstance(named, list) and source_id in named and new_id not in named:
+                    named.append(new_id)
 
     # Keyed by what the placement says of its pieces besides where they stand, in the
     # order first met, so a spec with one bare placement gets the one it always did.

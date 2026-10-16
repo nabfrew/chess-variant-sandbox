@@ -57,6 +57,7 @@ from chess_variant_sandbox.measurement import (
 )
 from chess_variant_sandbox.measurement import load as load_measurement
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS, load_weights, score_ruleset
+from chess_variant_sandbox.metrics.components import plays_in_rounds
 from chess_variant_sandbox.metrics.scoring import WeightsError
 from chess_variant_sandbox.metrics.seat import seat_details
 from chess_variant_sandbox.metrics.seeds import VOTE_POOLED_SEAT, RunReading, combine
@@ -112,13 +113,32 @@ CANONICAL_AGENTS = ("random", "greedy") + tuple(
 CANONICAL_GAMES = 4
 CANONICAL_SEED = 0
 
+# The roster a game played in rounds is measured on (schema 26, Q918d;
+# `docs/plan-simultaneous.md` §6.2): the same eight places at the same budgets, with the
+# round players where the alternating ladder has minimax, which is refused on these games.
+# No fitted objective: the round players play the built-in one only, and whether they need
+# their own is read from this ladder's monotonicity (the plan's *Q918d, as built*). The
+# stamp names the roster, so a round game's score is never read as though the ladder were
+# the alternating one.
+ROUND_AGENTS = ("random", "greedy") + tuple(
+    f"matrix:nodes={budget}" for budget in _FITTED_BUDGETS
+)
+
 # Where the measuring roster reads a game's learned net from (Q502h). Relative, as
 # `RUNS_DIR` is: every command runs from a checkout's root, and the box serves from its.
 NETS_DIR = Path(STORE_DIR)
 
 
-def canonical_agents(digest: str, nets_dir: Path | None = None) -> tuple[str, ...]:
-    """The roster this game's committed score means: `CANONICAL_AGENTS`, or its net ladder.
+def canonical_agents(
+    digest: str, nets_dir: Path | None = None, spec: dict[str, Any] | None = None
+) -> tuple[str, ...]:
+    """The roster this game's committed score means: `CANONICAL_AGENTS`, its net ladder,
+    or, for a game played in rounds, `ROUND_AGENTS`.
+
+    **A game in rounds** is known by its spec (``rules.simultaneous``), so a caller holding
+    one passes it; without it the alternating roster is named, which matches no round
+    game's stamp and so reads stale, the safe direction (`current_basis` says the same of
+    the tables).
 
     **Where a learned net is rated** (`nets.rated_net`: kept, or accepted and confirmed
     where no generation line runs), every searching rung plays that net at the same
@@ -135,6 +155,8 @@ def canonical_agents(digest: str, nets_dir: Path | None = None) -> tuple[str, ..
     Read off `nets/` every call, so a newly kept generation stales its game's score the
     moment its store lands, and the refresher replays it (`plan-evolving-score.md` §6.4).
     """
+    if spec is not None and plays_in_rounds(spec):
+        return ROUND_AGENTS
     procedure = rated_net(digest, NETS_DIR if nets_dir is None else nets_dir)
     if not procedure:
         return CANONICAL_AGENTS
@@ -283,6 +305,30 @@ def find(
 
     raise CorpusError(
         f"no game with hash {digest} under {ruleset_dir}/, {archive_dir}/ or {runs_dir}/"
+    )
+
+
+def from_file(path: Path, runs_dir: Path = RUNS_DIR) -> Candidate:
+    """The game a spec file holds: `find`'s answer where the corpus, the archive or a design
+    run holds it, else a candidate read from the file itself.
+
+    The second case is a game nobody has put on the ladder yet -- a test spec, a game being
+    written by hand -- measured where it stands (Q918d's round game was the first). It is a
+    candidate, so it owes one run, and its measurement lives under ``runs_dir`` as any
+    other's does.
+    """
+    spec = load_spec(path)
+    digest = spec_hash(spec)
+    try:
+        return find(digest, runs_dir=runs_dir)
+    except CorpusError:
+        pass
+    errors = validate_spec(spec)
+    if errors:
+        raise CorpusError(f"{path} is not a valid game: {'; '.join(errors)}")
+    return Candidate(
+        hash=digest, name=str(spec.get("name", Path(path).stem)), spec=spec,
+        path=Path(path), stage="candidate",
     )
 
 
@@ -440,7 +486,7 @@ def current_basis(
 
     **The roster is this game's** (`canonical_agents`, Q502h), read from `nets/`.
     """
-    agents = canonical_agents(digest)
+    agents = canonical_agents(digest, spec=spec)
     return Basis.current(
         ruleset_hash=digest,
         weights_version=weights,
@@ -727,7 +773,7 @@ def _measure_seeds(
 
     # A net ladder plays no fitted objective (Q502h), so its fit is no part of the basis.
     if (plays or adopt_from is not None) and not fitted and fits_its_roster(
-        canonical_agents(candidate.hash)
+        canonical_agents(candidate.hash, spec=candidate.spec)
     ):
         _fit_once(candidate, workers, say)
 
@@ -957,7 +1003,7 @@ def _adopt_seed(
         source,
         run_dir(candidate.hash, seed, runs_dir),
         TournamentConfig(
-            agents=canonical_agents(candidate.hash),
+            agents=canonical_agents(candidate.hash, spec=candidate.spec),
             games_per_pairing=CANONICAL_GAMES,
             seed=seed,
             workers=workers,
@@ -1015,7 +1061,7 @@ def _play_seed(
     origin: str,
 ) -> RunReading:
     """Play, analyse and score one seed into its own run directory."""
-    agents = canonical_agents(candidate.hash)
+    agents = canonical_agents(candidate.hash, spec=candidate.spec)
     refusal = _foreign_run(out, seed, agents)
     if refusal:
         raise CorpusError(refusal)
@@ -1223,7 +1269,7 @@ def _store(
     stored = {
         "hash": candidate.hash,
         "name": candidate.name,
-        "agents": list(canonical_agents(candidate.hash)),
+        "agents": list(canonical_agents(candidate.hash, spec=candidate.spec)),
         "games_per_pairing": CANONICAL_GAMES,
         "seeds": list(combined.seeds),
         "games": combined.games,

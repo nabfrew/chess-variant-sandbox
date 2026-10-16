@@ -21,6 +21,13 @@ end, a game at or under it is refused at most alpha of the time at any sample si
 ``pooled_seat_reading`` is that reading, ``metrics/seeds.py`` takes it once over a game's
 runs, and a one-run measurement keeps the built form above.
 
+**A game played in rounds** (schema 26) has no first mover: both players choose on the same
+board and are resolved together. The check still runs and still means something, because the
+seats still differ: a lean there is an asymmetry of the setup or, under ``tie:
+"initiative"``, the edge of holding the token at the start (`docs/plan-simultaneous.md`
+§6.3). "The first seat" is seat 0, the player listed first; the alphas and the share are
+the same, since the question -- does one seat win more than a fair one would -- is.
+
 ``docs/reference/metrics-and-calibration-record.md`` (Q235) has the first reading's design.
 ``docs/reference/seat-fresh-2026-09.md`` has the fresh-games campaign that tested the
 second, ``docs/reference/seat-effect-size.md`` is the restated check and the two campaigns

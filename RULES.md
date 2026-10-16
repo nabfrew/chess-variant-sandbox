@@ -362,7 +362,7 @@ Its keys:
 Its keys:
 
 - **`pieces`**: one of `"any"` or list of strings, at least 1. Required. 'any' counts the whole army.
-- **`min_count`**: integer from 1 to 64. Optional; default `1`. A player with fewer than this many of the listed pieces gets the result.
+- **`min_count`**: integer from 1 to 64. Optional; default `1`. A player with fewer than this many of the listed pieces gets the result. Each player must start with at least this many (of each listed type, under per_type), or the game would be over before the first move.
 - **`result`**: one of `"win"`, `"loss"`, `"draw"`. Optional; default `"loss"`. The result for the player who falls below the count.
 - **`per_type`**: boolean. Optional; default `false`. True counts each listed type on its own, so a side loses when any one of them falls below min_count, as in Extinction chess. False, the default, counts the listed types together. Needs two or more types listed.
 
@@ -412,7 +412,7 @@ written from this reference needs neither.
   mapping a piece id to the name of a drawing, or to a pair of names, one per player.
   Without it every piece is drawn from its name, or as its letter.
 - **`provenance`**: where the game came from, as free text
-  (`added`, `author`, `exhibit`, `history`, `origin`, `parents`, `source`, `theme`, `year`). `added` is a day written
+  (`added`, `author`, `exhibit`, `history`, `origin`, `parents`, `preview`, `source`, `theme`, `year`). `added` is a day written
   `YYYY-MM-DD` and `parents` a list of game identifiers.
 
 ## How a wrong file is refused

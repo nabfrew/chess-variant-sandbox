@@ -1616,6 +1616,16 @@ def _report_staleness(targets: list[str], args: argparse.Namespace) -> int:
     worth failing a build over, and it was not previously a question anything could ask.
     """
     statuses = corpus.survey(targets, runs_dir=args.runs, weights=args.weights)
+    named = _named_file(args)
+    if not statuses and named is not None:
+        # A file the ladder does not hold yet, read where it stands (`_measure_one`).
+        candidate = corpus.from_file(named, runs_dir=args.runs)
+        statuses = [
+            corpus.status_of(
+                candidate.hash, args.runs, weights=args.weights,
+                known=(candidate.name, candidate.stage, candidate.spec),
+            )
+        ]
     stale = 0
     for status in statuses:
         if not status.current:
@@ -1801,8 +1811,20 @@ def _seed_set(args: argparse.Namespace) -> tuple[int, ...] | None:
     )
 
 
+def _named_file(args: argparse.Namespace) -> Path | None:
+    """The spec file `measure` was handed, where it was handed one rather than a hash."""
+    path = Path(args.hash) if getattr(args, "hash", "") else None
+    return path if path is not None and path.is_file() else None
+
+
 def _measure_one(digest: str, args: argparse.Namespace, force: bool) -> int:
-    candidate = corpus.find(digest, runs_dir=args.runs)
+    # A file is measured where it stands when the ladder does not hold it yet (Q918d).
+    named = _named_file(args)
+    candidate = (
+        corpus.from_file(named, runs_dir=args.runs)
+        if named is not None
+        else corpus.find(digest, runs_dir=args.runs)
+    )
     _measure_candidate(
         candidate, args.runs, args.weights, workers=args.workers, force=force,
         seeds=_seed_set(args), adopt=getattr(args, "adopt", None), say=print,

@@ -267,6 +267,10 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "archive/sluice": "6468eb19d0ea6cf1",  # Q844b, schema 21
     "archive/crease": "39881186e149674a",  # Q844b, schema 24
     "archive/pawnproof-wormhole": "4769876a3f4f76e3",  # Q844b, schema 21
+    "archive/gardner-in-rounds": "3bf914a9177e31c5",  # Q918e, schema 26
+    "archive/gardner-in-rounds-with-meek-pawns": "b793c277f73875c2",  # Q918e, schema 26
+    "archive/gardner-in-rounds-with-the-initiative": "d4228395719912a8",  # Q918e, schema 26
+    "archive/watering-hole": "b06570f1fcf442e8",  # Q918e, schema 26
     "rulesets/almost": "0ea224823977572d",
     "rulesets/antichess": "74c73dff0811c4a6",
     "rulesets/atomic": "e77e414d76c510af",

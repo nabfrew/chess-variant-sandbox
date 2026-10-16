@@ -560,10 +560,17 @@ class SiteApp(App):
         """
         payload = super().get("/api/library")
         with self._connection() as connection:
-            payload["games"] = drafts.offered(
-                payload["games"],
-                shown=drafts.listed(connection),
-                gone=admin.unlisted_games(connection),
+            public = drafts.listed(connection)
+            gone = admin.unlisted_games(connection)
+            payload["games"] = drafts.offered(payload["games"], shown=public, gone=gone)
+            # Q931. The previews, apart from the library and through the same door: a
+            # preview the store has no public row for, or one taken off the site, is not
+            # offered. Nothing below that ranks, bands, counts or features a game reads
+            # them; they get their row's level, the store's columns and their own tab.
+            previews = drafts.offered(payload.get("previews") or [], shown=public, gone=gone)
+            preview_rows = stages.read(connection, [str(card["hash"]) for card in previews])
+            preview_columns = browse.columns(
+                connection, [str(card["hash"]) for card in previews], viewer=self.viewer
             )
             hashes = [str(game["hash"]) for game in payload["games"]]
             found = browse.columns(connection, hashes, viewer=self.viewer)
@@ -626,13 +633,26 @@ class SiteApp(App):
         payload["games"] = browse.order(
             cards, query.get("sort", ""), query.get("filter", "")
         )
+        # Q931. A preview's level is its row's, as every card's is; a preview with no row
+        # was dropped by `drafts.offered` above. By name, never by a score.
+        shown_previews = browse.decorate(previews, preview_columns)
+        for card in shown_previews:
+            row = preview_rows.get(str(card["hash"]))
+            if row is not None:
+                card["level"] = row["level"]
+                card["levelGloss"] = stages.GLOSSES.get(row["level"], "")
+        payload["previews"] = sorted(
+            shown_previews, key=lambda card: str(card["name"]).lower()
+        )
         # L4 of `docs/plan-launch.md` §3.4: a tab past the first is sent only when it
-        # holds a card. *On trial* is absent, not empty, until somebody publishes.
+        # holds a card. *On trial* is absent, not empty, until somebody publishes; so are
+        # the previews (Q931).
         counted = [
             {
                 **tab,
                 "count": sum(
-                    1 for card in payload["games"] if card.get("level") in tab["levels"]
+                    1 for card in [*payload["games"], *payload["previews"]]
+                    if card.get("level") in tab["levels"]
                 ),
             }
             for tab in stages.TABS
@@ -1107,13 +1127,18 @@ class SiteApp(App):
         answer belongs to a store nothing has loaded yet, and the narrow answer is the
         safe one to be wrong with.
         """
+        game = self.game(digest)
+        # A preview has no neighbours and is nobody's (Q931): the table holds no pair
+        # with one, and this says so again for a store loaded before it was a preview.
+        if game.source == library.PREVIEW:
+            return []
         with self._connection() as connection:
             near = links.neighbours(
                 connection, digest, self.viewer, self.role == admin.ADMIN
             )
         known = self.known()
-        others = [known[link.hash] for link in near if link.hash in known]
-        return library.neighbours(self.game(digest), others)
+        others = library.scored(known[link.hash] for link in near if link.hash in known)
+        return library.neighbours(game, others)
 
     def findable(self, games: Iterable[library.Game]) -> set[str]:
         """Which of these games this person may be shown: the store's answer, not the tree's.
@@ -2102,8 +2127,14 @@ class SiteApp(App):
         much as a draft's does. It is "" for every game a person is in.
         """
         digest = str(body["hash"])
-        seats = body.get("seats") or ["human", "minimax:nodes=1600"]
         roster = self.roster(digest)
+        # A game played in rounds seats its own rung of the name asked for, as the local
+        # application does (Q918c): the page's *watch it play itself* asks for the
+        # alternating ladder's player, and a preview in rounds must answer it (Q931).
+        seats = [
+            opponents.seat_for(str(seat), roster)
+            for seat in body.get("seats") or ["human", "minimax:nodes=1600"]
+        ]
         agents = [entry.agent for entry in roster]
         if len(seats) != 2 or any(seat not in agents for seat in seats):
             raise ValueError(f"seats must be two of: {', '.join(agents)}")
@@ -2153,7 +2184,8 @@ class SiteApp(App):
                 # Q572. Whether this move sends the one email, written down in the move's
                 # own transaction; it goes to the sender after the commit.
                 due = move_email.due(
-                    connection, found.id, correspondence.seat_of(found, self.viewer), answer
+                    connection, found.id, correspondence.seat_of(found, self.viewer), answer,
+                    before=found.plies,
                 )
         self._mail_move(due)
         return answer
@@ -2296,13 +2328,9 @@ class SiteApp(App):
             return self._snapshot(connection, found)
 
     def _snapshot(self, connection: Any, found: matches.Row) -> dict[str, Any]:
-        snapshot = matches.session(connection, found.id).snapshot()
-        if correspondence.between_people(found):
-            row = matches.row(connection, found.id)
-            snapshot["correspondence"] = correspondence.view(
-                connection, row, self.viewer, mover=snapshot.get("sideToMove")
-            )
-        return snapshot
+        # Drawn for this reader: in a game in rounds between two people, a move the other
+        # player sealed is in it only as *sealed* (Q918f, `correspondence.snapshot_for`).
+        return correspondence.snapshot_for(connection, found, self.viewer)
 
     def _between_people(
         self, connection: Any, found: matches.Row, action: str, body: dict[str, Any]
@@ -2560,7 +2588,9 @@ def _between_entry(
     """
     seat = found.seat_of(rating.person(user))
     other = found.player(1 - seat).user or 0
-    mover = matches.session(connection, found.id).state.side_to_move
+    # Whether it is this person's move: the engine's side to move, or in a game in rounds
+    # whether their move for the round is still to seal (Q918f).
+    yours = seat in correspondence.owing(connection, found)
     left = correspondence.time_left(found, at)
     opponent = identity.handle_of(connection, other)
     return {
@@ -2569,12 +2599,12 @@ def _between_entry(
         "opponent": opponent,
         "opponentMark": identity.mark_of(other, opponent),
         "seat": seat,
-        "yourMove": mover == seat,
+        "yourMove": yours,
         "rated": found.mode == matches.LEADERBOARD,
         "plies": found.plies,
         "moved": (found.moved or found.started).isoformat(),
         "left": left.total_seconds(),
-        "toMove": correspondence.to_move_said(left, "You" if mover == seat else "They"),
+        "toMove": correspondence.to_move_said(left, "You" if yours else "They"),
     }
 
 

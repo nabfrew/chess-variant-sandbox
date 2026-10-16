@@ -87,6 +87,7 @@ from chess_variant_sandbox.site import badges, links, rating, resting, rounds
 from chess_variant_sandbox.site.matches import LEADERBOARD, LOCAL_APP
 from chess_variant_sandbox.spec.canonical import load_spec, spec_hash
 from chess_variant_sandbox.web.human import HumanGame, HumanRecord
+from chess_variant_sandbox.web.library import preview_sentence
 
 # ------------------------------------------------------------------- what a row says
 
@@ -110,8 +111,13 @@ MAINTAINER_ROLE = "admin"
 CORPUS = "corpus"
 ARCHIVED = "archive"
 DESIGNED = "designed"
-LOADED_ORIGINS = (CORPUS, ARCHIVED)
-"""The two origins this module owns. A row carrying either may be corrected from the
+PREVIEW = "preview"
+"""A file in `archive/` that says it is a preview (`provenance.preview`, Q931): a new kind of
+game still being tested, listed in its own tab and played as practice. Its row is written
+and corrected like an archived game's, and nothing that scores reads it: no measurement row,
+no seeded ratings, no badges (`load`), no links (`links.specs_of`)."""
+LOADED_ORIGINS = (CORPUS, ARCHIVED, PREVIEW)
+"""The origins this module owns. A row carrying either may be corrected from the
 files; a row carrying anything else belongs to whoever uploaded it, and §3's *the same
 rules uploaded twice are one row, first uploader credited* is that row staying put. A draft
 saved on the site is written at save by `site/drafts.py`, so this loader never reads
@@ -372,7 +378,15 @@ def load_games(
             )
         change.updated += 1
         was = str(found[4])
-        if was != origin:
+        if was != origin and PREVIEW in (was, origin):
+            # Q931. A preview joining the library, or a game shown as a preview again, is
+            # said in the load's own output; the Library and the Baseline's moves table
+            # (`stages.whats_new`) is about those two levels and no other.
+            if notes is not None:
+                where = "joined the Library from preview" if origin == ARCHIVED else (
+                    "became a preview")
+                notes.append(f"{name!r} ({digest}) {where}")
+        elif was != origin:
             reason = confirmed[digest] if adopted else reason_for(found[0], spec)
             with connection.cursor() as cursor:
                 cursor.execute(
@@ -802,7 +816,12 @@ def load(
         # `corpus.find`'s own ladder order and the same reason: a promoted game is
         # committed, whatever copy of it is still lying about.
         for digest, spec in found.items():
-            specs[digest] = (spec, origin)
+            # Q931: an archived file that says it is a preview is loaded as one.
+            specs[digest] = (
+                spec,
+                PREVIEW if origin == ARCHIVED and preview_sentence(spec) is not None
+                else origin,
+            )
 
     # A deleted game is not loaded again, whatever the tree says. The rules were removed
     # on purpose and the delete has no way back, so a spec that reappears under the same
@@ -819,7 +838,11 @@ def load(
     report.games = load_games(connection, specs, owner, report.moved, report.notes)
     report.retired, retirements = retire(connection, specs)
     report.notes.extend(retirements)
-    report.measurements = load_measurements(connection, specs, runs_dir, weights)
+    # Q931. A preview is in no scored table: its measurement stays on disk, where its own
+    # page reads it with its label, and never becomes a headline the store ranks, badges or
+    # nominates on; its computer players are seated from no ladder, so it is practice only.
+    scored = {digest: entry for digest, entry in specs.items() if entry[1] != PREVIEW}
+    report.measurements = load_measurements(connection, scored, runs_dir, weights)
     # Q503h. A shortlisted game enters a round once its four runs are current, and the
     # maintainer measures it by hand (`measure`) until Q503g's pipeline uploads them. Its
     # rules are the store's, so its runs are indexed from the row, owed four seeds as a
@@ -830,11 +853,11 @@ def load(
         report.measurements.added += more.added
         report.measurements.updated += more.updated
         report.measurements.unchanged += more.unchanged
-    report.ratings = seed_ratings(connection, list(specs), runs_dir)
+    report.ratings = seed_ratings(connection, list(scored), runs_dir)
     report.matches, missing = load_matches(connection, runs_dir, owner, set(specs))
     report.skipped.extend(missing)
     report.links = links.fill(connection, links.specs_of(connection))
-    granted = badges.grant_for_games(connection, list(specs))
+    granted = badges.grant_for_games(connection, list(scored))
     if granted:
         report.notes.append(f"granted {len(granted)} badge(s) on the library's games")
     # Q503i. The trial games nobody plays leave the listing. Here because every deploy

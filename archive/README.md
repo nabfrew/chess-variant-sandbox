@@ -678,6 +678,34 @@ in 0.700 of games against 0.9 predicted, and a capture through in 0.368 against 
 wormhole **0.572 [0.546, 0.606]**, all five hit (no pawn transit, the first seat 23 of the top
 band's 46 decided games against Wormhole's 33 of 33).
 
+## `gardner-in-rounds*.json`, `watering-hole.json` — schema 26, both players moving at once (Q918e)
+
+2026-10-15. The showcases of `docs/plan-simultaneous.md` (§6.8): each round both players choose a
+move in secret and both are made together; only two pieces ending on one square collide. The plan's
+*Q918e* sections have the designs, the drafts that failed and why, and the predictions, written
+before anything was measured; `tests/test_showcases_q918e.py` holds the demonstration clauses.
+
+- **`gardner-in-rounds`** (`e043fce6968e`): Gardner's minichess with `"simultaneous": {}` and the
+  king captured rather than mated, the one-key showcase; the mechanics of the test spec Q918d
+  measured. Kept because it shows what rounds do to a royal game: it draws, mostly by both kings
+  falling in the same round.
+- **`gardner-in-rounds-with-meek-pawns`** (`ff1ccdaaf3cf`): the same with the pawn's `beats` empty,
+  so a pawn loses every collision with a piece. Kept as a variant because the contrast is the point.
+- **`gardner-in-rounds-with-the-initiative`** (`6278607c721b`): the same with `tie: "initiative"`,
+  the comparison §3.2 promised: a token that decides one tie and passes.
+- **`watering-hole`** (`5c0b017473f5`): the game designed around guessing, and the showcase of
+  `tie: "impossible"`. White's elephants and cats against Black's dogs and rats on 7x7, each kind
+  eating one opposing kind (elephant > dog > cat > rat > elephant), so every meeting has a winner;
+  the first animal to stand on the shared hole d4 with none of its eaters beside it wins, so two
+  arrivals in one round are a meeting, never a shared win.
+
+Measured 2026-10-15 (v12, four runs each, the round roster): Gardner in rounds **0.375
+[0.337, 0.421], not viable (refuse 4-0)**, 0.875 of graded games drawn, 0.483 by both kings
+captured in one round; with meek pawns **0.351 [0.336, 0.370], not viable**; with the initiative
+**0.358 [0.336, 0.372], not viable**, its first holder (Black) taking 71 of the 100 decided graded
+games; the watering hole **0.503 [0.434, 0.571], viable (accept 4-0)**, no draw in 784 graded
+games, the seat 394-390, 0.989 of them won at the hole, a collision in every one.
+
 ## Retired by the library audit (Q868, 2026-10-12)
 
 The user asked for a library in which every game has a purpose (`docs/plan-library-audit.md`,

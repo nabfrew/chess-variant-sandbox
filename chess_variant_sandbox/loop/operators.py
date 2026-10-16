@@ -47,6 +47,7 @@ from chess_variant_sandbox.spec.schema import (
     HEX_SYMMETRIES,
     REPETITION_NEVER,
     SQUARE_SYMMETRIES,
+    _check_extinction_coherence,
     absent_squares,
     beats_of,
     can_double_step,
@@ -238,11 +239,26 @@ def _remove_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
     # Schema 21 (Q849): a portal end only this piece may go in by would let nobody in
     # without it, which no filter can say, and ``drop_piece`` would open it to everyone.
     candidates = [piece for piece in candidates if not empties_a_filter(spec, piece["id"])]
+    # Q937: nor a type whose removal leaves a side short of `extinction.min_count` of the
+    # counted kinds (horde's pawns under `any`), a game over at ply zero the validator
+    # refuses. Asked of the child by the validator's own check, so the two cannot disagree.
+    candidates = [piece for piece in candidates if not _starts_run_out(spec, str(piece["id"]))]
     if not candidates:
         return None
     piece = rng.choice(candidates)
     drop_piece(spec, str(piece["id"]))
     return f"removed the {piece.get('name', piece['id'])}"
+
+
+def _starts_run_out(spec: dict[str, Any], piece_id: str) -> bool:
+    """Whether removing ``piece_id`` leaves a side starting with fewer than
+    ``extinction.min_count`` of the counted kinds."""
+    child = copy.deepcopy(spec)
+    drop_piece(child, piece_id)
+    rules = child.get("rules")
+    errors: list[str] = []
+    _check_extinction_coherence(child, rules if isinstance(rules, dict) else {}, errors)
+    return bool(errors)
 
 
 def _clip_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:

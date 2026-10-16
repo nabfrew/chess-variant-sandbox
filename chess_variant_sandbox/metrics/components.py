@@ -86,6 +86,47 @@ WORST_HALF_RATES: dict[str, str] = {
     "mean_plies": "low",
 }
 
+# How each component a weights version scores reads a game played in rounds (schema 26,
+# Q918d; `docs/plan-simultaneous.md` §6.3). A round game's record keeps both moves of a
+# round in seat order and every per-ply series twice, so a round is two plies and most
+# components read it as they read an alternating game; the two the analysis pass supplies
+# from a probe read each player's moves against the opponent's equilibrium mix. Every
+# scored component has its entry (`tests/test_rounds_measured.py` holds the current
+# version to it): one that could not read rounds would say so here, with its reason, and
+# be withheld rather than scored.
+ROUND_READINGS: dict[str, str] = {
+    "first_player_advantage": (
+        "seat 0's self-play score; nobody moves first, so a lean is the setup's "
+        "asymmetry or the initiative's edge"
+    ),
+    "stall_rate": "how games end, as in any game",
+    "mean_branching": (
+        "per player: a round records each player's own legal moves, one per ply, never "
+        "the matrix's size"
+    ),
+    "ply_spread": "in plies, two a round, so a length compares with an alternating game's",
+    "position_divergence": "the position after each round, written once per ply",
+    "decision_criticality": (
+        "each player's moves valued against the opponent's equilibrium mix one round "
+        "deep, near the best within the cheapest piece; each seat with a choice is a sample"
+    ),
+    "blunder_recoverability": (
+        "the move forced in falls short of the best against the opponent's equilibrium "
+        "mix by more than the cheapest piece; the other seat keeps its recorded move"
+    ),
+    "piece_utilisation": "both moves of every round, read on the board both chose on",
+    "instance_participation": "both moves of every round",
+    "skill_gradient": "the round players' ladder, matrix:nodes=100 to 6400",
+    "lead_conversion": "seat 0's material after each round, written once per ply",
+}
+
+
+def plays_in_rounds(spec: dict[str, Any]) -> bool:
+    """Whether a spec's game is played in rounds (schema 26, ``rules.simultaneous``)."""
+    rules = spec.get("rules")
+    return isinstance(rules, dict) and rules.get("simultaneous") is not None
+
+
 # A piece type moved fewer times than this share of all moves is, for practical
 # purposes, not in the game. Used only as a diagnostic next to the entropy measure.
 IDLE_PIECE_SHARE = 0.02
@@ -382,6 +423,11 @@ def compute_components(
         # is as good a sample of it as any other.
         "depth_by_agent": _depth_by_agent(records),
     }
+
+    if plays_in_rounds(spec):
+        # What each scored component means on a game played in rounds, carried in the
+        # score itself so no reader takes a round game's number for an alternating one's.
+        diagnostics["round_readings"] = dict(ROUND_READINGS)
 
     if analysis is not None:
         raw.update(_analysis_components(analysis, diagnostics, spec))
@@ -1520,6 +1566,21 @@ def _analysis_components(
     moved = sum(game.moved_instances for game in analysis.games)
     if starting > 0:
         raw["instance_participation"] = moved / starting
+
+    # --- what the rounds' resolutions did (schema 26, Q918d) ------------------------
+    # Counted by the pass off the core's events; scored by nothing. What a game in rounds
+    # is made of, beside the components: how often the two moves met, how often a capture
+    # found its target gone, how often the two crossed. `ROUND_COUNTS` names them.
+    rounds = [game.rounds for game in analysis.games if game.rounds]
+    if rounds:
+        tallies = {key: sum(found.get(key, 0) for found in rounds) for key in rounds[0]}
+        played = tallies.get("rounds", 0)
+        shares = {
+            f"{key}_per_round": round(tallies[key] / played, 4)
+            for key in ("collisions", "void_moves", "swaps")
+            if played and key in tallies
+        }
+        diagnostics["rounds"] = {**tallies, **shares}
 
     # --- does one mistake end it --------------------------------------------------
     if analysis.blunders:

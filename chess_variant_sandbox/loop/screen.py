@@ -34,9 +34,11 @@ ends, is still refused.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from chess_variant_sandbox.metrics.components import plays_in_rounds
 from chess_variant_sandbox.tournament import TournamentConfig, run_tournament
 
 # The cheapest pair of budgets that still constitutes a ladder. Deliberately far below
@@ -74,6 +76,39 @@ MAX_QUICK_KILL = 0.75
 QUICK_KILL_PLIES = 12
 
 
+# Schema 26 (Q932): `minimax:` is refused on a game played in rounds, and `matrix:` on one
+# that alternates (`docs/plan-simultaneous.md` §6.2). A round game is played by the same
+# roster with `matrix:nodes=N` wherever the alternating one has `minimax:nodes=N`, at the
+# same budget, as `corpus.ROUND_AGENTS` mirrors the canonical ladder: `random` and `greedy`
+# play rounds already (greedy reads the round as a matrix game). Only a bare node budget
+# maps; an objective (`h=`, `fit=`, `values=`, `net=`) is refused on these games, and so is
+# `mcts:`, so a roster holding one has no round counterpart.
+_ROUND_SAFE = ("random", "greedy")
+_MINIMAX_BUDGET = re.compile(r"minimax:nodes=(\d+)")
+
+
+def round_roster(agents: tuple[str, ...]) -> tuple[str, ...]:
+    """The players a game in rounds is played by in place of ``agents``.
+
+    Raises ``ValueError`` naming the first player with no round counterpart.
+    """
+    mapped: list[str] = []
+    for agent in agents:
+        budget = _MINIMAX_BUDGET.fullmatch(agent)
+        if budget:
+            mapped.append(f"matrix:nodes={budget.group(1)}")
+        elif agent in _ROUND_SAFE or agent.startswith("matrix:"):
+            mapped.append(agent)
+        else:
+            raise ValueError(f"{agent} cannot play a game in rounds")
+    return tuple(mapped)
+
+
+def roster_for(spec: dict[str, Any], agents: tuple[str, ...]) -> tuple[str, ...]:
+    """``agents`` for a game that alternates, ``round_roster(agents)`` for one in rounds."""
+    return round_roster(agents) if plays_in_rounds(spec) else agents
+
+
 @dataclass
 class ScreenResult:
     """The verdict of the middle rung, with the numbers behind it."""
@@ -93,11 +128,20 @@ def screen(
     seed: int = 0,
     workers: int = 0,
 ) -> ScreenResult:
-    """Play a handful of games between two small searches and report what happened."""
+    """Play a handful of games between two small searches and report what happened.
+
+    A game in rounds is played by `round_roster(agents)`: `matrix:nodes=100` and
+    `matrix:nodes=400` by default, the same two budgets of a searching player. A round
+    counts two plies, so `QUICK_KILL_PLIES` is six moves a player either way.
+    """
+    try:
+        players = roster_for(spec, agents)
+    except ValueError as error:
+        return ScreenResult(passed=False, reasons=[f"no computer player here can test it: {error}"])
     result = run_tournament(
         spec,
         TournamentConfig(
-            agents=agents,
+            agents=players,
             games_per_pairing=games_per_pairing,
             seed=seed,
             workers=workers,

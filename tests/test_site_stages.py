@@ -108,6 +108,7 @@ class TestTheWords:
             ("committed", stages.BASELINE),
             ("archived", stages.LIBRARY),
             ("retired", stages.RETIRED),
+            ("preview", stages.PREVIEW),
             ("candidate", stages.DRAFT),
             ("designed", stages.DRAFT),
             ("evolved", stages.DRAFT),
@@ -116,14 +117,18 @@ class TestTheWords:
     def test_a_checkout_reads_where_the_file_is(self, source: str, level: str) -> None:
         assert stages.local(source) == level
 
-    def test_every_word_is_one_of_the_seven(self) -> None:
+    def test_every_word_is_one_of_the_eight(self) -> None:
+        # Q931 added *Preview*, beside the track: a level with a tab and no step.
         assert set(stages.LEVELS) == {
-            "Draft", "On trial", "Shortlisted", "Library", "Baseline", "Resting", "Retired"
+            "Draft", "On trial", "Shortlisted", "Library", "Baseline", "Preview", "Resting",
+            "Retired",
         }
         assert set(stages.SAYS) == set(stages.LEVELS)
         assert {level for tab in stages.TABS for level in tab["levels"]} == {
-            stages.LIBRARY, stages.BASELINE, stages.SHORTLISTED, stages.ON_TRIAL
+            stages.LIBRARY, stages.BASELINE, stages.SHORTLISTED, stages.ON_TRIAL,
+            stages.PREVIEW,
         }
+        assert stages.PREVIEW not in stages.TRACK
 
     def test_the_track_lights_the_level_and_puts_the_baseline_in_librarys_place(
         self,

@@ -1941,6 +1941,37 @@ class TestTheLastStructuralRefusals:
             assert validate_spec(child) == [], f"seed {seed}: {validate_spec(child)}"
             assert [piece["id"] for piece in child["pieces"]] == ["G"]
 
+    def test_remove_a_piece_never_takes_horde_white_army(self) -> None:
+        """Q937: horde's White has only pawns under extinction `any`; removing the pawn type
+        made a child over at ply zero, which the validator now refuses. The pawn is never
+        drawn, and every child that is drawn validates."""
+        parent = load_spec(RULESETS / "horde.json")
+        parent.pop("provenance", None)
+        children = self._children(parent, "remove-a-piece")
+        assert children
+        for seed, child in children:
+            assert "P" in {piece["id"] for piece in child["pieces"]}, f"seed {seed}"
+            assert validate_spec(child) == [], f"seed {seed}: {validate_spec(child)}"
+
+    def test_remove_a_piece_keeps_a_summed_extinction_reachable(self) -> None:
+        """A small spec where one removal is short of `min_count` and one is not: five grunts
+        and two wardens a side under extinction `any`, min_count 5. Taking the grunts leaves
+        two; taking the wardens leaves five. Only the wardens are ever taken."""
+        parent = load_spec(RULESETS / "dull.json")
+        parent.pop("provenance", None)
+        parent["pieces"].append(
+            {"id": "W", "name": "warden", "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "lateral"}]}
+        )
+        parent["setup"]["placements"].append({"piece": "W", "squares": ["a2", "e2"]})
+        parent["rules"]["extinction"] = {"pieces": "any", "min_count": 5, "result": "loss"}
+        parent = _stamped(parent)
+        assert validate_spec(parent) == [], validate_spec(parent)
+        children = self._children(parent, "remove-a-piece")
+        assert children
+        for seed, child in children:
+            assert validate_spec(child) == [], f"seed {seed}: {validate_spec(child)}"
+            assert [piece["id"] for piece in child["pieces"]] == ["G"], f"seed {seed}"
+
 
 # --------------------------------------------------------- surface 8, as a standing test
 #
@@ -2326,12 +2357,8 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
-    # Schema 26's four are Q918e's, the showcase games (`plan-simultaneous.md` §6.8), which
-    # need the matrix players (Q918b) to be measured at all.
-    "Q918a simultaneous moves": "Q918e",
-    "Q918a the initiative": "Q918e",
-    "Q918a ties impossible": "Q918e",
-    "Q918a beats": "Q918e",
+    # Empty again at schema 26: Q918e archived its four showcases (`archive/gardner-in-rounds`,
+    # `-with-meek-pawns`, `-with-the-initiative`, `archive/watering-hole`).
     # Empty again at schema 25: its showcase, `rulesets/torus-less-extended.json`, is the
     # game the bump was for (Q869). Schema 24's fold is shown by `archive/crease.json` (Q844b).
 }
@@ -2396,12 +2423,8 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
-    # Schema 26's four (Q918a) are owed by Q918e, the showcase games, which need the
-    # matrix players (Q918b) before a round can be measured; they go the day it lands.
-    "schema 26: rules.simultaneous": "owed by Q918e (plan-simultaneous.md §6.8)",
-    "schema 26: rules.simultaneous.tie 'initiative'": "owed by Q918e (plan-simultaneous.md §6.8)",
-    "schema 26: rules.simultaneous.tie 'impossible'": "owed by Q918e (plan-simultaneous.md §6.8)",
-    "schema 26: pieces[].beats": "owed by Q918e (plan-simultaneous.md §6.8)",
+    # Schema 26's four names went on 2026-10-15, when Q918e archived their showcases
+    # (`plan-simultaneous.md`, *Q918e*; coverage rows 64 to 67).
     # Schema 21's four names and schema 24's one went on 2026-10-13, when Q844b archived
     # their showcases (`archive/sluice.json`, `pawnproof-wormhole`, `crease`; coverage rows
     # 57 to 61, `reference/portal-showcase-ideas.md`).

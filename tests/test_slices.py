@@ -226,7 +226,25 @@ LIBRARY = test_index_quality.RUNS
 # `analysis` with no number on a library game, and the core moves the build fingerprint. The
 # window is the stamp the library carries now (Q926's); **the library replay Q918a owes
 # empties it**.
-STALE_WINDOW: dict[str, str] = {"metrics": "f8af43c0447b76b4", "analysis": "3c06f1e7c404993c"}
+#
+# **Emptied 2026-10-15 by Q929**, that replay: the library re-played, re-analysed and
+# re-scored on core `273221deaf99f3c9` under `metrics` "002cc354dbee7c2d" and `analysis`
+# "7dfe04cc79c30b1f" (nothing moved), so every library `canonical.json` carries that stamp.
+#
+# **Opened 2026-10-15 by Q918d** (the analysis pass and score read games in rounds): the
+# round replay, probe and blunders (`tournament/analysis.py`) and the round readings
+# (`metrics/components.py`) move `analysis` to "2a75bbd0f846bec7" and `metrics` to
+# "d85bf7e60288beab" (`FROZEN_ANALYSIS`/`FROZEN_METRICS` say so); the core is unmoved. The
+# window is the stamp the library carries now (Q929's); **the library re-analysis and
+# re-score Q918d owes (no replay) empties it**.
+#
+# **Emptied 2026-10-16 by Q938**, that re-analysis and re-score: the 87 library games
+# re-analysed and re-scored from their stored records on core `273221deaf99f3c9` under
+# `metrics` "d85bf7e60288beab" and `analysis` "2a75bbd0f846bec7" (no game played; no score,
+# verdict or file moved, only those two basis keys), so every library `canonical.json` carries
+# the tree's own reading again. The replaced measurements, with the stamp this window held, are
+# kept under each game's `runs/<hash>/previous/` (`docs/reference/rescore-2026-10-16.md`).
+STALE_WINDOW: dict[str, str] = {}
 
 
 @pytest.fixture(scope="module")

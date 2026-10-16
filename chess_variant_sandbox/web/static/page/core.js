@@ -938,8 +938,19 @@ function trackHtml(track) {
 // The card's first pill: the level word, and nothing where the listing sent none.
 // Its (i) where the server names one for the level (`stages.GLOSSES`: Baseline, B23).
 function levelTag(game) {
-  return game.level ? `<span class="tag level">${esc(game.level)}</span>${
-    game.levelGloss ? info(game.levelGloss) : ''}` : '';
+  // A preview's level (Q931) is drawn as its badge, louder than the other level words:
+  // it is the one that says how to read everything else on the card.
+  return game.level ? `<span class="tag level${game.preview ? ' preview' : ''}">${
+    esc(game.level)}</span>${game.levelGloss ? info(game.levelGloss) : ''}` : '';
+}
+
+// A preview (Q931): a new kind of game, still being tested, listed apart from the library
+// and in no scored surface. The sentence is the spec's own `provenance.preview`, served as
+// `preview` on its card and its page by `library.preview`; the page writes none of it.
+// Where a game is a preview its card shows this in place of the score, and its page shows
+// it under the name and above the score.
+function previewHtml(said) {
+  return said ? `<div class="previewNote">${esc(said)}</div>` : '';
 }
 
 // A game kept on purpose for what it shows says so beside its number, wherever the number

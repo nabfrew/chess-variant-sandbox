@@ -44,6 +44,29 @@ A running game between two people is readable by its two players only; spectatin
 `docs/limbo/site.md`. A finished one is readable by any member (§1.9). Anybody else is
 told there is no game at the address, which is the answer a wrong id gets, so a running
 game's existence is not confirmed to somebody outside it.
+
+## A game in rounds (Q918f, `docs/plan-simultaneous.md` §6.6)
+
+On rules that play in rounds (schema 26) neither player waits for the other's move: each
+**seals** one for the round's position, in secret, and both are made at once by the core
+when the second is in. The first one in waits in `matches.sealed_move`
+(`0036_sealed_moves.sql`), which this module alone reads, never in `moves`, so no replay,
+record, finish or route that rebuilds a position can show it. The position a reader is
+handed is built for them (`snapshot_for`): the board offers their own moves while they
+owe one, says of the other seat only *sealed* or not, and gives the sealed move back to
+the seat that sealed it and to nobody else.
+
+**The reveal is one transaction.** Every seal locks the row first (`select ... for
+update`), then reads what is sealed. Of two seals racing, the second waits on the first's
+lock and then finds its move, so exactly one of them reveals: both moves appended to
+`moves` in seat order through `matches._advance` (the engine replays them and resolves the
+round), `sealed_move` cleared, a standing draw offer lapsed, each move's time kept.
+
+**A sealed move is final**, as a sent move is in a game that alternates; the hold before
+the seal is where it can be changed, on the page. **The clock** is the round's: it starts
+when the round opens (the last reveal, or the start) and a seal does not move it, so the
+sweep (`sweep_round`) resigns, after `quota.CORRESPONDENCE_IDLE`, the one player who has
+not sealed, and draws the game if neither has.
 """
 
 from __future__ import annotations
@@ -57,6 +80,7 @@ from typing import Any
 from chess_variant_sandbox.site import identity, matches, quota, rating
 from chess_variant_sandbox.site.matches import AGREED, BETWEEN_PEOPLE, CANCELLED, MatchError, Row
 from chess_variant_sandbox.web import draw_offer
+from chess_variant_sandbox.web.library import engine_for
 
 PRACTICE = matches.SANDBOX
 """The mode a game between two people takes on rules with no rated computer players."""
@@ -80,6 +104,24 @@ RULES = (
     f"The player to move loses after {quota.CORRESPONDENCE_IDLE_SAID}.",
 )
 """The rules of a correspondence game as the page states them under the moves (test 7)."""
+
+ROUND_RULES = (
+    "There is no clock: each of you seals your move for a round when you like.",
+    "Each round you both choose a move for the same position. A move you pick is held "
+    "until you seal it, and a sealed move is final; neither of you sees the other's until "
+    "both are in, and then both are made at once.",
+    "Either of you may offer a draw; it stands until the other accepts it or declines it, "
+    "or the round is revealed. Each of you may offer one in any five of your own moves.",
+    "Either of you may cancel the game until the first round is revealed; it then counts "
+    "for nothing.",
+    f"After {quota.CORRESPONDENCE_IDLE_SAID} in a round, a player who has not sealed one "
+    "loses; if neither of you has, the game is drawn.",
+)
+"""`RULES` for a game played in rounds (Q918f): the seal, the reveal and the round's clock."""
+
+UNSEALED = "unsealed"
+"""The store's reason for a game in rounds the sweep drew: neither player sealed a move in
+time (Q918f). A thing two people did not do, like `resigned`, not a way a position ended."""
 
 
 # ------------------------------------------------------------------------- reading
@@ -215,19 +257,111 @@ def started_order(entries: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     )
 
 
+# ------------------------------------------------------------ a game in rounds (Q918f)
+
+
+@dataclass(frozen=True)
+class Sealed:
+    """The one move sealed in a round not yet revealed: whose, and which."""
+
+    seat: int
+    move: int
+
+
+def _sealed(connection: Any, match_id: str, lock: bool = False) -> Sealed | None:
+    """The move sealed in this row's open round, or None. `lock` takes the row's lock
+    first (`for update`), which every seal and the sweep's round arm do before they read
+    it, so whatever they then decide is decided once."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select sealed_move from matches where id = %s" + (" for update" if lock else ""),
+            (match_id,),
+        )
+        found = cursor.fetchone()
+    if found is None or found[0] is None:
+        return None
+    return Sealed(seat=int(found[0]["seat"]), move=int(found[0]["move"]))
+
+
+def sealed_seat(connection: Any, match_id: str) -> int | None:
+    """Which seat has sealed in the open round, or None: the seat alone, never the move."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select (sealed_move ->> 'seat')::int from matches where id = %s", (match_id,)
+        )
+        found = cursor.fetchone()
+    return None if found is None or found[0] is None else int(found[0])
+
+
+def _drop_sealed(connection: Any, match_id: str) -> None:
+    """Forget a sealed move at a finish: a round never revealed stays unread."""
+    with connection.cursor() as cursor:
+        cursor.execute("update matches set sealed_move = null where id = %s", (match_id,))
+
+
+def in_rounds(position: Any) -> bool:
+    """Whether this replayed game plays in rounds, as the compiled rules say (schema 26)."""
+    return bool(position.engine.simultaneous)
+
+
+def owing(connection: Any, found: Row) -> tuple[int, ...]:
+    """The seats that owe a move now: the engine's side to move in a game that alternates;
+    in a game in rounds, each seat that has not sealed this round. Empty once it is over."""
+    if not found.running:
+        return ()
+    position = matches.session(connection, found.id)
+    if in_rounds(position):
+        sealed = sealed_seat(connection, found.id)
+        return tuple(seat for seat in (0, 1) if seat != sealed)
+    return (int(position.state.side_to_move),)
+
+
+def snapshot_for(connection: Any, found: Row, viewer: int | None) -> dict[str, Any]:
+    """The match as this reader may see it, with a game between two people's own block.
+
+    The one place a snapshot of a game between two people is made for a route. In a game
+    in rounds it is the reader's: the board offers their moves while they owe one, a
+    move the other seat sealed is in it only as `round.sealed`'s boolean, and the reader's
+    own sealed move comes back to them alone (`round.yours`).
+    """
+    position = matches.session(connection, found.id)
+    between = between_people(found)
+    if between and in_rounds(position):
+        seat = -1 if viewer is None else found.seat_of(rating.person(viewer))
+        position.viewer = seat
+        sealed = _sealed(connection, found.id) if found.running else None
+        if sealed is not None and sealed.seat == seat:
+            position.pending[seat] = sealed.move
+        elif sealed is not None:
+            position.sealed_unseen = (sealed.seat == 0, sealed.seat == 1)
+    snapshot = position.snapshot()
+    if between:
+        snapshot["correspondence"] = view(
+            connection,
+            matches.row(connection, found.id),
+            viewer,
+            mover=snapshot.get("sideToMove"),
+            rounds="round" in snapshot,
+        )
+    return snapshot
+
+
 def view(
     connection: Any,
     found: Row,
     viewer: int | None,
     mover: int | None = None,
     at: datetime | None = None,
+    rounds: bool = False,
 ) -> dict[str, Any]:
     """What the match page needs about a game between two people, beside the snapshot.
 
     `you` is the viewer's seat, or None for a member reading a finished game. Times are
     when things happened; `toMove` is the one exception, the time the player to move has
     left (`mover`, the engine's side to move), as a sentence and only while the game
-    runs. `at` is the clock, the database's unless a test sets it.
+    runs. `at` is the clock, the database's unless a test sets it. `rounds` is a game in
+    rounds (Q918f): its rules are `ROUND_RULES`, and `mover` is the reader while their
+    move is not in, else the seat the round waits on.
     """
     you = -1 if viewer is None else found.seat_of(rating.person(viewer))
     offer = offer_of(connection, found.id)
@@ -248,7 +382,7 @@ def view(
         "started": found.started.isoformat(),
         "left": found.left,
         "toMove": _to_move(connection, found, you, players, mover, at),
-        "rules": list(RULES),
+        "rules": list(ROUND_RULES if rounds else RULES),
     }
 
 
@@ -417,8 +551,11 @@ def start(
 def mode_for(connection: Any, game: str) -> str:
     """Rated where the game's rules have rated computer players, practice elsewhere (§1.3).
 
-    The game's, never a choice: the challenge sheet says which before anybody accepts.
+    The game's, never a choice: the challenge sheet says which before anybody accepts. A
+    preview is practice whatever its table holds (Q931, `matches.is_preview`).
     """
+    if matches.is_preview(connection, game):
+        return PRACTICE
     if rating.computers(rating.load(connection, game)):
         return matches.LEADERBOARD
     return PRACTICE
@@ -452,8 +589,12 @@ def move(connection: Any, match_id: str, user: int | None, chosen: int) -> dict[
     Whose turn it is is the replayed position's side to move, and the move's legality is
     the engine's (`Session.play`). The time it landed is kept beside it, and a draw offer
     made by the other person lapses, because moving is how an offer is declined (§1.3).
+
+    In a game in rounds the move is a seal (`seal`).
     """
     found, seat = _running(connection, match_id, user)
+    if _plays_in_rounds(connection, found):
+        return seal(connection, match_id, user, chosen)
     position = matches.session(connection, match_id)
     if position.state.side_to_move != seat:
         raise MatchError("it is not your move; the other player's move comes first")
@@ -471,6 +612,96 @@ def move(connection: Any, match_id: str, user: int | None, chosen: int) -> dict[
                 (match_id,),
             )
     return snapshot
+
+
+def _plays_in_rounds(connection: Any, found: Row) -> bool:
+    """Whether this row's game plays in rounds, from its compiled rules, without a replay."""
+    _name, spec = matches._game_row(connection, found.game)
+    return bool(engine_for(spec).simultaneous)
+
+
+def seal(connection: Any, match_id: str, user: int | None, chosen: int) -> dict[str, Any]:
+    """This person's move for the round now open, sealed; the round revealed if the other
+    person's is in already (Q918f, `docs/plan-simultaneous.md` §6.6).
+
+    The row is locked before anything is read, so of two seals racing the second waits for
+    the first to commit and then finds its move: one reveal, never two, and never a round
+    revealed with one move. Whether the move is legal is the engine's, asked through the
+    replayed position drawn for this seat (`Session.seal`, which refuses a move the round's
+    position does not offer it; its answer is thrown away). A first seal is
+    stored in `sealed_move` with its time and nothing else changes: not `moves`, not the
+    round's clock (`moved`), not a draw offer. The second reveals through `_advance`, which
+    replays both moves in seat order, so the engine resolves the round and a finish is
+    recorded as any finish is; then the seal is cleared, each move's time kept in seat
+    order, and a standing draw offer lapses.
+
+    Answers the position after it as the sealer may see it (`snapshot_for`).
+    """
+    standing = _sealed(connection, match_id, lock=True)
+    found, seat = _running(connection, match_id, user)
+    if standing is not None and standing.seat == seat:
+        raise MatchError(
+            "your move for this round is sealed already; it is revealed with the other "
+            "player's, once theirs is in"
+        )
+    position = matches.session(connection, match_id)
+    position.viewer = seat
+    position.seal(int(chosen))  # the engine's check: a ValueError for an illegal move
+    if standing is None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "update matches set sealed_move = jsonb_build_object("
+                "'seat', %s::int, 'move', %s::int, 'at', to_jsonb(now())) where id = %s",
+                (seat, int(chosen), match_id),
+            )
+        return snapshot_for(connection, matches.row(connection, match_id), user)
+    pair = (standing.move, int(chosen)) if standing.seat == 0 else (int(chosen), standing.move)
+
+    def reveal(game: Any) -> dict[str, Any]:
+        for move in pair:
+            game.replay(move)
+        snapshot: dict[str, Any] = game.snapshot()
+        return snapshot
+
+    matches._advance(connection, match_id, reveal)
+    first_at = "sealed_move -> 'at'" if standing.seat == 0 else "to_jsonb(now())"
+    second_at = "to_jsonb(now())" if standing.seat == 0 else "sealed_move -> 'at'"
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "update matches set times = coalesce(times, '[]'::jsonb)"
+            f" || jsonb_build_array({first_at}, {second_at}),"
+            " sealed_move = null, draw_offer = null, draw_offer_ply = null where id = %s",
+            (match_id,),
+        )
+    return snapshot_for(connection, matches.row(connection, match_id), user)
+
+
+def sweep_round(connection: Any, found: Row, between: timedelta) -> Row | None:
+    """The sweep's arm for a game in rounds between two people (Q918f): after `between`
+    from the round's opening, the one player who has not sealed loses it, as a game they
+    left; if neither has, it is drawn, `reason = unsealed`, left by both.
+
+    The row is locked and the deadline read again under the lock, so a seal that revealed
+    the round while the sweep was on its way (and so started a new one) is not undone.
+    None when the row is no longer due.
+    """
+    standing = _sealed(connection, found.id, lock=True)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select finished is null and coalesce(moved, started) < now() - %s"
+            " from matches where id = %s",
+            (between, found.id),
+        )
+        due = cursor.fetchone()
+    if due is None or not due[0]:
+        return None
+    _drop_sealed(connection, found.id)
+    _clear_offer(connection, found.id)
+    if standing is None:
+        matches._finish(connection, found.id, result=0.5, reason=UNSEALED, left=True)
+        return matches.row(connection, found.id)
+    absent = found.player(1 - standing.seat).user
+    return matches.resign(connection, found.id, by=absent, left=True)
 
 
 def offer_draw(connection: Any, match_id: str, user: int | None) -> Offer | None:
@@ -507,6 +738,7 @@ def accept_draw(connection: Any, match_id: str, user: int | None) -> Row:
     if standing is None or standing.seat == seat:
         raise MatchError("there is no draw offer from the other player to accept")
     _clear_offer(connection, match_id)
+    _drop_sealed(connection, match_id)
     matches._finish(connection, match_id, result=0.5, reason=AGREED, left=False)
     return matches.row(connection, match_id)
 
@@ -530,6 +762,7 @@ def resign(connection: Any, match_id: str, user: int | None) -> Row:
     """Give the game up. A finish they chose, so it is not a game they left."""
     _running(connection, match_id, user)
     _clear_offer(connection, match_id)
+    _drop_sealed(connection, match_id)
     return matches.resign(connection, match_id, by=user, left=False)
 
 
@@ -548,7 +781,7 @@ def cancel(connection: Any, match_id: str, user: int | None) -> Row:
     with connection.cursor() as cursor:
         cursor.execute(
             "update matches set finished = now(), reason = %s, result = null,"
-            " draw_offer = null, draw_offer_ply = null where id = %s",
+            " draw_offer = null, draw_offer_ply = null, sealed_move = null where id = %s",
             (CANCELLED, match_id),
         )
     return matches.row(connection, match_id)
@@ -568,10 +801,11 @@ def leave(connection: Any, user: int) -> tuple[Row, ...]:
     What leaving the site and being revoked from `/admin` both do (§1.6): the other
     player is not left waiting five days for somebody who cannot come back.
     """
-    return tuple(
-        matches.resign(connection, found.id, by=user, left=True)
-        for found in running_for(connection, user)
-    )
+    resigned = []
+    for found in running_for(connection, user):
+        _drop_sealed(connection, found.id)
+        resigned.append(matches.resign(connection, found.id, by=user, left=True))
+    return tuple(resigned)
 
 
 def member_named(connection: Any, handle: str) -> int:

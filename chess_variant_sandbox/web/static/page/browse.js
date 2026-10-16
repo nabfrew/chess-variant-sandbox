@@ -45,7 +45,9 @@ async function showLibrary() {
     ACCOUNTS && VIEWER ? api('/api/challenges').catch(() => null) : null,
   ]);
   SCORING = scoring;
-  LIBRARY = data.games;
+  // Q931: the previews come apart from the library (`previews`), each with its level, so
+  // the site files them under their own tab; nothing the server ranks or counts holds them.
+  LIBRARY = data.games.concat(data.previews || []);
   takePieceArt(data);
   OPPONENTS = data.opponents;
   COVERAGE = data.coverage;
@@ -58,7 +60,10 @@ async function showLibrary() {
   document.getElementById('tagline').textContent =
     // Archived games were invented here too -- keeping one must not make the count of
     // what this project has found go *down*. Committed is the only thing that isn't.
-    `${LIBRARY.length} games, ${LIBRARY.filter(g => g.source !== 'committed').length} invented here`;
+    `${data.games.length} games, ${
+      data.games.filter(g => g.source !== 'committed').length} invented here${
+      (data.previews || []).length ? `, and ${data.previews.length} preview${
+        data.previews.length === 1 ? '' : 's'}` : ''}`;
 
   // Q788 (the user, 2026-10-09: *"I'd like /games to skip repeating the game highlights of
   // the landing page, and just go straight to the full search+filter interface"*): the
@@ -711,10 +716,10 @@ function cardHtml(game) {
       ${thumbHtml(game)}
       <div class="cardText">
       <h2>${esc(game.name)}</h2>
-      <div class="row pills">${levelTag(game)}${scoreTag(game)}${
-        trustTag(game.trust, game.status)}</div>
+      <div class="row pills">${levelTag(game)}${game.preview ? '' : scoreTag(game)
+        + trustTag(game.trust, game.status)}</div>
       ${notes ? `<div class="row notes">${notes}</div>` : ''}
-      ${exhibitHtml(game.exhibit)}
+      ${exhibitHtml(game.exhibit)}${previewHtml(game.preview)}
       <div class="row muted small" style="gap:8px">
         <span>${esc(game.board)}</span><span>&middot;</span>
         <span>${game.pieceTypes} piece type${game.pieceTypes === 1 ? '' : 's'}</span>
@@ -725,7 +730,8 @@ function cardHtml(game) {
         (game.cellBins || []).slice(0, 4).map(esc).join(' &middot; ')
       }</div>
       <p>${esc(game.description)}</p>
-      ${cardSplitHtml(game)}${cardSeatHtml(game)}${sortedByHtml(game)}${cardBandHtml(game)}
+      ${game.preview ? '' : cardSplitHtml(game) + cardSeatHtml(game) + sortedByHtml(game)
+        + cardBandHtml(game)}
       ${game.descent ? `<div class="muted small" style="margin-top:6px">${
         game.descent} version${game.descent === 1 ? '' : 's'} on from ${
         esc((game.family || {}).name || nameOf((game.family || {}).hash) || 'an earlier game')

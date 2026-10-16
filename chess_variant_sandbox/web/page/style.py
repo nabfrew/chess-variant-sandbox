@@ -353,6 +353,11 @@ RULES = """
      how to read the number beside it. */
   .exhibit { margin: 6px 0; padding: 3px 0 3px 9px; border-left: 3px solid var(--note);
              font-size: 12px; line-height: 1.45; color: var(--ink); }
+  /* A preview (`previewHtml`, Q931): a new kind of game still being tested. The exhibit's
+     amber rule, for the exhibit's reason: it says how to read everything beside it. */
+  .previewNote { margin: 6px 0; padding: 3px 0 3px 9px; border-left: 3px solid var(--note);
+                 font-size: 12px; line-height: 1.45; color: var(--ink); }
+  .tag.level.preview { border-color: var(--note); font-weight: 600; }
   /* How far to trust a score (`trustHtml`, Q647). The exhibit's amber rule, for the
      exhibit's reason: it says how to read the number beside it. */
   .trust { margin: 8px 0; padding: 3px 0 3px 9px; border-left: 3px solid var(--note);

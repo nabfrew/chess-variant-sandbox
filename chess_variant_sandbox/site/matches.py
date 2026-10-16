@@ -447,6 +447,8 @@ def start(
             raise MatchError(WATCH_IS_SANDBOX)
         if user is None:
             raise MatchError(NEEDS_AN_ACCOUNT)
+        if is_preview(connection, game):
+            raise MatchError(PREVIEW_IS_PRACTICE.format(name=name))
         agent = seats[1 - list(seats).index(HUMAN)]
         if opponents.never_rated(agent, game):
             # Q683: a learned player is practice only, whatever a table holds, unless its
@@ -646,6 +648,24 @@ def _followed(
     elif previous.seat_of(rating.person(user)) < 0:
         raise MatchError("only a player of that game can play it again")
     return previous.id
+
+
+PREVIEW_ORIGIN = "preview"
+"""`load.PREVIEW`, spelled here so this module keeps its one import of the store's shape."""
+
+PREVIEW_IS_PRACTICE = (
+    "{name} is a preview, a new kind of game still being tested, so it can only be played "
+    "as practice; it has no leaderboard yet"
+)
+
+
+def is_preview(connection: Any, game: str) -> bool:
+    """Whether the store holds `game` as a preview (Q931, `load.PREVIEW`): practice only,
+    whatever any rating table holds, because a preview is in no scored surface."""
+    with connection.cursor() as cursor:
+        cursor.execute("select origin from games where hash = %s", (game,))
+        found = cursor.fetchone()
+    return found is not None and str(found[0]) == PREVIEW_ORIGIN
 
 
 def _game_row(
@@ -1303,7 +1323,9 @@ def sweep(
     of 2026-10-02), in either mode, and the one it is resigned for is **the player to
     move**, as the engine says from the replayed position (Q570, `docs/plan-return.md`
     §1.6). It is recorded as a game they left. A game where it is your opponent's move
-    is never lost by you for their silence.
+    is never lost by you for their silence. In a game in rounds both may owe a move: the
+    one who has not sealed loses, and a round neither sealed is a draw
+    (`correspondence.sweep_round`, Q918f).
     """
     with connection.cursor() as cursor:
         cursor.execute(
@@ -1327,8 +1349,18 @@ def sweep(
         )
         waiting = [_to_row(found) for found in cursor.fetchall()]
     for found in waiting:
+        position = session(connection, found.id)
+        if position.engine.simultaneous:
+            # A game in rounds (Q918f): whoever has not sealed this round, or a draw if
+            # neither has, which is `correspondence`'s to read off the sealed move.
+            from chess_variant_sandbox.site import correspondence
+
+            swept = correspondence.sweep_round(connection, found, between)
+            if swept is not None:
+                resigned.append(swept)
+            continue
         # Whose move it is is the engine's answer about the position the row replays to.
-        mover = session(connection, found.id).state.side_to_move
+        mover = position.state.side_to_move
         absent = found.player(mover).user
         resigned.append(resign(connection, found.id, by=absent, left=True))
     return tuple(resigned)

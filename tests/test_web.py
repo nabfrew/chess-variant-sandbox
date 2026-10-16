@@ -11195,8 +11195,9 @@ class TestBuildingAGameByHand:
         # showcases (`schema-showcase-coverage.md` rows 53 to 55).
         # `simultaneous` (schema 26, Q918a) joined it; Q918e's showcases take it out (rows 64
         # to 67).
+        # `simultaneous` left the set with Q918e's four round showcases (2026-10-15).
         assert _RULES_KEYS - seen == {
-            "bare_royal", "checkmate", "turn", "simultaneous",
+            "bare_royal", "checkmate", "turn",
         }, "the rule keys nothing in the library uses have changed"
 
     def test_the_rule_keys_nothing_in_the_library_uses_are_not_refused_either(

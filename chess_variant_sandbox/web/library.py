@@ -61,6 +61,11 @@ CURRENT = "current"
 PROVISIONAL = "provisional"
 NONE = "none"
 
+# A file in `archive/` that says it is a preview (`provenance.preview`, Q931): its own
+# source, beside *committed* and *archived*, so that no list of the library's sources holds
+# it. See `preview`.
+PREVIEW = "preview"
+
 
 @dataclass
 class Game:
@@ -70,7 +75,7 @@ class Game:
     name: str
     description: str
     path: Path
-    source: str  # committed | archived | designed | evolved | retired
+    source: str  # committed | archived | preview | designed | evolved | retired
     spec: dict[str, Any]
     # One measurement, or none. Score and ladder are *views* onto it rather than two
     # fields that happen to sit beside each other, because as two fields they were
@@ -392,6 +397,10 @@ class Game:
             # `None`. Beside the number wherever the number is, so a deliberately broken
             # game at the bottom of a ranking reads as what it is -- see `exhibit`.
             "exhibit": exhibit(self),
+            # The sentence saying this game is a preview, or `None` (Q931): a new kind of
+            # game still being tested, listed apart and in no scored surface. A preview's
+            # card is sent in the listing's `previews`, never its `games`.
+            "preview": preview(self),
             # How far to trust the score (Q647, `plan-confidence.md` §2.1): the level word
             # as the card's chip, and its sentence for the chip's (i). `None` where there
             # is no current score, which says so itself: a provisional estimate has no
@@ -709,7 +718,12 @@ def discover(
             name=str(spec.get("name", path.stem)),
             description=str(spec.get("description", "")),
             path=path,
-            source=source,
+            # An archived file that says it is a preview is filed as one (Q931, `preview`).
+            source=(
+                PREVIEW
+                if source == "archived" and preview_sentence(spec) is not None
+                else source
+            ),
             spec=spec,
             verdict=verdicts.get(digest),
         )
@@ -756,10 +770,10 @@ def discover(
     for digest, game in games.items():
         game.measurement = measurements.get(digest)
 
-    order = {"committed": 0, "archived": 1, "designed": 2, "evolved": 3}
+    order = {"committed": 0, "archived": 1, PREVIEW: 2, "designed": 3, "evolved": 4}
     found = sorted(
         games.values(),
-        key=lambda game: (order.get(game.source, 4), game.name.lower()),
+        key=lambda game: (order.get(game.source, 5), game.name.lower()),
     )
     _remember(scan, found)
     return list(found)
@@ -898,7 +912,8 @@ def trust_card(game: Game, people: Any = None) -> dict[str, Any] | None:
     from chess_variant_sandbox import trust
 
     found = game.trust
-    if found is None or game.status != CURRENT:
+    # A preview's score is not yet trusted, and its own sentence says so (Q931).
+    if found is None or game.status != CURRENT or is_preview(game):
         return None
     return trust.card(found if people is None else trust.with_people(found, people))
 
@@ -912,7 +927,8 @@ def trust_line(game: Game, people: Any = None, *, maintainer: bool = True) -> di
     from chess_variant_sandbox import history, trust
 
     found = game.trust
-    if found is None or game.status != CURRENT:
+    # A preview's score is not yet trusted, and its own sentence says so (Q931).
+    if found is None or game.status != CURRENT or is_preview(game):
         return None
     if people is not None:
         found = trust.with_people(found, people)
@@ -943,7 +959,12 @@ def detail(game: Game, others: Iterable[Game] | None = None) -> dict[str, Any]:
 
     cell = descriptor(game.spec)
     return {
-        "links": [] if others is None else neighbours(game, others),
+        # A preview has no neighbours and is nobody's (Q931): a link carries the gap
+        # between two scores, and a preview is in no comparison.
+        "links": (
+            [] if others is None or game.source == PREVIEW
+            else neighbours(game, scored(others))
+        ),
         **game.summary(),
         # *Where it stands*: the level's sentence and the designer's track, from the
         # same word the card carries (Q503b).
@@ -1257,7 +1278,7 @@ def keeping(
         # Shown because "tested" means nothing without saying against what, and this
         # ladder is the whole difference between a design run's number and a corpus one.
         # This game's: a net ladder where its learned net is rated (Q502h).
-        "roster": list(corpus.canonical_agents(game.hash)),
+        "roster": list(corpus.canonical_agents(game.hash, spec=candidate.spec)),
         "gamesPerPairing": corpus.CANONICAL_GAMES,
         "lineage": dict(candidate.lineage),
     }
@@ -1465,7 +1486,8 @@ def _comparable(games: Iterable[Game]) -> tuple[_Measured, ...]:
     which names no status) is left out too: the band is the current version's.
     """
     found: list[_Measured] = []
-    for game in games:
+    # A preview is in no band, and is no other game's comparison either (Q931, `preview`).
+    for game in scored(games):
         score = current_only(game.score)
         if score is None or score.get("weights_version") != DEFAULT_WEIGHTS:
             continue
@@ -1706,6 +1728,49 @@ def exhibit(game: Game) -> str | None:
     if not isinstance(said, str) or not said.strip():
         return None
     return said.strip()
+
+
+def preview_sentence(spec: Mapping[str, Any]) -> str | None:
+    """A spec's own `provenance.preview`, stripped, or ``None`` where it says none."""
+    provenance = spec.get("provenance")
+    said = provenance.get("preview") if isinstance(provenance, Mapping) else None
+    if not isinstance(said, str) or not said.strip():
+        return None
+    return said.strip()
+
+
+def preview(game: Game) -> str | None:
+    """The sentence saying this game is shown as a preview, or ``None`` (Q931).
+
+    The user, 2026-10-15: *"get the showcase games against computer up for testing on the
+    site as soon as possible. label them testing/previews if necessary"*. A preview is a new
+    kind of game still being tested: it is listed apart from the library under its own
+    label and played as practice, and it stays out of every scored surface -- the library's
+    listing and its bands, the landing page's shelves, the map, every neighbour and
+    comparison, ratings and leaderboards. The sentence is the spec's own
+    `provenance.preview`, outside the mechanics hash, so marking a game or taking the mark
+    off moves no game and no measurement; taking it off is how a preview joins the library.
+
+    Only a file in `archive/` may say it (`discover` files it as source `PREVIEW`): a
+    Baseline game is what every score is measured against, and a draft or a design run's
+    candidate is not the maintainer's to show. Being its own source rather than *archived*
+    is what keeps a preview out of every list that names the library's two sources
+    (`LIBRARY_SOURCES`, the map's, the site's `CORPUS_SOURCES`) without each being told.
+    """
+    if game.source != PREVIEW:
+        return None
+    return preview_sentence(game.spec)
+
+
+def is_preview(game: Any) -> bool:
+    """Whether `game` is filed as a preview. Read off `source` where the reader has one, so
+    a stand-in carrying only what a comparison reads is never one."""
+    return getattr(game, "source", None) == PREVIEW
+
+
+def scored(games: Iterable[Game]) -> list[Game]:
+    """`games` without the previews: the population every scored surface reads (Q931)."""
+    return [game for game in games if not is_preview(game)]
 
 
 def still(game: Game) -> dict[str, Any] | None:
@@ -1963,6 +2028,9 @@ def _playability(spec: dict[str, Any]) -> dict[str, Any]:
 
     A spec the gate cannot even compile is reported as unplayable rather than raised:
     a listing that dies on one broken file shows nobody the other twenty-seven.
+
+    A game played in rounds is checked as any game is: the gate plays it in rounds (Q932),
+    where Q931 had to leave it unsaid while the gate refused every such game by rule.
     """
     try:
         passed, reasons = _smoke_cached(json.dumps(spec, sort_keys=True))

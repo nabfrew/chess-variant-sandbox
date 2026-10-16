@@ -19,6 +19,10 @@ and the track it is sent.
 - `nominated`: a public designed row with the stamp is **Shortlisted** (`shortlist.nominate` sets it),
   and without it **On trial**.
 
+- `origin` `preview` is **Preview** (Q931, `load.PREVIEW`): a file in `archive/` that says
+  it is a preview, a new kind of game still being tested. It is listed in its own tab and
+  played as practice, and it is on no step of the track.
+
 - `rested`: a designed row the sweep stamped is **Resting** (Q503i, `site/resting.py`): a
   trial game nobody plays leaves the listing, keeps its page, and may be published again
   once. A shortlisted game is never stamped.
@@ -66,8 +70,9 @@ LIBRARY = "Library"
 BASELINE = "Baseline"
 RESTING = "Resting"
 RETIRED = "Retired"
+PREVIEW = "Preview"
 
-LEVELS = (DRAFT, ON_TRIAL, SHORTLISTED, LIBRARY, BASELINE, RESTING, RETIRED)
+LEVELS = (DRAFT, ON_TRIAL, SHORTLISTED, LIBRARY, BASELINE, PREVIEW, RESTING, RETIRED)
 """Every word `stage` and `local` return, in the order the profile groups by."""
 
 TRACK = (DRAFT, ON_TRIAL, SHORTLISTED, LIBRARY)
@@ -77,6 +82,9 @@ act, not a step, so a Baseline game shows its own word where Library would be li
 ARCHIVE = "archive"
 CORPUS = "corpus"
 DESIGNED = "designed"
+PREVIEWED = "preview"
+"""The loader's origin for a file in `archive/` that says it is a preview (`load.PREVIEW`,
+Q931): **Preview**, a level beside the track rather than a step on it."""
 """The loader's two origins (`load.ARCHIVED`, `load.CORPUS`), spelled here rather than
 imported so that the local application can read this module without the store's."""
 
@@ -84,6 +92,7 @@ PUBLIC = "public"
 
 COMMITTED = "committed"
 ARCHIVED = "archived"
+LOCAL_PREVIEW = "preview"
 LOCAL_RETIRED = "retired"
 """`corpus.find`'s and `library.discover`'s words for a file's place on a checkout."""
 
@@ -95,6 +104,9 @@ TABS = (
         "sort": "index",
     },
     {"key": "trial", "label": ON_TRIAL, "levels": [ON_TRIAL], "sort": "onTrialSince"},
+    # Q931: the previews, new kinds of game still being tested. Their cards come in the
+    # listing's `previews`, never its `games`, so no scored surface reads them.
+    {"key": "previews", "label": "Previews", "levels": [PREVIEW], "sort": "name"},
 )
 """The site's library tabs (§3.2), which levels each lists, and the card key it opens
 sorted by, best or newest first. The page opens on the first. A level in no tab --
@@ -113,6 +125,8 @@ SAYS = {
     "Its page and link still work.",
     RETIRED: "Retired: its rules have left the library, so it is not offered for new "
     "games. Its page and its games stay.",
+    PREVIEW: "A preview: a new kind of game, still being tested. Play it against the "
+    "computer for practice; it is not on any leaderboard, and its score is not yet trusted.",
 }
 """One sentence per level, for the game page's panel and the profile's rows."""
 
@@ -150,6 +164,8 @@ def stage(row: Mapping[str, Any]) -> str:
         return LIBRARY
     if origin == CORPUS:
         return BASELINE
+    if origin == PREVIEWED:
+        return PREVIEW
     if row.get("rested") is not None:
         return RESTING
     if str(row.get("visibility") or "") != PUBLIC:
@@ -165,6 +181,8 @@ def local(source: str) -> str:
         return BASELINE
     if source == ARCHIVED:
         return LIBRARY
+    if source == LOCAL_PREVIEW:
+        return PREVIEW
     if source == LOCAL_RETIRED:
         return RETIRED
     return DRAFT

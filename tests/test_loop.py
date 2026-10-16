@@ -135,6 +135,76 @@ class TestSmokeGate:
         assert time.perf_counter() - started < 12.0
 
 
+def _in_rounds(spec: dict) -> dict:
+    """`spec` played in rounds (schema 26, `rules.simultaneous`)."""
+    rounds = copy.deepcopy(spec)
+    rounds["schema_version"] = 26
+    rounds["rules"]["simultaneous"] = {}
+    return rounds
+
+
+class TestTheGatesPlayRounds:
+    """Q932: the cheap rungs play a game in rounds, on the same criteria as any game."""
+
+    def test_a_playable_game_in_rounds_passes(self) -> None:
+        result = smoke_test(_in_rounds(PLAYABLE), games=40)
+        assert result.passed, result.reasons
+        assert result.stats["games"] == 40 and result.stats["mean_branching"] > 1.5
+
+    def test_two_lone_kings_in_rounds_fail_for_never_having_a_winner(self) -> None:
+        """Every meeting of two kings that capture each other is a tie that removes both,
+        so no random game is ever won: the ordinary no-winner criterion, after playouts."""
+        lone = _in_rounds(PLAYABLE)
+        lone["pieces"] = lone["pieces"][:1]
+        lone["setup"]["placements"] = lone["setup"]["placements"][:1]
+        result = smoke_test(lone, games=40)
+        assert not result.passed
+        assert result.stats["games"] == 40
+        assert result.reasons == [
+            "none of 40 random games had a winner; from this start, the way to win may be "
+            "out of reach"
+        ]
+
+    def test_a_game_in_rounds_with_no_first_move_fails_before_playing(self) -> None:
+        stuck = _in_rounds(PLAYABLE)
+        for piece in stuck["pieces"]:
+            piece["moves"] = [
+                {"kind": "slide", "vectors": [[0, 1]], "range": 1, "min_range": 1, "mode": "capture"}
+            ]
+        result = smoke_test(stuck, games=5)
+        assert not result.passed
+        assert result.reasons == ["a player has no legal move from the starting position"]
+
+    def test_the_round_roster_swaps_minimax_for_matrix_at_the_same_budgets(self) -> None:
+        from chess_variant_sandbox.loop.orchestrator import DEFAULT_AGENTS
+        from chess_variant_sandbox.loop.screen import SCREEN_AGENTS, roster_for, round_roster
+
+        assert round_roster(SCREEN_AGENTS) == ("matrix:nodes=100", "matrix:nodes=400")
+        assert round_roster(DEFAULT_AGENTS) == (
+            "random", "greedy", "matrix:nodes=400", "matrix:nodes=1600"
+        )
+        assert roster_for(PLAYABLE, DEFAULT_AGENTS) == DEFAULT_AGENTS
+        for refused in ("mcts:nodes=400", "minimax:h=abc,nodes=400"):
+            with pytest.raises(ValueError, match="cannot play a game in rounds"):
+                round_roster((refused,))
+
+    def test_the_screen_plays_a_round_game_and_refuses_a_roster_with_no_round_player(
+        self,
+    ) -> None:
+        from pathlib import Path
+
+        from chess_variant_sandbox.loop.screen import screen
+        from chess_variant_sandbox.spec.canonical import load_spec
+
+        hole = load_spec(Path(__file__).parent.parent / "archive" / "watering-hole.json")
+        played = screen(hole, workers=1)
+        assert played.passed, played.reasons
+        assert played.stats["games"] == 8 and played.stats["decisive"] >= 1
+
+        refused = screen(hole, agents=("mcts:nodes=100", "mcts:nodes=400"), workers=1)
+        assert not refused.passed and "cannot play a game in rounds" in refused.reasons[0]
+
+
 class TestArchive:
     def test_entries_survive_a_restart(self, tmp_path) -> None:
         first = Archive(tmp_path)

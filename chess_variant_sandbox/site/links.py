@@ -63,7 +63,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from chess_variant_sandbox.spec import relate
-from chess_variant_sandbox.web.library import MOST_LINKS, NEAR, nearest_by_feature
+from chess_variant_sandbox.web.library import MOST_LINKS, NEAR, PREVIEW, nearest_by_feature
 
 PUBLIC = "public"
 """A game everybody may find. `site/drafts.py` writes the same word."""
@@ -157,9 +157,15 @@ def specs_of(connection: Any, without: str = "") -> dict[str, dict[str, Any]]:
     A deleted game has no spec at all, so it is absent by the column rather than by a
     clause. A killed or retired game is here: its row and its links stay, and which of
     them a person is shown is `_findable`'s question and not this one.
+
+    A preview is not here (Q931, `load.PREVIEW`): a link carries the gap between two
+    scores, and a preview is in no comparison, so it neither has links nor is one.
     """
     with connection.cursor() as cursor:
-        cursor.execute("select hash, spec from games where spec is not null")
+        cursor.execute(
+            "select hash, spec from games where spec is not null and origin <> %s",
+            (PREVIEW,),
+        )
         found = {str(row[0]): row[1] for row in cursor.fetchall()}
     found.pop(without, None)
     return {digest: spec for digest, spec in found.items() if isinstance(spec, dict)}

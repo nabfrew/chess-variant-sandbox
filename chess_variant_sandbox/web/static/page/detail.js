@@ -30,7 +30,9 @@ async function showGame(hash) {
   view.innerHTML = `
     <button class="crumb" id="back">&larr; all games</button>
     <h2 style="margin:10px 0 0">${esc(game.name)}${
-      retired ? ' <span class="tag">retired</span>' : ''}</h2>
+      retired ? ' <span class="tag">retired</span>' : ''}${
+      game.preview ? ' <span class="tag level preview">Preview</span>' : ''}</h2>
+    ${previewHtml(game.preview)}
     <div class="row" style="margin-top:6px">
       <button id="fork" title="open a copy of these rules in the designer, under a new name; this game stays as it is"
         >make your own from this</button>
@@ -84,7 +86,7 @@ async function showGame(hash) {
     <div class="gameRest">
       <div>
         ${sectionHtml('score', `How it scored${info('index')}`, `<div class="panel">
-          ${exhibitHtml(game.exhibit)}
+          ${exhibitHtml(game.exhibit)}${previewHtml(game.preview)}
           <div id="keepState">${measuringHtml(game)}</div>
           ${provisionalHtml(game)}
           ${scoreHtml(game.score, game.scoreGuide, game.band, game.trust)}
@@ -1771,6 +1773,12 @@ function modePicker(game) {
   const standing = game.standing;
   if (!standing) return '';
   const visitor = standing.signedIn === false ? ` ${UNKEPT}` : '';
+  // A preview (Q931) is practice whatever its computer players are: it has no leaderboard.
+  if (game.preview) {
+    return `<div class="muted small" style="margin-top:8px">A preview is played as
+      practice${info('practice')}: undo and restart are on, and nothing counts towards a
+      rating or Unbeaten.${visitor}</div>`;
+  }
   if (!standing.rated) {
     // §2.5 of `docs/plan-leaderboard.md`: the leaderboard's own sentence, said here too.
     return `<div class="muted small" style="margin-top:8px">This game's computer players

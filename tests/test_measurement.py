@@ -282,7 +282,14 @@ class TestTheFingerprintsPointAtSomething:
 # the same arithmetic, and `engine/engine.py` gains `select_round`. No alternating game reads
 # differently; the library's replay owed for Q918a (batched as Q929) re-scores under this
 # value. It was "db5723c0687589a6" after Q918a.
-FROZEN_METRICS = "002cc354dbee7c2d"
+#
+# **Moved 2026-10-15 by Q918d (records, metrics and the analysis pass for rounds)**:
+# `tournament/analysis.py` reads a game played in rounds (see `FROZEN_ANALYSIS`), and
+# `metrics/components.py` carries `ROUND_READINGS` and the rounds' tallies in a round game's
+# diagnostics. No alternating game reads differently: its analysis is the same bytes and its
+# components gain nothing. Every run reads stale by re-analyse until the refresher re-analyses
+# and re-scores the library under this value. It was "002cc354dbee7c2d" after Q918b.
+FROZEN_METRICS = "d85bf7e60288beab"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -475,7 +482,14 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 #
 # **Moved 2026-10-15 by Q918b**: `agents/evaluation.py` and `engine/engine.py` (see
 # `FROZEN_METRICS`). It was "3c32bdf6773b231e" after Q918a; Q929's replay is the re-analysis.
-FROZEN_ANALYSIS = "7dfe04cc79c30b1f"
+#
+# **Moved 2026-10-15 by Q918d (the pass reads games in rounds)**: `tournament/analysis.py`
+# walks a round game a round at a time, probes each player's moves against the opponent's
+# equilibrium mix, forces round blunders and counts the resolutions (see `FROZEN_METRICS`). An
+# alternating game takes the path it took, byte for byte (checked on 16 games and their
+# trials of each of gardner, dobutsu, intransitive, crazyhouse and atomic). It was
+# "7dfe04cc79c30b1f" after Q918b; the library's re-analysis under it is owed (the refresher).
+FROZEN_ANALYSIS = "2a75bbd0f846bec7"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

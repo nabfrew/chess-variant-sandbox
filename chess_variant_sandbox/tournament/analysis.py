@@ -36,6 +36,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from chess_variant_sandbox._core import REGRET_ITERATIONS, regret_solve
 from chess_variant_sandbox.agents.evaluation import WIN_SCORE, Evaluator
 from chess_variant_sandbox.engine import Engine, GameState
 from chess_variant_sandbox.engine.moves import (
@@ -116,10 +117,17 @@ class GameAnalysis:
     # positions a game passed through reads the record instead of replaying it. Empty in
     # an analysis written before the field existed.
     position_keys: list[int] = field(default_factory=list)
+    # Schema 26 (Q918d): what the rounds' resolutions did, counted over the game
+    # (`ROUND_COUNTS`), read off the core's events as the pass replays each round. ``None``
+    # for a game that alternates, and then absent from the file, so an alternating game's
+    # `analysis.json` is the bytes it always was.
+    rounds: dict[str, int] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["agents"] = list(self.agents)
+        if self.rounds is None:
+            del data["rounds"]
         return data
 
     @classmethod
@@ -302,6 +310,8 @@ def _searching(record: GameRecord) -> bool:
 def _analyse_game(
     engine: Engine, evaluator: Evaluator, record: GameRecord, epsilon: float
 ) -> GameAnalysis:
+    if engine.simultaneous:
+        return _analyse_rounds(engine, evaluator, record, epsilon)
     n_types = engine.spec.n_types
     moves_by_type = [0] * n_types
     captures_by_type = [0] * n_types
@@ -593,6 +603,8 @@ def blunder_rng(seed: int, record: GameRecord) -> random.Random:
 def _one_blunder(
     engine: Engine, record: GameRecord, rng: random.Random
 ) -> BlunderTrial | None:
+    if engine.simultaneous:
+        return _one_round_blunder(engine, record, rng)
     target_ply = int(record.plies * BLUNDER_FRACTION)
     state = engine.initial_state()
     for move in record.moves[:target_ply]:
@@ -621,5 +633,319 @@ def _one_blunder(
         ply=target_ply,
         original_winner=record.winner,
         blundering_side=blundering,
+        new_winner=resumed.winner,
+    )
+
+
+# ------------------------------------------------------- schema 26: games in rounds
+#
+# `docs/plan-simultaneous.md` §6.3 (Q918d). A round game's record keeps both moves of each
+# round in seat order and every per-ply series twice, so a round is two plies; the pass
+# walks it a round at a time through `apply_round`. Two of its measurements need a reading
+# of their own, because with no mover there is no single list of options to score:
+#
+# * **the probe** values *each* player's moves against the opponent's equilibrium mix of
+#   the round's matrix game, one round deep, at the probe's fixed ruler (the built-in
+#   evaluator, mobility off, the goal and immunity terms at their weights; a finished round
+#   at ±(`WIN_SCORE` − ply)). The matrix is solved by the round players' own solver, the
+#   core's regret matching+ (`_core.regret_solve`). A move is near the best when it is
+#   within the cheapest piece of the best against that mix, as an alternating probe's is;
+#   each seat with a choice is one sample, so a sampled round gives two.
+# * **a blunder** is a move whose value against the mix falls short of the best by more
+#   than that threshold. The trial forces one, picked at random among them, into the
+#   seat whose ply the trial falls on, beside the other seat's recorded move (it chose
+#   without seeing either), and finishes the game with the same players. A position with
+#   no such move offers no blunder and gives no trial.
+#
+# Everything else the pass reads -- types moved, instances, captures offered, positions
+# revisited -- reads both moves of a round on the round's board, where both were chosen.
+
+# What the pass counts of the rounds' resolutions, from the core's events (`Engine.
+# apply_round_with_phase`: 0 a collision with its winner or -1, 1 a void move, 2 a tie the
+# initiative decided, 3 a pair barred), and a swap read off the two move words.
+ROUND_COUNTS = (
+    "rounds",
+    "collisions",
+    "collisions_both_lost",
+    "void_moves",
+    "initiative_ties",
+    "bars",
+    "swaps",
+)
+
+_COLLISION, _VOID, _INITIATIVE, _BARRED = 0, 1, 2, 3
+
+# The share of a mix read as the solver's residue rather than as a move the equilibrium
+# plays: what the first two of the solver's iterations alone can leave on a move, since
+# its average weights iteration t by t. Regret matching+'s average keeps that much of its
+# opening iterations on moves the equilibrium abandons, and against a finished round worth
+# ±`WIN_SCORE` a residue of 1e-5 is ten points, enough to push a sound move out of reach
+# of the cheapest piece. Decided before any round game was measured (Q918d's plan entry).
+DUST = 3.0 / (REGRET_ITERATIONS * (REGRET_ITERATIONS + 1) / 2)
+
+
+@dataclass(frozen=True)
+class RoundReading:
+    """One round's matrix game read by the probe: each seat's legal moves, the mixes the
+    solver found, and each move's value against the opponent's mix, from its own seat."""
+
+    moves: tuple[list[int], list[int]]
+    strategies: tuple[list[float], list[float]]
+    values: tuple[list[float], list[float]]
+
+    def near_best(self, seat: int, epsilon: float) -> int:
+        values = self.values[seat]
+        best = max(values)
+        return sum(1 for value in values if best - value <= epsilon)
+
+    def blunders(self, seat: int, epsilon: float) -> list[int]:
+        """The seat's moves that fall short of its best against the mix by more than
+        ``epsilon``, in generation order."""
+        values = self.values[seat]
+        best = max(values)
+        return [
+            move for move, value in zip(self.moves[seat], values, strict=True)
+            if best - value > epsilon
+        ]
+
+
+def read_matrix(
+    moves: tuple[list[int], list[int]], cells: list[float]
+) -> RoundReading:
+    """A round's matrix game, ``cells`` row-major from player 0's side (rows its moves,
+    columns player 1's), solved and read: each seat's moves valued against the other's
+    mix with its residue below `DUST` cleared. Sums run in plain loops, in order."""
+    rows, cols = len(moves[0]), len(moves[1])
+    p, q = regret_solve(cells, rows, cols)
+    first, second = _purified(p), _purified(q)
+    row_values = []
+    for i in range(rows):
+        total = 0.0
+        for j in range(cols):
+            total += cells[i * cols + j] * second[j]
+        row_values.append(total)
+    col_values = []
+    for j in range(cols):
+        total = 0.0
+        for i in range(rows):
+            total += cells[i * cols + j] * first[i]
+        col_values.append(-total)
+    return RoundReading(moves=moves, strategies=(first, second), values=(row_values, col_values))
+
+
+def _purified(strategy: list[float]) -> list[float]:
+    kept = [weight if weight >= DUST else 0.0 for weight in strategy]
+    total = 0.0
+    for weight in kept:
+        total += weight
+    if total <= 0.0:
+        return list(strategy)
+    return [weight / total for weight in kept]
+
+
+def read_round(
+    engine: Engine,
+    evaluator: Evaluator,
+    state: GameState,
+    moves: tuple[list[int], list[int]] | None = None,
+) -> RoundReading | None:
+    """The probe on one round's board, or ``None`` when either player has no move."""
+    if moves is None:
+        moves = (engine.legal_moves_for(state, 0), engine.legal_moves_for(state, 1))
+    if not moves[0] or not moves[1]:
+        return None
+    cells = []
+    for first in moves[0]:
+        for second in moves[1]:
+            child = engine.apply_round(state, first, second)
+            outcome = engine.terminal(child)
+            if outcome is None:
+                # Mobility is off at the ruler, so the move counts weigh nothing.
+                cells.append(evaluator.evaluate_round(engine, child, 0, (0, 0)))
+            elif outcome.is_draw:
+                cells.append(0.0)
+            else:
+                signed = WIN_SCORE - child.ply
+                cells.append(signed if outcome.winner == 0 else -signed)
+    return read_matrix(moves, cells)
+
+
+def replay_rounds(engine: Engine, record: GameRecord) -> list[GameState]:
+    """The position before the first round and after every round of a round game's record.
+
+    `play.replay`'s counterpart for a game in rounds: a record holds both moves of each
+    round in seat order, and an illegal one means the record and its spec have drifted.
+    """
+    if len(record.moves) % 2:
+        raise ValueError(
+            f"game {record.seed} holds {len(record.moves)} moves; a game in rounds holds two "
+            "a round"
+        )
+    state = engine.initial_state()
+    states = [state]
+    for index in range(0, len(record.moves), 2):
+        first, second = record.moves[index], record.moves[index + 1]
+        if (
+            first not in engine.legal_moves_for(state, 0)
+            or second not in engine.legal_moves_for(state, 1)
+        ):
+            raise ValueError(
+                f"round {index // 2} of game {record.seed} is not legal under ruleset "
+                f"{record.ruleset_hash}; the record and the spec disagree"
+            )
+        state = engine.apply_round(state, first, second)
+        states.append(state)
+    return states
+
+
+def _is_swap(first: int, second: int) -> bool:
+    """Two moves onto each other's origin, read off the words (§2.4: two chases)."""
+    if MOVE_DROP in (move_type(first), move_type(second)):
+        return False
+    return move_to(first) == move_from(second) and move_to(second) == move_from(first)
+
+
+def _analyse_rounds(
+    engine: Engine, evaluator: Evaluator, record: GameRecord, epsilon: float
+) -> GameAnalysis:
+    """`_analyse_game` for a game in rounds (the reading above `ROUND_COUNTS`)."""
+    n_types = engine.spec.n_types
+    moves_by_type = [0] * n_types
+    captures_by_type = [0] * n_types
+    near_best: list[int] = []
+    legal_counts: list[int] = []
+    capture_counts: list[int] = []
+    counts = dict.fromkeys(ROUND_COUNTS, 0)
+
+    state = engine.initial_state()
+    starting_squares = _starting_squares(engine, state.board)
+    moved_squares: set[int] = set()
+    seen_keys = {state.key}
+    position_keys: list[int] = []
+    revisited = 0
+    walked = 0
+
+    for index in range(0, len(record.moves) - 1, 2):
+        pair = (record.moves[index], record.moves[index + 1])
+        lists = (engine.legal_moves_for(state, 0), engine.legal_moves_for(state, 1))
+        if pair[0] not in lists[0] or pair[1] not in lists[1]:
+            # Drifted from its spec; stop counting, as the alternating walk does.
+            break
+        board = state.board
+        for move in pair:
+            kind = _mover_kind(engine, board, move)
+            if kind is None:  # pragma: no cover - a legal move stands on its origin
+                continue
+            if _moves_an_instance(move) and move_from(move) in starting_squares:
+                moved_squares.add(move_from(move))
+            moves_by_type[kind] += 1
+            if _takes(board, move):
+                captures_by_type[kind] += 1
+
+        # The ply stride, read at the round's first ply: every fourth round.
+        if index % PLY_STRIDE == 0:
+            reading = read_round(engine, evaluator, state, lists)
+            if reading is not None:
+                for seat in (0, 1):
+                    if len(lists[seat]) > 1:
+                        near_best.append(reading.near_best(seat, epsilon))
+                        legal_counts.append(len(lists[seat]))
+                        capture_counts.append(
+                            sum(1 for move in lists[seat] if _takes(board, move))
+                        )
+
+        state, _, events = engine.apply_round_with_phase(state, pair[0], pair[1])
+        counts["rounds"] += 1
+        counts["swaps"] += int(_is_swap(pair[0], pair[1]))
+        for event, _square, player in events:
+            if event == _COLLISION:
+                counts["collisions"] += 1
+                counts["collisions_both_lost"] += int(player < 0)
+            elif event == _VOID:
+                counts["void_moves"] += 1
+            elif event == _INITIATIVE:
+                counts["initiative_ties"] += 1
+            elif event == _BARRED:
+                counts["bars"] += 1
+
+        # Two plies a round, as every per-ply series in the record: the key after the
+        # round twice, and a revisit counted on both, so the rate is per round.
+        walked += 2
+        position_keys.extend((state.key, state.key))
+        if state.key in seen_keys:
+            revisited += 2
+        else:
+            seen_keys.add(state.key)
+
+    return GameAnalysis(
+        seed=record.seed,
+        agents=record.agents,
+        near_best=near_best,
+        legal_counts=legal_counts,
+        moves_by_type=moves_by_type,
+        captures_by_type=captures_by_type,
+        capture_counts=capture_counts,
+        revisited_plies=revisited,
+        walked_plies=walked,
+        starting_instances=len(starting_squares),
+        moved_instances=len(moved_squares),
+        position_keys=position_keys,
+        rounds=counts,
+    )
+
+
+def round_blunder(
+    engine: Engine,
+    state: GameState,
+    seat: int,
+    played: int,
+    rng: random.Random,
+) -> int | None:
+    """The move a trial forces into ``seat`` on this round's board: one of its blunders
+    other than the move it played, drawn by ``rng``, or ``None`` when it has none."""
+    evaluator = Evaluator.for_engine(engine, mobility_weight=0.0)
+    reading = read_round(engine, evaluator, state)
+    if reading is None or len(reading.moves[seat]) < 2:
+        return None
+    epsilon = _epsilon_for(engine)
+    blunders = [move for move in reading.blunders(seat, epsilon) if move != played]
+    return rng.choice(blunders) if blunders else None
+
+
+def _one_round_blunder(
+    engine: Engine, record: GameRecord, rng: random.Random
+) -> BlunderTrial | None:
+    """`_one_blunder` for a game in rounds: the trial's ply names a round and a seat."""
+    target_ply = int(record.plies * BLUNDER_FRACTION)
+    target_round, seat = divmod(target_ply, 2)
+    start = 2 * target_round
+    if start + 1 >= len(record.moves):
+        return None
+    state = engine.initial_state()
+    for index in range(0, start, 2):
+        first, second = record.moves[index], record.moves[index + 1]
+        if (
+            first not in engine.legal_moves_for(state, 0)
+            or second not in engine.legal_moves_for(state, 1)
+        ):
+            return None
+        state = engine.apply_round(state, first, second)
+
+    played, other = record.moves[start + seat], record.moves[start + 1 - seat]
+    if other not in engine.legal_moves_for(state, 1 - seat):
+        return None
+    forced = round_blunder(engine, state, seat, played, rng)
+    if forced is None:
+        return None
+    pair = (forced, other) if seat == 0 else (other, forced)
+    state = engine.apply_round(state, pair[0], pair[1])
+    resumed = finish_game(engine, record.agents, state, record.seed)
+
+    return BlunderTrial(
+        seed=record.seed,
+        agents=record.agents,
+        ply=target_ply,
+        original_winner=record.winner,
+        blundering_side=seat,
         new_winner=resumed.winner,
     )

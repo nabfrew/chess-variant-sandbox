@@ -1087,7 +1087,6 @@ ACCEPTED = [
     pytest.param({"rules.explode_on_capture": {"radius": 3}}, id="radius-three"),
     pytest.param({"rules.reach": {"squares": ["c3", "a1"]}}, id="reach-squares-on-the-board"),
     pytest.param({"rules.extinction": {"pieces": ["R"], "min_count": 1}}, id="min-count-one"),
-    pytest.param({"rules.extinction": {"pieces": ["R"], "min_count": 64}}, id="min-count-64"),
     pytest.param({"rules.turn": {"moves": 1}}, id="turn-moves-one"),
     pytest.param({"rules.turn": {"moves": 4}}, id="turn-moves-four"),
     pytest.param({"rules.turn": {"moves": 2, "ramp": [1] * 8}}, id="ramp-of-eight"),
@@ -1112,6 +1111,17 @@ ACCEPTED = [
 @pytest.mark.parametrize("changes", ACCEPTED)
 def test_a_value_on_the_permitted_side_of_a_bound_is_accepted(changes: dict[str, Any]) -> None:
     assert validate_spec(_patched(BASE, changes)) == []
+
+
+def test_min_count_64_is_inside_the_bound() -> None:
+    """64 passes the bound; the base starts with too few rooks, which is a refusal of its own.
+
+    No board this base can grow to holds 64 of a kind per side, so the top of the bound is
+    held by what is *not* said: the start refusal (Q937), and not *"between 1 and 64"*.
+    """
+    errors = validate_spec(_patched(BASE, {"rules.extinction": {"pieces": ["R"], "min_count": 64}}))
+    assert errors and all("so the game would be over before the first move" in e for e in errors)
+    assert not any("between 1 and 64" in e for e in errors)
 
 
 EDGE_REFUSED = [

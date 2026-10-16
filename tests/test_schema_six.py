@@ -548,8 +548,10 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
     # since Q772f's `divide-fixed`, which does not either; 87 since the library audit
     # (Q868, 2026-10-12) retired fourteen near copies, none of which declared `reach`; 84
     # since its second pass (Q870) retired four hexagon variants for `pinwheel`, which
-    # declares none; 87 since Q844b's three portal showcases, which declare none either.
-    assert len(paths) == 87
+    # declares none; 87 since Q844b's three portal showcases, which declare none either; 91
+    # since Q918e's four round showcases, of which `watering-hole` does, sending both sides
+    # to d4 (`mirror: false`, so the two readings agree).
+    assert len(paths) == 91
 
     with_reach: dict[str, tuple[frozenset[int], frozenset[int]]] = {}
     for path in paths:
@@ -572,7 +574,8 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
         with_reach[path.stem] = (compiled.reach.squares[1], by_orientation)
 
     assert sorted(with_reach) == [
-        "dobutsu", "intransitive", "jeson-mor", "kingofthehill", "racingkings", "rps-v3"
+        "dobutsu", "intransitive", "jeson-mor", "kingofthehill", "racingkings", "rps-v3",
+        "watering-hole",
     ]
     differ = sorted(name for name, (built, other) in with_reach.items() if built != other)
     assert differ == ["intransitive"]

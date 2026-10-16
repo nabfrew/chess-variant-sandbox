@@ -106,25 +106,24 @@ def smoke_test(
             ],
         )
 
-    if engine.simultaneous:
-        # Schema 26: a game played in rounds has its computer players (Q918b: random, greedy
-        # and matrix:nodes=N), but the records, metrics and analysis pass read rounds only
-        # from Q918d, so no rung past this one could measure it. Refused by name, as a rule
-        # the core cannot play is, so an operator that reaches it costs a draw.
-        return SmokeResult(
-            passed=False,
-            reasons=[
-                "the score can't read one of these rules yet: both players moving at once, "
-                "which the measurement learns in a later step"
-            ],
-        )
-
     state = engine.initial_state()
-    opening_moves = len(engine.legal_moves(state))
+    if engine.simultaneous:
+        # Schema 26 (Q932): a game played in rounds. The core's playouts draw both players'
+        # moves at random each round (`play.rs::random_playout`), so the roster is the
+        # alternating one, random against random, in the same role and with no budget to
+        # match. A round counts two plies (`plan-simultaneous.md` §2.6), so every threshold
+        # below keeps its meaning: `FORCED_RESULT_PLIES` is three moves a player either way,
+        # and `mean_branching` is per player, each player's choices sampled every round.
+        # Both players choose on the first board, so both must have a move on it.
+        opening_moves = min(len(engine.legal_moves_for(state, seat)) for seat in (0, 1))
+        stuck = "a player has no legal move from the starting position"
+    else:
+        opening_moves = len(engine.legal_moves(state))
+        stuck = "the first player has no legal move from the starting position"
     if opening_moves == 0:
         return SmokeResult(
             passed=False,
-            reasons=["the first player has no legal move from the starting position"],
+            reasons=[stuck],
             stats={"opening_moves": 0},
         )
 

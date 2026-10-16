@@ -1,0 +1,213 @@
+{
+  "schema_version": 26,
+  "name": "gardner in rounds with meek pawns",
+  "description": "Gardner's minichess played in rounds, as in gardner in rounds, with one change: a pawn wins no collision. When a pawn and another piece step onto the same square in the same round, the other piece stands there and the pawn is removed (in gardner in rounds both are removed); two pawns meeting are both removed, as before. A pawn still captures a piece that stands still exactly as before. So a cheap pawn can no longer trade itself for a queen by guessing where the queen will step, and the dear pieces may go where pawns could follow.",
+  "board": {
+    "width": 5,
+    "height": 5
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ],
+      "beats": []
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "royal_capture",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "max_plies": 200,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "simultaneous": {}
+  },
+  "provenance": {
+    "added": "2026-10-15",
+    "preview": "A preview: a new kind of game in which both players move at once, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
+    "origin": "designed",
+    "source": "docs/plan-simultaneous.md, Q918e: the showcase games for simultaneous moves (\u00a76.8)",
+    "history": "Q918e (2026-10-15), the showcase of schema 26's pieces[].beats: gardner in rounds with the pawn's beats empty. Pre-registered in docs/plan-simultaneous.md, Q918e, before it was measured.",
+    "parents": [
+      "e043fce6968e"
+    ]
+  }
+}

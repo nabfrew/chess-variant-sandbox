@@ -806,8 +806,13 @@ _APPEARANCE_KEYS = {"icons"}
 # page's *New in the library* shelf and the games page's *date added* order read. Outside
 # the mechanics like the rest of provenance, so stamping it moved no hash
 # (`.claude/scripts/backfill_added.py`, `tests/test_added.py`).
+# ``preview`` is a sentence saying the game is shown on the site as a preview: a new kind of
+# game, still being tested, playable and kept off every scored surface (Q931,
+# `web/library.preview`). Outside the mechanics, so marking or unmarking a game moves no
+# hash and no measurement.
 _PROVENANCE_KEYS = {
     "origin", "author", "year", "source", "history", "theme", "parents", "exhibit", "added",
+    "preview",
 }
 _SETUP_KEYS = {"mirror", "placements", "orientation"}
 _PLACEMENT_KEYS = {"piece", "player", "squares", "facing"}
@@ -2296,28 +2301,52 @@ def _check_either_face_coherence(
 
 
 def _check_extinction_coherence(spec: dict[str, Any], rules: dict[str, Any], errors: list[str]) -> None:
-    """``extinction.per_type`` (schema 18, Q783): no side may start already run out.
+    """``rules.extinction``: no side may start already run out.
 
-    Counted on its own, a listed type a side starts with fewer than ``min_count`` of ends
-    the game before its first move. The summed rule never asked this and is not asked it
-    now, so no spec accepted before moves.
+    Counted on its own (``per_type``, schema 18, Q783), a listed type a side starts with
+    fewer than ``min_count`` of ends the game before its first move. Summed (Q937), the
+    same is true of a side whose listed types (``any``: its whole army) add up to fewer
+    than ``min_count``: the core counts the board at ply zero as at every other ply
+    (``terminal_prefix``), so the game is over before anyone moves. Both read the board
+    as ``compile`` places it; a stock is not counted, as the core does not count it.
     """
     extinction = rules.get("extinction")
-    if not isinstance(extinction, dict) or extinction.get("per_type") is not True:
+    if not isinstance(extinction, dict):
         return
     pieces = extinction.get("pieces")
     count = extinction.get("min_count", 1)
-    if not isinstance(pieces, list) or isinstance(count, bool) or not isinstance(count, int):
+    if isinstance(count, bool) or not isinstance(count, int):
+        return
+    if pieces != "any" and not isinstance(pieces, list):
         return
     counts = opening_counts(spec)
+    if extinction.get("per_type") is True:
+        if not isinstance(pieces, list):
+            return
+        for player in (0, 1):
+            for piece in sorted({p for p in pieces if isinstance(p, str)}):
+                if counts[player].get(piece, 0) < count:
+                    errors.append(
+                        f"rules.extinction.per_type: player {player} starts with "
+                        f"{counts[player].get(piece, 0)} of {piece!r}, fewer than min_count "
+                        f"{count}, so the game would be over before the first move"
+                    )
+        return
+    if extinction.get("per_type", False) is not False:
+        return  # a malformed per_type is `_validate_extinction`'s to name
     for player in (0, 1):
-        for piece in sorted({p for p in pieces if isinstance(p, str)}):
-            if counts[player].get(piece, 0) < count:
-                errors.append(
-                    f"rules.extinction.per_type: player {player} starts with "
-                    f"{counts[player].get(piece, 0)} of {piece!r}, fewer than min_count "
-                    f"{count}, so the game would be over before the first move"
-                )
+        if pieces == "any":
+            have = sum(counts[player].values())
+            named = "pieces"
+        else:
+            kinds = sorted({p for p in pieces if isinstance(p, str)})
+            have = sum(counts[player].get(piece, 0) for piece in kinds)
+            named = "of " + ", ".join(repr(piece) for piece in kinds)
+        if have < count:
+            errors.append(
+                f"rules.extinction: player {player} starts with {have} {named}, fewer than "
+                f"min_count {count}, so the game would be over before the first move"
+            )
 
 
 def strike_is_live(strike: Any) -> bool:
@@ -2753,13 +2782,16 @@ def _validate_provenance(provenance: Any, errors: list[str]) -> None:
         return
     _check_keys(provenance, _PROVENANCE_KEYS, "provenance", errors)
 
-    for key in ("origin", "author", "source", "history", "theme", "exhibit"):
+    for key in ("origin", "author", "source", "history", "theme", "exhibit", "preview"):
         value = provenance.get(key)
         if value is not None and not isinstance(value, str):
             errors.append(f"provenance.{key} must be a string")
     exhibit = provenance.get("exhibit")
     if isinstance(exhibit, str) and not exhibit.strip():
         errors.append("provenance.exhibit must say what the ruleset is kept to show")
+    preview = provenance.get("preview")
+    if isinstance(preview, str) and not preview.strip():
+        errors.append("provenance.preview must say why the game is shown as a preview")
 
     added = provenance.get("added")
     if added is not None and not _is_day(added):

@@ -379,7 +379,12 @@ class App:
         restart that changed none of it lists without compiling a game (Q887).
         """
         with self._warming:
-            games = self.refresh()
+            everything = self.refresh()
+            # Q931: the previews are listed apart, in `previews`, and every scored surface
+            # below -- the bands, the provisional count, the coverage, the newest games --
+            # reads the rest. `games` is the library and nothing else.
+            games = library.scored(everything)
+            previews = [game for game in everything if game.source == library.PREVIEW]
             # Where each game's score stands against every other measured game's. On the
             # card rather than in `summary()` because it is the one thing on a card that
             # is not a fact about that game alone -- it takes the whole listing to work
@@ -390,12 +395,15 @@ class App:
             cards = [{**game.summary(), "band": band.get(game.hash),
                       "still": library.still(game)} for game in games]
             art: dict[str, str] = {}
-            for game in games:
+            for game in everything:
                 art.update(library.piece_art(game))
             # The cards' rule answers this listing worked out, written once for the next
             # process to read instead of compiling every game again (Q887).
             library.save_card_answers()
             return {"games": cards,
+                    # A preview's card has no band: it is in no comparison (Q931).
+                    "previews": [{**game.summary(), "band": None,
+                                  "still": library.still(game)} for game in previews],
                     "pieceArt": art,
                     # The leaderboard's header (EV3): how many of those numbers are
                     # provisional, or null when none is and the header says nothing.

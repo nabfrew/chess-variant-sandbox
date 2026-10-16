@@ -1,0 +1,190 @@
+{
+  "schema_version": 26,
+  "name": "watering hole",
+  "description": "A water hole on d4 in the middle of a 7x7 board, and four kinds of animal around it. White has three elephants and three cats; Black has three dogs and three rats. Every animal steps one square in any of the eight directions, onto an empty square or onto an enemy animal it eats, and each eats exactly one kind of the other side's: an elephant eats dogs, a dog eats cats, a cat eats rats and a rat eats elephants. Both players move at once: each round each player chooses one move in secret, and both are revealed and made together. When two animals step onto the same square in the same round, the one that eats the other survives there; every pair of opposing animals has an eater, so a meeting always has a winner. An animal that steps onto the square its prey has just left lands there harmlessly. A player wins as soon as one of their animals stands on the hole while no enemy animal that eats it stands next to the hole; an animal on the hole with such an enemy beside it does not win yet, and wins the round that threat goes. Each side starts with an elephant and a cat (White) or a rat and a dog (Black) beside the hole, guarding it, and the rest in the corners. A player with no animals left, or no legal move, loses. After 30 rounds with nothing eaten, or 80 rounds in all, the player with more animals on the nine squares around and including the hole wins; equal is a draw. The armies are different on purpose: the language's check that no meeting can tie forces it, since two armies of the same animals would always tie. White's guards beat the Black animals that start diagonally across the hole from them, and Black's beat the White animals that start straight across.",
+  "board": {
+    "width": 7,
+    "height": 7
+  },
+  "pieces": [
+    {
+      "id": "E",
+      "name": "elephant",
+      "value": 1,
+      "captures": [
+        "D"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "name": "cat",
+      "value": 1,
+      "captures": [
+        "R"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "name": "dog",
+      "value": 1,
+      "captures": [
+        "C"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rat",
+      "value": 1,
+      "captures": [
+        "E"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {
+        "piece": "E",
+        "player": 0,
+        "squares": [
+          "c3",
+          "e1",
+          "a1"
+        ]
+      },
+      {
+        "piece": "C",
+        "player": 0,
+        "squares": [
+          "e3",
+          "c1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "R",
+        "player": 1,
+        "squares": [
+          "c5",
+          "e7",
+          "a7"
+        ]
+      },
+      {
+        "piece": "D",
+        "player": 1,
+        "squares": [
+          "e5",
+          "c7",
+          "g7"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "annihilation",
+    "stalemate": "loss",
+    "reach": {
+      "squares": [
+        "d4"
+      ],
+      "mirror": false,
+      "safe": true
+    },
+    "simultaneous": {
+      "tie": "impossible"
+    },
+    "scoring": {
+      "count": "region",
+      "region": [
+        "c3",
+        "d3",
+        "e3",
+        "c4",
+        "d4",
+        "e4",
+        "c5",
+        "d5",
+        "e5"
+      ]
+    },
+    "max_plies": 160,
+    "no_progress_draw": 60
+  },
+  "provenance": {
+    "added": "2026-10-15",
+    "preview": "A preview: a new kind of game in which both players move at once, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
+    "origin": "designed",
+    "source": "docs/plan-simultaneous.md, Q918e: a game designed around simultaneous moves",
+    "history": "Q918e (2026-10-15), the showcase of schema 26's rules.simultaneous.tie impossible and the game designed around guessing that plan-simultaneous.md \u00a76.8 asks for: a four-kind food chain split between two armies, so every meeting has a winner, and one shared goal square, so two arrivals in one round are a meeting and not a draw. Drafts v1 to v7 and why each changed are in docs/plan-simultaneous.md, Q918e. Pre-registered there before it was measured.",
+    "parents": []
+  }
+}
