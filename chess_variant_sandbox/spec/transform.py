@@ -972,6 +972,20 @@ def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) 
         if can_tie == (rule["tie"] == "impossible"):
             rule.pop("tie")
             dropped.append("tie")
+    # Schema 27 (Q942a): a swap rule an edit has left with no swap to meet (no piece of one
+    # player can take one of the other that takes it back), and a double ending settled by
+    # the score in a game an edit has left with no scoring rule, go too.
+    if isinstance(rule, dict) and rule.get("swap") == "collision":
+        from chess_variant_sandbox.spec.schema import simultaneous_swap_pair
+
+        if simultaneous_swap_pair(spec) is None:
+            rule.pop("swap")
+            dropped.append("swap")
+    if isinstance(rule, dict) and rule.get("both") == "score" and not isinstance(
+        rules.get("scoring"), dict
+    ):
+        rule.pop("both")
+        dropped.append("both")
     if isinstance(rule, dict):
         for piece in listed:
             beats = piece.get("beats") if isinstance(piece, dict) else None

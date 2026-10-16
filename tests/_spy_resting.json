@@ -1,0 +1,178 @@
+{
+  "schema_version": 27,
+  "board": {
+    "width": 5,
+    "height": 5
+  },
+  "pieces": [
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "S",
+      "name": "spy",
+      "value": 2,
+      "spy": true,
+      "captures": [],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "move"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "e1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "c1"
+        ]
+      },
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "d2",
+          "e2"
+        ]
+      },
+      {
+        "piece": "S",
+        "squares": [
+          "c2"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "royal_capture",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "R",
+        "N"
+      ]
+    },
+    "max_plies": 120,
+    "repetition_draw": 3,
+    "no_progress_draw": 60,
+    "simultaneous": {
+      "rest": true,
+      "tie": "initiative"
+    }
+  },
+  "name": "spy resting",
+  "description": "Q935a's test spec: the spy-small game under rest and the initiative, for the deal at the first announced round (plan-spy.md E10, E11)."
+}

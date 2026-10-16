@@ -38,6 +38,8 @@ from chess_variant_sandbox.spec.schema import (
     is_simultaneous,
     obstacle_squares,
     portal_groups,
+    simultaneous_switch,
+    spy_ids,
     wrap_stated,
 )
 
@@ -468,6 +470,9 @@ def _describe_piece(
     reverts = piece.get("promoted_from")
     if reverts:
         notes.append(f"reverts to {reverts} when captured")
+    if piece.get("spy") is True:
+        # Schema 27 (Q935a): the rules say what the spy does; the piece says it is one.
+        notes.append("is a spy: who still has one decides how play goes (see the rules)")
     facing = piece.get("facing")
     if isinstance(facing, dict):
         # Said as a rule a player could act on rather than as a field: what the piece
@@ -1325,19 +1330,55 @@ def _capture_relation(spec: dict[str, Any]) -> str:
 
 def _describe_simultaneous(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
     """Schema 26 (Q918a): the round, the collision table, the tie, the void bar and what an
-    ending reached by both means (`docs/plan-simultaneous.md` §2, §3)."""
+    ending reached by both means (`docs/plan-simultaneous.md` §2, §3); schema 27's chase
+    switches (Q942a, `docs/plan-round-chase.md` §3) where they change those sentences."""
     if not is_simultaneous(rules):
         return []
     tie = rules["simultaneous"].get("tie")
-    lines = [
-        "Both players move at once. Each round, each player chooses one of their own legal "
-        "moves on the same board without seeing the other's, and both are made together. "
-        "There is no check: a royal piece may be left where it can be taken.",
-        "Only two pieces moving onto the same square collide. A piece that moves onto a "
-        "square its target has just left lands there if that move could land on an empty "
-        "square, and otherwise stays where it was; paths that cross, and two pieces that "
-        "swap squares, do not collide.",
+    rest = simultaneous_switch(rules, "rest")
+    swap = simultaneous_switch(rules, "swap")
+    both = simultaneous_switch(rules, "both")
+    spies = spy_ids(spec)
+    if spies:
+        # Schema 27 (Q935a, `docs/plan-spy.md` §1): the phases first, since every round
+        # sentence below applies only once a spy is lost.
+        named = " or ".join(spies)
+        lines = [
+            f"The spy ({named}) decides how the game is played. While both players have a "
+            "spy on the board, they take turns as usual. When one player loses their last "
+            "spy, they first play one ordinary reply move if it is their turn, so a spy's "
+            "taker can be taken back; from then on the game is played in rounds in which "
+            "the player without a spy announces their move first, and the other chooses "
+            "knowing it. Once neither has a spy, both choose in secret. A spy lost is never "
+            "regained.",
+            "In a round both moves are made together, on the board both chose from. There "
+            "is no check at any time: a royal piece may be left where it can be taken.",
+        ]
+    else:
+        lines = [
+            "Both players move at once. Each round, each player chooses one of their own "
+            "legal moves on the same board without seeing the other's, and both are made "
+            "together. There is no check: a royal piece may be left where it can be taken.",
+        ]
+    lines += [
+        (
+            "Two pieces moving onto the same square collide, and so do two pieces that swap "
+            "squares, each moving onto the square the other left. A piece that moves onto a "
+            "square its target has just left lands there if that move could land on an empty "
+            "square, and otherwise stays where it was; paths that cross do not collide."
+        ) if swap else (
+            "Only two pieces moving onto the same square collide. A piece that moves onto a "
+            "square its target has just left lands there if that move could land on an empty "
+            "square, and otherwise stays where it was; paths that cross, and two pieces that "
+            "swap squares, do not collide."
+        ),
     ]
+    if rest:
+        lines.append(
+            "The piece that made a player's move in a round rests: it may not make that "
+            "player's move in the next round, unless it is the only piece that can move. A "
+            "piece that turned, was dropped or made a void move rests too."
+        )
     clauses = []
     for piece in spec.get("pieces") or []:
         beats = piece.get("beats") if isinstance(piece, dict) else None
@@ -1355,15 +1396,24 @@ def _describe_simultaneous(spec: dict[str, Any], rules: dict[str, Any]) -> list[
             "if both or neither do, the player holding the initiative wins it, and the "
             "initiative passes to the other player. The second player holds it at the start."
         )
+        if spies:
+            who += " When the first announced round begins, it goes to the announcer."
     elif tie == "impossible":
         who += "no two pieces that can meet ever both win or both lose."
     else:
         who += "if both or neither do, both are eliminated."
     lines.append(who)
+    ending = (
+        "An ending both players reach in the same round (both royals taken, both armies "
+        "gone, both on a goal) goes to the player ahead by the score, as at the clocks; "
+        "equal scores are a draw."
+        if both else "An ending both players reach in the same round is a draw."
+    )
     lines.append(
-        "Two pieces that could only take each other and miss two rounds in a row may not "
-        "try again until either of their squares changes. An ending both players reach in "
-        "the same round is a draw."
+        ending if swap else (
+            "Two pieces that could only take each other and miss two rounds in a row may not "
+            "try again until either of their squares changes. " + ending
+        )
     )
     return lines
 
@@ -2051,7 +2101,17 @@ def _describe_extra_rules(rules: dict[str, Any]) -> list[str]:
         what = "any piece" if extinction["pieces"] == "any" else ", ".join(extinction["pieces"])
         count = extinction.get("min_count", 1)
         result = extinction.get("result", "loss")
-        if extinction.get("per_type") is True:
+        if extinction.get("per_type") == "own":
+            # Schema 27 (Q936): each type on its own, counted only against a side that
+            # starts with it, and the same mover-first ordering as `per_type: true`.
+            lines.append(
+                f"Holding fewer than {count} of any one of {what}, each counted on its "
+                f"own and only against a player who starts the game with it, is a "
+                f"{result}; a kind a player gains later is not counted against them, and "
+                "where one move does that to both sides, it is the side that moved that "
+                "has it."
+            )
+        elif extinction.get("per_type") is True:
             # Schema 18 (Q783): each type on its own, and the one ordering a reader has to
             # be told -- a move can run out a type on both sides at once.
             lines.append(

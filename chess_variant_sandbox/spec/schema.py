@@ -33,7 +33,7 @@ from chess_variant_sandbox.spec.reachability import (
 if TYPE_CHECKING:
     from chess_variant_sandbox.engine.compile import StrikeRule
 
-SCHEMA_VERSION = 26
+SCHEMA_VERSION = 27
 
 # Every version is accepted, and the number a spec declares is a claim about which
 # feature set it uses rather than a date stamp. That is what keeps a bump cheap:
@@ -44,7 +44,7 @@ SCHEMA_VERSION = 26
 # the rules need.
 SUPPORTED_SCHEMA_VERSIONS = (
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-    25, 26,
+    25, 26, 27,
 )
 
 # The movement primitive table. Extending the design space means adding a row here,
@@ -779,7 +779,7 @@ _MOVE_KEYS = {
 _CONDITION_KEYS = {"from_rank", "first_move", "region"}
 _PIECE_KEYS = {
     "id", "name", "royal", "value", "moves", "region", "promoted_from", "captures",
-    "facing", "beats",
+    "facing", "beats", "spy",
 }
 # ``appearance`` and ``provenance`` are deliberately *outside* the mechanics.
 # ``canonical.MECHANIC_KEYS`` is what the content hash covers, so anything added inside
@@ -1161,6 +1161,13 @@ def validate_spec(spec: Any, *, new: bool = True) -> list[str]:
                 f"the spec uses {', '.join(sorted(used))}, added in schema 26; declare "
                 '"schema_version": 26 to use it'
             )
+    if version < 27:
+        used = _schema_twenty_seven_uses(spec)
+        if used:
+            errors.append(
+                f"the spec uses {', '.join(sorted(used))}, added in schema 27; declare "
+                '"schema_version": 27 to use it'
+            )
 
     return errors
 
@@ -1456,7 +1463,7 @@ def _schema_eighteen_uses(spec: dict[str, Any]) -> set[str]:
     if isinstance(extinction, dict) and "per_type" in extinction:
         used.add(
             "rules.extinction.per_type"
-            if extinction["per_type"] is True
+            if extinction["per_type"] is not False
             else "rules.extinction.per_type=false"
         )
     for entry in _promotion_entries(rules):
@@ -1671,11 +1678,112 @@ def _schema_twenty_six_uses(spec: dict[str, Any]) -> set[str]:
     return used
 
 
+def _schema_twenty_seven_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that schema 27 added, by name.
+
+    One version, three tasks (`docs/plan-spy.md` §2.2), each adding its names here as it
+    lands, as schema 18's six did:
+
+    * ``rules.extinction.per_type.own`` -- Q936, `docs/reference/extinction-any-kind.md`
+      §2: each listed kind counted on its own, and only against a side that starts with
+      at least one, so two armies of different kinds can each lose by running out of any
+      one of their own.
+
+    * ``rules.simultaneous.rest`` -- Q942a, `docs/plan-round-chase.md` §3 R1: the piece that
+      made a player's move in a round may not make that player's move in the next, unless
+      it is the only piece that can move;
+    * ``rules.simultaneous.swap`` -- Q942a, R2: two moves that each end on the other's
+      origin meet as a collision (``beats`` and the tie decide) instead of passing;
+    * ``rules.simultaneous.both`` -- Q942a, X1: an ending that fires for both players in
+      one round is settled by ``rules.scoring`` instead of drawn.
+
+    * ``pieces.spy`` -- Q935a, `docs/plan-spy.md` §1, §2: a piece type that decides how the
+      game is played: alternating while both players have one, announced rounds (the
+      player without one moves first, in the open) once one is lost, blind rounds once
+      both are.
+
+    Each name is collected whatever its value, since an older spec may not write even a
+    refused one.
+    """
+    used: set[str] = set()
+    pieces = spec.get("pieces")
+    if any(isinstance(piece, dict) and "spy" in piece for piece in _listed(pieces)):
+        used.add("pieces.spy")
+    rules = spec.get("rules")
+    if not isinstance(rules, dict):
+        return used
+    extinction = rules.get("extinction")
+    if isinstance(extinction, dict) and extinction.get("per_type") == EXTINCTION_PER_TYPE_OWN:
+        used.add("rules.extinction.per_type.own")
+    simultaneous = rules.get("simultaneous")
+    if isinstance(simultaneous, dict):
+        for key in SIMULTANEOUS_CHASE_KEYS:
+            if key in simultaneous:
+                used.add(f"rules.simultaneous.{key}")
+    return used
+
+
+# Schema 27 (Q936): the third value of ``rules.extinction.per_type``, beside ``true`` and
+# ``false``. Each listed kind is counted on its own against a side that starts with it.
+EXTINCTION_PER_TYPE_OWN = "own"
+
+
 # Schema 26 (Q918a): the values ``rules.simultaneous.tie`` may take. Absent is the user's
 # table, both pieces eliminated, and writing it out as ``"both"`` is refused so that one game
 # has one spelling (`docs/plan-simultaneous.md` §5.1).
 SIMULTANEOUS_TIES = ("initiative", "impossible")
-_SIMULTANEOUS_KEYS = {"tie"}
+# Schema 27 (Q942a, `docs/plan-round-chase.md` §3, §4): the three switches against the royal
+# chase, each off when absent and each with exactly one value that turns it on. Writing the
+# off value out (``false``, or ``"chase"``/``"draw"``) is refused, one game one spelling.
+SIMULTANEOUS_CHASE_KEYS = ("rest", "swap", "both")
+SIMULTANEOUS_SWAP_COLLISION = "collision"
+SIMULTANEOUS_BOTH_SCORE = "score"
+_SIMULTANEOUS_KEYS = {"tie", *SIMULTANEOUS_CHASE_KEYS}
+
+
+def simultaneous_switch(rules: Any, key: str) -> bool:
+    """Whether a simultaneous game turns on one of schema 27's chase switches (Q942a).
+
+    The one reader of the spelling, shared by the validator, the compiler and every
+    surface: ``rest`` is on at ``true``, ``swap`` at ``"collision"``, ``both`` at
+    ``"score"``; anything else, absent included, is off."""
+    if isinstance(rules, dict) and "pieces" in rules:
+        rules = rules.get("rules")
+    if not is_simultaneous(rules):
+        return False
+    value = rules["simultaneous"].get(key)
+    if key == "rest":
+        return value is True
+    return value == {"swap": SIMULTANEOUS_SWAP_COLLISION, "both": SIMULTANEOUS_BOTH_SCORE}[key]
+
+
+def simultaneous_swap_pair(spec: dict[str, Any]) -> tuple[str, str] | None:
+    """A player-0 type and a player-1 type that may each take the other, or ``None``.
+
+    A swap is two moves each ending on the other's origin while the other stands there, so
+    each is a capture of the other: without such a pair no swap can happen and
+    ``swap: "collision"`` can never fire (`docs/plan-round-chase.md` §3 R2). Over
+    `simultaneous_holdings`, so a type a player can come to hold counts; a piece takes a
+    type when its ``captures`` allows it and it has a move that may capture."""
+    pieces = [piece for piece in spec.get("pieces") or [] if isinstance(piece, dict)]
+    by_id = {piece["id"]: piece for piece in pieces if isinstance(piece.get("id"), str)}
+
+    def takes(attacker: str, victim: str) -> bool:
+        piece = by_id[attacker]
+        captures = piece.get("captures")
+        if isinstance(captures, list) and victim not in captures:
+            return False
+        return any(
+            isinstance(move, dict) and move.get("mode", "both") != "move"
+            for move in piece.get("moves") or []
+        )
+
+    first, second = simultaneous_holdings(spec)
+    for x in sorted(first):
+        for y in sorted(second):
+            if x in by_id and y in by_id and takes(x, y) and takes(y, x):
+                return x, y
+    return None
 
 
 def is_simultaneous(spec_or_rules: Any) -> bool:
@@ -1780,6 +1888,235 @@ def simultaneous_tie_pair(spec: dict[str, Any]) -> tuple[str, str] | None:
     return None
 
 
+def spy_ids(spec_or_pieces: Any) -> list[str]:
+    """The ids of the piece types a spec flags ``"spy": true`` (schema 27, Q935a), in
+    declared order. The one reader of the flag, shared by the validator, the compiler and
+    every surface (`docs/plan-spy.md` §1.2)."""
+    pieces = spec_or_pieces
+    if isinstance(spec_or_pieces, dict):
+        pieces = spec_or_pieces.get("pieces")
+    return [
+        piece["id"] for piece in _listed(pieces)
+        if isinstance(piece, dict) and piece.get("spy") is True and isinstance(piece.get("id"), str)
+    ]
+
+
+def is_spy_game(spec: Any) -> bool:
+    """Whether a spec is a spy game: some piece type is flagged ``"spy": true``."""
+    return bool(spy_ids(spec))
+
+
+def placed_ids(spec: dict[str, Any]) -> tuple[set[str], set[str]]:
+    """The piece ids each player has on the opening board, from ``setup.placements`` (both
+    players under a mirrored setup, else the placement's player)."""
+    held: tuple[set[str], set[str]] = (set(), set())
+    setup: dict[str, Any] = spec["setup"] if isinstance(spec.get("setup"), dict) else {}
+    mirrored = setup.get("mirror", True) is not False
+    for placement in _listed(setup.get("placements")):
+        if not isinstance(placement, dict) or not isinstance(placement.get("piece"), str):
+            continue
+        if not placement.get("squares"):
+            continue
+        for player in (0, 1) if mirrored else (placement.get("player", 0),):
+            if player in (0, 1):
+                held[player].add(placement["piece"])
+    return held
+
+
+def _spy_gains(rules: dict[str, Any], spies: set[str]) -> list[str]:
+    """Every route by which a player could come to hold a spy it did not start with
+    (`docs/plan-spy.md` §1.2, *never gained*), each as the words of its refusal."""
+    found: list[str] = []
+    for entry in _promotion_entries(rules):
+        if isinstance(entry, dict):
+            for target in sorted(_promotion_target_ids(entry) & spies):
+                found.append(f"rules.promotion turns a piece into the spy {target!r}")
+    strike: dict[str, Any] = rules["strike"] if isinstance(rules.get("strike"), dict) else {}
+    for link in _listed(strike.get("chain")):
+        if isinstance(link, dict) and _in(link.get("to"), spies):
+            found.append(f"rules.strike.chain turns a piece into the spy {link['to']!r}")
+    switching = _str_set(_listed(strike.get("switches_sides")))
+    for spy in sorted(switching & spies):
+        found.append(
+            f"rules.strike.switches_sides names the spy {spy!r}, which would join the other "
+            "player when it captures"
+        )
+    contacts: dict[str, Any] = (
+        rules["contacts"] if isinstance(rules.get("contacts"), dict) else {}
+    )
+    for link in _listed(contacts.get("links")):
+        if not isinstance(link, dict):
+            continue
+        for key in ("mover_to", "onto_to"):
+            if _in(link.get(key), spies):
+                found.append(f"a rules.contacts link turns a piece into the spy {link[key]!r}")
+    drops = rules.get("drops")
+    if isinstance(drops, dict):
+        stock = drops.get("stock")
+        for spy in sorted(spies & set(stock if isinstance(stock, dict) else ())):
+            found.append(f"rules.drops.stock puts the spy {spy!r} in a hand")
+        if drops.get("from_captures", True) is not False:
+            found.append(
+                "rules.drops fills a hand from captures, and a taken spy would come back as "
+                "its taker's (set from_captures to false)"
+            )
+    return found
+
+
+def _spy_can_be_removed(spec: dict[str, Any], rules: dict[str, Any], spy: str, by: set[str]) -> bool:
+    """Whether anything could take a spy off the board: a type ``by`` (the other player's
+    holdings) that may capture it or beats it in a collision, an explosion, a wild piece,
+    a strike or contact rule, or a promotion of the spy itself (a spy promoted is lost)."""
+    if any(key in rules for key in ("explode_on_capture", "npcs", "strike", "contacts")):
+        return True
+    if any(
+        isinstance(entry, dict) and entry.get("piece") == spy for entry in _promotion_entries(rules)
+    ):
+        return True
+    pieces = [piece for piece in _listed(spec.get("pieces")) if isinstance(piece, dict)]
+    declared = [piece["id"] for piece in pieces if isinstance(piece.get("id"), str)]
+    for piece in pieces:
+        if piece.get("id") not in by:
+            continue
+        if spy in beats_of(piece, declared):
+            return True
+        captures = piece.get("captures")
+        if isinstance(captures, list) and spy not in captures:
+            continue
+        if any(
+            isinstance(move, dict) and move.get("mode", "both") != "move"
+            for move in _listed(piece.get("moves"))
+        ):
+            return True
+    return False
+
+
+def _check_spy_coherence(
+    spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """Schema 27 (Q935a): ``pieces[].spy`` and every refusal of `docs/plan-spy.md` §1.7, in
+    words. A spy decides when a game plays in rounds, so it needs the round rule; it may be
+    lost but never gained, so the phases only move forward; both players start with one; and
+    something must be able to remove it, or the rule never fires."""
+    flagged: list[tuple[int, dict[str, Any]]] = []
+    for index, piece in enumerate(pieces):
+        if not isinstance(piece, dict) or "spy" not in piece:
+            continue
+        value = piece["spy"]
+        if value is False:
+            errors.append(f"pieces[{index}].spy false is the default (not a spy); leave it out")
+        elif value is not True:
+            errors.append(f"pieces[{index}].spy must be true, got {value!r}")
+        else:
+            flagged.append((index, piece))
+    if not flagged:
+        return
+    if not is_simultaneous(rules):
+        errors.append(
+            "pieces[].spy: a spy decides when a game plays in rounds; declare "
+            "rules.simultaneous (at least {})"
+        )
+        return
+    spies = {piece["id"] for _, piece in flagged if isinstance(piece.get("id"), str)}
+    for index, piece in flagged:
+        if piece.get("royal") is True:
+            errors.append(
+                f"pieces[{index}].spy on a royal piece: losing a royal ends the game, so its "
+                "loss could never start a round"
+            )
+    portals = portal_piece_ids(rules)
+    wild = {
+        npc.get("piece") for npc in _listed(rules.get("npcs")) if isinstance(npc, dict)
+    }
+    for index, piece in flagged:
+        if piece.get("id") in portals:
+            errors.append(f"pieces[{index}].spy on a portal, which is nobody's piece; leave it out")
+        if piece.get("id") in wild:
+            errors.append(
+                f"pieces[{index}].spy on a wild piece (rules.npcs), which is nobody's piece; "
+                "leave it out"
+            )
+    started = placed_ids(spec)
+    for player in (0, 1):
+        if not started[player] & spies:
+            errors.append(
+                f"player {player} starts with no spy on the board, so the game would begin in "
+                "rounds; place a spy for each player"
+            )
+    for route in _spy_gains(rules, spies):
+        errors.append(
+            f"pieces[].spy beside {route}: a spy may be lost but never gained, so the game "
+            "never goes back to taking turns"
+        )
+    extinction = rules.get("extinction")
+    if isinstance(extinction, dict) and extinction.get("per_type") in (True, EXTINCTION_PER_TYPE_OWN):
+        for spy in sorted(spies & _str_set(_listed(extinction.get("pieces")))):
+            errors.append(
+                f"rules.extinction counts the spy {spy!r} on its own (per_type): losing the spy "
+                "would end the game, so its rounds would never be played"
+            )
+    holdings = simultaneous_holdings({**spec, "rules": rules, "pieces": pieces})
+    for player in (0, 1):
+        mine = started[player] & spies
+        if mine and not any(
+            _spy_can_be_removed(spec, rules, spy, holdings[1 - player]) for spy in mine
+        ):
+            errors.append(
+                f"nothing can remove player {player}'s spy (no piece of the other player may "
+                "capture it or beat it in a collision), so the rule never fires"
+            )
+
+
+def _check_chase_switches(
+    spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """Schema 27 (Q942a): the three chase switches' spellings and refusals
+    (`docs/plan-round-chase.md` §3 R1, R2, X1)."""
+    rule = rules["simultaneous"]
+    if "rest" in rule:
+        rest = rule["rest"]
+        if rest is False:
+            errors.append(
+                "rules.simultaneous.rest false is the default (a piece may move in "
+                "consecutive rounds); leave it out"
+            )
+        elif rest is not True:
+            errors.append(f"rules.simultaneous.rest must be true, got {rest!r}")
+    if "swap" in rule:
+        swap = rule["swap"]
+        if swap == "chase":
+            errors.append(
+                'rules.simultaneous.swap "chase" is the default (two pieces swapping squares '
+                "pass each other); leave it out"
+            )
+        elif swap != SIMULTANEOUS_SWAP_COLLISION:
+            errors.append(
+                f'rules.simultaneous.swap must be "{SIMULTANEOUS_SWAP_COLLISION}", got {swap!r}'
+            )
+        elif simultaneous_swap_pair({**spec, "rules": rules, "pieces": pieces}) is None:
+            errors.append(
+                'rules.simultaneous.swap "collision" can never fire: no piece of one player '
+                "can take a piece of the other that can take it back, so no two moves can "
+                "each end on the other's square; leave it out"
+            )
+    if "both" in rule:
+        both = rule["both"]
+        if both == "draw":
+            errors.append(
+                'rules.simultaneous.both "draw" is the default (an ending both players reach '
+                "in one round is a draw); leave it out"
+            )
+        elif both != SIMULTANEOUS_BOTH_SCORE:
+            errors.append(
+                f'rules.simultaneous.both must be "{SIMULTANEOUS_BOTH_SCORE}", got {both!r}'
+            )
+        elif not isinstance(rules.get("scoring"), dict):
+            errors.append(
+                'rules.simultaneous.both "score" settles an ending both players reach in one '
+                "round by rules.scoring, and there is none; add rules.scoring or leave it out"
+            )
+
+
 def _check_simultaneous_coherence(
     spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
 ) -> None:
@@ -1811,6 +2148,7 @@ def _check_simultaneous_coherence(
             errors.append(
                 f"rules.simultaneous.tie must be one of {SIMULTANEOUS_TIES}, got {tie!r}"
             )
+    _check_chase_switches(spec, pieces, rules, errors)
     portal_ids = portal_piece_ids(rules)
     for index, piece in enumerate(pieces):
         if not isinstance(piece, dict) or not isinstance(piece.get("beats"), list):
@@ -2309,6 +2647,13 @@ def _check_extinction_coherence(spec: dict[str, Any], rules: dict[str, Any], err
     than ``min_count``: the core counts the board at ply zero as at every other ply
     (``terminal_prefix``), so the game is over before anyone moves. Both read the board
     as ``compile`` places it; a stock is not counted, as the core does not count it.
+
+    Counted against a side that starts with it (``"own"``, schema 27, Q936), the same
+    holds for each kind a side starts with, and four spellings state nothing new
+    (`docs/reference/extinction-any-kind.md` §2): a listed kind neither side starts with
+    names nothing; every kind started by both is ``true``'s game under a second hash; no
+    side with two counted kinds is the summed count's; and beside ``drops`` a kind can
+    start in hand, with an opening count of zero on the board.
     """
     extinction = rules.get("extinction")
     if not isinstance(extinction, dict):
@@ -2320,6 +2665,10 @@ def _check_extinction_coherence(spec: dict[str, Any], rules: dict[str, Any], err
     if pieces != "any" and not isinstance(pieces, list):
         return
     counts = opening_counts(spec)
+    if extinction.get("per_type") == EXTINCTION_PER_TYPE_OWN:
+        if isinstance(pieces, list):
+            _check_own_extinction(rules, pieces, count, counts, errors)
+        return
     if extinction.get("per_type") is True:
         if not isinstance(pieces, list):
             return
@@ -2347,6 +2696,53 @@ def _check_extinction_coherence(spec: dict[str, Any], rules: dict[str, Any], err
                 f"rules.extinction: player {player} starts with {have} {named}, fewer than "
                 f"min_count {count}, so the game would be over before the first move"
             )
+
+
+def _check_own_extinction(
+    rules: dict[str, Any],
+    pieces: list[Any],
+    count: int,
+    counts: tuple[dict[str, int], dict[str, int]],
+    errors: list[str],
+) -> None:
+    """``"per_type": "own"`` (schema 27, Q936) against the opening board."""
+    kinds = sorted({p for p in pieces if isinstance(p, str)})
+    if len(kinds) < 2:
+        return  # `_validate_extinction` names a single listed type
+    if isinstance(rules.get("drops"), dict):
+        errors.append(
+            'rules.extinction.per_type "own" beside rules.drops: a kind that starts in hand '
+            "has no opening count on the board, and whether a held kind counts is not "
+            "settled; drop one of the two"
+        )
+        return
+    for piece in kinds:
+        if not any(counts[player].get(piece, 0) for player in (0, 1)):
+            errors.append(
+                f'rules.extinction.per_type "own": neither player starts with {piece!r}, '
+                "so it is counted against nobody; drop it from pieces"
+            )
+    for player in (0, 1):
+        for piece in kinds:
+            have = counts[player].get(piece, 0)
+            if 0 < have < count:
+                errors.append(
+                    f'rules.extinction.per_type "own": player {player} starts with {have} '
+                    f"of {piece!r}, fewer than min_count {count}, so the game would be over "
+                    "before the first move"
+                )
+    if all(counts[player].get(piece, 0) for piece in kinds for player in (0, 1)):
+        errors.append(
+            'rules.extinction.per_type "own": both players start with every listed kind, '
+            "so each is counted against both; say per_type true"
+        )
+        return
+    counted = [sum(1 for piece in kinds if counts[player].get(piece, 0)) for player in (0, 1)]
+    if max(counted) < 2:
+        errors.append(
+            'rules.extinction.per_type "own": no player starts with two of the listed '
+            "kinds, so counting each on its own is the count together; drop per_type"
+        )
 
 
 def strike_is_live(strike: Any) -> bool:
@@ -2928,6 +3324,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     )
     _check_fixed_facings(spec, pieces, errors)
     _check_simultaneous_coherence(spec, pieces, rules, errors)
+    _check_spy_coherence(spec, pieces, rules, errors)
 
     if isinstance(rules.get("castling"), dict):
         castling = rules["castling"]
@@ -5426,9 +5823,13 @@ def _validate_extinction(extinction: Any, piece_ids: list[str], errors: list[str
     # on: over ``any`` there is no list to count apart, and over one type the count apart
     # is the count together, so the spec with the key and the spec without it would be
     # one game under two hashes.
+    #
+    # Schema 27 (Q936): ``"own"`` counts each apart too, and only against a side that
+    # starts with the kind; `_check_extinction_coherence` holds the readings that need
+    # the opening board. Over ``any`` and over one type it states nothing, as ``true``.
     per_type = extinction.get("per_type", False)
-    if not isinstance(per_type, bool):
-        errors.append("rules.extinction.per_type must be a boolean")
+    if not isinstance(per_type, bool) and per_type != EXTINCTION_PER_TYPE_OWN:
+        errors.append('rules.extinction.per_type must be true, false or "own"')
     elif per_type and pieces == "any":
         errors.append(
             "rules.extinction.per_type counts each listed type on its own, and 'any' lists "

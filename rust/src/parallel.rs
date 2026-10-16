@@ -31,6 +31,11 @@ fn pool(threads: usize) -> rayon::ThreadPool {
 /// children on several threads and nothing on one.
 pub fn perft(t: &Tables, snapshot: &Snapshot, depth: u32, threads: usize, stop_at_terminal: bool) -> u64 {
     let mut game = Game::from_snapshot(t, snapshot);
+    // Schema 27 (Q935a): a spy game's perft, a turn or a round per step by its phase,
+    // serially.
+    if t.spy.is_some() {
+        return game.perft_spy(depth, stop_at_terminal);
+    }
     // Schema 26 (Q918a): a joint perft, every pair of legal moves a round, serially.
     if t.simultaneous.is_some() {
         return game.perft_round(depth, stop_at_terminal);

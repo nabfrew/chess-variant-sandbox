@@ -1298,8 +1298,9 @@ def _distinctive(
 def _rule_words(key: str) -> str:
     """One of `relate.rules_involved`'s keys in `relate`'s own words for it.
 
-    Most are `rules` keys and read straight from `relate.RULE_WORDS`. The four declared
-    elsewhere are the board's joined edges and walls, a lattice, and who may take whom.
+    Most are `rules` keys and read straight from `relate.RULE_WORDS`. The five declared
+    elsewhere are the board's joined edges and walls, a lattice, who may take whom, and a
+    spy (schema 27).
     """
     if key == "board.wrap":
         return relate.RULE_WORDS["wrap"]
@@ -1307,6 +1308,8 @@ def _rule_words(key: str) -> str:
         return relate.RULE_WORDS["obstacles"]
     if key == "piece.captures":
         return KIND_WORDS["capture"]
+    if key == "piece.spy":
+        return "a spy whose loss turns the game into rounds"
     if key.startswith("board.lattice."):
         return f"a {key.removeprefix('board.lattice.')} board"
     return relate.RULE_WORDS.get(key) or f"the {key.replace('_', ' ')} rule"

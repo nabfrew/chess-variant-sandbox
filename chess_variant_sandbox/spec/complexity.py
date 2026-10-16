@@ -223,6 +223,43 @@ _PORTAL_FILTER = 1.0
 _PORTAL_FOLD = 1.0
 
 
+# Schema 27 (Q942a, `docs/plan-round-chase.md` §3): each chase switch is one more sentence
+# a player is taught about the round -- a moved piece rests, a swap is a collision, a double
+# ending goes to the score -- so each is charged as one exception on top of `simultaneous`,
+# and only at the value that turns it on (the validator refuses the others).
+_SIMULTANEOUS_SWITCH = 1.0
+_SIMULTANEOUS_SWITCHES = {"rest": True, "swap": "collision", "both": "score"}
+
+
+# Schema 27 (Q935a, `docs/plan-spy.md` §2.6): a spy is a piece flag that changes the turn
+# structure, so it is charged as a rule, not as a piece property: a player has to be taught
+# three phases, the reply turn and the announced round, on top of the round `simultaneous`
+# already costs. Once for the game however many types are flagged, read off the spelling as
+# the switches are (this file is in `measurement.METRICS_SOURCES`, `schema.py` is not).
+_SPY = 2.0
+
+
+def _spy_extras(pieces: Any) -> float:
+    """What a spy game's spy costs, beside `rules.simultaneous`' own charge."""
+    flagged = any(
+        isinstance(piece, dict) and piece.get("spy") is True
+        for piece in (pieces if isinstance(pieces, list) else [])
+    )
+    return _SPY if flagged else 0.0
+
+
+def _simultaneous_extras(rule: Any) -> float:
+    """The part of `rules.simultaneous`' charge `_RULE_COSTS` cannot say (schema 27).
+
+    Read off the spelling here, as `_portal_extras` is, since this file is in
+    `measurement.METRICS_SOURCES` and `schema.py` is not."""
+    if not isinstance(rule, dict):
+        return 0.0
+    return _SIMULTANEOUS_SWITCH * sum(
+        1 for key, on in _SIMULTANEOUS_SWITCHES.items() if key in rule and rule[key] == on
+    )
+
+
 def _portal_extras(portals: Any) -> float:
     """The part of `rules.portals`' charge `_RULE_COSTS` cannot say: see `_PORTAL_PAIR`.
 
@@ -382,6 +419,7 @@ def _count_special_rules(rules: dict[str, Any]) -> float:
         if value:
             total += cost
     total += _portal_extras(rules.get("portals"))
+    total += _simultaneous_extras(rules.get("simultaneous"))
     return total
 
 
@@ -430,7 +468,7 @@ def measure_complexity(spec: dict[str, Any]) -> SpecComplexity:
             for vector in move.get("vectors", []):
                 directions.update(expand_symmetry(tuple(vector), symmetry))
 
-    special_rules = _count_special_rules(rules)
+    special_rules = _count_special_rules(rules) + _spy_extras(pieces)
 
     # Schema 12: a `landing` set is charged as a descriptor is, per set and per expanded
     # direction, so a wide throw costs rule mass. Its directions are counted apart from the

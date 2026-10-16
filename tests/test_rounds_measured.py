@@ -302,9 +302,19 @@ class TestTheRoundRoster:
         )
 
     def test_the_round_ladder_has_the_alternating_ladders_shape(self) -> None:
-        budgets = [a.split("nodes=")[1] for a in corpus.CANONICAL_AGENTS if "nodes=" in a]
+        """Eight places, the alternating ladder's budgets at sixteen times (Q944a,
+        `round-roster-budgets.md` §6), the same factor the design loop's roster maps by."""
+        from chess_variant_sandbox.loop.screen import ROUND_BUDGET_FACTOR, round_roster
+
+        budgets = [int(a.split("nodes=")[1]) for a in corpus.CANONICAL_AGENTS if "nodes=" in a]
         assert ("random", "greedy") + tuple(
-            f"matrix:nodes={budget}" for budget in budgets
+            f"matrix:nodes={budget * ROUND_BUDGET_FACTOR}" for budget in budgets
+        ) == corpus.ROUND_AGENTS
+        assert corpus.ROUND_AGENTS[2:] == tuple(
+            f"matrix:nodes={n}" for n in (1600, 3200, 6400, 12800, 25600, 102400)
+        )
+        assert round_roster(
+            ("random", "greedy") + tuple(f"minimax:nodes={b}" for b in budgets)
         ) == corpus.ROUND_AGENTS
         assert not corpus.fits_its_roster(corpus.ROUND_AGENTS)
 

@@ -677,6 +677,16 @@ pub struct ExtinctionRule {
     /// one of them is below `min_count`. False is the summed count, which is every
     /// ruleset before it. Never true beside `any_piece` (the validator refuses it).
     pub per_type: bool,
+    /// Schema 27 (Q936): the types counted against each side, apart, under `per_type`.
+    /// `"per_type": "own"` resolves them in the compiler, each side's being the listed
+    /// types it starts with on the board (`compile._side_types`); every other spelling
+    /// crosses the boundary empty and both entries are `piece_types`, so no earlier game
+    /// reads a different list. The core walks the list it is handed and never asks who
+    /// started with what.
+    pub side_types: [Vec<usize>; 2],
+    /// Whether `side_types` came across the boundary (`"per_type": "own"`), so the two
+    /// lists may differ. Read by the evaluator's features, never by the ending.
+    pub own: bool,
 }
 
 impl ExtinctionRule {
@@ -724,6 +734,17 @@ pub struct SimTables {
     pub zobrist_squares: Vec<u64>,
     /// `[state - 1]`: 1 a run of one void round, 2 barred.
     pub zobrist_states: Vec<u64>,
+    /// Schema 27 (Q942a, `docs/plan-round-chase.md` §3 R1): the piece that made a player's
+    /// move in a round may not make it in the next, unless nothing else can move.
+    pub rest: bool,
+    /// Schema 27 (R2): two moves each ending on the other's origin meet as a collision.
+    pub swap_collides: bool,
+    /// Schema 27 (X1): an ending that fires for both players in one round goes to the
+    /// player ahead under `rules.scoring`.
+    pub both_score: bool,
+    /// `[player * n_squares + square]`: XORed in for each player's rested square; empty
+    /// unless `rest`.
+    pub zobrist_rest: Vec<u64>,
 }
 
 impl SimTables {
@@ -745,6 +766,30 @@ impl SimTables {
         z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
         z ^ (z >> 31)
     }
+
+    /// The key of the rested squares, `NO_SQUARE` (-1) for none.
+    #[inline]
+    pub fn rest_key(&self, n_squares: usize, rest: [i16; 2]) -> u64 {
+        let mut key = 0u64;
+        for (player, &square) in rest.iter().enumerate() {
+            if square >= 0 {
+                key ^= self.zobrist_rest[player * n_squares + square as usize];
+            }
+        }
+        key
+    }
+}
+
+/// The spy (schema 27, Q935a; `docs/plan-spy.md` §2.4), as the compiler resolved it
+/// (`compile.SpyRule`). The core reads it and decides nothing: the phase is a function of
+/// the board and the side to move (`Game::phase`).
+pub struct SpyTables {
+    /// `[player]`: a bit per type, set for each of that player's spy types (`1 << type`;
+    /// `MAX_PIECE_TYPES` is 24, so a `u32` holds them).
+    pub mask: [u32; 2],
+    /// Whether the initiative is dealt to the announcer at the first announced round
+    /// (`SimRule.deal_initiative`, E10): a spy game under `tie: "initiative"`.
+    pub deal: bool,
 }
 
 
@@ -991,6 +1036,10 @@ pub struct Tables {
     /// Schema 26 (Q918a): simultaneous moves, `None` for every alternating game. Boxed, as
     /// the portals are, so an alternating game pays one pointer for it.
     pub simultaneous: Option<Box<SimTables>>,
+    /// Schema 27 (Q935a): the spy, `None` for every game without one, boxed as the rounds
+    /// are so a game without one pays one pointer. Never without
+    /// `simultaneous` (the validator refuses it, and so does `from_py`).
+    pub spy: Option<Box<SpyTables>>,
 
     /// Schema 9's second key, `rules.promote_on_entry`: what a piece that *enters play*
     /// on a square becomes, as `[player][piece_type][square]` flattened in that order,
@@ -1919,6 +1968,18 @@ impl Tables {
             let ext_min: usize = field(source, keys::EXTINCTION_MIN_COUNT)?;
             let ext_result: i8 = field(source, keys::EXTINCTION_RESULT)?;
             let ext_per_type: bool = field(source, keys::EXTINCTION_PER_TYPE)?;
+            let ext_side: Vec<Vec<usize>> = field(source, keys::EXTINCTION_SIDE_TYPES)?;
+            let ext_own = !ext_side.is_empty();
+            let side_types = match <[Vec<usize>; 2]>::try_from(ext_side) {
+                Ok(lists) => lists,
+                Err(empty) if empty.is_empty() => [ext_types.clone(), ext_types.clone()],
+                Err(other) => {
+                    return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                        "extinction_side_types has {} lists; it is empty or one per player",
+                        other.len()
+                    )))
+                }
+            };
             Some(ExtinctionRule {
                 counted: type_flags(&ext_types),
                 piece_types: ext_types,
@@ -1926,6 +1987,8 @@ impl Tables {
                 min_count: ext_min,
                 result: ext_result,
                 per_type: ext_per_type,
+                side_types,
+                own: ext_own,
             })
         } else {
             None
@@ -2142,6 +2205,7 @@ impl Tables {
             npc_queues: false,
             portals: None,
             simultaneous: None,
+            spy: None,
             entry_promotion,
             piece_values,
             must_capture,
@@ -2257,7 +2321,23 @@ impl Tables {
                     "the simultaneous tables do not fit this ruleset's types and squares",
                 ));
             }
+            // Schema 27 (Q942a): empty unless a chase switch is on.
+            let chase: Vec<u8> = field(source, keys::SIM_CHASE)?;
+            let zobrist_rest: Vec<u64> = field(source, keys::ZOBRIST_REST)?;
+            let switch = |index: usize| chase.get(index).is_some_and(|flag| *flag != 0);
+            let rest = switch(0);
+            if !(chase.is_empty() || chase.len() == 3)
+                || zobrist_rest.len() != if rest { 2 * n } else { 0 }
+            {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "the chase switches do not fit this ruleset's squares",
+                ));
+            }
             tables.simultaneous = Some(Box::new(SimTables {
+                rest,
+                swap_collides: switch(1),
+                both_score: switch(2),
+                zobrist_rest,
                 tie: sim_rule[0] as u8,
                 initiative_start: sim_rule[1] as i8,
                 void_run: sim_rule[2] as u8,
@@ -2267,6 +2347,29 @@ impl Tables {
                 zobrist_squares: zobrist[1..1 + 2 * n].to_vec(),
                 zobrist_states: zobrist[1 + 2 * n..].to_vec(),
             }));
+        }
+
+        // Schema 27 (Q935a): the spy, empty unless a piece is one.
+        let spy_types: Vec<Vec<usize>> = field(source, keys::SPY_TYPES)?;
+        let spy_deal: bool = field(source, keys::SPY_DEAL)?;
+        if !spy_types.is_empty() {
+            let fits = spy_types.len() == 2
+                && tables.simultaneous.is_some()
+                && spy_types.iter().all(|types| types.iter().all(|&t| t < tables.n_types));
+            if !fits {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "the spy tables are two lists of this ruleset's types, beside rules.simultaneous",
+                ));
+            }
+            let mask = |types: &[usize]| types.iter().fold(0u32, |mask, &t| mask | (1 << t));
+            tables.spy = Some(Box::new(SpyTables {
+                mask: [mask(&spy_types[0]), mask(&spy_types[1])],
+                deal: spy_deal,
+            }));
+        } else if spy_deal {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "spy_deal without a spy",
+            ));
         }
 
         tables.hop_lines = tables.build_hop_lines();
@@ -2601,6 +2704,7 @@ pub mod keys {
         EXTINCTION_MIN_COUNT => "extinction_min_count",
         EXTINCTION_PER_TYPE => "extinction_per_type",
         EXTINCTION_RESULT => "extinction_result",
+        EXTINCTION_SIDE_TYPES => "extinction_side_types",
         EXTINCTION_TYPES => "extinction_types",
         FOLD_STARTS => "fold_starts",
         FACING_AXES => "facing_axes",
@@ -2702,8 +2806,12 @@ pub mod keys {
         ZOBRIST_COLOUR => "zobrist_colour",
         ZOBRIST_EP => "zobrist_ep",
         ZOBRIST_FOLD => "zobrist_fold",
+        SIM_CHASE => "sim_chase",
         SIM_COLLISION => "sim_collision",
         SIM_RULE => "sim_rule",
+        SPY_DEAL => "spy_deal",
+        SPY_TYPES => "spy_types",
+        ZOBRIST_REST => "zobrist_rest",
         ZOBRIST_SIM => "zobrist_sim",
         ZOBRIST_PIECES => "zobrist_pieces",
         ZOBRIST_PORTAL_BAR => "zobrist_portal_bar",

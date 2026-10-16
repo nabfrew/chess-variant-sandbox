@@ -23,6 +23,7 @@ from chess_variant_sandbox.engine.state import (
     GameState,
     Outcome,
     PhaseStep,
+    SpyPhase,
 )
 
 __all__ = [
@@ -34,6 +35,7 @@ __all__ = [
     "GameState",
     "Outcome",
     "PhaseStep",
+    "SpyPhase",
     "compile_spec",
     "decode_move",
     "encode_move",

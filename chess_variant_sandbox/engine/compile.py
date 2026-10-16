@@ -50,6 +50,8 @@ from chess_variant_sandbox.spec.schema import (
     promotion_targets,
     reach_reflection,
     reflect_square,
+    simultaneous_switch,
+    spy_ids,
     strike_is_live,
     validate_or_raise,
     wrap_stated,
@@ -547,6 +549,14 @@ class ExtinctionRule:
     counted on its own, so a side has run out when any one of them is below
     ``min_count``, not when all of them together are. The validator refuses it over
     ``any`` and over a single type, where it would state nothing.
+
+    ``own`` is schema 27 (Q936, ``"per_type": "own"``, `docs/reference/extinction-any-kind.md`
+    §2): counted apart as ``per_type`` is (so ``per_type`` is true beside it), but each
+    listed type only against a side that starts with at least one on the board.
+    ``side_types`` holds the two lists, resolved from the opening board by
+    ``_side_types``; under ``true`` both are ``piece_types``, and under the summed rule both
+    are empty. The set is fixed at ply zero: a kind a side gains later by promotion, a side
+    switch or a drop is never counted against it.
     """
 
     piece_types: tuple[int, ...]
@@ -554,6 +564,8 @@ class ExtinctionRule:
     min_count: int
     result: str
     per_type: bool = False
+    own: bool = False
+    side_types: tuple[tuple[int, ...], tuple[int, ...]] = ((), ())
 
 
 @dataclass(frozen=True)
@@ -879,6 +891,15 @@ class SimRule:
       per square for each of the two squares of a standoff entry (``[square]`` for player
       0's square, ``[n_squares + square]`` for player 1's), then one per entry state (1, a
       run of one void round; 2, barred). Drawn after every other key.
+    * ``rest``, ``swap_collides``, ``both_score`` -- schema 27's three chase switches
+      (Q942a, `docs/plan-round-chase.md` §3 R1, R2, X1), each false when absent.
+    * ``zobrist_rest`` -- under ``rest`` only, one key per square per player
+      (``[player * n_squares + square]``) for the square of the piece that player's move
+      rested; drawn after the standoff's, so no other game's key moves. Empty otherwise.
+    * ``deal_initiative`` -- schema 27 (Q935a, `docs/plan-spy.md` E10): in a spy game under
+      the initiative, the token is dealt to the announcer when the first announced round
+      begins, so the answerer cannot win at will every tie it chooses to enter. False in
+      every other game.
     """
 
     tie: int
@@ -889,6 +910,16 @@ class SimRule:
     zobrist_initiative: int
     zobrist_squares: tuple[int, ...]
     zobrist_states: tuple[int, ...]
+    rest: bool = False
+    swap_collides: bool = False
+    both_score: bool = False
+    zobrist_rest: tuple[int, ...] = ()
+    deal_initiative: bool = False
+
+    @property
+    def chases(self) -> bool:
+        """Whether any of schema 27's chase switches is on (the boundary's ``sim_chase``)."""
+        return self.rest or self.swap_collides or self.both_score
 
 
 def _compile_simultaneous(
@@ -896,7 +927,7 @@ def _compile_simultaneous(
     pieces: list[dict[str, Any]],
     index_of: dict[str, int],
     n_types: int,
-    draws: tuple[int, tuple[int, ...], tuple[int, ...]] | None,
+    draws: tuple[int, tuple[int, ...], tuple[int, ...], tuple[int, ...]] | None,
 ) -> SimRule | None:
     """`SimRule` for a simultaneous spec, ``None`` for an alternating one (§5.3)."""
     rule = rules.get("simultaneous")
@@ -912,7 +943,7 @@ def _compile_simultaneous(
         for victim in beaten:
             allowed[index_of[piece["id"]] * n_types + index_of[victim]] = True
     source = rules.get("strike") if isinstance(rules.get("strike"), dict) else None
-    initiative, squares, states = draws
+    initiative, squares, states, rest = draws
     return SimRule(
         tie=tie,
         initiative_start=1,
@@ -922,7 +953,42 @@ def _compile_simultaneous(
         zobrist_initiative=initiative,
         zobrist_squares=squares,
         zobrist_states=states,
+        rest=simultaneous_switch(rules, "rest"),
+        swap_collides=simultaneous_switch(rules, "swap"),
+        both_score=simultaneous_switch(rules, "both"),
+        zobrist_rest=rest,
+        deal_initiative=tie == TIE_INITIATIVE and bool(spy_ids(pieces)),
     )
+
+
+@dataclass(frozen=True)
+class SpyRule:
+    """The spy (schema 27, Q935a; `docs/plan-spy.md` §1, §2.4).
+
+    * ``types`` -- each player's spy types: the flagged types that player has on the
+      opening board (`_side_types`, Q936's helper, so a mirrored army has one spy type for
+      both and disjoint armies one each). A player **has a spy** while at least one piece
+      of any of its spy types stands on the board, the count summed over the list: a side
+      given two spies has lost "the spy" when it has none left (§1.2), so two types are
+      not two separate losses (`Game::has_spy`, never `short_of`, which counts each listed
+      type apart).
+
+    Nothing else: the phase is a function of the board and the side to move (§2.5), and the
+    initiative's deal is ``SimRule.deal_initiative``.
+    """
+
+    types: tuple[tuple[int, ...], tuple[int, ...]]
+
+
+def _compile_spy(
+    pieces: list[dict[str, Any]], index_of: dict[str, int], board: bytes, n_types: int,
+    n_facings: int,
+) -> SpyRule | None:
+    """`SpyRule` for a spec with a spy, ``None`` otherwise."""
+    flagged = [index_of[pid] for pid in spy_ids(pieces) if pid in index_of]
+    if not flagged:
+        return None
+    return SpyRule(types=_side_types(board, n_types, n_facings, flagged))
 
 
 @dataclass(frozen=True)
@@ -1178,6 +1244,9 @@ class CompiledSpec:
     # Schema 26 (Q918a): simultaneous moves, or ``None`` -- every alternating game, whose
     # boundary keys for the rule all cross empty. See ``SimRule``.
     simultaneous: SimRule | None = None
+    # Schema 27 (Q935a): the spy, or ``None`` -- every game without one, whose boundary keys
+    # for the rule cross empty. See ``SpyRule``. A spy game always has ``simultaneous``.
+    spy: SpyRule | None = None
 
     def turns(self, piece_type: int) -> bool:
         """Whether a move may turn this type: it has more than one orientation and its
@@ -1602,6 +1671,7 @@ def _compile(
             fold_ends=n_types - declared_types if has_folds else 0,
             simultaneous=isinstance(simultaneous, dict),
             initiative=isinstance(simultaneous, dict) and simultaneous.get("tie") == "initiative",
+            rest=simultaneous_switch(rules, "rest"),
         )
     )
     royal_types = tuple(i for i, p in enumerate(pieces) if p.get("royal", False))
@@ -1758,7 +1828,9 @@ def _compile(
         bare_royal=rules.get("bare_royal") or "",
         check_limit=int(rules.get("check_limit", 0)),
         reach=_compile_reach(rules.get("reach"), index_of, width, height),
-        extinction=_compile_extinction(rules.get("extinction"), index_of),
+        extinction=_compile_extinction(
+            rules.get("extinction"), index_of, board, n_types, n_facings
+        ),
         scoring=_compile_scoring(rules.get("scoring"), width, height, orientation),
         territory=_compile_territory(rules.get("territory")),
         turn=_compile_turn(rules.get("turn")),
@@ -1813,6 +1885,7 @@ def _compile(
         zobrist_turn=zob_turn,
         portals=portals,
         simultaneous=_compile_simultaneous(rules, list(spec["pieces"]), index_of, n_types, zob_sim),
+        spy=_compile_spy(list(spec["pieces"]), index_of, board, n_types, n_facings),
     )
     if obstacles:
         _reject_walled_in(compiled)
@@ -4283,21 +4356,66 @@ def _drop_faces(
     return tuple(faces)
 
 
+def _side_types(
+    board: bytes, n_types: int, n_facings: int, types: Sequence[int]
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """Each player's subset of ``types``: the ones it has at least one of on the opening
+    board, in the order listed, each once.
+
+    Schema 27's per-side type list (Q936; `docs/plan-spy.md` §2.4), read off the compiled
+    opening board rather than the JSON, so it is the army `_build_initial_position` placed,
+    mirror and all. A wild piece is nobody's and counts for no one. ``"per_type": "own"``
+    resolves its two lists here, and the spy's two lists of spy types come from the same
+    place (``SpyRule``, Q935a), so the two rules share one compiled shape; the core counts
+    them differently (``Game::short_of`` each type apart, ``Game::has_spy`` summed).
+    """
+    started: tuple[set[int], set[int]] = (set(), set())
+    for value in board:
+        if not value:
+            continue
+        owner = (value - 1) // (n_facings * n_types)
+        if owner < 2:
+            started[owner].add((value - 1) % n_types)
+    lists: list[tuple[int, ...]] = []
+    for player in (0, 1):
+        seen: list[int] = []
+        for piece_type in types:
+            if piece_type in started[player] and piece_type not in seen:
+                seen.append(piece_type)
+        lists.append(tuple(seen))
+    return lists[0], lists[1]
+
+
 def _compile_extinction(
-    extinction: dict[str, Any] | None, index_of: dict[str, int]
+    extinction: dict[str, Any] | None,
+    index_of: dict[str, int],
+    board: bytes,
+    n_types: int,
+    n_facings: int,
 ) -> ExtinctionRule | None:
     if not extinction:
         return None
     pieces = extinction["pieces"]
     any_piece = pieces == "any"
+    piece_types = () if any_piece else tuple(index_of[p] for p in pieces)
+    spelled = extinction.get("per_type", False)
+    # The validator refuses the flag over ``any`` and over one type, so where it is
+    # accepted it always counts two or more types apart.
+    per_type = spelled in (True, "own") and not any_piece
+    own = per_type and spelled == "own"
+    side_types: tuple[tuple[int, ...], tuple[int, ...]] = ((), ())
+    if own:
+        side_types = _side_types(board, n_types, n_facings, piece_types)
+    elif per_type:
+        side_types = (piece_types, piece_types)
     return ExtinctionRule(
-        piece_types=() if any_piece else tuple(index_of[p] for p in pieces),
+        piece_types=piece_types,
         any_piece=any_piece,
         min_count=extinction.get("min_count", 1),
         result=extinction.get("result", "loss"),
-        # The validator refuses the flag over ``any`` and over one type, so where it is
-        # accepted it always counts two or more types apart.
-        per_type=extinction.get("per_type", False) is True and not any_piece,
+        per_type=per_type,
+        own=own,
+        side_types=side_types,
     )
 
 
@@ -4315,6 +4433,7 @@ def _build_zobrist(
     fold_ends: int = 0,
     simultaneous: bool = False,
     initiative: bool = False,
+    rest: bool = False,
 ) -> tuple[
     tuple[tuple[int, ...], ...],
     int,
@@ -4323,7 +4442,7 @@ def _build_zobrist(
     tuple[int, ...],
     tuple[int, ...],
     tuple[int, ...],
-    tuple[int, tuple[int, ...], tuple[int, ...]] | None,
+    tuple[int, tuple[int, ...], tuple[int, ...], tuple[int, ...]] | None,
 ]:
     """Seed the Zobrist table from the spec hash.
 
@@ -4380,5 +4499,8 @@ def _build_zobrist(
         holder = rng.getrandbits(64) if initiative else 0
         squares = tuple(rng.getrandbits(64) for _ in range(2 * n_squares))
         states = tuple(rng.getrandbits(64) for _ in range(VOID_RUN))
-        sim = (holder, squares, states)
+        # Schema 27 (Q942a): the rested squares, one table per player, drawn after the
+        # standoff's and only under `rest`, so no schema-26 game's key moves.
+        resting = tuple(rng.getrandbits(64) for _ in range(2 * n_squares)) if rest else ()
+        sim = (holder, squares, states, resting)
     return pieces, side, ep, colours, turns, bar, fold, sim

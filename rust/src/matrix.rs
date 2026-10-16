@@ -178,6 +178,50 @@ impl Player {
         }
     }
 
+    /// Schema 27 (Q935a, `docs/plan-spy.md` §3.2): the move an announcer shows first in an
+    /// announced round of a spy game. Only `random` plays one yet (`check_against`): uniform
+    /// over its own moves, from its own stream.
+    pub fn select_announcement(
+        &mut self,
+        _game: &mut Game<'_>,
+        seat: usize,
+        lists: [&[u32]; 2],
+        rng: &mut PyRandom,
+    ) -> u32 {
+        match self.spec.kind {
+            Kind::Random => {
+                let mine = lists[seat];
+                self.stats.moves += 1;
+                self.stats.nodes += mine.len() as u64;
+                self.strategy.clear();
+                rng.choice(mine)
+            }
+            _ => unreachable!("check_against refuses every player but random on a spy game"),
+        }
+    }
+
+    /// Schema 27 (Q935a, §3.2): the answerer's move, chosen knowing `announced`. `random`
+    /// ignores it.
+    pub fn select_answer(
+        &mut self,
+        _game: &mut Game<'_>,
+        seat: usize,
+        lists: [&[u32]; 2],
+        _announced: u32,
+        rng: &mut PyRandom,
+    ) -> u32 {
+        match self.spec.kind {
+            Kind::Random => {
+                let mine = lists[seat];
+                self.stats.moves += 1;
+                self.stats.nodes += mine.len() as u64;
+                self.strategy.clear();
+                rng.choice(mine)
+            }
+            _ => unreachable!("check_against refuses every player but random on a spy game"),
+        }
+    }
+
     /// Greedy's round arm: the one-round matrix, solved, drawn from.
     fn greedy_round(
         &mut self,

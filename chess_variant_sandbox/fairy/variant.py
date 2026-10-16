@@ -470,6 +470,14 @@ def _check_unsupported_rules(
             "rules.portals: a square that sends a piece out of another has no counterpart; "
             "no variant option moves a piece anywhere but where its move ends"
         )
+    if compiled.spy is not None:
+        # Schema 27 (Q935a, `docs/plan-spy.md` §3.8). A spy game always declares rounds,
+        # refused just below; named apart so the reason says which rule asked for them. The
+        # alternating phase is checked through the alternating twin, as a round game's is.
+        reasons.append(
+            "pieces[].spy: a game whose turns become rounds when a spy is lost has no "
+            "counterpart; Fairy-Stockfish always has a side to move"
+        )
     if compiled.simultaneous is not None:
         # Schema 26 (Q918a). Fairy-Stockfish has a side to move and no round in which both
         # players move at once (`docs/plan-simultaneous.md` §6.5). The per-side generator is
@@ -670,6 +678,12 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
             _REFUSED,
             "only beside rules.simultaneous, which is refused whole: Fairy-Stockfish has "
             "no collision for it to decide",
+        ),
+        "spy": (
+            _REFUSED,
+            "schema 27: a spy game alternates and then plays rounds, and Fairy-Stockfish has "
+            "no round; refused with rules.simultaneous, which a spy game must declare, and "
+            "read off the compiled rule (compiled.spy)",
         ),
     },
     "move": {
@@ -1805,6 +1819,15 @@ def _ending_lines(
             reasons.append(
                 "rules.extinction counts its listed types together, and "
                 "extinctionPieceTypes counts each on its own; say per_type to mean that"
+            )
+        # Schema 27 (Q936): `extinctionPieceTypes` is one list for both colours, and a side
+        # holding none of a listed type has run out of it, so `"own"` there is a game over
+        # before the first move (`docs/reference/extinction-any-kind.md` §3.3). No setting
+        # counts a type against one colour only.
+        if rule.own:
+            reasons.append(
+                'rules.extinction.per_type "own": extinctionPieceTypes is one list for both '
+                "colours, so a type one side never had is run out for it from the start"
             )
         # Their count includes the hand (`count_with_hand`) and ours is the board, so a
         # type gone to a hand is run out here and not there.

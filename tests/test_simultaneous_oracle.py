@@ -3,7 +3,8 @@
 `docs/plan-simultaneous.md` §6.1 and §7's Q918a box: random walks through the test specs,
 every round resolved by `make_round` and by `tests/simultaneous_oracle.py`, the whole
 position compared, and the incremental key held to the slow definition. The fast tier walks
-a few games per spec; the slow tier walks many more.
+a few games per spec; the slow tier walks many more. Schema 27's specs (Q942a) carry the
+chase switches, and each round's two move lists are held to the oracle's rest filter.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from functools import cache
 from pathlib import Path
 
 import pytest
-from simultaneous_oracle import resolve_round
+from simultaneous_oracle import legal_for, resolve_round
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.state import GameState
@@ -35,8 +36,11 @@ def walk(engine: Engine, seed: int, rounds: int) -> int:
     for played in range(rounds):
         if engine.terminal(state) is not None:
             return played
-        first = rng.choice(engine.legal_moves_for(state, 0))
-        second = rng.choice(engine.legal_moves_for(state, 1))
+        lists = [engine.legal_moves_for(state, player) for player in (0, 1)]
+        # Schema 27 (Q942a): the rest's filter and its lift, held to the oracle's.
+        assert lists == [legal_for(engine, state, player) for player in (0, 1)]
+        first = rng.choice(lists[0])
+        second = rng.choice(lists[1])
         expected = resolve_round(engine, state, first, second)
         actual = engine.apply_round(state, first, second)
         assert actual == expected, (

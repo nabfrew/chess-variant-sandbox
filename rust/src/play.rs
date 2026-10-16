@@ -85,6 +85,81 @@ pub fn play_from(
     let mut legal = Vec::new();
 
     let started = Instant::now();
+    if t.spy.is_some() {
+        // Schema 27 (Q935a, `docs/plan-spy.md` §2.5): a spy game, each step played by its
+        // phase. A turn is one move in the record and one entry in every series; a round is
+        // two, in seat order, as in a round game. A replay recomputes the phase from the
+        // position, so the record needs no field for it.
+        let mut second = Vec::new();
+        let outcome = loop {
+            let phase = game.phase();
+            if !phase.is_round() {
+                legal.clear();
+                game.generate_legal(&mut legal);
+                if let Some(outcome) = game.terminal_with(&legal) {
+                    break outcome;
+                }
+                if let Some(evaluator) = &series_eval {
+                    branching.push(legal.len() as u32);
+                    material.push(evaluator.material(&game, 0));
+                }
+                let mover = game.side;
+                let m = players[mover].select_move(&mut game, &legal, &mut rngs[mover]);
+                game.spy_turn(m);
+                if collect_series {
+                    captures.push(u8::from(game.halfmove == 0));
+                }
+                moves.push(m);
+                continue;
+            }
+            legal.clear();
+            second.clear();
+            game.generate_legal_for(0, &mut legal);
+            game.generate_legal_for(1, &mut second);
+            if let Some(outcome) = game.round_terminal_with([&legal, &second]) {
+                break outcome;
+            }
+            if let Some(evaluator) = &series_eval {
+                branching.push(legal.len() as u32);
+                branching.push(second.len() as u32);
+                let value = evaluator.material(&game, 0);
+                material.push(value);
+                material.push(value);
+            }
+            let chosen = match phase {
+                crate::game::Phase::Announced { announcer } => {
+                    // The announcer chooses first; its move is shown to the answerer, who
+                    // chooses knowing it (§1.4). Each from its own stream.
+                    let answerer = 1 - announcer;
+                    let lists = [&legal[..], &second[..]];
+                    let announced = players[announcer].select_announcement(
+                        &mut game, announcer, lists, &mut rngs[announcer],
+                    );
+                    let answer = players[answerer].select_answer(
+                        &mut game, answerer, lists, announced, &mut rngs[answerer],
+                    );
+                    let mut pair = [0u32; 2];
+                    pair[announcer] = announced;
+                    pair[answerer] = answer;
+                    pair
+                }
+                _ => {
+                    let first = players[0].select_round(&mut game, 0, [&legal, &second], &mut rngs[0]);
+                    let other = players[1].select_round(&mut game, 1, [&legal, &second], &mut rngs[1]);
+                    [first, other]
+                }
+            };
+            game.make_round(chosen);
+            if collect_series {
+                let quiet = u8::from(game.halfmove == 0);
+                captures.push(quiet);
+                captures.push(quiet);
+            }
+            moves.push(chosen[0]);
+            moves.push(chosen[1]);
+        };
+        return finish(outcome, moves, branching, material, captures, &players, started);
+    }
     if t.simultaneous.is_some() {
         // Schema 26 (Q918a): rounds. Both seats are asked on the same board, each from its
         // own stream, and neither sees the other's choice; the record keeps both moves of a
@@ -173,6 +248,50 @@ pub fn random_playout(t: &Tables, rng: &mut PyRandom) -> (u32, i8, &'static str,
     let mut branching_total = 0u64;
     let mut branching_samples = 0u64;
 
+    if t.spy.is_some() {
+        // Schema 27 (Q935a): one stream, a turn's one draw, an announced round's
+        // announcer before its answerer, a blind round's player 0 before player 1.
+        let mut second = Vec::new();
+        let outcome = loop {
+            let phase = game.phase();
+            if !phase.is_round() {
+                legal.clear();
+                game.generate_legal(&mut legal);
+                if let Some(outcome) = game.terminal_with(&legal) {
+                    break outcome;
+                }
+                branching_total += legal.len() as u64;
+                branching_samples += 1;
+                let m = rng.choice(&legal);
+                game.spy_turn(m);
+                continue;
+            }
+            legal.clear();
+            second.clear();
+            game.generate_legal_for(0, &mut legal);
+            game.generate_legal_for(1, &mut second);
+            if let Some(outcome) = game.round_terminal_with([&legal, &second]) {
+                break outcome;
+            }
+            branching_total += (legal.len() + second.len()) as u64;
+            branching_samples += 2;
+            let pair = if let crate::game::Phase::Announced { announcer } = phase {
+                let lists = [&legal, &second];
+                let announced = rng.choice(lists[announcer]);
+                let answer = rng.choice(lists[1 - announcer]);
+                let mut pair = [0u32; 2];
+                pair[announcer] = announced;
+                pair[1 - announcer] = answer;
+                pair
+            } else {
+                let first = rng.choice(&legal);
+                let other = rng.choice(&second);
+                [first, other]
+            };
+            game.make_round(pair);
+        };
+        return (game.ply, outcome.winner, outcome.reason.as_str(), branching_total, branching_samples);
+    }
     if t.simultaneous.is_some() {
         // Schema 26: one stream, player 0's draw before player 1's each round.
         let mut second = Vec::new();

@@ -257,6 +257,23 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "not tie. Never on a portal."
                 ),
             },
+            "spy": {
+                "type": "boolean",
+                "description": (
+                    "Schema 27. This piece is a spy, and the game is played in three phases "
+                    "by who still has one on the board. While both players have a spy, they "
+                    "take turns as usual. When one player loses their last spy, they first "
+                    "play one ordinary reply move if it is their turn; then the game is played "
+                    "in rounds (rules.simultaneous, which a spy game must declare) in which the "
+                    "player without a spy announces their move first and the other chooses "
+                    "knowing it, both resolved together. Once neither has a spy, both choose in "
+                    "secret. Both players must start with a spy on the board, nothing may "
+                    "bring one back (no promotion to it, no stock or hand holding it, no "
+                    "drops.from_captures, no strike.switches_sides), it may not be royal, and "
+                    "something of the other player's must be able to remove it. Leave it out "
+                    "for an ordinary piece; never write false."
+                ),
+            },
             "facing": _object(
                 {
                     "axes": {
@@ -1042,6 +1059,41 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "such as a circle of rock, paper and scissors)."
                         ),
                     },
+                    "rest": {
+                        "type": "boolean",
+                        "description": (
+                            "Schema 27. The piece that made a player's move in a round "
+                            "(moved, turned, was dropped, or made a void move) rests: it "
+                            "may not make that player's move in the next round, unless it "
+                            "is the only piece that can move. So a piece cannot run or "
+                            "strike two rounds running, and every attack gives a round's "
+                            "warning. Leave it out for no rest; never write false."
+                        ),
+                    },
+                    "swap": {
+                        "type": "string",
+                        "enum": ["collision"],
+                        "description": (
+                            "Schema 27. 'collision': two moves that each end on the "
+                            "other's starting square meet as a collision, decided by "
+                            "pieces.beats and the tie rule, instead of the two pieces "
+                            "passing each other; a winner ends on its destination and a "
+                            "loser is removed. Leave it out and swapping pieces pass. "
+                            "Refused where no piece of one player can take a piece of the "
+                            "other that can take it back."
+                        ),
+                    },
+                    "both": {
+                        "type": "string",
+                        "enum": ["score"],
+                        "description": (
+                            "Schema 27. 'score': an ending both players reach in the same "
+                            "round (both royals taken, both armies gone, both on a goal) "
+                            "goes to the player ahead under rules.scoring, and is a draw "
+                            "only when the scores are equal. Leave it out and such a round "
+                            "is a draw. Requires rules.scoring."
+                        ),
+                    },
                 },
                 required=[],
                 strict=strict,
@@ -1060,7 +1112,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "counts as two moves on the clocks. Not usable beside castling, en "
                     "passant, a sweep, check rules, a turn of more than one move, a "
                     "portal a player moves, a strike or contact position 'choose', a "
-                    "strike position 'stay', or drops.no_mate."
+                    "strike position 'stay', or drops.no_mate. Schema 27 adds three "
+                    "switches against a royal chased round after round: rest, swap and both."
                 ),
             ),
             "promote_on_entry": {
@@ -1149,14 +1202,21 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                         "enum": list(ENDING_RESULTS),
                         "description": "The result for the player who falls below the count.",
                     },
-                    # Schema 18 (Q783): what `compile.ExtinctionRule.per_type` reads.
+                    # Schema 18 (Q783): what `compile.ExtinctionRule.per_type` reads;
+                    # schema 27 (Q936) adds "own" (`ExtinctionRule.own`).
                     "per_type": {
-                        "type": "boolean",
+                        "anyOf": [
+                            {"type": "boolean"},
+                            {"type": "string", "enum": ["own"]},
+                        ],
                         "description": (
                             "True counts each listed type on its own, so a side loses when "
                             "any one of them falls below min_count, as in Extinction chess. "
-                            "False, the default, counts the listed types together. Needs "
-                            "two or more types listed."
+                            "'own' (schema 27) counts each listed type on its own too, but "
+                            "only against a player who starts with it, so two armies of "
+                            "different kinds each lose by running out of any one of their "
+                            "own; list both armies' kinds. False, the default, counts the "
+                            "listed types together. Needs two or more types listed."
                         ),
                     },
                 },

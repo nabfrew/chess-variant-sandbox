@@ -344,7 +344,7 @@ SHAPE = [
     ),
     pytest.param(
         {"rules.extinction": {"pieces": ["R", "K"], "per_type": 1}},
-        "rules.extinction.per_type must be a boolean",
+        'rules.extinction.per_type must be true, false or "own"',
         id="extinction-per-type",
     ),
     # ---------------------------------------------------------------- wrap, obstacles

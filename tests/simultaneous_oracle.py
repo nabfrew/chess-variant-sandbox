@@ -3,7 +3,9 @@
 `docs/plan-simultaneous.md` §6.1: resolution is checked by this oracle alone. It resolves
 one round from the compiled tables and the two move words, in the plan's order (§2, §4),
 and returns the position the core's `make_round` must reach -- board, hands, colouring,
-tally, rights, clocks, the initiative, the void run and the bars. CLAUDE.md rule 3 allows
+tally, rights, clocks, the initiative, the void run, the bars and (schema 27, Q942a) the
+rested squares; schema 27's swap meeting is resolved here too, and `legal_for` filters a
+player's moves by the rest. CLAUDE.md rule 3 allows
 it: it is a declared test oracle. It asks the engine only questions the engine's own tests
 answer elsewhere -- the moves a player has on a board (for `lands_if_empty`, §5.3), what the
 wild pieces' phase does on a board (`coming_phases`) and the slow definition of the key
@@ -92,6 +94,26 @@ def _standoff_after(state: GameState, void: list[bool], origins: list[int | None
     return run, tuple(sorted(bars)), barred
 
 
+def legal_for(engine: Engine, state: GameState, player: int) -> list[int]:
+    """Schema 27 (Q942a, `docs/plan-round-chase.md` §3 R1): `player`'s moves under the rest.
+
+    The core's moves on the same board with nothing resting, less the rested piece's,
+    unless that would leave none (the lift); in the core's order. Without `rest` the
+    position's rest is `(-1, -1)` and this is the core's list.
+    """
+    unrested = engine.legal_moves_for(state.with_(rest=NO_PAIR), player)
+    rested = state.rest[player]
+    if rested < 0:
+        return unrested
+
+    def from_rested(move: int) -> bool:
+        origin, _, kind, _ = decode_move(move)
+        return kind != MOVE_DROP and origin == rested
+
+    kept = [move for move in unrested if not from_rested(move)]
+    return kept if kept else unrested
+
+
 def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> GameState:
     """The position after one round, resolved by the plan's rule (§2, §4)."""
     spec = engine.spec
@@ -141,12 +163,19 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
         vacated = raw[j] and not stays[j] and plans[j]["origin"] == plans[i]["target"]
         standing[i] = plans[i]["kind"] == MOVE_ROTATE or (stays[i] and (own_target or not vacated))
     moving = [raw[i] and not standing[i] for i in (0, 1)]
+    # Schema 27 (Q942a, R2): a swap meets as a collision, so neither move is void.
+    swapped = (
+        sim.swap_collides and moving[0] and moving[1]
+        and plans[0]["origin"] is not None
+        and plans[1]["origin"] == plans[0]["target"]
+        and plans[0]["origin"] == plans[1]["target"]
+    )
     round_board = bytes(board)
     void = [False, False]
     for i in (0, 1):
         j = 1 - i
         void[i] = (
-            moving[i] and moving[j] and plans[i]["origin"] is not None
+            not swapped and moving[i] and moving[j] and plans[i]["origin"] is not None
             and plans[j]["origin"] == plans[i]["target"]
             and not lands_if_empty(engine, state, round_board, i, plans[i]["m"])
         )
@@ -236,27 +265,49 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
             "strikes": strikes and spec.strike is not None, "gone": False,
         }
 
-    collided = arriving[0] and arriving[1] and plans[0]["target"] == plans[1]["target"]
-    if collided:
-        square = plans[0]["target"]
-        touched.add(square)
-        material = True
+    def meet() -> tuple[int | None, list[bool]]:
+        """Who wins a meeting of the two arrivals (`beats`, then the tie rule)."""
+        nonlocal initiative, passed
         types = [spec.type_of(arrival[0]), spec.type_of(arrival[1])]
         beats = [
             sim.collision_allowed[types[0] * n_types + types[1]],
             sim.collision_allowed[types[1] * n_types + types[0]],
         ]
-        winner: int | None
         if beats == [True, False]:
-            winner = 0
-        elif beats == [False, True]:
-            winner = 1
-        elif sim.tie == 1:
-            winner = initiative
+            return 0, beats
+        if beats == [False, True]:
+            return 1, beats
+        if sim.tie == 1:
+            holder = initiative
             initiative = 1 - initiative
             passed = True
-        else:
-            winner = None
+            return holder, beats
+        return None, beats
+
+    collided = arriving[0] and arriving[1] and plans[0]["target"] == plans[1]["target"]
+    if swapped:
+        # Both destinations were emptied by the departures; each is taken where it would
+        # have landed, on the other's origin.
+        material = True
+        touched.update((plans[0]["target"], plans[1]["target"]))
+        winner, beats = meet()
+        if winner is not None:
+            square = plans[winner]["target"]
+            board[square] = arrival[winner]
+            loser = taking(winner, arrival[1 - winner], square, False)
+            loser["strikes"] = sim.collision_strikes
+            takings.append(loser)
+        elif beats[0] and beats[1]:
+            for w in (0, 1):
+                each = taking(w, arrival[1 - w], plans[w]["target"], False)
+                each["strikes"] = sim.collision_strikes
+                each["gone"] = True
+                takings.append(each)
+    elif collided:
+        square = plans[0]["target"]
+        touched.add(square)
+        material = True
+        winner, beats = meet()
         there = board[square]
         if winner is not None:
             if there != 0:
@@ -385,6 +436,17 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
             touched.update((origin, target))
             material |= eaten != 0
 
+    # Schema 27 (Q942a, R1): each moved piece rests where it ended the round (its origin if
+    # it stood, turned or was void), while that square holds its player's piece.
+    rest = state.rest
+    if sim.rest:
+        ends = []
+        for i in (0, 1):
+            end = plans[i]["target"] if arriving[i] else plans[i]["origin"]
+            ok = end is not None and board[end] != 0 and spec.owner_of(board[end]) == i
+            ends.append(end if ok else -1)
+        rest = (ends[0], ends[1])
+
     # Step 9: the void run and the bars.
     run, bars, _ = _standoff_after(state, void, [plans[0]["origin"], plans[1]["origin"]], touched)
 
@@ -423,6 +485,7 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
         initiative=initiative,
         void_run=run,
         bars=bars,
+        rest=rest,
         goal_left_by=goal_left_by,
     )
     key = engine._compute_hash(after)

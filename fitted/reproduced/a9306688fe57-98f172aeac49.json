@@ -17,7 +17,8 @@
     "4bed10accc7d501f",
     "40d0e115de5a613d",
     "273221deaf99f3c9",
-    "8514bfd3713472ca"
+    "8514bfd3713472ca",
+    "ee5390a5b9c9b75c"
   ],
   "verified_under": [
     {
@@ -37,6 +38,12 @@
       "tables": "6a56433c2492eaf3",
       "players": "152061050af84cbe",
       "runner": "8a4ff69df239b166"
+    },
+    {
+      "core": "ee5390a5b9c9b75c",
+      "tables": "6a56433c2492eaf3",
+      "players": "152061050af84cbe",
+      "runner": "27a036fd330a30c8"
     }
   ]
 }

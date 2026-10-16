@@ -133,7 +133,8 @@ NOTES: dict[str, str] = {
     "rules.castling.rook_file.queenside": "The file the partner lands on when castling toward the lower files.",
     "rules.extinction.min_count": (
         "A player with fewer than this many of the listed pieces gets the result. Each "
-        "player must start with at least this many (of each listed type, under per_type), "
+        "player must start with at least this many (of each listed type, under per_type; "
+        "of each listed type they start with any of, under per_type 'own'), "
         "or the game would be over before the first move."
     ),
     "rules.reach.result": "The result for the player whose piece reaches the squares.",

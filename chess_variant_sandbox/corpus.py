@@ -45,6 +45,7 @@ from chess_variant_sandbox.agents.fitted import (
 )
 from chess_variant_sandbox.agents.nets import STORE_DIR, rated_net
 from chess_variant_sandbox.loop.archive import Archive
+from chess_variant_sandbox.loop.screen import ROUND_BUDGET_FACTOR
 from chess_variant_sandbox.measurement import (
     BUILTIN_PLAYER,
     Basis,
@@ -114,14 +115,19 @@ CANONICAL_GAMES = 4
 CANONICAL_SEED = 0
 
 # The roster a game played in rounds is measured on (schema 26, Q918d;
-# `docs/plan-simultaneous.md` §6.2): the same eight places at the same budgets, with the
-# round players where the alternating ladder has minimax, which is refused on these games.
-# No fitted objective: the round players play the built-in one only, and whether they need
-# their own is read from this ladder's monotonicity (the plan's *Q918d, as built*). The
-# stamp names the roster, so a round game's score is never read as though the ladder were
-# the alternating one.
+# `docs/plan-simultaneous.md` §6.2): the same eight places, with the round players where
+# the alternating ladder has minimax, which is refused on these games, at
+# `ROUND_BUDGET_FACTOR` (16) times its budgets, `matrix:nodes=1600` to `102400` (Q944a,
+# `docs/reference/round-roster-budgets.md` §6). At the same budgets the bottom rungs were
+# greedy under other names: a round player always finishes greedy's whole one-round matrix
+# and spends nothing more when that matrix holds its budget. `loop.screen.round_roster`
+# applies the same factor, so one rule says what a budget means in rounds. No fitted
+# objective: the round players play the built-in one only, and whether they need their own
+# is read from this ladder's monotonicity (the plan's *Q918d, as built*). The stamp names
+# the roster, so a round game's score is never read as though the ladder were the
+# alternating one.
 ROUND_AGENTS = ("random", "greedy") + tuple(
-    f"matrix:nodes={budget}" for budget in _FITTED_BUDGETS
+    f"matrix:nodes={budget * ROUND_BUDGET_FACTOR}" for budget in _FITTED_BUDGETS
 )
 
 # Where the measuring roster reads a game's learned net from (Q502h). Relative, as

@@ -39,6 +39,8 @@ from chess_variant_sandbox.spec.schema import (
     portal_groups,
     portal_map_shape,
     promotion_squares,
+    simultaneous_switch,
+    spy_ids,
     strike_changes_anything,
     wrap_stated,
 )
@@ -379,10 +381,11 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         "hex_lattice": 1.0 if board.get("lattice") == "hex" else 0.0,
         "promotion_zone_share": _promotion_zone_share(spec),
         "promotes_on_leaving": _promotes_on_leaving(rules),
+        # Schema 27 (Q936): "own" half way, so it is neither `true`'s game nor the summed
+        # count's at distance zero.
         "extinction_per_type": (
-            1.0
+            {True: 1.0, "own": 0.5}.get(rules["extinction"].get("per_type"), 0.0)
             if isinstance(rules.get("extinction"), dict)
-            and rules["extinction"].get("per_type") is True
             else 0.0
         ),
         "promotes_only_lost": _promotes_only_lost(rules),
@@ -399,7 +402,7 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
 def _simultaneous_features(spec: dict[str, Any]) -> dict[str, float]:
     """Schema 26 (Q918a): the round itself, its tie rule, and the share of pieces whose
     collision table (`beats`) is their own, so a spec differing only by any of them is not
-    at distance zero."""
+    at distance zero; and schema 27's three chase switches (Q942a), one feature each."""
     rules: dict[str, Any] = spec["rules"] if isinstance(spec.get("rules"), dict) else {}
     rule = rules.get("simultaneous")
     tie = rule.get("tie") if isinstance(rule, dict) else None
@@ -410,6 +413,12 @@ def _simultaneous_features(spec: dict[str, Any]) -> dict[str, float]:
         "simultaneous_initiative": 1.0 if tie == "initiative" else 0.0,
         "simultaneous_impossible": 1.0 if tie == "impossible" else 0.0,
         "beats_share": beats / len(pieces) if pieces else 0.0,
+        "simultaneous_rest": 1.0 if simultaneous_switch(rules, "rest") else 0.0,
+        "simultaneous_swap_collides": 1.0 if simultaneous_switch(rules, "swap") else 0.0,
+        "simultaneous_both_score": 1.0 if simultaneous_switch(rules, "both") else 0.0,
+        # Schema 27 (Q935a): the spy, so a spy game is never at distance zero from its
+        # round twin; the count of spy types, so two spies a side read apart from one.
+        "spy_types": float(len(spy_ids(spec))),
     }
 
 

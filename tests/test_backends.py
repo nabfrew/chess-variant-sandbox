@@ -153,9 +153,10 @@ def test_the_tree_search_agrees_move_for_move(name: str) -> None:
 
 # Schema 26 (Q918b): the round players. Q918a's test specs (`tests/_simultaneous_*.json`):
 # a mirrored Gardner-sized game, drops and promotion, an explosion, an own-merge contact, a
-# static portal pair beside a fold. The fast arms cut each game at 24 plies (twelve rounds);
+# static portal pair beside a fold; and Q942a's schema-27 switches (the rest; all three with
+# a score; swaps that collide beside an explosion). The fast arms cut each game at 24 plies (twelve rounds);
 # the slow ones play it to its verdict.
-ROUND_SPECS = ["gardner", "shogi", "atomic", "merge", "portals"]
+ROUND_SPECS = ["gardner", "shogi", "atomic", "merge", "portals", "resting", "scored", "atomic_collide"]
 ROUND_ROSTER = [
     ("greedy", "random"),
     ("matrix:nodes=250", "greedy"),
@@ -1976,3 +1977,63 @@ def test_a_table_the_core_cannot_read_stops_construction(
     )
     with pytest.raises(RuntimeError, match="never reads `entry_promotion`"):
         Engine(load_spec(RULESETS / "chess.json"))
+
+
+# ------------------------------------------- schema 27: each side's own kinds (Q936)
+#
+# No committed ruleset says `"per_type": "own"`, so the arm is inline: the record's §1 game,
+# two armies of different kinds (`docs/reference/extinction-any-kind.md`). Two readings
+# cross: the core's ending over each side's own list (`Game::short_of`), and the
+# `extinction_margin` feature, which under "own" reads each side's worst own kind against its
+# own opening on both sides (`features.rs`, `agents/features.py`).
+
+
+def _own_kinds() -> Engine:
+    def leap(vector: list[int], symmetry: str) -> list[dict[str, Any]]:
+        return [{"kind": "leap", "vectors": [vector], "symmetry": symmetry, "mode": "both"}]
+
+    return Engine({
+        "schema_version": 27, "name": "own kinds", "board": {"width": 6, "height": 6},
+        "pieces": [
+            {"id": "A", "value": 3, "moves": leap([1, 0], "rotate4")},
+            {"id": "B", "value": 3, "moves": leap([1, 1], "rotate4")},
+            {"id": "C", "value": 3, "moves": leap([1, 2], "dihedral8")},
+            {"id": "E", "value": 3, "moves": leap([2, 0], "rotate4")},
+        ],
+        "setup": {"mirror": False, "placements": [
+            {"piece": "A", "player": 0, "squares": ["b1", "e1"]},
+            {"piece": "B", "player": 0, "squares": ["c1", "d1"]},
+            {"piece": "C", "player": 1, "squares": ["b6", "e6"]},
+            {"piece": "E", "player": 1, "squares": ["c6", "d6"]},
+        ]},
+        "rules": {"win": "none", "stalemate": "draw", "max_plies": 120, "repetition_draw": 3,
+                  "extinction": {"pieces": ["A", "B", "C", "E"], "per_type": "own"}},
+    })
+
+
+def _margin_player() -> str:
+    heuristic = Heuristic(
+        name="own-kinds", plan="", weights=_vector(material=1.0, extinction_margin=2.0), values=(),
+    )
+    register_heuristic(heuristic)
+    return f"minimax:h={heuristic.digest},nodes=150"
+
+
+@pytest.mark.parametrize("agents", [("minimax:nodes=150", "greedy"), ("random", "random")])
+def test_running_out_of_ones_own_kind_is_played_the_same_way_on_both_sides(
+    agents: tuple[str, str],
+) -> None:
+    _assert_same_played(_own_kinds(), agents)
+
+
+def test_the_own_kinds_margin_is_read_the_same_way_on_both_sides() -> None:
+    _assert_same_played(_own_kinds(), (_margin_player(), "greedy"))
+
+
+def test_the_own_kinds_arms_end_by_extinction_and_the_margin_changes_the_game() -> None:
+    """Guards on the two arms above: the game they play does end by running out, and the
+    feature they compare moves a move."""
+    engine = _own_kinds()
+    assert play_game(engine, ("random", "random"), seed=5).reason == "extinction"
+    weighted = play_game(engine, (_margin_player(), "greedy"), seed=5).moves
+    assert weighted != play_game(engine, ("minimax:nodes=150", "greedy"), seed=5).moves

@@ -33,6 +33,7 @@ pub(super) struct RoundUndo {
     initiative: i8,
     void_run: [i16; 2],
     bars: Vec<[i16; 2]>,
+    rest: [i16; 2],
     npc_log: usize,
 }
 
@@ -73,6 +74,9 @@ pub const EVENT_COLLISION: u8 = 0; // square of the meeting, the winner or -1 fo
 pub const EVENT_VOID: u8 = 1; // the void piece's square, its player
 pub const EVENT_INITIATIVE: u8 = 2; // the meeting a tie the initiative decided, the holder
 pub const EVENT_BARRED: u8 = 3; // the barred pair's player-0 square, -1
+/// Schema 27 (Q942a, `swap: "collision"`): two pieces that swapped squares met. The square
+/// is player 0's destination (the other's origin), the player the winner or -1 for none.
+pub const EVENT_SWAP: u8 = 4;
 
 impl<'t> Game<'t> {
     fn sim(&self) -> &'t SimTables {
@@ -81,7 +85,9 @@ impl<'t> Game<'t> {
 
     /// Every move `player` may make on this board: the alternating generator for that
     /// player, with no royal-safety filter (there is no check, §2.5), less the barred
-    /// capture-only moves (§2.7), before `restrict` so `must_capture` sees one fewer.
+    /// capture-only moves (§2.7) and, under `rest` (schema 27), the rested piece's moves
+    /// unless they are all there is (the lift), before `restrict` so `must_capture` sees
+    /// fewer.
     pub fn generate_legal_for(&mut self, player: usize, out: &mut Vec<u32>) {
         debug_assert!(!self.t.needs_check_filter(), "a simultaneous game has no check");
         let saved = self.side;
@@ -98,6 +104,24 @@ impl<'t> Game<'t> {
                 }
             }
             out.truncate(write);
+        }
+        // Schema 27 (Q942a): `rest[player]` is set only under the rule, so every other game
+        // pays one comparison here.
+        let rested = self.rest[player];
+        if rested >= 0 {
+            let from_rested =
+                |m: u32| move_kind(m) != MOVE_DROP && move_from(m) == rested as usize;
+            if out[base..].iter().any(|&m| !from_rested(m)) {
+                let mut write = base;
+                for index in base..out.len() {
+                    let m = out[index];
+                    if !from_rested(m) {
+                        out[write] = m;
+                        write += 1;
+                    }
+                }
+                out.truncate(write);
+            }
         }
         self.restrict(out, base);
         self.side = saved;
@@ -204,6 +228,9 @@ impl<'t> Game<'t> {
         if self.initiative == 1 {
             key ^= sim.zobrist_initiative;
         }
+        if sim.rest {
+            key ^= sim.rest_key(n, self.rest);
+        }
         key
     }
 
@@ -230,6 +257,7 @@ impl<'t> Game<'t> {
             initiative: self.initiative,
             void_run: self.void_run,
             bars: self.bars.clone(),
+            rest: self.rest,
             npc_log: self.npc_log.len(),
         });
         self.round_log.clear();
@@ -250,10 +278,19 @@ impl<'t> Game<'t> {
             standing[i] = plans[i].kind == MOVE_ROTATE || (stays[i] && (own_target || !vacated));
         }
         let moving = [raw[0] && !standing[0], raw[1] && !standing[1]];
+        // Schema 27 (Q942a, `swap: "collision"`): two moves each ending on the other's
+        // origin meet, whatever their modes, so neither is void (`plan-round-chase.md` R2).
+        let swapped = sim.swap_collides
+            && moving[0]
+            && moving[1]
+            && plans[0].origin.is_some()
+            && plans[1].origin == Some(plans[0].target)
+            && plans[0].origin == Some(plans[1].target);
         let mut void = [false; 2];
         for i in 0..2 {
             let j = 1 - i;
-            void[i] = moving[i]
+            void[i] = !swapped
+                && moving[i]
                 && moving[j]
                 && plans[i].origin.is_some()
                 && plans[j].origin == Some(plans[i].target)
@@ -394,6 +431,49 @@ impl<'t> Game<'t> {
                 }
             }
             self.round_log.push((EVENT_COLLISION, square, winner.map_or(-1, |w| w as i8)));
+        } else if swapped {
+            // Both destinations were emptied by the departures; each piece is taken where it
+            // would have landed, on the other's origin.
+            material_changed = true;
+            touched.set(plans[0].target);
+            touched.set(plans[1].target);
+            let types = [t.type_of(arrival[0]), t.type_of(arrival[1])];
+            let beats = [
+                sim.beats(t.n_types, types[0], types[1]),
+                sim.beats(t.n_types, types[1], types[0]),
+            ];
+            let winner = match beats {
+                [true, false] => Some(0),
+                [false, true] => Some(1),
+                _ if sim.tie == 1 => {
+                    let holder = self.initiative as usize;
+                    self.initiative = (1 - holder) as i8;
+                    initiative_passed = true;
+                    self.round_log.push((EVENT_INITIATIVE, plans[holder].target, holder as i8));
+                    Some(holder)
+                }
+                _ => None,
+            };
+            match winner {
+                Some(w) => {
+                    let square = plans[w].target;
+                    self.write(square, arrival[w]);
+                    let mut taken = self.taking(w, &plans[w], arrival[1 - w], square, false);
+                    taken.strikes = sim.collision_strikes;
+                    takings.push(taken);
+                }
+                None if beats[0] && beats[1] => {
+                    for w in 0..2 {
+                        let square = plans[w].target;
+                        let mut taken = self.taking(w, &plans[w], arrival[1 - w], square, false);
+                        taken.strikes = sim.collision_strikes;
+                        taken.captor_gone = true;
+                        takings.push(taken);
+                    }
+                }
+                None => {}
+            }
+            self.round_log.push((EVENT_SWAP, plans[0].target, winner.map_or(-1, |w| w as i8)));
         } else {
             for i in 0..2 {
                 if !arriving[i] {
@@ -510,6 +590,23 @@ impl<'t> Game<'t> {
             touched.set(to);
         }
 
+        // Schema 27 (Q942a, `rest`): each player's moved piece rests where it ended the round
+        // (its origin if it stood, turned or was void), if that square still holds that
+        // player's piece; a piece eliminated, eaten or turned over rests nowhere.
+        if sim.rest {
+            for i in 0..2 {
+                let end = if arriving[i] { Some(plans[i].target) } else { plans[i].origin };
+                self.rest[i] = match end {
+                    Some(square)
+                        if self.board[square] != 0 && t.owner_of(self.board[square]) == i =>
+                    {
+                        square as i16
+                    }
+                    _ => -1,
+                };
+            }
+        }
+
         // §4 step 9: the void run and the bars (§2.7).
         let mut run = NO_BAR;
         if void[0] && void[1] {
@@ -594,6 +691,7 @@ impl<'t> Game<'t> {
         self.initiative = undo.initiative;
         self.void_run = undo.void_run;
         self.bars = undo.bars;
+        self.rest = undo.rest;
         self.npc_log.truncate(undo.npc_log);
         self.check_memo.set([-1, -1]);
     }
@@ -681,12 +779,28 @@ impl<'t> Game<'t> {
 
     /// The endings a simultaneous position declares, before the clocks (§2.6): the
     /// alternating order, with no illegal-position test and every rule that fires for both
-    /// players in one round a draw at its place.
+    /// players in one round a draw at its place -- or, under schema 27's `both: "score"`
+    /// (Q942a, X1), a win for the player ahead under `rules.scoring`, with the ending's own
+    /// reason, and a draw only on equal scores.
     pub fn round_ending_before_the_clocks(&self) -> Option<Outcome> {
         let t = self.t;
+        let scored = t
+            .scoring
+            .as_ref()
+            .filter(|_| t.simultaneous.as_deref().is_some_and(|sim| sim.both_score));
+        let both_fired = |reason: Reason| -> Outcome {
+            if let Some(scoring) = scored {
+                let first = self.score_for(0, scoring);
+                let second = self.score_for(1, scoring);
+                if first != second {
+                    return Outcome { winner: if first > second { 0 } else { 1 }, reason };
+                }
+            }
+            Outcome { winner: -1, reason }
+        };
         let both = |fired: [bool; 2], reason: Reason, result: i8| -> Option<Outcome> {
             match fired {
-                [true, true] => Some(Outcome { winner: -1, reason }),
+                [true, true] => Some(both_fired(reason)),
                 [true, false] => Some(decide(0, result, reason)),
                 [false, true] => Some(decide(1, result, reason)),
                 _ => None,
@@ -735,11 +849,7 @@ impl<'t> Game<'t> {
                 let short = [0, 1].map(|side| {
                     let mine = self.occupied()[side];
                     if extinction.per_type {
-                        let mut counts = [0usize; MAX_PIECE_TYPES];
-                        for square in mine.iter() {
-                            counts[t.type_of(self.board[square])] += 1;
-                        }
-                        extinction.piece_types.iter().any(|&kind| counts[kind] < extinction.min_count)
+                        self.short_of(side, &extinction.side_types[side], extinction.min_count)
                     } else if extinction.any_piece {
                         mine.len() < extinction.min_count
                     } else {

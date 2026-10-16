@@ -296,6 +296,8 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "portals_fold",  # Q843c
     "npcs_share_a_walk",  # Q850
     "facing_fixed",  # Q869
+    "simultaneous_rest", "simultaneous_swap_collides", "simultaneous_both_score",  # Q942a
+    "spy_types",  # Q935a
 })
 _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/almost": "9035530ccf64d8cd",

@@ -271,6 +271,18 @@ impl AgentSpec {
         // refused, so one name never means two algorithms on one game. The round players
         // read the built-in objective only: a heuristic, fitted, searched or learned one
         // was made for one mover at a time. `matrix` plays rounds and nothing else.
+        // Schema 27 (Q935a): a spy game alternates, then plays announced rounds, then blind
+        // ones (`plan-spy.md` §3). `random` plays every phase; the searching players across
+        // the phases are `docs/plan-spy.md` §3.3's, not yet built, so every other name is
+        // refused rather than played under a reading nobody measured.
+        if t.spy.is_some() && self.kind != Kind::Random {
+            return Err(concat!(
+                "a spy game (pieces[].spy) is played by random so far; the players that ",
+                "search across its phases (alternating, announced and blind rounds) are not ",
+                "built yet",
+            )
+            .to_string());
+        }
         if t.simultaneous.is_some() {
             if matches!(self.kind, Kind::Minimax | Kind::Mcts) {
                 return Err(concat!(

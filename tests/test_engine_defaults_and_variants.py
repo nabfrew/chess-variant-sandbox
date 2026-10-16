@@ -523,7 +523,12 @@ class TestTheSimultaneousRecord:
             )[7]
             rule = compiled.simultaneous
             assert rule is not None and keys is not None
-            assert keys == (rule.zobrist_initiative, rule.zobrist_squares, rule.zobrist_states)
+            # Schema 27's rested squares (Q942a) are drawn after the standoff's, and only
+            # under `rest`: none here.
+            assert keys == (
+                rule.zobrist_initiative, rule.zobrist_squares, rule.zobrist_states, (),
+            )
+            assert rule.zobrist_rest == ()
 
     def test_the_standoff_keys_are_as_many_as_they_are_read_and_sixty_four_bits_wide(
         self,

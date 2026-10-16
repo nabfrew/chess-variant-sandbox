@@ -11,7 +11,27 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-17
+
+### New rules for games where both players move at once, and for losing a kind of piece
+
+The rule language has four new choices. In a game where both players move at once, a piece that moved can be made to
+rest for the next round; two pieces that try to swap squares can be made to collide, so both are lost; and when both
+players reach an ending in the same round, the one ahead on the score can be made the winner instead of calling it a draw.
+These answer a royal piece being chased round the board for the whole game. Separately, a game whose two armies are made
+of different pieces can now make a side lose as soon as any one of its own kinds runs out.
+
+A spy piece, which sees what the other side plans, is in the rule language too, but no computer player or board plays it
+yet; those come next.
+
 ## 2026-10-16
+
+### Stronger computer players measure the games where both players move at once
+
+In a game where both players move at once, the weakest computer players used to search so little that they made the same
+move as the simplest player every round, so the ladder of opponents looked flatter than it is. Every rung now searches
+sixteen times as far. The watering hole's score rose from 0.50 to 0.61, because its players now separate clearly. Gardner in
+rounds shows no score for now: its games end in a draw so often that two of its four measurements cannot be read.
 
 ### Standoffs in a round game have their own colours
 

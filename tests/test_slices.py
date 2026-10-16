@@ -244,6 +244,20 @@ LIBRARY = test_index_quality.RUNS
 # verdict or file moved, only those two basis keys), so every library `canonical.json` carries
 # the tree's own reading again. The replaced measurements, with the stamp this window held, are
 # kept under each game's `runs/<hash>/previous/` (`docs/reference/rescore-2026-10-16.md`).
+#
+# **Opened 2026-10-16 by Q942a** (schema 27's chase switches): the boundary's rested squares
+# (`state.py`, `engine.py`) and the switches' cost (`complexity.py`) move `metrics` and
+# `analysis` with no number on a library game (none uses a switch), and the core moves the
+# build fingerprint. The window is the stamp the library carries now (Q938's); **the one
+# library replay owed after Q935a closes schema 27 empties it**.
+#
+# **Emptied 2026-10-16 by Q950**, that replay: the 91 library games re-played, re-analysed and
+# re-scored on core `ee5390a5b9c9b75c` under `metrics` "186853932cd8cf63" and `analysis`
+# "413c68553fd35509" (all 93,184 records equal; no score or verdict moved; only the round
+# games' `round_readings.skill_gradient` text, which Q950 corrected), so every library
+# `canonical.json` carries the tree's own reading again. The replaced measurements, with the
+# stamp this window held, are kept under each game's `runs/<hash>/previous/`
+# (`docs/reference/replay-2026-10-16b.md`).
 STALE_WINDOW: dict[str, str] = {}
 
 

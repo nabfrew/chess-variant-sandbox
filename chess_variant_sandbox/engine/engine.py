@@ -24,7 +24,7 @@ meaning goes in ``spec/schema.py`` and ``engine/compile.py``, and the core
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator, Sequence
 from typing import TYPE_CHECKING, Any
 
 from chess_variant_sandbox.engine.bridge import (
@@ -56,7 +56,7 @@ from chess_variant_sandbox.engine.moves import (
     move_landing,
     move_portal,
 )
-from chess_variant_sandbox.engine.state import NO_SQUARE, GameState, Outcome, PhaseStep
+from chess_variant_sandbox.engine.state import NO_SQUARE, GameState, Outcome, PhaseStep, SpyPhase
 
 if TYPE_CHECKING:
     # A stub-only alias: the compiled module exports no such name at runtime.
@@ -99,8 +99,12 @@ def _pack(state: GameState) -> tuple[Any, ...]:
         (
             state.colour, state.remaining, state.turns_taken, state.points,
             state.goal_left_by, state.portal_bar, list(state.folds),
-            # Schema 26 (Q918a): the initiative, the void run and the bars.
-            (state.initiative, state.void_run, [tuple(bar) for bar in state.bars]),
+            # Schema 26 (Q918a): the initiative, the void run and the bars; schema 27
+            # (Q942a): the rested squares.
+            (
+                state.initiative, state.void_run, [tuple(bar) for bar in state.bars],
+                state.rest,
+            ),
         ),
     )
 
@@ -132,6 +136,7 @@ def _unpack(packed: State) -> GameState:
         initiative=packed[11][7][0],
         void_run=(packed[11][7][1][0], packed[11][7][1][1]),
         bars=tuple((bar[0], bar[1]) for bar in packed[11][7][2]),
+        rest=(packed[11][7][3][0], packed[11][7][3][1]),
     )
 
 
@@ -221,6 +226,46 @@ class Engine:
         """Whether this game is played in rounds (schema 26, ``rules.simultaneous``)."""
         return self.spec.simultaneous is not None
 
+    @property
+    def spy(self) -> bool:
+        """Whether this is a spy game (schema 27, ``pieces[].spy``): it alternates while both
+        players have a spy and plays rounds once one is lost (`docs/plan-spy.md` §1)."""
+        return self.spec.spy is not None
+
+    def phase(self, state: GameState) -> SpyPhase:
+        """A spy game's phase here, asked of the core (`docs/plan-spy.md` §1.3):
+        ``alternating``, ``reply`` (one ordinary turn by the player who has just lost their
+        spy), ``announced`` (a round the announcer, the player without a spy, chooses first
+        and in the open) or ``blind`` (a round chosen in secret)."""
+        name, announcer = self.core.phase(_pack(state))
+        return SpyPhase(name=name, announcer=announcer)
+
+    def is_round(self, state: GameState) -> bool:
+        """Whether the next step here is a round (both players move) rather than one move:
+        always in a round game, by the phase in a spy game, never otherwise."""
+        if self.spy:
+            return self.phase(state).is_round
+        return self.simultaneous
+
+    def steps(
+        self, state: GameState, moves: Sequence[int]
+    ) -> Iterator[tuple[GameState, tuple[int, ...]]]:
+        """Walk a record's flat move list from ``state``, one step at a time: each yields
+        the position the step was chosen on and its moves (one for a turn, two in seat order
+        for a round), the step's kind asked of the engine at every position. The reader a
+        mixed record needs (schema 27's spy game), and the plain one for every other game."""
+        index = 0
+        while index < len(moves):
+            if self.is_round(state):
+                pair = (moves[index], moves[index + 1])
+                yield state, pair
+                state = self.apply_round(state, *pair)
+                index += 2
+            else:
+                yield state, (moves[index],)
+                state = self.apply(state, moves[index])
+                index += 1
+
     def legal_moves_for(self, state: GameState, player: int) -> list[int]:
         """Every move ``player`` may choose in a round on this board (schema 26)."""
         return self.core.legal_moves_for(_pack(state), player)
@@ -235,7 +280,8 @@ class Engine:
     ) -> tuple[GameState, tuple[PhaseStep, ...], tuple[tuple[int, int, int], ...]]:
         """``apply_round``, what the wild pieces did, and what the meetings did: one
         ``(event, square, player)`` per collision (0, the winner or -1), void move (1),
-        tie the initiative decided (2) and pair barred (3), for a page to draw."""
+        tie the initiative decided (2), pair barred (3) and, under schema 27's
+        `swap: "collision"`, swap that met (4, the winner or -1), for a page to draw."""
         packed, phase, events = self.core.apply_round(_pack(state), first, second)
         return (
             _unpack(packed),

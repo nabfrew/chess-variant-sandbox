@@ -430,11 +430,36 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "Impossible: a promise, checked, that no two pieces that can meet ever tie, because "
         "the two armies are different pieces in a ring of who beats whom.",
     ),
+    # Schema 27 (Q942a): the switches against a royal chased round after round.
+    "rules.simultaneous.rest": (
+        "a piece that moved rests",
+        "The piece that made a player's move may not make it again the next round, unless it "
+        "is the only one that can move: a piece cannot run or strike two rounds running.",
+    ),
+    "rules.simultaneous.swap": (
+        "two pieces swapping squares",
+        "Collision: two pieces that each move onto the other's square meet as if they had "
+        "moved onto the same one, and who each beats decides. Left empty, they pass.",
+    ),
+    "rules.simultaneous.both": (
+        "an ending both reach at once",
+        "Score: the player ahead by the scoring rule wins it, and equal scores draw. Left "
+        "empty, it is a draw.",
+    ),
     "pieces.beats": (
         "in a collision beats",
         "Only when both players move at once: the pieces this one knocks out when both move "
         "onto the same square. Leave it empty and it is the pieces it may take. If one of the "
         "two beats the other it stays; if both do or neither does, it is a tie.",
+    ),
+    # Schema 27 (Q935a): the spy.
+    "pieces.spy": (
+        "a spy",
+        "While both players have a spy, they take turns. When one loses theirs, they make one "
+        "ordinary reply move if it is their turn, and then each round the player without a spy "
+        "moves first, in the open, and the other answers knowing it. Once neither has one, "
+        "both choose in secret. A spy game must be played in rounds, and a lost spy never "
+        "comes back.",
     ),
     "rules.portals.kind": (
         "how it works",
@@ -491,7 +516,9 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
     "rules.extinction.per_type": (
         "each kind on its own",
         "Yes counts each listed piece separately, so a player loses when any one kind "
-        "runs out, as in Extinction chess. No, the usual choice, counts them together.",
+        "runs out, as in Extinction chess. 'own' does the same, but counts a kind only "
+        "against a player who starts with it, for two armies made of different pieces. "
+        "No, the usual choice, counts them together.",
     ),
     "rules.drops.from_captures": ("captured pieces", None),
     "rules.drops.region": ("where each may be played", "For each piece, the squares it may be played back on."),

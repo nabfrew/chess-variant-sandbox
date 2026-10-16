@@ -289,7 +289,26 @@ class TestTheFingerprintsPointAtSomething:
 # diagnostics. No alternating game reads differently: its analysis is the same bytes and its
 # components gain nothing. Every run reads stale by re-analyse until the refresher re-analyses
 # and re-scores the library under this value. It was "002cc354dbee7c2d" after Q918b.
-FROZEN_METRICS = "d85bf7e60288beab"
+#
+# **Moved 2026-10-16 by Q942a (schema 27's chase switches)**: `engine/state.py` and
+# `engine/engine.py` carry the rested squares across the boundary (`GameState.rest`), and
+# `spec/complexity.py` charges each switch as one exception. No library game uses a switch, so
+# no number should move; the replay owed after Q935a closes schema 27 re-scores under this
+# value. It was "d85bf7e60288beab" after Q918d.
+#
+# **Moved 2026-10-16 by Q935a (the spy, closing schema 27)**: `engine/engine.py` asks the core
+# a spy game's phase (`Engine.phase`, `is_round`, `steps`), `engine/state.py` and
+# `engine/__init__.py` carry `SpyPhase`, and `spec/complexity.py` charges a spy as a rule. No
+# library game has a spy, so no number should move; the one replay owed after Q935a re-scores
+# under this value. It was "c93d3b4c84cad5ab" after Q942a.
+#
+# **Moved 2026-10-16 by Q950 (before its replay)**: `metrics/components.py::ROUND_READINGS`
+# describes `skill_gradient` as the round roster Q944a measured, `matrix:nodes=1600 to
+# 102400` (`docs/reference/round-roster-budgets.md` §6.1), not 100 to 6400. The string is
+# written into each round game's run `index-v12.json` diagnostics and nowhere else; no number
+# moves. The replay Q950 launches re-scores under this value. It was "1f42f04756a50c60"
+# after Q935a.
+FROZEN_METRICS = "186853932cd8cf63"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -489,7 +508,15 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # alternating game takes the path it took, byte for byte (checked on 16 games and their
 # trials of each of gardner, dobutsu, intransitive, crazyhouse and atomic). It was
 # "7dfe04cc79c30b1f" after Q918b; the library's re-analysis under it is owed (the refresher).
-FROZEN_ANALYSIS = "2a75bbd0f846bec7"
+#
+# **Moved 2026-10-16 by Q942a**: `engine/state.py` and `engine/engine.py` (see
+# `FROZEN_METRICS`). It was "2a75bbd0f846bec7" after Q918d; the replay after Q935a is the
+# re-analysis.
+#
+# **Moved 2026-10-16 by Q935a**: `engine/engine.py`, `engine/state.py` and
+# `engine/__init__.py` (see `FROZEN_METRICS`). It was "aa0316d1dc871057" after Q942a; the
+# replay after Q935a is the re-analysis.
+FROZEN_ANALYSIS = "413c68553fd35509"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

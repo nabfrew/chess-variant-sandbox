@@ -881,6 +881,9 @@ _TIE_WORDS = {0: "both", 1: "initiative", 2: "impossible"}
 
 # `Engine.apply_round_with_phase`'s event kinds (`rust/src/rounds.rs`).
 _EVENT_COLLISION, _EVENT_VOID, _EVENT_INITIATIVE, _EVENT_BARRED = 0, 1, 2, 3
+# Schema 27 (Q942a, `swap: "collision"`): two pieces that swapped squares met; the square is
+# the first player's destination. Q942b draws the clash between the two squares.
+_EVENT_SWAP = 4
 
 
 def _as_seat(state: GameState, seat: int) -> GameState:
@@ -952,6 +955,17 @@ def round_reveal(
             else:
                 results[player], results[1 - player] = "won", "lost"
                 words.append(f"{meeting}: {piece(player)} won, and {piece(1 - player)} was lost.")
+        elif kind == _EVENT_SWAP:
+            meeting = (
+                f"{piece(0)} and {piece(1)} swapped squares and met between "
+                f"{named(targets[1])} and {named(targets[0])}"
+            )
+            if player < 0:
+                results[0] = results[1] = "both lost"
+                words.append(f"{meeting}: both were lost.")
+            else:
+                results[player], results[1 - player] = "won", "lost"
+                words.append(f"{meeting}: {piece(player)} won, and {piece(1 - player)} was lost.")
         elif kind == _EVENT_INITIATIVE:
             words.append(
                 f"The tie went to {sides[player]}, who held the initiative; "
@@ -967,6 +981,7 @@ def round_reveal(
     swapped = (
         origins[0] is not None and origins[1] is not None
         and targets[0] == origins[1] and targets[1] == origins[0] and not voids
+        and not any(kind == _EVENT_SWAP for kind, _square, _player in events)
     )
     if swapped:
         words.insert(
@@ -984,7 +999,7 @@ def round_reveal(
             for seat in (0, 1)
         ],
         "events": [
-            {"kind": ("collision", "void", "initiative", "barred")[kind], "square": square,
+            {"kind": ("collision", "void", "initiative", "barred", "swap")[kind], "square": square,
              "player": player}
             for kind, square, player in events
         ],
@@ -1017,6 +1032,14 @@ class Sessions:
         self, game: Game, seats: tuple[str, str], seed: int = 0, scratch: bool = False
     ) -> Session:
         engine = engine_for(game.spec)
+        if engine.spy:
+            # Schema 27 (Q935a): the page draws a game that alternates or one in rounds, and
+            # a spy game is both by turns; its page is `docs/plan-spy.md` §3.6's, still to
+            # come, so it is refused here rather than drawn as a round game from move one.
+            raise ValueError(
+                "a game with a spy cannot be played on this page yet: the page for its "
+                "phases (turns, then announced rounds, then secret ones) is still to come"
+            )
         session = Session(
             id=secrets.token_urlsafe(9),
             game=game,

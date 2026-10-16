@@ -772,6 +772,14 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         # Schema 18 (Q783): each listed type counted on its own. False is the summed
         # count every game before it makes.
         "extinction_per_type": bool(extinction.per_type) if extinction else False,
+        # Schema 27 (Q936): each side's counted types, apart, under `"per_type": "own"`.
+        # Empty under every other spelling, where the core reads `extinction_types` for
+        # both sides, so no earlier ruleset's fingerprint moves.
+        "extinction_side_types": (
+            [list(types) for types in extinction.side_types]
+            if extinction is not None and extinction.own
+            else []
+        ),
         # Schema 26 (Q918a): simultaneous moves. All three empty for an alternating game.
         # `sim_rule` is `[tie, initiative_start, void_run, collision_strikes]`;
         # `sim_collision` the `beats` matrix, `[a * n_types + b]`; `zobrist_sim` the
@@ -793,6 +801,21 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
                 *spec.simultaneous.zobrist_states,
             ] if spec.simultaneous is not None else []
         ),
+        # Schema 27 (Q942a): the chase switches, `[rest, swap_collides, both_score]`, and
+        # under `rest` the rested squares' keys (player 0's squares, then player 1's). Both
+        # empty unless a switch is on, so no schema-26 game's fingerprint moves.
+        "sim_chase": (
+            [int(sim.rest), int(sim.swap_collides), int(sim.both_score)]
+            if (sim := spec.simultaneous) is not None and sim.chases else []
+        ),
+        "zobrist_rest": (
+            list(spec.simultaneous.zobrist_rest) if spec.simultaneous is not None else []
+        ),
+        # Schema 27 (Q935a): each player's spy types, two lists, and whether the initiative
+        # is dealt to the announcer at the first announced round (`plan-spy.md` E10). Empty
+        # and false in every game without a spy, so no earlier fingerprint moves.
+        "spy_types": [list(types) for types in spec.spy.types] if spec.spy is not None else [],
+        "spy_deal": bool(spec.simultaneous is not None and spec.simultaneous.deal_initiative),
         # Zobrist
         "zobrist_pieces": [
             value for row in spec.zobrist_pieces for value in row
@@ -947,10 +970,17 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "extinction_result": -1,
     # Schema 18 (Q783). False unless the rule says `per_type`.
     "extinction_per_type": False,
+    # Schema 27 (Q936). Empty unless the rule says `"per_type": "own"`.
+    "extinction_side_types": [],
     # Schema 26 (Q918a). Empty unless the game is simultaneous.
     "sim_rule": [],
     "sim_collision": [],
     "zobrist_sim": [],
+    # Schema 27 (Q942a). Empty unless a chase switch is on (`rest` for the keys).
+    "sim_chase": [],
+    "spy_types": [],
+    "spy_deal": False,
+    "zobrist_rest": [],
 }
 
 # Keys that are part of what every game means, whatever rules it declares: the board's

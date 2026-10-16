@@ -52,6 +52,23 @@ class RandomAgent:
         self.stats.nodes += len(mine)
         return rng.choice(mine)
 
+    def select_announcement(
+        self, state: GameState, seat: int, lists: tuple[list[int], list[int]], rng: random.Random
+    ) -> int:
+        """Schema 27 (Q935a): an announced round's first move, uniform over this seat's own."""
+        return self.select_round_move(state, seat, lists[seat], lists[1 - seat], rng)
+
+    def select_answer(
+        self,
+        state: GameState,
+        seat: int,
+        lists: tuple[list[int], list[int]],
+        announced: int,
+        rng: random.Random,
+    ) -> int:
+        """Schema 27 (Q935a): the answer to an announced move, which a random player ignores."""
+        return self.select_round_move(state, seat, lists[seat], lists[1 - seat], rng)
+
 
 class GreedyAgent:
     """One ply of lookahead: take the move with the best immediate evaluation.

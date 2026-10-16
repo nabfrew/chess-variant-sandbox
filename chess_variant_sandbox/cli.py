@@ -861,7 +861,16 @@ def _cmd_play(args: argparse.Namespace) -> int:
     engine = Engine(spec)
     first, second = args.agents
     record = play_game(engine, (first, second), args.seed)
-    if not args.quiet and engine.simultaneous:
+    if not args.quiet and engine.spy:
+        # Schema 27 (Q935a): a spy game, each step by the phase the engine reports -- a turn
+        # one move, a round its two in seat order, the announcer's marked as announced.
+        for number, (state, step) in enumerate(engine.steps(engine.initial_state(), record.moves), 1):
+            phase = engine.phase(state)
+            words = [engine.describe_move(state, move) for move in step]
+            if phase.name == "announced":
+                words[phase.announcer] += " (announced)"
+            print(f"{number}. [{phase.name}] {' | '.join(words)}")
+    elif not args.quiet and engine.simultaneous:
         # Schema 26 (Q918a): a round is the two moves together, player 0's first, each
         # described on the board both players chose from.
         state = engine.initial_state()

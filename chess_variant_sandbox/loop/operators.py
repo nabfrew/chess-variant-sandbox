@@ -56,6 +56,7 @@ from chess_variant_sandbox.spec.schema import (
     obstacle_squares,
     opening_counts,
     parse_square,
+    placed_ids,
     portal_groups,
     portal_open_ends,
     portal_piece_ids,
@@ -63,6 +64,7 @@ from chess_variant_sandbox.spec.schema import (
     reach_reflection,
     reflect_square,
     simultaneous_tie_pair,
+    spy_ids,
     strike_is_live,
     sweep_conflicts,
     turn_is_long,
@@ -163,6 +165,8 @@ _GONE_WORDS = {
     "contacts": "the table of what a capture turns pieces into",
     "keeping": "the links keeping a capturer as it was",
     "tie": "the tie rule for collisions",
+    "swap": "the collision of swapping pieces",
+    "both": "the score settling an ending both players reach at once",
 }
 
 
@@ -725,6 +729,12 @@ def _drop_royalty(spec: dict[str, Any], rng: random.Random) -> str | None:
     return f"the game is now won by {rules['win'].replace('_', ' ')}"
 
 
+def _counts_own_kinds(rules: dict[str, Any]) -> bool:
+    """Schema 27's ``"per_type": "own"``, which the validator refuses beside a hand."""
+    extinction = rules.get("extinction")
+    return isinstance(extinction, dict) and extinction.get("per_type") == "own"
+
+
 def _hand_the_pieces_back(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Turn captures into reinforcements, or stop doing so.
 
@@ -766,6 +776,10 @@ def _hand_the_pieces_back(spec: dict[str, Any], rng: random.Random) -> str | Non
         return "captured pieces are gone for good again"
     if rules.get("strike") or rules.get("contacts") or uses_sweep(spec):
         return None  # a hand is refused beside a rule that takes several pieces at once
+    if _counts_own_kinds(rules):
+        return None  # schema 27 (Q936): a hand is refused beside `"per_type": "own"`
+    if spy_ids(spec):
+        return None  # schema 27: a hand that fills from captures or holds a spy gives one back
     promotion = rules.get("promotion")
     if any(
         isinstance(entry, dict) and entry.get("only_lost") is True
@@ -1289,6 +1303,8 @@ def _become_what_you_take(spec: dict[str, Any], rng: random.Random) -> str | Non
     ):
         return None  # two rules cannot both say what happens to a taken piece
     before = rules.get("contacts")
+    if spy_ids(spec):
+        return None  # schema 27: a contact chain may turn a piece into the spy, which a spy game refuses
     set_contacts(spec, effect=rng.choice(("promote", "demote")))
     if rules.get("contacts") is before:
         return None  # one non-royal piece, so there is no rung to move to
@@ -1445,6 +1461,9 @@ def _merge_your_own(spec: dict[str, Any], rng: random.Random) -> str | None:
         settle_schema_version(spec)
         return f"the {pair[0]} can no longer move onto its own {pair[1]}"
 
+    if spy_ids(spec):
+        return None  # schema 27: a merge may turn a piece into the spy, which a spy game refuses
+
     if rules.get("must_capture"):
         return None  # whether moving onto your own piece is a capture is not settled
     if not rules.get("contacts") and (
@@ -1538,6 +1557,10 @@ def _place_a_stone(spec: dict[str, Any], rng: random.Random) -> str | None:
 
     if rules.get("strike") or rules.get("contacts") or uses_sweep(spec):
         return None  # a hand is refused beside a rule that takes several pieces at once
+    if _counts_own_kinds(rules):
+        return None  # schema 27 (Q936): a hand is refused beside `"per_type": "own"`
+    if spy_ids(spec):
+        return None  # schema 27: a hand that fills from captures or holds a spy gives one back
     if any(isinstance(npc, dict) and "immune" in npc for npc in rules.get("npcs") or ()):
         return None  # an immune type that can reach a hand is refused by name
     taken = {str(piece.get("id")) for piece in pieces(spec)}
@@ -1752,6 +1775,8 @@ def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
         for piece in spec.get("pieces", []):
             if isinstance(piece, dict):
                 piece.pop("beats", None)
+                # Schema 27: a spy decides when rounds begin, so it goes with them.
+                piece.pop("spy", None)
         settle_schema_version(spec)
         return "the players take turns again"
     del rng
@@ -1823,6 +1848,85 @@ def _break_the_tie(spec: dict[str, Any], rng: random.Random) -> str | None:
         return "no collision can tie, and the file now says so"
     rule["tie"] = "initiative"
     return "a tied collision goes to the player holding the initiative, which then passes"
+
+
+# Schema 27 (Q942a, `docs/plan-round-chase.md` §3): the three switches against a royal chased
+# round after round, each with the one value that turns it on.
+_CHASE_SWITCHES = {"rest": True, "swap": "collision", "both": "score"}
+_CHASE_WORDS = {
+    "rest": ("a piece that moved rests the next round", "a piece may move round after round again"),
+    "swap": ("two pieces that swap squares now meet as a collision", "swapping pieces pass again"),
+    "both": (
+        "an ending both players reach in one round goes to the player ahead",
+        "an ending both players reach in one round is a draw again",
+    ),
+}
+
+
+def _curb_the_chase(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Turn one of schema 27's chase switches on or off (`rules.simultaneous.rest`, `.swap`,
+    `.both`). Only in a game played in rounds; `both` brings a material count when the game
+    has no scoring rule, and leaves it when the switch goes."""
+    if not is_simultaneous(spec):
+        return None
+    rules = spec["rules"]
+    rule = rules["simultaneous"]
+    stated = [key for key in _CHASE_SWITCHES if key in rule]
+    absent = [key for key in _CHASE_SWITCHES if key not in rule]
+    if stated and (not absent or rng.random() < 0.5):
+        key = rng.choice(stated)
+        del rule[key]
+        settle_schema_version(spec)
+        return _CHASE_WORDS[key][1]
+    for key in rng.sample(absent, len(absent)):
+        trial = copy.deepcopy(spec)
+        trial["rules"]["simultaneous"][key] = _CHASE_SWITCHES[key]
+        if key == "both" and not isinstance(trial["rules"].get("scoring"), dict):
+            trial["rules"]["scoring"] = {"count": "material"}
+        settle_schema_version(trial)
+        if validate_spec(trial):
+            continue
+        spec.clear()
+        spec.update(trial)
+        return _CHASE_WORDS[key][0]
+    return None
+
+
+def _plant_a_spy(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Make a piece type both players start with a spy, or take the spy away (schema 27,
+    `docs/plan-spy.md`). In: the game must be one in rounds, so an alternating game is
+    first made one as `play-at-once` makes it (the checkmate win becomes royal capture);
+    the piece is any non-royal type both armies hold whose flag the validator accepts.
+    Out: every spy flag goes, and the rounds stay, played blind from the first move."""
+    if spy_ids(spec):
+        for piece in pieces(spec):
+            piece.pop("spy", None)
+        settle_schema_version(spec)
+        return "there is no spy any more: both players choose every move in secret"
+    base = copy.deepcopy(spec)
+    if not is_simultaneous(base) and _play_at_once(base, rng) is None:
+        return None
+    first, second = placed_ids(base)
+    candidates = [
+        piece["id"] for piece in base["pieces"]
+        if isinstance(piece, dict) and not piece.get("royal") and piece.get("id") in first & second
+    ]
+    for pid in rng.sample(candidates, len(candidates)):
+        trial = copy.deepcopy(base)
+        for piece in trial["pieces"]:
+            if piece.get("id") == pid:
+                piece["spy"] = True
+        settle_schema_version(trial)
+        if validate_spec(trial):
+            continue
+        spec.clear()
+        spec.update(trial)
+        name = next(str(p.get("name", pid)) for p in trial["pieces"] if p.get("id") == pid)
+        return (
+            f"the {name} is now a spy: the players take turns while both keep theirs, and "
+            "once one is lost the player without a spy moves first, in the open"
+        )
+    return None
 
 
 def _hunt_the_wild(spec: dict[str, Any], rng: random.Random) -> str | None:
@@ -2089,25 +2193,40 @@ def _count_each_kind(spec: dict[str, Any], rng: random.Random) -> str | None:
     with, counted apart, which is the one edit that reaches the feature from a game
     without it (no committed game lists two types to count together). A rule over
     ``any`` is the whole army and has no kinds to count apart, so it is left alone.
+
+    Schema 27's ``"own"`` (Q936) is the same edit where the two armies are made of
+    different kinds: where ``true`` is refused because a side starts with none of a listed
+    kind, ``"own"`` counts each kind only against a side that starts with it; and a game
+    whose armies share fewer than two kinds gains one over every non-royal kind either
+    army starts with. Neither draws from ``rng``, so a game the operator reached before
+    draws what it drew.
     """
     rules = spec.setdefault("rules", {})
     extinction = rules.get("extinction")
-    if isinstance(extinction, dict) and extinction.get("per_type") is True:
-        extinction.pop("per_type")
-        settle_schema_version(spec)
-        return f"running out of {', '.join(extinction['pieces'])} counts them together again"
-    if isinstance(extinction, dict):
-        listed = extinction.get("pieces")
-        if not isinstance(listed, list) or len(set(listed)) < 2:
-            return None
+    if isinstance(extinction, dict) and extinction.get("per_type") in (True, "own"):
         trial = copy.deepcopy(spec)
-        trial["rules"]["extinction"]["per_type"] = True
+        trial["rules"]["extinction"].pop("per_type")
         settle_schema_version(trial)
         if validate_spec(trial):
             return None
         spec.clear()
         spec.update(trial)
-        return f"a player who runs out of any one of {', '.join(listed)} loses"
+        listed = trial["rules"]["extinction"]["pieces"]
+        return f"running out of {', '.join(listed)} counts them together again"
+    if isinstance(extinction, dict):
+        listed = extinction.get("pieces")
+        if not isinstance(listed, list) or len(set(listed)) < 2:
+            return None
+        for reading in (True, "own"):
+            trial = copy.deepcopy(spec)
+            trial["rules"]["extinction"]["per_type"] = reading
+            settle_schema_version(trial)
+            if not validate_spec(trial):
+                spec.clear()
+                spec.update(trial)
+                own = " of their own" if reading == "own" else ""
+                return f"a player who runs out of any one{own} of {', '.join(listed)} loses"
+        return None
     if extinction:
         return None
     first, second = opening_counts(spec)
@@ -2117,7 +2236,21 @@ def _count_each_kind(spec: dict[str, Any], rng: random.Random) -> str | None:
         if first.get(piece["id"], 0) >= 1 and second.get(piece["id"], 0) >= 1
     )
     if len(kinds) < 2:
-        return None
+        either = sorted(
+            piece["id"]
+            for piece in _non_royal(spec)
+            if first.get(piece["id"], 0) >= 1 or second.get(piece["id"], 0) >= 1
+        )
+        if len(either) < 2:
+            return None
+        trial = copy.deepcopy(spec)
+        trial["rules"]["extinction"] = {"pieces": either, "per_type": "own"}
+        settle_schema_version(trial)
+        if validate_spec(trial):
+            return None
+        spec.clear()
+        spec.update(trial)
+        return f"a player who runs out of any one of their own {', '.join(either)} loses"
     chosen = sorted(rng.sample(kinds, rng.randint(2, len(kinds))))
     trial = copy.deepcopy(spec)
     trial["rules"]["extinction"] = {"pieces": chosen, "per_type": True}
@@ -2199,6 +2332,10 @@ def _place_the_army(spec: dict[str, Any], rng: random.Random) -> str | None:
         return "a player holding a piece must place it before anything on the board moves"
     if rules.get("strike") or rules.get("contacts") or uses_sweep(spec):
         return None  # a hand is refused beside a rule that takes several pieces at once
+    if _counts_own_kinds(rules):
+        return None  # schema 27 (Q936): a hand is refused beside `"per_type": "own"`
+    if spy_ids(spec):
+        return None  # schema 27: a hand that fills from captures or holds a spy gives one back
     setup = spec.get("setup")
     board = spec.get("board") or {}
     width, height = board.get("width"), board.get("height")
@@ -2850,6 +2987,8 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
         explosion.pop("immune", None)
         settle_schema_version(spec)
         return "a capture destroys the taker with what it took, and nothing beside them"
+    if spy_ids(spec):
+        return None  # schema 27: a strike may switch a spy to the other side, which a spy game refuses
     if (
         explosion or rules.get("drops") or rules.get("npcs") or rules.get("contacts")
         or uses_sweep(spec)
@@ -3022,6 +3161,8 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("set-a-collision", _set_a_collision),
     Operator("break-the-tie", _break_the_tie),
     Operator("sweep-a-slider", _sweep_a_slider),
+    Operator("curb-the-chase", _curb_the_chase),
+    Operator("plant-a-spy", _plant_a_spy),
 )
 
 

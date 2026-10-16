@@ -175,14 +175,26 @@ class TestTheGatesPlayRounds:
         assert not result.passed
         assert result.reasons == ["a player has no legal move from the starting position"]
 
-    def test_the_round_roster_swaps_minimax_for_matrix_at_the_same_budgets(self) -> None:
+    def test_the_round_roster_swaps_minimax_for_matrix_at_sixteen_times_the_budgets(
+        self,
+    ) -> None:
+        """Q944a: below about a round's whole matrix a round player is greedy, so a budget
+        means sixteen times as many nodes in rounds (`round-roster-budgets.md` §6)."""
         from chess_variant_sandbox.loop.orchestrator import DEFAULT_AGENTS
-        from chess_variant_sandbox.loop.screen import SCREEN_AGENTS, roster_for, round_roster
-
-        assert round_roster(SCREEN_AGENTS) == ("matrix:nodes=100", "matrix:nodes=400")
-        assert round_roster(DEFAULT_AGENTS) == (
-            "random", "greedy", "matrix:nodes=400", "matrix:nodes=1600"
+        from chess_variant_sandbox.loop.screen import (
+            ROUND_BUDGET_FACTOR,
+            SCREEN_AGENTS,
+            roster_for,
+            round_roster,
         )
+
+        assert ROUND_BUDGET_FACTOR == 16
+        assert round_roster(SCREEN_AGENTS) == ("matrix:nodes=1600", "matrix:nodes=6400")
+        assert round_roster(DEFAULT_AGENTS) == (
+            "random", "greedy", "matrix:nodes=6400", "matrix:nodes=25600"
+        )
+        # A round player already named keeps its own budget: it is mapped once, not twice.
+        assert round_roster(("matrix:nodes=400", "greedy")) == ("matrix:nodes=400", "greedy")
         assert roster_for(PLAYABLE, DEFAULT_AGENTS) == DEFAULT_AGENTS
         for refused in ("mcts:nodes=400", "minimax:h=abc,nodes=400"):
             with pytest.raises(ValueError, match="cannot play a game in rounds"):

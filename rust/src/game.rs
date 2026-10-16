@@ -21,6 +21,10 @@ use crate::tables::*;
 // (`build.rs`, `measurement.py`) hashes `rust/src/*.rs` and nothing deeper.
 #[path = "rounds.rs"]
 mod rounds;
+// Schema 27 (Q935a): the spy's phases, a child for the same reason.
+#[path = "spy.rs"]
+mod spy;
+pub use spy::Phase;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Reason {
@@ -425,11 +429,19 @@ pub struct Game<'t> {
     /// Schema 26: the barred pairs (§2.7), ascending; empty in almost every position. In
     /// the key.
     pub bars: Vec<[i16; 2]>,
+    /// Schema 27 (Q942a, `rules.simultaneous.rest`): each player's rested square, the
+    /// piece that made that player's move in the last round, or -1. Written only by
+    /// `make_round` (`docs/plan-spy.md` E11); `[-1, -1]` in every game without the rule. In
+    /// the key (`SimTables::rest_key`).
+    pub rest: [i16; 2],
     /// Schema 26: one `RoundUndo` per round still on the stack.
     round_undo: Vec<rounds::RoundUndo>,
     /// Schema 26: what the last round did, `(event, square, player)` (`rounds::EVENT_*`),
     /// for the boundary to hand the page. Scratch, like `npc_log`.
     pub round_log: Vec<(u8, usize, i8)>,
+    /// Schema 27 (Q935a): the initiative before each `spy_turn` still on the stack, for
+    /// `unmake_spy_turn` to put back what the deal (E10) wrote. Empty without a spy.
+    spy_deals: Vec<i8>,
 }
 
 /// Everything needed to put a `Game` back where it was, for the tree search that
@@ -468,6 +480,8 @@ pub struct Snapshot {
     pub initiative: i8,
     pub void_run: [i16; 2],
     pub bars: Vec<[i16; 2]>,
+    /// Schema 27 (Q942a): the rested squares.
+    pub rest: [i16; 2],
 }
 
 /// Schema 26: who holds the initiative at the start, or -1 where the tie is not it.
@@ -534,8 +548,10 @@ impl<'t> Game<'t> {
             initiative: initiative_start(t),
             void_run: NO_BAR,
             bars: Vec::new(),
+            rest: NO_BAR,
             round_undo: Vec::new(),
             round_log: Vec::new(),
+            spy_deals: Vec::new(),
         };
         game.key = game.compute_hash();
         game.history.push(game.key);
@@ -591,8 +607,10 @@ impl<'t> Game<'t> {
             initiative: snapshot.initiative,
             void_run: snapshot.void_run,
             bars: snapshot.bars.clone(),
+            rest: snapshot.rest,
             round_undo: Vec::new(),
             round_log: Vec::new(),
+            spy_deals: Vec::new(),
         }
     }
 
@@ -621,6 +639,7 @@ impl<'t> Game<'t> {
             initiative: self.initiative,
             void_run: self.void_run,
             bars: self.bars.clone(),
+            rest: self.rest,
         }
     }
 
@@ -664,6 +683,7 @@ impl<'t> Game<'t> {
         self.initiative = snapshot.initiative;
         self.void_run = snapshot.void_run;
         self.bars.clone_from(&snapshot.bars);
+        self.rest = snapshot.rest;
         self.round_undo.clear();
         self.round_log.clear();
         // The check bits describe the position that just went away. The royal hint is
@@ -757,7 +777,8 @@ impl<'t> Game<'t> {
                 }
             }
         }
-        // Schema 26: the initiative, the void run and the bars; zero in an alternating game.
+        // Schema 26: the initiative, the void run and the bars; schema 27's rested squares;
+        // zero in an alternating game.
         digest ^= self.standoff_key();
         digest
     }
@@ -4370,7 +4391,10 @@ impl<'t> Game<'t> {
 
     pub fn legal_moves(&mut self) -> Vec<u32> {
         let mut moves = Vec::new();
-        if self.t.simultaneous.is_some() {
+        if self.t.spy.is_some() && !self.phase().is_round() {
+            // Schema 27 (Q935a): a spy game's turn, the alternating game's moves.
+            self.generate_legal(&mut moves);
+        } else if self.t.simultaneous.is_some() {
             // Schema 26: the side to move's own moves in a round, bars applied.
             self.generate_legal_for(self.side, &mut moves);
         } else {
@@ -4620,20 +4644,35 @@ impl<'t> Game<'t> {
     /// `extinctionPieceTypes` (the side not to move, then the side to move), and with one
     /// move a turn it is the same thing. The summed count keeps the board order it always
     /// had, so no earlier game reads differently.
+    ///
+    /// Schema 27 (Q936): each side is read against its own list, `side_types[side]`, which
+    /// is `piece_types` for both unless the rule says `"own"` (`ExtinctionRule::side_types`).
     fn extinct_per_type(&self, extinction: &ExtinctionRule) -> Option<Outcome> {
-        let t = self.t;
         let mover = self.last_mover();
         for side in [mover, 1 - mover] {
-            let mut counts = [0usize; MAX_PIECE_TYPES];
-            for square in self.occupied()[side].iter() {
-                counts[t.type_of(self.board[square])] += 1;
-            }
-            let short = |&piece_type: &usize| counts[piece_type] < extinction.min_count;
-            if extinction.piece_types.iter().any(short) {
+            if self.short_of(side, &extinction.side_types[side], extinction.min_count) {
                 return Some(decide(side, extinction.result, Reason::Extinction));
             }
         }
         None
+    }
+
+    /// Whether `side` has fewer than `min` pieces on the board of any one type in `types`,
+    /// each type counted on its own (schema 27, Q936). The one count of a side's kinds
+    /// against a per-side list the compiler resolved: extinction's `per_type` reads it in
+    /// alternating play and in rounds. The spy does not (Q935a): *has a spy* is summed over
+    /// the spy types (`Game::has_spy`), where this is short at any one type below `min`. An
+    /// empty list is never short. Wild pieces are nobody's and are not in `occupied()[side]`.
+    pub(crate) fn short_of(&self, side: usize, types: &[usize], min: usize) -> bool {
+        if types.is_empty() {
+            return false;
+        }
+        let t = self.t;
+        let mut counts = [0usize; MAX_PIECE_TYPES];
+        for square in self.occupied()[side].iter() {
+            counts[t.type_of(self.board[square])] += 1;
+        }
+        types.iter().any(|&piece_type| counts[piece_type] < min)
     }
 
     /// The side whose move made this position: the side to move while its turn still

@@ -782,7 +782,7 @@ def measure(
             "screen", 0.0
         )
     started = time.perf_counter()
-    # A game in rounds is played by the round players at the same budgets (Q932,
+    # A game in rounds is played by the round players at sixteen times the budgets (Q932, Q944a,
     # `screen.round_roster`); the screen has already refused a roster that has none.
     tournament = run_tournament(
         spec,

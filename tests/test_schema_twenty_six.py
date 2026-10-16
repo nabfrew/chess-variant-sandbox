@@ -132,7 +132,7 @@ def at(engine: Engine, state: GameState, name: str) -> tuple[str, int] | None:
 
 class TestTheKeys:
     def test_the_version_is_twenty_six(self) -> None:
-        assert SCHEMA_VERSION == 26
+        assert SCHEMA_VERSION >= 26
         assert VOID_RUN == 2
 
     def test_the_test_specs_validate(self) -> None:

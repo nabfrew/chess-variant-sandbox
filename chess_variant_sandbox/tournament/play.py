@@ -366,6 +366,8 @@ def play_game_python(
     players = [build_agent(agents[0], engine), build_agent(agents[1], engine)]
     rngs = [seat_rng(seed, 0), seat_rng(seed, 1)]
     evaluator = Evaluator.for_engine(engine, mobility_weight=0.0) if collect_series else None
+    if engine.spy:
+        return _play_spy_python(engine, agents, players, rngs, seed, evaluator)
     if engine.simultaneous:
         return _play_rounds_python(engine, agents, players, rngs, seed, evaluator)
 
@@ -478,6 +480,99 @@ def _play_rounds_python(
     )
 
 
+def _play_spy_python(
+    engine: Engine,
+    agents: tuple[AgentConfig | str, AgentConfig | str],
+    players: list[Any],
+    rngs: list[random.Random],
+    seed: int,
+    evaluator: Evaluator | None,
+) -> GameRecord:
+    """Schema 27 (Q935a): ``play_game_python``'s loop for a spy game.
+
+    The oracle for `rust/src/play.rs`'s spy loop (`docs/plan-spy.md` §2.5): each step asks
+    the engine its phase. An alternating or reply turn is one move by the side to move; an
+    announced round asks the announcer first and shows its move to the answerer; a blind
+    round asks both on the same board. The record keeps a turn's one move and a round's two
+    in seat order, and every per-ply series once a turn and twice a round.
+    """
+    for seat, player in enumerate(players):
+        if not hasattr(player, "select_answer"):
+            raise ValueError(
+                f"{agents[seat]} does not play a spy game (pieces[].spy); random does"
+            )
+    state = engine.initial_state()
+    moves: list[int] = []
+    branching: list[int] = []
+    material: list[float] = []
+    captures: list[int] = []
+
+    started = time.perf_counter()
+    while True:
+        phase = engine.phase(state)
+        if not phase.is_round:
+            legal = engine.legal_moves(state)
+            outcome = engine.terminal(state, legal)
+            if outcome is not None:
+                break
+            if evaluator is not None:
+                branching.append(len(legal))
+                material.append(round(evaluator.material(state, 0), 4))
+            mover = state.side_to_move
+            move = players[mover].select_move(state, legal, rngs[mover])
+            state = engine.apply(state, move)
+            if evaluator is not None:
+                captures.append(1 if state.halfmove == 0 else 0)
+            moves.append(move)
+            continue
+        lists = (engine.legal_moves_for(state, 0), engine.legal_moves_for(state, 1))
+        outcome = engine.terminal(state)
+        if outcome is not None:
+            break
+        if evaluator is not None:
+            branching.extend((len(lists[0]), len(lists[1])))
+            value = round(evaluator.material(state, 0), 4)
+            material.extend((value, value))
+        if phase.name == "announced":
+            announcer = phase.announcer
+            announced = players[announcer].select_announcement(
+                state, announcer, lists, rngs[announcer]
+            )
+            answer = players[1 - announcer].select_answer(
+                state, 1 - announcer, lists, announced, rngs[1 - announcer]
+            )
+            pair = (announced, answer) if announcer == 0 else (answer, announced)
+        else:
+            pair = (
+                players[0].select_round_move(state, 0, lists[0], lists[1], rngs[0]),
+                players[1].select_round_move(state, 1, lists[1], lists[0], rngs[1]),
+            )
+        state = engine.apply_round(state, *pair)
+        if evaluator is not None:
+            quiet = 1 if state.halfmove == 0 else 0
+            captures.extend((quiet, quiet))
+        moves.extend(pair)
+
+    duration = (time.perf_counter() - started) * 1000.0
+    return GameRecord(
+        ruleset_hash=engine.spec.hash,
+        ruleset_name=engine.spec.name,
+        seed=seed,
+        agents=(str(agents[0]), str(agents[1])),
+        moves=moves,
+        winner=outcome.winner,
+        reason=outcome.reason,
+        plies=len(moves),
+        branching=branching,
+        material=material,
+        captures=captures,
+        nodes=(players[0].stats.nodes, players[1].stats.nodes),
+        depth_sum=(players[0].stats.depth_sum, players[1].stats.depth_sum),
+        searches=(players[0].stats.searches, players[1].stats.searches),
+        duration_ms=round(duration, 2),
+    )
+
+
 def replay(engine: Engine, record: GameRecord) -> list:
     """Re-derive the position after every ply. Used by the visualiser and by tests.
 
@@ -485,6 +580,8 @@ def replay(engine: Engine, record: GameRecord) -> list:
     record is self-consistent: an illegal move here means the record and the ruleset
     it names have drifted apart.
     """
+    if engine.spy:
+        return _replay_spy(engine, record)
     state = engine.initial_state()
     states = [state]
     for index, move in enumerate(record.moves):
@@ -495,4 +592,30 @@ def replay(engine: Engine, record: GameRecord) -> list:
             )
         state = engine.apply(state, move)
         states.append(state)
+    return states
+
+
+def _replay_spy(engine: Engine, record: GameRecord) -> list:
+    """``replay`` for a spy game (schema 27): the position after every step, a turn or a
+    round by the phase the engine reports, each move checked legal on the board it was
+    chosen on."""
+    state = engine.initial_state()
+    states = [state]
+    moves = record.moves
+    index = 0
+    while index < len(moves):
+        if engine.is_round(state):
+            step = moves[index:index + 2]
+            legal = [engine.legal_moves_for(state, 0), engine.legal_moves_for(state, 1)]
+        else:
+            step = moves[index:index + 1]
+            legal = [engine.legal_moves(state)]
+        if len(step) != len(legal) or any(m not in ok for m, ok in zip(step, legal, strict=True)):
+            raise ValueError(
+                f"ply {index} of game {record.seed} is not legal under ruleset "
+                f"{record.ruleset_hash}; the record and the spec disagree"
+            )
+        state = engine.apply_round(state, *step) if len(step) == 2 else engine.apply(state, step[0])
+        states.append(state)
+        index += len(step)
     return states

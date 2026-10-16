@@ -26,10 +26,11 @@ from typing import Any
 # (board, side_to_move, unmoved, ep_target, ep_victim, halfmove, ply, key,
 #  repetition, checks, hands,
 #  (colour, remaining, turns_taken, points, goal_left_by, portal_bar, folds,
-#   (initiative, void_run, bars)))
+#   (initiative, void_run, bars, rest)))
 # The last group is schema 26's (Q918a): who holds the initiative (-1 for no such rule),
-# the void run's pair ((-1, -1) for none) and the barred pairs.
-Rounds = tuple[int, tuple[int, int], list[tuple[int, int]]]
+# the void run's pair ((-1, -1) for none) and the barred pairs; then schema 27's (Q942a)
+# rested squares, one per player ((-1, -1) for none).
+Rounds = tuple[int, tuple[int, int], list[tuple[int, int]], tuple[int, int]]
 State = tuple[
     bytes, int, bytes, int, int, int, int, int, list[int],
     tuple[int, int], tuple[list[int], list[int]],
@@ -38,7 +39,8 @@ State = tuple[
 
 # What a round's meetings did (schema 26): ``(event, square, player)``, the event 0 a
 # collision (player the winner, -1 for none), 1 a void move, 2 a tie the initiative
-# decided (player the holder who won it), 3 a pair barred (square player 0's).
+# decided (player the holder who won it), 3 a pair barred (square player 0's), 4 (schema
+# 27) a swap that met (square player 0's destination, player the winner or -1).
 RoundEvents = list[tuple[int, int, int]]
 
 # What the wild-piece phase did on the way to a position (schema 9): one
@@ -105,6 +107,7 @@ class Core:
     def terminal_prefix(
         self, state: tuple[Any, ...]
     ) -> tuple[int | None, str] | None: ...
+    def phase(self, state: tuple[Any, ...]) -> tuple[str, int]: ...
     def in_check(self, state: tuple[Any, ...], player: int) -> bool: ...
     def compute_hash(self, state: tuple[Any, ...]) -> int: ...
     def perft(self, state: tuple[Any, ...], depth: int, stop_at_terminal: bool = ..., threads: int = ...) -> int: ...

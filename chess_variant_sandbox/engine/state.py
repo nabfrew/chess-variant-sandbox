@@ -124,6 +124,12 @@ class GameState:
     initiative: int = -1
     void_run: tuple[int, int] = (-1, -1)
     bars: tuple[tuple[int, int], ...] = ()
+    # Schema 27 (Q942a, ``rules.simultaneous.rest``): ``(player 0's square, player 1's
+    # square)`` of the piece each player's last round moved, which may not make that
+    # player's move this round unless nothing else can; -1 for none, and ``(-1, -1)`` for
+    # every game without the rule. Written only by a round. In the Zobrist key, since the
+    # same board with a different piece resting has different legal moves.
+    rest: tuple[int, int] = (-1, -1)
 
     def with_(self, **changes: Any) -> GameState:
         return replace(self, **changes)
@@ -171,3 +177,23 @@ class PhaseStep:
 
     def as_dict(self) -> dict[str, Any]:
         return {"from": self.origin, "to": self.target, "eaten": self.eaten}
+
+
+@dataclass(frozen=True, slots=True)
+class SpyPhase:
+    """A spy game's phase at a position (schema 27, Q935a; `docs/plan-spy.md` §1.3), as the
+    core reports it (`Engine.phase`). Not part of a position: a function of who has a spy
+    and whose turn it is, both already in it.
+
+    ``name`` is ``alternating``, ``reply``, ``announced`` or ``blind``; ``announcer`` is the
+    player who chooses first in an announced round, the one without a spy, and -1 in every
+    other phase.
+    """
+
+    name: str
+    announcer: int
+
+    @property
+    def is_round(self) -> bool:
+        """Whether this step is a round (both players move) rather than one move."""
+        return self.name in ("announced", "blind")

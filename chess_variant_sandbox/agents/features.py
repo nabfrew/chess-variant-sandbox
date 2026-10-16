@@ -219,6 +219,9 @@ class FeatureContext:
     check_limit: int
     extinction_types: tuple[int, ...]
     extinction_initial: tuple[int, ...]
+    # Schema 27 (Q936), `"per_type": "own"`: each side's counted types, each with how many
+    # of it that side started with. Empty for both sides under every other spelling.
+    extinction_own: tuple[tuple[tuple[int, int], ...], tuple[tuple[int, int], ...]]
     has_drops: bool
     promotable: frozenset[int]
     promotion_squares: tuple[frozenset[int], frozenset[int]]
@@ -314,6 +317,7 @@ def feature_context(spec: CompiledSpec) -> FeatureContext:
         check_limit=spec.check_limit,
         extinction_types=extinction_types,
         extinction_initial=tuple(counts[t] for t in extinction_types),
+        extinction_own=_extinction_own(spec),
         has_drops=spec.drops is not None,
         promotable=frozenset(promotable),
         promotion_squares=(frozenset(promotion_squares[0]), frozenset(promotion_squares[1])),
@@ -721,6 +725,18 @@ class FeatureEvaluator:
         """
         if not ctx.extinction_types:
             return 0.0
+        if ctx.extinction_own[0] or ctx.extinction_own[1]:
+            # Schema 27 (Q936): the armies count different kinds, so one side's count of a
+            # type against the other's means nothing. Each side's worst own kind against
+            # its own opening, and the margin is the difference (`features.rs`).
+            def own_worst(side: int) -> float:
+                worst = 1.0
+                for piece_type, started in ctx.extinction_own[side]:
+                    left = _live_of(state.board, ctx, piece_type, side)
+                    worst = min(worst, left / max(started, 1))
+                return worst
+
+            return _clamp(own_worst(player) - own_worst(1 - player))
         worst = 1.0
         for index, piece_type in enumerate(ctx.extinction_types):
             initial = ctx.extinction_initial[index] or 1
@@ -868,6 +884,27 @@ class FeatureEvaluator:
 
 def _clamp(value: float) -> float:
     return -1.0 if value < -1.0 else (1.0 if value > 1.0 else value)
+
+
+def _extinction_own(
+    spec: CompiledSpec,
+) -> tuple[tuple[tuple[int, int], ...], tuple[tuple[int, int], ...]]:
+    """Each side's ``"own"`` extinction types with its opening count of each (schema 27)."""
+    rule = spec.extinction
+    if rule is None or not rule.own:
+        return (), ()
+    stride = spec.side_stride
+    lists = []
+    for player in (0, 1):
+        low = player * stride + 1
+        lists.append(tuple(
+            (piece_type, sum(
+                1 for value in spec.initial_board
+                if low <= value < low + stride and (value - 1) % spec.n_types == piece_type
+            ))
+            for piece_type in rule.side_types[player]
+        ))
+    return lists[0], lists[1]
 
 
 def _live_of(board: bytes, ctx: FeatureContext, piece_type: int, side: int) -> int:

@@ -116,7 +116,7 @@ ROUND_READINGS: dict[str, str] = {
     ),
     "piece_utilisation": "both moves of every round, read on the board both chose on",
     "instance_participation": "both moves of every round",
-    "skill_gradient": "the round players' ladder, matrix:nodes=100 to 6400",
+    "skill_gradient": "the round players' ladder, matrix:nodes=1600 to 102400",
     "lead_conversion": "seat 0's material after each round, written once per ply",
 }
 

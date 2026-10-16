@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from chess_variant_sandbox.metrics.components import plays_in_rounds
+from chess_variant_sandbox.spec.schema import is_spy_game
 from chess_variant_sandbox.tournament import TournamentConfig, run_tournament
 
 # The cheapest pair of budgets that still constitutes a ladder. Deliberately far below
@@ -78,17 +79,28 @@ QUICK_KILL_PLIES = 12
 
 # Schema 26 (Q932): `minimax:` is refused on a game played in rounds, and `matrix:` on one
 # that alternates (`docs/plan-simultaneous.md` §6.2). A round game is played by the same
-# roster with `matrix:nodes=N` wherever the alternating one has `minimax:nodes=N`, at the
-# same budget, as `corpus.ROUND_AGENTS` mirrors the canonical ladder: `random` and `greedy`
-# play rounds already (greedy reads the round as a matrix game). Only a bare node budget
-# maps; an objective (`h=`, `fit=`, `values=`, `net=`) is refused on these games, and so is
-# `mcts:`, so a roster holding one has no round counterpart.
+# roster with `matrix:nodes=F*N` wherever the alternating one has `minimax:nodes=N`, as
+# `corpus.ROUND_AGENTS` mirrors the canonical ladder: `random` and `greedy` play rounds
+# already (greedy reads the round as a matrix game). Only a bare node budget maps; an
+# objective (`h=`, `fit=`, `values=`, `net=`) is refused on these games, and so is `mcts:`,
+# so a roster holding one has no round counterpart.
+#
+# F is `ROUND_BUDGET_FACTOR`, the one rule for what a budget means in rounds (Q944a,
+# `docs/reference/round-roster-budgets.md` §5-§6). `matrix:nodes=N` always finishes pass 1,
+# greedy's whole one-round matrix (about 200 cells on Gardner, 700 on the watering hole),
+# and plays greedy's move in every round whose matrix has N cells or more. At the same
+# budget the bottom four rungs were greedy under other names; sixteen is the smallest power
+# of two at which the bottom rung finishes a pass-2 cell in at least half the side-rounds of
+# every library round game. Chosen by move counts, never by a score it produces.
+ROUND_BUDGET_FACTOR = 16
 _ROUND_SAFE = ("random", "greedy")
 _MINIMAX_BUDGET = re.compile(r"minimax:nodes=(\d+)")
 
 
 def round_roster(agents: tuple[str, ...]) -> tuple[str, ...]:
-    """The players a game in rounds is played by in place of ``agents``.
+    """The players a game in rounds is played by in place of ``agents``:
+    `minimax:nodes=N` becomes `matrix:nodes=N*ROUND_BUDGET_FACTOR`, and a round player
+    already named passes unchanged.
 
     Raises ``ValueError`` naming the first player with no round counterpart.
     """
@@ -96,7 +108,7 @@ def round_roster(agents: tuple[str, ...]) -> tuple[str, ...]:
     for agent in agents:
         budget = _MINIMAX_BUDGET.fullmatch(agent)
         if budget:
-            mapped.append(f"matrix:nodes={budget.group(1)}")
+            mapped.append(f"matrix:nodes={int(budget.group(1)) * ROUND_BUDGET_FACTOR}")
         elif agent in _ROUND_SAFE or agent.startswith("matrix:"):
             mapped.append(agent)
         else:
@@ -105,7 +117,16 @@ def round_roster(agents: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def roster_for(spec: dict[str, Any], agents: tuple[str, ...]) -> tuple[str, ...]:
-    """``agents`` for a game that alternates, ``round_roster(agents)`` for one in rounds."""
+    """``agents`` for a game that alternates, ``round_roster(agents)`` for one in rounds.
+
+    Raises ``ValueError`` for a spy game (schema 27): only `random` plays one until the
+    players across its phases are built (`docs/plan-spy.md` §3.3), so the screen refuses it
+    by name rather than playing it under a roster nobody measured."""
+    if is_spy_game(spec):
+        raise ValueError(
+            "a spy game (pieces[].spy) is played by random so far; the players that search "
+            "across its phases are not built yet"
+        )
     return round_roster(agents) if plays_in_rounds(spec) else agents
 
 
@@ -130,9 +151,10 @@ def screen(
 ) -> ScreenResult:
     """Play a handful of games between two small searches and report what happened.
 
-    A game in rounds is played by `round_roster(agents)`: `matrix:nodes=100` and
-    `matrix:nodes=400` by default, the same two budgets of a searching player. A round
-    counts two plies, so `QUICK_KILL_PLIES` is six moves a player either way.
+    A game in rounds is played by `round_roster(agents)`: `matrix:nodes=1600` and
+    `matrix:nodes=6400` by default, the two budgets at `ROUND_BUDGET_FACTOR` times, since
+    below about a round's matrix a round player is greedy. A round counts two plies, so
+    `QUICK_KILL_PLIES` is six moves a player either way.
     """
     try:
         players = roster_for(spec, agents)

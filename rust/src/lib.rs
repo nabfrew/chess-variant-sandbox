@@ -49,8 +49,9 @@ type StateIn = (
     (Vec<u32>, Vec<u32>),
     (Vec<u8>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds),
 );
-/// Schema 26 (Q918a): the initiative, the void run and the bars, slot 11's eighth element.
-type Rounds = (i8, (i16, i16), Vec<(i16, i16)>);
+/// Schema 26 (Q918a): the initiative, the void run and the bars, slot 11's eighth element;
+/// schema 27 (Q942a) adds the rested squares.
+type Rounds = (i8, (i16, i16), Vec<(i16, i16)>, (i16, i16));
 type StateOut<'py> = (
     Bound<'py, PyBytes>,
     u8,
@@ -153,6 +154,7 @@ fn snapshot_from(t: &Tables, state: &StateIn) -> Snapshot {
         initiative: state.11.7.0,
         void_run: [state.11.7.1.0, state.11.7.1.1],
         bars: state.11.7.2.iter().map(|&(a, b)| [a, b]).collect(),
+        rest: [state.11.7.3.0, state.11.7.3.1],
     }
 }
 
@@ -211,6 +213,7 @@ fn state_out<'py>(py: Python<'py>, game: &Game<'_>) -> StateOut<'py> {
                 game.initiative,
                 (game.void_run[0], game.void_run[1]),
                 game.bars.iter().map(|bar| (bar[0], bar[1])).collect(),
+                (game.rest[0], game.rest[1]),
             ),
         ),
     )
@@ -311,6 +314,26 @@ impl Core {
         state: StateIn,
         m: u32,
     ) -> PyResult<(StateOut<'py>, PhaseOut)> {
+        // Schema 27 (Q935a): a spy game's turn, in an alternating or reply phase only, played
+        // by `spy_turn` so the initiative's deal (E10) is made where rounds begin.
+        if self.tables.spy.is_some() {
+            let snapshot = snapshot_from(&self.tables, &state);
+            let mut game = Game::from_snapshot(&self.tables, &snapshot);
+            let phase = game.phase();
+            if phase.is_round() {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "this spy game is in its {} phase, played in rounds; apply both players'                      moves together with apply_round",
+                    phase.name()
+                )));
+            }
+            game.spy_turn(m);
+            let steps = game
+                .phase_steps()
+                .iter()
+                .map(|&(from, to, eaten)| (from as u32, to as u32, eaten))
+                .collect();
+            return Ok((state_out(py, &game), steps));
+        }
         // Schema 26 (Q918a): one move alone is not a round, and `make` would play the game
         // as if it alternated. Refused here, where it is still an ordinary exception.
         if self.tables.simultaneous.is_some() {
@@ -378,6 +401,16 @@ impl Core {
         }
         let snapshot = snapshot_from(&self.tables, &state);
         let mut game = Game::from_snapshot(&self.tables, &snapshot);
+        // Schema 27 (Q935a): a spy game plays rounds only once a spy is lost.
+        if self.tables.spy.is_some() {
+            let phase = game.phase();
+            if !phase.is_round() {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "this spy game is in its {} phase, played one move at a time; apply the                      move with apply",
+                    phase.name()
+                )));
+            }
+        }
         game.make_round([first, second]);
         let phase = game
             .phase_steps()
@@ -419,6 +452,12 @@ impl Core {
         let snapshot = snapshot_from(&self.tables, &state);
         let mut game = Game::from_snapshot(&self.tables, &snapshot);
         let outcome = match moves {
+            // Schema 27 (Q935a): a spy game's verdict is its phase's; a turn's from the
+            // caller's list where there is one.
+            Some(moves) if self.tables.spy.is_some() && !game.phase().is_round() => {
+                game.terminal_with(&moves)
+            }
+            _ if self.tables.spy.is_some() => game.spy_terminal(),
             // Schema 26: a round's verdict needs both players' lists, so it makes its own.
             _ if self.tables.simultaneous.is_some() => game.round_terminal(),
             Some(moves) => game.terminal_with(&moves),
@@ -446,7 +485,9 @@ impl Core {
     fn terminal_prefix(&self, state: StateIn) -> Option<(Option<i8>, &'static str)> {
         let snapshot = snapshot_from(&self.tables, &state);
         let mut game = Game::from_snapshot(&self.tables, &snapshot);
-        let outcome = if self.tables.simultaneous.is_some() {
+        let outcome = if self.tables.spy.is_some() {
+            game.spy_terminal_prefix()
+        } else if self.tables.simultaneous.is_some() {
             game.round_terminal_prefix()
         } else {
             game.terminal_prefix()
@@ -461,6 +502,20 @@ impl Core {
                 outcome.reason.as_str(),
             )
         })
+    }
+
+    /// Schema 27 (Q935a, `docs/plan-spy.md` §2.5): a spy game's phase here, `alternating`,
+    /// `reply`, `announced` or `blind`, and the announcer (-1 outside an announced round).
+    /// The one place the phase is worked out: Python asks, and never answers.
+    fn phase(&self, state: StateIn) -> PyResult<(&'static str, i8)> {
+        if self.tables.spy.is_none() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "phase is for a spy game (pieces[].spy); this one has no spy",
+            ));
+        }
+        let snapshot = snapshot_from(&self.tables, &state);
+        let phase = Game::from_snapshot(&self.tables, &snapshot).phase();
+        Ok((phase.name(), phase.announcer()))
     }
 
     fn in_check(&self, state: StateIn, player: u8) -> bool {

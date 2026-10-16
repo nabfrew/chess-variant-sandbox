@@ -59,6 +59,9 @@ pub struct FeatureContext {
     check_limit: u32,
     extinction_types: Vec<usize>,
     extinction_initial: Vec<usize>,
+    /// Schema 27 (Q936), `"per_type": "own"`: each side's counted types with the count of
+    /// each it started with. Empty for both sides under every other spelling.
+    extinction_own: [Vec<(usize, usize)>; 2],
     has_drops: bool,
     promotable: Vec<usize>,
 }
@@ -98,6 +101,25 @@ impl FeatureContext {
                 (types, initial)
             }
             _ => (Vec::new(), Vec::new()),
+        };
+        let extinction_own = match &t.extinction {
+            Some(rule) if rule.own => [0, 1].map(|player| {
+                rule.side_types[player]
+                    .iter()
+                    .map(|&piece_type| {
+                        let started = (0..t.n_squares)
+                            .filter(|&square| {
+                                let value = t.initial_board[square];
+                                value != 0
+                                    && t.owner_of(value) == player
+                                    && t.type_of(value) == piece_type
+                            })
+                            .count();
+                        (piece_type, started)
+                    })
+                    .collect()
+            }),
+            _ => [Vec::new(), Vec::new()],
         };
 
         let score_ceiling = match &t.scoring {
@@ -146,6 +168,7 @@ impl FeatureContext {
             check_limit: t.check_limit,
             extinction_types,
             extinction_initial,
+            extinction_own,
             has_drops: t.drops.is_some(),
             promotable: t.promo_piece_types.clone(),
         }
@@ -445,6 +468,20 @@ impl FeatureEvaluator {
         let c = &self.context;
         if c.extinction_types.is_empty() {
             return 0.0;
+        }
+        if !c.extinction_own[0].is_empty() || !c.extinction_own[1].is_empty() {
+            // Schema 27 (Q936): the armies count different kinds, so one side's count of a
+            // type against the other's means nothing. Each side's worst own kind against
+            // its own opening, and the margin is the difference.
+            let worst = |side: usize| {
+                c.extinction_own[side]
+                    .iter()
+                    .fold(1.0f64, |worst, &(piece_type, started)| {
+                        let left = live_of(game, piece_type, side) as f64;
+                        worst.min(left / std::cmp::max(started, 1) as f64)
+                    })
+            };
+            return clamp(worst(player) - worst(1 - player));
         }
         let mut worst = 1.0f64;
         for (index, piece_type) in c.extinction_types.iter().enumerate() {
