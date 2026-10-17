@@ -158,7 +158,7 @@ class TestARoundEndToEnd:
         """The designer's preview plays rounds through the same session, against the
         round ladder's *medium* when the page asks for the usual one."""
         snapshot = served.post("/api/design/play", {"spec": _spec()})
-        assert snapshot["seats"] == ["human", "matrix:nodes=1600"]
+        assert snapshot["seats"] == ["human", "matrix:nodes=25600"]
         assert snapshot["round"]["number"] == 1 and snapshot["awaitingAgent"]
         assert snapshot["moves"] == []  # nothing is offered before the computer has sealed
         snapshot = _play_out(served, snapshot, rounds=8)
@@ -356,12 +356,38 @@ class TestRoundsAndTheSession:
         agents = [entry.agent for entry in roster]
         assert agents == [agent for agent, _name, _tail in opponents.ROUND_RUNGS]
         assert not any(agent.startswith(("minimax", "mcts")) for agent in agents)
-        assert opponents.seat_for("minimax:nodes=1600", roster) == "matrix:nodes=1600"
-        assert opponents.seat_for("minimax:nodes=200000", roster) == "matrix:nodes=6400"
+        assert opponents.seat_for("minimax:nodes=1600", roster) == "matrix:nodes=25600"
+        assert opponents.seat_for("minimax:nodes=200000", roster) == "matrix:nodes=102400"
         assert opponents.seat_for("greedy", roster) == "greedy"
         assert opponents.seat_for("minimax:nodes=1600", opponents.ladder()) == "minimax:nodes=1600"
         medium = next(entry for entry in roster if entry.name == "medium")
-        assert medium.about == "weighs 1,600 rounds before each move"
+        assert medium.about == "weighs 25,600 rounds before each move"
+
+    def test_the_round_rungs_are_the_alternating_ones_at_sixteen_times(self) -> None:
+        """Q934c: *easy*, *medium* and *hard* in rounds play `ROUND_BUDGET_FACTOR` times the
+        alternating rungs' budgets, the measuring roster's rule (Q944a), so no rung is
+        greedy under another name (`round-roster-budgets.md` §9)."""
+        from chess_variant_sandbox.loop.screen import ROUND_BUDGET_FACTOR
+
+        alternating = {name: agent for agent, name, _ in opponents.RUNGS}
+        for agent, name, _ in opponents.ROUND_RUNGS:
+            if name in ("easy", "medium", "hard"):
+                budget = int(alternating[name].split("=")[1]) * ROUND_BUDGET_FACTOR
+                assert agent == f"matrix:nodes={budget}"
+        assert [agent for agent, _, _ in opponents.ROUND_RUNGS[3:]] == [
+            "matrix:nodes=6400", "matrix:nodes=25600", "matrix:nodes=102400"
+        ]
+
+    def test_a_round_ladder_plays_its_rungs_against_each_other(self) -> None:
+        """Every computer rung of a round game is its ladder's spine, so the matrix players
+        meet one another rather than being ordered by their games against greedy alone."""
+        entries = opponents.agents_of(opponents.ladder(rounds=True))
+        plan = opponents._plan(entries, opponents.LADDER_GAMES, opponents.LADDER_SEED)
+        assert plan.config.spine == opponents.ROUND_SPINE == tuple(entries)
+        assert plan.config.games_for("matrix:nodes=6400", "matrix:nodes=102400") > 0
+        # A game that alternates keeps its own five as the spine.
+        alternating = opponents._plan(opponents.agents_of(opponents.ladder()), 2, 0)
+        assert alternating.config.spine == opponents.SPINE
 
     def test_a_round_game_never_says_check_or_offers_a_draw(self) -> None:
         snapshot = _session((HUMAN, "greedy")).snapshot()

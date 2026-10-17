@@ -73,7 +73,7 @@ offer the spy ladder, which has no round player (`opponents.SPY_RUNGS`)."""
 PLAIN = "kyoto.json"
 """An archived game that is no preview, for the library's side of every comparison."""
 
-ROUND_AGENT = "matrix:nodes=400"
+ROUND_AGENT = "matrix:nodes=6400"
 
 
 def _root(tmp_path: Path) -> Path:
@@ -380,7 +380,7 @@ class TestPlayingOne:
             {"hash": ROUND_PREVIEW, "seats": ["minimax:nodes=6400", "minimax:nodes=6400"]},
         )
         assert answer.status == 200, answer.text
-        assert answer.payload["seats"] == ["matrix:nodes=6400", "matrix:nodes=6400"]
+        assert answer.payload["seats"] == ["matrix:nodes=102400", "matrix:nodes=102400"]
 
     def test_rated_play_is_refused_in_a_sentence(self, previews_site: Site) -> None:
         member = previews_site.signed_in("ada")

@@ -49,6 +49,7 @@ from chess_variant_sandbox.agents.heuristics import (
 from chess_variant_sandbox.agents.nets import STORE_DIR as NET_DIR
 from chess_variant_sandbox.agents.valuations import SEARCH as SEARCH_PROCEDURE
 from chess_variant_sandbox.agents.valuations import STORE_DIR as VALUE_DIR
+from chess_variant_sandbox.loop.screen import round_roster
 from chess_variant_sandbox.spec.schema import is_spy_game
 from chess_variant_sandbox.tournament.runner import TournamentConfig, run_tournament
 
@@ -211,14 +212,28 @@ class Opponent:
 # players read the built-in evaluator only (Q918b). The names are the ladder's, so *medium*
 # is the middle of the picker on both kinds of game; each is its own rated player, named
 # by its own agent string, never the alternating rung's.
-ROUND_RUNGS: tuple[tuple[str, str, str], ...] = (
-    (HUMAN, "you", ""),
-    ("random", "random", ""),
-    ("greedy", "greedy", ""),
-    ("matrix:nodes=400", "easy", ""),
-    ("matrix:nodes=1600", "medium", ""),
-    ("matrix:nodes=6400", "hard", ""),
+#
+# **The budgets are the alternating rungs' through `round_roster`**, sixteen times each
+# (`loop/screen.ROUND_BUDGET_FACTOR`): `matrix:nodes=6400`, `25600` and `102400` (Q934c,
+# `docs/reference/round-roster-budgets.md` §9). At the alternating budgets (400, 1600, 6400)
+# a round's one-round matrix (about 200 cells on Gardner, 700 on the watering hole) took
+# most of the budget, so *easy* was greedy under another name and *hard* rated below
+# *medium* on both laddered games. Sixteen times is the measuring roster's own rule (Q944a),
+# and the strongest answers in about a tenth of a second a move on this machine.
+ROUND_RUNGS: tuple[tuple[str, str, str], ...] = tuple(
+    (agent if agent in (HUMAN, "random", "greedy") else round_roster((agent,))[0], name, tail)
+    for agent, name, tail in RUNGS
+    if name in ("you", "random", "greedy", "easy", "medium", "hard")
 )
+
+# The round ladder's standard players, its spine: every computer rung of `ROUND_RUNGS`.
+# They play each other in a picker ladder, as `SPINE` does on a game that alternates; with
+# only `random` and `greedy` shared with `SPINE`, the matrix rungs never met one another,
+# and their order rested on four games each against greedy (Q934c).
+ROUND_SPINE: tuple[str, ...] = tuple(agent for agent, _name, _tail in ROUND_RUNGS if agent != HUMAN)
+
+# Every standard player of either ladder. A ladder's spine is the ones its roster holds.
+STANDARD: tuple[str, ...] = tuple(dict.fromkeys((*SPINE, *ROUND_SPINE)))
 
 
 # Schema 27 (Q935c, `docs/plan-spy.md` §3.3): the rungs of a spy game. It starts by turns,
@@ -258,7 +273,7 @@ def ladder(rounds: bool = False, spy: bool = False) -> list[Opponent]:
 def seat_for(agent: str, roster: list[Opponent]) -> str:
     """The player a request seats where it names `agent`: `agent` itself where the roster
     offers it, else, for a rung of the alternating ladder on a game whose roster does not
-    hold it, the roster's rung of the same name (*medium* is `matrix:nodes=1600` in a game
+    hold it, the roster's rung of the same name (*medium* is `matrix:nodes=25600` in a game
     played in rounds). A page that asks for *medium* by its usual agent string, which
     every board but a round game's offers, sits the medium player down rather than being
     refused; anything else is returned unchanged, for the caller to refuse by name.
@@ -1476,7 +1491,7 @@ def _plan(
     ladder this machine's sixteen threads would make.
     """
     if held is None:
-        spine = tuple(agent for agent in SPINE if agent in entries)
+        spine = tuple(agent for agent in STANDARD if agent in entries)
         config = _SpineConfig(
             agents=tuple(entries),
             games_per_pairing=games,
@@ -1501,7 +1516,7 @@ def _plan(
     rows = {str(row["name"]) for row in held.get("standings") or ()}
     fresh = tuple(agent for agent in entries if agent not in rows)
     spine = tuple(str(agent) for agent in held.get("spine") or ())
-    if any(agent in SPINE for agent in fresh) or not spine:
+    if any(agent in STANDARD for agent in fresh) or not spine:
         raise LadderError(
             "a spine player is new to this ladder, so every other player would need its "
             "games again; rate it again whole with --rerate"

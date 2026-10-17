@@ -1,5 +1,5 @@
 {
- "source_commit": "43c1b4953631c476a8d68c6dfedace313c1ef590",
+ "source_commit": "bdaa3e0cb341b35005eaecf14246c3f3a18c94e0",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -1752,8 +1752,8 @@
   },
   {
    "path": "chess_variant_sandbox/site/quota.py",
-   "bytes": 59596,
-   "sha256": "b6c6d8047cd5dcadf2bbf4832058cf50abdad8b2d99b7833def9b62d8d017b06"
+   "bytes": 60259,
+   "sha256": "3d85985c910721f55520966b08dd6c7e531bb9dadc5f82276c460383d51546cc"
   },
   {
    "path": "chess_variant_sandbox/site/rating.py",
@@ -2162,8 +2162,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/opponents.py",
-   "bytes": 79060,
-   "sha256": "f3a423b6049d739b1a1783e98c90f9c2ee9a171a9dbb6cb8c29f215e74312038"
+   "bytes": 80351,
+   "sha256": "6bb9cce9caf4f12d59db43c9e782926f6f63d1b302d13927ccfd8f7220eb5730"
   },
   {
    "path": "chess_variant_sandbox/web/page/__init__.py",
@@ -2417,8 +2417,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 124095,
-   "sha256": "d00a91ecf12d05ef37a2eca18640e66af0f2427b53b89c730d4e2a112959d36d"
+   "bytes": 124636,
+   "sha256": "80e83d0a2e9a18cc9fee683b993839808ab1bcfd2f2fd602cdec9dbe343bcbe6"
   },
   {
    "path": "fitted/0100091d63ff-98f172aeac49.json",
@@ -6842,8 +6842,8 @@
   },
   {
    "path": "tests/test_play_rounds.py",
-   "bytes": 30554,
-   "sha256": "a610819ed197cc3f45cf556e2e028b1a009c00d58dd38e70d6a6f42713a8e03c"
+   "bytes": 32239,
+   "sha256": "b955347863daf6efb500c080842672fe828c46ede92a69e1d58986649c66bf63"
   },
   {
    "path": "tests/test_play_spy.py",
@@ -7222,8 +7222,8 @@
   },
   {
    "path": "tests/test_site_admin.py",
-   "bytes": 149347,
-   "sha256": "828969544764332d683939190b993d6c22a3f2ab0dbbab51eef8f5f5224d8d17"
+   "bytes": 149965,
+   "sha256": "b2e0e60eb15bfac3877fc3590a6d009c8dd22b60b6f3078ac9d0999a99997e75"
   },
   {
    "path": "tests/test_site_asking.py",
@@ -7342,8 +7342,8 @@
   },
   {
    "path": "tests/test_site_previews.py",
-   "bytes": 19797,
-   "sha256": "9d3a9db3f5d4e41e4392b485bdd520a57891ed6f45c961b62b184cf43c1d2640"
+   "bytes": 19802,
+   "sha256": "751316126f625c674f723819faa6ec07c1b104fced2915164c42e7055508f186"
   },
   {
    "path": "tests/test_site_provisional.py",

@@ -790,8 +790,23 @@ def is_strong(agent: str | None) -> bool:
 
 
 def members_only(agent: str | None) -> bool:
-    """Whether only a signed-in person may play this computer player (`VISITOR_NODES`)."""
-    return agent is not None and nodes_in(agent) > VISITOR_NODES
+    """Whether only a signed-in person may play this computer player (`VISITOR_NODES`).
+
+    A round player's budget is read as the alternating budget it stands for: a game in
+    rounds plays `matrix:nodes=16N` where one that alternates plays `minimax:nodes=N`
+    (`loop/screen.ROUND_BUDGET_FACTOR`), so the round ladder's *hard* is
+    `matrix:nodes=102400` and L15's line, *up to hard*, falls in the same place on both
+    kinds of game (Q934c). `is_strong` reads the raw budget: it is about cost, and a
+    matrix node costs about what a minimax node does.
+    """
+    if agent is None:
+        return False
+    from chess_variant_sandbox.loop.screen import ROUND_BUDGET_FACTOR
+
+    nodes = nodes_in(agent)
+    if agent.startswith("matrix:"):
+        nodes //= ROUND_BUDGET_FACTOR
+    return nodes > VISITOR_NODES
 
 
 WHOLE_SITE = 0

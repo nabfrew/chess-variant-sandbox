@@ -13,6 +13,13 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-17
 
+### Stronger computer opponents in games played in rounds
+
+In a game where both players move at once, *easy*, *medium* and *hard* now weigh sixteen times as many rounds
+before each move as they did, so each of them looks past the round in front of it. Before, *easy* played exactly like *greedy*, and *hard* came out
+weaker than *medium* on both such games in the library. The strongest still answers in well under a second, the
+three are rated afresh on each game, and without an account you can still play every one of them up to *hard*.
+
 ### How often the computer played the same game again
 
 Each game's page now says how many of the games behind its score were different games. On a few

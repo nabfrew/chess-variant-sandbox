@@ -3177,6 +3177,17 @@ class TestVisitorsPlayUpToHard:
         # Every strong seat is a members' seat, so a visitor never holds one.
         assert quota.STRONG_NODES > quota.VISITOR_NODES
 
+    def test_the_line_falls_at_hard_on_a_game_in_rounds_too(self) -> None:
+        """Q934c: the round ladder's rungs are sixteen times the alternating budgets, and
+        its *hard* is still a visitor's; one round budget above it is not."""
+        from chess_variant_sandbox.web import opponents
+
+        hard = next(agent for agent, name, _ in opponents.ROUND_RUNGS if name == "hard")
+        assert hard == "matrix:nodes=102400"
+        assert not any(quota.members_only(agent) for agent in opponents.ROUND_SPINE)
+        assert quota.members_only("matrix:nodes=102416")
+        assert not quota.is_strong(hard)
+
     def test_a_visitor_plays_hard_and_is_refused_hardest(self, site: Site) -> None:
         site.game()
         matches.start(site.store, DULL_HASH, matches.SANDBOX, ["human", self.HARD], None)
