@@ -4778,9 +4778,10 @@ function drawCorrSend() {
   if (!slot || !SESSION) return;
   const between = SESSION.correspondence;
   // A game in rounds, by correspondence too (Q918f): the seal's slot, not the send's. A spy
-  // game's (schema 27) says its phase while it is played by turns.
+  // game's (schema 27) says its phase while it is played by turns, at one screen; between
+  // two people a turn is sent as any move is, and the strip says the phase (Q935e).
   if (SESSION.round) { drawRoundSend(slot); return; }
-  if (SESSION.spy) { drawSpySend(slot); return; }
+  if (SESSION.spy && !between) { drawSpySend(slot); return; }
   if (!between || between.you === null || SESSION.outcome) {
     slot.hidden = true;
     slot.innerHTML = '';
@@ -4850,14 +4851,16 @@ function corrStatus() {
       check}`;
   }
   const left = between.toMove ? ` ${esc(between.toMove)}` : '';
+  // A spy game's turn says its phase (Q935e): both spies standing, or the reply.
+  const spy = corrSpyNoteHtml();
   if (between.you === mover) {
     return `<b>Your move.</b> ${fact}${left}${offer}${check}${
-      NOTE ? `<span class="frame-note">${esc(NOTE)}</span>` : ''}`;
+      NOTE ? `<span class="frame-note">${esc(NOTE)}</span>` : ''}${spy}`;
   }
   if (between.you === null) {
-    return `${esc(between.players[mover])} to move. ${fact}${left}${check}`;
+    return `${esc(between.players[mover])} to move. ${fact}${left}${check}${spy}`;
   }
-  return `${esc(between.players[mover])}'s move. ${fact}${left}${offer}${check}`;
+  return `${esc(between.players[mover])}'s move. ${fact}${left}${offer}${check}${spy}`;
 }
 
 // The day beside each move of a game between two people (s4 of the mock): when it

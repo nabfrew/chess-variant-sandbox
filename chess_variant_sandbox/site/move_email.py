@@ -36,6 +36,17 @@ which in a game in rounds is the round's first ply, per recipient: a person mail
 round was revealed is not mailed again in that round that the other's move is in, so it is
 still one email a turn.
 
+## A spy game (schema 27, Q935e)
+
+Whether the other player owes a move after this one is read off the snapshot after it
+(`_owed_by`: the core's phase, the announcer and whether the announcement is in), so a move
+that leaves its mover owing again sends nothing: the reply turn after a spy falls
+opens a round its own player announces, and the email waits for the announcement. Each
+email says what is asked (`mail.ASKED`): the reply, the announcement, the answer to a named
+announcement (shown to both, so it may be named), or, once both spies are lost, a move
+sealed in secret. A round revealed names who announced. Nothing a secret round hides is
+named, as above.
+
 ## A failed send never blocks a move
 
 `due` writes its row inside the move's transaction and returns the message; the server
@@ -169,15 +180,17 @@ def due(
     In a game in rounds (`snapshot` has a `round`, Q918f) the move was a seal, and the
     email goes to the other player, never the one who sealed: *their move is in* (no move
     named) when the round is still open, or the round's result when this seal revealed it
-    (`before`, the game's length before the seal, is shorter than it is now), since that
-    opens the next round and so makes it their move again.
+    (`before`, the game's length before the seal, is two plies shorter than it is now),
+    since that opens the next round and so makes it their move again. A spy game's turn
+    lengthens it by one, and is named as any move is even when it opens a round (Q935e).
     """
     found = matches.row(connection, match_id)
     rounds = "round" in snapshot
-    after = 1 - mover if rounds else snapshot.get("sideToMove")
+    after = _owed_by(snapshot, mover)
     if not found.running or after not in (0, 1) or after == mover:
         return None
-    revealed = rounds and before is not None and found.plies > before
+    grew = None if before is None else found.plies - before
+    revealed = rounds and grew is not None and grew >= 2
     recipient = found.player(int(after)).user
     if recipient is None:
         return None
@@ -207,14 +220,20 @@ def due(
     history = snapshot.get("history") or []
     played = str(history[-1].get("text", "")) if history else ""
     moved_by = found.player(mover).user
+    # A turn names its move, also when it opened a round (a spy game's); a seal names
+    # none; an announcement names itself, since it is shown to both (Q935e).
+    turned = not rounds or grew == 1
+    shown = _announced(snapshot, mover) if rounds and not revealed and not turned else None
     message = mail.your_move(
         to=str(email),
         game=browse.names(connection, [found.game]).get(found.game) or "a game",
         opponent=identity.handle_of(connection, moved_by or 0) or identity.FORMER,
-        played=None if rounds else (played or "a move"),
+        played=(played or "a move") if turned else None,
         link=f"{site}/#/play/{found.id}",
         off=f"{site}/mail/off/{token}",
         revealed=_round_said(history, int(after)) if revealed else None,
+        announced=shown,
+        asked=_asked(snapshot, int(after), turned, history if revealed else None),
     )
     with connection.cursor() as cursor:
         cursor.execute(
@@ -236,12 +255,65 @@ def _round_said(history: list[dict[str, Any]], reader: int) -> RoundSaid:
     mine = next((entry for entry in pair if entry.get("player") == reader), {})
     theirs = next((entry for entry in pair if entry.get("player") != reader), {})
     reveal = pair[-1].get("reveal") or {} if pair else {}
+    announcer = reveal.get("announcer")
     return RoundSaid(
         number=int(pair[-1].get("round", 0)) + 1 if pair else 0,
         yours=str(mine.get("text") or "a move"),
         theirs=str(theirs.get("text") or "a move"),
         words=tuple(str(line) for line in reveal.get("words") or ()),
+        announced="" if announcer is None else "you" if announcer == reader else "they",
     )
+
+
+def _owed_by(snapshot: dict[str, Any], mover: int) -> Any:
+    """Who owes the next move after `mover`'s, as the snapshot after it says (the core's
+    answers in it, worked out nowhere here): the side to move on a turn; in a round, the
+    other seat, which has not sealed (its seal would have revealed); in a spy game's
+    announced round (Q935e), the announcer until the announcement is in and the answerer
+    after, so a reply turn that opens a round its own player announces names the mover."""
+    block = snapshot.get("round")
+    if not isinstance(block, dict):
+        return snapshot.get("sideToMove")
+    announcer = block.get("announcer")
+    if announcer in (0, 1):
+        return announcer if block.get("announced") is None else 1 - announcer
+    return 1 - mover
+
+
+def _announced(snapshot: dict[str, Any], mover: int) -> str | None:
+    """The mover's announcement in the round now open, in the words the board offered it
+    (`round.announced`, Q935e), or None for a seal, which is never named."""
+    block = snapshot.get("round") or {}
+    shown = block.get("announced")
+    if block.get("announcer") != mover or not isinstance(shown, dict):
+        return None
+    return str(shown.get("text") or "a move")
+
+
+def _asked(
+    snapshot: dict[str, Any],
+    reader: int,
+    turned: bool,
+    revealed: list[dict[str, Any]] | None,
+) -> str | None:
+    """What a spy game's step asks of `reader` (`mail.ASKED`), from the core's phase in the
+    snapshot (Q935e, `docs/plan-spy.md` §3.7), or None for any other game's and for a turn
+    or a secret round that asks what the one before it did. `turned` is a step that was a
+    turn; `revealed` the history whose last round was just revealed."""
+    spy = snapshot.get("spy")
+    if not isinstance(spy, dict):
+        return None
+    phase = spy.get("phase")
+    if phase == "reply":
+        return "reply"
+    if phase == "announced":
+        return "announce" if spy.get("announcer") == reader else "answer"
+    if phase == "blind":
+        # Said once, as the secret rounds begin: after the turn or the announced round in
+        # which the last spy fell.
+        last = (revealed or [{}])[-1].get("reveal") or {}
+        return "seal" if turned or last.get("announcer") is not None else None
+    return None
 
 
 def failed(connection: Any, row: int, why: str) -> None:

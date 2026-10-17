@@ -782,11 +782,14 @@ class Session:
 
         In an announced round (schema 27, `announcer` given) the order is the rule's: the
         announcer first, then the answerer once the announcement is in. A seat still owed
-        by the computer comes first in that order, so nobody is offered a move then.
+        by the computer comes first in that order, so nobody is offered a move then. At two
+        screens (Q935e) the answerer is offered nothing until the announcement is in.
         """
         if self.viewer is not None:
             seat = self.viewer
             if seat not in (0, 1) or self.pending[seat] is not None:
+                return None
+            if announcer is not None and seat != announcer and self.pending[announcer] is None:
                 return None
             return None if self.sealed_unseen[seat] else seat
         if announcer is not None:
@@ -864,9 +867,10 @@ class Session:
             # this one unless it is all that player can move. The core's state, drawn.
             "rest": [square if square >= 0 else None for square in self.state.rest],
         }
-        if reader is not None and mine is not None:
+        if reader is not None and mine is not None and reader != announcer:
             # Q918f: the reader's own sealed move, described as an offered move is, so the
             # board can draw it ghosted where it would land. Only ever the reader's seat.
+            # An announcement is not one (Q935e): it is `announced`, below, for both.
             block["yours"] = self._offer(engine, [mine], reader)[0]
         if announcer is not None:
             # Schema 27 (Q935c, `docs/plan-spy.md` §1.4, §3.6): an announced round's

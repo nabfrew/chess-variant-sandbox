@@ -1325,7 +1325,8 @@ def sweep(
     §1.6). It is recorded as a game they left. A game where it is your opponent's move
     is never lost by you for their silence. In a game in rounds both may owe a move: the
     one who has not sealed loses, and a round neither sealed is a draw
-    (`correspondence.sweep_round`, Q918f).
+    (`correspondence.sweep_round`, Q918f). A spy game is a turn's or a round's by the
+    core's phase, and its announced round is owed by one player at a time (Q935e).
     """
     with connection.cursor() as cursor:
         cursor.execute(
@@ -1350,12 +1351,13 @@ def sweep(
         waiting = [_to_row(found) for found in cursor.fetchall()]
     for found in waiting:
         position = session(connection, found.id)
-        if position.engine.simultaneous:
-            # A game in rounds (Q918f): whoever has not sealed this round, or a draw if
-            # neither has, which is `correspondence`'s to read off the sealed move.
+        if position.engine.is_round(position.state):
+            # A round (Q918f; a spy game's once its rounds begin, Q935e): whoever has not
+            # sealed this round, or a draw if neither has; in an announced round, whichever
+            # one owes. `correspondence`'s to read off the sealed move.
             from chess_variant_sandbox.site import correspondence
 
-            swept = correspondence.sweep_round(connection, found, between)
+            swept = correspondence.sweep_round(connection, found, between, position)
             if swept is not None:
                 resigned.append(swept)
             continue

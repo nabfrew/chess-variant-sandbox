@@ -212,6 +212,26 @@ class RoundSaid:
     yours: str
     theirs: str
     words: tuple[str, ...] = ()
+    # A spy game's announced round (Q935e): who announced, from the reader's side --
+    # `you` or `they` -- or empty for a round chosen in secret.
+    announced: str = ""
+
+
+ASKED = ("reply", "announce", "answer", "seal")
+"""What a spy game's move email can ask of its reader (Q935e), beside a plain move."""
+
+_ASKED_SAID = {
+    "reply": "Your spy is lost, so it's your move: one ordinary reply, and then the game is "
+    "played in rounds:",
+    "announce": "It's your turn to announce: your move is shown to {opponent}, who answers "
+    "it, and then both are made at once:",
+    "answer": "Your answer is due: choose your move with theirs in view, and both are made "
+    "at once:",
+    "seal": "Both spies are lost, so from now on each of you seals a move in secret. It's "
+    "your move: seal yours, and both are made at once:",
+}
+
+_SUBJECTS = {"announce": "Your announcement", "answer": "Your answer"}
 
 
 def your_move(
@@ -222,6 +242,8 @@ def your_move(
     link: str,
     off: str,
     revealed: RoundSaid | None = None,
+    announced: str | None = None,
+    asked: str | None = None,
 ) -> Message:
     """The move email (Q572, `docs/plan-return.md` §1.5, s6 of the mock).
 
@@ -235,25 +257,43 @@ def your_move(
     `played` is None and the email says the other's move is in, sealed. `revealed` is the
     round the reader's own seal was waiting on, now revealed, and the email says what both
     moves were and what came of them.
+
+    A spy game (schema 27, Q935e, `docs/plan-spy.md` §3.7) says what is asked of the
+    reader, as one of `ASKED`: `reply` (their spy is lost; one ordinary move, then
+    rounds), `announce` (their move first, in the open), `answer` (to `announced`, the
+    other's announcement, named since it is shown to both) or `seal` (both spies lost: the
+    rounds are secret from now). None says it as any game does.
     """
+    if asked is not None and asked not in ASKED:
+        raise ValueError(f"no such thing to ask: {asked}")
     if revealed is not None:
         said = " ".join(revealed.words)
-        opening = (
+        if revealed.announced == "you":
+            both = f"you announced {revealed.yours} and {opponent} answered {revealed.theirs}"
+        elif revealed.announced == "they":
+            both = f"{opponent} announced {revealed.theirs} and you answered {revealed.yours}"
+        else:
+            both = f"you played {revealed.yours} and {opponent} played {revealed.theirs}"
+        happened = (
             f"Round {revealed.number} of your game of {game} against {opponent} is "
-            f"revealed: you played {revealed.yours} and {opponent} played "
-            f"{revealed.theirs}.{' ' + said if said else ''} It's your move for the next "
-            "round:\n\n"
+            f"revealed: {both}.{' ' + said if said else ''}"
         )
+        then = "It's your move for the next round:"
+    elif announced is not None:
+        happened = f"{opponent} announced {announced} in your game of {game}."
+        then = _ASKED_SAID["answer"]
     elif played is None:
-        opening = (
-            f"{opponent}'s move is in, sealed, in your game of {game}. It's your move: "
-            "seal yours, and both are made at once:\n\n"
-        )
+        happened = f"{opponent}'s move is in, sealed, in your game of {game}."
+        then = "It's your move: seal yours, and both are made at once:"
     else:
-        opening = f"{opponent} played {played} in your game of {game}. It's your move:\n\n"
+        happened = f"{opponent} played {played} in your game of {game}."
+        then = "It's your move:"
+    if asked is not None:
+        then = _ASKED_SAID[asked].format(opponent=opponent)
+    opening = f"{happened} {then}\n\n"
     return Message(
         to=to,
-        subject=f"Your move: {game} against {opponent}",
+        subject=f"{_SUBJECTS.get(asked or '', 'Your move')}: {game} against {opponent}",
         body=(
             f"{opening}"
             f"    {link}\n\n"

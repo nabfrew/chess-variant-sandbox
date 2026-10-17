@@ -144,6 +144,28 @@ class TestTheOrder:
         assert [i.hash for i in refresher.ladder_items(tmp_path / "runs", tmp_path)] == [
             digests["gardner"], digests["dull"]]
 
+    def test_a_preview_owes_no_ladder_and_a_library_game_without_one_still_does(
+        self, tmp_path: Path, checks: Any
+    ) -> None:
+        """Q934d: previews get no rated play, so the plan never lists one as owed."""
+        digests = tree(tmp_path, dull="dull")
+        spec = json.loads((REPOSITORY / "rulesets" / "gardner.json").read_text("utf-8"))
+        spec["provenance"] = {**(spec.get("provenance") or {}), "preview": "A preview."}
+        (tmp_path / "archive" / "gardner-preview.json").write_text(
+            json.dumps(spec), encoding="utf-8")
+        preview = spec_hash(load_spec(tmp_path / "archive" / "gardner-preview.json"))
+        assert preview != digests["dull"]
+
+        owed = [i.hash for i in refresher.ladder_items(tmp_path / "runs", tmp_path)]
+        assert owed == [digests["dull"]]
+        assert preview not in [g.digest for g in checks.library(tmp_path)]
+
+        # The same file committed to rulesets/ is a library game, as the loader reads it.
+        (tmp_path / "rulesets" / "gardner-preview.json").write_text(
+            json.dumps(spec), encoding="utf-8")
+        owed = [i.hash for i in refresher.ladder_items(tmp_path / "runs", tmp_path)]
+        assert sorted(owed) == sorted([digests["dull"], preview])
+
     def test_every_score_repair_comes_before_any_ladder(self) -> None:
         def it(needs: str) -> Item:
             return Item(hash="h", name="h", needs=needs, reason="", tier=0, measured="",
@@ -446,6 +468,26 @@ class TestTheRealMachine:
 
         assert replace(repo, run=run).survey() == []
         assert seen[0][3:7] == ["refresh", "--plan", "--part", "scores"]
+
+
+def test_ladders_check_does_not_list_a_preview_as_owing(
+    tmp_path: Path, checks: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Q934d: `ladders_check` reports a library game without a ladder, never a preview."""
+    digests = tree(tmp_path, dull="dull")
+    spec = json.loads((REPOSITORY / "rulesets" / "gardner.json").read_text("utf-8"))
+    spec["provenance"] = {**(spec.get("provenance") or {}), "preview": "A preview."}
+    (tmp_path / "archive" / "gardner-preview.json").write_text(
+        json.dumps(spec), encoding="utf-8")
+
+    assert checks.main(["--root", str(tmp_path)]) == 1
+    out = capsys.readouterr().out
+    assert "dull" in out and "missing" in out
+    assert "gardner" not in out.lower()
+    assert "0 of 1 library games have a picker ladder; 1 needs one" in out
+
+    stamped(tmp_path / "runs", digests["dull"], OFFERED, RECENT)
+    assert checks.main(["--root", str(tmp_path)]) == 0
 
 
 def test_ladders_check_is_the_one_ladders_py_reads() -> None:

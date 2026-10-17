@@ -67,6 +67,22 @@ the seal is where it can be changed, on the page. **The clock** is the round's: 
 when the round opens (the last reveal, or the start) and a seal does not move it, so the
 sweep (`sweep_round`) resigns, after `quota.CORRESPONDENCE_IDLE`, the one player who has
 not sealed, and draws the game if neither has.
+
+## A spy game (schema 27, Q935e, `docs/plan-spy.md` §3.7)
+
+A spy game is played by turns while both spies stand, then in rounds; which step is open is
+the core's phase (`Engine.is_round`, `Engine.phase`), asked of the replayed position at every
+act, never worked out here. A turn (and the reply turn after a spy falls) is an ordinary
+move. A blind round is a round as above. An **announced round** is a round with an order:
+the announcer (the player without a spy) chooses first and in the open, and the answer comes
+once the announcement is in. The announcement waits in `sealed_move` like a seal, marked
+`announced`, and **is shown to both readers**: it is meant to be seen. It is final, as a seal
+is. The answerer cannot answer before it is in. The answer reveals the round exactly as a
+second seal does, under the row's lock, both moves in seat order through `matches._advance`.
+
+The clock follows the order: an announcement hands the round to the answerer and so starts
+their time (`moved`), as a sent move does; an announced round never has both players owing,
+so the sweep resigns whichever one owes, and never draws it.
 """
 
 from __future__ import annotations
@@ -89,21 +105,6 @@ PAUSED = "correspondence-paused"
 """The `switches` row `/admin` writes to pause new games between people (§1.7)."""
 
 PAUSED_SAID = "New games between people are paused for now. Your running games carry on."
-# Schema 27: a spy game is played against the computer or at one screen (Q935c); between two
-# people its announced rounds need the announcement shown to both and the answer revealed
-# under the row's lock, which is Q935e's (`docs/plan-spy.md` §3.7). Refused by name until then.
-SPY_SAID = (
-    "a game with a spy cannot be played between people yet: its announced rounds, where one "
-    "player's move is shown to the other before they answer, are still to come here"
-)
-
-
-def spy_refusal(spec: dict[str, Any]) -> str | None:
-    """`SPY_SAID` for a spy game's rules, None for any other (Q935c)."""
-    from chess_variant_sandbox.spec.schema import is_spy_game
-
-    return SPY_SAID if is_spy_game(spec) else None
-
 """What a member reads while the pause stands, in the plan's own words (§1.7)."""
 
 NOT_HERE = "There is no game at this address."
@@ -133,6 +134,25 @@ ROUND_RULES = (
     "loses; if neither of you has, the game is drawn.",
 )
 """`RULES` for a game played in rounds (Q918f): the seal, the reveal and the round's clock."""
+
+SPY_RULES = (
+    "There is no clock: each of you moves when you like.",
+    "While both spies stand you take turns, and a move you pick is held until you send it; "
+    "a sent move is final.",
+    "Once a spy is lost, its player replies with one ordinary move, and then the game is "
+    "played in rounds, both moves made at once. While only one of you has a spy, the other "
+    "announces a move first, in the open, and the spy's holder answers it with that move in "
+    "view. Once both spies are lost, each of you seals a move in secret. An announced or "
+    "sealed move is final.",
+    "Either of you may offer a draw; it stands until the other accepts it, declines it or "
+    "moves. Each of you may offer one in any five of your own moves.",
+    "Either of you may cancel the game until both of you have moved; it then counts for "
+    "nothing.",
+    f"Whoever owes a move loses after {quota.CORRESPONDENCE_IDLE_SAID}; if neither of you "
+    "seals one in a secret round, the game is drawn.",
+)
+"""`RULES` for a spy game (schema 27, Q935e, `docs/plan-spy.md` §3.7): turns, the reply,
+the announced round and the secret one, and whose clock runs in each."""
 
 UNSEALED = "unsealed"
 """The store's reason for a game in rounds the sweep drew: neither player sealed a move in
@@ -277,10 +297,12 @@ def started_order(entries: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
 
 @dataclass(frozen=True)
 class Sealed:
-    """The one move sealed in a round not yet revealed: whose, and which."""
+    """The one move sealed in a round not yet revealed: whose, and which. `announced` is a
+    spy game's announcement (schema 27), which both readers see; any other is secret."""
 
     seat: int
     move: int
+    announced: bool = False
 
 
 def _sealed(connection: Any, match_id: str, lock: bool = False) -> Sealed | None:
@@ -295,7 +317,11 @@ def _sealed(connection: Any, match_id: str, lock: bool = False) -> Sealed | None
         found = cursor.fetchone()
     if found is None or found[0] is None:
         return None
-    return Sealed(seat=int(found[0]["seat"]), move=int(found[0]["move"]))
+    return Sealed(
+        seat=int(found[0]["seat"]),
+        move=int(found[0]["move"]),
+        announced=bool(found[0].get("announced", False)),
+    )
 
 
 def sealed_seat(connection: Any, match_id: str) -> int | None:
@@ -315,18 +341,44 @@ def _drop_sealed(connection: Any, match_id: str) -> None:
 
 
 def in_rounds(position: Any) -> bool:
-    """Whether this replayed game plays in rounds, as the compiled rules say (schema 26)."""
-    return bool(position.engine.simultaneous)
+    """Whether the step now open in this replayed game is a round: always in a game in
+    rounds (schema 26), by the core's phase in a spy game (schema 27), never otherwise."""
+    return bool(position.engine.is_round(position.state))
+
+
+def announcer_of(position: Any) -> int | None:
+    """The announcer of the round now open, if it is a spy game's announced round: the
+    player without a spy, who chooses first and in the open. The core's phase; None in
+    every other step of every game."""
+    engine = position.engine
+    if not engine.spy:
+        return None
+    phase = engine.phase(position.state)
+    return int(phase.announcer) if phase.name == "announced" else None
+
+
+def _shown(sealed: Sealed | None, announcer: int | None) -> bool:
+    """Whether a sealed move is an announcement both readers see: the store says it was
+    made as one **and** the core says the round open is announced and it is the
+    announcer's. Either alone is not enough, so a disagreement keeps the move hidden."""
+    return (
+        sealed is not None and sealed.announced and announcer is not None
+        and sealed.seat == announcer
+    )
 
 
 def owing(connection: Any, found: Row) -> tuple[int, ...]:
-    """The seats that owe a move now: the engine's side to move in a game that alternates;
-    in a game in rounds, each seat that has not sealed this round. Empty once it is over."""
+    """The seats that owe a move now: the engine's side to move on a turn; in a round,
+    each seat that has not sealed it; in a spy game's announced round, the announcer until
+    the announcement is in and the answerer after. Empty once it is over."""
     if not found.running:
         return ()
     position = matches.session(connection, found.id)
     if in_rounds(position):
         sealed = sealed_seat(connection, found.id)
+        announcer = announcer_of(position)
+        if announcer is not None:
+            return (announcer,) if sealed is None else (1 - announcer,)
         return tuple(seat for seat in (0, 1) if seat != sealed)
     return (int(position.state.side_to_move),)
 
@@ -337,7 +389,8 @@ def snapshot_for(connection: Any, found: Row, viewer: int | None) -> dict[str, A
     The one place a snapshot of a game between two people is made for a route. In a game
     in rounds it is the reader's: the board offers their moves while they owe one, a
     move the other seat sealed is in it only as `round.sealed`'s boolean, and the reader's
-    own sealed move comes back to them alone (`round.yours`).
+    own sealed move comes back to them alone (`round.yours`). A spy game's announcement
+    is the exception the rule makes: it is given to both readers (`round.announced`).
     """
     position = matches.session(connection, found.id)
     between = between_people(found)
@@ -345,8 +398,8 @@ def snapshot_for(connection: Any, found: Row, viewer: int | None) -> dict[str, A
         seat = -1 if viewer is None else found.seat_of(rating.person(viewer))
         position.viewer = seat
         sealed = _sealed(connection, found.id) if found.running else None
-        if sealed is not None and sealed.seat == seat:
-            position.pending[seat] = sealed.move
+        if sealed is not None and (sealed.seat == seat or _shown(sealed, announcer_of(position))):
+            position.pending[sealed.seat] = sealed.move
         elif sealed is not None:
             position.sealed_unseen = (sealed.seat == 0, sealed.seat == 1)
     snapshot = position.snapshot()
@@ -357,6 +410,7 @@ def snapshot_for(connection: Any, found: Row, viewer: int | None) -> dict[str, A
             viewer,
             mover=snapshot.get("sideToMove"),
             rounds="round" in snapshot,
+            spy="spy" in snapshot,
         )
     return snapshot
 
@@ -368,6 +422,7 @@ def view(
     mover: int | None = None,
     at: datetime | None = None,
     rounds: bool = False,
+    spy: bool = False,
 ) -> dict[str, Any]:
     """What the match page needs about a game between two people, beside the snapshot.
 
@@ -376,7 +431,8 @@ def view(
     left (`mover`, the engine's side to move), as a sentence and only while the game
     runs. `at` is the clock, the database's unless a test sets it. `rounds` is a game in
     rounds (Q918f): its rules are `ROUND_RULES`, and `mover` is the reader while their
-    move is not in, else the seat the round waits on.
+    move is not in, else the seat the round waits on. `spy` is a spy game (Q935e), whose
+    rules are `SPY_RULES` in every phase.
     """
     you = -1 if viewer is None else found.seat_of(rating.person(viewer))
     offer = offer_of(connection, found.id)
@@ -397,7 +453,7 @@ def view(
         "started": found.started.isoformat(),
         "left": found.left,
         "toMove": _to_move(connection, found, you, players, mover, at),
-        "rules": list(ROUND_RULES if rounds else RULES),
+        "rules": list(SPY_RULES if spy else ROUND_RULES if rounds else RULES),
     }
 
 
@@ -543,10 +599,7 @@ def start(
         raise MatchError(PAUSED_SAID)
     for person in (first, second):
         _member(connection, person)
-    _name, spec = matches._game_row(connection, game, starting=True)
-    refused = spy_refusal(spec)
-    if refused is not None:
-        raise MatchError(refused)
+    matches._game_row(connection, game, starting=True)
     quota.check_new_match(connection, first if by is None else int(by))
     for person in (first, second):
         if len(running_for(connection, person)) >= quota.CORRESPONDENCE_AT_ONCE:
@@ -608,12 +661,19 @@ def move(connection: Any, match_id: str, user: int | None, chosen: int) -> dict[
     the engine's (`Session.play`). The time it landed is kept beside it, and a draw offer
     made by the other person lapses, because moving is how an offer is declined (§1.3).
 
-    In a game in rounds the move is a seal (`seal`).
+    In a round the move is a seal (`seal`): every step of a game in rounds, and a spy game's
+    once the core's phase says its rounds have begun (schema 27). On rules that can play a
+    round, the row's lock is taken before the step is read, so a turn and a seal can never
+    both be decided on one position.
     """
     found, seat = _running(connection, match_id, user)
     if _plays_in_rounds(connection, found):
-        return seal(connection, match_id, user, chosen)
-    position = matches.session(connection, match_id)
+        _sealed(connection, match_id, lock=True)
+        position = matches.session(connection, match_id)
+        if in_rounds(position):
+            return seal(connection, match_id, user, chosen)
+    else:
+        position = matches.session(connection, match_id)
     if position.state.side_to_move != seat:
         raise MatchError("it is not your move; the other player's move comes first")
     snapshot = matches._advance(connection, match_id, lambda game: game.play(chosen))
@@ -633,9 +693,11 @@ def move(connection: Any, match_id: str, user: int | None, chosen: int) -> dict[
 
 
 def _plays_in_rounds(connection: Any, found: Row) -> bool:
-    """Whether this row's game plays in rounds, from its compiled rules, without a replay."""
+    """Whether this row's game can play a round, from its compiled rules, without a
+    replay: a game in rounds, or a spy game (whose rules carry the round's rule too)."""
     _name, spec = matches._game_row(connection, found.game)
-    return bool(engine_for(spec).simultaneous)
+    engine = engine_for(spec)
+    return bool(engine.simultaneous or engine.spy)
 
 
 def seal(connection: Any, match_id: str, user: int | None, chosen: int) -> dict[str, Any]:
@@ -653,25 +715,52 @@ def seal(connection: Any, match_id: str, user: int | None, chosen: int) -> dict[
     recorded as any finish is; then the seal is cleared, each move's time kept in seat
     order, and a standing draw offer lapses.
 
+    In a spy game's announced round (schema 27, Q935e) the order is the rule's: the
+    announcer's move comes first and is stored marked `announced`, which shows it to both
+    readers, starts the answerer's time (`moved`) and lapses the answerer's standing draw
+    offer, as a sent move would; the answerer is refused until it is in, and their answer
+    reveals the round as a second seal does.
+
     Answers the position after it as the sealer may see it (`snapshot_for`).
     """
     standing = _sealed(connection, match_id, lock=True)
     found, seat = _running(connection, match_id, user)
+    position = matches.session(connection, match_id)
+    announcer = announcer_of(position)
     if standing is not None and standing.seat == seat:
         raise MatchError(
+            "your announcement is made, and it stands; the other player answers it"
+            if announcer is not None else
             "your move for this round is sealed already; it is revealed with the other "
             "player's, once theirs is in"
         )
-    position = matches.session(connection, match_id)
+    if announcer is not None and seat != announcer and standing is None:
+        raise MatchError(
+            "it is not your move yet: the other player announces a move first, and you "
+            "answer it once it is in"
+        )
+    if standing is not None and standing.announced != (announcer is not None):
+        raise MatchError("this round's waiting move does not match the round; nothing was played")
     position.viewer = seat
+    if standing is not None and announcer is not None:
+        position.pending[standing.seat] = standing.move  # the announcement, in view
     position.seal(int(chosen))  # the engine's check: a ValueError for an illegal move
     if standing is None:
+        announcing = announcer is not None
         with connection.cursor() as cursor:
             cursor.execute(
                 "update matches set sealed_move = jsonb_build_object("
-                "'seat', %s::int, 'move', %s::int, 'at', to_jsonb(now())) where id = %s",
+                "'seat', %s::int, 'move', %s::int, 'at', to_jsonb(now()))"
+                + (" || jsonb_build_object('announced', true), moved = now()" if announcing else "")
+                + " where id = %s",
                 (seat, int(chosen), match_id),
             )
+            if announcing:
+                cursor.execute(
+                    "update matches set draw_offer = null, draw_offer_ply = null"
+                    " where id = %s and draw_offer = %s",
+                    (match_id, 1 - seat),
+                )
         return snapshot_for(connection, matches.row(connection, match_id), user)
     pair = (standing.move, int(chosen)) if standing.seat == 0 else (int(chosen), standing.move)
 
@@ -694,16 +783,26 @@ def seal(connection: Any, match_id: str, user: int | None, chosen: int) -> dict[
     return snapshot_for(connection, matches.row(connection, match_id), user)
 
 
-def sweep_round(connection: Any, found: Row, between: timedelta) -> Row | None:
-    """The sweep's arm for a game in rounds between two people (Q918f): after `between`
-    from the round's opening, the one player who has not sealed loses it, as a game they
-    left; if neither has, it is drawn, `reason = unsealed`, left by both.
+def sweep_round(
+    connection: Any, found: Row, between: timedelta, position: Any = None
+) -> Row | None:
+    """The sweep's arm for a round between two people (Q918f): after `between` from the
+    round's opening, the one player who has not sealed loses it, as a game they left; if
+    neither has, it is drawn, `reason = unsealed`, left by both.
+
+    In a spy game's announced round (Q935e) exactly one player owes at a time, so it is
+    never drawn: the announcer loses if the announcement is not in, the answerer if it is
+    (whose time ran from the announcement). `position` is the replayed game, if the
+    caller has it.
 
     The row is locked and the deadline read again under the lock, so a seal that revealed
     the round while the sweep was on its way (and so started a new one) is not undone.
     None when the row is no longer due.
     """
     standing = _sealed(connection, found.id, lock=True)
+    announcer = announcer_of(
+        position if position is not None else matches.session(connection, found.id)
+    )
     with connection.cursor() as cursor:
         cursor.execute(
             "select finished is null and coalesce(moved, started) < now() - %s"
@@ -715,6 +814,9 @@ def sweep_round(connection: Any, found: Row, between: timedelta) -> Row | None:
         return None
     _drop_sealed(connection, found.id)
     _clear_offer(connection, found.id)
+    if announcer is not None:
+        owed = announcer if standing is None else 1 - announcer
+        return matches.resign(connection, found.id, by=found.player(owed).user, left=True)
     if standing is None:
         matches._finish(connection, found.id, result=0.5, reason=UNSEALED, left=True)
         return matches.row(connection, found.id)

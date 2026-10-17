@@ -13,6 +13,15 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-17
 
+### Games with spies against another person
+
+A game with spies can now be played against another person, each of you moving when you like. While both spies
+stand you take turns, as in any game. Once a spy is lost, its player replies with one move, and then each round the
+player without a spy announces a move first, which both of you see on the board, and the spy's holder answers it
+before both moves are made at once. Once both spies are lost, each of you seals a move in secret, as in the other
+games played in rounds. If you switched on move emails, each one says what is asked of you: your reply, your
+announcement, your answer to the move announced, or your sealed move.
+
 ### Stronger computer opponents in games played in rounds
 
 In a game where both players move at once, *easy*, *medium* and *hard* now weigh sixteen times as many rounds

@@ -156,9 +156,11 @@ function roundStatusHtml() {
   const round = SESSION.round;
   const number = `<span class="muted">Round ${round.number}.</span> `;
   const held = corrHeldEntry();
-  // Schema 27: a spy game's announced round has an order, and its own words.
-  if (round.announcer !== undefined && round.announcer !== null && !SESSION.correspondence) {
-    return announcedStatusHtml(number, held);
+  // Schema 27: a spy game's announced round has an order, and its own words; between two
+  // people at two screens (Q935e), said to the reader by name.
+  if (round.announcer !== undefined && round.announcer !== null) {
+    return SESSION.correspondence ? announcedCorrStatusHtml(number, held)
+      : announcedStatusHtml(number, held);
   }
   if (ROUND_SENDING) {
     return `${number}<b>Your move is in:</b> waiting for the reveal.`;
@@ -234,14 +236,16 @@ function drawRoundSend(slot) {
   slot.hidden = false;
   const held = corrHeldEntry();
   const round = SESSION.round;
-  // Schema 27: a spy game's announced round, announced first and then answered.
-  const announcer = between ? null : round.announcer;
+  // Schema 27: a spy game's announced round, announced first and then answered; by
+  // correspondence too (Q935e), where the reader is one of the two.
+  const announcer = round.announcer;
   const announced = announcer !== undefined && announcer !== null;
   let says, row = '';
   if (ROUND_SENDING) {
     says = '<b>Your move is in.</b> Waiting for the reveal.';
   } else if (announced) {
-    [says, row] = announcedSendHtml(round, held);
+    [says, row] = between ? announcedCorrSendHtml(round, held, between)
+      : announcedSendHtml(round, held);
   } else if (held) {
     says = `<b>Not sealed yet.</b> To change it, tap another square or press <b>Change my
       move</b>.<span class="more"> Both moves are revealed together, once both are in.</span>`;
@@ -295,6 +299,38 @@ function announcedSendHtml(round, held) {
       once.</span>`, ''];
   }
   return [esc(spyLine(SESSION.spy, round, SESSION.sideToMove, SESSION.ruleset.sides)), ''];
+}
+
+// The slot of an announced round between two people at two screens (Q935e): the reader's
+// part in it by name -- announce, wait for the answer, wait for the announcement, answer
+// it -- and with a move held, *Announce* or *Answer* and *Change my move*. `[says, row]`.
+function announcedCorrSendHtml(round, held, between) {
+  const you = between.you, announcer = round.announcer, shown = round.announced;
+  const other = esc(between.players[1 - you]);
+  if (held) {
+    const button = shown ? 'Answer' : 'Announce';
+    const says = shown
+      ? `<b>Your answer is not sent yet.</b> To change it, tap another square or press <b>Change
+        my move</b>.<span class="more"> Both moves are then made at once.</span>`
+      : `<b>Not announced yet.</b> To change it, tap another square or press <b>Change my
+        move</b>.<span class="more"> Once it is announced, ${other} sees it before choosing.</span>`;
+    const row = `<button id="sealHeld" class="primary send-big" title="${shown
+      ? 'answer with it' : 'announce it'} (Enter)">${button}</button><button id="changeHeld"
+      class="send-change" title="put it back (Esc)">Change my move</button>`;
+    return [says, row];
+  }
+  if (you === announcer) {
+    return shown
+      ? [`<b>Your announcement is made:</b> ${esc(shown.text)}. ${other} answers it.<span
+        class="more"> You can close this page.</span>`, '']
+      : [`<b>Announce your move:</b> pick it on the board, then press <b>Announce</b>.<span
+        class="more"> ${other} sees it before choosing theirs; then both are made at once.</span>`, ''];
+  }
+  return shown
+    ? [`<b>${other} announced ${esc(shown.text)}.</b> Pick your answer on the board, then press
+      <b>Answer</b>.<span class="more"> Both moves are made at once.</span>`, '']
+    : [`<b>${other} announces first.</b> You answer once their move is in.<span class="more">
+      You can close this page; the game waits for you.</span>`, ''];
 }
 
 // The last revealed round in the server's sentences, or nothing for a round with nothing
@@ -645,6 +681,53 @@ function drawSpySend(slot) {
       play turns to rounds: the player without a spy announces each move first, and the other
       answers knowing it.</span>`;
   slot.innerHTML = `<div class="send-says" data-spy="${esc(SESSION.spy.phase)}">${says}</div>`;
+}
+
+// The strip of an announced round between two people at two screens (Q935e): the reader's
+// part by name, the announced move once it is in (shown to both), the server's sentence of
+// the time left and a draw offer. A reader of neither seat is told the phase.
+function announcedCorrStatusHtml(number, held) {
+  const round = SESSION.round, between = SESSION.correspondence;
+  const you = between.you, announcer = round.announcer, shown = round.announced;
+  const left = between.toMove ? ` ${esc(between.toMove)}` : '';
+  if (you === null || you === undefined) {
+    return `${number}${esc(spyLine(SESSION.spy, round, SESSION.sideToMove, between.players))}${left}`;
+  }
+  const other = esc(between.players[1 - you]);
+  const offer = between.drawOffer === null || between.drawOffer === undefined ? ''
+    : between.drawOffer === you ? ' You have offered a draw.' : ` ${other} offers a draw.`;
+  if (ROUND_SENDING) {
+    return shown ? `${number}<b>Your answer is in:</b> waiting for the reveal.`
+      : `${number}<b>Your announcement is in.</b>`;
+  }
+  if (held) {
+    return shown
+      ? `${number}<b>${esc(held.text)}</b> is your answer to ${esc(shown.text)}, not sent yet.
+        You can change it until you answer.`
+      : `${number}<b>${esc(held.text)}</b> is your choice, not announced yet. You can change it
+        until you announce it.`;
+  }
+  const note = NOTE ? `<span class="frame-note">${esc(NOTE)}</span>` : '';
+  if (you === announcer) {
+    return shown
+      ? `${number}<b>You announced ${esc(shown.text)}.</b> ${other} answers it.${left}${offer}`
+      : `${number}<b>Your move to announce.</b> ${other} holds the only spy and answers knowing
+        your move.${left}${offer}${note}`;
+  }
+  return shown
+    ? `${number}<b>${other} announced ${esc(shown.text)}.</b> Your answer is due.${left}${
+      offer}${note}`
+    : `${number}<b>${other} announces first.</b> You answer once their move is in.${left}${offer}`;
+}
+
+// The phase line of a turn of a spy game between two people (Q935e), the players named by
+// their handles; nothing in a round or in any other game.
+function corrSpyNoteHtml() {
+  const spy = SESSION && SESSION.spy;
+  const between = SESSION && SESSION.correspondence;
+  if (!spy || !between || SESSION.round) return '';
+  return `<span class="frame-note" data-spy="${esc(spy.phase)}">${
+    esc(spyLine(spy, null, SESSION.sideToMove, between.players))}</span>`;
 }
 
 // The strip of an announced round: whose choice it is, and once the announcement is in,

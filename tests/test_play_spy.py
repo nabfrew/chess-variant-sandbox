@@ -11,7 +11,7 @@ The server half first, on `tests/_spy_small.json` and the plan's own positions (
   move is shown at once.
 - Undo takes back a turn one move and a round whole, to the last position a person chose
   in; a stored spy game replays from its flat move list; the roster is the spy ladder; and
-  a game between two people at two screens refuses a spy game by name until Q935e.
+  between two people at two screens (Q935e) the answerer waits for the announcement.
 
 Then the page half, in node against the page's own functions: the phase line (`spyLine`) and
 the announced arrow (`announcedArrow`, `announcedHtml`) as pure functions of the snapshot,
@@ -275,15 +275,26 @@ class TestUndoReplayAndRoster:
         assert not any(agent.startswith(("mcts:", "matrix:")) for agent in agents)
         assert opponents.seat_for("minimax:nodes=1600", roster) == "minimax:nodes=1600"
 
-    def test_between_two_people_a_spy_game_is_refused_by_name(self) -> None:
-        from chess_variant_sandbox.site import correspondence
-
-        assert correspondence.spy_refusal(_spec()) == correspondence.SPY_SAID
-        assert "spy" in correspondence.SPY_SAID
-        rounds = _spec()
-        for piece in rounds["pieces"]:
-            piece.pop("spy", None)
-        assert correspondence.spy_refusal(rounds) is None
+    def test_at_two_screens_the_answerer_waits_and_the_announcement_is_not_yours(self) -> None:
+        """Between two people at two screens (`viewer`, Q935e): the answerer is offered
+        nothing until the announcement is in, and the announcer's own announcement comes
+        back as `announced`, which both readers get, never as a sealed move of their own."""
+        session = _session((HUMAN, HUMAN))
+        _placed(session, HELD_WHITE, HELD_BLACK, side=0)
+        session.viewer = 0
+        waiting = session.snapshot()
+        assert waiting["moves"] == [] and waiting["round"]["choosing"] is None
+        assert waiting["sideToMove"] == 1
+        announcement = _move(session, "b4", "c2", seat=1)
+        session.pending[1] = announcement
+        answering = session.snapshot()
+        assert answering["round"]["choosing"] == 0 and answering["moves"]
+        assert answering["round"]["announced"]["move"] == announcement
+        session.viewer = 1
+        announced = session.snapshot()
+        assert "yours" not in announced["round"] and announced["moves"] == []
+        assert announced["round"]["announced"]["move"] == announcement
+        assert announced["sideToMove"] == 0
 
 
 # ------------------------------------------------------------------- end to end
