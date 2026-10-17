@@ -1023,8 +1023,10 @@ class App:
                 "detail": library.detail(draft),
                 "watching": _watching(seats, roster),
             }
+        # Replayed as a stored game is, by the engine's step kinds: a round's two moves are
+        # in seat order, which a spy game's announced round does not choose in (Q935c).
         for move in demo["moves"]:
-            session.play(move)
+            session.replay(move)
         return {
             **session.snapshot(),
             "detail": library.detail(draft),

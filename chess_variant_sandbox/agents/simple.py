@@ -16,7 +16,10 @@ from chess_variant_sandbox.agents.base import NativeSpec, SearchStats, register,
 from chess_variant_sandbox.agents.evaluation import GOAL_PIECES, IMMUNE_PIECES, Evaluator
 from chess_variant_sandbox.agents.matrix import (
     RoundSearch,
+    greedy_announcement,
+    greedy_answer,
     greedy_round,
+    pure,
     refuse_alternating_objective,
 )
 from chess_variant_sandbox.agents.nets import require_net
@@ -104,11 +107,18 @@ class GreedyAgent:
 
         best_score = float("-inf")
         best_moves: list[int] = []
+        spy = engine.spy
         for move in moves:
             successor = engine.apply(state, move)
             outcome = engine.terminal(successor)
             if outcome is not None:
                 score = 0.0 if outcome.is_draw else (1e9 if outcome.winner == player else -1e9)
+            elif spy and engine.is_round(successor):
+                # Schema 27 (Q935b): a spy game's turn may leave a round, valued as a round
+                # is (`docs/plan-spy.md` §3.5).
+                score = self._round_evaluator().evaluate_round(
+                    engine, successor, player, *_counted(engine, successor)
+                )
             else:
                 score = self.evaluator.evaluate(engine, successor, player)
             if score > best_score:
@@ -127,11 +137,48 @@ class GreedyAgent:
     ) -> int:
         """Schema 26 (Q918b): the one-round matrix game, solved and drawn from
         (`agents/matrix.py`; the oracle for `rust/src/matrix.rs::greedy_round`)."""
-        if self._rounds is None:
-            assert isinstance(self.evaluator, Evaluator), "a round plays the built-in objective"
-            self._rounds = RoundSearch(self.engine, self.evaluator)
-        move, self.strategy = greedy_round(self._rounds, self.stats, state, seat, mine, theirs, rng)
+        move, self.strategy = greedy_round(
+            self._round_search(), self.stats, state, seat, mine, theirs, rng
+        )
         return move
+
+    def select_announcement(
+        self, state: GameState, seat: int, lists: tuple[list[int], list[int]], rng: random.Random
+    ) -> int:
+        """Schema 27 (Q935b, `docs/plan-spy.md` §3.3): the one-round maximin, pure."""
+        move = greedy_announcement(self._round_search(), self.stats, state, seat, lists)
+        self.strategy = pure(lists[seat], move)
+        return move
+
+    def select_answer(
+        self,
+        state: GameState,
+        seat: int,
+        lists: tuple[list[int], list[int]],
+        announced: int,
+        rng: random.Random,
+    ) -> int:
+        """Schema 27 (Q935b): the best cell of the announced row, pure."""
+        move = greedy_answer(self._round_search(), self.stats, state, seat, lists, announced)
+        self.strategy = pure(lists[seat], move)
+        return move
+
+    def _round_evaluator(self) -> Evaluator:
+        assert isinstance(self.evaluator, Evaluator), "a round plays the built-in objective"
+        return self.evaluator
+
+    def _round_search(self) -> RoundSearch:
+        if self._rounds is None:
+            self._rounds = RoundSearch(self.engine, self._round_evaluator())
+        return self._rounds
+
+
+def _counted(
+    engine: Engine, state: GameState
+) -> tuple[tuple[int, int], tuple[list[int], list[int]]]:
+    """Both players' move counts and lists on a round's board, for ``evaluate_round``."""
+    lists = (engine.legal_moves_for(state, 0), engine.legal_moves_for(state, 1))
+    return (len(lists[0]), len(lists[1])), lists
 
 
 @register("random")

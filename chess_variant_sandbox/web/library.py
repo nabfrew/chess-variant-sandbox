@@ -48,6 +48,7 @@ from chess_variant_sandbox.spec import load_spec, spec_hash
 from chess_variant_sandbox.spec.canonical import HASH_LENGTH
 from chess_variant_sandbox.spec.complexity import measure_complexity
 from chess_variant_sandbox.spec.describe import describe_rules, describe_setup, describe_spec
+from chess_variant_sandbox.spec.schema import is_spy_game
 from chess_variant_sandbox.viz.pieces import icons_for, side_names
 from chess_variant_sandbox.web import card_rules, sitescore
 
@@ -999,8 +1000,10 @@ def detail(game: Game, others: Iterable[Game] | None = None) -> dict[str, Any]:
         "sides": list(sides(game)),
         "armies": armies(game),
         # Schema 26 (Q918c): whether both players move at once, every round, so the page
-        # never says one of them moves first.
-        "rounds": isinstance((game.spec.get("rules") or {}).get("simultaneous"), dict),
+        # never says one of them moves first. A spy game (schema 27) starts by turns, and
+        # says who moves first, so it is not one.
+        "rounds": isinstance((game.spec.get("rules") or {}).get("simultaneous"), dict)
+        and not is_spy_game(game.spec),
         "ratings": game.ratings,
         # Which of the fourteen things an opponent can be told to care about are not
         # inert here. Six of them read a rule most rulesets do not declare, and a slider

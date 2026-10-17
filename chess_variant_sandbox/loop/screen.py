@@ -38,6 +38,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from chess_variant_sandbox.agents.base import parse_agent
 from chess_variant_sandbox.metrics.components import plays_in_rounds
 from chess_variant_sandbox.spec.schema import is_spy_game
 from chess_variant_sandbox.tournament import TournamentConfig, run_tournament
@@ -63,6 +64,13 @@ SCREEN_GAMES = 2
 # threshold stays at one anyway: two would reject it and would leave makruk and shatranj
 # sitting exactly on the line, which is a threshold fitted between adjacent points and is
 # the shatranj mistake in miniature.
+#
+# **Round games share the floor of one** (Q944b, `docs/reference/round-roster-budgets.md`
+# §7.3). Screened by `matrix:nodes=1600` and `6400` (`round_roster`), the three Gardner round
+# drafts pass with p about 0.8 (`runs/Q944b/screen_odds.txt`), sometimes on one decisive game
+# of eight, as makruk does on the alternating side; a round floor of two would refuse games
+# like these about half the time. Whether they draw too much is the index's to say. A spy
+# game (schema 27) is screened by the same floor.
 MIN_DECISIVE = 1
 
 # Mirrors the index's own quick-kill gate rather than inventing a second standard.
@@ -94,6 +102,8 @@ QUICK_KILL_PLIES = 12
 # every library round game. Chosen by move counts, never by a score it produces.
 ROUND_BUDGET_FACTOR = 16
 _ROUND_SAFE = ("random", "greedy")
+# The options that name a stored objective, which a spy game refuses as a round game does.
+_OBJECTIVES = ("h", "fit", "values", "net")
 _MINIMAX_BUDGET = re.compile(r"minimax:nodes=(\d+)")
 
 
@@ -116,17 +126,30 @@ def round_roster(agents: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(mapped)
 
 
-def roster_for(spec: dict[str, Any], agents: tuple[str, ...]) -> tuple[str, ...]:
-    """``agents`` for a game that alternates, ``round_roster(agents)`` for one in rounds.
+def spy_roster(agents: tuple[str, ...]) -> tuple[str, ...]:
+    """The players a spy game (schema 27) is played by in place of ``agents``: the same
+    names, since `random`, `greedy` and `minimax:nodes=N` play every phase of one
+    (`docs/plan-spy.md` §3.3; Q932's mapping is not needed, `minimax:` plays the rounds
+    itself). Only a bare node budget plays: a stored objective, `matrix:` and `mcts:` are
+    refused on a spy game.
 
-    Raises ``ValueError`` for a spy game (schema 27): only `random` plays one until the
-    players across its phases are built (`docs/plan-spy.md` §3.3), so the screen refuses it
-    by name rather than playing it under a roster nobody measured."""
+    Raises ``ValueError`` naming the first player that cannot play one."""
+    for agent in agents:
+        config = parse_agent(agent)
+        objective = [key for key in _OBJECTIVES if key in config.options]
+        if config.kind not in ("random", "greedy", "minimax") or objective:
+            raise ValueError(f"{agent} cannot play a spy game")
+    return agents
+
+
+def roster_for(spec: dict[str, Any], agents: tuple[str, ...]) -> tuple[str, ...]:
+    """``agents`` for a game that alternates, ``round_roster(agents)`` for one in rounds,
+    ``spy_roster(agents)`` for a spy game (schema 27; the screen, the full roster, the
+    analysis pass and `measure` all read one since Q935d, `docs/plan-spy.md` §3.8).
+
+    Raises ``ValueError`` naming the first player that cannot play the game."""
     if is_spy_game(spec):
-        raise ValueError(
-            "a spy game (pieces[].spy) is played by random so far; the players that search "
-            "across its phases are not built yet"
-        )
+        return spy_roster(agents)
     return round_roster(agents) if plays_in_rounds(spec) else agents
 
 
@@ -154,7 +177,8 @@ def screen(
     A game in rounds is played by `round_roster(agents)`: `matrix:nodes=1600` and
     `matrix:nodes=6400` by default, the two budgets at `ROUND_BUDGET_FACTOR` times, since
     below about a round's matrix a round player is greedy. A round counts two plies, so
-    `QUICK_KILL_PLIES` is six moves a player either way.
+    `QUICK_KILL_PLIES` is six moves a player either way. A spy game is played by the same
+    names (`spy_roster`), which play every phase of it.
     """
     try:
         players = roster_for(spec, agents)

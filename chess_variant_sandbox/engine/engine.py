@@ -371,12 +371,17 @@ class Engine:
         agent: tuple[Any, ...],
         values: list[float],
         seed: int = 0,
+        announced: int | None = None,
     ) -> tuple[int | None, list[float], int, int]:
         """Schema 26 (Q918b): what this agent plays for ``seat`` in a round on this board,
         the mixed strategy over that seat's legal moves it drew it from (empty for
         ``random``), the nodes it spent and its last finished pass. ``None`` for the move
-        where either player has none."""
-        return self.core.select_round(_pack(state), seat, agent, values, seed)
+        where either player has none.
+
+        Schema 27 (Q935b): in a spy game's announced round the announcer is asked with
+        ``announced`` absent and the answerer with the move the announcer showed; both
+        choices are pure, so the strategy is the chosen move alone (`docs/plan-spy.md` §3.2)."""
+        return self.core.select_round(_pack(state), seat, agent, values, seed, announced)
 
     def select_move_depth(
         self,

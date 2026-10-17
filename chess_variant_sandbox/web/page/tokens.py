@@ -172,6 +172,15 @@ LIGHT: dict[str, str] = {
     # under every simulated colour blindness too; each holds 4.5 : 1 on the casing, where
     # the run's *1* is written (`FLOORS`).
     "standoff-run": "#8a4a00", "standoff-bar": "#1d3f8a",
+    # Schema 27 (Q942b): a swap of a game in rounds that met (`swap: "collision"`), a burst
+    # between the two squares in a wine of its own, and a rested piece's pause sign
+    # (`rest`), a slate disc with two bars in the casing's colour: a pause is a neutral fact,
+    # not a danger. Both are drawn on `held-halo`, at 4.5 : 1 (`FLOORS`).
+    "clash": "#8e1b5c", "rest": "#474d57",
+    # Schema 27 (Q935c): the move announced in a spy game's announced round, a solid arrow
+    # in a deep teal, cased in `held-halo`: apart from the held move's pine in hue and
+    # weight, and from the standoffs' umber and cobalt and the clash's wine (`FLOORS`).
+    "announced": "#00606e",
     # The board dimmed behind a choice drawn over it (Q765: what a promoting piece
     # becomes), so the card is the one lit thing in the reader's eye line.
     "scrim": "rgba(30, 20, 10, .6)",
@@ -274,6 +283,8 @@ DARK: dict[str, str] = {
     "dot": "#1e140c",
     "held": "#0a2519", "held-halo": "#f3e9d6",
     "standoff-run": "#7f4400", "standoff-bar": "#1a3a80",
+    "clash": "#851a56", "rest": "#40464f",
+    "announced": "#005a66",
     "scrim": "rgba(0, 0, 0, .6)",
     "p0": "#f0ede7", "p1": "#3b3f45", "p2": "#8f6a2f", "p2-ink": "#f4f2ee",
     "portal-stone": "#9b948a",
@@ -343,6 +354,12 @@ FLOORS: tuple[tuple[str, str, float], ...] = (
     # run's *1* is written in it.
     ("standoff-run", "held-halo", 4.5),
     ("standoff-bar", "held-halo", 4.5),
+    # A swap's burst and a rested piece's sign (Q942b), on the same casing; the sign's bars
+    # are the casing's colour on the disc.
+    ("clash", "held-halo", 4.5),
+    ("held-halo", "rest", 4.5),
+    # An announced move's arrow (Q935c), on the same casing.
+    ("announced", "held-halo", 4.5),
     # A wild piece's walk (Q852): each hue against the casing it is drawn on.
     *((f"walk-{n}", "walk-edge", 3.0) for n in range(1, 5)),
     # A member's mark (R3): each of its eight hues, a graphic, on the page and a panel.

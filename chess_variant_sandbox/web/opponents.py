@@ -49,6 +49,7 @@ from chess_variant_sandbox.agents.heuristics import (
 from chess_variant_sandbox.agents.nets import STORE_DIR as NET_DIR
 from chess_variant_sandbox.agents.valuations import SEARCH as SEARCH_PROCEDURE
 from chess_variant_sandbox.agents.valuations import STORE_DIR as VALUE_DIR
+from chess_variant_sandbox.spec.schema import is_spy_game
 from chess_variant_sandbox.tournament.runner import TournamentConfig, run_tournament
 
 # Who everybody is measured against. A round robin over the whole picker is the obvious
@@ -220,15 +221,24 @@ ROUND_RUNGS: tuple[tuple[str, str, str], ...] = (
 )
 
 
+# Schema 27 (Q935c, `docs/plan-spy.md` §3.3): the rungs of a spy game. It starts by turns,
+# and `random`, `greedy` and `minimax:nodes=N` play every phase of one, so its ladder is the
+# alternating game's without the tree search; `matrix:`, `mcts:` and every stored objective
+# are refused on a spy game (Q935b), so nothing stored is offered beside it.
+SPY_RUNGS: tuple[tuple[str, str, str], ...] = tuple(
+    rung for rung in RUNGS if not rung[0].startswith("mcts:")
+)
+
+
 def plays_in_rounds(spec: dict[str, Any] | None) -> bool:
     """Whether a spec is a game played in rounds (schema 26, `rules.simultaneous`)."""
     rules = (spec or {}).get("rules")
     return isinstance(rules, dict) and isinstance(rules.get("simultaneous"), dict)
 
 
-def ladder(rounds: bool = False) -> list[Opponent]:
+def ladder(rounds: bool = False, spy: bool = False) -> list[Opponent]:
     """The roster that is the same on every board: of every game that alternates, or with
-    `rounds`, of every game played in rounds."""
+    `rounds`, of every game played in rounds, or with `spy`, of every spy game."""
     return [
         Opponent(
             agent=agent,
@@ -240,7 +250,7 @@ def ladder(rounds: bool = False) -> list[Opponent]:
         )
         for agent, name, about in (
             (agent, name, _rung_about(agent, tail))
-            for agent, name, tail in (ROUND_RUNGS if rounds else RUNGS)
+            for agent, name, tail in (SPY_RUNGS if spy else ROUND_RUNGS if rounds else RUNGS)
         )
     ]
 
@@ -342,6 +352,9 @@ def for_game(
     and only that entry (Q446); `_heuristic_stores` says why, and `refused_stores` puts
     its name on the page.
     """
+    if spec is not None and is_spy_game(spec):
+        # A spy game plays its own ladder (`SPY_RUNGS`), and nothing stored.
+        return ladder(spy=True)
     if plays_in_rounds(spec):
         # Nothing stored for a game that alternates plays rounds (`ROUND_RUNGS`).
         return ladder(rounds=True)

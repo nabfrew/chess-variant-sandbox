@@ -302,13 +302,35 @@ class TestTheFingerprintsPointAtSomething:
 # library game has a spy, so no number should move; the one replay owed after Q935a re-scores
 # under this value. It was "c93d3b4c84cad5ab" after Q942a.
 #
+# **Moved 2026-10-16 by Q942b (the rested-royal term)**: `agents/evaluation.py` prices a rested
+# royal a standing enemy piece reaches under `rules.simultaneous.rest` (`RESTED_ROYAL`,
+# `rested_royal_falls`), read by `evaluate_round` only while a piece rests. No library game
+# declares `rest`, so no number should move; the replay batched after Q950 re-scores under
+# this value. It was "1f42f04756a50c60" after Q935a.
+#
 # **Moved 2026-10-16 by Q950 (before its replay)**: `metrics/components.py::ROUND_READINGS`
 # describes `skill_gradient` as the round roster Q944a measured, `matrix:nodes=1600 to
 # 102400` (`docs/reference/round-roster-budgets.md` §6.1), not 100 to 6400. The string is
 # written into each round game's run `index-v12.json` diagnostics and nowhere else; no number
 # moves. The replay Q950 launches re-scores under this value. It was "1f42f04756a50c60"
 # after Q935a.
-FROZEN_METRICS = "186853932cd8cf63"
+# The merged value covers both Q942b's evaluator change and Q950's `ROUND_READINGS` fix.
+#
+# **Moved 2026-10-17 by Q935b (the spy's players)**: `agents/evaluation.py` prices a spy type
+# outside the prey share (`_live_values`, read only where `spec.spy` is set), and
+# `engine/engine.py::select_round` passes an announced move. No library game has a spy, so no
+# number should move; the one replay owed after the bump re-scores under this value. It was
+# "37b18b7a885114d9" after Q942b and Q950.
+#
+# **Moved 2026-10-17 by Q935d (records, metrics and the analysis pass for a spy game)**:
+# `tournament/analysis.py` walks a spy game a step at a time by its phase (see
+# `FROZEN_ANALYSIS`), and `metrics/components.py` carries `SPY_READINGS` and the spy's
+# summary in a spy game's diagnostics. No game without a spy reads differently: a seeded
+# chess and Gardner-in-rounds tournament, their analyses, and `measure` on gardner and
+# Gardner in rounds are the same bytes and numbers as before (`runs/Q935d/inert/`). The
+# replay owed after the bump re-scores under this value. It was "e0aadf993349b4be" after
+# Q935b.
+FROZEN_METRICS = "80f0e4c40298a8de"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -516,7 +538,22 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # **Moved 2026-10-16 by Q935a**: `engine/engine.py`, `engine/state.py` and
 # `engine/__init__.py` (see `FROZEN_METRICS`). It was "aa0316d1dc871057" after Q942a; the
 # replay after Q935a is the re-analysis.
-FROZEN_ANALYSIS = "413c68553fd35509"
+#
+# **Moved 2026-10-16 by Q942b**: `agents/evaluation.py`, the probe's ruler, reads the rested-
+# royal term under `rest` (see `FROZEN_METRICS`). It was "413c68553fd35509" after Q935a; the
+# replay batched after Q950 is the re-analysis.
+#
+# **Moved 2026-10-17 by Q935b**: `agents/evaluation.py` and `engine/engine.py` (see
+# `FROZEN_METRICS`). It was "64fd6dfab6c53bd9" after Q942b; the owed replay is the
+# re-analysis.
+#
+# **Moved 2026-10-17 by Q935d (the pass reads a spy game)**: `tournament/analysis.py` walks a
+# spy game's record by the phase the engine reports, probes its turns in Python with a round
+# as a leaf, reads an announced round by the maximin and the best reply, counts `SPY_COUNTS`
+# and forces a spy game's blunders (see `FROZEN_METRICS`). A game without a spy takes the
+# path it took, byte for byte. It was "87e95a857dae4b4a" after Q935b; the owed replay is the
+# re-analysis.
+FROZEN_ANALYSIS = "b1de98c45e315f78"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

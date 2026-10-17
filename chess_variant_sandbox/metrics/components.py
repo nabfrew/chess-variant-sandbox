@@ -122,9 +122,56 @@ ROUND_READINGS: dict[str, str] = {
 
 
 def plays_in_rounds(spec: dict[str, Any]) -> bool:
-    """Whether a spec's game is played in rounds (schema 26, ``rules.simultaneous``)."""
+    """Whether a spec's game is played in rounds (schema 26, ``rules.simultaneous``).
+
+    True of a spy game too (schema 27), which declares the rule and plays rounds once a spy
+    is lost; `plays_with_spies` says which."""
     rules = spec.get("rules")
     return isinstance(rules, dict) and rules.get("simultaneous") is not None
+
+
+# How each scored component reads a spy game (schema 27, Q935d; `docs/plan-spy.md` §3.8),
+# which alternates while both players have a spy and plays rounds once one is lost. Its
+# record keeps a turn's move and a round's two in seat order, and every per-ply series once
+# a turn and twice a round, so a round is two plies as in a round game and every component
+# reads the mixed record as it reads either kind. The probe reads each step by what its
+# players knew. Every scored component has its entry (`tests/test_spy_measured.py`), and a
+# spy game's score carries these in place of `ROUND_READINGS`.
+SPY_READINGS: dict[str, str] = {
+    "first_player_advantage": (
+        "seat 0's self-play score; seat 0 moves first while both spies stand, and who keeps "
+        "a spy is decided by play"
+    ),
+    "stall_rate": "how games end, as in any game",
+    "mean_branching": (
+        "the mover's legal moves on a turn, each player's own on a round, one per ply"
+    ),
+    "ply_spread": "in plies: one a turn, two a round",
+    "position_divergence": "the position after each step, written once per ply",
+    "decision_criticality": (
+        "a turn's moves as an alternating game's, the probe stopping at a round; an "
+        "announced round's moves one round deep, the announcer's by their worst answer and "
+        "the answerer's against the move announced; a blind round's against the "
+        "opponent's equilibrium mix"
+    ),
+    "blunder_recoverability": (
+        "a turn takes a random other move; a round's forced move falls short of the best "
+        "by the reading decision_criticality uses, and an answerer answers a forced "
+        "announcement as its player would"
+    ),
+    "piece_utilisation": "every move of every step, read on the board it was chosen on",
+    "instance_participation": "every move of every step",
+    "skill_gradient": "minimax:nodes=100 to 6400 on the built-in objective, every phase",
+    "lead_conversion": "seat 0's material before each step, written once per ply",
+}
+
+
+def plays_with_spies(spec: dict[str, Any]) -> bool:
+    """Whether a spec is a spy game (schema 27): some piece type is flagged ``"spy": true``."""
+    pieces = spec.get("pieces")
+    return isinstance(pieces, list) and any(
+        isinstance(piece, dict) and piece.get("spy") is True for piece in pieces
+    )
 
 
 # A piece type moved fewer times than this share of all moves is, for practical
@@ -424,7 +471,11 @@ def compute_components(
         "depth_by_agent": _depth_by_agent(records),
     }
 
-    if plays_in_rounds(spec):
+    if plays_with_spies(spec):
+        # A spy game (schema 27) alternates and then plays rounds, and says so in its own
+        # words rather than a round game's.
+        diagnostics["spy_readings"] = dict(SPY_READINGS)
+    elif plays_in_rounds(spec):
         # What each scored component means on a game played in rounds, carried in the
         # score itself so no reader takes a round game's number for an alternating one's.
         diagnostics["round_readings"] = dict(ROUND_READINGS)
@@ -1582,6 +1633,13 @@ def _analysis_components(
         }
         diagnostics["rounds"] = {**tallies, **shares}
 
+    # --- what the spy's phases did (schema 27, Q935d) -----------------------------
+    # Counted by the pass (`SPY_COUNTS`), scored by nothing: how often a spy fell, when,
+    # how, and how long each phase lasted. The study's inputs (`docs/plan-spy.md` §5.3).
+    spies = [game.spy for game in analysis.games if game.spy is not None]
+    if spies:
+        diagnostics["spy"] = spy_summary(spies)
+
     # --- does one mistake end it --------------------------------------------------
     if analysis.blunders:
         recovered = sum(1 for trial in analysis.blunders if trial.recovered)
@@ -1593,6 +1651,43 @@ def _analysis_components(
         )
 
     return raw
+
+
+def spy_summary(spies: list[dict[str, Any]]) -> dict[str, Any]:
+    """A spy corpus's phases in a few numbers, from each game's `SPY_COUNTS`: the share of
+    games in which a spy fell and in which both did (``both_at_once`` counts the games where
+    one step took both, E4), the median ply of the first loss, the share that played the
+    reply turn, the mean length of each phase, and how the spies were lost."""
+    games = len(spies)
+    lost = [
+        [ply for ply in (spy["lost_ply_0"], spy["lost_ply_1"]) if ply is not None]
+        for spy in spies
+    ]
+    firsts = sorted(min(plies) for plies in lost if plies)
+    middle = len(firsts) // 2
+    median = None
+    if firsts:
+        median = float(firsts[middle]) if len(firsts) % 2 else (
+            (firsts[middle - 1] + firsts[middle]) / 2
+        )
+    how = Counter(
+        spy[f"lost_how_{player}"]
+        for spy in spies
+        for player in (0, 1)
+        if spy[f"lost_how_{player}"] is not None
+    )
+    return {
+        "games": games,
+        "spy_lost_share": round(len(firsts) / games, 4),
+        "both_lost_share": round(sum(1 for plies in lost if len(plies) == 2) / games, 4),
+        "both_at_once": sum(1 for plies in lost if len(plies) == 2 and plies[0] == plies[1]),
+        "first_loss_median_ply": median,
+        "reply_turn_share": round(sum(spy["reply_turns"] for spy in spies) / games, 4),
+        "mean_alternating_plies": round(sum(s["alternating_plies"] for s in spies) / games, 2),
+        "mean_announced_rounds": round(sum(s["announced_rounds"] for s in spies) / games, 2),
+        "mean_blind_rounds": round(sum(s["blind_rounds"] for s in spies) / games, 2),
+        "lost_how": dict(sorted(how.items())),
+    }
 
 
 def _normalised_entropy(counts: list[int]) -> float:

@@ -258,6 +258,20 @@ LIBRARY = test_index_quality.RUNS
 # `canonical.json` carries the tree's own reading again. The replaced measurements, with the
 # stamp this window held, are kept under each game's `runs/<hash>/previous/`
 # (`docs/reference/replay-2026-10-16b.md`).
+#
+# **Opened 2026-10-17 by Q942b's merge with main**: `agents/evaluation.py` (the rested-royal
+# term, `FROZEN_METRICS` and `FROZEN_ANALYSIS`) moves `metrics` and `analysis` with no number on
+# a library game (none declares `rest`), and the core moves the build fingerprint. The window is
+# the stamp Q950's replay left the library; **the next library replay empties it**. Q935b and
+# Q935d (the spy's players, and its records and analysis) move both again with no number on a
+# game without a spy; the window stays as it is.
+#
+# **Emptied 2026-10-17 by Q952**, that replay: the 91 library games re-played, re-analysed and
+# re-scored on core `5903dcaee44ac687` under `metrics` "80f0e4c40298a8de" and `analysis`
+# "b1de98c45e315f78" (all 93,184 records and all 1,183 files equal; no score or verdict moved),
+# so every library `canonical.json` carries the tree's own reading again. The replaced
+# measurements, with the stamp this window held, are kept under each game's
+# `runs/<hash>/previous/` (`docs/reference/replay-2026-10-17.md`).
 STALE_WINDOW: dict[str, str] = {}
 
 

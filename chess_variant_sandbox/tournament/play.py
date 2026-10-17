@@ -431,7 +431,9 @@ def _play_rounds_python(
     record keeps both moves of a round in seat order and every per-ply series twice.
     """
     for seat, player in enumerate(players):
-        if not hasattr(player, "select_round_move"):
+        # `plays_rounds` False: a player with a round arm for a spy game's blind rounds only
+        # (minimax, Q935b), which a round game refuses as the core does.
+        if not getattr(player, "plays_rounds", hasattr(player, "select_round_move")):
             raise ValueError(
                 f"{agents[seat]} does not play a simultaneous game (rules.simultaneous); "
                 "random, greedy and matrix:nodes=N do"
@@ -488,7 +490,7 @@ def _play_spy_python(
     seed: int,
     evaluator: Evaluator | None,
 ) -> GameRecord:
-    """Schema 27 (Q935a): ``play_game_python``'s loop for a spy game.
+    """Schema 27 (Q935a, players Q935b): ``play_game_python``'s loop for a spy game.
 
     The oracle for `rust/src/play.rs`'s spy loop (`docs/plan-spy.md` §2.5): each step asks
     the engine its phase. An alternating or reply turn is one move by the side to move; an
@@ -499,7 +501,8 @@ def _play_spy_python(
     for seat, player in enumerate(players):
         if not hasattr(player, "select_answer"):
             raise ValueError(
-                f"{agents[seat]} does not play a spy game (pieces[].spy); random does"
+                f"{agents[seat]} does not play a spy game (pieces[].spy); random, greedy and "
+                "minimax:nodes=N do"
             )
     state = engine.initial_state()
     moves: list[int] = []

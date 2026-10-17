@@ -13,6 +13,30 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-17
 
+### Games with a spy can be scored
+
+A game with a spy can now be given a score like any other game: the computer players play it through every phase, and
+the measurements read each turn and each round by what the players knew when they chose, including a round in which one
+player saw the other's move first. A spy game's score also says how often a spy was lost, how early, how, and how long
+each phase of the game lasted. The automatic game designer can now try spy games too. No game in the library has a spy
+yet.
+
+### Games with a spy can be played on the board
+
+A game with a spy can now be played against the computer, or by two people at one screen, from its first move to its end.
+While both spies stand, the players take turns. Once one is lost, play goes to rounds: the player without a spy shows
+their move first, drawn on the board as a solid arrow, and the other answers knowing it, then both moves are made at
+once. Once both are lost, both players choose in secret. The line above the board says which of these the game is in.
+No game in the library has a spy yet; one you build with a spy can be tried on the designer's board. Games between two
+people at their own screens do not take a spy yet.
+
+### Resting pieces and collisions are drawn on the board
+
+In a game where a piece that moved must rest the next round, a resting piece now wears a pause sign. When two pieces try to
+swap squares and collide, a burst is drawn between their squares, and the replay shows them meeting half-way. When both
+royal pieces fall in the same round, a sentence says who won and why. The computer players also stop walking a resting king
+onto a square an enemy piece can still reach next round.
+
 ### New rules for games where both players move at once, and for losing a kind of piece
 
 The rule language has four new choices. In a game where both players move at once, a piece that moved can be made to

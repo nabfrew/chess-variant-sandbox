@@ -495,3 +495,91 @@ class TestTheDesigner:
         _placed(session, {**KINGS, "b1": ("N", 0), "c4": ("P", 1)})
         snapshot = _round(session, ("b1", "c3"), ("c4", "c3"))
         assert snapshot["lastMove"]["reveal"]["results"] == ["won", "lost"]
+
+
+# ------------------------------------------- schema 27's chase switches, on the page
+
+
+def _chase_spec() -> dict[str, Any]:
+    """Q942a's test spec with all three switches: `rest`, `swap: "collision"` and `both:
+    "score"` under material scoring."""
+    return json.loads((SPEC_PATH.parent / "_simultaneous_scored.json").read_text(encoding="utf-8"))
+
+
+class TestTheChaseSwitches:
+    """Q942b (`docs/plan-round-chase.md` §4.2): the page marks a rested piece, draws a swap
+    that met between its two squares, and says a both-fire's result in a sentence."""
+
+    def test_each_rested_piece_is_in_the_round_and_badged(self) -> None:
+        session = _session((HUMAN, HUMAN), spec=_chase_spec())
+        _placed(session, {**KINGS, "c2": ("P", 0), "c4": ("P", 1)})
+        opening = session.snapshot()
+        assert opening["round"]["rest"] == [None, None]
+        snapshot = _round(session, ("a1", "a2"), ("e5", "e4"))
+        rest = [_square("a2"), _square("e4")]
+        assert snapshot["round"]["rest"] == rest
+        # The core leaves the rested king's moves out; the page only marks why.
+        assert all(m["from"] != _square("a2") for m in snapshot["moves"])
+        rests = _in_page(f"const R = {json.dumps(snapshot['round'])};", "roundRests(R)")
+        assert rests == [{"player": 0, "square": rest[0]}, {"player": 1, "square": rest[1]}]
+        badge = _in_page("", "restBadge(0, 0, 10, 1)")
+        assert 'data-mark="rested"' in badge and 'fill="var(--rest)"' in badge
+        legend = _in_page("", "legendEntries(new Set(['rested', 'clash']), null, '', null)")
+        assert any("pause sign" in entry and "rests" in entry for entry in legend)
+        assert any("burst" in entry and "swapped squares" in entry for entry in legend)
+
+    def test_a_swap_that_met_is_a_clash_between_its_two_squares(self) -> None:
+        before, snap = _reveal_case({**KINGS, "b1": ("R", 0), "b3": ("R", 1)},
+                                    ("b1", "b3"), ("b3", "b1"), _chase_spec())
+        reveal = snap["lastMove"]["reveal"]
+        assert reveal["events"] == [{"kind": "swap", "square": _square("b3"), "player": -1}]
+        assert reveal["results"] == ["both lost", "both lost"]
+        clash = _in_page(f"const S = {json.dumps(snap)};", "roundClash(S.lastMove)")
+        assert clash == {"squares": [_square("b1"), _square("b3")], "winner": -1}
+        story = _story(before, snap)
+        assert [(m["kind"], m.get("clash")) for m in story["moves"]] == [
+            ("lose", True), ("lose", True)]
+        assert story["clash"] == clash and story["taken"] == []
+        drawn = _in_page("", "clashMark(5, 5, 5, 25, 10)")
+        assert 'data-mark="clash"' in drawn and "<polygon" in drawn
+
+    def test_a_swap_that_met_breaks_both_pieces_half_way_at_one_moment(self) -> None:
+        before, snap = _reveal_case({**KINGS, "b1": ("R", 0), "b3": ("R", 1)},
+                                    ("b1", "b3"), ("b3", "b1"), _chase_spec())
+        setup = f"SESSION = {json.dumps(snap)}; const BEFORE = {json.dumps(before)};" + _STAGE
+        log = _in_page(setup, "(jplay(), JLOG.map(e => ({ who: e.who, delay: e.opts.delay || 0,"
+                              " duration: e.opts.duration || 0, n: e.frames.length })))")
+        fades = [entry for entry in log if entry["who"].startswith("g") and entry["n"] == 3
+                 and entry["duration"] == 390]
+        assert len(fades) == 2 and len({entry["delay"] for entry in fades}) == 1, log
+
+    def test_without_the_switch_a_swap_is_no_clash(self) -> None:
+        _, snap = _reveal_case({**KINGS, "b1": ("R", 0), "b3": ("R", 1)},
+                               ("b1", "b3"), ("b3", "b1"))
+        assert _in_page(f"const S = {json.dumps(snap)};", "roundClash(S.lastMove)") is None
+
+    def test_a_both_fire_settled_on_material_is_said_in_a_sentence(self) -> None:
+        """The two kings strike each other: a swap that meets, both royals taken in one
+        round, settled by `rules.scoring` for the side a rook ahead."""
+        session = _session((HUMAN, HUMAN), spec=_chase_spec())
+        _placed(session, {"a1": ("K", 0), "b2": ("K", 1), "e1": ("R", 0)})
+        snapshot = _round(session, ("a1", "b2"), ("b2", "a1"))
+        outcome = snapshot["outcome"]
+        assert outcome["winner"] == 0 and outcome["reason"] == "royal_captured"
+        assert outcome["how"] == "on material, as both royal pieces were taken in the same round"
+        said = _in_page(f"SESSION = {json.dumps(snapshot)};", "verdictText(SESSION.outcome)")
+        assert said.endswith("wins on material, as both royal pieces were taken in the same round.")
+
+    def test_a_level_both_fire_is_a_draw_in_a_sentence(self) -> None:
+        session = _session((HUMAN, HUMAN), spec=_chase_spec())
+        _placed(session, {"a1": ("K", 0), "b2": ("K", 1)})
+        outcome = _round(session, ("a1", "b2"), ("b2", "a1"))["outcome"]
+        assert outcome["winner"] is None
+        assert outcome["how"] == (
+            "as both royal pieces were taken in the same round and the material was level")
+
+    def test_one_royal_taken_keeps_the_reasons_words(self) -> None:
+        session = _session((HUMAN, HUMAN), spec=_chase_spec())
+        _placed(session, {"a1": ("K", 0), "e5": ("K", 1), "e1": ("R", 0), "c4": ("P", 1)})
+        outcome = _round(session, ("e1", "e5"), ("c4", "c3"))["outcome"]
+        assert outcome == {"winner": 0, "reason": "royal_captured"}

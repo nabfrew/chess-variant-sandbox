@@ -735,9 +735,9 @@ impl Objective {
     /// built-in objective plays rounds (`AgentSpec::check_against` refuses the others on a
     /// simultaneous game), so the other two arms are unreachable.
     #[inline]
-    pub fn evaluate_round(&mut self, game: &Game<'_>, player: usize, counts: [usize; 2]) -> f64 {
+    pub fn evaluate_round(&mut self, game: &Game<'_>, player: usize, lists: [&[u32]; 2]) -> f64 {
         match self {
-            Objective::Builtin(e) => e.evaluate_round(game, player, counts),
+            Objective::Builtin(e) => e.evaluate_round(game, player, lists),
             _ => unreachable!("check_against refuses a heuristic or net objective in a round"),
         }
     }

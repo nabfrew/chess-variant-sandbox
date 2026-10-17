@@ -138,6 +138,11 @@ fn draw(moves: &[u32], strategy: &[f64], rng: &mut PyRandom) -> u32 {
     *moves.last().expect("a player with no move is not asked")
 }
 
+/// A pure choice as a strategy over `moves`: one on `chosen`, nothing elsewhere.
+fn pure(moves: &[u32], chosen: u32) -> Vec<f64> {
+    moves.iter().map(|m| if *m == chosen { 1.0 } else { 0.0 }).collect()
+}
+
 /// A finished round's value for `seat`: a win sooner is worth more, as minimax's is.
 fn round_terminal_value(outcome: Outcome, game: &Game<'_>, seat: usize) -> f64 {
     if outcome.winner < 0 {
@@ -172,18 +177,25 @@ impl Player {
             }
             Kind::Greedy => self.greedy_round(game, seat, mine, theirs, rng),
             Kind::Matrix => self.matrix_round(game, seat, mine, theirs, rng),
+            // Schema 27 (Q935b, `plan-spy.md` §3.3): minimax plays a spy game's blind rounds
+            // as `matrix:nodes=N` would. Blind rounds follow the last spy's fall and lead
+            // nowhere else, so the hand-over happens once a game, at a root.
+            Kind::Minimax if game.t.spy.is_some() => {
+                self.matrix_round(game, seat, mine, theirs, rng)
+            }
             Kind::Minimax | Kind::Mcts => {
                 unreachable!("check_against refuses minimax and mcts on a simultaneous game")
             }
         }
     }
 
-    /// Schema 27 (Q935a, `docs/plan-spy.md` §3.2): the move an announcer shows first in an
-    /// announced round of a spy game. Only `random` plays one yet (`check_against`): uniform
-    /// over its own moves, from its own stream.
+    /// Schema 27 (`docs/plan-spy.md` §3.2): the move an announcer shows first in an
+    /// announced round of a spy game. `random` is uniform over its own moves, from its own
+    /// stream (Q935a); `greedy` and `minimax` take the maximin, pure (Q935b,
+    /// `spy_players.rs`), and `strategy` is that move alone.
     pub fn select_announcement(
         &mut self,
-        _game: &mut Game<'_>,
+        game: &mut Game<'_>,
         seat: usize,
         lists: [&[u32]; 2],
         rng: &mut PyRandom,
@@ -196,18 +208,30 @@ impl Player {
                 self.strategy.clear();
                 rng.choice(mine)
             }
-            _ => unreachable!("check_against refuses every player but random on a spy game"),
+            Kind::Greedy => {
+                let chosen = self.announce_greedy(game, seat, lists);
+                self.strategy = pure(lists[seat], chosen);
+                chosen
+            }
+            Kind::Minimax => {
+                let chosen = self.announce_minimax(game, seat, lists);
+                self.strategy = pure(lists[seat], chosen);
+                chosen
+            }
+            Kind::Mcts | Kind::Matrix => {
+                unreachable!("check_against refuses mcts and matrix on a spy game")
+            }
         }
     }
 
-    /// Schema 27 (Q935a, §3.2): the answerer's move, chosen knowing `announced`. `random`
-    /// ignores it.
+    /// Schema 27 (§3.2): the answerer's move, chosen knowing `announced`. `random` ignores
+    /// it (Q935a); `greedy` and `minimax` take the best reply, pure (Q935b).
     pub fn select_answer(
         &mut self,
-        _game: &mut Game<'_>,
+        game: &mut Game<'_>,
         seat: usize,
         lists: [&[u32]; 2],
-        _announced: u32,
+        announced: u32,
         rng: &mut PyRandom,
     ) -> u32 {
         match self.spec.kind {
@@ -218,7 +242,19 @@ impl Player {
                 self.strategy.clear();
                 rng.choice(mine)
             }
-            _ => unreachable!("check_against refuses every player but random on a spy game"),
+            Kind::Greedy => {
+                let chosen = self.answer_greedy(game, seat, lists, announced);
+                self.strategy = pure(lists[seat], chosen);
+                chosen
+            }
+            Kind::Minimax => {
+                let chosen = self.answer_minimax(game, seat, lists, announced);
+                self.strategy = pure(lists[seat], chosen);
+                chosen
+            }
+            Kind::Mcts | Kind::Matrix => {
+                unreachable!("check_against refuses mcts and matrix on a spy game")
+            }
         }
     }
 
@@ -322,7 +358,7 @@ impl Player {
 
     /// Every cell's value for `seat` at `depth` rounds, rows (my moves) outer.
     #[allow(clippy::too_many_arguments)]
-    fn round_cells(
+    pub(super) fn round_cells(
         &mut self,
         game: &mut Game<'_>,
         seat: usize,
@@ -343,7 +379,7 @@ impl Player {
 
     /// One cell: resolve my `a` against their `b` (one node), value the round after it.
     #[allow(clippy::too_many_arguments)]
-    fn round_cell(
+    pub(super) fn round_cell(
         &mut self,
         game: &mut Game<'_>,
         seat: usize,
@@ -383,8 +419,10 @@ impl Player {
             return Ok(round_terminal_value(outcome, game, seat));
         }
         if depth == 0 {
+            let value =
+                self.eval.evaluate_round(game, seat, [&arena[base..mid], &arena[mid..end]]);
             arena.truncate(base);
-            return Ok(self.eval.evaluate_round(game, seat, [mid - base, end - mid]));
+            return Ok(value);
         }
         let lists = [arena[base..mid].to_vec(), arena[mid..end].to_vec()];
         arena.truncate(base);

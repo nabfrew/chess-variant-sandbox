@@ -275,6 +275,21 @@ pub struct Core {
     tables: Arc<Tables>,
 }
 
+/// Schema 27 (Q935b): a spy game's round is chosen with `select_round`, never one move at
+/// a time.
+fn refuse_a_round(tables: &Tables, snapshot: &Snapshot) -> PyResult<()> {
+    if tables.spy.is_some() {
+        let phase = Game::from_snapshot(tables, snapshot).phase();
+        if phase.is_round() {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "this spy game is in its {} phase, played in rounds; ask select_round",
+                phase.name()
+            )));
+        }
+    }
+    Ok(())
+}
+
 #[pymethods]
 impl Core {
     #[new]
@@ -580,6 +595,7 @@ impl Core {
     ) -> PyResult<Option<u32>> {
         let spec = agent_spec(&self.tables, &agent)?;
         let snapshot = snapshot_from(&self.tables, &state);
+        refuse_a_round(&self.tables, &snapshot)?;
         Ok(py.detach(|| {
             let mut game = Game::from_snapshot(&self.tables, &snapshot);
             let legal = game.legal_moves();
@@ -600,7 +616,13 @@ impl Core {
     /// seat's stream is fresh, derived from `seed` and `seat` exactly as that seat's is at
     /// the start of a game. `None` for the move where either player has none (the round
     /// is over before anyone chooses). The probe the oracle's tests and the play page ask.
-    #[pyo3(signature = (state, seat, agent, values, seed = 0))]
+    ///
+    /// Schema 27 (Q935b, `docs/plan-spy.md` §3.2): in a spy game's announced round the seat
+    /// says which choice is asked. The announcer's is asked with `announced` absent; the
+    /// answerer's needs it, the move the announcer showed. Both are pure, so the strategy is
+    /// the chosen move alone. A blind round is asked as any round; a turn is `select_move`'s.
+    #[pyo3(signature = (state, seat, agent, values, seed = 0, announced = None))]
+    #[allow(clippy::too_many_arguments)]
     fn select_round(
         &self,
         py: Python<'_>,
@@ -609,6 +631,7 @@ impl Core {
         agent: AgentIn,
         values: Vec<f64>,
         seed: u64,
+        announced: Option<u32>,
     ) -> PyResult<(Option<u32>, Vec<f64>, u64, u32)> {
         if self.tables.simultaneous.is_none() {
             return Err(pyo3::exceptions::PyValueError::new_err(
@@ -621,6 +644,37 @@ impl Core {
         }
         let spec = agent_spec(&self.tables, &agent)?;
         let snapshot = snapshot_from(&self.tables, &state);
+        let phase = if self.tables.spy.is_some() {
+            Some(Game::from_snapshot(&self.tables, &snapshot).phase())
+        } else {
+            None
+        };
+        let refuse = |words: String| Err(pyo3::exceptions::PyValueError::new_err(words));
+        match (phase, announced) {
+            (Some(phase), _) if !phase.is_round() => {
+                return refuse(format!(
+                    "this spy game is in its {} phase, played one move at a time; ask \
+                     select_move",
+                    phase.name()
+                ));
+            }
+            (Some(game::Phase::Announced { announcer }), None) if seat != announcer => {
+                return refuse(
+                    "the answerer's choice in an announced round needs the announced move"
+                        .to_string(),
+                );
+            }
+            (Some(game::Phase::Announced { announcer }), Some(_)) if seat == announcer => {
+                return refuse(
+                    "the announcer chooses before any move is announced; leave announced out"
+                        .to_string(),
+                );
+            }
+            (Some(game::Phase::Blind), Some(_)) | (None, Some(_)) => {
+                return refuse("only an announced round of a spy game has an announced move".to_string());
+            }
+            _ => {}
+        }
         Ok(py.detach(|| {
             let mut game = Game::from_snapshot(&self.tables, &snapshot);
             let mut first = Vec::new();
@@ -632,7 +686,16 @@ impl Core {
             }
             let mut player = Player::new(&self.tables, spec, &values);
             let mut rng = PyRandom::for_seat(seed, seat);
-            let chosen = player.select_round(&mut game, seat, [&first, &second], &mut rng);
+            let lists = [&first[..], &second[..]];
+            let chosen = match (phase, announced) {
+                (Some(game::Phase::Announced { .. }), Some(shown)) => {
+                    player.select_answer(&mut game, seat, lists, shown, &mut rng)
+                }
+                (Some(game::Phase::Announced { .. }), None) => {
+                    player.select_announcement(&mut game, seat, lists, &mut rng)
+                }
+                _ => player.select_round(&mut game, seat, lists, &mut rng),
+            };
             (Some(chosen), player.strategy.clone(), player.stats.nodes, player.stats.depth)
         }))
     }
@@ -655,6 +718,7 @@ impl Core {
     ) -> PyResult<(Option<u32>, u32)> {
         let spec = agent_spec(&self.tables, &agent)?;
         let snapshot = snapshot_from(&self.tables, &state);
+        refuse_a_round(&self.tables, &snapshot)?;
         Ok(py.detach(|| {
             let mut game = Game::from_snapshot(&self.tables, &snapshot);
             let legal = game.legal_moves();
@@ -931,6 +995,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("DEFAULT_REPAIRS", crate::agents::DEFAULT_REPAIRS)?;
     // Q918b: the round players' solver iterations, for the same reason again.
     m.add("REGRET_ITERATIONS", crate::agents::REGRET_ITERATIONS)?;
+    // Q942b: what a rested royal under a standing attacker costs, for the same reason again.
+    m.add("RESTED_ROYAL", crate::eval::RESTED_ROYAL)?;
     m.add("__doc__", "Move generation, search and tournament execution.")?;
     Ok(())
 }

@@ -181,7 +181,8 @@ class RoundSearch:
         if outcome is not None:
             return terminal_value(outcome, state, seat)
         if depth == 0:
-            return self.evaluator.evaluate_round(engine, state, seat, (len(lists[0]), len(lists[1])))
+            counts = (len(lists[0]), len(lists[1]))
+            return self.evaluator.evaluate_round(engine, state, seat, counts, lists)
         mine, theirs = lists[seat], lists[1 - seat]
         values = self.cells(state, seat, mine, theirs, depth)
         p, q = solve(values, len(mine), len(theirs))
@@ -262,49 +263,134 @@ class MatrixAgent:
         theirs: list[int],
         rng: random.Random,
     ) -> int:
-        self.depth = 0
-        self.stats.moves += 1
-        if len(mine) == 1:
-            self.strategy = [1.0]
-            return mine[0]
-        search = self.search
-        search.nodes = 0
-        search.budget = self.nodes
-        search.bounded = False
-        rows, cols = len(mine), len(theirs)
-        values = search.cells(state, seat, mine, theirs, 1)
-        p, q = solve(values, rows, cols)
-        done = 1
-        search.bounded = True
-        while search.nodes < self.nodes and done < self.max_depth:
-            depth = done + 1
-            joint = [p[k // cols] * q[k % cols] for k in range(rows * cols)]
-            order = sorted(range(rows * cols), key=lambda k: joint[k], reverse=True)
-            complete = True
-            for k in order:
-                if search.nodes >= self.nodes:
-                    complete = False
-                    break
-                try:
-                    values[k] = search.cell(state, seat, mine[k // cols], theirs[k % cols], depth)
-                except _Exhausted:
-                    complete = False
-                    break
-            p, q = solve(values, rows, cols)
-            if not complete:
+        move, self.strategy, self.depth = matrix_round(
+            self.search, self.stats, state, seat, mine, theirs, rng, self.nodes, self.max_depth
+        )
+        return move
+
+
+def matrix_round(
+    search: RoundSearch,
+    stats: SearchStats,
+    state: GameState,
+    seat: int,
+    mine: list[int],
+    theirs: list[int],
+    rng: random.Random,
+    budget: int,
+    max_depth: int,
+) -> tuple[int, list[float], int]:
+    """`matrix:nodes=budget`'s round (§6.2): the move, the strategy it was drawn from and the
+    last pass that finished. Also how `minimax:nodes=N` plays a spy game's blind round
+    (schema 27, Q935b; `docs/plan-spy.md` §3.3)."""
+    stats.moves += 1
+    if len(mine) == 1:
+        return mine[0], [1.0], 0
+    search.nodes = 0
+    search.budget = budget
+    search.bounded = False
+    rows, cols = len(mine), len(theirs)
+    values = search.cells(state, seat, mine, theirs, 1)
+    p, q = solve(values, rows, cols)
+    done = 1
+    search.bounded = True
+    while search.nodes < budget and done < max_depth:
+        depth = done + 1
+        joint = [p[k // cols] * q[k % cols] for k in range(rows * cols)]
+        order = sorted(range(rows * cols), key=lambda k: joint[k], reverse=True)
+        complete = True
+        for k in order:
+            if search.nodes >= budget:
+                complete = False
                 break
-            done = depth
-        self.depth = done
-        self.stats.nodes += search.nodes
-        self.stats.depth_sum += done
-        self.stats.searches += 1
-        self.strategy = p
-        return draw(mine, p, rng)
+            try:
+                values[k] = search.cell(state, seat, mine[k // cols], theirs[k % cols], depth)
+            except _Exhausted:
+                complete = False
+                break
+        p, q = solve(values, rows, cols)
+        if not complete:
+            break
+        done = depth
+    stats.nodes += search.nodes
+    stats.depth_sum += done
+    stats.searches += 1
+    return draw(mine, p, rng), p, done
+
+
+def pure(moves: list[int], chosen: int) -> list[float]:
+    """A pure choice as a strategy over ``moves``: one on ``chosen``, nothing elsewhere."""
+    return [1.0 if move == chosen else 0.0 for move in moves]
+
+
+def greedy_announcement(
+    search: RoundSearch,
+    stats: SearchStats,
+    state: GameState,
+    announcer: int,
+    lists: tuple[list[int], list[int]],
+) -> int:
+    """Schema 27 (Q935b, `docs/plan-spy.md` §3.3): greedy as the announcer, the one-round
+    maximin over the whole matrix, every cell from the announcer's seat (a node each), the
+    first move of the best worst case. The oracle for `spy_players.rs::announce_greedy`."""
+    mine, theirs = lists[announcer], lists[1 - announcer]
+    stats.moves += 1
+    if len(mine) == 1:
+        return mine[0]
+    search.nodes = 0
+    search.bounded = False
+    values = search.cells(state, announcer, mine, theirs, 1)
+    stats.nodes += search.nodes
+    cols = len(theirs)
+    best, best_value = 0, -float("inf")
+    for row in range(len(mine)):
+        worst = float("inf")
+        for value in values[row * cols:(row + 1) * cols]:
+            if value < worst:
+                worst = value
+        if worst > best_value:
+            best, best_value = row, worst
+    return mine[best]
+
+
+def greedy_answer(
+    search: RoundSearch,
+    stats: SearchStats,
+    state: GameState,
+    answerer: int,
+    lists: tuple[list[int], list[int]],
+    announced: int,
+) -> int:
+    """Schema 27 (Q935b): greedy as the answerer, the announced row only, a cell each of its
+    own moves (a node each), the first best. The oracle for `spy_players.rs::answer_greedy`."""
+    mine = lists[answerer]
+    stats.moves += 1
+    if len(mine) == 1:
+        return mine[0]
+    search.nodes = 0
+    search.bounded = False
+    best, best_value = mine[0], -float("inf")
+    for move in mine:
+        value = search.cell(state, answerer, move, announced, 1)
+        if value > best_value:
+            best, best_value = move, value
+    stats.nodes += search.nodes
+    return best
+
+
+# Schema 27 (Q935b, `docs/plan-spy.md` §3.3): one name per budget on a spy game, whose
+# `minimax:nodes=N` plays its blind rounds as `matrix:nodes=N` would.
+SPY_REFUSAL = (
+    "a spy game (pieces[].spy) is played by random, greedy and minimax:nodes=N, which play "
+    "every phase (minimax plays the blind rounds as matrix would); matrix and mcts are refused"
+)
 
 
 @register("matrix")
 def _build_matrix(engine: Engine, options: dict[str, Any]) -> MatrixAgent:
     refuse_alternating_objective(options, "matrix")
+    if engine.spy:
+        raise ValueError(SPY_REFUSAL)
     return MatrixAgent(
         engine,
         nodes=int(options.get("nodes", 1600)),

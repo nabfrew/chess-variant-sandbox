@@ -89,6 +89,21 @@ PAUSED = "correspondence-paused"
 """The `switches` row `/admin` writes to pause new games between people (§1.7)."""
 
 PAUSED_SAID = "New games between people are paused for now. Your running games carry on."
+# Schema 27: a spy game is played against the computer or at one screen (Q935c); between two
+# people its announced rounds need the announcement shown to both and the answer revealed
+# under the row's lock, which is Q935e's (`docs/plan-spy.md` §3.7). Refused by name until then.
+SPY_SAID = (
+    "a game with a spy cannot be played between people yet: its announced rounds, where one "
+    "player's move is shown to the other before they answer, are still to come here"
+)
+
+
+def spy_refusal(spec: dict[str, Any]) -> str | None:
+    """`SPY_SAID` for a spy game's rules, None for any other (Q935c)."""
+    from chess_variant_sandbox.spec.schema import is_spy_game
+
+    return SPY_SAID if is_spy_game(spec) else None
+
 """What a member reads while the pause stands, in the plan's own words (§1.7)."""
 
 NOT_HERE = "There is no game at this address."
@@ -528,7 +543,10 @@ def start(
         raise MatchError(PAUSED_SAID)
     for person in (first, second):
         _member(connection, person)
-    matches._game_row(connection, game, starting=True)
+    _name, spec = matches._game_row(connection, game, starting=True)
+    refused = spy_refusal(spec)
+    if refused is not None:
+        raise MatchError(refused)
     quota.check_new_match(connection, first if by is None else int(by))
     for person in (first, second):
         if len(running_for(connection, person)) >= quota.CORRESPONDENCE_AT_ONCE:

@@ -258,10 +258,15 @@ class Session:
     def snapshot(self) -> dict[str, Any]:
         """Everything the page needs to draw the position and offer a move."""
         engine = self.engine
+        # Schema 27 (Q935c, `docs/plan-spy.md` §3.6): a spy game's phase here, the core's
+        # answer (`Engine.phase`); None in every other game.
+        spy = engine.phase(self.state) if engine.spy else None
         # Schema 26: a game in rounds has no side to move. Whose choice the board offers,
         # its moves, the verdict and whether a computer seat still owes its sealed move are
-        # `_round_view`'s; everything else in the snapshot is drawn as for any game.
-        rounds = self._round_view(engine) if engine.simultaneous else None
+        # `_round_view`'s; everything else in the snapshot is drawn as for any game. A spy
+        # game is one by turns until a spy is lost, and in rounds after.
+        in_rounds = spy.is_round if spy is not None else engine.simultaneous
+        rounds = self._round_view(engine, spy) if in_rounds else None
         if rounds is None:
             legal = engine.legal_moves(self.state)
             outcome = engine.terminal(self.state, legal)
@@ -276,6 +281,12 @@ class Session:
             if outcome is not None
             else self.verdict
         )
+        # Schema 27 (Q942b, `both`): an ending that fired for both players in one round, in
+        # the words the page ends its sentence with in place of the reason's.
+        if outcome is not None and rounds is not None and ended is not None:
+            how = both_fired_words(engine, self.state, outcome)
+            if how:
+                ended = {**ended, "how": how}
         art = icons_for(
             engine.spec.piece_names,
             engine.spec.piece_ids,
@@ -399,6 +410,16 @@ class Session:
             # offers, the initiative, the void run and the bars. Absent in a game that
             # alternates.
             **({"round": rounds["block"]} if rounds is not None else {}),
+            # Schema 27 (Q935c, §3.6): a spy game's phase as the core answers it --
+            # `alternating`, `reply`, `announced` or `blind` -- and in an announced round the
+            # announcer, the player without a spy, who chooses first and in the open; None
+            # in every other phase. The page words the phase line from it and works nothing
+            # out. Absent in every game without a spy.
+            **(
+                {"spy": {"phase": spy.name,
+                         "announcer": spy.announcer if spy.name == "announced" else None}}
+                if spy is not None else {}
+            ),
             "history": self.history,
             "lastMove": self.history[-1] if self.history else None,
             # Where each wild piece steps after the coming move, if that move leaves its
@@ -414,7 +435,8 @@ class Session:
             # people (whose own block says it) and a finished game.
             # A game in rounds offers none yet: the computer's answer is the alternating
             # search's (`web/draw_offer.py`), which does not play rounds.
-            "drawOffer": self._draw_offer(ended) if rounds is None else None,
+            # A spy game offers none in any phase, for the same reason: its rounds follow.
+            "drawOffer": self._draw_offer(ended) if rounds is None and spy is None else None,
             # The page uses this to decide whether to ask for the opponent's reply. It
             # is deliberately not the same call: a human move should land on the board
             # before an agent starts searching, or the interface freezes for the length
@@ -539,7 +561,7 @@ class Session:
         now open (`seal`), and the round is revealed once every seat's is in.
         """
         engine = self.engine
-        if engine.simultaneous:
+        if self._in_rounds(engine):
             return self.seal(move)
         if move not in engine.legal_moves(self.state):
             raise ValueError("that move is not legal in this position")
@@ -562,9 +584,12 @@ class Session:
 
         A game in rounds stores both moves of a round in seat order (§6.3's record), so a
         replayed move is player 0's, sealed, or player 1's, which reveals the round.
+        A spy game's record is the same flat list, one move a turn and two a round in seat
+        order whoever announced (`docs/plan-spy.md` §2.5), the step's kind asked of the
+        engine at each position.
         """
         engine = self.engine
-        if engine.simultaneous:
+        if self._in_rounds(engine):
             seat = 0 if self.pending[0] is None else 1
             if move not in engine.legal_moves_for(self.state, seat):
                 raise ValueError("that move is not legal in this position")
@@ -591,11 +616,13 @@ class Session:
         narrow one looked the same from the other side of the board.
         """
         engine = self.engine
-        if engine.simultaneous:
+        if self._in_rounds(engine):
             # A round: every computer seat seals its move on the round's board, blind to
             # anything a person has chosen, and a round with no person in it is revealed.
+            # An announced round (a spy game's) asks one choice a call, in its order: the
+            # announcer's, shown at once, and the answerer's once the announcement is in.
             if engine.terminal(self.state) is None:
-                self._seal_computers(engine)
+                self._seal_computers(engine, one=True)
                 if None not in self.pending:
                     self._reveal(engine)
             return self.snapshot()
@@ -628,6 +655,8 @@ class Session:
         # not survive the take-back that undid the position it was recorded in. The
         # store's row is reopened by the same call.
         self.verdict = None
+        if self.engine.spy:
+            return self._undo_step()
         if self.engine.simultaneous:
             # A round is taken back whole (§6.6, *undo pops a round*), and with it any move
             # sealed in the round that was open: the computer seals again on the board the
@@ -646,6 +675,40 @@ class Session:
             if watched or self.seats[self.state.side_to_move] == HUMAN:
                 break
         return self.snapshot()
+
+    def _undo_step(self) -> dict[str, Any]:
+        """A spy game's take-back (schema 27, `docs/plan-spy.md` §3.6): step by step, a turn
+        one move and a round whole, back to the last position a person was asked to choose
+        in -- a turn of a person's, or any round with a person in it -- or one step in a
+        game nobody is sitting at. A round's moves are taken back with it, a sealed or
+        announced one of the round that was open too; a computer seat chooses again on the
+        board the take-back restores, as it would on any."""
+        self.pending = [None, None]
+        self.pending_depths = [None, None]
+        engine = self.engine
+        watched = HUMAN not in self.seats
+        while self.states:
+            steps = 2 if "round" in self.history[-1] else 1
+            self.state = self.states[-steps]
+            del self.states[-steps:], self.history[-steps:], self.played[-steps:]
+            if watched:
+                break
+            if self._in_rounds(engine) or self.seats[self.state.side_to_move] == HUMAN:
+                break
+        return self.snapshot()
+
+    def _in_rounds(self, engine: Any) -> bool:
+        """Whether the step now open is a round: always in a game in rounds, by the phase
+        (the core's) in a spy game, never in a game that alternates."""
+        return bool(engine.is_round(self.state))
+
+    def _announcer(self, engine: Any) -> int | None:
+        """The announcer of the round now open, if it is a spy game's announced round (the
+        core's phase): the player without a spy, who chooses first and in the open."""
+        if not engine.spy:
+            return None
+        phase = engine.phase(self.state)
+        return phase.announcer if phase.name == "announced" else None
 
     def _apply(self, engine: Any, move: int, by: str, depth: int | None = None) -> None:
         self.states.append(self.state)
@@ -709,34 +772,59 @@ class Session:
     # it as the round opens (`awaitingAgent`, `play_agent`); `seal` asks again first, so a
     # page that never asked still cannot get its move in ahead of the computer's.
 
-    def _choosing(self) -> int | None:
+    def _choosing(self, announcer: int | None = None) -> int | None:
         """The seat whose move the board offers: the first person yet to seal, else None.
 
         Against the computer that is the person, every round. Between two people at one
         screen it is the first player, then the second, and neither is shown the other's.
         Between two people at two screens (`viewer`, Q918f) it is the reader, while their
         own move is not in, and nobody once it is.
+
+        In an announced round (schema 27, `announcer` given) the order is the rule's: the
+        announcer first, then the answerer once the announcement is in. A seat still owed
+        by the computer comes first in that order, so nobody is offered a move then.
         """
         if self.viewer is not None:
             seat = self.viewer
             if seat not in (0, 1) or self.pending[seat] is not None:
                 return None
             return None if self.sealed_unseen[seat] else seat
+        if announcer is not None:
+            for seat in (announcer, 1 - announcer):
+                if self.pending[seat] is None:
+                    return seat if self.seats[seat] == HUMAN else None
+            return None
         for seat in (0, 1):
             if self.seats[seat] == HUMAN and self.pending[seat] is None:
                 return seat
         return None
 
-    def _round_view(self, engine: Any) -> dict[str, Any]:
+    def _owing(self, announcer: int | None) -> list[int]:
+        """The computer seats whose move the round now open waits on: every one yet to
+        seal, or in an announced round the next seat in the rule's order, if a computer's."""
+        if announcer is None:
+            return [
+                seat for seat in (0, 1)
+                if self.seats[seat] != HUMAN and self.pending[seat] is None
+            ]
+        for seat in (announcer, 1 - announcer):
+            if self.pending[seat] is None:
+                return [seat] if self.seats[seat] != HUMAN else []
+        return []
+
+    def _rounds_played(self) -> int:
+        """Rounds revealed so far: two history entries each. A spy game's turns before its
+        rounds are one entry each and are not rounds."""
+        return sum(1 for entry in self.history if "round" in entry) // 2
+
+    def _round_view(self, engine: Any, spy: Any = None) -> dict[str, Any]:
         """What `snapshot` reads for a game in rounds: the choosing seat's moves, the
         verdict, who the strip names, whether a computer seat owes its sealed move, and
-        the `round` block the page draws the round from."""
+        the `round` block the page draws the round from. `spy` is a spy game's phase."""
         outcome = engine.terminal(self.state)
-        choosing = self._choosing()
-        owing = [
-            seat for seat in (0, 1)
-            if self.seats[seat] != HUMAN and self.pending[seat] is None
-        ]
+        announcer = spy.announcer if spy is not None and spy.name == "announced" else None
+        choosing = self._choosing(announcer)
+        owing = self._owing(announcer)
         # The seat the strip names: a computer still choosing first, since the board waits
         # on it, then the person choosing. A reader at their own screen whose move is in
         # is waiting on the other seat, which the strip names instead (Q918f).
@@ -753,7 +841,7 @@ class Session:
         mine = self.pending[reader] if reader is not None else None
         block = {
             # Rounds revealed so far, and this one's number, counted from one.
-            "number": len(self.played) // 2 + 1,
+            "number": self._rounds_played() + 1,
             # Who has sealed this round. A boolean a seat: the move itself is never sent
             # before the reveal, to anybody (§6.6, *the computer commits blind*), but its
             # own seat's reader (`yours`, below).
@@ -771,11 +859,25 @@ class Session:
             # drawn and never worked out.
             "voidRun": list(run) if run[0] >= 0 and run[1] >= 0 else None,
             "bars": [list(bar) for bar in self.state.bars],
+            # Schema 27 (Q942a, `rest`): each player's rested square, player 0's first, or
+            # None: the piece that made that player's move last round, which may not move
+            # this one unless it is all that player can move. The core's state, drawn.
+            "rest": [square if square >= 0 else None for square in self.state.rest],
         }
         if reader is not None and mine is not None:
             # Q918f: the reader's own sealed move, described as an offered move is, so the
             # board can draw it ghosted where it would land. Only ever the reader's seat.
             block["yours"] = self._offer(engine, [mine], reader)[0]
+        if announcer is not None:
+            # Schema 27 (Q935c, `docs/plan-spy.md` §1.4, §3.6): an announced round's
+            # announcer, and once it is in, the announced move, described as an offered
+            # move is: it is meant to be seen, by both players, and the board draws it as
+            # its own arrow. Absent from every other round.
+            shown = self.pending[announcer]
+            block["announcer"] = announcer
+            block["announced"] = (
+                self._offer(engine, [shown], announcer)[0] if shown is not None else None
+            )
         return {
             "legal": legal,
             "outcome": outcome,
@@ -796,38 +898,69 @@ class Session:
         engine = self.engine
         if engine.terminal(self.state) is not None:
             raise ValueError("this game is over")
-        seat = self._choosing()
+        announcer = self._announcer(engine)
+        if announcer is not None:
+            # An announced round (schema 27): a computer announcer announces before a
+            # person answers, and a computer answerer is asked nothing before the person's
+            # announcement is in (`_seal_computers` stops at the first person in the order).
+            self._seal_computers(engine)
+        seat = self._choosing(announcer)
         if seat is None:
             raise ValueError("no move is owed by a person in this round")
         if move not in engine.legal_moves_for(self.state, seat):
             raise ValueError("that move is not legal in this position")
-        self._seal_computers(engine)
+        if announcer is None:
+            self._seal_computers(engine)
         self.pending[seat] = move
         self.pending_depths[seat] = None
         if None not in self.pending:
             self._reveal(engine)
         return self.snapshot()
 
-    def _seal_computers(self, engine: Any) -> None:
+    def _seal_computers(self, engine: Any, one: bool = False) -> None:
         """Every computer seat's move for this round, chosen by the core on the round's
         board and sealed. Blind by construction: `select_round` is handed the position and
-        the seat, and a person's sealed move is not in the position."""
-        for seat in (0, 1):
+        the seat, and a person's sealed move is not in the position.
+
+        In an announced round (schema 27, `docs/plan-spy.md` §1.4) the seats are asked in
+        the rule's order and nothing past a person yet to choose: a computer announcer is
+        asked with no announcement, a computer answerer with the move announced, and never
+        before it is in. `one` asks one choice only, so a board between two computers shows
+        the announcement before the answer to it."""
+        announcer = self._announcer(engine)
+        order = (0, 1) if announcer is None else (announcer, 1 - announcer)
+        for seat in order:
             agent = self.seats[seat]
-            if agent == HUMAN or self.pending[seat] is not None:
+            if self.pending[seat] is not None:
+                continue
+            if agent == HUMAN:
+                if announcer is not None:
+                    return
                 continue
             native = native_spec(agent, engine.spec.hash)
             if native is None:
                 raise ValueError(f"{agent} does not play a game in rounds here")
-            move, _strategy, _nodes, depth = engine.select_round(
-                self.state, seat, native, eval_values(engine.spec), self.seed + self.state.ply
-            )
+            seed = self.seed + self.state.ply
+            values = eval_values(engine.spec)
+            if announcer is None:
+                move, _strategy, _nodes, depth = engine.select_round(
+                    self.state, seat, native, values, seed
+                )
+            else:
+                shown = None if seat == announcer else self.pending[announcer]
+                move, _strategy, _nodes, depth = engine.select_round(
+                    self.state, seat, native, values, seed, announced=shown
+                )
             if move is None:
                 return  # a player with no move: the verdict says so (§2.6)
-            # How far it looked, in rounds, for the one player that deepens.
+            # How far it looked, in rounds, for the players that deepen: every step after a
+            # spy game's first round is a round too, so its minimax counts rounds here.
             choices = len(engine.legal_moves_for(self.state, seat))
             self.pending[seat] = move
-            self.pending_depths[seat] = depth if native[0] == "matrix" and choices > 1 else None
+            deepens = native[0] == "matrix" or (engine.spy and native[0] in DEEPENING)
+            self.pending_depths[seat] = depth if deepens and choices > 1 else None
+            if one and announcer is not None:
+                return
 
     def _reveal(self, engine: Any) -> None:
         """Both sealed moves, resolved together by the core, written as two history entries
@@ -836,6 +969,8 @@ class Session:
         first, second = self.pending[0], self.pending[1]
         assert first is not None and second is not None
         before = self.state
+        announcer = self._announcer(engine)
+        number = self._rounds_played()
         after, phase, events = engine.apply_round_with_phase(before, first, second)
         art = icons_for(
             engine.spec.piece_names,
@@ -843,6 +978,9 @@ class Session:
             (self.game.spec.get("appearance") or {}).get("icons"),
         )
         reveal = round_reveal(engine, before, after, (first, second), events, side_names(art))
+        if announcer is not None:
+            # Schema 27 (Q935c): who announced, so the move list marks the announced move.
+            reveal["announcer"] = announcer
         for seat, move in enumerate((first, second)):
             seen = _as_seat(before, seat)
             entry: dict[str, Any] = {
@@ -861,7 +999,7 @@ class Session:
                 "check": False,
                 # What this move came to: `void`, `won` or `lost` a collision, `both lost`.
                 "result": reveal["results"][seat],
-                "round": len(self.played) // 2,
+                "round": number,
             }
             if seat == 1:
                 entry["reveal"] = reveal
@@ -884,6 +1022,61 @@ _EVENT_COLLISION, _EVENT_VOID, _EVENT_INITIATIVE, _EVENT_BARRED = 0, 1, 2, 3
 # Schema 27 (Q942a, `swap: "collision"`): two pieces that swapped squares met; the square is
 # the first player's destination. Q942b draws the clash between the two squares.
 _EVENT_SWAP = 4
+
+
+# `ScoringRule.count` as the score's name in the both-fire sentence: what a side was ahead
+# on, and what was level.
+_SCORE_WORDS = {
+    "material": ("on material", "the material"),
+    "pieces": ("on pieces left", "the pieces left"),
+    "region": ("on the squares held", "the squares held"),
+    "territory": ("on ground held", "the ground held"),
+    "points": ("on points", "the points"),
+}
+
+
+def both_fired_words(engine: Any, state: GameState, outcome: Any) -> str | None:
+    """How a round game ended when its ending fired for both players in the last round,
+    as the end of the sentence *‹side› wins ...* or *Drawn ...*, or None for any other end.
+
+    Schema 27 (Q942a's `both: "score"`, `docs/plan-round-chase.md` §3 X1): a both-fire is
+    settled by `rules.scoring` under the switch and is a draw without it. The verdict is the
+    core's (`outcome`); this only says it, from two facts of the final position (neither side
+    has a royal left, or neither a piece) and the rule. Without it the page would say the
+    winner won *by capturing the royal piece* when both royals went."""
+    spec = engine.spec
+    n_squares = spec.n_squares
+
+    def holds(side: int, royal: bool) -> bool:
+        for value in state.board[:n_squares]:
+            if value and spec.owner_of(value) == side and (
+                not royal or spec.type_of(value) in spec.royal_types
+            ):
+                return True
+        hand = state.hands[side] if spec.drops is not None else ()
+        kinds = spec.royal_types if royal else range(len(hand))
+        return any(kind < len(hand) and hand[kind] > 0 for kind in kinds)
+
+    if outcome.reason in ("royal_captured", "royal_destroyed") and spec.royal_types:
+        if holds(0, True) or holds(1, True):
+            return None
+        what = "both royal pieces were taken in the same round"
+    elif outcome.reason == "annihilated":
+        if holds(0, False) or holds(1, False):
+            return None
+        what = "both sides lost their last piece in the same round"
+    else:
+        return None
+    sim = spec.simultaneous
+    scoring = spec.scoring if sim is not None and sim.both_score else None
+    count = scoring.count if scoring is not None else ""
+    ahead, level = _SCORE_WORDS.get(count, ("on the score", "the score"))
+    scored = scoring is not None
+    if outcome.winner is not None:
+        return f"{ahead}, as {what}"
+    if scored:
+        return f"as {what} and {level} was level"
+    return f"as {what}"
 
 
 def _as_seat(state: GameState, seat: int) -> GameState:
@@ -1032,14 +1225,6 @@ class Sessions:
         self, game: Game, seats: tuple[str, str], seed: int = 0, scratch: bool = False
     ) -> Session:
         engine = engine_for(game.spec)
-        if engine.spy:
-            # Schema 27 (Q935a): the page draws a game that alternates or one in rounds, and
-            # a spy game is both by turns; its page is `docs/plan-spy.md` §3.6's, still to
-            # come, so it is refused here rather than drawn as a round game from move one.
-            raise ValueError(
-                "a game with a spy cannot be played on this page yet: the page for its "
-                "phases (turns, then announced rounds, then secret ones) is still to come"
-            )
         session = Session(
             id=secrets.token_urlsafe(9),
             game=game,

@@ -31,6 +31,11 @@ use crate::tables::{
 mod matrix;
 pub use matrix::{solve, REGRET_ITERATIONS};
 
+// Schema 27 (Q935b): the searching players across a spy game's phases
+// (`docs/plan-spy.md` §3), a child of this module so they reuse the search's private parts.
+#[path = "spy_players.rs"]
+mod spy_players;
+
 /// How deep a quiescence search may go past the horizon before it settles for the
 /// standing evaluation. Bounded because a game where every move is a capture --
 /// antichess, under `must_capture` -- would otherwise let it run to the node budget on
@@ -271,20 +276,21 @@ impl AgentSpec {
         // refused, so one name never means two algorithms on one game. The round players
         // read the built-in objective only: a heuristic, fitted, searched or learned one
         // was made for one mover at a time. `matrix` plays rounds and nothing else.
-        // Schema 27 (Q935a): a spy game alternates, then plays announced rounds, then blind
-        // ones (`plan-spy.md` §3). `random` plays every phase; the searching players across
-        // the phases are `docs/plan-spy.md` §3.3's, not yet built, so every other name is
-        // refused rather than played under a reading nobody measured.
-        if t.spy.is_some() && self.kind != Kind::Random {
+        // Schema 27 (Q935b): a spy game alternates, then plays announced rounds, then blind
+        // ones (`plan-spy.md` §3.3). `random`, `greedy` and `minimax:nodes=N` play every
+        // phase (`spy_players.rs`; minimax plays a blind round as `matrix:` would), so one
+        // name per budget: `matrix:` and `mcts:` are refused, and so is every stored
+        // objective, below with the round games'.
+        if t.spy.is_some() && matches!(self.kind, Kind::Mcts | Kind::Matrix) {
             return Err(concat!(
-                "a spy game (pieces[].spy) is played by random so far; the players that ",
-                "search across its phases (alternating, announced and blind rounds) are not ",
-                "built yet",
+                "a spy game (pieces[].spy) is played by random, greedy and minimax:nodes=N, ",
+                "which play every phase (minimax plays the blind rounds as matrix would); ",
+                "matrix and mcts are refused",
             )
             .to_string());
         }
         if t.simultaneous.is_some() {
-            if matches!(self.kind, Kind::Minimax | Kind::Mcts) {
+            if matches!(self.kind, Kind::Minimax | Kind::Mcts) && t.spy.is_none() {
                 return Err(concat!(
                     "a simultaneous game (rules.simultaneous) is played by random, greedy and ",
                     "matrix:nodes=N; minimax and mcts search one mover at a time",
@@ -445,8 +451,12 @@ impl Player {
                 self.stats.nodes += moves.len() as u64;
                 rng.choice(moves)
             }
-            Kind::Greedy => self.select_greedy(game, moves, rng),
-            Kind::Minimax => self.select_minimax(game, moves, rng),
+            // Schema 27 (Q935b): a turn of a spy game is played by `spy_turn` and its tree may
+            // cross into rounds, so the spy game has its own instance of each search.
+            Kind::Greedy if game.t.spy.is_some() => self.select_greedy::<true>(game, moves, rng),
+            Kind::Minimax if game.t.spy.is_some() => self.select_minimax::<true>(game, moves, rng),
+            Kind::Greedy => self.select_greedy::<false>(game, moves, rng),
+            Kind::Minimax => self.select_minimax::<false>(game, moves, rng),
             Kind::Mcts => self.select_mcts(game, moves, rng),
             Kind::Matrix => unreachable!("check_against refuses matrix on a game that alternates"),
         }
@@ -460,7 +470,12 @@ impl Player {
     /// player is fully deterministic and every greedy-vs-greedy game is the same game,
     /// which would make the repetitiveness metric measure the agent instead of the
     /// rules.
-    fn select_greedy(&mut self, game: &mut Game<'_>, moves: &[u32], rng: &mut PyRandom) -> u32 {
+    fn select_greedy<const SPY: bool>(
+        &mut self,
+        game: &mut Game<'_>,
+        moves: &[u32],
+        rng: &mut PyRandom,
+    ) -> u32 {
         let player = game.side;
         self.stats.moves += 1;
         self.stats.nodes += moves.len() as u64;
@@ -470,19 +485,25 @@ impl Player {
         let mut successor_moves: Vec<u32> = Vec::new();
 
         for m in moves {
-            game.make(*m);
-            let score = match game.terminal_prefix() {
-                Some(outcome) => terminal_score(outcome, player),
-                None => {
-                    successor_moves.clear();
-                    game.generate_legal(&mut successor_moves);
-                    match game.terminal_with(&successor_moves) {
-                        Some(outcome) => terminal_score(outcome, player),
-                        None => self.eval.evaluate(game, player, successor_moves.len()),
+            step::<SPY>(game, *m);
+            // Schema 27 (Q935b): a spy game's turn may leave a round, valued as a round is
+            // (`plan-spy.md` §3.5): its verdict from both lists, else `evaluate_round`.
+            let score = if SPY && game.phase().is_round() {
+                self.greedy_round_child(game, player)
+            } else {
+                match game.terminal_prefix() {
+                    Some(outcome) => terminal_score(outcome, player),
+                    None => {
+                        successor_moves.clear();
+                        game.generate_legal(&mut successor_moves);
+                        match game.terminal_with(&successor_moves) {
+                            Some(outcome) => terminal_score(outcome, player),
+                            None => self.eval.evaluate(game, player, successor_moves.len()),
+                        }
                     }
                 }
             };
-            game.unmake();
+            unstep::<SPY>(game);
 
             if score > best_score {
                 best_score = score;
@@ -501,12 +522,17 @@ impl Player {
     /// Iterative deepening is not an optimisation here, it is what makes a *node*
     /// budget usable at all: the search always has a completed answer in hand when the
     /// budget runs out.
-    fn select_minimax(&mut self, game: &mut Game<'_>, moves: &[u32], rng: &mut PyRandom) -> u32 {
+    fn select_minimax<const SPY: bool>(
+        &mut self,
+        game: &mut Game<'_>,
+        moves: &[u32],
+        rng: &mut PyRandom,
+    ) -> u32 {
         self.stats.depth = 0;
         if moves.len() == 1 {
             return moves[0];
         }
-        self.deepen(game, moves, rng).0
+        self.deepen::<SPY>(game, moves, rng).0
     }
 
     /// Q665 (plan-teacher §8.2, T2v): the player's own search, asked for its value.
@@ -531,7 +557,11 @@ impl Player {
         if moves.is_empty() {
             return None;
         }
-        let (best_move, value) = self.deepen(game, moves, rng);
+        let (best_move, value) = if game.t.spy.is_some() {
+            self.deepen::<true>(game, moves, rng)
+        } else {
+            self.deepen::<false>(game, moves, rng)
+        };
         let depth = self.stats.depth;
         if depth == 0 {
             return None;
@@ -541,24 +571,13 @@ impl Player {
 
     /// Iterative deepening at the root: the best move and its value at the last depth
     /// that finished (`NEG_INFINITY` if none did; `stats.depth` is then 0).
-    fn deepen(&mut self, game: &mut Game<'_>, moves: &[u32], rng: &mut PyRandom) -> (u32, f64) {
-        self.nodes = 0;
-        self.generation = self.generation.wrapping_add(1);
-        if self.spec.repairs & KEEP_TABLE != 0 {
-            // `retain` visits entries in bucket order, but the predicate reads only the
-            // entry, so which entries survive does not depend on that order.
-            let (now, previous) = (self.generation, self.generation.wrapping_sub(1));
-            self.table.retain(|_, entry| entry.3 == now || entry.3 == previous);
-        } else {
-            self.table.clear();
-        }
-        for slot in &mut self.killers {
-            *slot = [u32::MAX; 2];
-        }
-        for index in self.history_touched.drain(..) {
-            self.history[index as usize] = 0;
-        }
-        self.stats.moves += 1;
+    fn deepen<const SPY: bool>(
+        &mut self,
+        game: &mut Game<'_>,
+        moves: &[u32],
+        rng: &mut PyRandom,
+    ) -> (u32, f64) {
+        self.begin_search();
 
         // Shuffle once so that equal-scoring moves are not resolved by generation
         // order; otherwise every game between two equal-budget minimax agents is
@@ -569,7 +588,7 @@ impl Player {
         let mut best_value = f64::NEG_INFINITY;
 
         for depth in 1..=self.spec.max_depth as i32 {
-            match self.search_root(game, &ordered, depth) {
+            match self.search_root::<SPY>(game, &ordered, depth) {
                 Err(Exhausted) => break,
                 Ok((candidate, value)) => {
                     best_move = candidate;
@@ -588,16 +607,43 @@ impl Player {
             }
         }
 
+        self.end_search();
+        (best_move, best_value)
+    }
+
+    /// What every search does before its first iteration: the counters, the table (kept
+    /// or cleared by the repairs), the killers and the history.
+    fn begin_search(&mut self) {
+        self.nodes = 0;
+        self.generation = self.generation.wrapping_add(1);
+        if self.spec.repairs & KEEP_TABLE != 0 {
+            // `retain` visits entries in bucket order, but the predicate reads only the
+            // entry, so which entries survive does not depend on that order.
+            let (now, previous) = (self.generation, self.generation.wrapping_sub(1));
+            self.table.retain(|_, entry| entry.3 == now || entry.3 == previous);
+        } else {
+            self.table.clear();
+        }
+        for slot in &mut self.killers {
+            *slot = [u32::MAX; 2];
+        }
+        for index in self.history_touched.drain(..) {
+            self.history[index as usize] = 0;
+        }
+        self.stats.moves += 1;
+    }
+
+    /// What every search does after its last: the totals the record carries.
+    fn end_search(&mut self) {
         self.stats.nodes += self.nodes;
         self.stats.depth_sum += self.stats.depth as u64;
         self.stats.searches += 1;
-        (best_move, best_value)
     }
 }
 
 impl Player {
     /// The best move at `depth` and its score (`alpha` when the loop ends).
-    fn search_root(
+    fn search_root<const SPY: bool>(
         &mut self,
         game: &mut Game<'_>,
         moves: &[u32],
@@ -614,14 +660,14 @@ impl Player {
             // the side actually changed, which a turn longer than one move makes
             // conditional.
             let mover = game.side;
-            game.make(*m);
+            step::<SPY>(game, *m);
             let flipped = game.side != mover;
             let child = if flipped {
-                self.negamax(game, &mut arena, depth - 1, 1, f64::NEG_INFINITY, -alpha)
+                self.negamax::<SPY>(game, &mut arena, depth - 1, 1, f64::NEG_INFINITY, -alpha)
             } else {
-                self.negamax(game, &mut arena, depth - 1, 1, alpha, f64::INFINITY)
+                self.negamax::<SPY>(game, &mut arena, depth - 1, 1, alpha, f64::INFINITY)
             };
-            game.unmake();
+            unstep::<SPY>(game);
             match child {
                 Err(Exhausted) => {
                     exhausted = true;
@@ -646,7 +692,7 @@ impl Player {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn negamax(
+    fn negamax<const SPY: bool>(
         &mut self,
         game: &mut Game<'_>,
         arena: &mut Vec<u32>,
@@ -658,6 +704,14 @@ impl Player {
         self.nodes += 1;
         if self.nodes >= self.spec.nodes {
             return Err(Exhausted);
+        }
+        // Schema 27 (Q935b): a spy game's tree crosses into rounds once a spy falls in it;
+        // a round node is searched by its phase (`spy_players.rs`).
+        if SPY {
+            let phase = game.phase();
+            if phase.is_round() {
+                return self.round_node(game, arena, phase, depth, ply, alpha, beta);
+            }
         }
 
         // Asked before the table, not after, and no longer only on the rulesets whose
@@ -714,7 +768,7 @@ impl Player {
                 arena.truncate(base);
                 return Err(Exhausted);
             }
-            return self.quiesce_moves(game, arena, base, QUIESCENCE_DEPTH, ply, alpha, beta);
+            return self.quiesce_moves::<SPY>(game, arena, base, QUIESCENCE_DEPTH, ply, alpha, beta);
         }
 
         self.order(game, arena, base, end, ply);
@@ -734,14 +788,14 @@ impl Player {
             // a ramp means the answer differs between one ply and the next.
             let mover = game.side;
             let quiet = !self.is_loud(game, m);
-            game.make(m);
+            step::<SPY>(game, m);
             let flipped = game.side != mover;
             let child = if flipped {
-                self.negamax(game, arena, depth - 1, ply + 1, -beta, -alpha)
+                self.negamax::<SPY>(game, arena, depth - 1, ply + 1, -beta, -alpha)
             } else {
-                self.negamax(game, arena, depth - 1, ply + 1, alpha, beta)
+                self.negamax::<SPY>(game, arena, depth - 1, ply + 1, alpha, beta)
             };
-            game.unmake();
+            unstep::<SPY>(game);
             let score = match child {
                 Err(Exhausted) => {
                     arena.truncate(base);
@@ -782,7 +836,7 @@ impl Player {
     /// Only loud moves are considered, which in a game where captures are rare is a very
     /// short list and costs almost nothing; in a game where every move is a capture it
     /// is the whole list, which is what `QUIESCENCE_DEPTH` is for.
-    fn quiesce(
+    fn quiesce<const SPY: bool>(
         &mut self,
         game: &mut Game<'_>,
         arena: &mut Vec<u32>,
@@ -795,6 +849,11 @@ impl Player {
         if self.nodes >= self.spec.nodes {
             return Err(Exhausted);
         }
+        // Schema 27 (Q935b): quiescence stops at a round; a capture in a round can be
+        // dodged, so a round is a leaf here (`plan-spy.md` §3.3).
+        if SPY && game.phase().is_round() {
+            return self.round_leaf(game, arena);
+        }
         if let Some(outcome) = game.terminal_prefix() {
             return Ok(terminal_value(outcome, game));
         }
@@ -806,14 +865,14 @@ impl Player {
             arena.truncate(base);
             return Ok(terminal_value(outcome, game));
         }
-        self.quiesce_moves(game, arena, base, depth, ply, alpha, beta)
+        self.quiesce_moves::<SPY>(game, arena, base, depth, ply, alpha, beta)
     }
 
     /// `quiesce` past its terminal questions: `arena[base..]` is this position's legal
     /// move list, the node is already counted, and the position is known not to be over.
     /// Truncates the arena back to `base` on every return.
     #[allow(clippy::too_many_arguments)]
-    fn quiesce_moves(
+    fn quiesce_moves<const SPY: bool>(
         &mut self,
         game: &mut Game<'_>,
         arena: &mut Vec<u32>,
@@ -836,7 +895,7 @@ impl Player {
         let mut write = base;
         for index in base..end {
             let m = arena[index];
-            if self.is_loud(game, m) || self.chases(game, m, horizon) {
+            if self.is_loud(game, m) || self.chases::<SPY>(game, m, horizon) {
                 arena[write] = m;
                 write += 1;
             }
@@ -850,14 +909,14 @@ impl Player {
         for index in base..end {
             let m = arena[index];
             let mover = game.side;
-            game.make(m);
+            step::<SPY>(game, m);
             let flipped = game.side != mover;
             let child = if flipped {
-                self.quiesce(game, arena, depth - 1, ply + 1, -beta, -alpha)
+                self.quiesce::<SPY>(game, arena, depth - 1, ply + 1, -beta, -alpha)
             } else {
-                self.quiesce(game, arena, depth - 1, ply + 1, alpha, beta)
+                self.quiesce::<SPY>(game, arena, depth - 1, ply + 1, alpha, beta)
             };
-            game.unmake();
+            unstep::<SPY>(game);
             let score = match child {
                 Err(Exhausted) => {
                     arena.truncate(base);
@@ -913,7 +972,7 @@ impl Player {
     /// `horizon` is the first quiescence ply. Asked of the engine, never of a rule: the
     /// terminal check says whether the move won, `in_check` whether it attacks the other
     /// side's royal. Mirrored by `agents/minimax.py::_chases`.
-    fn chases(&self, game: &mut Game<'_>, m: u32, horizon: bool) -> bool {
+    fn chases<const SPY: bool>(&self, game: &mut Game<'_>, m: u32, horizon: bool) -> bool {
         let repairs = self.spec.repairs;
         if repairs & LOUD_DROPS != 0 && horizon && move_kind(m) == MOVE_DROP {
             return true;
@@ -922,10 +981,12 @@ impl Player {
             return false;
         }
         let mover = game.side;
-        game.make(m);
-        let won = matches!(game.terminal_prefix(), Some(outcome) if outcome.winner == mover as i8);
+        step::<SPY>(game, m);
+        // Schema 27: a spy game's verdict is its phase's (a turn may leave a round).
+        let verdict = if SPY { game.spy_terminal_prefix() } else { game.terminal_prefix() };
+        let won = matches!(verdict, Some(outcome) if outcome.winner == mover as i8);
         let checks = !won && horizon && game.in_check(1 - mover);
-        game.unmake();
+        unstep::<SPY>(game);
         won || checks
     }
 
@@ -1014,6 +1075,27 @@ impl Player {
         game.key
             ^ (game.coloured_by(0) as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
             ^ (game.coloured_by(1) as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F)
+    }
+}
+
+/// One turn: `make`, or in a spy game `spy_turn` (the initiative's deal where rounds
+/// begin, `plan-spy.md` E10). A constant, so the alternating search compiles to itself.
+#[inline(always)]
+fn step<const SPY: bool>(game: &mut Game<'_>, m: u32) {
+    if SPY {
+        game.spy_turn(m);
+    } else {
+        game.make(m);
+    }
+}
+
+/// Take back `step`.
+#[inline(always)]
+fn unstep<const SPY: bool>(game: &mut Game<'_>) {
+    if SPY {
+        game.unmake_spy_turn();
+    } else {
+        game.unmake();
     }
 }
 

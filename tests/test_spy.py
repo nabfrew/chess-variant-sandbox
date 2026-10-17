@@ -551,11 +551,13 @@ def test_random_plays_every_phase_the_same_in_the_core_and_in_python(name: str) 
     assert "alternating" in phases and (phases & {"announced", "blind"}), phases
 
 
-def test_the_searching_players_are_refused_on_a_spy_game() -> None:
+def test_matrix_and_mcts_are_refused_on_a_spy_game() -> None:
+    """Q935b lifted the refusal of greedy and minimax (`tests/test_spy_players.py`); the two
+    names a spy game has no use for stay refused (`plan-spy.md` §3.3)."""
     from chess_variant_sandbox.tournament.play import play_game
 
     engine = _engine("_spy_small")
-    for agent in ("greedy", "minimax:nodes=100", "matrix:nodes=100"):
+    for agent in ("matrix:nodes=100", "mcts:nodes=50"):
         with pytest.raises(ValueError, match="spy game"):
             play_game(engine, ("random", agent), 0)
 
@@ -609,18 +611,16 @@ def test_fairy_stockfish_refuses_a_spy() -> None:
     assert any(reason.startswith("pieces[].spy") for reason in refused.value.reasons)
 
 
-def test_the_loop_screen_and_the_page_refuse_a_spy_game_by_name() -> None:
-    from chess_variant_sandbox.loop.screen import screen
+def test_the_page_plays_a_spy_game() -> None:
+    """Since Q935c (`plan-spy.md` §3.6; its tests are `tests/test_play_spy.py`); the loop's
+    screen plays one too since Q935d (`tests/test_spy_measured.py`)."""
+    from chess_variant_sandbox.web.library import Game
     from chess_variant_sandbox.web.play import Sessions
 
-    result = screen(_load("_spy_small"))
-    assert not result.passed and "spy game" in result.reasons[0]
-
-    class Game:
-        spec = _load("_spy_small")
-
-    with pytest.raises(ValueError, match="a game with a spy cannot be played on this page yet"):
-        Sessions().start(Game(), ("", ""))  # type: ignore[arg-type]
+    game = Game(hash="spy", name="spy", description="", path=HERE, source="test",
+                spec=_load("_spy_small"))
+    session = Sessions().start(game, ("human", "human"))
+    assert session.snapshot()["spy"] == {"phase": "alternating", "announcer": None}
 
 
 def test_the_play_command_walks_the_phases(capsys: pytest.CaptureFixture[str]) -> None:

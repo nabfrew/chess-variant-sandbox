@@ -46,6 +46,14 @@ from dataclasses import dataclass, field
 
 from chess_variant_sandbox.engine import Engine, GameState
 from chess_variant_sandbox.engine.compile import UNREACHABLE, WILD, CompiledSpec, ReachRule
+from chess_variant_sandbox.engine.moves import (
+    MOVE_DROP,
+    MOVE_NORMAL,
+    MOVE_PORTAL,
+    MOVE_PROMOTION,
+    MOVE_SWEEP,
+    decode_move,
+)
 
 # Weight on the declared value when blending with the measured one. Low on purpose:
 # design intent is worth something, but a number nobody checked is worth less.
@@ -142,6 +150,22 @@ IMMUNE_PIECES = 1.0
 
 ROYAL_VALUE = 0.0
 WIN_SCORE = 1_000_000.0
+
+# Schema 27 (Q942b, `docs/plan-round-chase.md` §3 R1): what a rested royal that a standing
+# enemy piece reaches costs its side in a round's evaluation, mine minus theirs. Half a win:
+# the strike lands next round unless the side answers it by taking the other royal in the
+# same round, so it is nearly a loss, and it stays below every decided game
+# (``WIN_SCORE - ply``), so a royal actually taken is still the worse cell. A depth-one round
+# player is otherwise blind to the rule's main tactic. ``rust/src/eval.rs::RESTED_ROYAL`` is
+# the core's copy, exported as ``_core.RESTED_ROYAL`` and held to this one by
+# ``tests/test_round_players_rest.py``.
+RESTED_ROYAL = WIN_SCORE / 2.0
+
+# The move kinds that take what stands on their target square (`engine-and-spec.md`, *what
+# counts as a capture*, less en passant, whose victim is elsewhere): normal, promotion,
+# sweep, portal. A drop never lands on a piece, a fold's own move takes nothing, and a
+# rotation and a castling end on the mover's own squares.
+_LANDING_CAPTURES = frozenset({MOVE_NORMAL, MOVE_PROMOTION, MOVE_SWEEP, MOVE_PORTAL})
 
 
 @dataclass(frozen=True)
@@ -596,6 +620,10 @@ class Evaluator:
             counts[owner][piece_type] += 1
 
         prey = self.prey
+        # Schema 27 (Q935b, `docs/plan-spy.md` §3.5): a spy is priced at its value whatever
+        # it may capture; its worth is the turn rule it holds. The mirror of
+        # `eval.rs::live_values`'s `spy_mask`.
+        spies = ((), ()) if spec.spy is None else spec.spy.types
         scaled: list[list[float]] = [[0.0] * n_types, [0.0] * n_types]
         for owner in (0, 1):
             enemy = counts[1 - owner]
@@ -603,7 +631,9 @@ class Evaluator:
                 count for victim, count in enumerate(enemy) if prey[victim]
             )
             for attacker in range(n_types):
-                if army == 0:
+                if attacker in spies[owner]:
+                    share = 1.0
+                elif army == 0:
                     # Undefined rather than zero: with nothing to win, a valuation
                     # derived from capture has no correction to make and the derived
                     # table stands. Matches what the static share did with an empty
@@ -663,14 +693,32 @@ class Evaluator:
         return self._score(state, player, mobility)
 
     def evaluate_round(
-        self, engine: Engine, state: GameState, player: int, counts: tuple[int, int]
+        self,
+        engine: Engine,
+        state: GameState,
+        player: int,
+        counts: tuple[int, int],
+        lists: tuple[list[int], list[int]] | None = None,
     ) -> float:
         """``evaluate`` in a simultaneous game (schema 26, Q918b): there is no side to
         move, both players' moves are known, and mobility is mine minus theirs, both
         counted (`docs/plan-simultaneous.md` §6.2). ``counts`` is each player's number of
         legal moves on this board, in seat order. ``eval.rs::evaluate_round`` is the
-        same function."""
-        return self._score(state, player, counts[player] - counts[1 - player])
+        same function.
+
+        Under ``rest`` (schema 27, Q942b) a side whose rested royal a standing enemy piece
+        reaches (``rested_royal_falls``) is ``RESTED_ROYAL`` from a loss, mine minus theirs.
+        ``lists`` are both players' legal moves on this board; a caller without them (the
+        analysis probe's ruler) has them asked of the engine, and only when a piece rests."""
+        score = self._score(state, player, counts[player] - counts[1 - player])
+        if state.rest[0] >= 0 or state.rest[1] >= 0:
+            if lists is None:
+                lists = (engine.legal_moves_for(state, 0), engine.legal_moves_for(state, 1))
+            theirs = rested_royal_falls(self.spec, state, 1 - player, lists)
+            mine = rested_royal_falls(self.spec, state, player, lists)
+            if theirs != mine:
+                score += RESTED_ROYAL if theirs else -RESTED_ROYAL
+        return score
 
     def _score(self, state: GameState, player: int, mobility: int) -> float:
         score = self.material(state, player)
@@ -1313,3 +1361,61 @@ def _measured_values(spec: CompiledSpec) -> tuple[float, ...]:
             reachable += len(targets)
         values.append(reachable / spec.n_squares)
     return tuple(values)
+
+
+def _royal_loss_ends_it(spec: CompiledSpec, side: int) -> bool:
+    """``tables.rs::royal_loss_ends_it``: a royal win condition, and a royal in ``side``'s
+    setup (on the opening board, or in a stock that holds one, which is both sides')."""
+    if spec.win not in ("checkmate", "royal_capture"):
+        return False
+    royals = spec.royal_types
+    if spec.drops is not None:
+        stock = spec.drops.stock
+        if any(piece_type < len(stock) and stock[piece_type] > 0 for piece_type in royals):
+            return True
+    for value in spec.initial_board[: spec.n_squares]:
+        if value and spec.owner_of(value) == side and spec.type_of(value) in royals:
+            return True
+    return False
+
+
+def rested_royal_falls(
+    spec: CompiledSpec, state: GameState, side: int, lists: tuple[list[int], list[int]]
+) -> bool:
+    """Whether ``side``'s royal stands rested with a standing enemy piece that reaches it
+    (schema 27, Q942b; ``eval.rs::rested_royal_falls`` is the same test).
+
+    The piece on ``state.rest[side]`` is ``side``'s royal, its only one (no other on the
+    board, none in hand) and one whose loss ends the game; ``lists[side]`` has no move off
+    that square (the rest was not lifted); and ``lists[1 - side]``, whose rested piece's
+    moves are already gone, has a move that lands on it and takes."""
+    square = state.rest[side]
+    if square < 0:
+        return False
+    royals = spec.royal_types
+    value = state.board[square]
+    if not value or spec.owner_of(value) != side or spec.type_of(value) not in royals:
+        return False
+    if not _royal_loss_ends_it(spec, side):
+        return False
+    for other in range(spec.n_squares):
+        held = state.board[other]
+        if (
+            other != square
+            and held
+            and spec.owner_of(held) == side
+            and spec.type_of(held) in royals
+        ):
+            return False
+    hand = state.hands[side]
+    if any(piece_type < len(hand) and hand[piece_type] > 0 for piece_type in royals):
+        return False
+    for move in lists[side]:
+        origin, _, kind, _ = decode_move(move)
+        if kind != MOVE_DROP and origin == square:
+            return False
+    for move in lists[1 - side]:
+        _, target, kind, _ = decode_move(move)
+        if target == square and kind in _LANDING_CAPTURES:
+            return True
+    return False

@@ -14,7 +14,13 @@ import random
 from typing import Any
 
 from chess_variant_sandbox.agents.base import NativeSpec, SearchStats, register, register_native
-from chess_variant_sandbox.agents.evaluation import GOAL_PIECES, IMMUNE_PIECES, WIN_SCORE
+from chess_variant_sandbox.agents.evaluation import GOAL_PIECES, IMMUNE_PIECES, WIN_SCORE, Evaluator
+from chess_variant_sandbox.agents.matrix import (
+    RoundSearch,
+    matrix_round,
+    pure,
+    refuse_alternating_objective,
+)
 from chess_variant_sandbox.agents.nets import require_net
 from chess_variant_sandbox.agents.objective import objective_for
 from chess_variant_sandbox.agents.objective_options import objective_values as _values
@@ -34,6 +40,7 @@ from chess_variant_sandbox.engine.moves import (
     move_to,
     move_type,
 )
+from chess_variant_sandbox.engine.state import SpyPhase
 
 INFINITY = float("inf")
 MAX_DEPTH = 64
@@ -102,6 +109,10 @@ class BudgetExhausted(Exception):
 class MinimaxAgent:
     """Negamax with alpha-beta pruning, a transposition table, and capture ordering."""
 
+    # Schema 27 (Q935b): its round arm plays a spy game's blind rounds only; a game played in
+    # rounds from the start refuses it (`tournament/play.py::_play_rounds_python`).
+    plays_rounds = False
+
     def __init__(
         self,
         engine: Engine,
@@ -130,24 +141,17 @@ class MinimaxAgent:
         # Which search this is, for ``keep``'s aging; the core's is a wrapping u16 and
         # only equality with this search and the previous one is ever asked.
         self._generation = 0
+        # Schema 27 (Q935b): a spy game's tree crosses into rounds (`docs/plan-spy.md` §3.3);
+        # its blind rounds are played by the matrix search, built when first asked.
+        self._spy = engine.spy
+        self._rounds: RoundSearch | None = None
+        self.strategy: list[float] = []
 
     def select_move(self, state: GameState, moves: list[int], rng: random.Random) -> int:
         if len(moves) == 1:
             return moves[0]
 
-        self._nodes = 0
-        self._generation = (self._generation + 1) & 0xFFFF
-        if self.repairs & KEEP_TABLE:
-            now, previous = self._generation, (self._generation - 1) & 0xFFFF
-            self._table = {
-                key: entry for key, entry in self._table.items() if entry[3] in (now, previous)
-            }
-        else:
-            self._table.clear()
-        for slot in self._killers:
-            slot[0] = slot[1] = -1
-        self._history.clear()
-        self.stats.moves += 1
+        self._begin_search()
 
         # Shuffle once so that equal-scoring moves are not resolved by generation order.
         # Otherwise every game between two minimax agents of the same budget is
@@ -171,10 +175,242 @@ class MinimaxAgent:
             if self._nodes >= self.budget:
                 break
 
+        self._end_search(reached)
+        return best_move
+
+    def _begin_search(self) -> None:
+        self._nodes = 0
+        self._generation = (self._generation + 1) & 0xFFFF
+        if self.repairs & KEEP_TABLE:
+            now, previous = self._generation, (self._generation - 1) & 0xFFFF
+            self._table = {
+                key: entry for key, entry in self._table.items() if entry[3] in (now, previous)
+            }
+        else:
+            self._table.clear()
+        for slot in self._killers:
+            slot[0] = slot[1] = -1
+        self._history.clear()
+        self.stats.moves += 1
+
+    def _end_search(self, reached: int) -> None:
         self.stats.nodes += self._nodes
         self.stats.depth_sum += reached
         self.stats.searches += 1
+
+    # ------------------------------------------------------------ a spy game's rounds
+    #
+    # Schema 27 (Q935b, `docs/plan-spy.md` §3): the oracle for `rust/src/spy_players.rs`.
+    # An announced round is two plies of the tree, the announcer's writing nothing to the
+    # board and the answerer's resolving the round; neither mixes and neither draws.
+
+    def select_announcement(
+        self, state: GameState, seat: int, lists: tuple[list[int], list[int]], rng: random.Random
+    ) -> int:
+        """The announcer's move: the maximin by iterative deepening, pure (§3.2)."""
+        mine = lists[seat]
+        if len(mine) == 1:
+            self.strategy = [1.0]
+            return mine[0]
+        self._begin_search()
+        ordered, answers = list(mine), lists[1 - seat]
+        best_move, reached = ordered[0], 0
+        for depth in range(1, self.max_depth + 1):
+            try:
+                best_move = self._announce_root(state, seat, ordered, answers, depth)
+            except BudgetExhausted:
+                break
+            reached = depth
+            ordered.remove(best_move)
+            ordered.insert(0, best_move)
+            if self._nodes >= self.budget:
+                break
+        self._end_search(reached)
+        self.strategy = pure(mine, best_move)
         return best_move
+
+    def select_answer(
+        self,
+        state: GameState,
+        seat: int,
+        lists: tuple[list[int], list[int]],
+        announced: int,
+        rng: random.Random,
+    ) -> int:
+        """The answerer's move: the announced row searched alone, pure (§3.2)."""
+        mine = lists[seat]
+        if len(mine) == 1:
+            self.strategy = [1.0]
+            return mine[0]
+        self._begin_search()
+        ordered = list(mine)
+        best_move, reached = ordered[0], 0
+        for depth in range(1, self.max_depth + 1):
+            try:
+                best_move = self._answer_root(state, 1 - seat, announced, ordered, depth)
+            except BudgetExhausted:
+                break
+            reached = depth
+            ordered.remove(best_move)
+            ordered.insert(0, best_move)
+            if self._nodes >= self.budget:
+                break
+        self._end_search(reached)
+        self.strategy = pure(mine, best_move)
+        return best_move
+
+    def select_round_move(
+        self,
+        state: GameState,
+        seat: int,
+        mine: list[int],
+        theirs: list[int],
+        rng: random.Random,
+    ) -> int:
+        """A spy game's blind round, played as `matrix:nodes=N` plays it (§3.3)."""
+        if not self._spy:
+            raise ValueError(
+                "a simultaneous game (rules.simultaneous) is played by random, greedy and "
+                "matrix:nodes=N; minimax and mcts search one mover at a time"
+            )
+        if self._rounds is None:
+            assert isinstance(self.evaluator, Evaluator), "a round plays the built-in objective"
+            self._rounds = RoundSearch(self.engine, self.evaluator)
+        move, self.strategy, _ = matrix_round(
+            self._rounds, self.stats, state, seat, mine, theirs, rng, self.budget, self.max_depth
+        )
+        return move
+
+    def _announce_root(
+        self, state: GameState, announcer: int, moves: list[int], answers: list[int], depth: int
+    ) -> int:
+        alpha = -INFINITY
+        best_move = moves[0]
+        for move in moves:
+            value = -self._answer_row(state, announcer, move, answers, depth, 1, -INFINITY, -alpha)
+            if value > alpha:
+                alpha, best_move = value, move
+        return best_move
+
+    def _answer_root(
+        self, state: GameState, announcer: int, announced: int, moves: list[int], depth: int
+    ) -> int:
+        alpha = -INFINITY
+        best_move = moves[0]
+        for move in moves:
+            child = self.engine.apply_round(state, *_pair(announcer, announced, move))
+            score = self._negamax(child, depth - 1, 1, alpha, INFINITY)
+            if score > alpha:
+                alpha, best_move = score, move
+        return best_move
+
+    def _round_leaf(self, state: GameState) -> float:
+        outcome = self.engine.terminal_prefix(state)
+        if outcome is not None:
+            return self._terminal_value(outcome, state)
+        return self._round_leaf_lists(state)
+
+    def _round_leaf_lists(self, state: GameState) -> float:
+        engine = self.engine
+        lists = (engine.legal_moves_for(state, 0), engine.legal_moves_for(state, 1))
+        outcome = engine.terminal(state)
+        if outcome is not None:
+            return self._terminal_value(outcome, state)
+        return self._evaluate_round(state, lists)
+
+    def _evaluate_round(self, state: GameState, lists: tuple[list[int], list[int]]) -> float:
+        assert isinstance(self.evaluator, Evaluator), "a round plays the built-in objective"
+        counts = (len(lists[0]), len(lists[1]))
+        return self.evaluator.evaluate_round(self.engine, state, state.side_to_move, counts, lists)
+
+    def _round_node(
+        self, state: GameState, phase: SpyPhase, depth: int, ply: int, alpha: float, beta: float
+    ) -> float:
+        """A round inside the tree: a blind one a leaf, an announced one two plies."""
+        engine = self.engine
+        outcome = engine.terminal_prefix(state)
+        if outcome is not None:
+            return self._terminal_value(outcome, state)
+        if phase.name != "announced":
+            return self._round_leaf_lists(state)
+        announcer = phase.announcer
+
+        key = self._table_key(state)
+        cached = self._table.get(key)
+        if cached is not None and cached[0] >= depth:
+            _, value, bound, _ = cached
+            if (
+                bound == EXACT
+                or (bound == LOWER and value >= beta)
+                or (bound == UPPER and value <= alpha)
+            ):
+                return value
+
+        lists = (engine.legal_moves_for(state, 0), engine.legal_moves_for(state, 1))
+        outcome = engine.terminal(state)
+        if outcome is not None:
+            return self._terminal_value(outcome, state)
+        if depth <= 0:
+            return self._evaluate_round(state, lists)
+        announced = list(lists[announcer])
+        answers = lists[1 - announcer]
+        self._order(state, announced, ply)
+
+        opened_at = alpha
+        announcer_beta = -alpha
+        announcer_alpha = -beta
+        announcer_best = -INFINITY
+        for move in announced:
+            quiet = not self._is_loud(state, move)
+            score = -self._answer_row(
+                state, announcer, move, answers, depth, ply + 1, -announcer_beta, -announcer_alpha
+            )
+            if score > announcer_best:
+                announcer_best = score
+            if announcer_best > announcer_alpha:
+                announcer_alpha = announcer_best
+            if announcer_alpha >= announcer_beta:
+                self._remember(move, quiet, depth, ply)
+                break
+
+        best = -announcer_best
+        if best <= opened_at:
+            bound = UPPER
+        elif best >= beta:
+            bound = LOWER
+        else:
+            bound = EXACT
+        self._table[key] = (depth, best, bound, self._generation)
+        return best
+
+    def _answer_row(
+        self,
+        state: GameState,
+        announcer: int,
+        announced: int,
+        answers: list[int],
+        depth: int,
+        ply: int,
+        alpha: float,
+        beta: float,
+    ) -> float:
+        """The answerer's ply: the best of its moves against ``announced``, ordered at
+        ``ply``; the side does not change across a round, so a child's value passes."""
+        moves = list(answers)
+        self._order(state, moves, ply)
+        best = -INFINITY
+        for move in moves:
+            quiet = not self._is_loud(state, move)
+            child = self.engine.apply_round(state, *_pair(announcer, announced, move))
+            score = self._negamax(child, depth - 1, ply + 1, alpha, beta)
+            if score > best:
+                best = score
+            if best > alpha:
+                alpha = best
+            if alpha >= beta:
+                self._remember(move, quiet, depth, ply)
+                break
+        return best
 
     def _search_root(self, state: GameState, moves: list[int], depth: int) -> int:
         engine = self.engine
@@ -200,6 +436,10 @@ class MinimaxAgent:
             raise BudgetExhausted
 
         engine = self.engine
+        if self._spy:
+            phase = engine.phase(state)
+            if phase.is_round:
+                return self._round_node(state, phase, depth, ply, alpha, beta)
         # Asked before the table, not after, and no longer only on the rulesets whose
         # endings the evaluator reads. A cached value is a value for a position still
         # being played; a position that has already ended has an outcome instead. Two
@@ -288,6 +528,9 @@ class MinimaxAgent:
             raise BudgetExhausted
 
         engine = self.engine
+        # Schema 27: quiescence stops at a round (a capture in a round can be dodged).
+        if self._spy and engine.is_round(state):
+            return self._round_leaf(state)
         outcome = engine.terminal_prefix(state)
         if outcome is not None:
             return self._terminal_value(outcome, state)
@@ -458,8 +701,17 @@ class MinimaxAgent:
         return gain
 
 
+def _pair(announcer: int, announced: int, answer: int) -> tuple[int, int]:
+    """A round's two moves in seat order, ``announced`` the announcer's."""
+    return (announced, answer) if announcer == 0 else (answer, announced)
+
+
 @register("minimax")
 def _build_minimax(engine: Engine, options: dict[str, Any]) -> MinimaxAgent:
+    if engine.spy:
+        # Schema 27 (Q935b): a spy game is played on the built-in objective only, as a
+        # round game is (`docs/plan-spy.md` §3.3).
+        refuse_alternating_objective(options, "minimax")
     return MinimaxAgent(
         engine,
         nodes=int(options.get("nodes", 20_000)),

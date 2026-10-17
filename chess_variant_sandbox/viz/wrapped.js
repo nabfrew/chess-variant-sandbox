@@ -863,7 +863,85 @@ const MARK_KINDS = {
   barred: { colour: 'var(--standoff-bar)', shape: 'link', barred: true, name: 'barred link',
             ink: 'var(--ink)',
             label: 'two void rounds in a row: neither may take the other that way until one of the squares changes' },
+  // Schema 27 (Q942b, `docs/plan-round-chase.md` §3 R2): two pieces that swapped squares
+  // and met, where `swap: "collision"` makes a swap a meeting. Drawn between the two
+  // squares, a burst at the middle where they met (`clashMark`), off the core's event in
+  // the last round; the row is the legend's.
+  clash: { colour: 'var(--clash)', shape: 'clash', name: 'burst', ink: 'var(--ink)',
+           label: 'two pieces that swapped squares and met half-way, as the rules make a swap a meeting' },
+  // Schema 27 (§3 R1, `rest`): the piece each player moved last round, which rests this one.
+  // A pause sign on the square's top corner (`restBadge`), off the core's rested squares.
+  rested: { colour: 'var(--rest)', shape: 'rest', name: 'pause sign', ink: 'var(--ink)',
+            label: 'the piece moved last round: it rests and may not move this round, unless it is all its side can move' },
+  // Schema 27 (Q935c, `docs/plan-spy.md` §3.6): the move announced in a spy game's announced
+  // round, shown to both players before the answer. A solid arrow and a ring on the square
+  // it goes to (`announceLine`, `announcedHtml`), in a teal of its own: never the held
+  // move's dashed pine, so a move shown and a move held unsent are two marks on one board.
+  announced: { colour: 'var(--announced)', shape: 'announce', name: 'solid arrow',
+               ink: 'var(--ink)',
+               label: 'the move announced this round: it is made, whatever the other player answers' },
 };
+
+// An announced move's arrow (schema 27, Q935c), from `(x1, y1)` to its tip at `(x2, y2)`: a
+// solid shaft and a filled head in `--announced`, cased in `--held-halo` as the held move's
+// arrow is, so it reads on both woods; solid where the held move's is dashed.
+function announceLine(x1, y1, x2, y2, cell) {
+  const f = n => n.toFixed(3);
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  if (!length) return '';
+  const ux = (x2 - x1) / length, uy = (y2 - y1) / length;
+  const head = Math.min(cell * 0.26, length * 0.6);
+  const back = [x2 - ux * head, y2 - uy * head];
+  const wing = [-uy * head * 0.7, ux * head * 0.7];
+  const tip = `M${f(back[0] + wing[0])} ${f(back[1] + wing[1])}L${f(x2)} ${f(y2)}L${
+    f(back[0] - wing[0])} ${f(back[1] - wing[1])}Z`;
+  const line = `x1="${f(x1)}" y1="${f(y1)}" x2="${f(back[0])}" y2="${f(back[1])}"`;
+  return `<g data-mark="announced" pointer-events="none" stroke-linecap="round"
+      stroke-linejoin="round"><line ${line} stroke="var(--held-halo)"
+      stroke-width="${f(cell * 0.17)}" opacity="0.9"/><path d="${tip}" fill="var(--held-halo)"
+      stroke="var(--held-halo)" stroke-width="${f(cell * 0.1)}" opacity="0.9"/><line ${line}
+      stroke="var(--announced)" stroke-width="${f(cell * 0.09)}"/><path d="${tip}"
+      fill="var(--announced)" stroke="var(--announced)" stroke-width="${f(cell * 0.03)}"/></g>`;
+}
+
+// A swap's meeting between the middles of two squares (schema 27): a short link in
+// `--clash`, cased in `--held-halo` as a standoff's is, with an eight-pointed burst at its
+// middle, where the two pieces met.
+function clashMark(x1, y1, x2, y2, cell) {
+  const f = n => n.toFixed(3);
+  const length = Math.hypot(x2 - x1, y2 - y1);
+  if (!length) return '';
+  const ux = (x2 - x1) / length, uy = (y2 - y1) / length;
+  const trim = Math.min(cell * 0.3, length / 3);
+  const line = `x1="${f(x1 + ux * trim)}" y1="${f(y1 + uy * trim)}" x2="${
+    f(x2 - ux * trim)}" y2="${f(y2 - uy * trim)}"`;
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  const points = [];
+  for (let k = 0; k < 16; k++) {
+    const r = cell * (k % 2 ? 0.1 : 0.22), a = Math.PI * k / 8 + Math.PI / 16;
+    points.push(`${f(mx + r * Math.cos(a))},${f(my + r * Math.sin(a))}`);
+  }
+  return `<g data-mark="clash" pointer-events="none" stroke-linecap="round"><line ${line}
+      stroke="var(--held-halo)" stroke-width="${f(cell * 0.13)}" opacity="0.85"/><line ${line}
+      stroke="var(--clash)" stroke-width="${f(cell * 0.06)}"/><polygon points="${
+      points.join(' ')}" fill="var(--clash)" stroke="var(--held-halo)"
+      stroke-width="${f(cell * 0.035)}" stroke-linejoin="round"/></g>`;
+}
+
+// A rested piece's pause sign (schema 27) on the top corner of the square at `(x, y)`, clear
+// of the piece's head: a disc in `--rest` cased in `--held-halo`, two bars in the casing's
+// colour. `player` is whose piece rests, for a reader of the drawing.
+function restBadge(x, y, cell, player) {
+  const f = n => n.toFixed(3);
+  const cx = x + cell * 0.8, cy = y + cell * 0.2, r = cell * 0.15;
+  const w = cell * 0.045, h = cell * 0.13;
+  const bar = dx => `<rect x="${f(cx + dx - w / 2)}" y="${f(cy - h / 2)}" width="${f(w)}"
+      height="${f(h)}" rx="${f(w / 3)}" fill="var(--held-halo)"/>`;
+  return `<g data-mark="rested"${player === undefined ? '' : ` data-player="${player}"`}
+      pointer-events="none"><circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" fill="var(--rest)"
+      stroke="var(--held-halo)" stroke-width="${f(cell * 0.03)}"/>${bar(-cell * 0.04)}${
+      bar(cell * 0.04)}</g>`;
+}
 
 // A standoff's link between the middles of two squares, `(x1, y1)` and `(x2, y2)`, in the
 // look of the mark kind `kind` (`voidRun` or `barred`): a line in the kind's own colour cased
@@ -1178,6 +1256,22 @@ function squareBadge(x, y, cell, marks, view, tag) {
     if (kind.shape === 'link') {
       out += standoffLine(x + cell * 0.12, y + cell * 0.88, x + cell * 0.88, y + cell * 0.12,
                           cell, mark.kind);
+      continue;
+    }
+    // A swap's meeting and a rested piece (schema 27): only the legend comes here; on a
+    // board the burst lies between two squares and the sign on the rested piece's square.
+    if (kind.shape === 'clash') {
+      out += clashMark(x + cell * 0.1, y + cell * 0.9, x + cell * 0.9, y + cell * 0.1, cell);
+      continue;
+    }
+    // An announced move (schema 27): only the legend comes here; on a board the arrow runs
+    // between the two squares (`announcedHtml`). Corner to corner, as an arrow's key.
+    if (kind.shape === 'announce') {
+      out += announceLine(x + cell * 0.15, y + cell * 0.85, x + cell * 0.88, y + cell * 0.12, cell);
+      continue;
+    }
+    if (kind.shape === 'rest') {
+      out += restBadge(x - cell * 0.3, y + cell * 0.3, cell * 1.0);
       continue;
     }
     // A walk's key, as a still board draws a step of one (Q852): only the legend comes here.

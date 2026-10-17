@@ -58,7 +58,7 @@ from chess_variant_sandbox.measurement import (
 )
 from chess_variant_sandbox.measurement import load as load_measurement
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS, load_weights, score_ruleset
-from chess_variant_sandbox.metrics.components import plays_in_rounds
+from chess_variant_sandbox.metrics.components import plays_in_rounds, plays_with_spies
 from chess_variant_sandbox.metrics.scoring import WeightsError
 from chess_variant_sandbox.metrics.seat import seat_details
 from chess_variant_sandbox.metrics.seeds import VOTE_POOLED_SEAT, RunReading, combine
@@ -130,6 +130,16 @@ ROUND_AGENTS = ("random", "greedy") + tuple(
     f"matrix:nodes={budget * ROUND_BUDGET_FACTOR}" for budget in _FITTED_BUDGETS
 )
 
+# The roster a spy game is measured on (schema 27, Q935d; `docs/plan-spy.md` §3.3, §3.4):
+# the canonical ladder's eight places and budgets, `minimax:nodes=N` on the built-in
+# objective. `minimax` plays every phase of a spy game (its blind rounds as `matrix:nodes=N`
+# would), and a stored objective, `matrix:` and `mcts:` are refused on one, so there is one
+# name per budget and no fit. The budgets are the alternating ladder's, not the round
+# ladder's sixteen-fold ones: a spy game starts alternating, where these are the measured
+# rungs, and Q930's finding that its round phases need 25,600 nodes to separate players is
+# read beside the score, not built into it (§3.4).
+SPY_AGENTS = ("random", "greedy") + tuple(f"minimax:nodes={budget}" for budget in _FITTED_BUDGETS)
+
 # Where the measuring roster reads a game's learned net from (Q502h). Relative, as
 # `RUNS_DIR` is: every command runs from a checkout's root, and the box serves from its.
 NETS_DIR = Path(STORE_DIR)
@@ -139,12 +149,13 @@ def canonical_agents(
     digest: str, nets_dir: Path | None = None, spec: dict[str, Any] | None = None
 ) -> tuple[str, ...]:
     """The roster this game's committed score means: `CANONICAL_AGENTS`, its net ladder,
-    or, for a game played in rounds, `ROUND_AGENTS`.
+    for a game played in rounds `ROUND_AGENTS`, or for a spy game `SPY_AGENTS`.
 
     **A game in rounds** is known by its spec (``rules.simultaneous``), so a caller holding
     one passes it; without it the alternating roster is named, which matches no round
     game's stamp and so reads stale, the safe direction (`current_basis` says the same of
-    the tables).
+    the tables). **A spy game** (schema 27, ``pieces[].spy``) is one too, by its spec, and
+    is asked first: it declares ``rules.simultaneous`` but starts alternating.
 
     **Where a learned net is rated** (`nets.rated_net`: kept, or accepted and confirmed
     where no generation line runs), every searching rung plays that net at the same
@@ -161,6 +172,8 @@ def canonical_agents(
     Read off `nets/` every call, so a newly kept generation stales its game's score the
     moment its store lands, and the refresher replays it (`plan-evolving-score.md` §6.4).
     """
+    if spec is not None and plays_with_spies(spec):
+        return SPY_AGENTS
     if spec is not None and plays_in_rounds(spec):
         return ROUND_AGENTS
     procedure = rated_net(digest, NETS_DIR if nets_dir is None else nets_dir)

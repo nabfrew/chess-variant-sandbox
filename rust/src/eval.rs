@@ -33,6 +33,63 @@ use crate::tables::{
 
 pub const WIN_SCORE: f64 = 1_000_000.0;
 
+/// Schema 27 (Q942b, `docs/plan-round-chase.md` §3 R1): what a rested royal that a standing
+/// enemy piece reaches costs its side in a round's evaluation. Half a win: the strike lands
+/// next round unless the side answers it by taking the other royal in the same round, so it
+/// is nearly a loss, and it stays below every decided game (`WIN_SCORE - ply`), so a royal
+/// actually taken is still the worse cell. Mirrors `RESTED_ROYAL` in
+/// `chess_variant_sandbox/agents/evaluation.py`; a test holds the two together.
+pub const RESTED_ROYAL: f64 = WIN_SCORE / 2.0;
+
+/// Whether `side`'s royal stands rested on its square with a standing enemy piece that
+/// reaches it (schema 27, Q942b): the piece on `game.rest[side]` is `side`'s royal, its only
+/// one (none other on the board, none in hand) and one whose loss ends the game; `side` has
+/// no move from that square in `lists[side]` (so the rest was not lifted); and the other
+/// side has a move onto it in `lists[1 - side]` (whose rested piece's moves are already
+/// gone). `agents/evaluation.py::rested_royal_falls` is the same test.
+pub fn rested_royal_falls(game: &Game<'_>, side: usize, lists: [&[u32]; 2]) -> bool {
+    use crate::tables::{
+        move_from, move_kind, move_to, MOVE_DROP, MOVE_NORMAL, MOVE_PORTAL, MOVE_PROMOTION,
+        MOVE_SWEEP,
+    };
+    let rested = game.rest[side];
+    if rested < 0 {
+        return false;
+    }
+    let square = rested as usize;
+    let t = game.t;
+    let value = game.board[square];
+    if value == 0 || t.owner_of(value) != side || !t.is_royal(t.type_of(value)) {
+        return false;
+    }
+    if !t.royal_loss_ends_it(side) {
+        return false;
+    }
+    for other in 0..t.n_squares {
+        let held = game.board[other];
+        if other != square && held != 0 && t.owner_of(held) == side && t.is_royal(t.type_of(held))
+        {
+            return false;
+        }
+    }
+    // A royal in hand (a hand is empty in a game without drops, so no rule is asked).
+    let hand = &game.hands[side];
+    if t.royal_types.iter().any(|piece_type| hand.get(*piece_type).is_some_and(|n| *n > 0)) {
+        return false;
+    }
+    // The lift's own test (`rounds.rs::generate_legal_for`): any move off the square.
+    if lists[side].iter().any(|&m| move_kind(m) != MOVE_DROP && move_from(m) == square) {
+        return false;
+    }
+    // A move that ends on an occupied square and takes what stands there (the kinds of
+    // "what counts as a capture" that land on their target: a drop never lands on a piece, a
+    // fold's own move takes nothing, a rotation and a castling end on the mover's squares).
+    lists[1 - side].iter().any(|&m| {
+        move_to(m) == square
+            && matches!(move_kind(m), MOVE_NORMAL | MOVE_PROMOTION | MOVE_PORTAL | MOVE_SWEEP)
+    })
+}
+
 /// What a piece that may capture nothing is worth, as a share of full reach. Not zero:
 /// it still takes up a square and blocks a line. Mirrors `NO_PREY_FLOOR` in
 /// `chess_variant_sandbox/agents/evaluation.py`, which is the definition the two sides share.
@@ -174,6 +231,9 @@ pub struct Evaluator {
     /// Which types can be won at all: the denominator of the prey share, and the pool
     /// `features::prey_weight` shares. `prey_types` is where the argument lives.
     pub prey: [bool; MAX_PIECE_TYPES],
+    /// Schema 27 (Q935b): `[owner]`, a bit per spy type (`SpyTables::mask`), zero in every
+    /// game without a spy. A spy is priced at its value whatever it may capture.
+    spy_mask: [u32; 2],
     has_capture_matrix: bool,
     /// How many pieces each side started with, of the types an `extinction` rule counts.
     /// The denominator of the shortfall term, and constant for the whole game.
@@ -376,6 +436,7 @@ impl Evaluator {
             side_stride: t.side_stride,
             capture_allowed: t.capture_allowed.clone(),
             prey: prey_types(t),
+            spy_mask: t.spy.as_ref().map_or([0, 0], |spy| spy.mask),
             has_capture_matrix: t.has_capture_matrix,
             initial_counts,
             has_drops: t.drops.is_some(),
@@ -735,7 +796,16 @@ impl Evaluator {
                 .filter(|(victim, _)| self.prey[*victim])
                 .map(|(_, count)| *count)
                 .sum();
+            let spies = self.spy_mask[owner];
             for (attacker, slot) in row[..n_types].iter_mut().enumerate() {
+                // Schema 27 (Q935b, `plan-spy.md` §3.5): a spy's worth is the turn rule it
+                // holds, not what it may take, so the share does not read it; a spy that
+                // captures nothing would otherwise be worth a tenth of its value and be
+                // given away for nothing, whatever the designer declared.
+                if spies != 0 && spies & (1 << attacker) != 0 {
+                    *slot = self.values[attacker];
+                    continue;
+                }
                 // An enemy with nothing to win leaves the share undefined rather than
                 // zero: a valuation derived from capture has no correction to make and
                 // the derived table stands. 1.0 matches what the static share did with
@@ -778,9 +848,23 @@ impl Evaluator {
     /// both players' moves are known, so mobility is mine minus theirs, both counted
     /// (`docs/plan-simultaneous.md` §6.2). `counts` is each player's number of legal moves,
     /// in seat order. `agents/evaluation.py::Evaluator.evaluate_round` is its oracle.
-    pub fn evaluate_round(&self, game: &Game<'_>, player: usize, counts: [usize; 2]) -> f64 {
-        let mobility = counts[player] as f64 - counts[1 - player] as f64;
-        self.score(game, player, mobility)
+    ///
+    /// `lists` are both players' legal moves on this board, in seat order. Their lengths
+    /// are the mobility; their contents are read only under `rest` (schema 27, Q942b), by
+    /// `rested_royal_falls`: a side whose rested royal a standing enemy piece reaches is
+    /// `RESTED_ROYAL` from a loss, mine minus theirs.
+    pub fn evaluate_round(&self, game: &Game<'_>, player: usize, lists: [&[u32]; 2]) -> f64 {
+        let mobility = lists[player].len() as f64 - lists[1 - player].len() as f64;
+        let mut score = self.score(game, player, mobility);
+        // `rest[side]` is set only under the rule, so every other game pays two compares.
+        if game.rest[0] >= 0 || game.rest[1] >= 0 {
+            let theirs = rested_royal_falls(game, 1 - player, lists);
+            let mine = rested_royal_falls(game, player, lists);
+            if theirs != mine {
+                score += if theirs { RESTED_ROYAL } else { -RESTED_ROYAL };
+            }
+        }
+        score
     }
 
     /// The objective with mobility already signed: the one body both callers share, so

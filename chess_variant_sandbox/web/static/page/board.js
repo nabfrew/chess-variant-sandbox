@@ -119,7 +119,7 @@ async function showBoard(snapshot, how) {
         ${inline ? `<div class="row small" style="margin-bottom:8px">
           <div>${seatHtml(0)}</div><span class="muted">vs</span><div>${seatHtml(1)}</div>
         </div>` : ''}
-        ${frameHtml(inline, snapshot.mode, watched, between, !!snapshot.round && !watched)}
+        ${frameHtml(inline, snapshot.mode, watched, between, (!!snapshot.round || !!snapshot.spy) && !watched)}
         <div class="row" id="review" style="margin-top:8px"></div>
         ${between ? '' : `<div class="row" style="margin-top:8px">
           <button id="again">new game</button>
@@ -1564,6 +1564,16 @@ function drawBoard(previous) {
   // after a void round or two (`standoffHtml`, the core's `voidRun` and `bars`).
   const standing = AT ? null : SESSION.round;
   out += standoffHtml(standing, cell);
+  // Schema 27 (Q942b): a swap that met, between its two squares, while it is the last
+  // round on screen; and each rested piece's badge, on the position still to be played.
+  const clashed = roundClash(last);
+  out += clashHtml(clashed, cell);
+  const resting = SESSION.outcome ? [] : roundRests(standing);
+  out += restsHtml(resting, cell);
+  // Schema 27 (Q935c): the move announced in a spy game's announced round, shown to both
+  // players, under the answer being held.
+  const announced = SESSION.outcome ? null : announcedArrow(standing);
+  out += announcedHtml(announced, cell, W, H, rules.wrap);
   // The held move over everything: its arrow, then its piece where it would land.
   if (held) out += heldHtml(held, cell, W, H, rules.wrap);
   // A move through a portal, in its two legs (§4), over the squares it tinted.
@@ -1624,6 +1634,9 @@ function drawBoard(previous) {
     ...(comingThen && comingThen.length ? ['comingThen'] : []),
     ...boardKinds(SESSION.obstacles, SESSION.ruleset.portals),
     ...standoffKinds(standing),
+    ...(clashed ? ['clash'] : []),
+    ...(resting.length ? ['rested'] : []),
+    ...(announced ? ['announced'] : []),
   ]);
   drawCoords(cell, outside);
   fitBoard();
@@ -2813,25 +2826,8 @@ function moveRows() {
   const rows = [];
   const outcome = SESSION.outcome;
   const last = SESSION.history.length - 1;
-  // Schema 26: a round is one row, both moves in seat order (`roundRowHtml`), its wild
-  // pieces' walk under it, as a ply's is.
-  if (SESSION.round) {
-    for (let i = 0; i + 1 < SESSION.history.length; i += 2) {
-      const first = SESSION.history[i], second = SESSION.history[i + 1];
-      const stripe = (i / 2) % 2 === 0;
-      rows.push({ plies: i + 2, kind: 'move', stripe: stripe,
-                  html: roundRowHtml(i / 2 + 1, first, second) });
-      if (!(second.phase || []).length) continue;
-      const beat = split.get(i + 2);
-      rows.push({ plies: i + 2, kind: 'phase', stripe: stripe,
-                  took: second.phase.some(step => step.eaten),
-                  html: esc(phaseText(second.phase, beat ? beat.walkers : null)) });
-    }
-    if (outcome) rows.push({ plies: last + 1, kind: 'result', stripe: false,
-                             html: `<b>${esc(verdictText(outcome))}</b>` });
-    return rows;
-  }
-  SESSION.history.forEach((m, i) => {
+  // One move's row, and its wild pieces' walk under it.
+  const plyRow = (m, i) => {
     const stripe = i % 2 === 0;
     rows.push({ plies: i + 1, kind: 'move', stripe: stripe, html: `${
       stripe ? `${Math.floor(i / 2) + 1}.` : '&nbsp;&nbsp;&hellip;'} ${esc(m.text)}${
@@ -2841,7 +2837,32 @@ function moveRows() {
     rows.push({ plies: i + 1, kind: 'phase', stripe: stripe,
                 took: m.phase.some(step => step.eaten),
                 html: esc(phaseText(m.phase, beat ? beat.walkers : null)) });
-  });
+  };
+  // Schema 26: a round is one row, both moves in seat order (`roundRowHtml`), its wild
+  // pieces' walk under it, as a ply's is. A spy game's (schema 27) turns come first, a row
+  // a move, and its rounds are named as rounds, so the two counts are not read as one.
+  if (SESSION.round || SESSION.spy) {
+    let i = 0;
+    while (i < SESSION.history.length) {
+      const first = SESSION.history[i], second = SESSION.history[i + 1];
+      if (first.round === undefined) { plyRow(first, i); i += 1; continue; }
+      if (!second) break;
+      const stripe = first.round % 2 === 0;
+      const number = SESSION.spy ? `round ${first.round + 1}` : first.round + 1;
+      rows.push({ plies: i + 2, kind: 'move', stripe: stripe,
+                  html: roundRowHtml(number, first, second) });
+      i += 2;
+      if (!(second.phase || []).length) continue;
+      const beat = split.get(i);
+      rows.push({ plies: i, kind: 'phase', stripe: stripe,
+                  took: second.phase.some(step => step.eaten),
+                  html: esc(phaseText(second.phase, beat ? beat.walkers : null)) });
+    }
+    if (outcome) rows.push({ plies: last + 1, kind: 'result', stripe: false,
+                             html: `<b>${esc(verdictText(outcome))}</b>` });
+    return rows;
+  }
+  SESSION.history.forEach(plyRow);
   // The game's end, in the strip's own words, as the list's last line.
   if (outcome) rows.push({ plies: last + 1, kind: 'result', stripe: false,
                            html: `<b>${esc(verdictText(outcome))}</b>` });
@@ -3029,7 +3050,10 @@ function verdictParts(outcome) {
   if (outcome.reason === 'cancelled') {
     return { head: 'Cancelled before both players had moved. It counts for nothing.', how: '' };
   }
-  const how = reasonWords(outcome.reason);
+  // Schema 27 (Q942b): an ending that fired for both players in one round carries the
+  // server's own words for it (`play.both_fired_words`), since *by capturing the royal
+  // piece* would name one capture where there were two.
+  const how = outcome.how || reasonWords(outcome.reason);
   if (outcome.winner === null || outcome.winner === undefined) return { head: 'Drawn', how: how };
   const side = sideName(outcome.winner);
   return { head: `${side.charAt(0).toUpperCase()}${side.slice(1)} (${
@@ -3190,10 +3214,18 @@ function thinkingHtml() {
   const mover = SESSION ? SESSION.sideToMove : 0;
   const slow = SESSION && AGENT_SLOW === SESSION.id
     ? `<span class="frame-note">${esc(SLOW_SAID)}</span>` : '';
-  // In a round (schema 26) the computer is choosing its sealed move, unseen.
-  const doing = SESSION && SESSION.round ? ' is choosing its move' : ' is thinking';
+  // In a round (schema 26) the computer is choosing its sealed move, unseen; in a spy
+  // game's announced round (schema 27), its announcement or its answer to one.
+  const round = SESSION && SESSION.round;
+  let doing = round ? ' is choosing its move' : ' is thinking';
+  if (round && round.announcer !== undefined && round.announcer !== null) {
+    doing = round.announcer === mover ? ' is choosing what to announce'
+      : round.announced ? ` is choosing its answer to ${round.announced.text}`
+      : ' is choosing its answer';
+  }
   return `<span class="spin"></span> ${SESSION ? seatDot(mover) + esc(sideName(mover)) + ' (' +
-    esc(seatName(SESSION.seats[mover])) + ')' + doing : 'thinking'}${slow}`;
+    esc(seatName(SESSION.seats[mover])) + ')' + esc(doing) : 'thinking'}${slow}${
+    SESSION ? spyNoteHtml() : ''}`;
 }
 
 // The side to move as a dot in its army's colour, before its name: the strip's first
@@ -3268,7 +3300,7 @@ function drawStrip() {
     status.innerHTML = SESSION.awaitingAgent
       ? (PAUSED ? 'paused' : AGENT_ASKING === SESSION.id ? thinkingHtml() : '') + check
       : `${seatDot(SESSION.sideToMove)}${esc(sideName(SESSION.sideToMove))} (${
-          esc(seatLabel(SESSION.sideToMove))}) to move${check}${esc(more)}${
+          esc(seatLabel(SESSION.sideToMove))}) to move${check}${esc(more)}${spyNoteHtml()}${
           NOTE ? `<span class="frame-note">${esc(NOTE)}</span>` : ''}`;
   }
   if (undo) undo.disabled = SESSION.history.length === 0;
@@ -4745,8 +4777,10 @@ function drawCorrSend() {
   const slot = document.getElementById('corrSend');
   if (!slot || !SESSION) return;
   const between = SESSION.correspondence;
-  // A game in rounds, by correspondence too (Q918f): the seal's slot, not the send's.
+  // A game in rounds, by correspondence too (Q918f): the seal's slot, not the send's. A spy
+  // game's (schema 27) says its phase while it is played by turns.
   if (SESSION.round) { drawRoundSend(slot); return; }
+  if (SESSION.spy) { drawSpySend(slot); return; }
   if (!between || between.you === null || SESSION.outcome) {
     slot.hidden = true;
     slot.innerHTML = '';

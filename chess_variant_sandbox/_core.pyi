@@ -139,6 +139,7 @@ class Core:
         agent: NativeSpec,
         values: list[float],
         seed: int = ...,
+        announced: int | None = ...,
     ) -> tuple[int | None, list[float], int, int]: ...
     # `select_move`, plus how deep the search got. Depth is a property of the position
     # and the budget together and cannot be computed from outside, so the heuristic
@@ -207,6 +208,7 @@ def regret_solve(
 ) -> tuple[list[float], list[float]]: ...
 
 REGRET_ITERATIONS: int
+RESTED_ROYAL: float
 
 # Hash of the `rust/src/` sources this extension was compiled from, baked in by
 # `build.rs`. `chess_variant_sandbox.measurement` compares it against the same hash of the source on

@@ -31,18 +31,21 @@ from __future__ import annotations
 import json
 import os
 import random
+from collections.abc import Iterator
 from concurrent.futures import BrokenExecutor, ProcessPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from chess_variant_sandbox._core import REGRET_ITERATIONS, regret_solve
+from chess_variant_sandbox.agents import native_spec
 from chess_variant_sandbox.agents.evaluation import WIN_SCORE, Evaluator
-from chess_variant_sandbox.engine import Engine, GameState
+from chess_variant_sandbox.engine import Engine, GameState, SpyPhase
 from chess_variant_sandbox.engine.moves import (
     MOVE_CASTLE,
     MOVE_DROP,
     MOVE_FOLD,
+    MOVE_PROMOTION,
     MOVE_ROTATE,
     move_fold,
     move_from,
@@ -122,12 +125,18 @@ class GameAnalysis:
     # for a game that alternates, and then absent from the file, so an alternating game's
     # `analysis.json` is the bytes it always was.
     rounds: dict[str, int] | None = None
+    # Schema 27 (Q935d): a spy game's phases (`SPY_COUNTS`): the plies and rounds played in
+    # each, and each player's spy loss, its ply and how. ``None`` for every other game, and
+    # then absent from the file, as ``rounds`` is.
+    spy: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["agents"] = list(self.agents)
         if self.rounds is None:
             del data["rounds"]
+        if self.spy is None:
+            del data["spy"]
         return data
 
     @classmethod
@@ -310,6 +319,8 @@ def _searching(record: GameRecord) -> bool:
 def _analyse_game(
     engine: Engine, evaluator: Evaluator, record: GameRecord, epsilon: float
 ) -> GameAnalysis:
+    if engine.spy:
+        return _analyse_spy(engine, evaluator, record, epsilon)
     if engine.simultaneous:
         return _analyse_rounds(engine, evaluator, record, epsilon)
     n_types = engine.spec.n_types
@@ -478,8 +489,12 @@ def _score_roots(
     objective, even where the rated players use one. ``docs/reference/decision-probe-ruler.md``.
     It reads the goal terms and, since Q471, the immunity term at the weights
     ``evaluator`` carries, which are the rated players' defaults.
+
+    **A spy game's turn is probed here, in Python** (schema 27, Q935d): its tree may cross
+    into rounds, which ``probe.rs`` would play as turns, so ``_probe`` stops at the seam and
+    values the round as a leaf. Every move and verdict is still the core's.
     """
-    if engine.core is not None:
+    if engine.core is not None and not engine.spy:
         return engine.root_scores(
             state,
             eval_values(engine.spec),
@@ -531,6 +546,11 @@ def _probe(
     counter.used += 1
     if counter.used >= counter.budget:
         raise _ProbeExhausted
+
+    if engine.spy and engine.is_round(state):
+        # Schema 27 (Q935d): the seam. A spy game's turn may lead into rounds, which a tree
+        # of single moves cannot hold, so a round is a leaf here (`docs/plan-spy.md` §3.8).
+        return _round_leaf(engine, evaluator, state)
 
     moves = engine.legal_moves(state)
     outcome = engine.terminal(state, moves)
@@ -603,6 +623,8 @@ def blunder_rng(seed: int, record: GameRecord) -> random.Random:
 def _one_blunder(
     engine: Engine, record: GameRecord, rng: random.Random
 ) -> BlunderTrial | None:
+    if engine.spy:
+        return _one_spy_blunder(engine, record, rng)
     if engine.simultaneous:
         return _one_round_blunder(engine, record, rng)
     target_ply = int(record.plies * BLUNDER_FRACTION)
@@ -754,6 +776,17 @@ def read_round(
         moves = (engine.legal_moves_for(state, 0), engine.legal_moves_for(state, 1))
     if not moves[0] or not moves[1]:
         return None
+    return read_matrix(moves, _round_cells(engine, evaluator, state, moves))
+
+
+def _round_cells(
+    engine: Engine,
+    evaluator: Evaluator,
+    state: GameState,
+    moves: tuple[list[int], list[int]],
+) -> list[float]:
+    """Every pair of the round's moves resolved and valued at the probe's ruler, row-major
+    from player 0's side (rows its moves, columns player 1's)."""
     cells = []
     for first in moves[0]:
         for second in moves[1]:
@@ -767,7 +800,7 @@ def read_round(
             else:
                 signed = WIN_SCORE - child.ply
                 cells.append(signed if outcome.winner == 0 else -signed)
-    return read_matrix(moves, cells)
+    return cells
 
 
 def replay_rounds(engine: Engine, record: GameRecord) -> list[GameState]:
@@ -855,18 +888,7 @@ def _analyse_rounds(
                         )
 
         state, _, events = engine.apply_round_with_phase(state, pair[0], pair[1])
-        counts["rounds"] += 1
-        counts["swaps"] += int(_is_swap(pair[0], pair[1]))
-        for event, _square, player in events:
-            if event == _COLLISION:
-                counts["collisions"] += 1
-                counts["collisions_both_lost"] += int(player < 0)
-            elif event == _VOID:
-                counts["void_moves"] += 1
-            elif event == _INITIATIVE:
-                counts["initiative_ties"] += 1
-            elif event == _BARRED:
-                counts["bars"] += 1
+        _count_round(counts, pair, events)
 
         # Two plies a round, as every per-ply series in the record: the key after the
         # round twice, and a revisit counted on both, so the rate is per round.
@@ -949,3 +971,465 @@ def _one_round_blunder(
         blundering_side=seat,
         new_winner=resumed.winner,
     )
+
+
+# ------------------------------------------------------------- schema 27: the spy
+#
+# `docs/plan-spy.md` §3.8 (Q935d). A spy game alternates while both players have a spy and
+# plays rounds once one is lost. Its record is the flat move list -- one word a turn, two a
+# round in seat order -- and every per-ply series once a turn and twice a round, as the
+# tournament wrote it; nothing in it says which step is which. The pass asks the engine the
+# phase at every step, as the tournament did (`spy_steps`), and reads each step by its kind:
+#
+# * **a turn** (alternating, or the reply) as an alternating ply. The probe is `_root_scores`
+#   in Python, over the core's moves and verdicts, with one difference at the seam: a child
+#   that is a round is a leaf (`_round_leaf`, the ruler's `evaluate_round` or the verdict),
+#   because a tree of single moves cannot hold a round and `probe.rs` would play one as a
+#   turn.
+# * **an announced round** one round deep at the ruler, by what each side knew: the
+#   announcer's moves by their worst answer (the maximin), the answerer's against the move
+#   actually announced (`read_announced`). A move is near the best within the cheapest
+#   piece; a blunder falls short by more.
+# * **a blind round** as in any round game (`read_round`).
+#
+# A step is sampled when one of its plies falls on `PLY_STRIDE`: the alternating walk's rule
+# for a turn and the round walk's for a round, which in a spy game may start on an odd ply
+# (E2). `SPY_COUNTS` is what the phases did, the study's inputs (§5.3).
+
+# Per game: the turns played while both spies stood, whether the reply turn was played (0 or
+# 1), the announced and the blind rounds, and for each player the ply after the step that
+# took its last spy (the clock's count, as §5.3's first loss reads it) and how (`SPY_LOSSES`),
+# both ``None`` while it stands.
+SPY_COUNTS = (
+    "alternating_plies",
+    "reply_turns",
+    "announced_rounds",
+    "blind_rounds",
+    "lost_ply_0",
+    "lost_ply_1",
+    "lost_how_0",
+    "lost_how_1",
+)
+
+# How a spy was lost, read off the step's move words, the board it was chosen on and the
+# round's events, first match wins: its own move promoted it; it moved and met another
+# piece (a collision, or a swap that met); an opposing move ended on the square where it
+# stood; otherwise the spec's rule that removes a piece no move names (an explosion, a wild
+# piece's step, a strike chain or a contact's merge, in that order when a game has several);
+# `other` where none applies.
+SPY_LOSSES = ("promotion", "collision", "capture", "blast", "wild", "strike", "other")
+
+_SWAP_MET = 4
+
+
+class SpyStep(NamedTuple):
+    """One step of a spy game's record: the ply it starts on, the position it was chosen
+    on and its phase, its moves (one for a turn, two in seat order for a round), each
+    mover's legal moves there (the mover's alone for a turn), the position after it and
+    the round's events (`Engine.apply_round_with_phase`; empty for a turn)."""
+
+    ply: int
+    state: GameState
+    phase: SpyPhase
+    moves: tuple[int, ...]
+    lists: tuple[list[int], ...]
+    after: GameState
+    events: tuple[tuple[int, int, int], ...]
+
+    @property
+    def seats(self) -> tuple[int, ...]:
+        """Who made each of the step's moves."""
+        return (self.state.side_to_move,) if len(self.moves) == 1 else (0, 1)
+
+
+def spy_steps(engine: Engine, record: GameRecord, strict: bool = False) -> Iterator[SpyStep]:
+    """Walk a spy game's record a step at a time, each step's kind asked of the engine,
+    every move checked legal on the board it was chosen on. A record that has drifted from
+    its spec stops the walk, or with ``strict`` raises naming the ply."""
+    state = engine.initial_state()
+    moves = record.moves
+    index = 0
+    while index < len(moves):
+        phase = engine.phase(state)
+        events: tuple[tuple[int, int, int], ...] = ()
+        lists: tuple[list[int], ...]
+        if phase.is_round:
+            step = tuple(moves[index:index + 2])
+            lists = (engine.legal_moves_for(state, 0), engine.legal_moves_for(state, 1))
+        else:
+            step = (moves[index],)
+            lists = (engine.legal_moves(state),)
+        if len(step) != len(lists) or any(
+            move not in legal for move, legal in zip(step, lists, strict=True)
+        ):
+            if strict:
+                raise ValueError(
+                    f"ply {index} of game {record.seed} is not legal under ruleset "
+                    f"{record.ruleset_hash}; the record and the spec disagree"
+                )
+            return
+        if len(step) == 2:
+            after, _, events = engine.apply_round_with_phase(state, step[0], step[1])
+        else:
+            after = engine.apply(state, step[0])
+        yield SpyStep(index, state, phase, step, lists, after, events)
+        state = after
+        index += len(step)
+
+
+def replay_spy(engine: Engine, record: GameRecord) -> list[GameState]:
+    """The position before the first step and after every step of a spy game's record.
+
+    `replay_rounds`' counterpart: each step a turn or a round by the phase the engine
+    reports, and a move that is not legal where it was chosen means the record and its spec
+    have drifted, which raises."""
+    states = [engine.initial_state()]
+    states.extend(step.after for step in spy_steps(engine, record, strict=True))
+    return states
+
+
+def spy_holders(phase: SpyPhase, side_to_move: int) -> frozenset[int]:
+    """Who has a spy in a position of this phase (`docs/plan-spy.md` §1.3's table read
+    backwards): both while play alternates, the player not replying in a reply turn, the
+    answerer in an announced round, nobody in a blind one."""
+    if phase.name == "alternating":
+        return frozenset((0, 1))
+    if phase.name == "reply":
+        return frozenset((1 - side_to_move,))
+    if phase.name == "announced":
+        return frozenset((1 - phase.announcer,))
+    return frozenset()
+
+
+def _spy_squares(engine: Engine, board: bytes, player: int) -> set[int]:
+    """Where ``player``'s spies stand on ``board``: a piece of one of its spy types (the
+    board byte is player-major, `player * n_facings * n_types + facing * n_types + type + 1`)."""
+    spec = engine.spec
+    assert spec.spy is not None
+    types = spec.spy.types[player]
+    per_owner = spec.n_types * spec.n_facings
+    return {
+        square
+        for square in range(spec.n_squares)
+        if board[square] != 0
+        and (board[square] - 1) // per_owner == player
+        and (board[square] - 1) % spec.n_types in types
+    }
+
+
+def spy_loss(engine: Engine, step: SpyStep, player: int) -> str:
+    """How ``player``'s last spy left the board in ``step`` (`SPY_LOSSES`' reading)."""
+    squares = _spy_squares(engine, step.state.board, player)
+    moved: set[int] = set()
+    for seat, move in zip(step.seats, step.moves, strict=True):
+        if seat != player or move_type(move) in (MOVE_DROP, MOVE_FOLD):
+            continue
+        if move_from(move) not in squares:
+            continue
+        moved.add(move_from(move))
+        if move_type(move) == MOVE_PROMOTION:
+            return "promotion"
+        if any(
+            event in (_COLLISION, _SWAP_MET) and square in (move_to(move), move_from(move))
+            for event, square, _player in step.events
+        ):
+            return "collision"
+    standing = squares - moved
+    for seat, move in zip(step.seats, step.moves, strict=True):
+        if seat != player and move_type(move) != MOVE_DROP and move_to(move) in standing:
+            return "capture"
+    spec = engine.spec
+    if spec.explosion is not None:
+        return "blast"
+    if spec.npcs is not None:
+        return "wild"
+    if spec.strike is not None:
+        return "strike"
+    return "other"
+
+
+def _round_leaf(engine: Engine, evaluator: Evaluator, state: GameState) -> float:
+    """A round reached inside a turn's probe, from the side to move's point of view: its
+    verdict if the game has ended, else the ruler's `evaluate_round` (mobility is off at the
+    ruler, so the move counts weigh nothing)."""
+    outcome = engine.terminal(state)
+    if outcome is None:
+        return evaluator.evaluate_round(engine, state, state.side_to_move, (0, 0))
+    if outcome.is_draw:
+        return 0.0
+    signed = WIN_SCORE - state.ply
+    return signed if outcome.winner == state.side_to_move else -signed
+
+
+def announced_matrix(
+    moves: tuple[list[int], list[int]], cells: list[float], announcer: int, announced: int
+) -> RoundReading:
+    """An announced round's cells (`_round_cells`, row-major from player 0's side) read by
+    what each side knew: the announcer's moves valued by their worst answer, the answerer's
+    against ``announced``, each from its own side. The strategies are the pure choices those
+    values make: the move announced, and the first best answer to it."""
+    cols = len(moves[1])
+    answerer = 1 - announcer
+    sign = 1.0 if announcer == 0 else -1.0
+
+    def cell(mine: int, theirs: int) -> float:
+        row, col = (mine, theirs) if announcer == 0 else (theirs, mine)
+        return sign * cells[row * cols + col]
+
+    maximin = []
+    for mine in range(len(moves[announcer])):
+        worst = float("inf")
+        for theirs in range(len(moves[answerer])):
+            worst = min(worst, cell(mine, theirs))
+        maximin.append(worst)
+    shown = moves[announcer].index(announced)
+    answers = [-cell(shown, theirs) for theirs in range(len(moves[answerer]))]
+    best_answer = answers.index(max(answers))
+
+    values: list[list[float]] = [[], []]
+    strategies: list[list[float]] = [[], []]
+    values[announcer], values[answerer] = maximin, answers
+    strategies[announcer] = [1.0 if i == shown else 0.0 for i in range(len(maximin))]
+    strategies[answerer] = [1.0 if i == best_answer else 0.0 for i in range(len(answers))]
+    return RoundReading(
+        moves=moves,
+        strategies=(strategies[0], strategies[1]),
+        values=(values[0], values[1]),
+    )
+
+
+def read_announced(
+    engine: Engine,
+    evaluator: Evaluator,
+    state: GameState,
+    announcer: int,
+    announced: int,
+    moves: tuple[list[int], list[int]] | None = None,
+) -> RoundReading | None:
+    """The probe on one announced round's board (`announced_matrix`), or ``None`` when
+    either player has no move."""
+    if moves is None:
+        moves = (engine.legal_moves_for(state, 0), engine.legal_moves_for(state, 1))
+    if not moves[0] or not moves[1]:
+        return None
+    cells = _round_cells(engine, evaluator, state, moves)
+    return announced_matrix(moves, cells, announcer, announced)
+
+
+def _analyse_spy(
+    engine: Engine, evaluator: Evaluator, record: GameRecord, epsilon: float
+) -> GameAnalysis:
+    """`_analyse_game` for a spy game (the reading above `SPY_COUNTS`)."""
+    n_types = engine.spec.n_types
+    moves_by_type = [0] * n_types
+    captures_by_type = [0] * n_types
+    near_best: list[int] = []
+    legal_counts: list[int] = []
+    capture_counts: list[int] = []
+    rounds = dict.fromkeys(ROUND_COUNTS, 0)
+    spy: dict[str, Any] = {
+        key: (None if key.startswith("lost_") else 0) for key in SPY_COUNTS
+    }
+
+    start = engine.initial_state()
+    starting_squares = _starting_squares(engine, start.board)
+    moved_squares: set[int] = set()
+    seen_keys = {start.key}
+    position_keys: list[int] = []
+    revisited = 0
+    walked = 0
+
+    for step in spy_steps(engine, record):
+        state, board = step.state, step.state.board
+        for move in step.moves:
+            kind = _mover_kind(engine, board, move)
+            if kind is None:  # pragma: no cover - a legal move stands on its origin
+                continue
+            if _moves_an_instance(move) and move_from(move) in starting_squares:
+                moved_squares.add(move_from(move))
+            moves_by_type[kind] += 1
+            if _takes(board, move):
+                captures_by_type[kind] += 1
+
+        if any((step.ply + k) % PLY_STRIDE == 0 for k in range(len(step.moves))):
+            _sample_spy_step(
+                engine, evaluator, step, epsilon, near_best, legal_counts, capture_counts
+            )
+
+        after = step.after
+        if len(step.moves) == 1:
+            spy["alternating_plies" if step.phase.name == "alternating" else "reply_turns"] += 1
+            walked += 1
+            position_keys.append(after.key)
+            if after.key in seen_keys:
+                revisited += 1
+            else:
+                seen_keys.add(after.key)
+        else:
+            spy[f"{step.phase.name}_rounds"] += 1
+            _count_round(rounds, step.moves, step.events)
+            # Two plies a round, as the round walk counts them.
+            walked += 2
+            position_keys.extend((after.key, after.key))
+            if after.key in seen_keys:
+                revisited += 2
+            else:
+                seen_keys.add(after.key)
+
+        lost = spy_holders(step.phase, state.side_to_move) - spy_holders(
+            engine.phase(after), after.side_to_move
+        )
+        for player in sorted(lost):
+            spy[f"lost_ply_{player}"] = walked
+            spy[f"lost_how_{player}"] = spy_loss(engine, step, player)
+
+    return GameAnalysis(
+        seed=record.seed,
+        agents=record.agents,
+        near_best=near_best,
+        legal_counts=legal_counts,
+        moves_by_type=moves_by_type,
+        captures_by_type=captures_by_type,
+        capture_counts=capture_counts,
+        revisited_plies=revisited,
+        walked_plies=walked,
+        starting_instances=len(starting_squares),
+        moved_instances=len(moved_squares),
+        position_keys=position_keys,
+        rounds=rounds,
+        spy=spy,
+    )
+
+
+def _sample_spy_step(
+    engine: Engine,
+    evaluator: Evaluator,
+    step: SpyStep,
+    epsilon: float,
+    near_best: list[int],
+    legal_counts: list[int],
+    capture_counts: list[int],
+) -> None:
+    """The probe on one sampled step of a spy game, appended to the three series: a turn as
+    an alternating ply is, a round one sample for each seat with a choice."""
+    state, board = step.state, step.state.board
+    if len(step.moves) == 1:
+        legal = step.lists[0]
+        if len(legal) > 1:
+            scores = _score_roots(engine, evaluator, state, legal)
+            best = max(scores)
+            near_best.append(sum(1 for s in scores if best - s <= epsilon))
+            legal_counts.append(len(legal))
+            capture_counts.append(sum(1 for m in legal if _takes(board, m)))
+        return
+    lists = (step.lists[0], step.lists[1])
+    if step.phase.name == "announced":
+        announcer = step.phase.announcer
+        reading = read_announced(
+            engine, evaluator, state, announcer, step.moves[announcer], lists
+        )
+    else:
+        reading = read_round(engine, evaluator, state, lists)
+    if reading is None:
+        return
+    for seat in (0, 1):
+        if len(lists[seat]) > 1:
+            near_best.append(reading.near_best(seat, epsilon))
+            legal_counts.append(len(lists[seat]))
+            capture_counts.append(sum(1 for move in lists[seat] if _takes(board, move)))
+
+
+def _count_round(
+    counts: dict[str, int], pair: tuple[int, ...], events: tuple[tuple[int, int, int], ...]
+) -> None:
+    """`ROUND_COUNTS` for one round: the round, a swap read off its words, its events."""
+    counts["rounds"] += 1
+    counts["swaps"] += int(_is_swap(pair[0], pair[1]))
+    for event, _square, player in events:
+        if event == _COLLISION:
+            counts["collisions"] += 1
+            counts["collisions_both_lost"] += int(player < 0)
+        elif event == _VOID:
+            counts["void_moves"] += 1
+        elif event == _INITIATIVE:
+            counts["initiative_ties"] += 1
+        elif event == _BARRED:
+            counts["bars"] += 1
+
+
+def _one_spy_blunder(
+    engine: Engine, record: GameRecord, rng: random.Random
+) -> BlunderTrial | None:
+    """`_one_blunder` for a spy game: the trial's ply names a step and, in a round, a seat.
+
+    A turn takes a random other move, as an alternating game's trial does; a blind round a
+    move short of its best against the mix beside the other seat's recorded move, as a round
+    game's does. In an announced round the move forced is short of its best by
+    `read_announced`'s reading: into the answerer, beside the move recorded as announced;
+    into the announcer, and then the answerer, who sees it, answers as the record's player
+    would, asked of the core (`Engine.select_round`) at the record's seed."""
+    target_ply = int(record.plies * BLUNDER_FRACTION)
+    found = None
+    for step in spy_steps(engine, record):
+        if step.ply + len(step.moves) > target_ply:
+            found = step
+            break
+    if found is None:
+        return None
+    state = found.state
+    if len(found.moves) == 1:
+        legal = found.lists[0]
+        if len(legal) < 2:
+            return None
+        blundering = state.side_to_move
+        alternatives = [m for m in legal if m != found.moves[0]] or legal
+        state = engine.apply(state, rng.choice(alternatives))
+    else:
+        blundering = target_ply - found.ply
+        pair = _spy_round_blunder(engine, record, found, blundering, rng)
+        if pair is None:
+            return None
+        state = engine.apply_round(state, pair[0], pair[1])
+    resumed = finish_game(engine, record.agents, state, record.seed)
+
+    return BlunderTrial(
+        seed=record.seed,
+        agents=record.agents,
+        ply=target_ply,
+        original_winner=record.winner,
+        blundering_side=blundering,
+        new_winner=resumed.winner,
+    )
+
+
+def _spy_round_blunder(
+    engine: Engine, record: GameRecord, step: SpyStep, seat: int, rng: random.Random
+) -> tuple[int, int] | None:
+    """The round a spy game's trial plays in place of ``step``, with a blunder forced into
+    ``seat`` (`_one_spy_blunder`), in seat order; ``None`` where there is none to force."""
+    state = step.state
+    played, other = step.moves[seat], step.moves[1 - seat]
+    if step.phase.name == "blind":
+        forced = round_blunder(engine, state, seat, played, rng)
+    else:
+        announcer = step.phase.announcer
+        evaluator = Evaluator.for_engine(engine, mobility_weight=0.0)
+        reading = read_announced(engine, evaluator, state, announcer, step.moves[announcer])
+        if reading is None or len(reading.moves[seat]) < 2:
+            return None
+        choices = [m for m in reading.blunders(seat, _epsilon_for(engine)) if m != played]
+        forced = rng.choice(choices) if choices else None
+        if forced is not None and seat == announcer:
+            native = native_spec(record.agents[1 - announcer], engine.spec.hash)
+            if native is None:
+                return None
+            answer, _, _, _ = engine.select_round(
+                state, 1 - announcer, native, eval_values(engine.spec), record.seed,
+                announced=forced,
+            )
+            if answer is None:
+                return None
+            other = answer
+    if forced is None:
+        return None
+    return (forced, other) if seat == 0 else (other, forced)
