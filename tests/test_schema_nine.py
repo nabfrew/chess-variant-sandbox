@@ -395,6 +395,20 @@ FROZEN: dict[str, tuple[str, str]] = {
     "archive/gardner-in-rounds-with-meek-pawns.json": ("ff1ccdaaf3cf", "95e105b3ac964b51"),
     "archive/gardner-in-rounds-with-the-initiative.json": ("6278607c721b", "8c4ede64bdaf6f6e"),
     "archive/watering-hole.json": ("5c0b017473f5", "f264b4cdd576ed0b"),
+    # Q942c, 2026-10-17: the showcases of schema 27's three switches against the royal chase
+    # (`docs/plan-round-chase.md` §5; `tests/test_showcases_q942.py`): Gardner in rounds
+    # resting (`rest`, the mechanics of `tests/_simultaneous_resting.json`), where swaps
+    # collide (`swap`), scored (`both`), and against the chase (all three, the mechanics of
+    # `tests/_simultaneous_scored.json`). New.
+    "archive/gardner-in-rounds-resting.json": ("4da669bb3d50", "f75ed40edaaf4658"),
+    "archive/gardner-in-rounds-where-swaps-collide.json": ("7985900696d7", "84d7ffe03c147c54"),
+    "archive/gardner-in-rounds-scored.json": ("a90a8db7e2dd", "66e201715549ce34"),
+    "archive/gardner-in-rounds-against-the-chase.json": ("632c199e4589", "359f27e3538d5415"),
+    # Q935f, 2026-10-17: the spy's showcases (`docs/plan-spy.md` §5; `tests/test_showcases_q935f.py`):
+    # Gardner with spies (SP1, `pieces.spy`, the mechanics of Q935d's draft) and Gardner with
+    # spies resting (SP2, with `rest`). New.
+    "archive/gardner-with-spies.json": ("f4c62a33798d", "7e3a92c5d12b44dd"),
+    "archive/gardner-with-spies-resting.json": ("1d798bedbf66", "8a309ac4ab581f8e"),
 }
 
 

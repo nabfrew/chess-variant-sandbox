@@ -1879,9 +1879,9 @@ def test_the_map_modules_name_no_piece_and_no_game() -> None:
                 str(piece["name"]).lower()
                 for piece in held.get("pieces", []) if piece.get("name")
             )
-    # `rules.castling` names its two seats in the schema itself. A schema key is not a
-    # piece name.
-    named -= {"king", "rook", ""}
+    # `rules.castling` names its two seats in the schema itself, and `pieces[].spy` (schema
+    # 27) is a key the code reads by name. A schema key is not a piece name.
+    named -= {"king", "rook", "spy", ""}
     for module in ("graphing", "communities"):
         tree = ast.parse(
             (root / f"chess_variant_sandbox/web/{module}.py").read_text(encoding="utf-8")

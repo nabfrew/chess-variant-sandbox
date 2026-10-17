@@ -550,8 +550,10 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
     # since its second pass (Q870) retired four hexagon variants for `pinwheel`, which
     # declares none; 87 since Q844b's three portal showcases, which declare none either; 91
     # since Q918e's four round showcases, of which `watering-hole` does, sending both sides
-    # to d4 (`mirror: false`, so the two readings agree).
-    assert len(paths) == 91
+    # to d4 (`mirror: false`, so the two readings agree); 95 since Q942c's four chase-remedy
+    # showcases, which declare none; 97 since Q935f's two spy showcases, which declare none
+    # either.
+    assert len(paths) == 97
 
     with_reach: dict[str, tuple[frozenset[int], frozenset[int]]] = {}
     for path in paths:

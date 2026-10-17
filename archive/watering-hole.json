@@ -181,10 +181,9 @@
   },
   "provenance": {
     "added": "2026-10-15",
-    "preview": "A preview: a new kind of game in which both players move at once, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
     "origin": "designed",
     "source": "docs/plan-simultaneous.md, Q918e: a game designed around simultaneous moves",
-    "history": "Q918e (2026-10-15), the showcase of schema 26's rules.simultaneous.tie impossible and the game designed around guessing that plan-simultaneous.md \u00a76.8 asks for: a four-kind food chain split between two armies, so every meeting has a winner, and one shared goal square, so two arrivals in one round are a meeting and not a draw. Drafts v1 to v7 and why each changed are in docs/plan-simultaneous.md, Q918e. Pre-registered there before it was measured.",
+    "history": "Q918e (2026-10-15), the showcase of schema 26's rules.simultaneous.tie impossible and the game designed around guessing that plan-simultaneous.md \u00a76.8 asks for: a four-kind food chain split between two armies, so every meeting has a winner, and one shared goal square, so two arrivals in one round are a meeting and not a draw. Drafts v1 to v7 and why each changed are in docs/plan-simultaneous.md, Q918e. Pre-registered there before it was measured. Joined the library from preview by Q934 (2026-10-17): the library's first game played in rounds and its only one with no royal, in which two arrivals on the one shared square are a meeting that always has a winner, so no game is drawn; viable 4-0 at 0.608 on the round roster (Q944a).",
     "parents": []
   }
 }

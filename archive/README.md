@@ -697,7 +697,11 @@ before anything was measured; `tests/test_showcases_q918e.py` holds the demonstr
   `tie: "impossible"`. White's elephants and cats against Black's dogs and rats on 7x7, each kind
   eating one opposing kind (elephant > dog > cat > rat > elephant), so every meeting has a winner;
   the first animal to stand on the shared hole d4 with none of its eaters beside it wins, so two
-  arrivals in one round are a meeting, never a shared win.
+  arrivals in one round are a meeting, never a shared win. **In the library since Q934
+  (2026-10-17)**, no longer a preview: the library's first game played in rounds and its only one
+  with no royal, and the one where the guess about the other player's move is the whole game
+  (viable 4-0 at 0.608 [0.549, 0.652] on Q944a's round roster). The three Gardner games above
+  stay previews.
 
 Measured 2026-10-15 (v12, four runs each, the round roster): Gardner in rounds **0.375
 [0.337, 0.421], not viable (refuse 4-0)**, 0.875 of graded games drawn, 0.483 by both kings
@@ -705,6 +709,60 @@ captured in one round; with meek pawns **0.351 [0.336, 0.370], not viable**; wit
 **0.358 [0.336, 0.372], not viable**, its first holder (Black) taking 71 of the 100 decided graded
 games; the watering hole **0.503 [0.434, 0.571], viable (accept 4-0)**, no draw in 784 graded
 games, the seat 394-390, 0.989 of them won at the hole, a collision in every one.
+
+## `gardner-in-rounds-resting.json`, `-where-swaps-collide.json`, `-scored.json`, `-against-the-chase.json` — schema 27, three switches against the royal chase (Q942c)
+
+2026-10-17. The showcases of `docs/plan-round-chase.md` §5: Gardner in rounds, whose kings spend
+half of every game running from each other, with each of schema 27's three switches and then all
+three. Pre-registered in §5 and §5.1 before any game was played, graded in §5.2;
+`tests/test_showcases_q942.py` holds criterion K8, the mechanism without players.
+
+- **`gardner-in-rounds-resting`** (`4da669bb3d50`, S1): `rest`, the piece that moved may not move the
+  next round. Kept because it is the remedy: the chase falls from 0.54 of rounds to 0.01 and the game
+  is decided, mostly by striking a king that had just moved and so had to stand.
+- **`gardner-in-rounds-where-swaps-collide`** (`7985900696d7`, S2): `swap: "collision"`, two pieces
+  trading squares meet. Kept as the switch's showcase; it plays a short game (15 plies) of queen
+  raids that the ladder cannot read.
+- **`gardner-in-rounds-scored`** (`a90a8db7e2dd`, S3): `both: "score"` with material scoring. Kept
+  because the contrast is the point: alone, the score moves the double capture into the chase rather
+  than removing it (its criterion missed).
+- **`gardner-in-rounds-against-the-chase`** (`632c199e4589`, S4): all three, the candidate game.
+  **In the library since Q934 (2026-10-17)**, no longer a preview: the library's first royal game
+  played in rounds, Gardner's board and army made decisive in rounds (0.971 of games) by the three
+  switches together, where the plain game draws seven games in eight. S1 to S3 stay previews: S1 is
+  nearly S4 and is kept as the contrast that shows `rest` alone does most of the work.
+
+Measured 2026-10-17 (v12, four runs each, the round roster): resting **0.630 [0.574, 0.673],
+viable** (3 of 4 runs accept, one unreadable), 0.853 of graded games decided; where swaps collide
+**not viable**, no index (the ladder reads 2 of 4 runs); scored **0.329 [0.293, 0.362], not viable
+(refuse 4-0)**, 0.587 drawn by repetition; against the chase **0.514 [0.451, 0.563], viable (accept
+4-0)**, 0.971 decided, the seat 0.523, the chase 0.009 of rounds.
+
+## `gardner-with-spies.json`, `gardner-with-spies-resting.json` — schema 27, the spy (Q935f)
+
+2026-10-17. The showcases of `docs/plan-spy.md` §5, the user's spy game taken literally: Gardner's
+minichess with each c-pawn replaced by a spy, a wazir that captures nothing. While both spies
+stand the game alternates; once one falls (after its owner's one reply move) it is played in
+rounds where the side without a spy announces its move first; once both fall, in blind rounds.
+Pre-registered in §5 and §5.7 before any graded game, graded in §5.8;
+`tests/test_showcases_q935f.py` holds G1, §1.6's claims as rules without players.
+
+- **`gardner-with-spies`** (`f4c62a33798d`, SP1): `pieces.spy`'s showcase and the literal rule.
+  Kept because it shows what the full announcement does without `rest`: the answerer can always
+  step an attacked piece away, so the holder trades its spy for material and the blind rounds after
+  draw. Graded *too weak* (the holder scores 0.56 against a twin's 0.63 for the bare material), not
+  credited, since the holder's score rises with the players' strength.
+- **`gardner-with-spies-resting`** (`1d798bedbf66`, SP2): with `rest`, a piece that just moved stands
+  a round, so a recapture lands again. Kept as the candidate design: the holder scores 0.76 in the
+  strong band, the side without a spy still wins 0.23 of those games, and nearly all are decided,
+  so the full announcement does not end the game. It fails the seat, and its holder's score is
+  player- and value-dependent.
+
+Measured 2026-10-17 (v12, four runs each, `corpus.SPY_AGENTS`): with spies **0.603 [0.589,
+0.625], not viable** (the second seat took 0.98 of the strongest rungs' 53 decided games); resting
+**0.680 [0.657, 0.713], not viable** (the second seat 0.85 of 61). In the study's strong band
+(`minimax:nodes=25600`, `102400`) the lean is the other way, inherited from the alternating phase:
+the twin without spies or rounds gives the first seat 601 of 603 decided games.
 
 ## Retired by the library audit (Q868, 2026-10-12)
 

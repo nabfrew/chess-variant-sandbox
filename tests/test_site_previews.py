@@ -13,6 +13,9 @@ mechanics hash), and from that one sentence:
 - **they play**: a visitor starts a practice game against a round opponent through the web
   API and plays a round, and *watch it play itself* seats the round ladder's player.
 
+Taking the sentence off is how a preview joins the library (Q934: the watering hole and
+Gardner in rounds against the chase), and such a game is then on every scored surface.
+
 The store tests need a real Postgres and skip with a reason without one.
 """
 
@@ -40,9 +43,32 @@ PREVIEWS = {
     "gardner-in-rounds.json": "e043fce6968e",
     "gardner-in-rounds-with-meek-pawns.json": "ff1ccdaaf3cf",
     "gardner-in-rounds-with-the-initiative.json": "6278607c721b",
-    "watering-hole.json": "5c0b017473f5",
+    # Q942c's four chase-remedy showcases (`plan-round-chase.md` §5), previews like their parent.
+    "gardner-in-rounds-resting.json": "4da669bb3d50",
+    "gardner-in-rounds-where-swaps-collide.json": "7985900696d7",
+    "gardner-in-rounds-scored.json": "a90a8db7e2dd",
+    # Q935f's two spy showcases (`plan-spy.md` §5): a spy game starts by turns and ends in
+    # rounds once a spy falls.
+    "gardner-with-spies.json": "f4c62a33798d",
+    "gardner-with-spies-resting.json": "1d798bedbf66",
 }
-"""The four, by file and by the mechanics hash Q918e measured them under."""
+"""The round and spy games, by file and by the mechanics hash each was measured under (Q918e,
+Q942c, Q935f), less the two that joined the library (`JOINED`)."""
+
+JOINED = {
+    "watering-hole.json": "5c0b017473f5",
+    "gardner-in-rounds-against-the-chase.json": "632c199e4589",
+}
+"""Two round games that were previews and joined the library by taking the mark off (Q934,
+`plan-library-audit.md`): Library games played in rounds, on every scored surface."""
+
+ROUND_PREVIEW = "4da669bb3d50"
+ROUND_PREVIEW_FILE = "gardner-in-rounds-resting.json"
+"""A preview played in rounds, for the tests that need one (S1, `plan-round-chase.md` §5)."""
+
+SPY_PREVIEWS = frozenset({"gardner-with-spies.json", "gardner-with-spies-resting.json"})
+"""The previews that start by turns (`library` `rounds` is false for a spy game, Q935c) and
+offer the spy ladder, which has no round player (`opponents.SPY_RUNGS`)."""
 
 PLAIN = "kyoto.json"
 """An archived game that is no preview, for the library's side of every comparison."""
@@ -51,12 +77,13 @@ ROUND_AGENT = "matrix:nodes=400"
 
 
 def _root(tmp_path: Path) -> Path:
-    """A checkout of six games: the dull Baseline game, one Library game and the four."""
+    """A checkout of the dull Baseline game, three Library games (two of them played in
+    rounds) and the eight previews."""
     (tmp_path / "rulesets").mkdir()
     (tmp_path / "archive").mkdir()
     (tmp_path / "runs").mkdir()
     shutil.copy(RULESETS / "dull.json", tmp_path / "rulesets" / "dull.json")
-    for name in (*PREVIEWS, PLAIN):
+    for name in (*PREVIEWS, *JOINED, PLAIN):
         shutil.copy(ARCHIVE / name, tmp_path / "archive" / name)
     return tmp_path
 
@@ -74,7 +101,7 @@ class TestTheFiles:
             assert said is not None and "preview" in said.lower()
             assert "not yet trusted" in said
 
-    def test_no_baseline_game_is_a_preview_and_only_the_four_are(self) -> None:
+    def test_no_baseline_game_is_a_preview_and_only_the_round_games_are(self) -> None:
         for path in sorted(RULESETS.glob("*.json")):
             assert library.preview_sentence(load_spec(path)) is None, path.name
         marked = {
@@ -83,8 +110,16 @@ class TestTheFiles:
         }
         assert marked == set(PREVIEWS)
 
+    def test_the_two_that_joined_say_nothing_and_keep_their_hashes(self) -> None:
+        for name, digest in JOINED.items():
+            spec = load_spec(ARCHIVE / name)
+            assert spec_hash(spec) == digest, "taking the mark off moved no game"
+            assert validate_spec(spec) == []
+            assert library.preview_sentence(spec) is None
+            assert "simultaneous" in spec["rules"]
+
     def test_an_empty_sentence_is_refused(self) -> None:
-        spec = load_spec(ARCHIVE / "watering-hole.json")
+        spec = load_spec(ARCHIVE / ROUND_PREVIEW_FILE)
         spec["provenance"]["preview"] = "  "
         assert any("provenance.preview" in problem for problem in validate_spec(spec))
         spec["provenance"]["preview"] = 3
@@ -104,7 +139,7 @@ class TestTheListing:
     def test_games_is_the_library_and_previews_holds_the_four(self, app: App) -> None:
         listing = app.get("/api/library")
         assert {card["hash"] for card in listing["games"]} == {
-            spec_hash(DULL), spec_hash(load_spec(ARCHIVE / PLAIN))
+            spec_hash(DULL), spec_hash(load_spec(ARCHIVE / PLAIN)), *JOINED.values()
         }
         previews = {card["hash"]: card for card in listing["previews"]}
         assert set(previews) == set(PREVIEWS.values())
@@ -122,16 +157,30 @@ class TestTheListing:
         assert not {card["hash"] for card in listing["newGames"]} & set(PREVIEWS.values())
 
     def test_a_previews_page_says_so_and_compares_it_with_nothing(self, app: App) -> None:
-        for digest in PREVIEWS.values():
+        for name, digest in PREVIEWS.items():
             game = app.get(f"/api/game/{digest}")
             assert game["preview"] and game["level"] == stages.PREVIEW
             assert game["levelSays"] == stages.SAYS[stages.PREVIEW]
             assert game["links"] == [] and game["band"] is None and game["trust"] is None
+            agents = {entry["agent"] for entry in game["opponents"]}
+            if name in SPY_PREVIEWS:
+                assert game["rounds"] is False
+                assert ROUND_AGENT not in agents and any(a.startswith("minimax:") for a in agents)
+            else:
+                assert game["rounds"] is True
+                assert agents >= {ROUND_AGENT}
+
+    def test_a_round_game_that_joined_is_a_library_page_played_in_rounds(self, app: App) -> None:
+        for digest in JOINED.values():
+            game = app.get(f"/api/game/{digest}")
+            assert game["preview"] is None and game["level"] != stages.PREVIEW
             assert game["rounds"] is True
             assert {entry["agent"] for entry in game["opponents"]} >= {ROUND_AGENT}
 
     def test_no_library_page_names_a_preview(self, app: App) -> None:
-        for digest in (spec_hash(DULL), spec_hash(load_spec(ARCHIVE / PLAIN))):
+        for digest in (
+            spec_hash(DULL), spec_hash(load_spec(ARCHIVE / PLAIN)), *JOINED.values()
+        ):
             links = app.get(f"/api/game/{digest}")["links"]
             assert not {link["hash"] for link in links} & set(PREVIEWS.values())
 
@@ -144,13 +193,15 @@ class TestNoBand:
     def test_a_preview_with_a_current_score_is_in_no_band(
         self, app: App, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Every game given the same current score: the library's two are banded against
-        each other, and the four previews neither have a band nor move the others'."""
+        """Every game given the same current score: the library's four are banded against
+        each other, and the eight previews neither have a band nor move the others'."""
         score = {"weights_version": library.DEFAULT_WEIGHTS, "combined": 0.5,
                  "interval": {"ci_low": 0.4, "ci_high": 0.6, "deterministic_pairings": 1}}
         monkeypatch.setattr(library, "current_only", lambda _score: score)
         bands = library.bands(app.known().values())
-        assert set(bands) == {spec_hash(DULL), spec_hash(load_spec(ARCHIVE / PLAIN))}
+        assert set(bands) == {
+            spec_hash(DULL), spec_hash(load_spec(ARCHIVE / PLAIN)), *JOINED.values()
+        }
         alone = library.bands(library.scored(app.known().values()))
         assert bands == alone, "the previews move no other game's band"
 
@@ -162,9 +213,9 @@ class TestThePage:
         said = "A preview: a new kind of game, still being tested."
         card = _in_page(
             "", "cardHtml(" + json.dumps({
-                "hash": "5c0b017473f5", "name": "watering hole", "description": "",
-                "level": "Preview", "levelGloss": "", "preview": said, "board": "7x7",
-                "pieceTypes": 4, "index": 0.503, "status": "current", "rated": False,
+                "hash": ROUND_PREVIEW, "name": "gardner in rounds resting", "description": "",
+                "level": "Preview", "levelGloss": "", "preview": said, "board": "5x5",
+                "pieceTypes": 6, "index": 0.503, "status": "current", "rated": False,
             }) + ")",
         )
         assert 'class="tag level preview">Preview</span>' in card
@@ -200,7 +251,7 @@ class TestTheLoad:
         ladder = {"standings": [{"name": "random", "rating": 1200.0},
                                 {"name": ROUND_AGENT, "rating": 1500.0}]}
         (root / "runs" / "opponents").mkdir()
-        (root / "runs" / "opponents" / "5c0b017473f5.json").write_text(
+        (root / "runs" / "opponents" / f"{ROUND_PREVIEW}.json").write_text(
             json.dumps(ladder), encoding="utf-8"
         )
         with _running_site(root) as site:
@@ -209,6 +260,7 @@ class TestTheLoad:
             origins = _origins(site)
             assert {origins[digest] for digest in PREVIEWS.values()} == {loader.PREVIEW}
             assert origins[spec_hash(load_spec(ARCHIVE / PLAIN))] == loader.ARCHIVED
+            assert {origins[digest] for digest in JOINED.values()} == {loader.ARCHIVED}
             rows = stages.read(site.store, list(PREVIEWS.values()))
             assert {row["level"] for row in rows.values()} == {stages.PREVIEW}
             listed = ", ".join(f"'{digest}'" for digest in PREVIEWS.values())
@@ -217,13 +269,13 @@ class TestTheLoad:
             assert site.count("links", f"a in ({listed}) or b in ({listed})") == 0
             # A second load writes nothing, and taking the mark off makes it a Library game.
             assert not loader.load(site.store, root).written
-            path = root / "archive" / "watering-hole.json"
+            path = root / "archive" / ROUND_PREVIEW_FILE
             spec = load_spec(path)
             del spec["provenance"]["preview"]
             path.write_text(json.dumps(spec), encoding="utf-8")
             report = loader.load(site.store, root)
             site.store.commit()
-            assert _origins(site)["5c0b017473f5"] == loader.ARCHIVED
+            assert _origins(site)[ROUND_PREVIEW] == loader.ARCHIVED
             assert any("joined the Library from preview" in note for note in report.notes)
             assert site.count("level_moves") == 0
 
@@ -236,8 +288,8 @@ class TestTheSiteListing:
         assert {card["level"] for card in listing["previews"]} == {stages.PREVIEW}
         assert all(card["rated"] is False for card in listing["previews"])
         tabs = {tab["key"]: tab for tab in listing["site"]["tabs"]}
-        assert tabs["previews"]["count"] == 4
-        assert tabs["library"]["count"] == 2
+        assert tabs["previews"]["count"] == len(PREVIEWS)
+        assert tabs["library"]["count"] == 2 + len(JOINED)
         for key in ("newGames", "launchSet"):
             assert not {card["hash"] for card in listing.get(key) or []} & set(
                 PREVIEWS.values()
@@ -246,15 +298,15 @@ class TestTheSiteListing:
 
     def test_a_preview_taken_off_the_site_is_not_listed(self, previews_site: Site) -> None:
         with previews_site.store.cursor() as cursor:
-            cursor.execute("update games set revoked = now() where hash = '5c0b017473f5'")
+            cursor.execute(f"update games set revoked = now() where hash = '{ROUND_PREVIEW}'")
         previews_site.store.commit()
         listing = previews_site.browser().get("/api/library").payload
-        assert "5c0b017473f5" not in {card["hash"] for card in listing["previews"]}
+        assert ROUND_PREVIEW not in {card["hash"] for card in listing["previews"]}
 
     def test_the_game_page_has_no_leaderboard_and_no_links(
         self, previews_site: Site
     ) -> None:
-        game = previews_site.browser().get("/api/game/5c0b017473f5").payload
+        game = previews_site.browser().get(f"/api/game/{ROUND_PREVIEW}").payload
         assert game["preview"] and game["level"] == stages.PREVIEW
         assert game["levelSays"] == stages.SAYS[stages.PREVIEW]
         assert game["links"] == [] and game["band"] is None
@@ -280,8 +332,16 @@ def _round(browser: Any, snapshot: dict[str, Any]) -> dict[str, Any]:
     return dict(answer.payload)
 
 
+ROUND_PREVIEWS = sorted(
+    digest for name, digest in PREVIEWS.items() if name not in SPY_PREVIEWS
+)
+SPY_PREVIEW_HASHES = sorted(PREVIEWS[name] for name in SPY_PREVIEWS)
+SPY_AGENT = "minimax:nodes=400"
+"""A rung of the spy ladder (`opponents.SPY_RUNGS`): a spy game offers no round player."""
+
+
 class TestPlayingOne:
-    @pytest.mark.parametrize("digest", sorted(PREVIEWS.values()))
+    @pytest.mark.parametrize("digest", ROUND_PREVIEWS)
     def test_a_visitor_plays_a_round_against_the_computer(
         self, previews_site: Site, digest: str
     ) -> None:
@@ -294,12 +354,30 @@ class TestPlayingOne:
         assert after["round"]["number"] == 2, "one round was revealed"
         assert len(after["history"]) == 2
 
+    @pytest.mark.parametrize("digest", SPY_PREVIEW_HASHES)
+    def test_a_visitor_plays_a_spy_preview_by_turns_against_the_spy_ladder(
+        self, previews_site: Site, digest: str
+    ) -> None:
+        """A spy game starts by turns (Q935c), so its first move is a turn, not a round."""
+        visitor = previews_site.browser()
+        started = visitor.post("/api/session", {"hash": digest, "seats": ["human", SPY_AGENT]})
+        assert started.status == 200, started.text
+        snapshot = dict(started.payload)
+        assert not snapshot.get("round"), "a spy game opens by turns"
+        sid = snapshot["id"]
+        moved = visitor.post(f"/api/session/{sid}/move", {"move": snapshot["moves"][0]["move"]})
+        assert moved.status == 200, moved.text
+        assert moved.payload["awaitingAgent"], "the spy ladder's player is to move"
+        replied = visitor.post(f"/api/session/{sid}/agent", {})
+        assert replied.status == 200, replied.text
+        assert len(replied.payload["history"]) == 2
+
     def test_watch_it_play_itself_seats_the_round_ladders_players(
         self, previews_site: Site
     ) -> None:
         answer = previews_site.browser().post(
             "/api/session",
-            {"hash": "5c0b017473f5", "seats": ["minimax:nodes=6400", "minimax:nodes=6400"]},
+            {"hash": ROUND_PREVIEW, "seats": ["minimax:nodes=6400", "minimax:nodes=6400"]},
         )
         assert answer.status == 200, answer.text
         assert answer.payload["seats"] == ["matrix:nodes=6400", "matrix:nodes=6400"]
@@ -308,7 +386,7 @@ class TestPlayingOne:
         member = previews_site.signed_in("ada")
         answer = member.post(
             "/api/session",
-            {"hash": "5c0b017473f5", "seats": ["human", ROUND_AGENT], "mode": "leaderboard"},
+            {"hash": ROUND_PREVIEW, "seats": ["human", ROUND_AGENT], "mode": "leaderboard"},
         )
         assert answer.status == 400
         assert "is a preview" in answer.text and "practice" in answer.text
@@ -320,17 +398,17 @@ class TestPlayingOne:
         with previews_site.store.cursor() as cursor:
             cursor.execute(
                 "insert into ratings (game, player_agent, rating, deviation, volatility)"
-                " values ('5c0b017473f5', %s, 1500, 100, 0.06)",
-                (ROUND_AGENT,),
+                " values (%s, %s, 1500, 100, 0.06)",
+                (ROUND_PREVIEW, ROUND_AGENT),
             )
         previews_site.store.commit()
         with previews_site.connect() as connection:
-            assert correspondence.mode_for(connection, "5c0b017473f5") == (
+            assert correspondence.mode_for(connection, ROUND_PREVIEW) == (
                 correspondence.PRACTICE
             )
             with pytest.raises(matches.MatchError, match="is a preview"):
                 matches.start(
-                    connection, "5c0b017473f5", matches.LEADERBOARD,
+                    connection, ROUND_PREVIEW, matches.LEADERBOARD,
                     ["human", ROUND_AGENT], user=previews_site.person("bo"),
                 )
 

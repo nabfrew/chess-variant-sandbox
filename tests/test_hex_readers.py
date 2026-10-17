@@ -271,6 +271,12 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "archive/gardner-in-rounds-with-meek-pawns": "b793c277f73875c2",  # Q918e, schema 26
     "archive/gardner-in-rounds-with-the-initiative": "d4228395719912a8",  # Q918e, schema 26
     "archive/watering-hole": "b06570f1fcf442e8",  # Q918e, schema 26
+    "archive/gardner-in-rounds-resting": "bdd5185ebbb0abf9",  # Q942c, schema 27
+    "archive/gardner-in-rounds-where-swaps-collide": "5ecf690c98ed62f8",  # Q942c, schema 27
+    "archive/gardner-in-rounds-scored": "21bb31cf3d019bd6",  # Q942c, schema 27
+    "archive/gardner-in-rounds-against-the-chase": "e6b51ce8b7b2e11b",  # Q942c, schema 27
+    "archive/gardner-with-spies": "d42324fc3f1bb1be",  # Q935f, schema 27
+    "archive/gardner-with-spies-resting": "6ef889f11a8119cc",  # Q935f, schema 27
     "rulesets/almost": "0ea224823977572d",
     "rulesets/antichess": "74c73dff0811c4a6",
     "rulesets/atomic": "e77e414d76c510af",

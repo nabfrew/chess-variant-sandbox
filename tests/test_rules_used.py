@@ -41,6 +41,8 @@ COSTS: dict[str, float] = {
     # Schema 26 (Q918a); its first library specs are Q918e's showcases.
     "simultaneous": 3.0,
 }
+# A chase switch (`rest`, `swap`, `both`), each on top of `simultaneous` (schema 27).
+SWITCH_COST = 1.0
 DEFAULTS = {"win": "checkmate", "stalemate": "draw", "checkmate": "loss", "royal_facing": "allowed"}
 
 
@@ -94,8 +96,16 @@ def test_used_rule_keys_cost_the_same_as_count_special_rules(path: Path) -> None
     # mover, a one-way or closed passage), charged by `_portal_extras` (Q771); the first
     # specs to state any of those are Q772a's showcases. Its own tests are in test_complexity.
     extras = complexity._portal_extras(rules.get("portals"))
+    # Each of schema 27's chase switches is one exception on top of `simultaneous`, at the
+    # value that turns it on (Q942a); the first specs to state one are Q942c's showcases.
+    simultaneous = rules.get("simultaneous")
+    switches = sum(
+        SWITCH_COST
+        for key, on in (("rest", True), ("swap", "collision"), ("both", "score"))
+        if isinstance(simultaneous, dict) and simultaneous.get(key) == on
+    )
     assert complexity._count_special_rules(rules) == (
-        sum(COSTS[key] for key in expected_keys) + extras
+        sum(COSTS[key] for key in expected_keys) + extras + switches
     )
 
 

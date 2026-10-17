@@ -2428,14 +2428,11 @@ _SHOWCASE_OWED: dict[str, str] = {
     # showcase, two armies of different kinds (`extinction-any-kind.md` §3.2), is archive
     # and coverage-audit work left to a task of its own.
     "Q936 per_type own": "a showcase with asymmetric armies, after Q936",
-    # Q942a built the three chase switches; their showcases and the study are Q942c's
-    # (`plan-round-chase.md` §5, S1 to S4), after Q942b gives the players the rest's tactic.
-    "Q942a rest": "S1, Gardner in rounds resting (Q942c)",
-    "Q942a swap": "S2, Gardner in rounds where swaps collide (Q942c)",
-    "Q942a both": "S3, Gardner in rounds scored (Q942c)",
-    # Q935a built the spy; its showcase is §5's SP1 (`archive/gardner-with-spies.json`),
-    # archived by Q935f once Q935b's players can play it.
-    "Q935a spy": "SP1, Gardner with spies (Q935f)",
+    # Q942a's three chase switches went on 2026-10-17, when Q942c archived S1 to S4
+    # (`archive/gardner-in-rounds-resting`, `-where-swaps-collide`, `-scored`,
+    # `-against-the-chase`; `plan-round-chase.md` §5, coverage rows 68 to 70).
+    # Q935a's spy went on 2026-10-17, when Q935f archived SP1 and SP2
+    # (`archive/gardner-with-spies`, `-resting`; `plan-spy.md` §5, coverage row 71).
     # Empty again at schema 26: Q918e archived its four showcases (`archive/gardner-in-rounds`,
     # `-with-meek-pawns`, `-with-the-initiative`, `archive/watering-hole`).
     # Empty again at schema 25: its showcase, `rulesets/torus-less-extended.json`, is the
@@ -2510,17 +2507,10 @@ _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
         "owed, not exempt: `_SHOWCASE_OWED` names it; Q936 built the value and its "
         "showcase is a task of its own, and this entry goes the day it lands"
     ),
-    **{
-        f"schema 27: rules.simultaneous.{key}": (
-            "owed, not exempt: `_SHOWCASE_OWED` names it; Q942a built the switch and Q942c "
-            "archives its showcase (`plan-round-chase.md` §5), and this entry goes then"
-        )
-        for key in ("rest", "swap", "both")
-    },
-    "schema 27: pieces.spy": (
-        "owed, not exempt: `_SHOWCASE_OWED` names it; Q935a built the spy and Q935f archives "
-        "its showcase, SP1 (`plan-spy.md` §5), and this entry goes then"
-    ),
+    # Schema 27's `pieces.spy` went on 2026-10-17, when Q935f archived its showcases
+    # (`plan-spy.md` §5; coverage row 71).
+    # Schema 27's three `rules.simultaneous` switches went on 2026-10-17, when Q942c
+    # archived their showcases (`plan-round-chase.md` §5; coverage rows 68 to 70).
     # Schema 26's four names went on 2026-10-15, when Q918e archived their showcases
     # (`plan-simultaneous.md`, *Q918e*; coverage rows 64 to 67).
     # Schema 21's four names and schema 24's one went on 2026-10-13, when Q844b archived

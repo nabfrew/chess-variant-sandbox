@@ -13,6 +13,18 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-17
 
+### Two games played in rounds join the library
+
+*The watering hole* and *Gardner in rounds against the chase* move from the previews into the library, with scores and
+computer opponents of their own. They are the first games in the library where both players move at once.
+
+### Two previews with spies
+
+*Gardner with spies* and *Gardner with spies resting* put a spy on each side of Gardner's small board. While a side's spy
+stands, the other side announces its move before both move at once. Both are previews for practice: in the first, the
+spies are traded away early and the rest is a draw; in the second, where a piece that moved must rest, the spy matters,
+but the first player still wins too often for the game to be scored as fair.
+
 ### Games with a spy can be scored
 
 A game with a spy can now be given a score like any other game: the computer players play it through every phase, and
@@ -29,6 +41,13 @@ their move first, drawn on the board as a solid arrow, and the other answers kno
 once. Once both are lost, both players choose in secret. The line above the board says which of these the game is in.
 No game in the library has a spy yet; one you build with a spy can be tried on the designer's board. Games between two
 people at their own screens do not take a spy yet.
+
+### Four new previews: a royal chase in rounds, and its cures
+
+In Gardner's small board played in rounds, a king could be chased round the board for the whole game. Four new previews
+try the cures. When a piece that moved must rest the next round, the chase all but ends and most games are decided; with
+all three new rules together, *Gardner in rounds against the chase*, nearly every game is decided and its score is read
+as a good game.
 
 ### Resting pieces and collisions are drawn on the board
 

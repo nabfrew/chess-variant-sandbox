@@ -394,6 +394,14 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     # The same features as gardner in rounds: `distance.features` has none for the tie rule.
     "archive/gardner-in-rounds-with-the-initiative": "ef35aeadf82e3d4e",  # Q918e, schema 26
     "archive/watering-hole": "449300665f7cd831",  # Q918e, schema 26
+    "archive/gardner-in-rounds-resting": "e058e13b9d1bc774",  # Q942c, schema 27
+    # The same features as resting: each chase switch is one feature of `distance` that
+    # `_ADDED_SINCE` leaves out, and both add one special rule.
+    "archive/gardner-in-rounds-where-swaps-collide": "e058e13b9d1bc774",  # Q942c, schema 27
+    "archive/gardner-in-rounds-scored": "7ecccaf8caa59060",  # Q942c, schema 27
+    "archive/gardner-in-rounds-against-the-chase": "cdf0efe85ea762c5",  # Q942c, schema 27
+    "archive/gardner-with-spies": "d488370eab00cfbd",  # Q935f, schema 27
+    "archive/gardner-with-spies-resting": "a12a32ec9aa7c11a",  # Q935f, schema 27
     "archive/wolves": "ad7a6f1e406f28f3",
 }
 

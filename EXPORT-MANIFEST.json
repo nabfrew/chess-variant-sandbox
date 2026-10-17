@@ -1,5 +1,5 @@
 {
- "source_commit": "fdf6a9a0c99ff774ac4573a5981dded0f24d1253",
+ "source_commit": "ce1e69056f07ebed9785faa368508139317f7c50",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -82,8 +82,8 @@
   },
   {
    "path": "archive/README.md",
-   "bytes": 49711,
-   "sha256": "097ea1d3edff45540b40f14de1b38497ef204e1b8e8b9d27b06df631d6073243"
+   "bytes": 54263,
+   "sha256": "0f8cfe0dead2dd53e7623fe4eeb054e9b4330b231296e2e2b19e0921173e0581"
   },
   {
    "path": "archive/andernach.json",
@@ -146,6 +146,26 @@
    "sha256": "a94bc2b80697fde455dee8170414a967345b58b1c92fa0f47b943f40007d508a"
   },
   {
+   "path": "archive/gardner-in-rounds-against-the-chase.json",
+   "bytes": 5779,
+   "sha256": "321a55def8ac46b3d3121cbe018fe622b59792bff7498cfd282053cf7fc1e7ad"
+  },
+  {
+   "path": "archive/gardner-in-rounds-resting.json",
+   "bytes": 5369,
+   "sha256": "8977b4f66403a313eb717203958078915e4e221a530fd8aea9bcf320d248a132"
+  },
+  {
+   "path": "archive/gardner-in-rounds-scored.json",
+   "bytes": 5228,
+   "sha256": "a348ac58381440fc32a8392c5e48b98b2cca6b088e6927de3419b48e5c393717"
+  },
+  {
+   "path": "archive/gardner-in-rounds-where-swaps-collide.json",
+   "bytes": 5102,
+   "sha256": "c6a82a8c951f6dcf2646ab2293a8bda12075177724964e2b9b8fe59040c9f4b5"
+  },
+  {
    "path": "archive/gardner-in-rounds-with-meek-pawns.json",
    "bytes": 4449,
    "sha256": "15e3745399777df2c29ac91e1492c26bf7b7f1dfcf6003d516f6bf7da9d78fa0"
@@ -159,6 +179,16 @@
    "path": "archive/gardner-in-rounds.json",
    "bytes": 4906,
    "sha256": "b2ea66042d555bb7c67f7203be9c8e6f7237723903fd6c1305874e0c493b9edd"
+  },
+  {
+   "path": "archive/gardner-with-spies-resting.json",
+   "bytes": 6170,
+   "sha256": "aeb07e55f403bd28575bb221a443364edab7e901e08f349f332f1aa9b6cbb7b9"
+  },
+  {
+   "path": "archive/gardner-with-spies.json",
+   "bytes": 5889,
+   "sha256": "ac186c75c1ff57b429ebf444f8e803e5d08d1b7a330fa57da3e056a568cd1f90"
   },
   {
    "path": "archive/grand.json",
@@ -322,8 +352,8 @@
   },
   {
    "path": "archive/watering-hole.json",
-   "bytes": 5406,
-   "sha256": "85faa21875aac6912db82a478ae935939ef580fb90222416b9eb5651d47cbf01"
+   "bytes": 5464,
+   "sha256": "361b8585f698fef970be709474c2a032ef2a9ee061161dae9de155154a2e9be0"
   },
   {
    "path": "archive/weathervane-half-turn.json",
@@ -2382,8 +2412,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 121978,
-   "sha256": "494b0fd224f72cec8ef436ec1d6cb7d509cd35171556e0be3a9fc3a15a0312cd"
+   "bytes": 123161,
+   "sha256": "0cb2af5f0caddab15657f8920ae4fcd3b7b6f4468e1de2444c293731fd9c146b"
   },
   {
    "path": "fitted/0100091d63ff-98f172aeac49.json",
@@ -6592,8 +6622,8 @@
   },
   {
    "path": "tests/test_graphing.py",
-   "bytes": 100072,
-   "sha256": "c5e287783088bce2a2580cd386b120c953695b5443003caf4de3032840cf8add"
+   "bytes": 100143,
+   "sha256": "ac5f4bb09b75c90eb44642695d815344baf5f3f0b029769a06eb2f65c67063f7"
   },
   {
    "path": "tests/test_green_stamp.py",
@@ -6627,13 +6657,13 @@
   },
   {
    "path": "tests/test_hex_readers.py",
-   "bytes": 22908,
-   "sha256": "24424a984560016f13d0e02918285d97760a706c44bbc8de202e5d2b70762289"
+   "bytes": 23409,
+   "sha256": "102a3ac5316b55d851395589e5cb6f7f6058891c6eaf608e995df62657bb9f7a"
   },
   {
    "path": "tests/test_hex_resolver.py",
-   "bytes": 18736,
-   "sha256": "5b70c9abc1976ac852cc5637ed2955ab0869c140fef0e16c87d169a3c6dadb73"
+   "bytes": 19389,
+   "sha256": "b6e6ac91d10b7271695ace60e4621575790c6dd1c20e8d1af483bd525ea8e741"
   },
   {
    "path": "tests/test_history.py",
@@ -6772,8 +6802,8 @@
   },
   {
    "path": "tests/test_operators.py",
-   "bytes": 209966,
-   "sha256": "7017a0d7d12ed14070fd4a7f1fe9501421f25a9f38a7dfbffda915fadd8dc2e5"
+   "bytes": 209586,
+   "sha256": "f850e5f78ba86115a743d47040d4f6c6dd808da6877b16f5220c4dbbe7e41b75"
   },
   {
    "path": "tests/test_page_files.py",
@@ -6927,8 +6957,8 @@
   },
   {
    "path": "tests/test_relate.py",
-   "bytes": 69182,
-   "sha256": "e6a5378e8579b992c294426e74111209a0001f7207705021fc47e3af1a1d642e"
+   "bytes": 69272,
+   "sha256": "0034ae09e377aa2ea1bf73e51b258a644c433dcaeda48e15bfa591c642e1213d"
   },
   {
    "path": "tests/test_replay.py",
@@ -6982,8 +7012,8 @@
   },
   {
    "path": "tests/test_rules_used.py",
-   "bytes": 6576,
-   "sha256": "cbb413bf32f90eca8a2526832eb93a8b8ecdef05514332a25c9ba90a8fb3b159"
+   "bytes": 7119,
+   "sha256": "df98464a8a9e9bb6169457673f0249a8dcc5991b4fa054a1ce71655231f1651a"
   },
   {
    "path": "tests/test_same_game.py",
@@ -7017,8 +7047,8 @@
   },
   {
    "path": "tests/test_schema_nine.py",
-   "bytes": 71277,
-   "sha256": "a7dd0237e026ff5e107c26be6ba1f60b77b37cdb2e6a8673e53ba1c4b058d0c6"
+   "bytes": 72450,
+   "sha256": "3dafcc776745101f3c169aa1505706fb421fb3ca602c6a6859c8af379c658a79"
   },
   {
    "path": "tests/test_schema_nine_core.py",
@@ -7047,8 +7077,8 @@
   },
   {
    "path": "tests/test_schema_six.py",
-   "bytes": 60007,
-   "sha256": "0cb92312e37a2e048b368d415722ca258052c5e8d44b26d82d230bbff4baee97"
+   "bytes": 60148,
+   "sha256": "3606a120ab343796312541a81884077d918d68e8c6a68234fbdd89eda5b65c7b"
   },
   {
    "path": "tests/test_schema_sixteen.py",
@@ -7057,8 +7087,8 @@
   },
   {
    "path": "tests/test_schema_ten.py",
-   "bytes": 114537,
-   "sha256": "6b136dd2cbc9948e9e21eb828193b44e4353c634353a2fd013f75cbac574896a"
+   "bytes": 114637,
+   "sha256": "ce38fbafbd1bde5f489482d5f26d1482f534eafe4a4ddec0fb304c13a14d5ec7"
   },
   {
    "path": "tests/test_schema_thirteen.py",
@@ -7107,8 +7137,8 @@
   },
   {
    "path": "tests/test_schema_two.py",
-   "bytes": 64863,
-   "sha256": "1738395201d779bc8000f1b55e024a148b23cf0a7e8fa73920f7ee677f922bb7"
+   "bytes": 65286,
+   "sha256": "6db3a5d9e601643462b256a04ad24e70853860aa02cb738d14ec4e4cf23e23bf"
   },
   {
    "path": "tests/test_schema_wrong_types.py",
@@ -7159,6 +7189,16 @@
    "path": "tests/test_showcases_q918e.py",
    "bytes": 13628,
    "sha256": "5ff89d6b943f0bef978ff712efea62cb60f81f0cc0892c700100421ac73fd2f5"
+  },
+  {
+   "path": "tests/test_showcases_q935f.py",
+   "bytes": 11355,
+   "sha256": "a7ae6e8ba39dd615c89307b7f9df3d610bb2c335bc1e59b01de2863fd8bb8890"
+  },
+  {
+   "path": "tests/test_showcases_q942.py",
+   "bytes": 14776,
+   "sha256": "fae7fe37dd6d69f1cce2649c043209e6e2bfb6981ca8ba220299ebfa32f05566"
   },
   {
    "path": "tests/test_simultaneous_oracle.py",
@@ -7292,8 +7332,8 @@
   },
   {
    "path": "tests/test_site_previews.py",
-   "bytes": 15721,
-   "sha256": "7a5c35c5fae0139bfebb84a00a17ef479fd25ece51424dbb2fa296e8cfd65ef5"
+   "bytes": 19797,
+   "sha256": "9d3a9db3f5d4e41e4392b485bdd520a57891ed6f45c961b62b184cf43c1d2640"
   },
   {
    "path": "tests/test_site_provisional.py",
