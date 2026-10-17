@@ -1,0 +1,13 @@
+{
+  "store_digest": "c821e9b0bf3ebd66",
+  "made_on": "b8f5d84c871f1211",
+  "reproduced_on": [],
+  "verified_under": [
+    {
+      "core": "b8f5d84c871f1211",
+      "tables": "d53eb61a71b4745e",
+      "players": "df52008513599039",
+      "runner": "56d14d5ed952d89a"
+    }
+  ]
+}

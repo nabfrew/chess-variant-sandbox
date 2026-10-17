@@ -1,5 +1,5 @@
 {
- "source_commit": "ccab65a7ee231226619a491517770ec3b1d1f1be",
+ "source_commit": "3889a5db65838abfd4656027b25c02e4108a2efd",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -82,8 +82,8 @@
   },
   {
    "path": "archive/README.md",
-   "bytes": 55058,
-   "sha256": "4262fa5d2a1a7756031459e7c9721e6d767e56c59dc1047873006aedd3b26611"
+   "bytes": 56723,
+   "sha256": "666f613c0bb38fdde3e8d205e39d70053bf23871bd92a17f797aadad987af490"
   },
   {
    "path": "archive/andernach.json",
@@ -304,6 +304,11 @@
    "path": "archive/reckoning.json",
    "bytes": 3862,
    "sha256": "700658e6e83fb410a47667eeedf86ed815227f2f5542f3b3c44861888affacae"
+  },
+  {
+   "path": "archive/riders-and-leapers.json",
+   "bytes": 5102,
+   "sha256": "69405c699848eae8e33870994ecc9230bd874a53ced1a6ad0df5dd0b7b426c1a"
   },
   {
    "path": "archive/rifle.json",
@@ -2417,8 +2422,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 125315,
-   "sha256": "066e1028b3d80874e36a63081c1a40da4744b25172c90bbe3e1f0e345cbbb30a"
+   "bytes": 125934,
+   "sha256": "1f5bd7c26eeaee64fa6a64f8272a7b1eaddd643b6dda678b5b57939944284cbc"
   },
   {
    "path": "fitted/0100091d63ff-98f172aeac49.json",
@@ -2726,6 +2731,11 @@
    "sha256": "ab0ccde734191ef7478a6908e677f48c28447dc6bbc644c66ea532bf80614dfb"
   },
   {
+   "path": "fitted/26636602fae0-98f172aeac49.json",
+   "bytes": 769,
+   "sha256": "bed4ecb7e28252c4e3129bb2f448e24235cc4486b2ccb407b6cfc15619030b8f"
+  },
+  {
    "path": "fitted/27db51939149-98f172aeac49.json",
    "bytes": 781,
    "sha256": "316fc49a24c06cbbea6db166afa52045207d5b02b75149969e14d8bd43397dc9"
@@ -2789,6 +2799,11 @@
    "path": "fitted/2eefcd835b3b-98f172aeac49.json",
    "bytes": 772,
    "sha256": "1255697250a0c5aed43b0fec4c7da0495d1b44a45e137b807120edf9c1be8261"
+  },
+  {
+   "path": "fitted/30c055a056ec-98f172aeac49.json",
+   "bytes": 769,
+   "sha256": "b4d936d834c03f3af2ab7cd901af15f94ce6e25edb55b5d94484c39a8ffe3b90"
   },
   {
    "path": "fitted/30e9dabe221f-98f172aeac49.json",
@@ -4561,6 +4576,11 @@
    "sha256": "24978a93bfa1bfaed93f23e3417200366f2b203657f9372be8d25e8165d40f39"
   },
   {
+   "path": "fitted/reproduced/26636602fae0-98f172aeac49.json",
+   "bytes": 278,
+   "sha256": "08d5706c71a5f3e3bbe9c64f676fe57565302ae3fe10f117a4631c81df5c522f"
+  },
+  {
    "path": "fitted/reproduced/279f92a97530-98f172aeac49.json",
    "bytes": 387,
    "sha256": "4c56382399448ea55450af9dca0942f082ea9202e94b99c32a1871ebd086f21b"
@@ -4589,6 +4609,11 @@
    "path": "fitted/reproduced/2eefcd835b3b-98f172aeac49.json",
    "bytes": 1511,
    "sha256": "4768bb1c44482fcc46b17aeb53cd26e6760a1da186d7de7756290edfc8fa4d54"
+  },
+  {
+   "path": "fitted/reproduced/30c055a056ec-98f172aeac49.json",
+   "bytes": 278,
+   "sha256": "321691078532e2dacbee025caa79e3232dbfda77b9e6d048d339d26c4e863723"
   },
   {
    "path": "fitted/reproduced/30c1003b9a61-98f172aeac49.json",
@@ -6662,13 +6687,13 @@
   },
   {
    "path": "tests/test_hex_readers.py",
-   "bytes": 23409,
-   "sha256": "102a3ac5316b55d851395589e5cb6f7f6058891c6eaf608e995df62657bb9f7a"
+   "bytes": 23483,
+   "sha256": "d21a1979925fcf59e98e51c06de82440979f2474647f0125c3664fa34aebc21b"
   },
   {
    "path": "tests/test_hex_resolver.py",
-   "bytes": 19389,
-   "sha256": "b6e6ac91d10b7271695ace60e4621575790c6dd1c20e8d1af483bd525ea8e741"
+   "bytes": 19463,
+   "sha256": "4e6769fd8c3923e9bfe7b0d853203fbd6c9d16af889f51cf1781fdcf2e9c2509"
   },
   {
    "path": "tests/test_history.py",
@@ -6807,8 +6832,8 @@
   },
   {
    "path": "tests/test_operators.py",
-   "bytes": 209586,
-   "sha256": "f850e5f78ba86115a743d47040d4f6c6dd808da6877b16f5220c4dbbe7e41b75"
+   "bytes": 209431,
+   "sha256": "069b17d0ac4abdeea22c77df01f731ccec7dcca1be16012c8af9c93ff866768d"
   },
   {
    "path": "tests/test_page_files.py",
@@ -7037,8 +7062,8 @@
   },
   {
    "path": "tests/test_schema_eighteen.py",
-   "bytes": 74464,
-   "sha256": "692e8f3262287b63d206266c3f2d8dfe40a1d6c61071a99435d64efae93b9218"
+   "bytes": 74735,
+   "sha256": "1a91e127a29da7847354adcea64a6a4ace9566131e8656f684b537db9675e792"
   },
   {
    "path": "tests/test_schema_eleven.py",
@@ -7057,8 +7082,8 @@
   },
   {
    "path": "tests/test_schema_nine.py",
-   "bytes": 72450,
-   "sha256": "3dafcc776745101f3c169aa1505706fb421fb3ca602c6a6859c8af379c658a79"
+   "bytes": 72934,
+   "sha256": "248e0d8852fbd646b7692b01799d6cda8d101f06c5ebd72b68ec84b859616d60"
   },
   {
    "path": "tests/test_schema_nine_core.py",
@@ -7087,8 +7112,8 @@
   },
   {
    "path": "tests/test_schema_six.py",
-   "bytes": 60148,
-   "sha256": "3606a120ab343796312541a81884077d918d68e8c6a68234fbdd89eda5b65c7b"
+   "bytes": 60221,
+   "sha256": "2ab614409d0927fc549c51a2418d0b1ec13e29d8814845957d62738077ce6628"
   },
   {
    "path": "tests/test_schema_sixteen.py",
@@ -7097,8 +7122,8 @@
   },
   {
    "path": "tests/test_schema_ten.py",
-   "bytes": 114637,
-   "sha256": "ce38fbafbd1bde5f489482d5f26d1482f534eafe4a4ddec0fb304c13a14d5ec7"
+   "bytes": 114692,
+   "sha256": "0a8ef6fe231e700ad9a01c4a5e668356de0650a2bb6c963f07908a75140e7ddb"
   },
   {
    "path": "tests/test_schema_thirteen.py",
@@ -7132,8 +7157,8 @@
   },
   {
    "path": "tests/test_schema_twenty_seven.py",
-   "bytes": 17134,
-   "sha256": "b9b74ba038c659bbac3c43c53ad3a0eea4bc7fb7558dac0989520910d2eaf263"
+   "bytes": 17791,
+   "sha256": "0f75586a9ca271ea1c2818a703ff9db02fcb27e075597cfdfb485879d91a6a3b"
   },
   {
    "path": "tests/test_schema_twenty_six.py",
@@ -7204,6 +7229,11 @@
    "path": "tests/test_showcases_q935f.py",
    "bytes": 12338,
    "sha256": "9dd6304158582b8ac05603c24531b2681f6c425a0e0305994b8dc0f2c5360b42"
+  },
+  {
+   "path": "tests/test_showcases_q936s.py",
+   "bytes": 4356,
+   "sha256": "5eba6a5b2ac816055ecf979fa02a7ffcf07da8741a27a61aacc249cf96a8176e"
   },
   {
    "path": "tests/test_showcases_q942.py",
@@ -7347,8 +7377,8 @@
   },
   {
    "path": "tests/test_site_previews.py",
-   "bytes": 19802,
-   "sha256": "751316126f625c674f723819faa6ec07c1b104fced2915164c42e7055508f186"
+   "bytes": 21591,
+   "sha256": "0c01791176d14df4414f94f03c62e0c37e5a34cd900201ed52749a60611c8378"
   },
   {
    "path": "tests/test_site_provisional.py",

@@ -100,6 +100,9 @@ SHOWCASES = (
 # knight `rotate6` beside `dihedral12` officers; the tests read them rebuilt
 # (`tests/retired_specs.py`).
 RETIRED_SHOWCASES = frozenset({"hex-glinski-turned", "hex-glinski-turned-mirrored"})
+# Games that use a schema 18 key through a value a later bump added, so are no showcase of
+# schema 18: `"per_type": "own"` (schema 27) is a value on 18c's `per_type`.
+LATER_USERS = frozenset({"riders-and-leapers"})  # Q936s, `extinction-any-kind.md` §5
 KEEPING = "rules.contacts.mover_to=mover(promotion)"
 WALLED = "rules.castling(walled rank)"
 PER_TYPE = "rules.extinction.per_type"
@@ -247,7 +250,7 @@ class TestTheBumpMovedNothing:
         users = {
             Path(path).stem for path in FROZEN if _schema_eighteen_uses(load_spec(ROOT / path))
         }
-        assert users == set(SHOWCASES) - RETIRED_SHOWCASES
+        assert users == (set(SHOWCASES) - RETIRED_SHOWCASES) | LATER_USERS
 
 
 class TestTheKeepingLink:

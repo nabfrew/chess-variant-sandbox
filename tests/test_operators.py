@@ -2424,10 +2424,9 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
-    # Q936 built `"own"` inside its areas (spec, engine, rust, fairy, loop, llm, tests); the
-    # showcase, two armies of different kinds (`extinction-any-kind.md` §3.2), is archive
-    # and coverage-audit work left to a task of its own.
-    "Q936 per_type own": "a showcase with asymmetric armies, after Q936",
+    # Q936's `"own"` went on 2026-10-17, when Q936s archived its showcase, two armies of
+    # different kinds (`archive/riders-and-leapers`; `extinction-any-kind.md` §5, coverage
+    # row 72). Empty again at schema 27.
     # Q942a's three chase switches went on 2026-10-17, when Q942c archived S1 to S4
     # (`archive/gardner-in-rounds-resting`, `-where-swaps-collide`, `-scored`,
     # `-against-the-chase`; `plan-round-chase.md` §5, coverage rows 68 to 70).
@@ -2503,10 +2502,8 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
-    "schema 27: rules.extinction.per_type.own": (
-        "owed, not exempt: `_SHOWCASE_OWED` names it; Q936 built the value and its "
-        "showcase is a task of its own, and this entry goes the day it lands"
-    ),
+    # Schema 27's `rules.extinction.per_type.own` went on 2026-10-17, when Q936s archived
+    # its showcase (`extinction-any-kind.md` §5; coverage row 72).
     # Schema 27's `pieces.spy` went on 2026-10-17, when Q935f archived its showcases
     # (`plan-spy.md` §5; coverage row 71).
     # Schema 27's three `rules.simultaneous` switches went on 2026-10-17, when Q942c

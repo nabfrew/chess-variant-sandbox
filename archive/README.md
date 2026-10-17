@@ -774,6 +774,27 @@ guarded once. Its pre-registered remedy, SP2 with each knight and bishop exchang
 (`29406b08a677`), evened the twin but flipped SP2's strong band to the second seat and lost the
 spy by ply 8.5: *not repaired*, so it is not archived, and SP2 stands as it was.
 
+## `riders-and-leapers.json` — schema 27, any one of your own kinds (Q936s)
+
+2026-10-17, in the library since Q936t (2026-10-17), no longer a preview (`26636602fae0`). The showcase of `rules.extinction.per_type: "own"`
+(`docs/reference/extinction-any-kind.md` §5): Los Alamos's 6x6 board and pawns, no king, and two
+different armies of three paired kinds, riders (two rooks, two bishops, two guards) against
+leapers (two champions, two knights, two elephants). A side loses the moment any one of its own
+kinds is gone, which the shared list of `per_type: true` cannot say (each side starts with none
+of the other's kinds) and the summed rule does not ask. A pawn promotes to one of its own side's
+officers, so it can restore a kind about to run out. Kept because the rule is the game: once a
+side is down to its last piece of a kind that piece is worth the game, and every trade is about
+which kind it leaves single. `tests/test_showcases_q936s.py` ends a real line by `"own"` where
+the summed rule plays on.
+
+Measured 2026-10-17 (v12, four runs): **0.757 [0.741, 0.792], viable (accept 4-0)**, the seat even
+at the top two rungs (31-32). Pre-registered in §5.3 and graded in §5.4, all five claims held:
+every one of 1016 games ended by extinction left the loser holding another of its own kinds,
+and the same file under the summed rule plays three times as long (83.9 plies to 28.2) with a
+sixth of its games drawn. Short, tactical games; the riders lose by their bishops two times in
+three. Joined the library by Q936t as the only game where each side loses when any one of its own
+kinds is gone, and the only one with two different armies of paired kinds.
+
 ## Retired by the library audit (Q868, 2026-10-12)
 
 The user asked for a library in which every game has a purpose (`docs/plan-library-audit.md`,

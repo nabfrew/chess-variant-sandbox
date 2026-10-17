@@ -13,6 +13,15 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-17
 
+### Riders and leapers joins the library
+
+*Riders and leapers* moves from the previews into the library, with a score and computer opponents of its own. It is a
+game with no king and two different armies: one side has rooks, bishops and guards, the other champions, knights and
+elephants, and a side loses the moment any one of its own three kinds of piece is gone, which no other game in the library
+asks. A pawn that
+reaches the far rank can bring back a kind that is about to run out, so every trade is a question of which kind it leaves
+short. It is played on a six by six board and its games are short and sharp.
+
 ### Games with spies against another person
 
 A game with spies can now be played against another person, each of you moving when you like. While both spies

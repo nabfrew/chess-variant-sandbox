@@ -14,7 +14,8 @@ mechanics hash), and from that one sentence:
   API and plays a round, and *watch it play itself* seats the round ladder's player.
 
 Taking the sentence off is how a preview joins the library (Q934: the watering hole and
-Gardner in rounds against the chase), and such a game is then on every scored surface.
+Gardner in rounds against the chase; Q936t: riders and leapers), and such a game is then on
+every scored surface.
 
 The store tests need a real Postgres and skip with a reason without one.
 """
@@ -53,14 +54,20 @@ PREVIEWS = {
     "gardner-with-spies-resting.json": "1d798bedbf66",
 }
 """The round and spy games, by file and by the mechanics hash each was measured under (Q918e,
-Q942c, Q935f), less the two that joined the library (`JOINED`)."""
+Q942c, Q935f), less the three that joined the library (`JOINED`)."""
 
-JOINED = {
+JOINED_ROUNDS = {
     "watering-hole.json": "5c0b017473f5",
     "gardner-in-rounds-against-the-chase.json": "632c199e4589",
 }
 """Two round games that were previews and joined the library by taking the mark off (Q934,
 `plan-library-audit.md`): Library games played in rounds, on every scored surface."""
+
+JOINED_TURNS = {"riders-and-leapers.json": "26636602fae0"}
+"""A game played by turns that was a preview (Q936s: `"per_type": "own"`) and joined the same
+way (Q936t): a Library game offered the alternating ladder (`opponents.RUNGS`)."""
+
+JOINED = {**JOINED_ROUNDS, **JOINED_TURNS}
 
 ROUND_PREVIEW = "4da669bb3d50"
 ROUND_PREVIEW_FILE = "gardner-in-rounds-resting.json"
@@ -77,7 +84,7 @@ ROUND_AGENT = "matrix:nodes=6400"
 
 
 def _root(tmp_path: Path) -> Path:
-    """A checkout of the dull Baseline game, three Library games (two of them played in
+    """A checkout of the dull Baseline game, four Library games (two of them played in
     rounds) and the eight previews."""
     (tmp_path / "rulesets").mkdir()
     (tmp_path / "archive").mkdir()
@@ -110,13 +117,13 @@ class TestTheFiles:
         }
         assert marked == set(PREVIEWS)
 
-    def test_the_two_that_joined_say_nothing_and_keep_their_hashes(self) -> None:
+    def test_the_three_that_joined_say_nothing_and_keep_their_hashes(self) -> None:
         for name, digest in JOINED.items():
             spec = load_spec(ARCHIVE / name)
             assert spec_hash(spec) == digest, "taking the mark off moved no game"
             assert validate_spec(spec) == []
             assert library.preview_sentence(spec) is None
-            assert "simultaneous" in spec["rules"]
+            assert ("simultaneous" in spec["rules"]) == (name in JOINED_ROUNDS)
 
     def test_an_empty_sentence_is_refused(self) -> None:
         spec = load_spec(ARCHIVE / ROUND_PREVIEW_FILE)
@@ -171,11 +178,19 @@ class TestTheListing:
                 assert agents >= {ROUND_AGENT}
 
     def test_a_round_game_that_joined_is_a_library_page_played_in_rounds(self, app: App) -> None:
-        for digest in JOINED.values():
+        for digest in JOINED_ROUNDS.values():
             game = app.get(f"/api/game/{digest}")
             assert game["preview"] is None and game["level"] != stages.PREVIEW
             assert game["rounds"] is True
             assert {entry["agent"] for entry in game["opponents"]} >= {ROUND_AGENT}
+
+    def test_a_turn_game_that_joined_is_a_library_page_played_by_turns(self, app: App) -> None:
+        for digest in JOINED_TURNS.values():
+            game = app.get(f"/api/game/{digest}")
+            assert game["preview"] is None and game["level"] != stages.PREVIEW
+            assert game["rounds"] is False
+            agents = {entry["agent"] for entry in game["opponents"]}
+            assert ROUND_AGENT not in agents and any(a.startswith("minimax:") for a in agents)
 
     def test_no_library_page_names_a_preview(self, app: App) -> None:
         for digest in (
@@ -193,7 +208,7 @@ class TestNoBand:
     def test_a_preview_with_a_current_score_is_in_no_band(
         self, app: App, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Every game given the same current score: the library's four are banded against
+        """Every game given the same current score: the library's five are banded against
         each other, and the eight previews neither have a band nor move the others'."""
         score = {"weights_version": library.DEFAULT_WEIGHTS, "combined": 0.5,
                  "interval": {"ci_low": 0.4, "ci_high": 0.6, "deterministic_pairings": 1}}
@@ -336,6 +351,7 @@ ROUND_PREVIEWS = sorted(
     digest for name, digest in PREVIEWS.items() if name not in SPY_PREVIEWS
 )
 SPY_PREVIEW_HASHES = sorted(PREVIEWS[name] for name in SPY_PREVIEWS)
+TURN_JOINED_HASHES = sorted(JOINED_TURNS.values())
 SPY_AGENT = "minimax:nodes=400"
 """A rung of the spy ladder (`opponents.SPY_RUNGS`): a spy game offers no round player."""
 
@@ -353,6 +369,23 @@ class TestPlayingOne:
         after = _round(visitor, started.payload)
         assert after["round"]["number"] == 2, "one round was revealed"
         assert len(after["history"]) == 2
+
+    @pytest.mark.parametrize("digest", TURN_JOINED_HASHES)
+    def test_a_visitor_plays_a_turn_game_that_joined_against_the_ladder(
+        self, previews_site: Site, digest: str
+    ) -> None:
+        """A game that alternates (Q936s, joined by Q936t) is played as any alternating game is."""
+        visitor = previews_site.browser()
+        started = visitor.post("/api/session", {"hash": digest, "seats": ["human", SPY_AGENT]})
+        assert started.status == 200, started.text
+        snapshot = dict(started.payload)
+        assert not snapshot.get("round")
+        sid = snapshot["id"]
+        moved = visitor.post(f"/api/session/{sid}/move", {"move": snapshot["moves"][0]["move"]})
+        assert moved.status == 200, moved.text
+        replied = visitor.post(f"/api/session/{sid}/agent", {})
+        assert replied.status == 200, replied.text
+        assert len(replied.payload["history"]) == 2
 
     @pytest.mark.parametrize("digest", SPY_PREVIEW_HASHES)
     def test_a_visitor_plays_a_spy_preview_by_turns_against_the_spy_ladder(

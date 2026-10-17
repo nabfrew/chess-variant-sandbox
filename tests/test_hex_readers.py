@@ -277,6 +277,7 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "archive/gardner-in-rounds-against-the-chase": "e6b51ce8b7b2e11b",  # Q942c, schema 27
     "archive/gardner-with-spies": "d42324fc3f1bb1be",  # Q935f, schema 27
     "archive/gardner-with-spies-resting": "6ef889f11a8119cc",  # Q935f, schema 27
+    "archive/riders-and-leapers": "358b832b1209f1d3",  # Q936s, schema 27
     "rulesets/almost": "0ea224823977572d",
     "rulesets/antichess": "74c73dff0811c4a6",
     "rulesets/atomic": "e77e414d76c510af",

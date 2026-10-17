@@ -402,6 +402,7 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "archive/gardner-in-rounds-against-the-chase": "cdf0efe85ea762c5",  # Q942c, schema 27
     "archive/gardner-with-spies": "d488370eab00cfbd",  # Q935f, schema 27
     "archive/gardner-with-spies-resting": "a12a32ec9aa7c11a",  # Q935f, schema 27
+    "archive/riders-and-leapers": "6917cf0a1e6e5bbd",  # Q936s, schema 27
     "archive/wolves": "ad7a6f1e406f28f3",
 }
 

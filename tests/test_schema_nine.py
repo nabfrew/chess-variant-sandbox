@@ -409,6 +409,12 @@ FROZEN: dict[str, tuple[str, str]] = {
     # spies resting (SP2, with `rest`). New.
     "archive/gardner-with-spies.json": ("f4c62a33798d", "7e3a92c5d12b44dd"),
     "archive/gardner-with-spies-resting.json": ("1d798bedbf66", "8a309ac4ab581f8e"),
+    # Q936s, 2026-10-17: the showcase of `"per_type": "own"`, two armies of different kinds
+    # (`docs/reference/extinction-any-kind.md` §5; `tests/test_showcases_q936s.py`). New;
+    # measured first as `30c055a056ec` (tables `d53eb61a71b4745e`), re-frozen the same day when
+    # the champion's and elephant's moves were split one descriptor per step length, the same
+    # game move for move (§5.4).
+    "archive/riders-and-leapers.json": ("26636602fae0", "8e384b6a8a7868c2"),
 }
 
 

@@ -552,8 +552,9 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
     # since Q918e's four round showcases, of which `watering-hole` does, sending both sides
     # to d4 (`mirror: false`, so the two readings agree); 95 since Q942c's four chase-remedy
     # showcases, which declare none; 97 since Q935f's two spy showcases, which declare none
+    # either; 98 since Q936s's `riders-and-leapers`, which declares none
     # either.
-    assert len(paths) == 97
+    assert len(paths) == 98
 
     with_reach: dict[str, tuple[frozenset[int], frozenset[int]]] = {}
     for path in paths:

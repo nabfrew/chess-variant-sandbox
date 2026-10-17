@@ -33,6 +33,8 @@ from chess_variant_sandbox.spec.schema import (
 ROOT = Path(__file__).resolve().parents[1]
 STORED = sorted((ROOT / "rulesets").glob("*.json")) + sorted((ROOT / "archive").glob("*.json"))
 OWN = "rules.extinction.per_type.own"
+SHOWCASE = "riders-and-leapers"
+"""`"own"`'s showcase (Q936s, `docs/reference/extinction-any-kind.md` §5)."""
 
 
 def _leap(vector: list[int], symmetry: str) -> list[dict[str, Any]]:
@@ -87,10 +89,11 @@ class TestTheGate:
         errors = validate_spec(spec)
         assert any("added in schema 27" in e and OWN in e for e in errors), errors
 
-    def test_no_stored_spec_says_own(self) -> None:
-        """Inert: nothing committed or archived can have used a value that did not exist."""
-        for path in STORED:
-            assert OWN not in _schema_twenty_seven_uses(load_spec(path)), path.stem
+    def test_only_the_showcase_says_own(self) -> None:
+        """Inert when it landed: nothing committed or archived had used a value that did not
+        exist. Since Q936s one archived game says it, the showcase, and nothing else does."""
+        users = {path.stem for path in STORED if OWN in _schema_twenty_seven_uses(load_spec(path))}
+        assert users == {SHOWCASE}
 
 
 # ---------------------------------------------------------------------- validation
@@ -207,7 +210,8 @@ class TestTheCompiledList:
 
 def _stored_agree(paths: list[Path]) -> None:
     """Over stored games: the helper reads the army `schema.opening_counts` reads (one army,
-    two readers), and the boundary sends no per-side list for any of them (inert)."""
+    two readers), and the boundary sends no per-side list for any of them (inert) but the one
+    that says `"own"`, which gets each side's own listed kinds."""
     for path in paths:
         spec = load_spec(path)
         compiled = compile_spec(spec)
@@ -217,7 +221,14 @@ def _stored_agree(paths: list[Path]) -> None:
         for player in (0, 1):
             named = {compiled.piece_ids[t] for t in lists[player]}
             assert named == {p for p, n in counts[player].items() if n}, (path.stem, player)
-        assert build_tables(compiled)["extinction_side_types"] == [], path.stem
+        sent = build_tables(compiled)["extinction_side_types"]
+        if OWN not in _schema_twenty_seven_uses(spec):
+            assert sent == [], path.stem
+            continue
+        listed = set(spec["rules"]["extinction"]["pieces"])
+        assert [{compiled.piece_ids[t] for t in side} for side in sent] == [
+            {p for p, n in counts[player].items() if n and p in listed} for player in (0, 1)
+        ], path.stem
 
 
 def test_stored_extinction_games_agree() -> None:
