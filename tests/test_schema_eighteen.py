@@ -1080,7 +1080,6 @@ class TestDropEitherFace:
         pairs = {ids[slot]: ids[face] for slot, face in enumerate(drops.faces) if face >= 0}
         assert pairs == {"P": "R", "S": "B", "N": "G", "L": "T"}
         assert drops.hand_slot(ids.index("R")) == ids.index("P")
-        assert drops.faces_of(ids.index("K")) == (ids.index("K"),)
 
     @pytest.mark.parametrize(
         ("rule", "says"),

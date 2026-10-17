@@ -17,8 +17,6 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
-PLAYER_ZERO = 0
-PLAYER_ONE = 1
 DRAW = None
 
 NO_SQUARE = -1

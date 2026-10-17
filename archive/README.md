@@ -758,11 +758,21 @@ Pre-registered in §5 and §5.7 before any graded game, graded in §5.8;
   so the full announcement does not end the game. It fails the seat, and its holder's score is
   player- and value-dependent.
 
-Measured 2026-10-17 (v12, four runs each, `corpus.SPY_AGENTS`): with spies **0.603 [0.589,
-0.625], not viable** (the second seat took 0.98 of the strongest rungs' 53 decided games); resting
-**0.680 [0.657, 0.713], not viable** (the second seat 0.85 of 61). In the study's strong band
-(`minimax:nodes=25600`, `102400`) the lean is the other way, inherited from the alternating phase:
-the twin without spies or rounds gives the first seat 601 of 603 decided games.
+Measured 2026-10-17 (v12, four runs each, `corpus.SPY_AGENTS`), and re-measured the same day under
+the evaluator's spy term (Q935h) by Q954's library replay (`docs/reference/replay-2026-10-17b.md`):
+with spies **0.583 [0.560, 0.608], not viable** (the first seat took 0.98 of the three strongest
+rungs' 46 decided games; the two strongest drew 60 of 64); resting **0.603 [0.590, 0.630], not
+viable** (the first seat 0.97 of the two strongest rungs' 60). Before the term they read 0.603 and
+0.680, each refused for the *second* seat (0.98 of 53, 0.85 of 61); under it both lean to the first
+seat, the way the study's strong band (`minimax:nodes=25600`, `102400`) leaned before it, inherited
+from the alternating phase: the twin without spies or rounds gives the first seat 601 of 603
+decided games.
+
+Q935g (`plan-spy.md` §5.9, §5.10) read that lean as royal-capture Gardner's (checkmate Gardner is
+even under the same players), taking in the twin the form of a pawn into the square the spy leaves
+guarded once. Its pre-registered remedy, SP2 with each knight and bishop exchanged
+(`29406b08a677`), evened the twin but flipped SP2's strong band to the second seat and lost the
+spy by ply 8.5: *not repaired*, so it is not archived, and SP2 stands as it was.
 
 ## Retired by the library audit (Q868, 2026-10-12)
 

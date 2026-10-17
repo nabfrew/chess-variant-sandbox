@@ -139,6 +139,27 @@ def test_the_study_files_are_section_five_one() -> None:
         assert spec_hash(spec) == STUDY_HASHES[name], name
 
 
+def knights_behind(spec: dict[str, Any]) -> dict[str, Any]:
+    """Q935g's remedy R14 (`plan-spy.md` §5.9): each side's knight and bishop exchanged, the
+    knight on c1 behind the spy, the bishop on b1."""
+    out = copy.deepcopy(spec)
+    out.pop("provenance", None)
+    moved = {"N": ["c1"], "B": ["b1"]}
+    for placement in out["setup"]["placements"]:
+        placement["squares"] = moved.get(placement["piece"], placement["squares"])
+    return out
+
+
+def test_the_q935g_remedy_is_sp2_with_knight_and_bishop_exchanged() -> None:
+    """The graded game and its twin are built from SP2 here and carry the hashes §5.9
+    registered, since the files live in the gitignored `runs/`."""
+    remedied = knights_behind(SP2)
+    assert remedied["pieces"] == SP2["pieces"] and remedied["rules"] == SP2["rules"]
+    for spec, expected in ((remedied, "29406b08a677"), (twin(remedied), "ccdf3e5fa1c5")):
+        assert not validate_spec(spec)
+        assert spec_hash(spec) == expected
+
+
 # --------------------------------------------------------- random play through the core
 
 

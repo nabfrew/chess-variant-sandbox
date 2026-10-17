@@ -161,6 +161,15 @@ WIN_SCORE = 1_000_000.0
 # ``tests/test_round_players_rest.py``.
 RESTED_ROYAL = WIN_SCORE / 2.0
 
+# Schema 27 (Q935h, `docs/plan-spy.md` §6.1): what holding the only spy is worth, in mean
+# non-royal pieces, mine minus theirs (``Evaluator.spy_edge``). The spy's ``value`` prices the
+# piece; this prices the rule it holds (the holder answers every round with the other's move
+# in view), so a holder gives its spy up only for more than both. Zero while both spies stand
+# and once both are gone, and no game without a spy reads it. One mean piece, fixed by its
+# unit as ``IMMUNE_PIECES`` is. ``rust/src/eval.rs::SPY_PIECES`` is the core's copy, exported
+# as ``_core.SPY_PIECES`` and held to this one by ``tests/test_spy_term.py``.
+SPY_PIECES = 1.0
+
 # The move kinds that take what stands on their target square (`engine-and-spec.md`, *what
 # counts as a capture*, less en passant, whose victim is elsewhere): normal, promotion,
 # sweep, portal. A drop never lands on a piece, a fold's own move takes nothing, and a
@@ -311,6 +320,10 @@ class Evaluator:
     # Q466 (F2): the immunity term's weight in mean non-royal pieces an immune piece.
     # ``IMMUNE_PIECES`` unless a player spells another (Q471); zero is off.
     immune_pieces: float = IMMUNE_PIECES
+    # Q935h: the spy term's weight in mean non-royal pieces (``SPY_PIECES``). The core has no
+    # per-player copy: every player on the built-in objective reads ``SPY_PIECES``; a field
+    # here so a test and the term's duel (`plan-spy.md` §6.1) can hold a player without it.
+    spy_pieces: float = SPY_PIECES
     # The denominator of the prey share, derived rather than passed. Not a constructor
     # argument on purpose: a value table and the pool it is scaled against are one fact
     # about one ruleset, and a caller able to hand in a mismatched pair would be a
@@ -732,7 +745,32 @@ class Evaluator:
                 self.values, self.spec.royal_types, inexhaustible_types(self.spec)
             )
             score += weight * self.immunity(state, player)
+        if self.spy_pieces and self.spec.spy is not None:
+            edge = self.spy_edge(state.board, player)
+            if edge:
+                weight = self.spy_pieces * _mean_non_royal(
+                    self.values, self.spec.royal_types, inexhaustible_types(self.spec)
+                )
+                score += weight * edge
         return score
+
+    def spy_edge(self, board: bytes, player: int) -> int:
+        """Schema 27 (Q935h, `docs/plan-spy.md` §6.1): ``1`` when ``player`` holds the only
+        spy, ``-1`` when the other side does, ``0`` while both or neither have one. *Has a
+        spy* is a piece of one of the side's spy types on the board, summed over the types
+        (§1.2). ``rust/src/eval.rs::spy_edge`` is the same reading (``Game::has_spy``)."""
+        spec = self.spec
+        assert spec.spy is not None
+        n_types = spec.n_types
+        side_stride = spec.n_facings * n_types
+        has = [False, False]
+        for value in board:
+            if value == 0:
+                continue
+            owner, piece_type = (value - 1) // side_stride, (value - 1) % n_types
+            if owner != WILD and piece_type in spec.spy.types[owner]:
+                has[owner] = True
+        return int(has[player]) - int(has[1 - player])
 
     def immunity(self, state: GameState, player: int) -> float:
         """Q466 (F2): mine minus theirs, of the pieces the opponent can never capture.

@@ -997,6 +997,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("REGRET_ITERATIONS", crate::agents::REGRET_ITERATIONS)?;
     // Q942b: what a rested royal under a standing attacker costs, for the same reason again.
     m.add("RESTED_ROYAL", crate::eval::RESTED_ROYAL)?;
+    // Q935h: what holding the only spy is worth, for the same reason again.
+    m.add("SPY_PIECES", crate::eval::SPY_PIECES)?;
     m.add("__doc__", "Move generation, search and tournament execution.")?;
     Ok(())
 }

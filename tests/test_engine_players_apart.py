@@ -19,7 +19,6 @@ from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.compile import (
     PORTAL_DIRECTIONS,
     WILD,
-    DropRule,
     TurnRule,
     _compile_turn,
     compile_spec,
@@ -163,31 +162,6 @@ class TestOnlyLostCountsEachSidesOwnArmy:
         assert (rule.opening[0][wild], rule.opening[1][wild]) == (0, 0)
         queen = compiled.piece_ids.index("Q")
         assert (rule.opening[0][queen], rule.opening[1][queen]) == (1, 1)
-
-
-# ------------------------------------------------------------------ DropRule.faces_of
-
-
-class TestWhichFacesAHeldPieceMayBeDroppedAs:
-    @staticmethod
-    def _rule(faces: tuple[int, ...]) -> DropRule:
-        none = (None, None, None)
-        return DropRule(
-            from_captures=True,
-            regions=(none, none),
-            no_doubled=frozenset(),
-            no_mate=frozenset(),
-            faces=faces,
-        )
-
-    def test_a_rule_with_no_pairing_drops_every_slot_as_itself(self) -> None:
-        assert self._rule(()).faces_of(2) == (2,)
-
-    def test_an_unpaired_slot_is_itself_and_a_paired_one_is_itself_then_its_face(self) -> None:
-        rule = self._rule((-1, 0, 1))
-        assert rule.faces_of(0) == (0,)
-        assert rule.faces_of(1) == (1, 0)  # a pairing with type index 0 still pairs
-        assert rule.faces_of(2) == (2, 1)
 
 
 # ------------------------------------------------------------------ two royals of one side

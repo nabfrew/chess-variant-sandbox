@@ -209,6 +209,8 @@ def regret_solve(
 
 REGRET_ITERATIONS: int
 RESTED_ROYAL: float
+# Q935h: the spy term's weight, in mean non-royal pieces, for the oracle to be held to it.
+SPY_PIECES: float
 
 # Hash of the `rust/src/` sources this extension was compiled from, baked in by
 # `build.rs`. `chess_variant_sandbox.measurement` compares it against the same hash of the source on

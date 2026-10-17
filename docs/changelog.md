@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-17
 
+### Computer players guard their spy
+
+In a game with spies, the computer players now count holding the only spy as worth a piece, so they guard their own, hunt
+the other side's and no longer trade it for a pawn. Every game without a spy plays exactly as before.
+
 ### Two games played in rounds join the library
 
 *The watering hole* and *Gardner in rounds against the chase* move from the previews into the library, with scores and

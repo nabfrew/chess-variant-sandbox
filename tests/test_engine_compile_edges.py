@@ -20,7 +20,6 @@ from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.compile import (
     MODE_CAPTURE,
     MODE_MOVE,
-    PromotionRule,
     _needs_runtime_dedup,
     compile_spec,
 )
@@ -66,12 +65,6 @@ def _texts(engine: Engine, state: Any, piece: str) -> list[str]:
 
 
 class TestTheCompiledRecordReadsTheSpecAsGiven:
-    def test_the_single_promotion_rule_is_the_promotion_and_two_rules_are_none(self) -> None:
-        chess = compile_spec(_load("rulesets/chess.json"))
-        assert isinstance(chess.promotion, PromotionRule)
-        assert chess.promotion is chess.promotions[0]
-        assert compile_spec(_load("rulesets/dull.json")).promotion is None
-
     @pytest.mark.fresh_compile  # the session's memo is keyed on sorted keys and would hide it
     def test_the_source_does_not_depend_on_the_order_the_keys_were_written_in(self) -> None:
         spec = _load("rulesets/chess.json")

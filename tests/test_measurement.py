@@ -330,7 +330,17 @@ class TestTheFingerprintsPointAtSomething:
 # Gardner in rounds are the same bytes and numbers as before (`runs/Q935d/inert/`). The
 # replay owed after the bump re-scores under this value. It was "e0aadf993349b4be" after
 # Q935b.
-FROZEN_METRICS = "80f0e4c40298a8de"
+#
+# **Moved 2026-10-17 by Q935h (the evaluator's spy term)**: `agents/evaluation.py` prices
+# holding the only spy at `SPY_PIECES` mean non-royal pieces (`Evaluator.spy_edge`, read only
+# where `spec.spy` is set). No game without a spy reads differently (`test_spy_players.py::
+# _INERT`: a seeded chess and Gardner-in-rounds tournament the same bytes as main's). It was
+# "80f0e4c40298a8de" after Q935d and Q952's replay; the next library replay re-scores under it.
+#
+# **Moved 2026-10-17 by Q947e (dead code deleted)**: `engine/state.py` loses `PLAYER_ZERO` and
+# `PLAYER_ONE`, and `engine/__init__.py` their re-exports; nothing read either, so no number
+# moves. It was "d92ab76eeb9dd2a0" after Q935h; the next library replay re-scores under it.
+FROZEN_METRICS = "55b5cc39b3896211"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -553,7 +563,15 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # and forces a spy game's blunders (see `FROZEN_METRICS`). A game without a spy takes the
 # path it took, byte for byte. It was "87e95a857dae4b4a" after Q935b; the owed replay is the
 # re-analysis.
-FROZEN_ANALYSIS = "b1de98c45e315f78"
+#
+# **Moved 2026-10-17 by Q935h**: `agents/evaluation.py`, the probe's ruler, reads the spy term
+# in a spy game (see `FROZEN_METRICS`). It was "b1de98c45e315f78" after Q935d and Q952's
+# replay; the next library replay is the re-analysis.
+#
+# **Moved 2026-10-17 by Q947e**: `engine/state.py` and `engine/__init__.py` lose the dead
+# `PLAYER_ZERO`/`PLAYER_ONE` (see `FROZEN_METRICS`). It was "12d9bfabaa75f542" after Q935h;
+# the next library replay is the re-analysis.
+FROZEN_ANALYSIS = "031be810615f81e7"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

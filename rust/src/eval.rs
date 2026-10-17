@@ -41,6 +41,18 @@ pub const WIN_SCORE: f64 = 1_000_000.0;
 /// `chess_variant_sandbox/agents/evaluation.py`; a test holds the two together.
 pub const RESTED_ROYAL: f64 = WIN_SCORE / 2.0;
 
+/// Schema 27 (Q935h, `docs/plan-spy.md` §6.1): what holding the only spy is worth, in mean
+/// non-royal pieces, mine minus theirs. A side that has a spy while the other has none
+/// answers every round with the other's move in view; the spy's `value` prices the piece
+/// (it blocks, it can be taken), and this prices the rule it holds, so a holder gives its
+/// spy up only for more than both. Zero while both spies stand and once both are gone, so
+/// it moves nothing in a game's alternating or blind phase except at the capture that ends
+/// one, and no game without a spy reads it. One mean piece, fixed by its unit as
+/// `IMMUNE_PIECES` is (a holder's moving pieces are near-immune to an announced capture,
+/// §1.6). Mirrors `SPY_PIECES` in `chess_variant_sandbox/agents/evaluation.py`; a test holds
+/// the two together.
+pub const SPY_PIECES: f64 = 1.0;
+
 /// Whether `side`'s royal stands rested on its square with a standing enemy piece that
 /// reaches it (schema 27, Q942b): the piece on `game.rest[side]` is `side`'s royal, its only
 /// one (none other on the board, none in hand) and one whose loss ends the game; `side` has
@@ -234,6 +246,10 @@ pub struct Evaluator {
     /// Schema 27 (Q935b): `[owner]`, a bit per spy type (`SpyTables::mask`), zero in every
     /// game without a spy. A spy is priced at its value whatever it may capture.
     spy_mask: [u32; 2],
+    /// Schema 27 (Q935h): the spy term's weight in material units, `SPY_PIECES` times the
+    /// mean non-royal piece; zero in every game without a spy, which then pays one
+    /// comparison per evaluated node.
+    spy_weight: f64,
     has_capture_matrix: bool,
     /// How many pieces each side started with, of the types an `extinction` rule counts.
     /// The denominator of the shortfall term, and constant for the whole game.
@@ -410,6 +426,11 @@ impl Evaluator {
             Some(rule) if rule.any_piece && rule.result > 0 => -1.0,
             _ => 1.0,
         };
+        let spy_weight = if t.spy.is_some() {
+            SPY_PIECES * mean_non_royal(&values, &t.royal_types, t.drops.as_ref())
+        } else {
+            0.0
+        };
         let initial_counts = match &t.extinction {
             Some(rule) => [0, 1].map(|player| {
                 let low = t.value_low(player) as usize;
@@ -437,6 +458,7 @@ impl Evaluator {
             capture_allowed: t.capture_allowed.clone(),
             prey: prey_types(t),
             spy_mask: t.spy.as_ref().map_or([0, 0], |spy| spy.mask),
+            spy_weight,
             has_capture_matrix: t.has_capture_matrix,
             initial_counts,
             has_drops: t.drops.is_some(),
@@ -882,6 +904,12 @@ impl Evaluator {
         if self.immune_weight != 0.0 {
             score += self.immune_weight * self.immunity(game, player);
         }
+        if self.spy_weight != 0.0 {
+            let edge = spy_edge(game, player);
+            if edge != 0 {
+                score += self.spy_weight * f64::from(edge);
+            }
+        }
         score
     }
 
@@ -1011,6 +1039,14 @@ impl Evaluator {
         }
         (start.saturating_sub(now) as f64 / room as f64).min(1.0)
     }
+}
+
+/// Schema 27 (Q935h, `plan-spy.md` §6.1): `1` when `player` holds the only spy, `-1` when the
+/// other side does, `0` while both or neither have one (`Game::has_spy`, the summed mask the
+/// phase reads). Asked only in a spy game. `agents/evaluation.py::Evaluator.spy_edge` is the
+/// same reading.
+pub fn spy_edge(game: &Game<'_>, player: usize) -> i32 {
+    i32::from(game.has_spy(player)) - i32::from(game.has_spy(1 - player))
 }
 
 #[inline]

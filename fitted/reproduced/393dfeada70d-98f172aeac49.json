@@ -13,7 +13,8 @@
     "273221deaf99f3c9",
     "8514bfd3713472ca",
     "ee5390a5b9c9b75c",
-    "5903dcaee44ac687"
+    "5903dcaee44ac687",
+    "b8f5d84c871f1211"
   ],
   "verified_under": [
     {
@@ -42,6 +43,12 @@
     },
     {
       "core": "5903dcaee44ac687",
+      "tables": "dfd7945f0fab0e70",
+      "players": "eccb20ebb5c8ea6f",
+      "runner": "56d14d5ed952d89a"
+    },
+    {
+      "core": "b8f5d84c871f1211",
       "tables": "dfd7945f0fab0e70",
       "players": "eccb20ebb5c8ea6f",
       "runner": "56d14d5ed952d89a"

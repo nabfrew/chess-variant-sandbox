@@ -70,16 +70,6 @@ MODE_BOTH = 3
 # number is affected. See ``_compile_repetition_draw``.
 NO_REPETITION_DRAW = 0xFFFF_FFFF
 
-# The most orientations a piece may have, and therefore the most readings of one
-# descriptor set the movement tables can hold per player. Mirrors
-# ``schema.FACING_AXES``: two is forward and backward, four is the quarter turns.
-#
-# **This used to be `N_FACINGS`, a module constant at 1**, on the reading that every
-# ruleset had the same answer. It does not: a facing is a *piece* property, so the count
-# is a fact about one spec and lives on `CompiledSpec.n_facings`. What survives as a
-# module-level number is the cap, which is what the board byte can hold.
-MAX_FACINGS = 4
-
 # The orientations, in quarter turns clockwise from the piece's own forward. Index into
 # this is the *quarter turn count*, which is not the same number as a facing index
 # unless the spec has four of them -- see ``facing_quarter_turns``.
@@ -512,11 +502,6 @@ class DropRule:
             if paired == face:
                 return slot
         return face
-
-    def faces_of(self, slot: int) -> tuple[int, ...]:
-        """Every piece a piece held in ``slot`` may be dropped as, itself first."""
-        paired = self.faces[slot] if self.faces else -1
-        return (slot,) if paired < 0 else (slot, paired)
 
 
 @dataclass(frozen=True)
@@ -1374,11 +1359,6 @@ class CompiledSpec:
 
     def has_royalty(self) -> bool:
         return bool(self.royal_types)
-
-    @property
-    def promotion(self) -> PromotionRule | None:
-        """The single promotion rule, for the many rulesets that have at most one."""
-        return self.promotions[0] if len(self.promotions) == 1 else None
 
     def has_v2_endings(self) -> bool:
         """Whether ``terminal`` has to consider anything beyond the schema-1 endings."""
