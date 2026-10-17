@@ -687,17 +687,30 @@ def _seat_readings(records: list[GameRecord]) -> tuple[dict[str, float], dict[st
 def _seat_split(
     records: list[GameRecord], band: list[int], chance_key: str, score_key: str
 ) -> tuple[dict[str, float], dict[str, Any]]:
-    """One band's sign test and its split."""
+    """One band's sign test and its split, the test over each different decided game once.
+
+    Each decided game's move list is kept once however often it was played. Two players
+    whose draws are inert at one budget replay one game, so a band can hold many decided
+    games and a handful of games actually played (`seat-effect-size.md` §15), and a line
+    played sixteen times is one observation of what that pairing does, not sixteen. The
+    sign test reads the distinct split (Q953a, `docs/reference/repeated-games.md` §6,
+    reversing Q534's *the refusal does not read the count*); the split as played stays
+    beside it. A transcript's winner is read off its first copy: one move list has one
+    ending. Draws are in neither, for the reason they are not in the test.
+    """
     top = set(band)
     games = [r for r in records if all(_budget(name) in top for name in r.agents)]
     wins = sum(1 for r in games if r.winner == 0)
     losses = sum(1 for r in games if r.winner == 1)
-    chance = sign_test(wins, losses)
-    # Each decided game's move list, once however often it was played. Two deterministic
-    # players at one budget replay one game, so a band can hold many decided games and a
-    # handful of games actually played (`seat-effect-size.md` §15). Draws are not in it,
-    # for the reason they are not in the test.
-    transcripts = sorted({transcript_digest(r.moves) for r in games if r.winner in (0, 1)})
+    once: dict[str, int] = {}
+    for r in games:
+        if r.winner in (0, 1):
+            once.setdefault(transcript_digest(r.moves), int(r.winner))
+    transcripts = sorted(once)
+    first_seat = sorted(digest for digest, winner in once.items() if winner == 0)
+    distinct_wins = len(first_seat)
+    distinct_losses = len(transcripts) - distinct_wins
+    chance = sign_test(distinct_wins, distinct_losses)
     raw = {
         chance_key: chance,
         score_key: _mean([r.score_for(0) for r in games]) if games else 0.5,
@@ -710,7 +723,12 @@ def _seat_split(
         "losses": losses,
         "chance": chance,
         "distinct": len(transcripts),
+        "distinct_wins": distinct_wins,
+        "distinct_losses": distinct_losses,
         "transcripts": transcripts,
+        # The decided transcripts the first seat won, so a pooled reading can split the
+        # union of several runs' transcripts without their records.
+        "first_seat_transcripts": first_seat,
     }
     return raw, detail
 

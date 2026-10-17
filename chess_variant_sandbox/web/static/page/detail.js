@@ -2870,6 +2870,45 @@ function bandsSentence(parts) {
     parts.bands === 1 ? 'it' : 'they'} should be inside rather than a direction to run in.`;
 }
 
+// How far the score rests on repeated games (Q953a, `metrics/repeats.py`): the share of
+// different games beside the number, and, where the measurement stored `rests` (counting
+// each game once moves the score by twice its sd or more), a sentence saying so. Stored
+// numbers only, formatted; nothing here compares or decides. A provisional score shows
+// neither, as it shows no band.
+function repeatsPercent(share) {
+  const whole = Math.round(share * 100);
+  return share < 1 && whole >= 100 ? 'over 99%' : `${whole}%`;
+}
+
+function repeatsHtml(score) {
+  const r = score && score.repeats;
+  if (!r || r.all === null || r.all === undefined || isProvisional(score)) return '';
+  const games = Number(r.games || 0).toLocaleString('en');
+  const known = v => v !== null && v !== undefined;
+  const bands = [];
+  if (known(r.searching)) {
+    bands.push(`${repeatsPercent(r.searching)} where both players think ahead`);
+  }
+  if (known(r.top_two)) {
+    bands.push(`${repeatsPercent(r.top_two)} between the two strongest`);
+  }
+  const every = r.all >= 1 && [r.searching, r.top_two].every(v => !known(v) || v >= 1);
+  const said = every
+    ? `Every one of its ${games} games is a different game`
+    : `${repeatsPercent(r.all)} of its ${games} games are different games${
+      bands.length ? ` (${bands.join(', ')})` : ''}`;
+  const line = `<div class="muted small" style="margin-top:6px">${said}${info('repeats')}.</div>`;
+  if (!r.rests || !known(r.distinct_index)) return line;
+  return `${line}
+    <div class="verdict">
+      <div>It rests on repeated games.</div>
+      <div class="small" style="font-weight:400; margin-top:5px">The computer players played
+        some of its games more than once, move for move. Counted once each, its games score
+        ${fmt(r.distinct_index)} rather than ${fmt(score.total)}: the difference is at
+        least twice the &plusmn;${fmt(score.sd)} the score carries.</div>
+    </div>`;
+}
+
 // `trust` is the trust line (`trustHtml`, Q647), drawn right under the number and its
 // band, before the parts, so *how far to trust it* is read with the number it is about.
 // A provisional score (EV2) is drawn in the same place with its mark and sentence under
@@ -2930,6 +2969,8 @@ function scoreHtml(score, guide, band, trust) {
         <div class="small" style="font-weight:400; margin-top:5px">Over its games, ${
           esc(seatLeanText(score))}.</div>
       </div>` : ''}
+
+    ${repeatsHtml(score)}
 
     <details style="margin-top:10px">
       <summary class="muted small">${ACCOUNTS

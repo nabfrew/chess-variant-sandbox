@@ -874,10 +874,17 @@ class TestSeedBySeed:
         for seed in corpus.LIBRARY_SEEDS:
             self._run_on_disk(world, seed)
 
-        corpus.refresh(library_game, runs_dir=world["runs"], workers=1)
+        stored = corpus.refresh(library_game, runs_dir=world["runs"], workers=1)
 
         assert not counted["play"] and not counted["fit"]
         assert len(counted["score"]) == 4
+        # Every score carries its repeats (Q953a), read off the runs' records on disk: the
+        # four runs' one game each is one game played four times, and no game is in the
+        # searching band or the top two.
+        repeats = stored.stored["repeats"]
+        assert (repeats["games"], repeats["all"]) == (4, 0.25)
+        assert repeats["searching"] is None and repeats["top_two"] is None
+        assert [run["seed"] for run in repeats["runs"]] == list(corpus.LIBRARY_SEEDS)
 
     def test_a_candidate_is_current_on_one_run_in_a_four_run_library(
         self, world, monkeypatch

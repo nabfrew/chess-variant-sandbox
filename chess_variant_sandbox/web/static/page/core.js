@@ -529,6 +529,17 @@ const GLOSS = {
   unscored: ['Never measured',
     "Nobody has run the tournament for this one. You can start it from the game's own"
     + " page, or run the whole backlog from the panel at the top of the library."],
+  // Q953a, `metrics/repeats.py`.
+  repeats: ['Different games',
+    "A game here is its two players in order and its whole move list. Every player draws"
+    + " from its own random stream at every choice, but on some positions no draw changes"
+    + " the move, so two seeds can play one game twice. The shares count each different"
+    + " game once, over every run, among all the games, the games both of whose players"
+    + " search, and the games between the two strongest. Each run is also scored again"
+    + " with each game kept once; where that mean is two of the score's sds or more from"
+    + " the score, the score rests on repeated games. Repeats lower a score (variety reads"
+    + " a replay as a game with a twin), so the number counted once is the higher one. It"
+    + " is reported and moves nothing (docs/reference/repeated-games.md)."],
   roster: ['The opponents a score is taken against',
     "Every score comes from the same eight players -- a random mover, a one-move-ahead"
     + " player, and six search budgets -- so that two games' scores mean the same thing."],
@@ -797,6 +808,14 @@ const SITE_GLOSS = {
       + " short: if you beat the strongest computer player easily, that is news about the"
       + " score too.",
     ] }],
+  repeats: ['Different games',
+    "The computer players make some of their choices at random, but in some games those"
+    + " choices change nothing and they play the same game again, move for move. This"
+    + " counts how many of a game's games were different. When the score,"
+    + " worked out again with each game counted once, comes out more than twice its ±"
+    + " away, the score rests on repeated games: it says more about the computer players'"
+    + " habits than about the game. Repeats lower a score, so the figure counted once is"
+    + " the higher one."],
   gated: ['Ruled out',
     "It failed a basic test of a working game, such as games that never finish, or a"
     + " player who thinks being no better than one who moves at random. It is ruled out"

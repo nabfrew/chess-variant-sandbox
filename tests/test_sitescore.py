@@ -38,6 +38,18 @@ SHAPES = {
                     "100% of the 64 decided games among the 64 played between the two "
                     "strongest rungs (1600, 6400 nodes) over 4 runs, which rules out a seat "
                     "held to 67% or less (a game the two strongest rungs win from one seat)",
+    # Since Q953a the test reads each different decided game once, and says so.
+    "seat, one run, distinct": "seat_decided_chance=3.05e-05 below minimum 0.001: the first "
+                               "seat went 16-0 with 0 draws over the 16 games between the two "
+                               "strongest rungs (1600, 6400 nodes), 15-0 with each different "
+                               "game counted once, one chance in 16,384 under a fair seat (a "
+                               "game the two strongest rungs win from one seat)",
+    "seat, pooled, distinct": "top_three_seat_decided_chance=2.44e-05 below minimum 0.0005: the "
+                              "first seat took 93% of the 45 decided games, each different game "
+                              "counted once (144 as played), among the 144 played between the "
+                              "three strongest rungs (800, 1600, 6400 nodes) over 4 runs, which "
+                              "rules out a seat held to 67% or less (a game the three strongest "
+                              "rungs win from one seat)",
 }
 
 # What a visitor must never read in one of these, beyond the guard's own list.
@@ -70,6 +82,13 @@ class TestEachRefusalReadsAsAVisitorsSentence:
         said = sitescore.violation(SHAPES["unreadable"])
         assert "two of the things measured" in said and "this run has no score" in said
         assert "did worse with more thinking" in sitescore.violation(SHAPES["unreadable, worse"])
+
+    def test_a_distinct_split_is_said_as_different_games(self) -> None:
+        said = sitescore.violation(SHAPES["seat, pooled, distinct"])
+        assert "won 93% of their 45 different decided games from the first side" in said
+        said = sitescore.violation(SHAPES["seat, one run, distinct"])
+        assert "16 games to 0" in said and "15 to 0 counting each different game once" in said
+        assert "different" not in sitescore.violation(SHAPES["seat, pooled"])
 
     def test_a_pooled_refusal_is_named_by_its_place_among_the_runs(self) -> None:
         text = "run 2000: " + SHAPES["gate above"]

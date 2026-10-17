@@ -340,7 +340,14 @@ class TestTheFingerprintsPointAtSomething:
 # **Moved 2026-10-17 by Q947e (dead code deleted)**: `engine/state.py` loses `PLAYER_ZERO` and
 # `PLAYER_ONE`, and `engine/__init__.py` their re-exports; nothing read either, so no number
 # moves. It was "d92ab76eeb9dd2a0" after Q935h; the next library replay re-scores under it.
-FROZEN_METRICS = "55b5cc39b3896211"
+#
+# **Moved 2026-10-17 by Q953a (the seat counts each different game once; every score
+# carries its repeats)**: `metrics/seat.py` and `components._seat_split` test each distinct
+# decided transcript once, and `metrics/repeats.py` is new (the share of different games and
+# the distinct re-score beside a score, `docs/reference/repeated-games.md` §6). No total,
+# component or interval moves; the seat's verdicts move on §4.3's games. It was
+# "55b5cc39b3896211" after Q947e; Q953a's library re-score is under it.
+FROZEN_METRICS = "983645dfe3d2a18f"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:

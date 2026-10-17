@@ -764,20 +764,18 @@ class TestTheSeatGateOnTheStoredCorpus:
         spec = load_spec(retired if retired.exists() else here.parent / "rulesets" / f"{name}.json")
         return compute_components(spec, records, rate(records))
 
-    def test_tunnel_vertical_is_refused_by_the_pair_on_its_stored_run(self) -> None:
-        """The pair sweeps 16-0. Its top three read 24-12-0 at 0.065, so the wide
-        reading says nothing here and the pair's refusal stands alone."""
-        from chess_variant_sandbox.metrics.seat import (
-            SEAT_DECIDED_CHANCE,
-            TOP_RUNG_SEAT_DETAIL,
-            seat_violations,
-        )
+    def test_tunnel_vertical_s_stored_sweep_is_few_games_replayed(self) -> None:
+        """The pair swept 16-0, which refused it until Q953a. Its top three read 24-12-0
+        at 0.065, so the pair's refusal stood alone. The sixteen were eight different
+        games, and since Q953a the test reads each once
+        (`repeated-games.md` §6): 8-0 is one chance in 128 and passes one run's pair."""
+        from chess_variant_sandbox.metrics.seat import TOP_RUNG_SEAT_DETAIL, seat_violations
 
         components = self._components("tunnel-vertical")
         detail = components.diagnostics[TOP_RUNG_SEAT_DETAIL]
         assert (detail["wins"], detail["draws"], detail["losses"]) == (16, 0, 0)
-        violations = seat_violations(components.raw, components.diagnostics)
-        assert [v.split("=")[0] for v in violations] == [SEAT_DECIDED_CHANCE]
+        assert (detail["distinct_wins"], detail["distinct_losses"]) == (8, 0)
+        assert seat_violations(components.raw, components.diagnostics) == []
 
     def test_gardner_is_refused_by_the_wide_reading_and_not_by_the_pair(self) -> None:
         """The flip the widening was adopted for, on gardner's own stored games. Its
@@ -839,6 +837,53 @@ def _tiny(pieces: list[dict], placements: list[tuple[str, list[str]]]) -> dict:
         "setup": {"placements": [{"piece": p, "squares": s} for p, s in placements]},
     }
 
+
+
+class TestADistinctSeatCannotRefuseAForcedLine:
+    """Q953a's cost, pinned (`docs/reference/repeated-games.md` §4.3, `docs/bugs.md`).
+
+    Since Q953a the seat check counts each different decided game once. Sweeping bishop
+    chess's first player mates in one, and its two strongest rungs play that one game in
+    every run, so its top two are one distinct game and the seat refuses nothing. It stays
+    out because its length and quick-kill gates refuse it on every run. Read-only, off the
+    main checkout's library runs, and skipped where they are absent.
+    """
+
+    HASH = "42bd7d06828d"
+
+    def test_sweeping_bishop_chess_stays_refused_by_its_other_gates(self) -> None:
+        from chess_variant_sandbox.metrics.components import _seat_readings, compute_components
+        from chess_variant_sandbox.metrics.index import gate_violations
+        from chess_variant_sandbox.metrics.seat import pooled_seat_reading, seat_details
+        from chess_variant_sandbox.spec import load_spec
+        from chess_variant_sandbox.tournament.analysis import CorpusAnalysis
+        from chess_variant_sandbox.tournament.ratings import rate
+        from chess_variant_sandbox.tournament.record import read_records
+
+        spec = load_spec(Path(__file__).resolve().parent.parent / "archive"
+                         / "chess-sweeping-bishops.json")
+        details, refusals = [], []
+        for seed in (0, 1000, 2000, 3000):
+            run = RUNS / f"{self.HASH}-{seed}"
+            if not (run / "games.jsonl").exists() or not (run / "analysis.json").exists():
+                pytest.skip(f"needs {run}")
+            records = list(read_records(run / "games.jsonl"))
+            details.append(seat_details(_seat_readings(records)[1]))
+            components = compute_components(
+                spec, records, rate(records), CorpusAnalysis.load(run / "analysis.json")
+            )
+            weights = load_weights(DEFAULT_WEIGHTS)
+            refusals.append({
+                text.split("=")[0] for text in gate_violations(components, weights)
+            })
+
+        pooled = pooled_seat_reading(details)
+        top = pooled["bands"]["top_rung_seat"]
+        assert (top["wins"], top["losses"]) == (64, 0)
+        assert (top["distinct_wins"], top["distinct_losses"]) == (1, 0)
+        assert pooled["refuses"] is False
+        for found in refusals:
+            assert {"mean_plies_worst_half", "quick_kill_rate_worst_half"} <= found
 
 class TestPickingHelpers:
     def test_the_most_numerous_piece_of_chess_is_the_pawn(self) -> None:

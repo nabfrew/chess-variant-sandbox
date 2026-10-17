@@ -1536,7 +1536,12 @@ class TestTheSeatGateRefusesASeatDecidedGame:
     TOP = ("minimax:nodes=1600", "minimax:nodes=6400")
 
     def _corpus(self, top_pair, roster=ROSTER, top=TOP, games=4) -> list:
-        """Every ordered pairing, `games` times; `top_pair(game)` decides the top pair."""
+        """Every ordered pairing, `games` times; `top_pair(game)` decides the top pair.
+
+        Every game a different move list, the way varied players' games are: since Q953a
+        the test counts each different decided game once, and `_ladder_record` alone gives
+        every game one list.
+        """
         from chess_variant_sandbox.metrics.components import _budget
 
         records = []
@@ -1550,7 +1555,9 @@ class TestTheSeatGateRefusesASeatDecidedGame:
                     else:
                         winner = 0 if _budget(first) > _budget(second) else 1
                     reason = "checkmate" if winner is not None else "stalemate"
-                    records.append(_ladder_record((first, second), 60, winner, reason))
+                    record = _ladder_record((first, second), 60, winner, reason)
+                    record.moves = [1000 + len(records), *record.moves[1:]]
+                    records.append(record)
         return records
 
     def _measure(self, chess_spec, records):
@@ -1794,7 +1801,8 @@ def _seat_run(
     """One run's seat diagnostics: the pair's split, and the top three's when given.
 
     Every decided game a different game unless `transcripts` says which the pair's are,
-    and different from every other call's, the way independent runs' games are.
+    and different from every other call's, the way independent runs' games are. The pair's
+    first `wins` transcripts are the first seat's wins, as `_seat_split` stores them.
     """
     from chess_variant_sandbox.metrics.seat import TOP_RUNG_SEAT_DETAIL, TOP_THREE_SEAT_DETAIL
 
@@ -1802,6 +1810,7 @@ def _seat_run(
     pair = transcripts if transcripts is not None else [
         f"pair-{run}-{game}" for game in range(wins + losses)
     ]
+    won = set(pair[:wins])
     found = {
         TOP_RUNG_SEAT_DETAIL: {
             "rungs": [1600, 6400],
@@ -1811,10 +1820,12 @@ def _seat_run(
             "draws": draws,
             "distinct": len(set(pair)),
             "transcripts": sorted(set(pair)),
+            "first_seat_transcripts": sorted(won),
         }
     }
     if wide is not None:
         wide_wins, wide_losses, wide_draws = wide
+        every = [f"wide-{run}-{game}" for game in range(wide_wins + wide_losses)]
         found[TOP_THREE_SEAT_DETAIL] = {
             "rungs": [800, 1600, 6400],
             "games": wide_wins + wide_losses + wide_draws,
@@ -1822,7 +1833,8 @@ def _seat_run(
             "losses": wide_losses,
             "draws": wide_draws,
             "distinct": wide_wins + wide_losses,
-            "transcripts": [f"wide-{run}-{game}" for game in range(wide_wins + wide_losses)],
+            "transcripts": every,
+            "first_seat_transcripts": every[:wide_wins],
         }
     return found
 
@@ -2019,7 +2031,8 @@ class TestTheSeatBandCountsDistinctGames:
     any lean measurement*. `king of the hill` played 200 games at equal strength and
     produced 11 transcripts, so a band's decided-game count can be a handful of games
     replayed. The count is taken off the stored records, draws out, each move list once,
-    and it is the floor the printed lean reads. The refusal does not read it."""
+    and it is the floor the printed lean reads. Since Q953a the refusal reads it too: the
+    sign test counts each different decided game once (`repeated-games.md` §6)."""
 
     PAIR = ("minimax:nodes=1600", "minimax:nodes=6400")
 
@@ -2077,7 +2090,10 @@ class TestTheSeatBandCountsDistinctGames:
         from chess_variant_sandbox.metrics.seat import pooled_seat_reading
 
         def lean(distinct: int) -> str:
-            transcripts = [f"game-{game % distinct}" for game in range(40)]
+            won = 3 * distinct // 4
+            transcripts = [f"won-{game % won}" for game in range(30)] + [
+                f"lost-{game % (distinct - won)}" for game in range(10)
+            ]
             return pooled_seat_reading([_seat_run(30, 10, 4, transcripts=transcripts)])["lean"]
 
         assert lean(11) == ""
@@ -2096,46 +2112,94 @@ class TestTheSeatBandCountsDistinctGames:
         assert reading["bands"][TOP_RUNG_SEAT_DETAIL]["distinct"] is None
         assert reading["lean"] == ""
 
-    def test_the_refusal_does_not_read_the_count(self) -> None:
-        """A sweep of 60 decided games is refused in the same words whether they are 60
-        games or one game played 60 times, and whether or not the runs stored the count."""
+    def test_the_refusal_reads_each_different_game_once(self) -> None:
+        """Q953a reverses Q534 (`repeated-games.md` §4.3, §6). A sweep of 60 decided games
+        is refused when they are 60 games and not when they are one game played 60 times:
+        a line replayed is one observation of what its pairing does. Runs stored before the
+        split was kept are tested as played, and the band says which it read."""
         from chess_variant_sandbox.metrics.seat import TOP_RUNG_SEAT_DETAIL, pooled_seat_reading
 
         many = pooled_seat_reading([_seat_run(15, 0, 1) for _ in range(4)])
         one = pooled_seat_reading([_seat_run(15, 0, 1, transcripts=["same"]) for _ in range(4)])
         old = [_seat_run(15, 0, 1) for _ in range(4)]
         for run in old:
-            del run[TOP_RUNG_SEAT_DETAIL]["transcripts"]
+            del run[TOP_RUNG_SEAT_DETAIL]["first_seat_transcripts"]
         unknown = pooled_seat_reading(old)
 
         assert many["bands"][TOP_RUNG_SEAT_DETAIL]["distinct"] == 60
-        assert one["bands"][TOP_RUNG_SEAT_DETAIL]["distinct"] == 1
-        for reading in (many, one, unknown):
-            assert reading["refuses"] is True
-            assert reading["violations"] == many["violations"]
-            band = reading["bands"][TOP_RUNG_SEAT_DETAIL]
-            assert band["chance"] == many["bands"][TOP_RUNG_SEAT_DETAIL]["chance"]
+        assert many["refuses"] is True
+        assert "60 decided games, each different game counted once" in many["violations"][0]
+        band = one["bands"][TOP_RUNG_SEAT_DETAIL]
+        assert (band["wins"], band["decided"], band["distinct"]) == (60, 60, 1)
+        assert (band["distinct_wins"], band["distinct_losses"]) == (1, 0)
+        assert band["counted"] == "distinct"
+        assert one["refuses"] is False
+        assert unknown["refuses"] is True
+        assert unknown["bands"][TOP_RUNG_SEAT_DETAIL]["counted"] == "as played"
+        assert unknown["bands"][TOP_RUNG_SEAT_DETAIL]["distinct_wins"] is None
 
-    def test_one_runs_own_seat_gate_does_not_read_it_either(self, tmp_path) -> None:
-        """The built per-run form, which a visitor's single run is decided by, reads the
-        split alone: sixteen copies of one game swept are refused as sixteen games are."""
+    def test_the_band_keeps_both_splits(self) -> None:
+        """SP2's top two, §4.3's table: 58-2 as played, 16-2 on its different games, which
+        is one chance in 30 at the tolerated share and passes. The split as played stays
+        in the band beside the one tested, and the lean quotes it."""
+        from chess_variant_sandbox.metrics.seat import TOP_RUNG_SEAT_DETAIL, pooled_seat_reading
+
+        transcripts = [f"won-{game % 16}" for game in range(58)] + ["lost-0", "lost-1"]
+        reading = pooled_seat_reading([_seat_run(58, 2, 4, transcripts=transcripts)])
+        band = reading["bands"][TOP_RUNG_SEAT_DETAIL]
+        assert (band["wins"], band["losses"], band["decided"]) == (58, 2, 60)
+        assert (band["distinct_wins"], band["distinct_losses"], band["distinct"]) == (16, 2, 18)
+        assert band["chance"] == pytest.approx(3.26e-02, abs=5e-05)
+        assert not reading["refuses"]
+        assert "58 of the 60 decided games (18 of them distinct)" in reading["lean"]
+
+    def test_a_transcript_won_in_one_run_is_won_in_all(self) -> None:
+        """The pooled split is the union of the runs' transcripts, split by the union of
+        the ones the first seat won: four runs of one line are one win."""
+        from chess_variant_sandbox.metrics.seat import TOP_RUNG_SEAT_DETAIL, pooled_seat_reading
+
+        runs = [_seat_run(3, 1, 0, transcripts=["a", "b", "c", "d"]) for _ in range(4)]
+        band = pooled_seat_reading(runs)["bands"][TOP_RUNG_SEAT_DETAIL]
+        assert (band["wins"], band["losses"]) == (12, 4)
+        assert (band["distinct_wins"], band["distinct_losses"]) == (3, 1)
+
+    def test_one_runs_own_seat_gate_reads_it_too(self, tmp_path) -> None:
+        """The built per-run form, which a visitor's single run is decided by, tests the
+        distinct split as well: sixteen copies of one game swept are one win, and sixteen
+        different games swept are refused. Both splits are in the detail and the refusal
+        quotes the one it tested."""
         from chess_variant_sandbox.metrics.components import _seat_readings
         from chess_variant_sandbox.metrics.seat import TOP_RUNG_SEAT_DETAIL, seat_violations
 
         first, second = self.PAIR
         pairings = [(first, second), (second, first), (first, first), (second, second)]
 
-        def violations(moves_of) -> tuple[list[str], int]:
+        def violations(moves_of) -> tuple[list[str], dict]:
             records = [
                 _band_record(pairings[game % 4], moves_of(game), 0, game) for game in range(16)
             ]
             raw, details = _seat_readings(records)
-            return seat_violations(raw, details), details[TOP_RUNG_SEAT_DETAIL]["distinct"]
+            return seat_violations(raw, details), details[TOP_RUNG_SEAT_DETAIL]
 
         replayed, one = violations(lambda game: [1, 2, 3])
         varied, sixteen = violations(lambda game: [1, 2, game])
-        assert (one, sixteen) == (1, 16)
-        assert replayed and replayed == varied
+        assert (one["distinct"], sixteen["distinct"]) == (1, 16)
+        assert (one["wins"], one["distinct_wins"], one["distinct_losses"]) == (16, 1, 0)
+        assert replayed == []
+        assert len(varied) == 1
+        assert "16-0 with each different game counted once" in varied[0]
+
+    def test_a_forced_line_played_by_inert_players_passes_the_seat(self) -> None:
+        """§4.3's weakness, pinned (`docs/bugs.md`): a band whose players replay one forced
+        first-seat line is one decided game however often it is played, so no number of
+        runs can refuse it on the seat. Only the length and quick-kill gates can refuse
+        such a game, and a forced line longer than their horizons passes them too."""
+        from chess_variant_sandbox.metrics.seat import pooled_seat_reading
+
+        forced = [_seat_run(16, 0, 0, transcripts=["the line"] * 16) for _ in range(64)]
+        reading = pooled_seat_reading(forced)
+        assert all(band["decided"] == 1024 for band in reading["bands"].values())
+        assert reading["refuses"] is False
 
 
 class TestWhatAPlayerCanHoldIsReadOffEachRoute:

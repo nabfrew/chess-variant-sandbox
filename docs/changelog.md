@@ -13,6 +13,16 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-17
 
+### How often the computer played the same game again
+
+Each game's page now says how many of the games behind its score were different games. On a few
+small boards the computer players play some games over again, move for move, and where that is
+enough to move the score, the page says the score rests on repeated games and gives the figure
+counted once. The test that rules out a game won by one side now counts each different game once
+too, so *Gardner with spies* and *Gardner with spies resting* are no longer ruled out for it:
+their strongest players won nearly every game from the first side, but those games were a handful
+played over and over. No score changed.
+
 ### Computer players guard their spy
 
 In a game with spies, the computer players now count holding the only spy as worth a piece, so they guard their own, hunt

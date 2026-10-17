@@ -160,7 +160,9 @@ MEASUREMENTS: dict[str, Measurement] = {
         how="Over every game whose two seats are both in the top two rungs of the ladder "
             "-- both self-play pairings and both orders of the cross pairing, 16 games on "
             "the canonical roster -- the first seat's wins and losses go into a two-sided "
-            "exact sign test. Draws are dropped.",
+            "exact sign test, each different decided game counted once however often its "
+            "players replayed it, since a line played sixteen times is one observation of "
+            "what its pairing does (Q953a). Draws are dropped.",
         reading="A gate rather than a component: below 0.001 the ruleset is disqualified, "
                 "because a game the strongest players win from one seat nearly every "
                 "time, whoever sits in it, is decided by the seat and not by play. On 16 "
@@ -187,7 +189,8 @@ MEASUREMENTS: dict[str, Measurement] = {
              "three strongest players instead of the two.",
         how="Over every game whose two seats are both in the top three rungs of the "
             "ladder -- 36 games on the canonical roster -- the first seat's wins and "
-            "losses go into the same two-sided exact sign test. Draws are dropped. A "
+            "losses go into the same two-sided exact sign test, each different decided "
+            "game counted once. Draws are dropped. A "
             "roster whose third rung searches nothing, as the design loop's does, emits "
             "no reading here and is judged on the pair alone.",
         reading="A gate rather than a component: below 0.0005 the ruleset is "

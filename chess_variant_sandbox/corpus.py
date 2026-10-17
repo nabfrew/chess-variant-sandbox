@@ -57,11 +57,16 @@ from chess_variant_sandbox.measurement import (
     warm_fingerprints,
 )
 from chess_variant_sandbox.measurement import load as load_measurement
-from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS, load_weights, score_ruleset
+from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS, load_weights, repeats, score_ruleset
 from chess_variant_sandbox.metrics.components import plays_in_rounds, plays_with_spies
 from chess_variant_sandbox.metrics.scoring import WeightsError
 from chess_variant_sandbox.metrics.seat import seat_details
-from chess_variant_sandbox.metrics.seeds import VOTE_POOLED_SEAT, RunReading, combine
+from chess_variant_sandbox.metrics.seeds import (
+    VOTE_POOLED_SEAT,
+    RunReading,
+    combine,
+    minimum_totals,
+)
 from chess_variant_sandbox.spec.canonical import load_spec, spec_hash
 from chess_variant_sandbox.spec.schema import validate_spec
 from chess_variant_sandbox.tournament import TournamentConfig
@@ -838,7 +843,7 @@ def _measure_seeds(
         )
         for seed in sorted(work)
     ]
-    measurement = _store(candidate, runs_dir, readings, weighting.version, say)
+    measurement = _store(candidate, runs_dir, readings, weighting, say)
     if kept is not None and outgoing is not None and measurement.basis is not None:
         incoming = {**measurement.stored, "basis": measurement.basis.as_dict()}
         # §3.2 step 4 (Q650): what the replacement says about the players, if anything.
@@ -1266,7 +1271,7 @@ def _store(
     candidate: Candidate,
     runs_dir: Path,
     readings: list[RunReading],
-    weights_version: str,
+    weighting: Any,
     say: Any,
 ) -> Measurement:
     """Write the one file every reader trusts, and hand it back already judged.
@@ -1282,6 +1287,10 @@ def _store(
     grew out of: score and standings that came from two independent scans could be two
     different runs, and the page rendering them had no way to know.
     """
+    # The weights themselves (the repeats block scores with them), or their version's name.
+    if isinstance(weighting, str):
+        weighting = load_weights(weighting)
+    weights_version = weighting.version
     combined = combine(
         candidate.hash, candidate.name, weights_version, readings, VERDICT_RULE
     )
@@ -1308,6 +1317,9 @@ def _store(
         "families": dict(combined.families),
         "standings": list(combined.standings),
         "runs": list(combined.runs),
+        # How far the score rests on repeated games (Q953a): the share of different games
+        # beside it and the runs scored with each game once. It moves no number.
+        "repeats": _repeats(candidate, runs_dir, readings, weighting, combined),
     }
 
     out = measurement_dir(candidate.hash, runs_dir)
@@ -1328,7 +1340,45 @@ def _store(
     )
     measurement.save(out / "canonical.json")
     say(_summary(candidate, combined, weights_version))
+    said = repeats.summary(stored["repeats"])
+    if said:
+        say(said)
     return measurement
+
+
+def _repeats(
+    candidate: Candidate,
+    runs_dir: Path,
+    readings: list[RunReading],
+    weighting: Any,
+    combined: Any,
+) -> dict[str, Any] | None:
+    """The `repeats` block, read off the runs' records on disk, or ``None`` without them.
+
+    Every run this measurement combines has its games on disk by now (played, re-scored or
+    read as it stands), so the block is the same whichever path each run took.
+    """
+    from chess_variant_sandbox.tournament import read_records
+
+    runs: list[repeats.Run] = []
+    for reading in sorted(readings, key=lambda run: run.seed):
+        out = run_dir(candidate.hash, reading.seed, runs_dir)
+        games = out / "games.jsonl"
+        if not games.exists():
+            return None
+        records = list(read_records(games))
+        analysis_path = out / "analysis.json"
+        analysis = CorpusAnalysis.load(analysis_path) if analysis_path.exists() else None
+        runs.append(repeats.Run(
+            seed=reading.seed, records=records, analysis=analysis,
+            counted=reading.scored and reading.total is not None,
+        ))
+    if not runs:
+        return None
+    return repeats.reading(
+        candidate.spec, runs, canonical_agents(candidate.hash, spec=candidate.spec),
+        weighting, combined.index, combined.sd, minimum_totals(len(runs)),
+    )
 
 
 def _summary(candidate: Candidate, combined: Any, weights_version: str) -> str:

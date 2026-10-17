@@ -117,9 +117,12 @@ _UNMEASURED = re.compile(r"^(\w+) was not measured$")
 _SEAT_RUN = re.compile(
     r"^(\w+)=\S+ below minimum \S+: the (first|second) seat went (\d+)-(\d+) with (\d+) "
     r"draws over the (\d+) games", re.S)
+# Since Q953a the per-run sentence adds the split it tested, each different game once.
+_SEAT_RUN_DISTINCT = re.compile(r", (\d+)-(\d+) with each different game counted once")
 _SEAT_POOLED = re.compile(
     r"^(\w+)=\S+ below minimum \S+: the (first|second) seat took (\d+)% of the (\d+) "
-    r"decided games .* rules out a seat held to (\d+)% or less", re.S)
+    r"decided games(, each different game counted once)?.* rules out a seat held to "
+    r"(\d+)% or less", re.S)
 _GATE = re.compile(r"^(\w+)=(\S+) (below minimum|above maximum) (\S+?)(?: \(.*\))?$", re.S)
 
 
@@ -160,15 +163,21 @@ def violation(text: str, seeds: list[int] | None = None) -> str:
         component, _, wins, losses, draws, _ = found.groups()
         side = "first" if int(wins) >= int(losses) else "second"
         most, least = sorted((int(wins), int(losses)), reverse=True)
-        return (f"the {_strongest(component)} strongest computer players won from the "
+        said = (f"the {_strongest(component)} strongest computer players won from the "
                 f"{side} side almost every time: {most} games to {least}, with {draws} "
                 "drawn")
+        once = _SEAT_RUN_DISTINCT.search(text)
+        if once and (int(once.group(1)), int(once.group(2))) != (int(wins), int(losses)):
+            many, few = sorted((int(once.group(1)), int(once.group(2))), reverse=True)
+            said += f" ({many} to {few} counting each different game once)"
+        return said
     found = _SEAT_POOLED.match(text)
     if found:
-        component, side, share, decided, allowed = found.groups()
+        component, side, share, decided, each_once, allowed = found.groups()
+        different = " different" if each_once else ""
         return (f"the {_strongest(component)} strongest computer players won {share}% of "
-                f"their {decided} decided games from the {side} side, far more than the "
-                f"{allowed}% allowed")
+                f"their {decided}{different} decided games from the {side} side, far more "
+                f"than the {allowed}% allowed")
     found = _GATE.match(text)
     if found:
         component, value, side, bound = found.groups()

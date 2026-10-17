@@ -28,6 +28,13 @@ seats still differ: a lean there is an asymmetry of the setup or, under ``tie:
 §6.3). "The first seat" is seat 0, the player listed first; the alphas and the share are
 the same, since the question -- does one seat win more than a fair one would -- is.
 
+**Each different game counts once** (Q953a, ``docs/reference/repeated-games.md`` §6). A
+band's sign test, per run and pooled, reads every distinct decided transcript once: players
+whose draws are inert replay one line many times, and a line played sixteen times is one
+observation of its pairing. The split as played is kept beside it, and the lean reads that.
+The cost is pinned in ``docs/bugs.md``: a band that plays one forced line cannot be refused
+by this check however real the lean, so only the other gates can refuse such a game.
+
 ``docs/reference/metrics-and-calibration-record.md`` (Q235) has the first reading's design.
 ``docs/reference/seat-fresh-2026-09.md`` has the fresh-games campaign that tested the
 second, ``docs/reference/seat-effect-size.md`` is the restated check and the two campaigns
@@ -241,16 +248,25 @@ def _band(
 
     decided = wins + losses
     distinct = _distinct(per_run)
-    chance = share_test(wins, losses, tolerated)
+    split = _distinct_split(per_run)
+    # The test reads each different decided game once (Q953a): a line replayed sixteen
+    # times is one observation of what its pairing does. A run stored before the split
+    # was kept cannot say it, and the band is then tested as played, and says so.
+    tested_wins, tested_losses = split if split is not None else (wins, losses)
+    tested = tested_wins + tested_losses
+    chance = share_test(tested_wins, tested_losses, tolerated)
     refuses = gate.check(chance) is not None
     share = max(wins, losses) / decided if decided else 0.5
     seat = "first" if wins >= losses else "second"
+    tested_share = max(tested_wins, tested_losses) / tested if tested else 0.5
+    tested_seat = "first" if tested_wins >= tested_losses else "second"
 
     band = {
         "component": gate.component,
         "rungs": rungs,
         "runs": len(per_run),
         "games": sum(int(run.get("games", 0)) for run in per_run),
+        # The split as played, which the lean reads.
         "wins": wins,
         "losses": losses,
         "draws": draws,
@@ -258,6 +274,12 @@ def _band(
         "distinct": distinct,
         "favoured": seat if decided else "",
         "share": round(share, 4),
+        # The split the test reads: each different decided game once, or as played.
+        "counted": "distinct" if split is not None else "as played",
+        "distinct_wins": tested_wins if split is not None else None,
+        "distinct_losses": tested_losses if split is not None else None,
+        "tested_favoured": tested_seat if tested else "",
+        "tested_share": round(tested_share, 4),
         "chance": chance,
         "alpha": gate.minimum,
         "refuses": refuses,
@@ -280,14 +302,41 @@ def _distinct(per_run: list[dict[str, Any]]) -> int | None:
     return len({str(digest) for run in per_run for digest in run["transcripts"]})
 
 
+def _distinct_split(per_run: list[dict[str, Any]]) -> tuple[int, int] | None:
+    """The first seat's wins and losses over the band's different decided games, pooled.
+
+    Taken on the union of the runs' transcripts, as `_distinct` counts them, and split by
+    the union of the transcripts each run's first seat won: a move list has one ending, so
+    a transcript two runs both played is won by the same seat in both. ``None`` when a run
+    stored no split, which every run scored before Q953a is.
+    """
+    if any(
+        not isinstance(run.get("transcripts"), list)
+        or not isinstance(run.get("first_seat_transcripts"), list)
+        for run in per_run
+    ):
+        return None
+    every = {str(digest) for run in per_run for digest in run["transcripts"]}
+    won = {str(digest) for run in per_run for digest in run["first_seat_transcripts"]} & every
+    return len(won), len(every) - len(won)
+
+
 def _pooled_refusal(
     band: dict[str, Any], gate: Gate, rung_phrase: str, tolerated: float
 ) -> str:
     rungs = ", ".join(str(rung) for rung in band["rungs"])
+    if band["counted"] == "distinct":
+        tested = int(band["distinct_wins"]) + int(band["distinct_losses"])
+        games = (
+            f"{tested} decided games, each different game counted once "
+            f"({band['decided']} as played),"
+        )
+    else:
+        games = f"{band['decided']} decided games"
     return (
         f"{gate.component}={band['chance']:.2e} below minimum {gate.minimum}: the "
-        f"{band['favoured']} seat took {band['share']:.0%} of the {band['decided']} "
-        f"decided games among the {band['games']} played between the {rung_phrase} "
+        f"{band['tested_favoured']} seat took {band['tested_share']:.0%} of the {games} "
+        f"among the {band['games']} played between the {rung_phrase} "
         f"({rungs} nodes) over {band['runs']} runs, which rules out a seat held to "
         f"{tolerated:.0%} or less ({gate.reason})"
     )
@@ -307,8 +356,10 @@ def _lean(band: dict[str, Any], gate: Gate, rung_phrase: str, tolerated: float) 
     The floor counts *distinct* decided games (`seat-effect-size.md` §15). Deterministic
     players replay one game, so 200 decided games can be eleven games played many times,
     and a lean off eleven games is one the band has not earned however often they were
-    replayed. A band whose distinct count is unknown prints nothing. The refusal does not
-    read the count: what it refuses is the split, and that is unchanged.
+    replayed. A band whose distinct count is unknown prints nothing. The lean quotes the
+    split as played; the refusal, since Q953a, tests the distinct split
+    (`docs/reference/repeated-games.md` §6), so a band can lean on many replays of a few
+    games without being refused for them.
     """
     # The split itself, not the stored `share`: that is rounded to four places, and 42 of
     # 63 rounds to 0.6667, past 2 / 3, so a split exactly at the line read as a lean. The
@@ -334,10 +385,16 @@ def _lean(band: dict[str, Any], gate: Gate, rung_phrase: str, tolerated: float) 
 
 def _refusal(gate: Gate, chance: float, detail: dict[str, Any], rung_phrase: str) -> str:
     rungs = ", ".join(str(rung) for rung in detail.get("rungs", ()))
+    distinct = ""
+    if "distinct_wins" in detail:
+        distinct = (
+            f", {detail['distinct_wins']}-{detail['distinct_losses']} with each different "
+            f"game counted once"
+        )
     return (
         f"{gate.component}={chance:.2e} below minimum {gate.minimum}: the first seat "
         f"went {detail.get('wins', '?')}-{detail.get('losses', '?')} with "
         f"{detail.get('draws', '?')} draws over the {detail.get('games', '?')} games "
-        f"between the {rung_phrase} ({rungs} nodes), one chance in "
+        f"between the {rung_phrase} ({rungs} nodes){distinct}, one chance in "
         f"{1 / chance:,.0f} under a fair seat ({gate.reason})"
     )
