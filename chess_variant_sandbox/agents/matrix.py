@@ -26,6 +26,7 @@ a round and the verdict.
 
 from __future__ import annotations
 
+import math
 import random
 from typing import Any
 
@@ -369,6 +370,42 @@ def round_value_for_first(
         return game_value(values, p, q), 1
     values, p, q, done = matrix_search(search, state, 0, mine, theirs, budget, max_depth)
     return game_value(values, p, q), done
+
+
+def score(units: float, scale: float) -> float:
+    """Q918i: built-in units as player 0's expected score, ``sigmoid(units / scale)``, written
+    as ``training.data.squash`` and `matrix.rs::score` write it, so the three agree to the bit."""
+    return 0.5 * (1.0 + math.tanh(units / (2.0 * scale)))
+
+
+def round_score_for_first(
+    search: RoundSearch,
+    state: GameState,
+    lists: tuple[list[int], list[int]],
+    scale: float,
+) -> tuple[float, int]:
+    """Q918i: the one-round matrix's value for player 0 on expected score, the oracle for
+    `Core.round_values(..., score_scale=scale)` (`matrix.rs::round_score_for_first`).
+
+    Each cell is player 0's ``score(evaluate_round, scale)`` after the round, or 1, 1/2 or 0
+    where the round ends the game; the matrix is solved by the same regret matching and its
+    value is returned as it is, already a score. Only the one-round teacher has it."""
+    engine = search.engine
+    mine, theirs = lists
+    values = []
+    for a in mine:
+        for b in theirs:
+            child = engine.apply_round(state, a, b)
+            after = (engine.legal_moves_for(child, 0), engine.legal_moves_for(child, 1))
+            outcome = engine.terminal(child)
+            if outcome is not None:
+                values.append(0.5 if outcome.is_draw else (1.0 if outcome.winner == 0 else 0.0))
+            else:
+                counts = (len(after[0]), len(after[1]))
+                units = search.evaluator.evaluate_round(engine, child, 0, counts, after)
+                values.append(score(units, scale))
+    p, q = solve(values, len(mine), len(theirs))
+    return game_value(values, p, q), 1
 
 
 def pure(moves: list[int], chosen: int) -> list[float]:

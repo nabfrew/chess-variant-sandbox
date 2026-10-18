@@ -62,6 +62,12 @@ ROUND_ACCEPT_NODES = 1_600
 # player's search on the parent net, `minimax:net=<parent>,nodes=<label_nodes>`.
 LABEL_SEARCHES = ("probe", "player", "parent")
 
+# Q918i (`plan-simultaneous.md` §7, *Q918h, the re-plan*, part 3): what a round teacher's
+# matrix is solved on (`Procedure.round_payoff`). "units" is the evaluator's built-in units,
+# an ending ±(10⁶ − ply), squashed once at the end (every recipe before it); "score" is each
+# cell squashed first, an ending 1, ½ or 0, and the value used as the label as it is.
+ROUND_PAYOFFS = ("units", "score")
+
 # A generation (plan-teacher §9.1): the self-play budget of both seats, the games per
 # ordered pairing of the two-player roster (four pairings, 20,000 games, half the seats
 # the net's) and the parent's label budget, the strength it was accepted at.
@@ -237,6 +243,11 @@ class Procedure:
     # "probe", so no existing name moves. "parent" (Q677) is the same search on the parent
     # net (`parent` below), `minimax:net=<parent>,nodes=<label_nodes>`.
     label_search: str = "probe"
+    # Q918i: the round teacher's payoff (``ROUND_PAYOFFS``). "score" solves the one-round
+    # matrix on expected score (`Core.round_values(..., score_scale=scale)`), so an ending
+    # cell is worth 1 and not 10⁶ units; only the one-round teacher (`label_nodes` 1) of a
+    # round recipe has it. Left out of the digest at "units", so no existing name moves.
+    round_payoff: str = "units"
     # Built-in units (one mean non-royal piece) per logistic unit: the net's output `y`
     # predicts the side to move's expectation as `sigmoid(y / scale)`.
     scale: float = 1.0
@@ -293,6 +304,22 @@ class Procedure:
             raise ValueError(
                 "a round game's generations are not built (Q918g trains generation 0); "
                 "train from self-play"
+            )
+        if self.round_payoff not in ROUND_PAYOFFS:
+            raise ValueError(
+                f"round_payoff {self.round_payoff!r} is not one of {', '.join(ROUND_PAYOFFS)}"
+            )
+        if self.round_payoff == "score" and not (
+            self.rounds and self.searched and self.label_search == "player"
+        ):
+            raise ValueError(
+                "a score payoff is a round teacher's (a matrix: roster, label_search 'player', "
+                "result_weight < 1)"
+            )
+        if self.round_payoff == "score" and self.label_nodes != 1:
+            raise ValueError(
+                "a score payoff is the one-round teacher's (label_nodes 1, matrix:nodes=1); "
+                "a deeper teacher's cells are sub-games solved in units"
             )
         if self.label_search == "parent" and self.parent is None:
             raise ValueError("label_search 'parent' needs a parent net (parent)")
@@ -355,6 +382,9 @@ class Procedure:
         if self.label_search == "parent":
             assert self.parent is not None
             return f"parent:{self.parent.weights_sha256[:HASH_LENGTH]}"
+        if self.round_payoff == "score":
+            # Q918i: a score label is not a units label squashed; neither trains as the other.
+            return f"{self.label_search}:score"
         return self.label_search
 
     def as_dict(self) -> dict[str, Any]:
@@ -370,6 +400,9 @@ class Procedure:
         # And for Q665's teacher: absent while it is the probe.
         if self.label_search == "probe":
             del data["label_search"]
+        # And for Q918i's round payoff: absent at "units".
+        if self.round_payoff == "units":
+            del data["round_payoff"]
         # And for Q677's parent: absent unless this is a generation.
         if self.parent is None:
             del data["parent"]
@@ -395,6 +428,7 @@ class Procedure:
         values.setdefault("opening_plies", 0)
         values.setdefault("td_lambda", 0.0)
         values.setdefault("label_search", "probe")
+        values.setdefault("round_payoff", "units")
         return cls(**values)
 
     def with_(self, **changes: Any) -> Procedure:
@@ -431,6 +465,15 @@ ROUND_CONTROL = ROUND_DEFAULT.with_(label_nodes=1)
 """Q918g's control C: the same games and positions, labelled by the one-round matrix alone
 (`matrix:nodes=1` finishes pass 1 and nothing more, so its value is greedy's one-round matrix
 game, the round analysis probe's reading at the players' ruler)."""
+
+ROUND_SCORE = ROUND_CONTROL.with_(round_payoff="score")
+"""Q918i's arm S (`plan-simultaneous.md` §7, *Q918h, the re-plan*, part 3): ``ROUND_CONTROL``
+with one change, the one-round teacher's matrix solved on expected score (each cell player 0's
+`sigmoid(units / scale)`, or 1, ½ or 0 where the round ends the game), its value the label."""
+
+ROUND_OUTCOME = ROUND_DEFAULT.with_(result_weight=1.0, td_lambda=0.0, label_nodes=0)
+"""Q918i's arm O: results only (`result_weight` 1, `td_lambda` 0, `label_nodes` 0), trained from
+Q918g's saved positions; ``train --result-weight 1 --td-lambda 0 --label-nodes 0`` on a round game."""
 
 Q637 = Procedure(td_lambda=0.0)
 """The default before Q671 (`1d160257b8e5`, §8.10): diverse self-play, the probe's label alone."""

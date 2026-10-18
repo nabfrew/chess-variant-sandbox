@@ -131,12 +131,16 @@ pub fn search_values(
 /// function of the position and the agent; results come back in input order and the
 /// thread count never changes one. `None` where the round is over before anyone chooses
 /// (`round_terminal_with`, which includes a player with no move).
+///
+/// `score_scale` (Q918i) asks for the one-round matrix solved on expected score instead
+/// (`Player::round_score_for_first`); `None` is the value in units, as before.
 pub fn round_values(
     t: &Tables,
     snapshots: &[Snapshot],
     spec: &AgentSpec,
     values: &[f64],
     threads: usize,
+    score_scale: Option<f64>,
 ) -> Vec<Option<(f64, u32)>> {
     let one = |index: usize| {
         let mut game = Game::from_snapshot(t, &snapshots[index]);
@@ -148,7 +152,10 @@ pub fn round_values(
             return None;
         }
         let mut player = Player::new(t, spec.clone(), values);
-        player.round_value_for_first(&mut game, [&first, &second])
+        match score_scale {
+            Some(scale) => player.round_score_for_first(&mut game, [&first, &second], scale),
+            None => player.round_value_for_first(&mut game, [&first, &second]),
+        }
     };
     if threads <= 1 {
         return (0..snapshots.len()).map(one).collect();

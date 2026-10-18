@@ -29,7 +29,7 @@ use crate::tables::{
 // player's private state (its objective, budget and counters).
 #[path = "matrix.rs"]
 mod matrix;
-pub use matrix::{solve, REGRET_ITERATIONS};
+pub use matrix::{one_round_teacher, solve, REGRET_ITERATIONS};
 
 // Schema 27 (Q935b): the searching players across a spy game's phases
 // (`docs/plan-spy.md` §3), a child of this module so they reuse the search's private parts.

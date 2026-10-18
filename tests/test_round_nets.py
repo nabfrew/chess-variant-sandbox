@@ -16,7 +16,12 @@ What is held here, on tiny budgets:
   player's value, the same at any worker count; a round game's random opening is whole
   rounds from the seed's streams;
 - the round recipe (`ROUND_DEFAULT`) and its control are pinned, and the combinations that
-  cannot work are refused in words; the acceptance duel seats `matrix:` on a round game.
+  cannot work are refused in words; the acceptance duel seats `matrix:` on a round game;
+- Q918i's score payoff (`plan-simultaneous.md` §7, *Q918h, the re-plan*, part 3): the
+  one-round teacher solved on expected score is the oracle's to the bit at any thread count,
+  a deeper teacher is refused by name, a round whose matrix holds an ending cell is labelled
+  by that cell's weight and no longer as a certainty, the harvest uses the score as it is,
+  and `ROUND_SCORE` and the results-only arm are pinned; no other name moves.
 """
 
 from __future__ import annotations
@@ -35,6 +40,7 @@ from chess_variant_sandbox.agents.evaluation import GOAL_PIECES, IMMUNE_PIECES  
 from chess_variant_sandbox.agents.matrix import (  # noqa: E402
     RoundSearch,
     round_evaluator,
+    round_score_for_first,
     round_value_for_first,
 )
 from chess_variant_sandbox.agents.nets import (  # noqa: E402
@@ -58,6 +64,8 @@ from chess_variant_sandbox.agents.training.procedure import (  # noqa: E402
     ROUND_ACCEPT_NODES,
     ROUND_CONTROL,
     ROUND_DEFAULT,
+    ROUND_OUTCOME,
+    ROUND_SCORE,
     Procedure,
     builtin_player_arm,
     control,
@@ -87,6 +95,9 @@ ROUND_GAMES = (WATERING, CHASE, INITIATIVE)
 # either, the layout's version or the trainer must be seen.
 ROUND_DEFAULT_DIGEST = "0f87b7f93850"
 ROUND_CONTROL_DIGEST = "919d42469fbe"
+# Q918i's arms S (the score payoff) and O (results only).
+ROUND_SCORE_DIGEST = "34b363077cb5"
+ROUND_OUTCOME_DIGEST = "d833b3cdbc5f"
 
 TINY = ROUND_DEFAULT.with_(
     games=2, label_nodes=150, accumulator=16, hidden1=8, hidden2=4, epochs=1, batch=32
@@ -361,6 +372,103 @@ def test_the_round_teacher_is_the_oracles_at_any_thread_count(path: str) -> None
         )
 
 
+def _oracle_score(engine: Engine, state: GameState, scale: float) -> tuple[float, int]:
+    search = RoundSearch(engine, round_evaluator(engine, 0.05, GOAL_PIECES, IMMUNE_PIECES))
+    lists = (engine.legal_moves_for(state, 0), engine.legal_moves_for(state, 1))
+    return round_score_for_first(search, state, lists, scale)
+
+
+@pytest.mark.parametrize("path", (WATERING, CHASE))
+def test_the_score_teacher_is_the_oracles_at_any_thread_count(path: str) -> None:
+    engine = _engine(path)
+    states = _walk(engine, rounds=4, seed=5)
+    packed = [_pack(state) for state in states]
+    values = eval_values(engine.spec)
+    for agent in ("greedy", "matrix:nodes=1"):
+        native = native_spec(agent, engine.spec.hash)
+        for scale in (1.0, 2.5):
+            one = engine.core.round_values(packed, native, values, score_scale=scale)
+            assert engine.core.round_values(packed, native, values, 3, scale) == one
+            for state, answer in zip(states, one, strict=True):
+                assert answer is not None
+                assert answer == _oracle_score(engine, state, scale), (path, agent, scale)
+                assert 0.0 <= answer[0] <= 1.0
+    with pytest.raises(ValueError, match="one-round teacher"):
+        engine.core.round_values(
+            packed, native_spec("matrix:nodes=400", engine.spec.hash), values, score_scale=1.0
+        )
+    with pytest.raises(ValueError, match="positive"):
+        engine.core.round_values(packed, native_spec("greedy"), values, score_scale=0.0)
+
+
+def _ending_cells(engine: Engine, state: GameState) -> list[float]:
+    """The one-round matrix's cells that end the game, as player 0's score (1, 1/2 or 0)."""
+    found = []
+    for a in engine.legal_moves_for(state, 0):
+        for b in engine.legal_moves_for(state, 1):
+            outcome = engine.terminal(engine.apply_round(state, a, b))
+            if outcome is not None:
+                found.append(0.5 if outcome.is_draw else float(outcome.winner == 0))
+    return found
+
+
+def test_a_round_with_an_ending_cell_is_no_longer_labelled_a_certainty() -> None:
+    """Q918h's defect, removed: in units an ending cell is worth ±(10⁶ − ply), so any weight
+    on it reads as a certainty once squashed; on expected score it is worth 1 (or 0), and the
+    round's label is the matrix game's value, between the cells."""
+    from chess_variant_sandbox.agents.training.data import squash
+
+    engine = _engine(WATERING)
+    values = eval_values(engine.spec)
+    teacher = native_spec("matrix:nodes=1", engine.spec.hash)
+    graded = []
+    for seed in range(2):
+        record = play_game(engine, ("greedy", "greedy"), seed=seed, collect_series=False)
+        moves, state, states = list(record.moves), engine.initial_state(), []
+        for index in range(0, len(moves), 2):
+            states.append(state)
+            state = engine.apply_round(state, moves[index], moves[index + 1])
+        packed = [_pack(state) for state in states]
+        units = engine.core.round_values(packed, teacher, values)
+        scores = engine.core.round_values(packed, teacher, values, score_scale=1.0)
+        for state, unit, score in zip(states, units, scores, strict=True):
+            assert unit is not None and score is not None
+            certain = squash(unit[0], 1.0) in (0.0, 1.0) and abs(unit[0]) > 35
+            if certain and _ending_cells(engine, state) and 0.05 < score[0] < 0.95:
+                graded.append((unit[0], score[0]))
+    # Seed 0's seventh round alone: 164 units (a 1.0 once squashed) against 0.84 on score.
+    assert len(graded) >= 3, graded
+
+
+def test_a_score_harvest_uses_the_teachers_score_as_it_is() -> None:
+    from chess_variant_sandbox.agents.training.data import labels
+
+    spec = load_spec(ROOT / CHASE)
+    engine = Engine(spec)
+    procedure = TINY.with_(games=1, td_lambda=0.0, label_nodes=1, round_payoff="score")
+    records = self_play(spec, procedure, workers=1)
+    data = harvest(spec, records, procedure, workers=1)
+    assert data.teacher == "player:score"
+    moves = list(records[0].moves)
+    state = engine.apply_round(engine.initial_state(), moves[0], moves[1])
+    native = native_spec("matrix:nodes=1", engine.spec.hash)
+    ((value, _depth),) = engine.core.round_values(
+        [_pack(state)], native, eval_values(engine.spec), score_scale=procedure.scale
+    )
+    assert data.values is not None
+    assert data.values[0] == value and data.targets[0] == np.float32(value)
+    # The positions are the units teacher's (the self-play players are unchanged) ...
+    units = harvest(spec, records, procedure.with_(round_payoff="units"), workers=1)
+    assert np.array_equal(units.sides, data.sides)
+    assert units.ply is not None and data.ply is not None
+    assert np.array_equal(units.ply, data.ply)
+    # ... and neither label trains as the other.
+    with pytest.raises(ValueError, match="harvest it again"):
+        labels(units, procedure)
+    with pytest.raises(ValueError, match="harvest it again"):
+        labels(data, procedure.with_(round_payoff="units"))
+
+
 # ------------------------------------------------------------------ the data
 
 
@@ -434,6 +542,26 @@ def test_the_round_recipe_and_its_control_are_pinned() -> None:
     with pytest.raises(ValueError, match="generation 0"):
         builtin_player_arm(ROUND_DEFAULT)
     assert ROUND_ACCEPT_NODES == 1600
+
+
+def test_the_score_arm_and_the_outcome_arm_are_pinned() -> None:
+    assert ROUND_SCORE.digest == ROUND_SCORE_DIGEST
+    assert ROUND_OUTCOME.digest == ROUND_OUTCOME_DIGEST
+    assert ROUND_CONTROL.with_(round_payoff="score") == ROUND_SCORE
+    assert ROUND_SCORE.teacher == "player:score" and ROUND_CONTROL.teacher == "player"
+    assert ROUND_DEFAULT.with_(result_weight=1.0, td_lambda=0.0, label_nodes=0) == ROUND_OUTCOME
+    # "units" is out of the blob, so no name before Q918i moved; "score" reads back as itself.
+    assert "round_payoff" not in ROUND_CONTROL.as_dict()
+    assert Procedure.from_dict(ROUND_SCORE.as_dict()) == ROUND_SCORE
+    assert Procedure.from_dict(ROUND_CONTROL.as_dict()) == ROUND_CONTROL
+    with pytest.raises(ValueError, match="one-round teacher"):
+        ROUND_DEFAULT.with_(round_payoff="score")
+    with pytest.raises(ValueError, match="round teacher's"):
+        DEFAULT.with_(label_nodes=1, round_payoff="score")
+    with pytest.raises(ValueError, match="round teacher's"):
+        ROUND_SCORE.with_(result_weight=1.0, td_lambda=0.0)
+    with pytest.raises(ValueError, match="not one of"):
+        ROUND_CONTROL.with_(round_payoff="probability")
 
 
 def test_a_round_recipe_that_cannot_work_is_refused_in_words() -> None:

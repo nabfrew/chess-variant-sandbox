@@ -655,7 +655,8 @@ def _harvest_rounds(games: Sequence[Game]) -> Harvested:
     whole number of ``stride`` rounds past the first such round; the board after the last
     round is never one (the game is over there). The label is player 0's: the result, or
     the round player's own value of the round (``Core.round_values``), squashed, one core
-    call a game."""
+    call a game; under ``round_payoff`` "score" (Q918i) the one-round matrix solved on
+    expected score, used as it is."""
     from chess_variant_sandbox.engine.engine import _pack
 
     engine = _WORKER["engine"]
@@ -687,14 +688,20 @@ def _harvest_rounds(games: Sequence[Game]) -> Harvested:
                 values.append(math.nan)
             state = engine.apply_round(state, moves[2 * round_index], moves[2 * round_index + 1])
         if asked:
+            # Q918i: a score payoff's value is already player 0's expected score (each cell
+            # squashed before the matrix is solved); a units value is squashed here.
+            scored = procedure.round_payoff == "score"
             answers = engine.core.round_values(
-                [packed for _row, packed in asked], player, _WORKER["values"]
+                [packed for _row, packed in asked],
+                player,
+                _WORKER["values"],
+                score_scale=procedure.scale if scored else None,
             )
             weight = procedure.result_weight
             for (row, _packed), answer in zip(asked, answers, strict=True):
                 if answer is None:
                     continue
-                searched = squash(answer[0], procedure.scale)
+                searched = answer[0] if scored else squash(answer[0], procedure.scale)
                 targets[row] = weight * results[row] + (1.0 - weight) * searched
                 values[row] = searched
     return out

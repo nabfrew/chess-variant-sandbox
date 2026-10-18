@@ -883,7 +883,13 @@ impl Core {
     /// the last pass that finished. `None` where the round is over before anyone chooses.
     /// No stream is read. Spread over `threads`; the answer does not depend on how many
     /// (`parallel::round_values`). A training label's teacher, never a player.
-    #[pyo3(signature = (states, agent, values, threads = 1))]
+    ///
+    /// `score_scale` (Q918i, `plan-simultaneous.md` §7, *Q918h, the re-plan*, part 3) asks
+    /// for the value on **expected score**: every cell of the one-round matrix is player 0's
+    /// `sigmoid(units / score_scale)`, or 1, ½ or 0 where the round ends the game, and the
+    /// value (already a score) is that matrix game's. Only the one-round teacher has it
+    /// (`greedy`, `matrix:nodes=1`); a deeper one is refused by name.
+    #[pyo3(signature = (states, agent, values, threads = 1, score_scale = None))]
     fn round_values(
         &self,
         py: Python<'_>,
@@ -891,6 +897,7 @@ impl Core {
         agent: AgentIn,
         values: Vec<f64>,
         threads: usize,
+        score_scale: Option<f64>,
     ) -> PyResult<Vec<Option<(f64, u32)>>> {
         if self.tables.simultaneous.is_none() || self.tables.spy.is_some() {
             return Err(pyo3::exceptions::PyValueError::new_err(
@@ -904,12 +911,25 @@ impl Core {
                 agent.0
             )));
         }
+        if let Some(scale) = score_scale {
+            if !(scale > 0.0 && scale.is_finite()) {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "round_values' score_scale is a positive number of units",
+                ));
+            }
+            if !agents::one_round_teacher(&spec) {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "a score payoff is the one-round teacher's (greedy or matrix:nodes=1); {}                      searches deeper, and its deeper cells are sub-games solved in units",
+                    agent.0
+                )));
+            }
+        }
         let snapshots: Vec<Snapshot> = states
             .iter()
             .map(|state| snapshot_from(&self.tables, state))
             .collect();
         Ok(py.detach(|| {
-            parallel::round_values(&self.tables, &snapshots, &spec, &values, threads)
+            parallel::round_values(&self.tables, &snapshots, &spec, &values, threads, score_scale)
         }))
     }
 

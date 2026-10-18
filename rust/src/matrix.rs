@@ -156,6 +156,32 @@ fn round_terminal_value(outcome: Outcome, game: &Game<'_>, seat: usize) -> f64 {
     }
 }
 
+/// Q918i: built-in units as player 0's expected score, `sigmoid(units / scale)`, written as
+/// the trainer's `data.squash` writes it (and `agents/matrix.py::score`), so the core and the
+/// oracle agree to the bit and stay finite at win scale.
+pub fn score(units: f64, scale: f64) -> f64 {
+    0.5 * (1.0 + (units / (2.0 * scale)).tanh())
+}
+
+/// Q918i: a finished round's expected score for player 0: 1, ½ or 0.
+fn round_terminal_score(outcome: Outcome) -> f64 {
+    match outcome.winner {
+        0 => 1.0,
+        1 => 0.0,
+        _ => 0.5,
+    }
+}
+
+/// Q918i: whether `spec` is the one-round teacher (`greedy`, or `matrix:nodes=1`), the only
+/// one a score payoff is defined for: a deeper player's cells are sub-games solved in units.
+pub fn one_round_teacher(spec: &AgentSpec) -> bool {
+    match spec.kind {
+        Kind::Greedy => true,
+        Kind::Matrix => spec.nodes <= 1,
+        _ => false,
+    }
+}
+
 impl Player {
     /// One round's choice for `seat`: `lists` are both players' legal moves on this board,
     /// in seat order, and the opponent's choice is not known. The position is the same
@@ -405,6 +431,53 @@ impl Player {
         }
     }
 
+    /// Q918i (`plan-simultaneous.md` §7, *Q918h, the re-plan*, part 3): the one-round
+    /// matrix's value for player 0 on **expected score**, the score-payoff teacher. Each cell
+    /// is player 0's `score(evaluate_round, scale)` after the round, or 1, ½ or 0 where the
+    /// round ends the game (a win, a draw, a loss); the matrix is solved by the same regret
+    /// matching and its value is the label, already a score (no second squash). So an ending
+    /// cell weighs as a certainty only in proportion to its weight, never as 10⁶ units.
+    ///
+    /// Only the one-round teacher has it: `greedy`, or `matrix:nodes=1` (which finishes pass
+    /// 1 and nothing more). `None` for any other player; `Core.round_values` refuses those by
+    /// name before asking (deeper cells are sub-games solved in units). No player calls it:
+    /// it is a training label's teacher, and no move, ordering or stream draw reads it.
+    pub fn round_score_for_first(
+        &mut self,
+        game: &mut Game<'_>,
+        lists: [&[u32]; 2],
+        scale: f64,
+    ) -> Option<(f64, u32)> {
+        if !one_round_teacher(&self.spec) {
+            return None;
+        }
+        let (mine, theirs) = (lists[0], lists[1]);
+        let mut arena = std::mem::take(&mut self.arena);
+        arena.clear();
+        let mut values = Vec::with_capacity(mine.len() * theirs.len());
+        for &a in mine {
+            for &b in theirs {
+                game.make_round([a, b]);
+                let base = arena.len();
+                game.generate_legal_for(0, &mut arena);
+                let mid = arena.len();
+                game.generate_legal_for(1, &mut arena);
+                let end = arena.len();
+                let after = [&arena[base..mid], &arena[mid..end]];
+                let value = match game.round_terminal_with(after) {
+                    Some(outcome) => round_terminal_score(outcome),
+                    None => score(self.eval.evaluate_round(game, 0, after), scale),
+                };
+                arena.truncate(base);
+                game.unmake_round();
+                values.push(value);
+            }
+        }
+        self.arena = arena;
+        let (p, q) = solve(&values, mine.len(), theirs.len(), REGRET_ITERATIONS);
+        Some((game_value(&values, &p, &q), 1))
+    }
+
     /// Every cell's value for `seat` at `depth` rounds, rows (my moves) outer.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn round_cells(
@@ -506,5 +579,19 @@ mod tests {
         let moves = [10u32, 20, 30];
         assert_eq!(draw(&moves, &[0.0, 1.0, 0.0], &mut rng), 20);
         assert_eq!(draw(&moves, &[0.0, 0.0, 0.0], &mut rng), 30);
+    }
+
+    #[test]
+    fn a_score_is_a_probability_and_an_ending_is_worth_one() {
+        assert_eq!(score(0.0, 1.0), 0.5);
+        assert_eq!(score(WIN_SCORE, 1.0), 1.0);
+        assert_eq!(score(-WIN_SCORE, 1.0), 0.0);
+        assert!((score(1.0, 1.0) - 1.0 / (1.0 + (-1.0f64).exp())).abs() < 1e-15);
+        // A matrix with one ending cell worth a win at a small weight reads as that weight,
+        // not as a certainty: a 1 in a row of halves, against a column player who avoids it.
+        let values = [1.0, 0.5, 0.5, 0.5];
+        let (p, q) = solve(&values, 2, 2, REGRET_ITERATIONS);
+        let value = game_value(&values, &p, &q);
+        assert!((0.5..0.51).contains(&value), "{value}");
     }
 }

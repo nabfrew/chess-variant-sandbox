@@ -179,12 +179,15 @@ class Core:
     # Q918g: a round player's (greedy, matrix) own value of each round for player 0 and
     # its last finished pass; a round game's training teacher. No stream; the answer does
     # not depend on `threads`. In a round game `net_line`'s moves are rounds in pairs.
+    # Q918i: `score_scale` asks the one-round teacher (greedy, matrix:nodes=1) for the matrix
+    # solved on expected score (each cell sigmoid(units / scale), an ending 1, 1/2 or 0).
     def round_values(
         self,
         states: list[tuple[Any, ...]],
         agent: NativeSpec,
         values: list[float],
         threads: int = ...,
+        score_scale: float | None = ...,
     ) -> list[tuple[float, int] | None]: ...
     def play_from(
         self,
