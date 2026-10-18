@@ -302,6 +302,26 @@ impl Player {
             self.strategy = vec![1.0];
             return mine[0];
         }
+        let (_, p, _, done) = self.matrix_search(game, seat, mine, theirs);
+        self.stats.depth = done;
+        self.stats.nodes += self.nodes;
+        self.stats.depth_sum += u64::from(done);
+        self.stats.searches += 1;
+        let chosen = draw(mine, &p, rng);
+        self.strategy = p;
+        chosen
+    }
+
+    /// The deepening `matrix:nodes=N` does at a root, without the draw: the cells' values,
+    /// the strategy pair of the last solve (the one the player draws from) and the last
+    /// pass that finished. `self.nodes` is what it spent.
+    fn matrix_search(
+        &mut self,
+        game: &mut Game<'_>,
+        seat: usize,
+        mine: &[u32],
+        theirs: &[u32],
+    ) -> (Vec<f64>, Vec<f64>, Vec<f64>, u32) {
         self.nodes = 0;
         let mut arena = std::mem::take(&mut self.arena);
         arena.clear();
@@ -347,13 +367,42 @@ impl Player {
             done = depth;
         }
         self.arena = arena;
-        self.stats.depth = done;
-        self.stats.nodes += self.nodes;
-        self.stats.depth_sum += u64::from(done);
-        self.stats.searches += 1;
-        let chosen = draw(mine, &p, rng);
-        self.strategy = p;
-        chosen
+        (values, p, q, done)
+    }
+
+    /// Q918g (`plan-simultaneous.md` §6.4, *Q918g, scoped*): the round player's own value
+    /// of this round for player 0, in its objective's units, and the last pass that
+    /// finished -- the player teacher of a round game's training label, as `search_value`
+    /// is minimax's. The value is the matrix game the player draws from, at the strategies
+    /// it draws with: `greedy`'s one-round matrix, or `matrix:nodes=N`'s last solve. It is
+    /// asked even where player 0 has one move (the player itself would not search there).
+    /// No stream is read: the value is computed without randomness. `None` for a player
+    /// that does not search rounds (`random`).
+    pub fn round_value_for_first(
+        &mut self,
+        game: &mut Game<'_>,
+        lists: [&[u32]; 2],
+    ) -> Option<(f64, u32)> {
+        let (mine, theirs) = (lists[0], lists[1]);
+        match self.spec.kind {
+            Kind::Greedy => {
+                self.nodes = 0;
+                let mut arena = std::mem::take(&mut self.arena);
+                arena.clear();
+                let values = match self.round_cells(game, 0, mine, theirs, 1, &mut arena, false) {
+                    Ok(values) => values,
+                    Err(Exhausted) => unreachable!("an unbounded pass never runs out"),
+                };
+                self.arena = arena;
+                let (p, q) = solve(&values, mine.len(), theirs.len(), REGRET_ITERATIONS);
+                Some((game_value(&values, &p, &q), 1))
+            }
+            Kind::Matrix => {
+                let (values, p, q, done) = self.matrix_search(game, 0, mine, theirs);
+                Some((game_value(&values, &p, &q), done))
+            }
+            _ => None,
+        }
     }
 
     /// Every cell's value for `seat` at `depth` rounds, rows (my moves) outer.

@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from chess_variant_sandbox.engine import Engine, GameState
+from chess_variant_sandbox.engine.compile import TIE_INITIATIVE
 
 # Mirrors `rust/src/net.rs`; `tests/test_nets.py` holds the two together.
 MAGIC = b"CVSNET01"
@@ -86,6 +87,18 @@ class Layout:
     n_inputs: int
     no_progress: int
     max_plies: int
+    # Q918g: a round game's own state after ``turn`` (``net.rs::Layout``), each segment only
+    # where its rule is on, so every alternating layout is unchanged: who holds the
+    # initiative (2, under ``tie: "initiative"``), each player's rested square (2 x S, under
+    # ``rest``), the void run's two squares and the barred pairs' squares (2 x S each, in
+    # every round game).
+    initiative: int = 0
+    rest: int = 0
+    void: int = 0
+    bars: int = 0
+    has_initiative: bool = False
+    has_rest: bool = False
+    rounds: bool = False
 
     @classmethod
     def of(cls, spec: Any) -> Layout:
@@ -100,6 +113,14 @@ class Layout:
         halfmove = points + 2 * POINTS_CAP
         ply = halfmove + CLOCK_BUCKETS
         turn = ply + CLOCK_BUCKETS
+        sim = getattr(spec, "simultaneous", None)
+        rounds = sim is not None
+        has_initiative = sim is not None and sim.tie == TIE_INITIATIVE
+        has_rest = sim is not None and bool(sim.rest)
+        initiative = turn + TURN_CAP
+        rest = initiative + (2 if has_initiative else 0)
+        void = rest + (2 * s if has_rest else 0)
+        bars = void + (2 * s if rounds else 0)
         return cls(
             n_squares=s,
             n_values=n_values,
@@ -113,9 +134,16 @@ class Layout:
             halfmove=halfmove,
             ply=ply,
             turn=turn,
-            n_inputs=turn + TURN_CAP,
+            n_inputs=bars + (2 * s if rounds else 0),
             no_progress=int(spec.no_progress_draw),
             max_plies=int(spec.max_plies),
+            initiative=initiative,
+            rest=rest,
+            void=void,
+            bars=bars,
+            has_initiative=has_initiative,
+            has_rest=has_rest,
+            rounds=rounds,
         )
 
     def features(self, state: GameState) -> list[int]:
@@ -147,6 +175,24 @@ class Layout:
         out.extend(_clock(self.ply, state.ply, self.max_plies))
         extra = min(max(state.remaining - 1, 0), TURN_CAP)
         out.extend(self.turn + k for k in range(extra))
+        if not self.rounds:
+            return out
+        if self.has_initiative and state.initiative in (0, 1):
+            out.append(self.initiative + state.initiative)
+        if self.has_rest:
+            for player in range(2):
+                if 0 <= state.rest[player] < s:
+                    out.append(self.rest + player * s + state.rest[player])
+        for player in range(2):
+            if 0 <= state.void_run[player] < s:
+                out.append(self.void + player * s + state.void_run[player])
+        barred = {
+            self.bars + player * s + bar[player]
+            for player in range(2)
+            for bar in state.bars
+            if 0 <= bar[player] < s
+        }
+        out.extend(sorted(barred))
         return out
 
 
@@ -329,6 +375,19 @@ class NetEvaluator:
     ) -> float:
         score = self.raw(state) / OUTPUT_SCALE
         return score if player == state.side_to_move else -score
+
+    def evaluate_round(
+        self,
+        engine: Engine,
+        state: GameState,
+        player: int,
+        counts: tuple[int, int],
+        lists: tuple[list[int], list[int]] | None = None,
+    ) -> float:
+        """Q918g: the net in a round, ``Objective::evaluate_round``'s net arm. A round
+        game's side to move stays 0, so the one head read is seat 0's and seat 1's score
+        is its negation; the move counts and lists are not read."""
+        return self.evaluate(engine, state, player)
 
 
 # ------------------------------------------------------------------ stores and names

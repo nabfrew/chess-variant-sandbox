@@ -54,6 +54,7 @@ from chess_variant_sandbox.agents.training.procedure import (
     ACCEPT_OPENING_PLIES,
     ACCEPT_PAIRS,
     ACCEPT_SEED,
+    ROUND_ACCEPT_NODES,
     TRAINER_VERSION,
     Parent,
     Procedure,
@@ -139,7 +140,8 @@ class Trained:
 
     @property
     def player(self) -> str:
-        return f"minimax:net={self.procedure.digest},nodes={ACCEPT_NODES}"
+        nodes = ROUND_ACCEPT_NODES if self.procedure.rounds else ACCEPT_NODES
+        return f"{self.procedure.searcher}:net={self.procedure.digest},nodes={nodes}"
 
 
 def store_payload(
@@ -258,6 +260,13 @@ def quantization_error(spec: dict[str, Any], net: FloatNet, blob: bytes, procedu
     for record in games:
         state = engine.initial_state()
         line = engine.core.net_line(_pack(state), blob, list(record.moves))
+        if engine.simultaneous:
+            # Q918g: a round game's line is a position a round, every one seat 0's.
+            for raw, inputs, _fresh in line:
+                rows.append(list(inputs))
+                sides.append(0)
+                cores.append(raw / OUTPUT_SCALE)
+            continue
         for ply, (raw, inputs, _fresh) in enumerate(line):
             rows.append(list(inputs))
             sides.append(int(state.side_to_move))
@@ -274,7 +283,7 @@ def accept(
     spec: dict[str, Any],
     procedure: Procedure,
     pairs: int = ACCEPT_PAIRS,
-    nodes: int = ACCEPT_NODES,
+    nodes: int | None = None,
     workers: int = 0,
     seed: int = ACCEPT_SEED,
     opening_plies: int = ACCEPT_OPENING_PLIES,
@@ -307,8 +316,14 @@ def accept(
     from chess_variant_sandbox.tournament.duel import curtailed_duel, grade
     from chess_variant_sandbox.tournament.runner import TournamentConfig
 
-    candidate = f"minimax:net={procedure.digest},nodes={nodes}"
-    reference = reference or f"minimax:nodes={nodes}"
+    # Q918g: on a round game both seats are the round player, `matrix:`, at the round
+    # duel's budget unless one is named (`ROUND_ACCEPT_NODES`).
+    rounds = duel_rounds(spec)
+    kind = "matrix" if rounds else "minimax"
+    if nodes is None:
+        nodes = ROUND_ACCEPT_NODES if rounds else ACCEPT_NODES
+    candidate = f"{kind}:net={procedure.digest},nodes={nodes}"
+    reference = reference or f"{kind}:nodes={nodes}"
     if reference == candidate:
         raise ValueError(f"a duel needs two players; both seats are {candidate}")
     config = TournamentConfig(
@@ -337,8 +352,13 @@ def accept(
         records = play(seed, pairs)
         found = grade(records, candidate, reference)
         accepted = accepts(found.pairs)
+    # A round game opens with whole rounds, `opening_plies_for // 2` of them (Q918g).
+    def opened(seed: int) -> int:
+        plies = opening_plies_for(seed, opening_plies)
+        return 2 * (plies // 2) if rounds else plies
+
     openings = 1 if opening_plies <= 0 else len(
-        {tuple(r.moves[: opening_plies_for(r.seed, opening_plies)]) for r in records}
+        {tuple(r.moves[: opened(r.seed)]) for r in records}
     )
     spent = [0, 0]
     for record in records:
@@ -362,6 +382,13 @@ def accept(
     )
 
 
+def duel_rounds(spec: dict[str, Any]) -> bool:
+    """Whether this ruleset is played in rounds, so its duels seat `matrix:` (Q918g)."""
+    from chess_variant_sandbox.engine import Engine
+
+    return bool(Engine(spec).simultaneous)
+
+
 def _opening_duel(spec: dict[str, Any], config: Any, most: int) -> list[Any]:
     """The paired schedule's games, each opened as a self-play game is (``data``'s opening).
 
@@ -382,7 +409,7 @@ def train_ruleset(
     root: str | Path = STORE_DIR,
     workers: int = 0,
     pairs: int = ACCEPT_PAIRS,
-    nodes: int = ACCEPT_NODES,
+    nodes: int | None = None,
     duel: bool = True,
     data: Dataset | None = None,
     report: Report | None = None,

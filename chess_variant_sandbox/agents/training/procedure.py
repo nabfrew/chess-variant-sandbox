@@ -51,6 +51,13 @@ ACCEPT_SEED = 1_000_000
 ACCEPT_OPENING_PLIES = 8
 ACCEPT_ERRORS = 2.0
 
+# Q918g (`plan-simultaneous.md` §6.4, *Q918g, scoped*): a round game's acceptance duel is at
+# the round roster's bottom rung, `matrix:nodes=1600` on both seats (§7: "beats
+# `matrix:nodes=1600` there"), sixteen times `corpus.CANONICAL_AGENTS`' 100 as every round
+# budget is (`loop/screen.ROUND_BUDGET_FACTOR`). The rest of the duel is `ACCEPT_*`'s: 200
+# pairs from seed 1,000,000, up to 8 random plies (4 rounds), two errors above even.
+ROUND_ACCEPT_NODES = 1_600
+
 # The searches a label may come from (`Procedure.label_search`). "parent" (Q677) is the
 # player's search on the parent net, `minimax:net=<parent>,nodes=<label_nodes>`.
 LABEL_SEARCHES = ("probe", "player", "parent")
@@ -271,6 +278,22 @@ class Procedure:
                 f"a generation's roster may name only its parent's net "
                 f"(net={self.parent.procedure}); it names {', '.join(sorted(map(str, named)))}"
             )
+        kinds = {agent.partition(":")[0].strip() for agent in self.agents}
+        if "matrix" in kinds and kinds - {"matrix", "greedy", "random"}:
+            raise ValueError(
+                "a round game's roster (matrix:) plays rounds only; "
+                f"{', '.join(sorted(kinds - {'matrix', 'greedy', 'random'}))} cannot sit beside it"
+            )
+        if self.rounds and self.searched and self.label_search == "probe":
+            raise ValueError(
+                "a round game has no probe teacher in the core; label it by the round "
+                "player's own value (label_search 'player', Q918g)"
+            )
+        if self.rounds and (self.parent is not None or self.replay is not None):
+            raise ValueError(
+                "a round game's generations are not built (Q918g trains generation 0); "
+                "train from self-play"
+            )
         if self.label_search == "parent" and self.parent is None:
             raise ValueError("label_search 'parent' needs a parent net (parent)")
         if self.replay is not None and self.parent is None:
@@ -306,6 +329,18 @@ class Procedure:
             raise ValueError("opening_plies must be 0 or more")
         if self.skip_plies < 0 or self.scale <= 0 or self.learning_rate <= 0:
             raise ValueError("skip_plies, scale and learning_rate must be positive")
+
+    @property
+    def rounds(self) -> bool:
+        """Q918g: whether this recipe plays a round game -- its roster is the round
+        players' (`matrix:`), and its player teacher is `matrix:nodes=<label_nodes>`. A
+        roster cannot mix the two kinds: no game is played by both."""
+        return any(agent.partition(":")[0].strip() == "matrix" for agent in self.agents)
+
+    @property
+    def searcher(self) -> str:
+        """The searching player's kind on this recipe's game: ``matrix`` in rounds."""
+        return "matrix" if self.rounds else "minimax"
 
     @property
     def searched(self) -> bool:
@@ -383,6 +418,20 @@ class Procedure:
 DEFAULT = Procedure()
 """The default recipe (`db5ef1bc938e`, Q671): Q637's at TD(λ 0.7); its Intransitive net is accepted."""
 
+ROUND_DEFAULT = Procedure(
+    agents=("matrix:nodes=1600",), label_search="player", label_nodes=6_400
+)
+"""Q918g: the round games' generation 0 (`plan-simultaneous.md` §7, *Q918g, scoped*). The
+default's recipe with the round players: self-play by `matrix:nodes=1600` (the round roster's
+bottom rung), each position labelled by `matrix:nodes=6400`'s own value of the round for player
+0 (the player teacher, four times the self-play budget as a generation's is; the core has no
+probe for rounds), TD(λ 0.7) along the line, and everything else the default's."""
+
+ROUND_CONTROL = ROUND_DEFAULT.with_(label_nodes=1)
+"""Q918g's control C: the same games and positions, labelled by the one-round matrix alone
+(`matrix:nodes=1` finishes pass 1 and nothing more, so its value is greedy's one-round matrix
+game, the round analysis probe's reading at the players' ruler)."""
+
 Q637 = Procedure(td_lambda=0.0)
 """The default before Q671 (`1d160257b8e5`, §8.10): diverse self-play, the probe's label alone."""
 
@@ -411,7 +460,12 @@ def generation(parent: Parent, base: Procedure = DEFAULT) -> Procedure:
 
 
 def control(child: Procedure, base: Procedure = DEFAULT) -> Procedure:
-    """§9.1's control C: ``base``'s teacher (the probe at its nodes) on the child's games."""
+    """§9.1's control C: ``base``'s teacher (the probe at its nodes) on the child's games.
+
+    On a round game's recipe (Q918g) it is ``ROUND_CONTROL``'s teacher, the one-round matrix
+    (``matrix:nodes=1``), since the core has no probe for rounds."""
+    if child.rounds:
+        return child.with_(label_search="player", label_nodes=ROUND_CONTROL.label_nodes)
     return child.with_(
         label_search=base.label_search, label_nodes=base.label_nodes, label_depth=base.label_depth
     )
@@ -419,6 +473,11 @@ def control(child: Procedure, base: Procedure = DEFAULT) -> Procedure:
 
 def builtin_player_arm(child: Procedure) -> Procedure:
     """§9.1's arm K: the built-in player's own value at the child's label budget, on its games."""
+    if child.rounds:
+        raise ValueError(
+            "arm K is a generation's (the built-in player beside the parent's); a round "
+            "game's recipe is generation 0, whose teacher is already the built-in player"
+        )
     return child.with_(label_search="player")
 
 

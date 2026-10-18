@@ -124,6 +124,38 @@ pub fn search_values(
     pool(threads).install(|| (0..snapshots.len()).into_par_iter().map(one).collect())
 }
 
+/// Q918g: a round player's own value of each round for player 0 (`Player::
+/// round_value_for_first`), the teacher of a round game's training label.
+///
+/// One fresh `Player` per position and no stream at all, so a position's answer is a pure
+/// function of the position and the agent; results come back in input order and the
+/// thread count never changes one. `None` where the round is over before anyone chooses
+/// (`round_terminal_with`, which includes a player with no move).
+pub fn round_values(
+    t: &Tables,
+    snapshots: &[Snapshot],
+    spec: &AgentSpec,
+    values: &[f64],
+    threads: usize,
+) -> Vec<Option<(f64, u32)>> {
+    let one = |index: usize| {
+        let mut game = Game::from_snapshot(t, &snapshots[index]);
+        let mut first = Vec::new();
+        let mut second = Vec::new();
+        game.generate_legal_for(0, &mut first);
+        game.generate_legal_for(1, &mut second);
+        if game.round_terminal_with([&first, &second]).is_some() {
+            return None;
+        }
+        let mut player = Player::new(t, spec.clone(), values);
+        player.round_value_for_first(&mut game, [&first, &second])
+    };
+    if threads <= 1 {
+        return (0..snapshots.len()).map(one).collect();
+    }
+    pool(threads).install(|| (0..snapshots.len()).into_par_iter().map(one).collect())
+}
+
 pub struct Playout {
     pub plies: u32,
     pub winner: i8,

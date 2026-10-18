@@ -711,7 +711,7 @@ def _build_minimax(engine: Engine, options: dict[str, Any]) -> MinimaxAgent:
     if engine.spy:
         # Schema 27 (Q935b): a spy game is played on the built-in objective only, as a
         # round game is (`docs/plan-spy.md` §3.3).
-        refuse_alternating_objective(options, "minimax")
+        refuse_alternating_objective(options, "minimax", spy=True)
     return MinimaxAgent(
         engine,
         nodes=int(options.get("nodes", 20_000)),

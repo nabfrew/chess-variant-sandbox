@@ -31,6 +31,15 @@ each position's stream named by the game's seed and the ply (``label_seed``).
 the core's ``random`` agent, drawn from streams the game's schedule seed names, so
 self-play is not one line replayed (``learned-evaluator.md`` §8.10).
 
+**Round games** (Q918g, ``plan-simultaneous.md`` §6.4): a record's moves are its rounds' in
+pairs, a position is a round's board (the start and after each round, ``Core.net_line`` walks
+them with ``make_round``), its side is always 0 and its label player 0's expectation (the net
+reads seat 0's head and negates it for seat 1), sampled from ply ``skip_plies`` on every
+``stride`` rounds. The teacher is the round player's own value of the round
+(``Core.round_values``, ``matrix:nodes=<label_nodes>``); the core has no probe for rounds. A
+random opening is up to ``opening_plies // 2`` rounds of the core's ``random`` agent, each
+seat's move from its own stream (``opening_seed(seed, 2r + seat)``).
+
 **Deterministic.** The schedule fixes every seed before a thread starts, and the chunks
 are joined in game order, so the dataset is the same at any worker count
 (``tests/test_training.py``).
@@ -304,20 +313,51 @@ def diverse_game(
     from chess_variant_sandbox.tournament.play import choose_move, finish_game
 
     seed, first, second = task
-    state = engine.initial_state()
-    opening: list[int] = []
-    for ply in range(opening_plies_for(seed, most)):
-        legal = engine.legal_moves(state)
-        if engine.terminal(state, legal) is not None:
-            break
-        move = choose_move(engine, "random", state, opening_seed(seed, ply))
-        if move is None:
-            break
-        opening.append(move)
-        state = engine.apply(state, move)
+    if engine.simultaneous:
+        # Q918g: a round game opens with random rounds, both seats from their own streams.
+        state, opening = _round_opening(engine, seed, most)
+    else:
+        state = engine.initial_state()
+        opening = []
+        for ply in range(opening_plies_for(seed, most)):
+            legal = engine.legal_moves(state)
+            if engine.terminal(state, legal) is not None:
+                break
+            move = choose_move(engine, "random", state, opening_seed(seed, ply))
+            if move is None:
+                break
+            opening.append(move)
+            state = engine.apply(state, move)
     record = finish_game(engine, (first, second), state, seed)
     moves = opening + list(record.moves)
     return replace(record, moves=moves, plies=len(moves))
+
+
+def _round_opening(engine: Any, seed: int, most: int) -> tuple[Any, list[int]]:
+    """Q918g: a round game's random opening, ``opening_plies_for(seed, most) // 2`` rounds
+    (a round is two plies, ``plan-simultaneous.md`` §2.6), each seat's move the core's
+    ``random`` agent's from its own stream (``opening_seed(seed, 2r + seat)``). The position
+    and the moves, each round's two in seat order; it stops where a round is over before
+    anyone chooses."""
+    from chess_variant_sandbox.agents.base import native_spec
+    from chess_variant_sandbox.tournament.play import eval_values
+
+    agent = native_spec("random")
+    values = eval_values(engine.spec)
+    state = engine.initial_state()
+    moves: list[int] = []
+    for round_index in range(opening_plies_for(seed, most) // 2):
+        if engine.terminal(state) is not None:
+            break
+        pair = [
+            engine.select_round(state, seat, agent, values, opening_seed(seed, 2 * round_index + seat))[0]
+            for seat in (0, 1)
+        ]
+        if pair[0] is None or pair[1] is None:
+            break
+        moves.extend((pair[0], pair[1]))
+        state = engine.apply_round(state, pair[0], pair[1])
+    return state, moves
 
 
 def self_play(
@@ -452,11 +492,13 @@ def label_seed(seed: int, ply: int) -> int:
 
 def player_agent(procedure: Procedure) -> str:
     """The player whose own search labels the positions under ``label_search`` "player"
-    (the built-in objective) or "parent" (the parent net, Q677)."""
+    (the built-in objective) or "parent" (the parent net, Q677): minimax, or on a round
+    game's recipe the round player, ``matrix`` (Q918g)."""
+    kind = procedure.searcher
     if procedure.label_search == "parent":
         assert procedure.parent is not None
-        return f"minimax:net={procedure.parent.procedure},nodes={procedure.label_nodes}"
-    return f"minimax:nodes={procedure.label_nodes}"
+        return f"{kind}:net={procedure.parent.procedure},nodes={procedure.label_nodes}"
+    return f"{kind}:nodes={procedure.label_nodes}"
 
 
 def parent_bytes(spec: dict[str, Any], procedure: Procedure) -> bytes:
@@ -550,6 +592,8 @@ def _harvest_games(games: Sequence[Game]) -> Harvested:
     results: list[float] = []
     values: list[float] = []
     player = _WORKER["player"]
+    if engine.simultaneous:
+        return _harvest_rounds(games)
     for index, moves, first_score, seed in games:
         start = engine.initial_state()
         line = engine.core.net_line(_pack(start), _WORKER["zero"], list(moves))
@@ -602,6 +646,58 @@ def _harvest_games(games: Sequence[Game]) -> Harvested:
                 targets[row] = weight * results[row] + (1.0 - weight) * searched
                 values[row] = searched
     return rows, sides, targets, indices, plies, results, values
+
+
+def _harvest_rounds(games: Sequence[Game]) -> Harvested:
+    """``_harvest_games`` on a round game (Q918g): one sample a round's board, side 0.
+
+    Round ``r`` (its board at ply ``2r``) is a sample when ``2r >= skip_plies`` and it is a
+    whole number of ``stride`` rounds past the first such round; the board after the last
+    round is never one (the game is over there). The label is player 0's: the result, or
+    the round player's own value of the round (``Core.round_values``), squashed, one core
+    call a game."""
+    from chess_variant_sandbox.engine.engine import _pack
+
+    engine = _WORKER["engine"]
+    procedure: Procedure = _WORKER["procedure"]
+    player = _WORKER["player"]
+    if procedure.searched and player is None:
+        raise ValueError(
+            "a round game's positions are labelled by the round player's own value "
+            "(label_search 'player'); the core has no probe for rounds"
+        )
+    out: Harvested = ([], [], [], [], [], [], [])
+    rows, sides, targets, indices, plies, results, values = out
+    first_round = (procedure.skip_plies + 1) // 2
+    for index, moves, first_score, _seed in games:
+        start = engine.initial_state()
+        line = engine.core.net_line(_pack(start), _WORKER["zero"], list(moves))
+        state = start
+        asked: list[tuple[int, Any]] = []
+        for round_index in range(len(moves) // 2):
+            if round_index >= first_round and (round_index - first_round) % procedure.stride == 0:
+                if player is not None:
+                    asked.append((len(sides), _pack(state)))
+                rows.append(list(line[round_index][1]))
+                sides.append(0)
+                targets.append(first_score)
+                indices.append(index)
+                plies.append(2 * round_index)
+                results.append(first_score)
+                values.append(math.nan)
+            state = engine.apply_round(state, moves[2 * round_index], moves[2 * round_index + 1])
+        if asked:
+            answers = engine.core.round_values(
+                [packed for _row, packed in asked], player, _WORKER["values"]
+            )
+            weight = procedure.result_weight
+            for (row, _packed), answer in zip(asked, answers, strict=True):
+                if answer is None:
+                    continue
+                searched = squash(answer[0], procedure.scale)
+                targets[row] = weight * results[row] + (1.0 - weight) * searched
+                values[row] = searched
+    return out
 
 
 def _chunks(games: list[Game], workers: int) -> list[list[Game]]:

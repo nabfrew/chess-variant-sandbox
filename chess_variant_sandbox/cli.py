@@ -2283,7 +2283,7 @@ _TRAIN_FLAGS: tuple[tuple[str, type, str], ...] = (
     ("skip_plies", int, "opening plies that are never samples"),
     ("stride", int, "sample every n-th ply after the skipped ones"),
     ("result_weight", float, "weight of the game's result in the label; the rest is the probe"),
-    ("label_search", str, "the label's search: probe (the analysis probe), player (minimax:nodes=<label-nodes>'s own root value) or parent (the same on the --parent net)"),
+    ("label_search", str, "the label's search: probe (the analysis probe), player (minimax:nodes=<label-nodes>'s own root value; matrix: on a round game) or parent (the same on the --parent net)"),
     ("label_nodes", int, "the label search's node budget"),
     ("label_depth", int, "the probe's depth cap (the player's search does not read it)"),
     ("td_lambda", float, "TD(lambda) along the game line for the probe's part (default 0.7; 0: the probe alone, the default before Q671)"),
@@ -2315,7 +2315,8 @@ def _add_train(sub: Any) -> None:
         "--duel-pairs", type=int, default=None, help="paired seeds in the acceptance duel, each from its own random opening (default 200)"
     )
     train.add_argument(
-        "--duel-nodes", type=int, default=None, help="both players' node budget in the duel (default 6400)"
+        "--duel-nodes", type=int, default=None,
+        help="both players' node budget in the duel (default 6400; 1600 on a round game)",
     )
     train.add_argument(
         "--no-duel", action="store_true",
@@ -2367,7 +2368,8 @@ def _add_train(sub: Any) -> None:
     )
     train.add_argument(
         "--duel-against", default=None,
-        help="with --duel-only: the opponent (default minimax:nodes=<duel-nodes>), e.g. the "
+        help="with --duel-only: the opponent (default minimax:nodes=<duel-nodes>, matrix: on a "
+        "round game), e.g. the "
         "parent's player or minimax:nodes=25600",
     )
     train.add_argument(
@@ -2386,9 +2388,9 @@ def _cmd_train(args: argparse.Namespace) -> int:
     try:
         from chess_variant_sandbox.agents.training.data import Dataset
         from chess_variant_sandbox.agents.training.procedure import (
-            ACCEPT_NODES,
             ACCEPT_PAIRS,
             DEFAULT,
+            ROUND_DEFAULT,
             Procedure,
             generation,
             replayed,
@@ -2413,8 +2415,10 @@ def _cmd_train(args: argparse.Namespace) -> int:
     if args.agents:
         changes["agents"] = tuple(args.agents)
     spec = load_spec(args.ruleset)
-    compiled = Engine(spec).spec
-    base = DEFAULT
+    engine = Engine(spec)
+    compiled = engine.spec
+    # Q918g: a round game's recipe is the round players' (`plan-simultaneous.md` §7).
+    base = ROUND_DEFAULT if engine.simultaneous else DEFAULT
     try:
         if args.parent:
             # Q677: a generation. The parent plays in this process (and its harvest
@@ -2492,7 +2496,7 @@ def _cmd_train(args: argparse.Namespace) -> int:
         root=args.store,
         workers=workers,
         pairs=args.duel_pairs if args.duel_pairs is not None else ACCEPT_PAIRS,
-        nodes=args.duel_nodes if args.duel_nodes is not None else ACCEPT_NODES,
+        nodes=args.duel_nodes,
         duel=not args.no_duel,
         data=data,
         report=print,
@@ -2520,7 +2524,7 @@ def _cmd_train(args: argparse.Namespace) -> int:
         )
     print(f"  digest {done.record.digest}, stored {done.meta_path} "
           f"in {time.perf_counter() - started:.1f}s")
-    print(f"  plays as minimax:net={procedure.digest},nodes=N where accepted")
+    print(f"  plays as {procedure.searcher}:net={procedure.digest},nodes=N where accepted")
     return 0
 
 
@@ -2561,11 +2565,7 @@ def _duel_only(
     import hashlib
 
     from chess_variant_sandbox.agents.nets import ACCEPTED, NetRecord, register_net, store_paths
-    from chess_variant_sandbox.agents.training.procedure import (
-        ACCEPT_NODES,
-        ACCEPT_PAIRS,
-        ACCEPT_SEED,
-    )
+    from chess_variant_sandbox.agents.training.procedure import ACCEPT_PAIRS, ACCEPT_SEED
     from chess_variant_sandbox.agents.training.store import accept
     from chess_variant_sandbox.measurement import built_fingerprint
 
@@ -2581,7 +2581,8 @@ def _duel_only(
             spec,
             procedure,
             pairs=args.duel_pairs if args.duel_pairs is not None else ACCEPT_PAIRS,
-            nodes=args.duel_nodes if args.duel_nodes is not None else ACCEPT_NODES,
+            # None: the game's own acceptance budget (6,400; 1,600 in rounds, Q918g).
+            nodes=args.duel_nodes,
             workers=workers,
             seed=args.duel_seed if args.duel_seed is not None else ACCEPT_SEED,
             reference=args.duel_against,

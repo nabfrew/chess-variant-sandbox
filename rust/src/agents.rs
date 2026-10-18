@@ -274,8 +274,9 @@ impl AgentSpec {
         // Schema 26: a round is a matrix game (`plan-simultaneous.md` §6.2). `random`,
         // `greedy` (its matrix arm) and `matrix:nodes=N` play one; `minimax` and `mcts` are
         // refused, so one name never means two algorithms on one game. The round players
-        // read the built-in objective only: a heuristic, fitted, searched or learned one
-        // was made for one mover at a time. `matrix` plays rounds and nothing else.
+        // read the built-in objective or a learned net trained on rounds (Q918g): a
+        // heuristic, fitted or searched one was made for one mover at a time. `matrix`
+        // plays rounds and nothing else.
         // Schema 27 (Q935b): a spy game alternates, then plays announced rounds, then blind
         // ones (`plan-spy.md` §3.3). `random`, `greedy` and `minimax:nodes=N` play every
         // phase (`spy_players.rs`; minimax plays a blind round as `matrix:` would), so one
@@ -297,11 +298,22 @@ impl AgentSpec {
                 )
                 .to_string());
             }
-            if !self.weights.is_empty() || !self.values.is_empty() || self.net.is_some() {
+            // Q918g (`plan-simultaneous.md` §6.4): a learned net plays a round game, read
+            // from seat 0 and negated for seat 1 (`net.rs`); it learns the round's own state
+            // from its round segments. Not in a spy game, whose turns and rounds no net has
+            // been trained across.
+            if !self.weights.is_empty() || !self.values.is_empty() {
                 return Err(concat!(
                     "a simultaneous game (rules.simultaneous) is played on the built-in ",
-                    "objective only; a heuristic, fitted, searched or learned objective ",
-                    "was made for alternating play",
+                    "objective only, or a learned net trained on rounds; a heuristic, fitted ",
+                    "or searched objective was made for alternating play",
+                )
+                .to_string());
+            }
+            if self.net.is_some() && t.spy.is_some() {
+                return Err(concat!(
+                    "a spy game (pieces[].spy) is played on the built-in objective only; no ",
+                    "learned net has been trained across its turns and rounds",
                 )
                 .to_string());
             }
@@ -422,7 +434,7 @@ impl Player {
         let pair = PieceValues::of(values, &spec.values, t)
             .expect("AgentSpec::check_against refuses this at the boundary");
         let eval = match &spec.net {
-            Some(net) if matches!(spec.kind, Kind::Greedy | Kind::Minimax) => Objective::Net(
+            Some(net) if matches!(spec.kind, Kind::Greedy | Kind::Minimax | Kind::Matrix) => Objective::Net(
                 Box::new(NetEvaluator::new(t, Arc::clone(net), pair.derived().to_vec())),
             ),
             _ => Objective::new(t, &spec.weights, &pair, mobility, goal, immune),

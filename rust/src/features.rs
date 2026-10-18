@@ -731,14 +731,19 @@ impl Objective {
         }
     }
 
-    /// Schema 26 (Q918b): the objective in a round, mobility mine minus theirs. Only the
-    /// built-in objective plays rounds (`AgentSpec::check_against` refuses the others on a
-    /// simultaneous game), so the other two arms are unreachable.
+    /// Schema 26 (Q918b): the objective in a round, mobility mine minus theirs. The
+    /// built-in objective and, since Q918g, a learned net play rounds (`AgentSpec::
+    /// check_against` refuses a heuristic on a simultaneous game). The net reads no move
+    /// list: its one head is seat 0's (`game.side` stays 0 in a round) and seat 1's score
+    /// is its negation (`NetEvaluator::evaluate`).
     #[inline]
     pub fn evaluate_round(&mut self, game: &Game<'_>, player: usize, lists: [&[u32]; 2]) -> f64 {
         match self {
             Objective::Builtin(e) => e.evaluate_round(game, player, lists),
-            _ => unreachable!("check_against refuses a heuristic or net objective in a round"),
+            Objective::Net(e) => e.evaluate(game, player),
+            Objective::Heuristic(_) => {
+                unreachable!("check_against refuses a heuristic objective in a round")
+            }
         }
     }
 

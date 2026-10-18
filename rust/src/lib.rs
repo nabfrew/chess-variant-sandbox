@@ -738,12 +738,21 @@ impl Core {
     /// from one evaluator whose accumulator is carried along the line (the incremental
     /// path the search uses), `inputs` the active input indices, and `fresh` from an
     /// accumulator summed from nothing. The moves must be legal in turn.
+    ///
+    /// Q918g: in a round game the moves are a record's flat list, each round's two in seat
+    /// order, and a position is the start and after each round (`make_round`); an odd
+    /// count is refused. A spy game, whose steps mix turns and rounds, is refused.
     fn net_line(
         &self,
         state: StateIn,
         net: Vec<u8>,
         moves: Vec<u32>,
     ) -> PyResult<Vec<(i64, Vec<u32>, i64)>> {
+        if self.tables.spy.is_some() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "net_line walks turns or rounds; a spy game mixes the two",
+            ));
+        }
         let parsed = net::Net::parse(&net).map_err(pyo3::exceptions::PyValueError::new_err)?;
         parsed
             .check_against(&self.tables)
@@ -761,6 +770,18 @@ impl Core {
             (raw, inputs, fresh)
         };
         out.push(step(&game));
+        if self.tables.simultaneous.is_some() {
+            if !moves.len().is_multiple_of(2) {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "a round game's line is its rounds' moves in pairs; this one has an odd count",
+                ));
+            }
+            for pair in moves.chunks_exact(2) {
+                game.make_round([pair[0], pair[1]]);
+                out.push(step(&game));
+            }
+            return Ok(out);
+        }
         for m in moves {
             game.make(m);
             out.push(step(&game));
@@ -850,6 +871,45 @@ impl Core {
             .collect();
         Ok(py.detach(|| {
             parallel::search_values(&self.tables, &snapshots, &spec, &values, &seeds, threads)
+        }))
+    }
+
+    /// Q918g (`plan-simultaneous.md` §6.4): a round player's own value of each round, for
+    /// player 0, the round games' player teacher (`search_values` is minimax's).
+    ///
+    /// One `(value, depth)` per state, in order: the value, in the agent's objective's
+    /// units, of the matrix game the player would draw from there (greedy's one-round
+    /// matrix, or `matrix:nodes=N`'s last solve) at the strategies it would draw with, and
+    /// the last pass that finished. `None` where the round is over before anyone chooses.
+    /// No stream is read. Spread over `threads`; the answer does not depend on how many
+    /// (`parallel::round_values`). A training label's teacher, never a player.
+    #[pyo3(signature = (states, agent, values, threads = 1))]
+    fn round_values(
+        &self,
+        py: Python<'_>,
+        states: Vec<StateIn>,
+        agent: AgentIn,
+        values: Vec<f64>,
+        threads: usize,
+    ) -> PyResult<Vec<Option<(f64, u32)>>> {
+        if self.tables.simultaneous.is_none() || self.tables.spy.is_some() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "round_values is for a game played in rounds (rules.simultaneous, no spy)",
+            ));
+        }
+        let spec = agent_spec(&self.tables, &agent)?;
+        if !matches!(spec.kind, agents::Kind::Greedy | agents::Kind::Matrix) {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "round_values asks a round player that searches (greedy, matrix) for its                  value; {} is not one",
+                agent.0
+            )));
+        }
+        let snapshots: Vec<Snapshot> = states
+            .iter()
+            .map(|state| snapshot_from(&self.tables, state))
+            .collect();
+        Ok(py.detach(|| {
+            parallel::round_values(&self.tables, &snapshots, &spec, &values, threads)
         }))
     }
 

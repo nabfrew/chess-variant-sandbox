@@ -163,8 +163,12 @@ class GreedyAgent:
         self.strategy = pure(lists[seat], move)
         return move
 
-    def _round_evaluator(self) -> Evaluator:
-        assert isinstance(self.evaluator, Evaluator), "a round plays the built-in objective"
+    def _round_evaluator(self) -> Any:
+        from chess_variant_sandbox.agents.nets import NetEvaluator
+
+        assert isinstance(self.evaluator, Evaluator | NetEvaluator), (
+            "a round plays the built-in objective or a learned net (Q918g)"
+        )
         return self.evaluator
 
     def _round_search(self) -> RoundSearch:
@@ -194,7 +198,7 @@ def _native_random(options: dict[str, Any], ruleset_hash: str = "") -> NativeSpe
 @register("greedy")
 def _build_greedy(engine: Engine, options: dict[str, Any]) -> GreedyAgent:
     if engine.simultaneous:
-        refuse_alternating_objective(options, "greedy")
+        refuse_alternating_objective(options, "greedy", spy=engine.spy)
     return GreedyAgent(
         engine,
         mobility=float(options.get("mobility", 0.05)),

@@ -43,10 +43,12 @@ REGRET_ITERATIONS = 100
 # budget ends a search long before this on any board worth playing.
 MAX_DEPTH = 64
 
-# The objective options a round player may not take. A heuristic, fitted, searched or
-# learned objective reads one mover's mobility and was fitted on alternating play;
+# The objective options a round player may not take. A heuristic, fitted or searched
+# objective reads one mover's mobility and was fitted on alternating play;
 # `plan-simultaneous.md` §6.2 measures whether the round players need their own (Q918d).
-_ALTERNATING_OBJECTIVES = ("h", "fit", "values", "net")
+# A learned net may (Q918g, §6.4): one trained on rounds reads the round's own state. Not in
+# a spy game, whose turns and rounds no net has been trained across.
+_ALTERNATING_OBJECTIVES = ("h", "fit", "values")
 
 
 def solve(
@@ -147,8 +149,9 @@ class _Exhausted(Exception):
 class RoundSearch:
     """The matrix search, shared by greedy's round arm and `matrix:`."""
 
-    def __init__(self, engine: Engine, evaluator: Evaluator) -> None:
+    def __init__(self, engine: Engine, evaluator: Any) -> None:
         self.engine = engine
+        # The built-in `Evaluator`, or a learned net's `nets.NetEvaluator` (Q918g).
         self.evaluator = evaluator
         self.nodes = 0
         self.budget = 0
@@ -189,19 +192,31 @@ class RoundSearch:
         return game_value(values, p, q)
 
 
-def round_evaluator(engine: Engine, mobility: float, goal: float, immune: float) -> Evaluator:
+def round_evaluator(
+    engine: Engine, mobility: float, goal: float, immune: float, net: bytes = b""
+) -> Any:
+    """The round players' objective: the built-in evaluator, or a learned net (Q918g),
+    whose ``evaluate_round`` is ``Objective::evaluate_round``'s net arm."""
+    if net:
+        from chess_variant_sandbox.agents.nets import NetEvaluator
+
+        derived = Evaluator.for_engine(engine, mobility_weight=mobility).values
+        return NetEvaluator(engine, net, derived)
     return Evaluator.for_engine(
         engine, mobility_weight=mobility, goal_pieces=goal, immune_pieces=immune
     )
 
 
-def refuse_alternating_objective(options: dict[str, Any], kind: str) -> None:
-    """A round player plays the built-in objective only (`plan-simultaneous.md` §6.2)."""
-    named = [key for key in _ALTERNATING_OBJECTIVES if options.get(key) is not None]
+def refuse_alternating_objective(options: dict[str, Any], kind: str, spy: bool = False) -> None:
+    """A round player plays the built-in objective only (`plan-simultaneous.md` §6.2), or
+    a learned net trained on rounds (Q918g, §6.4); a spy game's players the built-in only."""
+    refused = (*_ALTERNATING_OBJECTIVES, "net") if spy else _ALTERNATING_OBJECTIVES
+    named = [key for key in refused if options.get(key) is not None]
     if named:
         raise ValueError(
-            f"{kind} on a simultaneous game plays the built-in objective only; "
-            f"{', '.join(named)} names an objective made for alternating play"
+            f"{kind} on a simultaneous game plays the built-in objective only, or a learned "
+            f"net trained on rounds; {', '.join(named)} names an objective made for "
+            "alternating play" + (" (no net plays a spy game)" if spy else "")
         )
 
 
@@ -237,6 +252,7 @@ class MatrixAgent:
         max_depth: int = MAX_DEPTH,
         goal: float = GOAL_PIECES,
         immune: float = IMMUNE_PIECES,
+        net: bytes = b"",
     ) -> None:
         if not engine.simultaneous:
             raise ValueError(
@@ -246,7 +262,7 @@ class MatrixAgent:
         self.engine = engine
         self.nodes = max(1, nodes)
         self.max_depth = max_depth
-        self.search = RoundSearch(engine, round_evaluator(engine, mobility, goal, immune))
+        self.search = RoundSearch(engine, round_evaluator(engine, mobility, goal, immune, net))
         self.name = f"matrix:nodes={nodes}"
         self.stats = SearchStats()
         self.depth = 0
@@ -286,6 +302,25 @@ def matrix_round(
     stats.moves += 1
     if len(mine) == 1:
         return mine[0], [1.0], 0
+    _values, p, _q, done = matrix_search(search, state, seat, mine, theirs, budget, max_depth)
+    stats.nodes += search.nodes
+    stats.depth_sum += done
+    stats.searches += 1
+    return draw(mine, p, rng), p, done
+
+
+def matrix_search(
+    search: RoundSearch,
+    state: GameState,
+    seat: int,
+    mine: list[int],
+    theirs: list[int],
+    budget: int,
+    max_depth: int,
+) -> tuple[list[float], list[float], list[float], int]:
+    """The deepening `matrix:nodes=budget` does at a root, without the draw: the cells'
+    values, the strategy pair of the last solve and the last pass that finished
+    (`matrix.rs::matrix_search`). ``search.nodes`` is what it spent."""
     search.nodes = 0
     search.budget = budget
     search.bounded = False
@@ -312,10 +347,28 @@ def matrix_round(
         if not complete:
             break
         done = depth
-    stats.nodes += search.nodes
-    stats.depth_sum += done
-    stats.searches += 1
-    return draw(mine, p, rng), p, done
+    return values, p, q, done
+
+
+def round_value_for_first(
+    search: RoundSearch,
+    state: GameState,
+    lists: tuple[list[int], list[int]],
+    budget: int | None,
+    max_depth: int = MAX_DEPTH,
+) -> tuple[float, int]:
+    """Q918g: the round player's own value of this round for player 0 and its last finished
+    pass -- `matrix.rs::round_value_for_first`, the oracle for `Core.round_values`. ``budget``
+    ``None`` is greedy (the one-round matrix); a number is `matrix:nodes=budget`."""
+    mine, theirs = lists
+    if budget is None:
+        search.nodes = 0
+        search.bounded = False
+        values = search.cells(state, 0, mine, theirs, 1)
+        p, q = solve(values, len(mine), len(theirs))
+        return game_value(values, p, q), 1
+    values, p, q, done = matrix_search(search, state, 0, mine, theirs, budget, max_depth)
+    return game_value(values, p, q), done
 
 
 def pure(moves: list[int], chosen: int) -> list[float]:
@@ -388,6 +441,8 @@ SPY_REFUSAL = (
 
 @register("matrix")
 def _build_matrix(engine: Engine, options: dict[str, Any]) -> MatrixAgent:
+    from chess_variant_sandbox.agents.nets import require_net
+
     refuse_alternating_objective(options, "matrix")
     if engine.spy:
         raise ValueError(SPY_REFUSAL)
@@ -398,11 +453,14 @@ def _build_matrix(engine: Engine, options: dict[str, Any]) -> MatrixAgent:
         max_depth=int(options.get("max_depth", MAX_DEPTH)),
         goal=float(options.get("goal", GOAL_PIECES)),
         immune=float(options.get("immune", IMMUNE_PIECES)),
+        net=require_net(options, engine.spec.hash),
     )
 
 
 @register_native("matrix")
 def _native_matrix(options: dict[str, Any], ruleset_hash: str = "") -> NativeSpec:
+    from chess_variant_sandbox.agents.nets import require_net
+
     refuse_alternating_objective(options, "matrix")
     return (
         "matrix",
@@ -415,6 +473,7 @@ def _native_matrix(options: dict[str, Any], ruleset_hash: str = "") -> NativeSpe
         (),
         (),
         float(options.get("immune", IMMUNE_PIECES)),
-        b"",
+        # Q918g: a learned net trained on rounds, or nothing (the built-in objective).
+        require_net(options, ruleset_hash),
         0,
     )

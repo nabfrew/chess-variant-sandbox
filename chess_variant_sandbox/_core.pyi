@@ -176,6 +176,16 @@ class Core:
         seeds: list[int],
         threads: int = ...,
     ) -> list[tuple[float, int, int] | None]: ...
+    # Q918g: a round player's (greedy, matrix) own value of each round for player 0 and
+    # its last finished pass; a round game's training teacher. No stream; the answer does
+    # not depend on `threads`. In a round game `net_line`'s moves are rounds in pairs.
+    def round_values(
+        self,
+        states: list[tuple[Any, ...]],
+        agent: NativeSpec,
+        values: list[float],
+        threads: int = ...,
+    ) -> list[tuple[float, int] | None]: ...
     def play_from(
         self,
         state: tuple[Any, ...],
