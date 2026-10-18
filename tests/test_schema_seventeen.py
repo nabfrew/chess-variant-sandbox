@@ -219,6 +219,61 @@ class TestTheCompiledTables:
         assert home(0, "B", "d4") == "c1"
         assert home(1, "B", "d4") == "f8"
         assert home(1, "Q", "a1") == "d8"
+        # Q963: on a home file the colour still decides for a type with one home of each
+        # colour. Until then the file came first, and a knight taken on b4 went to b1.
+        assert home(0, "N", "b4") == "g1"  # b4 is dark, as g1 is
+        assert home(0, "N", "g5") == "g1"
+        assert home(1, "N", "g5") == "b8"
+        assert home(0, "B", "c4") == "f1"  # a light-squared bishop stays one
+        assert home(1, "B", "f3") == "c8"
+        assert home(0, "R", "h4") == "a1"
+        assert home(0, "Q", "e5") == "d1"
+        assert home(0, "P", "c5") == "c2"  # a pawn's file still decides
+
+    def test_every_rebirth_keeps_a_one_per_colour_piece_on_its_colour(
+        self, games: dict[str, dict[str, Any]]
+    ) -> None:
+        spec = compile_spec(games["circe"])
+        strike = spec.strike
+        assert strike is not None
+        width = spec.width
+        for piece in ("R", "N", "B"):
+            for owner in (0, 1):
+                for taken in range(spec.n_squares):
+                    reborn = strike.rebirth[
+                        (owner * spec.n_types + spec.piece_ids.index(piece)) * spec.n_squares
+                        + taken
+                    ]
+                    shade = (reborn % width + reborn // width) % 2
+                    assert shade == (taken % width + taken // width) % 2, (piece, owner, taken)
+
+    def test_the_file_still_decides_for_a_type_with_two_homes_of_one_colour(
+        self, games: dict[str, dict[str, Any]]
+    ) -> None:
+        # Two rooks on one colour (a1, c1): colour cannot tell them apart, so the file
+        # does, then the nearest -- the reading the generic rule keeps for pawns.
+        spec = copy.deepcopy(games["circe"])
+        for placement in spec["setup"]["placements"]:
+            if placement["piece"] == "R":
+                placement["squares"] = ["a1", "c1"]
+            elif placement["piece"] == "B":
+                placement["squares"] = ["f1", "h1"]
+        del spec["rules"]["castling"]
+        assert validate_spec(spec) == []
+        compiled = compile_spec(spec)
+        strike = compiled.strike
+        assert strike is not None
+        rook = compiled.piece_ids.index("R")
+        lookup = {
+            taken: strike.rebirth[rook * compiled.n_squares + _square(taken)]
+            for taken in ("a5", "c6", "b4", "h8")
+        }
+        assert lookup == {
+            "a5": _square("a1"),
+            "c6": _square("c1"),
+            "b4": _square("a1"),  # dark, as a1 and c1 are: nearest by file, then lower
+            "h8": _square("c1"),  # dark too: c1 is nearer by file
+        }
 
     def test_andernach_crosses_as_the_contact_tables(
         self, games: dict[str, dict[str, Any]]
@@ -282,6 +337,21 @@ class TestTheCorePlaysIt:
             and engine.spec.piece_ids[engine.spec.type_of(value)] == "P"
         )
         assert white_pawns == 7
+
+    def test_circe_sends_a_knight_home_by_its_colour_in_play(
+        self, games: dict[str, dict[str, Any]]
+    ) -> None:
+        # Q963. 1. Nc3 a6 2. Nf3 a5 3. Nh4 a4 4. Ng6 hxg6: the king's knight falls on g6,
+        # a light square, so it is reborn on b1 (light, emptied by 1. Nc3), not on g1.
+        engine = Engine(games["circe"])
+        line = [
+            ("b1", "c3"), ("a7", "a6"), ("g1", "f3"), ("a6", "a5"),
+            ("f3", "h4"), ("a5", "a4"), ("h4", "g6"), ("h7", "g6"),
+        ]
+        after = _play(engine, engine.initial_state(), line)
+        assert _occupant(engine, after, "g6") == (1, "P")
+        assert _occupant(engine, after, "b1") == (0, "N")
+        assert _occupant(engine, after, "g1") is None
 
     def test_andernach_sends_the_capturer_over(self, games: dict[str, dict[str, Any]]) -> None:
         engine = Engine(games["andernach"])

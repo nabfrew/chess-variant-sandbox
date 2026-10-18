@@ -217,7 +217,9 @@ class TestTheWrapCard:
 # hexagon branches (`624ece8`): sha256 of the text, first sixteen hex digits.
 _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "archive/andernach": "ffbf81cb033dc03c",  # Q540, schema 17; 2026-10-18: its description, written as the game's idea (was 62f0b7d191b8acf6)
-    "archive/circe": "4cb05e7cd7912979",  # Q540, schema 17; 2026-10-18: its description, written as the game's idea (was dd25abf2bc7c6f21)
+    # Q963, 2026-10-18: the rebirth sentence states orthodox Circe (colour first for a type
+    # with one home of each colour), in the rules prose and in the description (was 4cb05e7cd7912979).
+    "archive/circe": "729cb1f3b5c4691e",  # Q540, schema 17; 2026-10-18: its description, written as the game's idea (was dd25abf2bc7c6f21)
     "archive/kamikaze": "38d6273d3ddc7a2d",  # Q540, schema 17; 2026-10-18: its description, written as the game's idea (was 86810a81183707bc)
     "archive/rifle": "c59b317de29cd328",  # Q540, schema 17; 2026-10-18: its description, written as the game's idea (was 7ea1669e4e1aa9e2); 2026-10-18: its description's first sentence, for the new-games card (was e01240bc0637b02d)
     "archive/einstein": "b32d9486a7a3b562",  # Q781, schema 18; 2026-10-18: its description, written as the game's idea (was d3b6b02f8466f39b)

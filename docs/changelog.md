@@ -13,6 +13,14 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-18
 
+### Circe now follows the real Circe rule
+
+In *circe*, a captured piece comes back to life on one of its starting squares. A captured rook, knight or bishop now
+returns to the starting square of the same colour as the square it was taken on, as in the published game, so a bishop
+always keeps its colour. Before, it went back to the starting square on the same file, which differed for captures on
+six of the eight files. The game was measured again under the corrected rule and now counts as a playable game, where
+before it fell just short.
+
 ### Every game says what it is about
 
 Sixty-six games have new descriptions. Most used to be a list of rules, which the page already prints beside them,

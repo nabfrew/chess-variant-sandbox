@@ -622,10 +622,17 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "and lets it place the struck piece on a square of "
                             "'landing'. 'home' advances the attacker and puts the "
                             "struck piece -- itself under 'capture', what the chain "
-                            "makes it otherwise -- back on its home square, the one "
-                            "its side's setup gives its type on the capture's file, "
-                            "else on the capture square's colour; if that square is "
-                            "taken, or the type has no home, it is removed (circe)."
+                            "makes it otherwise -- back on its home square, one of "
+                            "the squares its side's setup gives its type. A type with "
+                            "at most one home on each colour goes to the one on the "
+                            "capture square's colour, so a rook, knight or bishop "
+                            "keeps its square colour; any other type, such as a pawn "
+                            "with a home on every file, goes to the one on the "
+                            "capture's file, else the one on the capture square's "
+                            "colour; failing both, the nearest. A hex board has no "
+                            "two colours, so there the file decides. If that square "
+                            "is taken, or the type has no home, it is removed "
+                            "(orthodox circe)."
                         ),
                     },
                     "switches_sides": {

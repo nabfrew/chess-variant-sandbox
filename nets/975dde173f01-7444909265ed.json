@@ -1,0 +1,113 @@
+{
+  "procedure": "7444909265ed",
+  "ruleset_hash": "975dde173f01",
+  "inputs_version": 1,
+  "verdict": "accepted",
+  "weights_sha256": "fdf06abbae4ed870793affe5cd1037254bb08b1391367851761112d6f94d79be",
+  "build": "47490df3bfedc24b",
+  "digest": "fdf06abbae4e",
+  "trainer_version": 1,
+  "recipe": {
+    "agents": [
+      "minimax:net=5fe1cb87d4c9,nodes=1600",
+      "minimax:nodes=1600"
+    ],
+    "games": 5000,
+    "seed": 0,
+    "opening_plies": 8,
+    "skip_plies": 2,
+    "stride": 1,
+    "result_weight": 0.0,
+    "label_nodes": 6400,
+    "label_depth": 8,
+    "td_lambda": 0.7,
+    "label_search": "parent",
+    "scale": 1.0,
+    "accumulator": 256,
+    "hidden1": 32,
+    "hidden2": 32,
+    "epochs": 8,
+    "batch": 1024,
+    "learning_rate": 0.001,
+    "init_seed": 0,
+    "parent": {
+      "procedure": "5fe1cb87d4c9",
+      "weights_sha256": "317025dfb0354389594cc78a85f2ca402546272fc62384b70b7b58b9668d9131"
+    },
+    "replay": {
+      "agents": [
+        "minimax:net=e03365fe43e7,nodes=1600",
+        "minimax:nodes=1600"
+      ],
+      "games": 5000,
+      "seed": 0,
+      "opening_plies": 8,
+      "net": {
+        "procedure": "e03365fe43e7",
+        "weights_sha256": "b054bfe364119f3f93e6d55b47523198f5398077cef10b47dbe383653c58d6d4"
+      }
+    }
+  },
+  "data": {
+    "digest": "710ed559a893fbc8214b6f79970218cd46ab03daf3a98b4e4113646648e8a0ac",
+    "games": 35000,
+    "positions": 1617088,
+    "most_active": 38
+  },
+  "training": {
+    "loss_by_epoch": [
+      0.02886874,
+      0.01828577,
+      0.01605937,
+      0.01465839,
+      0.01364243,
+      0.01280999,
+      0.01216724,
+      0.01162217
+    ],
+    "w0_limit": 127,
+    "quantization_error": 0.071254
+  },
+  "acceptance": {
+    "candidate": "minimax:net=7444909265ed,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 1000000,
+    "opening_plies": 8,
+    "score": 0.57125,
+    "error": 0.014547,
+    "games": 400,
+    "identical": 3,
+    "openings": 163,
+    "candidate_nodes": 53288878,
+    "reference_nodes": 52587935,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true,
+    "decided_after": 200,
+    "planned_pairs": 200
+  },
+  "lineage": {
+    "parent": "5fe1cb87d4c9",
+    "parent_weights_sha256": "317025dfb0354389594cc78a85f2ca402546272fc62384b70b7b58b9668d9131",
+    "teacher": "parent:317025dfb035"
+  },
+  "confirmation": {
+    "candidate": "minimax:net=7444909265ed,nodes=6400",
+    "reference": "minimax:nodes=6400",
+    "seed": 2000000,
+    "opening_plies": 8,
+    "score": 0.6025,
+    "error": 0.015265,
+    "games": 400,
+    "identical": 5,
+    "openings": 152,
+    "candidate_nodes": 54062406,
+    "reference_nodes": 53106523,
+    "bar": "score - 2 x error > 0.5",
+    "accepted": true,
+    "decided_after": 200,
+    "planned_pairs": 200,
+    "gate": "G-A2, plan-teacher.md \u00a78.3"
+  },
+  "kept": false,
+  "kept_by": "generation 3's gardner guard child, not kept: the generation is harmful here (G-G, R5-5; D2(parent) - D2(child) 0.101 > 0.045), so it becomes no one's procedure (\u00a79.3), plan-teacher.md \u00a79.15"
+}

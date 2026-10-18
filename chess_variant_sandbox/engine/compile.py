@@ -3904,12 +3904,22 @@ def _compile_rebirth(
     of ``owner`` and ``type`` taken on ``square``, or -1 where its side's setup has no
     piece of that type (a promoted queen in a game with no queen in the setup is removed).
 
-    A type's home squares are where the setup stands it for that side. Of those, the one
-    on the capture's file; failing that, the one on the capture square's colour (a square
-    board only: a hex board has three colours, and the step is skipped); failing that, all
-    of them. Within the set kept, the nearest by file, then by rank, then the lower square.
-    On chess's setup this is orthodox circe: a pawn goes back to its file, a rook, knight
-    or bishop to the home square of the capture square's colour, a queen to its own.
+    A type's home squares are where the setup stands it for that side. Which attribute
+    picks among them depends on how they stand (Q963, orthodox Circe, P. Monreal 1967):
+
+    * **Colour first** for a type with at most one home on each colour of a square board
+      (chess's rook, knight and bishop; a queen or king with one home): the home on the
+      capture square's colour, failing that all of them.
+    * **File first** for every other type (chess's pawns, a home on every file; and every
+      type on a hex board, which has three colours, so the colour step is skipped there):
+      the home on the capture's file, failing that the one on the capture square's colour,
+      failing that all of them.
+
+    Within the set kept, the nearest by file, then by rank, then the lower square. On
+    chess's setup this is orthodox Circe: a pawn goes back to its file, a rook, knight or
+    bishop to the home square of the capture square's colour (a white knight taken on b4
+    to g1, so a bishop keeps its square colour), a queen to her own square. Until Q963 the
+    file came first for every type, so a knight taken on b4 went to b1.
     """
     n_squares = len(board)
     stride = n_facings * n_types
@@ -3926,6 +3936,9 @@ def _compile_rebirth(
     for (owner, piece_type), squares in homes.items():
         if owner > 1:
             continue  # a wild piece is never struck: `npcs` is refused beside a strike
+        colour_first = not hex_lattice and all(
+            sum(1 for home in squares if colour(home) == shade) <= 1 for shade in (0, 1)
+        )
         for taken in range(n_squares):
             file, rank = taken % width, taken // width
             same_file = [home for home in squares if home % width == file]
@@ -3934,7 +3947,9 @@ def _compile_rebirth(
                 if not hex_lattice
                 else []
             )
-            kept = same_file or same_colour or squares
+            # A colour-first type never asks the file: on a home file of the other colour
+            # its home is the other one of the pair (a knight taken on b4 goes to g1).
+            kept = (same_colour if colour_first else same_file or same_colour) or squares
             best = min(
                 kept,
                 key=lambda home: (abs(home % width - file), abs(home // width - rank), home),

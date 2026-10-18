@@ -290,12 +290,18 @@ class TestARebirthIsWrittenWhereItHappened:
         state = engine.make_state({**KINGS, "b5": ("B", 0), "c6": ("N", 1)})
         assert _texts_of_captures(engine, state) == ["Bb5xc6"]
 
-    def test_a_rook_whose_home_is_a1_is_reborn_on_a1(self) -> None:
+    def test_a_rook_taken_on_its_home_file_is_reborn_by_the_squares_colour(self) -> None:
+        # Q963, orthodox Circe: a4 is light, so the rook goes to h1 (light), not to a1 on
+        # its file; until then the file came first and this read "reborn a1".
         engine = _chess_with(_circe(), drop=("castling",))
         state = engine.make_state(
             {**KINGS, "a4": ("R", 0), "a8": ("R", 1)}, side_to_move=1
         )
-        assert "Ra8xa4 (reborn a1)" in engine.move_texts(state)
+        assert "Ra8xa4 (reborn h1)" in engine.move_texts(state)
+        state = engine.make_state(
+            {**KINGS, "a5": ("R", 0), "a8": ("R", 1)}, side_to_move=1
+        )
+        assert "Ra8xa5 (reborn a1)" in engine.move_texts(state)
 
     def test_a_piece_with_no_home_is_removed_whatever_stands_on_the_last_square(self) -> None:
         # No bishop is placed by the setup, so none has a home; another black bishop stands

@@ -1597,10 +1597,13 @@ def _describe_strike(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         said = {
             "stay": "Taking a piece removes it, but the capturing piece stays where it "
             "stood and does not move to the square it took.",
-            "home": "A piece that is taken is reborn on its home square: the square the "
-            "setup gives its type on the capture's file, or failing that on the capture "
-            "square's colour. If that square is occupied, or the type has no home, the "
-            "piece is removed. A reborn piece stands as if it had never moved.",
+            "home": "A piece that is taken is reborn on its home square. A piece whose "
+            "type starts on at most one square of each colour goes back to the one of "
+            "the capture square's colour, so it keeps its square colour; any other "
+            "piece goes to its type's starting square on the capture's file, or failing "
+            "that of the capture square's colour. If that square is occupied, or the "
+            "type has no home, the piece is removed. A reborn piece stands as if it had "
+            "never moved.",
         }.get(position)
         lines = [said] if said else []
         lines += switch_lines
@@ -1626,8 +1629,9 @@ def _describe_strike(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         "choose": "the attacker takes the square and places the struck piece on "
         f"{_landing_phrase(strike)}; a piece with no such square cannot be taken",
         "home": "the attacker takes the square and the struck piece is reborn on its "
-        "home square (the setup's square for its type on the capture's file, or failing "
-        "that on the capture square's colour), or removed if that square is occupied",
+        "home square (for a type with at most one home of each colour, the one of the "
+        "capture square's colour; otherwise the one on the capture's file, or failing "
+        "that of the capture square's colour), or removed if that square is occupied",
     }[position]
 
     lines = [

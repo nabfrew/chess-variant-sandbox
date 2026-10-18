@@ -300,7 +300,13 @@ FROZEN: dict[str, tuple[str, str]] = {
     # Q540, 2026-10-09: schema 17's showcases, chess with one rule each about what a
     # capture leaves behind (rifle, circe, Andernach, kamikaze).
     "archive/rifle.json": ("f7a789809758", "0fb33501ce9f14b3"),
-    "archive/circe.json": ("54a0a193da0f", "33948d3b415bd51e"),
+    # Q963, 2026-10-18: `position: "home"` reads the colour first for a type with at most
+    # one home of each colour (orthodox Circe: a knight taken on b4 is reborn on g1, not
+    # b1), so 48 of circe's rebirth entries moved, the rook, knight and bishop taken on a
+    # home file on the other colour. Circe is the only spec in the tree that moved
+    # (`tests/_simultaneous_circe.json` has one home per officer and compiles as before);
+    # re-measured, the old score kept under `runs/54a0a193da0f/previous/`.
+    "archive/circe.json": ("54a0a193da0f", "b6ab29ca41ad93ee"),  # was 33948d3b415bd51e
     "archive/andernach.json": ("f9e5dbf3ff1f", "05eec37015be2352"),
     "archive/kamikaze.json": ("6cd3785c7246", "e626905b911bbd2b"),
     # Q787, 2026-10-09: the three showcases the 2026-10-09 audit found missing (gaps G1 to G3
