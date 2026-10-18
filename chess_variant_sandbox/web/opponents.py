@@ -12,7 +12,7 @@ tuple could express the first and never the second.
 read by the index; heuristic players are kept out of it by construction, because
 `rating_spread` reads the whole table and no name filter can reach that. So the on-demand
 run below writes `runs/opponents/<hash>.json`, which nothing in `metrics/` looks at. Its
-games are kept beside it since L3 (`docs/plan-leaderboard.md` §2.2), as
+games are kept beside it since L3 (`docs/archive/plan-leaderboard.md` §2.2), as
 `runs/opponents/<hash>.games.jsonl` -- the seats, the seed and the winner, never a run
 directory's `games.jsonl` -- so a newly offered player can be added to a ladder by playing
 its own games alone; nothing under `metrics/` reads those either.
@@ -95,7 +95,7 @@ HUMAN = "human"
 # leads and is the whole of what a sentence calls it** (*medium could not move*); the
 # words are `play.strength`'s for the budget it plays at, the same words the seat panel
 # prints under a seat, so the picker and the board name one player one way (F7 of
-# `docs/reference/first-visit-study.md`; `docs/plan-understanding.md` §3.3, P2-P5). The
+# `docs/reference/first-visit-study.md`; `docs/archive/plan-understanding.md` §3.3, P2-P5). The
 # agent string is the player's identity and never changes here: only what it is called.
 RUNGS: tuple[tuple[str, str, str], ...] = (
     (HUMAN, "you", ""),
@@ -206,7 +206,7 @@ class Opponent:
                 "about": self.about, "practiceOnly": self.practice_only}
 
 
-# Schema 26 (Q918c, `docs/plan-simultaneous.md` §6.2): the rungs of a game played in rounds.
+# Schema 26 (Q918c, `docs/archive/plan-simultaneous.md` §6.2): the rungs of a game played in rounds.
 # `minimax:` and `mcts:` are refused there (one name never means two algorithms on one
 # game), and so is every stored objective (`h=`, `fit=`, `values=`, `net=`): the round
 # players read the built-in evaluator only (Q918b). The names are the ladder's, so *medium*
@@ -913,7 +913,7 @@ def learned_for(
     **Where the game has a rated net** (`nets.rated_net`, the net its measuring roster
     plays, Q502h) **that net is the one offered, and it is rated** (Q913): a player of the
     picker's ladder like any other, so it reaches the game's one leaderboard
-    (`docs/plan-leaderboard.md` §2.1), named *the learned player*. Anywhere else it is
+    (`docs/archive/plan-leaderboard.md` §2.1), named *the learned player*. Anywhere else it is
     **practice only**: never rated, never in the on-demand rating run, named *the learned
     player (experimental)*, and the plan says so in the sentence a person reads under the
     menu.
@@ -1222,7 +1222,7 @@ def stored_path(ruleset_hash: str, runs_dir: str | Path) -> Path:
 
 # ------------------------------------------------- the ladder's stamp and its games (L3)
 
-# `docs/plan-leaderboard.md` §2.2. A ladder written since L3 says what it rated, on what
+# `docs/archive/plan-leaderboard.md` §2.2. A ladder written since L3 says what it rated, on what
 # build and when, and keeps its games beside it, so a newly offered player can be added by
 # playing its games alone (a *top-up*) and a reader can tell a ladder whose players have
 # since changed. A file without `format` is one from before, read as before: its standings
@@ -1388,7 +1388,7 @@ def write_ladder(
 def move_aside(ruleset_hash: str, runs_dir: str | Path, date: str | None = None) -> Path | None:
     """Move a game's ladder and its games to `runs/opponents/before-<date>/`, never deleting.
 
-    `--rerate`'s first step (`plan-launch-set.md` §4.3, `plan-leaderboard.md` §2.2). A
+    `--rerate`'s first step (`docs/archive/plan-launch-set.md` §4.3, `docs/archive/plan-leaderboard.md` §2.2). A
     second re-rating on one day goes to `before-<date>.2/` and so on, so nothing is ever
     written over. Returns the directory, or ``None`` when there was no ladder to move.
     """
@@ -1775,7 +1775,7 @@ def spine_roster() -> list[Opponent]:
     """The five standard players (`SPINE`) as the picker names them, weakest first.
 
     The players the site rates on its own server when a member publishes a game
-    (`docs/plan-leaderboard.md` §2.6 step 1): they are the same on every board, so they
+    (`docs/archive/plan-leaderboard.md` §2.6 step 1): they are the same on every board, so they
     need no heuristic store, fit or outside engine, and their 40 games cost seconds on most
     games. The rest of the picker joins later as a top-up over these games (L6).
     """

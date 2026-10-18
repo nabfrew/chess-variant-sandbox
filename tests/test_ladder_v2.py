@@ -1,6 +1,6 @@
 """The picker ladder since L3: its stamp, its kept games, the top-up and the move-aside.
 
-`docs/plan-leaderboard.md` §2.2. A ladder is `web.opponents.Ratings`' run over a game's
+`docs/archive/plan-leaderboard.md` §2.2. A ladder is `web.opponents.Ratings`' run over a game's
 picker. Since L3 it says what it rated, on what build and when, and keeps its games beside
 it, so a newly offered player is added by playing its own games against the spine alone
 and the fit is redone over the old games and the new. These play real, tiny ladders on

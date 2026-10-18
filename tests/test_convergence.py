@@ -1,4 +1,4 @@
-"""The convergence record (Q650, `docs/plan-confidence.md` §3.2 step 4 and §4 T5).
+"""The convergence record (Q650, `docs/archive/plan-confidence.md` §3.2 step 4 and §4 T5).
 
 What these hold down:
 

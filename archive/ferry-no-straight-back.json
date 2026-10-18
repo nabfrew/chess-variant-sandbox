@@ -1,7 +1,7 @@
 {
   "schema_version": 20,
   "name": "steady ferry",
-  "description": "Ferry (Los Alamos chess with two numbered pairs of portals on the two middle rows, pair 1 from b3 to e4, pair 2 from e3 to b4, every end moved by either player and open both ways to both) with one rule added: a portal that has just been moved may not be moved straight back onto the square it came from on the very next move. It may be moved anywhere else, its partner may be moved, and on the move after that it may go back. That one ban ends ferry's shuffling: draws by repetition fall from about two games in five to fewer than one in ten, and most games are won.",
+  "description": "Doors that either player may move, and one ban that stops them becoming a way to stall. Two pairs of portals cross the middle of a six-by-six board, b3 joined to e4 and e3 to b4: a piece that ends its move on one end comes out one step beyond the other end of its pair, in the direction it was travelling, capturing there as usual, and either player may instead move any portal a step. The ban: a portal just moved may not go straight back on the very next move, which is always the opponent's, so you can never simply undo your opponent's door move but must answer it some other way. Without the ban about two games in five were drawn by the players undoing each other's portal moves; with it fewer than one in ten end in repetition, portals move more, and most games are won. The armies are Los Alamos chess's: six-by-six chess without bishops, castling or a pawn's double step.",
   "board": {
     "width": 6,
     "height": 6
@@ -236,7 +236,7 @@
     "added": "2026-10-10",
     "origin": "human",
     "source": "archive/ferry-no-straight-back",
-    "history": "Q807 (2026-10-10): archive/ferry with rules.portals[].no_straight_back on both pairs (schema 20), the answer to Ferry's repetition by shuffling (0.404 of its games, docs/reference/portal-showcases.md). Designed in docs/plan-portals.md 'Ferry's shuffle'; pre-registered in docs/reference/portal-showcases.md before it was measured.",
+    "history": "Q807 (2026-10-10): archive/ferry with rules.portals[].no_straight_back on both pairs (schema 20), the answer to Ferry's repetition by shuffling (0.404 of its games, docs/reference/portal-showcases.md). Designed in docs/archive/plan-portals.md 'Ferry's shuffle'; pre-registered in docs/reference/portal-showcases.md before it was measured.",
     "parents": [
       "1501615e08e2"
     ]

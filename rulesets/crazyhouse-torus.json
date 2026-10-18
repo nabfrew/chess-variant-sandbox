@@ -1,7 +1,7 @@
 {
   "schema_version": 25,
   "name": "torus crazyhouse",
-  "description": "Rear guard torus chess with crazyhouse's hand: a captured piece changes sides and may later be put back on the board as a move. A pawn comes back as a pawn facing forward, whichever way it faced when it was taken, onto the ranks in front of its army, so a rear guard that falls is not rebuilt. On chess the hand makes a sharp game sharper (crazyhouse); on a board with no corner to trap a king in it goes too far: every capture comes back, there are more than twice as many moves to choose from, and the lead changes hands more often than in any other wrapped game, which makes a sharp game but a hard one to read.",
+  "description": "A board with no edges, where every capture comes back. On a seven by fourteen board with both pairs of opposite edges joined, a piece leaving one edge reappears on the opposite one and there is no corner to trap a king in. Each army is a sandwich: its pieces stand between a front line of pawns facing the enemy and a rear guard of pawns facing backwards, towards the join behind them, which nothing ever turns round. On top sits the rule of crazyhouse, a popular chess variant: a captured piece changes sides into its captor's hand and may later be put back on the board as a move. A pawn comes back facing forward, and only onto the six middle ranks between the front lines, so a fallen rear guard is never rebuilt. Every capture has to be weighed against the piece it hands the opponent to drop. With no corner to mate in, the hand goes too far: there are more than twice as many moves to choose from as without it, the lead changes hands often, and the game is sharp but hard to read.",
   "board": {
     "width": 7,
     "height": 14

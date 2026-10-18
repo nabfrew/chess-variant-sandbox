@@ -119,7 +119,7 @@ function narrow(parent, label, said) {
 }
 
 // The counts are absent until the first of them is non-zero: three noughts read as a
-// score nobody has started (L2 of `docs/plan-launch.md` §3.2). `drawStart` says what to
+// score nobody has started (L2 of `docs/archive/plan-launch.md` §3.2). `drawStart` says what to
 // do in their place.
 function drawCounts(counts) {
   const where = document.getElementById('counts');
@@ -251,7 +251,7 @@ function drawCarryOn(entries) {
 }
 
 // Q570, Q627, Q572. *Correspondence* (s6 of the mock): the line of what you finished
-// (`docs/plan-return.md` §1.6), absent until there is one, then your running games
+// (`docs/archive/plan-return.md` §1.6), absent until there is one, then your running games
 // against other people under *Your move* and *Their move*, in the server's order
 // (`correspondence.started_order`: your move first, then theirs, each by the time left to
 // move). When the last move landed and the time left to move are facts in the server's
@@ -304,7 +304,7 @@ function drawBetween(between) {
   where.appendChild(rule);
 }
 
-// Q572, `docs/plan-return.md` §1.5 and s6 of the mock. The one email's box, off unless
+// Q572, `docs/archive/plan-return.md` §1.5 and s6 of the mock. The one email's box, off unless
 // the person ticks it, with the server's sentences saying exactly what it does and that
 // nothing else is ever sent. Ticking or unticking is saved at once and said in the note.
 function drawMoveEmail(box) {
@@ -387,7 +387,7 @@ function drawInvite(box) {
   }
 }
 
-// Q606, `docs/plan-return.md` §3 C4 (R10): *list me on the games I made as taking
+// Q606, `docs/archive/plan-return.md` §3 C4 (R10): *list me on the games I made as taking
 // challengers*, one switch, off unless you switch it on, and absent for somebody with no
 // published game of their own. Saved at once and said in the note, as the boxes above are.
 function drawTakesChallengers(box) {
@@ -421,7 +421,7 @@ function drawTakesChallengers(box) {
   });
 }
 
-// Q596, `docs/plan-return.md` §6.2 (R1): your page as other members see it, and its one
+// Q596, `docs/archive/plan-return.md` §6.2 (R1): your page as other members see it, and its one
 // box, *show my five-star games on my page*, off unless you tick it. Saved at once and
 // said in the note, as the email box is.
 function drawYourPage(address, box) {
@@ -468,7 +468,7 @@ function drawYourPage(address, box) {
   });
 }
 
-// Q571, `docs/plan-return.md` §1.4 and s6 of the mock. *A challenge for you* with accept
+// Q571, `docs/archive/plan-return.md` §1.4 and s6 of the mock. *A challenge for you* with accept
 // and decline, *Challenges you sent* with withdraw (a link with its address to copy
 // again), and *Open to a game of* with remove. Each part is absent when it has nothing
 // in it, and nothing here counts down: a challenge waits until it is answered (test 2).

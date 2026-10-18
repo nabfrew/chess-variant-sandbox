@@ -1,4 +1,4 @@
-"""Revision volatility (EV6, Q690; `docs/plan-evolving-score.md` §7.1, pre-registered).
+"""Revision volatility (EV6, Q690; `docs/archive/plan-evolving-score.md` §7.1, pre-registered).
 
 What these hold down, on fixture histories written straight to disk:
 

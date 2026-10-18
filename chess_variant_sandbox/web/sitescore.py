@@ -1,6 +1,6 @@
 """A score's own sentences in a visitor's words, sent beside the maintainer's.
 
-`docs/plan-understanding.md` §3.3, rows G29 to G31 (task W3). The scoring writes its
+`docs/archive/plan-understanding.md` §3.3, rows G29 to G31 (task W3). The scoring writes its
 verdicts for the person who runs it: *quick_kill_rate_worst_half=0.538 above maximum 0.5*,
 *this roster cannot read this ruleset*, *the first seat took 41 of the 61 decided games
 between the two strongest rungs*. Those sentences are right on a checkout and stay there.

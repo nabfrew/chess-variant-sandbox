@@ -1,4 +1,4 @@
-"""The trust line on the pages (Q647, `docs/plan-confidence.md` T2, §2.1 and §2.2).
+"""The trust line on the pages (Q647, `docs/archive/plan-confidence.md` T2, §2.1 and §2.2).
 
 What is held down here, on synthetic records for a five-square game (never chess):
 

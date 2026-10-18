@@ -1,4 +1,4 @@
-"""Entry points and drivers that nothing in the suite ran (plan-tests F9, Q751b).
+"""Entry points and drivers that nothing in the suite ran (archive/plan-tests F9, Q751b).
 
 `python -m ...fuzz`, `python -m ...history deliver`, the page's native stand-in
 (`web/page/measure.drive`), the refresher's `git worktree` creation and its rebuild, and the

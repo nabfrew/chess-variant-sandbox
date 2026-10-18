@@ -118,7 +118,7 @@ class GameState:
     # whose tie is not the initiative; the void run, ``(player 0's square, player 1's
     # square)`` of a pair whose one void round was the last round, ``(-1, -1)`` for none;
     # and the barred pairs, ascending. All three are state the board does not show, and
-    # all three **are** in the Zobrist key (`docs/plan-simultaneous.md` §2.7, §5.3).
+    # all three **are** in the Zobrist key (`docs/reference/rounds.md` §2.7, §5.3).
     initiative: int = -1
     void_run: tuple[int, int] = (-1, -1)
     bars: tuple[tuple[int, int], ...] = ()

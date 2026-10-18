@@ -17,7 +17,7 @@ person's own record already has; a visitor has no record to read, so the filter 
 nothing for one rather than refusing the listing outright, the same *absent is not zero*
 the unvoted and unplayed games already live by. *Unplayed* is `humanGames == 0`, the same
 count the human-games sort already carries -- a game nobody has finished a leaderboard
-match on, which is what M5 of `docs/plan-meta-game.md` §2.2 calls *the first human game
+match on, which is what M5 of `docs/archive/plan-meta-game.md` §2.2 calls *the first human game
 here*.
 
 **The index sorts on the card's own number.** `canonical.json` is the single source for a
@@ -27,7 +27,7 @@ number and sorts by another is exactly what that rule exists to prevent. The sto
 reader with no `runs/` in reach will use -- a user game in phase 2, say. On the box the
 two are the same number because the loader read the directory the page reads.
 
-**A stale measurement sorts by its provisional number** (EV2, `docs/plan-evolving-score.md`
+**A stale measurement sorts by its provisional number** (EV2, `docs/archive/plan-evolving-score.md`
 §5.2, decided A): the card carries the number with `status` *provisional* and draws the
 mark, and nothing here compares it with a current one. A game with no number at all sorts
 last, in both directions. An unvoted game and an unplayed game sort last the same way:

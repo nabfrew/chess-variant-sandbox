@@ -207,7 +207,7 @@ _PORTAL_PAIR = 0.5
 _PORTAL_MOVED = 1.0
 _PORTAL_PASSAGE = 1.0
 _PORTAL_NO_BACK = 0.5
-# Schema 21 (Q843a, `plan-portals-2.md` §6): a map written with `ends` is a second reading
+# Schema 21 (Q843a, `docs/archive/plan-portals-2.md` §6): a map written with `ends` is a second reading
 # of where a portal leads -- not "the other one" but "the one its arrow names" -- learnt
 # once (1.0), and each end past a pair's two is one more place to read (0.25 each); a
 # filter on which pieces may go in is one exception per end a player has to remember,
@@ -215,7 +215,7 @@ _PORTAL_NO_BACK = 0.5
 _PORTAL_MAP = 1.0
 _PORTAL_END = 0.25
 _PORTAL_FILTER = 1.0
-# Schema 22 (Q843c, `plan-portals-2.md` §6), revised at schema 24 (Q867b, §3R): a fold
+# Schema 22 (Q843c, `docs/archive/plan-portals-2.md` §6), revised at schema 24 (Q867b, §3R): a fold
 # group is the second rule set -- a portal a piece may stand in, where a move that ends on
 # an empty one may stay or come out on the end it leads to -- read per group, as the plan
 # charges it: each fold group is one more place where a move does not end where the board
@@ -223,7 +223,7 @@ _PORTAL_FILTER = 1.0
 _PORTAL_FOLD = 1.0
 
 
-# Schema 27 (Q942a, `docs/plan-round-chase.md` §3): each chase switch is one more sentence
+# Schema 27 (Q942a, `docs/archive/plan-round-chase.md` §3): each chase switch is one more sentence
 # a player is taught about the round -- a moved piece rests, a swap is a collision, a double
 # ending goes to the score -- so each is charged as one exception on top of `simultaneous`,
 # and only at the value that turns it on (the validator refuses the others).

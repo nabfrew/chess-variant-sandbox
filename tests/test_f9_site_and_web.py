@@ -1,5 +1,5 @@
 """The site's small readers and the local server's three endpoints that nothing ran
-(plan-tests F9, Q751b).
+(archive/plan-tests F9, Q751b).
 
 No database: these are the pieces of `site/` that are pure (the load report's words, the
 level-to-tab mapping, the one-run basis, the playability child) and the three `web/server.py`

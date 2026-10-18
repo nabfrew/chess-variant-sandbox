@@ -1,4 +1,4 @@
-"""W5b (`docs/plan-understanding.md` §3.3 D40-D50, M7): the rules' complaints in plain words.
+"""W5b (`docs/archive/plan-understanding.md` §3.3 D40-D50, M7): the rules' complaints in plain words.
 
 Three things are held here. The designer says what is wrong with a draft in the names it
 draws each part by (`spec.plain`), never by a path into the game's text. The words changed
@@ -317,7 +317,7 @@ class TestAVersionStampIsSaidInTheFeaturesWords:
     (`designing._worth_saying` settles it once the rest is a game), so `plain_problem` says
     what is used in the words the form draws it by: a rule by its card's title, a piece's
     field by its label, a path by its place. Each of the three ways `_used` names a thing is
-    one case here (Q751, plan-tests F9: none of them had run)."""
+    one case here (Q751, archive/plan-tests F9: none of them had run)."""
 
     @staticmethod
     def _stamp(change: Any) -> tuple[str, str]:

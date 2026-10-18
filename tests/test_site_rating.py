@@ -219,7 +219,7 @@ class TestSeeding:
         assert r.seeds_from_ladder(r.rungs(LADDER), table) == {}
 
     def test_a_re_rated_ladder_reseeds_every_row_nobody_has_played(self) -> None:
-        """L3's reseed rule (`plan-leaderboard.md` §2.3): an unplayed row is only its seed.
+        """L3's reseed rule (`docs/archive/plan-leaderboard.md` §2.3): an unplayed row is only its seed.
 
         So a newer ladder replaces it. Before L3 a re-rated ladder reseeded nothing, and a
         table nobody had played kept its first ladder's numbers for good.
@@ -322,7 +322,7 @@ class TestSeeding:
 
 
 class TestTheAnchor:
-    """§2.4 of `plan-leaderboard.md`: the first seeding puts 1500 at the spine's mean."""
+    """§2.4 of `docs/archive/plan-leaderboard.md`: the first seeding puts 1500 at the spine's mean."""
 
     SPINE = {
         "random": -500.0,

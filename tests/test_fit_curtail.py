@@ -1,4 +1,4 @@
-"""Exact curtailment of the fit's acceptance match (plan-compute §4.2, Q800).
+"""Exact curtailment of the fit's acceptance match (reference/compute-economy.md §4.2, Q800).
 
 The match's 48 games are unpaired, so ``duel.settled`` reads them one game at a time. Held
 here: that reading is exactly "every completion of the played games agrees" (brute force

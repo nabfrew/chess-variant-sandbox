@@ -1,4 +1,4 @@
-"""The command line's commands that no test ran (plan-tests F9, Q751b).
+"""The command line's commands that no test ran (archive/plan-tests F9, Q751b).
 
 Each is driven through `cli.main([...])` in-process and judged by what it prints, what it
 writes and what it exits with. The ones whose work is a model call, a server or a

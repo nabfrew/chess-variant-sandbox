@@ -1,6 +1,6 @@
 """Report a game: a signed-in person says a game should not be on the site, in one row.
 
-Q503d, `docs/plan-game-pipeline.md` §3.2 and §5. The game page carries a quiet link under
+Q503d, `docs/archive/plan-game-pipeline.md` §3.2 and §5. The game page carries a quiet link under
 the rules, *Report this game (spam, offensive, a copy)*; pressing it and choosing one of
 the three files a row here, and the maintainer reads every row on `/admin` with the game's
 kill switch beside it.

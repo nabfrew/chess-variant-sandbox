@@ -1,4 +1,4 @@
-"""People's counts (task T3 of `docs/plan-confidence.md`): the E-H evidence `trust.read` takes.
+"""People's counts (task T3 of `docs/archive/plan-confidence.md`): the E-H evidence `trust.read` takes.
 
 One fold over `matches.leaderboard_matches` per game: finished games against the top
 group, distinct people, distinct people who cleared, and the latest date. The clears are

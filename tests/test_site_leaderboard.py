@@ -1,4 +1,4 @@
-"""A game's leaderboard on its page (L2 of `docs/plan-leaderboard.md`, §2.1, §2.5, §3).
+"""A game's leaderboard on its page (L2 of `docs/archive/plan-leaderboard.md`, §2.1, §2.5, §3).
 
 Q2 was decided on 2026-10-10: everyone who has finished a rated game on a game is on its
 leaderboard, a number still settling marked `?`. `site/leaderboard.py` reads the game's one

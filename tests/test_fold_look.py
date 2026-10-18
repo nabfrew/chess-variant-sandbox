@@ -1,4 +1,4 @@
-"""Schema 22's look and designer (Q843d, `docs/plan-portals-2.md` §5.3, §5.4), revised for
+"""Schema 22's look and designer (Q843d, `docs/archive/plan-portals-2.md` §5.3, §5.4), revised for
 schema 24's rules (Q867b, §3R) and its look (Q867c, §5.3R).
 
 What can be held without a browser. The pool (`foldGlyph`): bright in the middle where the

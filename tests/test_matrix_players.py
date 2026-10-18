@@ -1,4 +1,4 @@
-"""Schema 26 (Q918b): the computer players for rounds (`docs/plan-simultaneous.md` §6.2, §7).
+"""Schema 26 (Q918b): the computer players for rounds (`docs/archive/plan-simultaneous.md` §6.2, §7).
 
 The solver's iteration count against the pre-registered matrices (*Q918b, pre-registered*);
 the solver, the strategies and the node counts held to the declared oracle

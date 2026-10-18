@@ -1,6 +1,6 @@
 """A member's mark: an invader piece of their own, generated from their account's id.
 
-R2 of `docs/plan-return.md` §8 (§6.3), drawn in the family of the site's own mark, the
+R2 of `docs/archive/plan-return.md` §8 (§6.3), drawn in the family of the site's own mark, the
 invader rook (`shell.ROOK`): a 16 × 16 pixel figure, mirror-symmetric like the rook, made of
 four parts stacked as the rook is, each chosen from a short list by a hash of the id:
 

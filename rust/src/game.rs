@@ -1245,7 +1245,7 @@ impl<'t> Game<'t> {
     }
 
     /// Schema 24: whether the fold on `square` lets `player`'s piece of `piece_type` go
-    /// through (`docs/plan-portals-2.md` §3R.1 rule 2): it admits it and leads somewhere.
+    /// through (`docs/archive/plan-portals-2.md` §3R.1 rule 2): it admits it and leads somewhere.
     /// The end and the square of the end it leads to, or `None`. Says nothing of either
     /// square's occupant: `square` is empty where a landing asks, and what stands on the
     /// far square is the landing's to judge.
@@ -1267,7 +1267,7 @@ impl<'t> Game<'t> {
     }
 
     /// Schema 24: whether `player` could take a piece of `victim` type (`usize::MAX` for
-    /// any) on `square` by going through a fold (`docs/plan-portals-2.md` §3R.1 rule 8): a
+    /// any) on `square` by going through a fold (`docs/archive/plan-portals-2.md` §3R.1 rule 8): a
     /// fold end stands on `square`, and some end leading to it stands on an empty square
     /// that a capture step of `player`'s reaches -- an attack source onto that square whose
     /// piece stands on its origin (unmoved where it must be), is not the piece on `square`,
@@ -2707,7 +2707,7 @@ impl<'t> Game<'t> {
     }
 }
 
-/// Schema 22: `dedup_segment` for a fold game (`docs/plan-portals-2.md` §3.3). Two words
+/// Schema 22: `dedup_segment` for a fold game (`docs/archive/plan-portals-2.md` §3.3). Two words
 /// alike but for the fold end they went through (bits 25-31) reach one position, so they
 /// are one move: the first occurrence keeps its place and takes the lowest tag, which is
 /// the direct move's 0 where there is one, else the lowest fold end's.
@@ -2769,7 +2769,7 @@ impl<'t> Game<'t> {
     pub fn generate_pseudo_legal(&self, out: &mut Vec<u32>) {
         // Schema 22: one dispatch per call to a copy monomorphised on whether the game has
         // folds, so chess and every game without them run the walks they always ran
-        // (`docs/plan-portals-2.md` §3.4).
+        // (`docs/archive/plan-portals-2.md` §3.4).
         if self.t.portals.as_deref().is_some_and(|portals| portals.folds.is_some()) {
             return self.generate_folded(out);
         }
@@ -3114,7 +3114,7 @@ impl<'t> Game<'t> {
 
 impl<'t> Game<'t> {
     /// Schema 19: every move through a portal of the piece on `origin`, pushed as
-    /// `MOVE_PORTAL` words (`docs/plan-portals.md` §2).
+    /// `MOVE_PORTAL` words (`docs/archive/plan-portals.md` §2).
     ///
     /// A second walk of the piece's own leaps, slides and hops. The first walk met each
     /// portal end as an uncapturable piece -- the compiler takes every end out of the
@@ -3178,7 +3178,7 @@ impl<'t> Game<'t> {
             }
         }
         // Schema 24: a fold is floor to a ray that crosses it, so a slide or hop may reach
-        // a momentum end beyond one (`docs/plan-portals-2.md` §3R.1 rule 7).
+        // a momentum end beyond one (`docs/archive/plan-portals-2.md` §3R.1 rule 7).
         for entry in t.slides.entries(slot) {
             if entry.requires_unmoved && !origin_unmoved {
                 continue;
@@ -3395,7 +3395,7 @@ impl<'t> Game<'t> {
 }
 
 impl<'t> Game<'t> {
-    /// Schema 24 (`docs/plan-portals-2.md` §3R.1 rule 2): a landing step of the piece on
+    /// Schema 24 (`docs/archive/plan-portals-2.md` §3R.1 rule 2): a landing step of the piece on
     /// `origin` onto the empty fold on `square`, with the step's `mode`, also **goes
     /// through**: the same step ends on the square of the end this one leads to, judged as
     /// a landing there -- onto an empty square under a *move* mode, onto a piece it may
@@ -3641,7 +3641,7 @@ impl<'t> Game<'t> {
 
         let rank = king_square / width;
         let king_file = (king_square % width) as i32;
-        // Schema 24 (`docs/plan-portals-2.md` §3R.1 rule 9): a fold on the span is floor.
+        // Schema 24 (`docs/archive/plan-portals-2.md` §3R.1 rule 9): a fold on the span is floor.
         let blocked_at = |square: usize| self.board[square] != 0;
 
         for rook_file in 0..width as i32 {

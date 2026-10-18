@@ -359,7 +359,7 @@ pub struct AttackSource {
 }
 
 /// Schema 19: groups of portals, as the compiler resolved them (`compile.PortalRule`);
-/// schema 21 made a pair one case of a map (`docs/plan-portals-2.md` §2.2).
+/// schema 21 made a pair one case of a map (`docs/archive/plan-portals-2.md` §2.2).
 ///
 /// Boxed behind one `Option` on `Tables`, so a game without portals pays one pointer and
 /// one null test per piece in move generation, and the struct the movegen reads at every
@@ -712,7 +712,7 @@ fn type_flags(types: &[usize]) -> [bool; MAX_PIECE_TYPES] {
     flags
 }
 
-/// Simultaneous moves (schema 26, Q918a; `docs/plan-simultaneous.md` §5.3), as the
+/// Simultaneous moves (schema 26, Q918a; `docs/reference/rounds.md` §5.3), as the
 /// compiler resolved them (`compile.SimRule`). The core reads every number here and decides
 /// none of them.
 pub struct SimTables {
@@ -734,7 +734,7 @@ pub struct SimTables {
     pub zobrist_squares: Vec<u64>,
     /// `[state - 1]`: 1 a run of one void round, 2 barred.
     pub zobrist_states: Vec<u64>,
-    /// Schema 27 (Q942a, `docs/plan-round-chase.md` §3 R1): the piece that made a player's
+    /// Schema 27 (Q942a, `docs/archive/plan-round-chase.md` §3 R1): the piece that made a player's
     /// move in a round may not make it in the next, unless nothing else can move.
     pub rest: bool,
     /// Schema 27 (R2): two moves each ending on the other's origin meet as a collision.
@@ -2541,7 +2541,7 @@ mod tests {
 }
 
 /// Schema 22: fold portals, as the compiler resolved them (`compile.FoldRule`); schema 24
-/// (Q867b) cut them to where each starts and the key (`docs/plan-portals-2.md` §3R.3).
+/// (Q867b) cut them to where each starts and the key (`docs/archive/plan-portals-2.md` §3R.3).
 ///
 /// A fold end never stands on the board byte: where each stands is `Game::fold_at`, from
 /// `starts`. A landing on an empty fold goes through to the square of the end it leads to

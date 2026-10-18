@@ -300,7 +300,7 @@ function scoreTag(game) {
   const official = !stale && game.index !== null && game.index !== undefined;
   if (!official && game.provisional) return provisionalTag(game.provisional);
   // EV2: a stale measurement with a number is the game's provisional estimate, drawn
-  // with its number and the mark, never bare (`docs/plan-evolving-score.md` §5.1). The
+  // with its number and the mark, never bare (`docs/archive/plan-evolving-score.md` §5.1). The
   // run count stays inside the pill, as on a current one.
   if (stale && isProvisional(game) && game.index !== null && game.index !== undefined) {
     const count = runCount(game.seeds)
@@ -389,7 +389,7 @@ function scoreTag(game) {
 }
 
 // A score measured on somebody's own machine, which the server has checked and has not
-// measured itself (`docs/plan-client-compute.md` §5, Q312). Official means the server
+// measured itself (`docs/archive/plan-client-compute.md` §5, Q312). Official means the server
 // played the games, and only an official score ranks a game or earns it a badge, so this
 // one never borrows the score's pill: it says where it was measured and how far it was
 // checked, in the two labels §5 names. `not yet confirmed` reaches only its designer --

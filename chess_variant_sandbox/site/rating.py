@@ -47,7 +47,7 @@ land together or not at all.
 ## What the loader calls
 
 Task 1.6 loads `runs/opponents/<hash>.json` into `measurements.ladder` and seats the
-game's computer players from it with `reseed` (`docs/plan-leaderboard.md` §2.3, L3): a
+game's computer players from it with `reseed` (`docs/archive/plan-leaderboard.md` §2.3, L3): a
 player the table has not seen is added, a computer row no person has played is replaced
 by the newer ladder's seat, and a row people have played keeps the number they gave it. A
 second run over the same file writes nothing, because the seats it computes are the ones
@@ -395,7 +395,7 @@ def rungs(ladder: Mapping[str, Any]) -> tuple[Rung, ...]:
 def anchor(standings: Sequence[Rung]) -> float:
     """The shift that puts 1500 at the mean of the ladder's spine: the first seeding's.
 
-    `docs/plan-leaderboard.md` §2.4. A ladder's own zero is the mean of its whole roster,
+    `docs/archive/plan-leaderboard.md` §2.4. A ladder's own zero is the mean of its whole roster,
     so a game with fourteen rules of thumb at 6,400 nodes had a different 1500 from a game
     with none. Centred on the five standard players (`opponents.SPINE`: *random*, *greedy*,
     *easy*, *medium*, *hard*), a newcomer's 1500 means the same thing on every game: level
@@ -469,7 +469,7 @@ def seeding(
 ) -> Seeding:
     """The computer players this ladder seats, at their seats on the site's scale.
 
-    The reseed rule (`docs/plan-leaderboard.md` §2.3, L3). A computer player the table has
+    The reseed rule (`docs/archive/plan-leaderboard.md` §2.3, L3). A computer player the table has
     not seen is added. A computer row with **no rated games against people** is still only
     its seed, so a newer ladder **replaces** it -- the fold stays reproducible, because
     `seeds_for` takes a row with no matches as its own seed. A row people **have** played

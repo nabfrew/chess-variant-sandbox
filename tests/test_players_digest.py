@@ -1,6 +1,6 @@
 """`Basis.players`: the agents are read by what they hand the core, not by their source (Q631).
 
-`docs/plan-compute.md` §2.3. Before this, `agents/*.py` sat in the `engine` source set, so
+`docs/reference/compute-economy.md` §2.3. Before this, `agents/*.py` sat in the `engine` source set, so
 any code edit to any agent module -- `nets.py`, `heuristics.py`, `valuations.py`, the
 fit-making half of `fitted.py`, none of which a rated roster reaches -- staled the whole
 library by replay. batch-0925 paid 91 minutes for 0 file differences in 280 runs.

@@ -1,9 +1,10 @@
 """The words a visitor to the public site must never be shown, and how a test finds them.
 
-`docs/plan-understanding.md` §7, W0. The audit of §3 found the site speaking in the
-maintainer's voice: a path into `runs/`, *git*, *the command line*, an agent's string,
-*plies*, *the yardstick*. Each word task of §7 removes some of it and, when it does, moves
-the phrase from `NOT_YET` to `ENFORCED`, so a later change cannot put it back.
+`docs/reference/plain-words.md` §5 (built as W0 of `docs/archive/plan-understanding.md` §7).
+The audit of that plan's §3 found the site speaking in the maintainer's voice: a path into
+`runs/`, *git*, *the command line*, an agent's string, *plies*, *the yardstick*. Each word
+task removed some of it and, when it did, moved the phrase from `NOT_YET` to `ENFORCED`,
+so a later change cannot put it back.
 
 A phrase is a regular expression and the flags it is read with. `hits(text)` is the list of
 phrases (by name) that `text` contains. Two rules keep it about prose and not about code:
@@ -43,7 +44,7 @@ PHRASES: dict[str, tuple[str, int]] = {
     "candidate": (r"candidate", re.I),
     "yardstick": (r"yardstick", re.I),
     # The rated mode's internal name (*leaderboard game*, *leaderboard mode*); a visitor reads
-    # *rated game*. Since L2 (`plan-leaderboard.md` §3, the user's word of 2026-10-10) a
+    # *rated game*. Since L2 (`docs/archive/plan-leaderboard.md` §3, the user's word of 2026-10-10) a
     # game's table of ratings is its *Leaderboard*, so the word alone is the site's own.
     "leaderboard": (r"\bleaderboard[- ](?:mode|games?|match(?:es)?)\b", re.I),
     "sandbox mode": (r"sandbox mode", re.I),
@@ -115,10 +116,10 @@ PHRASES: dict[str, tuple[str, int]] = {
                      r"|promote on entry)\b", re.I),
     "a declared piece": (r"\bdeclared piece", re.I),
     "a non-empty string": (r"non-empty string", re.I),
-    # Q647 (`plan-confidence.md` T2): the strength check's own terms. The trust line says
+    # Q647 (`docs/archive/plan-confidence.md` T2): the strength check's own terms. The trust line says
     # what the evidence found in a visitor's words; the self-duel's *ceiling*, a duel's
     # *floor* and a check's *verdict* stay on `/admin` and the local application. *Not a
-    # verdict*, the purpose's own words for what a score is not (`plan-understanding.md`
+    # verdict*, the purpose's own words for what a score is not (`archive/plan-understanding.md`
     # §1.1), is not one.
     "ceiling": (r"\bceiling", re.I),
     "floor": (r"\bfloors?\b", re.I),
@@ -131,8 +132,8 @@ PHRASES: dict[str, tuple[str, int]] = {
         r"|\btranslator\b", re.I),
 }
 
-# What the site serves today that still holds a phrase, one entry per phrase with the rows of
-# `docs/plan-understanding.md` §3.3 that remove it and the task of §7 that owns them.
+# What the site serves today that still holds a phrase, one entry per phrase with what removes
+# it and the task that owns it (the audit's rows were `docs/archive/plan-understanding.md` §3.3).
 # **Empty when the audit is done.** A word task that removes a phrase from everything the
 # guard reads deletes its entry here, which enforces it; the entry's own test fails the day
 # the phrase is gone from everything read and the entry is still here. Every entry is a

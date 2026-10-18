@@ -2,7 +2,7 @@
 
 `docs/reference/portal-showcases.md` pre-registered each prediction below, under *The
 demonstration tests*, before this file was written; the class names follow it. Among them is
-`plan-portals.md`'s N3: no move in a Divide game crosses the wall rank except a transit.
+`docs/archive/plan-portals.md`'s N3: no move in a Divide game crosses the wall rank except a transit.
 
 A test here drives the core through `Engine` and asserts what the core did. The only choice
 of a move in Python is the seeded random walk, which takes `random.Random(seed)`'s choice from

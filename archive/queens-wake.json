@@ -1,7 +1,7 @@
 {
   "schema_version": 10,
   "name": "queens wake",
-  "description": "Atomic chess in which only the taking of a queen explodes. Whoever captures a queen destroys everything standing on the eight squares around it, pawns excepted, and goes up with it; every other capture is an ordinary capture. Everything else is atomic chess, including that a king caught in a blast loses the game. Narrowing it the other way, to the taking of a queen, does the opposite of queen bomb: offering the queen becomes an opening trap, and the average game is over in under twenty moves a side.",
+  "description": "Chess in which taking a queen sets off an explosion: whatever takes her dies with her, along with every piece but a pawn on the eight squares around her, and a king caught in the blast is lost, and with it the game. It is the explosion of atomic chess, a popular online variant in which every capture explodes, kept for one capture alone: every other capture is ordinary, the queen's own included. That makes a queen's neighbours matter more than the queen. Beside her own king she is a liability, since whoever takes her destroys the king too and wins, and the two start the game side by side. Beside the enemy king she is almost untouchable, since taking her would blow up the taker's own king. The opening is where this bites, and weaker players walk into it: the average game is over in under twenty moves a side.",
   "board": {
     "width": 8,
     "height": 8

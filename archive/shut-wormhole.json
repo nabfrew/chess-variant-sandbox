@@ -1,7 +1,7 @@
 {
   "schema_version": 19,
   "name": "shut wormhole",
-  "description": "Wormhole (Gardner's minichess with a fixed pair of portals on b3 and d3) with the pair closed to White: to White's pieces both ends are solid blocks that cannot be taken, while Black's pieces go through either way, coming out one step beyond the other end in the direction they were travelling. Black moves second and owns the only door. Closing the door to one player is what changes wormhole: there the first player usually wins the race through it; here only the second player can use it, which turns the race round, and the lead changes hands far more often.",
+  "description": "A door through the middle of the board that only the second player may use, set against the first player's extra tempo. On Gardner's minichess (five by five, a king, queen, rook, bishop, knight and five pawns a side, no pawn double step) a fixed pair of portals on b3 and d3 works for Black alone: a Black piece that ends its move on one end comes out one step beyond the other, in the direction it was travelling, capturing there as usual, while to White both ends are solid blocks. Here a door is a weapon: a pawn stepping diagonally into an end comes out capturing an enemy pawn one step from promotion, and with the door open to both, the first player always wins that race. Shut to White, the race is Black's, and the door proves worth more than the tempo: in the strongest computer games Black wins most decided games.",
   "board": {
     "width": 5,
     "height": 5

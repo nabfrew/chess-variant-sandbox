@@ -1,7 +1,7 @@
 {
   "schema_version": 17,
   "name": "rifle",
-  "description": "A capture removes the taken piece and leaves the capturer where it stood: chess with rifles. Nothing ever recaptures on the square a capture was made on, because nothing arrives there.",
+  "description": "Rifle chess lets pieces shoot: a capture removes its target and the capturer stays where it stood. W. Seeley published it in 1921. That one change undoes the logic of defence. In chess a piece is safe when taking it costs the taker, because the taker lands on a square you can strike back at; here nothing lands, so a capture can never be answered on the square where it happened, and a guarded piece is as exposed as a loose one. The only protection is to stay out of the line of fire, block it, or threaten the shooter in turn, and two pieces aimed at each other are a duel won by whoever moves first. Pawns shoot diagonally without leaving their file, a pawn that shoots onto the last rank promotes where it stands, and a king can shoot an adjacent piece even when it is guarded, so long as that leaves it out of check.",
   "board": {
     "width": 8,
     "height": 8

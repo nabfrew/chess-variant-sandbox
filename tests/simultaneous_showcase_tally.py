@@ -1,7 +1,7 @@
 # compute-lease: light
 """What the rounds of a game in rounds did, counted off the core (Q918e).
 
-`docs/plan-simultaneous.md`, *Q918e, pre-registered*: the tally the showcase games' clauses
+`docs/archive/plan-simultaneous.md`, *Q918e, pre-registered*: the tally the showcase games' clauses
 are graded on. It replays rounds through `Engine.apply_round_with_phase` and counts the
 endings, the seat, the collisions by the two pieces' types and their outcome, the swaps, the
 void moves and the initiative ties. It decides nothing about a round itself (CLAUDE.md, rule

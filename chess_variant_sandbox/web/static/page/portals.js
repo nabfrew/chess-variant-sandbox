@@ -1,5 +1,5 @@
-// Portals in the designer (P3 of `docs/plan-portals.md`, *The designer's experience* D1-D10;
-// groups, shapes and filters since schema 21, `docs/plan-portals-2.md` §5.4, Q843b).
+// Portals in the designer (P3 of `docs/archive/plan-portals.md`, *The designer's experience* D1-D10;
+// groups, shapes and filters since schema 21, `docs/archive/plan-portals-2.md` §5.4, Q843b).
 //
 // A group of portals is put down the way a piece is: *+ portals* in the tray, then a click on
 // each square an end goes on, two or more, then *done* (or Enter). Two ends are a pair, each
@@ -11,7 +11,7 @@
 // that a screen reader reads out; the keyboard reaches every square of it and every control.
 //
 // A group is drawn in its own colour, the same at every end (`--pair-N`, the vortex of
-// `docs/plan-portal-look.md` §2.3), so nothing here names an end by a colour: an end is
+// `docs/archive/plan-portal-look.md` §2.3), so nothing here names an end by a colour: an end is
 // named by its square. The file's keys for a pair's two ends, `orange` and `blue`, are data
 // and never words (Q838d). A group of two ends is always written as a pair, and a group of
 // three or more with `ends` (schema 21's one spelling for one game, `writeGroup`), so the
@@ -786,7 +786,7 @@ function setMovers(index, end, players) {
   checkDraft();
 }
 
-// Schema 22 (Q843d, `docs/plan-portals-2.md` §5.4): how a group works, *momentum* (a
+// Schema 22 (Q843d, `docs/archive/plan-portals-2.md` §5.4): how a group works, *momentum* (a
 // piece goes in and is thrown out beside the other end; the default, written by leaving
 // `kind` out, as the one spelling of the game) or *fold* (a piece that stops on it may stay, or
 // come out of the other end; schema 24).
@@ -1355,7 +1355,7 @@ const TRANSIT_BESIDE = ['to the right of', 'up and to the right of', 'above',
 
 function transitWords(transit, called) {
   const preview = lastPreview();
-  // Schema 24 (`docs/plan-portals-2.md` §5.3R): through a fold, in at one end and out on
+  // Schema 24 (`docs/archive/plan-portals-2.md` §5.3R): through a fold, in at one end and out on
   // the end it leads to, where the move ends.
   if (transit.foldIn !== undefined) {
     return `The ${called} goes into the fold on ${boardName(transit.foldIn)} and comes out on ${

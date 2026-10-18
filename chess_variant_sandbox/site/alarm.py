@@ -1,6 +1,6 @@
 """The bar: games whose strongest computer player people beat often (route C, H8).
 
-`docs/plan-human-data.md` §3.3 fixed the bar on 2026-10-08, before any person's game was
+`docs/reference/human-data.md` §3.3 fixed the bar on 2026-10-08, before any person's game was
 read: **on the game's rated games against the top group, at least 3 distinct people have
 beaten it, and people score at least 0.30 against it over at least 10 games.** It is
 stricter than the trust line's *questioned* because it spends a training run, and it never
@@ -38,7 +38,7 @@ from typing import Any
 from chess_variant_sandbox.site import matches as match_rows
 from chess_variant_sandbox.site import pinning, rating, unbeaten
 
-# Pre-registered 2026-10-08 (`docs/plan-human-data.md` §3.3); never re-aimed.
+# Pre-registered 2026-10-08 (`docs/reference/human-data.md` §3.3); never re-aimed.
 BAR_PEOPLE = 3
 BAR_SCORE = 0.30
 BAR_GAMES = 10

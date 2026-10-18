@@ -1,4 +1,4 @@
-"""The designer and the map in the club room's look (plan-visual.md §8, V8).
+"""The designer and the map in the club room's look (archive/plan-visual.md §8, V8).
 
 Spec-side tests of the stylesheet and the two views' scripts as text: the designer's and the
 map's rules read only tokens, set for both themes; their radii are the two of §3.4; nothing

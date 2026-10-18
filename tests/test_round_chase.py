@@ -1,6 +1,6 @@
 """Schema 27 (Q942a): the three switches against the royal chase.
 
-`docs/plan-round-chase.md` §3 R1 (`rules.simultaneous.rest`), R2 (`swap: "collision"`) and
+`docs/archive/plan-round-chase.md` §3 R1 (`rules.simultaneous.rest`), R2 (`swap: "collision"`) and
 X1 (`both: "score"`), and the Q942a row of its §4.2: the keys and their refusals, one test
 per rule on the positions of §2 and §3, the rest's legal-move filter and the rounds against
 the declared oracle (`tests/simultaneous_oracle.py`), the key against `_compute_hash`, and

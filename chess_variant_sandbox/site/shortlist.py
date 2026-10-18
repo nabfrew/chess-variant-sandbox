@@ -1,6 +1,6 @@
 """The shortlist's bar, the votes that count toward it, and *Nominate*.
 
-Q503f of `docs/plan-game-pipeline.md` (§2.2's *On trial → Shortlisted* row, §3.2's *Where
+Q503f of `docs/plan-game-pipeline.md` (§2.2's *On trial → Shortlisted* row; `docs/archive/plan-game-pipeline.md` §3.2's *Where
 it stands*, §3.3's vote sentence). A game on trial becomes **Shortlisted** when its
 designer presses *Nominate* while it is **eligible**, and pressing it is the designer's
 consent to the round that may follow (§2.2 *Why the designer nominates*). The level itself

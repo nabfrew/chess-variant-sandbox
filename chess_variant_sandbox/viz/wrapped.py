@@ -160,13 +160,13 @@ def walls_payload(compiled: CompiledSpec) -> dict[str, list[int]]:
 def portal_payload(compiled: CompiledSpec) -> dict[str, Any] | None:
     """Schema 19: what the page draws a portal end with, per internal type, or ``None``.
 
-    The static half of the rule, sent once per ruleset (`docs/plan-portals.md` §4): for
+    The static half of the rule, sent once per ruleset (`docs/archive/plan-portals.md` §4): for
     each end's type, its group's number (``pair``, the colour's and the glyph's number), its
     id (``id``, ``1o``, ``2a``) and its letter in it (``end``: ``orange`` or ``blue`` for a
     pair's, ``a``, ``b``, ... for a map's), the type of the end it leads to (``dest``,
     ``None`` for a way out only), who may move it, whose pieces may go in by it (``open``,
     per player: some piece may) and which pieces (``admits``, per player, as piece ids, and
-    ``filtered``, whether the end names them; schema 21, `docs/plan-portals-2.md` §5.2).
+    ``filtered``, whether the end names them; schema 21, `docs/archive/plan-portals-2.md` §5.2).
     Where the ends stand is on the board, as every piece's square is. Compiled answers
     only, so the page reads no DSL and works out nothing.
     """
@@ -209,7 +209,7 @@ def fold_payload(engine: Any, state: Any) -> list[dict[str, Any]]:
     `portal_payload`'s ends) and its group's number (the colour). Empty for every game
     without folds. A fold stands on no square of the board byte, so this is the only place
     the page learns where one is; the page draws it as a pool under the pieces (Q843d,
-    `docs/plan-portals-2.md` §5.3).
+    `docs/archive/plan-portals-2.md` §5.3).
     """
     portals = engine.spec.portals
     if portals is None or portals.folds is None:
@@ -232,7 +232,7 @@ def fold_transit(engine: Any, state: Any, move: int) -> dict[str, Any] | None:
     the end that one leads to, where it came out and ended (``foldOut``, the move's target
     since schema 24), with their names and the group's number (``foldPair``, the colour).
     The trip (the ripple), the trail at rest and the destination dots read these and work
-    out nothing (Q843d, `docs/plan-portals-2.md` §5.3; their revised look is §5.3R's).
+    out nothing (Q843d, `docs/archive/plan-portals-2.md` §5.3; their revised look is §5.3R's).
     """
     route = engine.fold_route(state, move)
     if route is None:
@@ -259,7 +259,7 @@ def portal_transit(engine: Any, state: Any, move: int) -> dict[str, Any] | None:
     ``PORTAL_DIRECTIONS``), which is the compiled exit table read backwards: the direction
     whose step from ``portalOut`` under the mover's wrap permission is the move's own
     target. Squares come with their names. The two-leg trail, the two-beat animation and
-    the chooser's words (`docs/plan-portals.md` §4, D6) read these and work out nothing;
+    the chooser's words (`docs/archive/plan-portals.md` §4, D6) read these and work out nothing;
     the move's legality and its exit are the engine's.
     """
     spec = engine.spec

@@ -1,4 +1,4 @@
-"""`chess-variant-sandbox site admin | forget | load`, against a real PostgreSQL (plan-tests F9, Q751b).
+"""`chess-variant-sandbox site admin | forget | load`, against a real PostgreSQL (archive/plan-tests F9, Q751b).
 
 The three commands the deploy and the maintainer run against the site's store. Each is driven
 through `cli.main`, with the store reached the way the box reaches it, by the database URL in

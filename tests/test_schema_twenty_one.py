@@ -1,6 +1,6 @@
 """Schema 21 (Q843a): portal destinations as a map, and piece filters.
 
-`docs/plan-portals-2.md` §2. ``rules.portals`` holds groups: a pair, written as before, or
+`docs/archive/plan-portals-2.md` §2. ``rules.portals`` holds groups: a pair, written as before, or
 a map of three to eight ends written with ``ends``, each leading to the end its ``to``
 names (or nowhere: a way out only), with ``enter`` per end for whose pieces may go in and
 ``carries`` (on either spelling) for which pieces. One normaliser, `portal_groups`, reads
@@ -209,7 +209,7 @@ def _ring_with(**changes: Any) -> dict[str, Any]:
 
 
 class TestWhatTheValidatorRefuses:
-    """`docs/plan-portals-2.md` §2.1's refusals, one each, and the filter's (§2.3)."""
+    """`docs/archive/plan-portals-2.md` §2.1's refusals, one each, and the filter's (§2.3)."""
 
     def test_a_destination_outside_the_group(self) -> None:
         _refused(_ring_with(e2={"at": "e3", "to": 3}), "a destination is always in its own group")
@@ -482,7 +482,7 @@ class TestTheMapAndTheFilterInPlay:
 
 
 class TestTheWordsSayWhereEachEndLeads:
-    """The page's minimal words for a map (`plan-portals-2.md` §5.1): by square, *leads
+    """The page's minimal words for a map (`docs/archive/plan-portals-2.md` §5.1): by square, *leads
     to*; the look (the beak, the group map, dashed arms) is Q843b's."""
 
     @staticmethod

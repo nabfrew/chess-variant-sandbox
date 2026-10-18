@@ -72,7 +72,7 @@ ALLOWED: tuple[Allowed, ...] = (
         "docs/reference/test-audit/redundancy-candidates.json",
         None,
         "a dated audit's output: test ids as they stood when it ran, which its counts in "
-        "docs/plan-tests.md section 4 add up from",
+        "docs/archive/plan-tests.md section 4 add up from",
     ),
     Allowed("tests/test_former_name.py", "FORMER = re.compile(", "it has to spell what it looks for"),
 )

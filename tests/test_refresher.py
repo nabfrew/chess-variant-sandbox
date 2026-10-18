@@ -1,4 +1,4 @@
-"""The refresher (EV5, `docs/plan-evolving-score.md` §6; `chess_variant_sandbox/refresher.py`).
+"""The refresher (EV5, `docs/archive/plan-evolving-score.md` §6; `chess_variant_sandbox/refresher.py`).
 
 What these hold down, with fakes and fixture runs (nothing plays: `measure`'s expensive
 calls are `test_history`'s stubs, on `test_corpus`'s five-square game):

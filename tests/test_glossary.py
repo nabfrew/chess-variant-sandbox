@@ -44,7 +44,7 @@ class TestCalibrationFigures:
 
 
 class TestTheSitesWords:
-    """W1 (`docs/plan-understanding.md` §3.3, A18-A22): the site's words for the score's
+    """W1 (`docs/archive/plan-understanding.md` §3.3, A18-A22): the site's words for the score's
     parts and its account of the method, beside the maintainer's, which stay as written."""
 
     # The maintainer's terms a visitor's line must not carry (A20, A22, §3.2).

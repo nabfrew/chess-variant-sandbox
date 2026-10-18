@@ -1,7 +1,7 @@
 """The steering rule: its boundaries, its error rates, and that it never reaches a verdict.
 
 ``tournament/duel.steer`` is a group-sequential rule for duels that only choose the next
-experiment (``docs/plan-compute.md`` §4.3, C4). It was pre-registered in
+experiment (``docs/reference/compute-economy.md`` §4.3, C4). It was pre-registered in
 ``docs/reference/learned-evaluator.md`` §9 with the numbers frozen below, before anything
 used it, so a change here that moves one of them is a new rule and goes back through that
 section first.
@@ -275,7 +275,7 @@ def test_the_rule_is_never_wired_to_a_stamped_verdict() -> None:
     }
     assert callers <= STEERING_CALLERS, (
         f"{sorted(callers - STEERING_CALLERS)} use the steering rule; it is for duels that "
-        "are never stamped (plan-compute §4.3)"
+        "are never stamped (reference/compute-economy.md §4.3)"
     )
     for stamped in STAMPED:
         assert stamped not in callers

@@ -249,7 +249,7 @@ _SCALES: dict[str, float] = {
     # Schema 20 (Q807). Whether any pair bars moving a portal straight back: charged once
     # in `complexity`, so Ferry and its twin with the bar need this to read as two games.
     "portals_no_back": 1.0,
-    # Schema 21 (Q843a, `plan-portals-2.md` §6). The map's shape beside the pair (a ring, a
+    # Schema 21 (Q843a, `docs/archive/plan-portals-2.md` §6). The map's shape beside the pair (a ring, a
     # funnel, any other map) and whether any end filters which pieces go in: each charged
     # once in `complexity`, so a ring and its twin as pairs, or a filtered pair and the
     # open one, need these to read as two games.

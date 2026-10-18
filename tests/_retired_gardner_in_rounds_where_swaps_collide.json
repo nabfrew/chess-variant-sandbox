@@ -1,7 +1,7 @@
 {
   "schema_version": 27,
-  "name": "gardner in rounds scored",
-  "description": "Martin Gardner's 5x5 minichess played in rounds: both players move at once. Each round each player chooses one move in secret, and both moves are revealed and made together. There is no check: the king is simply captured, and the side that loses its king loses. Only two pieces moving onto the same square collide, and then both are removed. A piece that moves onto a square its target has just left lands there if it could move to an empty square, so two pieces that try to take each other in the same round trade places unharmed; a pawn's diagonal capture, which cannot land on an empty square, misses and the pawn stays. Two such misses at each other two rounds in a row bar that pair of captures until either square changes. If both kings fall in the same round, the side with more material left wins (queen 9, rook 5, bishop and knight 3, pawn 1) and equal material is a draw; the same count settles a game that reaches the move limit or the no-progress clock. A round counts as two moves on the clocks. This rule alone does not stop the kings' chase: a side behind in material will no longer trade both kings, so its king runs instead, and most games are still drawn by repetition.",
+  "name": "gardner in rounds where swaps collide",
+  "description": "Martin Gardner's 5x5 minichess played in rounds: both players move at once. Each round each player chooses one move in secret, and both moves are revealed and made together. There is no check: the king is simply captured, and the side that loses its king loses. Only two pieces moving onto the same square collide, and then both are removed. Two pieces that try to take each other in the same round meet half-way as a collision and both are removed, kings included, so striking back at an attacker that strikes is mutual destruction. A piece that moves onto a square its target has just left for somewhere else lands there if it could move to an empty square; a pawn's diagonal capture, which cannot land on an empty square, misses and the pawn stays. If both kings fall in the same round, or anything else ends the game for both players at once, the game is drawn. A round counts as two moves on the clocks. Games are short: a king can no longer strike back at an attacker that strikes, so a queen that reaches a king usually ends the game within a few rounds, often with both kings gone.",
   "board": {
     "width": 5,
     "height": 5
@@ -198,18 +198,15 @@
     "repetition_draw": 3,
     "no_progress_draw": 100,
     "simultaneous": {
-      "both": "score"
-    },
-    "scoring": {
-      "count": "material"
+      "swap": "collision"
     }
   },
   "provenance": {
     "added": "2026-10-17",
     "preview": "A preview: a new kind of game in which both players move at once, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
     "origin": "designed",
-    "source": "docs/plan-round-chase.md, Q942c: the showcases of the chase remedies (section 5)",
-    "history": "S3, the showcase of schema 27's rules.simultaneous.both score: Gardner in rounds with a double royal capture settled by material, with rules.scoring material. Pre-registered in docs/plan-round-chase.md section 5 before it was measured; the study and its grades are there.",
+    "source": "docs/archive/plan-round-chase.md, Q942c: the showcases of the chase remedies (section 5)",
+    "history": "S2, the showcase of schema 27's rules.simultaneous.swap collision: Gardner in rounds with the user's second remedy, two pieces trading squares meet as a collision. Pre-registered in docs/archive/plan-round-chase.md section 5 before it was measured; the study and its grades are there.",
     "parents": [
       "e043fce6968e"
     ]

@@ -120,7 +120,7 @@ CANONICAL_GAMES = 4
 CANONICAL_SEED = 0
 
 # The roster a game played in rounds is measured on (schema 26, Q918d;
-# `docs/plan-simultaneous.md` §6.2): the same eight places, with the round players where
+# `docs/archive/plan-simultaneous.md` §6.2): the same eight places, with the round players where
 # the alternating ladder has minimax, which is refused on these games, at
 # `ROUND_BUDGET_FACTOR` (16) times its budgets, `matrix:nodes=1600` to `102400` (Q944a,
 # `docs/reference/round-roster-budgets.md` §6). At the same budgets the bottom rungs were
@@ -175,7 +175,7 @@ def canonical_agents(
     measured it is in its `Basis.agents` and `Basis.net`.
 
     Read off `nets/` every call, so a newly kept generation stales its game's score the
-    moment its store lands, and the refresher replays it (`plan-evolving-score.md` §6.4).
+    moment its store lands, and the refresher replays it (`docs/archive/plan-evolving-score.md` §6.4).
     """
     if spec is not None and plays_with_spies(spec):
         return SPY_AGENTS
@@ -801,7 +801,7 @@ def _measure_seeds(
     ):
         _fit_once(candidate, workers, say)
 
-    # The score's history (Q649, `docs/plan-confidence.md` §3.2 step 3). After the fit,
+    # The score's history (Q649, `docs/archive/plan-confidence.md` §3.2 step 3). After the fit,
     # because the fit decides the basis this write will stamp, and before any run is
     # touched: a measurement under another basis is kept whole under `previous/<n>/`, its
     # runs that are played again moved and the rest copied. Its ledger line is written

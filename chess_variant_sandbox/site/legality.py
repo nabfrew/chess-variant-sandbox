@@ -1,6 +1,6 @@
 """Tier one: the legality job, which checks a score a visitor's browser measured.
 
-`docs/plan-client-compute.md` §5 and §8's row *Tier one, the legality job*. A browser runs
+`docs/archive/plan-client-compute.md` §5 and §8's row *Tier one, the legality job*. A browser runs
 the whole package under Pyodide, plays and scores a draft, and sends what it played. The
 server trusts none of it. This job re-derives everything that depends on positions, asking
 the core at every ply, and it scores the records with its own metrics. The number it

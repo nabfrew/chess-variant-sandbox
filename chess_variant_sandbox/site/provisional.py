@@ -1,6 +1,6 @@
 """A score a visitor's browser measured, which the server has checked and not measured itself.
 
-Q312, the first row of `docs/plan-client-compute.md` §8 after the probe. The browser runs the
+Q312, the first row of `docs/archive/plan-client-compute.md` §8 after the probe. The browser runs the
 whole package under Pyodide, plays and scores a draft, and sends the records. The server
 checks them in three tiers (§5): it walks every game for legal play, it replays a sample of
 them byte for byte, and on request it measures the game itself. This module is where a

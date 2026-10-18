@@ -1,4 +1,4 @@
-"""A game between two people, played by correspondence (Q570, `docs/plan-return.md` §1).
+"""A game between two people, played by correspondence (Q570, `docs/archive/plan-return.md` §1).
 
 Four endings, each proved on a spec rather than on chess (rule 5 of CLAUDE.md): the
 rules' own (a `dull` variant whose ply limit ends it after one move each), a
@@ -509,7 +509,7 @@ class TestTheRules:
                 assert name not in source, f"{path.name} names {name}"
 
     def test_peoples_counts_flow_from_the_site_to_trust_only(self) -> None:
-        """Rule 5 again, for `site/people.py` (plan-confidence T3): people's counts go
+        """Rule 5 again, for `site/people.py` (`docs/archive/plan-confidence.md` T3): people's counts go
         site -> trust, never the reverse. `trust.py` takes them as an argument and imports
         nothing of the site, and nothing under `metrics/` names either module."""
         trusted = (PACKAGE / "trust.py").read_text(encoding="utf-8")
@@ -546,7 +546,7 @@ def _between_source() -> str:
 
 
 class TestNoCountdown:
-    """Tests 2 and 3 of `docs/plan-meta-game.md` on the match page (§1.5, §1.8).
+    """Tests 2 and 3 of `docs/reference/no-dark-patterns.md` on the match page (§1.5, §1.8).
 
     The time left to move is shown since Q627 (the user's dated exception to test 2), as
     the server's sentence: the page itself still works none out

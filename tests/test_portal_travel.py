@@ -1,4 +1,4 @@
-"""A piece's trip through a portal, animated (Q836, `docs/plan-portals.md` *Travel through a
+"""A piece's trip through a portal, animated (Q836, `docs/archive/plan-portals.md` *Travel through a
 portal, animated*).
 
 The board's own `animateChange` is run in node over a stand-in for the SVG that records every
@@ -14,7 +14,7 @@ The position is `test_portal_board`'s: cylinder chess with one two-way pair on d
 white rook on a4 that reaches d4 going right (out at e5) and, round the seam, going left (out
 at c5).
 
-Since Q843d the same holds for a trip through a fold (schema 22, `docs/plan-portals-2.md`
+Since Q843d the same holds for a trip through a fold (schema 22, `docs/archive/plan-portals-2.md`
 §5.3), whose ripple takes the spin's place: the slide onto the fold, the sink into the pool,
 the rise out of the far end and the slide on, nothing turning; from the far side of the fold
 a piece stands in, no slide in; the ripples in the group's colour, the reduced-motion
@@ -290,7 +290,7 @@ def test_the_rook_lands_where_the_engine_says() -> None:
 
 # ------------------------------------------------------------------ through a fold (Q843d)
 #
-# Schema 22's trip (`docs/plan-portals-2.md` §5.3): a ripple in place of the spin. The game is
+# Schema 22's trip (`docs/archive/plan-portals-2.md` §5.3): a ripple in place of the spin. The game is
 # `test_schema_twenty_four`'s Gardner with a fold pair on b3 and d3: a white rook on b1 slides
 # up onto b3 and comes out on d3, taking a bishop there (`Rb1-b3~xd3`). Since schema 24 (Q867b,
 # §3R) the move ends where it comes out, so the trip ends with the rise (Q867c, §5.3R: no slide

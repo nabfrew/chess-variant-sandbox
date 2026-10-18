@@ -1,7 +1,7 @@
 {
   "schema_version": 18,
   "name": "sittuyin",
-  "description": "Sittuyin, Burmese chess. The pawns start on a staggered line across the third and fourth ranks; every other piece starts in hand, and while a player still holds one, a move is placing it on an empty square of their own three back ranks, a chariot (yahhta) on the back rank only. Then the game is makruk's pieces: a pawn on its long diagonal of promotion squares may become a general, but only once its side's general has been lost. Stalemate loses for the side that cannot move.",
+  "description": "Sittuyin is the traditional chess of Burma, and it opens with a deployment instead of a fixed setup. Only the pawns start on the board, staggered across the third and fourth ranks; each player then places the king and the rest of the army one piece a move on empty squares of their own three back ranks, the two chariots (yahhta, moving as rooks) on the back rank only. Nothing on the board moves until both sides have placed everything, so the opening is a duel of arrangement: a piece placed early claims its square but shows the plan, and one held back can answer what the other side has built. The pieces are the old, slow ones: beside the chariots and the horses (myin, moving as knights), the general (sit) steps one square diagonally and the elephant (hsin) one square diagonally or straight forward. A pawn may promote, but only to a general, only once its side's general has been lost, and only on reaching one of the squares of the long diagonals in the enemy half. Checkmate wins, and a player left with no legal move loses.",
   "board": {
     "width": 8,
     "height": 8
@@ -331,6 +331,6 @@
     "added": "2026-10-09",
     "origin": "human",
     "source": "Sittuyin (Fairy-Stockfish's `sittuyin`), with a caveat: a pawn promotes on arriving at a promotion square rather than in place or by a later diagonal step, and the counting rules are the plain no-progress clock",
-    "history": "Schema 18d's second showcase for the placement phase (Q784, plan-schema-17.md section 9.3)."
+    "history": "Schema 18d's second showcase for the placement phase (Q784, docs/archive/plan-schema-17-18.md section 9.3)."
   }
 }

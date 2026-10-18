@@ -1,4 +1,4 @@
-// R1, `docs/plan-return.md` §6.2: *Challenge ‹handle›* on a member's page.
+// R1, `docs/archive/plan-return.md` §6.2: *Challenge ‹handle›* on a member's page.
 //
 // The page is drawn by the server; this opens the sheet under the button and sends the
 // challenge by handle through Q571's own route, `/api/challenge`. Nothing counts down: the

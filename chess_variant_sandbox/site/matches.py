@@ -24,7 +24,7 @@ rewrites: a person's win survives *play again*. `site/finishes.py` reads and rep
 those rows, and `takebacks` on this row counts the undos a finish copies beside them.
 
 Three more things are kept for the baseline a person's games can give (H1 to H3 of
-`docs/plan-human-data.md` §1.2, `0032_human_data.sql`), on a game between a person and a
+`docs/reference/human-data.md` §1.2, `0032_human_data.sql`), on a game between a person and a
 computer player only, none shown per person and none read by anything that scores:
 `thinks`, beside `moves`, the milliseconds from the stored reply (or the start, or a
 take-back) to the person's move arriving, on the database's clock and null past
@@ -133,7 +133,7 @@ SIGN_IN_TO_PLAY = "sign in to play"
 def members_only_said(agent: str) -> str:
     """Why a visitor may not start a game against this player, in the page's words.
 
-    `docs/plan-launch.md` §3.6 (L15): visitors play opponents up to *hard*; *hardest*,
+    `docs/archive/plan-launch.md` §3.6 (L15): visitors play opponents up to *hard*; *hardest*,
     and anything stronger, is for signed-in people. The player by its name off the ladder,
     never its agent string.
     """
@@ -177,7 +177,7 @@ to it and this is the module the sweep is in.
 LOCAL_APP = "local-app"
 
 # The two endings a game between two people has that the engine does not decide (Q570,
-# `docs/plan-return.md` §1.3). `agreed` is a draw both people chose; `cancelled` is a
+# `docs/archive/plan-return.md` §1.3). `agreed` is a draw both people chose; `cancelled` is a
 # match either person called off before both had moved, which finishes the row with no
 # result, so no reading that wants a result counts it. `site/correspondence.py` writes
 # both; they are named here because the readings below filter on them.
@@ -190,7 +190,7 @@ BETWEEN_PEOPLE = "seat0_user is not null and seat1_user is not null"
 THINK_CAP = timedelta(minutes=30)
 """The longest gap stored as a think time; a longer one is stored as null (H1).
 
-`docs/plan-human-data.md` §1.2: a person who walked off and came back did not think for an
+`docs/reference/human-data.md` §1.2: a person who walked off and came back did not think for an
 hour, so a gap over this is *away*, not *thinking*. Fixed by the plan before any gap was
 read, and not to be tuned against what it excludes.
 """
@@ -354,7 +354,7 @@ def row(connection: Any, match_id: str) -> Row:
         cursor.execute(f"select {_ROW_COLUMNS} from matches where id = %s", (match_id,))
         found = cursor.fetchone()
     if found is None:
-        # A visitor reads this (P20 of `docs/plan-understanding.md` §3.3): an address,
+        # A visitor reads this (P20 of `docs/archive/plan-understanding.md` §3.3): an address,
         # not an id.
         raise KeyError("There is no game at this address.")
     return _to_row(found)
@@ -511,7 +511,7 @@ def _standing(
 ) -> dict[str, list[Any]] | None:
     """Each side's rating and deviation as the game's table stands now, for a practice row.
 
-    H3 of `docs/plan-human-data.md` §1.2: a practice game against a computer player on a
+    H3 of `docs/reference/human-data.md` §1.2: a practice game against a computer player on a
     game whose table has computer players keeps what the table said at its start, so it
     can be graded by skill later. A read only; nothing moves. A person with no row yet
     reads the table's starting values and is marked `starting`; a seat with nothing to
@@ -719,7 +719,7 @@ def _running(connection: Any, game: str, user: int) -> tuple[Row, ...]:
 
     Against the computer only: §4's rule is about a person and a computer, and a game
     against another person is never resigned by starting something else (Q570,
-    `docs/plan-return.md` §1.3's *Many games at once*). Two friends' games of the same
+    `docs/archive/plan-return.md` §1.3's *Many games at once*). Two friends' games of the same
     rules run side by side.
     """
     with connection.cursor() as cursor:
@@ -1169,7 +1169,7 @@ def resign(
     `left` is what the row records. Against the computer a resignation is the same act
     as leaving and is always recorded so. Between two people (Q570) a person resigning
     finished the game, and only the sweep's loss after five days is a game they left,
-    which is what the abandonment line reads (`docs/plan-return.md` §1.6).
+    which is what the abandonment line reads (`docs/archive/plan-return.md` §1.6).
     """
     found = row(connection, match_id)
     if not found.running:
@@ -1277,7 +1277,7 @@ def _finish(
     badges it completed land together or neither does. They run after the rating call
     because *Giant-killer* reads the ratings going in, which that call is what writes.
     A rated game between a person and a computer player then asks whether its game is
-    over the bar of `docs/plan-human-data.md` §3.3, and queues it for training if so
+    over the bar of `docs/reference/human-data.md` §3.3, and queues it for training if so
     (`site/training.py`, H9); that writes a queue entry and nothing that rates or scores.
     `site/badges.py` is imported here rather than at the top because it reads this
     module's rows.
@@ -1295,7 +1295,7 @@ def _finish(
     update = rating.finish(connection, match_id)
     badges.grant_for_match(connection, match_id)
     if update is not None and update.seat0.key.is_computer != update.seat1.key.is_computer:
-        # H9 (`docs/plan-human-data.md` §3.3, the user's B): a rated game against a
+        # H9 (`docs/reference/human-data.md` §3.3, the user's B): a rated game against a
         # computer player may put its game over the bar, which queues it for training.
         from chess_variant_sandbox.site import training
 
@@ -1321,7 +1321,7 @@ def sweep(
 
     A match with two people in it has its own limit, `between` (five days, the user's
     of 2026-10-02), in either mode, and the one it is resigned for is **the player to
-    move**, as the engine says from the replayed position (Q570, `docs/plan-return.md`
+    move**, as the engine says from the replayed position (Q570, `docs/archive/plan-return.md`
     §1.6). It is recorded as a game they left. A game where it is your opponent's move
     is never lost by you for their silence. In a game in rounds both may owe a move: the
     one who has not sealed loses, and a round neither sealed is a draw

@@ -1,7 +1,7 @@
 {
   "schema_version": 12,
   "name": "thrown gifts",
-  "description": "Gift chess with the third answer to where the two pieces stand. Taking a piece still promotes it -- a pawn to a knight, a knight to a bishop, a bishop to a rook, a rook to a queen, and a queen is taken outright -- but the attacker takes the square and throws the promoted piece onto any empty square a king's step from where it stood, choosing the worst one for it. A piece with every neighbouring square occupied cannot be taken at all. Throwing is the answer that makes the promoting chain decisive: the thrower chooses the worst square for what it struck, and games are shorter and won far more often than under gift chess's exchange of squares.",
+  "description": "Chess in which taking a piece promotes it, and the taker decides where it goes. A struck pawn becomes a knight, a knight a bishop, a bishop a rook, a rook a queen, and only a queen is removed; the attacker moves onto the square as usual and throws the upgraded piece onto any empty square a king's step from where it stood, the square the attacker just left included when that is next to it. Every capture still hands the opponent a better piece, but the thrower chooses where it lands, so the gift can be dropped where it is pinned, boxed in, out of play or in the way of its own side, and the promotion can cost the receiver more than it gives. A piece hemmed in on every side can be taken only by a neighbour, which throws it onto the square it vacated. Against a version where the two pieces simply exchange squares, games here are shorter and won far more often.",
   "board": {
     "width": 8,
     "height": 8

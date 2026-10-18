@@ -25,7 +25,7 @@ its own; `pytest-timeout` is the guard in both cases.
 script it compiles, keyed by source, and a script compiled into a `vm` context keeps that
 context: so each check's context, with the 1.3 MB page script in it, lived as long as the
 node. Asked by `test_web.py` alone, the node grew to 1.0 GB, and the four a fast run keeps
-held 2.0-2.3 GB at its peak (F4's after, `docs/plan-tests.md`). Started with
+held 2.0-2.3 GB at its peak (F4's after, `docs/archive/plan-tests.md`). Started with
 `--no-compilation-cache` it holds about 160 MB on the same file, for no measurable time: every
 check compiles into a fresh context anyway. `--max-old-space-size` is the backstop, so a leak
 found later costs a crash naming this file rather than a gigabyte per worker. And the node is

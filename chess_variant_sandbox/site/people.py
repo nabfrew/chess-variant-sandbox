@@ -1,6 +1,6 @@
 """People's counts on a game: the E-H evidence `trust.read` takes as `people`.
 
-Task T3 of `docs/plan-confidence.md` (§1, kinds E-H; §2.3, the rule). One fold over the
+Task T3 of `docs/archive/plan-confidence.md` (§1, kinds E-H; §2.3, the rule). One fold over the
 rows `matches.leaderboard_matches` returns, per game, says four things:
 
 - **games**: finished leaderboard games a person played against the top group -- the

@@ -1,6 +1,6 @@
 """A score's history: what it was, kept and dated, when a new measurement replaces it (Q649).
 
-`docs/plan-confidence.md` §3.2 step 3 (T4). **The score on the page is always the newest
+`docs/archive/plan-confidence.md` §3.2 step 3 (T4). **The score on the page is always the newest
 current measurement; the history says what it was.** Nothing here makes a number: a
 replaced measurement is kept exactly as it was written, under the game's own directory,
 and a line is appended to a ledger beside it.
@@ -25,7 +25,7 @@ history line is a past value labelled past. A site visitor sees one as a *was* l
 the trust line's *more* (the user's answer to the plan's §5 Q1, A, 2026-10-03), so
 `SHOW_WAS_TO_VISITORS` is ``True``.
 
-**How much a score has moved** (`volatility`, EV6, `docs/plan-evolving-score.md` §7.1):
+**How much a score has moved** (`volatility`, EV6, `docs/archive/plan-evolving-score.md` §7.1):
 the spread of a game's stored scores at one weights version, beside its interval, in
 words with no cut-off. `/admin` and the local scores panel only; it changes no score and
 no trust level, and a visitor is sent none of it.
@@ -385,7 +385,7 @@ def for_visitors(entries: Iterable[Entry], current_index: float | None) -> list[
 
 # ------------------------------------------------------------------ how much it has moved
 
-# EV6 (`docs/plan-evolving-score.md` §7.1, pre-registered before this was written): how
+# EV6 (`docs/archive/plan-evolving-score.md` §7.1, pre-registered before this was written): how
 # many of the newest same-weights revisions the reading compares.
 VOLATILITY_K = 5
 

@@ -5,7 +5,7 @@ they are about -- ``rules.wrap: Fairy-Stockfish has no board without edges`` -- 
 their first readers are the `fairy` command and the tests, which match on those paths.
 A visitor never sees the game's text. The pages name a rule by its card's title, so the
 same reason reads *the rule 'edges that join': Fairy-Stockfish has no board without
-edges.* (`docs/plan-understanding.md` W5b, the guard's *a path into the game's text*).
+edges.* (`docs/archive/plan-understanding.md` W5b, the guard's *a path into the game's text*).
 
 A reason in, the same reason out, one for one: this changes no condition and drops
 nothing. The names are `spec/plain.py`'s, the one table of what each part is called.

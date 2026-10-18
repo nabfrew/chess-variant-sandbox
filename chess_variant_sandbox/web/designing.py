@@ -725,7 +725,7 @@ def opening_preview(spec: dict[str, Any]) -> dict[str, Any]:
 
 # ------------------------------------------------------------------ portals in the designer
 #
-# P3 of `docs/plan-portals.md` (Q772c): the pair's card in sentences (D4), the refusals in
+# P3 of `docs/archive/plan-portals.md` (Q772c): the pair's card in sentences (D4), the refusals in
 # the designer's words (D7), the warnings when a setting makes a portal useless (D7, N4),
 # and whether another pair can go in at all (D2). The sentences say what the rule *is*,
 # from the spec's own fields through a table of phrasings, never what a position allows;
@@ -733,7 +733,7 @@ def opening_preview(spec: dict[str, Any]) -> dict[str, Any]:
 # the compiled exit table's (`PortalRule.exits`), so nothing here works out a square.
 #
 # An end is named by its square, never by which end of the pair it is: both ends of a pair
-# are drawn alike, in the pair's colour (Q838d, `docs/plan-portal-look.md` §5). The file's
+# are drawn alike, in the pair's colour (Q838d, `docs/archive/plan-portal-look.md` §5). The file's
 # keys `orange` and `blue` stay; they are data, not words. Where an end has no square to
 # name (it is off the board), it is the pair's *first* or *second* end, the order the
 # designer put them down in.
@@ -828,7 +828,7 @@ def portal_cards(spec: Any, sides: Any = None, engine: Any = None) -> list[dict[
     exits each end has on the board as set up (N4); without one the cards carry no counts
     and so no warning about them. Empty for a draft without portals. A pair's card is the
     one it has always had, with its filters said; a group of three or more ends (schema 21,
-    `docs/plan-portals-2.md` §5.4, Q843b) says where each end leads, whose pieces go in by
+    `docs/archive/plan-portals-2.md` §5.4, Q843b) says where each end leads, whose pieces go in by
     it, which pieces, and who moves it (`_map_card`). Each card carries its group's number
     (``pair``), which is how the page finds it.
     """
@@ -885,10 +885,10 @@ def portal_cards(spec: Any, sides: Any = None, engine: Any = None) -> list[dict[
 
 
 def _fold_card(group: dict[str, Any], sides: tuple[str, str], card: dict[str, Any]) -> dict[str, Any]:
-    """A group's card with its kind (schema 22, Q843d, `docs/plan-portals-2.md` §5.4): a
+    """A group's card with its kind (schema 22, Q843d, `docs/archive/plan-portals-2.md` §5.4): a
     momentum group's card as it was, with ``kind`` said; a fold's ways in a fold's words. A
     fold is not a door a piece is thrown through: a piece that ends its move on it may stay,
-    or come out on the end it leads to (schema 24, `docs/plan-portals-2.md` §5.3R), and one
+    or come out on the end it leads to (schema 24, `docs/archive/plan-portals-2.md` §5.3R), and one
     a piece may not use is plain floor to it, never solid. Nothing comes out *beside* a
     fold, so the momentum card's exit counts and their warnings do not apply. Ends by
     square, as every card names them."""
@@ -1820,7 +1820,7 @@ def _alone_map(engine: Engine, piece: int, square: int) -> dict[str, Any]:
     compiled = engine.spec
     width, height = compiled.width, compiled.height
     base = engine.initial_state()
-    # N5 (`docs/plan-portals.md`, schema 19): the lone board keeps the portals where the
+    # N5 (`docs/archive/plan-portals.md`, schema 19): the lone board keeps the portals where the
     # setup puts them, as it keeps the walls, so the engine's answer shows the transits.
     # Their board bytes are the opening position's own.
     # A fold (schema 22) is no board byte: it stays where the opening state's `folds` put it,

@@ -1,4 +1,4 @@
-"""A member's page, `/players/<handle>` (R1, `docs/plan-return.md` §6.2).
+"""A member's page, `/players/<handle>` (R1, `docs/archive/plan-return.md` §6.2).
 
 The user's decision 2 of 2026-10-02, option A: members see each other's page -- recent
 games, designed games, what they have done, who they play most with -- and five-star games

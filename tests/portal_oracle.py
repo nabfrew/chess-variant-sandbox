@@ -4,7 +4,7 @@ A declared test oracle under CLAUDE.md rule 3: it answers which moves go *throug
 in a position, and whether a square is attacked through one, and nothing outside `tests/`
 imports it. Fairy-Stockfish cannot play a portal (`fairy/variant.py` refuses the rule), so
 this is the second implementation the core's transits are held against
-(`docs/plan-portals.md` §5); `tests/hex_geometry.py` is the precedent.
+(`docs/archive/plan-portals.md` §5); `tests/hex_geometry.py` is the precedent.
 
 It shares no code with `engine/compile.py` or the core. It reads the spec's own move
 descriptors -- vectors, symmetry, mode, range, min_range, screens, the first-move and rank
@@ -12,7 +12,7 @@ conditions -- and walks them over the board square by square with its own wrap a
 stepping, where the compiler resolves them once into tables and the core walks those. Only
 the spelling helpers of `spec/schema.py` are shared (`wrap_stated`, `promotion_squares`,
 `obstacle_squares`, `portal_groups`): what a spec *says* is the validator's to read, and what
-it *means* is what is being checked. Schema 21 (`docs/plan-portals-2.md` §2): each end leads
+it *means* is what is being checked. Schema 21 (`docs/archive/plan-portals-2.md` §2): each end leads
 to the end its ``to`` names (a pair's to each other), or nowhere, and lets in a player's
 piece only when the player is in its ``enter`` and the piece in its ``carries``.
 

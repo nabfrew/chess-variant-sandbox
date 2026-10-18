@@ -1,4 +1,4 @@
-"""Finding an opponent for a game between two people (Q571, `docs/plan-return.md` §1.4).
+"""Finding an opponent for a game between two people (Q571, `docs/archive/plan-return.md` §1.4).
 
 Four small ways, sized for ten people who know each other, and nothing for a crowd that
 is not there (no lobby, no pairing queue, no matchmaking, no *online now*):
@@ -211,7 +211,7 @@ def _said(table: rating.Table, user: int) -> str:
 
 # --------------------------------------------------------- the maker takes challengers
 #
-# R10 (`docs/plan-return.md` §3 C4, Q606). One switch on a person's own page,
+# R10 (`docs/archive/plan-return.md` §3 C4, Q606). One switch on a person's own page,
 # `users.takes_challengers`, off by default: switched on, they are named first in *Play a
 # person* on each of their own published games, and any other member may challenge them
 # there through the ordinary challenge, which carries no message of any kind. A rated win

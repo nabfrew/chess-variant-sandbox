@@ -84,7 +84,7 @@ function drawUnclaimed(open) {
 // With nobody on it the table itself goes and the sentence stays. A heading row over no
 // rows is a list of noughts nobody is on.
 //
-// L3 of `docs/plan-launch.md` §3.3: below `here.listedFrom` people the server sends no
+// L3 of `docs/archive/plan-launch.md` §3.3: below `here.listedFrom` people the server sends no
 // rows at all, and the section says who is here and what puts a person on the list
 // instead. `here` is absent for the plain listing.
 function drawPeople(people, rated, here) {

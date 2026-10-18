@@ -1,6 +1,6 @@
 """Schema 27 (Q942b): the round players' term for a rested royal under a standing attacker.
 
-`docs/plan-round-chase.md` §3 R1 and the Q942b row of §4.2. Under `rules.simultaneous.rest`
+`docs/archive/plan-round-chase.md` §3 R1 and the Q942b row of §4.2. Under `rules.simultaneous.rest`
 a royal that moved cannot move the next round, so a royal resting where a standing enemy
 piece reaches is all but lost, and a depth-one matrix player saw nothing of it. Both sides of
 the boundary price it now (`eval.rs::rested_royal_falls`, its oracle

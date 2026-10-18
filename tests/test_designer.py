@@ -964,7 +964,7 @@ function addEverySubCard(templates, adds) {
 # fact about the game the template is -- no royal piece, nothing that promotes, one kind
 # of piece -- and not about the card, which is the line the first slice draws.
 # Schema 19 (Q771): a portal card arrives with no squares, because where a pair stands is
-# P3's portal tool's to place on the board (`docs/plan-portals.md` D2, Q772); until then
+# P3's portal tool's to place on the board (`docs/archive/plan-portals.md` D2, Q772); until then
 # the validator says so, on every template.
 _PORTAL_SQUARES = "must be a square on the board"
 _CANNOT = {

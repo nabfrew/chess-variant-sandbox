@@ -320,7 +320,7 @@ def _foot(here: str = "", players: bool = False) -> str:
     goes with the reader.
 
     *Players* is linked only once the page lists `milestones.LISTED_FROM` people (L3 of
-    `docs/plan-launch.md` §3.3), which is the site's fact, not the reader's: `players` is
+    `docs/archive/plan-launch.md` §3.3), which is the site's fact, not the reader's: `players` is
     what the server read for the pages a signed-in person gets. A constant page (credits,
     privacy, the badges, the door) reads no store, and so never links it; the page itself
     answers by its address whatever the count.
@@ -462,7 +462,7 @@ def _your_mark(user: int | None) -> str:
 def _then(asked: str | None) -> str | None:
     """Where sign-in or joining goes afterwards: a challenge link's address, or nowhere.
 
-    Only a challenge link (Q571, `docs/plan-return.md` §1.4): a link opened by somebody
+    Only a challenge link (Q571, `docs/archive/plan-return.md` §1.4): a link opened by somebody
     who then signs in or joins works for them, and the site has no other return to offer.
     Anything else is dropped, so the parameter is never a way off the site.
     """
@@ -482,7 +482,7 @@ PURPOSE = (
     "far to trust it, and it is measured again as the computer players get stronger and as "
     "people play. The people who play here are the test the computer cannot replace."
 )
-"""`docs/plan-understanding.md` §1.1's statement of purpose, as written (tone A), for the
+"""`docs/archive/plan-understanding.md` §1.1's statement of purpose, as written (tone A), for the
 invitation page. The invitation email carries its shorter form (`mail.PURPOSE`)."""
 
 
@@ -491,7 +491,7 @@ ACCOUNT_ADDS = (
     "strongest computer player on a game and be named for it, you can save and publish "
     "games you design, play other members by correspondence, and star and vote."
 )
-"""What an account adds (L7, `docs/plan-launch.md` §4, with `docs/plan-understanding.md`
+"""What an account adds (L7, `docs/archive/plan-launch.md` §4, with `docs/archive/plan-understanding.md`
 §1.3's *strongest computer player on a game* for *the top*): in full on the invitation page
 and the sign-in page. The application's header says it in one line beside *sign in*
 (`core.js` `paintIdentity`). Every clause is a thing the site does today."""
@@ -626,7 +626,7 @@ def profile(handle: str, players: bool = False, *, user: int | None = None) -> s
     rungs* (M4) and *distance to the top* (T3); under it come the dated milestone lines,
     newest first, and *still open for you* grouped by the behaviour grid's axes. Each part
     is absent when there is nothing to say, because an empty heading would read as a
-    nought and `docs/plan-meta-game.md` §2.1's third rule is that absent is not zero.
+    nought and `docs/archive/plan-meta-game.md` §2.1's third rule is that absent is not zero.
 
     Above the table sits *games you left running* (`docs/archive/plan-ux.md` B2), which is
     the only part of the page about something unfinished. Each line links to the board,
@@ -637,7 +637,7 @@ def profile(handle: str, players: bool = False, *, user: int | None = None) -> s
         '<p class="lead">What you have played, and how many of each game\'s computer '
         "players you have beaten, weakest to strongest.</p>\n"
         '<div class="counts" id="counts"></div>\n'
-        # L2 of `docs/plan-launch.md` §3.2: in the counts' place until the first is
+        # L2 of `docs/archive/plan-launch.md` §3.2: in the counts' place until the first is
         # non-zero, what a person can do here rather than three noughts.
         '<div id="start"></div>\n'
         # B2, above the table: the one part of this page that is an unfinished thing
@@ -854,7 +854,7 @@ def _not_yet(handle: str, reading: dict[str, Any]) -> str:
 def member(
     reading: dict[str, Any], reader: str, players: bool = False, *, viewer: int | None = None
 ) -> str:
-    """`/players/<handle>`, a member's page (R1, `docs/plan-return.md` §6.2; Q760).
+    """`/players/<handle>`, a member's page (R1, `docs/archive/plan-return.md` §6.2; Q760).
 
     Drawn whole by the server from `members.read`, every string escaped. Only a member
     reads it (a visitor is sent to the door before this runs), and every member reads the
@@ -1199,7 +1199,7 @@ def admin(handle: str, players: bool = False, *, user: int | None = None) -> str
         "</tr></thead>\n"
         '<tbody id="score-volatility"></tbody></table></div>\n'
         '<p class="under" id="score-volatility-empty"></p>\n'
-        # H8 and H9 of `docs/plan-human-data.md` (§3.3): games whose strongest computer
+        # H8 and H9 of `docs/reference/human-data.md` (§3.3): games whose strongest computer
         # player people beat, against the bar fixed before any game was read, and the
         # training queue a game over it enters. Visitors see none of it.
         "<h2>People beating the strongest</h2>\n"
@@ -1245,7 +1245,7 @@ def admin(handle: str, players: bool = False, *, user: int | None = None) -> str
         "<th>why</th><th>what it said</th><th>when</th></tr></thead>\n"
         '<tbody id="refresher-refused"></tbody></table></div>\n'
         '<p class="under" id="refresher-refused-empty"></p>\n'
-        # Q570. Games between people (`docs/plan-return.md` §1.7): the pause on new ones,
+        # Q570. Games between people (`docs/archive/plan-return.md` §1.7): the pause on new ones,
         # how many are running, and the maintainer's own way to seat two members; members
         # find each other by challenges (Q571).
         "<h2>Games between people</h2>\n"
@@ -1468,10 +1468,10 @@ def credits() -> str:
 def badges() -> str:
     """Every badge and the one sentence saying what earns it. Box E4, against §2.9.
 
-    Box E4 is in `docs/archive/plan-meta-game.md`; §2.9 and §3 are the live
-    `docs/plan-meta-game.md`'s. An unearned badge is drawn on nobody's profile, so a
-    profile alone would keep every rule a person has not met out of sight, and §3's
-    seventh test refuses a hidden rule.
+    Box E4 and §2.9 are in `docs/archive/plan-meta-game.md`. An unearned badge is drawn
+    on nobody's profile, so a profile alone would keep every rule a person has not met
+    out of sight, and the seventh test (`docs/reference/no-dark-patterns.md`) refuses a
+    hidden rule.
     This page is the answer. It reads the same for everybody: nothing here is marked
     earned, nothing shows how close anybody is, and no badge is counted.
 
@@ -1527,7 +1527,7 @@ def privacy() -> str:
     Task 1.9, with the badge of box E3 (`docs/archive/plan-meta-game.md`) and Q279's
     suggestion added. Six things are named because the store holds six about a person:
     `site/identity.py`'s three, the match rows, the dated award rows of
-    `docs/plan-meta-game.md` §2.9, and anything they wrote in the suggestion box. Leaving
+    `docs/archive/plan-meta-game.md` §2.9, and anything they wrote in the suggestion box. Leaving
     is the retention answer of 2026-09-11 in the words it asked for -- your games stay,
     your name goes.
     """

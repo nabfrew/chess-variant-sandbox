@@ -2398,7 +2398,7 @@ class TestTheExplorer:
         assert "if (!filters.length) return '';" in menu
 
     def test_the_panel_prints_the_votes_beside_the_stars(self) -> None:
-        """`plan-meta-game.md` §3 test 7, on the one mark that needs it.
+        """`docs/reference/no-dark-patterns.md` test 7, on the one mark that needs it.
 
         A mean of one vote draws as large a dot as a mean of twenty, so the count goes
         beside the number. The line is appended under the map's own panel rather than
@@ -2489,7 +2489,7 @@ class TestWhatsNew:
         assert "scores until the next deploy" in paragraph["runs"][1]["s"]
 
     def test_an_entry_marked_for_maintainers_is_skipped_on_the_site(self) -> None:
-        """W8 (Q615, `docs/plan-understanding.md` §3.3 C5): an entry whose first paragraph
+        """W8 (Q615, `docs/archive/plan-understanding.md` §3.3 C5): an entry whose first paragraph
         is `*For maintainers.*` is parsed as the maintainer's; the local application keeps
         it as written and `for_visitors` drops it, and a day left empty with it."""
         from chess_variant_sandbox.web import changelog
@@ -3046,7 +3046,7 @@ class TestWarmingPaysForTheFirstListing:
 class TestTheIndexBand:
     """Where a game's score sits against the rest, as three counts and never a place.
 
-    `docs/plan-meta-game.md` §2.6 T8. The interval on a score is wider than most of the
+    `docs/archive/plan-meta-game.md` §2.6 T8. The interval on a score is wider than most of the
     gaps between neighbours, so a rank number would be noise dressed as a ranking. The
     band names the games this one is clearly above, the ones clearly above it, and the
     ones the measurement cannot separate it from -- and says nothing at all where the
@@ -4172,7 +4172,7 @@ class TestServer:
             app.post("/api/session", {"hash": chess_game.hash, "seats": ["human", "nonsense"]})
 
 
-# B1's layout (`docs/plan-client-compute.md`, *What B1 built*), with a few bytes a file in
+# B1's layout (`docs/archive/plan-client-compute.md`, *What B1 built*), with a few bytes a file in
 # place of Pyodide's thirteen megabytes. The digest is invented: the route reads the
 # directory's name from the manifest and never checks it against the wheel.
 RUNTIME = "pyodide-0.29.5"
@@ -4209,7 +4209,7 @@ def build_artefact(root: Path, files: dict[str, bytes] = ARTEFACT, **extra: obje
 
 
 class TestTheBrowserBuildIsServed:
-    """`docs/plan-client-compute.md` B4: the browser build and the worker, served locally.
+    """`docs/archive/plan-client-compute.md` B4: the browser build and the worker, served locally.
 
     `/browser/<path>` answers from `build/browser/`, and only what its manifest names. The
     wasm goes out as `application/wasm`, which `WebAssembly.instantiateStreaming` insists
@@ -4976,7 +4976,7 @@ class TestTheWayInToTheSitesOwnPages:
             "{ signedIn: false, handle: null, admin: false, accounts: true,"
             " players: true, round: true }) })"
         )
-        # L7 (`docs/plan-launch.md` §4): what an account adds, in one line beside it.
+        # L7 (`docs/archive/plan-launch.md` §4): what an account adds, in one line beside it.
         assert drawn["who"] == [{"text": "sign in", "href": "/signin"},
                                 " to make your games count"]
         assert drawn["foot"] == [
@@ -5002,7 +5002,7 @@ class TestTheWayInToTheSitesOwnPages:
         ]
 
     def test_players_is_linked_only_once_the_list_starts(self) -> None:
-        """L3 of `docs/plan-launch.md` §3.3: below five people `/api/me` says
+        """L3 of `docs/archive/plan-launch.md` §3.3: below five people `/api/me` says
         `players: false` and the footer has no way to a page that lists nobody; from five
         on it does. The same answer for every reader, so the link never comes and goes
         with who is reading."""
@@ -5016,7 +5016,7 @@ class TestTheWayInToTheSitesOwnPages:
         assert {"text": "players", "href": "/players"} in foot("true")
 
     def test_the_round_is_linked_only_while_it_has_an_entrant(self) -> None:
-        """L4 of `docs/plan-launch.md` §3.4: `/api/me` says `round` while the latest round
+        """L4 of `docs/archive/plan-launch.md` §3.4: `/api/me` says `round` while the latest round
         has an entrant, and only then does the footer announce it."""
         def foot(entered: str) -> list[object]:
             return _header_after(
@@ -5353,7 +5353,7 @@ class TestTheSiteDesignerDrawsOnlyWhatItServes:
         assert 'id="botSave"' in seen["every"] and 'id="botPlay"' in seen["every"]
 
     def test_the_site_answers_the_opponent_builder_with_the_game(self, answers) -> None:
-        """D47 (`plan-understanding.md` §3.3): the site keeps no opponents, so a typed
+        """D47 (`archive/plan-understanding.md` §3.3): the site keeps no opponents, so a typed
         `#/opponent/<hash>` draws the game's page, never sliders it could not keep."""
         seen = _page_on(True, f"#/opponent/{self.HASH}", _game_payload(self.HASH, site=True),
                         answers)
@@ -5365,7 +5365,7 @@ class TestTheSiteDesignerDrawsOnlyWhatItServes:
 
 
 class TestTheRefusingSentencesSayWhatIs:
-    """`docs/plan-launch.md` §3.5 (L5, Q563): a game with no rated computer players is
+    """`docs/archive/plan-launch.md` §3.5 (L5, Q563): a game with no rated computer players is
     *practice only*, said in the words a player uses, never *sandbox mode* or a
     *leaderboard* it does not have (B17)."""
 
@@ -5378,7 +5378,7 @@ class TestTheRefusingSentencesSayWhatIs:
 
 
 class TestBusyIsSaidBeforeItRefuses:
-    """`docs/plan-launch.md` §5.2 (L11, Q566): when every strong seat is taken, the
+    """`docs/archive/plan-launch.md` §5.2 (L11, Q566): when every strong seat is taken, the
     opponent list says *busy* beside the strongest player before anybody picks it; *hard*
     is the opponent a site game page offers first; and an answer slower than three seconds
     says the computer is busy with other games and the move is safe. No countdown, no
@@ -5410,7 +5410,7 @@ class TestBusyIsSaidBeforeItRefuses:
         assert busy.count(said) == 1
 
     def test_a_visitor_reads_sign_in_to_play_beside_what_needs_an_account(self) -> None:
-        """L15 (`docs/plan-launch.md` §3.6): the server's `signInFor` words go after the
+        """L15 (`docs/archive/plan-launch.md` §3.6): the server's `signInFor` words go after the
         player's name, as *busy* does, and win over *busy* for a visitor."""
         import re
 
@@ -5496,7 +5496,7 @@ class TestTheScorePanelInPlainWords:
             assert "out of date" not in panel
 
     def test_the_site_says_no_score_and_not_why(self) -> None:
-        """G24 (`docs/plan-understanding.md` §3, Q563): the site measures nothing itself
+        """G24 (`docs/archive/plan-understanding.md` §3, Q563): the site measures nothing itself
         yet, so a game with no score says *No score yet.* and nothing about a tournament
         it withholds. The local application still says what measuring plays."""
         site = self._panel(True, staleness=None)
@@ -5726,8 +5726,8 @@ class TestTheOpponentMenuIsTrimmed:
 
 
 class TestOneRatingScaleOnTheSite:
-    """One computer player, one number on the site (`docs/plan-understanding.md` §2.3, G11
-    and G14), and since L2 (`docs/plan-leaderboard.md`) that number is a row of the game's
+    """One computer player, one number on the site (`docs/reference/plain-words.md` §3.3; the
+    audit's G11 and G14), and since L2 (`docs/archive/plan-leaderboard.md`) that number is a row of the game's
     leaderboard.
 
     The opponent table said *hardest +802* and the Unbeaten panel said *rated 2302* about
@@ -5997,8 +5997,8 @@ class TestTheGamePagesThreeLines:
     *First played by*, *the highest-rated person here*, and everyone who has beaten the
     top with the date and the seat, in order. Each is a record about people rather than
     about the game, so what these hold is that every line names its rule, that a line with
-    nothing to say is absent rather than blank (`docs/plan-meta-game.md` §3's test 7 and
-    §2.1's *absent is not zero*), that the order and the rating are the server's rather
+    nothing to say is absent rather than blank (test 7 of `docs/reference/no-dark-patterns.md`,
+    and `docs/archive/plan-meta-game.md` §2.1's *absent is not zero*), that the order and the rating are the server's rather
     than the page's, and that the local application, which keeps no accounts, draws none
     of them.
     """
@@ -9432,7 +9432,7 @@ class TestAStaleScoreIsNotAScore:
     ) -> None:
         """The ladder goes with the score as a *current* thing, and that is the point.
 
-        EV2 (`docs/plan-evolving-score.md` §5.1): a stale score's last number is shown,
+        EV2 (`docs/archive/plan-evolving-score.md` §5.1): a stale score's last number is shown,
         marked provisional with its revision and date, never as current. The Elo table is
         still withheld: "how hard is this opponent" is answered by a table fitted under an
         engine that no longer exists, and a ladder is a comparison.
@@ -11120,7 +11120,7 @@ class TestBuildingAGameByHand:
         The number is `Game.current_score`'s, so the one policy about a stale measurement
         holds here too. Since EV2 the game's own page shows a stale number marked
         *provisional*, but a draft's parent is one of the places a provisional number never
-        reaches (`docs/plan-evolving-score.md` §3, `test_provisional_estimate`): the editor
+        reaches (`docs/archive/plan-evolving-score.md` §3, `test_provisional_estimate`): the editor
         withholds it and says *out of date* from the staleness it carries. The assertion
         holds whether chess's library measurement is current or stale today.
         """
@@ -14178,7 +14178,7 @@ class TestHowManyRunsTheBrowserAsksFor:
 # ------------------------------------------------ measuring on this computer (B5)
 
 # The page's coordinator under Node, against the worker that ships and a stand-in Pyodide
-# (`docs/plan-client-compute.md` §8, B5). `run_request` waits as long as its request says,
+# (`docs/archive/plan-client-compute.md` §8, B5). `run_request` waits as long as its request says,
 # so units finish out of the order they were dealt in, and answers with the request; the
 # gathering half, `gather_request`, is scripted, because nothing here runs Python. The real
 # half is held natively by `TestTheGatheringHalf` and in a browser by the plan's record. A

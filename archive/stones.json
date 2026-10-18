@@ -1,7 +1,7 @@
 {
   "schema_version": 10,
   "name": "stones",
-  "description": "Chess in which either player may, instead of moving, place a stone on any empty square. A stone belongs to whoever placed it, never moves, is never captured and never leaves: it is a square taken out of the game. The supply is unlimited, so the choice is always available and always costs a tempo, and a board that fills with stones is a board with fewer squares to mate on.",
+  "description": "Chess in which either player may, instead of moving a piece, place a stone on any empty square. A stone belongs to whoever placed it, never moves, is never captured and never leaves: it is a square taken out of the game for good, blocking lines for both sides. The supply is unlimited, so the choice is always available and always costs a tempo, and that is what breaks the game. A placed stone can never be undone, and there are only 32 empty squares at the start, which sixteen stones a side are enough to fill. Games end with the board packed and nobody able to move, which is a draw. A few stones each would make every placement a question of timing; an endless supply makes placing a habit, and this game is kept to show it.",
   "board": {
     "width": 8,
     "height": 8

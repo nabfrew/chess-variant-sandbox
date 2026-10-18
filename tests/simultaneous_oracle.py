@@ -1,6 +1,6 @@
 """The declared Python oracle for a simultaneous round (schema 26, Q918a).
 
-`docs/plan-simultaneous.md` §6.1: resolution is checked by this oracle alone. It resolves
+`docs/archive/plan-simultaneous.md` §6.1: resolution is checked by this oracle alone. It resolves
 one round from the compiled tables and the two move words, in the plan's order (§2, §4),
 and returns the position the core's `make_round` must reach -- board, hands, colouring,
 tally, rights, clocks, the initiative, the void run, the bars and (schema 27, Q942a) the
@@ -95,7 +95,7 @@ def _standoff_after(state: GameState, void: list[bool], origins: list[int | None
 
 
 def legal_for(engine: Engine, state: GameState, player: int) -> list[int]:
-    """Schema 27 (Q942a, `docs/plan-round-chase.md` §3 R1): `player`'s moves under the rest.
+    """Schema 27 (Q942a, `docs/archive/plan-round-chase.md` §3 R1): `player`'s moves under the rest.
 
     The core's moves on the same board with nothing resting, less the rested piece's,
     unless that would leave none (the lift); in the core's order. Without `rest` the

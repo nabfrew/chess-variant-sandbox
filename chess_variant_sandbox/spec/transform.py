@@ -170,7 +170,7 @@ def empties_a_filter(spec: dict[str, Any], piece_id: str) -> bool:
 
     A filter naming only that piece means *only it goes in here*; with it gone, the end
     lets nobody in, which the validator will not take written as an empty filter
-    (`plan-portals-2.md` §2.3: say it with who may ``enter`` instead). ``drop_piece`` drops
+    (`docs/archive/plan-portals-2.md` §2.3: say it with who may ``enter`` instead). ``drop_piece`` drops
     such a filter, which is a valid spec but a wider door than the parent's, so an operator
     that removes a piece asks this first and refuses the draw (Q849).
     """

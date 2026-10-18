@@ -381,7 +381,7 @@ def test_a_guarded_spy_is_not_taken_for_a_rook(agent: str) -> None:
 # instances of the searches and its evaluator line leave every game without a spy alone.
 _INERT = {
     "rulesets/chess.json": "454a5507328148886b9f5c39b091907dc686caca91ee57beda7cf16a7b64a782",
-    "archive/gardner-in-rounds.json":
+    "tests/_retired_gardner_in_rounds.json":
         "a559af1335baedbba61966f359914a6f4615ad14a8a82e3a1a88fcd924fe9e7f",
 }
 

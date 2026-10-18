@@ -1,4 +1,4 @@
-"""A member's page and the vote's fixed tags (Q596 and Q599, `docs/plan-return.md` R1 and R4).
+"""A member's page and the vote's fixed tags (Q596 and Q599, `docs/archive/plan-return.md` R1 and R4).
 
 **Q596.** `/players/<handle>` is read by signed-in members only: a visitor is sent to the
 door whatever the handle, another member reads §6.2's sections, the owner reads the same
@@ -533,7 +533,7 @@ class TestTheVoteHoldsNoText:
             site.store.rollback()
 
     def test_the_tags_are_the_plans_words(self) -> None:
-        """`docs/plan-understanding.md` §6's eight, in its words and order."""
+        """`docs/archive/plan-understanding.md` §6's eight, in its words and order."""
         assert list(votes.TAGS.values()) == [
             "I'd play it again", "a clever rule", "first player has it easy",
             "lots of draws", "goes on too long", "over too fast", "hard to learn",

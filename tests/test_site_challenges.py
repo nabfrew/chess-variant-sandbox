@@ -1,4 +1,4 @@
-"""Finding an opponent (Q571, `docs/plan-return.md` §1.4): the store, the routes and the pages.
+"""Finding an opponent (Q571, `docs/archive/plan-return.md` §1.4): the store, the routes and the pages.
 
 Each path is proved on specs rather than chess (rule 5 of CLAUDE.md): the two `dull`
 variants of `test_site_matches.py`, one with a loaded ladder (rated) and one without
@@ -7,7 +7,7 @@ member, by a visitor who then joins or signs in, and a second time, a rematch, t
 the two abuse limits, and leaving. Accepting is proved to start the match through
 `correspondence.start` and nothing else, so Q570's refusals hold.
 
-Beside them, the seven tests of `docs/plan-meta-game.md` on the new page code: no expiry,
+Beside them, the seven tests of `docs/reference/no-dark-patterns.md` on the new page code: no expiry,
 no countdown, no badge or count, and the box off by default.
 
 The store tests need `CHESS_VARIANT_SANDBOX_TEST_DATABASE_URL` and skip without it, as

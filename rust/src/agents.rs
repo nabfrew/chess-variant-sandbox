@@ -271,7 +271,7 @@ impl AgentSpec {
     /// `lib.rs` where a failure can still be an ordinary Python exception naming the
     /// cause -- every path into `Player::new` comes through that boundary.
     pub fn check_against(&self, t: &Tables) -> Result<(), String> {
-        // Schema 26: a round is a matrix game (`plan-simultaneous.md` §6.2). `random`,
+        // Schema 26: a round is a matrix game (`docs/archive/plan-simultaneous.md` §6.2). `random`,
         // `greedy` (its matrix arm) and `matrix:nodes=N` play one; `minimax` and `mcts` are
         // refused, so one name never means two algorithms on one game. The round players
         // read the built-in objective or a learned net trained on rounds (Q918g): a
@@ -298,7 +298,7 @@ impl AgentSpec {
                 )
                 .to_string());
             }
-            // Q918g (`plan-simultaneous.md` §6.4): a learned net plays a round game, read
+            // Q918g (`docs/archive/plan-simultaneous.md` §6.4): a learned net plays a round game, read
             // from seat 0 and negated for seat 1 (`net.rs`); it learns the round's own state
             // from its round segments. Not in a spy game, whose turns and rounds no net has
             // been trained across.

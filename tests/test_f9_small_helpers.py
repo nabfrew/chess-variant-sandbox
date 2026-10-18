@@ -1,4 +1,4 @@
-"""Small helpers that nothing in the suite called by name (plan-tests F9, Q751b).
+"""Small helpers that nothing in the suite called by name (archive/plan-tests F9, Q751b).
 
 Each is a few lines the core or the loop leans on, so a change to one would move a number
 or a file somewhere else with no test of its own turning red: the pooled search counters,

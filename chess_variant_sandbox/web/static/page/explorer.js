@@ -1784,7 +1784,7 @@ function explorerPickCommunity(index) {
 //
 // **The votes are printed beside the stars.** A mean of one vote draws as large a dot as
 // a mean of twenty, and a reader who cannot see the count is reading a size that is not
-// there (`plan-meta-game.md` §3, test 7).
+// there (`docs/reference/no-dark-patterns.md`, test 7).
 function explorerPaintPanel() {
   paintMapPanel();
   const panel = document.getElementById('mapPanel');
@@ -1905,7 +1905,7 @@ function wireExplorer() {
   const legend = document.getElementById('mapLegend');
   if (legend) legend.open = window.innerWidth > 720 && window.innerHeight > 860;
   // On a phone the whole sheet of controls folds to its one line, so the drawing is on the
-  // first screen (plan-visual.md §1.1: the controls took it); one tap opens them.
+  // first screen (archive/plan-visual.md §1.1: the controls took it); one tap opens them.
   const controls = document.getElementById('mapControls');
   if (controls) controls.open = window.innerWidth > 720;
   const find = document.getElementById('mapFind');

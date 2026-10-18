@@ -1,7 +1,7 @@
 {
   "schema_version": 26,
-  "name": "gardner in rounds with meek pawns",
-  "description": "Gardner's minichess played in rounds, as in gardner in rounds, with one change: a pawn wins no collision. When a pawn and another piece step onto the same square in the same round, the other piece stands there and the pawn is removed (in gardner in rounds both are removed); two pawns meeting are both removed, as before. A pawn still captures a piece that stands still exactly as before. So a cheap pawn can no longer trade itself for a queen by guessing where the queen will step, and the dear pieces may go where pawns could follow.",
+  "name": "gardner in rounds",
+  "description": "Martin Gardner's 5x5 minichess with one change: both players move at once. Each round each player chooses one move in secret, and both moves are revealed and made together. There is no check: the king is simply captured, and the side that loses its king loses. Only two pieces moving onto the same square collide, and then both are removed. A piece that moves onto a square its target has just left lands there if it could move to an empty square, so two pieces that try to take each other in the same round trade places unharmed; a pawn's diagonal capture, which cannot land on an empty square, misses and the pawn stays. Two such misses at each other two rounds in a row bar that pair of captures until either square changes. If both kings fall in the same round, or anything else ends the game for both players at once, the game is drawn. A round counts as two moves on the clocks.",
   "board": {
     "width": 5,
     "height": 5
@@ -34,8 +34,7 @@
           "symmetry": "lateral",
           "mode": "capture"
         }
-      ],
-      "beats": []
+      ]
     },
     {
       "id": "N",
@@ -204,10 +203,10 @@
     "added": "2026-10-15",
     "preview": "A preview: a new kind of game in which both players move at once, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
     "origin": "designed",
-    "source": "docs/plan-simultaneous.md, Q918e: the showcase games for simultaneous moves (\u00a76.8)",
-    "history": "Q918e (2026-10-15), the showcase of schema 26's pieces[].beats: gardner in rounds with the pawn's beats empty. Pre-registered in docs/plan-simultaneous.md, Q918e, before it was measured.",
+    "source": "docs/archive/plan-simultaneous.md, Q918e: the showcase games for simultaneous moves (\u00a76.8)",
+    "history": "Q918e (2026-10-15), the one-key showcase of schema 26's rules.simultaneous: rulesets/gardner with rules.simultaneous {} and win royal_capture (check does not exist in rounds). The same mechanics as tests/_simultaneous_gardner.json, which Q918d measured. Pre-registered in docs/archive/plan-simultaneous.md, Q918e, before it was measured.",
     "parents": [
-      "e043fce6968e"
+      "975dde173f01"
     ]
   }
 }

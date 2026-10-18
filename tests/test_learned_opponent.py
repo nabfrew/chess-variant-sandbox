@@ -46,16 +46,16 @@ ROOT = Path(__file__).resolve().parent.parent
 # The net generation 1 accepted on Intransitive (`docs/reference/learned-evaluator.md`
 # §8.18). Named here because the test is about that file; the code reads `nets/` only.
 # Carried by Q696 to the game's new hash when its draw clock moved to 200 plies
-# (`d93e28d09a33` before; `docs/plan-teacher.md` §9.12), re-dueled there at 0.889.
+# (`d93e28d09a33` before; `docs/archive/plan-teacher.md` §9.12), re-dueled there at 0.889.
 INTRANSITIVE = "29d5213b02b2"
 PROCEDURE = "df1148b26ff6"
 AGENT = f"minimax:net={PROCEDURE},nodes=6400"
-# Generation 2R (E1, `plan-teacher.md` §9.13.8), generation 1's child: kept by R5-1 once
+# Generation 2R (E1, `archive/plan-teacher.md` §9.13.8), generation 1's child: kept by R5-1 once
 # both guards held (Q716, §9.13.12), so since then it is the net the picker offers.
 OFFERED = "0eaad64c4586"
 OFFERED_AGENT = f"minimax:net={OFFERED},nodes=6400"
-# Generation 2 (T5-g2, `plan-teacher.md` §9.11.2): accepted and not kept (G-N failed on
-# A25), filed by Q712 under the hash its verdict was read on (§9.13.6).
+# Generation 2 (T5-g2, `archive/plan-teacher.md` §9.11.2): accepted and not kept (G-N failed
+# on A25), filed by Q712 under the hash its verdict was read on (§9.13.6 there).
 OLD_INTRANSITIVE = "d93e28d09a33"
 CHILD = "70b6ece08506"
 CHILD_AGENT = f"minimax:net={CHILD},nodes=6400"
@@ -269,7 +269,7 @@ class TestIntransitivesKeptNet:
         self, tmp_path: Path, kept: bool | None
     ) -> None:
         """The test that failed when T5-g2's `70b6ece08506` was tried in `nets/`
-        (`plan-teacher.md` §9.11.2). Since Q712 its real store is in the repository, under
+        (`archive/plan-teacher.md` §9.11.2). Since Q712 its real store is in the repository, under
         the old hash; here it is filed under the current one, the worst case (a store that
         claims a verdict on this game), with its `kept` verdict and without one: accepted,
         its parent generation 1, and a higher acceptance score than generation 1. The kept
@@ -324,7 +324,7 @@ class TestGenerationTwosStore:
         assert not list((ROOT / STORE_DIR).glob(f"{INTRANSITIVE}-{CHILD}.*"))
 
     def test_e1s_child_is_kept_after_its_guards_and_offered(self) -> None:
-        """Q713 (plan-teacher §9.13.8): generation 2R, `0eaad64c4586`, passed every target
+        """Q713 (archive/plan-teacher §9.13.8): generation 2R, `0eaad64c4586`, passed every target
         gate and was stored whole under the current hash with no `kept` verdict; Q716
         (§9.13.12) wrote `kept: true` once G-G held on gardner and on chess (R5-1), so it,
         not generation 1, is what the picker offers."""

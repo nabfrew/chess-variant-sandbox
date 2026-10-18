@@ -111,7 +111,7 @@
   });
 })();
 
-// A member's mark (R2 of plan-return.md §6.3): their own invader, which the server
+// A member's mark (R2 of archive/plan-return.md §6.3): their own invader, which the server
 // generates from their account (`web/page/marks.py`) and every payload naming a person
 // carries as `{d, hue}`. One drawing for both servers' pages: an <svg> element in the
 // hue's token, so it follows the theme, or null for a payload without one. Built as

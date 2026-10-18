@@ -407,7 +407,7 @@ class TestWhoIsAnAdmin:
 
     # Q744: it lists the committed corpus and the home page through `Browser`'s 30 s
     # socket, so the process's cold first listing is paid in setup (`corpus_listed`); it
-    # timed out in the call under eight workers and coverage (plan-tests.md §3).
+    # timed out in the call under eight workers and coverage (archive/plan-tests.md §3).
     @pytest.mark.usefixtures("corpus_listed")
     def test_an_admin_is_sent_the_refreshers_status_and_a_visitor_never(
         self, site: Site, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -441,7 +441,7 @@ class TestWhoIsAnAdmin:
 
     # Q744: it lists the committed corpus and the home page through `Browser`'s 30 s
     # socket, so the process's cold first listing is paid in setup (`corpus_listed`); it
-    # timed out in the call under eight workers and coverage (plan-tests.md §3).
+    # timed out in the call under eight workers and coverage (archive/plan-tests.md §3).
     @pytest.mark.usefixtures("corpus_listed")
     def test_an_admin_is_sent_how_much_scores_moved_and_a_visitor_never(
         self, site: Site, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -803,7 +803,7 @@ def _account(site: Site) -> tuple[str | None, str | None, str]:
 
 
 class TestMembersSendInvitations:
-    """Q719 (`docs/plan-launch.md` §5.3a): `/admin` gives a member a number of
+    """Q719 (`docs/archive/plan-launch.md` §5.3a): `/admin` gives a member a number of
     invitations, zero by default; the member sends them from their own page, each one
     taking one off, and is refused in a sentence at zero. The invitation is the ordinary
     one, with the member as its issuer."""
@@ -1168,7 +1168,7 @@ class TestInvitingFromThePage:
 
 class TestEarlierScores:
     """Q649: a score's history is the maintainer's until the user answers
-    `docs/plan-confidence.md` §5 Q1. The admin reads every line, on `/admin` and on the
+    `docs/archive/plan-confidence.md` §5 Q1. The admin reads every line, on `/admin` and on the
     game's page; a visitor and a member are sent none."""
 
     @staticmethod
@@ -3117,7 +3117,7 @@ class TestTheStrongestSeat:
 
 
 class TestBusyIsSaidBeforeTheRefusal:
-    """L11 of `docs/plan-launch.md` (§5.2, Q566): the opponent list marks the strongest
+    """L11 of `docs/archive/plan-launch.md` (§5.2, Q566): the opponent list marks the strongest
     player *busy* from the free-seat count, so a refused start is never the first a person
     hears of it. The game's `standing` carries the words; the page reads them."""
 
@@ -3159,7 +3159,7 @@ class TestBusyIsSaidBeforeTheRefusal:
 
 
 class TestVisitorsPlayUpToHard:
-    """L15 of `docs/plan-launch.md` (§3.6, decided A on 2026-10-01): with the shared
+    """L15 of `docs/archive/plan-launch.md` (§3.6, decided A on 2026-10-01): with the shared
     password off the front door, a visitor plays computer players up to *hard*, and
     anything stronger is for signed-in people. Refused at the server, said in the list."""
 

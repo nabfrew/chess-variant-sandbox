@@ -18,7 +18,7 @@ Four steps, and the fourth is the one that makes the whole thing arguable:
    falls back to it -- recorded, not hidden.
 
 **The check may be curtailed, exactly, and only when asked** (``curtail=True``,
-``docs/plan-compute.md`` §4.2). ``acceptance`` then reads the match's games one at a time
+``docs/reference/compute-economy.md`` §4.2). ``acceptance`` then reads the match's games one at a time
 in a fixed order of the schedule and stops at the first prefix after which every result of
 the unplayed games gives the same verdict (``duel.settled``). The verdict is the full
 match's by construction; the stored score and ``accept_games`` are the prefix's, so the
@@ -329,7 +329,7 @@ def acceptance(
 ) -> Acceptance:
     """``candidate`` against ``reference`` at both colours, and whether it ``beats`` it.
 
-    Uncurtailed this is ``head_to_head``, unchanged. Curtailed (plan-compute §4.2), the same
+    Uncurtailed this is ``head_to_head``, unchanged. Curtailed (reference/compute-economy.md §4.2), the same
     schedule is read in ``reading_order`` and played a batch of the worker count at a time
     (by ``play``, or the runner); after each batch the games are read one by one and the
     first prefix ``settled`` answers is the decision, the rest of that batch discarded. So

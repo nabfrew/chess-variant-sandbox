@@ -44,7 +44,7 @@ like *A* is a word of prose (rule 5).
 
 A spec is a case only when its prose makes a claim, 17 of the 73 today (`CLAIMING`, read
 at collection). A spec that claims nothing has nothing to check, and until Q745 it was a
-case that returned before its assert: 56 passes that said nothing (`docs/plan-tests.md`
+case that returned before its assert: 56 passes that said nothing (`docs/archive/plan-tests.md`
 T3). A spec whose prose gains a claim becomes a case by itself; one that loses a claim
 the record read fails `test_the_claims_the_record_read_are_still_read`.
 """

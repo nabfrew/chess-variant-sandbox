@@ -88,7 +88,7 @@ RULES = """
   footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px;
            padding: 22px 0 6px; margin-top: 30px; border-top: 1px solid var(--line); }
   footer #foot { flex: 1 1 auto; }
-  /* A member's mark (R2, plan-return.md §6.3): their own invader, inline beside their name
+  /* A member's mark (R2, archive/plan-return.md §6.3): their own invader, inline beside their name
      wherever the name is shown. In the header's corner only at a desk: on a phone the
      corner is cut to the handle's last letters. */
   .memberMark { display: inline-block; flex: none; vertical-align: -4px; margin-right: 6px; }
@@ -341,7 +341,7 @@ RULES = """
   .track li::before { content: "\\25CB"; margin-right: 5px; }
   .track li.lit { color: var(--ink); font-weight: 600; }
   .track li.lit::before { content: "\\25CF"; }
-  /* A phone keeps the four steps on one line (plan-game-pipeline §3.1), which at 13px
+  /* A phone keeps the four steps on one line (archive/plan-game-pipeline §3.1), which at 13px
      put *Library* on a line of its own at 375 px (Q517). */
   @media (max-width: 480px) {
     .track { flex-wrap: nowrap; gap: 4px 9px; font-size: 12px; }
@@ -690,7 +690,7 @@ RULES = """
                background: var(--paper) 0 0 / 180px, var(--panel); border: 2px solid var(--ink);
                border-radius: var(--r-panel); box-shadow: var(--shadow-pop); scroll-margin: 12px; }
   .promo-wait { font-size: 16px; line-height: 22px; font-weight: 600; }
-  /* The way out of a portal (schema 19, `docs/plan-portals.md` D6, N6): the bar under the
+  /* The way out of a portal (schema 19, `docs/archive/plan-portals.md` D6, N6): the bar under the
      board, the board left undimmed so the exit each button names is lit on it as the
      button is hovered or focused. One button a way, its arrow and its square in words. */
   .promo-exits { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
@@ -699,7 +699,7 @@ RULES = """
   .promo-exit-bar > * { flex: 1 1 100%; }
   .promo-exit-bar .promo-row { align-items: center; }
   .promo-esc { font-size: 13px; }
-  /* A portal end (Q838b, `docs/plan-portal-look.md` §2.3, the vortex; Q838f). On a live
+  /* A portal end (Q838b, `docs/archive/plan-portal-look.md` §2.3, the vortex; Q838f). On a live
      board its arms turn inwards, once every 14 s, on the arms' own group so the trip's
      pulse on the glyph composes with it; never under reduced motion. An end nobody may go
      in by has no arms, so nothing on it turns. Drawn small (D9): the token and the sunk
@@ -726,7 +726,7 @@ RULES = """
   svg[data-portals="small"] .pg-beak, .pg-small .pg-beak { display: none; }
   svg[data-portals="small"] .pg-wedge, .pg-small .pg-wedge {
     display: inline; vector-effect: non-scaling-stroke; stroke-width: 1px; }
-  /* A fold portal's pool (Q843d, `docs/plan-portals-2.md` §5.3): on a live board its bands
+  /* A fold portal's pool (Q843d, `docs/archive/plan-portals-2.md` §5.3): on a live board its bands
      turn once every 12 s (inwards, or outwards where it leads nowhere) and its rim churns
      once every 8 s, a group's ends in step; never under reduced motion. Its beak takes the
      vortex's classes, so the same sizes show it. Small, the bands' edges are held at two screen
@@ -1074,7 +1074,7 @@ RULES = """
   .designer.bench.hexBench .tray { flex-direction: row; flex-wrap: wrap; width: 100%; }
   .designer.bench.hexBench .tray .palette { flex-direction: row; }
   .designer.bench.hexBench .benchBoard { width: 100%; max-width: 720px; }
-  /* Portals in the designer (P3, docs/plan-portals.md D2-D9): the status line a screen
+  /* Portals in the designer (P3, docs/archive/plan-portals.md D2-D9): the status line a screen
      reader reads out, the board taking the keyboard, a transit's legs shown on hover, a
      refused square outlined once, the tray's portal row and the pair's card. */
   .benchSaid { margin-top: 6px; color: var(--ink); }
@@ -1130,7 +1130,7 @@ RULES = """
   .portalKeyGrid .on { color: var(--ink); font-weight: 700; }
   .pickLine { margin-top: 6px; gap: 6px; }
   /* A group's shape, where each end leads and which pieces may go in (schema 21, Q843b,
-     `docs/plan-portals-2.md` §5.4): the three named shapes as drawn buttons, *your own map*
+     `docs/archive/plan-portals-2.md` §5.4): the three named shapes as drawn buttons, *your own map*
      beside them when the rows make none of them, a row per end, and the pieces' icons with
      a tick each when an end lets only some in. */
   .shapeChoices { grid-template-columns: repeat(3, minmax(0, 1fr)); }

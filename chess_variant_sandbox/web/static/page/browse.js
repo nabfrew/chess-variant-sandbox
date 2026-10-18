@@ -101,7 +101,7 @@ async function showLibrary() {
   if (SCORING && SCORING.sweep && SCORING.sweep.state === 'running') pollSweep();
 }
 
-// The leaderboard's header (EV3, `docs/plan-evolving-score.md` §5.2): how many of the
+// The leaderboard's header (EV3, `docs/archive/plan-evolving-score.md` §5.2): how many of the
 // listing's numbers are provisional while they are measured again. The server counts and
 // words it; null when none is, and then the page says nothing at all.
 function provisionalScoresHtml(found) {
@@ -112,7 +112,7 @@ function provisionalScoresHtml(found) {
 
 // ------------------------------------------- what waits on you
 //
-// Q571 and Q572, `docs/plan-return.md` §1.5 and s3 of the mock: above everything else on
+// Q571 and Q572, `docs/archive/plan-return.md` §1.5 and s3 of the mock: above everything else on
 // the landing page, a signed-in member's **Games waiting on your move** (the server's
 // `waiting`: their running games between people where the engine's side to move is their
 // seat, in `correspondence.started_order`) and **A challenge for you**, each with its one
@@ -291,7 +291,7 @@ function sortValue(game, key) {
 
 // ---------------------------------------------------------------------- the tabs
 //
-// Q503b, §3.2 of `docs/plan-game-pipeline.md`. The site's listing opens on its Library
+// Q503b, §3.2 of `docs/archive/plan-game-pipeline.md`. The site's listing opens on its Library
 // and Baseline games, then the shortlisted, and a second tab lists the games on trial.
 // The server sends the tabs with the levels each lists (`stages.TABS`); a card is in a
 // tab when its `level` is one of them, and the filters apply within the tab. A checkout
@@ -771,7 +771,7 @@ function takePieceArt(data) {
 // computer players to be unbeaten against. Saying nothing on those cards would read as
 // "somebody has beaten it", which is the one thing that is certainly not true, so they
 // say what they are and the board offers them as practice games (B17; *practice only*
-// is `docs/plan-launch.md` §3.5's word for it, L5).
+// is `docs/archive/plan-launch.md` §3.5's word for it, L5).
 function unbeatenTag(game) {
   if (game.rated === false) {
     return `<span class="tag" title="Practice only: its computer players have no ratings

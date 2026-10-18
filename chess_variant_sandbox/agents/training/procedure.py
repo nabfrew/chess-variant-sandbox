@@ -51,7 +51,7 @@ ACCEPT_SEED = 1_000_000
 ACCEPT_OPENING_PLIES = 8
 ACCEPT_ERRORS = 2.0
 
-# Q918g (`plan-simultaneous.md` §6.4, *Q918g, scoped*): a round game's acceptance duel is at
+# Q918g (`docs/archive/plan-simultaneous.md` §6.4, *Q918g, scoped*): a round game's acceptance duel is at
 # the round roster's bottom rung, `matrix:nodes=1600` on both seats (§7: "beats
 # `matrix:nodes=1600` there"), sixteen times `corpus.CANONICAL_AGENTS`' 100 as every round
 # budget is (`loop/screen.ROUND_BUDGET_FACTOR`). The rest of the duel is `ACCEPT_*`'s: 200
@@ -62,7 +62,7 @@ ROUND_ACCEPT_NODES = 1_600
 # player's search on the parent net, `minimax:net=<parent>,nodes=<label_nodes>`.
 LABEL_SEARCHES = ("probe", "player", "parent")
 
-# Q918i (`plan-simultaneous.md` §7, *Q918h, the re-plan*, part 3): what a round teacher's
+# Q918i (`docs/archive/plan-simultaneous.md` §7, *Q918h, the re-plan*, part 3): what a round teacher's
 # matrix is solved on (`Procedure.round_payoff`). "units" is the evaluator's built-in units,
 # an ending ±(10⁶ − ply), squashed once at the end (every recipe before it); "score" is each
 # cell squashed first, an ending 1, ½ or 0, and the value used as the label as it is.
@@ -113,8 +113,9 @@ class Replay:
     """E1's replay set (plan-teacher §9.13.3): the parent's own training games, played again.
 
     A generation's new games narrowed to its parent's own play and to routs of the built-in
-    (§9.13.1), so the child also trains on the games its parent learned from: the parent's
-    self-play schedule (its roster, games per pairing, seed and random openings), re-played
+    (archive/plan-teacher §9.13.1), so the child also trains on the games its parent learned
+    from: the parent's self-play schedule (its roster, games per pairing, seed and random
+    openings), re-played
     on this ruleset and this core, and labelled by the child's own teacher (each arm's: the
     parent for the child, the probe for C). The positions are sampled as the procedure's
     (``skip_plies``, ``stride``).
@@ -455,7 +456,7 @@ DEFAULT = Procedure()
 ROUND_DEFAULT = Procedure(
     agents=("matrix:nodes=1600",), label_search="player", label_nodes=6_400
 )
-"""Q918g: the round games' generation 0 (`plan-simultaneous.md` §7, *Q918g, scoped*). The
+"""Q918g: the round games' generation 0 (`docs/archive/plan-simultaneous.md` §7, *Q918g, scoped*). The
 default's recipe with the round players: self-play by `matrix:nodes=1600` (the round roster's
 bottom rung), each position labelled by `matrix:nodes=6400`'s own value of the round for player
 0 (the player teacher, four times the self-play budget as a generation's is; the core has no
@@ -467,7 +468,7 @@ ROUND_CONTROL = ROUND_DEFAULT.with_(label_nodes=1)
 game, the round analysis probe's reading at the players' ruler)."""
 
 ROUND_SCORE = ROUND_CONTROL.with_(round_payoff="score")
-"""Q918i's arm S (`plan-simultaneous.md` §7, *Q918h, the re-plan*, part 3): ``ROUND_CONTROL``
+"""Q918i's arm S (`docs/archive/plan-simultaneous.md` §7, *Q918h, the re-plan*, part 3): ``ROUND_CONTROL``
 with one change, the one-round teacher's matrix solved on expected score (each cell player 0's
 `sigmoid(units / scale)`, or 1, ½ or 0 where the round ends the game), its value the label."""
 

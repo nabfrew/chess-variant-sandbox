@@ -224,7 +224,7 @@ class Session:
     # empty in the local application, which keeps no result and offers no draw.
     draw_offers: list[dict[str, Any]] = field(default_factory=list)
 
-    # Schema 26 (Q918c, `docs/plan-simultaneous.md` §6.6): the moves sealed in the round
+    # Schema 26 (Q918c, `docs/archive/plan-simultaneous.md` §6.6): the moves sealed in the round
     # now open, by seat, and the depth each computer seat reported beside its own. Never in
     # a snapshot: a sealed move reaches the page only as `round.sealed`'s one boolean, and
     # its move only at the reveal, as history. Empty of moves in every alternating game.
@@ -763,7 +763,7 @@ class Session:
 
     # ------------------------------------------------------------------ rounds
     #
-    # Schema 26 (Q918c, `docs/plan-simultaneous.md` §6.6). A round is both seats choosing on
+    # Schema 26 (Q918c, `docs/archive/plan-simultaneous.md` §6.6). A round is both seats choosing on
     # one board, sealed, then revealed and resolved together by the core
     # (`Engine.apply_round_with_phase`). The order this keeps is the whole of the rule's
     # honesty at a board: **a computer seat seals before a person's move is accepted**,
@@ -1043,7 +1043,7 @@ def both_fired_words(engine: Any, state: GameState, outcome: Any) -> str | None:
     """How a round game ended when its ending fired for both players in the last round,
     as the end of the sentence *‹side› wins ...* or *Drawn ...*, or None for any other end.
 
-    Schema 27 (Q942a's `both: "score"`, `docs/plan-round-chase.md` §3 X1): a both-fire is
+    Schema 27 (Q942a's `both: "score"`, `docs/archive/plan-round-chase.md` §3 X1): a both-fire is
     settled by `rules.scoring` under the switch and is a draw without it. The verdict is the
     core's (`outcome`); this only says it, from two facts of the final position (neither side
     has a royal left, or neither a piece) and the rule. Without it the page would say the

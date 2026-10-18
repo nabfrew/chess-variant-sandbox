@@ -87,7 +87,7 @@ WORST_HALF_RATES: dict[str, str] = {
 }
 
 # How each component a weights version scores reads a game played in rounds (schema 26,
-# Q918d; `docs/plan-simultaneous.md` §6.3). A round game's record keeps both moves of a
+# Q918d; `docs/archive/plan-simultaneous.md` §6.3). A round game's record keeps both moves of a
 # round in seat order and every per-ply series twice, so a round is two plies and most
 # components read it as they read an alternating game; the two the analysis pass supplies
 # from a probe read each player's moves against the opponent's equilibrium mix. Every
@@ -574,7 +574,7 @@ def _budget(agent: str) -> int:
 def _split_rung(records: list[GameRecord]) -> int | None:
     """The median rung of the graded ladder, in nodes; ``None`` when there is no ladder.
 
-    Pre-registered in ``docs/plan-roster-confound.md`` section 3 as *the median rung of
+    Pre-registered in ``docs/reference/roster-confound.md`` section 3 as *the median rung of
     the graded ladder*, deliberately as English rather than as a node count, so that it
     could not be chosen after the corpus had been swept. On the canonical roster the
     graded ladder is ``greedy`` plus the six searching budgets -- seven rungs, whose

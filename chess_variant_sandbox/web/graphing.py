@@ -1052,7 +1052,7 @@ def _card(group: list[Game]) -> dict[str, Any] | None:
     Every field is the card's own, under the card's own spelling, so the map and the
     listing cannot come to describe one measurement two ways. A stale measurement is
     `None` at `library.current_only`: the map's ramp is a comparison, and a provisional
-    estimate never enters one (`docs/plan-evolving-score.md` §3); its card says it.
+    estimate never enters one (`docs/archive/plan-evolving-score.md` §3); its card says it.
 
     A merged node's score is its representative's. The two spellings are one game but not
     one measurement -- move order follows spelling, so the runs are not interchangeable --

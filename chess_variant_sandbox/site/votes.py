@@ -11,7 +11,7 @@ actually did, and the index is the measurement; merging any two of them would pr
 number that answers no question. The three orderings are offered switchably and never
 summed.
 
-**No text from the voter** (Q599, `docs/plan-return.md` R4; the user, 2026-10-02: *"Votes
+**No text from the voter** (Q599, `docs/archive/plan-return.md` R4; the user, 2026-10-02: *"Votes
 only, no comments"*). A vote is its stars and up to `MOST_TAGS` of the eight `TAGS`, chosen
 by key. The key a voter sends is looked up and the store is handed this module's own
 string, never theirs, and anything else in the request is refused by name: a note, an
@@ -48,8 +48,8 @@ TAGS: dict[str, str] = {
     "new": "feels new",
 }
 """The eight tags a vote may carry, key to the words on the page, in the page's order:
-`docs/plan-return.md` §5.1's set as `docs/plan-understanding.md` §6 words them. The keys
-are the stored strings and `0026_member_page.sql` lists them too, so a new tag or a
+`docs/archive/plan-return.md` §5.1's set as `docs/archive/plan-understanding.md` §6 words them.
+The keys are the stored strings and `0026_member_page.sql` lists them too, so a new tag or a
 renamed key is a migration; rewording one is not."""
 
 MOST_TAGS = 3

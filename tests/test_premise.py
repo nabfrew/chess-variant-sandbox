@@ -5,7 +5,7 @@
 - **The check plays end to end** on a five-square game at a tiny budget, through the core,
   and is a pure function of its inputs: the same game, roster and rule give the same file.
 - **It carries its own basis**, and a mismatch is stale with a reason, never a verdict.
-- **It holds nothing out of the band** (Q645, `docs/plan-confidence.md` §2.4): a failing
+- **It holds nothing out of the band** (Q645, `docs/archive/plan-confidence.md` §2.4): a failing
   verdict, current or stale, is said by the trust line (Q647) and leaves the game `human` in the
   band `calibrate` and `anchor` read, so `calibrate`'s output does not move.
 - **It moves no score.** Its sources are in no fingerprint set (the frozen metrics and
@@ -186,7 +186,7 @@ class TestTheCheck:
     def test_curtailed_it_gives_the_full_check_s_verdict(
         self, played: dict[str, Any], workers: int
     ) -> None:
-        """plan-compute §4.2: the same verdict as the sixteen pairs, the prefix's score."""
+        """reference/compute-economy.md §4.2: the same verdict as the sixteen pairs, the prefix's score."""
         rule = premise.Rule(pairs=6, fairy_pairs=6)
         whole = premise.check(
             SPEC, agents=ROSTER, rule=replace(rule, curtailed=False), workers=workers
@@ -297,7 +297,7 @@ class TestWhatItMarks:
         assert "not yet strong enough" in words and "0.05" in words and "0.20" in words
         # T1: nothing is held out of the scale on this check since 2026-10-01.
         assert "set the scale" not in words
-        # The visitor's version (`docs/plan-understanding.md` §2.2): a level word and why,
+        # The visitor's version (`docs/reference/plain-words.md` §3.2): a level word and why,
         # no floor and no number.
         said = found.site_words()
         assert said.startswith("How far to trust it: questioned. A copy of the strongest "
@@ -335,7 +335,7 @@ class TestWhatItMarks:
 
 class TestTheBand:
     """`cli._load_scored` is where `calibrate` and `anchor` read the band, and since Q645
-    (`docs/plan-confidence.md` §2.4) no premise check holds a game out of it."""
+    (`docs/archive/plan-confidence.md` §2.4) no premise check holds a game out of it."""
 
     @staticmethod
     def _corpus(root: Path) -> Path:

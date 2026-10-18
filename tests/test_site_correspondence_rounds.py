@@ -1,4 +1,4 @@
-"""A game in rounds between two people, by correspondence (Q918f, `docs/plan-simultaneous.md`
+"""A game in rounds between two people, by correspondence (Q918f, `docs/archive/plan-simultaneous.md`
 §6.6 and §7's Q918f row).
 
 Each player **seals** a move for the round's position, in secret; the second seal

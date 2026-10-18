@@ -275,7 +275,7 @@ class TestEveryReaderAsksTheOneFunction:
         assert [card["hash"] for card in named] == [card["hash"] for card in ordered]
 
     def test_the_trial_tab_is_absent_until_a_game_is_on_trial(self, levels: Levels) -> None:
-        """L4 of `docs/plan-launch.md` §3.4: absent, not empty. So is the order by
+        """L4 of `docs/archive/plan-launch.md` §3.4: absent, not empty. So is the order by
         *newest on trial*, which would order nothing."""
         def site_block() -> dict[str, Any]:
             block: dict[str, Any] = levels.site.browser().get("/api/library").payload["site"]
@@ -439,7 +439,7 @@ class TestThePagesHoldNoLevelWord:
         assert "Where it stands" not in _in_page("", "whereHtml({})")
 
     def test_a_phone_keeps_the_track_on_one_line(self) -> None:
-        """Q517, plan-game-pipeline §3.1 *Phone*: at 375 px the four steps wrapped and put
+        """Q517, archive/plan-game-pipeline §3.1 *Phone*: at 375 px the four steps wrapped and put
         *Library* on a line of its own, on the designer and the game page alike."""
         from chess_variant_sandbox.web.page.style import STYLE
 

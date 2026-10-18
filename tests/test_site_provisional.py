@@ -1,6 +1,6 @@
 """The provisional store: a score a visitor's browser measured, held while the server checks it.
 
-Q312, the first row of `docs/plan-client-compute.md` §8 after the probe. Its acceptance, and
+Q312, the first row of `docs/archive/plan-client-compute.md` §8 after the probe. Its acceptance, and
 what each class below holds:
 
 * a table and `runs/provisional/` -- `TestTheRecordsLiveUnderProvisional`;

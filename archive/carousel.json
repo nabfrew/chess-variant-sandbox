@@ -1,7 +1,7 @@
 {
   "schema_version": 19,
   "name": "carousel",
-  "description": "Los Alamos chess on a board six wide and eight tall whose left and right edges are joined, with two fixed pairs of portals that work for one player each. Pair 1 is White's: White's pieces go in at b3 and come out one step beyond c5, in the direction they were travelling, never the other way; to Black's pieces both its ends are solid blocks. Pair 2 is Black's in the same way, in at b6 and out beside c4. Because the edges are joined, a piece can reach a portal from both sides, and then it comes out on either side of the exit: the player chooses. Nobody moves a portal and a portal is never captured.",
+  "description": "Each side owns a private one-way lift into the enemy's half. A White piece that ends its move on b3, in front of White's pawns, comes out one step beyond c5, in the direction it was travelling, capturing there as usual; Black's lift mirrors it, in at b6 and out beside c4. To the other side a lift is solid, and nobody moves one. The lifts interlock: each mouth sits beside the other's exit, so where your raiders leave is next to where the enemy's arrive, and a pawn can ride its lift on the first move into the enemy's third row. The armies are Los Alamos chess's (chess without bishops, castling or a pawn's double step, the first chess a computer played, in 1956), on a board six wide and eight tall whose side edges are joined, so a piece may reach a lift from either side and choose which side of the exit it comes out on.",
   "board": {
     "width": 6,
     "height": 8
@@ -209,7 +209,7 @@
     "added": "2026-10-10",
     "origin": "human",
     "source": "archive/carousel",
-    "history": "Q772a (2026-10-10): plan-portals.md's Carousel, one-way and closed passage per player and the exit chosen on a wrapping board. rulesets/losalamos.json on rulesets/cylinder.json's joined files, six by eight, with two fixed pairs. Pre-registered in docs/reference/portal-showcases.md before it was measured.",
+    "history": "Q772a (2026-10-10): docs/archive/plan-portals.md's Carousel, one-way and closed passage per player and the exit chosen on a wrapping board. rulesets/losalamos.json on rulesets/cylinder.json's joined files, six by eight, with two fixed pairs. Pre-registered in docs/reference/portal-showcases.md before it was measured.",
     "parents": [
       "fcbb53d53ce4"
     ]

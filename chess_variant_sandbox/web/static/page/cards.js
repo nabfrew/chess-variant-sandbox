@@ -1125,7 +1125,7 @@ function wireCards(form) {
 
 // What adding a rule changes beside it, where the rule cannot stand with the draft's
 // other rules as they are and one obvious change makes it stand. Schema 26 (Q918c,
-// `docs/plan-simultaneous.md` §2.5): a game in rounds has no check, so its win is the
+// `docs/reference/rounds.md` §2.5): a game in rounds has no check, so its win is the
 // royal's capture rather than mate -- the one-key change the designer would otherwise be
 // sent to make by the validator's refusal.
 const RULE_COMPANIONS = {

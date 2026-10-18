@@ -65,10 +65,10 @@ INTRANSITIVE = "29d5213b02b2"
 # 2R, and its control C, both over generation 1's union. Computed from the stores alone.
 E1_CHILD = "0eaad64c4586"
 E1_C = "91c0316f9a09"
-# E1's gardner guard child (plan-teacher §9.13.9-10, Q715): the same field over gardner's
+# E1's gardner guard child (archive/plan-teacher §9.13.9-10, Q715): the same field over gardner's
 # generation 1, accepted and stored whole.
 E1_GARDNER_CHILD = "5fe1cb87d4c9"
-# E1's chess guard child (plan-teacher §9.13.11-12, Q716): the same field over chess's
+# E1's chess guard child (archive/plan-teacher §9.13.11-12, Q716): the same field over chess's
 # refused generation 1; refused itself, its JSON under nets/.
 E1_CHESS_CHILD = "2f81b3ec2c36"
 

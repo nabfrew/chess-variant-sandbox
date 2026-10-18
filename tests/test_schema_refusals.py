@@ -1,4 +1,4 @@
-"""The validator's refusals, one test each (`docs/plan-tests.md` §8 F8, T2).
+"""The validator's refusals, one test each (`docs/archive/plan-tests.md` §8 F8, T2).
 
 `spec/schema.py` is the trust boundary for a proposed rule (CLAUDE.md, rule 1): a spec that
 passes `validate_spec` is one the compiler consumes without checks of its own. The audit

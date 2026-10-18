@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # table, the repairs), the round players on Gardner in rounds.
 TOURNAMENTS = {
     "rulesets/chess.json": ("greedy", "minimax:nodes=400", "minimax:nodes=1600"),
-    "archive/gardner-in-rounds.json": ("greedy", "matrix:nodes=1600"),
+    "tests/_retired_gardner_in_rounds.json": ("greedy", "matrix:nodes=1600"),
 }
 
 

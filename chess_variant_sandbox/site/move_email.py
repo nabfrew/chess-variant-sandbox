@@ -1,6 +1,6 @@
 """The one email a member may switch on: when it becomes their move (Q572).
 
-`docs/plan-return.md` §1.5 and the dated exception to test 3 of `docs/plan-meta-game.md`
+`docs/archive/plan-return.md` §1.5 and the dated exception to test 3 of `docs/reference/no-dark-patterns.md`
 (the user, 2026-10-01, *chosen B*): a member may opt in, **off by default**, to one email
 when it is their move in a game between two people, and nothing else is ever sent. This
 module is the box and the decision; `mail.your_move` is the message, and the server hands

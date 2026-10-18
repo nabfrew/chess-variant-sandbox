@@ -125,7 +125,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     "rulesets/makruk.json": ("eaa48ed29ad7", "fc1b479eb1a32a55"),
     "rulesets/onewaycylinder.json": ("b02bbe8da72c", "0449ce95d1a9ac76"),
     "rulesets/onewaytorus.json": ("c6ff883e5919", "05787a033547e413"),
-    # Q868, 2026-10-12: `rulesets/onewaytunnel.json` (`da7647bf02e1`/`fac342b6c6256f3c`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    # Q868, 2026-10-12: `rulesets/onewaytunnel.json` (`da7647bf02e1`/`fac342b6c6256f3c`) retired by the library audit (`docs/archive/plan-library-audit.md`); its runs stay.
     "rulesets/racingkings.json": ("66b001f1b790", "48c162212370a86a"),
     "rulesets/rps-hierarchy-chess.json": ("c0e0c35f78b1", "cee254479fe50d0f"),
     "rulesets/rps-v1.json": ("2261f8203948", "b079ab1b18c454a6"),
@@ -140,7 +140,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     # `sardines-wraparound.json` (`f76f73bd5d6c`/`551032910084b2d6`), whose rank seam was
     # one-way per side; this one is the full torus, so the rename carries a new game and
     # not only a new name. `runs/f76f73bd5d6c-0` stays as the old game's measurement.
-    # Q868, 2026-10-12: `rulesets/sardines-torus.json` (`f5585062433b`/`6f3802cc1cdb323a`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    # Q868, 2026-10-12: `rulesets/sardines-torus.json` (`f5585062433b`/`6f3802cc1cdb323a`) retired by the library audit (`docs/archive/plan-library-audit.md`); its runs stay.
     # Re-frozen 2026-09-11 by Q180, on the `stones` / `chess-oriented-pawns` footing: a
     # spec replaced on purpose, so both numbers move together and it is a different game
     # rather than a compiler regression. The four cells of the sardines family now come
@@ -160,7 +160,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     # was 630828e31147 / e748341e571a98b9
     "rulesets/shogi.json": ("54c731ca6e95", "ae0af217d07baaa2"),
     "rulesets/threecheck.json": ("b1f536573c22", "72cf8d36fe5262ee"),
-    # Q868, 2026-10-12: `rulesets/torus-extended.json` (`fdadd9839d34`/`213502f4d3c8b294`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    # Q868, 2026-10-12: `rulesets/torus-extended.json` (`fdadd9839d34`/`213502f4d3c8b294`) retired by the library audit (`docs/archive/plan-library-audit.md`); its runs stay.
     # Q869, 2026-10-13: the rear pawn `V` respelled as a pawn placed facing backwards with a
     # facing no move turns (schema 25); the same game move for move (perft and random walks
     # agree), a new hash, `runs/3194d3a2251b-*` kept. was 3194d3a2251b / 83d672ca1a180146
@@ -171,7 +171,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     # `rank: 9` lay past its 8-high board, so its pawns could never promote, and other
     # near-chess wraparound games cover its ground. Its four runs stay in the main
     # checkout (`runs/195564f716ec`), and the validator now refuses such a rank.
-    # Q868, 2026-10-12: `rulesets/tunnel-vertical.json` (`0268bb0926bf`/`b74629fce0f2c511`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    # Q868, 2026-10-12: `rulesets/tunnel-vertical.json` (`0268bb0926bf`/`b74629fce0f2c511`) retired by the library audit (`docs/archive/plan-library-audit.md`); its runs stay.
     # Q313, 2026-09-18: re-frozen from `2437aaa92bb15dba`, and the mechanics hash does
     # not move because no spec file was edited. `compile.py` used to walk a piece's
     # direction *set*, whose tuple hash is 64 bits here and 32 under Emscripten, and a
@@ -203,7 +203,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     # sits at its inert default and is dropped, so the tables are byte-identical to the
     # schema-8 compiler's by construction -- the same argument the test below makes.
     "archive/hierarchy-extended.json": ("57667d7861ad", "0da72ea2e0260133"),
-    # Q868, 2026-10-12: `archive/hierarchy-fall-swap.json` (`f1fdbb539699`/`d1bbe2c7ea75dc5a`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    # Q868, 2026-10-12: `archive/hierarchy-fall-swap.json` (`f1fdbb539699`/`d1bbe2c7ea75dc5a`) retired by the library audit (`docs/archive/plan-library-audit.md`); its runs stay.
     "archive/hierarchy-fall.json": ("3c639d277808", "c98f538601b4afe5"),
     "archive/hierarchy-rise-stay.json": ("482ddc556331", "353b16ba98f79721"),
     "archive/hierarchy-rise.json": ("1ba3d61e5961", "f5326430599d6230"),
@@ -248,7 +248,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     # The sardines family's wrap-and-facing cell, Q180, 2026-09-11, seed 20262067. It
     # replaces `weathervane-chaos-torus.json` (`a6ebba755d77`/`26fdee19415a4509`), which
     # the user landed in `95e1495` that morning from a generator of its own.
-    # Q868, 2026-10-12: `archive/weathervane-torus.json` (`9777cd6c9ed1`/`910ad7686ab0c31d`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    # Q868, 2026-10-12: `archive/weathervane-torus.json` (`9777cd6c9ed1`/`910ad7686ab0c31d`) retired by the library audit (`docs/archive/plan-library-audit.md`); its runs stay.
     # Q28b, 2026-09-13: `weathervane` with a two-axis pawn whose `initial` is backward,
     # rows 15 and 16 of `docs/reference/schema-showcase-coverage.md`. The only spec in the
     # tree that compiles a two-axis piece, so this row pins that path.
@@ -270,24 +270,24 @@ FROZEN: dict[str, tuple[str, str]] = {
     # `wolves`' but for the Zobrist draws, which the fingerprint covers -- so the two
     # rows differ, and that difference is the mechanics hash reseeding the draw rather
     # than any rule compiling differently.
-    # Q876, 2026-10-13: `archive/wolves-immune.json` (`a2193fb37097`/`5f1cc21fe83d08c8`) retired by the library audit's second pass for `archive/pitchfork.json` (`docs/plan-library-audit.md`, Q876); its runs stay.
+    # Q876, 2026-10-13: `archive/wolves-immune.json` (`a2193fb37097`/`5f1cc21fe83d08c8`) retired by the library audit's second pass for `archive/pitchfork.json` (`docs/archive/plan-library-audit.md`, Q876); its runs stay.
     # Q76, 2026-09-13: `wolves` plus `scoring.count: "points"` and a bounty of 1, rows 19
     # and 22 of `docs/reference/schema-showcase-coverage.md`. The only spec in the tree
     # that compiles a non-default bounty and a points count, so this row pins that path.
     "archive/wolves-bounty.json": ("54b38fb8cba8", "6435d2c15d411b4d"),
     # Q77, 2026-09-14: `wolves` with both routes rotated by one square.
-    # Q868, 2026-10-12: `archive/wolves-rotated.json` (`213f7b6604e4`/`0db063d05e21dd56`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    # Q868, 2026-10-12: `archive/wolves-rotated.json` (`213f7b6604e4`/`0db063d05e21dd56`) retired by the library audit (`docs/archive/plan-library-audit.md`); its runs stay.
     # Q222, 2026-09-14: the other three rotations, by two, three and four squares.
-    # Q868, 2026-10-12: `archive/wolves-rotated-2.json` (`8ec0ce4678e9`/`112bb4d97b35232f`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
-    # Q868, 2026-10-12: `archive/wolves-rotated-3.json` (`2e94e1688601`/`e71396ec37a17a5f`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
-    # Q868, 2026-10-12: `archive/wolves-rotated-4.json` (`87a488975531`/`7863f23a3bbd4b4e`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    # Q868, 2026-10-12: `archive/wolves-rotated-2.json` (`8ec0ce4678e9`/`112bb4d97b35232f`) retired by the library audit (`docs/archive/plan-library-audit.md`); its runs stay.
+    # Q868, 2026-10-12: `archive/wolves-rotated-3.json` (`2e94e1688601`/`e71396ec37a17a5f`) retired by the library audit (`docs/archive/plan-library-audit.md`); its runs stay.
+    # Q868, 2026-10-12: `archive/wolves-rotated-4.json` (`87a488975531`/`7863f23a3bbd4b4e`) retired by the library audit (`docs/archive/plan-library-audit.md`); its runs stay.
     # Q229, 2026-09-15: schema 14's showcase, Glinski-style hexagonal chess on an axial
     # rhombus with thirty walls, `lattice: "hex"` declared and a promotion zone on the
     # hexagon's far edge. The only spec in the tree that compiles a zone that is not whole
     # ranks, so this row pins that path. `docs/reference/hex-convention.md`.
     # Q280, 2026-09-17: the square-grid parent `archive/hex-glinski.json`
     # (`5228694f93bd`) was retired here; schema 14 made its convention a declaration.
-    # Q868, 2026-10-12: `archive/hex-glinski-promoting.json` (`279f92a97530`/`b429acf0d4a10f89`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    # Q868, 2026-10-12: `archive/hex-glinski-promoting.json` (`279f92a97530`/`b429acf0d4a10f89`) retired by the library audit (`docs/archive/plan-library-audit.md`); its runs stay.
     # Q281a4, 2026-09-28: schema 16's showcases. `hex-glinski-hexagon` is the parent above
     # with `board.shape: "hexagon"` for its thirty walls. Its tables are the parent's
     # array by array but for the five Zobrist arrays, drawn from the mechanics hash as
@@ -295,8 +295,8 @@ FROZEN: dict[str, tuple[str, str]] = {
     # (`tests/test_schema_sixteen.py::TestTheTwin`). `flanks` joins its empty flanks
     # (`nw_se: "both"`), `flanks-one-way` the same seam one way per player.
     "archive/hex-glinski-hexagon.json": ("6eaaad41673b", "502b6c432a0489b4"),
-    # Q870, 2026-10-13: `archive/hex-glinski-flanks.json` (`5ba53615c752`/`e615ab9b05ef7ce9`) retired by the library audit's second pass for `archive/pinwheel.json` (`docs/plan-library-audit.md`, Q870); its runs stay.
-    # Q870, 2026-10-13: `archive/hex-glinski-flanks-one-way.json` (`2edcd9a30022`/`4b8332fedb7ee7a7`) retired by the library audit's second pass for `archive/pinwheel.json` (`docs/plan-library-audit.md`, Q870); its runs stay.
+    # Q870, 2026-10-13: `archive/hex-glinski-flanks.json` (`5ba53615c752`/`e615ab9b05ef7ce9`) retired by the library audit's second pass for `archive/pinwheel.json` (`docs/archive/plan-library-audit.md`, Q870); its runs stay.
+    # Q870, 2026-10-13: `archive/hex-glinski-flanks-one-way.json` (`2edcd9a30022`/`4b8332fedb7ee7a7`) retired by the library audit's second pass for `archive/pinwheel.json` (`docs/archive/plan-library-audit.md`, Q870); its runs stay.
     # Q540, 2026-10-09: schema 17's showcases, chess with one rule each about what a
     # capture leaves behind (rifle, circe, Andernach, kamikaze).
     "archive/rifle.json": ("f7a789809758", "0fb33501ce9f14b3"),
@@ -335,8 +335,8 @@ FROZEN: dict[str, tuple[str, str]] = {
     # move written once and turned by the hexagon's `rotate6`, and by `dihedral12`. Their
     # tables are the parent's array by array but for the five Zobrist draws, which the
     # mechanics hash seeds (`tests/test_schema_eighteen.py::TestHexSymmetries`).
-    # Q870, 2026-10-13: `archive/hex-glinski-turned.json` (`30c1003b9a61`/`88ab61fbcf782f93`) retired by the library audit's second pass for `archive/pinwheel.json` (`docs/plan-library-audit.md`, Q870); its runs stay.
-    # Q870, 2026-10-13: `archive/hex-glinski-turned-mirrored.json` (`461e29677d6d`/`af0f34c7a089f751`) retired by the library audit's second pass for `archive/pinwheel.json` (`docs/plan-library-audit.md`, Q870); its runs stay.
+    # Q870, 2026-10-13: `archive/hex-glinski-turned.json` (`30c1003b9a61`/`88ab61fbcf782f93`) retired by the library audit's second pass for `archive/pinwheel.json` (`docs/archive/plan-library-audit.md`, Q870); its runs stay.
+    # Q870, 2026-10-13: `archive/hex-glinski-turned-mirrored.json` (`461e29677d6d`/`af0f34c7a089f751`) retired by the library audit's second pass for `archive/pinwheel.json` (`docs/archive/plan-library-audit.md`, Q870); its runs stay.
     # Q843a, 2026-10-11: the eight portal rows' fingerprints were re-frozen (the old one on
     # each row's comment). Schema 21 renamed and re-encoded two boundary keys,
     # `portal_partner` -> `portal_dest` and `portal_open` (a bool per player) ->
@@ -344,8 +344,8 @@ FROZEN: dict[str, tuple[str, str]] = {
     # array of the eight is unchanged, `dest` equals the old `partner` and `admits` is
     # non-zero exactly where `open` was true (compared against the schema 20 core), and every
     # perft of the eight is unchanged (`tests/test_schema_twenty_one.py::FROZEN_PERFT`). No
-    # mechanics hash moved (`docs/plan-portals-2.md` §2.4).
-    # Q772a, 2026-10-10: schema 19's showcases (`plan-portals.md` §7 P4): the three games
+    # mechanics hash moved (`docs/archive/plan-portals-2.md` §2.4).
+    # Q772a, 2026-10-10: schema 19's showcases (`docs/archive/plan-portals.md` §7 P4): the three games
     # Divide (capablanca on a walled 10x11), Ferry (losalamos, two pairs either player
     # moves) and Carousel (losalamos on a 6x8 cylinder, a private lift each), and the four
     # one-feature specs: Wormhole on gardner, its `moved_by` and `passage` arms, and a
@@ -354,30 +354,30 @@ FROZEN: dict[str, tuple[str, str]] = {
     "archive/ferry.json": ("1501615e08e2", "e7770d3fc50aee5a"),  # was 6a3e2afa90281e2e
     "archive/carousel.json": ("f1e40e35a6d9", "69a08feee1d2d3ae"),  # was 77a125f71060e8d6
     "archive/wormhole.json": ("3732e55621b1", "f19895f2038e8832"),  # was b0b3d89367aea3fe
-    # Q868, 2026-10-12: `archive/wormhole-adrift.json` (`22cc8982bc90`/`2929f116a0b775bb`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    # Q868, 2026-10-12: `archive/wormhole-adrift.json` (`22cc8982bc90`/`2929f116a0b775bb`) retired by the library audit (`docs/archive/plan-library-audit.md`); its runs stay.
     "archive/shut-wormhole.json": ("58afebca2286", "70627853a1fe6053"),  # was a4db7f4ed8334ea1
     "archive/cylinder-wormhole.json": ("5abb0b804cf6", "f4527ef755dee62c"),  # was 44ff210388e3b982
     # Q807, 2026-10-10: schema 20's showcase, Ferry with `no_straight_back` on both pairs
-    # (`plan-portals.md` *Ferry's shuffle*), a new game beside Ferry, whose row is unmoved.
+    # (`docs/archive/plan-portals.md` *Ferry's shuffle*), a new game beside Ferry, whose row is unmoved.
     # was 1fdb2020deedb6d1
     "archive/ferry-no-straight-back.json": ("dd17d71412a7", "0bdeb43fbc2e4d7d"),
     # Q850, 2026-10-11: schema 23's showcase, the user's game -- two wolves on one
     # sixteen-square circuit, `also_at` (`designer-case-study-wolves.md` §2.2). New.
     "archive/wolves-patrol.json": ("b2011455c4af", "5b144080a51061e1"),
-    # Q772e, 2026-10-12: Divide's option B, the two-way door (`plan-portals.md` *Divide's
+    # Q772e, 2026-10-12: Divide's option B, the two-way door (`docs/archive/plan-portals.md` *Divide's
     # return rule*): `divide` with the pair's `passage` removed, a new game beside it. New.
-    # Q868, 2026-10-12: `archive/divide-two-way.json` (`2fa712feb218`/`61e519fb59ea4574`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
-    # Q772f, 2026-10-12: Divide's option C, both ends fixed (`plan-portals.md` *Divide's
+    # Q868, 2026-10-12: `archive/divide-two-way.json` (`2fa712feb218`/`61e519fb59ea4574`) retired by the library audit (`docs/archive/plan-library-audit.md`); its runs stay.
+    # Q772f, 2026-10-12: Divide's option C, both ends fixed (`docs/archive/plan-portals.md` *Divide's
     # return rule*): `divide-two-way` with the pair's `moved_by` removed, a new game. New.
-    # Q868, 2026-10-12: `archive/divide-fixed.json` (`31ead85da009`/`f5bf221dce8ccfe8`) retired by the library audit (`docs/plan-library-audit.md`); its runs stay.
+    # Q868, 2026-10-12: `archive/divide-fixed.json` (`31ead85da009`/`f5bf221dce8ccfe8`) retired by the library audit (`docs/archive/plan-library-audit.md`); its runs stay.
     # Q870, 2026-10-13: the hexagon set's designed game, built around what four retired
     # variants of `hex-glinski-hexagon` were kept to show: a one-handed knight written
     # `rotate6` beside `dihedral12` officers, and a one-way seam on a 61-cell hexagon
-    # (`docs/plan-library-audit.md`; `tests/test_pinwheel.py`). New.
+    # (`docs/archive/plan-library-audit.md`; `tests/test_pinwheel.py`). New.
     "archive/pinwheel.json": ("61c4e247dc3c", "9cc78fa02cf12867"),
     # Q876, 2026-10-13: the game built around `npcs[].immune` in place of `wolves-immune`:
     # eight wolves in pairs (`also_at`) on the centre rings, and only a pawn may take one
-    # (`docs/plan-library-audit.md`; `tests/test_pitchfork.py`). New.
+    # (`docs/archive/plan-library-audit.md`; `tests/test_pitchfork.py`). New.
     "archive/pitchfork.json": ("d2a722b461ff", "f7fe75d2793c461a"),
     # Q844b, 2026-10-13: the portal showcases on the rules as they now stand
     # (`docs/reference/portal-showcase-ideas.md`; `tests/test_portal_showcases_q844b.py`):
@@ -388,26 +388,34 @@ FROZEN: dict[str, tuple[str, str]] = {
     "archive/crease.json": ("0448722861a3", "ac98338606812bdf"),
     "archive/pawnproof-wormhole.json": ("feaad3754a7e", "fa4f817969d2b144"),
     # Q918e, 2026-10-15: the showcases of schema 26's simultaneous moves
-    # (`docs/plan-simultaneous.md`, *Q918e*; `tests/test_showcases_q918e.py`): Gardner in
+    # (`docs/archive/plan-simultaneous.md`, *Q918e*; `tests/test_showcases_q918e.py`): Gardner in
     # rounds (the mechanics of `tests/_simultaneous_gardner.json`), with meek pawns
     # (`beats`), with the initiative, and the watering hole (ties impossible). New.
-    "archive/gardner-in-rounds.json": ("e043fce6968e", "8a0183446ffc68f9"),
-    "archive/gardner-in-rounds-with-meek-pawns.json": ("ff1ccdaaf3cf", "95e105b3ac964b51"),
-    "archive/gardner-in-rounds-with-the-initiative.json": ("6278607c721b", "8c4ede64bdaf6f6e"),
+    # Q962b, 2026-10-18: `archive/gardner-in-rounds.json` (`e043fce6968e`/`8a0183446ffc68f9`) retired from the previews
+    # (`docs/reference/previews-2026-10-18.md`), its file kept as `tests/_retired_*.json`; its runs stay.
+    # Q962b, 2026-10-18: `archive/gardner-in-rounds-with-meek-pawns.json` (`ff1ccdaaf3cf`/`95e105b3ac964b51`) retired from the previews
+    # (`docs/reference/previews-2026-10-18.md`), its file kept as `tests/_retired_*.json`; its runs stay.
+    # Q962b, 2026-10-18: `archive/gardner-in-rounds-with-the-initiative.json` (`6278607c721b`/`8c4ede64bdaf6f6e`) retired from the previews
+    # (`docs/reference/previews-2026-10-18.md`), its file kept as `tests/_retired_*.json`; its runs stay.
     "archive/watering-hole.json": ("5c0b017473f5", "f264b4cdd576ed0b"),
     # Q942c, 2026-10-17: the showcases of schema 27's three switches against the royal chase
-    # (`docs/plan-round-chase.md` §5; `tests/test_showcases_q942.py`): Gardner in rounds
+    # (`docs/archive/plan-round-chase.md` §5; `tests/test_showcases_q942.py`): Gardner in rounds
     # resting (`rest`, the mechanics of `tests/_simultaneous_resting.json`), where swaps
     # collide (`swap`), scored (`both`), and against the chase (all three, the mechanics of
     # `tests/_simultaneous_scored.json`). New.
     "archive/gardner-in-rounds-resting.json": ("4da669bb3d50", "f75ed40edaaf4658"),
-    "archive/gardner-in-rounds-where-swaps-collide.json": ("7985900696d7", "84d7ffe03c147c54"),
-    "archive/gardner-in-rounds-scored.json": ("a90a8db7e2dd", "66e201715549ce34"),
-    "archive/gardner-in-rounds-against-the-chase.json": ("632c199e4589", "359f27e3538d5415"),
+    # Q962b, 2026-10-18: `archive/gardner-in-rounds-where-swaps-collide.json` (`7985900696d7`/`84d7ffe03c147c54`) retired from the previews
+    # (`docs/reference/previews-2026-10-18.md`), its file kept as `tests/_retired_*.json`; its runs stay.
+    # Q962b, 2026-10-18: `archive/gardner-in-rounds-scored.json` (`a90a8db7e2dd`/`66e201715549ce34`) retired from the previews
+    # (`docs/reference/previews-2026-10-18.md`), its file kept as `tests/_retired_*.json`; its runs stay.
+    # Q962, 2026-10-18: against the chase renamed `archive/breather.json`, name and description only;
+    # the mechanics hash is the same.
+    "archive/breather.json": ("632c199e4589", "359f27e3538d5415"),
     # Q935f, 2026-10-17: the spy's showcases (`docs/plan-spy.md` §5; `tests/test_showcases_q935f.py`):
     # Gardner with spies (SP1, `pieces.spy`, the mechanics of Q935d's draft) and Gardner with
     # spies resting (SP2, with `rest`). New.
-    "archive/gardner-with-spies.json": ("f4c62a33798d", "7e3a92c5d12b44dd"),
+    # Q962b, 2026-10-18: `archive/gardner-with-spies.json` (`f4c62a33798d`/`7e3a92c5d12b44dd`) retired from the previews
+    # (`docs/reference/previews-2026-10-18.md`), its file kept as `tests/_retired_*.json`; its runs stay.
     "archive/gardner-with-spies-resting.json": ("1d798bedbf66", "8a309ac4ab581f8e"),
     # Q936s, 2026-10-17: the showcase of `"per_type": "own"`, two armies of different kinds
     # (`docs/reference/extinction-any-kind.md` §5; `tests/test_showcases_q936s.py`). New;

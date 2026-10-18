@@ -1,4 +1,4 @@
-"""The refresher keeps ladders current (L7, `docs/plan-leaderboard.md` §2.2).
+"""The refresher keeps ladders current (L7, `docs/archive/plan-leaderboard.md` §2.2).
 
 `refresh --library --watch` rates a missing picker ladder, then tops up a short one, then
 rates again one with old players, one ladder a lease, and only once no score is owed. What

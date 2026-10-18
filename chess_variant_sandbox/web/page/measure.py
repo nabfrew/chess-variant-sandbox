@@ -1,6 +1,6 @@
 """Measuring a draft on this computer: the coordinator on the page.
 
-`docs/plan-client-compute.md` §8, stage B5. The designer offers to measure the draft in
+`docs/archive/plan-client-compute.md` §8, stage B5. The designer offers to measure the draft in
 the browser, where the artefact `build/browser/` is served (B4). The page starts up to
 `hardwareConcurrency - 1` of B3's workers, and at most four, deals them B0's units phase
 by phase, gathers in one of them, and shows the index with its components under the

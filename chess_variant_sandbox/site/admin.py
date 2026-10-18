@@ -719,7 +719,7 @@ def kill_user(connection: Any, user: int) -> str:
     a hole in it is a leaderboard that lies about the people still on it.
 
     Their running games against other people are resigned for them, as games they left
-    (Q570, `docs/plan-return.md` §1.6), so nobody waits five days on an account that
+    (Q570, `docs/archive/plan-return.md` §1.6), so nobody waits five days on an account that
     cannot sign in. Imported here, because `site/correspondence.py` reads the store's
     match rows and this module is imported by everything.
     """

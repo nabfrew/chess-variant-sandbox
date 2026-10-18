@@ -1,4 +1,4 @@
-"""The badges of `docs/plan-meta-game.md` §2.9, as boxes E3 and E5 to E9 built them.
+"""The badges of `docs/archive/plan-meta-game.md` §2.9, as boxes E3 and E5 to E9 built them.
 
 Those six boxes and their *done when* are in `docs/archive/plan-meta-game.md`; a bare §
 below is the live plan's.
@@ -35,7 +35,7 @@ which is what `drafts.keep` records from the playability check. It used to be re
 `visibility = 'public'`, when a pass listed the game; since Q503a a save lists nothing
 (`0016_drafts.sql` copied the old reading into the column, so no badge moved). So a
 draft counts: `plan-game-pipeline.md` §5 (Q503a) has *passes the screen* badges read
-`screen_passed`, and `plan-meta-game.md` has D2 keep its meaning, *a draft that passed*.
+`screen_passed`, and `docs/archive/plan-meta-game.md` has D2 keep its meaning, *a draft that passed*.
 The rule sentences said *and is listed* from the days a pass listed the game, and Q543
 took the words out rather than add a check, which would have made every designer badge
 unearnable until publishing opens and contradicted rows already written. A killed
@@ -86,7 +86,7 @@ owner, because `chess-variant-sandbox site load` gives every library game the ma
 ## The one over people
 
 - **E11** *Beat the maker* (N11) is a win over a designed game's owner, on that game, in a
-  rated game between two people (`plan-return.md` §3 C4, Q606). It sits on the game with
+  rated game between two people (`archive/plan-return.md` §3 C4, Q606). It sits on the game with
   the winner as holder, once per game for each winner. The owner is read off `games` by
   `origin`, as `designer_of` reads it, so a library game earns nothing.
 
@@ -628,8 +628,9 @@ def _scored_as(score: dict[str, Any]) -> str:
         return ""
     low, high = _figure(score.get("ci_low"), 2), _figure(score.get("ci_high"), 2)
     weights = str(score.get("weights") or "")
-    # S10 of `docs/plan-understanding.md` §3.3, in the site's words (§3.2): *score*,
-    # *likely*, *the average of four runs*, *scoring rules version 11*. All of it inside
+    # S10 of `docs/archive/plan-understanding.md` §3.3, in the site's words
+    # (`docs/reference/plain-words.md` §2): *score*, *likely*, *the average of four runs*,
+    # *scoring rules version 11*. All of it inside
     # the one bracket, because `quoted` joins its clauses with commas and a score's own
     # commas would run into the stars' clause after it.
     version = weights[1:] if weights[:1] == "v" and weights[1:].isdigit() else weights

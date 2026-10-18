@@ -1,4 +1,4 @@
-"""The portal pairs' palette (Q838b, `docs/plan-portal-look.md` §2.1): colour means the pair,
+"""The portal pairs' palette (Q838b, `docs/archive/plan-portal-look.md` §2.1): colour means the pair,
 so the four pair tokens must stay apart for the readers colour is hardest for.
 
 The check is `docs/reference/visual/q838a-palette.py`'s, as a test: CIEDE2000 distances between

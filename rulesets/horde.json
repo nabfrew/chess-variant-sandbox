@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "name": "horde",
-  "description": "One player has a king and the ordinary army; the other has thirty-six pawns and nothing else. The horde wins by checkmate and loses by being wiped out.",
+  "description": "A wall of pawns against a chess army, from a variant widely played online. White has no king and no pieces, only thirty-six pawns filling its first four ranks and spilling onto the fifth; Black has the ordinary army. With no king, the horde cannot be checkmated: Black wins only by capturing every White pawn, and every piece one promotes to. White wins by checkmate, smothering the king under a slow advancing mass, and its pawns on the first rank may step two squares as well as those on the second. The horde wants to advance as a connected chain in which each pawn guards the next, while the army hunts for the loose pawn and the break that lets its pieces in behind. Every capture costs the army time and sometimes a piece it cannot spare, while every pawn that slips past is a new queen.",
   "board": {
     "width": 8,
     "height": 8

@@ -1,6 +1,6 @@
 """Each computer player's place on people's scale, per game (route B, H7).
 
-`docs/plan-human-data.md` §3.2. A game's rating table holds people and computer players
+`docs/reference/human-data.md` §3.2. A game's rating table holds people and computer players
 together, and people's rated results move the computer players' rows (`site/rating.py`).
 Reading the table therefore says where each computer player sits among the *people* who
 play the game: *the strongest computer player plays here about as a member rated 1650
@@ -40,7 +40,7 @@ from typing import Any
 from chess_variant_sandbox.site import matches as match_rows
 from chess_variant_sandbox.site import rating, unbeaten
 
-# Pre-registered 2026-10-08 (`docs/plan-human-data.md` §3.2); never re-aimed.
+# Pre-registered 2026-10-08 (`docs/reference/human-data.md` §3.2); never re-aimed.
 MINIMUM_ESTABLISHED = 5
 
 SCALE_SAID = (

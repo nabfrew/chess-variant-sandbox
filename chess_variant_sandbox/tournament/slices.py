@@ -820,7 +820,7 @@ def gather_request(payload: str, cut: int = CUT) -> str:
     """One step of a measurement the page coordinates: text in, text out.
 
     `run_request` is what every worker runs; this is what the one worker that gathers runs
-    between the phases (`docs/plan-client-compute.md` §8, B5). It is in the wheel so that
+    between the phases (`docs/archive/plan-client-compute.md` §8, B5). It is in the wheel so that
     no worker is sent Python: the page and the wheel share this name and JSON, and nothing
     else.
 

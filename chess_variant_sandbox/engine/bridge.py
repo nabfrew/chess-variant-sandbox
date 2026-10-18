@@ -562,7 +562,7 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
             bits for owner in portals.attack_dirs for per_square in owner for bits in per_square
         ]
 
-    # --- Folds (schema 22; schema 24 cut them to this, `docs/plan-portals-2.md` §3R.4) ---
+    # --- Folds (schema 22; schema 24 cut them to this, `docs/archive/plan-portals-2.md` §3R.4) ---
     # Per type whether it is a fold end; per end where it starts (-1 for a momentum end); the
     # fold's Zobrist keys. Every one empty without a fold, so no earlier ruleset's
     # fingerprint moves.

@@ -1,6 +1,6 @@
 """The convergence record: did the score hold when stronger players measured it again? (Q650)
 
-`docs/plan-confidence.md` §3.2 step 4 (T5), the rule of `general-player.md` §3.1.4: **a
+`docs/archive/plan-confidence.md` §3.2 step 4 (T5), the rule of `general-player.md` §3.1.4: **a
 game's score converges when a re-measurement by other players moves it by less than twice
 its four-run standard deviation.** After `history` keeps a replaced measurement, this
 module compares the two and, where they differ *only in their players*, writes

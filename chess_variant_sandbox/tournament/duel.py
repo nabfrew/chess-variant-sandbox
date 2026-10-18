@@ -48,13 +48,13 @@ in 200 -- and ``_graded`` does it, blending the result with the final material l
 ``docs/reference/piece-values.md``.
 
 **A steering duel may stop early; a stamped one never does.** ``steer`` is a
-group-sequential rule with looks at 8, 16 and 24 seed-pairs (``docs/plan-compute.md``
+group-sequential rule with looks at 8, 16 and 24 seed-pairs (``docs/reference/compute-economy.md``
 §4.3), pre-registered in ``docs/reference/learned-evaluator.md`` §9 before anything used
 it. It is a different test from the fixed one, so it changes which comparisons pass near
 the bar, and it is for duels whose result only chooses the next experiment. Nothing that
 writes a stamp, an acceptance or a score calls it; ``tests/test_duel_steer.py`` holds that.
 
-**A stamped duel may be curtailed, exactly.** ``curtailed_duel`` (``docs/plan-compute.md``
+**A stamped duel may be curtailed, exactly.** ``curtailed_duel`` (``docs/reference/compute-economy.md``
 §4.2) plays the fixed rule's seed-pairs in schedule order, a batch of the worker count at a
 time, and stops at the first prefix after which every possible result of the unplayed pairs
 gives the same verdict (``settled``). The verdict is then the full duel's by construction,
@@ -81,7 +81,7 @@ from chess_variant_sandbox.tournament.runner import TournamentConfig
 # The steering rule's design, pre-registered in `docs/reference/learned-evaluator.md` §9.
 # Changing any of these is a new rule, re-registered there with its error rates first.
 #
-# The looks, in seed-pairs: plan-compute §4.3's 8, 16 and 24.
+# The looks, in seed-pairs: reference/compute-economy.md §4.3's 8, 16 and 24.
 STEER_LOOKS = (8, 16, 24)
 # Stop for a side when z = (W - L) / sqrt(W + L) reaches this, W and L the pairs each side
 # won outright and ties (a pair at exactly 0.5) left out. Pocock-shaped: one bound at every

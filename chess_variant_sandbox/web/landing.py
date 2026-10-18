@@ -1,6 +1,6 @@
 """The landing page: what everybody meets at `/`, the games being at `/game` (Q718, Q723).
 
-`docs/plan-understanding.md` §1 and §2 say what the site is and what its score means, in a
+`docs/archive/plan-understanding.md` §1 and §2 say what the site is and what its score means, in a
 visitor's words; this module puts them on one page that scrolls, under a quiet board drawn
 by the page's own still-board code (`web/static/page/landing.js`). The page is markup made
 here, once, at import, and carried inside the single page as a `<template>`: it needs no
@@ -11,7 +11,7 @@ quality, the ends of its scale and the tests that rule a game out come from the 
 weights file through `scoring.load_weights` and `scoring.FLOOR`, and how many computer players
 measure a game and how many games a run holds come from `corpus`. What this module adds is
 prose: what each ingredient asks, why it counts, and how it is worked out, in the words
-`docs/plan-understanding.md` §3.2 settles (*turns*, *the computer players*, *ruled out*).
+`docs/reference/plain-words.md` §2 settles (*turns*, *the computer players*, *ruled out*).
 A weights version that scores something this module has no words for fails at import
 (`ingredients`), so the page cannot quietly describe a scoring rule that no longer exists,
 and `tests/test_landing.py` holds the page's numbers to the weights file read on its own.

@@ -1,6 +1,7 @@
 """The launch set, the front page's featured game, and the first game of the month.
 
-`docs/plan-launch-set.md` §3 (the nine and the reserves, in order) and §5 (the featured
+`docs/reference/opponent-line.md` §3 (the nine and the reserves, in order; planned in
+`docs/archive/plan-launch-set.md` §3, and §5 for the featured
 game and this month's game), as the user answered them on 2026-10-03
 (`docs/archive/decisions.md`): there is no person test, so the nine are the pool and not a
 gate; the front page features the five a chess player can start without reading the rules,
@@ -33,7 +34,7 @@ from typing import Any, Protocol
 @dataclass(frozen=True)
 class Launch:
     """One game of the launch set: its name, its hash, and the one sentence that says
-    how it differs from chess (`plan-launch-set.md` §3.2's *how it is learned*), which the
+    how it differs from chess (`archive/plan-launch-set.md` §3.2's *how it is learned*), which the
     first step shows under its board."""
 
     name: str
@@ -41,7 +42,7 @@ class Launch:
     sentence: str
 
 
-# The nine, in `plan-launch-set.md` §3.2's order: the order the front door lists them in.
+# The nine, in `reference/opponent-line.md` §3.1's order: the order the front door lists them in.
 LAUNCH_SET: tuple[Launch, ...] = (
     Launch("dobutsu", "a2f0c65ceedf",
            "Shogi for children on twelve squares: captured pieces come back as yours, and "
@@ -69,7 +70,7 @@ LAUNCH_SET: tuple[Launch, ...] = (
            "Chess on a board of hexagons, where pieces move in six and twelve directions."),
 )
 
-# The reserves, in §3.3's order. A reserve joins the set only by a deliberate edit here.
+# The reserves, in `reference/opponent-line.md` §3.2's order. A reserve joins the set only by a deliberate edit here.
 RESERVES: tuple[Launch, ...] = (
     Launch("intransitive", "29d5213b02b2", ""),
     Launch("atomic", "6bd4d9c5769e", ""),
@@ -97,7 +98,7 @@ ROTATION_START = date(2026, 10, 3)
 # The first game of the month (answer 7 A), for this month's game (C2, Q603) to read.
 FIRST_MONTH_GAME = "reckoning"
 
-# This month's game (C2, Q603; `plan-launch-set.md` §5.2): one game a month from the launch
+# This month's game (C2, Q603; `archive/plan-launch-set.md` §5.2): one game a month from the launch
 # set, the same for everybody, by the calendar month in UTC. `FIRST_MONTH_GAME` in
 # `FIRST_MONTH`, then §3.2's order from *quarry* onward (the invented games first), wrapping
 # round. Each must be in `LAUNCH_SET`, and each of the nine takes a month in turn. A game

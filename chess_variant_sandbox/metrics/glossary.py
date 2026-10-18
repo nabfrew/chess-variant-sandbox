@@ -607,7 +607,7 @@ MEASUREMENTS: dict[str, Measurement] = {
 
 
 # What a visitor to the site reads for a measurement, where it is not the maintainer's
-# sentence above (`docs/plan-understanding.md` §3.3, rows A7, A19 and A20). Keyed like
+# sentence above (`docs/archive/plan-understanding.md` §3.3, rows A7, A19 and A20). Keyed like
 # `MEASUREMENTS`; each entry replaces `title`, `what`, `reading` or `units` and nothing
 # else. The `how` line is the maintainer's alone, so the site draws none. `explain` sends
 # these beside the maintainer's words as a component's `site`, and the page draws them
@@ -740,7 +740,7 @@ def _roster_rho(version: str) -> dict[str, float]:
     """A version's own ``roster_rho`` per component, read straight off its JSON file.
 
     Optional (Q52, `docs/archive/plan-variety.md` A3): the rank correlation between two rosters'
-    readings of a component's raw measurement, against `plan-roster-confound.md` section
+    readings of a component's raw measurement, against `docs/reference/roster-confound.md` section
     8's threshold of 0.50. `v10` and every version before it carry none, because the
     field did not exist when they were written; a version from `v11` on may carry it for
     every component it scores.
@@ -862,7 +862,7 @@ HOW_IT_WORKS: list[dict[str, str]] = [
 ]
 
 
-# The same account in a visitor's words (`docs/plan-understanding.md` §3.3, A22), drawn by
+# The same account in a visitor's words (`docs/archive/plan-understanding.md` §3.3, A22), drawn by
 # the page where it is the site, as `explain`'s `howItWorksSite`. One entry for each of
 # `HOW_IT_WORKS`', in the same order, saying the same thing without the maintainer's terms
 # (*gate*, *ladder*, *weighted geometric mean*, *pooled*, *half-widths*, *re-anchoring*)

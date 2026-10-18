@@ -1,4 +1,4 @@
-"""The maker takes challengers, and E11 *Beat the maker* (Q606, `docs/plan-return.md` §3 C4, R10).
+"""The maker takes challengers, and E11 *Beat the maker* (Q606, `docs/archive/plan-return.md` §3 C4, R10).
 
 A game's designer switches one thing on, on their own page (`users.takes_challengers`, off
 by default), and is then named first in *Play a person* on each of their published games as

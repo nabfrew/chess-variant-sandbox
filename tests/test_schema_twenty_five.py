@@ -1,6 +1,6 @@
 """Schema 25 (Q869): a facing no move turns, ``pieces[].facing.turns: false``.
 
-`docs/plan-library-audit.md`, *The rear pawn: a fixed facing* (the user, 2026-10-12): *"an
+`docs/archive/plan-library-audit.md`, *The rear pawn: a fixed facing* (the user, 2026-10-12): *"an
 orientation can be set, but players can't change it."* A facing piece still reads its
 vectors through its orientation and a placement still sets it, but the core generates no
 rotation for it (``Tables::turns_of``), the move graph gives it no rotation edges, and

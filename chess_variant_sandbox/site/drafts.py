@@ -586,7 +586,7 @@ def publish(
                 " publish_stopped = null where hash = %s",
                 (PUBLIC, terms.VERSION, digest),
             )
-    # L5 (`docs/plan-leaderboard.md` §2.6): the five standard computer players are rated on
+    # L5 (`docs/archive/plan-leaderboard.md` §2.6): the five standard computer players are rated on
     # the site's runner as soon as the game is listed, once ever (`spine.file`), so a
     # resting game that comes back keeps the table it had and is not rated again.
     return Published(digest, already=False, rating=spine.file(connection, digest) is not None)

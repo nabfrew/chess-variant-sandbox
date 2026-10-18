@@ -638,7 +638,7 @@ class NpcRule:
 # Schema 19 (Q771): the eight king's directions a transit can come out in, in this fixed
 # order -- the bit a momentum mask sets for a step is its index here. Absolute board
 # directions, file then rank, after the second player's reflection: a direction is the
-# *sign* of the vector the piece travelled (`docs/plan-portals.md` §2.2).
+# *sign* of the vector the piece travelled (`docs/archive/plan-portals.md` §2.2).
 PORTAL_DIRECTIONS: tuple[tuple[int, int], ...] = (
     (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1),
 )
@@ -665,8 +665,8 @@ def momentum_bits(step_x: int, step_y: int, mode: int) -> int:
 
 @dataclass(frozen=True)
 class PortalRule:
-    """Groups of portals (schemas 19 and 21, `docs/plan-portals.md` §2,
-    `docs/plan-portals-2.md` §2.2), resolved into tables.
+    """Groups of portals (schemas 19 and 21, `docs/archive/plan-portals.md` §2,
+    `docs/archive/plan-portals-2.md` §2.2), resolved into tables.
 
     **Each end is its own internal piece type**, appended after the declared pieces in
     ``rules.portals`` order, group then end (pair 1 orange, pair 1 blue, group 2's ends a,
@@ -744,7 +744,7 @@ class PortalRule:
 
 @dataclass(frozen=True)
 class FoldRule:
-    """Fold portals (schema 22; revised at schema 24, `docs/plan-portals-2.md` §3R).
+    """Fold portals (schema 22; revised at schema 24, `docs/archive/plan-portals-2.md` §3R).
 
     A fold end is an internal type like a momentum end (`PortalRule`), but it never stands
     on the board byte: where each stands is game state (``Game::fold_at``), starting at
@@ -845,7 +845,7 @@ class CastlingRule:
     rook_files: tuple[int, int] | None = None
 
 
-# Schema 26 (Q918a): two void rounds in a row bar the pair (`docs/plan-simultaneous.md` §2.7).
+# Schema 26 (Q918a): two void rounds in a row bar the pair (`docs/reference/rounds.md` §2.7).
 # The user ruled it fixed, *"nor configurable"*, so it is a constant here and never a key.
 # It crosses as ``SimRule.void_run`` so the core reads it and never decides it; changing it
 # would change every simultaneous game under an unchanged hash, so it is never an edit.
@@ -859,7 +859,7 @@ TIE_IMPOSSIBLE = 2
 
 @dataclass(frozen=True)
 class SimRule:
-    """Simultaneous moves (schema 26, Q918a; `docs/plan-simultaneous.md` §5.3).
+    """Simultaneous moves (schema 26, Q918a; `docs/reference/rounds.md` §5.3).
 
     * ``tie`` -- ``TIE_BOTH`` (absent: both eliminated), ``TIE_INITIATIVE`` or
       ``TIE_IMPOSSIBLE`` (the validator proved no tie occurs; the core treats it as both).
@@ -877,7 +877,7 @@ class SimRule:
       0's square, ``[n_squares + square]`` for player 1's), then one per entry state (1, a
       run of one void round; 2, barred). Drawn after every other key.
     * ``rest``, ``swap_collides``, ``both_score`` -- schema 27's three chase switches
-      (Q942a, `docs/plan-round-chase.md` §3 R1, R2, X1), each false when absent.
+      (Q942a, `docs/archive/plan-round-chase.md` §3 R1, R2, X1), each false when absent.
     * ``zobrist_rest`` -- under ``rest`` only, one key per square per player
       (``[player * n_squares + square]``) for the square of the piece that player's move
       rested; drawn after the standoff's, so no other game's key moves. Empty otherwise.
@@ -1727,9 +1727,9 @@ def _compile(
             ))
         # Any type that can go in by a portal can come back to a square it left -- a pawn
         # through a pair that runs down the board -- so no type some end admits is one-way
-        # (`docs/plan-portals.md` §2.6). Without this a pawn move would clear the
+        # (`docs/archive/plan-portals.md` §2.6). Without this a pawn move would clear the
         # repetition window while a cycle through a portal exists. Schema 21
-        # (`plan-portals-2.md` §2.3): a type every filter keeps out stays one-way.
+        # (`docs/archive/plan-portals-2.md` §2.3): a type every filter keeps out stays one-way.
         admitted = 0
         for masks in portals.admits:
             admitted |= masks[0] | masks[1]
@@ -4129,7 +4129,7 @@ def _compile_portals(
     Every group, in either spelling, through the one normaliser (`portal_groups`): an end's
     ``dest`` is the type of the end its ``to`` names, and its ``admits`` mask per player is
     every declared type its ``carries`` names (every declared type where it has none) when
-    the player is in its ``enter``, else nothing (`docs/plan-portals-2.md` §2.2-2.3).
+    the player is in its ``enter``, else nothing (`docs/archive/plan-portals-2.md` §2.2-2.3).
     """
     groups = portal_groups(rules)
     index_of = {pid: index for index, pid in enumerate(declared_ids)}

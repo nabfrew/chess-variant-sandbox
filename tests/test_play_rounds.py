@@ -1,4 +1,4 @@
-"""The play page for a game in rounds (schema 26, Q918c, `docs/plan-simultaneous.md` §6.6).
+"""The play page for a game in rounds (schema 26, Q918c, `docs/archive/plan-simultaneous.md` §6.6).
 
 What is held here, the server half first:
 
@@ -533,7 +533,7 @@ def _chase_spec() -> dict[str, Any]:
 
 
 class TestTheChaseSwitches:
-    """Q942b (`docs/plan-round-chase.md` §4.2): the page marks a rested piece, draws a swap
+    """Q942b (`docs/archive/plan-round-chase.md` §4.2): the page marks a rested piece, draws a swap
     that met between its two squares, and says a both-fire's result in a sentence."""
 
     def test_each_rested_piece_is_in_the_round_and_badged(self) -> None:

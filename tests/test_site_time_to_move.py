@@ -1,10 +1,10 @@
 """The time left to move in a game between two people, as a plain fact (Q627).
 
-`docs/plan-return.md` §9, the user on 2026-10-02: *"there should be an indication how long
+`docs/archive/plan-return.md` §9, the user on 2026-10-02: *"there should be an indication how long
 there is left to move ... It would be incredibly annoying for it to be a surprise lose on
 time"*, and on the member's own page *"the started games sorted in order descending order
 of time left to move, then time left opponent has to move in ascending order"*. The dated
-exception to test 2 of `docs/plan-meta-game.md`: a plain statement, never a countdown.
+exception to test 2 of `docs/reference/no-dark-patterns.md`: a plain statement, never a countdown.
 
 What is proved, on specs rather than chess (rule 5): the words at the boundary times
 against a clock the test sets; that they measure from the instant the five-day rule

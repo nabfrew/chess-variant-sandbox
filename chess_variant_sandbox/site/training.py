@@ -2,7 +2,7 @@
 
 `docs/plan-game-pipeline.md` trains a game's computer player on the 16-core machine, today
 only where the computer-only strength-premise check says the built-in player is weak
-(Q503k). The user answered `docs/plan-human-data.md` §6 **B** on 2026-10-08: people's games
+(Q503k). The user answered `docs/reference/human-data.md` §6 **B** on 2026-10-08: people's games
 may decide *where the computer players look next*, never *what is found*. So a game over
 the bar of §3.3 (`site/alarm.py`) is queued for a stronger computer player automatically,
 the trained player is still accepted only by computer-only duels, and nothing a person

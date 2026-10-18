@@ -1,4 +1,4 @@
-"""V7 of `docs/plan-visual.md` §8: the site's own pages in the club room's look.
+"""V7 of `docs/archive/plan-visual.md` §8: the site's own pages in the club room's look.
 
 The footer signed with the mark on both servers, the not-found page every address
 without a page answers (and the one a member asking for `/admin` gets), the site's

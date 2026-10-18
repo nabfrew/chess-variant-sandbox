@@ -1,7 +1,7 @@
 {
   "schema_version": 25,
   "name": "pitchfork",
-  "description": "Chess with eight wolves in the middle of the board, and only a pawn can bring one down. A wolf belongs to neither player. The wolves walk in pairs, nose to tail, round four rings of five squares that fill the centre: on each wing one ring in each player's half, b4 c5 d4 c3 b3 and g4 f5 e4 f3 g3 and their mirror images on the other side of the board. After every move either player makes, every wolf steps to the next square of its ring and eats whatever it finds there. A knight, bishop, rook, queen or king may not take a wolf; a pawn may, diagonally forward, as it takes anything else. So the squares where the knights and bishops would come out are the wolves' ground until the pawns clear it, and the hunt has a price: a pawn that takes the leading wolf of a pair stands on the square the one behind it steps to next, and is eaten at once. A square a wolf will step to next is a square no king may stand on. A wolf is worth nothing to take and there is no score to collect. The rest is chess: castling, en passant and promotion as usual; checkmate wins and stalemate is a draw.",
+  "description": "Chess with eight wolves in the centre that belong to neither player, and only the humblest piece can kill one: a pawn, taking diagonally forward as usual. The wolves walk in pairs, nose to tail, round four five-square rings, two on each wing, one nearer each player (White's are b4 c5 d4 c3 b3 and g4 f5 e4 f3 g3); after every move either player makes, each wolf steps on and eats whatever piece stands there, and no king may stand where a wolf will step next. The rings cover the squares the knights and bishops want to come out to, so the opening is a hunt only pawns can carry out. And the hunt has a price: a pawn that takes the leading wolf of a pair stands exactly where the one behind steps next, and is eaten at once. Which wolf to strike, and when, is the opening's question. Otherwise it is ordinary chess, won by checkmate.",
   "board": {
     "width": 8,
     "height": 8
@@ -95,8 +95,8 @@
   "provenance": {
     "added": "2026-10-13",
     "origin": "designed",
-    "source": "docs/plan-library-audit.md, Q876: a new game instead of a variant",
-    "history": "Designed by Q876 to replace wolves immune, which was wolves written with rules.npcs[].immune and played it move for move, so the word was in the library without doing anything. Here it decides the game: the wolves may be taken by pawns and by nothing else, and they stand where the pawns' advance meets them from the first move, so the cheapest piece is the hunter and every capture of a wolf is a pawn's. The rings are the centre rings Q68's screen tried (docs/reference/wild-piece-that-matters.md), each holding two wolves (schema 23's also_at). Pre-registered in docs/plan-library-audit.md before it was measured.",
+    "source": "docs/archive/plan-library-audit.md, Q876: a new game instead of a variant",
+    "history": "Designed by Q876 to replace wolves immune, which was wolves written with rules.npcs[].immune and played it move for move, so the word was in the library without doing anything. Here it decides the game: the wolves may be taken by pawns and by nothing else, and they stand where the pawns' advance meets them from the first move, so the cheapest piece is the hunter and every capture of a wolf is a pawn's. The rings are the centre rings Q68's screen tried (docs/reference/wild-piece-that-matters.md), each holding two wolves (schema 23's also_at). Pre-registered in docs/archive/plan-library-audit.md before it was measured.",
     "parents": ["ceb4916bdabc"]
   }
 }

@@ -19,6 +19,10 @@ those drafts live in the gitignored `runs/`); SP1's alternating phase plays move
 T0 does; and a spy that meets another piece in a round is the one removed, as the
 descriptions say.
 
+SP1 and its parent left the previews with Q962b (`docs/reference/previews-2026-10-18.md`);
+their files are `tests/_retired_*.json` (`retired_specs.retired_preview`), and SP2 is the spy's
+one showcase.
+
 Every answer is the core's, through `Engine`; the clauses compare squares and owners on the
 boards it returns.
 """
@@ -32,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from retired_specs import retired_preview
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.moves import decode_move, move_from, move_to
@@ -47,9 +52,9 @@ def load(name: str) -> dict[str, Any]:
     return json.loads((ROOT / "archive" / f"{name}.json").read_text(encoding="utf-8"))
 
 
-SP1 = load("gardner-with-spies")
+SP1 = retired_preview("gardner-with-spies")
 SP2 = load("gardner-with-spies-resting")
-PARENT = load("gardner-in-rounds")
+PARENT = retired_preview("gardner-in-rounds")
 
 
 def twin(spec: dict[str, Any]) -> dict[str, Any]:

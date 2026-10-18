@@ -1,10 +1,10 @@
 """How `v3` to `v11` placed their curve ends, kept so those ends can be re-derived.
 
-Since `v12` no end is placed by the band (`docs/plan-evolving-score.md` §4), so nothing in
+Since `v12` no end is placed by the band (`docs/archive/plan-evolving-score.md` §4), so nothing in
 the scoring path calls these. They stay for the record: `docs/reference/negatives-widened.py`,
 `v10-worst-half-noise.py`, `v11-acceptance.py` and `stage26-partial-write.py` run them, and
 `.claude/rules/metrics-and-calibration.md` names `component_noise` as a new component's
-precision test. None of them had run in the suite (plan-tests T7, F9; Q751), so these pin what
+precision test. None of them had run in the suite (archive/plan-tests T7, F9; Q751), so these pin what
 they do, each from a fact a weights file or a reference record states:
 
 * `calibration.held_out` is the `v8`-salted slice `docs/reference/v11-calibration.md` lists.

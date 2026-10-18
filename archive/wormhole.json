@@ -1,7 +1,7 @@
 {
   "schema_version": 19,
   "name": "wormhole",
-  "description": "Gardner's five by five minichess with one fixed pair of portals on the middle row, on b3 and d3. Any piece of either player that ends its move on one end comes out one step beyond the other, in the direction it was travelling, capturing there as usual: a pawn pushed into b3 comes out on d4, a queen sliding up into d3 comes out on b4. Nobody moves the portals and they are never captured. On so small a board the door is a race: a pawn that goes through lands a step from promotion, and the first player usually gets there first.",
+  "description": "A door through the middle of Gardner's minichess, the five-by-five chess with a king, queen, rook, bishop, knight and five pawns a side and no pawn double step. A fixed pair of portals sits on b3 and d3, open to both sides: a piece that ends its move on one end comes out one step beyond the other, in the direction it was travelling, capturing there as usual. With one empty row between the armies, every move into the door strikes the enemy camp, so the game is a race to strike first, and too clear a race: a pawn stepping diagonally into an end comes out capturing an enemy pawn one step from promotion, and in the strongest computer games the first player wins every decided game. It is kept as the plainest form of the idea, and the problem that shutting the door to one player, or to pawns, answers.",
   "board": {
     "width": 5,
     "height": 5
@@ -231,7 +231,7 @@
     "added": "2026-10-10",
     "origin": "human",
     "source": "archive/wormhole",
-    "history": "Q772a (2026-10-10): plan-portals.md §6's Wormhole, the one-feature showcase of rules.portals: rulesets/gardner.json with one fixed two-way pair. The portal type's step is inert here (nobody moves an end), so that wormhole adrift differs from it in moved_by alone. Pre-registered in docs/reference/portal-showcases.md before it was measured.",
+    "history": "Q772a (2026-10-10): docs/archive/plan-portals.md §6's Wormhole, the one-feature showcase of rules.portals: rulesets/gardner.json with one fixed two-way pair. The portal type's step is inert here (nobody moves an end), so that wormhole adrift differs from it in moved_by alone. Pre-registered in docs/reference/portal-showcases.md before it was measured.",
     "parents": [
       "975dde173f01"
     ]

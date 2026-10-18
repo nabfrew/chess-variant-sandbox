@@ -1,6 +1,6 @@
 """Tier two, the spot check, and the publish it opens (Q503e).
 
-`docs/plan-client-compute.md`'s row *Tier two, the sample job* and `docs/plan-game-pipeline.md`
+`docs/archive/plan-client-compute.md`'s row *Tier two, the sample job* and `docs/archive/plan-game-pipeline.md`
 Q503e. The acceptance, and what holds each part:
 
 * the sample is the same when drawn twice and differs when one byte of the submission

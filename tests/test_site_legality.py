@@ -1,6 +1,6 @@
 """Tier one, the legality job: a browser's measurement walked, re-derived and scored.
 
-`docs/plan-client-compute.md` §8, the row *Tier one, the legality job*. Its acceptance, and
+`docs/archive/plan-client-compute.md` §8, the row *Tier one, the legality job*. Its acceptance, and
 what holds each part:
 
 * a submission with one illegal move, one move after a terminal position, one wrong
@@ -849,7 +849,7 @@ def _as(app: Any, viewer: int | None) -> Any:
 
 
 class TestTheSubmissionRoute:
-    """`docs/plan-client-compute.md` B10: the page's upload filed, walked on the runner's
+    """`docs/archive/plan-client-compute.md` B10: the page's upload filed, walked on the runner's
     own thread, and answered with the server's number and state."""
 
     def test_an_honest_upload_becomes_legal_with_the_servers_own_number(

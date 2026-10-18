@@ -468,7 +468,7 @@ def handle_of(connection: Any, user: int) -> str:
 def members(connection: Any) -> int:
     """How many people are here: accounts with a handle that nobody shut out and nobody
     left. An invitation not yet accepted has no handle and is nobody yet (L3 of
-    `docs/plan-launch.md` §3.3, *‹n› members*)."""
+    `docs/archive/plan-launch.md` §3.3, *‹n› members*)."""
     with connection.cursor() as cursor:
         cursor.execute(
             "select count(*) from users"

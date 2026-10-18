@@ -1,6 +1,6 @@
 //! The computer players for a simultaneous game (schema 26, Q918b).
 //!
-//! `docs/plan-simultaneous.md` §6.2. A round is a **matrix game**: rows are my moves,
+//! `docs/archive/plan-simultaneous.md` §6.2. A round is a **matrix game**: rows are my moves,
 //! columns the opponent's, each cell the position after resolving that pair. A good player
 //! in such a game mixes, so every player above `random` chooses a probability over its
 //! moves and draws one with its own seat's stream -- which keeps a game a pure function of
@@ -22,7 +22,7 @@
 use super::*;
 
 /// Iterations of regret matching+ per matrix game. Chosen by the pre-registered test
-/// against exact equilibria of small matrices (`plan-simultaneous.md`, *Q918b,
+/// against exact equilibria of small matrices (`docs/archive/plan-simultaneous.md`, *Q918b,
 /// pre-registered*), never by a game's score. `agents/matrix.py` holds the same number,
 /// and a test holds the two together: a change is a new player under every round name.
 pub const REGRET_ITERATIONS: u32 = 100;
@@ -396,7 +396,7 @@ impl Player {
         (values, p, q, done)
     }
 
-    /// Q918g (`plan-simultaneous.md` §6.4, *Q918g, scoped*): the round player's own value
+    /// Q918g (`docs/archive/plan-simultaneous.md` §6.4, *Q918g, scoped*): the round player's own value
     /// of this round for player 0, in its objective's units, and the last pass that
     /// finished -- the player teacher of a round game's training label, as `search_value`
     /// is minimax's. The value is the matrix game the player draws from, at the strategies
@@ -431,7 +431,7 @@ impl Player {
         }
     }
 
-    /// Q918i (`plan-simultaneous.md` §7, *Q918h, the re-plan*, part 3): the one-round
+    /// Q918i (`docs/archive/plan-simultaneous.md` §7, *Q918h, the re-plan*, part 3): the one-round
     /// matrix's value for player 0 on **expected score**, the score-payoff teacher. Each cell
     /// is player 0's `score(evaluate_round, scale)` after the round, or 1, ½ or 0 where the
     /// round ends the game (a win, a draw, a loss); the matrix is solved by the same regret

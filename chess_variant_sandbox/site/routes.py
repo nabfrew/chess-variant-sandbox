@@ -317,7 +317,7 @@ OWN: tuple[Route, ...] = (
         "/api/provisional",
         "a measurement this person's browser made of their own game, in tier one's slim "
         "form, filed for the server to walk and score itself "
-        "(`docs/plan-client-compute.md` B10), then a sample of it replayed exactly "
+        "(`docs/archive/plan-client-compute.md` B10), then a sample of it replayed exactly "
         "(tier two, `site/spotcheck.py`); refused at once by name when its basis is "
         "stale, `stale-build` being the one the page repairs by fetching the manifest, "
         "or when the person's day of checking is spent (quota.CHECK_CPU_A_DAY)",
@@ -340,7 +340,7 @@ OWN: tuple[Route, ...] = (
         "(`spotCheck`); nobody else's",
         visitor="Sign in to see a score you sent for checking.",
     ),
-    # Q571, finding an opponent (`docs/plan-return.md` §1.4). Each needs a member except
+    # Q571, finding an opponent (`docs/archive/plan-return.md` §1.4). Each needs a member except
     # reading a challenge link, which says whose challenge it is to anybody holding it.
     Route(
         "GET",
@@ -375,7 +375,7 @@ OWN: tuple[Route, ...] = (
         "accept a challenge link: the game starts and the link is used up",
         visitor="Sign in to accept this challenge. Accounts are by invitation for now.",
     ),
-    # Q572, the one email (`docs/plan-return.md` §1.5).
+    # Q572, the one email (`docs/archive/plan-return.md` §1.5).
     Route(
         "POST",
         "/api/move-email",
@@ -383,7 +383,7 @@ OWN: tuple[Route, ...] = (
         "time it becomes your move in a game between people, and nothing else",
         visitor="Sign in to change your email setting.",
     ),
-    # Q596, a member's page (`docs/plan-return.md` §6.2, R1).
+    # Q596, a member's page (`docs/archive/plan-return.md` §6.2, R1).
     Route(
         "POST",
         "/api/favourites",
@@ -391,7 +391,7 @@ OWN: tuple[Route, ...] = (
         "only members see them, on `/players/<handle>`",
         visitor="Sign in to change what your page shows.",
     ),
-    # Q719, a member's own invitations (`docs/plan-launch.md` §5.3a).
+    # Q719, a member's own invitations (`docs/archive/plan-launch.md` §5.3a).
     Route(
         "POST",
         "/api/invite",
@@ -399,7 +399,7 @@ OWN: tuple[Route, ...] = (
         "ordinary invitation with them as its issuer; refused in a sentence at zero",
         visitor="Sign in to invite somebody.",
     ),
-    # Q606, the maker takes challengers (`docs/plan-return.md` §3 C4, R10).
+    # Q606, the maker takes challengers (`docs/archive/plan-return.md` §3 C4, R10).
     Route(
         "POST",
         "/api/takes-challengers",
@@ -435,12 +435,12 @@ PAGES: tuple[str, ...] = (
 )
 
 # The site's pages with a variable part, by prefix: a challenge link, `/c/<token>`
-# (Q571, `docs/plan-return.md` §1.4). Like credits it is a constant page that reads no
+# (Q571, `docs/archive/plan-return.md` §1.4). Like credits it is a constant page that reads no
 # cookie; its script asks `/api/challenge/link/<token>` whose challenge it is.
 # `pages.LINK` is the whole shape a token may take.
 LINKS: tuple[str, ...] = ("/c/",)
 
-# A member's page, `/players/<handle>` (Q596, `docs/plan-return.md` §6.2): by prefix, like a
+# A member's page, `/players/<handle>` (Q596, `docs/archive/plan-return.md` §6.2): by prefix, like a
 # challenge link, because the handle is the variable part. It reads the cookie: a visitor
 # is sent to the door whatever the handle, so the page cannot be used to learn who is a
 # member, and a member asking for a handle with no page gets the not-found page.
@@ -448,7 +448,7 @@ LINKS: tuple[str, ...] = ("/c/",)
 MEMBERS = "/players/"
 
 # The one-click *switch them off* address in every move email, `/mail/off/<token>` (Q572,
-# `docs/plan-return.md` §1.5): the person's own token and no cookie. Opening it switches
+# `docs/archive/plan-return.md` §1.5): the person's own token and no cookie. Opening it switches
 # the box off and says so; a POST to it does the same, which is the one-click
 # `List-Unsubscribe-Post` a mail program sends (RFC 8058), and the one POST the site takes
 # without the page's header, since a mail program cannot send it and the address can do
@@ -474,7 +474,7 @@ MAIL_OFF = "/mail/off/"
 #   switch, the phone's menu), and the mark as icons: `/favicon.svg`, `/favicon.ico`,
 #   `/apple-touch-icon.png`, made from the drawing in `web/page/shell.py`.
 # - `/static/measure-worker.js`, the browser's measuring worker, from the package
-#   (`docs/plan-client-compute.md` B3). A 404 while the package carries none.
+#   (`docs/archive/plan-client-compute.md` B3). A 404 while the package carries none.
 # - `/rules.md`, the rule language's reference (`RULES.md`) as the running code renders it,
 #   `text/markdown`, cached five minutes (Q905). The designer links it (`reference.PUBLISHED`),
 #   so a person writing a game reads the version this site's validator accepts.

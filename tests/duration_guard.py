@@ -1,4 +1,4 @@
-"""No test in the fast suite may cost more than two seconds (Q749, `docs/plan-tests.md` F7).
+"""No test in the fast suite may cost more than two seconds (Q749, `docs/archive/plan-tests.md` F7).
 
 `.claude/rules/tests.md` says to mark anything over a second or two `slow`, and nothing
 checked it: Q734 counted 19 fast tests over 2 s, F4's after run 50. This plugin times every

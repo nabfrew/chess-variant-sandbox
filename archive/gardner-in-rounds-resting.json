@@ -1,7 +1,7 @@
 {
   "schema_version": 27,
   "name": "gardner in rounds resting",
-  "description": "Martin Gardner's 5x5 minichess played in rounds: both players move at once. Each round each player chooses one move in secret, and both moves are revealed and made together. There is no check: the king is simply captured, and the side that loses its king loses. Only two pieces moving onto the same square collide, and then both are removed. A piece that moves onto a square its target has just left lands there if it could move to an empty square, so two pieces that try to take each other in the same round trade places unharmed; a pawn's diagonal capture, which cannot land on an empty square, misses and the pawn stays. Two such misses at each other two rounds in a row bar that pair of captures until either square changes. The piece that made a player's move rests: it may not make that player's move in the next round, unless it is the only piece that can move. So a king cannot run two rounds running and no piece can strike twice in a row: every attack gives a round's warning, and a king that has just run must have run to a square no standing enemy piece can reach. If both kings fall in the same round, or anything else ends the game for both players at once, the game is drawn. A round counts as two moves on the clocks. In play an attack on a king is a real threat: most decided games are won by striking a king that had just moved and so had to stand.",
+  "description": "Martin Gardner's minichess (chess on a 5x5 board, each side a rook, knight, bishop, queen and king behind five pawns) played in rounds: each player picks a move in secret, both moves are made together, and a king is simply taken, with no check. One rule shapes the play: the piece that made a side's move rests through that side's next move, unless it is the only piece that can move. A king cannot run two rounds in a row and no piece can strike twice running, so every attack gives a round's warning, and most decided games are won by striking a king that has just moved and so has to stand. Moving at once also blunts the counter-attack: two pieces that try to take each other in the same round simply trade places unharmed (a pawn's diagonal capture just misses), so striking back saves a piece but takes nothing. If both kings fall in the same round, the game is drawn.",
   "board": {
     "width": 5,
     "height": 5
@@ -205,8 +205,8 @@
     "added": "2026-10-17",
     "preview": "A preview: a new kind of game in which both players move at once, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
     "origin": "designed",
-    "source": "docs/plan-round-chase.md, Q942c: the showcases of the chase remedies (section 5)",
-    "history": "S1, the showcase of schema 27's rules.simultaneous.rest: Gardner in rounds with the user's first remedy for the royal chase, a piece that moved may not move the next round. Pre-registered in docs/plan-round-chase.md section 5 before it was measured; the study and its grades are there.",
+    "source": "docs/archive/plan-round-chase.md, Q942c: the showcases of the chase remedies (section 5)",
+    "history": "S1, the showcase of schema 27's rules.simultaneous.rest: Gardner in rounds with the user's first remedy for the royal chase, a piece that moved may not move the next round. Pre-registered in docs/archive/plan-round-chase.md section 5 before it was measured; the study and its grades are there.",
     "parents": [
       "e043fce6968e"
     ]

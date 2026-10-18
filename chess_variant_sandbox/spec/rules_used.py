@@ -4,7 +4,7 @@
 key `complexity._RULE_COSTS` charges for -- and `used(spec)` is the subset a given spec
 draws on. This lives beside `complexity.py` rather than inside it: that module is one of
 `measurement.METRICS_SOURCES`, and a new function there would move the fingerprint every
-stored measurement is read against. See `docs/plan-meta-game.md` §2.9, "Where the reader
+stored measurement is read against. See `docs/archive/plan-meta-game.md` §2.9, "Where the reader
 lives".
 
 A rule key's *active* test is not re-implemented here. `used()` asks

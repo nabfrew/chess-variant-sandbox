@@ -461,7 +461,7 @@ def _check_unsupported_rules(
         )
     if compiled.portals is not None:
         # Schema 19 (Q771). Fairy-Stockfish has no square that sends a piece somewhere
-        # else, and no option approximates one (`docs/plan-portals.md` §5); its walling
+        # else, and no option approximates one (`docs/archive/plan-portals.md` §5); its walling
         # rules place a wall, and a wall is not a door. Read off the compiled spec, so an
         # empty or absent rule refuses nothing; schema 21's maps and filters live under
         # it. `tests/portal_oracle.py` is the second implementation the core's transits
@@ -480,7 +480,7 @@ def _check_unsupported_rules(
         )
     if compiled.simultaneous is not None:
         # Schema 26 (Q918a). Fairy-Stockfish has a side to move and no round in which both
-        # players move at once (`docs/plan-simultaneous.md` §6.5). The per-side generator is
+        # players move at once (`docs/archive/plan-simultaneous.md` §6.5). The per-side generator is
         # still checked: the alternating twin, the same file without `simultaneous` and
         # `beats`, offers each player exactly a round's moves, and `verify` reads the twin.
         # `tests/simultaneous_oracle.py` holds the resolution instead.

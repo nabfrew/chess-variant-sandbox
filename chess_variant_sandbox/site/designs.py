@@ -1,4 +1,4 @@
-"""The store's rows the designer milestones read, D1 to D4 of `docs/plan-meta-game.md`.
+"""The store's rows the designer milestones read, D1 to D4 of `docs/archive/plan-meta-game.md`.
 
 `site/milestones.py` reads rows and opens no connection, so the two queries it needs are
 here: the designed games around a person or a game (`games.owner` and `games.parent`,

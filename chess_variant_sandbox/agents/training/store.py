@@ -89,7 +89,7 @@ class Acceptance:
     opening_plies: int = ACCEPT_OPENING_PLIES
     openings: int = 1
     # The fixed rule's size in seed-pairs. Below `games / 2` only for a curtailed duel
-    # (plan-compute §4.2): the verdict is still the full duel's, the score the prefix's.
+    # (reference/compute-economy.md §4.2): the verdict is still the full duel's, the score the prefix's.
     planned: int = 0
 
     @property
@@ -305,7 +305,7 @@ def accept(
     seed, so both games of a pair start from one position with the seats swapped and the
     duel samples many positions. 0 is the ordinary runner from the start position.
 
-    ``curtail`` (plan-compute §4.2) stops the duel at the first schedule-order prefix of
+    ``curtail`` (reference/compute-economy.md §4.2) stops the duel at the first schedule-order prefix of
     seed-pairs whose every completion gives the same verdict, in batches of the worker
     count: the same verdict as the full duel, by construction, with the prefix's score and
     ``decided_after`` of ``planned``. Off by default because the score is not only the

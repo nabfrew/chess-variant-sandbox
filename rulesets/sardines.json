@@ -1,7 +1,7 @@
 {
   "schema_version": 10,
   "name": "sardines",
-  "description": "Chaos and overcrowding: every square is occupied from the start. Each side fields 24 pawns, a queen, two rooks, two knights, two bishops and a king, 32 pieces a side and 64 in all, scattered at random across the board, kings included; no pawn starts on the rank it would promote from. Standard chess rules with no castling. Nothing can move until a capture opens a square. The starting position is random but contrived: rolled until neither king was in check, neither side had a mate in one, and the position played evenly and to a finish between the site's computer players.",
+  "description": "Chess with every square occupied from the start: all 64 squares hold a piece, each side's 24 pawns and full set of pieces scattered at random across the board, kings included. On a full board a piece can go nowhere except onto an enemy, so the game opens as a pure exchange of blows, and nothing can move until a capture opens a square. That makes the early decisions strange ones. Every capture wins material but also leaves a hole, and a hole is a line opened for the opponent's queen, rook or bishop as much as for yours; the question on each early move is not only what to take but whose pieces the space will serve. Otherwise it is chess without castling. The position was rolled at random until neither king was in check, neither side had a mate in one, and the site's computer players found it even and playable to a finish.",
   "board": {
     "width": 8,
     "height": 8

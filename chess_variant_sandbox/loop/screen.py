@@ -86,7 +86,7 @@ QUICK_KILL_PLIES = 12
 
 
 # Schema 26 (Q932): `minimax:` is refused on a game played in rounds, and `matrix:` on one
-# that alternates (`docs/plan-simultaneous.md` §6.2). A round game is played by the same
+# that alternates (`docs/archive/plan-simultaneous.md` §6.2). A round game is played by the same
 # roster with `matrix:nodes=F*N` wherever the alternating one has `minimax:nodes=N`, as
 # `corpus.ROUND_AGENTS` mirrors the canonical ladder: `random` and `greedy` play rounds
 # already (greedy reads the round as a matrix game). Only a bare node budget maps; an
@@ -212,7 +212,7 @@ def screen(
     }
 
     # Said to whoever drew the game, the designer's visitor included
-    # (`docs/plan-understanding.md` §3.2): a *computer player*, a *turn* for each player's
+    # (`docs/reference/plain-words.md` §2): a *computer player*, a *turn* for each player's
     # move, and no budget.
     reasons: list[str] = []
     if decisive < MIN_DECISIVE:

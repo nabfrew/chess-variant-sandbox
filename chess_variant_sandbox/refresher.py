@@ -1,6 +1,6 @@
 """The refresher: the library kept on the current scorer, one game at a time (EV5).
 
-`docs/plan-evolving-score.md` §6. A revision of the scorer (a weights file, a metrics edit,
+`docs/archive/plan-evolving-score.md` §6. A revision of the scorer (a weights file, a metrics edit,
 a roster change, a new player generation) makes estimates *provisional* at once and costs
 nothing; this is what makes them *current* again, with nobody starting a campaign.
 `chess-variant-sandbox refresh --library --watch` loops:
@@ -32,7 +32,7 @@ nothing; this is what makes them *current* again, with nobody starting a campaig
    logged, the game is skipped, and the next one is taken. A refused game comes back only
    when its stored measurement changes (somebody repaired it) or a person clears it
    (`refresh --forget <hash>`).
-7. **The slow tier, weekly, when idle** (Q743, `docs/plan-tests.md` §8 F1). The gate runs
+7. **The slow tier, weekly, when idle** (Q743, `docs/archive/plan-tests.md` §8 F1). The gate runs
    `pytest -m "not slow"` only, so a `slow` test went red the day the tree moved past it
    and stayed red. When a watching refresher finds nothing owed and the machine free, and
    the last slow-tier run finished `SLOW_TIER_EVERY` or more ago, it runs `pytest -m slow`
@@ -40,7 +40,7 @@ nothing; this is what makes them *current* again, with nobody starting a campaig
    beside its status file (`read_slow_tier`). A failure is recorded, never acted on: it
    repairs nothing, refuses nothing and moves no score. Committed files the run changed are
    put back and named. A one-pass `--library` or an `--only` run never runs it.
-8. **The ladders, after scores** (L7, `docs/plan-leaderboard.md` §2.2). Only when no score
+8. **The ladders, after scores** (L7, `docs/archive/plan-leaderboard.md` §2.2). Only when no score
    is owed (scores keep priority) does it read each library game's picker ladder, as
    `deploy/ladders_check.py` reads it (`ladder_items`), and take one ladder a lease, under
    `heavy`: a missing ladder first (`ladder`), then a short one a top-up can pay
@@ -94,7 +94,7 @@ REPAIR_ORDER = ("refit", "rescore", "reanalyse", "replay")
 # `quiet` for a re-score, whose bootstrap takes the whole machine for its seconds.
 LEASE_FOR = {"refit": "heavy", "rescore": "quiet", "reanalyse": "heavy", "replay": "heavy"}
 
-# Point 8 below: the ladder work, after every score (`docs/plan-leaderboard.md` §2.2, L7).
+# Point 8 below: the ladder work, after every score (`docs/archive/plan-leaderboard.md` §2.2, L7).
 # A game with no picker ladder is rated; a short one is topped up (its newcomers play the
 # spine only); one with old players, or short and keeping no games to top up, is rated
 # again whole (`deploy/ladders.py --rerate`). Each is a tournament, under `heavy`, as
@@ -114,7 +114,7 @@ LADDER_STORED = "ladder:"
 YIELDS_TO = ("heavy", "quiet")
 
 # §6.2's value, within one repair kind. The launch set's nine games, by name
-# (`docs/plan-launch-set.md` §0 and §3): the games a visitor meets first. The site
+# (`docs/reference/opponent-line.md` §3): the games a visitor meets first. The site
 # features nothing else by code today; when it does, its list joins this one.
 LAUNCH_SET = (
     "dobutsu",

@@ -464,7 +464,7 @@ def test_phase_is_refused_without_a_spy() -> None:
 # only a change to either moves it, and that change owes its perfts too.
 _INERT_TOURNAMENTS = {
     "rulesets/chess.json": "5a0fe3f6b91534ab6556db450c59dd6a075af82ca19dda0f7f6e6b70c41bfbc1",
-    "archive/gardner-in-rounds.json":
+    "tests/_retired_gardner_in_rounds.json":
         "79e4c2b3f899124b04381fcde8f4c035851b5deddf4981f9ef24773fecaa8fe6",
 }
 

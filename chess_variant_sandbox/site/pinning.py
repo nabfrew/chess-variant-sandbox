@@ -1,4 +1,4 @@
-"""Which computer player sat in a seat, exactly: H4 of `docs/plan-human-data.md` §1.2.
+"""Which computer player sat in a seat, exactly: H4 of `docs/reference/human-data.md` §1.2.
 
 A computer seat is named by its agent string, and the plan asked whether the string pins
 the player. **It does not.** The string names a kind, a budget and, where there is one, a

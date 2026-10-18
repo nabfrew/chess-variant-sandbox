@@ -193,13 +193,13 @@ LIGHT: dict[str, str] = {
     # theme, and a third piece has to read as *off* that axis rather than as a shade
     # between them. It never takes an army's icon, so a wild piece is always the disc.
     "p2": "#c08a3e", "p2-ink": "#16171a",
-    # A portal end (schema 19, `docs/plan-portals.md` §4, D3, D9; drawn since Q838b as the
-    # vortex of `docs/plan-portal-look.md` §2.3). No pair's hue can hold 3 : 1 against both
+    # A portal end (schema 19, `docs/archive/plan-portals.md` §4, D3, D9; drawn since Q838b as the
+    # vortex of `docs/archive/plan-portal-look.md` §2.3). No pair's hue can hold 3 : 1 against both
     # woods and still be its hue, so the well is ringed in `portal-edge`, a near-black that
     # does, and falls to it in the eye. `portal-stone` is the ground of the designer's end
     # being put down. The board does not invert (S8), so dark sets only the stone.
     "portal-edge": "#1e140c", "portal-stone": "#b3aca1",
-    # Q838b (`docs/plan-portal-look.md` §2.1): colour means the pair. Each pair's well, at
+    # Q838b (`docs/archive/plan-portal-look.md` §2.1): colour means the pair. Each pair's well, at
     # both its ends, the trail through it and the dots where it lets a piece out, in one
     # hue: violet, yellow, blue, orange, in that order because every two-pair game uses the
     # first two, the most distinct pair (violet against yellow, the blue-yellow axis that
@@ -209,7 +209,7 @@ LIGHT: dict[str, str] = {
     # so dark sets none. The designer draws a pair in these too (Q838d): its chip, its card's
     # icon, the end being put down and the ways on its card.
     "pair-1": "#7b4fd6", "pair-2": "#efc12b", "pair-3": "#22b8cf", "pair-4": "#d55e00",
-    # A fold portal's pool (schema 22, Q843d, `docs/plan-portals-2.md` §5.3): the light in its
+    # A fold portal's pool (schema 22, Q843d, `docs/archive/plan-portals-2.md` §5.3): the light in its
     # middle, near white, through the group's hue to its rim, so a fold is bright in the middle
     # where the vortex is dark, told apart in a grey picture too. On the board, which does not
     # invert, so dark sets none.
@@ -251,7 +251,7 @@ LIGHT: dict[str, str] = {
     "community-1": "#2a78d6", "community-2": "#eb6834", "community-3": "#1baf7a",
     "community-4": "#eda100", "community-5": "#e87ba4", "community-6": "#008300",
     "community-7": "#4a3aa7", "community-8": "#e34948",
-    # A member's mark (`marks.py`, R2 and R3 of plan-return.md §6.3): the eight hues it is
+    # A member's mark (`marks.py`, R2 and R3 of archive/plan-return.md §6.3): the eight hues it is
     # drawn in, the club room's inks: claret, cobalt, violet, brass, walnut, petrol, olive
     # and plum. Each is a graphic on the paper, so 3 : 1 on the ground and the panel over
     # the worst fleck (`FLOORS`); each stays clear of the action's green and the alarm's

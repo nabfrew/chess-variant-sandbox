@@ -1,4 +1,4 @@
-"""R2 of `docs/plan-return.md` §8 (§6.3): a member's generated mark.
+"""R2 of `docs/archive/plan-return.md` §8 (§6.3): a member's generated mark.
 
 An invader piece of their own, in the family of the site's invader rook, generated from
 the account's id alone: nothing stored, nothing uploaded, the handle never read. These

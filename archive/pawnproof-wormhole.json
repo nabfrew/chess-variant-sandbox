@@ -1,7 +1,7 @@
 {
   "schema_version": 21,
   "name": "pawnproof wormhole",
-  "description": "Wormhole (Gardner's five by five minichess with one fixed pair of portals on the middle row, b3 and d3) with one rule added: no pawn may go through. A knight, bishop, rook, queen or king that ends its move on one end comes out one step beyond the other, in the direction it was travelling, capturing there as usual; to a pawn both ends are blocks it cannot pass or take. In Wormhole a pawn through the door lands a step from promotion with a capture on the first move, and the first player wins the race; keeping the pawns out is what makes the door a fair fight. Nobody moves the portals.",
+  "description": "A door across the middle of a tiny board that pieces may use and pawns may not. The board is Gardner's minichess: five by five, a king, queen, rook, bishop, knight and five pawns a side, no pawn double step. The door is a fixed pair of portals on b3 and d3: a piece other than a pawn that ends its move on one end comes out one step beyond the other, in the direction it was travelling, capturing there as usual; to a pawn both ends are blocks. Let in, a pawn stepping diagonally into an end would come out capturing, one step from promotion, on the first move: a race the first player always wins. Kept out, the door becomes a way for the bigger pieces, mostly kings and queens, to switch wings, and in the strongest computer games each side wins as often as the other.",
   "board": {
     "width": 5,
     "height": 5

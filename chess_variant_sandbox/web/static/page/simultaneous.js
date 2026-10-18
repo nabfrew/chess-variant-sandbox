@@ -1,4 +1,4 @@
-// A game played in rounds, on the play board (schema 26, Q918c, `docs/plan-simultaneous.md`
+// A game played in rounds, on the play board (schema 26, Q918c, `docs/archive/plan-simultaneous.md`
 // §6.6). Loaded after `board.js`, whose board, strip and slot it fills in where
 // `SESSION.round` says the game has no side to move.
 //

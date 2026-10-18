@@ -6,7 +6,7 @@ becomes their move in a game between two people (`your_move`). Each goes through
 function behind a small interface: an address, a subject, a body and any headers go in,
 and either the message was accepted or a `MailError` says why. Tests pass their own
 function in and never reach the network, and `tests/test_site_move_email.py` holds the
-package to these two builders (test 3 of `docs/plan-meta-game.md`).
+package to these two builders (test 3 of `docs/reference/no-dark-patterns.md`).
 
 The service is Resend (the user's choice, 2026-09-13), reached over its HTTPS API with
 `urllib` so the site takes no dependency for one POST. Two variables configure it and
@@ -140,7 +140,7 @@ PURPOSE = (
     "interesting the play is. That score is the best estimate available today, not a "
     "verdict, and the people who play there are the test the computer cannot replace."
 )
-"""What the site is, in the invitation: `docs/plan-understanding.md` §1.1's statement of
+"""What the site is, in the invitation: `docs/archive/plan-understanding.md` §1.1's statement of
 purpose (tone A), its sentences as written but for the clause on what the score weighs
 and the one on remeasuring, which an email has no room for. The join page carries the
 whole paragraph (`pages.PURPOSE`)."""
@@ -245,7 +245,7 @@ def your_move(
     announced: str | None = None,
     asked: str | None = None,
 ) -> Message:
-    """The move email (Q572, `docs/plan-return.md` §1.5, s6 of the mock).
+    """The move email (Q572, `docs/archive/plan-return.md` §1.5, s6 of the mock).
 
     Whose move, in which game, the link to it, and how to switch these off: one click, no
     sign-in, the same address in the `List-Unsubscribe` header with RFC 8058's one-click

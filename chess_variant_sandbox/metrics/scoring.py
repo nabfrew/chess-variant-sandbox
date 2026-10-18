@@ -8,7 +8,7 @@ live scorer, and exactly one is current (`DEFAULT_WEIGHTS`). A score is an evolv
 estimate: worked out under the current version it is *current*; worked out under an
 earlier one it is *provisional* -- still shown, marked with the version it came from and
 its date, never shown as current and never compared with a current score or placed on the
-current leaderboard (`docs/plan-evolving-score.md` §3). So the version is recorded on the
+current leaderboard (`docs/archive/plan-evolving-score.md` §3). So the version is recorded on the
 result, not on the run, and the basis stamp decides which a reader holds.
 
 **Most components are bands, not directions.** Game length, branching factor, and
@@ -24,7 +24,7 @@ upward as the search progresses, and every generation would look like an improve
 quantity cannot pass, the gate on the same measurement, a one-sentence meaning, or a quantile
 of the published band games read once and pinned. The band checks the scale (`calibrate`)
 and places none of it, so the scale does not move when the set of reference games does
-(`docs/plan-evolving-score.md` §4).
+(`docs/archive/plan-evolving-score.md` §4).
 """
 
 from __future__ import annotations
@@ -113,7 +113,7 @@ WEIGHTS_DIR = Path(__file__).parent / "weights"
 # and 48 blunder trials. Those changes land together and their effects on a score cannot
 # be told apart. Full report in docs/reference/v11-calibration.md.
 #
-# v12 is v11 with every curve end given a source, and nothing else (docs/plan-evolving-score.md
+# v12 is v11 with every curve end given a source, and nothing else (docs/archive/plan-evolving-score.md
 # §4, EV4; the user's decision of 2026-10-03). Each end is a domain limit, a gate, a stated
 # meaning or a quantile of the 20 published band games read once from the v11 library and
 # pinned; `anchor` no longer writes ends. Every weight, family, curve kind and gate is v11's,
@@ -128,7 +128,7 @@ FLOOR = 0.02
 
 CURVE_KINDS = ("band", "lower_better", "higher_better")
 
-# Where a curve end comes from (`docs/plan-evolving-score.md` §4.2). A weights file either
+# Where a curve end comes from (`docs/archive/plan-evolving-score.md` §4.2). A weights file either
 # names one for every end of every curve, as `v12` onward do, or for none, as the versions
 # whose ends `anchor` placed from the band do; never for some.
 #

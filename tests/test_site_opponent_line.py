@@ -1,6 +1,6 @@
 """The opponent line (Q653) and the ladder row (Q602) on a game's page.
 
-`docs/plan-launch-set.md` §2.4 and `docs/plan-return.md` §3 C3. What is held down here:
+`docs/reference/opponent-line.md` §1 and `docs/archive/plan-return.md` §3 C3. What is held down here:
 
 - **The three states**, from people's counts alone, at the thresholds pre-registered on
   2026-10-04 (`opponent_line.BEATEN_PEOPLE`, `HELD_GAMES`, `HELD_PEOPLE`), each boundary
@@ -90,7 +90,7 @@ def _words(line: dict[str, Any]) -> list[str]:
 
 class TestTheStates:
     def test_the_thresholds_are_the_pre_registered_ones(self) -> None:
-        """§2.4, fixed 2026-10-04; 20 by 5 are the trust line's own numbers."""
+        """`reference/opponent-line.md` §1, fixed 2026-10-04; 20 by 5 are the trust line's own numbers."""
         assert (ol.BEATEN_PEOPLE, ol.HELD_GAMES, ol.HELD_PEOPLE) == (1, 20, 5)
         assert (
             trust.RULE.people_games, trust.RULE.people_people) == (ol.HELD_GAMES, ol.HELD_PEOPLE)
@@ -154,7 +154,7 @@ class TestTheWords:
         assert not trouble, trouble[:5]
 
     def test_no_word_says_a_tester_passed_or_won(self) -> None:
-        """The person test was scrapped on 2026-10-03 (plan §8)."""
+        """The person test was scrapped on 2026-10-03 (`archive/plan-launch-set.md` §8)."""
         said = " ".join(word for people in self.PEOPLE
                         for word in _words(ol.shown(people))).lower()
         for gone in (r"\btest", r"\bpass", "unbeatable", "strong player played"):

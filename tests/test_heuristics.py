@@ -1108,7 +1108,7 @@ class TestPieceValues:
 
 class TestThePass:
     """`chess-variant-sandbox heuristics`, the pass's one caller, and what it measures
-    (Q751, plan-tests F9: `measure_heuristics` and every helper under it had never run).
+    (Q751, archive/plan-tests F9: `measure_heuristics` and every helper under it had never run).
 
     On `dull` (one piece type, a small board), where the first rung of `NODE_LADDER`
     already clears `MIN_DEPTH`, so the whole pass is a few dozen short games."""

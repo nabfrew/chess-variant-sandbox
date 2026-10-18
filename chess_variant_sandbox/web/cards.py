@@ -90,7 +90,7 @@ TEXT_PATHS = frozenset({
     "rules.castling.rook_file.kingside",
     "rules.castling.rook_file.queenside",
     # Schema 19: one square each, typed as written until P3's portal tool places them
-    # on the board (`docs/plan-portals.md` D2).
+    # on the board (`docs/archive/plan-portals.md` D2).
     "rules.portals[].orange",
     "rules.portals[].blue",
     # Schema 21: a map's end, typed as written until Q843b's designer places it.
@@ -332,7 +332,7 @@ def _options(values: list[Any], description: str) -> list[dict[str, Any]]:
 
 # Values whose spelling names a thing the page never shows: a portal pair's ends are drawn
 # alike, in the pair's colour, so a menu says which end by the order they were put down
-# in, never by the file's keys (Q838d, `docs/plan-portal-look.md` §5).
+# in, never by the file's keys (Q838d, `docs/archive/plan-portal-look.md` §5).
 _VALUE_WORDS: dict[str, str] = {
     "orange_to_blue": "one way, first end to second",
     "blue_to_orange": "one way, second end to first",

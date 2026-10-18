@@ -1,4 +1,4 @@
-"""Schema 24 (Q867b): fold portals revised, `docs/plan-portals-2.md` §3R.
+"""Schema 24 (Q867b): fold portals revised, `docs/archive/plan-portals-2.md` §3R.
 
 A portal group's ``"kind": "fold"`` makes it a fold: not a piece, a square a piece of either
 side may stand in and be taken in. A move that ends on an empty fold that lets the piece in is
@@ -395,7 +395,7 @@ def _sq(engine: Engine, name: str) -> int:
 
 
 class TestTheRevisedFoldRules:
-    """`docs/plan-portals-2.md` §3R.1, one test per rule (and per case §3R.4 names), each
+    """`docs/archive/plan-portals-2.md` §3R.1, one test per rule (and per case §3R.4 names), each
     position also held against the oracle."""
 
     def test_1_a_fold_is_not_a_piece(self) -> None:

@@ -1,4 +1,4 @@
-"""How far to trust a score (Q646, `docs/plan-confidence.md` §2.3, T1).
+"""How far to trust a score (Q646, `docs/archive/plan-confidence.md` §2.3, T1).
 
 What is held down here, on synthetic records for a five-square game (never chess):
 
@@ -186,7 +186,7 @@ class TestTheLadder:
     def test_a_run_that_kept_no_total_says_the_score_rests_on_the_others(
         self, world, blind: int, read: int, rest: int, runs: str
     ) -> None:
-        # Q793 (`plan-confidence.md` §2.3.1): *dull* is blind on 2 of 4 runs and read
+        # Q793 (`docs/archive/plan-confidence.md` §2.3.1): *dull* is blind on 2 of 4 runs and read
         # *steadily stronger*. Words only: the item stays silent and the level unmoved.
         # Q896 (`three-run-lean.md` §7): a blind run keeps no total, so the whole score
         # rests on the others, not parts of it.

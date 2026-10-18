@@ -1,6 +1,6 @@
 """The opponent line: how far people's play has tested a game's strongest computer player.
 
-Q653, B2 of `docs/plan-launch-set.md` (§2, read with §8's note and as built in §2.4). The
+Q653, B2 of the launch-set plan, as built (`docs/reference/opponent-line.md` §1). The
 trust line says how far to trust a game's *score*; this line says whether its strongest
 computer player has stood up to the people who played it. The person test was scrapped by
 the user on 2026-10-03, so the line reports natural play and never a pass: one of three
@@ -13,7 +13,7 @@ states, read live from the counts `site/people.py` already folds for the trust l
 - **not enough games yet**: everything else, a game nobody has played included.
 
 The thresholds were fixed on 2026-10-04 before any count was read, and are written in the
-plan (§2.4); 20 games by 5 people are the trust line's own (`trust.RULE`), so the line adds
+record (§1); 20 games by 5 people are the trust line's own (`trust.RULE`), so the line adds
 no new number. A state is never inferred from a score. Nothing here moves a score, a
 fingerprint or the trust level: this module reads `trust.People` and nothing reads it back.
 """
@@ -24,7 +24,7 @@ from typing import Any
 
 from chess_variant_sandbox import trust
 
-# Pre-registered 2026-10-04 (`docs/plan-launch-set.md` §2.4); never re-aimed.
+# Pre-registered 2026-10-04 (`docs/reference/opponent-line.md` §1); never re-aimed.
 BEATEN_PEOPLE = 1
 HELD_GAMES = 20
 HELD_PEOPLE = 5

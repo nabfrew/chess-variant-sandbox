@@ -24,7 +24,7 @@ runs, and a one-run measurement keeps the built form above.
 **A game played in rounds** (schema 26) has no first mover: both players choose on the same
 board and are resolved together. The check still runs and still means something, because the
 seats still differ: a lean there is an asymmetry of the setup or, under ``tie:
-"initiative"``, the edge of holding the token at the start (`docs/plan-simultaneous.md`
+"initiative"``, the edge of holding the token at the start (`docs/archive/plan-simultaneous.md`
 §6.3). "The first seat" is seat 0, the player listed first; the alphas and the share are
 the same, since the question -- does one seat win more than a fair one would -- is.
 

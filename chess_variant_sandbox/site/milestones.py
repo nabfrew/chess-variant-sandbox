@@ -1,6 +1,6 @@
 """The meta-game's milestone reader, box A1 of `docs/archive/plan-meta-game.md`.
 
-The milestones it reads are defined in `docs/plan-meta-game.md` §2.2 to §2.4.
+The milestones it reads are defined in `docs/archive/plan-meta-game.md` §2.2 to §2.4.
 
 Pure readings in the idiom of `unbeaten.record_from`. Rows and tables go in, values come
 out, and nothing here opens a connection. The caller hands over every leaderboard row on
@@ -46,7 +46,7 @@ open*. Every other line is fixed once its match is recorded.
 
 ## The designer's four (D1 to D4)
 
-Box Q252 of `docs/plan-meta-game.md`. They read designed games' rows and the signed-in
+Box Q252 of `docs/archive/plan-meta-game.md`. They read designed games' rows and the signed-in
 seats on them rather than leaderboard matches, so they come in as `Design` and `Try`
 (`site/designs.py` loads both) and `read_from` joins them to the lines above. Each is one
 line however many games a person makes (the seven tests' sixth), the first of its kind:
@@ -101,7 +101,7 @@ PASSES_SCREEN = "passes-screen"
 PLAYED_BY_OTHERS = "played-by-others"
 FORKED = "forked"
 DESIGNER_KINDS = (FIRST_DRAFT, PASSES_SCREEN, PLAYED_BY_OTHERS, FORKED)
-"""D1 to D4, the designer's four lines (`docs/plan-meta-game.md`, *Open boxes*)."""
+"""D1 to D4, the designer's four lines (`docs/archive/plan-meta-game.md`, *Open boxes*)."""
 KINDS = (
     BOTH_SEATS,
     WHOLE_LADDER,
@@ -113,7 +113,7 @@ KINDS = (
     *DESIGNER_KINDS,
 )
 
-# Each rule in a visitor's words (`docs/plan-understanding.md` §3.3, S13): *rated game*
+# Each rule in a visitor's words (`docs/archive/plan-understanding.md` §3.3, S13): *rated game*
 # for a leaderboard match, *side* for a seat, *every computer player this game has now*
 # for the table. The words changed and the readings did not; `tests/test_milestones.py`
 # holds every kind to one rule.
@@ -557,7 +557,7 @@ def _design_line(kind: str, design: Design) -> Milestone:
 
 
 LISTED_FROM = 5
-"""L3 of `docs/plan-launch.md` §3.3: `/players` lists people, and the header links it, only
+"""L3 of `docs/archive/plan-launch.md` §3.3: `/players` lists people, and the header links it, only
 once this many have finished a rated game. Below it the page says who is here and what
 puts a person on the list, and draws nothing ranked: with two or three names a standing
 reads as a scoreboard of a crowd that is not there yet."""

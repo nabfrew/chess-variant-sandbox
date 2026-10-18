@@ -367,7 +367,7 @@ class TestTheRouteTable:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """`docs/plan-client-compute.md` B4: `/browser/<path>` and the worker script.
+        """`docs/archive/plan-client-compute.md` B4: `/browser/<path>` and the worker script.
 
         Classified in `STATIC` beside the vendored files, for the same reason: the local
         handler answers both before any dispatch and the site inherits it. A signed-out
@@ -1325,7 +1325,7 @@ STORE: dict[str, tuple[str, ...]] = {
         # null for every other seat.
         "seat0_played",
         "seat1_played",
-        # `0032_human_data.sql`, Q767 (H1 to H3 of `docs/plan-human-data.md`). Think time per
+        # `0032_human_data.sql`, Q767 (H1 to H3 of `docs/reference/human-data.md`). Think time per
         # move against a computer player, what each take-back undid, and each side's rating
         # when a practice game started.
         "thinks",
@@ -2777,7 +2777,7 @@ class TestOneShell:
             assert (path != "/terms") == ('href="/terms"' in foot), path
 
     def test_the_way_to_the_players_waits_for_five_people(self) -> None:
-        """L3 of `docs/plan-launch.md` §3.3. Below `milestones.LISTED_FROM` people no
+        """L3 of `docs/archive/plan-launch.md` §3.3. Below `milestones.LISTED_FROM` people no
         footer links `/players`; from then on the pages a signed-in person gets do, the
         same for every reader. A constant page reads no store and never links it."""
         for path, page in _every_page().items():
@@ -3001,13 +3001,13 @@ class TestThePages:
         assert answer.headers["Location"] == "/signin"
 
     def test_the_sign_in_page_says_what_an_account_is_for(self) -> None:
-        """L7 (`docs/plan-launch.md` §4): what an account adds, in full, and what needs none."""
+        """L7 (`docs/archive/plan-launch.md` §4): what an account adds, in full, and what needs none."""
         page = " ".join(page_text.inlined(site_pages.signin()).split())
         assert site_pages.ACCOUNT_ADDS in page
         assert "playing practice games, need no account" in page
 
     def test_what_an_account_adds_is_said_in_a_players_words(self) -> None:
-        """L7, with `docs/plan-understanding.md` §1.3's one change of word: the strongest
+        """L7, with `docs/archive/plan-understanding.md` §1.3's one change of word: the strongest
         computer player on a game, never *the top*, and every clause a thing the site does."""
         said = site_pages.ACCOUNT_ADDS
         assert said.startswith("With an account your games count:")
@@ -3024,7 +3024,7 @@ class TestThePages:
         assert "Accounts are by invitation for now" in page
 
     def test_the_join_page_says_what_the_site_is_and_that_this_is_a_trial(self) -> None:
-        """L8 (Q567): the invitation page carries `docs/plan-understanding.md` §1.1's
+        """L8 (Q567): the invitation page carries `docs/archive/plan-understanding.md` §1.1's
         statement of purpose as written, and says the person is joining a trial."""
         page = " ".join(page_text.inlined(site_pages.join("code-1")).split())
         assert "You have been invited to the trial" in page
@@ -4050,7 +4050,7 @@ class TestTheSender:
 
     def test_the_invitation_says_who_what_and_the_one_promise(self) -> None:
         """L8 of `docs/plan-launch.md` (§5.3, Q567): who sent it, what the site is (§1.1 of
-        `docs/plan-understanding.md`), that it is a trial and what is asked, and that no
+        `docs/archive/plan-understanding.md`), that it is a trial and what is asked, and that no
         other email comes unless the person switches on the move email."""
         message = mail.invitation("bo@example.com", "https://x.example/join?code=c", "ada")
         body = " ".join(message.body.split())
@@ -4839,7 +4839,7 @@ class TestTheProfileDrawsTheMetaGame:
 
 
 class TestAnEmptyProfileSaysWhatToDo:
-    """L2 of `docs/plan-launch.md` §3.2. A profile with nothing on it says what a person
+    """L2 of `docs/archive/plan-launch.md` §3.2. A profile with nothing on it says what a person
     can do, never three noughts over a table of *none yet*; once a rated game is finished
     the counts and the table are back and the line is gone."""
 
@@ -5210,8 +5210,8 @@ class TestTheProfileRouteCarriesTheMetaGame:
     def test_the_game_page_says_how_far_each_computer_player_sits_from_you(
         self, site: Site
     ) -> None:
-        """§2.3 and P6 of `docs/plan-understanding.md`: signed in and rated on a game, the
-        picker says *about 200 above you*, and the subtraction is the server's. Nobody
+        """`docs/reference/plain-words.md` §3.3 (the audit's P6): signed in and rated on a game,
+        the picker says *about 200 above you*, and the subtraction is the server's. Nobody
         rated there, or nobody signed in, gets no distances at all."""
         browser = _joined(site, "ada")
         ada = self._me(site, "ada")
@@ -5421,7 +5421,7 @@ def _here(members: int, listed: bool = False) -> Any:
 
 
 class TestThePlayersPageBelowFivePeople:
-    """L3 of `docs/plan-launch.md` §3.3. Reached by its address before five people have
+    """L3 of `docs/archive/plan-launch.md` §3.3. Reached by its address before five people have
     finished a rated game, the page says who is here and what puts a person on the list,
     and points at the unclaimed firsts it opens with. Nothing ranked is drawn."""
 

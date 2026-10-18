@@ -31,7 +31,7 @@ each position's stream named by the game's seed and the ply (``label_seed``).
 the core's ``random`` agent, drawn from streams the game's schedule seed names, so
 self-play is not one line replayed (``learned-evaluator.md`` §8.10).
 
-**Round games** (Q918g, ``plan-simultaneous.md`` §6.4): a record's moves are its rounds' in
+**Round games** (Q918g, ``docs/archive/plan-simultaneous.md`` §6.4): a record's moves are its rounds' in
 pairs, a position is a round's board (the start and after each round, ``Core.net_line`` walks
 them with ``make_round``), its side is always 0 and its label player 0's expectation (the net
 reads seat 0's head and negates it for seat 1), sampled from ply ``skip_plies`` on every
@@ -335,7 +335,7 @@ def diverse_game(
 
 def _round_opening(engine: Any, seed: int, most: int) -> tuple[Any, list[int]]:
     """Q918g: a round game's random opening, ``opening_plies_for(seed, most) // 2`` rounds
-    (a round is two plies, ``plan-simultaneous.md`` §2.6), each seat's move the core's
+    (a round is two plies, ``docs/reference/rounds.md`` §2.6), each seat's move the core's
     ``random`` agent's from its own stream (``opening_seed(seed, 2r + seat)``). The position
     and the moves, each round's two in seat order; it stops where a round is over before
     anyone chooses."""

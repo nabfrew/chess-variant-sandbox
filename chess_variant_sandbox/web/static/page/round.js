@@ -1,4 +1,4 @@
-// The monthly round (Q503h, `docs/plan-game-pipeline.md` §3.3): `#/round` for the latest,
+// The monthly round (Q503h, `docs/archive/plan-game-pipeline.md` §3.3): `#/round` for the latest,
 // `#/round/<date>` for one by the 1st of its month.
 //
 // Everything on it is the server's (`site/rounds.py`): which games entered, who may vote on

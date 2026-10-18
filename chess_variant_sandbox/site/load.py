@@ -60,7 +60,7 @@ layer down, made structural here by there being no number in the column to show.
 ends of the interval follow the headline exactly: written when the measurement reads
 current, null in every other state. The column is what ranks, badges and nominates, so it
 holds current numbers only; the provisional number a reader sees while a score is measured
-again (EV2, `docs/plan-evolving-score.md` §5) comes off the files through
+again (EV2, `docs/archive/plan-evolving-score.md` §5) comes off the files through
 `library.Game.score`, marked, and never from here.
 
 **It never rates the maintainer's games.** The rows from the local application land in
@@ -651,7 +651,7 @@ def _dump(payload: dict[str, Any] | None) -> str | None:
 def seed_ratings(connection: Any, digests: list[str], runs_dir: Path) -> Change:
     """Seat each game's computer players from its picker ladder (`rating.reseed`).
 
-    The reseed rule of `docs/plan-leaderboard.md` §2.3 (L3). A player the table has not
+    The reseed rule of `docs/archive/plan-leaderboard.md` §2.3 (L3). A player the table has not
     seen is *added*. A computer row no person has played is still only its seed, so a
     newer ladder's seat replaces it: *updated*. A row people have played keeps the number
     they gave it, and a row already at its seat is left as it is: *unchanged*. So a second

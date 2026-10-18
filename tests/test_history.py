@@ -1,4 +1,4 @@
-"""A score's history (Q649, `docs/plan-confidence.md` §3.2 step 3 and §4 T4).
+"""A score's history (Q649, `docs/archive/plan-confidence.md` §3.2 step 3 and §4 T4).
 
 What these hold down:
 

@@ -158,7 +158,7 @@ class Grant:
     token: str | None
 
 
-# W7 (Q614, `docs/plan-understanding.md` §3.3 G39): what a spec's provenance keeps for the
+# W7 (Q614, `docs/archive/plan-understanding.md` §3.3 G39): what a spec's provenance keeps for the
 # maintainer. `history` and `notes` are the record of how a game was made and changed (runs,
 # hashes, schema versions, who decided what), and `run` names a design run. The local
 # application draws them; the site neither draws nor sends them.
@@ -202,7 +202,7 @@ def history_shown(found: dict[str, Any], is_admin: bool) -> list[dict[str, Any]]
     The admin is sent every line with its basis, as the local application is. Anybody else
     is sent none here: a visitor reads each earlier score as a *was* line under the trust
     line's *more* (`library.trust_line`, `history.for_visitors`; the user's answer to
-    `docs/plan-confidence.md` §5 Q1, A, on 2026-10-03), dated and labelled with the
+    `docs/archive/plan-confidence.md` §5 Q1, A, on 2026-10-03), dated and labelled with the
     players that made it, and never with its basis.
     """
     if not is_admin:
@@ -582,7 +582,7 @@ class SiteApp(App):
             # game or one taken off the site).
             payload["madeHere"] = showcase.made_here(connection, payload["games"], rows)
         known = self.known()
-        # Q564 (L6, `docs/plan-launch-set.md` §5.1) and Q654 (B5): the front page's first
+        # Q564 (L6, `docs/reference/opponent-line.md` §3.1) and Q654 (B5): the front page's first
         # step, the day's featured game with its gentlest opponent and the next one up,
         # and the launch set in order, both over the games this listing offers.
         offered = [known[str(card["hash"])] for card in payload["games"]
@@ -592,7 +592,7 @@ class SiteApp(App):
             preview=lambda game: designing.opening_preview(game.spec),
         )
         payload["launchSet"] = launch.launch_cards(offered)
-        # Q603 (C2, `docs/plan-return.md` §3): this month's game, by the calendar month.
+        # Q603 (C2, `docs/archive/plan-return.md` §3): this month's game, by the calendar month.
         payload["monthGame"] = launch.month_game(offered, launch.today())
         # Q788: the landing page's newest games and spotlight, over what this listing
         # offers, so a game taken off the site is never highlighted.
@@ -644,7 +644,7 @@ class SiteApp(App):
         payload["previews"] = sorted(
             shown_previews, key=lambda card: str(card["name"]).lower()
         )
-        # L4 of `docs/plan-launch.md` §3.4: a tab past the first is sent only when it
+        # L4 of `docs/archive/plan-launch.md` §3.4: a tab past the first is sent only when it
         # holds a card. *On trial* is absent, not empty, until somebody publishes; so are
         # the previews (Q931).
         counted = [
@@ -708,7 +708,7 @@ class SiteApp(App):
         return payload
 
     def _trust_line(self, digest: str, sent: Any) -> Any:
-        """A game page's trust line on the site (Q647, `plan-confidence.md` §2.1).
+        """A game page's trust line on the site (Q647, `docs/archive/plan-confidence.md` §2.1).
 
         The library's reading of the files with this game's people's counts folded in
         (`site/people.py`), so people's results move the level the way §2.3 says and the
@@ -741,7 +741,7 @@ class SiteApp(App):
         `docs/archive/plan-ux.md`): every computer player's live rating on this scale,
         keyed by the agent string the picker ladder names it by, so the page can put the
         two numbers for one player side by side. Only the computer players: the opponent
-        picker reads it. People are on `leaderboard` (L2 of `docs/plan-leaderboard.md`),
+        picker reads it. People are on `leaderboard` (L2 of `docs/archive/plan-leaderboard.md`),
         the whole table as `site/leaderboard.py` orders and marks it.
 
         `firstPlayed`, `highest` and `clearedBy` are the meta-game's three lines (box B1
@@ -760,7 +760,7 @@ class SiteApp(App):
                 player.key.agent: player.rating
                 for player in rating.computers(table)
             }
-            # L2 (`docs/plan-leaderboard.md` §2.1, §2.5): the whole table as the page's
+            # L2 (`docs/archive/plan-leaderboard.md` §2.1, §2.5): the whole table as the page's
             # *Leaderboard* draws it -- computer players by the picker's name, people by
             # handle, strongest first, the marks decided here -- so the page sorts nothing.
             roster = self.roster(digest)
@@ -776,7 +776,7 @@ class SiteApp(App):
                 library=card is not None and card.source in drafts.CORPUS_SOURCES,
                 box=spine.state(connection, digest),
             )
-            # §2.3 of `docs/plan-understanding.md` (P6): signed in, each computer
+            # §3.3 of `docs/reference/plain-words.md` (the audit's P6): signed in, each computer
             # player's distance from the reader, so the picker says *about 240 above
             # you* rather than a signed number. The subtraction is here, never on the
             # page; positive is above the reader. Absent until the reader has a rating
@@ -800,12 +800,12 @@ class SiteApp(App):
                 }
                 for clear in found.tag.reached
             ]
-            # Q653 (`docs/plan-launch-set.md` §2.4): the opponent line, read live from the
+            # Q653 (`docs/reference/opponent-line.md` §1): the opponent line, read live from the
             # people's counts the trust line reads, and moving neither it nor the score.
             standing["opponentLine"] = opponent_line.shown(
                 trust_people.counts(connection, digest), rated=bool(found.tag.rated)
             )
-            # H7 (`docs/plan-human-data.md` §3.2): each computer player's place among the
+            # H7 (`docs/reference/human-data.md` §3.2): each computer player's place among the
             # people rated here, drawn in the opponent line's *more*, and only once five
             # people are established on this table (`people_scale.MINIMUM_ESTABLISHED`).
             standing["peopleScale"] = people_scale.shown(
@@ -818,7 +818,7 @@ class SiteApp(App):
             )
             standing["signedIn"] = self.viewer is not None
             standing["admin"] = self.role == admin.ADMIN
-            # Q599 (`docs/plan-return.md` §5.1): the fixed tags a vote may carry, in the
+            # Q599 (`docs/archive/plan-return.md` §5.1): the fixed tags a vote may carry, in the
             # page's order and words, and how many votes carry each, for everybody. A
             # count of a quality and never who; no text is kept with a vote.
             standing["voteTags"] = [
@@ -826,7 +826,7 @@ class SiteApp(App):
             ]
             standing["mostTags"] = votes.MOST_TAGS
             standing["tagCounts"] = votes.tag_counts(connection, digest)
-            # L11 of `docs/plan-launch.md` (§5.2): the players a start would be refused
+            # L11 of `docs/archive/plan-launch.md` (§5.2): the players a start would be refused
             # right now because every strong seat is taken, each with the words the
             # opponent list puts after its name, so the list says *busy* before anybody
             # picks it. Only the ladder's rungs reach `quota.STRONG_NODES`; every plan and
@@ -840,7 +840,7 @@ class SiteApp(App):
                 if quota.busy(connection)
                 else {}
             )
-            # L15 (`docs/plan-launch.md` §3.6): the players a visitor's start would be
+            # L15 (`docs/archive/plan-launch.md` §3.6): the players a visitor's start would be
             # refused, because only signed-in people play anything stronger than *hard*,
             # each with the words the opponent list puts after its name, so the list says
             # so before anybody picks it. Empty for a signed-in person.
@@ -878,7 +878,7 @@ class SiteApp(App):
             if self.viewer is not None:
                 mine = unbeaten.record(connection, digest, self.viewer)
                 standing["yourRecord"] = _record(mine)
-                # R7 (`docs/plan-return.md` §3 C3): every computer player on the table,
+                # R7 (`docs/archive/plan-return.md` §3 C3): every computer player on the table,
                 # weakest first, with this person's best result against it. Empty on a
                 # game with no ratings, and the page then draws no row.
                 standing["yourLadder"] = [
@@ -1241,7 +1241,7 @@ class SiteApp(App):
         no store and no sign-in, and answers with the same shape and `accounts: False`,
         which is how the header tells the two apart without a 404 to read.
 
-        `players` is whether the footer links `/players` (L3 of `docs/plan-launch.md`
+        `players` is whether the footer links `/players` (L3 of `docs/archive/plan-launch.md`
         §3.3): only once it lists `milestones.LISTED_FROM` people. It and `round` are the
         readings here a visitor costs, two queries, because each link is the
         same for everybody who reads the footer. `round` is the same kind of fact (L4,
@@ -1266,7 +1266,7 @@ class SiteApp(App):
 
     def players_listed(self) -> bool:
         """Whether `/players` lists people yet, and so whether a footer links it (L3 of
-        `docs/plan-launch.md` §3.3, `milestones.LISTED_FROM`)."""
+        `docs/archive/plan-launch.md` §3.3, `milestones.LISTED_FROM`)."""
         with self._connection() as connection:
             return milestones.players_listed(matches.leaderboard_matches(connection))
 
@@ -1418,7 +1418,7 @@ class SiteApp(App):
             # Box E4 of `docs/archive/plan-meta-game.md`. What this person holds, each
             # with its sentence, its rule and the figures the row kept. Unearned badges
             # are not here at all: the plain list at /badges is where a rule is read
-            # before it is met (`docs/plan-meta-game.md` §2.9).
+            # before it is met (`docs/archive/plan-meta-game.md` §2.9).
             "badges": [
                 {**badges.line(award), "name_of": named.get(award.game or "", "")}
                 for award in held
@@ -1446,7 +1446,7 @@ class SiteApp(App):
                 "rule": correspondence.RULES[-1],
             },
             # Q571. *A challenge for you*, *Challenges you sent* and *Open to a game of*
-            # (`docs/plan-return.md` §1.4, s6 of the mock).
+            # (`docs/archive/plan-return.md` §1.4, s6 of the mock).
             "challenges": asked,
             # Q572. The one email's box, off by default, and its sentences.
             "moveEmail": move_box,
@@ -1459,7 +1459,7 @@ class SiteApp(App):
             # Q719. *Invite somebody*: how many invitations `/admin` left this person to
             # send, absent for somebody never given any.
             "invites": invites_box,
-            # S6 of `docs/plan-understanding.md` §3.3: each axis headed by the question
+            # S6 of `docs/archive/plan-understanding.md` §3.3: each axis headed by the question
             # it asks and each kind in the game page's own words (`kind_words`), the
             # grid's bin keys kept beside them for the reader that wants a key.
             "stillOpen": [
@@ -1508,7 +1508,7 @@ class SiteApp(App):
         Names come with the unclaimed hashes, because the page holds hashes and nothing
         else and a person picking a game to play should read *Courier chess*.
 
-        L3 of `docs/plan-launch.md` §3.3: below `milestones.LISTED_FROM` people the rows
+        L3 of `docs/archive/plan-launch.md` §3.3: below `milestones.LISTED_FROM` people the rows
         are not sent at all, so nothing ranked reaches the page; `members` and `listedFrom`
         are what it says instead -- who is here, and when the list starts.
         """
@@ -1711,7 +1711,7 @@ class SiteApp(App):
                 # Q503e. Accounts a spot check flagged, with what it found; `clear-flag`.
                 "flagged": provisional.flagged_accounts(connection),
                 # Q570. The pause on new games between people and how many are running
-                # (`docs/plan-return.md` §1.7); Q572, the move emails of the last rolling
+                # (`docs/archive/plan-return.md` §1.7); Q572, the move emails of the last rolling
                 # day against the site-wide cap.
                 "correspondence": {
                     "paused": correspondence.paused(connection),
@@ -1720,7 +1720,7 @@ class SiteApp(App):
                     "mailed": move_email.sent_today(connection),
                     "mailCap": quota.MOVE_EMAILS_A_DAY,
                 },
-                # H7 (`docs/plan-human-data.md` §3.2). Each computer player's place among
+                # H7 (`docs/reference/human-data.md` §3.2). Each computer player's place among
                 # the people rated on each game, and whether the game page shows it yet.
                 "peopleScale": people_scale.admin_rows(connection),
                 # H8 and H9 (§3.3). Every game with a rated game against its strongest,
@@ -2020,7 +2020,7 @@ class SiteApp(App):
         """One to five stars on a game, with up to three fixed tags, replacing whatever
         this person said last.
 
-        No text (Q599, `docs/plan-return.md` R4): `votes.checked_body` refuses a request
+        No text (Q599, `docs/archive/plan-return.md` R4): `votes.checked_body` refuses a request
         carrying anything but the game, the stars and the tags, and `votes.fixed_tags`
         stores the module's own key for each tag chosen. The answer carries the tag
         counts the page draws under the stars.
@@ -2626,7 +2626,7 @@ def _challenges_of(connection: Any, user: int, waiting: bool = True) -> dict[str
 
 
 def _waiting_on(connection: Any, user: int) -> list[dict[str, Any]]:
-    """*Games waiting on your move* (Q572, `docs/plan-return.md` §1.5, s3 of the mock).
+    """*Games waiting on your move* (Q572, `docs/archive/plan-return.md` §1.5, s3 of the mock).
 
     This person's running games between people where the engine's side to move is their
     seat, in `correspondence.started_order` (Q627), each with its game's name, the

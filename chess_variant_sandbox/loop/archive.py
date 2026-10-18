@@ -125,7 +125,7 @@ _RUN_WORDS: tuple[str, ...] = (
 
 def provisional_sentence(provisional: int, scored: int) -> str:
     """The leaderboard's header: *4 of 73 scores are provisional while they are measured
-    again* (`docs/plan-evolving-score.md` §5.2). One wording for the site's listing and
+    again* (`docs/archive/plan-evolving-score.md` §5.2). One wording for the site's listing and
     the `leaderboard` command; a caller with none provisional says nothing at all."""
     if provisional == 1:
         return f"1 of {scored} scores is provisional while it is measured again."
@@ -316,7 +316,7 @@ class Archive:
         """The run in words: counts, the board, the grid and whether anything improved.
 
         With a ``revision`` (the `leaderboard` command passes `DEFAULT_WEIGHTS`) the board
-        is that revision's (EV3, `docs/plan-evolving-score.md` §3, §5.2): a row scored
+        is that revision's (EV3, `docs/archive/plan-evolving-score.md` §3, §5.2): a row scored
         under another is still placed by its number, marked *provisional* with the
         revision it came from, and never compared -- *tied for first* reads only rows
         under ``revision`` -- and a header says how many rows are provisional. Without

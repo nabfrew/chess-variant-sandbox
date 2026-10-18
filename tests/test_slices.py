@@ -129,7 +129,7 @@ LIBRARY = test_index_quality.RUNS
 # window is the stamp Q460 left on every `canonical.json`; **Q281a6 empties it** once the
 # library carries the tree's own reading.
 #
-# **Re-opened 2026-10-02 by Q631** (the players digest, `plan-compute.md` §2.3): Q281a6 and
+# **Re-opened 2026-10-02 by Q631** (the players digest, `reference/compute-economy.md` §2.3): Q281a6 and
 # Q534's re-score left every `canonical.json` on the tree's reading, and Q631 moves both
 # `metrics` and `analysis` (`agents/evaluation.py` joined the pass's sets; no code moved)
 # along with `engine` and the new `players`, so the library owes one replay, which the

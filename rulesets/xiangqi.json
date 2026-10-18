@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "name": "xiangqi",
-  "description": "Chinese chess, on the intersections of a 9x10 board. The general and its two advisors never leave the palace, the elephants never cross the river, the horses and elephants are blocked by a piece on the way rather than leaping over it, the cannon captures by jumping a single screen, and the two generals may never see each other down an open file.",
+  "description": "The traditional chess of China, played on the intersections of a nine by ten board split across the middle by a river. Its pieces are mostly weaker and more hemmed in than chess's: the general and its two advisors never leave a three by three palace, the elephants never cross the river and so can only defend, and the horse and elephant are blocked by any piece on the point they pass rather than leaping over it. The attacker is the cannon, which moves like a rook but captures only by jumping exactly one piece on the way, so it needs a screen to strike and is at its strongest while the board is crowded. Soldiers step straight ahead, and sideways too once across the river. And the two generals may never face each other down an open file, which makes a general an attacking piece in its own right, pinning the enemy general to its file. A player with no legal move loses; a repeated position is simply a draw, simpler than the traditional rules on perpetual check and chasing.",
   "board": {
     "width": 9,
     "height": 10

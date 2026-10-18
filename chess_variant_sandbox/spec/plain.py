@@ -1,4 +1,4 @@
-"""The rules' complaints in the designer's words (`docs/plan-understanding.md` W5b, D40-D50).
+"""The rules' complaints in the designer's words (`docs/archive/plan-understanding.md` W5b, D40-D50).
 
 `validate_spec` names what is wrong by where it is in the game's text --
 ``setup.placements[0].squares entry 'z9' is not a square on this board`` -- because its

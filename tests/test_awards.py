@@ -1,6 +1,6 @@
 """A badge is the record of an event, written once and never updated.
 
-Box E1 of `docs/archive/plan-meta-game.md`, against `docs/plan-meta-game.md` §2.9. Three
+Box E1 of `docs/archive/plan-meta-game.md`, against its §2.9. Three
 properties carry the whole file. The same badge granted twice leaves one row, whichever of
 the three nullable key columns is empty. A badge that quotes an index can be granted only
 while that game's measurement reads current, which is what `score_evidence` answers and

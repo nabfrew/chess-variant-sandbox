@@ -1,7 +1,7 @@
 {
   "schema_version": 18,
   "name": "einstein",
-  "description": "Einstein chess: every move that captures promotes the capturer one step up the line pawn, knight, bishop, rook, queen, and every move that does not demotes it one step down. A queen that captures stays a queen, and a pawn that does not capture stays a pawn. Pawns step one square and never two.",
+  "description": "Einstein chess, a published variant attributed to Hans Kluever, ties every piece's rank to what it has just done. A capture promotes the capturer one step up the ladder pawn, knight, bishop, rook, queen, and any other move demotes it one step down: a rook that takes becomes a queen, a queen that merely moves becomes a rook. A queen that captures stays a queen, a pawn that steps stays a pawn, pawns step only one square, and the king never changes. That turns the chess opening inside out. Developing a knight turns it into a pawn, so pieces want to stay where they are until they have something to take, and the moves that cost nothing are pawn steps and king steps. Every quiet move is paid for in rank, every capture is rewarded twice, with material and with promotion, and the strong piece is the one that keeps finding things to take.",
   "board": {
     "width": 8,
     "height": 8

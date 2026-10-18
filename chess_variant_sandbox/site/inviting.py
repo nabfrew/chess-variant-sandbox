@@ -1,6 +1,6 @@
 """A member's own invitations: how many they may send, and sending one (Q719).
 
-`docs/plan-launch.md` §5.3a. The person who runs the site gives a member a number of
+`docs/archive/plan-launch.md` §5.3a. The person who runs the site gives a member a number of
 invitations on `/admin` (`users.invites_to_give`, zero by default, `0028_invites_to_give.sql`);
 the member sends them from their own page, one address at a time, and each one sent takes
 one off. The invitation is the ordinary one: `identity.send_invitation`, the same row, the

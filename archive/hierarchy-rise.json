@@ -1,7 +1,7 @@
 {
   "schema_version": 6,
   "name": "gift chess",
-  "description": "The same board and army as demotion chess with the chain reversed: taking a piece promotes it. A struck pawn becomes a knight, a knight a bishop, a bishop a rook, a rook a queen, and a queen is taken outright. The two pieces exchange squares, so a capture hands the defender a better piece and a square deeper in your position. The brainstorm's own question is whether the strategy becomes forcing captures in order to upgrade. Reversing the chain turns a capture into a gift, and the game with it: where demotion chess is decided nearly every time, about half of these games are drawn.",
+  "description": "Chess in which taking a piece promotes it instead of removing it: a struck pawn becomes a knight, a knight a bishop, a bishop a rook, a rook a queen, and only a queen is taken outright. The two pieces exchange squares, so the attacker takes the square and the defender comes back, upgraded, on the square the attacker came from, often inside the attacker's own position. So a capture is a gift, and the question every exchange asks is who it is a gift to: whether to strike at all, and whether to put your own pieces where the other side must take them and so upgrade them. Turning a capture into a gift turns the game round with it. In a version where a capture demotes the piece it strikes instead, games are decided nearly every time; here about half of them are drawn.",
   "board": {
     "width": 8,
     "height": 8

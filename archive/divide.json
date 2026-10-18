@@ -1,7 +1,7 @@
 {
   "schema_version": 19,
   "name": "divide",
-  "description": "Capablanca chess on a board ten wide and eleven tall, cut in two by a wall across the middle row that no piece may stand on, slide through or jump over. The only way across is one pair of portals. One end starts on e3, in White's half, and only White may move it; the other starts on e9, in Black's half, and only Black may move it. Moving a portal is a turn: one step in any direction onto an empty square. White's pieces go in only at White's end and come out one step beyond Black's, in the direction they were travelling; Black's go in only at Black's end and come out beside White's. So the door you move is your way out and also where the enemy arrives, and a piece that has gone through never comes back: to it the far door is a solid block. A pawn reaches its promotion row only by going through. Otherwise it is Capablanca chess.",
+  "description": "A board cut in two by a wall across its middle row that nothing may stand on, slide through or jump over, with one door between the halves whose ends the two players steer. White moves the end on e3, Black the end on e9, a step at a time as a turn. White's pieces go in at White's end and come out one step beyond Black's, in the direction they were travelling, capturing there as usual; Black's go the other way. So the end you steer is your way out and also where the enemy's raiders land, while where yours land is your opponent's choice; a piece that crosses never comes back, and a pawn promotes only by going through. The armies are Capablanca chess's (ten files, with an archbishop, moving as bishop or knight, and a chancellor, as rook or knight), on eleven rows. The strongest computer players trade pawns through the door at once and then wait, and their games mostly end drawn for lack of progress.",
   "board": {
     "width": 10,
     "height": 11
@@ -359,7 +359,7 @@
     "added": "2026-10-10",
     "origin": "human",
     "source": "archive/divide",
-    "history": "Q772a (2026-10-10): plan-portals.md's walled game, Divide, with the one-way return rule (the plan's option A). rulesets/capablanca.json on a 10x11 board, a wall on rank 6 that blocks leaps, and one pair moved and entered by one player per end. Pre-registered in docs/reference/portal-showcases.md before it was measured.",
+    "history": "Q772a (2026-10-10): docs/archive/plan-portals.md's walled game, Divide, with the one-way return rule (the plan's option A). rulesets/capablanca.json on a 10x11 board, a wall on rank 6 that blocks leaps, and one pair moved and entered by one player per end. Pre-registered in docs/reference/portal-showcases.md before it was measured.",
     "parents": [
       "2eefcd835b3b"
     ]

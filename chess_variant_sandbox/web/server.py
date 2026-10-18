@@ -89,7 +89,7 @@ VENDOR_DIR = Path(__file__).resolve().parent / "static" / "vendor"
 IMMUTABLE = "public, max-age=31536000, immutable"
 
 # The browser's measuring runtime: Pyodide and this package's wheel, which
-# `deploy/pyodide/build.sh` writes to `build/browser/` (`docs/plan-client-compute.md`,
+# `deploy/pyodide/build.sh` writes to `build/browser/` (`docs/archive/plan-client-compute.md`,
 # *What B1 built*). The directory is found under the working directory, where `serve`
 # finds `rulesets/` and `runs/`, and `App.browser_dir` points one app at another. On the
 # box Caddy answers `/browser/*` itself (B7); this route is the local application's, and
@@ -553,7 +553,7 @@ class App:
                 # The same players by name alone, which is all the site says of them (G19).
                 "refusedNames": [name for name, _ in refused],
                 "pickerRatings": self.ratings.stored(digest),
-                # K3 (`docs/plan-understanding.md` §4.2 step 3): the opponent a person's
+                # K3 (`docs/archive/plan-understanding.md` §4.2 step 3): the opponent a person's
                 # first game here seats, the gentlest on this game's ladder above random,
                 # read off its rating table as the front page's first step reads it, and
                 # why the game is far from chess, where it is.

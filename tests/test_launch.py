@@ -1,6 +1,6 @@
 """The launch set as one constant, and the front page's featured game (Q654, Q564).
 
-`docs/plan-launch-set.md` §3 and §5.1, as the user answered them on 2026-10-03: the nine and
+`docs/reference/opponent-line.md` §3 (planned in `docs/archive/plan-launch-set.md` §3 and §5.1), as the user answered them on 2026-10-03: the nine and
 the reserves live in `web/launch.py` alone, pinned by name and hash; the front page features
 the five a chess player can start without reading the rules, one a day by the calendar,
 with the gentlest opponent and the next one up a tap away; *reckoning* is the first game of
@@ -339,7 +339,7 @@ class TestTheNewGamesAndTheSpotlight:
 
 
 class TestThisMonthsGame:
-    """Q603 (C2, `docs/plan-return.md` §3; `docs/plan-launch-set.md` §5.2): one game a month,
+    """Q603 (C2, `docs/archive/plan-return.md` §3; `docs/reference/opponent-line.md` §3.1): one game a month,
     *reckoning* first, then the rotation as data, by the calendar month."""
 
     def test_reckoning_first_then_quarry(self) -> None:

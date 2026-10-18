@@ -1,7 +1,7 @@
 {
   "schema_version": 27,
-  "name": "gardner in rounds where swaps collide",
-  "description": "Martin Gardner's 5x5 minichess played in rounds: both players move at once. Each round each player chooses one move in secret, and both moves are revealed and made together. There is no check: the king is simply captured, and the side that loses its king loses. Only two pieces moving onto the same square collide, and then both are removed. Two pieces that try to take each other in the same round meet half-way as a collision and both are removed, kings included, so striking back at an attacker that strikes is mutual destruction. A piece that moves onto a square its target has just left for somewhere else lands there if it could move to an empty square; a pawn's diagonal capture, which cannot land on an empty square, misses and the pawn stays. If both kings fall in the same round, or anything else ends the game for both players at once, the game is drawn. A round counts as two moves on the clocks. Games are short: a king can no longer strike back at an attacker that strikes, so a queen that reaches a king usually ends the game within a few rounds, often with both kings gone.",
+  "name": "breather",
+  "description": "Martin Gardner's minichess (chess on a 5x5 board, each side a rook, knight, bishop, queen and king behind five pawns) played in rounds: both players choose a move in secret, both moves are made together, and a king is simply taken, with no check. What turns the guessing into a game is the breather: the piece that made a side's move sits out that side's next move, unless it is the only piece that can move. No piece can strike twice running, so every attack gives a round's warning, and a king that runs one round has to stand the next, so it must run where no enemy piece free to move can reach it. Each round is a read of the other player: what of theirs can move against your king, and has their king just run, so that it must stand? Striking back is no answer, because two pieces that try to take each other in the same round collide and both die, kings included. If both kings fall together, or the game runs too long, the side with more material left wins.",
   "board": {
     "width": 5,
     "height": 5
@@ -198,15 +198,19 @@
     "repetition_draw": 3,
     "no_progress_draw": 100,
     "simultaneous": {
-      "swap": "collision"
+      "rest": true,
+      "swap": "collision",
+      "both": "score"
+    },
+    "scoring": {
+      "count": "material"
     }
   },
   "provenance": {
     "added": "2026-10-17",
-    "preview": "A preview: a new kind of game in which both players move at once, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
     "origin": "designed",
-    "source": "docs/plan-round-chase.md, Q942c: the showcases of the chase remedies (section 5)",
-    "history": "S2, the showcase of schema 27's rules.simultaneous.swap collision: Gardner in rounds with the user's second remedy, two pieces trading squares meet as a collision. Pre-registered in docs/plan-round-chase.md section 5 before it was measured; the study and its grades are there.",
+    "source": "docs/archive/plan-round-chase.md, Q942c: the showcases of the chase remedies (section 5)",
+    "history": "S4, the candidate game: Gardner in rounds with all three of schema 27's switches against the royal chase (rest, swap collision, both score) and rules.scoring material. Pre-registered in docs/archive/plan-round-chase.md section 5 before it was measured; the study and its grades are there. Joined the library from preview by Q934 (2026-10-17): the library's first royal game played in rounds, Gardner's board and army played in rounds rather than by turns and made decisive (0.971 of games) by the three switches together; viable 4-0 at 0.514. The rest alone (gardner in rounds resting) stays a preview beside it, as the contrast. Renamed by Q962 (2026-10-18) from gardner in rounds against the chase (file gardner-in-rounds-against-the-chase.json) to breather, with a description that says what the game is in its own terms rather than against the chase, a preview's problem most visitors never saw; the mechanics and the hash are unchanged.",
     "parents": [
       "e043fce6968e"
     ]

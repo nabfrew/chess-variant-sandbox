@@ -1448,7 +1448,7 @@ def _choosing_strike(symmetry: str) -> dict[str, Any]:
 class TestHexSymmetries:
     """`rotate6` and `dihedral12` are a hex spelling, and nothing else.
 
-    `docs/plan-schema-17.md` §9.1: no core change, the turn is in `expand_symmetry`, and
+    `docs/archive/plan-schema-17-18.md` §9.1 (hex symmetries): no core change, the turn is in `expand_symmetry`, and
     a showcase written with them plays its long form's perft. The verdict is *shown by
     identity* (`docs/reference/schema-showcase-coverage.md`, *Schema 18* note 2).
     """

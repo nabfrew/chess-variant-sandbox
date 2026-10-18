@@ -22,7 +22,7 @@ is for a reader.
 An entry whose first paragraph is exactly `*For maintainers.*` (`MAINTAINERS`) is the
 maintainer's news -- a command, a folder, a decision taken -- and is parsed with
 `maintainers: true`. The local application shows it as written; the site skips it
-(`for_visitors`, W8 of `docs/plan-understanding.md` §7). The file's header says so to
+(`for_visitors`, W8 of `docs/archive/plan-understanding.md` §7). The file's header says so to
 whoever writes an entry.
 
 Read on each request rather than cached. It is 30 KB and parses in about a millisecond,

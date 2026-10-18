@@ -554,7 +554,7 @@ class TestTheShowcase:
     Since Q180 (2026-09-11) all four were cells of one family, built by one generator from
     one placement procedure, so the equalities below hold by construction rather than by
     a test noticing afterwards. The two wrap cells, `sardines-torus` and
-    `weathervane-torus`, left the library on 2026-10-12 (Q868, `docs/plan-library-audit.md`):
+    `weathervane-torus`, left the library on 2026-10-12 (Q868, `docs/archive/plan-library-audit.md`):
     the wrap changed nothing a reader could see on a full board, so the family is now
     `sardines` and its facing cell. The positions differ between cells -- each cell picked
     its own seed on the screen -- and the equalities are over board, rules and pieces,

@@ -144,7 +144,7 @@ function fillPicks(data) {
   if (!section.querySelector('.pick')) section.remove();
 }
 
-// The day's game's two buttons (Q564, `docs/plan-launch-set.md` §5.1): *Play the computer*
+// The day's game's two buttons (Q564, `docs/reference/opponent-line.md` §3.1): *Play the computer*
 // seats the gentlest opponent the server named, as practice, and *A harder one* the next
 // one up. The page picks no game and no opponent: it reads both off `firstStep`.
 function wireTodaysGame(panel, step) {

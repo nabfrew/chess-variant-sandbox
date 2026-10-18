@@ -151,7 +151,7 @@ IMMUNE_PIECES = 1.0
 ROYAL_VALUE = 0.0
 WIN_SCORE = 1_000_000.0
 
-# Schema 27 (Q942b, `docs/plan-round-chase.md` §3 R1): what a rested royal that a standing
+# Schema 27 (Q942b, `docs/archive/plan-round-chase.md` §3 R1): what a rested royal that a standing
 # enemy piece reaches costs its side in a round's evaluation, mine minus theirs. Half a win:
 # the strike lands next round unless the side answers it by taking the other royal in the
 # same round, so it is nearly a loss, and it stays below every decided game
@@ -715,7 +715,7 @@ class Evaluator:
     ) -> float:
         """``evaluate`` in a simultaneous game (schema 26, Q918b): there is no side to
         move, both players' moves are known, and mobility is mine minus theirs, both
-        counted (`docs/plan-simultaneous.md` §6.2). ``counts`` is each player's number of
+        counted (`docs/archive/plan-simultaneous.md` §6.2). ``counts`` is each player's number of
         legal moves on this board, in seat order. ``eval.rs::evaluate_round`` is the
         same function.
 

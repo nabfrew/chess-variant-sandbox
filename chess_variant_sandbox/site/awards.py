@@ -1,6 +1,6 @@
 """Badges, kept once earned: the row, the writer, and the rule for a current score.
 
-Box E1 of `docs/archive/plan-meta-game.md`, against `docs/plan-meta-game.md` §2.9. A
+Box E1 of `docs/archive/plan-meta-game.md`, against its §2.9. A
 milestone is a live reading over match rows, so it reopens when a ladder or the library
 grows. A badge is the opposite: it is the record of an event, written once and never
 updated, because three of a badge's inputs do not survive. A vote is replaced when a

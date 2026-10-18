@@ -257,7 +257,7 @@ function gameCell(row, hash, name) {
   first.appendChild(link);
 }
 
-// H8 and H9 (`docs/plan-human-data.md` §3.3). Each game with a rated game against its
+// H8 and H9 (`docs/reference/human-data.md` §3.3). Each game with a rated game against its
 // strongest, against the bar, with its latest training entry; then the queue in the order
 // the pipeline serves it. The server words the counts; the page compares nothing.
 function bar(reading) {

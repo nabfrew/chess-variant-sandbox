@@ -64,7 +64,7 @@ game alive. `matches.sweep` takes it as an argument, so moving it is a call site
 
 IDLE_SAID = "thirty days without a move"
 """`IDLE_LIMIT` as a visitor reads it, in every sentence about the sweep
-(`docs/plan-understanding.md` §3.2: *resigned after thirty days without a move*).
+(`docs/reference/plain-words.md` §2: *resigned after thirty days without a move*).
 `tests/test_badges.py` holds the words to the limit, so moving one without the other fails."""
 
 # ------------------------------------------------------- correspondence, between people
@@ -72,7 +72,7 @@ IDLE_SAID = "thirty days without a move"
 CORRESPONDENCE_IDLE = timedelta(days=5)
 """How long the player to move in a game between two people may sit before losing it.
 
-The user, 2026-10-02, accepting `docs/plan-return.md` §1 with one change: *"let's cut the
+The user, 2026-10-02, accepting `docs/archive/plan-return.md` §1 with one change: *"let's cut the
 no moves to resign to 5 days"*. A game between people is the one place one person's
 absence holds another hostage, so the sweep resigns it for the player to move, and the row
 records it as a game they left (§1.6). Shorter than `IDLE_LIMIT` on purpose: that one is
@@ -136,7 +136,7 @@ below is cheap enough to ignore -- thirty games against `nodes=6400` cost 0.06 o
 VISITOR_NODES = 6_400
 """The largest node budget a visitor with no account may play against: *hard*'s.
 
-`docs/plan-launch.md` §3.6, decided A on 2026-10-01 (L15): with the shared password off
+`docs/archive/plan-launch.md` §3.6, decided A on 2026-10-01 (L15): with the shared password off
 the front door, visitors play opponents up to *hard*, and *hardest* is for signed-in
 people. Read off the budget rather than the ladder's names, so every player stronger than
 *hard* -- *hardest*, the outside engine, anything a store adds above it -- needs an
@@ -325,7 +325,7 @@ site's one runner thread, so the box's other core stays the site's."""
 SPINE_CPU = 300.0
 """The most processor time the site spends rating one member's game at publish (L5).
 
-`docs/plan-leaderboard.md` §2.6 step 1: the five standard players' 40 games, in a child
+`docs/archive/plan-leaderboard.md` §2.6 step 1: the five standard players' 40 games, in a child
 process the kernel stops at this many CPU-seconds (`RLIMIT_CPU`). Measured at one thread on
 the development machine (Q820, 2026-10-11): dull 0.25 s, chess 5.6, shogi 25, divide 47,
 the slowest spine §2.2's records hold (88 s there); the box is a few times slower a core,
@@ -915,7 +915,7 @@ def strong_seats(connection: Any) -> int:
 def busy(connection: Any) -> bool:
     """Whether a new game against the strongest opponent would be refused right now.
 
-    What the opponent list says *before* anybody picks it (`docs/plan-launch.md` §5.2,
+    What the opponent list says *before* anybody picks it (`docs/archive/plan-launch.md` §5.2,
     L11), so the refusal in `check_new_match` is never the first a person hears of it. A
     reading without the lock, so it can be a moment out of date either way; the start
     still counts under the lock, and is the answer that binds.
@@ -988,7 +988,7 @@ def check_new_match(connection: Any, user: int | None, *agents: str) -> None:
 
 def _named(agent: str) -> str:
     """What a refusal calls the strong player: its name off the ladder (*hardest*), never
-    its agent string (`docs/plan-understanding.md` §3.3, S25)."""
+    its agent string (`docs/archive/plan-understanding.md` §3.3, S25)."""
     from chess_variant_sandbox.web.opponents import name_of
 
     return name_of(agent)

@@ -1892,7 +1892,7 @@ class TestCliPliesDefault:
 
 
 class TestTheReasonsAPageShowsAreInTheDesignersWords:
-    """Q681 (`plan-understanding.md` W5b): the translator's reasons open on a path into
+    """Q681 (`archive/plan-understanding.md` W5b): the translator's reasons open on a path into
     the game's text, which the `fairy` command and these tests match on. What a page shows
     (`fairyReasons`, `fairyCheck.reasons`) names each rule by its card's title, one reason
     for one, and the guard enforces *a path into the game's text* over it. Q728: and says

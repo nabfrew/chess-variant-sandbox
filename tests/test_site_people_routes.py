@@ -1,4 +1,4 @@
-"""Routes B and C of `docs/plan-human-data.md`, and the check they rest on (Q768, H4, H7-H9).
+"""Routes B and C of `docs/reference/human-data.md`, and the check they rest on (Q768, H4, H7-H9).
 
 - **H4**: a computer seat's agent string does not pin its player -- the core's build, the
   game's tables and the values handed to the core are not in it -- so the row keeps them

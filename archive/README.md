@@ -10,7 +10,7 @@ band, held to the cheap gates by `tests/test_index_quality.py`, and pinned by fr
 perft ladders — so a game admitted there becomes part of what every other game is
 checked against. Nothing in `metrics/` or `tests/` reads this directory.
 
-Since `v12` (2026-10-03, `docs/plan-evolving-score.md` §4) the band **checks the scale and
+Since `v12` (2026-10-03, `docs/archive/plan-evolving-score.md` §4) the band **checks the scale and
 places none of it**. Every curve end comes from the measurement's domain, its gate, a
 one-sentence meaning, or a quantile of the published band games read once and pinned as a
 number (`docs/reference/v12-calibration.md`), so admitting a game to `rulesets/` moves no
@@ -79,7 +79,7 @@ because a pair that differs in two things at once cannot attribute either result
 the finding they produced, that the position rule is as large a lever as the chain's
 direction, was reachable no other way. What they all measured is written up in
 `docs/reference/schema-6.md`. **`hierarchy-fall-swap` was retired on 2026-10-12** by the
-library audit (Q868, `docs/plan-library-audit.md`): under `v12` it plays and scores as
+library audit (Q868, `docs/archive/plan-library-audit.md`): under `v12` it plays and scores as
 `hierarchy-fall` does, and the position rule's lever is shown by the three `rise` games.
 The table above is the `v9` record and stays as it was measured.
 
@@ -315,7 +315,7 @@ rook, bishop, queen and king written once and `dihedral12`, and a knight written
 twelve and never their mirror images. The two empty flanks are joined one way per player, as
 `hex-glinski-flanks-one-way`'s were, so both armies go round the board the same way, and the
 half turn keeps both the knights' hand and the seam's direction the same for both players.
-Pre-registered in `docs/plan-library-audit.md` (*`pinwheel`*) before it was measured;
+Pre-registered in `docs/archive/plan-library-audit.md` (*`pinwheel`*) before it was measured;
 `tests/test_pinwheel.py` holds the demonstration clauses. Measured 2026-10-13 (v12, four runs,
 the schema-24 core): **0.895 [0.878, 0.920], viable (4-0)**, against the parent's 0.925; all
 five measured clauses hit: the seam crossed in 0.93 of games, knights made 10% of the moves,
@@ -419,7 +419,14 @@ the pawn becomes a queen, and a king can never be merged.
 
 `hierarchy-rise-throw` keeps `hierarchy-rise`'s promoting strike, but the attacker takes
 the square and throws the promoted piece onto any empty square a king's step from where it
-stood. A piece with every such square occupied cannot be taken. It is the third value on
+stood. The landing squares are read once the attacker has left, so the square it came from
+counts as empty: a piece boxed in on every side can still be taken by a neighbour, which
+throws it onto the square that neighbour vacated, and only a piece with no empty landing
+square even then cannot be taken. That is the rule as built and as it plays
+(`docs/reference/engine-and-spec-record.md` §*Schema 12*, "The origin counts as empty").
+Until 2026-10-18 this entry and the game's description said a piece with every neighbouring
+square occupied cannot be taken at all; that was a loose paraphrase, not the rule, and the
+description was corrected rather than the rules (the game is right as it plays). It is the third value on
 the axis `hierarchy-rise` (`swap`) and `hierarchy-rise-stay` (`stay`) already measure. Its
 pre-registration is in `docs/game-ideas.md` §*Q20 specified*, and
 the engine records are
@@ -552,7 +559,7 @@ opening moves, shogi's 30 and nine pawn turns). Unmeasured until the library's n
 
 ## `divide.json`, `ferry.json`, `carousel.json`, `wormhole.json`, `wormhole-adrift.json`, `shut-wormhole.json`, `cylinder-wormhole.json` — schema 19, portals
 
-Q772a's showcases (2026-10-10) for `rules.portals` (`docs/plan-portals.md` §7 P4 and *Showcase
+Q772a's showcases (2026-10-10) for `rules.portals` (`docs/archive/plan-portals.md` §7 P4 and *Showcase
 games*): a piece that ends its move on a portal comes out one step beyond the other end of the
 pair, in the direction it was travelling. **Divide** is the walled game the user asked for:
 Capablanca chess on ten by eleven with a wall across rank 6, crossed only by one pair whose
@@ -576,7 +583,7 @@ portals are shown by `ferry` in a playable game, and the tests rebuild it from `
 
 ## `ferry-no-straight-back.json` — schema 20, no straight back
 
-Q807's answer to Ferry's shuffle (2026-10-10, `docs/plan-portals.md` *Ferry's shuffle*):
+Q807's answer to Ferry's shuffle (2026-10-10, `docs/archive/plan-portals.md` *Ferry's shuffle*):
 Ferry with `rules.portals[].no_straight_back` on both pairs and nothing else changed, so a
 portal that has just been moved may not be moved straight back where it came from on the very
 next move (a portal's ko; in 404 of Ferry's 414 repetition games the opponent had done exactly
@@ -589,7 +596,7 @@ holds the rule against `tests/portal_oracle.py`.
 
 ## `divide-two-way.json` — schema 19, Divide's two-way door (retired)
 
-Q772e, 2026-10-12, `2fa712feb218`. Divide's option B (`docs/plan-portals.md` *Divide's return
+Q772e, 2026-10-12, `2fa712feb218`. Divide's option B (`docs/archive/plan-portals.md` *Divide's return
 rule*): `divide` with the pair's `passage` removed and nothing else changed, so either
 player's pieces may go in at either end and a raider can come home by the door it came out
 beside; each end is still moved only by the player in whose half it stands. A new game beside
@@ -602,7 +609,7 @@ option C is owed. `docs/reference/portal-showcases.md` *Q772e* has the clauses;
 
 ## `divide-fixed.json` — schema 19, Divide's fixed door (retired)
 
-Q772f, 2026-10-12, `31ead85da009`. Divide's option C (`docs/plan-portals.md` *Divide's return
+Q772f, 2026-10-12, `31ead85da009`. Divide's option C (`docs/archive/plan-portals.md` *Divide's return
 rule*): `divide-two-way` with the pair's `moved_by` removed and nothing else changed, so the
 ends stand on e3 and e9 for the whole game, nobody may move them, and either player's pieces may
 go in at either end. Pre-registered and measured 2026-10-12 (v12, four runs, the schema-23
@@ -639,7 +646,7 @@ centre rings of Q68's screen (`b4 c5 d4 c3 b3` and `g4 f5 e4 f3 g3`, both `mirro
 `also_at` puts the second wolf on each ring), and `immune: ["P"]`, so **only a pawn may take
 one**. The rings hold the squares the knights and bishops would come out to, so the pawns
 clear the way, and a pawn that takes the leading wolf of a pair is eaten at once by the one
-behind. No bounty, no score. Pre-registered in `docs/plan-library-audit.md` (*`pitchfork`*)
+behind. No bounty, no score. Pre-registered in `docs/archive/plan-library-audit.md` (*`pitchfork`*)
 before it was measured; `tests/test_pitchfork.py` holds the demonstration clauses (the word's
 three readings on one position, the five lists it stands for, the pair's price, random play).
 Measured 2026-10-13 (v12, four runs): **0.907 [0.885, 0.928], viable (4-0)**, beside `wolves`'
@@ -650,7 +657,7 @@ screen: 5.87 taken a game, 0.38 of them by pawns).
 
 ## `sluice.json`, `crease.json`, `pawnproof-wormhole.json` — schemas 21 and 24, portal maps, filters and folds (Q844b)
 
-2026-10-13. The showcases of what `docs/plan-portals-2.md` added, on the rules as they now
+2026-10-13. The showcases of what `docs/archive/plan-portals-2.md` added, on the rules as they now
 stand; `docs/reference/portal-showcase-ideas.md` has the decision on each of Q844's seven ideas
 (two games and one variant kept, four dropped, each with its reason), the designs and the
 predictions, written before anything was measured, and `tests/test_portal_showcases_q844b.py`
@@ -678,21 +685,21 @@ in 0.700 of games against 0.9 predicted, and a capture through in 0.368 against 
 wormhole **0.572 [0.546, 0.606]**, all five hit (no pawn transit, the first seat 23 of the top
 band's 46 decided games against Wormhole's 33 of 33).
 
-## `gardner-in-rounds*.json`, `watering-hole.json` — schema 26, both players moving at once (Q918e)
+## `gardner-in-rounds*.json`, `watering-hole.json` — schema 26, both players moving at once (Q918e; the three Gardner games retired)
 
-2026-10-15. The showcases of `docs/plan-simultaneous.md` (§6.8): each round both players choose a
+2026-10-15. The showcases of `docs/archive/plan-simultaneous.md` (§6.8): each round both players choose a
 move in secret and both are made together; only two pieces ending on one square collide. The plan's
 *Q918e* sections have the designs, the drafts that failed and why, and the predictions, written
 before anything was measured; `tests/test_showcases_q918e.py` holds the demonstration clauses.
 
-- **`gardner-in-rounds`** (`e043fce6968e`): Gardner's minichess with `"simultaneous": {}` and the
-  king captured rather than mated, the one-key showcase; the mechanics of the test spec Q918d
-  measured. Kept because it shows what rounds do to a royal game: it draws, mostly by both kings
-  falling in the same round.
-- **`gardner-in-rounds-with-meek-pawns`** (`ff1ccdaaf3cf`): the same with the pawn's `beats` empty,
-  so a pawn loses every collision with a piece. Kept as a variant because the contrast is the point.
-- **`gardner-in-rounds-with-the-initiative`** (`6278607c721b`): the same with `tie: "initiative"`,
-  the comparison §3.2 promised: a token that decides one tie and passes.
+- **`gardner-in-rounds`** (`e043fce6968e`, **retired by Q962b**): Gardner's minichess with
+  `"simultaneous": {}` and the king captured rather than mated, the one-key showcase; the mechanics
+  of the test spec Q918d measured. It showed what rounds do to a royal game: it draws, mostly by
+  both kings falling in the same round.
+- **`gardner-in-rounds-with-meek-pawns`** (`ff1ccdaaf3cf`, **retired by Q962b**): the same with the
+  pawn's `beats` empty, so a pawn loses every collision with a piece.
+- **`gardner-in-rounds-with-the-initiative`** (`6278607c721b`, **retired by Q962b**): the same with
+  `tie: "initiative"`, the comparison §3.2 promised: a token that decides one tie and passes.
 - **`watering-hole`** (`5c0b017473f5`): the game designed around guessing, and the showcase of
   `tie: "impossible"`. White's elephants and cats against Black's dogs and rats on 7x7, each kind
   eating one opposing kind (elephant > dog > cat > rat > elephant), so every meeting has a winner;
@@ -701,7 +708,8 @@ before anything was measured; `tests/test_showcases_q918e.py` holds the demonstr
   (2026-10-17)**, no longer a preview: the library's first game played in rounds and its only one
   with no royal, and the one where the guess about the other player's move is the whole game
   (viable 4-0 at 0.608 [0.549, 0.652] on Q944a's round roster). The three Gardner games above
-  stay previews.
+  stayed previews until Q962b (2026-10-18) retired them: each drew nearly nine games in ten, and
+  meek pawns' rule barely fired (*Previews retired*, below).
 
 Measured 2026-10-15 (v12, four runs each, the round roster): Gardner in rounds **0.375
 [0.337, 0.421], not viable (refuse 4-0)**, 0.875 of graded games drawn, 0.483 by both kings
@@ -710,9 +718,9 @@ captured in one round; with meek pawns **0.351 [0.336, 0.370], not viable**; wit
 games; the watering hole **0.503 [0.434, 0.571], viable (accept 4-0)**, no draw in 784 graded
 games, the seat 394-390, 0.989 of them won at the hole, a collision in every one.
 
-## `gardner-in-rounds-resting.json`, `-where-swaps-collide.json`, `-scored.json`, `-against-the-chase.json` — schema 27, three switches against the royal chase (Q942c)
+## `gardner-in-rounds-resting.json`, `-where-swaps-collide.json`, `-scored.json`, `breather.json` — schema 27, three switches against the royal chase (Q942c)
 
-2026-10-17. The showcases of `docs/plan-round-chase.md` §5: Gardner in rounds, whose kings spend
+2026-10-17. The showcases of `docs/archive/plan-round-chase.md` §5: Gardner in rounds, whose kings spend
 half of every game running from each other, with each of schema 27's three switches and then all
 three. Pre-registered in §5 and §5.1 before any game was played, graded in §5.2;
 `tests/test_showcases_q942.py` holds criterion K8, the mechanism without players.
@@ -720,22 +728,27 @@ three. Pre-registered in §5 and §5.1 before any game was played, graded in §5
 - **`gardner-in-rounds-resting`** (`4da669bb3d50`, S1): `rest`, the piece that moved may not move the
   next round. Kept because it is the remedy: the chase falls from 0.54 of rounds to 0.01 and the game
   is decided, mostly by striking a king that had just moved and so had to stand.
-- **`gardner-in-rounds-where-swaps-collide`** (`7985900696d7`, S2): `swap: "collision"`, two pieces
-  trading squares meet. Kept as the switch's showcase; it plays a short game (15 plies) of queen
+- **`gardner-in-rounds-where-swaps-collide`** (`7985900696d7`, S2, **retired by Q962b**):
+  `swap: "collision"`, two pieces trading squares meet. It plays a short game (15 plies) of queen
   raids that the ladder cannot read.
-- **`gardner-in-rounds-scored`** (`a90a8db7e2dd`, S3): `both: "score"` with material scoring. Kept
-  because the contrast is the point: alone, the score moves the double capture into the chase rather
-  than removing it (its criterion missed).
-- **`gardner-in-rounds-against-the-chase`** (`632c199e4589`, S4): all three, the candidate game.
+- **`gardner-in-rounds-scored`** (`a90a8db7e2dd`, S3, **retired by Q962b**): `both: "score"` with
+  material scoring. Alone, the score moves the double capture into the chase rather than removing it
+  (its criterion missed).
+- **`breather`** (`632c199e4589`, S4): all three, the candidate game.
   **In the library since Q934 (2026-10-17)**, no longer a preview: the library's first royal game
   played in rounds, Gardner's board and army made decisive in rounds (0.971 of games) by the three
-  switches together, where the plain game draws seven games in eight. S1 to S3 stay previews: S1 is
-  nearly S4 and is kept as the contrast that shows `rest` alone does most of the work.
+  switches together, where the plain game draws seven games in eight. S1 to S3 stayed previews; since
+  Q962b only S1 does, kept because it plays well (viable, decided, even) and shows that `rest` alone
+  does most of the work, while S2 and S3 left for their play. Named
+  *gardner in rounds against the chase* (`gardner-in-rounds-against-the-chase.json`) until Q962
+  (2026-10-18), which renamed it and rewrote its description to say what the game is in its own
+  terms, since a visitor has never seen the chase and the previews that show it may go; the hash did
+  not move.
 
 Measured 2026-10-17 (v12, four runs each, the round roster): resting **0.630 [0.574, 0.673],
 viable** (3 of 4 runs accept, one unreadable), 0.853 of graded games decided; where swaps collide
 **not viable**, no index (the ladder reads 2 of 4 runs); scored **0.329 [0.293, 0.362], not viable
-(refuse 4-0)**, 0.587 drawn by repetition; against the chase **0.514 [0.451, 0.563], viable (accept
+(refuse 4-0)**, 0.587 drawn by repetition; breather (then against the chase) **0.514 [0.451, 0.563], viable (accept
 4-0)**, 0.971 decided, the seat 0.523, the chase 0.009 of rounds.
 
 ## `gardner-with-spies.json`, `gardner-with-spies-resting.json` — schema 27, the spy (Q935f)
@@ -747,13 +760,14 @@ rounds where the side without a spy announces its move first; once both fall, in
 Pre-registered in §5 and §5.7 before any graded game, graded in §5.8;
 `tests/test_showcases_q935f.py` holds G1, §1.6's claims as rules without players.
 
-- **`gardner-with-spies`** (`f4c62a33798d`, SP1): `pieces.spy`'s showcase and the literal rule.
-  Kept because it shows what the full announcement does without `rest`: the answerer can always
+- **`gardner-with-spies`** (`f4c62a33798d`, SP1, **retired by Q962b**): `pieces.spy`'s first
+  showcase and the literal rule. It showed what the full announcement does without `rest`: the answerer can always
   step an attacked piece away, so the holder trades its spy for material and the blind rounds after
   draw. Graded *too weak* (the holder scores 0.56 against a twin's 0.63 for the bare material), not
   credited, since the holder's score rises with the players' strength.
 - **`gardner-with-spies-resting`** (`1d798bedbf66`, SP2): with `rest`, a piece that just moved stands
-  a round, so a recapture lands again. Kept as the candidate design: the holder scores 0.76 in the
+  a round, so a recapture lands again. Kept as the candidate design, and since Q962b the spy's one
+  showcase: the holder scores 0.76 in the
   strong band, the side without a spy still wins 0.23 of those games, and nearly all are decided,
   so the full announcement does not end the game. It fails the seat, and its holder's score is
   player- and value-dependent.
@@ -797,7 +811,7 @@ kinds is gone, and the only one with two different armies of paired kinds.
 
 ## Retired by the library audit (Q868, 2026-10-12)
 
-The user asked for a library in which every game has a purpose (`docs/plan-library-audit.md`,
+The user asked for a library in which every game has a purpose (`docs/archive/plan-library-audit.md`,
 which has a verdict for each of the 101 games). Fourteen near copies left the tree, ten of
 them from here: `wolves-rotated`, `-2`, `-3` and `-4`, `hex-glinski-promoting`,
 `divide-two-way`, `divide-fixed`, `wormhole-adrift`, `hierarchy-fall-swap` and
@@ -815,6 +829,23 @@ left the tree for one designed game, `pinwheel` (above): `hex-glinski-flanks`,
 `hex-glinski-flanks-one-way`, `hex-glinski-turned` and `hex-glinski-turned-mirrored`. Eighteen
 games were renamed (only `name` moved, so no hash, link, run or rating did), among them the
 hierarchy games, which are now *demotion chess*, *gift chess*, *gift from afar*, *thrown
-gifts* and *amazon ladder*; `docs/plan-library-audit.md` has the table and the reason for each.
+gifts* and *amazon ladder*; `docs/archive/plan-library-audit.md` has the table and the reason for each.
 The pass's last item, Q876, retired `wolves-immune` for a designed game, `pitchfork` (above); its
 spec is in git history at `c91613a3`, and the tests rebuild it from `wolves`.
+
+## Previews retired (Q962b, 2026-10-18)
+
+The user asked that previews that do not work well be removed
+(`docs/reference/previews-2026-10-18.md`, which has the purpose, the study's verdict, the
+measurement and the verdict for each of the eight). Six left `archive/`:
+`gardner-in-rounds` (drew nearly nine games in ten), `gardner-in-rounds-with-meek-pawns` (the same,
+and its rule fired in 9 of 784 graded games), `gardner-in-rounds-with-the-initiative` (the same, and
+a lean to the token's holder), `gardner-in-rounds-where-swaps-collide` (a queen raid over in 16
+plies, unread by the ladder), `gardner-in-rounds-scored` (drawn by repetition; its own criterion
+missed) and `gardner-with-spies` (*too weak* by its study, a drawn epilogue, and the first seat 45 of
+46 decided games at the top). Two stay previews: `gardner-in-rounds-resting` and
+`gardner-with-spies-resting`. The six files moved unchanged to `tests/_retired_<stem>.json` (hyphens as underscores), where
+the showcase tests still read them (`tests/retired_specs.py`, `RETIRED_PREVIEWS`); no file was
+deleted, their runs stay in `runs/`, and on the site each is *retired* at the next deploy, its page,
+matches and ratings kept. `pieces[].beats` and `tie: "initiative"` lost their only showcase and are
+recorded as gaps on purpose (`schema-showcase-coverage.md` rows 65 and 67).

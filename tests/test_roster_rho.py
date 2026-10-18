@@ -2,7 +2,7 @@
 
 `docs/archive/plan-variety.md` §5.4, box A3 (Q52). An optional per-component field,
 `roster_rho`: the rank correlation between two rosters' readings of a component's raw
-measurement, against `docs/plan-roster-confound.md` §8's threshold of 0.50 -- the same
+measurement, against `docs/reference/roster-confound.md` §8's threshold of 0.50 -- the same
 threshold `v10`'s own notes cite for dropping `gradient_persistence` and `draw_slope`.
 The field is shown beside each component on the game page and in the glossary, and
 nothing is drawn where it is absent.

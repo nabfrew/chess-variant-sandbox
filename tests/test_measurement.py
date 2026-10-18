@@ -155,7 +155,7 @@ class TestTheFingerprintsPointAtSomething:
 # component or interval moves; a printed lean can disappear. It was "c0874c9cb4baaefe"
 # after Q281a4. The re-score is local (no `runs/` in the cloud), batched with Q281a6's.
 #
-# **Moved 2026-10-02 by Q631 (`plan-compute.md` §2.3, the players digest)**: `agents/*.py`
+# **Moved 2026-10-02 by Q631 (`reference/compute-economy.md` §2.3, the players digest)**: `agents/*.py`
 # left the `engine` set, so the probe's ruler, `agents/evaluation.py`, joined the analysis
 # pass's sets, this one included. No code moved. It was "4101e53269e06084" after Q534. The
 # same change moves `engine` and adds `players`, so the library owes one replay, which

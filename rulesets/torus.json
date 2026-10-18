@@ -1,7 +1,7 @@
 {
   "schema_version": 5,
   "name": "torus chess",
-  "description": "A board with no edges at all: both pairs of opposite edges are joined. There are no corners, so a king can never be driven into one, which is a prediction about how the game ends rather than a feature. It is played on the tall board with buffer ranks because the 8x8 version cannot be played at all -- there the two kings start adjacent through the rank seam and White is checkmated before moving. The buffer ranks leave each army's back rank open to the other's through the seam, so the opening is a scramble of captures and the game swings little once it settles; rear guard torus chess closes that gap with a rear guard.",
+  "description": "Chess on a board with no edges at all: both pairs of opposite edges are joined, so a piece leaving the a-file reappears on the h-file and one leaving the top rank reappears at the bottom. With no corners and no sides, the familiar mating patterns that drive a king into a corner or against the edge of the board are gone, and the game asks whether checkmate still works in open space; it was built on the prediction that mate would be rare. The board is eight files by twelve ranks, with two empty ranks behind each army, because on an eight by eight torus the two kings start next to each other through the join and White is checkmated before moving. Those empty ranks leave each army's back rank open to the other's through the join, so the opening is a scramble of captures, and the game swings little once it settles. With no far edge to reach, a pawn promotes on the enemy's starting back rank.",
   "board": {
     "width": 8,
     "height": 12

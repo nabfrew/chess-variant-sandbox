@@ -28,7 +28,7 @@ did, not an input to any metric, rating or weight. The rating table folds over
 `matches`, as it did.
 
 **Beside the moves, three things a baseline graded by skill reads** (H1 to H3 of
-`docs/plan-human-data.md`, `0032_human_data.sql`), copied from the match row at the finish
+`docs/reference/human-data.md`, `0032_human_data.sql`), copied from the match row at the finish
 as `takebacks` is: how long the person took over each move against a computer player,
 what each take-back undid, and each side's rating in the game's table when a practice game
 started. No page shows them; the export carries them.
@@ -97,7 +97,7 @@ class Finish:
     reason: str
     takebacks: int
     finished: str
-    # H1 to H3 of `docs/plan-human-data.md` (`0032_human_data.sql`), each None on a finish
+    # H1 to H3 of `docs/reference/human-data.md` (`0032_human_data.sql`), each None on a finish
     # that kept none. `thinks`: milliseconds per move, beside `moves`, null on a computer
     # player's move and on a gap over half an hour. `undone`: what each take-back and
     # restart removed, oldest first. `standing`: each seat's rating and deviation in the

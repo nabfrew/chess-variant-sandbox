@@ -31,7 +31,7 @@ forward direction and promotion names a rank. That axis is checked on a syntheti
 with neither -- `_toroidal_probe`, rooks and kings only -- which is what that probe is for.
 
 Ten boards were pinned here until the library audit (Q868, 2026-10-12,
-`docs/plan-library-audit.md`) reduced the wrap series to a canonical set and retired
+`docs/archive/plan-library-audit.md`) reduced the wrap series to a canonical set and retired
 `tunnel-vertical`, `onewaytunnel`, `torus-extended` and `sardines-torus`; their ladders are
 kept in the comment above `WRAPPED`.
 """

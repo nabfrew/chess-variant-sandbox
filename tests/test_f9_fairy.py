@@ -1,4 +1,4 @@
-"""The Fairy-Stockfish reporting paths nothing offline reached (plan-tests F9, Q751b).
+"""The Fairy-Stockfish reporting paths nothing offline reached (archive/plan-tests F9, Q751b).
 
 `fairy/` re-expresses the DSL for an outside engine and reports what it found. Most of
 what was unrun is the *report*: the sentence a divergence is printed as, what a check

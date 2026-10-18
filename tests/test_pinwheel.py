@@ -1,6 +1,6 @@
 """Q870: `pinwheel`, the hexagon set's game designed around what four variants were kept to show.
 
-`docs/plan-library-audit.md` (*`pinwheel`: the hexagon set's new game, and what it predicts*)
+`docs/archive/plan-library-audit.md` (*`pinwheel`: the hexagon set's new game, and what it predicts*)
 pre-registered these clauses before this file was written; the numbering is the document's.
 The game replaces `hex-glinski-turned` and `-turned-mirrored` (`rotate6`, `dihedral12`), which
 played Glinski's game move for move, and the two `hex-glinski-flanks` games (a hexagon's seam).

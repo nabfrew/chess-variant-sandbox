@@ -40,7 +40,7 @@ FORCED_RESULT_PLIES = 6
 # is where anything needing competent play belongs.
 MAX_RANDOM_STALL = 0.98
 
-# The words each refusal is said in, a visitor's (`docs/plan-understanding.md` D42-D44): a
+# The words each refusal is said in, a visitor's (`docs/archive/plan-understanding.md` D42-D44): a
 # *side*, *turns* and *the rules*, never a seat, plies or a compile. The stall sentence is
 # matched by the designer, which appends which counter fired, so its words live here once.
 STALLED = "ended on the turn limit or the no-progress rule"
@@ -111,7 +111,7 @@ def smoke_test(
         # Schema 26 (Q932): a game played in rounds. The core's playouts draw both players'
         # moves at random each round (`play.rs::random_playout`), so the roster is the
         # alternating one, random against random, in the same role and with no budget to
-        # match. A round counts two plies (`plan-simultaneous.md` §2.6), so every threshold
+        # match. A round counts two plies (`docs/reference/rounds.md` §2.6), so every threshold
         # below keeps its meaning: `FORCED_RESULT_PLIES` is three moves a player either way,
         # and `mean_branching` is per player, each player's choices sampled every round.
         # Both players choose on the first board, so both must have a move on it.

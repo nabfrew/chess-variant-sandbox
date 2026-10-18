@@ -1,6 +1,6 @@
 """How far to trust a score: the level, and the evidence behind it (Q646).
 
-`docs/plan-confidence.md` §2.3, **the rule pre-registered 2026-10-02**, and nothing else.
+`docs/archive/plan-confidence.md` §2.3, **the rule pre-registered 2026-10-02**, and nothing else.
 A score is one number its measuring players produced; this module reads, beside it, what
 else has checked those players on the game, and says one of three words:
 
@@ -32,7 +32,7 @@ reads `UNREADABLE` and *silent*, never a guessed reading.
 twenty games by five people with no clear check it. `RULE.people_move_level` is the switch,
 ``True`` since that answer; turning it back is a dated edit of `RULE`, nothing more.
 
-**The words** (Q647, T2; `plan-confidence.md` §2.1 and §2.2) are here too, beside the rule
+**The words** (Q647, T2; `docs/archive/plan-confidence.md` §2.1 and §2.2) are here too, beside the rule
 whose readings they say: `card` is a library card's chip (the level word and its sentence
 for the (i)), `shown` is a game page's line (the level word, one sentence, and the *more*
 list, each piece with at most one plain count and a date), and `with_people` folds the
@@ -163,7 +163,8 @@ class Item:
     reading: str
     count: Count | None = None
     date: str | None = None
-    # What T2 turns into words (`plan-confidence.md` §2.2, `plan-understanding.md` §2.2).
+    # What T2 turns into words (`docs/archive/plan-confidence.md` §2.2,
+    # `archive/plan-understanding.md` §2.2).
     sentence: str = ""
     # Whether this item may move the level (only people's can be held back).
     counted: bool = True
@@ -276,7 +277,7 @@ def _ladder(stored: dict[str, Any] | None, state: str, date: str | None) -> Item
     blind = sum(1 for run in runs if run.get("unreadable"))
     finds = bool(withheld)
     # Some runs blind and some not: the score keeps the ladder (silent, the level unmoved),
-    # but a visitor is told how many runs it rests on (plan-confidence.md §2.3.1).
+    # but a visitor is told how many runs it rests on (docs/archive/plan-confidence.md §2.3.1).
     partly = not finds and 0 < blind < len(runs)
     # A run the roster could not read keeps no total (`seeds.RunReading.from_result`), so the
     # whole score rests on the runs that kept one; a run that lost only components keeps its
@@ -342,7 +343,7 @@ def _net(digest: str, played: str, nets_dir: Path) -> Item:
     **Once the score plays the net its roster seats** (`nets.rated_net`, Q502h), the
     game's other accepted nets find nothing: they are the earlier generations that net
     was chosen over, and the plan's reading is that E-V carries the game from then on
-    (`plan-confidence.md` §2.3, E-N's row). A newer net the roster would seat and the
+    (`docs/archive/plan-confidence.md` §2.3, E-N's row). A newer net the roster would seat and the
     score does not play still finds more, so a kept generation questions the score the
     moment it lands, until the score is measured with it.
     """
@@ -510,7 +511,7 @@ QUESTIONED_TAIL = ("Read the score as a first guess; it will be measured again w
                    "player is ready.")
 
 # What a kind of evidence says, by its sentence key, in a visitor's words
-# (`plan-understanding.md` §2.2, with §2.2 of the plan's two changes). `{n}`, `{of}` are the
+# (`archive/plan-understanding.md` §2.2, with §2.2 of the plan's two changes). `{n}`, `{of}` are the
 # item's one plain count; a sentence whose count is missing uses its `bare` form. A key
 # missing here says nothing: an absent record is not a piece of evidence.
 _SAID: dict[str, str] = {

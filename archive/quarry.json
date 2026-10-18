@@ -1,7 +1,7 @@
 {
   "schema_version": 6,
   "name": "quarry",
-  "description": "Chess on a board with four walls quarried out of the middle: c4, f4 and their mirrors are squares no piece may stand on and no line runs through. Knights cannot vault them either, so the walls are the one obstacle a knight has to go round. The lines change without anything else changing.",
+  "description": "Chess with four squares quarried out of the middle of the board: c4 and f4, and their mirror images c5 and f5, are walls. No piece may stand on a wall or move through one, and a knight cannot jump over one either, so the walls are the one obstacle every piece has to go round. Nothing else changes, which is the point: the game asks what chess becomes when only its lines change. The walls stand on some of chess's most familiar squares, outposts for bishops and knights, so the classical openings lose their landmarks. The long development diagonals through those squares are cut, a rook or queen cannot run the length of the c- or f-file, and the c- and f-pawns stop on their third rank unless they leave the file by capturing. The fight for the centre narrows to the d- and e-files, and a player has to decide early which side of the walls the pieces will work from.",
   "board": {
     "width": 8,
     "height": 8

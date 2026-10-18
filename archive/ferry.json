@@ -1,7 +1,7 @@
 {
   "schema_version": 19,
   "name": "ferry",
-  "description": "Los Alamos chess (six by six, no bishops, no pawn double step, no castling, no en passant) with two numbered pairs of portals on the two middle rows: pair 1 from b3 to e4, pair 2 from e3 to b4, crossing the centre. Any piece of either player may go in at either end of either pair and comes out one step beyond the other end of the same pair, in the direction it was travelling, capturing there as usual. Either player may move any portal instead of a piece: one step in any direction onto an empty square. A portal is never captured. With nothing to stop it, the players often move one portal back and forth until the position repeats and the game is drawn; steady ferry is the same game with that one move forbidden.",
+  "description": "Doors that belong to nobody, which either player may move. Two pairs of portals cross the middle of a six-by-six board, b3 joined to e4 and e3 to b4: a piece that ends its move on one end comes out one step beyond the other end of its pair, in the direction it was travelling, capturing there as usual. Instead of moving a piece, a player may move any portal a step. So every turn asks whether to move the army or the road, and a door set up for your attack can be turned on you, or carried off, on the very next move. The armies are Los Alamos chess's: six-by-six chess without bishops, castling or a pawn's double step. Left free, the players often move one portal back and forth until the position repeats, and about two games in five end drawn that way; a version that forbids the straight-back move is kept beside this one.",
   "board": {
     "width": 6,
     "height": 6
@@ -234,7 +234,7 @@
     "added": "2026-10-10",
     "origin": "human",
     "source": "archive/ferry",
-    "history": "Q772a (2026-10-10): plan-portals.md's Ferry, the game of portals either player may move, with two numbered pairs. rulesets/losalamos.json with two pairs, both ends of both moved by either player, both ways for both. Pre-registered in docs/reference/portal-showcases.md before it was measured.",
+    "history": "Q772a (2026-10-10): docs/archive/plan-portals.md's Ferry, the game of portals either player may move, with two numbered pairs. rulesets/losalamos.json with two pairs, both ends of both moved by either player, both ways for both. Pre-registered in docs/reference/portal-showcases.md before it was measured.",
     "parents": [
       "fcbb53d53ce4"
     ]

@@ -237,7 +237,7 @@ async function showGame(hash) {
 
 // ------------------------------------------------------------- the start position
 //
-// K1 (`docs/plan-understanding.md` §4.2 step 1): the page opens on the game, drawn. The
+// K1 (`docs/archive/plan-understanding.md` §4.2 step 1): the page opens on the game, drawn. The
 // opening position stands at the head of the play column before any game is started,
 // with the marks the rules put on squares and the legend line naming them, so a goal
 // square or a promotion band is seen before it is read about. The drawing is the
@@ -290,7 +290,7 @@ function sectionHtml(key, title, body, openOnPhone) {
 
 // ----------------------------------------------------------- the scores it replaced
 //
-// Q649 (`docs/plan-confidence.md` §3.2 step 5). Each measurement a newer one replaced, as
+// Q649 (`docs/archive/plan-confidence.md` §3.2 step 5). Each measurement a newer one replaced, as
 // the server's `history` sends it: a past value labelled past, with its date, what it was
 // measured with and why it was replaced, folded under the score and never in its place.
 // The local application and an admin are sent every line; a visitor is sent none here and
@@ -369,7 +369,7 @@ function wireCarryOn() {
 
 // --------------------------------------------------- play a person
 //
-// Q571, `docs/plan-return.md` §1.4 (s1 and s2 of the mock). Beside *Play*, never in place
+// Q571, `docs/archive/plan-return.md` §1.4 (s1 and s2 of the mock). Beside *Play*, never in place
 // of it: the members who ticked *open to a game of this*, a box to challenge any member by
 // handle (suggesting members' handles as you type), a one-time challenge link, and your
 // own box, off unless you tick it. All of it is `game.standing.people`, sent to a member
@@ -863,7 +863,7 @@ function wireDeleting(game, hash) {
 
 // ------------------------------------------------------------------ report a game
 //
-// Q503d, `docs/plan-game-pipeline.md` §3.2: a quiet link under the rules. It opens to the
+// Q503d, `docs/archive/plan-game-pipeline.md` §3.2: a quiet link under the rules. It opens to the
 // three reasons the server sends (`standing.reportReasons`) and an optional note, and the
 // press files one row the maintainer reads on `/admin` beside the kill switch. One report
 // a person a game: once filed, the link becomes the line saying so, and the server
@@ -1078,7 +1078,7 @@ function whereHtml(game) {
     </div>`;
 }
 
-// D2 to D4 of `docs/plan-meta-game.md`: what a designed game has reached, as the server
+// D2 to D4 of `docs/archive/plan-meta-game.md`: what a designed game has reached, as the server
 // counted it (`marks_from` in the site's reader). Each mark is drawn only when there is
 // something to say -- a game nobody has tried reads as nothing, never as nought -- and
 // each carries the sentence that says what it reads. The count names nobody (the user's
@@ -1389,13 +1389,13 @@ function ratingWait(why) {
 
 // The scale the local application's table is on, named once: the tournament's, worked out
 // there once. The site draws no such table: a game's page there has its leaderboard, on the
-// one scale people are rated on (`docs/plan-understanding.md` §2.3, G11 and G14).
+// one scale people are rated on (`docs/reference/plain-words.md` §3.3; the audit's G11 and G14).
 const LADDER_SCALE = 'in the tournament';
 
 // How strong each opponent is *in this game*, which is the thing a node budget cannot
 // tell you: 6,400 nodes is +770 Elo on chess and level with random on racing kings. The
 // local application's panel; the site's is `leaderboardHtml` (L2 of
-// `docs/plan-leaderboard.md`), which replaced this one there.
+// `docs/archive/plan-leaderboard.md`), which replaced this one there.
 //
 // Exactly one table is ever shown -- see ratingTable -- and it says which, because the
 // rated ladder's table and the picker's own are two fits over two corpora and reading a
@@ -1524,7 +1524,7 @@ function withCommands(line) {
 
 // ------------------------------------------------------------------- the leaderboard
 //
-// L2 of `docs/plan-leaderboard.md` (§2.1, §2.5, §3): on the site, the game's one rating
+// L2 of `docs/archive/plan-leaderboard.md` (§2.1, §2.5, §3): on the site, the game's one rating
 // table, computer players and people together, where the local application keeps its
 // strength table above. Everything in a row is the server's (`site/leaderboard.py`, sent as
 // `standing.leaderboard`): who is on it, the order, the rounded number, the `?`, the count,
@@ -1735,7 +1735,7 @@ const UNKEPT = `A game played without an account isn't kept: it won't be on the 
   you make later.`;
 
 // The mode's value stays `sandbox`, which is what the server and the record call it; a
-// person reads *practice* (`docs/plan-understanding.md` §3.2, G5).
+// person reads *practice* (`docs/reference/plain-words.md` §2; the audit's G5).
 const MODE_SAYS = {
   sandbox: 'This is a practice game: undo and restart are on, and it counts for nothing.',
   leaderboard:
@@ -1780,7 +1780,7 @@ function modePicker(game) {
       rating or Unbeaten.${visitor}</div>`;
   }
   if (!standing.rated) {
-    // §2.5 of `docs/plan-leaderboard.md`: the leaderboard's own sentence, said here too.
+    // §2.5 of `docs/archive/plan-leaderboard.md`: the leaderboard's own sentence, said here too.
     return `<div class="muted small" style="margin-top:8px">This game's computer players
       have not been rated yet, so every game here is practice${info('practice')} for now
       &mdash; undo and restart are on, and nothing counts towards a rating or
@@ -1807,7 +1807,7 @@ function modePicker(game) {
 
 // ------------------------------------------------------------------ a first game
 //
-// K3 (`docs/plan-understanding.md` §4.2 steps 3-4): the first game a person starts on a
+// K3 (`docs/archive/plan-understanding.md` §4.2 steps 3-4): the first game a person starts on a
 // game seats the gentlest computer player on its ladder above random, which the server
 // read off the game's rating table as the front page's first step does (`firstGame`,
 // `web/launch.py`); it is practice, and the board opens with the *rules* tab beside it.
@@ -1915,8 +1915,8 @@ function standingHtml(game) {
   const top = standing.top || [];
   const target = top.map(agent => esc(shortName(agent))).join(' and ');
   const rating = standing.topRating ? Math.round(standing.topRating) : null;
-  // One scale (`docs/plan-understanding.md` §2.3, G11): the number people are rated on,
-  // the one that moves. The tournament's number for the same player stays on the local
+  // One scale (`docs/reference/plain-words.md` §3.3; the audit's G11): the number people are
+  // rated on, the one that moves. The tournament's number for the same player stays on the local
   // application's strength table, which draws no panel like this one.
   const first = standing.firstClear;
   const head = standing.unbeaten
@@ -1940,12 +1940,12 @@ function standingHtml(game) {
       rungHtml(standing.yourRecord)}${ladderRowHtml(standing.yourLadder)}`);
 }
 
-// Q653 (`docs/plan-launch-set.md` §2.4): whether people's play has beaten this game's
+// Q653 (`docs/reference/opponent-line.md` §1): whether people's play has beaten this game's
 // strongest computer player, in one of three states the server reads live from people's
 // rated games (`site/opponent_line.py`). Under the computer players' table, beside the
 // trust line and never inside it: one is about the challenge, the other about the score.
 // The page draws what it is sent; the local application keeps no people's results and
-// sends no line. H7 (`docs/plan-human-data.md` §3.2): each computer player's place among
+// sends no line. H7 (`docs/reference/human-data.md` §3.2): each computer player's place among
 // the people rated here joins the same *more*, worded by the server and sent only once
 // five people are established on the game's table (`site/people_scale.py`).
 function opponentLineHtml(standing) {
@@ -1961,7 +1961,7 @@ function opponentLineHtml(standing) {
     </details>` : ''}</div>`;
 }
 
-// R7 (`docs/plan-return.md` §3 C3): every computer player on this game, weakest first,
+// R7 (`docs/archive/plan-return.md` §3 C3): every computer player on this game, weakest first,
 // each marked with your best result against it (*won*, *drew*, *not yet*), from your
 // finished rated games. The server folds the marks (`unbeaten.ladder_from`); a row of
 // *won* is the whole ladder. Signed in and on a rated game only, and nothing to draw
@@ -1980,7 +1980,7 @@ function ladderRowHtml(steps) {
 // Box B1 of `docs/archive/plan-meta-game.md`. Each is a record about people rather than
 // about the game, and each is absent when there is nothing to say: nobody has played it,
 // nobody is established on its table, nobody has beaten the top. A blank line would read
-// as a nought, and `docs/plan-meta-game.md` §2.1's third rule is that absent is not zero.
+// as a nought, and `docs/archive/plan-meta-game.md` §2.1's third rule is that absent is not zero.
 //
 // All three come from the server -- `SiteApp._standing` -- and the page sorts nothing.
 // The highest-rated person is whoever the server says, never a sort this page does over
@@ -2032,7 +2032,7 @@ function highestHtml(standing) {
 // Box E4 of `docs/archive/plan-meta-game.md`. A badge here is the game's own -- people
 // chose it and rated it highly, and the index disagreed -- rather than the reader's. A
 // game with none draws nothing: no heading, no empty slot, no greyed list, and nothing
-// anywhere counts them (`docs/plan-meta-game.md` §3, test 5).
+// anywhere counts them (`docs/reference/no-dark-patterns.md`, test 5).
 //
 // Built out of text nodes rather than out of markup, so an award's sentence reaches the
 // page as text whatever a later box puts in one. The rule sentence goes behind the (i),
@@ -2107,7 +2107,7 @@ function voteBody(standing) {
     counts}${voteTagsHtml(standing)}`;
 }
 
-// Q599, `docs/plan-return.md` §5.1: up to three of eight fixed tags, chosen by tapping,
+// Q599, `docs/archive/plan-return.md` §5.1: up to three of eight fixed tags, chosen by tapping,
 // once there are stars to carry them. Fixed so they read the same across games, and no
 // box to write in: a vote holds no text (the user, 2026-10-02). Everybody reads how many
 // votes carry each tag; nobody reads who chose one.
@@ -2326,7 +2326,7 @@ function piecesHtml(piece, options) {
   </div>`;
 }
 
-// K2 (`docs/plan-understanding.md` §4.2 step 2): each piece with a small board of its
+// K2 (`docs/archive/plan-understanding.md` §4.2 step 2): each piece with a small board of its
 // own, the piece alone on an empty board with the engine's dots (`pieceMaps`, the
 // designer's diagram, worked out once on the server). The pieces that move as nothing in
 // chess does come first with their boards open; a piece the server found moving as one
@@ -2457,7 +2457,7 @@ function wireSeatCards() {
 
 // What the opponent list says after a player's name in place of its strength, the
 // server's words both: *busy* while every strong seat is taken (L11), and for a visitor,
-// *sign in to play* on every player stronger than *hard* (L15, `docs/plan-launch.md`
+// *sign in to play* on every player stronger than *hard* (L15, `docs/archive/plan-launch.md`
 // §3.6), which says more to a visitor than *busy* does. Still choosable either way; the
 // start's refusal says the rest.
 function seatNotes(game) {
@@ -2466,7 +2466,7 @@ function seatNotes(game) {
   return Object.assign({}, standing.busy || {}, standing.signInFor || {});
 }
 
-// The opponent a game page offers first. On the site it is *hard* (`docs/plan-launch.md`
+// The opponent a game page offers first. On the site it is *hard* (`docs/archive/plan-launch.md`
 // §5.2, L11): strong enough to be a game, never the strongest, whose places run out. The
 // local application keeps *medium*, the budget it has always opened on.
 //
@@ -2500,8 +2500,8 @@ function armyHtml(army) {
 // under *more*: the plans, the fit and the outside engine are extras, and most of them
 // are not rated on a given game.
 //
-// **An option leads with the opponent's name, then its strength** (F7, \u00a72.3 of
-// `docs/plan-understanding.md`, P2 and P6); what it does in plain words goes under the
+// **An option leads with the opponent's name, then its strength** (F7, \u00a73.3 of
+// `docs/reference/plain-words.md`; the audit's P2 and P6); what it does in plain words goes under the
 // menu (`planFor`), where a phone's narrow menu does not cut it off. The strength on the
 // site is the one scale people are rated on, the server's numbers both: *rated 1743
 // here*, or signed in and rated on this game, how far it sits from the reader, *about 240

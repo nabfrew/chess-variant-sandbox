@@ -1,6 +1,6 @@
 // The browser's measuring worker: one unit of a measurement in, its record text out.
 //
-// `docs/plan-client-compute.md` §8, stage B3. A measurement is cut into units by
+// `docs/archive/plan-client-compute.md` §8, stage B3. A measurement is cut into units by
 // `chess_variant_sandbox/tournament/slices.py` (B0), and a unit is one request text that
 // holds the spec, the unit's games by schedule index, the fit's verdict, the roster and,
 // for a reading phase, the records it reads. This worker loads Pyodide, installs the

@@ -1,7 +1,7 @@
 """The words the running site serves to a visitor, held against `site_words.PHRASES` (W0).
 
-`docs/plan-understanding.md` §7, task W0, Q607. `test_candidacy.py::TestTheSitesWordsAreAVisitors`
-holds the page's own script, run with `ACCOUNTS` true, to the same list. This file reads
+`docs/reference/plain-words.md` §5 (task W0 of `docs/archive/plan-understanding.md` §7, Q607).
+`test_candidacy.py::TestTheSitesWordsAreAVisitors` holds the page's own script, run with `ACCOUNTS` true, to the same list. This file reads
 what a running site *sends*: its pages over HTTP, the scripts of its own pages, and the
 JSON the library and a game's page are drawn from, for three library games and a draft
 somebody saved.
@@ -139,7 +139,7 @@ def _server_sentences() -> list[tuple[str, str]]:
               ("a watched rated game", matches.WATCH_IS_SANDBOX),
               ("a rated game against the learned player", matches.NEVER_RATED),
               ("a nomination", shortlist.Nominated(hash="", already=False).said),
-              # L15 and Q719 (`docs/plan-launch.md` §3.6, §5.3a).
+              # L15 and Q719 (`docs/archive/plan-launch.md` §3.6, §5.3a).
               ("a visitor against hardest", matches.members_only_said("minimax:nodes=200000")),
               ("no invitations left", inviting.NONE_LEFT),
               ("an address with an account", inviting.ALREADY_JOINED),
@@ -183,7 +183,7 @@ def _every_library_spec() -> list[tuple[str, dict[str, Any]]]:
 
 
 class TestTheLibrarysOwnWords:
-    """W7 (Q614, `docs/plan-understanding.md` §3.3 C1-C4, G39): every game the library and
+    """W7 (Q614, `docs/archive/plan-understanding.md` §3.3 C1-C4, G39): every game the library and
     the archive hold, as the site sends its spec and its provenance, in a player's words.
     The wire test above reads three games; this reads all of them without a database."""
 

@@ -1,7 +1,7 @@
 {
   "schema_version": 18,
   "name": "extinction chess",
-  "description": "Extinction chess: a side loses when it has no king, no queen, no rooks, no bishops, no knights or no pawns left. The king is an ordinary piece that may be taken, castles as in chess, and a pawn may promote to a king.",
+  "description": "Extinction chess has no check and no checkmate, and its author, R. Wayne Schmittberger, made every kind of piece matter instead. The king is an ordinary piece that may be taken (it still castles as in chess), and a side loses the moment it has no piece of some kind left: no king, no queen, no rooks, no bishops, no knights or no pawns. So every kind of piece is a little royal, and the scarce ones most of all: the lone queen and the lone king are each the whole army's life, while a pair of rooks can afford one trade but never two. An exchange is weighed by what it leaves of each kind rather than by points, and an attack that thins out one kind on the enemy side can win outright with plenty of material still on the board. Promotion becomes a way to restore a kind that is running out, and a pawn may even become a second king, but pawns are a kind too: promoting your last one loses.",
   "board": {
     "width": 8,
     "height": 8

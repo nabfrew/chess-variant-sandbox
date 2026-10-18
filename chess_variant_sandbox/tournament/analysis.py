@@ -451,7 +451,7 @@ def _takes(board: bytes, move: int) -> bool:
     read as a capture, so a game whose pieces turn offered one in nearly every position).
     A file-based castling can land the king on its own rook, or on its own square, and
     moves the rook rather than removing it. A fold's own move may end on a piece and leave
-    it standing (`docs/plan-portals-2.md` §3R.1 rule 6). These are the three
+    it standing (`docs/archive/plan-portals-2.md` §3R.1 rule 6). These are the three
     `agents.rs::capture_gain` and `agents/minimax.py` leave out.
     """
     return board[move_to(move)] != 0 and move_type(move) not in (
@@ -661,7 +661,7 @@ def _one_blunder(
 
 # ------------------------------------------------------- schema 26: games in rounds
 #
-# `docs/plan-simultaneous.md` §6.3 (Q918d). A round game's record keeps both moves of each
+# `docs/archive/plan-simultaneous.md` §6.3 (Q918d). A round game's record keeps both moves of each
 # round in seat order and every per-ply series twice, so a round is two plies; the pass
 # walks it a round at a time through `apply_round`. Two of its measurements need a reading
 # of their own, because with no mover there is no single list of options to score:

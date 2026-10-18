@@ -1,6 +1,6 @@
 """Schema 26 (Q918a): simultaneous moves, the smallest playable slice.
 
-`docs/plan-simultaneous.md`: the keys and every refusal of §4 and §5.2; the compiler's
+`docs/reference/rounds.md`: the keys and every refusal of §4 and §5.2; the compiler's
 tables; one hand-built round per row of §2.2 and per step of §4; a swap's three outcomes
 (§2.4); the void bar (§2.7); the endings (§2.6); joint perft frozen; determinism of whole
 games. The core's rounds are compared with the declared oracle on every hand-built round

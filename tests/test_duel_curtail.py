@@ -1,4 +1,4 @@
-"""Exact curtailment of a stamped duel (plan-compute §4.2, Q632).
+"""Exact curtailment of a stamped duel (reference/compute-economy.md §4.2, Q632).
 
 ``settled`` must say a verdict exactly when every completion of the played pairs gives it,
 which is checked here against brute force; and a curtailed duel must give the full duel's

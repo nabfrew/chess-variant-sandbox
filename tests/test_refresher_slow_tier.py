@@ -1,4 +1,4 @@
-"""The refresher's weekly slow tier (Q743, `docs/plan-tests.md` §8 F1).
+"""The refresher's weekly slow tier (Q743, `docs/archive/plan-tests.md` §8 F1).
 
 `chess_variant_sandbox/refresher.py`, point 7: a watching refresher with nothing owed and the
 machine free runs `pytest -m slow` once a week under a `heavy` lease and records the result in

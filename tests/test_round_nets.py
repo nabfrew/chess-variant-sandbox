@@ -1,4 +1,4 @@
-"""Q918g: learned nets for round games (`docs/plan-simultaneous.md` §6.4, *Q918g, scoped*).
+"""Q918g: learned nets for round games (`docs/archive/plan-simultaneous.md` §6.4, *Q918g, scoped*).
 
 What is held here, on tiny budgets:
 
@@ -17,7 +17,7 @@ What is held here, on tiny budgets:
   rounds from the seed's streams;
 - the round recipe (`ROUND_DEFAULT`) and its control are pinned, and the combinations that
   cannot work are refused in words; the acceptance duel seats `matrix:` on a round game;
-- Q918i's score payoff (`plan-simultaneous.md` §7, *Q918h, the re-plan*, part 3): the
+- Q918i's score payoff (`docs/archive/plan-simultaneous.md` §7, *Q918h, the re-plan*, part 3): the
   one-round teacher solved on expected score is the oracle's to the bit at any thread count,
   a deeper teacher is refused by name, a round whose matrix holds an ending cell is labelled
   by that cell's weight and no longer as a certainty, the harvest uses the score as it is,
@@ -84,11 +84,12 @@ from chess_variant_sandbox.tournament.play import (  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 PROCEDURE = "0e7000000918"
 
-# The two library round games (the watering hole: `tie: impossible`; the chase: `rest`),
-# and an archived one under the initiative, so every round segment has a game.
+# The two library round games (the watering hole: `tie: impossible`; breather: `rest`),
+# and one under the initiative (a preview retired by Q962b, kept as a test file), so every
+# round segment has a game.
 WATERING = "archive/watering-hole.json"
-CHASE = "archive/gardner-in-rounds-against-the-chase.json"
-INITIATIVE = "archive/gardner-in-rounds-with-the-initiative.json"
+CHASE = "archive/breather.json"
+INITIATIVE = "tests/_retired_gardner_in_rounds_with_the_initiative.json"
 ROUND_GAMES = (WATERING, CHASE, INITIATIVE)
 
 # The round recipe and its control, by name (`ROUND_DEFAULT`, `ROUND_CONTROL`): a change to
@@ -254,7 +255,7 @@ def test_a_round_line_is_whole_rounds_and_a_spy_game_has_none() -> None:
     moves, _ = _round_line(engine, seed=7)
     with pytest.raises(ValueError, match="odd count"):
         engine.core.net_line(_pack(engine.initial_state()), blob, moves[:3])
-    spy = _engine("archive/gardner-with-spies.json")
+    spy = _engine("archive/gardner-with-spies-resting.json")
     with pytest.raises(ValueError, match="spy game"):
         spy.core.net_line(
             _pack(spy.initial_state()), random_net(spy.core.net_inputs(), seed=1), []
@@ -326,7 +327,7 @@ def test_a_round_game_with_a_net_is_the_python_loops(registered: None) -> None:
 
 
 def test_a_spy_game_and_a_heuristic_still_refuse_a_round_net(registered: None) -> None:
-    spy = _engine("archive/gardner-with-spies.json")
+    spy = _engine("archive/gardner-with-spies-resting.json")
     _register(spy, seed=1)
     with pytest.raises(ValueError, match="no net plays a spy game"):
         build_agent(f"greedy:net={PROCEDURE}", spy)

@@ -5,7 +5,7 @@ is `Runs.start` and `Runs.get`. The loop itself is not under test here (it spend
 `evolve` is replaced by a stand-in that records what it was handed and reports through the
 callback it was given, so what is held is the wrapper's own promise: the run is configured
 from the chosen game and nothing else, its report reaches the page, and a run that dies says
-why in words the page can show (Q751, plan-tests F9: none of this had run).
+why in words the page can show (Q751, archive/plan-tests F9: none of this had run).
 """
 
 from __future__ import annotations

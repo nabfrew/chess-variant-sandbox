@@ -1,4 +1,4 @@
-// Q571, `docs/plan-return.md` §1.4 and s8 of the mock: a challenge link, opened.
+// Q571, `docs/archive/plan-return.md` §1.4 and s8 of the mock: a challenge link, opened.
 //
 // The page is a constant; whose challenge it is comes from `/api/challenge/link/<token>`.
 // A member is offered *Accept and play*, which starts the game and opens it. Somebody

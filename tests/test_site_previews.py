@@ -1,9 +1,9 @@
 """Previews: new kinds of game on the site, playable and outside every scored surface (Q931).
 
 The user, 2026-10-15: *"get the showcase games against computer up for testing on the site
-as soon as possible. label them testing/previews if necessary"*. The four games played in
-rounds that Q918e archived say so in their own files (`provenance.preview`, outside the
-mechanics hash), and from that one sentence:
+as soon as possible. label them testing/previews if necessary"*. The games played in
+rounds that Q918e archived said so in their own files, and Q942c's and Q935f's after them
+(`provenance.preview`, outside the mechanics hash), and from that one sentence:
 
 - **the listing sends them apart**: `/api/library`'s `games` is the library and nothing
   else, and the previews come in `previews`, at the level *Preview*, under their own tab;
@@ -14,7 +14,7 @@ mechanics hash), and from that one sentence:
   API and plays a round, and *watch it play itself* seats the round ladder's player.
 
 Taking the sentence off is how a preview joins the library (Q934: the watering hole and
-Gardner in rounds against the chase; Q936t: riders and leapers), and such a game is then on
+breather, then named Gardner in rounds against the chase; Q936t: riders and leapers), and such a game is then on
 every scored surface.
 
 The store tests need a real Postgres and skip with a reason without one.
@@ -41,27 +41,22 @@ ARCHIVE = Path(__file__).resolve().parent.parent / "archive"
 RULESETS = Path(__file__).resolve().parent.parent / "rulesets"
 
 PREVIEWS = {
-    "gardner-in-rounds.json": "e043fce6968e",
-    "gardner-in-rounds-with-meek-pawns.json": "ff1ccdaaf3cf",
-    "gardner-in-rounds-with-the-initiative.json": "6278607c721b",
-    # Q942c's four chase-remedy showcases (`plan-round-chase.md` §5), previews like their parent.
+    # Q942c's S1 (`docs/archive/plan-round-chase.md` §5): Gardner in rounds with the rest.
     "gardner-in-rounds-resting.json": "4da669bb3d50",
-    "gardner-in-rounds-where-swaps-collide.json": "7985900696d7",
-    "gardner-in-rounds-scored.json": "a90a8db7e2dd",
-    # Q935f's two spy showcases (`plan-spy.md` §5): a spy game starts by turns and ends in
-    # rounds once a spy falls.
-    "gardner-with-spies.json": "f4c62a33798d",
+    # Q935f's SP2 (`plan-spy.md` §5): a spy game starts by turns and ends in rounds once a
+    # spy falls.
     "gardner-with-spies-resting.json": "1d798bedbf66",
 }
-"""The round and spy games, by file and by the mechanics hash each was measured under (Q918e,
-Q942c, Q935f), less the three that joined the library (`JOINED`)."""
+"""The previews, by file and by the mechanics hash each was measured under (Q942c, Q935f):
+the round and spy games less the three that joined the library (`JOINED`) and the six that
+Q962b retired (`docs/reference/previews-2026-10-18.md`; their files are `tests/_retired_*.json`)."""
 
 JOINED_ROUNDS = {
     "watering-hole.json": "5c0b017473f5",
-    "gardner-in-rounds-against-the-chase.json": "632c199e4589",
+    "breather.json": "632c199e4589",  # named gardner in rounds against the chase until Q962
 }
 """Two round games that were previews and joined the library by taking the mark off (Q934,
-`plan-library-audit.md`): Library games played in rounds, on every scored surface."""
+`docs/archive/plan-library-audit.md`): Library games played in rounds, on every scored surface."""
 
 JOINED_TURNS = {"riders-and-leapers.json": "26636602fae0"}
 """A game played by turns that was a preview (Q936s: `"per_type": "own"`) and joined the same
@@ -71,10 +66,10 @@ JOINED = {**JOINED_ROUNDS, **JOINED_TURNS}
 
 ROUND_PREVIEW = "4da669bb3d50"
 ROUND_PREVIEW_FILE = "gardner-in-rounds-resting.json"
-"""A preview played in rounds, for the tests that need one (S1, `plan-round-chase.md` §5)."""
+"""A preview played in rounds, for the tests that need one (S1, `docs/archive/plan-round-chase.md` §5)."""
 
-SPY_PREVIEWS = frozenset({"gardner-with-spies.json", "gardner-with-spies-resting.json"})
-"""The previews that start by turns (`library` `rounds` is false for a spy game, Q935c) and
+SPY_PREVIEWS = frozenset({"gardner-with-spies-resting.json"})
+"""The preview that starts by turns (`library` `rounds` is false for a spy game, Q935c) and
 offer the spy ladder, which has no round player (`opponents.SPY_RUNGS`)."""
 
 PLAIN = "kyoto.json"
@@ -85,7 +80,7 @@ ROUND_AGENT = "matrix:nodes=6400"
 
 def _root(tmp_path: Path) -> Path:
     """A checkout of the dull Baseline game, four Library games (two of them played in
-    rounds) and the eight previews."""
+    rounds) and the two previews."""
     (tmp_path / "rulesets").mkdir()
     (tmp_path / "archive").mkdir()
     (tmp_path / "runs").mkdir()
@@ -209,7 +204,7 @@ class TestNoBand:
         self, app: App, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Every game given the same current score: the library's five are banded against
-        each other, and the eight previews neither have a band nor move the others'."""
+        each other, and the two previews neither have a band nor move the others'."""
         score = {"weights_version": library.DEFAULT_WEIGHTS, "combined": 0.5,
                  "interval": {"ci_low": 0.4, "ci_high": 0.6, "deterministic_pairings": 1}}
         monkeypatch.setattr(library, "current_only", lambda _score: score)

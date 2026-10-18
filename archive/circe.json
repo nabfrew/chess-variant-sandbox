@@ -1,7 +1,7 @@
 {
   "schema_version": 17,
   "name": "circe",
-  "description": "A taken piece is reborn on its home square: a pawn on its file's second rank, a rook, knight or bishop on the home square of the capture square's colour, a queen on its own square. If that square is occupied, the piece is gone. A reborn piece stands as if it had never moved.",
+  "description": "Circe chess, invented by Pierre Monreal in 1967, sends a captured piece home instead of off the board. It reappears at once on a starting square: a pawn on its own second rank on the file where it fell, a queen on her own square, a rook, knight or bishop on one of its pair's two starting squares. Only if that square is occupied is the piece gone for good. So a capture no longer simply wins material; it drives a piece back to the start and costs its owner the time to bring it out again, and winning material for keeps means taking a piece whose home is already filled, by its own army or by yours. The reborn piece stands as if it had never moved, so a rook that comes home may castle again and a pawn may step two, and a capture can sometimes hand the loser a defender exactly where it wants one.",
   "board": {
     "width": 8,
     "height": 8

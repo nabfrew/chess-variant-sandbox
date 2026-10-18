@@ -1,6 +1,6 @@
 """The round: the members' vote, then the maintainer's confirm or veto (Q503h).
 
-`docs/plan-game-pipeline.md` §2.2 *The round, in order*, §3.2's *Where it stands* lines,
+`docs/plan-game-pipeline.md` §2.2 *The round, in order*; `docs/archive/plan-game-pipeline.md` §3.2's *Where it stands* lines,
 §3.3's round page and §3.4's `/admin`, at the user's answers Q1 B and Q4 A and §6's
 first *needs decision* on its default. `site/rounds.py` holds it; the claims here are:
 
@@ -624,7 +624,7 @@ def _round_now(world: World) -> date:
 
 
 class TestTheRoundIsShownOnlyWithAnEntrant:
-    """L4 of `docs/plan-launch.md` §3.4. The footer links the round only while the latest
+    """L4 of `docs/archive/plan-launch.md` §3.4. The footer links the round only while the latest
     round has an entrant; a round nobody entered is not announced, and its address still
     says when the next opens and what puts a game into it."""
 

@@ -269,7 +269,7 @@ V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
 # ``immune`` is schema 10 (Q78) and is documented at ``REPETITION_NEVER`` below.
 _NPC_KEYS = {"piece", "route", "bounty", "mirror", "immune", "also_at"}
 
-# Schema 19 (Q771, `docs/plan-portals.md` §1): pairs of portals. A piece whose move ends on
+# Schema 19 (Q771, `docs/archive/plan-portals.md` §1): pairs of portals. A piece whose move ends on
 # an end open to its player comes out one king's step beyond the other end, in the
 # direction it was travelling (the sign of its vector). A pair's number is its place in the
 # list, so numbers cannot clash or skip. Each end is moved by the players its ``moved_by``
@@ -277,11 +277,11 @@ _NPC_KEYS = {"piece", "route", "bounty", "mirror", "immune", "also_at"}
 # player, which end that player's pieces may go in by. An end closed to a player is an
 # uncapturable obstacle to that player's pieces.
 #
-# Schema 20 (Q807, `docs/plan-portals.md` *Ferry's shuffle*): ``no_straight_back``, per pair.
+# Schema 20 (Q807, `docs/archive/plan-portals.md` *Ferry's shuffle*): ``no_straight_back``, per pair.
 # An end of a pair that sets it, once moved, may not be moved straight back onto the square
 # it left on the very next move (a portal's ko). Absent is ``false``.
 #
-# Schema 21 (Q843a, `docs/plan-portals-2.md` §2): ``rules.portals`` holds **groups**. A group
+# Schema 21 (Q843a, `docs/archive/plan-portals-2.md` §2): ``rules.portals`` holds **groups**. A group
 # is a pair, written as before (plus ``carries``, per end), or any other map of two to eight
 # ends, written with ``ends``: each end has its square (``at``), the index of the end it
 # leads to (``to``; absent, a way out only), whose pieces may go in by it (``enter``), who
@@ -289,7 +289,7 @@ _NPC_KEYS = {"piece", "route", "bounty", "mirror", "immune", "also_at"}
 # `portal_groups`, reads both spellings into one list of ends with a destination each, and
 # nothing past it knows a pair from any other group.
 #
-# Schema 22 (Q843c), revised at schema 24 (Q867b, `docs/plan-portals-2.md` §3R): per group,
+# Schema 22 (Q843c), revised at schema 24 (Q867b, `docs/archive/plan-portals-2.md` §3R): per group,
 # ``kind``. Absent is today's **momentum** portal; ``"fold"`` is the second rule set: a fold
 # is not a piece (a piece of either side may stand in it, and is taken there as anywhere),
 # and a move that ends on an empty fold may stay there or go through, ending on the square
@@ -361,7 +361,7 @@ def portal_groups(rules: Any) -> list[dict[str, Any]]:
     """``rules.portals`` read permissively: the well-formed groups, in order (schema 21).
 
     The one reader of the spelling, shared by the validator, the compiler and every reader
-    after them, so a group means one thing to all of them (`docs/plan-portals-2.md` §2.2).
+    after them, so a group means one thing to all of them (`docs/archive/plan-portals-2.md` §2.2).
     Each group is ``{"number", "index", "piece", "no_straight_back", "kind", "spelling",
     "passage", "ends"}``; each end ``{"at", "to", "enter", "moved_by", "carries", "letter",
     "key"}``:
@@ -487,7 +487,7 @@ def portal_map_shape(group: dict[str, Any]) -> str:
     """The shape of one group's map (`portal_groups`' group): ``pair`` (written as one),
     ``ring`` (every end leads to the next round one cycle), ``funnel`` (one end is a way out
     only and every other leads to it), or ``other``. The designer's three named shapes and
-    the rest (`docs/plan-portals-2.md` §5.4), for the readers that tell maps apart."""
+    the rest (`docs/archive/plan-portals-2.md` §5.4), for the readers that tell maps apart."""
     if group["spelling"] == "pair":
         return "pair"
     ends = group["ends"]
@@ -1509,7 +1509,7 @@ def _schema_nineteen_uses(spec: dict[str, Any]) -> set[str]:
 
     * ``rules.portals`` -- pairs of portals: a piece whose move ends on an open end comes
       out one king's step beyond the other end, in the direction it travelled
-      (`docs/plan-portals.md` §§1-2).
+      (`docs/archive/plan-portals.md` §§1-2).
     * ``rules.portals.moved_by`` -- which players may move each end (the free agent, §3).
     * ``rules.portals.passage`` -- per player, which end that player's pieces may go in
       by: both, one way, or neither, when the pair is an obstacle to them.
@@ -1534,7 +1534,7 @@ def _schema_twenty_uses(spec: dict[str, Any]) -> set[str]:
 
     * ``rules.portals.no_straight_back`` -- an end of the pair, once moved, may not be moved
       straight back onto the square it left on the very next move: a portal's ko, the answer
-      to Ferry's repetition by shuffling (`docs/plan-portals.md` *Ferry's shuffle*). Named
+      to Ferry's repetition by shuffling (`docs/archive/plan-portals.md` *Ferry's shuffle*). Named
       whatever its value, as schema 19's names are, because an older spec may not write even
       the inert ``false``.
     """
@@ -1549,7 +1549,7 @@ def _schema_twenty_uses(spec: dict[str, Any]) -> set[str]:
 def _schema_twenty_one_uses(spec: dict[str, Any]) -> set[str]:
     """Everything in this spec that schema 21 added, by name (Q843a, portal maps and filters).
 
-    `docs/plan-portals-2.md` §2. Each named whatever its value, as schema 19's names are,
+    `docs/archive/plan-portals-2.md` §2. Each named whatever its value, as schema 19's names are,
     because an older spec may not write even an inert one:
 
     * ``rules.portals.ends`` -- a group written as a list of ends rather than a pair: a
@@ -1585,7 +1585,7 @@ def _schema_twenty_two_uses(spec: dict[str, Any]) -> set[str]:
     """Everything in this spec that schema 22 added, by name: nothing any more.
 
     Schema 22 (Q843c) added fold portals, ``rules.portals.kind``. Their rules changed at
-    schema 24 (Q867b, `docs/plan-portals-2.md` §3R.6), and the first rules were deleted, not
+    schema 24 (Q867b, `docs/archive/plan-portals-2.md` §3R.6), and the first rules were deleted, not
     kept behind the old number (one implementation), so ``kind`` is
     `_schema_twenty_four_uses`' and schema 22 keeps no rule of its own. A version with
     nothing behind it is harmless: `settle_schema_version` stamps the lowest version a spec
@@ -1617,7 +1617,7 @@ def _schema_twenty_three_uses(spec: dict[str, Any]) -> set[str]:
 def _schema_twenty_four_uses(spec: dict[str, Any]) -> set[str]:
     """Everything in this spec that schema 24 added, by name (Q867b, folds revised).
 
-    `docs/plan-portals-2.md` §3R. Named whatever its value, as schema 19's names are,
+    `docs/archive/plan-portals-2.md` §3R. Named whatever its value, as schema 19's names are,
     because an older spec may not write even the default:
 
     * ``rules.portals.kind`` -- a group's rule set: ``"fold"``, a portal a piece of either
@@ -1636,7 +1636,7 @@ def _schema_twenty_four_uses(spec: dict[str, Any]) -> set[str]:
 def _schema_twenty_five_uses(spec: dict[str, Any]) -> set[str]:
     """Everything in this spec that schema 25 added, by name (Q869, a fixed facing).
 
-    `docs/plan-library-audit.md` *The rear pawn: a fixed facing*. Named whatever its value,
+    `docs/archive/plan-library-audit.md` *The rear pawn: a fixed facing*. Named whatever its value,
     because an older spec may not write even the default:
 
     * ``pieces[].facing.turns`` -- whether a move may turn the piece (absent: it may, as
@@ -1654,7 +1654,7 @@ def _schema_twenty_five_uses(spec: dict[str, Any]) -> set[str]:
 def _schema_twenty_six_uses(spec: dict[str, Any]) -> set[str]:
     """Everything in this spec that schema 26 added, by name (Q918a, simultaneous moves).
 
-    `docs/plan-simultaneous.md` §5. Named whatever its value, because an older spec may not
+    `docs/reference/rounds.md` §5. Named whatever its value, because an older spec may not
     write even the default:
 
     * ``rules.simultaneous`` -- the game is played in rounds: both players choose a move on
@@ -1689,7 +1689,7 @@ def _schema_twenty_seven_uses(spec: dict[str, Any]) -> set[str]:
       at least one, so two armies of different kinds can each lose by running out of any
       one of their own.
 
-    * ``rules.simultaneous.rest`` -- Q942a, `docs/plan-round-chase.md` §3 R1: the piece that
+    * ``rules.simultaneous.rest`` -- Q942a, `docs/archive/plan-round-chase.md` §3 R1: the piece that
       made a player's move in a round may not make that player's move in the next, unless
       it is the only piece that can move;
     * ``rules.simultaneous.swap`` -- Q942a, R2: two moves that each end on the other's
@@ -1730,9 +1730,9 @@ EXTINCTION_PER_TYPE_OWN = "own"
 
 # Schema 26 (Q918a): the values ``rules.simultaneous.tie`` may take. Absent is the user's
 # table, both pieces eliminated, and writing it out as ``"both"`` is refused so that one game
-# has one spelling (`docs/plan-simultaneous.md` §5.1).
+# has one spelling (`docs/reference/rounds.md` §5.1).
 SIMULTANEOUS_TIES = ("initiative", "impossible")
-# Schema 27 (Q942a, `docs/plan-round-chase.md` §3, §4): the three switches against the royal
+# Schema 27 (Q942a, `docs/archive/plan-round-chase.md` §3, §4): the three switches against the royal
 # chase, each off when absent and each with exactly one value that turns it on. Writing the
 # off value out (``false``, or ``"chase"``/``"draw"``) is refused, one game one spelling.
 SIMULTANEOUS_CHASE_KEYS = ("rest", "swap", "both")
@@ -1762,7 +1762,7 @@ def simultaneous_swap_pair(spec: dict[str, Any]) -> tuple[str, str] | None:
 
     A swap is two moves each ending on the other's origin while the other stands there, so
     each is a capture of the other: without such a pair no swap can happen and
-    ``swap: "collision"`` can never fire (`docs/plan-round-chase.md` §3 R2). Over
+    ``swap: "collision"`` can never fire (`docs/archive/plan-round-chase.md` §3 R2). Over
     `simultaneous_holdings`, so a type a player can come to hold counts; a piece takes a
     type when its ``captures`` allows it and it has a move that may capture."""
     pieces = [piece for piece in spec.get("pieces") or [] if isinstance(piece, dict)]
@@ -1798,7 +1798,7 @@ def is_simultaneous(spec_or_rules: Any) -> bool:
 
 def beats_of(piece: dict[str, Any], declared: Iterable[str]) -> frozenset[str]:
     """The ids ``piece`` eliminates in a collision: its ``beats``, else its ``captures``,
-    else every declared piece (`docs/plan-simultaneous.md` §2.3)."""
+    else every declared piece (`docs/reference/rounds.md` §2.3)."""
     for key in ("beats", "captures"):
         named = piece.get(key)
         if isinstance(named, list):
@@ -2071,7 +2071,7 @@ def _check_chase_switches(
     spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
 ) -> None:
     """Schema 27 (Q942a): the three chase switches' spellings and refusals
-    (`docs/plan-round-chase.md` §3 R1, R2, X1)."""
+    (`docs/archive/plan-round-chase.md` §3 R1, R2, X1)."""
     rule = rules["simultaneous"]
     if "rest" in rule:
         rest = rule["rest"]
@@ -2121,7 +2121,7 @@ def _check_simultaneous_coherence(
     spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
 ) -> None:
     """Schema 26 (Q918a): the rule's own shape, ``beats``, and every combination §4 of
-    `docs/plan-simultaneous.md` refuses, each in words naming both rules."""
+    `docs/reference/rounds.md` refuses, each in words naming both rules."""
     declared = [p["id"] for p in pieces if isinstance(p, dict) and isinstance(p.get("id"), str)]
     if not is_simultaneous(rules):
         if "simultaneous" in rules:
@@ -6406,7 +6406,7 @@ def _validate_portal_pair(
 def _validate_portal_ends(
     group: dict[str, Any], loc: str, width: int, height: int, errors: list[str],
 ) -> None:
-    """A group written with ``ends`` (schema 21, `docs/plan-portals-2.md` §2.1).
+    """A group written with ``ends`` (schema 21, `docs/archive/plan-portals-2.md` §2.1).
 
     Refused: a destination outside the group or itself; an end nobody can use (no ``to``,
     and no end leads to it); ``enter`` on an end that leads nowhere, or naming nobody (the
@@ -6491,7 +6491,7 @@ def _check_portal_coherence(
 ) -> None:
     """What may stand beside ``rules.portals``, and where the portals may stand (schema 19).
 
-    `docs/plan-portals.md` §1. A portal type is placed by the rule and by nothing else,
+    `docs/archive/plan-portals.md` §1. A portal type is placed by the rule and by nothing else,
     is nobody's material, never captures and never turns: so it may not be placed by the
     setup, promote or be promoted into, be held, be a goal's piece or a counted one, be
     named by a capture list, be royal, or be worth anything. Its moves are a player's
@@ -6753,7 +6753,7 @@ def _check_portal_bar_can_bind(
 def _check_fold_pieces(
     groups: list[dict[str, Any]], declared: dict[str, Any], errors: list[str],
 ) -> None:
-    """Schema 22: what a fold's own piece may not say (`docs/plan-portals-2.md` §3.2).
+    """Schema 22: what a fold's own piece may not say (`docs/archive/plan-portals-2.md` §3.2).
 
     A fold stands on no square of the board byte, so it has no unmoved state of its own:
     the square's ``unmoved`` bit belongs to whatever piece stands in it. A ``first_move``
@@ -6776,7 +6776,7 @@ def _check_fold_pieces(
 def _check_portal_carries(
     groups: list[dict[str, Any]], declared: dict[str, Any], errors: list[str],
 ) -> None:
-    """Schema 21: what an end's ``carries`` may name (`docs/plan-portals-2.md` §2.3).
+    """Schema 21: what an end's ``carries`` may name (`docs/archive/plan-portals-2.md` §2.3).
 
     Declared pieces that are not portals, royals included. Refused: a filter on an end
     nobody may go in by (it states nothing), and one naming every piece that can move (it

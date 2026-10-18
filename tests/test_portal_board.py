@@ -1,4 +1,4 @@
-"""Portals on the board, as P2 of `docs/plan-portals.md` draws them (Q772b).
+"""Portals on the board, as P2 of `docs/archive/plan-portals.md` draws them (Q772b).
 
 What can be held without a browser: the glyph's markup for each end (§4, D3, D9), its words
 (the label, the tooltip and the line under the board), the size classes it keeps, the
@@ -145,7 +145,7 @@ def _arms(drawn: str) -> list[str]:
 
 
 class TestTheGlyph:
-    """The vortex (Q838b, `docs/plan-portal-look.md` §2.3, as Q838f corrected it after the cold
+    """The vortex (Q838b, `docs/archive/plan-portal-look.md` §2.3, as Q838f corrected it after the cold
     read): the well is the pair's colour, the arms are whose pieces may go in, and what it
     stands on is who may move it."""
 
@@ -335,7 +335,7 @@ class TestWhereItTurns:
 
 
 class TestTheWords:
-    """Q838c (`docs/plan-portal-look.md` §5): an end is named by its pair's number and its
+    """Q838c (`docs/archive/plan-portal-look.md` §5): an end is named by its pair's number and its
     square, its partner by its square, and the pair's colour once, as a friendly name."""
 
     def _words(self, end: str, partner: str, square: str = "e3", pairs: int = 1,

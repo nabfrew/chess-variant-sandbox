@@ -1,4 +1,4 @@
-"""Portal games on the game page and the site (P5 of `docs/plan-portals.md`, Q772d).
+"""Portal games on the game page and the site (P5 of `docs/archive/plan-portals.md`, Q772d).
 
 What publishing and playing a portal game on a local site found (`docs/reference/
 site-portals-look.md`): the game page's *watch two computer players first* called a portal

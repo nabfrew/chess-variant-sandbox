@@ -20,7 +20,7 @@ what they find. The rule this module exists to enforce:
 > **A measurement whose basis does not match the current one is not a current number. It
 > is a stale artefact with a reason attached, and it is displayed as one:** its last
 > number marked *provisional*, with the revision and date it came from, never adopted,
-> re-stamped or compared as current (`docs/plan-evolving-score.md` §3, which replaced *not
+> re-stamped or compared as current (`docs/archive/plan-evolving-score.md` §3, which replaced *not
 > a number* on 2026-10-03; `web/library.Game.status`).
 
 Four fingerprints rather than one, because the kinds of change need different repairs.
@@ -102,7 +102,7 @@ def _fnv1a(chunks: list[bytes]) -> str:
     buys nothing; blocks past six bytes lose the gain again to bigger integers. A
     256-entry table of the per-byte step does not exist: xor and multiplication do not
     commute, so the step is a function of all 64 bits of the state and not of the byte.
-    Item 16 of `docs/performance-opportunities.md` has the numbers, and
+    Item 16 of `docs/archive/performance-opportunities.md` has the numbers, and
     `tests/test_measurement.py` holds `absorb`'s own loop as the reference and pins this
     against it at every block phase.
     """
@@ -166,7 +166,7 @@ def _hash_files(paths: list[Path], reading: Callable[[bytes], bytes] = _fold_crl
     return _fnv1a(chunks)
 
 
-# The Rust token reading (Q630, `docs/plan-compute.md` §2.1). `rust/build.rs` computes the
+# The Rust token reading (Q630, `docs/reference/compute-economy.md` §2.1). `rust/build.rs` computes the
 # same bytes from the same files, and `rust/reading-corpus/` pins both against one list
 # of expected readings, so the two sides cannot drift apart without a test failing.
 _RUST_SPACE = frozenset(b" \t\n\r\x0b\x0c")
@@ -520,7 +520,7 @@ def _sources(*patterns: str) -> list[Path]:
 # its piece values and writes each record. Either one changed means different games.
 #
 # **`agents/*.py` is deliberately in no set, and used to be in this one** (Q631,
-# `docs/plan-compute.md` §2.3). The agents' Python decides a core-played game only through
+# `docs/reference/compute-economy.md` §2.3). The agents' Python decides a core-played game only through
 # what `runner._run_native` hands `core.run_tournament`: one native spec per seat and the
 # piece values. `Basis.players` hashes exactly that, per ruleset, the move `Basis.tables`
 # made for the compiler. So an edit to `agents/nets.py`, `heuristics.py` or the fit-making
@@ -1276,7 +1276,7 @@ def players_fingerprint(spec: dict[str, Any], agents: tuple[str, ...]) -> str:
     and the build that is everything an all-native game is a function of. So this hashes
     them, as `tables_fingerprint` hashes what the compiler produced: an edit under
     `agents/` that changes no seat's spec and no value moves nothing, and one that does
-    moves every ruleset it reaches (Q631, `docs/plan-compute.md` §2.3).
+    moves every ruleset it reaches (Q631, `docs/reference/compute-economy.md` §2.3).
 
     The fit vector and the net bytes are inside the specs, so this overlaps `Basis.fit`
     and `Basis.net` on purpose: those say which repair, this says whether the games stand.
@@ -1329,7 +1329,7 @@ def stale_build() -> str | None:
 
 
 # Who played a measurement's games, and how far the server checked them
-# (`docs/plan-client-compute.md` §5). A browser-made result is provisional: it is judged
+# (`docs/archive/plan-client-compute.md` §5). A browser-made result is provisional: it is judged
 # against the server's basis with `played` set, and it never becomes an official score.
 BROWSER = "browser"
 """`Basis.played` for games a visitor's browser played. `""` is the server."""
@@ -1550,7 +1550,7 @@ class Basis:
     # one and no stored file changes shape. A visitor's browser stamps `played` as
     # `BROWSER` and leaves `checked` empty, because a browser cannot vouch for itself;
     # the server writes `LEGAL` once every game has walked legal, and `sample_check(n)`
-    # once n of them have replayed byte for byte (`docs/plan-client-compute.md` §5).
+    # once n of them have replayed byte for byte (`docs/archive/plan-client-compute.md` §5).
     #
     # `played` is compared like any other field, so a browser's games are never current
     # against the server's own basis: an official reader shows no number for them, which

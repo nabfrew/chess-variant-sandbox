@@ -757,7 +757,7 @@ class TestTheSeatGateOnTheStoredCorpus:
         if not games.exists():
             pytest.skip(f"needs {games}")
         records = list(read_records(games))
-        # `tunnel-vertical` left the library on 2026-10-12 (Q868, `docs/plan-library-audit.md`);
+        # `tunnel-vertical` left the library on 2026-10-12 (Q868, `docs/archive/plan-library-audit.md`);
         # its spec stays beside this file, byte for byte, for the stored games it played.
         here = Path(__file__).resolve().parent
         retired = here / f"_retired_{name.replace('-', '_')}.json"

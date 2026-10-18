@@ -2249,7 +2249,7 @@ def _parent_turned(symmetry: str) -> dict:
 
 
 def _portal_parent(version: int = 19, **pair: object) -> dict:
-    """Gardner with one fixed two-way pair on b3 and d3 (`plan-portals.md` §6's Wormhole),
+    """Gardner with one fixed two-way pair on b3 and d3 (`docs/archive/plan-portals.md` §6's Wormhole),
     plus whatever ``pair`` sets: schema 19's smallest edit (20's with ``version``)."""
     gardner = load_spec(RULESETS / "gardner.json")
     gardner["schema_version"] = version
@@ -2264,7 +2264,7 @@ def _portal_parent(version: int = 19, **pair: object) -> dict:
 
 def _ring_parent(**first: object) -> dict:
     """Gardner with a ring of three on the empty third rank, a3 to c3 to e3 and round
-    (`plan-portals-2.md` §2.1), plus whatever ``first`` sets on the first end: schema 21's
+    (`docs/archive/plan-portals-2.md` §2.1), plus whatever ``first`` sets on the first end: schema 21's
     smallest edit."""
     gardner = _portal_parent(21)
     gardner["rules"]["portals"] = [{"piece": "O", "ends": [
@@ -2429,7 +2429,8 @@ _SHOWCASE_OWED: dict[str, str] = {
     # row 72). Empty again at schema 27.
     # Q942a's three chase switches went on 2026-10-17, when Q942c archived S1 to S4
     # (`archive/gardner-in-rounds-resting`, `-where-swaps-collide`, `-scored`,
-    # `-against-the-chase`; `plan-round-chase.md` §5, coverage rows 68 to 70).
+    # `archive/breather`, named `-against-the-chase` until Q962; `docs/archive/plan-round-chase.md` §5,
+    # coverage rows 68 to 70).
     # Q935a's spy went on 2026-10-17, when Q935f archived SP1 and SP2
     # (`archive/gardner-with-spies`, `-resting`; `plan-spy.md` §5, coverage row 71).
     # Empty again at schema 26: Q918e archived its four showcases (`archive/gardner-in-rounds`,
@@ -2507,18 +2508,34 @@ _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
     # Schema 27's `pieces.spy` went on 2026-10-17, when Q935f archived its showcases
     # (`plan-spy.md` §5; coverage row 71).
     # Schema 27's three `rules.simultaneous` switches went on 2026-10-17, when Q942c
-    # archived their showcases (`plan-round-chase.md` §5; coverage rows 68 to 70).
+    # archived their showcases (`docs/archive/plan-round-chase.md` §5; coverage rows 68 to 70).
     # Schema 26's four names went on 2026-10-15, when Q918e archived their showcases
-    # (`plan-simultaneous.md`, *Q918e*; coverage rows 64 to 67).
+    # (`docs/archive/plan-simultaneous.md`, *Q918e*; coverage rows 64 to 67).
     # Schema 21's four names and schema 24's one went on 2026-10-13, when Q844b archived
     # their showcases (`archive/sluice.json`, `pawnproof-wormhole`, `crease`; coverage rows
     # 57 to 61, `reference/portal-showcase-ideas.md`).
     # Schema 19's three rows went on 2026-10-10, when Q772a archived its showcases
-    # (`plan-portals.md` §7 P4, coverage rows 53 to 55).
+    # (`docs/archive/plan-portals.md` §7 P4, coverage rows 53 to 55).
     "schema 6: rules.strike.immune naming a non-royal piece": (
         "audit row 11: all nine strike games list only `K`, which is royal and already "
         "untakeable, so the key is inert in every one; a game that names a non-royal "
         "piece is owed, and this entry goes the day it lands"
+    ),
+    # Q962b, 2026-10-18 (`docs/reference/previews-2026-10-18.md`): the two schema 26 names
+    # whose only showcases were previews that did not work well. The rules are still held
+    # by `tests/test_showcases_q918e.py` on the retired files (`tests/_retired_*.json`).
+    "schema 26: pieces[].beats": (
+        "coverage row 67: its one showcase, gardner in rounds with meek pawns, drew 0.88 of "
+        "its games and a pawn met a piece in 9 of 784 graded games, so the key barely showed; "
+        "it left the previews (Q962b). Who survives a collision by the default `beats` is "
+        "shown in every watering-hole game; a game whose pawns must contest squares, a race "
+        "or a goal, is owed for a spelled list, and this entry goes the day it lands"
+    ),
+    "schema 26: rules.simultaneous.tie 'initiative'": (
+        "coverage row 65: its one showcase, gardner in rounds with the initiative, drew 0.90 "
+        "of its games and leaned 71-29 to the token's first holder; it left the previews "
+        "(Q962b). A game designed around the token, where a tie is common and worth taking, "
+        "is owed, and this entry goes the day it lands"
     ),
 }
 

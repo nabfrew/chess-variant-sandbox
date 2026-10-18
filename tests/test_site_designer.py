@@ -1,4 +1,4 @@
-"""The designer's milestones, D1 to D4 of `docs/plan-meta-game.md` (Q252).
+"""The designer's milestones, D1 to D4 of `docs/archive/plan-meta-game.md` (Q252).
 
 Three claims.
 
@@ -425,7 +425,7 @@ class TestTheGamePageDraws:
 
 
 class TestNoDarkPatterns:
-    """The seven tests of `docs/plan-meta-game.md`, where D1 to D4 could fail them."""
+    """The seven tests of `docs/reference/no-dark-patterns.md`, where D1 to D4 could fail them."""
 
     def test_no_clock_is_read_so_nothing_lapses(self) -> None:
         """Tests 1 and 2: the reading takes no *now*, so a person away a year reads what

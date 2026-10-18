@@ -2866,7 +2866,7 @@ function identityMeasuredHtml(check, parent) {
 
 // Whether the game this draft came from has a number, in the interface's own three
 // states: current, stale with the repair named, or never measured. Elsewhere a stale
-// score is shown as its last number, marked provisional (EV2, docs/plan-evolving-score.md
+// score is shown as its last number, marked provisional (EV2, docs/archive/plan-evolving-score.md
 // §3). Here it reads *out of date* with no number, by design: the editor compares a draft
 // with its parent, a provisional estimate enters no comparison, and the server sends the
 // parent's `current_score` only (`/api/design/<hash>`). A current measurement

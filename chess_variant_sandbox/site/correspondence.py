@@ -1,4 +1,4 @@
-"""A game between two people, played by correspondence (Q570, `docs/plan-return.md` §1).
+"""A game between two people, played by correspondence (Q570, `docs/archive/plan-return.md` §1).
 
 Two members play one game on a game's rules, each moving when they like. The row is an
 ordinary `matches` row with a person in both seats, so everything `site/matches.py` does
@@ -28,12 +28,12 @@ game's score: nothing under `metrics/` reads the store at all
 ## The time left to move, as a fact
 
 The five days are `quota.CORRESPONDENCE_IDLE`, applied by `matches.sweep` from the last
-move (or the start). The user, 2026-10-02 (`docs/plan-return.md` §9): *"there should be an
+move (or the start). The user, 2026-10-02 (`docs/archive/plan-return.md` §9): *"there should be an
 indication how long there is left to move ... It would be incredibly annoying for it to be
 a surprise lose on time."* So `view` and the profile say it, worked out here and only here
 from the same instant the sweep reads (`coalesce(moved, started)`) and the database's
 clock: *You have 4 days 6 hours to move.* It is the dated exception to test 2 of
-`docs/plan-meta-game.md` and stays a plain statement: whole hours, rounded down so it never
+`docs/reference/no-dark-patterns.md` and stays a plain statement: whole hours, rounded down so it never
 promises time that is not there, and no finer than an hour under one day, so a page that
 asks every 15 seconds never ticks. The page is handed words, never a deadline to count
 down to.
@@ -45,7 +45,7 @@ A running game between two people is readable by its two players only; spectatin
 told there is no game at the address, which is the answer a wrong id gets, so a running
 game's existence is not confirmed to somebody outside it.
 
-## A game in rounds (Q918f, `docs/plan-simultaneous.md` §6.6)
+## A game in rounds (Q918f, `docs/archive/plan-simultaneous.md` §6.6)
 
 On rules that play in rounds (schema 26) neither player waits for the other's move: each
 **seals** one for the round's position, in secret, and both are made at once by the core
@@ -702,7 +702,7 @@ def _plays_in_rounds(connection: Any, found: Row) -> bool:
 
 def seal(connection: Any, match_id: str, user: int | None, chosen: int) -> dict[str, Any]:
     """This person's move for the round now open, sealed; the round revealed if the other
-    person's is in already (Q918f, `docs/plan-simultaneous.md` §6.6).
+    person's is in already (Q918f, `docs/archive/plan-simultaneous.md` §6.6).
 
     The row is locked before anything is read, so of two seals racing the second waits for
     the first to commit and then finds its move: one reveal, never two, and never a round

@@ -1,4 +1,4 @@
-"""The pre-registered matrices that choose `REGRET_ITERATIONS` (`docs/plan-simultaneous.md`,
+"""The pre-registered matrices that choose `REGRET_ITERATIONS` (`docs/archive/plan-simultaneous.md`,
 *Q918b, pre-registered*), shared by the test and the measurement that picked the count."""
 
 from __future__ import annotations

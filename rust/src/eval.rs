@@ -33,7 +33,7 @@ use crate::tables::{
 
 pub const WIN_SCORE: f64 = 1_000_000.0;
 
-/// Schema 27 (Q942b, `docs/plan-round-chase.md` §3 R1): what a rested royal that a standing
+/// Schema 27 (Q942b, `docs/archive/plan-round-chase.md` §3 R1): what a rested royal that a standing
 /// enemy piece reaches costs its side in a round's evaluation. Half a win: the strike lands
 /// next round unless the side answers it by taking the other royal in the same round, so it
 /// is nearly a loss, and it stays below every decided game (`WIN_SCORE - ply`), so a royal
@@ -868,7 +868,7 @@ impl Evaluator {
 
     /// `evaluate` in a simultaneous game (schema 26, Q918b): there is no side to move and
     /// both players' moves are known, so mobility is mine minus theirs, both counted
-    /// (`docs/plan-simultaneous.md` §6.2). `counts` is each player's number of legal moves,
+    /// (`docs/archive/plan-simultaneous.md` §6.2). `counts` is each player's number of legal moves,
     /// in seat order. `agents/evaluation.py::Evaluator.evaluate_round` is its oracle.
     ///
     /// `lists` are both players' legal moves on this board, in seat order. Their lengths

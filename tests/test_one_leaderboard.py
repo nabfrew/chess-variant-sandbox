@@ -1,6 +1,6 @@
 """One leaderboard, the current revision's, saying how many of its rows are provisional.
 
-EV3 of `docs/plan-evolving-score.md` (§3, §5.2). Exactly one weights version is current and
+EV3 of `docs/archive/plan-evolving-score.md` (§3, §5.2). Exactly one weights version is current and
 every leaderboard is its: a score under another version is placed by its number and marked,
 and never compared. What is held down here, on the rulesets' own files (never chess):
 

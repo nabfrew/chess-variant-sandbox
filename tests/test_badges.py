@@ -1,4 +1,4 @@
-"""The play badges, `docs/plan-meta-game.md` §2.9, as box E3 built them.
+"""The play badges, `docs/archive/plan-meta-game.md` §2.9, as box E3 built them.
 
 E3's box and its *done when* are in `docs/archive/plan-meta-game.md`; a bare § below is
 the live plan's.
@@ -1956,7 +1956,7 @@ def _visibility(store: Scratch, digest: str) -> str:
 class TestADraftForkCounts:
     """Q543. *Descendant*'s rule once said the fork *is listed*, and the grant read only
     `screen_passed`. The plan settles it for the grant: `plan-game-pipeline.md` §5 (Q503a)
-    has *passes the screen* badges read `screen_passed`, and `plan-meta-game.md` keeps
+    has *passes the screen* badges read `screen_passed`, and `docs/archive/plan-meta-game.md` keeps
     D2's meaning, *a draft that passed*. So the rule's words moved, and a fork counts
     listed or not. No game with the corpus game's spec is loaded here, because `twin`
     would refuse to put a copy of it on trial.

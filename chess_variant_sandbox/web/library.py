@@ -56,7 +56,7 @@ RULESET_DIR = Path("rulesets")
 RUNS_DIR = Path("runs")
 ARCHIVE_DIR = Path("archive")
 
-# An estimate's three states (`docs/plan-evolving-score.md` §2.1), as `Game.status` and
+# An estimate's three states (`docs/archive/plan-evolving-score.md` §2.1), as `Game.status` and
 # every payload spell them.
 CURRENT = "current"
 PROVISIONAL = "provisional"
@@ -104,7 +104,7 @@ class Game:
         *Current* is worked out under the scorer this checkout runs, *provisional* is the
         latest estimate worked out under an earlier revision of it, and *none* is no
         estimate that can be shown: never measured, or a stale file that cannot state
-        its basis or names another ruleset (`docs/plan-evolving-score.md` §2.1). The basis stamp decides
+        its basis or names another ruleset (`docs/archive/plan-evolving-score.md` §2.1). The basis stamp decides
         which (`Measurement.current`); a provisional number is shown, labelled, and never
         as current.
         """
@@ -147,7 +147,7 @@ class Game:
 
         What every comparison reads: the bands, a neighbour's gap, the map's ramp, a
         draft's parent. A provisional estimate is never compared with a current one
-        (`docs/plan-evolving-score.md` §3).
+        (`docs/archive/plan-evolving-score.md` §3).
         """
         return current_only(self.score)
 
@@ -402,7 +402,7 @@ class Game:
             # game still being tested, listed apart and in no scored surface. A preview's
             # card is sent in the listing's `previews`, never its `games`.
             "preview": preview(self),
-            # How far to trust the score (Q647, `plan-confidence.md` §2.1): the level word
+            # How far to trust the score (Q647, `docs/archive/plan-confidence.md` §2.1): the level word
             # as the card's chip, and its sentence for the chip's (i). `None` where there
             # is no current score, which says so itself: a provisional estimate has no
             # evidence read against the current basis, so it carries no trust level.
@@ -924,7 +924,7 @@ def trust_line(game: Game, people: Any = None, *, maintainer: bool = True) -> di
     where given, each earlier score as a visitor reads it, and whether Fairy-Stockfish
     could play the rules at all. ``maintainer`` false leaves the numbers out. ``None``
     on a provisional estimate (EV2): trust reads evidence against the current basis,
-    and a provisional estimate has none (`docs/plan-evolving-score.md` §5.1)."""
+    and a provisional estimate has none (`docs/archive/plan-evolving-score.md` §5.1)."""
     from chess_variant_sandbox import history, trust
 
     found = game.trust
@@ -991,7 +991,7 @@ def detail(game: Game, others: Iterable[Game] | None = None) -> dict[str, Any]:
         "cellDescription": describe_cell(cell),
         "axes": describe_axes(cell),
         "pieces": pieces(game),
-        # K1 (`docs/plan-understanding.md` §4.2 step 1): the opening position the page
+        # K1 (`docs/archive/plan-understanding.md` §4.2 step 1): the opening position the page
         # draws before a game starts, the card's `still` with its drawings put back.
         "opening": opening(game),
         # K2: each piece alone on an empty board, the engine's answer, with the reference
@@ -1132,7 +1132,7 @@ def nearest_by_feature(
 
 
 # The same counts as `relate.Similarity.sentence` says them, in a visitor's words (G40 of
-# `docs/plan-understanding.md` §3.3): a mechanism is a *way of moving*, a square a
+# `docs/archive/plan-understanding.md` §3.3): a mechanism is a *way of moving*, a square a
 # *starting square*, a draw clock or a piece's price a *limit or price*. Sent beside the
 # maintainer's as the similarity's `site`, and drawn where the page is the site.
 SITE_LIKENESS: tuple[tuple[str, str, str], ...] = (
@@ -1201,7 +1201,7 @@ def _gap(game: Game, other: Game) -> dict[str, Any] | None:
     `measurement` exposes.
     """
     # Current only: a gap is a separation claim, and a provisional estimate never enters
-    # one (`docs/plan-evolving-score.md` §3).
+    # one (`docs/archive/plan-evolving-score.md` §3).
     mine, theirs = current_only(game.score), current_only(other.score)
     if not mine or not theirs:
         return None
@@ -1470,7 +1470,7 @@ def bands(games: Iterable[Game]) -> dict[str, dict[str, int]]:
     at.** So a card under a filter, the same card unfiltered and the game's own page all
     say the same three numbers, which they could not if the band followed the listing.
 
-    **One leaderboard, the current version's** (EV3, `docs/plan-evolving-score.md` §3,
+    **One leaderboard, the current version's** (EV3, `docs/archive/plan-evolving-score.md` §3,
     §5.2). Only a score under `DEFAULT_WEIGHTS` enters, so scores under different weights
     never share a band: `_comparable` drops the rest, a provisional estimate included,
     rather than banding each version apart beside the other.
@@ -1484,7 +1484,7 @@ def _comparable(games: Iterable[Game]) -> tuple[_Measured, ...]:
     """Every game with a current measurement, reduced to what a comparison reads.
 
     `current_only`, never a bare `Game.score`: a provisional estimate is placed in a listing
-    by its number and marked, and never enters a band (`docs/plan-evolving-score.md` §5.2).
+    by its number and marked, and never enters a band (`docs/archive/plan-evolving-score.md` §5.2).
     A score that calls itself current under another weights version (one built by hand,
     which names no status) is left out too: the band is the current version's.
     """
@@ -1538,7 +1538,7 @@ def _bands(entries: tuple[_Measured, ...]) -> dict[str, Band]:
 def provisional_count(cards: Iterable[Mapping[str, Any]]) -> dict[str, Any] | None:
     """How many of a listing's scores are provisional, or ``None`` when none are.
 
-    The leaderboard's header (EV3, `docs/plan-evolving-score.md` §5.2): *4 of 73 scores
+    The leaderboard's header (EV3, `docs/archive/plan-evolving-score.md` §5.2): *4 of 73 scores
     are provisional while they are measured again.* Read off each card's own `status`,
     so it counts the cards a reader is shown and no others; *of* is every card with a
     number, current or provisional, since a game with no estimate is not a score. When
@@ -1867,7 +1867,7 @@ def reference_of(others: Iterable[Game] | None) -> Game | None:
 
 def piece_maps(game: Game, reference: Game | None = None) -> list[dict[str, Any]] | None:
     """Where each piece may go, alone on an empty board, one per piece in `pieces` order (K2,
-    `docs/plan-understanding.md` §4.2 step 2).
+    `docs/archive/plan-understanding.md` §4.2 step 2).
 
     Each map is `designing.move_map(alone=True)`, the designer's diagram: the engine's legal
     moves for that piece alone, and a takes probe per square. `like` is the reference game's

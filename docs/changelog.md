@@ -11,6 +11,33 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-18
+
+### Every game says what it is about
+
+Sixty-six games have new descriptions. Most used to be a list of rules, which the page already prints beside them,
+or explained a game by comparing it with another game in the library that a visitor had no reason to know. Each one
+now says what the game is exploring and the choice it keeps putting to you: in a game where a capture upgrades the
+piece it strikes, whose gift is each exchange; in a game with a door either side may move, whether to move the army
+or the road. Terms from other variants and from shogi are explained where they appear, and where a game is a
+published or traditional one, it says so. No game plays any differently. While checking every rule the old texts
+stated, a few turned out to be loosely put (a pawn that can turn may face any way in one move, not only a quarter
+turn; two games with one-way edges are not exactly fair), and the new descriptions say what the games really do.
+
+### The Gardner game where both players move at once is now called *breather*
+
+Its old name and description explained it by contrast with an earlier experiment most people never saw. Now the
+description says what the game is: both players pick a move in secret and move together, a piece that has just moved
+must sit out the next round, and you win by taking the king. Nothing about how it plays has changed, and its score and
+computer opponents are the same. Several other games' descriptions were reworded the same way, so each one reads on
+its own.
+
+### Fewer previews, and the ones left are worth a look
+
+Six preview games are leaving the Previews tab. Each was made to show off a new rule, and each ended up mostly drawn or
+leaning heavily to whoever moved first, so they made poor games. Two stay: *gardner in rounds resting*, which plays evenly
+and is decided most of the time, and *gardner with spies resting*, the one game that shows the spy.
+
 ## 2026-10-17
 
 ### Riders and leapers joins the library

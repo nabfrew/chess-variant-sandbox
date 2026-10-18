@@ -1,6 +1,6 @@
 """Specs retired from the library that tests still build on, rebuilt from their twins.
 
-The library audit (Q868, 2026-10-12, `docs/plan-library-audit.md`) retired near copies
+The library audit (Q868, 2026-10-12, `docs/archive/plan-library-audit.md`) retired near copies
 that tests had been written against. Each is one key from a game still in the library,
 so it is rebuilt here from that game rather than kept as a copy, which is how Q280 kept its
 tests when it retired the square-grid hex spec: from what is in the tree, not from what
@@ -172,3 +172,30 @@ REBUILT = {
     "hex-glinski-turned-mirrored": hex_glinski_turned_mirrored,
     "wolves-immune": wolves_immune,
 }
+
+
+# Q962b (2026-10-18, `docs/reference/previews-2026-10-18.md`) took six previews that did not
+# work well out of `archive/`. Their files moved here unchanged (`git mv`), named
+# `_retired_<stem>.json`, because the showcase and spy tests still build on them and three of
+# them have no kept game one key away to rebuild from; the site retires each at the next deploy.
+RETIRED_PREVIEWS = {
+    "gardner-in-rounds": "e043fce6968e",
+    "gardner-in-rounds-with-meek-pawns": "ff1ccdaaf3cf",
+    "gardner-in-rounds-with-the-initiative": "6278607c721b",
+    "gardner-in-rounds-where-swaps-collide": "7985900696d7",
+    "gardner-in-rounds-scored": "a90a8db7e2dd",
+    "gardner-with-spies": "f4c62a33798d",
+}
+
+HERE = Path(__file__).resolve().parent
+
+
+def retired_preview_path(name: str) -> Path:
+    """Where the retired preview `name` (its old `archive/` stem) is kept now."""
+    assert name in RETIRED_PREVIEWS, f"{name} is not a retired preview"
+    return HERE / f"_retired_{name.replace('-', '_')}.json"
+
+
+def retired_preview(name: str) -> dict[str, Any]:
+    """The retired preview `name`, as it stood in `archive/`."""
+    return json.loads(retired_preview_path(name).read_text(encoding="utf-8"))

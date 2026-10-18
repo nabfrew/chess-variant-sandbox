@@ -310,7 +310,7 @@ async function showBoard(snapshot, how) {
 // A game between two people (Q570, `between`) has no take-back, ever; its bar gains
 // *offer a draw* (and *decline the draw* while the other's offer stands, Q790) and, until
 // both have moved, *cancel the game*, with resign still last and still the one danger
-// button (docs/plan-return.md §1.8).
+// button (docs/archive/plan-return.md §1.8).
 //
 // A game against the computer gains *offer a draw* too, before resign (Q790): the
 // computer answers at once, accepting only where the strongest search the game has reads
@@ -632,7 +632,7 @@ function maybeAgent() {
   const mine = () => !!SESSION && SESSION.id === id && !!document.getElementById('status');
   status.innerHTML = thinkingHtml() + (SESSION.inCheck ? checkPill() : '');
   // On the site, an answer slower than `SLOW_AFTER` is the box sharing its cores with
-  // other games (`docs/plan-launch.md` §5.2, L11): the strip says so once, and that the
+  // other games (`docs/archive/plan-launch.md` §5.2, L11): the strip says so once, and that the
   // move made is kept. No count, no queue place, nothing that grows.
   if (ACCOUNTS) setTimeout(() => {
     if (AGENT_ASKING !== id || !mine()) return;
@@ -764,7 +764,7 @@ function portalOn(square) {
   return { end, partner, words };
 }
 
-// Schema 21 (`docs/plan-portals-2.md` §5.2): whether the piece picked on the board may not
+// Schema 21 (`docs/archive/plan-portals-2.md` §5.2): whether the piece picked on the board may not
 // go in by this end, so the end is dimmed and the doors it may use are the bright ones.
 // Only in a game where some end lets only some pieces in: elsewhere the arms' colours say
 // whose pieces go in, and a pair game looks as it always has. Read off the payload's
@@ -890,7 +890,7 @@ function portalLegsHtml(last, cell, W, H) {
     leg(wrapStep(last.portalOut, last.to, W, H, allow), last.to, 0.45, 0.3)}</g>`;
 }
 
-// A move through a fold at rest (schema 24, `docs/plan-portals-2.md` §5.3R): one leg in the
+// A move through a fold at rest (schema 24, `docs/archive/plan-portals-2.md` §5.3R): one leg in the
 // group's colour, cased in the edge, from where it stood to the fold it went in by, and the
 // ripple's ring on that fold. The move ended on the end the fold leads to, which takes the
 // ordinary last-move mark as any landing does. The squares are the engine's (`foldIn`,
@@ -911,7 +911,7 @@ function foldLegsHtml(last, cell, W, H) {
   return `<g data-foldlegs="${last.foldIn}" pointer-events="none">${leg}${ring}</g>`;
 }
 
-// The group map (schema 21, `docs/plan-portals-2.md` §5.1; the pair link of §4 before it):
+// The group map (schema 21, `docs/archive/plan-portals-2.md` §5.1; the pair link of §4 before it):
 // an arrow from an end to the end it leads to, in the group's colour cased in the edge.
 // With the map on (`LINKS`, the reader's, off by default) every end somebody may go in by
 // has its arrow; the end tapped, a portal picked to move, and the end under the pointer
@@ -1368,13 +1368,13 @@ function drawBoard(previous) {
     : held && DROP === null && held.from !== null ? held.from : null;
   const targets = new Set(movesFrom(picked).map(m => m.to));
   if (held && SELECTED === null) { targets.delete(held.to); targets.delete(held.dest); }
-  // Schema 19: the picked piece's ways through a portal (`docs/plan-portals.md` §4). Each
+  // Schema 19: the picked piece's ways through a portal (`docs/archive/plan-portals.md` §4). Each
   // square it comes out on takes a dot in the colour of the pair it goes in by (`through`),
   // beside the plain dot where it can also get there directly (`direct`); each end it can
   // go in by is ringed, since a tap there is a way in (`entries`, D6).
   const through = new Map(), direct = new Set(), entries = new Set();
   for (const m of movesFrom(picked)) {
-    // Schema 24 (`docs/plan-portals-2.md` §5.3R, the user: *"as simple as selecting which
+    // Schema 24 (`docs/archive/plan-portals-2.md` §5.3R, the user: *"as simple as selecting which
     // square to land on, just as any other landing square"*): a move through a fold ends on
     // the far end, so that square takes the ordinary dot, or ring, like any landing; staying
     // is the ordinary dot on the fold. No hue, no chooser: the two targets differ.
@@ -1447,7 +1447,7 @@ function drawBoard(previous) {
                fill="${colour[square] === 1 ? 'var(--claim0)' : 'var(--claim1)'}" opacity="0.3"`);
     }
     // Schema 22: a fold lies in the board, under any piece standing in it: the pool
-    // (`foldGlyph`, Q843d, `docs/plan-portals-2.md` §5.3), its beak aimed at the end it leads
+    // (`foldGlyph`, Q843d, `docs/archive/plan-portals-2.md` §5.3), its beak aimed at the end it leads
     // to as drawn, its number a badge over the piece when one stands in it (below). The one
     // on its own square turns, idly; a ghost copy stands still and plain.
     const fold = folds.get(square);
@@ -1701,7 +1701,7 @@ const PACE = {
   // crawl; long enough that the piece that moved has landed and come to rest before
   // anything else on the board starts moving, which is the whole of what was missing.
   beat: 200,
-  // A move through a portal (schema 19, Q836, `docs/plan-portals.md` *Travel through a
+  // A move through a portal (schema 19, Q836, `docs/archive/plan-portals.md` *Travel through a
   // portal, animated*): one journey in three movements, laid out by `portalJourney`. The
   // slide to the end it goes in by, quicker than a travel because the portal pulls ...
   portalApproachMin: 170,
@@ -1722,7 +1722,7 @@ const PACE = {
   // With reduced motion: no slide, no spin, no scale; the piece fades from where it was
   // and into where it lands, the two overlapping, in this long all told.
   portalStill: 300,
-  // A move through a fold (schema 24, `docs/plan-portals-2.md` §5.3R), laid out by
+  // A move through a fold (schema 24, `docs/archive/plan-portals-2.md` §5.3R), laid out by
   // `foldJourney`: the slide onto the fold is the portal's approach; then the sink into the
   // pool (no spin: it goes through a surface, not down a drain) ...
   foldSink: 240,
@@ -2098,7 +2098,7 @@ function animateMove(svg, before, after, swallowed, cell, W, H, view, last) {
   return nothing();
 }
 
-// A trip through a portal (Q836, `docs/plan-portals.md` *Travel through a portal,
+// A trip through a portal (Q836, `docs/archive/plan-portals.md` *Travel through a portal,
 // animated*), as times in milliseconds from the start of the move: the slide to the end
 // it goes in by (`approach`), the shrink and spin down into it (`dive`), which starts
 // before the slide is quite over so the two read as one movement, the instant it is
@@ -2326,7 +2326,7 @@ function portalTrip(svg, node, piece, before, last, cell, W, H, view) {
   return { landed: plan.landed, blow: { at: plan.strike, dx: odx, dy: ody } };
 }
 
-// A trip through a fold (schema 24, `docs/plan-portals-2.md` §5.3R), as times in
+// A trip through a fold (schema 24, `docs/archive/plan-portals-2.md` §5.3R), as times in
 // milliseconds from the start of the move: the slide onto the fold it goes in by
 // (`approach`), the sink into the pool (`sink`), starting before the slide is quite over,
 // the instant under the surface, and the rise out of the far end (`rise`), where the move
@@ -3142,7 +3142,7 @@ function checkSquares() {
 // The tab a board opens on, where something other than the moves asked (K3).
 let OPEN_TAB = null;
 
-// K3 (`docs/plan-understanding.md` §4.2 step 4): a tapped piece's move sentences in one
+// K3 (`docs/archive/plan-understanding.md` §4.2 step 4): a tapped piece's move sentences in one
 // line under the board, the *pieces* tab's own words (`pieces[type].moves`, already sent
 // with the game), so a newcomer need not switch tabs to ask what this one does.
 function drawPieceSays() {
@@ -3420,7 +3420,7 @@ function clickSquare(square) {
   const candidates = movesFrom(SELECTED).filter(m => m.to === square);
   // Schema 22: a piece standing in a fold its side may move, and a square both can reach --
   // the piece's move or the fold's own -- is a choice of which to move, in the user's words
-  // (`docs/plan-portals-2.md` §5.3R): *Move the piece* or *Move the portal*, never both.
+  // (`docs/archive/plan-portals-2.md` §5.3R): *Move the piece* or *Move the portal*, never both.
   const folded = candidates.filter(m => m.kind === 'fold');
   if (folded.length && folded.length < candidates.length) {
     return choosePieceOrPortal(candidates.filter(m => m.kind !== 'fold'), folded, SELECTED, square);
@@ -3478,7 +3478,7 @@ function takeLanding(candidates) {
   if (candidates.length === 1) { send(candidates[0].move); return true; }
   if (candidates.length < 2) return false;
   // Schema 19: one square reached more than one way -- directly and through a portal, or
-  // through two -- is a choice of route (`docs/plan-portals.md` §2.3), each the engine's
+  // through two -- is a choice of route (`docs/archive/plan-portals.md` §2.3), each the engine's
   // own move named by its text.
   if (candidates.some(m => m.portal !== undefined)
       && new Set(candidates.map(m => m.portal === undefined ? -1 : m.portal)).size > 1) {
@@ -3591,7 +3591,7 @@ function chooseRoute(candidates) {
   drawPromotion();
 }
 
-// Schema 22 and Q867c (`docs/plan-portals-2.md` §5.3R): the piece or the portal, in the user's
+// Schema 22 and Q867c (`docs/archive/plan-portals-2.md` §5.3R): the piece or the portal, in the user's
 // words, *Move the piece* or *Move the portal*, never both at once (no move carries a piece
 // and its fold together; the core holds that). Asked where one tap means either: a piece
 // standing in a fold its side may move, both reaching `to` (`portal` the fold's own moves
@@ -4354,7 +4354,7 @@ function wireReviewKeys() {
 
 // ------------------------------------------------------------- between two people
 //
-// Q570, `docs/plan-return.md` §1.3 and §1.5. A game between two people is a match like
+// Q570, `docs/archive/plan-return.md` §1.3 and §1.5. A game between two people is a match like
 // any other, with three things the page does differently, all keyed on
 // `snapshot.correspondence` (`site/correspondence.py::view`):
 //

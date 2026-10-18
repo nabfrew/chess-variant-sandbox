@@ -1,9 +1,10 @@
 //! Simultaneous moves (schema 26, Q918a): a round of two secret moves, resolved together.
 //!
-//! `docs/plan-simultaneous.md` is the rule; this is its §6.1. A round is a new path beside
+//! `docs/reference/rounds.md` is the rule (§2, §4); this is its build
+//! (`docs/archive/plan-simultaneous.md` §6.1). A round is a new path beside
 //! `make`, never inside it, so the alternating game's hot path does not move. `make_round`
 //! reads both moves off the round's board, settles which moves are void from the two
-//! choices alone (§2.4), then writes the round in the plan's order (§4): departures, each
+//! choices alone (§2.4), then writes the round in the rule's order (§4): departures, each
 //! move's own consequences, the meetings, what the captures cause, the explosions, the
 //! claims, the wild pieces, the void run and its bars. `unmake_round` puts back a snapshot:
 //! the simpler first form §6.1 names, an incremental undo being an optimisation for after
@@ -279,7 +280,7 @@ impl<'t> Game<'t> {
         }
         let moving = [raw[0] && !standing[0], raw[1] && !standing[1]];
         // Schema 27 (Q942a, `swap: "collision"`): two moves each ending on the other's
-        // origin meet, whatever their modes, so neither is void (`plan-round-chase.md` R2).
+        // origin meet, whatever their modes, so neither is void (`docs/archive/plan-round-chase.md` R2).
         let swapped = sim.swap_collides
             && moving[0]
             && moving[1]

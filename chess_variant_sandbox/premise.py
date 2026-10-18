@@ -24,10 +24,10 @@ ceiling duel and, where Fairy-Stockfish played, at least `Rule.fairy_floor` agai
 
 **What it decides: nothing.** The user's decision A of 2026-09-28 held a game whose verdict
 failed out of the band, the set of real games that sets the scale; the user withdrew it on
-2026-10-01 (`docs/reference/general-player.md` §4.2), and Q645 (`docs/plan-confidence.md`
+2026-10-01 (`docs/reference/general-player.md` §4.2), and Q645 (`docs/archive/plan-confidence.md`
 §2.4, T0) removed the hold: every real game with a current score is in the band whatever
 its verdict. The check stays as one piece of evidence for the trust line that replaces the
-mark (`plan-confidence.md` T1, T2); until then a failing verdict marks its score on the
+mark (`docs/archive/plan-confidence.md` T1, T2); until then a failing verdict marks its score on the
 page, and nothing reads it as a gate.
 **It changes no score.** Nothing under `metrics/` reads it, this file is in no fingerprint
 set, and no score's `Basis` names it.
@@ -89,7 +89,7 @@ class Rule:
     changing one stales every verdict and no score. Sixteen seed-pairs is E8's size
     (§6.6), at a seed-pair error of about 0.05.
 
-    ``curtailed`` (plan-compute §4.2, Q632): each duel stops at the first schedule-order
+    ``curtailed`` (reference/compute-economy.md §4.2, Q632): each duel stops at the first schedule-order
     prefix of seed-pairs after which no result of the rest could change its verdict. The
     verdict is the sixteen pairs' by construction; the stored score is the prefix's, with
     ``decided_after`` of ``planned_pairs`` beside it.
@@ -513,7 +513,7 @@ class Premise:
     def site_words(self) -> str:
         """The same check in a visitor's words: *How far to trust it*, a level word and why.
 
-        `docs/plan-understanding.md` §2.2 (T1): no floor, no number, no *scale*, and the
+        `docs/archive/plan-understanding.md` §2.2 (T1): no floor, no number, no *scale*, and the
         evidence said as §2.2's table says it, until Q544's line replaces this. The level
         words are §2.2's: *questioned* when a longer search or an outside engine beats the
         players that scored the game, *checked* when an outside engine agrees, *early
@@ -554,7 +554,7 @@ class Premise:
         """What a page renders: `state`, whether the score is marked, and the words.
 
         The mark travels as ``held``, the name `web/static/page/core.js`'s `premiseHtml`
-        reads until the trust line replaces it (`docs/plan-confidence.md` T2).
+        reads until the trust line replaces it (`docs/archive/plan-confidence.md` T2).
         """
         return {
             "state": self.state,

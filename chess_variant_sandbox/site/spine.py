@@ -1,13 +1,13 @@
 """A member's game gets its leaderboard when it is published (L5).
 
-`docs/plan-leaderboard.md` §2.6 step 1, with Q1 decided on 2026-10-10 (*A, as soon as it is
-published*). When a member publishes a game, the site rates the five standard computer
-players (`opponents.SPINE`: *random*, *greedy*, *easy*, *medium*, *hard*) against one
-another on its own server and seeds the game's rating table from them, so rated games, the
-leaderboard and *Unbeaten* are on from the start. The stronger players (*hardest*, *tree
+`docs/archive/plan-leaderboard.md` §2.6 step 1, with Q1 decided on 2026-10-10 (*A, as soon
+as it is published*). When a member publishes a game, the site rates the five standard
+computer players (`opponents.SPINE`: *random*, *greedy*, *easy*, *medium*, *hard*) against
+one another on its own server and seeds the game's rating table from them, so rated games,
+the leaderboard and *Unbeaten* are on from the start. The stronger players (*hardest*, *tree
 search*, rules of thumb, Fairy-Stockfish) join later, as a top-up over these same games on
-the 16-core machine (L6); until then a game against one of them is practice, and the page
-says so (`site/leaderboard.py`'s `box`).
+the 16-core machine (L6, Q821 in `docs/plan-game-pipeline.md` §5); until then a game against
+one of them is practice, and the page says so (`site/leaderboard.py`'s `box`).
 
 ## The job
 

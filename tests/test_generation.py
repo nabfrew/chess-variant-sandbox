@@ -72,7 +72,7 @@ from chess_variant_sandbox.tournament.runner import schedule  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 GARDNER = ROOT / "rulesets" / "gardner.json"
 
-# The pins this task must not move (plan-teacher §9.4, T5-code).
+# The pins this task must not move (plan-teacher §9.4.1, T5-code).
 PINNED = {
     "db5ef1bc938e": DEFAULT,
     "1d160257b8e5": Q637,

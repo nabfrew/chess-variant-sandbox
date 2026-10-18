@@ -496,7 +496,7 @@ def test_no_committed_heuristic_set_prices_the_pieces():
 # ---------------------------------------------------------------- the search itself
 #
 # `tournament/valuing.py` and `chess-variant-sandbox values`, its one caller, had never run in
-# the suite (Q751, plan-tests F9). `SEARCH` plays thousands of games, so each test runs a
+# the suite (Q751, archive/plan-tests F9). `SEARCH` plays thousands of games, so each test runs a
 # procedure small enough to finish in a fraction of a second: 200 nodes, two seed-pairs, one
 # coarse step. Gardner, because it has five priced pieces and a royal one.
 

@@ -1,6 +1,6 @@
 """Schema 26 (Q918d): a game played in rounds, recorded, analysed and scored end to end.
 
-`docs/plan-simultaneous.md` §6.3 and §7's Q918d box. The record keeps both moves of a
+`docs/archive/plan-simultaneous.md` §6.3 and §7's Q918d box. The record keeps both moves of a
 round in seat order and every per-ply series twice; the analysis pass replays it a round at
 a time, reads each player's moves against the opponent's equilibrium mix, forces blunders
 by that reading, and counts what the resolutions did; every scored component says how it
@@ -345,6 +345,7 @@ class TestTheRoundRoster:
         assert candidate.stage == "candidate" and candidate.path == OFF_LADDER
         assert corpus.expected_seeds(candidate.stage) == corpus.ONE_SEED
         assert corpus.from_file(ROOT / "rulesets" / "gardner.json").stage == "committed"
-        # Since Q918e the Gardner test spec's mechanics are on the ladder, archived as
-        # `archive/gardner-in-rounds`, so the file is found as that game.
-        assert corpus.from_file(GARDNER).stage == "archived"
+        # From Q918e the Gardner test spec's mechanics were on the ladder, archived as
+        # `archive/gardner-in-rounds`; Q962b retired that preview, so the file is a candidate
+        # where it stands again.
+        assert corpus.from_file(GARDNER).stage == "candidate"

@@ -1,6 +1,6 @@
 """Q876: `pitchfork`, a game built around `rules.npcs[].immune`, in place of `wolves-immune`.
 
-`docs/plan-library-audit.md` (*`pitchfork`: wolves only a pawn may take*) pre-registered these
+`docs/archive/plan-library-audit.md` (*`pitchfork`: wolves only a pawn may take*) pre-registered these
 clauses before this file was written; the numbering is the document's. `wolves-immune` spelled
 `wolves` with the key and played it move for move; here the key says that only a pawn may take
 a wolf, and the wolves stand in pairs on the centre rings, where the pawns meet them at once.

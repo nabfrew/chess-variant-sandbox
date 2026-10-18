@@ -1,12 +1,14 @@
-"""The chase remedies' showcases (Q942c), held to criterion K8 of `docs/plan-round-chase.md` §5.
+"""The chase remedies' showcases (Q942c), held to criterion K8 of `docs/archive/plan-round-chase.md` §5.
 
 K8, *the mechanism, without players*, written before this file and before any showcase was
 measured: on hand-built positions and on seeded random play (20 games, `random.Random(seed)`
 choosing from `legal_moves_for`), S1 (`archive/gardner-in-rounds-resting`): no player's piece
 moves two rounds running except under the lift; S2 (`...-where-swaps-collide`): no round ends
 with two pieces on each other's origins; S3 (`...-scored`): no game ends drawn with both
-royals taken and unequal material; S4 (`...-against-the-chase`): all three. The §2 positions
-play as §3 says under each rule.
+royals taken and unequal material; S4 (`archive/breather`, named against the chase until Q962):
+all three. The §2 positions play as §3 says under each rule. S2, S3 and their parent left the
+previews with Q962b (`docs/reference/previews-2026-10-18.md`); their files are
+`tests/_retired_*.json` (`retired_specs.retired_preview`).
 
 Every answer is the core's, through `Engine`; the clauses only compare squares and owners on
 the boards it returns. The material count in S3's clause is a declared test oracle: the sum
@@ -22,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from retired_specs import retired_preview
 from simultaneous_showcase_tally import is_swap
 
 from chess_variant_sandbox.engine import Engine
@@ -38,12 +41,12 @@ def load(name: str) -> dict[str, Any]:
     return json.loads((ROOT / "archive" / f"{name}.json").read_text(encoding="utf-8"))
 
 
-PARENT = load("gardner-in-rounds")
+PARENT = retired_preview("gardner-in-rounds")
 SHOWCASES = {
     "S1": load("gardner-in-rounds-resting"),
-    "S2": load("gardner-in-rounds-where-swaps-collide"),
-    "S3": load("gardner-in-rounds-scored"),
-    "S4": load("gardner-in-rounds-against-the-chase"),
+    "S2": retired_preview("gardner-in-rounds-where-swaps-collide"),
+    "S3": retired_preview("gardner-in-rounds-scored"),
+    "S4": load("breather"),
 }
 SWITCHES = {
     "S1": {"rest": True},

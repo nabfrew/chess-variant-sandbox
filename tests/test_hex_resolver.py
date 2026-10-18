@@ -389,18 +389,18 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "archive/sluice": "29e224df70ed859d",  # Q844b, schema 21
     "archive/crease": "f4debbefb2770d57",  # Q844b, schema 24
     "archive/pawnproof-wormhole": "8a7ee8f749713bb5",  # Q844b, schema 21
-    "archive/gardner-in-rounds": "ef35aeadf82e3d4e",  # Q918e, schema 26
-    "archive/gardner-in-rounds-with-meek-pawns": "e30dc7de2f1226d9",  # Q918e, schema 26
+    # Q962b, 2026-10-18: `archive/gardner-in-rounds` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was ef35aeadf82e3d4e.
+    # Q962b, 2026-10-18: `archive/gardner-in-rounds-with-meek-pawns` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was e30dc7de2f1226d9.
     # The same features as gardner in rounds: `distance.features` has none for the tie rule.
-    "archive/gardner-in-rounds-with-the-initiative": "ef35aeadf82e3d4e",  # Q918e, schema 26
+    # Q962b, 2026-10-18: `archive/gardner-in-rounds-with-the-initiative` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was ef35aeadf82e3d4e.
     "archive/watering-hole": "449300665f7cd831",  # Q918e, schema 26
     "archive/gardner-in-rounds-resting": "e058e13b9d1bc774",  # Q942c, schema 27
     # The same features as resting: each chase switch is one feature of `distance` that
     # `_ADDED_SINCE` leaves out, and both add one special rule.
-    "archive/gardner-in-rounds-where-swaps-collide": "e058e13b9d1bc774",  # Q942c, schema 27
-    "archive/gardner-in-rounds-scored": "7ecccaf8caa59060",  # Q942c, schema 27
-    "archive/gardner-in-rounds-against-the-chase": "cdf0efe85ea762c5",  # Q942c, schema 27
-    "archive/gardner-with-spies": "d488370eab00cfbd",  # Q935f, schema 27
+    # Q962b, 2026-10-18: `archive/gardner-in-rounds-where-swaps-collide` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was e058e13b9d1bc774.
+    # Q962b, 2026-10-18: `archive/gardner-in-rounds-scored` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was 7ecccaf8caa59060.
+    "archive/breather": "cdf0efe85ea762c5",  # Q942c, schema 27; Q962: renamed from gardner-in-rounds-against-the-chase
+    # Q962b, 2026-10-18: `archive/gardner-with-spies` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was d488370eab00cfbd.
     "archive/gardner-with-spies-resting": "a12a32ec9aa7c11a",  # Q935f, schema 27
     "archive/riders-and-leapers": "6917cf0a1e6e5bbd",  # Q936s, schema 27
     "archive/wolves": "ad7a6f1e406f28f3",

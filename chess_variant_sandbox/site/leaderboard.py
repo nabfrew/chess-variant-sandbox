@@ -1,6 +1,6 @@
 """A game's leaderboard: its rating table as the game page draws it (L2).
 
-`docs/plan-leaderboard.md` §2.1, §2.5 and §3, with Q2 decided on 2026-10-10 (*A: everyone
+`docs/archive/plan-leaderboard.md` §2.1, §2.5 and §3, with Q2 decided on 2026-10-10 (*A: everyone
 who has finished a rated game on it, a settling number marked `?`*). The store already is the
 design: one Glicko-2 table per game, people and computer players as rows of it
 (`site/rating.py`). This reads that table and says who is on it, in what order and with what

@@ -1653,7 +1653,7 @@ def _report_staleness(targets: list[str], args: argparse.Namespace) -> int:
 
 
 def _cmd_refresh(args: argparse.Namespace) -> int:
-    """The refresher (EV5, `docs/plan-evolving-score.md` §6); see `refresher.py`."""
+    """The refresher (EV5, `docs/archive/plan-evolving-score.md` §6); see `refresher.py`."""
     from chess_variant_sandbox import refresher
 
     if args.hash and (args.library or args.plan or args.status or args.forget):
@@ -2325,7 +2325,7 @@ def _add_train(sub: Any) -> None:
     )
     train.add_argument(
         "--curtail", action="store_true",
-        help="stop the acceptance duel once its verdict is settled (plan-compute §4.2): the "
+        help="stop the acceptance duel once its verdict is settled (reference/compute-economy.md §4.2): the "
         "same verdict, but the stored score and error are the prefix's, which plan-teacher "
         "§3's gates read as measurements; so off by default",
     )
@@ -2418,7 +2418,7 @@ def _cmd_train(args: argparse.Namespace) -> int:
     spec = load_spec(args.ruleset)
     engine = Engine(spec)
     compiled = engine.spec
-    # Q918g: a round game's recipe is the round players' (`plan-simultaneous.md` §7).
+    # Q918g: a round game's recipe is the round players' (`docs/archive/plan-simultaneous.md` §7).
     base = ROUND_DEFAULT if engine.simultaneous else DEFAULT
     try:
         if args.parent:
@@ -2863,7 +2863,7 @@ def _load_scored(run: Path, weights: str | None) -> tuple[dict, str, str] | None
 
     A mutant carries its own; otherwise a game is `control` or `human` by its name. The
     strength-premise check is not read: the hold that kept a failing game out of the band
-    was withdrawn on 2026-10-01 (Q645, `docs/plan-confidence.md` §2.4).
+    was withdrawn on 2026-10-01 (Q645, `docs/archive/plan-confidence.md` §2.4).
     """
     candidates = sorted(run.glob("index-*.json"))
     if weights:
@@ -2889,7 +2889,7 @@ def _cmd_anchor(args: argparse.Namespace) -> int:
     """Report where the band sits against a weights version's pinned curve ends.
 
     Since `v12` the band checks the scale and places none of it
-    (`docs/plan-evolving-score.md` §4.2), so this writes nothing: it says, per component,
+    (`docs/archive/plan-evolving-score.md` §4.2), so this writes nothing: it says, per component,
     which band games plateau, which score zero, and which ends a band game now passes. That
     is a check for the next revision, never a placement; a new end is a new weights version
     with its own pre-registration. Reads a directory of scored runs as `calibrate` does, or

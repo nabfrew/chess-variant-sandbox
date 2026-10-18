@@ -84,7 +84,7 @@ GARDNER = ROOT / "rulesets" / "gardner.json"
 DEFAULT_DIGEST = "db5ef1bc938e"
 Q637_DIGEST = "1d160257b8e5"
 Q502F2_DIGEST = "1c193cc56c76"
-# The accepted net (plan-teacher §8.6.3-§8.6.4): Intransitive's, under the default's name.
+# The accepted net (archive/plan-teacher §8.6.3-§8.6.4): Intransitive's, under the default's name.
 ACCEPTED_NET = ROOT / "nets" / "d93e28d09a33-db5ef1bc938e.json"
 
 TINY = Procedure(
@@ -591,7 +591,7 @@ def test_the_opening_duel_samples_positions_and_not_the_threads(
 def test_a_curtailed_acceptance_is_the_full_duel_s_verdict_at_any_worker_count(
     spec: dict, clean: None, opening_plies: int
 ) -> None:
-    """plan-compute §4.2 (Q632): the verdict by construction, the score of the prefix."""
+    """reference/compute-economy.md §4.2 (Q632): the verdict by construction, the score of the prefix."""
     engine = Engine(spec)
     weights = model.quantize(model.train(_data(spec), TINY))
     register_net(NetRecord(TINY.digest, engine.spec.hash, ACCEPTED, weights))

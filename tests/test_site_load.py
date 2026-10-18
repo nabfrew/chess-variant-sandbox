@@ -716,7 +716,7 @@ class TestTheSeeding:
     def test_a_re_rated_ladder_reseeds_unplayed_rows_and_leaves_played_ones(
         self, store: Scratch, tree: Path
     ) -> None:
-        """L3's reseed rule (`plan-leaderboard.md` §2.3), through the loader.
+        """L3's reseed rule (`docs/archive/plan-leaderboard.md` §2.3), through the loader.
 
         A picker run three months later cannot rewrite what human results decided: the
         rung a person has played keeps its number. Every rung nobody has played is still

@@ -2,7 +2,7 @@
 
 Schema 21's ``carries`` names the pieces that may go in by an end, and the validator refuses
 one that names every piece that can move (it is no filter, written the long way: one game,
-one hash) and one that names nobody (`plan-portals-2.md` §2.3: say that with who may
+one hash) and one that names nobody (`docs/archive/plan-portals-2.md` §2.3: say that with who may
 ``enter``). Removing the one type a filter kept out leaves the first, which
 ``transform.settle_carries`` drops; removing the one type a filter let in leaves the second,
 which the design loop's ``remove-a-piece`` refuses as a draw (``empties_a_filter``) rather

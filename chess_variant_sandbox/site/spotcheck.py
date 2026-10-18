@@ -1,7 +1,7 @@
 """Tier two: the spot check, which replays a sample of a browser's measurement exactly.
 
-`docs/plan-client-compute.md`'s row *Tier two, the sample job*, re-aimed at *Publish* by
-`docs/plan-game-pipeline.md` Q503e. Tier one (`legality`) has walked every submitted game
+`docs/archive/plan-client-compute.md`'s row *Tier two, the sample job*, re-aimed at *Publish* by
+`docs/archive/plan-game-pipeline.md` Q503e. Tier one (`legality`) has walked every submitted game
 for legal moves and outcomes, re-derived the fit and scored the records itself. What it
 cannot prove is that the rostered players chose those moves, the search counters, the
 probe's `near_best` counts and each blunder trial's new winner. This job proves them for a

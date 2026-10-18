@@ -414,7 +414,7 @@ def anchor_curves(
     """Place every curve's ends from the labelled corpus, mechanically.
 
     **How `v3` to `v11` were placed, and no longer how a version is.** Since `v12` every end
-    names its source and the band places none of them (`docs/plan-evolving-score.md` §4);
+    names its source and the band places none of them (`docs/archive/plan-evolving-score.md` §4);
     `anchor` reports with `check_ends` and writes nothing. This stays so the band-placed
     versions' ends can be re-derived (`docs/reference/negatives-widened.py` reads it).
 
@@ -538,7 +538,7 @@ def check_ends(corpus: list[Measured], weights: Any) -> list[EndCheck]:
     """Read the band against a weights version's ends. Places nothing and writes nothing.
 
     Since `v12` the band checks the scale and no longer sets it
-    (`docs/plan-evolving-score.md` §4.2): this is what the next revision reads to see which
+    (`docs/archive/plan-evolving-score.md` §4.2): this is what the next revision reads to see which
     games plateau, which fall to zero, and which ends a band game now passes. Only the
     `human` entries count, and for each component only those whose ladder the roster can
     read, by the rule ``anchor_curves`` used (0.99 for the skill-derived curves).

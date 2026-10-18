@@ -847,7 +847,7 @@ class TestTheSitesWordsAreAVisitors:
         assert after == ["wrap", False]
 
 
-# The (i)s `docs/plan-understanding.md` §3.1 confirms are never drawn on the site: they sit
+# The (i)s `docs/archive/plan-understanding.md` §3.1 confirms are never drawn on the site: they sit
 # behind `!ACCOUNTS`, a withheld route, or have no caller. The local application keeps them.
 _NOT_DRAWN_ON_THE_SITE = frozenset({
     "unscored", "fitted", "lineage", "candidate", "archived", "committed", "rulesetHash",
@@ -1098,7 +1098,7 @@ def _game_page_views() -> list[tuple[str, str]]:
     def view(where: str, call: str, more: str = "") -> None:
         found.append((where, site_words.visible(str(_run_page(setup + more, call)))))
 
-    # L2 (`docs/plan-leaderboard.md`): the leaderboard in each of its states, where the
+    # L2 (`docs/archive/plan-leaderboard.md`): the leaderboard in each of its states, where the
     # site drew the strength table before. A row the picker no longer offers carries the
     # server's name for it (`opponents.table_name`, G17), never its agent string.
     from chess_variant_sandbox.web import opponents
@@ -1161,7 +1161,7 @@ def _game_page_views() -> list[tuple[str, str]]:
 
 
 class TestTheLibraryAndTheMapSpeakToAVisitor:
-    """W2 (`docs/plan-understanding.md` §3.3, B1-B23 and M1-M13): the library's cards,
+    """W2 (`docs/archive/plan-understanding.md` §3.3, B1-B23 and M1-M13): the library's cards,
     controls and legend, and the map's panels, in the site's words."""
 
     @staticmethod
@@ -1239,7 +1239,7 @@ class TestTheLibraryAndTheMapSpeakToAVisitor:
 
 
 class TestTheDesignerSpeaksToAVisitor:
-    """W5a (`docs/plan-understanding.md` §3.3, D1-D39): the designer's own words, on the
+    """W5a (`docs/archive/plan-understanding.md` §3.3, D1-D39): the designer's own words, on the
     site; the local application keeps the maintainer's where the row says so."""
 
     @staticmethod
@@ -1342,7 +1342,7 @@ class TestTheDesignerSpeaksToAVisitor:
 
 
 class TestTheShellAndItsInfosSpeakToAVisitor:
-    """W1 (`docs/plan-understanding.md` §3.3, A1-A22): every (i) and the score panel in the
+    """W1 (`docs/archive/plan-understanding.md` §3.3, A1-A22): every (i) and the score panel in the
     site's words where the page is the site, the local application's sentence kept where
     the maintainer still wants it, and the site's vocabulary defined once."""
 
@@ -1439,7 +1439,7 @@ class TestTheShellAndItsInfosSpeakToAVisitor:
         assert "clearly above" in site
 
     def test_a_games_page_says_each_row_as_the_plan_replaces_it(self) -> None:
-        """W3 (`docs/plan-understanding.md` §3.3, G rows): the views of a game's page as
+        """W3 (`docs/archive/plan-understanding.md` §3.3, G rows): the views of a game's page as
         the site draws them, one sentence per row."""
         views: dict[str, str] = {}
         for where, text in _game_page_views():

@@ -1,6 +1,6 @@
 """What people's games record for a baseline: think time, take-backs, the rating at the time.
 
-Q767, H1 to H3 of `docs/plan-human-data.md` §1.2 (`0032_human_data.sql`). One sentence per
+Q767, H1 to H3 of `docs/reference/human-data.md` §1.2 (`0032_human_data.sql`). One sentence per
 class below: a person's move against a computer player keeps how long they took, measured
 on the server, null over half an hour and on every computer move, and a game between two
 people or two computer players keeps none (H1); each take-back and restart appends what it

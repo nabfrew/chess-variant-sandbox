@@ -1,4 +1,4 @@
-"""Schema 19 (Q771): portals, `docs/plan-portals.md` §§1-5 and §7 P1.
+"""Schema 19 (Q771): portals, `docs/archive/plan-portals.md` §§1-5 and §7 P1.
 
 A pair of portals is two ends on the board; a piece whose move ends on an end open to its
 player comes out one king's step beyond the other end, in the direction it travelled (the
@@ -400,7 +400,7 @@ def _bare(spec: dict[str, Any], squares: dict[str, str]) -> dict[str, Any]:
 
 
 class TestTheLandingRules:
-    """`docs/plan-portals.md` §2.5, one case each, and N2's two."""
+    """`docs/archive/plan-portals.md` §2.5, one case each, and N2's two."""
 
     def _wormhole(self, placement: dict[str, tuple[str, int]], side: int = 0,
                   spec: dict[str, Any] | None = None) -> tuple[Engine, Any]:

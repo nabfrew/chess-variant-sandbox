@@ -1,6 +1,6 @@
 """*Your move*: the one opt-in email and *Games waiting on your move* (Q572).
 
-`docs/plan-return.md` §1.5 and the dated exception to test 3 of `docs/plan-meta-game.md`
+`docs/archive/plan-return.md` §1.5 and the dated exception to test 3 of `docs/reference/no-dark-patterns.md`
 (the user, 2026-10-01): a member may switch on, off by default, one email when it becomes
 their move in a game between two people, and the site sends nothing else. What is proved,
 on specs rather than chess:

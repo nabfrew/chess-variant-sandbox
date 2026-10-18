@@ -1,6 +1,6 @@
 """`v12`: every curve end names its source, and the band checks the scale without placing it.
 
-`docs/plan-evolving-score.md` §4 (EV4, Q689) and `docs/reference/v12-calibration.md`, whose
+`docs/archive/plan-evolving-score.md` §4 (EV4, Q689) and `docs/reference/v12-calibration.md`, whose
 pre-registration fixed the domain, gate and meaning ends before the reference read. Each
 assertion is a fact about the files, so a later edit that moved an end without a new version,
 or put the band back in charge of one, fails here.

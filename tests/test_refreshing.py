@@ -1,6 +1,6 @@
 """The refresher's status drawn on `/admin` and in the local application (Q705).
 
-`docs/plan-evolving-score.md`, EV5's checklist: *the status drawn on `/admin` and in the
+`docs/archive/plan-evolving-score.md`, EV5's checklist: *the status drawn on `/admin` and in the
 local app*. `web/refreshing.py` words `refresher.read_status`; both pages draw its lines
 and decide nothing. One test per state the task names (running, idle, refused, a file
 that stopped being written, no file), the two routes that carry it, and the page wiring.

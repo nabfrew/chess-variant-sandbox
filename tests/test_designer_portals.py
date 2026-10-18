@@ -1,4 +1,4 @@
-"""Portals in the designer, as P3 of `docs/plan-portals.md` builds them (Q772c, D1-D10).
+"""Portals in the designer, as P3 of `docs/archive/plan-portals.md` builds them (Q772c, D1-D10).
 
 What can be held without a browser. The server's half: the pair's card in sentences (D4),
 the refusals in the designer's words and never the validator's paths (D7), the warnings
@@ -542,7 +542,7 @@ class TestTheCardsChoices:
 
 
 class TestNoColourWordInTheDesigner:
-    """Q838d's acceptance (`docs/plan-portal-look.md` §6): placing a pair, renumbering it and
+    """Q838d's acceptance (`docs/archive/plan-portal-look.md` §6): placing a pair, renumbering it and
     choosing its ways never shows a colour word unless naming the pair's colour. Everything
     the designer shows about portals, rendered and said, with the four pairs' colour names
     (violet, yellow, cyan, vermilion) taken out first: what is left names no colour."""

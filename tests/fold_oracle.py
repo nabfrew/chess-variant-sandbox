@@ -5,7 +5,7 @@ which moves a position has once folds are on the board -- every leap, slide and 
 side to move with the fold rules applied, a fold's own moves, and the momentum transits beside
 them -- and so whether a square is attacked. Nothing outside `tests/` imports it.
 Fairy-Stockfish cannot play a portal, so this is the second implementation the core is held
-against (`docs/plan-portals-2.md` §6); `tests/portal_oracle.py` is the precedent and the base it
+against (`docs/archive/plan-portals-2.md` §6); `tests/portal_oracle.py` is the precedent and the base it
 builds on.
 
 It shares no code with `engine/compile.py` or the core. It reads each piece's own move
@@ -13,7 +13,7 @@ descriptors one at a time (the compiler merges them into rays and the core walks
 steps them square by square with `PortalOracle`'s wrap and wall stepping. Only the spelling
 helpers of `spec/schema.py` are shared (`portal_groups`, `portal_end_ids` through the base).
 
-The rules, as `docs/plan-portals-2.md` §3R.1 writes them:
+The rules, as `docs/archive/plan-portals-2.md` §3R.1 writes them:
 
 * A fold is not a piece and is floor to every move that does not end on it: a slide or hop
   runs on past it, a leap's path and a lame leap's leg cross it, a momentum transit's ray

@@ -809,7 +809,7 @@ def _ladder_record(agents: tuple[str, str], plies: int, winner: int | None, reas
 
 
 class TestTheGatesReadTheWorseHalfOfTheLadder:
-    """The split denominator: `docs/plan-roster-confound.md` sections 3 and 4.
+    """The split denominator: `docs/reference/roster-confound.md` sections 3 and 4.
 
     `bastion` is the committed broken control and it measured `viable: true` under `v9`
     at 0.7103. It is two games, not one. Against the rungs that cannot see its three-ply

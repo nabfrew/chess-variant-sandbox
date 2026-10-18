@@ -1,6 +1,6 @@
 """Schema 26 (Q918a): the core's rounds against the declared oracle, round by round.
 
-`docs/plan-simultaneous.md` §6.1 and §7's Q918a box: random walks through the test specs,
+`docs/archive/plan-simultaneous.md` §6.1 and §7's Q918a box: random walks through the test specs,
 every round resolved by `make_round` and by `tests/simultaneous_oracle.py`, the whole
 position compared, and the incremental key held to the slow definition. The fast tier walks
 a few games per spec; the slow tier walks many more. Schema 27's specs (Q942a) carry the

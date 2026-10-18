@@ -1757,7 +1757,7 @@ def _fix_a_facing(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 # Schema 26 (Q918a): what a simultaneous game cannot be played beside and an operator may
 # simply drop on the way in -- each is one rule a round has no use for. Anything else §4 of
-# `docs/plan-simultaneous.md` refuses (a sweep, a moved portal, a strike that stays or
+# `docs/reference/rounds.md` refuses (a sweep, a moved portal, a strike that stays or
 # chooses, a long turn) is a design of its own, so the operator does not apply there.
 _DROPPED_FOR_ROUNDS = ("castling", "en_passant", "checkmate", "forbid_check", "check_limit")
 
@@ -1850,7 +1850,7 @@ def _break_the_tie(spec: dict[str, Any], rng: random.Random) -> str | None:
     return "a tied collision goes to the player holding the initiative, which then passes"
 
 
-# Schema 27 (Q942a, `docs/plan-round-chase.md` §3): the three switches against a royal chased
+# Schema 27 (Q942a, `docs/archive/plan-round-chase.md` §3): the three switches against a royal chased
 # round after round, each with the one value that turns it on.
 _CHASE_SWITCHES = {"rest": True, "swap": "collision", "both": "score"}
 _CHASE_WORDS = {
@@ -2499,7 +2499,7 @@ def _give_movers(group: dict[str, Any]) -> None:
 def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Put a pair of portals on the board, or change one of its settings, or take it away.
 
-    Schema 19 (Q771, `docs/plan-portals.md`), all three of its names both ways, and schema
+    Schema 19 (Q771, `docs/archive/plan-portals.md`), all three of its names both ways, and schema
     20's ``no_straight_back`` (Q807) both ways. On a game with no portals a pair goes on two
     empty squares that are each other's image under the setup's mirror, so neither side
     starts with the better door; the portal is a new piece worth nothing that steps one
@@ -2718,7 +2718,7 @@ def _as_pair(group: dict[str, Any]) -> dict[str, Any]:
 
 
 def _reshape_portals(spec: dict[str, Any], rng: random.Random, shape: str) -> str | None:
-    """`ring-the-portals` and `funnel-the-portals` (schema 21, `plan-portals-2.md` §2): a
+    """`ring-the-portals` and `funnel-the-portals` (schema 21, `docs/archive/plan-portals-2.md` §2): a
     pair becomes a map of three, or a map becomes a pair again.
 
     A ring: the pair's two ends and a third on an empty square lead round, each to the
@@ -2789,7 +2789,7 @@ def _funnel_the_portals(spec: dict[str, Any], rng: random.Random) -> str | None:
 def _filter_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Let only some pieces go in by one portal end, or every piece again; or, on a map,
     let only one player's pieces go in by an end, or both again (schema 21's ``carries``
-    and ``enter``, `plan-portals-2.md` §2.3).
+    and ``enter``, `docs/archive/plan-portals-2.md` §2.3).
 
     A filter names one piece that can move, drawn at random, so the end is a door to it
     and a solid block to every other. Checked against the validator and drawn again
@@ -2851,7 +2851,7 @@ def _filter_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 def _fold_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Make one portal group fold portals, or momentum portals again (schema 24's ``kind``,
-    `plan-portals-2.md` §3R).
+    `docs/archive/plan-portals-2.md` §3R).
 
     A fold is not a piece: a piece may stand in it, and a move that ends on an empty one may
     stay there or go through and end on the end it leads to, taking a piece there as any

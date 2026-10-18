@@ -1,6 +1,6 @@
 """The one word for where a game stands, decided in one place.
 
-Q503b of `docs/plan-game-pipeline.md` (§2.1 the levels, §3 the pages that show them). A
+Q503b of `docs/plan-game-pipeline.md` (§2.1 the levels; the pages that show them, `docs/archive/plan-game-pipeline.md` §3). A
 game is at exactly one level, and every page that names it -- the card, the library's
 tabs, the designer's *Where this game stands*, the game page's *Where it stands*, the
 profile's *Your games* -- asks `stage` (on the site) or `local` (the application on a
@@ -208,7 +208,7 @@ def tab(level: str) -> str | None:
 
 GLOSSES = {BASELINE: "baseline"}
 """The (i) a level word carries, by the page's key for it (`core.js` `GLOSS`): a word the
-site's vocabulary keeps and defines (`docs/plan-understanding.md` §3.2). The page holds no
+site's vocabulary keeps and defines (`docs/reference/plain-words.md` §2). The page holds no
 level word of its own, so it asks this rather than comparing the word (G41)."""
 
 

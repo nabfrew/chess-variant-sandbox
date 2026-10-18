@@ -1,7 +1,7 @@
 {
   "schema_version": 18,
   "name": "placement chess",
-  "description": "Placement chess: the pawns start where chess's do and every other piece starts in hand. While a player still holds a piece, a move is placing one on an empty square of their own back rank; once both have placed all eight, the game is chess without castling.",
+  "description": "Placement chess keeps chess's pawns where they are and hands each player the other eight pieces, king included. Before anything moves, the players take turns placing them, one a move, on empty squares of their own back rank, and once both back ranks are full the game goes on as chess without castling. So the opening is a contest of arrangement rather than of memory. A piece placed early claims the square it wants but tells the opponent what is coming; a piece held back can answer the other side's arrangement, but the last one goes on whatever square is left. Where to put the king, whether to set the rooks together or apart, and which pieces to aim at the opponent's weak points all become choices made in view of the other side's half-built army, and nothing obliges the two bishops to stand on squares of different colours.",
   "board": {
     "width": 8,
     "height": 8
@@ -254,6 +254,6 @@
     "added": "2026-10-09",
     "origin": "human",
     "source": "Placement chess (Fairy-Stockfish's `placement`), less two of its rules: the bishops may share a colour, and a dropped king and rook do not castle",
-    "history": "Schema 18d's showcase for the placement phase (Q784, plan-schema-17.md section 9.3)."
+    "history": "Schema 18d's showcase for the placement phase (Q784, docs/archive/plan-schema-17-18.md section 9.3)."
   }
 }

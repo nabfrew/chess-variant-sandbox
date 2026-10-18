@@ -1,4 +1,4 @@
-"""Schema 21's look and designer (Q843b, `docs/plan-portals-2.md` §5.1, §5.2, §5.4).
+"""Schema 21's look and designer (Q843b, `docs/archive/plan-portals-2.md` §5.1, §5.2, §5.4).
 
 What can be held without a browser. On the board: where a beak points, a pure function of
 two drawn positions (as `portalJourney` is a pure function of a distance), and the nearest

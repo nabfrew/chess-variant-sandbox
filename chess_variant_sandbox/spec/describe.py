@@ -1330,8 +1330,8 @@ def _capture_relation(spec: dict[str, Any]) -> str:
 
 def _describe_simultaneous(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
     """Schema 26 (Q918a): the round, the collision table, the tie, the void bar and what an
-    ending reached by both means (`docs/plan-simultaneous.md` §2, §3); schema 27's chase
-    switches (Q942a, `docs/plan-round-chase.md` §3) where they change those sentences."""
+    ending reached by both means (`docs/reference/rounds.md` §2, §3); schema 27's chase
+    switches (Q942a, `docs/archive/plan-round-chase.md` §3) where they change those sentences."""
     if not is_simultaneous(rules):
         return []
     tie = rules["simultaneous"].get("tie")
@@ -1821,7 +1821,7 @@ def _passage_words(way: Any, first: Any, second: Any) -> str:
     """One player's way through a pair, naming its ends by the squares they start on.
 
     The file's keys call the two ends ``orange`` and ``blue``; a reader is never told that
-    (Q838c, `docs/plan-portal-look.md` §5): both ends are drawn in the pair's one colour,
+    (Q838c, `docs/archive/plan-portal-look.md` §5): both ends are drawn in the pair's one colour,
     and the square says which end is meant.
     """
     if way == "orange_to_blue":

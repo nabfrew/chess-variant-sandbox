@@ -1,7 +1,7 @@
 {
   "schema_version": 8,
   "name": "chess with turning pawns",
-  "description": "Chess in which every pawn has a facing. A pawn steps one square the way it faces, never two, and captures one square diagonally ahead of it; instead of moving it may spend its move turning a quarter turn. Every pawn starts facing the enemy. A pawn that turns can guard sideways or backwards, and with every pawn able to spend a move turning, games run longer than chess and more of them are drawn.",
+  "description": "Chess in which every pawn has a heading it can change. A pawn steps one square the way it faces, never two, and captures one square diagonally ahead of where it faces; instead of moving it may spend its move turning to face any other way. Every pawn starts facing the enemy, so the opening looks like chess's, but the pawn's oldest limitation is gone: an advance is no longer a commitment, because the pawn can turn to guard sideways or backwards, cover a hole behind it, or walk back home. That makes a pawn move cheap to undo but every turn a lost tempo, and the balance tips towards defence: games run longer than chess and more of them are drawn.",
   "board": {
     "width": 8,
     "height": 8

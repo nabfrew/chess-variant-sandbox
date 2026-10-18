@@ -1,4 +1,4 @@
-"""Portals on the play page, as P1 of `docs/plan-portals.md` draws them (Q771).
+"""Portals on the play page, as P1 of `docs/archive/plan-portals.md` draws them (Q771).
 
 The minimal page: the compiled payload sent once per ruleset (`portal_payload`), each
 transit offered as the engine's own move with the end it goes in by named, and a choice of
@@ -124,7 +124,7 @@ class TestTheRouteChooser:
 
 # ------------------------------------------------------------------ the misplay (Q867c)
 #
-# The user (2026-10-12, `docs/plan-portals-2.md` §5.3R): a piece picked to see its moves,
+# The user (2026-10-12, `docs/archive/plan-portals-2.md` §5.3R): a piece picked to see its moves,
 # then a tap on a portal meant to pick the portal, played the piece in by it. Every movable
 # portal, momentum ends too: the Wormhole's pair, either side moving it, and the knight on
 # c1, which goes in by b3 and comes out on c4.

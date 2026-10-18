@@ -321,7 +321,7 @@ def record_from(game: str, user: int, rows: Sequence[match_rows.Row]) -> Record:
     )
 
 
-# The ladder row's three marks (R7, `docs/plan-return.md` §3 C3), best first. A loss is
+# The ladder row's three marks (R7, `docs/archive/plan-return.md` §3 C3), best first. A loss is
 # *not yet*: the row says how far up you have got, not what went wrong on the way.
 LADDER_WON = "won"
 LADDER_DREW = "drew"

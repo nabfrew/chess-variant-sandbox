@@ -1,10 +1,13 @@
 """The showcase games for simultaneous moves (Q918e), held to their demonstration clauses.
 
-`docs/plan-simultaneous.md`, *Q918e, pre-registered*, wrote these clauses before this file:
+`docs/archive/plan-simultaneous.md`, *Q918e, pre-registered*, wrote these clauses before this file:
 G1 `archive/gardner-in-rounds` (`rules.simultaneous`), G2 `...-with-meek-pawns`
 (`pieces[].beats`), G3 `...-with-the-initiative` (`tie: "initiative"`), G4
-`archive/watering-hole` (`tie: "impossible"`). Each drives the core through `Engine` on a
-hand-built position, or on random play that chooses with a seeded `random.Random` from
+`archive/watering-hole` (`tie: "impossible"`). G1 to G3 left the previews with Q962b
+(`docs/reference/previews-2026-10-18.md`); their files are `tests/_retired_*.json`
+(`retired_specs.retired_preview`), and the clauses still hold the rules on them. Each drives
+the core through `Engine` on a hand-built position, or on random play that chooses with a
+seeded `random.Random` from
 `legal_moves_for`; the counting is `simultaneous_showcase_tally.RoundTally`, which reads the
 core's events and decides nothing.
 """
@@ -18,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from retired_specs import retired_preview
 from simultaneous_showcase_tally import BOTH_LOST, COLLISION, RoundTally, is_swap
 
 from chess_variant_sandbox.engine import Engine
@@ -34,9 +38,9 @@ def load(name: str) -> dict[str, Any]:
     return json.loads((ROOT / "archive" / f"{name}.json").read_text(encoding="utf-8"))
 
 
-ROUNDS = load("gardner-in-rounds")
-MEEK = load("gardner-in-rounds-with-meek-pawns")
-INITIATIVE = load("gardner-in-rounds-with-the-initiative")
+ROUNDS = retired_preview("gardner-in-rounds")
+MEEK = retired_preview("gardner-in-rounds-with-meek-pawns")
+INITIATIVE = retired_preview("gardner-in-rounds-with-the-initiative")
 HOLE = load("watering-hole")
 
 

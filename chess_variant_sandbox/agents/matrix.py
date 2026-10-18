@@ -1,6 +1,6 @@
 """The computer players for a simultaneous game (schema 26, Q918b): the declared oracle.
 
-`docs/plan-simultaneous.md` §6.2. A round is a **matrix game**: rows are my moves, columns
+`docs/archive/plan-simultaneous.md` §6.2. A round is a **matrix game**: rows are my moves, columns
 the opponent's, each cell the position after resolving that pair. A good player in such a
 game mixes, so every player above `random` here chooses a probability over its moves and
 draws one with its own seat's stream.
@@ -35,7 +35,7 @@ from chess_variant_sandbox.agents.evaluation import GOAL_PIECES, IMMUNE_PIECES, 
 from chess_variant_sandbox.engine import Engine, GameState, Outcome
 
 # How many iterations of regret matching+ a matrix game is solved with. Chosen by the
-# pre-registered test against exact equilibria of small matrices (`plan-simultaneous.md`,
+# pre-registered test against exact equilibria of small matrices (`docs/archive/plan-simultaneous.md`,
 # *Q918b, pre-registered*; `tests/test_matrix_players.py`), never by a game's score. Held to
 # `_core.REGRET_ITERATIONS` by a test: changing it is a new player under every round name.
 REGRET_ITERATIONS = 100
@@ -46,7 +46,7 @@ MAX_DEPTH = 64
 
 # The objective options a round player may not take. A heuristic, fitted or searched
 # objective reads one mover's mobility and was fitted on alternating play;
-# `plan-simultaneous.md` §6.2 measures whether the round players need their own (Q918d).
+# `docs/archive/plan-simultaneous.md` §6.2 measures whether the round players need their own (Q918d).
 # A learned net may (Q918g, §6.4): one trained on rounds reads the round's own state. Not in
 # a spy game, whose turns and rounds no net has been trained across.
 _ALTERNATING_OBJECTIVES = ("h", "fit", "values")
@@ -209,7 +209,7 @@ def round_evaluator(
 
 
 def refuse_alternating_objective(options: dict[str, Any], kind: str, spy: bool = False) -> None:
-    """A round player plays the built-in objective only (`plan-simultaneous.md` §6.2), or
+    """A round player plays the built-in objective only (`docs/archive/plan-simultaneous.md` §6.2), or
     a learned net trained on rounds (Q918g, §6.4); a spy game's players the built-in only."""
     refused = (*_ALTERNATING_OBJECTIVES, "net") if spy else _ALTERNATING_OBJECTIVES
     named = [key for key in refused if options.get(key) is not None]

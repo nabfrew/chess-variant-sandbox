@@ -1,4 +1,4 @@
-"""Schema 20 (Q807): a portal may not go straight back (`docs/plan-portals.md` *Ferry's shuffle*).
+"""Schema 20 (Q807): a portal may not go straight back (`docs/archive/plan-portals.md` *Ferry's shuffle*).
 
 `rules.portals[].no_straight_back`: once an end of the pair is moved, the very next move of
 the game may not move that end back onto the square it left. It is a portal's ko, the answer

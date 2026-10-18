@@ -1,6 +1,6 @@
 """A score as an evolving estimate: what a reader holds while a score is measured again.
 
-EV2 of `docs/plan-evolving-score.md` (§2.1, §3, §5.1), the user's answer of 2026-10-03 (§9
+EV2 of `docs/archive/plan-evolving-score.md` (§2.1, §3, §5.1), the user's answer of 2026-10-03 (§9
 Q1, A). A stale measurement used to be no number at all; it is now the game's last number,
 marked *provisional* with the revision it came from and its date. What is held down here,
 on the rulesets' own files (never chess):

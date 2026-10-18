@@ -1,7 +1,7 @@
 {
   "schema_version": 23,
   "name": "pinwheel",
-  "description": "Hexagonal chess in which everything turns one way. The knights are one-handed: of the twelve cells a hexagonal knight jumps to, a knight here reaches every other one, the six that all turn the same way round, so its jumps wheel about it like the sails of a pinwheel. The board's two empty sides are joined, and each player may cross the join one way only: the first player by leaving by the lower-right side and coming back in by the upper-left one, the second the reverse, so the two armies circle the board the same way round. The board is a hexagon of 61 cells, five to a side, and every cell has six neighbours. A rook slides through the six edge neighbours, a bishop through the six cells that touch two of them, a queen does both, and a king steps one cell in any of those twelve directions. A pawn steps straight forward, two on its first move, and takes on the two neighbours either side of forward; a pawn that reaches the far edge, the nine cells from which it has no step forward, becomes a queen, rook, bishop or knight. There is no en passant and no castling. Each side has a king, a queen, two rooks, two knights, three bishops and seven pawns in a wedge, and the second army is the first turned half a turn, which keeps its knights turning the same way. Checkmate wins; stalemate is a draw.",
+  "description": "Hexagonal chess in which everything turns one way, on a hexagon of 61 cells, five to a side, with Władysław Gliński's hexagonal chess army scaled down to seven pawns. The knight is one-handed: of the twelve cells a hexagonal knight jumps to, it reaches only every other one, the six that all turn the same way round, so its jumps wheel about it like the sails of a pinwheel, and since the second army is the first turned half a turn, both players' knights turn the same way. The two sides of the board that no army starts on are joined, and each player may cross the join one way only: the first player leaves by the lower-right side and comes back in by the upper-left, the second the reverse, so both armies circle the board the same way round. An attack can come through the crowded middle or round the flank across the join, and the join is crossed in nearly every game. A pawn promotes on reaching the far edge, and stalemate is a draw.",
   "board": {
     "width": 9,
     "height": 9,
@@ -89,8 +89,8 @@
   "provenance": {
     "added": "2026-10-13",
     "origin": "designed",
-    "source": "docs/plan-library-audit.md, Q870: a new game instead of a variant",
-    "history": "Designed by Q870 to replace four variants of hex glinski hexagon with one game built around what they were kept to show: rotate6 and dihedral12 (hex-glinski-turned and -turned-mirrored, which spelled Glinski's game move for move, so the two symmetries meant the same there) and a hexagon's one-way seam (hex-glinski-flanks-one-way, and the two-way hex-glinski-flanks). Here rotate6 makes a one-handed knight, which dihedral12 cannot, and the seam is one-way per player on a 61-cell hexagon. Pre-registered in docs/plan-library-audit.md before it was measured.",
+    "source": "docs/archive/plan-library-audit.md, Q870: a new game instead of a variant",
+    "history": "Designed by Q870 to replace four variants of hex glinski hexagon with one game built around what they were kept to show: rotate6 and dihedral12 (hex-glinski-turned and -turned-mirrored, which spelled Glinski's game move for move, so the two symmetries meant the same there) and a hexagon's one-way seam (hex-glinski-flanks-one-way, and the two-way hex-glinski-flanks). Here rotate6 makes a one-handed knight, which dihedral12 cannot, and the seam is one-way per player on a 61-cell hexagon. Pre-registered in docs/archive/plan-library-audit.md before it was measured.",
     "parents": ["6eaaad41673b"]
   }
 }

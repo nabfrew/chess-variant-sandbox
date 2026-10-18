@@ -272,7 +272,7 @@ class Engine:
 
     def apply_round(self, state: GameState, first: int, second: int) -> GameState:
         """The position after one round: ``first`` by player 0, ``second`` by player 1,
-        revealed and resolved together (`docs/plan-simultaneous.md` §2, §4)."""
+        revealed and resolved together (`docs/reference/rounds.md` §2, §4)."""
         return _unpack(self.core.apply_round(_pack(state), first, second)[0])
 
     def apply_round_with_phase(
@@ -662,7 +662,7 @@ class Engine:
         return way_in, way_out
 
     def _fold_text(self, state: GameState, move: int) -> str:
-        """A move through a fold (schema 24, `docs/plan-portals-2.md` §3R.2): its way in, and
+        """A move through a fold (schema 24, `docs/archive/plan-portals-2.md` §3R.2): its way in, and
         its way out, which is where it ends. ``Ra3-b3~e4`` (in at b3, out on e4); a capture
         ``Ra3-b3~xe4``; a promotion ``Pc6-c7~f8=Q``. A stay is written as any move,
         ``Ra3-b3``. Every text stays distinct, so ``find_move`` keeps working."""

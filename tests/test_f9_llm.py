@@ -1,4 +1,4 @@
-"""The model-facing paths nothing offline reached (plan-tests F9, Q751b).
+"""The model-facing paths nothing offline reached (archive/plan-tests F9, Q751b).
 
 `Claude` and `judge_ruleset` are the two places a run spends money, so every test here
 stands a fake where the SDK's transport goes and never opens a socket: the API is never

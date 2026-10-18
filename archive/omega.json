@@ -1,7 +1,7 @@
 {
   "schema_version": 18,
   "name": "omega",
-  "description": "Omega chess: a 10x10 board with a wizard cell outside each corner, and two new pieces, the champion and the wizard. Pawns may step one, two or three squares from their first rank, and the king castles two squares toward either rook as in chess.",
+  "description": "Omega chess is a published variant that enlarges chess to ten by ten and adds one cell outside each corner, the wizard cells, where the two new pieces called wizards begin. The other newcomer is the champion. Both are jumpers rather than sliders: the champion steps one square straight or jumps exactly two squares in any of the eight directions, and the wizard steps one square diagonally or leaps three and one, a stretched knight's move that, like its diagonal step, never takes it off its own colour. On a board this size the rooks, bishops and queen cross the distance in a move while the champions and wizards cannot be blocked and do their work at close quarters, so a player keeps choosing between opening lines for the sliders and keeping the position crowded for the jumpers. Pawns may advance one, two or three squares on their first move, which brings the armies into contact sooner, and the king castles as in chess.",
   "board": {
     "width": 12,
     "height": 12

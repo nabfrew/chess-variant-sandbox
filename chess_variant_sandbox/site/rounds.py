@@ -1,6 +1,6 @@
 """The round: the members' vote, then the maintainer's confirm or veto.
 
-Q503h of `docs/plan-game-pipeline.md` (§2.2 *The round, in order*, §3.2's *Where it
+Q503h of `docs/plan-game-pipeline.md` (§2.2 *The round, in order*; `docs/archive/plan-game-pipeline.md` §3.2's *Where it
 stands* lines, §3.3 the round page, §3.4 `/admin`'s *Round and reports*), at the user's
 answers Q1 B (members vote for a week, the maintainer confirms or vetoes) and Q4 A (at
 most 4 a month), with §6's first *needs decision* on its default (A, 2026-09-28).
@@ -94,7 +94,7 @@ ENTERS = (
     "and voted."
 )
 """What puts a game into a round, said where a round has no entrant (L4 of
-`docs/plan-launch.md` §3.4): the page that is not announced still says how to fill it."""
+`docs/archive/plan-launch.md` §3.4): the page that is not announced still says how to fill it."""
 
 PREMISE = "not checked yet: no strength check is on file for this game"
 COST = (
@@ -848,7 +848,7 @@ def page(
 
 def announced(connection: Any) -> bool:
     """Whether the footer links the round: only while the latest round has an entrant (L4
-    of `docs/plan-launch.md` §3.4). A round nobody entered is not announced; its address
+    of `docs/archive/plan-launch.md` §3.4). A round nobody entered is not announced; its address
     still answers, saying when the next opens and what enters a game (`page`)."""
     found = latest(connection)
     return found is not None and bool(entrants(connection, found.day))

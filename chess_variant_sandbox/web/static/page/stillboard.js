@@ -22,7 +22,7 @@
 // tinted square and where they differ it does not.
 let STILL_TAGS = 0;
 
-// `bench` is the designer's workbench (P3 of `docs/plan-portals.md`), and absent everywhere
+// `bench` is the designer's workbench (P3 of `docs/archive/plan-portals.md`), and absent everywhere
 // else: what its board says over the position about the portals being put down and the
 // keyboard's place on it. Every square in it is one the designer's own state names --
 // `ring` the selected pair's ends, `lift` an end picked up to move, `dim` the other pairs'
@@ -60,7 +60,7 @@ function boardPreview(preview, map, drawn, bench) {
   const through = new Map(), entries = new Set();
   const straight = new Set((map && map.direct) || []);
   for (const transit of (map && map.transits) || []) {
-    // Schema 24 (`docs/plan-portals-2.md` §5.3R): through a fold, the move ends on the far
+    // Schema 24 (`docs/archive/plan-portals-2.md` §5.3R): through a fold, the move ends on the far
     // end, which takes the ordinary dot (it is in the map's `moves`); a fold is no way in to
     // tap, so it is not ringed.
     if (transit.foldIn !== undefined) continue;
@@ -68,7 +68,7 @@ function boardPreview(preview, map, drawn, bench) {
     through.set(transit.to, end ? `var(--pair-${end.pair})` : 'var(--dot)');
     entries.add(transit.portal);
   }
-  // Schema 22 (Q843d, `docs/plan-portals-2.md` §5.3): the folds, which are no board byte,
+  // Schema 22 (Q843d, `docs/archive/plan-portals-2.md` §5.3): the folds, which are no board byte,
   // where the payload says they lie (`fold_payload`). Nothing is drawn on the far end
   // (§5.3R: the echo went; the beak says where a fold leads).
   const folds = new Map((preview.folds || []).map(fold => [fold.square, fold]));
@@ -300,7 +300,7 @@ function benchMarksHtml(bench, square, x, y, cell, view, preview) {
   for (const pending of bench.pending || []) {
     if (pending.square !== square) continue;
     if (pending.waiting) {
-      // An end of a group still being put down (`docs/plan-portal-look.md` §5; a group of
+      // An end of a group still being put down (`docs/archive/plan-portal-look.md` §5; a group of
       // two or more since schema 21): a sunk well in the group's colour on a pad of stone,
       // ringed dashed in that colour over the keyline, an end that is not a portal yet.
       const r = cell * 0.46;

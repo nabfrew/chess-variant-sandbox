@@ -1,6 +1,6 @@
 """Rule 5's constraint 5c, enforced over the import graph rather than promised.
 
-`docs/plan-human-data.md` §3 reads rule 5 (*human results are a labelled quantity beside the
+`docs/reference/human-data.md` §3 reads rule 5 (*human results are a labelled quantity beside the
 index, never an input to it*, `docs/plan-website.md`) as four constraints. The tests in
 `tests/test_web.py` and `tests/test_site_correspondence.py::TestTheRules` hold 5a: nothing
 under `metrics/` names the site's store or `web.human`. They say nothing about **5c**: *no
@@ -8,7 +8,7 @@ number in a score's basis depends on a person's game, directly or through a comp
 whose selection or acceptance a person's game decided*. A computer player is chosen and
 accepted by `tournament/` (duels, ratings, fitting), built by `agents/`, and trained by the
 net procedure (`agents/training/`); any of them reading people's games would break 5c with
-every 5a test green (`docs/plan-human-data.md` §3, the brief's gap; task H5 in §7).
+every 5a test green (`docs/reference/human-data.md` §3, the brief's gap; task H5).
 
 So this file holds that no module under those three places reaches, through any chain of the
 package's own imports, the site (`chess_variant_sandbox.site`, which owns the database) or the
@@ -17,7 +17,7 @@ helper that imports the store is the same dependency one step removed. And besid
 the source is read for the store's names, so a module cannot open the database or the
 record's file by path without importing either.
 
-Routes B and C (`plan-human-data.md` §3.2, §3.3) live under `site/` and `/admin`, reading
+Routes B and C (`docs/reference/human-data.md` §3.2, §3.3) live under `site/` and `/admin`, reading
 the rating table and writing beside the score; this test is what keeps them there.
 """
 
@@ -125,7 +125,7 @@ def test_the_guarded_places_exist() -> None:
 
 
 def test_no_computer_player_reaches_peoples_games() -> None:
-    """Rule 5c (`docs/plan-human-data.md` §3, task H5): nothing under `agents/`, the net
+    """Rule 5c (`docs/reference/human-data.md` §3, task H5): nothing under `agents/`, the net
     procedure or `tournament/` imports the site's store or `web.human`, at any depth."""
     modules = _modules()
     graph = {name: _imports(name, path, modules) for name, path in modules.items()}

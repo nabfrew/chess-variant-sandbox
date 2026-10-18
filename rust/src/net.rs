@@ -76,7 +76,7 @@ pub struct Layout {
     pub halfmove: usize,
     pub ply: usize,
     pub turn: usize,
-    /// Q918g: a round game's own state (`docs/plan-simultaneous.md` §6.4, *Q918g, scoped*),
+    /// Q918g: a round game's own state (`docs/archive/plan-simultaneous.md` §6.4, *Q918g, scoped*),
     /// after `turn`. Each segment is there only on tables that carry its rule, so every
     /// alternating layout -- and every store and digest written for one -- is unchanged.
     /// `initiative`: two inputs, who holds the token, under `tie: "initiative"`.
@@ -473,7 +473,7 @@ impl NetEvaluator {
 
     /// The score for `player`: the net's output for the side to move, negated for the
     /// other side, in the built-in objective's units. In a round game `side` stays 0
-    /// (`plan-simultaneous.md` §6.1), so the one head read there is seat 0's and seat 1's
+    /// (`docs/archive/plan-simultaneous.md` §6.1), so the one head read there is seat 0's and seat 1's
     /// score is its negation (§6.4): the round's evaluator needs no arm of its own.
     pub fn evaluate(&mut self, game: &Game<'_>, player: usize) -> f64 {
         let score = self.raw(game) as f64 / OUTPUT_SCALE;

@@ -874,7 +874,7 @@ impl Core {
         }))
     }
 
-    /// Q918g (`plan-simultaneous.md` §6.4): a round player's own value of each round, for
+    /// Q918g (`docs/archive/plan-simultaneous.md` §6.4): a round player's own value of each round, for
     /// player 0, the round games' player teacher (`search_values` is minimax's).
     ///
     /// One `(value, depth)` per state, in order: the value, in the agent's objective's
@@ -884,7 +884,7 @@ impl Core {
     /// No stream is read. Spread over `threads`; the answer does not depend on how many
     /// (`parallel::round_values`). A training label's teacher, never a player.
     ///
-    /// `score_scale` (Q918i, `plan-simultaneous.md` §7, *Q918h, the re-plan*, part 3) asks
+    /// `score_scale` (Q918i, `docs/archive/plan-simultaneous.md` §7, *Q918h, the re-plan*, part 3) asks
     /// for the value on **expected score**: every cell of the one-round matrix is player 0's
     /// `sigmoid(units / score_scale)`, or 1, ½ or 0 where the round ends the game, and the
     /// value (already a score) is that matrix game's. Only the one-round teacher has it

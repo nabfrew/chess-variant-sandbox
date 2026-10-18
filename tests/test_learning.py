@@ -1,4 +1,4 @@
-"""Learning a game on its page (`docs/plan-understanding.md` §4.2, K1-K3).
+"""Learning a game on its page (`docs/archive/plan-understanding.md` §4.2, K1-K3).
 
 K1: the game page draws the start position before a game starts, from the server's
 `opening` (the card's `still` with its drawings put back), with the marks a rule puts on a

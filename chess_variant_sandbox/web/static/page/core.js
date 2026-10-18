@@ -310,7 +310,7 @@ let VIEWER = null,    // the handle of whoever is reading, or null for a visitor
     VIEWER_MARK = null, // their generated mark (R2), as `/api/me` sends it
     ACCOUNTS = false, // whether this server has people at all
     ADMIN = false,    // whether the reader is a maintainer, from whichever answer said so
-    // Whether `/players` lists people yet (L3 of `docs/plan-launch.md` §3.3): the
+    // Whether `/players` lists people yet (L3 of `docs/archive/plan-launch.md` §3.3): the
     // footer links it only once five people are on it. The site's fact, the
     // same for every reader.
     PLAYERS = false,
@@ -379,7 +379,7 @@ function paintIdentity() {
   if (who) {
     who.textContent = '';
     if (ADMIN) who.append(link('/admin', 'Maintenance'), ' · ');
-    // What an account adds, in one line beside *sign in* (L7, `docs/plan-launch.md` §4); in
+    // What an account adds, in one line beside *sign in* (L7, `docs/archive/plan-launch.md` §4); in
     // full on the sign-in and invitation pages (`site/pages.py` `ACCOUNT_ADDS`).
     if (ACCOUNTS && VIEWER) who.append(memberButton(VIEWER, VIEWER_MARK));
     else if (ACCOUNTS) who.append(link('/signin', 'sign in'), ' to make your games count');
@@ -509,7 +509,7 @@ const GLOSS = {
     + " opponents or the scoring changed since then. Where the old measurement has a"
     + " number it is still shown, marked provisional, with the scoring rules and the day"
     + " it came from; it is never compared with a current one."],
-  // EV2 (`docs/plan-evolving-score.md` §5.1). Not `provisional`, which is a number a
+  // EV2 (`docs/archive/plan-evolving-score.md` §5.1). Not `provisional`, which is a number a
   // designer's browser measured (Q312): this is the library's own last estimate.
   provisionalScore: ['Provisional',
     "The last number this game was given, worked out under an earlier revision of the"
@@ -563,11 +563,12 @@ const GLOSS = {
     + " Every rated game played here shifts both players, so an opponent people keep"
     + " beating drifts down while its tournament number beside it does not."],
   // The scale people are rated on: the one number a visitor reads for a computer player's
-  // strength (`docs/plan-understanding.md` §2.3, A5). The site's `siteScale` is this entry.
+  // strength (`docs/reference/plain-words.md` §3.3; the audit's A5). The site's `siteScale`
+  // is this entry.
   ratedHere: ['Rated here',
     "The scale people are rated on. A new player starts at 1500. It moves with every"
     + " rated game, for people and computer players alike."],
-  // L2 of `docs/plan-leaderboard.md`: the game page's one table, drawn on the site only.
+  // L2 of `docs/archive/plan-leaderboard.md`: the game page's one table, drawn on the site only.
   leaderboard: ['Leaderboard',
     "This game's one table of ratings: every computer player, and everyone who has"
     + " finished a rated game on it. A rated game moves both players, a person or a"
@@ -694,7 +695,7 @@ const GLOSS = {
     "It asks a language model for variations on this game, plays a tournament for each"
     + " and keeps what survives. It costs money and takes minutes."],
 
-  // The site's vocabulary (`docs/plan-understanding.md` §3.2): a kept word is defined once,
+  // The site's vocabulary (`docs/reference/plain-words.md` §2): a kept word is defined once,
   // here, where a visitor first meets it, and every later word task points its (i) at one
   // of these rather than writing a second definition. Each holds for both servers.
   run: ['A run',
@@ -743,7 +744,7 @@ const GLOSS = {
     "Three quick tests a draft passes before the site keeps it: its rules are a complete"
     + " game, a game of it plays and comes to an end, and a computer player that thinks ahead can"
     + " win it."],
-  // Q838c (`docs/plan-portal-look.md` §5): the legend's (i) for a portal. The popover draws
+  // Q838c (`docs/archive/plan-portal-look.md` §5): the legend's (i) for a portal. The popover draws
   // four ends (`figure`, `viz/wrapped.js`'s `portalKeyFigure`, as the board draws them), each
   // with its sentence; the text here is the same reading in words, for a hover and a reader
   // who cannot see the drawing.
@@ -757,7 +758,7 @@ const GLOSS = {
     + " going. Several beaks may point at one way out. Dashed arms let only some pieces in.",
     { figure: () => portalKeyFigure(typeof SESSION !== 'undefined' && SESSION && SESSION.ruleset
       ? SESSION.ruleset.sides : null) }],
-  // Q843d, revised by Q867c (`docs/plan-portals-2.md` §5.3R): the legend's (i) for a fold
+  // Q843d, revised by Q867c (`docs/archive/plan-portals-2.md` §5.3R): the legend's (i) for a fold
   // portal, drawn as the board draws it (`viz/wrapped.js`'s `foldKeyFigure`): a pool with a
   // piece in it, a pair whose beaks and map arrows say where a piece comes out, then its bands
   // and its collar. The text is the same reading in words.
@@ -781,7 +782,7 @@ const GLOSS = {
 };
 
 // What the site says instead, where the local application's sentence is the maintainer's
-// and stays (`docs/plan-understanding.md` §3.3, rows A1-A9, A12). Same keys, same shape;
+// and stays (`docs/archive/plan-understanding.md` §3.3, rows A1-A9, A12). Same keys, same shape;
 // `glossEntry` reads this first where `ACCOUNTS` says this is the site.
 const SITE_GLOSS = {
   // A1: §2.1's three paragraphs, the first shown and two behind *more*.
@@ -827,7 +828,7 @@ const SITE_GLOSS = {
     + " other games' scores. It will be measured again."],
   // EV2: the library's last estimate while it is measured again. A score is the best
   // estimate the site has today, and it moves as the computer players and the scoring
-  // improve (`docs/plan-evolving-score.md` §0).
+  // improve (`docs/archive/plan-evolving-score.md` §0).
   provisionalScore: ['Provisional',
     "This is the game's last score, worked out before the latest change to how games are"
     + " scored. It is the best estimate there is until the game is measured again, which"
@@ -982,7 +983,7 @@ function exhibitHtml(said) {
   return said ? `<div class="exhibit">${esc(said)}</div>` : '';
 }
 
-// How far to trust a score (Q647, `docs/plan-confidence.md` §2.1). The server reads the
+// How far to trust a score (Q647, `docs/archive/plan-confidence.md` §2.1). The server reads the
 // evidence and words it (`trust.py`: `card`, `shown`); the page draws what it is sent and
 // decides nothing. A card carries the level word as a chip beside the score, its sentence
 // in the (i); a game page carries the line under the score: *How far to trust it*, the
@@ -1055,7 +1056,7 @@ function runsPhrase(seeds) {
 // other way is printed as it came.
 // ---------------------------------------------------------- a provisional estimate
 //
-// EV2 (`docs/plan-evolving-score.md` §5.1). A score whose basis no longer matches the
+// EV2 (`docs/archive/plan-evolving-score.md` §5.1). A score whose basis no longer matches the
 // current scorer is drawn with its number, in the same place, with this mark and one
 // sentence naming the revision it came from and its day -- never bare, never as current.
 // `estimate` is a card (`status`, `revision`, `measuredAt`) or a score (`status`,

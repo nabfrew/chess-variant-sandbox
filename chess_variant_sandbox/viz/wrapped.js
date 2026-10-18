@@ -841,7 +841,7 @@ const MARK_KINDS = {
   portal: { colour: 'var(--pair-1)', shape: 'portal', name: 'portal',
             ink: 'var(--ink)', gloss: 'portalKey',
             label: "pieces of the arms' colours go in, and come out of the same-coloured portal its beak points at" },
-  // A fold portal (schema 22, Q843d, `docs/plan-portals-2.md` §5.3): a pool lying in the
+  // A fold portal (schema 22, Q843d, `docs/archive/plan-portals-2.md` §5.3): a pool lying in the
   // board, drawn by the board's cell loop (`foldGlyph`), never a mark; the row is the
   // legend's, named where the game has a fold. Its colour is the pool's bright centre, which
   // only a fold paints. Its (i) (`GLOSS.foldKey`) draws a pool with a piece in it, and a pair
@@ -849,7 +849,7 @@ const MARK_KINDS = {
   fold: { colour: 'var(--fold-light)', shape: 'fold', name: 'fold portal',
           ink: 'var(--ink)', gloss: 'foldKey',
           label: 'a piece that stops here may stay, or come out of the end its beak points at' },
-  // Schema 26 (Q918c, `docs/plan-simultaneous.md` §2.7): two pieces of a game in rounds that
+  // Schema 26 (Q918c, `docs/reference/rounds.md` §2.7): two pieces of a game in rounds that
   // could only take each other by a capture-only move, after one void round between them
   // (`voidRun`, dashed, a "1" at its middle) and after two in a row (`barred`, solid, a bar
   // across it), when that pair of moves is not offered until either square changes. Drawn
@@ -863,7 +863,7 @@ const MARK_KINDS = {
   barred: { colour: 'var(--standoff-bar)', shape: 'link', barred: true, name: 'barred link',
             ink: 'var(--ink)',
             label: 'two void rounds in a row: neither may take the other that way until one of the squares changes' },
-  // Schema 27 (Q942b, `docs/plan-round-chase.md` §3 R2): two pieces that swapped squares
+  // Schema 27 (Q942b, `docs/archive/plan-round-chase.md` §3 R2): two pieces that swapped squares
   // and met, where `swap: "collision"` makes a swap a meeting. Drawn between the two
   // squares, a burst at the middle where they met (`clashMark`), off the core's event in
   // the last round; the row is the legend's.
@@ -1463,7 +1463,7 @@ function crossOpacity(leaving) {
 // ---------------------------------------------------------------------- a portal
 //
 // Schema 19, drawn as Q838b built it and Q838f corrected it after the cold read
-// (`docs/plan-portal-look.md` §2.3, direction B, the vortex, and §6; the misreads are
+// (`docs/archive/plan-portal-look.md` §2.3, direction B, the vortex, and §6; the misreads are
 // `docs/reference/portal-look-cold-read.md` §4): a portal end is drawn by the board, not taken from the icon library, because what
 // it must say depends on the ruleset. One glyph, a disc inscribed in the cell (so it fits a
 // hexagon's cell when portals reach one), every part of it the portal itself:
@@ -1488,7 +1488,7 @@ function crossOpacity(leaving) {
 //             the old lip's light lower edge read as a collar);
 //   number    the pair's, in the dark eye, in the pair's colour, where the game has more
 //             than one pair;
-//   beak      where it leads (schema 21, `docs/plan-portals-2.md` §5.1, Q843b): a pointed
+//   beak      where it leads (schema 21, `docs/archive/plan-portals-2.md` §5.1, Q843b): a pointed
 //             notch on the rim in the group's colour, cased in the keyline, aimed at the end
 //             it leads to as drawn (`options.aim`, `portalAim`). Only on an end somebody may
 //             go in by: a way out leads nowhere a piece goes from. A pair's two beaks point at
@@ -1887,7 +1887,7 @@ function portalGlyph(end, x, y, cell, options) {
 
 // ---------------------------------------------------------------------- a fold
 //
-// Schema 22's fold portal (`docs/plan-portals-2.md` §5.3, Q843d): the pool, the face-on
+// Schema 22's fold portal (`docs/archive/plan-portals-2.md` §5.3, Q843d): the pool, the face-on
 // version of a luminous portal, lying in the board. The vortex is a hole things fall into;
 // the pool is a surface light comes through, so the two are told apart at a glance and in a
 // grey picture (one is dark in the middle, the other bright). It is drawn in the board's
@@ -1921,7 +1921,7 @@ function portalGlyph(end, x, y, cell, options) {
 //             motion.
 //
 // Where a fold leads is said by its beak and the portal map, as for a momentum end; since
-// schema 24 nothing is drawn on the far end (`docs/plan-portals-2.md` §5.3R: the echo went).
+// schema 24 nothing is drawn on the far end (`docs/archive/plan-portals-2.md` §5.3R: the echo went).
 // Every fact is the compiled payload's (`portal_payload`, `fold_payload`); nothing here works
 // out a move.
 const FOLD_POOL = 0.45;
@@ -2094,7 +2094,7 @@ function foldWords(end, square, pairs, sideOf, there, fromSquares, nameOf) {
   const moved = !movers.length ? 'Nobody moves it.'
     : movers.length > 1 ? 'Either side may move it, as its turn, even under a piece.'
       : `Only ${sideOf(movers[0])} may move it, as a turn, even under a piece.`;
-  // Schema 24 (`docs/plan-portals-2.md` §5.3R): a piece that ends its move on a fold may
+  // Schema 24 (`docs/archive/plan-portals-2.md` §5.3R): a piece that ends its move on a fold may
   // stay, or come out on the end it leads to; nothing else about a move changes.
   const from = (fromSquares || []).length ? ` Pieces come out here from ${portalList(fromSquares)}.` : '';
   const who = whose === "both sides'" ? 'a piece of either side' : `a piece of ${whose}`;
@@ -2106,7 +2106,7 @@ function foldWords(end, square, pairs, sideOf, there, fromSquares, nameOf) {
   return { head: head, label: `${head}. ${rule}`, says: rule };
 }
 
-// The legend's (i) for a fold (Q843d; revised by Q867c, `docs/plan-portals-2.md` §5.3R): the
+// The legend's (i) for a fold (Q843d; revised by Q867c, `docs/archive/plan-portals-2.md` §5.3R): the
 // pools drawn as the board draws them, each with its sentence. First a pool with a piece
 // standing in it, then a pair whose beaks and map arrows say where a piece comes out (no
 // echo: the user found it clutter), then the bands (whose pieces may go through) and the
@@ -2183,7 +2183,7 @@ function portalStep(direction, flipped) {
 
 // What a portal is called in a sentence: by its number where the game has several pairs.
 // Never by which end of the pair it is: both ends are drawn alike, and the square says which
-// one is meant (Q838c, `docs/plan-portal-look.md` §5).
+// one is meant (Q838c, `docs/archive/plan-portal-look.md` §5).
 function portalName(end, pairs) {
   return pairs > 1 ? `portal ${end.pair}` : 'the portal';
 }
@@ -2246,7 +2246,7 @@ function portalWords(end, partner, square, pairs, sideOf, partnerSquare, fromSqu
   return { head: head, label: `${head}. ${rule}${filter}`, says: rule + filter + through };
 }
 
-// An end of a map in words (schema 21, `docs/plan-portals-2.md` §5.1), by square: whose
+// An end of a map in words (schema 21, `docs/archive/plan-portals-2.md` §5.1), by square: whose
 // pieces go in here and which square they come out beside, or *Nothing goes in here*, and
 // where pieces come out here from. `fromSquares` names the ends that lead here.
 function portalMapWords(end, square, pairs, sideOf, partnerSquare, fromSquares, nameOf) {
@@ -2314,7 +2314,7 @@ const PORTAL_KEY_ROWS = [
       says: () => "One of each: both sides' pieces go in." },
     { ends: [{ movedBy: [], open: [false, false] }],
       says: () => 'No arms: nobody goes in. It is a way out.' }] },
-  // Q843b (schema 21, `docs/plan-portals-2.md` §5.1, §5.2): the beak, taught on a pair whose
+  // Q843b (schema 21, `docs/archive/plan-portals-2.md` §5.1, §5.2): the beak, taught on a pair whose
   // beaks point at each other and on a funnel whose beaks all point at its way out; and the
   // dashed arms of an end that lets only some pieces in.
   { head: 'Its colour, number and beak: where it leads', wide: true, examples: [

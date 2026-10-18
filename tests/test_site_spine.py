@@ -1,6 +1,6 @@
 """A member's game gets its leaderboard when it is published (L5, `site/spine.py`).
 
-`docs/plan-leaderboard.md` §2.6 step 1 and §4's L5 row, with Q1 decided on 2026-10-10 (*A,
+`docs/archive/plan-leaderboard.md` §2.6 step 1 and §4's L5 row, with Q1 decided on 2026-10-10 (*A,
 as soon as it is published*). What is held, and where:
 
 * the spine's ladder is the one `web.opponents` makes for any game -- shared, not forked --
