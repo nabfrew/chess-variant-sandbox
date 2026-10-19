@@ -240,6 +240,11 @@ class Session:
     viewer: int | None = None
     sealed_unseen: tuple[bool, bool] = (False, False)
 
+    # A try at converting a proven position (R9b, `site/proven.py::try_snapshot`): which
+    # position, where its prefix ends, the person's side and the board's sentences. The
+    # store's to set, None everywhere else; the board then offers no take-back.
+    puzzle: dict[str, Any] | None = None
+
     @property
     def engine(self) -> Any:
         return engine_for(self.game.spec)
@@ -373,6 +378,9 @@ class Session:
             # decides whether it offers a take-back or a resignation. Empty where there
             # are no modes at all, and the board then draws neither mark.
             "mode": self.mode,
+            # R9b: a try from a proven position, which the board names and words; absent
+            # on every other game.
+            **({"puzzle": self.puzzle} if self.puzzle is not None else {}),
             "board": list(self.state.board),
             # Counts per piece type, which is what the state carries -- not a list of
             # pieces. Empty for every ruleset without drops.

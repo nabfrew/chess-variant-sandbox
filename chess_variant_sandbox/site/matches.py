@@ -110,7 +110,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from chess_variant_sandbox.site import finishes, pinning, quota, rating, usage
+from chess_variant_sandbox.site import finishes, pinning, proven, quota, rating, usage
 from chess_variant_sandbox.web import draw_offer, opponents
 from chess_variant_sandbox.web.human import HUMAN, RESIGNED, HumanGame, summarise
 from chess_variant_sandbox.web.library import Game, engine_for
@@ -169,6 +169,15 @@ IDLE_LIMIT = quota.IDLE_LIMIT
 Task 1.8 gathered them there, as §7 asked. Kept as a name here because `sweep` defaults
 to it and this is the module the sweep is in.
 """
+
+# A try at converting a proven position (R9b, `site/proven.py`, `0037_proven_positions.sql`):
+# a practice row started from a recorded game's move prefix. Its source keeps it out of
+# every reading that already filters on one.
+PUZZLE = "puzzle"
+
+PUZZLE_IS_PRACTICE = (
+    "a game from a proven position is practice: it counts for nothing and moves no rating"
+)
 
 # What the local application's rows carry once the loader has put them in `matches`. They
 # were played with undo on hand and predate the modes, so they are readable by the anchor
@@ -371,6 +380,7 @@ def start(
     user: int | None = None,
     seed: int = 0,
     rematch_of: str | None = None,
+    puzzle: tuple[str, Sequence[int]] | None = None,
 ) -> Row:
     """Seat a person against a computer player, or two computer players, and write the row.
 
@@ -414,6 +424,12 @@ def start(
     rating update -- and the row it names is left alone. What is checked is that the
     named match is the same player's on the same game, so the column says nothing the two
     rows do not already hold; anything else is refused rather than written as a guess.
+
+    `puzzle` is a try at converting a proven position (R9b, `site/proven.py`): the
+    position's id and the move prefix that reaches it, which the caller read from the
+    game's record after the engine replayed it. The row starts with the prefix as its
+    moves, source `puzzle`, and is practice with one person in it and no rematch; the
+    columns' checks (`0037_proven_positions.sql`) hold it to that one layer down too.
     """
     if mode not in MODES:
         raise MatchError(f"a match is {SANDBOX} or {LEADERBOARD}, not {mode!r}")
@@ -423,6 +439,13 @@ def start(
     if people > 1:
         raise MatchError("a match on the site seats one person for now")
     watched = people == 0
+    if puzzle is not None:
+        if mode != SANDBOX:
+            raise MatchError(PUZZLE_IS_PRACTICE)
+        if people != 1:
+            raise MatchError("a game from a proven position has one person in it")
+        if rematch_of is not None:
+            raise MatchError("a game from a proven position is started from the position")
 
     if user is None:
         # L15: a visitor plays opponents up to *hard*. Refused before the game is read or
@@ -477,7 +500,7 @@ def start(
 
     # Only a learned seat's column is named, so every other match writes exactly what it
     # wrote before `0025_played.sql` and the column stays null.
-    played = {
+    played: dict[str, Any] = {
         f"seat{index}_played": net
         for index, seat in enumerate(seats)
         if (net := _played(seat, game)) is not None
@@ -489,6 +512,13 @@ def start(
     standing = _standing(connection, game, mode, seats, user)
     if standing is not None:
         played["standing"] = json.dumps(standing)
+    if puzzle is not None:
+        position, prefix = puzzle
+        played["source"] = PUZZLE
+        played["puzzle"] = str(position)
+        played["puzzle_ply"] = len(prefix)
+        played["moves"] = json.dumps([int(move) for move in prefix])
+        played["depths"] = json.dumps([None] * len(prefix))
     named = "".join(f", {column}" for column in played)
     with connection.cursor() as cursor:
         cursor.execute(
@@ -775,10 +805,36 @@ def session(connection: Any, match_id: str) -> Session:
         state=engine_for(spec).initial_state(),
         played_by=(nets[0] or "", nets[1] or ""),
         draw_offers=draw_offers(connection, match_id),
+        puzzle=_puzzle_block(connection, found),
     )
     for move, depth in _moves(connection, match_id):
         built.replay(move, depth)
     return built
+
+
+def puzzle_of(connection: Any, match_id: str) -> tuple[str, int] | None:
+    """Which proven position this match is a try at, and its prefix's length, or None.
+
+    `puzzle` and `puzzle_ply` (`0037_proven_positions.sql`, R9b). Read on their own rather
+    than in `_ROW_COLUMNS`, as `played` is, so a row still reads on a store that has not
+    taken the migration yet.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute("select puzzle, puzzle_ply from matches where id = %s", (match_id,))
+        found = cursor.fetchone()
+    if found is None or found[0] is None:
+        return None
+    return str(found[0]), int(found[1])
+
+
+def _puzzle_block(connection: Any, found: Row) -> dict[str, Any] | None:
+    """A try's `puzzle` block (R9b): the position, its prefix's length and the person's
+    side, which is the seat no computer player holds. None on every other match."""
+    held = puzzle_of(connection, found.id)
+    if held is None:
+        return None
+    side = 1 if found.is_computer(0) else 0
+    return proven.try_snapshot(held[0], held[1], side)
 
 
 def _verdict(found: Row) -> dict[str, Any] | None:
@@ -1075,6 +1131,8 @@ def undo(connection: Any, match_id: str) -> dict[str, Any]:
     as though it had been left (Q410).
     """
     found = _sandbox_only(connection, match_id, "undone")
+    if puzzle_of(connection, match_id) is not None:
+        raise MatchError(proven.NO_TAKE_BACK)
     game = session(connection, match_id)
     if not game.played:
         return game.snapshot()
@@ -1102,9 +1160,17 @@ def restart(connection: Any, match_id: str) -> dict[str, Any]:
     """
     found = _sandbox_only(connection, match_id, "restarted")
     _retake_seats(connection, found)
-    before = [move for move, _depth in _moves(connection, match_id)]
-    thinks = _note_undone(connection, found, before, 0, restart=True)
-    _store_moves(connection, match_id, (), (), moved=False, thinks=thinks)
+    stored = _moves(connection, match_id)
+    before = [move for move, _depth in stored]
+    # A try from a proven position starts again from the position, not the opening: the
+    # prefix stays and only what was played after it goes (R9b).
+    held = puzzle_of(connection, match_id)
+    keep = 0 if held is None else held[1]
+    thinks = _note_undone(connection, found, before, keep, restart=True)
+    _store_moves(
+        connection, match_id, before[:keep], [depth for _move, depth in stored[:keep]],
+        moved=False, thinks=thinks,
+    )
     _reopen(connection, match_id)
     # A restart is a fresh start, so the table is read again as it stands now (H3).
     seats = (_seat_name(found.seat0), _seat_name(found.seat1))
@@ -1292,6 +1358,9 @@ def _finish(
         )
     # Kept apart from the row, which a sandbox take-back or restart rewrites (Q502a).
     finishes.record(connection, match_id)
+    # R9b: a try from a proven position whose game ended in the person's win marks it
+    # converted on their own page, in this same transaction.
+    proven.converted(connection, match_id)
     update = rating.finish(connection, match_id)
     badges.grant_for_match(connection, match_id)
     if update is not None and update.seat0.key.is_computer != update.seat1.key.is_computer:

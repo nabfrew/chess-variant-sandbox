@@ -543,6 +543,6 @@ class TestTheWayToIt:
 
     def test_the_privacy_notice_says_what_a_suggestion_keeps(self) -> None:
         page = site_pages.privacy()
-        assert "six things and nothing else" in page
+        assert "seven things and nothing else" in page
         assert "Anything you post in the suggestion box" in page
         assert "read by you and by the person who runs the site and by nobody else" in page

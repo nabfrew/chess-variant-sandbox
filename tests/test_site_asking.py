@@ -126,8 +126,8 @@ class TestTheWayThere:
         assert "no other mail goes to it" in part
         assert f"deleted {quota.ASK_KEPT.days} days after it is answered" in part
         assert f'href="{asking.PATH}"' in part
-        # A visitor's request is not one of a member's six things.
-        assert "It keeps six things and nothing else." in page
+        # A visitor's request is not one of a member's seven things.
+        assert "It keeps seven things and nothing else." in page
 
     def test_a_challenge_link_opened_without_an_account_offers_it_too(self) -> None:
         script = (STATIC / "challenge.js").read_text(encoding="utf-8")

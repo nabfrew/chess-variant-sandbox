@@ -728,6 +728,14 @@ const GLOSS = {
     + " a rated game can take away a game's Unbeaten."],
   turns: ['Turns',
     "Each player's move is one turn, so a game of 80 turns is 40 moves each."],
+  // R9b (`site/proven.py`): what the game page's *Proven positions* offers.
+  provenPositions: ['Proven positions',
+    "Positions from games the computer players played here, where the computer searched"
+    + " every move and found a forced win for the side to move. Convert one by playing it"
+    + " out against hardest: you succeed if the game ends in your win, and a try that does"
+    + " not is a practice game you lost, nothing more. Where only one move wins, you can"
+    + " also find that move; a move the search could not settle is said to be unsettled,"
+    + " never wrong."],
   strongest: ['The strongest computer player',
     "The computer player rated highest on this game. Beating it in a rated game is what"
     + " takes away the game's Unbeaten."],

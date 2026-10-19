@@ -848,9 +848,9 @@ def forget(connection: Any, handle: str) -> str:
     Returns the handle as it was, so the command can print who it was that left.
 
     Their running games against other people are resigned for them as games they left,
-    as revoking does (Q570).
+    as revoking does (Q570). Their solved marks on proven positions are deleted (R9b).
     """
-    from chess_variant_sandbox.site import challenges, correspondence
+    from chess_variant_sandbox.site import challenges, correspondence, proven
 
     name = handle.strip()
     with connection.cursor() as cursor:
@@ -871,6 +871,8 @@ def forget(connection: Any, handle: str) -> str:
         )
     correspondence.leave(connection, user)
     challenges.leave(connection, user)
+    # R9b: a person's solved marks on proven positions are theirs alone, and go with them.
+    proven.forget(connection, user)
     return name
 
 

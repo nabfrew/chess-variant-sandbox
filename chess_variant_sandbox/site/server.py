@@ -80,6 +80,7 @@ from chess_variant_sandbox.site import (
     opponent_line,
     pages,
     people_scale,
+    proven,
     provisional,
     quota,
     rating,
@@ -385,6 +386,11 @@ class SiteApp(App):
             found["history"] = history_shown(found, self.role == admin.ADMIN)
             found["trust"] = self._trust_line(parts[2], found.get("trust"))
             return _without_records(found)
+        if len(parts) == 4 and parts[:2] == ("api", "proven"):
+            # R9b: one proven position, drawn, and where it has one winning move its moves.
+            self._playable(parts[2])
+            record, game = self._proven_record(parts[2])
+            return proven.view(record, game.spec, parts[3])
         if len(parts) >= 3 and parts[:2] == ("api", "design"):
             # A killed game is no designer's starting point and has no progress page.
             self._playable(parts[-1])
@@ -465,6 +471,8 @@ class SiteApp(App):
                 return {"open": on, "people": challenges.people(
                     connection, parts[2], self._signed_in()
                 )}
+        if len(parts) == 5 and parts[:2] == ("api", "proven") and parts[4] == "find":
+            return self._find_the_move(parts[2], parts[3], body)
         if parts == ("api", "provisional"):
             return self._submit(body)
         if parts == ("api", "design", "publish"):
@@ -818,6 +826,9 @@ class SiteApp(App):
             )
             standing["signedIn"] = self.viewer is not None
             standing["admin"] = self.role == admin.ADMIN
+            # R9b (`docs/plan-website.md` *Proven positions*): the game's proven positions
+            # and this reader's own marks on them, or None where the game has no record.
+            standing["proven"] = self._proven_section(connection, digest)
             # Q599 (`docs/archive/plan-return.md` §5.1): the fixed tags a vote may carry, in the
             # page's order and words, and how many votes carry each, for everybody. A
             # count of a quality and never who; no text is kept with a vote.
@@ -1368,8 +1379,23 @@ class SiteApp(App):
             for group in designed:
                 for game in group["games"]:
                     game["tagCounts"] = tagged.get(game["hash"], [])
+            # R9b: this person's own solved marks on proven positions, by game.
+            marked = proven.games_marked(connection, viewer)
+            proven_names = browse.names(connection, sorted(marked))
+        known = self.known()
+        proven_lines = proven.profile_lines(
+            marked,
+            {
+                game: proven.load(self.runs_dir, game, known[game].spec if game in known else None)
+                for game in marked
+            },
+            proven_names,
+        )
         return {
             "user": viewer,
+            # R9b. On each game this person has solved a proven position on, how many they
+            # converted and how many moves they found, of how many it offers. Theirs alone.
+            "proven": proven_lines,
             # Q503b. *Your games*: the games this person made, grouped by level, each
             # with its next step (`stages.yours`).
             "yourGames": designed,
@@ -2127,6 +2153,8 @@ class SiteApp(App):
         much as a draft's does. It is "" for every game a person is in.
         """
         digest = str(body["hash"])
+        if body.get("puzzle"):
+            return self._start_try(digest, str(body["puzzle"]), body)
         roster = self.roster(digest)
         # A game played in rounds seats its own rung of the name asked for, as the local
         # application does (Q918c): the page's *watch it play itself* asks for the
@@ -2154,6 +2182,82 @@ class SiteApp(App):
                 **matches.session(connection, found.id).snapshot(),
                 "watching": watching_line(list(seats), roster),
             }
+
+    # ------------------------------------------------ proven positions (R9b, Q605)
+
+    def _proven_record(self, digest: str) -> tuple[proven.Record, library.Game]:
+        """The game's proven positions, or the 404 an address with none gets."""
+        game = self.known().get(digest)
+        record = proven.load(self.runs_dir, digest, None if game is None else game.spec)
+        if game is None or record is None:
+            raise KeyError(proven.NOT_HERE)
+        return record, game
+
+    def _proven_section(self, connection: Any, digest: str) -> dict[str, Any] | None:
+        """*Proven positions* on the game's page, with the reader's own marks, or None."""
+        game = self.known().get(digest)
+        record = proven.load(self.runs_dir, digest, None if game is None else game.spec)
+        if record is None or not record.positions:
+            return None
+        marks = (
+            None if self.viewer is None else proven.marks_on(connection, self.viewer, digest)
+        )
+        return proven.section(record, marks, signed_in=self.viewer is not None)
+
+    def _start_try(self, digest: str, position_id: str, body: dict[str, Any]) -> Any:
+        """*Convert it*: a practice game from a proven position against *hardest*.
+
+        The seats are the position's: the person on the side to move, *hardest* on the
+        other. Nothing else in the body is read but the game and the position, so a try
+        cannot be rated, seated otherwise or called a rematch. `matches.start` rations
+        the strong seat and refuses a visitor *hardest* (L15) as it does for any start.
+        """
+        stray = sorted(set(body) - {"hash", "puzzle", "seats", "mode"})
+        if stray or (body.get("mode") or matches.SANDBOX) != matches.SANDBOX:
+            raise matches.MatchError(matches.PUZZLE_IS_PRACTICE)
+        self._playable(digest)
+        record, _game = self._proven_record(digest)
+        position = record.find(position_id)
+        if position is None:
+            raise KeyError(proven.NOT_HERE)
+        if proven.OPPONENT not in {entry.agent for entry in self.roster(digest)}:
+            raise matches.MatchError(
+                "hardest is not offered on this game, so a proven position cannot be "
+                "converted here"
+            )
+        usage.note("strong")
+        with self._connection() as connection:
+            found = matches.start(
+                connection,
+                game=digest,
+                mode=matches.SANDBOX,
+                seats=proven.seats_for(position),
+                user=self.viewer,
+                puzzle=(position.id, position.moves),
+            )
+            return {**matches.session(connection, found.id).snapshot(), "watching": ""}
+
+    def _find_the_move(self, digest: str, position_id: str, body: dict[str, Any]) -> Any:
+        """*Find the move*: the stored proof of the move picked, and a mark for a right one.
+
+        The answer is the record's, looked up (`proven.answer`). A signed-in person who
+        picks the move the proof names gets it marked on their own page; a visitor's pick
+        is answered and kept nowhere, and a pick that is not the move writes nothing.
+        """
+        self._playable(digest)
+        record, _game = self._proven_record(digest)
+        show = bool(body.get("show"))
+        move = body.get("move")
+        picked = move if isinstance(move, int) and not isinstance(move, bool) else None
+        if not show and picked is None:
+            raise ValueError("pick one of the moves in this position")
+        said = proven.answer(record, position_id, None if show else picked, show=show)
+        said["marked"] = False
+        if said["right"] and self.viewer is not None:
+            with self._connection() as connection:
+                proven.mark(connection, self.viewer, digest, position_id, proven.FOUND)
+            said["marked"] = True
+        return said
 
     def _session_action(self, session_id: str, action: str, body: dict[str, Any]) -> Any:
         """Move, let the computer player answer, take a move back, start again, resign,

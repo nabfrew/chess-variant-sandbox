@@ -6606,7 +6606,11 @@ class TestWhatReachesThePage:
         # 132 since Q935c: a spy game's slot while it is played by turns (`drawSpySend`),
         # emptied once the game is over and otherwise the phase in words, each side's name
         # through `esc`.
-        assert len(sites) == 132
+        # 135 since Q605 (R9b): *Proven positions* draws the picked position in place
+        # (`wireProven`): a constant *Drawing the position…*, `provenAtHtml`'s board, moves
+        # and sentences (every move text and server sentence through `esc`), and emptied on
+        # a refusal.
+        assert len(sites) == 135
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
@@ -7762,7 +7766,7 @@ class TestTheBoardKnowsItsMode:
         from page_text import PAGE
 
         assert "const rated = mode === 'leaderboard';" in PAGE
-        assert "${frameHtml(inline, snapshot.mode, watched, between, (!!snapshot.round || !!snapshot.spy) && !watched)}" in PAGE
+        assert "${frameHtml(inline, snapshot.mode, watched, between, (!!snapshot.round || !!snapshot.spy) && !watched, !!snapshot.puzzle)}" in PAGE
         # The frame's control row, directly under the board (Q577): a rated game's has
         # no take-back and has a resignation, the local application's (no mode) the
         # other way round, and a game nobody sits at offers nobody's resignation. A
@@ -8118,7 +8122,7 @@ class TestThePlayFrame:
     def test_both_chromes_draw_the_one_frame(self) -> None:
         from page_text import PAGE
 
-        assert PAGE.count("${frameHtml(inline, snapshot.mode, watched, between, (!!snapshot.round || !!snapshot.spy) && !watched)}") == 1
+        assert PAGE.count("${frameHtml(inline, snapshot.mode, watched, between, (!!snapshot.round || !!snapshot.spy) && !watched, !!snapshot.puzzle)}") == 1
         assert PAGE.count('<svg id="board"') == 1
         inline = _in_page("", "frameHtml(true, '', false)")
         assert 'id="stopPlay"' in inline and 'data-frame="controls"' in inline

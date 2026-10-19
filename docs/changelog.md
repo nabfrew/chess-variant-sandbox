@@ -11,6 +11,17 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-19
+
+### Proven positions: endgames the computer has proved are won
+
+Seven games' pages now have a *Proven positions* section: endgames taken from the computer's own games, each one proved
+won for the side to move by a deep search. If you are signed in, you can play one out against the hardest computer
+player, and the game's own ending says whether you converted it. Where only one move wins, anyone can try to find that
+move, and the answer comes from the stored proof; a move the search could not settle is said to be unsettled, never
+wrong. There is no timer and nothing to keep up: a miss is just a game you lost, and the positions you have solved show
+on your own page, for you alone. About eight hundred positions are on offer across the seven games.
+
 ## 2026-10-18
 
 ### Circe now follows the real Circe rule

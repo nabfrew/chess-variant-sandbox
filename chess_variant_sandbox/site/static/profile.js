@@ -700,6 +700,42 @@ function drawDone(lines, held) {
   where.appendChild(list);
 }
 
+// R9b (`site/proven.py`): the proven positions this person solved, a line a game, theirs
+// alone. A count of their own marks against what the game offers, never anybody else's,
+// and no section at all until there is a mark (§1.5: no empty heading).
+function drawProven(lines) {
+  const where = document.getElementById('proven');
+  if (!where) return;
+  where.replaceChildren();
+  if (!lines.length) return;
+  const heading = document.createElement('h2');
+  heading.textContent = 'Proven positions you solved';
+  where.appendChild(heading);
+  const lead = document.createElement('p');
+  lead.className = 'under';
+  lead.textContent = 'Positions the computer proved won for the side to move, from each '
+    + "game's page. Only you see this. A try that did not end in your win is not counted "
+    + 'against you, and nothing here expires.';
+  where.appendChild(lead);
+  const list = document.createElement('ul');
+  list.className = 'lines';
+  for (const line of lines) {
+    const item = document.createElement('li');
+    const said = [];
+    said.push(line.of === null ? 'Converted ' + line.converted
+      : 'Converted ' + line.converted + ' of ' + line.of);
+    if (line.found || line.singles) {
+      said.push(line.singles === null ? 'found the move in ' + line.found
+        : 'found the move in ' + line.found + ' of ' + line.singles);
+    }
+    words(item, said.join(', ') + ' on ');
+    item.appendChild(gameLink(line.hash, line.name));
+    words(item, '.');
+    list.appendChild(item);
+  }
+  where.appendChild(list);
+}
+
 // One bin of one axis. The counts first, then a few of the untried games by name,
 // because the line is there so a person can pick one rather than to list the library
 // again. A bin with nothing open at all draws nothing.
@@ -781,6 +817,7 @@ async function draw() {
   drawBackToDraft(payload.backToDraft || []);
   drawGames(payload.games, payload.counts.tried > 0);
   drawDone(payload.milestones || [], payload.badges || []);
+  drawProven(payload.proven || []);
   drawStillOpen(payload.stillOpen || []);
   if (!payload.games.length) say('You have no rated games yet. Pick one and play it.');
 }

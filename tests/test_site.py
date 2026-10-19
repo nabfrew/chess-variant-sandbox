@@ -966,7 +966,7 @@ class TestTheDescriptionHintOnTheSite:
         assert "<h2>The description hint</h2>" in notice
         assert "sends that game's description and its rules to TypeSafe" in notice
         # The notice's own count is of what is kept about a person, which this is not.
-        assert "six things and nothing else" in notice
+        assert "seven things and nothing else" in notice
 
 
 def _no_request(*_args: object, **_kwargs: object) -> object:
@@ -1341,7 +1341,14 @@ STORE: dict[str, tuple[str, ...]] = {
         # people not yet revealed: its seat, the move and when; read by
         # `site/correspondence.py` alone.
         "sealed_move",
+        # `0037_proven_positions.sql`, Q605 (R9b). A try at converting a proven position:
+        # its id in the game's record and the length of the prefix `moves` starts with.
+        "puzzle",
+        "puzzle_ply",
     ),
+    # `0037_proven_positions.sql`, Q605 (R9b). A person's own solved marks, one a position
+    # a way; read by that person's page alone.
+    "proven_marks": ("person", "game", "position", "way", "match", "marked"),
     "votes": ("voter", "game", "stars", "tags", "note", "updated"),
     "jobs": (
         "id",
@@ -3133,7 +3140,7 @@ class TestTheCreditsAndTheNotice:
         store holds about a person and a suggestion is the sixth (Q279), and this notice is
         where the site says what it holds."""
         page = site_pages.privacy()
-        assert "six things and nothing else" in page
+        assert "seven things and nothing else" in page
         assert "A dated record of each badge you earn" in page
         assert "nothing counts how many anybody holds" in page
 

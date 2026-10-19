@@ -110,7 +110,12 @@ ALLOWED: tuple[Route, ...] = (
         "answer for everybody",
     ),
     Route("GET", "/api/session/<id>", "the position a game is in"),
-    Route("POST", "/api/session", "seat a person against a rated agent"),
+    Route(
+        "POST",
+        "/api/session",
+        "seat a person against a rated agent; with `puzzle`, a practice game from one of "
+        "the game's proven positions against hardest (R9b, `site/proven.py`)",
+    ),
     Route(
         "POST",
         "/api/session/<id>/<action>",
@@ -412,6 +417,21 @@ OWN: tuple[Route, ...] = (
         "/api/game/<hash>/open",
         "tick or untick *open to a game of this*: per person, per game, off by default",
         visitor="Sign in to say you are open to a game. Playing a person needs an account.",
+    ),
+    # R9b (Q605), proven positions (`docs/plan-website.md`, `site/proven.py`). For anybody:
+    # a visitor finds the move as a member does, and only a member's right pick is kept.
+    Route(
+        "GET",
+        "/api/proven/<hash>/<position>",
+        "one of a game's proven positions, drawn, with whose move it is and, where the "
+        "proof shows one winning move, the moves to pick from without their scores",
+    ),
+    Route(
+        "POST",
+        "/api/proven/<hash>/<position>/find",
+        "find the move: the stored proof of the move picked, looked up and never worked "
+        "out; a signed-in person's right pick is marked on their own page, a wrong one "
+        "writes nothing",
     ),
     Route(
         "GET",

@@ -114,19 +114,23 @@ async function showBoard(snapshot, how) {
       about it is kept, and going back to the editor leaves no trace of it.</div>` : ''}
     ${snapshot.demo ? `<div class="ok" style="margin-top:8px">${esc(snapshot.demo.says)}
       The computer played these moves. Step forward to watch them, or move from here.</div>` : ''}
+    ${snapshot.puzzle ? `<div class="ok" id="puzzleSays" style="margin-top:8px"
+      aria-live="polite">${esc(puzzleSaid(snapshot))}</div>` : ''}
     <div class="split${inline ? ' alone' : ''}" style="margin-top:10px">
       <div class="play-frame">
         ${inline ? `<div class="row small" style="margin-bottom:8px">
           <div>${seatHtml(0)}</div><span class="muted">vs</span><div>${seatHtml(1)}</div>
         </div>` : ''}
-        ${frameHtml(inline, snapshot.mode, watched, between, (!!snapshot.round || !!snapshot.spy) && !watched)}
+        ${frameHtml(inline, snapshot.mode, watched, between, (!!snapshot.round || !!snapshot.spy) && !watched, !!snapshot.puzzle)}
         <div class="row" id="review" style="margin-top:8px"></div>
         ${between ? '' : `<div class="row" style="margin-top:8px">
-          <button id="again">new game</button>
+          ${snapshot.puzzle ? `<button id="again"
+            title="a new practice game from the same proven position, against hardest"
+            >try it again from the position</button>` : `<button id="again">new game</button>
           ${mixed ? `<button id="swap" title="the same game from the other side">
             play the other side</button>` : ''}
           ${watched ? '' : `<button id="watch" title="${esc(watchTitle())}">
-            watch it play itself</button>`}
+            watch it play itself</button>`}`}
         </div>`}
         <div id="ground" class="muted small" style="margin-top:6px"></div>
       </div>
@@ -170,6 +174,12 @@ async function showBoard(snapshot, how) {
     if (inline) return playDraftHere(seats);
     pending('Starting the game…');
     if (rules.scratch) return playDraft(seats);
+    // A try from a proven position starts again from the position (R9b): the server seats
+    // it, so the body names the game and the position and nothing else.
+    if (snapshot.puzzle) {
+      return api('/api/session', { hash: rules.hash, puzzle: snapshot.puzzle.id })
+        .then(open_).catch(fail);
+    }
     const body = { hash: rules.hash, seats };
     if (snapshot.mode && seats.includes('human')) body.mode = snapshot.mode;
     if (follows && !watched) body.rematch_of = snapshot.id;
@@ -185,7 +195,7 @@ async function showBoard(snapshot, how) {
   // A rematch with the seats exchanged, which is the whole of "let me try that as the
   // other side" and is a new game rather than a redraw: the two armies are different
   // pieces and the position is the opening one either way.
-  if (mixed && !between) document.getElementById('swap').onclick = () =>
+  if (mixed && !between && !snapshot.puzzle) document.getElementById('swap').onclick = () =>
     restart([snapshot.seats[1], snapshot.seats[0]]);
   // Both sides to the same searching player, at the budget the designer's watch uses --
   // `WATCH_AGENT`, so the page holds one opinion about who is cheap enough to watch.
@@ -322,7 +332,7 @@ async function showBoard(snapshot, how) {
 // control bar, the legend line. The square names stand outside the squares (`drawCoords`),
 // a finished game puts its result on a banner over the board (`drawEnded`), and on a
 // phone the bar is a row of icons with the word under each (`FRAME_ICONS`).
-function frameHtml(inline, mode, watched, between, rounds) {
+function frameHtml(inline, mode, watched, between, rounds, puzzle) {
   const rated = mode === 'leaderboard';
   const ends = (rated || mode === 'sandbox') && !watched;
   return `
@@ -340,7 +350,7 @@ function frameHtml(inline, mode, watched, between, rounds) {
     <div class="row frame-controls" data-frame="controls">
       ${inline ? `<button id="stopPlay" class="quiet" title="put the board back to editing this game"
         >${barWords('edit', 'back to editing')}</button>` : ''}
-      ${rated || between ? '' : `<button id="undo" class="quiet" title="take your last move back"
+      ${rated || between || puzzle ? '' : `<button id="undo" class="quiet" title="take your last move back"
         >${barWords('undo', 'take back')}</button>`}
       <button id="flip" class="quiet" title="turn the board around">${barWords('flip', 'flip')}</button>
       <span class="row shift" id="shift"></span>
@@ -578,6 +588,7 @@ function applySnapshot(snapshot, animate = true) {
   // `record` reads the position it was played in off the timeline rather than off the
   // board, so a reader's place in the game cannot change what gets written down.
   record(snapshot);
+  notePuzzle(snapshot);
   // A take-back rewrites the game being reviewed, so it ends the review.
   if (!animate && AT) { CURSOR = null; AT = null; }
   // Reviewing means the board is showing a position the game has already left, and a
@@ -586,6 +597,23 @@ function applySnapshot(snapshot, animate = true) {
   if (AT) { drawPane(); drawReview(); }
   else { drawBoard(animate && moved ? previous : null); drawPane(); }
   maybeAgent();
+}
+
+// A try from a proven position (R9b, `site/proven.py`): the server's sentence while it
+// runs, and at its end the server's sentence for how it ended -- `won` where the engine's
+// own outcome names the person's side the winner, `lost` at any other ending. The page
+// reads the outcome the board already draws and decides nothing.
+function puzzleSaid(snapshot) {
+  const puzzle = snapshot.puzzle;
+  if (!puzzle) return '';
+  const ended = snapshot.outcome;
+  if (!ended) return puzzle.said;
+  return ended.winner === puzzle.side ? puzzle.won : puzzle.lost;
+}
+
+function notePuzzle(snapshot) {
+  const line = document.getElementById('puzzleSays');
+  if (line && snapshot.puzzle) line.textContent = puzzleSaid(snapshot);
 }
 
 // An agent that fails has to say so. This used to `.catch(fail)`, which prepends an error

@@ -672,6 +672,8 @@ def profile(handle: str, players: bool = False, *, user: int | None = None) -> s
         "that game, then how far it sits from the game's strongest computer player, and "
         "it is blank until you have played a rated game there.</p>\n"
         '<div id="done"></div>\n'
+        # R9b (Q605): this person's own solved marks on proven positions, by game.
+        '<div id="proven"></div>\n'
         '<div id="open"></div>\n'
         # Always here, badges or none. A rule shown only to whoever has met it is a
         # hidden rule (§3, test 7), so the way to the list cannot depend on the reader.
@@ -1525,9 +1527,10 @@ def privacy() -> str:
     """What is kept about a person, what a sandbox game keeps, and what leaving does.
 
     Task 1.9, with the badge of box E3 (`docs/archive/plan-meta-game.md`) and Q279's
-    suggestion added. Six things are named because the store holds six about a person:
+    suggestion added. Seven things are named because the store holds seven about a person:
     `site/identity.py`'s three, the match rows, the dated award rows of
-    `docs/archive/plan-meta-game.md` §2.9, and anything they wrote in the suggestion box. Leaving
+    `docs/archive/plan-meta-game.md` §2.9, anything they wrote in the suggestion box, and
+    their solved marks on proven positions (R9b, `0037_proven_positions.sql`). Leaving
     is the retention answer of 2026-09-11 in the words it asked for -- your games stay,
     your name goes.
     """
@@ -1536,7 +1539,7 @@ def privacy() -> str:
         '<p class="lead">The site is small and invite-only, and it keeps about you only '
         "what an account and a rating need.</p>\n"
         "<h2>What the site keeps</h2>\n"
-        "<p>It keeps six things and nothing else.</p>\n"
+        "<p>It keeps seven things and nothing else.</p>\n"
         "<ul>\n"
         "<li>Your email address &mdash; the invitation you joined by was a link sent to "
         "it. If you tick the box on your own page that asks for it, the site also sends "
@@ -1569,6 +1572,11 @@ def privacy() -> str:
         "by you and by the person who runs the site and by nobody else, and no other page "
         "on the site shows them. They can mark one done or delete it; deleting it removes "
         "the text for good.</li>\n"
+        # R9b (Q605): a person's solved marks on proven positions, `proven_marks`.
+        "<li>Which proven positions you have solved &mdash; for each, the game, the "
+        "position, whether you converted it or found the move, and when. Only your own "
+        "page shows them, nothing counts them across people, and a try that did not "
+        "succeed is recorded only as the game it was.</li>\n"
         "</ul>\n"
         "<p>Nothing else is asked of you when you join, your page shows other members "
         "only what the next part says, and the session cookie is the only cookie the "
@@ -1624,7 +1632,8 @@ def privacy() -> str:
         "email address and your password hash are deleted and your name on every match "
         "becomes <em>a former player</em>. The matches themselves stay, because each "
         "game's ratings are worked out by replaying its matches from the first, and "
-        "removing rows would move other people's ratings along with yours. Anything you "
+        "removing rows would move other people's ratings along with yours. Which proven "
+        "positions you solved is deleted. Anything you "
         "posted in the suggestion box stays under the same name, because a suggestion is "
         "about the site rather than about you; ask and the person who runs the site will "
         "delete it.</p>\n"

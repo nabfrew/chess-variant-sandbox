@@ -105,6 +105,12 @@ class Finish:
     thinks: tuple[int | None, ...] | None = None
     undone: tuple[dict[str, Any], ...] | None = None
     standing: dict[str, Any] | None = None
+    # R9b (`0037_proven_positions.sql`): a try at converting a proven position has source
+    # `puzzle` and its moves start with `prefix` moves from a recorded game between
+    # computer players, which nobody at the board played. `prefix` is 0 on every other
+    # finish, whose moves are all the board's own.
+    source: str | None = None
+    prefix: int = 0
 
     @property
     def person_won(self) -> bool:
@@ -148,7 +154,7 @@ def recorded(
         cursor.execute(
             "select m.id, f.ordinal, m.game, g.name, m.mode, m.seat0_agent, m.seat1_agent,"
             " m.seat0_user, m.seat1_user, m.seed, f.moves, f.result, f.reason, f.takebacks,"
-            " f.finished, f.thinks, f.undone, f.standing"
+            " f.finished, f.thinks, f.undone, f.standing, m.source, m.puzzle_ply"
             " from finishes f join matches m on m.id = f.match join games g on g.hash = m.game"
             f" where {' and '.join(where)} order by f.finished, m.id, f.ordinal",
             tuple(values),
@@ -160,7 +166,7 @@ def recorded(
 
 def _to_finish(row: Any) -> Finish:
     (match, ordinal, game, name, mode, agent0, agent1, user0, user1, seed, moves,
-     result, reason, takebacks, finished, thinks, undone, standing) = row
+     result, reason, takebacks, finished, thinks, undone, standing, source, prefix) = row
     # A finish is kept only with somebody at the board, so at least one seat has no
     # agent. The site seats one person at a time, so the other seat is the opponent.
     seat = 0 if agent0 is None else 1
@@ -187,6 +193,8 @@ def _to_finish(row: Any) -> Finish:
         thinks=None if thinks is None else tuple(thinks),
         undone=None if undone is None else tuple(undone),
         standing=standing,
+        source=None if source is None else str(source),
+        prefix=int(prefix or 0),
     )
 
 
