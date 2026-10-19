@@ -369,6 +369,11 @@ class Session:
                 # Schema 19: each portal end's pair, colour, movers and doors, compiled
                 # (`viz.wrapped.portal_payload`); `None` without portals.
                 "portals": portal_payload(engine.spec),
+                # Schema 28 (Q943b, `docs/plan-speed.md` §4.5): each type's speed, compiled
+                # (`SimRule.speed`), for the legend's line of ranks; empty in every game
+                # without a speed, which draws no line.
+                "speed": list(engine.spec.simultaneous.speed)
+                if engine.spec.simultaneous is not None else [],
             },
             "seats": list(self.seats),
             # How hard each seat thinks, in plain words off the budget it plays at, for
@@ -1139,6 +1144,10 @@ def round_reveal(
     def named(square: int) -> str:
         return square_name(square, width)
 
+    def said(seat: int) -> str:
+        """The move as its seat sealed it, on the round's board."""
+        return str(engine.describe_move(_as_seat(before, seat), moves[seat]))
+
     origins = [None if move_type(m) == MOVE_DROP else move_from(m) for m in moves]
     targets = [move_to(m) for m in moves]
     voids = {player for kind, _square, player in events if kind == _EVENT_VOID}
@@ -1188,12 +1197,22 @@ def round_reveal(
                 f"it passes to {sides[1 - player]}."
             )
         elif kind == _EVENT_ORDER:
-            words.append(f"{piece(player)} was faster and moved first.")
+            # Schema 28 (Q943b, `docs/plan-speed.md` §4.5): the round's sentence leads with
+            # the order, and the faster move as it was sealed.
+            words.append(f"{piece(player)} was faster: {said(player)}.")
         elif kind == _EVENT_LOST:
             results[player] = "lost"
-            words.append(
-                f"{piece(player)} was taken or changed before it could move: its move was lost."
-            )
+            faster, stood = 1 - player, origins[player]
+            if stood is not None and targets[faster] == stood:
+                words.append(
+                    f"{piece(faster)} took {piece(player)} on {named(stood)} before "
+                    f"it could move: its move was lost."
+                )
+            else:
+                words.append(
+                    f"{piece(player)} was taken or changed before it could move: its move "
+                    f"was lost."
+                )
         elif kind == _EVENT_UNPLAYED:
             results[player] = "unplayed"
             words.append(
@@ -1206,6 +1225,16 @@ def round_reveal(
                 f"A second void round in a row for {there}: neither may take the other that "
                 f"way until one of the two squares changes."
             )
+    if ordered:
+        # The slower move, made: the board the faster left offered it (§2.5). Onto the
+        # square the faster piece just took, it takes that piece there (case C).
+        first = next(player for kind, _square, player in events if kind == _EVENT_ORDER)
+        slower = 1 - first
+        if results[slower] is None and slower not in voids:
+            if targets[slower] == targets[first] and origins[slower] is not None:
+                words.append(f"{piece(slower)} then took it on {named(targets[slower])}.")
+            else:
+                words.append(f"{piece(slower)} then made its move: {said(slower)}.")
     swapped = (
         origins[0] is not None and origins[1] is not None
         and targets[0] == origins[1] and targets[1] == origins[0] and not voids
@@ -1232,7 +1261,8 @@ def round_reveal(
             for kind, square, player in events
         ],
         "results": results,
-        "words": words,
+        # A sentence starts with a capital, whatever the sides are called (`white`).
+        "words": [line[:1].upper() + line[1:] for line in words],
     }
 
 

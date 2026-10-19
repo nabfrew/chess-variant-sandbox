@@ -1307,7 +1307,7 @@ class TestTheGoalWeightIsStatedInPiecesThatAreMaterial:
         assert diluted * GOAL_PIECES == pytest.approx(plain_eval.goal_weight * 5 / 6)
 
     def test_the_corpus_is_the_one_the_count_below_reads(self) -> None:
-        assert len(CORPUS_PATHS) == 91, "the corpus moved out from under this test"  # 98 since Q936s; 92 since Q962b retired six previews; 91 since Q962c retired one more
+        assert len(CORPUS_PATHS) == 94, "the corpus moved out from under this test"  # 98 since Q936s; 92 since Q962b retired six previews; 91 since Q962c retired one more; 94 since Q943c's three speed showcases
 
     # One test per spec (Q749): the walk was one test of 2.9 s in the gate. `stones` is
     # the only spec with an inexhaustible type, asked of each spec by name.
@@ -1579,10 +1579,10 @@ class TestACaptureThatChangesSidesIsCountedAtBothEnds:
     )
 
     def test_the_three_kinds_are_counted_on_the_whole_corpus(self) -> None:
-        assert len(CORPUS_PATHS) == 91, "the corpus moved out from under this test"  # 98 since Q936s; 92 since Q962b retired six previews; 91 since Q962c retired one more
+        assert len(CORPUS_PATHS) == 94, "the corpus moved out from under this test"  # 98 since Q936s; 92 since Q962b retired six previews; 91 since Q962c retired one more; 94 since Q943c's three speed showcases
         stems = {path.stem for path in CORPUS_PATHS}
         assert set(self.INERT) | set(self.MOVED) <= stems
-        assert len(stems) - len(self.INERT) - len(self.MOVED) == 80  # 81 until Q962c retired gardner in rounds resting, which held no hand; 87 until Q962b retired six previews, which held no hand; 73 until Q844b's three portal showcases; 76 until Q918e's four round showcases, which hold no hand; 80 until Q942c's four, which hold none either; 84 until Q935f's two spy showcases, which hold none; 86 until Q936s's riders and leapers, which holds none
+        assert len(stems) - len(self.INERT) - len(self.MOVED) == 83  # 80 until Q943c's three speed showcases, which hold no hand; 81 until Q962c retired gardner in rounds resting, which held no hand; 87 until Q962b retired six previews, which held no hand; 73 until Q844b's three portal showcases; 76 until Q918e's four round showcases, which hold no hand; 80 until Q942c's four, which hold none either; 84 until Q935f's two spy showcases, which hold none; 86 until Q936s's riders and leapers, which holds none
 
     # One test per spec (Q749): the walk was one test, 4.4 s in the gate once the two
     # walks above stopped compiling the corpus first in the same worker.

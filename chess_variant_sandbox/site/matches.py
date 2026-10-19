@@ -922,12 +922,19 @@ def _agents(found: Row) -> list[str]:
 
 
 def _note_budget(found: Row) -> None:
-    """The opponent's node budget, for the usage row this reply lands on.
+    """The opponent's node budget, for the usage row this reply lands on."""
+    note_budget(_agents(found))
+
+
+def note_budget(seats: Sequence[str]) -> None:
+    """The computer players' node budget, for the usage row a reply lands on.
 
     The largest of the seated budgets, which is the opponent's in a game somebody is
-    playing and the heavier of the two in a watch.
+    playing and the heavier of the two in a watch. A person's seat has none. Also what a
+    draft's reply notes (`SiteApp._session_action`), whose session is in memory rather
+    than a row; without it those replies landed on the `agent` row (Q970).
     """
-    budgets = [quota.nodes_in(agent) for agent in _agents(found)]
+    budgets = [quota.nodes_in(seat) for seat in seats if seat and seat != HUMAN]
     if budgets:
         usage.note(f"nodes={max(budgets)}")
 

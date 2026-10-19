@@ -280,6 +280,9 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     # Q962b, 2026-10-18: `archive/gardner-with-spies` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was d42324fc3f1bb1be.
     "archive/gardner-with-spies-resting": "816d0aff92f03381",  # Q935f, schema 27; 2026-10-18: its description, written as the game's idea (was 6ef889f11a8119cc)
     "archive/riders-and-leapers": "358b832b1209f1d3",  # Q936s, schema 27
+    "archive/gardner-in-rounds-with-a-swift-king": "10d26a1f6ccbb0b7",  # Q943c, schema 28
+    "archive/gardner-in-rounds-with-swift-knights": "0c130d20a3e50438",  # Q943c, schema 28
+    "archive/watering-hole-by-speed": "6a4b3d3c15788a29",  # Q943c, schema 28
     "rulesets/almost": "0ea224823977572d",
     "rulesets/antichess": "74c73dff0811c4a6",
     "rulesets/atomic": "e77e414d76c510af",

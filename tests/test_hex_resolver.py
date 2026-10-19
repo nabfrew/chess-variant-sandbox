@@ -404,6 +404,9 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     # Q962b, 2026-10-18: `archive/gardner-with-spies` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was d488370eab00cfbd.
     "archive/gardner-with-spies-resting": "a12a32ec9aa7c11a",  # Q935f, schema 27
     "archive/riders-and-leapers": "6917cf0a1e6e5bbd",  # Q936s, schema 27
+    "archive/gardner-in-rounds-with-a-swift-king": "6fdc011869f7824a",  # Q943c, schema 28
+    "archive/gardner-in-rounds-with-swift-knights": "6fdc011869f7824a",  # Q943c, schema 28
+    "archive/watering-hole-by-speed": "b0e8b91febef654d",  # Q943c, schema 28
     "archive/wolves": "ad7a6f1e406f28f3",
 }
 

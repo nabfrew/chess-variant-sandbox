@@ -873,6 +873,11 @@ const MARK_KINDS = {
   // A pause sign on the square's top corner (`restBadge`), off the core's rested squares.
   rested: { colour: 'var(--rest)', shape: 'rest', name: 'pause sign', ink: 'var(--ink)',
             label: 'the piece moved last round: it rests and may not move this round, unless it is all its side can move' },
+  // Schema 28 (Q943b, `docs/plan-speed.md` §4.5): the order the last round's two moves were
+  // made in, where the two pieces differed in speed: a numbered disc on the bottom corner of
+  // each move's square (`orderBadge`), off the core's events (`roundOrder`).
+  order: { colour: 'var(--order)', shape: 'order', name: 'numbered disc', ink: 'var(--ink)',
+           label: "the order the last round's two moves were made in: between pieces of different speeds the faster moves first" },
   // Schema 27 (Q935c, `docs/plan-spy.md` §3.6): the move announced in a spy game's announced
   // round, shown to both players before the answer. A solid arrow and a ring on the square
   // it goes to (`announceLine`, `announcedHtml`), in a teal of its own: never the held
@@ -941,6 +946,20 @@ function restBadge(x, y, cell, player) {
       pointer-events="none"><circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" fill="var(--rest)"
       stroke="var(--held-halo)" stroke-width="${f(cell * 0.03)}"/>${bar(-cell * 0.04)}${
       bar(cell * 0.04)}</g>`;
+}
+
+// A move's place in an ordered round (schema 28, Q943b), `n` 1 or 2, on the bottom corner of
+// the square at `(x, y)`, clear of the rested piece's sign on the top one: a disc in
+// `--held-halo` ringed and numbered in `--order`, dark on light in both themes. `right` puts it on
+// the other bottom corner, for the second of two moves that ended on one square.
+function orderBadge(x, y, cell, n, player, right) {
+  const f = n => n.toFixed(3);
+  const cx = x + cell * (right ? 0.8 : 0.2), cy = y + cell * 0.8, r = cell * 0.16;
+  return `<g data-mark="order" data-order="${n}"${player === undefined ? '' : ` data-player="${
+      player}"`} pointer-events="none"><circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}"
+      fill="var(--held-halo)" stroke="var(--order)" stroke-width="${f(cell * 0.025)}"/><text
+      x="${f(cx)}" y="${f(cy)}" fill="var(--order)" font-size="${f(cell * 0.22)}" font-weight="700"
+      text-anchor="middle" dominant-baseline="central">${n}</text></g>`;
 }
 
 // A standoff's link between the middles of two squares, `(x1, y1)` and `(x2, y2)`, in the
@@ -1272,6 +1291,10 @@ function squareBadge(x, y, cell, marks, view, tag) {
     }
     if (kind.shape === 'rest') {
       out += restBadge(x - cell * 0.3, y + cell * 0.3, cell * 1.0);
+      continue;
+    }
+    if (kind.shape === 'order') {
+      out += orderBadge(x + cell * 0.3, y - cell * 0.3, cell * 1.0, 1);
       continue;
     }
     // A walk's key, as a still board draws a step of one (Q852): only the legend comes here.

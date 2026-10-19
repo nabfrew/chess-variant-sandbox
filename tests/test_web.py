@@ -6610,7 +6610,10 @@ class TestWhatReachesThePage:
         # (`wireProven`): a constant *Drawing the position…*, `provenAtHtml`'s board, moves
         # and sentences (every move text and server sentence through `esc`), and emptied on
         # a refusal.
-        assert len(sites) == 135
+        #
+        # 137 since Q943b: an ordered round's reveal draws a lost move's arrow (numbers only,
+        # `lostArrowHtml`) and an unplayed move's struck ghost (`drawPiece` and numbers).
+        assert len(sites) == 137
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")

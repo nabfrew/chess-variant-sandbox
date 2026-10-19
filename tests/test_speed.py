@@ -800,5 +800,6 @@ def test_the_page_names_an_ordered_round_from_the_cores_events() -> None:
     reveal = round_reveal(engine, state, after, moves, events, ("White", "Black"))
     assert [event["kind"] for event in reveal["events"]] == ["order", "lost"]
     assert reveal["results"] == ["lost", None]
-    assert any("was faster and moved first" in words for words in reveal["words"])
+    assert any("was faster: Kb4xb5." in words for words in reveal["words"])
+    assert any("took White's queen on b5 before it could move" in words for words in reveal["words"])
     assert not any("swapped squares" in words for words in reveal["words"])

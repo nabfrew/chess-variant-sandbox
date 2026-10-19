@@ -890,6 +890,9 @@ RULES = """
   .piece ul { margin: 4px 0 0; padding-left: 16px; font-size: 12.5px; color: var(--muted); }
   .royal { font-size: 10px; border: 1px solid var(--note); color: var(--ink);
            border-radius: 20px; padding: 1px 6px; margin-left: 6px; vertical-align: 1px; }
+  /* Schema 28: a piece's speed on its card, its meaning in the hover line. */
+  .speed { font-size: 10px; border: 1px solid var(--line); color: var(--ink);
+           border-radius: 20px; padding: 1px 6px; margin-left: 6px; vertical-align: 1px; }
 
   /* --- choosing a side --- */
   /* One row each, apart by a rule rather than a box inside the play panel (§3.4). */

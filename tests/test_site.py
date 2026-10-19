@@ -3488,6 +3488,72 @@ class TestUsageIsCounted:
         assert counter.in_flight_max() == 1
         assert counter.in_flight_max() == 0
 
+    def test_the_ledger_shares_the_process_clock_by_wall_time(self) -> None:
+        """Q970. Between two moments the process's CPU is split evenly among what ran."""
+        clock = Clock()
+        clock.now = 0.0
+        ledger = usage.Ledger(clock)
+        clock.now = 5.0  # nothing running: the idle floor, charged to nobody
+        first = ledger.enter()
+        clock.now = 7.0  # the first alone: all of it
+        second = ledger.enter()
+        clock.now = 10.0  # both: half each
+        assert ledger.leave(first) == pytest.approx(2.0 + 1.5)
+        clock.now = 11.0  # the second alone again
+        with ledger.sharing():  # a walk beside it takes its half and is charged to nobody
+            clock.now = 13.0
+        assert ledger.leave(second) == pytest.approx(1.5 + 1.0 + 1.0)
+
+    def test_a_request_is_charged_for_work_it_runs_on_other_threads(
+        self, app: SiteApp, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Q970. The playability check plays its smoke games on the core's threads, which
+        the request's own thread clock never saw (`usage-first-month.md` §2: 0.48)."""
+        def spin() -> None:
+            ends = time.thread_time() + 0.4
+            while time.thread_time() < ends:
+                pass
+
+        def elsewhere(self: Any, body: Any) -> Any:
+            worker = threading.Thread(target=spin)
+            worker.start()
+            worker.join()
+            return {"played": True}
+
+        timings: list[usage.Timing] = []
+        timed = usage.Timing
+
+        def keep(produce: Any) -> usage.Timing:
+            timings.append(timed(produce))
+            return timings[-1]
+
+        monkeypatch.setattr(app, "identify", lambda token: None)
+        monkeypatch.setattr(App, "_play_draft", elsewhere)
+        monkeypatch.setattr(app, "usage", usage.Counter())
+        monkeypatch.setattr(usage, "Timing", keep)
+        server = Server(("127.0.0.1", 0), site_server.site_handler_for(app))
+        threading.Thread(target=server.serve_forever, kwargs=SERVE_FAST, daemon=True).start()
+        try:
+            assert Browser(server.server_port).post(
+                "/api/design/play", {"spec": {}}).status == 200
+        finally:
+            server.shutdown()
+            server.server_close()
+        [timing] = timings
+        assert timing.thread < 0.1, "the request's own thread only waited"
+        [sums] = app.usage.drain(final=True).hours.values()
+        assert sums.cpu == pytest.approx(timing.cpu)
+        assert sums.cpu > 0.3, "the worker thread's 0.4 CPU-s is the request's"
+
+    def test_a_drafts_computer_move_notes_its_budget(self, app: SiteApp) -> None:
+        """Q970. A draft's session is answered by the local handler, which noted no budget,
+        so its computer moves landed on the `agent` row (`usage-first-month.md` §3.2)."""
+        spec = json.loads((RULESETS / "chess.json").read_text(encoding="utf-8"))
+        session = app.drafts.start(app.game(spec_hash(spec)), ("minimax:nodes=400", "human"))
+        usage.take()
+        app.post(f"/api/session/{session.id}/agent", {})
+        assert usage.take() == "nodes=400"
+
     def test_a_server_error_is_counted_and_written_to_the_journal_with_its_traceback(
         self, app: SiteApp, monkeypatch: pytest.MonkeyPatch,
         capfd: pytest.CaptureFixture[str],

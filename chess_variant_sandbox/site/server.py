@@ -2276,7 +2276,10 @@ class SiteApp(App):
         A draft's session is in memory rather than in the store, so it is answered by the
         local application's own handler on the way past.
         """
-        if self.drafts.find(session_id) is not None:
+        draft = self.drafts.find(session_id)
+        if draft is not None:
+            if action == "agent":
+                matches.note_budget(list(draft.seats))
             return super()._session_action(session_id, action, body)
         due: move_email.Due | None = None
         with self._connection() as connection:

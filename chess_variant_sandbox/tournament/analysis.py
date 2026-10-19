@@ -695,7 +695,27 @@ ROUND_COUNTS = (
     "swaps",
 )
 
+# Schema 28 (Q943b, `docs/plan-speed.md` §4.4): what speed did to the rounds, from the core's
+# events 5 to 7 (an ordered round, a slower move lost with its piece, a slower move never
+# played because the faster ended the game) and a void move in an ordered round, which is
+# the slower one's. Counted only where a piece declares a speed, so a game without one has
+# none of these keys and its `analysis.json` is the bytes it was.
+SPEED_COUNTS = (
+    "ordered_rounds",
+    "slower_void",
+    "slower_lost",
+    "ended_after_faster",
+)
+
 _COLLISION, _VOID, _INITIATIVE, _BARRED = 0, 1, 2, 3
+_ORDER, _LOST, _UNPLAYED = 5, 6, 7
+
+
+def _round_tallies(engine: Engine) -> dict[str, int]:
+    """`ROUND_COUNTS` at nought, and `SPEED_COUNTS` beside them where a speed is declared."""
+    sim = engine.spec.simultaneous
+    keys = ROUND_COUNTS + (SPEED_COUNTS if sim is not None and sim.speed else ())
+    return dict.fromkeys(keys, 0)
 
 # The share of a mix read as the solver's residue rather than as a move the equilibrium
 # plays: what the first two of the solver's iterations alone can leave on a move, since
@@ -848,7 +868,7 @@ def _analyse_rounds(
     near_best: list[int] = []
     legal_counts: list[int] = []
     capture_counts: list[int] = []
-    counts = dict.fromkeys(ROUND_COUNTS, 0)
+    counts = _round_tallies(engine)
 
     state = engine.initial_state()
     starting_squares = _starting_squares(engine, state.board)
@@ -1226,7 +1246,7 @@ def _analyse_spy(
     near_best: list[int] = []
     legal_counts: list[int] = []
     capture_counts: list[int] = []
-    rounds = dict.fromkeys(ROUND_COUNTS, 0)
+    rounds = _round_tallies(engine)
     spy: dict[str, Any] = {
         key: (None if key.startswith("lost_") else 0) for key in SPY_COUNTS
     }
@@ -1342,15 +1362,27 @@ def _sample_spy_step(
 def _count_round(
     counts: dict[str, int], pair: tuple[int, ...], events: tuple[tuple[int, int, int], ...]
 ) -> None:
-    """`ROUND_COUNTS` for one round: the round, a swap read off its words, its events."""
+    """`ROUND_COUNTS` for one round: the round, a swap read off its words, its events; and
+    `SPEED_COUNTS` where the tallies hold them (an ordered round's events, schema 28)."""
     counts["rounds"] += 1
-    counts["swaps"] += int(_is_swap(pair[0], pair[1]))
+    ordered = any(event == _ORDER for event, _square, _player in events)
+    # Two pieces trading squares in an ordered round did not swap: the faster took the
+    # slower where it stood (`plan-speed.md` §2.5 B).
+    counts["swaps"] += int(not ordered and _is_swap(pair[0], pair[1]))
     for event, _square, player in events:
         if event == _COLLISION:
             counts["collisions"] += 1
             counts["collisions_both_lost"] += int(player < 0)
         elif event == _VOID:
             counts["void_moves"] += 1
+            if ordered:
+                counts["slower_void"] += 1
+        elif event == _ORDER:
+            counts["ordered_rounds"] += 1
+        elif event == _LOST:
+            counts["slower_lost"] += 1
+        elif event == _UNPLAYED:
+            counts["ended_after_faster"] += 1
         elif event == _INITIATIVE:
             counts["initiative_ties"] += 1
         elif event == _BARRED:

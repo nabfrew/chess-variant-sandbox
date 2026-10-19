@@ -13,6 +13,16 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-19
 
+### Speed: in games played in rounds, faster pieces move first
+
+In a game where both players move at once, pieces can now have a speed. When two moves meet in a round, the faster
+piece's move happens first, and the slower move may find its target already gone, or its own piece already taken. The
+page shows the order: the faster move plays, then the slower one. Three new games show it. *The watering hole by
+speed*, where cat, rat, dog and elephant race to the water and arriving first matters as much as who eats whom, measured
+as a real game, with every game decided at the hole. Two versions of *gardner in rounds*, one with a swift king and one
+with swift knights, are offered as previews: both turned out drawish, and in the knights' version strong players trade
+the two fast knights on the first move.
+
 ### Proven positions: endgames the computer has proved are won
 
 Seven games' pages now have a *Proven positions* section: endgames taken from the computer's own games, each one proved

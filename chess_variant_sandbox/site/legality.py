@@ -115,7 +115,7 @@ from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.moves import move_from
 from chess_variant_sandbox.measurement import Basis, built_fingerprint
 from chess_variant_sandbox.metrics.scoring import WeightsError
-from chess_variant_sandbox.site import provisional, quota, spine, spotcheck
+from chess_variant_sandbox.site import provisional, quota, spine, spotcheck, usage
 from chess_variant_sandbox.site.provisional import ProvisionalError
 from chess_variant_sandbox.tournament import runner, slices
 from chess_variant_sandbox.tournament.analysis import (
@@ -1400,14 +1400,18 @@ class Checker:
         while True:
             with self.connect() as connection:
                 job = claim(connection, self.worker)
+            # A walk and a spot check run in this process, so each takes its own share of
+            # the process's clock (`usage.Ledger`, Q970) rather than landing on whoever
+            # makes a request meanwhile. A spine rating runs in a child process, which
+            # the ledger's clock never sees, so it takes none.
             if job is not None:
-                with self.connect() as connection:
+                with self.connect() as connection, usage.LEDGER.sharing():
                     done.append(run(connection, self.runs_dir, job, self.worker, self.basis))
                 continue
             with self.connect() as connection:
                 check = spotcheck.claim(connection, self.worker)
             if check is not None:
-                with self.connect() as connection:
+                with self.connect() as connection, usage.LEDGER.sharing():
                     done.append(
                         spotcheck.run(
                             connection, self.runs_dir, check, self.worker, self.basis,

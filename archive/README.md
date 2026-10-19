@@ -811,6 +811,37 @@ sixth of its games drawn. Short, tactical games; the riders lose by their bishop
 three. Joined the library by Q936t as the only game where each side loses when any one of its own
 kinds is gone, and the only one with two different armies of paired kinds.
 
+## `gardner-in-rounds-with-a-swift-king.json`, `gardner-in-rounds-with-swift-knights.json`, `watering-hole-by-speed.json` — schema 28, speed (Q943c)
+
+2026-10-19, previews. The showcases of `pieces[].speed` (`docs/plan-speed.md` §6.1, pre-registered
+2026-10-16 before the rule was built): each piece type has a speed, a rank; when the two pieces
+moving in a round differ in speed, the faster move is made first as an ordinary move, and the
+slower is made afterwards only if it still can be. The first two are Gardner in
+rounds (`e043fce6968e`, retired from the previews but kept as
+`tests/_retired_gardner_in_rounds.json`) with one fast type, so that what speed does is the only
+difference; the third is the game designed around the rule.
+`tests/test_showcases_q943.py` holds W1, the rule without players.
+
+- **`gardner-in-rounds-with-a-swift-king`** (`d8bb879440ce`, T1): the king at speed 1. A king
+  that runs is never caught where it stood, and a piece it goes for is taken before it can
+  move; it is caught only by a piece aimed at the square it runs to. Asks whether a fast royal
+  ends its chase by other pieces; the chase between the two kings, of one speed, is left.
+- **`gardner-in-rounds-with-swift-knights`** (`bf230a962d10`, T2): the knights at speed 1, so a
+  king is slower than both enemy knights and cannot run from one: a knight that can take the
+  king takes it. Asks whether a faster attacker ends the chase, and at what price in quick
+  kills. In a short look the round players trade the two knights by collision on move one.
+
+- **`watering-hole-by-speed`** (`423a29997264`, T3): the watering hole (`5c0b017473f5`) with
+  the cat at speed 3, the rat 2, the dog 1, the elephant 0, and the tie rule taken out, since no
+  two opposing kinds share a speed and nothing collides. Every round is two moves in order, and
+  speed cuts across the food chain: the cat and the rat are faster than their prey and catch it
+  standing; the elephant and the dog are slower than theirs, whose prey escapes by moving and
+  is caught only standing still or by stepping where the hunter was going. Two arrivals at the
+  hole are no longer a meeting: the faster gets there first. Held off main a few hours for an
+  operator fix (`plan-speed.md` §6.1 *As built*).
+
+Not yet measured: Q943d measures all three on the round roster and grades `plan-speed.md` §6.3.
+
 ## Retired by the library audit (Q868, 2026-10-12)
 
 The user asked for a library in which every game has a purpose (`docs/archive/plan-library-audit.md`,

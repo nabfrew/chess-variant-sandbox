@@ -2413,9 +2413,9 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
-    # Q943a's speed: Q943c builds and grades its showcases (`plan-speed.md` §5, §6: T1 to
-    # T3), after Q943b gives the players the rule's tactic; it deletes this row.
-    "Q943a speed": "Q943c, plan-speed.md §6",
+    # Q943a's speed went on 2026-10-19, when Q943c archived its three showcases
+    # (`archive/gardner-in-rounds-with-a-swift-king`, `-with-swift-knights`,
+    # `archive/watering-hole-by-speed`; `plan-speed.md` §6.1, coverage row 73).
     # Q936's `"own"` went on 2026-10-17, when Q936s archived its showcase, two armies of
     # different kinds (`archive/riders-and-leapers`; `extinction-any-kind.md` §5, coverage
     # row 72). Empty again at schema 27.
@@ -2496,11 +2496,8 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
-    "schema 28: pieces.speed": (
-        "coverage row 73: owed by Q943c (`plan-speed.md` §6's T1 to T3, pre-registered), "
-        "which builds the showcases once Q943b has given the round players speed's tactic; "
-        "this entry goes the day one lands"
-    ),
+    # Schema 28's `pieces.speed` went on 2026-10-19, when Q943c archived its showcases
+    # (`plan-speed.md` §6.1; coverage row 73).
     # Schema 27's `rules.extinction.per_type.own` went on 2026-10-17, when Q936s archived
     # its showcase (`extinction-any-kind.md` §5; coverage row 72).
     # Schema 27's `pieces.spy` went on 2026-10-17, when Q935f archived its showcases
@@ -4229,3 +4226,18 @@ class TestTheRoundOperators:
             if name in schema._schema_twenty_six_uses(child) and not refusal(parent(), child):
                 return
         raise AssertionError(f"{operator} never entered {name}")
+
+    @pytest.mark.parametrize("operator", ["break-the-tie", "set-a-collision"])
+    def test_neither_applies_where_no_two_opposing_pieces_share_a_speed(self, operator: str) -> None:
+        """Schema 28 (Q943e, `plan-speed.md` §4.1): pieces of different speeds never collide,
+        so where no type of one player shares a speed with a type of the other (T3,
+        `archive/watering-hole-by-speed`) a tie rule and a `beats` are inert and the
+        validator refuses both. The operator declines rather than spending a draw on a
+        refused child, asking the validator's own predicate."""
+        parent = load_spec(ROOT / "archive" / "watering-hole-by-speed.json")
+        assert not schema._any_equal_speed_meeting(parent)
+        apply = next(op for op in OPERATORS if op.name == operator)
+        for seed in _SWEEP_SEEDS:
+            child = copy.deepcopy(parent)
+            assert apply.apply(child, random.Random(seed)) is None, f"{operator} applied at seed {seed}"
+            assert child == parent

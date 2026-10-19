@@ -353,7 +353,14 @@ class TestTheFingerprintsPointAtSomething:
 # library game declares a speed, so no number should move: every committed and archived spec
 # keeps its complexity, tables and prose byte for byte (main against the branch). It was
 # "983645dfe3d2a18f" after Q953a; the library replay owed with Q961 re-scores under it.
-FROZEN_METRICS = "a10833f919319aab"
+#
+# **Moved 2026-10-19 by Q943b (speed: the faster-attacker term and the tallies)**:
+# `agents/evaluation.py` prices a royal a strictly faster piece takes next round, and
+# `tournament/analysis.py` counts `SPEED_COUNTS`, both only where a piece declares a speed.
+# No library game declares one, so no number should move (the round players' tournaments
+# and two analysis files are pinned equal in `tests/test_speed_players.py`). It was
+# "a10833f919319aab" after Q943a and Q966's replay; the next library replay re-scores under it.
+FROZEN_METRICS = "ed8e842a885544a3"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -584,7 +591,11 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # **Moved 2026-10-17 by Q947e**: `engine/state.py` and `engine/__init__.py` lose the dead
 # `PLAYER_ZERO`/`PLAYER_ONE` (see `FROZEN_METRICS`). It was "12d9bfabaa75f542" after Q935h;
 # the next library replay is the re-analysis.
-FROZEN_ANALYSIS = "031be810615f81e7"
+#
+# **Moved 2026-10-19 by Q943b**: `agents/evaluation.py` and `tournament/analysis.py` (see
+# `FROZEN_METRICS`); a game without a speed is analysed byte for byte as before. It was
+# "031be810615f81e7" after Q947e and Q966's replay; the next library replay is the re-analysis.
+FROZEN_ANALYSIS = "8a7d2819c34b14a5"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

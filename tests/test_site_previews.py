@@ -45,11 +45,16 @@ ARCHIVED_PREVIEWS = {
     # Q935f's SP2 (`plan-spy.md` §5): a spy game starts by turns and ends in rounds once a
     # spy falls.
     "gardner-with-spies-resting.json": "1d798bedbf66",
+    # Q943c's three speed showcases (`plan-speed.md` §6.1), played in rounds; previews
+    # until Q943d measures them.
+    "gardner-in-rounds-with-a-swift-king.json": "d8bb879440ce",
+    "gardner-in-rounds-with-swift-knights.json": "bf230a962d10",
+    "watering-hole-by-speed.json": "423a29997264",
 }
-"""The previews in `archive/`, by file and by the mechanics hash each was measured under: the
-round and spy games less the three that joined the library (`JOINED`), the six that Q962b
-retired and the one Q962c retired (`docs/reference/previews-2026-10-18.md`; their files are
-`tests/_retired_*.json`)."""
+"""The previews in `archive/`, by file and by the mechanics hash each was or will be measured
+under: the round and spy games less the three that joined the library (`JOINED`), the six that
+Q962b retired and the one Q962c retired (`docs/reference/previews-2026-10-18.md`; their files
+are `tests/_retired_*.json`), and Q943c's three speed showcases."""
 
 ROUND_PREVIEW = "4da669bb3d50"
 ROUND_PREVIEW_FILE = "gardner-in-rounds-resting.json"

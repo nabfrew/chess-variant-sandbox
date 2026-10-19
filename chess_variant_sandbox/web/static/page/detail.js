@@ -2309,7 +2309,7 @@ function pieceArt(piece, player) {
 // Not on the board pane, which passes an index: a piece there is a click target that
 // finds the piece on the board, so an (i) inside it would fire both.
 function piecesHtml(piece, options) {
-  const { index, selected } = options || {};
+  const { index, selected, ranks } = options || {};
   const rules = piece.descriptors || [];
   // The site's (i) says where the sentence comes from and carries no rule: the raw rule
   // is the maintainer's reading (A12, G3).
@@ -2322,10 +2322,26 @@ function piecesHtml(piece, options) {
     <div class="art">${pieceArt(piece, 0)}</div>
     <div>
       <h4>${esc(piece.name)} <span class="muted small">${esc(piece.id)}</span>${
-        piece.royal ? `<span class="royal" title="the piece the game is about losing, like a king">royal</span>` : ''}</h4>
+        piece.royal ? `<span class="royal" title="the piece the game is about losing, like a king">royal</span>` : ''}${
+        speedPillHtml(piece, ranks)}</h4>
       <ul>${moves.concat(notes).join('')}</ul>
     </div>
   </div>`;
+}
+
+// Schema 28 (Q943b, `docs/plan-speed.md` §4.5): the speeds a game's pieces have, for each
+// card's hover line; empty in a game without a speed (no piece carries one).
+function pieceSpeeds(pieces) {
+  return [...new Set((pieces || []).map(piece => piece.speed)
+    .filter(speed => speed !== undefined && speed !== null))].sort((a, b) => a - b);
+}
+
+// A piece's speed on its card, its hover line saying what the number means (`speedLine`), or
+// nothing in a game without a speed.
+function speedPillHtml(piece, ranks) {
+  if (piece.speed === undefined || piece.speed === null || !ranks || ranks.length < 2) return '';
+  return `<span class="speed" data-speed="${esc(piece.speed)}" title="${
+    esc(speedLine(piece.speed, ranks))}">speed ${esc(piece.speed)}</span>`;
 }
 
 // K2 (`docs/archive/plan-understanding.md` §4.2 step 2): each piece with a small board of its
@@ -2342,7 +2358,7 @@ function pieceBoardsHtml(game) {
   order.sort((a, b) => (like(a) ? 1 : 0) - (like(b) ? 1 : 0) || a - b);
   return order.map(at => {
     const map = maps[at];
-    const row = piecesHtml(pieces[at]);
+    const row = piecesHtml(pieces[at], { ranks: pieceSpeeds(pieces) });
     if (!map || !game.opening) return row;
     const said = map.like ? `moves like a chess ${esc(map.like)}` : 'where it can move';
     return `<div class="pieceAlone" data-piece="${at}">${row}

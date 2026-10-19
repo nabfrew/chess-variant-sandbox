@@ -35,6 +35,9 @@ from chess_variant_sandbox.engine.moves import (
 from chess_variant_sandbox.engine.state import GameState
 
 COLLISION, VOID, INITIATIVE, BARRED = 0, 1, 2, 3
+# Schema 28 (Q943a): an ordered round (the faster player), a slower move lost with its piece,
+# a slower move unplayed because the faster ended the game (`docs/plan-speed.md` §4.2).
+ORDER, LOST, UNPLAYED = 5, 6, 7
 BOTH_LOST = -1
 
 
@@ -76,6 +79,15 @@ class RoundTally:
     swaps: int = 0
     voids: int = 0
     initiative_ties: int = 0
+    # Schema 28 (Q943c, `docs/plan-speed.md` §6.2): Q943b's four tallies, as
+    # `analysis.SPEED_COUNTS` counts them, and the games an ordered round ended.
+    ordered: int = 0
+    slower_void: int = 0
+    slower_lost: int = 0
+    ended_after_faster: int = 0
+    # Decided games whose last round was ordered and ended with its faster move, won by the
+    # faster player (§6.4: a royal, or the hole, taken by a move nothing could answer).
+    won_by_faster: int = 0
     games_with_collision: int = 0
     collisions: list[Collision] = field(default_factory=list)
     endings: collections.Counter = field(default_factory=collections.Counter)
@@ -88,9 +100,20 @@ class RoundTally:
     ]:
         """Play one round through the core, count it, and return the position after it."""
         self.rounds += 1
-        self.swaps += is_swap(first, second)
         after, _phase, events = engine.apply_round_with_phase(state, first, second)
+        ordered = any(event == ORDER for event, _square, _player in events)
+        # Two words onto each other's origins in an ordered round are no swap: the faster
+        # took the slower where it stood (`plan-speed.md` §2.5 B).
+        self.swaps += not ordered and is_swap(first, second)
         for event, _square, player in events:
+            if event == ORDER:
+                self.ordered += 1
+            elif event == LOST:
+                self.slower_lost += 1
+            elif event == UNPLAYED:
+                self.ended_after_faster += 1
+            elif event == VOID and ordered:
+                self.slower_void += 1
             if event == COLLISION:
                 self.collisions.append(
                     Collision(piece_at(engine, state, first), piece_at(engine, state, second), player)
@@ -107,8 +130,12 @@ class RoundTally:
         self.start_game()
         state = engine.initial_state()
         before = len(self.collisions)
+        events: list[tuple[int, int, int]] = []
         for index in range(0, len(moves), 2):
-            state, _ = self.round(engine, state, moves[index], moves[index + 1])
+            state, events = self.round(engine, state, moves[index], moves[index + 1])
+        self.won_by_faster += winner is not None and any(
+            event == UNPLAYED for event, _square, _player in events
+        ) and any(event == ORDER and player == winner for event, _square, player in events)
         self.end_game(len(moves), reason, winner, len(self.collisions) > before)
 
     def start_game(self) -> None:
@@ -144,20 +171,39 @@ class RoundTally:
             f"({self.games_with_collision / n:.3f}); swaps {self.swaps} ({self.swaps / rounds:.3f}); "
             f"void moves {self.voids}; initiative ties {self.initiative_ties} "
             f"({self.initiative_ties / rounds:.3f})",
+        ]
+        if self.ordered:
+            ordered = max(1, self.ordered)
+            lines.append(
+                f"  ordered rounds {self.ordered} ({self.ordered / rounds:.3f} of rounds): slower "
+                f"void {self.slower_void} ({self.slower_void / ordered:.3f}), lost "
+                f"{self.slower_lost} ({self.slower_lost / ordered:.3f}), ended after the faster "
+                f"{self.ended_after_faster} ({self.ended_after_faster / ordered:.3f})"
+            )
+            lines.append(
+                f"  decided by the faster move, the slower unplayed: {self.won_by_faster} "
+                f"({self.won_by_faster / max(1, decided):.3f} of decided games)"
+            )
+        lines += [
             "  collisions by (p0 piece, p1 piece, outcome):",
         ]
         lines += [f"    {a} vs {b}: {who} x{count}" for (a, b, who), count in self.pairs().most_common()]
         return "\n".join(lines)
 
 
-def tally_runs(engine: Engine, runs: Iterable[Path], graded: bool) -> RoundTally:
-    """The tally of every recorded game in ``runs``; ``graded`` leaves out any with `random`."""
+def tally_runs(
+    engine: Engine, runs: Iterable[Path], graded: bool, among: frozenset[str] | None = None
+) -> RoundTally:
+    """The tally of every recorded game in ``runs``; ``graded`` leaves out any with `random`,
+    and ``among`` (a band, Q943c) keeps only games whose two seats are both in it."""
     from chess_variant_sandbox.tournament.record import read_records
 
     tally = RoundTally()
     for run in runs:
         for record in read_records(Path(run) / "games.jsonl"):
             if graded and "random" in record.agents:
+                continue
+            if among is not None and not set(record.agents) <= among:
                 continue
             tally.game(engine, record.moves, record.reason, record.winner)
     return tally
@@ -169,10 +215,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("spec", type=Path)
     parser.add_argument("runs", type=Path, nargs="+")
+    parser.add_argument(
+        "--band", action="append", default=[], metavar="AGENTS",
+        help="a comma-separated band: also tally the games whose two seats are both in it",
+    )
     args = parser.parse_args()
     engine = Engine(load_spec(args.spec))
     print(tally_runs(engine, args.runs, graded=True).report("graded games (no random seat)"))
     print(tally_runs(engine, args.runs, graded=False).report("all games"))
+    for band in args.band:
+        among = frozenset(band.split(","))
+        print(tally_runs(engine, args.runs, graded=True, among=among).report(f"band {band}"))
 
 
 if __name__ == "__main__":

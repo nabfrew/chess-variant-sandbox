@@ -16,8 +16,8 @@ from __future__ import annotations
 import shutil
 import threading
 import time
-from collections.abc import Callable, Sequence
-from contextlib import AbstractContextManager
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -332,27 +332,106 @@ _PEOPLE_UPSERT = (
 )
 
 
-class Timing:
-    """An endpoint call, timed on the request's own thread, with what it raised."""
+class Ledger:
+    """The process's CPU clock, shared out among the work running, by wall time (Q970).
 
-    def __init__(self, produce: Callable[[], Any]) -> None:
+    A request's own thread clock (`time.thread_time`) misses whatever it hands to other
+    threads: the playability check plays its smoke games on the core's threads, and read
+    0.48 of the unit's clock (`docs/reference/usage-first-month.md` §2). So a request is
+    charged from the process's clock instead, which counts every thread the process
+    runs. Between any two moments something starts or stops, the CPU the process spent
+    is split evenly among what was running then, which is apportioning by wall time at
+    the finest grain there is. One request alone -- nearly every request on the box,
+    where `in_flight_max` was 0 or 1 in 98% of samples -- is charged exactly what the
+    process spent while it ran.
+
+    The process's clock and not the unit's: the unit's also counts child processes, and
+    a spine rating (`site/spine.py`) runs in one for up to fifteen minutes; charging that
+    to whoever made a move meanwhile would be a worse error than the one this fixes.
+
+    Work beside a request that is not a request -- the legality runner's walks and spot
+    checks -- takes a share of its own (`sharing`), so it absorbs its half rather than
+    landing on the request. What still lands on a request: a share of anything else the
+    process does while it runs (a restart's library warm, a page served outside `_json`),
+    and, beside a second request, half of that one's work however unequal the two were.
+    CPU spent with nothing running is charged to nobody: the idle floor.
+
+    The share each participant has earned is one running sum, `_each`: a participant
+    remembers it on entering, and its charge is the difference on leaving.
+    """
+
+    def __init__(self, clock: Callable[[], float] = time.process_time) -> None:
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._running = 0
+        self._last = clock()
+        self._each = 0.0
+
+    def _advance(self) -> float:
+        """Share out what the process spent since the last moment. Under the lock."""
+        now = self._clock()
+        if self._running:
+            self._each += max(now - self._last, 0.0) / self._running
+        self._last = now
+        return self._each
+
+    def enter(self) -> float:
+        """Something has started; the mark its charge is measured from."""
+        with self._lock:
+            mark = self._advance()
+            self._running += 1
+            return mark
+
+    def leave(self, mark: float) -> float:
+        """Something has stopped; its CPU-seconds since `mark`."""
+        with self._lock:
+            charged = self._advance() - mark
+            self._running -= 1
+            return charged
+
+    @contextmanager
+    def sharing(self) -> Iterator[None]:
+        """Run as a participant whose share is charged to nobody."""
+        mark = self.enter()
+        try:
+            yield
+        finally:
+            self.leave(mark)
+
+
+LEDGER = Ledger()
+"""The process's one ledger, since the process has one clock."""
+
+
+class Timing:
+    """An endpoint call, timed and charged from `Ledger`, with what it raised.
+
+    `thread` is the request's own thread clock, kept beside `cpu` so a test can tell the
+    two apart; only `cpu` is written.
+    """
+
+    def __init__(self, produce: Callable[[], Any], ledger: Ledger | None = None) -> None:
         self._produce = produce
+        self._ledger = LEDGER if ledger is None else ledger
         self.cpu = 0.0
+        self.thread = 0.0
         self.wall = 0.0
         self.kind = ""
         self.variant = ""
 
     def __call__(self) -> Any:
         take()
-        cpu, wall = time.thread_time(), time.monotonic()
+        mark = self._ledger.enter()
+        thread, wall = time.thread_time(), time.monotonic()
         try:
             return self._produce()
         except BaseException as error:
             self.kind = type(error).__name__
             raise
         finally:
-            self.cpu = time.thread_time() - cpu
+            self.thread = time.thread_time() - thread
             self.wall = time.monotonic() - wall
+            self.cpu = self._ledger.leave(mark)
             self.variant = take()
 
 
@@ -598,8 +677,9 @@ ROUTE_CANNOT = (
     "People are signed-in people. A visitor is counted as requests and never as a person.",
     "People-hours count a person once for every hour they were active, so they are not "
     "how many different people came.",
-    "CPU is timed on the request's own thread; work a route hands to other threads is "
-    "charged to nobody (plan-usage 2.6).",
+    "CPU is the process's clock shared by wall time among the requests running at once, "
+    "so a route's work on other threads is charged to it. Rows written before that "
+    "change (Q970, 2026-10-19) timed the request's own thread and missed that work.",
 )
 
 SHOW_ME_CANNOT = (

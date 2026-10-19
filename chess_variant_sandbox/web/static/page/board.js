@@ -1240,6 +1240,11 @@ function drawLegend(marks, drawn) {
   // rules the board was drawn from, and then named from its row like every other kind.
   const said = legendEntries(kinds, SESSION.ruleset.wrap, zoneWords(SESSION.ruleset.zones),
                              SESSION.ruleset.portals);
+  // Schema 28 (Q943b, `docs/plan-speed.md` §4.5): a game with speeds lists its ranks, which
+  // no square shows.
+  const speeds = typeof speedLegendHtml === 'function'
+    ? speedLegendHtml(SESSION.ruleset.speed, SESSION.ruleset.pieceNames) : '';
+  if (speeds) said.push(speeds);
   row.innerHTML = said.length ? 'on the board: ' + said.join(' ') : '';
   showLegendRow();
 }
@@ -1598,6 +1603,9 @@ function drawBoard(previous) {
   out += clashHtml(clashed, cell);
   const resting = SESSION.outcome ? [] : roundRests(standing);
   out += restsHtml(resting, cell);
+  // Schema 28 (Q943b): which of the last round's two moves was made first, between speeds.
+  const ordered = roundOrder(last);
+  out += ordersHtml(ordered, cell);
   // Schema 27 (Q935c): the move announced in a spy game's announced round, shown to both
   // players, under the answer being held.
   const announced = SESSION.outcome ? null : announcedArrow(standing);
@@ -1664,6 +1672,7 @@ function drawBoard(previous) {
     ...standoffKinds(standing),
     ...(clashed ? ['clash'] : []),
     ...(resting.length ? ['rested'] : []),
+    ...(ordered.length ? ['order'] : []),
     ...(announced ? ['announced'] : []),
   ]);
   drawCoords(cell, outside);
@@ -2819,7 +2828,8 @@ function drawPane() {
   }
 
   pane.innerHTML = `<div class="pieces">${(game.pieces || []).map((piece, index) =>
-    piecesHtml(piece, { index, selected: HIGHLIGHT === index })).join('')}</div>
+    piecesHtml(piece, { index, selected: HIGHLIGHT === index,
+                        ranks: pieceSpeeds(game.pieces) })).join('')}</div>
     <div class="muted small" style="margin-top:8px">Click a piece to find it on the board.</div>`;
   pane.querySelectorAll('[data-type]').forEach(node => {
     node.onclick = () => {
@@ -4766,11 +4776,12 @@ function heldHtml(held, cell, W, H, wrap) {
 }
 
 // One dashed arrow of a held move, from one square to another along the mover's own step
-// (`wrapStep`, its seams), or nothing for a step too short to carry one.
-function heldArrowHtml(from, to, cell, W, H, allow) {
+// (`wrapStep`, its seams), or nothing for a step too short to carry one. `view` is the
+// board's (the reveal of an ordered round draws a lost move's arrow on the animated view).
+function heldArrowHtml(from, to, cell, W, H, allow, view = FRAME) {
   const f = n => n.toFixed(3);
-  const at = squareXY(from, cell, FRAME);
-  const step = stepXY(wrapStep(from, to, W, H, allow), cell, FRAME);
+  const at = squareXY(from, cell, view);
+  const step = stepXY(wrapStep(from, to, W, H, allow), cell, view);
   const length = Math.hypot(step[0], step[1]);
   if (!(length > cell * 0.6)) return '';
   const ux = step[0] / length, uy = step[1] / length;

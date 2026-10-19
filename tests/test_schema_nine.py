@@ -430,6 +430,13 @@ FROZEN: dict[str, tuple[str, str]] = {
     # the champion's and elephant's moves were split one descriptor per step length, the same
     # game move for move (§5.4).
     "archive/riders-and-leapers.json": ("26636602fae0", "8e384b6a8a7868c2"),
+    # Q943c, 2026-10-19: the showcases of schema 28's speed (`docs/plan-speed.md` §6.1;
+    # `tests/test_showcases_q943.py`): T1 Gardner in rounds with a swift king, T2 with swift
+    # knights (both from `e043fce6968e`), T3 the watering hole by speed (from
+    # `5c0b017473f5`, `tie` removed). New.
+    "archive/gardner-in-rounds-with-a-swift-king.json": ("d8bb879440ce", "8fa64f1ddc578b39"),
+    "archive/gardner-in-rounds-with-swift-knights.json": ("bf230a962d10", "dea52f83bc92f1ef"),
+    "archive/watering-hole-by-speed.json": ("423a29997264", "fad275be85810dff"),
 }
 
 

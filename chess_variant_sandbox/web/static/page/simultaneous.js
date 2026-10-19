@@ -85,6 +85,9 @@ function roundRests(round) {
 // both moves are `win` or `lose` with `clash: true`, and `clash` is `roundClash`'s.
 function roundStory(before, after, reveal) {
   const events = (reveal && reveal.events) || [];
+  // Schema 28: a round between two speeds is two moves in order, its own story.
+  const order = events.find(event => event.kind === 'order');
+  if (order) return orderedStory(before, after, reveal, order.player);
   const collision = events.find(event => event.kind === 'collision') || null;
   const meeting = collision ? { square: collision.square, winner: collision.player } : null;
   const clash = roundClash({ reveal });
@@ -125,6 +128,124 @@ function roundStory(before, after, reveal) {
   return { moves: moves, taken: taken, meeting: meeting, clash: clash };
 }
 
+// Schema 28 (Q943b, `docs/plan-speed.md` §4.5): a round between pieces of different speeds,
+// as motions in two beats. The core's events say who moved first (`order`) and what came of
+// the slower move (`lost`, `unplayed`, `void`, or nothing: it was made); the two boards say
+// what was taken. Each move is `roundStory`'s `{player, from, to, kind}` with its `phase`, 1
+// for the faster and 2 for the slower, and `ordered` is the faster player.
+//
+// The faster move is `arrive`, `drop` or `turn`, or `fell`: it arrived, and the slower move
+// took it there (§2.5 C), so it travels as a ghost and is struck when the slower arrives.
+// The slower move is `arrive`, `drop`, `turn` or `void` as at equal speeds, or `lost` (its
+// piece taken, moved or changed first) or `unplayed` (the faster move ended the game); a lost
+// or unplayed move whose piece's square the faster move changed is `taken: true`, drawn as a
+// fading arrow from its square to the square it was sealed for (the user, §4.5), and an
+// unplayed one whose piece still stands is a struck-through ghost where it was going.
+function orderedStory(before, after, reveal, first) {
+  const events = (reveal && reveal.events) || [];
+  const said = kind => new Set(events.filter(event => event.kind === kind)
+    .map(event => event.player));
+  const lost = said('lost'), unplayed = said('unplayed'), voids = said('void');
+  const moves = ((reveal && reveal.moves) || []).map(move => {
+    const from = move.from === undefined ? null : move.from;
+    const out = { player: move.player, from: from, to: move.to,
+                  phase: move.player === first ? 1 : 2 };
+    if (out.phase === 2 && (lost.has(move.player) || unplayed.has(move.player))) {
+      out.kind = lost.has(move.player) ? 'lost' : 'unplayed';
+      out.taken = from !== null && before[from] !== after[from];
+    } else if (out.phase === 2 && voids.has(move.player)) {
+      out.kind = 'void';
+      out.taken = false;
+    } else if (from === null) {
+      out.kind = 'drop';
+    } else if (from === move.to) {
+      out.kind = 'turn';
+    } else {
+      out.kind = 'arrive';
+    }
+    return out;
+  });
+  const fast = moves.find(m => m.phase === 1), slow = moves.find(m => m.phase === 2);
+  if (fast && slow && slow.kind === 'arrive' && slow.to === fast.to
+      && (fast.kind === 'arrive' || fast.kind === 'drop')) {
+    fast.kind = 'fell';
+  }
+  // A square a piece left, and a void or turned piece's own, are not captures.
+  const left = new Set(moves.filter(m => (m.kind === 'arrive' || m.kind === 'fell')
+                                         && m.from !== null).map(m => m.from));
+  const standing = new Set(moves.filter(m => m.kind === 'void' || m.kind === 'turn')
+    .map(m => m.from));
+  const taken = [];
+  for (let square = 0; square < before.length; square++) {
+    if (!before[square] || before[square] === after[square]) continue;
+    if (left.has(square) || standing.has(square)) continue;
+    taken.push(square);
+  }
+  return { moves: moves, taken: taken, meeting: null, clash: null, ordered: first };
+}
+
+// The order marks of the last round on screen (`orderBadge`): `[{square, n, player}]`, the
+// faster move's on the square it ended on, the slower's where it ended or, void, where it
+// stood; none for a slower move lost or never played, or in any round of equal speeds.
+function roundOrder(last) {
+  const reveal = last && last.reveal;
+  const order = reveal && (reveal.events || []).find(event => event.kind === 'order');
+  if (!order) return [];
+  const gone = new Set((reveal.events || []).filter(event => event.kind === 'lost'
+    || event.kind === 'unplayed').map(event => event.player));
+  const marks = [];
+  for (const move of reveal.moves || []) {
+    if (gone.has(move.player)) continue;
+    const square = move.void && move.from !== null && move.from !== undefined
+      ? move.from : move.to;
+    marks.push({ square: square, n: move.player === order.player ? 1 : 2, player: move.player });
+  }
+  return marks.sort((a, b) => a.n - b.n);
+}
+
+// The speeds of a game, as the legend's line says them: each rank from the fastest, the
+// pieces at it by name, `[{speed, names}]`; empty in a game without a speed. `speed` is the
+// compiled `[type]` table (`ruleset.speed`), `names` the pieces' names; a type without a
+// name is no piece a player moves.
+function speedRanks(speed, names) {
+  if (!speed || !speed.length) return [];
+  const ranks = new Map();
+  speed.forEach((value, type) => {
+    const name = (names || [])[type];
+    if (!name) return;
+    if (!ranks.has(value)) ranks.set(value, []);
+    ranks.get(value).push(name);
+  });
+  return [...ranks.entries()].sort((a, b) => b[0] - a[0])
+    .map(([value, at]) => ({ speed: value, names: at }));
+}
+
+// A piece's speed as its card's hover line says it (§4.5): *speed 2: moves before speeds 0
+// and 1*. `ranks` are the speeds the game uses.
+function speedLine(speed, ranks) {
+  const list = items => (items.length < 2 ? `${items[0]}`
+    : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
+  const word = items => (items.length > 1 ? 'speeds' : 'speed');
+  const slower = [...new Set(ranks)].filter(rank => rank < speed).sort((a, b) => a - b);
+  const faster = [...new Set(ranks)].filter(rank => rank > speed).sort((a, b) => a - b);
+  const before = slower.length ? `moves before ${word(slower)} ${list(slower)}` : '';
+  const after = faster.length ? `after ${word(faster)} ${list(faster)}` : '';
+  if (before && after) return `speed ${speed}: ${before}, ${after}`;
+  if (before) return `speed ${speed}: ${before}`;
+  if (after) return `speed ${speed}: moves ${after}`;
+  return `speed ${speed}`;
+}
+
+// The legend's line of speeds (§4.5): *speeds: knight 2; bishop, king 1; pawn 0*, and what a
+// speed does, or '' in a game without one.
+function speedLegendHtml(speed, names) {
+  const ranks = speedRanks(speed, names);
+  if (!ranks.length) return '';
+  const said = ranks.map(rank => `${rank.names.map(esc).join(', ')} ${rank.speed}`).join('; ');
+  return `<span class="entry" data-legend="speed"><b>speeds</b> ${said}: in a round the
+    faster piece's move is made first, and pieces of one speed move at once</span>`;
+}
+
 // One row of the move list for a round: its number, both moves in seat order with what
 // each came to, and the round's sentences under them.
 function roundRowHtml(number, first, second) {
@@ -138,13 +259,23 @@ function roundRowHtml(number, first, second) {
     const result = move && move.result;
     if (!result) return '';
     const mark = result === 'void' ? 'void' : result === 'won' ? 'won'
-      : result === 'lost' ? '✕ lost' : '✕ both lost';
+      : result === 'lost' ? '✕ lost' : result === 'unplayed' ? 'not played' : '✕ both lost';
     return ` <span class="muted small" data-result="${esc(result)}">${esc(mark)}</span>`;
+  };
+  // Schema 28: which move was made first, in a round between two speeds (`12. Nc3¹ | Qxc3²`).
+  const order = second && second.reveal
+    && (second.reveal.events || []).find(event => event.kind === 'order');
+  const nth = move => {
+    if (!order || !move) return '';
+    const n = move.player === order.player ? 1 : 2;
+    return `<sup data-order="${n}" title="${n === 1 ? 'made first: the faster piece'
+      : 'made second: the slower piece'}">${n}</sup>`;
   };
   const words = ((second && second.reveal && second.reveal.words) || [])
     .map(line => `<div class="muted small">${esc(line)}</div>`).join('');
-  return `${esc(number)}. ${esc(first.text)}${shown(first)}${said(first)}${lookedHtml(first)} <span
-    class="muted">|</span> ${esc(second.text)}${shown(second)}${said(second)}${
+  return `${esc(number)}. ${esc(first.text)}${nth(first)}${shown(first)}${said(first)}${
+    lookedHtml(first)} <span class="muted">|</span> ${esc(second.text)}${nth(second)}${
+    shown(second)}${said(second)}${
     lookedHtml(second)}${words}`;
 }
 
@@ -440,6 +571,43 @@ function restsHtml(rests, cell) {
   }).join('');
 }
 
+// A lost move's arrow (schema 28, §4.5), from the middle of its piece's square to the middle
+// of the square it was sealed for, along the mover's own step: the held move's dashed pine
+// cased in `--held-halo`, bolder than a held arrow and reaching the squares' middles, so a
+// one-square move still reads while the faster piece lands on it.
+function lostArrowHtml(from, to, cell, W, H, allow, view) {
+  const f = n => n.toFixed(3);
+  const [x, y] = squareXY(from, cell, view);
+  const step = stepXY(wrapStep(from, to, W, H, allow), cell, view);
+  const length = Math.hypot(step[0], step[1]);
+  if (!(length > 0)) return '';
+  const ux = step[0] / length, uy = step[1] / length;
+  const x1 = x + cell / 2 + ux * cell * 0.08, y1 = y + cell / 2 + uy * cell * 0.08;
+  const x2 = x + cell / 2 + ux * (length - cell * 0.12), y2 = y + cell / 2 + uy * (length - cell * 0.12);
+  const head = cell * 0.3;
+  const back = [x2 - ux * head, y2 - uy * head];
+  const wing = [-uy * head * 0.7, ux * head * 0.7];
+  const tip = `M${f(back[0] + wing[0])} ${f(back[1] + wing[1])}L${f(x2)} ${f(y2)}L${
+    f(back[0] - wing[0])} ${f(back[1] - wing[1])}Z`;
+  const line = `x1="${f(x1)}" y1="${f(y1)}" x2="${f(back[0])}" y2="${f(back[1])}"`;
+  return `<line ${line} stroke="var(--held-halo)" stroke-width="${f(cell * 0.19)}"/><path
+      d="${tip}" fill="var(--held-halo)" stroke="var(--held-halo)" stroke-width="${f(cell * 0.1)}"
+      stroke-linejoin="round"/><line ${line} stroke="var(--held)" stroke-width="${f(cell * 0.1)}"
+      stroke-dasharray="${f(cell * 0.16)} ${f(cell * 0.09)}"/><path d="${tip}" fill="var(--held)"
+      stroke="var(--held)" stroke-width="${f(cell * 0.03)}" stroke-linejoin="round"/>`;
+}
+
+// Each move's order mark in the last round on screen (`roundOrder`, `orderBadge`), on its
+// square's bottom corner; the second on the other corner where both moves ended on one
+// square (§2.5 C: the slower took the faster where it had landed).
+function ordersHtml(marks, cell) {
+  return marks.map((mark, i) => {
+    const at = squareXY(mark.square, cell, FRAME);
+    const shared = i > 0 && marks[i - 1].square === mark.square;
+    return orderBadge(at[0], at[1], cell, mark.n, mark.player, shared);
+  }).join('');
+}
+
 // The legend's kinds for the standoff links drawn now.
 function standoffKinds(round) {
   return [...new Set(roundMarks(round).map(mark => mark.kind))];
@@ -465,6 +633,7 @@ function initiativeHtml(player) {
 // piece came to rest, and no ghosts for the wild pieces' phase.
 function animateRound(svg, before, after, reveal, cell, W, H, view) {
   const story = roundStory(before, after, reveal);
+  if (story.ordered !== undefined) return animateOrdered(svg, before, after, story, cell, W, H, view);
   const at = sq => squareXY(sq, cell, view);
   let busy = 0, landed = 0;
   const blows = new Map();
@@ -573,6 +742,173 @@ function animateRound(svg, before, after, reveal, cell, W, H, view) {
       ? explode(svg, piece, x, y, cell, blow) : capture(svg, piece, x, y, cell, blow));
   }
   return { busy: busy, landed: landed, doomed: new Map() };
+}
+
+// Schema 28 (Q943b, `docs/plan-speed.md` §4.5; the user: *"they should move in the sequence
+// the mechanics dictate"*): an ordered round in two beats, from `orderedStory`. The faster
+// move completes first, with what it takes; then, `PACE.beat` after it lands, the slower:
+// made, or its void step-and-return. A slower move lost with its piece is an arrow from that
+// piece's square to the square it was sealed for, fading out as the faster capture lands on
+// it; one never played while its piece stands is that piece's ghost where it was going,
+// struck through. Each moving piece's order mark (`orderBadge`, drawn with the board) fades
+// in as its move lands. Returns what `animateChange` reads, as `animateRound` does.
+function animateOrdered(svg, before, after, story, cell, W, H, view) {
+  const at = sq => squareXY(sq, cell, view);
+  const centre = sq => { const [x, y] = at(sq); return [x + cell / 2, y + cell / 2]; };
+  const fast = story.moves.find(m => m.phase === 1);
+  const slow = story.moves.find(m => m.phase === 2);
+  const blows = new Map();
+  let busy = 0;
+  const badge = (move, when) => {
+    const node = svg.querySelector(`[data-mark="order"][data-player="${move.player}"]`);
+    if (node && typeof node.animate === 'function') {
+      node.animate([{ opacity: 0 }, { opacity: 1 }],
+                   { duration: PACE.beat, delay: when, fill: 'backwards' });
+    }
+  };
+  // One move's travel from its square to where it ended, starting at `delay`: the piece the
+  // board drew there, or a ghost of it where the other move then took it (`fell`). Returns
+  // when it lands and when it strikes what stood there, or null for no travel.
+  const fly = (move, delay) => {
+    if (move.from === null || move.from === move.to) return null;
+    const allow = wrapAllow(SESSION.ruleset.wrap, move.player);
+    const step = wrapStep(move.from, move.to, W, H, allow);
+    const arc = pathHops(before, move.from, step, W, H, view);
+    const [dx, dy] = stepXY(step, cell, view);
+    let node;
+    if (move.kind === 'fell') {
+      const piece = pieceOf(before[move.from]);
+      if (!piece) return null;
+      node = ghostAt(svg, piece, ...at(move.to), cell);
+    } else {
+      node = svg.querySelector(`[data-piece="${move.to}"]`);
+      if (!node) return null;
+      svg.appendChild(node);
+    }
+    const flight = travel(node, -dx, -dy, arc, delay);
+    if (step.wrapped) {
+      animateCrossing(svg, node, pieceOf(before[move.from]), ...at(move.from), dx, dy, cell, arc,
+                      flight, delay);
+    }
+    if (!blows.has(move.to)) blows.set(move.to, { at: delay + flight * PACE.impact, dx, dy });
+    return { node, landed: delay + flight, impact: delay + flight * PACE.impact, dx, dy };
+  };
+  const fade = (move, delay) => {
+    const node = svg.querySelector(`[data-piece="${move.to}"]`);
+    if (!node) return delay;
+    node.animate([{ opacity: 0 }, { opacity: 1 }],
+                 { duration: PACE.drop, delay: delay, fill: 'backwards', easing: 'ease-out' });
+    return delay + PACE.drop;
+  };
+
+  // Beat one: the faster move alone.
+  let first = 0, fell = null;
+  if (fast) {
+    if (fast.kind === 'drop') first = fade(fast, 0);
+    else {
+      const went = fly(fast, 0);
+      if (went) first = went.landed;
+      if (went && fast.kind === 'fell') fell = went;
+    }
+    badge(fast, first);
+  }
+  busy = Math.max(busy, first);
+  const second = first + PACE.beat;
+
+  // Beat two: the slower move, or what became of it.
+  let last = first, over = null;
+  if (slow) {
+    const arrow = (slow.kind === 'lost' || slow.kind === 'unplayed') && slow.taken;
+    if (arrow && slow.from !== null && slow.from !== slow.to) {
+      // The sealed move it never made, fading as the faster capture lands on its piece.
+      const blow = blows.get(slow.from) || { at: first };
+      const allow = wrapAllow(SESSION.ruleset.wrap, slow.player);
+      const group = document.createElementNS(SVGNS, 'g');
+      group.setAttribute('data-reveal', 'lost');
+      group.setAttribute('pointer-events', 'none');
+      group.setAttribute('stroke-linecap', 'round');
+      group.innerHTML = lostArrowHtml(slow.from, slow.to, cell, W, H, allow, view);
+      svg.appendChild(group);
+      const span = blow.at + PACE.strike;
+      const gone = group.animate([
+        { opacity: 0.95 }, { opacity: 0.95, offset: Math.min(0.9, blow.at / span) },
+        { opacity: 0 },
+      ], { duration: span, easing: 'ease-in', fill: 'forwards' });
+      gone.onfinish = () => group.remove();
+      busy = Math.max(busy, span);
+      over = group;
+    } else if (slow.kind === 'unplayed') {
+      // Never played, its piece still standing: where it was going, struck through.
+      const piece = pieceOf(before[slow.from === null ? slow.to : slow.from]);
+      if (piece) {
+        const [x, y] = at(slow.to);
+        const ghost = document.createElementNS(SVGNS, 'g');
+        ghost.setAttribute('data-reveal', 'unplayed');
+        ghost.setAttribute('pointer-events', 'none');
+        ghost.innerHTML = `<g opacity="0.55">${drawPiece(piece, x, y, cell)}</g><line x1="${
+          x + cell * 0.18}" y1="${y + cell * 0.82}" x2="${x + cell * 0.82}" y2="${y + cell * 0.18}"
+          stroke="var(--bad)" stroke-width="${cell * 0.07}" stroke-linecap="round"/>`;
+        svg.appendChild(ghost);
+        const hold = 1400;
+        const shown = ghost.animate([
+          { opacity: 0 }, { opacity: 1, offset: 0.2 }, { opacity: 1, offset: 0.8 }, { opacity: 0 },
+        ], { duration: hold, delay: second, fill: 'both' });
+        shown.onfinish = () => ghost.remove();
+        busy = Math.max(busy, second + hold);
+      }
+    } else if (slow.kind === 'void') {
+      const node = slow.from === null ? null : svg.querySelector(`[data-piece="${slow.from}"]`);
+      if (node) {
+        svg.appendChild(node);
+        const step = wrapStep(slow.from, slow.to, W, H, wrapAllow(SESSION.ruleset.wrap, slow.player));
+        const [dx, dy] = stepXY(step, cell, view);
+        const reach = PACE.voidReach;
+        node.animate([
+          { transform: 'translate(0px, 0px)' },
+          { transform: `translate(${dx * reach}px, ${dy * reach}px)`, offset: 0.45 },
+          { transform: 'translate(0px, 0px)' },
+        ], { duration: PACE.voidStep, delay: second, easing: 'ease-in-out' });
+        last = second + PACE.voidStep;
+      }
+      badge(slow, second);
+    } else if (slow.kind === 'drop') {
+      last = fade(slow, second);
+      badge(slow, last);
+    } else if (slow.kind === 'arrive') {
+      const went = fly(slow, second);
+      if (went) {
+        last = went.landed;
+        // The faster piece, standing where the slower one arrives, is taken there (§2.5 C).
+        if (fell) {
+          busy = Math.max(busy, strike(svg, fell.node, ...at(fast.to), cell,
+                                       { at: went.impact, dx: went.dx, dy: went.dy }));
+        }
+      }
+      badge(slow, last);
+    } else {
+      badge(slow, second);
+    }
+  }
+  busy = Math.max(busy, last);
+  // Every other piece taken off: struck when the move that took it lands, or, with no move
+  // ending there (a blast, a piece reborn elsewhere), as the beat nearer to it ends.
+  const ex = SESSION.ruleset.explosion;
+  const near = square => {
+    if (!slow || !fast || slow.kind !== 'arrive') return first;
+    const [x, y] = centre(square), [fx, fy] = centre(fast.to), [sx, sy] = centre(slow.to);
+    return Math.hypot(sx - x, sy - y) < Math.hypot(fx - x, fy - y) ? last : first;
+  };
+  for (const square of story.taken) {
+    const piece = pieceOf(before[square]);
+    if (!piece) continue;
+    const [x, y] = at(square);
+    const blow = blows.get(square) || { at: near(square), dx: 0, dy: 0 };
+    busy = Math.max(busy, ex && !blows.has(square)
+      ? explode(svg, piece, x, y, cell, blow) : capture(svg, piece, x, y, cell, blow));
+  }
+  // The lost move's arrow over every piece and ghost, the one taken under it included.
+  if (over) svg.appendChild(over);
+  return { busy: busy, landed: last, doomed: new Map() };
 }
 
 // ----- the spy (schema 27, Q935c, `docs/plan-spy.md` §3.6)

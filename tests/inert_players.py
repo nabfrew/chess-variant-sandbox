@@ -24,14 +24,27 @@ TOURNAMENTS = {
 }
 
 
-def digest(path: str, root: Path = ROOT) -> str:
+
+# Schema 28 (Q943b, `docs/plan-speed.md` §4.4): the round players on the library's round
+# games without a speed, and on a round test spec, short games each. The faster-attacker
+# term is read only where a piece declares a speed, so these are what they were before it.
+ROUND_TOURNAMENTS = {
+    "archive/breather.json": ("greedy", "matrix:nodes=200"),
+    "archive/watering-hole.json": ("greedy", "matrix:nodes=200"),
+    "archive/gardner-with-spies-resting.json": ("greedy", "minimax:nodes=200"),
+    "tests/_simultaneous_scored.json": ("greedy", "matrix:nodes=200"),
+}
+
+
+def digest(path: str, root: Path = ROOT, games: int = 2) -> str:
     from chess_variant_sandbox.spec import load_spec
     from chess_variant_sandbox.tournament.runner import TournamentConfig, run_tournament
 
     spec = load_spec(root / path)
+    agents = TOURNAMENTS.get(path) or ROUND_TOURNAMENTS[path]
     result = run_tournament(
         spec,
-        TournamentConfig(agents=TOURNAMENTS[path], games_per_pairing=2, seed=935, workers=2),
+        TournamentConfig(agents=agents, games_per_pairing=games, seed=935, workers=2),
     )
     rows = []
     for record in result.records:
@@ -45,3 +58,5 @@ if __name__ == "__main__":
     root = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT
     for path in TOURNAMENTS:
         print(path, digest(path, root))
+    for path in ROUND_TOURNAMENTS:
+        print(path, digest(path, root, games=1))

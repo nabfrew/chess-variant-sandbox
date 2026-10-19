@@ -47,11 +47,13 @@ from chess_variant_sandbox.spec.schema import (
     HEX_SYMMETRIES,
     REPETITION_NEVER,
     SQUARE_SYMMETRIES,
+    _any_equal_speed_meeting,
     _check_extinction_coherence,
     absent_squares,
     beats_of,
     can_double_step,
     castling_spans,
+    has_equal_speed_opponent,
     has_speeds,
     is_simultaneous,
     obstacle_squares,
@@ -1812,7 +1814,10 @@ def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 def _set_a_collision(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Say who a piece beats when two pieces move onto one square, change it, or drop it
-    (schema 26's `pieces[].beats`). Only in a game played in rounds."""
+    (schema 26's `pieces[].beats`). Only in a game played in rounds, and only on a type that
+    can collide: under speeds (schema 28, `docs/plan-speed.md` §4.1) one that the other
+    player can meet at its own speed, asked of the validator's own predicate
+    (`schema.has_equal_speed_opponent`), so the two cannot disagree."""
     if not is_simultaneous(spec):
         return None
     portals = portal_piece_ids(spec.get("rules"))
@@ -1821,7 +1826,14 @@ def _set_a_collision(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None
     ids = [p["id"] for p in pieces]
     stated = [p for p in pieces if isinstance(p.get("beats"), list)]
-    if stated and rng.random() < 0.5:
+    if has_speeds(spec):
+        pieces = [
+            p for p in pieces
+            if isinstance(p.get("id"), str) and has_equal_speed_opponent(spec, p["id"])
+        ]
+        if not pieces and not stated:
+            return None
+    if stated and (not pieces or rng.random() < 0.5):
         piece = rng.choice(stated)
         piece.pop("beats")
         settle_schema_version(spec)
@@ -1842,7 +1854,10 @@ def _set_a_collision(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 def _break_the_tie(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Decide a collision tie by the initiative, promise there is none, or eliminate both
-    again (schema 26's `rules.simultaneous.tie`)."""
+    again (schema 26's `rules.simultaneous.tie`). Not entered under speeds where no type of
+    one player shares a speed with a type of the other (schema 28, `docs/plan-speed.md`
+    §4.1): nothing collides there, and the validator refuses a tie, by the same predicate
+    (`schema._any_equal_speed_meeting`)."""
     del rng
     if not is_simultaneous(spec):
         return None
@@ -1851,6 +1866,8 @@ def _break_the_tie(spec: dict[str, Any], rng: random.Random) -> str | None:
         del rule["tie"]
         settle_schema_version(spec)
         return "a tied collision eliminates both pieces again"
+    if has_speeds(spec) and not _any_equal_speed_meeting(spec):
+        return None
     if simultaneous_tie_pair(spec) is None:
         rule["tie"] = "impossible"
         return "no collision can tie, and the file now says so"

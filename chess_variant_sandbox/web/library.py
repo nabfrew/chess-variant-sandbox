@@ -1369,9 +1369,14 @@ def pieces(game: Game) -> list[dict[str, Any]]:
         compiled.piece_ids,
         (game.spec.get("appearance") or {}).get("icons"),
     )
+    # Schema 28 (Q943b, `docs/plan-speed.md` §4.5): each piece's speed on its card, the
+    # compiled table's (0 where none is written); absent in a game without a speed.
+    sim = compiled.simultaneous
+    speeds = sim.speed if sim is not None else ()
     return [
         {
             **prose.as_dict(),
+            **({"speed": speeds[index]} if speeds else {}),
             "icon": (art[index][0] or {}).get("href"),
             "icons": [
                 None if icon is None else {"href": icon["href"], "rotate": icon["rotate"]}

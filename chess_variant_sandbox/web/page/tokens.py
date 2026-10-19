@@ -177,6 +177,9 @@ LIGHT: dict[str, str] = {
     # (`rest`), a slate disc with two bars in the casing's colour: a pause is a neutral fact,
     # not a danger. Both are drawn on `held-halo`, at 4.5 : 1 (`FLOORS`).
     "clash": "#8e1b5c", "rest": "#474d57",
+    # Schema 28 (Q943b): the order disc of a round between two speeds, numbered and ringed in a
+    # deep indigo of its own on `held-halo` (`FLOORS`): apart from the held move's pine.
+    "order": "#2a2350",
     # Schema 27 (Q935c): the move announced in a spy game's announced round, a solid arrow
     # in a deep teal, cased in `held-halo`: apart from the held move's pine in hue and
     # weight, and from the standoffs' umber and cobalt and the clash's wine (`FLOORS`).
@@ -284,6 +287,7 @@ DARK: dict[str, str] = {
     "held": "#0a2519", "held-halo": "#f3e9d6",
     "standoff-run": "#7f4400", "standoff-bar": "#1a3a80",
     "clash": "#851a56", "rest": "#40464f",
+    "order": "#251f48",
     "announced": "#005a66",
     "scrim": "rgba(0, 0, 0, .6)",
     "p0": "#f0ede7", "p1": "#3b3f45", "p2": "#8f6a2f", "p2-ink": "#f4f2ee",
@@ -358,6 +362,8 @@ FLOORS: tuple[tuple[str, str, float], ...] = (
     # are the casing's colour on the disc.
     ("clash", "held-halo", 4.5),
     ("held-halo", "rest", 4.5),
+    # The order disc's numeral and ring (Q943b), on the same casing.
+    ("order", "held-halo", 4.5),
     # An announced move's arrow (Q935c), on the same casing.
     ("announced", "held-halo", 4.5),
     # A wild piece's walk (Q852): each hue against the casing it is drawn on.

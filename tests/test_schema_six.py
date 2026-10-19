@@ -555,8 +555,9 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
     # either; 98 since Q936s's `riders-and-leapers`, which declares none
     # either; 92 since Q962b retired six previews (`docs/reference/previews-2026-10-18.md`),
     # none of which declared `reach`; 91 since Q962c retired gardner in rounds resting, which
-    # declared none either.
-    assert len(paths) == 91
+    # declared none either; 94 since Q943c's three speed showcases, of which
+    # `watering-hole-by-speed` does, as the watering hole does (`mirror: false`).
+    assert len(paths) == 94
 
     with_reach: dict[str, tuple[frozenset[int], frozenset[int]]] = {}
     for path in paths:
@@ -580,7 +581,7 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
 
     assert sorted(with_reach) == [
         "dobutsu", "intransitive", "jeson-mor", "kingofthehill", "racingkings", "rps-v3",
-        "watering-hole",
+        "watering-hole", "watering-hole-by-speed",
     ]
     differ = sorted(name for name, (built, other) in with_reach.items() if built != other)
     assert differ == ["intransitive"]

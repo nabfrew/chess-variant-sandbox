@@ -722,13 +722,28 @@ class Evaluator:
         Under ``rest`` (schema 27, Q942b) a side whose rested royal a standing enemy piece
         reaches (``rested_royal_falls``) is ``RESTED_ROYAL`` from a loss, mine minus theirs.
         ``lists`` are both players' legal moves on this board; a caller without them (the
-        analysis probe's ruler) has them asked of the engine, and only when a piece rests."""
+        analysis probe's ruler) has them asked of the engine, and only when a piece rests
+        or a speed is declared.
+
+        Under speeds (schema 28, Q943b, `docs/plan-speed.md` §4.4) the same price, once, for
+        a royal that a strictly faster enemy piece takes next round unanswered
+        (``caught_royal_falls``): a side whose royal falls either way is one near-loss."""
         score = self._score(state, player, counts[player] - counts[1 - player])
-        if state.rest[0] >= 0 or state.rest[1] >= 0:
+        rested = state.rest[0] >= 0 or state.rest[1] >= 0
+        sim = self.spec.simultaneous
+        speed = sim.speed if sim is not None else ()
+        if rested or speed:
             if lists is None:
                 lists = (engine.legal_moves_for(state, 0), engine.legal_moves_for(state, 1))
-            theirs = rested_royal_falls(self.spec, state, 1 - player, lists)
-            mine = rested_royal_falls(self.spec, state, player, lists)
+            known = lists
+
+            def falls(side: int) -> bool:
+                return (rested and rested_royal_falls(self.spec, state, side, known)) or bool(
+                    speed and caught_royal_falls(self.spec, state, side, known, speed)
+                )
+
+            theirs = falls(1 - player)
+            mine = falls(player)
             if theirs != mine:
                 score += RESTED_ROYAL if theirs else -RESTED_ROYAL
         return score
@@ -1457,3 +1472,62 @@ def rested_royal_falls(
         if target == square and kind in _LANDING_CAPTURES:
             return True
     return False
+
+
+def caught_royal_falls(
+    spec: CompiledSpec,
+    state: GameState,
+    side: int,
+    lists: tuple[list[int], list[int]],
+    speed: tuple[int, ...],
+) -> bool:
+    """Whether ``side``'s royal stands where a strictly faster enemy piece takes it next
+    round (schema 28, Q943b, `docs/plan-speed.md` §3.2, §4.4; ``eval.rs::caught_royal_falls``
+    is the same test). ``speed`` is the compiled ``[type]`` table.
+
+    The royal is ``side``'s only one (none other on the board, none in hand) and one whose
+    loss ends the game; a move in ``lists[1 - side]`` lands on it and takes from a piece of a
+    strictly greater speed, which a slower royal can neither run from nor strike back at
+    first. It is answered only by a move in ``lists[side]`` that takes that attacker where it
+    stands from a piece strictly faster than the attacker; a block is not counted, and a
+    second such attacker is a threat one move cannot answer, so the royal falls."""
+    if not _royal_loss_ends_it(spec, side):
+        return False
+    royals = spec.royal_types
+    board = state.board
+    royal = None
+    for square in range(spec.n_squares):
+        held = board[square]
+        if held and spec.owner_of(held) == side and spec.type_of(held) in royals:
+            if royal is not None:
+                return False
+            royal = square
+    if royal is None:
+        return False
+    hand = state.hands[side]
+    if any(piece_type < len(hand) and hand[piece_type] > 0 for piece_type in royals):
+        return False
+    royal_speed = speed[spec.type_of(board[royal])]
+    attacker = None
+    for move in lists[1 - side]:
+        origin, target, kind, _ = decode_move(move)
+        if target != royal or kind not in _LANDING_CAPTURES:
+            continue
+        if speed[spec.type_of(board[origin])] <= royal_speed:
+            continue
+        if attacker is None:
+            attacker = origin
+        elif attacker != origin:
+            return True
+    if attacker is None:
+        return False
+    attacker_speed = speed[spec.type_of(board[attacker])]
+    for move in lists[side]:
+        origin, target, kind, _ = decode_move(move)
+        if (
+            target == attacker
+            and kind in _LANDING_CAPTURES
+            and speed[spec.type_of(board[origin])] > attacker_speed
+        ):
+            return False
+    return True

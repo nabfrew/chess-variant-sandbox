@@ -1,0 +1,193 @@
+{
+  "schema_version": 28,
+  "name": "watering hole by speed",
+  "description": "A race to one water hole, played in rounds in which speed decides every meeting. On a 7x7 board White's elephants and cats face Black's dogs and rats, every animal stepping one square in any direction, and each kind eats exactly one enemy kind: elephant eats dog, dog eats cat, cat eats rat, rat eats elephant. Each round both players choose a move in secret, and then the two moves are made one after the other, the faster animal's first: cats are the fastest, then rats, then dogs, then elephants. No two kinds share a speed, so nothing ever collides; the second move is made on the board the first one left, if it still can be. Speed cuts across the food chain. A cat is faster than the rat it hunts and a rat faster than the elephant it hunts, so those hunters catch their prey where it stands, before it can run. An elephant is slower than the dog it hunts and a dog slower than the cat, so that prey always escapes a strike by moving away, and its slow hunter catches it only when it stays put, or when it steps onto the very square the hunter was moving to, arriving first and being eaten there. Who moves first is not fixed by the seat: each round it is decided by which animals the two players chose to move. The first animal to stand on the hole at d4 with none of its eaters next to it wins, so when both sides step onto the hole in one round the faster animal gets there first, and wins on the spot if nothing that eats it is beside it.",
+  "board": {
+    "width": 7,
+    "height": 7
+  },
+  "pieces": [
+    {
+      "id": "E",
+      "name": "elephant",
+      "value": 1,
+      "captures": [
+        "D"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "name": "cat",
+      "value": 1,
+      "captures": [
+        "R"
+      ],
+      "speed": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "name": "dog",
+      "value": 1,
+      "captures": [
+        "C"
+      ],
+      "speed": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rat",
+      "value": 1,
+      "captures": [
+        "E"
+      ],
+      "speed": 2,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": false,
+    "placements": [
+      {
+        "piece": "E",
+        "player": 0,
+        "squares": [
+          "c3",
+          "e1",
+          "a1"
+        ]
+      },
+      {
+        "piece": "C",
+        "player": 0,
+        "squares": [
+          "e3",
+          "c1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "R",
+        "player": 1,
+        "squares": [
+          "c5",
+          "e7",
+          "a7"
+        ]
+      },
+      {
+        "piece": "D",
+        "player": 1,
+        "squares": [
+          "e5",
+          "c7",
+          "g7"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "annihilation",
+    "stalemate": "loss",
+    "reach": {
+      "squares": [
+        "d4"
+      ],
+      "mirror": false,
+      "safe": true
+    },
+    "simultaneous": {},
+    "scoring": {
+      "count": "region",
+      "region": [
+        "c3",
+        "d3",
+        "e3",
+        "c4",
+        "d4",
+        "e4",
+        "c5",
+        "d5",
+        "e5"
+      ]
+    },
+    "max_plies": 160,
+    "no_progress_draw": 60
+  },
+  "provenance": {
+    "added": "2026-10-19",
+    "preview": "A preview: a new kind of game played in rounds in which faster pieces move first, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
+    "origin": "designed",
+    "source": "docs/plan-speed.md, Q943c: the showcases of schema 28's speed (section 6.1)",
+    "history": "T3 of docs/plan-speed.md section 6.1, pre-registered 2026-10-16 before it was built: the watering hole (5c0b017473f5) with the cat at speed 3, the rat 2, the dog 1 and the elephant 0, and rules.simultaneous.tie impossible removed (inert where no two opposing kinds share a speed, section 4.1). The game designed around the rule: strictly ordered, so no round collides, swaps or is void, and each side has one hunter faster than its prey and one slower. Built by Q943c (2026-10-19); measured and graded against section 6.3 by Q943d.",
+    "parents": [
+      "5c0b017473f5"
+    ]
+  }
+}

@@ -102,6 +102,68 @@ pub fn rested_royal_falls(game: &Game<'_>, side: usize, lists: [&[u32]; 2]) -> b
     })
 }
 
+/// Whether `side`'s royal stands where a strictly faster enemy piece takes it next round
+/// (schema 28, Q943b, `docs/plan-speed.md` §3.2, §4.4): `speed` is the compiled `[type]`
+/// table (non-empty). The royal is `side`'s only one (none other on the board, none in
+/// hand) and one whose loss ends the game; an enemy move in `lists[1 - side]` lands on it
+/// and takes from a piece of a strictly greater speed, so the royal cannot run (the
+/// attacker's move is over first, §2.5 A) and cannot strike back first. It is answered
+/// only by a move of `side`'s in `lists[side]` that takes the attacker where it stands from
+/// a piece strictly faster than the attacker; a block is not counted (§4.4), and two such
+/// attackers are two threats that one move cannot answer, so the royal falls. The same
+/// landing captures as `rested_royal_falls`. `agents/evaluation.py::caught_royal_falls` is
+/// the same test.
+pub fn caught_royal_falls(game: &Game<'_>, side: usize, lists: [&[u32]; 2], speed: &[u8]) -> bool {
+    use crate::tables::{move_from, move_kind, move_to, MOVE_NORMAL, MOVE_PORTAL, MOVE_PROMOTION, MOVE_SWEEP};
+    let t = game.t;
+    if !t.royal_loss_ends_it(side) {
+        return false;
+    }
+    let mut royal = None;
+    for square in 0..t.n_squares {
+        let held = game.board[square];
+        if held != 0 && t.owner_of(held) == side && t.is_royal(t.type_of(held)) {
+            if royal.is_some() {
+                return false;
+            }
+            royal = Some(square);
+        }
+    }
+    let Some(square) = royal else {
+        return false;
+    };
+    let hand = &game.hands[side];
+    if t.royal_types.iter().any(|piece_type| hand.get(*piece_type).is_some_and(|n| *n > 0)) {
+        return false;
+    }
+    let takes = |m: u32| matches!(move_kind(m), MOVE_NORMAL | MOVE_PROMOTION | MOVE_PORTAL | MOVE_SWEEP);
+    let speed_at = |at: usize| speed[t.type_of(game.board[at])];
+    let royal_speed = speed_at(square);
+    // The first faster attacker's square; a second one is a threat no move answers.
+    let mut attacker: Option<usize> = None;
+    for &m in lists[1 - side] {
+        if move_to(m) != square || !takes(m) {
+            continue;
+        }
+        let origin = move_from(m);
+        if speed_at(origin) <= royal_speed {
+            continue;
+        }
+        match attacker {
+            None => attacker = Some(origin),
+            Some(first) if first != origin => return true,
+            Some(_) => {}
+        }
+    }
+    let Some(at) = attacker else {
+        return false;
+    };
+    let attacker_speed = speed_at(at);
+    !lists[side].iter().any(|&m| {
+        move_to(m) == at && takes(m) && speed_at(move_from(m)) > attacker_speed
+    })
+}
+
 /// What a piece that may capture nothing is worth, as a share of full reach. Not zero:
 /// it still takes up a square and blocks a line. Mirrors `NO_PREY_FLOOR` in
 /// `chess_variant_sandbox/agents/evaluation.py`, which is the definition the two sides share.
@@ -875,13 +937,25 @@ impl Evaluator {
     /// are the mobility; their contents are read only under `rest` (schema 27, Q942b), by
     /// `rested_royal_falls`: a side whose rested royal a standing enemy piece reaches is
     /// `RESTED_ROYAL` from a loss, mine minus theirs.
+    ///
+    /// Under speeds (schema 28, Q943b) the same price, once, for a royal that a strictly
+    /// faster enemy piece takes next round unanswered (`caught_royal_falls`): a side whose
+    /// royal falls either way is one near-loss, not two. A game without a speed reads an
+    /// empty table and runs the rule-of-rest arm alone, as before.
     pub fn evaluate_round(&self, game: &Game<'_>, player: usize, lists: [&[u32]; 2]) -> f64 {
         let mobility = lists[player].len() as f64 - lists[1 - player].len() as f64;
         let mut score = self.score(game, player, mobility);
-        // `rest[side]` is set only under the rule, so every other game pays two compares.
-        if game.rest[0] >= 0 || game.rest[1] >= 0 {
-            let theirs = rested_royal_falls(game, 1 - player, lists);
-            let mine = rested_royal_falls(game, player, lists);
+        // `rest[side]` is set only under the rule, and `speed` is empty without a speed, so
+        // every other game pays two compares and one emptiness test.
+        let rested = game.rest[0] >= 0 || game.rest[1] >= 0;
+        let speed = game.t.simultaneous.as_deref().map_or(&[][..], |sim| &sim.speed[..]);
+        if rested || !speed.is_empty() {
+            let falls = |side: usize| {
+                (rested && rested_royal_falls(game, side, lists))
+                    || (!speed.is_empty() && caught_royal_falls(game, side, lists, speed))
+            };
+            let theirs = falls(1 - player);
+            let mine = falls(player);
             if theirs != mine {
                 score += if theirs { RESTED_ROYAL } else { -RESTED_ROYAL };
             }
