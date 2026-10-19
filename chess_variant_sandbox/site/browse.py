@@ -59,7 +59,11 @@ in the order the library gave it -- committed first, then archived, each by name
 UNBEATEN = "unbeaten"
 UNTRIED = unbeaten.UNTRIED
 UNPLAYED = "unplayed"
-FILTERS = (UNBEATEN, UNTRIED, UNPLAYED)
+PROVEN = "proven"
+"""Games whose page offers at least one proven position (Q972): the card's
+`provenPositions`, which the server counts off the same record the page's section reads
+(`proven.offered`)."""
+FILTERS = (UNBEATEN, UNTRIED, UNPLAYED, PROVEN)
 
 
 class BrowseError(ValueError):
@@ -228,6 +232,8 @@ def order(
         found = [card for card in found if card.get("untried") is True]
     elif keep == UNPLAYED:
         found = [card for card in found if card.get("humanGames") == 0]
+    elif keep == PROVEN:
+        found = [card for card in found if (card.get("provenPositions") or 0) > 0]
     if not sort:
         return found
     return sorted(found, key=lambda card: _key(card, sort))

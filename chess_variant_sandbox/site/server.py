@@ -638,6 +638,12 @@ class SiteApp(App):
         # key, never `index`, so the ordering below cannot read it (Q312).
         for card in cards:
             card["provisional"] = checked.get(str(card["hash"]))
+            # Q972: how many proven positions the game's page offers, the record its
+            # section reads (`proven.offered`), for the *proven positions* filter.
+            listed = known.get(str(card["hash"]))
+            card["provenPositions"] = proven.offered(
+                self.runs_dir, str(card["hash"]), None if listed is None else listed.spec
+            )
         payload["games"] = browse.order(
             cards, query.get("sort", ""), query.get("filter", "")
         )
@@ -710,6 +716,11 @@ class SiteApp(App):
                     "filter": browse.UNPLAYED,
                     "key": "unplayed",
                     "label": "not played here yet",
+                },
+                {
+                    "filter": browse.PROVEN,
+                    "key": "provenPositions",
+                    "label": "has proven positions to solve",
                 },
             ],
         }

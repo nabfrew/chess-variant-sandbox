@@ -14,8 +14,8 @@ rounds that Q918e archived said so in their own files, and Q942c's and Q935f's a
   API and plays a round, and *watch it play itself* seats the round ladder's player.
 
 Taking the sentence off is how a preview joins the library (Q934: the watering hole and
-breather, then named Gardner in rounds against the chase; Q936t: riders and leapers), and such a game is then on
-every scored surface.
+breather, then named Gardner in rounds against the chase; Q936t: riders and leapers; Q943f: the
+watering hole by speed), and such a game is then on every scored surface.
 
 The store tests need a real Postgres and skip with a reason without one.
 """
@@ -45,16 +45,15 @@ ARCHIVED_PREVIEWS = {
     # Q935f's SP2 (`plan-spy.md` §5): a spy game starts by turns and ends in rounds once a
     # spy falls.
     "gardner-with-spies-resting.json": "1d798bedbf66",
-    # Q943c's three speed showcases (`plan-speed.md` §6.1), played in rounds; previews
-    # until Q943d measures them.
+    # Q943c's two Gardner speed showcases (`plan-speed.md` §6.1), played in rounds: not
+    # viable as Q943d measured them (§6.5), so they stay previews.
     "gardner-in-rounds-with-a-swift-king.json": "d8bb879440ce",
     "gardner-in-rounds-with-swift-knights.json": "bf230a962d10",
-    "watering-hole-by-speed.json": "423a29997264",
 }
 """The previews in `archive/`, by file and by the mechanics hash each was or will be measured
-under: the round and spy games less the three that joined the library (`JOINED`), the six that
+under: the round and spy games less the four that joined the library (`JOINED`), the six that
 Q962b retired and the one Q962c retired (`docs/reference/previews-2026-10-18.md`; their files
-are `tests/_retired_*.json`), and Q943c's three speed showcases."""
+are `tests/_retired_*.json`), and Q943c's two Gardner speed showcases."""
 
 ROUND_PREVIEW = "4da669bb3d50"
 ROUND_PREVIEW_FILE = "gardner-in-rounds-resting.json"
@@ -69,9 +68,12 @@ PREVIEWS = {**ARCHIVED_PREVIEWS, ROUND_PREVIEW_FILE: ROUND_PREVIEW}
 JOINED_ROUNDS = {
     "watering-hole.json": "5c0b017473f5",
     "breather.json": "632c199e4589",  # named gardner in rounds against the chase until Q962
+    # Q943c's T3 (`plan-speed.md` §6.1), viable as Q943d measured it (§6.5); joined by Q943f.
+    "watering-hole-by-speed.json": "423a29997264",
 }
-"""Two round games that were previews and joined the library by taking the mark off (Q934,
-`docs/archive/plan-library-audit.md`): Library games played in rounds, on every scored surface."""
+"""Three round games that were previews and joined the library by taking the mark off (Q934,
+`docs/archive/plan-library-audit.md`; Q943f, `docs/plan-speed.md`): Library games played in
+rounds, on every scored surface."""
 
 JOINED_TURNS = {"riders-and-leapers.json": "26636602fae0"}
 """A game played by turns that was a preview (Q936s: `"per_type": "own"`) and joined the same
@@ -90,8 +92,8 @@ ROUND_AGENT = "matrix:nodes=6400"
 
 
 def _root(tmp_path: Path) -> Path:
-    """A checkout of the dull Baseline game, four Library games (two of them played in
-    rounds) and the two previews."""
+    """A checkout of the dull Baseline game, five Library games (three of them played in
+    rounds) and the four previews."""
     (tmp_path / "rulesets").mkdir()
     (tmp_path / "archive").mkdir()
     (tmp_path / "runs").mkdir()
@@ -130,7 +132,7 @@ class TestTheFiles:
         }
         assert marked == set(ARCHIVED_PREVIEWS)
 
-    def test_the_three_that_joined_say_nothing_and_keep_their_hashes(self) -> None:
+    def test_the_four_that_joined_say_nothing_and_keep_their_hashes(self) -> None:
         for name, digest in JOINED.items():
             spec = load_spec(ARCHIVE / name)
             assert spec_hash(spec) == digest, "taking the mark off moved no game"
@@ -221,8 +223,8 @@ class TestNoBand:
     def test_a_preview_with_a_current_score_is_in_no_band(
         self, app: App, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Every game given the same current score: the library's five are banded against
-        each other, and the two previews neither have a band nor move the others'."""
+        """Every game given the same current score: the library's six are banded against
+        each other, and the four previews neither have a band nor move the others'."""
         score = {"weights_version": library.DEFAULT_WEIGHTS, "combined": 0.5,
                  "interval": {"ci_low": 0.4, "ci_high": 0.6, "deterministic_pairings": 1}}
         monkeypatch.setattr(library, "current_only", lambda _score: score)

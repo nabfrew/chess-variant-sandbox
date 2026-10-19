@@ -813,7 +813,7 @@ kinds is gone, and the only one with two different armies of paired kinds.
 
 ## `gardner-in-rounds-with-a-swift-king.json`, `gardner-in-rounds-with-swift-knights.json`, `watering-hole-by-speed.json` — schema 28, speed (Q943c)
 
-2026-10-19, previews. The showcases of `pieces[].speed` (`docs/plan-speed.md` §6.1, pre-registered
+2026-10-19, the first two previews and the third in the library since Q943f (2026-10-19). The showcases of `pieces[].speed` (`docs/plan-speed.md` §6.1, pre-registered
 2026-10-16 before the rule was built): each piece type has a speed, a rank; when the two pieces
 moving in a round differ in speed, the faster move is made first as an ordinary move, and the
 slower is made afterwards only if it still can be. The first two are Gardner in
@@ -838,9 +838,15 @@ difference; the third is the game designed around the rule.
   standing; the elephant and the dog are slower than theirs, whose prey escapes by moving and
   is caught only standing still or by stepping where the hunter was going. Two arrivals at the
   hole are no longer a meeting: the faster gets there first. Held off main a few hours for an
-  operator fix (`plan-speed.md` §6.1 *As built*).
+  operator fix (`plan-speed.md` §6.1 *As built*). Joined the library by Q943f as its only game
+  with speeds: every round two moves in order and nothing colliding.
 
-Not yet measured: Q943d measures all three on the round roster and grades `plan-speed.md` §6.3.
+Measured by Q943d (2026-10-19, v12, four runs on the round roster; `plan-speed.md` §6.5):
+the swift king reads in 2 of 4 runs and is not viable, the swift knights are not viable
+(0.439, worst-half decisive 0.11 to 0.17: the round players trade both knights on move one),
+and both stay previews; the watering hole by speed is **viable in 3 of 4 runs, 0.557
+[0.500, 0.616]**, every graded game decided at the hole in about 18 plies with the seat level
+(0.520 first seat), below its parent's 0.608 with the intervals overlapping.
 
 ## Retired by the library audit (Q868, 2026-10-12)
 

@@ -47,7 +47,7 @@ let LIBRARY = [], OPPONENTS = [], COVERAGE = null, SESSION = null, SELECTED = nu
       text: '', sort: 'name', descending: false, group: 'none',
       // Each axis of the kind-of-game grid, to a set of bins the reader will accept.
       // Empty means "any", which is why an untouched filter costs nothing to evaluate.
-      bins: {}, stage: '', scored: '', playable: '', fairy: '', tag: '',
+      bins: {}, stage: '', scored: '', playable: '', fairy: '', tag: '', proven: '',
       // The site's library tab (Q503b), by the key the listing sends; empty is the first.
       tab: '',
     },

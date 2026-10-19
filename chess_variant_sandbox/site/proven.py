@@ -159,6 +159,17 @@ def load(runs_dir: Path | str, digest: str, spec: dict[str, Any] | None) -> Reco
     return found
 
 
+def offered(runs_dir: Path | str, digest: str, spec: dict[str, Any] | None) -> int:
+    """How many proven positions the game's page offers: nought where it has no section.
+
+    The games list's *proven positions* filter reads this (Q972), the same `load` and the
+    same positions the game page's section draws, so a card the filter keeps is exactly a
+    game whose page has the section. A game with no record costs one `stat`.
+    """
+    record = load(runs_dir, digest, spec)
+    return 0 if record is None else len(record.positions)
+
+
 def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | None:
     if data.get("format") != FORMAT or data.get("ruleset_hash") != digest:
         return None

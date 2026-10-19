@@ -365,6 +365,9 @@ function narrowed() {
     if (BROWSE.tag === 'unbeaten' && game.unbeaten !== true) return false;
     if (BROWSE.tag === 'beaten' && game.unbeaten !== false) return false;
     if (BROWSE.tag === 'unrated' && game.rated !== false) return false;
+    // Q972: the server's count of the proven positions the game's page offers
+    // (`proven.offered`), undefined on the local application, which offers none.
+    if (BROWSE.proven === 'yes' && !(game.provenPositions > 0)) return false;
     for (const [axis, wanted] of Object.entries(BROWSE.bins)) {
       if (!wanted.length) continue;
       if (!wanted.includes(binOf(game, axis))) return false;
@@ -492,7 +495,7 @@ function controlsHtml() {
   const chosen = BROWSE.bins;
   const active = Object.values(chosen).reduce((n, list) => n + list.length, 0)
     + (BROWSE.stage ? 1 : 0) + (BROWSE.scored ? 1 : 0) + (BROWSE.playable ? 1 : 0)
-    + (BROWSE.fairy ? 1 : 0) + (BROWSE.tag ? 1 : 0);
+    + (BROWSE.fairy ? 1 : 0) + (BROWSE.tag ? 1 : 0) + (BROWSE.proven ? 1 : 0);
 
   // Every plain ordering by key, the store's beside the file's, so the two tiers below
   // are a partition of one list rather than two lists that might disagree.
@@ -500,6 +503,9 @@ function controlsHtml() {
   const first = FIRST_SORTS.filter(key => named.has(key));
   const rest = [...named.keys()].filter(key => !first.includes(key));
   const sortOption = key => option(key, named.get(key), BROWSE.sort);
+
+  // A filter's (i) sits inside its label, so at phone width the two wrap together rather
+  // than leaving one filter's (i) at the head of the next filter's line (Q972).
 
   return `<div class="controls panel">
     <div class="line">
@@ -546,20 +552,25 @@ function controlsHtml() {
               ${option('', 'any', BROWSE.playable)}
               ${option('yes', 'works as a game', BROWSE.playable)}
               ${option('no', 'ruled out', BROWSE.playable)}
-            </select></label>${info('gated')}
+            </select>${info('gated')}</label>
           ${ACCOUNTS ? '' : `<label class="pick">Fairy-Stockfish
             <select id="fairy">
               ${option('', 'any', BROWSE.fairy)}
               ${option('yes', 'the rules translate', BROWSE.fairy)}
               ${option('no', 'no counterpart', BROWSE.fairy)}
-            </select></label>${info('fairy')}`}
+            </select>${info('fairy')}</label>`}
           ${SITE ? `<label class="pick">Unbeaten
             <select id="tag">
               ${option('', 'any', BROWSE.tag)}
               ${option('unbeaten', 'Unbeaten', BROWSE.tag)}
               ${option('beaten', 'beaten', BROWSE.tag)}
               ${option('unrated', 'unrated (no computer players yet)', BROWSE.tag)}
-            </select></label>${info('unbeaten')}` : ''}
+            </select>${info('unbeaten')}</label>` : ''}
+          ${SITE ? `<label class="pick">proven positions
+            <select id="proven">
+              ${option('', 'any', BROWSE.proven)}
+              ${option('yes', 'has some to solve', BROWSE.proven)}
+            </select>${info('provenPositions')}</label>` : ''}
           <button id="clear">clear</button>
         </div>
         <div class="muted small">These are eight things read straight off the
@@ -598,14 +609,14 @@ function wireControls() {
   box.querySelector('#group').onchange = event => {
     BROWSE.group = event.target.value; paintResults();
   };
-  ['stage', 'scored', 'playable', 'fairy', 'tag'].forEach(key => {
+  ['stage', 'scored', 'playable', 'fairy', 'tag', 'proven'].forEach(key => {
     const control = box.querySelector('#' + key);
     if (!control) return;
     control.onchange = event => { BROWSE[key] = event.target.value; repaintControls(); };
   });
   box.querySelector('#clear').onclick = () => {
     BROWSE.bins = {}; BROWSE.stage = ''; BROWSE.scored = ''; BROWSE.playable = '';
-    BROWSE.fairy = ''; BROWSE.tag = '';
+    BROWSE.fairy = ''; BROWSE.tag = ''; BROWSE.proven = '';
     repaintControls();
   };
   box.querySelectorAll('[data-axis]').forEach(chip => {

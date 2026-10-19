@@ -682,3 +682,75 @@ class TestTheGamePageDraws:
         assert "if (!lines.length) return;" in body
         assert "Only you see this." in body
         assert "drawProven(payload.proven || []);" in profile
+
+
+# ------------------------------------------------------ the games list's filter (Q972)
+
+
+def _listed_root(tmp_path: Path) -> Path:
+    """A checkout of two library games, `dull` and the test game, with a record each:
+    the test game's offers its three positions, and `dull`'s names a prefix no longer
+    legal, so its file is there and its page offers nothing."""
+    from test_site_admin import DULL_HASH
+
+    for folder in ("rulesets", "archive", "runs"):
+        (tmp_path / folder).mkdir()
+    (tmp_path / "rulesets" / "dull.json").write_text(json.dumps(DULL), encoding="utf-8")
+    (tmp_path / "rulesets" / "proven-test.json").write_text(json.dumps(SPEC), encoding="utf-8")
+    _write(tmp_path / "runs", _record([ONE, LOSES, BOTH]))
+    gone = _position("9-9-2", {TAKE: "won", STEP: "open"}, moves=[123_456])
+    _write(tmp_path / "runs", _record([gone], digest=DULL_HASH), digest=DULL_HASH)
+    return tmp_path
+
+
+class TestTheGamesListFilter:
+    """The games list's *proven positions* filter, served and then run as the page runs it:
+    it keeps exactly the games whose page offers a proven position."""
+
+    def test_the_count_is_what_the_page_offers(self, runs: Path, tmp_path: Path) -> None:
+        assert proven.offered(runs, DIGEST, SPEC) == 3
+        assert proven.offered(runs, DIGEST, None) == 0
+        assert proven.offered(tmp_path / "nothing", DIGEST, SPEC) == 0
+
+    def test_the_listing_and_the_page_keep_exactly_the_games_with_some(
+        self, tmp_path: Path
+    ) -> None:
+        from test_site_admin import DULL_HASH, _running_site
+        from test_web import _in_page
+
+        from chess_variant_sandbox.site import browse
+        from chess_variant_sandbox.site import load as loader
+
+        root = _listed_root(tmp_path)
+        with _running_site(root) as site:
+            report = loader.load(site.store, root)
+            site.store.commit()
+            assert not report.skipped, report.skipped
+            listing = site.browser().get("/api/library").payload
+            cards = {card["hash"]: card for card in listing["games"]}
+            assert set(cards) == {DIGEST, DULL_HASH}
+            assert cards[DIGEST]["provenPositions"] == 3
+            assert cards[DULL_HASH]["provenPositions"] == 0, "a record that no longer replays"
+            assert {"filter": browse.PROVEN, "key": "provenPositions",
+                    "label": "has proven positions to solve"} in listing["site"]["filters"]
+            kept = site.browser().get("/api/library?filter=proven").payload["games"]
+            assert [card["hash"] for card in kept] == [DIGEST]
+
+        # The page, over the listing the site sent: the filter offered beside the others,
+        # and narrowing to the same one game.
+        setup = (
+            f"LIBRARY = {json.dumps(listing['games'])};"
+            f" SITE = {json.dumps(listing['site'])}; COVERAGE = {{ axes: [] }};"
+        )
+        assert sorted(_in_page(setup, "narrowed().map(g => g.hash)")) == sorted(cards)
+        assert _in_page(setup + "BROWSE.proven = 'yes';",
+                        "narrowed().map(g => g.hash)") == [DIGEST]
+        drawn = _in_page(setup + "BROWSE.proven = 'yes';", "controlsHtml()")
+        assert 'id="proven"' in drawn and "1 filter on" in drawn
+        assert '<option value="yes" selected>has some to solve</option>' in drawn
+
+    def test_the_local_application_offers_no_such_filter(self) -> None:
+        """No store, no `SITE`, and no proven positions on its game pages."""
+        from test_web import _FIXTURE, _in_page
+
+        assert 'id="proven"' not in _in_page(_FIXTURE, "controlsHtml()")

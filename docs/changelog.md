@@ -13,6 +13,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-19
 
+### Find the games with proven positions
+
+The games list can now be narrowed to games that have proven positions to solve: open *narrow it down* and choose
+*has some to solve*. Seven games have them today. *The watering hole by speed* has also joined the library as a full
+game, with a ladder of computer players to play against.
+
 ### Speed: in games played in rounds, faster pieces move first
 
 In a game where both players move at once, pieces can now have a speed. When two moves meet in a round, the faster

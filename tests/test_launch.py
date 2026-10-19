@@ -271,11 +271,14 @@ class TestTheNewGamesAndTheSpotlight:
         listed = {game.hash for game in found}
         assert all(card["hash"] in listed for card in cards)
         # On the ninth, the ninth's own games (fifteen joined, so the shelf is full of
-        # them); three weeks later nothing is new and the shelf says so.
+        # them); a window after the newest game joined, nothing is new and the shelf says
+        # so. The day is read from the library, not written down: a game that joins later
+        # moves it (2026-11-01 was pinned here until Q943f's game joined on 19 October).
         ninth = launch.new_cards(found, date(2026, 10, 9))
         assert len(ninth) == launch.NEW_SHOWN
         assert {card["day"] for card in ninth} == {"2026-10-09"}
-        later = launch.new_cards(found, date(2026, 11, 1))
+        newest = max(date.fromisoformat(day) for game in found if (day := library.added(game)))
+        later = launch.new_cards(found, newest + timedelta(days=launch.NEW_WINDOW_DAYS))
         assert len(later) == launch.NEW_FALLBACK and not any(card["fresh"] for card in later)
 
     def test_the_shelfs_link_opens_every_game_newest_first(self) -> None:
