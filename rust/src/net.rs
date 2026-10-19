@@ -15,8 +15,9 @@
 //!
 //! **Exact on every machine.** Every step is integer: an `i16` accumulator with
 //! wrapping arithmetic (a group, so the incremental sum always equals a fresh one),
-//! clipped to `[0, 127]`; two `i8` layers accumulated in `i64`, shifted and clipped; an
-//! `i8` output layer; then one division by a power of two into the search's `f64`.
+//! clipped to `[0, 127]`; two `i8` layers summed in `i32` (exact by `DOT_BOUND`), biased
+//! in `i64`, shifted and clipped; an `i8` output layer; then one division by a power of
+//! two into the search's `f64`.
 //!
 //! **The accumulator** is lazy: `NetEvaluator` keeps the sorted list of active inputs it
 //! last summed, and at the next evaluation subtracts the rows that went away and adds the
@@ -26,6 +27,21 @@
 
 use crate::game::Game;
 use crate::tables::Tables;
+
+/// The largest `|sum|` of one dense-layer dot product any accepted store can reach: at most
+/// `MAX_ACCUMULATOR` terms (the first layer; the second has at most `MAX_HIDDEN`), each an
+/// `i8` weight (`|w| <= 128`) times an activation in `[0, ACTIVATION_MAX]`.
+/// 2,048 * 128 * 127 = 33,292,288, under 2^25, so `dot` may sum in `i32` and agree with an
+/// `i64` sum bit for bit (Q961). Widening a layer past this is a compile error here.
+pub const DOT_BOUND: i64 = MAX_ACCUMULATOR as i64 * 128 * ACTIVATION_MAX;
+const _: () = assert!(DOT_BOUND <= i32::MAX as i64 && MAX_HIDDEN <= MAX_ACCUMULATOR);
+
+/// One dense layer's dot product, `i8` weights against activations in `[0, ACTIVATION_MAX]`,
+/// summed in `i32`: exact by `DOT_BOUND`.
+#[inline]
+fn dot(weights: &[i8], activations: &[i16]) -> i32 {
+    weights.iter().zip(activations).map(|(&w, &a)| w as i32 * a as i32).sum()
+}
 
 /// The store's first eight bytes.
 pub const MAGIC: &[u8; 8] = b"CVSNET01";
@@ -380,24 +396,35 @@ impl Net {
 
     /// The raw output for the side to move, from an accumulator.
     pub fn forward(&self, acc: &[i16], side: usize) -> i64 {
+        self.forward_with(acc, side, &mut Vec::with_capacity(self.accumulator))
+    }
+
+    /// `forward` with the clipped accumulator written into `a0`, a buffer the caller keeps
+    /// (Q961): it holds the net's own width, so an evaluation writes 256 slots, not the
+    /// 2,048 a fixed `MAX_ACCUMULATOR` array zeroed every call.
+    ///
+    /// The dense layers sum `i8 * [0, 127]` products in `i32` (Q961), which is exact:
+    /// `DOT_BOUND` below is the largest such sum any store `parse` accepts, and it is far
+    /// inside `i32`, so the sum equals the `i64` one bit for bit. The bias, the shift and
+    /// the output layer stay in `i64`, as before.
+    pub fn forward_with(&self, acc: &[i16], side: usize, a0: &mut Vec<i16>) -> i64 {
         let head = &self.heads[side & 1];
-        let mut a0 = [0i64; MAX_ACCUMULATOR];
-        for (slot, &v) in a0.iter_mut().zip(acc) {
-            *slot = (v as i64).clamp(0, ACTIVATION_MAX);
-        }
-        let a0 = &a0[..self.accumulator];
-        let mut a1 = [0i64; MAX_HIDDEN];
+        a0.clear();
+        a0.extend(acc.iter().take(self.accumulator).map(|&v| v.clamp(0, ACTIVATION_MAX as i16)));
+        let a0 = a0.as_slice();
+        let mut a1 = [0i16; MAX_HIDDEN];
         for (k, slot) in a1.iter_mut().enumerate().take(self.hidden1) {
             let row = &head.w1[k * self.accumulator..(k + 1) * self.accumulator];
-            let sum: i64 = row.iter().zip(a0).map(|(&w, &a)| w as i64 * a).sum();
-            *slot = ((head.b1[k] as i64 + sum) >> WEIGHT_SHIFT).clamp(0, ACTIVATION_MAX);
+            let sum = dot(row, a0);
+            let a = (head.b1[k] as i64 + sum as i64) >> WEIGHT_SHIFT;
+            *slot = a.clamp(0, ACTIVATION_MAX) as i16;
         }
         let a1 = &a1[..self.hidden1];
         let mut out = head.b3 as i64;
         for k in 0..self.hidden2 {
             let row = &head.w2[k * self.hidden1..(k + 1) * self.hidden1];
-            let sum: i64 = row.iter().zip(a1).map(|(&w, &a)| w as i64 * a).sum();
-            let a2 = ((head.b2[k] as i64 + sum) >> WEIGHT_SHIFT).clamp(0, ACTIVATION_MAX);
+            let sum = dot(row, a1);
+            let a2 = ((head.b2[k] as i64 + sum as i64) >> WEIGHT_SHIFT).clamp(0, ACTIVATION_MAX);
             out += head.w3[k] as i64 * a2;
         }
         out.clamp(-OUTPUT_LIMIT, OUTPUT_LIMIT)
@@ -438,12 +465,16 @@ pub struct NetEvaluator {
     acc: Vec<i16>,
     active: Vec<u32>,
     scratch: Vec<u32>,
+    /// The clipped accumulator, kept so an evaluation writes the net's width only.
+    a0: Vec<i16>,
 }
 
 impl NetEvaluator {
     pub fn new(t: &Tables, net: std::sync::Arc<Net>, values: Vec<f64>) -> Self {
         let acc = net.b0.clone();
-        Self { net, layout: Layout::of(t), values, acc, active: Vec::new(), scratch: Vec::new() }
+        let a0 = Vec::with_capacity(net.accumulator);
+        let (active, scratch) = (Vec::new(), Vec::new());
+        Self { net, layout: Layout::of(t), values, acc, active, scratch, a0 }
     }
 
     /// The raw integer output for the side to move, bringing the accumulator up to
@@ -468,7 +499,7 @@ impl NetEvaluator {
             }
         }
         self.scratch = std::mem::replace(&mut self.active, next);
-        self.net.forward(&self.acc, game.side)
+        self.net.forward_with(&self.acc, game.side, &mut self.a0)
     }
 
     /// The score for `player`: the net's output for the side to move, negated for the
@@ -556,6 +587,95 @@ mod tests {
         let acc = net.refresh(&[0, 3]);
         assert_eq!(acc, vec![66; 4]);
         assert_eq!(net.forward(&acc, 1), 66);
+    }
+
+    /// The forward pass as it was before Q961: every sum in `i64`, over a zeroed
+    /// `MAX_ACCUMULATOR` buffer. The `i32` path must agree with it everywhere.
+    fn forward_in_i64(net: &Net, acc: &[i16], side: usize) -> i64 {
+        let head = &net.heads[side & 1];
+        let mut a0 = [0i64; MAX_ACCUMULATOR];
+        for (slot, &v) in a0.iter_mut().zip(acc) {
+            *slot = (v as i64).clamp(0, ACTIVATION_MAX);
+        }
+        let a0 = &a0[..net.accumulator];
+        let mut a1 = [0i64; MAX_HIDDEN];
+        for (k, slot) in a1.iter_mut().enumerate().take(net.hidden1) {
+            let row = &head.w1[k * net.accumulator..(k + 1) * net.accumulator];
+            let sum: i64 = row.iter().zip(a0).map(|(&w, &a)| w as i64 * a).sum();
+            *slot = ((head.b1[k] as i64 + sum) >> WEIGHT_SHIFT).clamp(0, ACTIVATION_MAX);
+        }
+        let a1 = &a1[..net.hidden1];
+        let mut out = head.b3 as i64;
+        for k in 0..net.hidden2 {
+            let row = &head.w2[k * net.hidden1..(k + 1) * net.hidden1];
+            let sum: i64 = row.iter().zip(a1).map(|(&w, &a)| w as i64 * a).sum();
+            let a2 = ((head.b2[k] as i64 + sum) >> WEIGHT_SHIFT).clamp(0, ACTIVATION_MAX);
+            out += head.w3[k] as i64 * a2;
+        }
+        out.clamp(-OUTPUT_LIMIT, OUTPUT_LIMIT)
+    }
+
+    /// Q961: at the widest store `parse` accepts, every weight at an `i8` extreme and
+    /// every activation at 127, the `i32` dot product reaches `DOT_BOUND` exactly and the
+    /// output equals the `i64` reference's.
+    #[test]
+    fn the_i32_sum_is_exact_at_the_widest_most_extreme_store() {
+        for w in [i8::MIN, i8::MAX] {
+            let widths = (MAX_ACCUMULATOR as u32, MAX_HIDDEN as u32, MAX_HIDDEN as u32);
+            let net = Net::parse(&store(1, widths, w, 127)).unwrap();
+            let acc = net.refresh(&[]);
+            assert!(acc.iter().all(|&a| a == 127));
+            let a0 = vec![127i16; MAX_ACCUMULATOR];
+            let row = &net.heads[0].w1[..MAX_ACCUMULATOR];
+            assert_eq!(dot(row, &a0) as i64, w as i64 * 127 * MAX_ACCUMULATOR as i64);
+            for side in 0..2 {
+                assert_eq!(net.forward(&acc, side), forward_in_i64(&net, &acc, side), "w {w}");
+            }
+        }
+        assert_eq!(DOT_BOUND, 2048 * 128 * 127);
+    }
+
+    /// Q961: random stores of many widths and full-range weights, over random
+    /// accumulators, give the `i64` reference's output, with one buffer carried across
+    /// nets of different widths as the evaluator carries it.
+    #[test]
+    fn the_forward_pass_equals_the_i64_reference_on_random_nets() {
+        let mut state = 0x9E37_79B9_7F4A_7C15u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let mut buffer = Vec::new();
+        for _ in 0..40 {
+            let acc_w = 1 + (next() % 300) as usize;
+            let (h1, h2) = (1 + (next() % 40) as usize, 1 + (next() % 40) as usize);
+            let mut bytes = MAGIC.to_vec();
+            for v in [INPUTS_VERSION, 1, acc_w as u32, h1 as u32, h2 as u32] {
+                bytes.extend(v.to_le_bytes());
+            }
+            for _ in 0..2 * acc_w {
+                bytes.extend((next() as i16 / 64).to_le_bytes());
+            }
+            for _ in 0..2 {
+                bytes.extend((0..h1 * acc_w).map(|_| next() as u8));
+                bytes.extend((0..h1).flat_map(|_| ((next() % 16_000) as i32 - 4000).to_le_bytes()));
+                bytes.extend((0..h2 * h1).map(|_| next() as u8));
+                bytes.extend((0..h2).flat_map(|_| ((next() % 8_000) as i32 - 2000).to_le_bytes()));
+                bytes.extend((0..h2).map(|_| next() as u8));
+                bytes.extend(((next() % 10_000) as i32 - 5000).to_le_bytes());
+            }
+            let net = Net::parse(&bytes).unwrap();
+            for _ in 0..8 {
+                let acc: Vec<i16> = (0..acc_w).map(|_| (next() % 400) as i16 - 120).collect();
+                for side in 0..2 {
+                    let want = forward_in_i64(&net, &acc, side);
+                    assert_eq!(net.forward(&acc, side), want);
+                    assert_eq!(net.forward_with(&acc, side, &mut buffer), want);
+                }
+            }
+        }
     }
 
     #[test]

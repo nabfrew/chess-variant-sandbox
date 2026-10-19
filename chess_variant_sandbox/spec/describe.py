@@ -35,8 +35,10 @@ from chess_variant_sandbox.spec.schema import (
     WRAP_PAIRS,
     SpecError,
     absent_squares,
+    has_speeds,
     is_simultaneous,
     obstacle_squares,
+    piece_speeds,
     portal_groups,
     simultaneous_switch,
     spy_ids,
@@ -473,6 +475,13 @@ def _describe_piece(
     if piece.get("spy") is True:
         # Schema 27 (Q935a): the rules say what the spy does; the piece says it is one.
         notes.append("is a spy: who still has one decides how play goes (see the rules)")
+    speed = piece.get("speed")
+    if isinstance(speed, int) and not isinstance(speed, bool) and speed > 0:
+        # Schema 28 (Q943a): the rules say what a speed does; the piece says its own.
+        notes.append(
+            f"has speed {speed}: in a round its move is made before a slower piece's "
+            "(see the rules)"
+        )
     facing = piece.get("facing")
     if isinstance(facing, dict):
         # Said as a rule a player could act on rather than as a field: what the piece
@@ -1373,6 +1382,24 @@ def _describe_simultaneous(spec: dict[str, Any], rules: dict[str, Any]) -> list[
             "swap squares, do not collide."
         ),
     ]
+    speeds = {pid: speed for pid, speed in piece_speeds(spec).items() if speed > 0}
+    if speeds and has_speeds(spec):
+        # Schema 28 (Q943a, `docs/plan-speed.md` §2.4, §4.3): the order before the
+        # collision sentence, which then reads only for equal speeds.
+        ranked = "; ".join(
+            f"{', '.join(pid for pid in speeds if speeds[pid] == rank)} {rank}"
+            for rank in sorted(set(speeds.values()), reverse=True)
+        )
+        lines.append(
+            f"Each piece has a speed ({ranked}; every other piece 0). When the two moving "
+            "pieces differ in speed, the faster move is made first, as a move of an "
+            "alternating game, and if it ends the game the round ends there. The slower "
+            "move is then made if its piece still stands where it was and the move can "
+            "still be made on that board: onto a square the faster piece now holds it is a "
+            "capture, if the piece may capture there. Otherwise the slower move is void and "
+            "its piece stays, or is lost with its piece. So pieces of different speeds never "
+            "collide or swap; pieces of equal speed move at once, as above."
+        )
     if rest:
         lines.append(
             "The piece that made a player's move in a round rests: it may not make that "

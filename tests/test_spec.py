@@ -1044,6 +1044,8 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_P}/pieces": {"minItems": 1, "maxItems": 24},
     f"{_PIECE}/id": {"minLength": 1, "maxLength": 2},
     f"{_PIECE}/value": {"minimum": 0, "maximum": 100},
+    # Schema 28 (Q943a): a speed is a rank of at least 1; 0 is the default left out.
+    f"{_PIECE}/speed": {"minimum": 1},
     # Q925: no minItems (a drop-stock piece or an unmoved portal type has no moves) and no
     # cap on vectors (the validator has none; `archive/hex-glinski-hexagon.json` lists 12).
     f"{_PIECE}/moves": {"maxItems": 12},

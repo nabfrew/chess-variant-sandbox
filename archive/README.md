@@ -725,9 +725,11 @@ half of every game running from each other, with each of schema 27's three switc
 three. Pre-registered in §5 and §5.1 before any game was played, graded in §5.2;
 `tests/test_showcases_q942.py` holds criterion K8, the mechanism without players.
 
-- **`gardner-in-rounds-resting`** (`4da669bb3d50`, S1): `rest`, the piece that moved may not move the
-  next round. Kept because it is the remedy: the chase falls from 0.54 of rounds to 0.01 and the game
-  is decided, mostly by striking a king that had just moved and so had to stand.
+- **`gardner-in-rounds-resting`** (`4da669bb3d50`, S1, **retired by Q962c**): `rest`, the piece that
+  moved may not move the next round. It was the remedy: the chase falls from 0.54 of rounds to 0.01
+  and the game is decided, mostly by striking a king that had just moved and so had to stand. That is
+  also how `breather` is won, and the two switches it lacks touch under one round a game and the 0.12
+  of games where both kings fall together, so it left as a near copy (*Previews retired*, below).
 - **`gardner-in-rounds-where-swaps-collide`** (`7985900696d7`, S2, **retired by Q962b**):
   `swap: "collision"`, two pieces trading squares meet. It plays a short game (15 plies) of queen
   raids that the ladder cannot read.
@@ -737,9 +739,9 @@ three. Pre-registered in §5 and §5.1 before any game was played, graded in §5
 - **`breather`** (`632c199e4589`, S4): all three, the candidate game.
   **In the library since Q934 (2026-10-17)**, no longer a preview: the library's first royal game
   played in rounds, Gardner's board and army made decisive in rounds (0.971 of games) by the three
-  switches together, where the plain game draws seven games in eight. S1 to S3 stayed previews; since
-  Q962b only S1 does, kept because it plays well (viable, decided, even) and shows that `rest` alone
-  does most of the work, while S2 and S3 left for their play. Named
+  switches together, where the plain game draws seven games in eight. S1 to S3 stayed previews; S2
+  and S3 left for their play (Q962b), and S1, which played well, as a near copy of this game
+  (Q962c). Named
   *gardner in rounds against the chase* (`gardner-in-rounds-against-the-chase.json`) until Q962
   (2026-10-18), which renamed it and rewrote its description to say what the game is in its own
   terms, since a visitor has never seen the chase and the previews that show it may go; the hash did
@@ -843,9 +845,15 @@ and its rule fired in 9 of 784 graded games), `gardner-in-rounds-with-the-initia
 a lean to the token's holder), `gardner-in-rounds-where-swaps-collide` (a queen raid over in 16
 plies, unread by the ladder), `gardner-in-rounds-scored` (drawn by repetition; its own criterion
 missed) and `gardner-with-spies` (*too weak* by its study, a drawn epilogue, and the first seat 45 of
-46 decided games at the top). Two stay previews: `gardner-in-rounds-resting` and
+46 decided games at the top). Two stayed previews: `gardner-in-rounds-resting` and
 `gardner-with-spies-resting`. The six files moved unchanged to `tests/_retired_<stem>.json` (hyphens as underscores), where
 the showcase tests still read them (`tests/retired_specs.py`, `RETIRED_PREVIEWS`); no file was
 deleted, their runs stay in `runs/`, and on the site each is *retired* at the next deploy, its page,
 matches and ratings kept. `pieces[].beats` and `tie: "initiative"` lost their only showcase and are
 recorded as gaps on purpose (`schema-showcase-coverage.md` rows 65 and 67).
+
+**Q962c (2026-10-19)** retired `gardner-in-rounds-resting` the same way, to
+`tests/_retired_gardner_in_rounds_resting.json`: it played well, but as a near copy of `breather`,
+the same board, army and rest without the swap collision and the material score, won the same way
+and different in play only where those two switches fire (*Q962c* in the previews record). One
+preview is left, `gardner-with-spies-resting`.

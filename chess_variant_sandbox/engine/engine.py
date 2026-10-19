@@ -280,8 +280,12 @@ class Engine:
     ) -> tuple[GameState, tuple[PhaseStep, ...], tuple[tuple[int, int, int], ...]]:
         """``apply_round``, what the wild pieces did, and what the meetings did: one
         ``(event, square, player)`` per collision (0, the winner or -1), void move (1),
-        tie the initiative decided (2), pair barred (3) and, under schema 27's
-        `swap: "collision"`, swap that met (4, the winner or -1), for a page to draw."""
+        tie the initiative decided (2), pair barred (3), under schema 27's
+        `swap: "collision"` swap that met (4, the winner or -1), and under schema 28's
+        speeds a round made in order (5, the faster move's destination and player), a slower
+        move lost with its piece (6, its origin) or never played because the faster move
+        ended the game (7), for a page to draw; a slower move the faster one made void is
+        a void move (1)."""
         packed, phase, events = self.core.apply_round(_pack(state), first, second)
         return (
             _unpack(packed),

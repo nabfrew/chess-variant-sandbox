@@ -2352,9 +2352,21 @@ def _add_train(sub: Any) -> None:
         "roster's net must resolve on this ruleset (an accepted store under nets/, or --replay-net)",
     )
     train.add_argument(
-        "--replay-net", default=None,
-        help="with --replay: the replay roster's net's <ruleset-hash>-<procedure>.net, registered "
-        "in this process as the parent is (a refused net, e.g. a guard's generation 0)",
+        "--replay-net", nargs="+", default=None,
+        help="with --replay: a replay roster's net's <ruleset-hash>-<procedure>.net, registered "
+        "in this process as the parent is (a refused net, e.g. a guard's generation 0); with "
+        "--chain, one for each link's net that does not resolve on its own",
+    )
+    train.add_argument(
+        "--chain", action="store_true",
+        help="with --replay: chain the replay set (plan-teacher §9.17.4, E3b): the parent's "
+        "new games, then the parent's own replay set behind them, link by link",
+    )
+    train.add_argument(
+        "--harvest-link", type=int, default=None, metavar="K",
+        help="with --harvest-only: play and harvest one part of the union alone, under this "
+        "procedure's teacher: 0 the new games, 1 the replay set one generation back, 2 two "
+        "back (E3b); the game ids start at 0, and joined in order the parts are the union",
     )
     train.add_argument(
         "--also-harvest", nargs="+", choices=("C", "K"), default=(),
@@ -2395,6 +2407,7 @@ def _cmd_train(args: argparse.Namespace) -> int:
             Procedure,
             generation,
             replayed,
+            replayed_deep,
         )
         from chess_variant_sandbox.agents.training.store import (
             read_parent,
@@ -2435,18 +2448,25 @@ def _cmd_train(args: argparse.Namespace) -> int:
             stored = json.loads(Path(args.replay).read_text(encoding="utf-8"))
             if "recipe" not in stored:
                 raise ValueError(f"{args.replay} holds no recipe to replay")
-            base = replayed(base, Procedure.from_dict(stored["recipe"]))
+            # E3b (§9.17.4): --chain keeps the parent's own replay set behind its new games.
+            chain = replayed_deep if args.chain else replayed
+            base = chain(base, Procedure.from_dict(stored["recipe"]))
             assert base.replay is not None
-            if args.replay_net:
-                net, net_blob = read_parent(args.replay_net, compiled.hash)
-                if net != base.replay.net:
-                    raise ValueError(f"{args.replay_net} is not the replay roster's net "
-                                     f"{base.replay.net.procedure} by its bytes")
+            links = base.replay.links
+            for path in args.replay_net or ():
+                net, net_blob = read_parent(path, compiled.hash)
+                if net not in [link.net for link in links]:
+                    names = ", ".join(link.net.procedure for link in links)
+                    raise ValueError(f"{path} is not the replay roster's net "
+                                     f"({names}) by its bytes")
                 register_parent(compiled.hash, net, net_blob)
+            for depth, link in enumerate(links, start=1):
+                print(f"  replay link {depth}: net={link.net.procedure}'s schedule, "
+                      f"{link.games} games a pairing, seed {link.seed}")
         elif args.replay_net:
             raise ValueError("--replay-net goes with --replay")
-            print(f"  replay set: {base.replay.net.procedure}'s schedule, "
-                  f"{base.replay.games} games a pairing, seed {base.replay.seed}")
+        elif args.chain:
+            raise ValueError("--chain goes with --replay")
         procedure = base.with_(**changes)
     except (ValueError, OSError) as error:
         print(f"train: {error}", file=sys.stderr)
@@ -2463,19 +2483,39 @@ def _cmd_train(args: argparse.Namespace) -> int:
     if args.also_harvest and not args.harvest_only:
         print("train: --also-harvest goes with --harvest-only", file=sys.stderr)
         return 2
+    if args.harvest_link is not None and (not args.harvest_only or args.also_harvest):
+        print("train: --harvest-link goes with --harvest-only, without --also-harvest",
+              file=sys.stderr)
+        return 2
     if args.duel_only:
         return _duel_only(args, spec, compiled.hash, procedure, workers)
     if args.harvest_only:
         # Q658: the positions alone, with their line, for procedures that relabel them
         # (`--data ... --td-lambda L`); the digest says whether they are a stored net's.
-        from chess_variant_sandbox.agents.training.data import harvest, self_play
+        from chess_variant_sandbox.agents.training.data import (
+            harvest,
+            link_count,
+            link_games,
+            self_play,
+        )
 
         if not args.save_data:
             print("train: --harvest-only needs --save-data", file=sys.stderr)
             return 2
         if args.also_harvest:
             return _harvest_arms(args, spec, procedure, workers)
-        records = self_play(spec, procedure, workers=workers)
+        if args.harvest_link is not None:
+            # E3b (§9.17.4): one part of the union alone, under this procedure's teacher.
+            if not 0 <= args.harvest_link < link_count(procedure):
+                print(f"train: --harvest-link {args.harvest_link} is not a part of procedure "
+                      f"{procedure.digest}'s union (0..{link_count(procedure) - 1})",
+                      file=sys.stderr)
+                return 2
+            print(f"  harvesting part {args.harvest_link} of {link_count(procedure)} of "
+                  f"procedure {procedure.digest}'s union, teacher {procedure.teacher}")
+            records = link_games(spec, procedure, args.harvest_link, workers=workers)
+        else:
+            records = self_play(spec, procedure, workers=workers)
         harvested = harvest(spec, records, procedure, workers=workers, report=print)
         print(f"  positions saved to {harvested.save(args.save_data)}")
         print(

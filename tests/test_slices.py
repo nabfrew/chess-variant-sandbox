@@ -285,6 +285,19 @@ LIBRARY = test_index_quality.RUNS
 # the term and were re-scored (still not viable). Every library `canonical.json` carries the
 # tree's own reading again; the replaced measurements, with the stamp this window held, are kept
 # under each game's `runs/<hash>/previous/` (`docs/reference/replay-2026-10-17b.md`).
+#
+# **Opened 2026-10-19 by Q943a** (schema 28, speed in rounds): `spec/complexity.py` and
+# `engine/engine.py` move `metrics` (`FROZEN_METRICS`) with no number on a library game (none
+# declares a speed), and the core moves the build fingerprint. The window is the stamp the
+# library carries now; **the library replay owed with Q961 empties it**.
+#
+# **Emptied 2026-10-19 by Q966**, that replay: the 91 library games (90 and one preview)
+# re-played, re-analysed and re-scored on core `9c09c4929d2fdc4a` under `metrics`
+# "a10833f919319aab" and `analysis` "031be810615f81e7" (all 93,184 records equal; no score or
+# verdict moved; 264 run `index-v12.json` files moved at `description_words` alone, from the
+# description rewrites). Every library `canonical.json` carries the tree's own reading again;
+# the replaced measurements, with the stamp this window held, are kept under each game's
+# `runs/<hash>/previous/` (`docs/reference/replay-2026-10-19.md`).
 STALE_WINDOW: dict[str, str] = {}
 
 

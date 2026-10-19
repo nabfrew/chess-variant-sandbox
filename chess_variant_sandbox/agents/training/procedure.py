@@ -133,6 +133,12 @@ class Replay:
 
     ``Replay.of(parent_recipe)`` is the one way E1 builds it: the parent's *new* games, never
     its own replay set, so the data stay about twice a generation's (§9.13.3).
+
+    **The chain** (E3b, plan-teacher §9.17.4): ``prior`` is the replay set behind this one,
+    the parent's own replay set, so a game's earliest generations' games never leave the
+    union. ``links`` walks it: one generation back, then two back, and so on. Each link is a
+    ``Replay`` of its own, so each roster may name only its own net. ``prior`` enters the
+    digest only when set, so every one-link replay keeps its name. ``replayed_deep`` builds it.
     """
 
     agents: tuple[str, ...]
@@ -140,6 +146,7 @@ class Replay:
     seed: int
     opening_plies: int
     net: Parent
+    prior: Replay | None = None
 
     def __post_init__(self) -> None:
         if not self.agents:
@@ -176,23 +183,39 @@ class Replay:
             net=parent_recipe.parent,
         )
 
+    @property
+    def links(self) -> tuple[Replay, ...]:
+        """This replay set and every one behind it, nearest first (one back, two back, ...)."""
+        out: list[Replay] = []
+        link: Replay | None = self
+        while link is not None:
+            out.append(link)
+            link = link.prior
+        return tuple(out)
+
     def as_dict(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "agents": list(self.agents),
             "games": self.games,
             "seed": self.seed,
             "opening_plies": self.opening_plies,
             "net": asdict(self.net),
         }
+        # E3b: absent unless the replay chains, so no one-link replay's name moves.
+        if self.prior is not None:
+            data["prior"] = self.prior.as_dict()
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Replay:
+        prior = data.get("prior")
         return cls(
             agents=tuple(data["agents"]),
             games=int(data["games"]),
             seed=int(data["seed"]),
             opening_plies=int(data["opening_plies"]),
             net=Parent(**data["net"]),
+            prior=cls.from_dict(prior) if prior is not None else None,
         )
 
 
@@ -270,7 +293,8 @@ class Procedure:
     # Q712 (plan-teacher §9.13.3, E1): a generation's replay set, the parent's own training
     # games played again beside the new ones and labelled by this procedure's teacher
     # (`Replay`). Left out of the digest when unset, so no existing name moves; set, the
-    # digest carries the replay schedule and its net's weights' SHA-256.
+    # digest carries the replay schedule and its net's weights' SHA-256. E3b (§9.17.4): it
+    # may chain (`Replay.prior`, `replayed_deep`), every link replayed in order.
     replay: Replay | None = None
 
     def __post_init__(self) -> None:
@@ -541,6 +565,20 @@ def replayed(child: Procedure, parent_recipe: Procedure) -> Procedure:
             f"{child.parent.procedure}'s: a replay set is the parent's own games"
         )
     return child.with_(replay=Replay.of(parent_recipe))
+
+
+def replayed_deep(child: Procedure, parent_recipe: Procedure) -> Procedure:
+    """E3b's chained child (plan-teacher §9.17.4): ``child`` with the parent's new games as
+    its replay set and, behind them, the parent's own replay set, whole (so recursively
+    every link the parent carried).
+
+    On gardner, the child of ``5fe1cb87d4c9`` replays generation 1's games (the parent's
+    new games, ``e03365fe43e7`` playing) and then generation 0's (the parent's replay set,
+    ``db5ef1bc938e`` playing). A parent with no replay set gives ``replayed``'s child.
+    """
+    one = replayed(child, parent_recipe)
+    assert one.replay is not None
+    return one.with_(replay=replace(one.replay, prior=parent_recipe.replay))
 
 
 # The fields that decide which games are played and which positions are sampled: two

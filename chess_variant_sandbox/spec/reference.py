@@ -459,8 +459,8 @@ def _mistakes() -> list[tuple[str, dict[str, Any]]]:
         spec["pieces"].append(copy.deepcopy(_PORTALS["pieces"][-1]))
 
     return [
-        ("A key the language does not have, on the knight: `\"speed\": 2`.",
-         changed(lambda s: s["pieces"][1].update(speed=2))),
+        ("A key the language does not have, on the knight: `\"stamina\": 2`.",
+         changed(lambda s: s["pieces"][1].update(stamina=2))),
         ("A move kind that does not exist: `\"kind\": \"teleport\"`.",
          changed(lambda s: s["pieces"][2]["moves"][0].update(kind="teleport"))),
         ("A square off the board, `f1`, in the setup.",

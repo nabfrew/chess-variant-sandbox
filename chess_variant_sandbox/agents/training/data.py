@@ -59,7 +59,7 @@ from typing import Any
 import numpy as np
 
 from chess_variant_sandbox.agents.nets import encode
-from chess_variant_sandbox.agents.training.procedure import Parent, Procedure
+from chess_variant_sandbox.agents.training.procedure import Parent, Procedure, Replay
 
 Report = Callable[[str], None]
 
@@ -181,6 +181,56 @@ class Dataset:
                 values=data["values"].astype(np.float64) if line else None,
                 teacher=str(data["teacher"]) if "teacher" in data.files else None,
             )
+
+
+def joined(parts: Sequence[Dataset]) -> Dataset:
+    """``parts`` one after another, as one harvest of their games in that order (E3b).
+
+    Each part's game ids are moved past the games before it, so a game's samples stay one
+    run of ids and no TD(λ) line runs from one part's last game into the next one's first
+    (``td_labels`` ends a line where the id changes). Harvests of ``link_games``' parts,
+    joined in link order, are the whole chained harvest, array for array. The parts must
+    agree on the input layout, the teacher and whether they carry the line.
+    """
+    if not parts:
+        raise ValueError("joining needs at least one dataset")
+    first = parts[0]
+    if any(part.n_inputs != first.n_inputs for part in parts):
+        raise ValueError("these datasets are of different input layouts; they cannot be joined")
+    if any(part.teacher != first.teacher for part in parts):
+        teachers = ", ".join(sorted({str(part.teacher) for part in parts}))
+        raise ValueError(f"these datasets were labelled by different teachers ({teachers})")
+    if any(part.has_line != first.has_line for part in parts):
+        raise ValueError("some of these datasets carry their game line and some do not")
+    lengths = np.concatenate([np.diff(part.offsets) for part in parts])
+    offsets = np.zeros(len(lengths) + 1, dtype=np.int64)
+    np.cumsum(lengths, out=offsets[1:])
+    game: np.ndarray | None = None
+    ply: np.ndarray | None = None
+    results: np.ndarray | None = None
+    values: np.ndarray | None = None
+    if first.has_line:
+        before = np.cumsum([0] + [part.games for part in parts[:-1]])
+        game = np.concatenate([
+            np.asarray(part.game, dtype=np.int64) + int(shift)
+            for part, shift in zip(parts, before, strict=True)
+        ]).astype(np.int32)
+        ply = np.concatenate([np.asarray(part.ply) for part in parts]).astype(np.int32)
+        results = np.concatenate([np.asarray(part.results) for part in parts]).astype(np.float64)
+        values = np.concatenate([np.asarray(part.values) for part in parts]).astype(np.float64)
+    return Dataset(
+        n_inputs=first.n_inputs,
+        offsets=offsets,
+        inputs=np.concatenate([part.inputs for part in parts]).astype(np.int32),
+        sides=np.concatenate([part.sides for part in parts]).astype(np.int8),
+        targets=np.concatenate([part.targets for part in parts]).astype(np.float32),
+        games=sum(part.games for part in parts),
+        game=game,
+        ply=ply,
+        results=results,
+        values=values,
+        teacher=first.teacher,
+    )
 
 
 def squash(score: float, scale: float) -> float:
@@ -374,22 +424,32 @@ def self_play(
     With a replay set (Q712, ``Procedure.replay``) the new games come first, in schedule
     order (``new_game_count`` of them), then the replay schedule's games without its
     built-in-only block (``replay_games``), so a harvest of these records is the union
-    E1 trains on, and every arm harvesting them shares its positions.
+    E1 trains on, and every arm harvesting them shares its positions. A chained replay set
+    (E3b, ``Replay.prior``) adds each link in order, one back and then two back, each
+    without its built-in-only block: ``link_games(spec, procedure, k)`` for k = 0, 1, ...
+    concatenated are these records.
     """
+    # A generation's net seat must be the parent the name carries, or it would play the
+    # built-in objective (or another net) under the generation's name; and every replay
+    # link's net its own, checked before any game is played.
+    parent_bytes(spec, procedure)
+    replay_bytes(spec, procedure)
+    games = new_games(spec, procedure, workers)
+    if procedure.replay is not None:
+        games.extend(replay_games(spec, procedure, workers))
+    return games
+
+
+def new_games(spec: dict[str, Any], procedure: Procedure, workers: int = 0) -> list[Any]:
+    """The procedure's own schedule played by the core, without any replay set: link 0."""
     from chess_variant_sandbox.tournament.checkpoint import run_tournament
     from chess_variant_sandbox.tournament.runner import schedule
 
     config = _config(procedure, workers)
-    # A generation's net seat must be the parent the name carries, or it would play the
-    # built-in objective (or another net) under the generation's name.
     parent_bytes(spec, procedure)
     if procedure.opening_plies <= 0:
-        games = list(run_tournament(spec, config).records)
-    else:
-        games = _play_tasks(spec, config, schedule(config), procedure.opening_plies)
-    if procedure.replay is not None:
-        games.extend(replay_games(spec, procedure, workers))
-    return games
+        return list(run_tournament(spec, config).records)
+    return _play_tasks(spec, config, schedule(config), procedure.opening_plies)
 
 
 def _play_tasks(spec: dict[str, Any], config: Any, tasks: list[Any], most: int) -> list[Any]:
@@ -421,11 +481,30 @@ def new_game_count(procedure: Procedure) -> int:
     return len(schedule(_config(procedure, 1)))
 
 
-def _replay_config(procedure: Procedure, workers: int) -> Any:
+def replay_links(procedure: Procedure) -> tuple[Replay, ...]:
+    """The procedure's replay links, nearest first (``Replay.links``); none without a set."""
+    return procedure.replay.links if procedure.replay is not None else ()
+
+
+def link_count(procedure: Procedure) -> int:
+    """How many parts ``self_play``'s records come in: the new games, then each link."""
+    return 1 + len(replay_links(procedure))
+
+
+def _replay_link(procedure: Procedure, link: int) -> Replay:
+    """Replay link ``link`` (1 one back, 2 two back, ...) of ``procedure``."""
+    links = replay_links(procedure)
+    if not 1 <= link <= len(links):
+        raise ValueError(
+            f"replay link {link} is not one of this procedure's "
+            f"({'none' if not links else f'1..{len(links)}'}; 0 is the new games)"
+        )
+    return links[link - 1]
+
+
+def _link_config(replay: Replay, workers: int) -> Any:
     from chess_variant_sandbox.tournament.runner import TournamentConfig
 
-    replay = procedure.replay
-    assert replay is not None
     return TournamentConfig(
         agents=replay.agents,
         games_per_pairing=replay.games,
@@ -441,43 +520,68 @@ def _names_a_net(agent: str) -> bool:
     return net_option(agent) is not None
 
 
-def replay_tasks(procedure: Procedure) -> list[tuple[int, str, str]]:
-    """The replay schedule's games that are played: every task of the parent's schedule
-    (``tournament.runner.schedule``, its seeds as the parent's were) in which some seat
-    names a net. The built-in-only block is left out here, by construction (``Replay``)."""
+def _link_tasks(replay: Replay) -> list[tuple[int, str, str]]:
     from chess_variant_sandbox.tournament.runner import schedule
 
-    if procedure.replay is None:
-        return []
     return [
-        task for task in schedule(_replay_config(procedure, 1))
+        task for task in schedule(_link_config(replay, 1))
         if _names_a_net(task[1]) or _names_a_net(task[2])
     ]
+
+
+def replay_tasks(procedure: Procedure, link: int = 1) -> list[tuple[int, str, str]]:
+    """The replay schedule's games that are played: every task of the parent's schedule
+    (``tournament.runner.schedule``, its seeds as the parent's were) in which some seat
+    names a net. The built-in-only block is left out here, by construction (``Replay``).
+    ``link`` picks a chained set's link (E3b): 1 is one generation back, 2 two back."""
+    if procedure.replay is None:
+        return []
+    return _link_tasks(_replay_link(procedure, link))
+
+
+def _replay_link_games(spec: dict[str, Any], replay: Replay, workers: int) -> list[Any]:
+    from chess_variant_sandbox.tournament.checkpoint import run_tournament
+
+    _checked_bytes(spec, replay.net, "replay roster's")
+    config = _link_config(replay, workers)
+    if replay.opening_plies <= 0:
+        return [
+            record for record in run_tournament(spec, config).records
+            if any(_names_a_net(agent) for agent in record.agents)
+        ]
+    return _play_tasks(spec, config, _link_tasks(replay), replay.opening_plies)
 
 
 def replay_games(spec: dict[str, Any], procedure: Procedure, workers: int = 0) -> list[Any]:
     """The replay set's games (plan-teacher §9.13.3): the parent's own training schedule
     played again by the core on this ruleset, without its built-in-only block, in schedule
     order. The replay roster's net must be the bytes its name carries (``replay_bytes``).
+    A chained set (E3b, §9.17.4) is each link's games in turn, nearest first.
 
     Without a random opening the ordinary runner plays the whole schedule and the
     built-in-only games are dropped from its records, so a game is the runner's game as the
     parent's was; with one, only ``replay_tasks`` are played. Either way the games are a
     pure function of the schedule's seeds, whatever the thread count.
     """
-    from chess_variant_sandbox.tournament.checkpoint import run_tournament
-
-    replay = procedure.replay
-    if replay is None:
+    if procedure.replay is None:
         return []
     replay_bytes(spec, procedure)
-    config = _replay_config(procedure, workers)
-    if replay.opening_plies <= 0:
-        return [
-            record for record in run_tournament(spec, config).records
-            if any(_names_a_net(agent) for agent in record.agents)
-        ]
-    return _play_tasks(spec, config, replay_tasks(procedure), replay.opening_plies)
+    games: list[Any] = []
+    for replay in procedure.replay.links:
+        games.extend(_replay_link_games(spec, replay, workers))
+    return games
+
+
+def link_games(
+    spec: dict[str, Any], procedure: Procedure, link: int, workers: int = 0
+) -> list[Any]:
+    """One part of ``self_play``'s records alone (E3b, plan-teacher §9.17.4): ``link`` 0 is
+    the new games, 1 the replay set one generation back, 2 two back, and so on. Harvested
+    under a procedure's teacher and joined in link order with their games renumbered
+    (``joined``), the parts are the whole harvest of ``self_play``, array for array."""
+    if link == 0:
+        return new_games(spec, procedure, workers)
+    return _replay_link_games(spec, _replay_link(procedure, link), workers)
 
 
 def label_seed(seed: int, ply: int) -> int:
@@ -518,10 +622,12 @@ def parent_bytes(spec: dict[str, Any], procedure: Procedure) -> bytes:
 def replay_bytes(spec: dict[str, Any], procedure: Procedure) -> bytes:
     """The replay roster's net (the parent's parent, Q712) as this process would play it,
     checked against the SHA-256 the replay set carries, as ``parent_bytes`` checks the
-    parent. ``b""`` for a procedure without a replay set."""
+    parent. ``b""`` for a procedure without a replay set. A chained set's every link's net
+    is checked too (E3b); the bytes returned are the nearest link's."""
     if procedure.replay is None:
         return b""
-    return _checked_bytes(spec, procedure.replay.net, "replay roster's")
+    found = [_checked_bytes(spec, link.net, "replay roster's") for link in procedure.replay.links]
+    return found[0]
 
 
 def _checked_bytes(spec: dict[str, Any], net: Parent, role: str) -> bytes:

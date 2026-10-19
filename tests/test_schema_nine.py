@@ -409,7 +409,8 @@ FROZEN: dict[str, tuple[str, str]] = {
     # resting (`rest`, the mechanics of `tests/_simultaneous_resting.json`), where swaps
     # collide (`swap`), scored (`both`), and against the chase (all three, the mechanics of
     # `tests/_simultaneous_scored.json`). New.
-    "archive/gardner-in-rounds-resting.json": ("4da669bb3d50", "f75ed40edaaf4658"),
+    # Q962c, 2026-10-19: `archive/gardner-in-rounds-resting.json` (`4da669bb3d50`/`f75ed40edaaf4658`) retired from the previews
+    # as a near copy of `archive/breather.json` (`docs/reference/previews-2026-10-18.md`), its file kept as `tests/_retired_*.json`; its runs stay.
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-where-swaps-collide.json` (`7985900696d7`/`84d7ffe03c147c54`) retired from the previews
     # (`docs/reference/previews-2026-10-18.md`), its file kept as `tests/_retired_*.json`; its runs stay.
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-scored.json` (`a90a8db7e2dd`/`66e201715549ce34`) retired from the previews

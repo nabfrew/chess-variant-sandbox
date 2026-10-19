@@ -273,7 +273,7 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-with-meek-pawns` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was b793c277f73875c2.
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-with-the-initiative` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was d4228395719912a8.
     "archive/watering-hole": "7b9304551e1aa4e6",  # Q918e, schema 26; Q962: its description, for a player (was b06570f1fcf442e8); 2026-10-18: its description, written as the game's idea (was b2c0fe985587b544)
-    "archive/gardner-in-rounds-resting": "d8b686bb1ae96bac",  # Q942c, schema 27; 2026-10-18: its description, written as the game's idea (was bdd5185ebbb0abf9)
+    # Q962c, 2026-10-19: `archive/gardner-in-rounds-resting` retired from the previews as a near copy of breather (`docs/reference/previews-2026-10-18.md`); the row was d8b686bb1ae96bac.
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-where-swaps-collide` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was 5ecf690c98ed62f8.
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-scored` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was 21bb31cf3d019bd6.
     "archive/breather": "e8fa3ceebdd3d5a3",  # Q942c, schema 27; Q962: its file, name and description (was archive/gardner-in-rounds-against-the-chase, e6b51ce8b7b2e11b); 2026-10-18: its description, written as the game's idea (was 77bebee4de9a7bd8)

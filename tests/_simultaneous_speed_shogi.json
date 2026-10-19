@@ -1,0 +1,190 @@
+{
+  "schema_version": 28,
+  "name": "simultaneous dobutsu with speeds",
+  "description": "Q918a's test spec: dobutsu shogi, drops and promotion, played in rounds.",
+  "board": {
+    "width": 3,
+    "height": 4
+  },
+  "pieces": [
+    {
+      "id": "C",
+      "name": "chick",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "mode": "both"
+        }
+      ],
+      "speed": 1
+    },
+    {
+      "id": "H",
+      "name": "hen",
+      "value": 3,
+      "promoted_from": "C",
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "both"
+        }
+      ],
+      "speed": 2
+    },
+    {
+      "id": "E",
+      "name": "elephant",
+      "value": 2,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "G",
+      "name": "giraffe",
+      "value": 2,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "L",
+      "name": "lion",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "orientation": "rotate",
+    "placements": [
+      {
+        "piece": "E",
+        "squares": [
+          "a1"
+        ]
+      },
+      {
+        "piece": "L",
+        "squares": [
+          "b1"
+        ]
+      },
+      {
+        "piece": "G",
+        "squares": [
+          "c1"
+        ]
+      },
+      {
+        "piece": "C",
+        "squares": [
+          "b2"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "royal_capture",
+    "stalemate": "draw",
+    "promotion": [
+      {
+        "piece": "C",
+        "rank": "last",
+        "to": [
+          "H"
+        ],
+        "mandatory": true
+      }
+    ],
+    "drops": {
+      "from_captures": true
+    },
+    "reach": {
+      "piece": "L",
+      "squares": [
+        "a4",
+        "b4",
+        "c4"
+      ],
+      "mirror": true,
+      "result": "win",
+      "safe": true
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 200,
+    "simultaneous": {}
+  },
+  "appearance": {
+    "icons": {
+      "C": "shogi-pawn",
+      "H": "shogi-promoted-pawn",
+      "E": "alfil",
+      "G": "giraffe",
+      "L": "king"
+    }
+  }
+}

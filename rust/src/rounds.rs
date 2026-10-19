@@ -78,6 +78,53 @@ pub const EVENT_BARRED: u8 = 3; // the barred pair's player-0 square, -1
 /// Schema 27 (Q942a, `swap: "collision"`): two pieces that swapped squares met. The square
 /// is player 0's destination (the other's origin), the player the winner or -1 for none.
 pub const EVENT_SWAP: u8 = 4;
+/// Schema 28 (Q943a, `docs/plan-speed.md` §4.2): the two movers' speeds differed and the
+/// round was two moves in order. The square is the faster move's destination, the player
+/// the one who moved first.
+pub const EVENT_ORDER: u8 = 5;
+/// Schema 28: the slower move was lost, its piece taken, moved or changed by the faster
+/// move. The square is the slower move's origin, the player its player.
+pub const EVENT_LOST: u8 = 6;
+/// Schema 28: the faster move ended the game, so the slower was never played. The square
+/// is the slower move's origin (a drop's destination), the player its player. A slower
+/// move made void by the board the faster left is an `EVENT_VOID` (its origin, or a
+/// drop's destination).
+pub const EVENT_UNPLAYED: u8 = 7;
+
+/// What a round's steps wrote that its tail reads (§4 steps 8 to 10): one for the round,
+/// filled by one step at equal speeds and by two in an ordered round (schema 28).
+struct StepFacts {
+    touched: SquareSet,
+    material_changed: bool,
+    promoted: bool,
+    one_way: bool,
+    irreversible_kind: bool,
+    initiative_passed: bool,
+    laid_permanent: bool,
+    key_extra: u64,
+}
+
+impl StepFacts {
+    fn new() -> Self {
+        StepFacts {
+            touched: SquareSet::EMPTY,
+            material_changed: false,
+            promoted: false,
+            one_way: false,
+            irreversible_kind: false,
+            initiative_passed: false,
+            laid_permanent: false,
+            key_extra: 0,
+        }
+    }
+}
+
+/// Each player's move after one step: arrived, stood (a turn, a contact that stays), void.
+struct Step {
+    arriving: [bool; 2],
+    standing: [bool; 2],
+    void: [bool; 2],
+}
 
 impl<'t> Game<'t> {
     fn sim(&self) -> &'t SimTables {
@@ -237,6 +284,14 @@ impl<'t> Game<'t> {
 
     /// Play one round: `moves[0]` by player 0 and `moves[1]` by player 1, each legal for
     /// its player on this board (`generate_legal_for`), resolved together (§2, §4).
+    ///
+    /// Schema 28 (Q943a, `docs/plan-speed.md` §2.4): when the two movers' speeds differ, the
+    /// round is two moves in order instead. The faster is resolved alone, with every piece
+    /// of the slower player standing; the endings are read; then the slower is resolved
+    /// alone on the board the faster left, if its piece still stands unchanged on its origin
+    /// (else it is *lost*) and its word is still offered by its generator (else it is
+    /// *void*). Both steps are `resolve_step`, the one body every round goes through, so an
+    /// equal-speed round (every round of a game without speeds) is the round it always was.
     pub fn make_round(&mut self, moves: [u32; 2]) {
         let t = self.t;
         let sim = self.sim();
@@ -267,16 +322,222 @@ impl<'t> Game<'t> {
         let previous_unmoved = self.unmoved;
         let npc_mark = self.npc_log.len();
 
-        // §2.2, §2.4: who moves, who stands, which moves are void -- from the two choices.
         let plans = [self.plan(0, moves[0]), self.plan(1, moves[1])];
-        let raw = plans.map(|plan| plan.origin != Some(plan.target));
-        let stays = [self.stays_put(&plans[0], 0), self.stays_put(&plans[1], 1)];
+        let mut facts = StepFacts::new();
+        // Schema 28: one emptiness test in every game without speeds.
+        let faster = if sim.speed.is_empty() {
+            None
+        } else {
+            let speeds = [sim.speed[plans[0].piece_type], sim.speed[plans[1].piece_type]];
+            (speeds[0] != speeds[1]).then(|| usize::from(speeds[1] > speeds[0]))
+        };
+        // Each player's move, as the tail reads it: arrived, stood (a turn or a contact that
+        // stays), void, and -- in an ordered round only -- gone (lost or unplayed).
+        let mut arriving = [false; 2];
+        let mut standing = [false; 2];
+        let mut void = [false; 2];
+        let mut gone = [false; 2];
+        let mut ended = false;
+        match faster {
+            None => {
+                let step = self.resolve_step(&plans, [true, true], &mut facts);
+                arriving = step.arriving;
+                standing = step.standing;
+                void = step.void;
+            }
+            Some(f) => {
+                let s = 1 - f;
+                self.round_log.push((EVENT_ORDER, plans[f].target, f as i8));
+                let mut active = [false; 2];
+                active[f] = true;
+                let first = self.resolve_step(&plans, active, &mut facts);
+                arriving[f] = first.arriving[f];
+                standing[f] = first.standing[f];
+                // §2.6: the endings, read after the faster move; one that fires ends the
+                // round there and the slower move is never played.
+                if t.reach_leaves {
+                    self.goal_left_by = self.goal_left(&plans, arriving);
+                }
+                self.check_memo.set([-1, -1]);
+                ended = self.round_goal_ending().is_some();
+                let plan = plans[s];
+                let square = plan.origin.unwrap_or(plan.target);
+                if ended {
+                    gone[s] = true;
+                    self.round_log.push((EVENT_UNPLAYED, square, s as i8));
+                } else if plan
+                    .origin
+                    .is_some_and(|o| facts.touched.get(o) || self.board[o] != plan.mover)
+                {
+                    // §2.5 F: the piece that chose is no longer there as itself.
+                    gone[s] = true;
+                    self.round_log.push((EVENT_LOST, square, s as i8));
+                } else if !self.offered(s, plan.m) {
+                    // §2.5 A to H: the word is not one the piece could make on this board.
+                    // A single void move, never part of a void run (§2.8).
+                    self.round_log.push((EVENT_VOID, square, s as i8));
+                } else {
+                    let mut active = [false; 2];
+                    active[s] = true;
+                    let second = self.resolve_step(&plans, active, &mut facts);
+                    arriving[s] = second.arriving[s];
+                    standing[s] = second.standing[s];
+                }
+            }
+        }
+        let StepFacts {
+            mut touched,
+            mut material_changed,
+            promoted,
+            one_way,
+            irreversible_kind,
+            initiative_passed,
+            laid_permanent,
+            key_extra,
+        } = facts;
+
+        // §4 step 8: the wild pieces, once a round -- not when the round ended after the
+        // faster move (§2.6).
+        if !ended && t.has_npcs && self.npc_phase() {
+            material_changed = true;
+        }
+        for &(from, to, _) in &self.npc_log[npc_mark..] {
+            touched.set(from);
+            touched.set(to);
+        }
+
+        // Schema 27 (Q942a, `rest`): each player's moved piece rests where it ended the round
+        // (its origin if it stood, turned or was void), if that square still holds that
+        // player's piece; a piece eliminated, eaten or turned over rests nowhere, and nor
+        // does a slower move lost or unplayed (schema 28).
+        if sim.rest {
+            for i in 0..2 {
+                let end = if arriving[i] { Some(plans[i].target) } else { plans[i].origin };
+                self.rest[i] = match end {
+                    Some(square)
+                        if !gone[i]
+                            && self.board[square] != 0
+                            && t.owner_of(self.board[square]) == i =>
+                    {
+                        square as i16
+                    }
+                    _ => -1,
+                };
+            }
+        }
+
+        // §4 step 9: the void run and the bars (§2.7). Only an equal-speed round can be
+        // void for both.
+        let mut run = NO_BAR;
+        if void[0] && void[1] {
+            let pair = [
+                plans[0].origin.expect("a void move has an origin") as i16,
+                plans[1].origin.expect("a void move has an origin") as i16,
+            ];
+            if self.void_run == pair {
+                if !self.bars.contains(&pair) {
+                    self.bars.push(pair);
+                    self.bars.sort_unstable();
+                }
+                self.round_log.push((EVENT_BARRED, pair[0] as usize, -1));
+            } else {
+                run = pair;
+            }
+        }
+        if run != NO_BAR && (touched.get(run[0] as usize) || touched.get(run[1] as usize)) {
+            run = NO_BAR;
+        }
+        self.void_run = run;
+        self.bars.retain(|bar| !touched.get(bar[0] as usize) && !touched.get(bar[1] as usize));
+
+        // §4 step 10's bookkeeping: rights, the leaving goal, the clocks, the key.
+        for i in 0..2 {
+            if arriving[i] || standing[i] {
+                if let Some(origin) = plans[i].origin {
+                    self.unmoved.clear(origin);
+                }
+                self.unmoved.clear(plans[i].target);
+            }
+        }
+        if t.reach_leaves {
+            self.goal_left_by = self.goal_left(&plans, arriving);
+        }
+        let rights_changed = self.unmoved != previous_unmoved;
+        let progress = material_changed || promoted || one_way || laid_permanent;
+        let irreversible =
+            progress || irreversible_kind || rights_changed || initiative_passed;
+        self.halfmove = if progress { 0 } else { self.halfmove + 2 };
+        self.ply += 2;
+        self.key = self.working_key ^ key_extra ^ standoff_before ^ self.standoff_key();
+        self.history.push(self.key);
+        if irreversible {
+            self.window = self.history.len() - 1;
+        }
+        self.check_memo.set([-1, -1]);
+    }
+
+    /// Who left a goal this round (`reach.on: "leave"`): a move that arrived from a goal
+    /// square of its player, by the counted type, whose piece still stands where it went.
+    /// `goal_left_by`'s values: 2 both, 0 or 1 that player, -1 neither.
+    fn goal_left(&self, plans: &[Plan; 2], arriving: [bool; 2]) -> i8 {
+        let t = self.t;
+        let reach = t.reach.as_ref().expect("reach_leaves without a reach rule");
+        let mut left = [false; 2];
+        for i in 0..2 {
+            let Some(origin) = plans[i].origin else { continue };
+            let value = self.board[plans[i].target];
+            left[i] = arriving[i]
+                && reach.squares[i][origin]
+                && (reach.piece_type < 0 || plans[i].piece_type == reach.piece_type as usize)
+                && value != 0
+                && t.owner_of(value) == i;
+        }
+        match left {
+            [true, true] => 2,
+            [true, false] => 0,
+            [false, true] => 1,
+            _ => -1,
+        }
+    }
+
+    /// Schema 28 (§2.5): whether `player`'s generator offers the word `m` on this board --
+    /// the movement tables, blocks, screens, modes, `captures`, regions, conditions, drop
+    /// regions and the promotion offer -- without the list-level filters (`must_capture`,
+    /// the bars, the rest, `forbid_immobility`), which were asked on the round's board.
+    fn offered(&mut self, player: usize, m: u32) -> bool {
+        let saved = self.side;
+        self.side = player;
+        let mut moves = Vec::new();
+        self.generate_pseudo_legal(&mut moves);
+        self.side = saved;
+        moves.contains(&m)
+    }
+
+    /// §2.2 to §4 step 7 for the players `active` names: both in an equal-speed round, one
+    /// at a time in an ordered one (schema 28), where the other player's pieces all stand.
+    /// Writes the board and accumulates what the round's tail needs into `facts`.
+    #[inline(always)]
+    fn resolve_step(&mut self, plans: &[Plan; 2], active: [bool; 2], facts: &mut StepFacts) -> Step {
+        let t = self.t;
+        let sim = self.sim();
+        let touched = &mut facts.touched;
+
+        // §2.2, §2.4: who moves, who stands, which moves are void -- from the two choices.
+        let raw = [
+            active[0] && plans[0].origin != Some(plans[0].target),
+            active[1] && plans[1].origin != Some(plans[1].target),
+        ];
+        let stays = [
+            active[0] && self.stays_put(&plans[0], 0),
+            active[1] && self.stays_put(&plans[1], 1),
+        ];
         let mut standing = [false; 2];
         for i in 0..2 {
             let j = 1 - i;
             let own_target = stays[i] && t.owner_of(self.board[plans[i].target]) == i;
             let vacated = raw[j] && !stays[j] && plans[j].origin == Some(plans[i].target);
-            standing[i] = plans[i].kind == MOVE_ROTATE || (stays[i] && (own_target || !vacated));
+            standing[i] =
+                active[i] && (plans[i].kind == MOVE_ROTATE || (stays[i] && (own_target || !vacated)));
         }
         let moving = [raw[0] && !standing[0], raw[1] && !standing[1]];
         // Schema 27 (Q942a, `swap: "collision"`): two moves each ending on the other's
@@ -302,20 +563,14 @@ impl<'t> Game<'t> {
         }
         let arriving = [moving[0] && !void[0], moving[1] && !void[1]];
 
-        let mut touched = SquareSet::EMPTY;
-        let mut material_changed = false;
-        let mut promoted = false;
-        let mut one_way = false;
-        let mut irreversible_kind = false;
-        let mut initiative_passed = false;
         for i in 0..2 {
             let made = arriving[i] || standing[i];
             if made {
-                one_way |= t.is_one_way(plans[i].piece_type);
+                facts.one_way |= t.is_one_way(plans[i].piece_type);
                 let kind = plans[i].kind;
                 let plain_portal = kind == MOVE_PORTAL && move_promotion(plans[i].m) == 0;
-                irreversible_kind |= kind != MOVE_NORMAL && kind != MOVE_ROTATE && !plain_portal;
-                promoted |= kind == MOVE_PROMOTION
+                facts.irreversible_kind |= kind != MOVE_NORMAL && kind != MOVE_ROTATE && !plain_portal;
+                facts.promoted |= kind == MOVE_PROMOTION
                     || (kind == MOVE_PORTAL && move_promotion(plans[i].m) != 0);
             }
         }
@@ -343,6 +598,9 @@ impl<'t> Game<'t> {
         // §4 step 3: each move's own consequences, as if alone, up to the meeting.
         let mut arrival = [0u8; 2];
         for i in 0..2 {
+            if !active[i] {
+                continue;
+            }
             let plan = plans[i];
             if plan.kind == MOVE_ROTATE {
                 let origin = plan.origin.expect("a rotation has an origin");
@@ -353,7 +611,7 @@ impl<'t> Game<'t> {
             if standing[i] {
                 let there = self.board[plan.target];
                 if there != 0 && t.owner_of(there) == i {
-                    material_changed |= self.contact_in_place(i, &plan, &mut touched);
+                    facts.material_changed |= self.contact_in_place(i, &plan, touched);
                 }
                 continue;
             }
@@ -376,7 +634,7 @@ impl<'t> Game<'t> {
                 }
                 self.write(plan.target, 0);
                 touched.set(plan.target);
-                material_changed = true;
+                facts.material_changed = true;
             }
             arrival[i] = value;
         }
@@ -388,7 +646,7 @@ impl<'t> Game<'t> {
         if collided {
             let square = plans[0].target;
             touched.set(square);
-            material_changed = true;
+            facts.material_changed = true;
             let types = [t.type_of(arrival[0]), t.type_of(arrival[1])];
             let beats = [
                 sim.beats(t.n_types, types[0], types[1]),
@@ -400,7 +658,7 @@ impl<'t> Game<'t> {
                 _ if sim.tie == 1 => {
                     let holder = self.initiative as usize;
                     self.initiative = (1 - holder) as i8;
-                    initiative_passed = true;
+                    facts.initiative_passed = true;
                     self.round_log.push((EVENT_INITIATIVE, square, holder as i8));
                     Some(holder)
                 }
@@ -435,7 +693,7 @@ impl<'t> Game<'t> {
         } else if swapped {
             // Both destinations were emptied by the departures; each piece is taken where it
             // would have landed, on the other's origin.
-            material_changed = true;
+            facts.material_changed = true;
             touched.set(plans[0].target);
             touched.set(plans[1].target);
             let types = [t.type_of(arrival[0]), t.type_of(arrival[1])];
@@ -449,7 +707,7 @@ impl<'t> Game<'t> {
                 _ if sim.tie == 1 => {
                     let holder = self.initiative as usize;
                     self.initiative = (1 - holder) as i8;
-                    initiative_passed = true;
+                    facts.initiative_passed = true;
                     self.round_log.push((EVENT_INITIATIVE, plans[holder].target, holder as i8));
                     Some(holder)
                 }
@@ -485,7 +743,7 @@ impl<'t> Game<'t> {
                 let occupant = self.board[square];
                 debug_assert!(occupant == 0 || t.owner_of(occupant) != i, "an arrival on its own piece");
                 if occupant != 0 {
-                    material_changed = true;
+                    facts.material_changed = true;
                     takings.push(self.taking(i, &plans[i], occupant, square, true));
                 }
                 self.write(square, arrival[i]);
@@ -501,7 +759,7 @@ impl<'t> Game<'t> {
             if victim == 0 || t.owner_of(victim) == i || self.board[origin] != plan.mover {
                 continue;
             }
-            material_changed |= self.contact_in_place(i, &plan, &mut touched);
+            facts.material_changed |= self.contact_in_place(i, &plan, touched);
         }
 
         // §4 step 5: what the captures cause.
@@ -518,7 +776,7 @@ impl<'t> Game<'t> {
                 self.points[taken.captor] += t.npc_bounty[taken.square];
             }
             if taken.strikes {
-                self.strike_after(taken, &mut touched);
+                self.strike_after(taken, touched);
             }
         }
 
@@ -544,17 +802,15 @@ impl<'t> Game<'t> {
                 if hit {
                     self.write(square, 0);
                     touched.set(square);
-                    material_changed = true;
+                    facts.material_changed = true;
                 }
             }
         }
 
         // §4 step 7: claims, by the pieces that ended a move on a square and stand there.
-        let mut laid_permanent = false;
-        let mut key_extra = 0u64;
         if let Some(rule) = t.territory.as_ref() {
             for i in 0..2 {
-                let square = if plans[i].kind == MOVE_ROTATE {
+                let square = if active[i] && plans[i].kind == MOVE_ROTATE {
                     plans[i].origin.expect("a rotation has an origin")
                 } else if arriving[i] {
                     plans[i].target
@@ -574,103 +830,15 @@ impl<'t> Game<'t> {
                         self.colour_counts[before as usize - 1] -= 1;
                     }
                     if rule.repaints {
-                        key_extra ^= t.zobrist_colour(before, square) ^ t.zobrist_colour(want, square);
+                        facts.key_extra ^= t.zobrist_colour(before, square) ^ t.zobrist_colour(want, square);
                     } else {
-                        laid_permanent = true;
+                        facts.laid_permanent = true;
                     }
                 }
             }
         }
 
-        // §4 step 8: the wild pieces, once a round.
-        if t.has_npcs && self.npc_phase() {
-            material_changed = true;
-        }
-        for &(from, to, _) in &self.npc_log[npc_mark..] {
-            touched.set(from);
-            touched.set(to);
-        }
-
-        // Schema 27 (Q942a, `rest`): each player's moved piece rests where it ended the round
-        // (its origin if it stood, turned or was void), if that square still holds that
-        // player's piece; a piece eliminated, eaten or turned over rests nowhere.
-        if sim.rest {
-            for i in 0..2 {
-                let end = if arriving[i] { Some(plans[i].target) } else { plans[i].origin };
-                self.rest[i] = match end {
-                    Some(square)
-                        if self.board[square] != 0 && t.owner_of(self.board[square]) == i =>
-                    {
-                        square as i16
-                    }
-                    _ => -1,
-                };
-            }
-        }
-
-        // §4 step 9: the void run and the bars (§2.7).
-        let mut run = NO_BAR;
-        if void[0] && void[1] {
-            let pair = [
-                plans[0].origin.expect("a void move has an origin") as i16,
-                plans[1].origin.expect("a void move has an origin") as i16,
-            ];
-            if self.void_run == pair {
-                if !self.bars.contains(&pair) {
-                    self.bars.push(pair);
-                    self.bars.sort_unstable();
-                }
-                self.round_log.push((EVENT_BARRED, pair[0] as usize, -1));
-            } else {
-                run = pair;
-            }
-        }
-        if run != NO_BAR && (touched.get(run[0] as usize) || touched.get(run[1] as usize)) {
-            run = NO_BAR;
-        }
-        self.void_run = run;
-        self.bars.retain(|bar| !touched.get(bar[0] as usize) && !touched.get(bar[1] as usize));
-
-        // §4 step 10's bookkeeping: rights, the leaving goal, the clocks, the key.
-        for i in 0..2 {
-            if arriving[i] || standing[i] {
-                if let Some(origin) = plans[i].origin {
-                    self.unmoved.clear(origin);
-                }
-                self.unmoved.clear(plans[i].target);
-            }
-        }
-        if t.reach_leaves {
-            let reach = t.reach.as_ref().expect("reach_leaves without a reach rule");
-            let mut left = [false; 2];
-            for i in 0..2 {
-                let Some(origin) = plans[i].origin else { continue };
-                let value = self.board[plans[i].target];
-                left[i] = arriving[i]
-                    && reach.squares[i][origin]
-                    && (reach.piece_type < 0 || plans[i].piece_type == reach.piece_type as usize)
-                    && value != 0
-                    && t.owner_of(value) == i;
-            }
-            self.goal_left_by = match left {
-                [true, true] => 2,
-                [true, false] => 0,
-                [false, true] => 1,
-                _ => -1,
-            };
-        }
-        let rights_changed = self.unmoved != previous_unmoved;
-        let progress = material_changed || promoted || one_way || laid_permanent;
-        let irreversible =
-            progress || irreversible_kind || rights_changed || initiative_passed;
-        self.halfmove = if progress { 0 } else { self.halfmove + 2 };
-        self.ply += 2;
-        self.key = self.working_key ^ key_extra ^ standoff_before ^ self.standoff_key();
-        self.history.push(self.key);
-        if irreversible {
-            self.window = self.history.len() - 1;
-        }
-        self.check_memo.set([-1, -1]);
+        Step { arriving, standing, void }
     }
 
     /// Take back the last `make_round`.
@@ -784,6 +952,18 @@ impl<'t> Game<'t> {
     /// (Q942a, X1), a win for the player ahead under `rules.scoring`, with the ending's own
     /// reason, and a draw only on equal scores.
     pub fn round_ending_before_the_clocks(&self) -> Option<Outcome> {
+        if let Some(outcome) = self.round_goal_ending() {
+            return Some(outcome);
+        }
+        if !self.history.is_empty() && self.repetition_count() >= self.t.repetition_draw {
+            return Some(Outcome { winner: -1, reason: Reason::Repetition });
+        }
+        None
+    }
+
+    /// The endings of `round_ending_before_the_clocks` that a board fulfils, without
+    /// repetition: what an ordered round reads after its faster move (schema 28, §2.6).
+    fn round_goal_ending(&self) -> Option<Outcome> {
         let t = self.t;
         let scored = t
             .scoring
@@ -877,9 +1057,6 @@ impl<'t> Game<'t> {
                     return Some(outcome);
                 }
             }
-        }
-        if !self.history.is_empty() && self.repetition_count() >= t.repetition_draw {
-            return Some(Outcome { winner: -1, reason: Reason::Repetition });
         }
         None
     }

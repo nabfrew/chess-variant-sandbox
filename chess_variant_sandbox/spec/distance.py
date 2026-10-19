@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from chess_variant_sandbox.spec.complexity import measure_complexity
+from chess_variant_sandbox.spec.complexity import expand_symmetry, measure_complexity
 from chess_variant_sandbox.spec.schema import (
     REPETITION_NEVER,
     STOCK_UNLIMITED,
@@ -36,6 +36,7 @@ from chess_variant_sandbox.spec.schema import (
     absent_squares,
     facing_turns,
     obstacle_squares,
+    piece_speeds,
     portal_groups,
     portal_map_shape,
     promotion_squares,
@@ -419,6 +420,41 @@ def _simultaneous_features(spec: dict[str, Any]) -> dict[str, float]:
         # Schema 27 (Q935a): the spy, so a spy game is never at distance zero from its
         # round twin; the count of spy types, so two spies a side read apart from one.
         "spy_types": float(len(spy_ids(spec))),
+        **_speed_features(pieces),
+    }
+
+
+def _speed_features(pieces: list[dict[str, Any]]) -> dict[str, float]:
+    """Schema 28 (Q943a, `docs/plan-speed.md` §4.3): how many ranks of speed, and each type's
+    speed over the top rank read three ways that need no piece id -- by the royal types, by
+    declared value and by how many directions a type moves in -- so a game whose king is the
+    fast piece and one whose knight is read apart, as do two games with different ranks."""
+    speeds = piece_speeds(pieces)
+    top = max(speeds.values(), default=0)
+    if top == 0:
+        return {"speed_ranks": 0.0, "speed_royal": 0.0, "speed_by_value": 0.0, "speed_by_reach": 0.0}
+
+    def weighted(weight: Any) -> float:
+        rows = [(weight(piece), speeds.get(str(piece.get("id")), 0) / top) for piece in pieces]
+        total = sum(w for w, _ in rows)
+        return sum(w * share for w, share in rows) / total if total else 0.0
+
+    def reach(piece: dict[str, Any]) -> float:
+        return float(sum(
+            len(expand_symmetry(tuple(vector), move.get("symmetry", "none")))
+            for move in piece.get("moves") or [] if isinstance(move, dict)
+            for vector in move.get("vectors") or []
+        ))
+
+    def value(piece: dict[str, Any]) -> float:
+        worth = piece.get("value")
+        return float(worth) if isinstance(worth, int | float) and not isinstance(worth, bool) else 0.0
+
+    return {
+        "speed_ranks": float(top),
+        "speed_royal": weighted(lambda piece: 1.0 if piece.get("royal") is True else 0.0),
+        "speed_by_value": weighted(value),
+        "speed_by_reach": weighted(reach),
     }
 
 

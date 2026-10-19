@@ -60,7 +60,7 @@ def _text(spec: dict[str, Any]) -> str:
 
 def _broken() -> dict[str, Any]:
     spec = _written()
-    spec["pieces"][0]["speed"] = 2
+    spec["pieces"][0]["stamina"] = 2
     spec["pieces"][0]["moves"][0]["kind"] = "teleport"
     return spec
 
@@ -82,7 +82,7 @@ class TestTheReading:
         # Every line the validator gives, as it gives them: the paths a person who wrote
         # the file can find, not the form's words.
         assert read["errors"] == validate_spec(designing.settled(spec))
-        assert any(line.startswith("pieces[0] has unknown keys: speed")
+        assert any(line.startswith("pieces[0] has unknown keys: stamina")
                    for line in read["errors"]), read["errors"]
         assert any("got 'teleport'" in line for line in read["errors"]), read["errors"]
 

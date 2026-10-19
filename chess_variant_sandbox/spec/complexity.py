@@ -248,6 +248,24 @@ def _spy_extras(pieces: Any) -> float:
     return _SPY if flagged else 0.0
 
 
+# Schema 28 (Q943a, `docs/plan-speed.md` §4.3): speed is one more rule a player is taught
+# about the round -- unequal speeds move in order, the slower re-read -- charged once for the
+# game, plus a little for each type that declares a speed, since each is a fact about a piece
+# a player has to remember (the hierarchy is the design). Read off the spelling, as the spy is.
+_SPEED = 1.0
+_SPEED_PER_TYPE = 0.25
+
+
+def _speed_extras(pieces: Any) -> float:
+    """What a game's speeds cost: the rule once and each declared speed."""
+    declared = sum(
+        1 for piece in (pieces if isinstance(pieces, list) else [])
+        if isinstance(piece, dict) and isinstance(piece.get("speed"), int)
+        and not isinstance(piece.get("speed"), bool) and piece["speed"] > 0
+    )
+    return _SPEED + _SPEED_PER_TYPE * declared if declared else 0.0
+
+
 def _simultaneous_extras(rule: Any) -> float:
     """The part of `rules.simultaneous`' charge `_RULE_COSTS` cannot say (schema 27).
 
@@ -468,7 +486,7 @@ def measure_complexity(spec: dict[str, Any]) -> SpecComplexity:
             for vector in move.get("vectors", []):
                 directions.update(expand_symmetry(tuple(vector), symmetry))
 
-    special_rules = _count_special_rules(rules) + _spy_extras(pieces)
+    special_rules = _count_special_rules(rules) + _spy_extras(pieces) + _speed_extras(pieces)
 
     # Schema 12: a `landing` set is charged as a descriptor is, per set and per expanded
     # direction, so a wide throw costs rule mass. Its directions are counted apart from the

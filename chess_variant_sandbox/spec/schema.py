@@ -33,7 +33,7 @@ from chess_variant_sandbox.spec.reachability import (
 if TYPE_CHECKING:
     from chess_variant_sandbox.engine.compile import StrikeRule
 
-SCHEMA_VERSION = 27
+SCHEMA_VERSION = 28
 
 # Every version is accepted, and the number a spec declares is a claim about which
 # feature set it uses rather than a date stamp. That is what keeps a bump cheap:
@@ -44,7 +44,7 @@ SCHEMA_VERSION = 27
 # the rules need.
 SUPPORTED_SCHEMA_VERSIONS = (
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-    25, 26, 27,
+    25, 26, 27, 28,
 )
 
 # The movement primitive table. Extending the design space means adding a row here,
@@ -779,7 +779,7 @@ _MOVE_KEYS = {
 _CONDITION_KEYS = {"from_rank", "first_move", "region"}
 _PIECE_KEYS = {
     "id", "name", "royal", "value", "moves", "region", "promoted_from", "captures",
-    "facing", "beats", "spy",
+    "facing", "beats", "spy", "speed",
 }
 # ``appearance`` and ``provenance`` are deliberately *outside* the mechanics.
 # ``canonical.MECHANIC_KEYS`` is what the content hash covers, so anything added inside
@@ -1167,6 +1167,13 @@ def validate_spec(spec: Any, *, new: bool = True) -> list[str]:
             errors.append(
                 f"the spec uses {', '.join(sorted(used))}, added in schema 27; declare "
                 '"schema_version": 27 to use it'
+            )
+    if version < 28:
+        used = _schema_twenty_eight_uses(spec)
+        if used:
+            errors.append(
+                f"the spec uses {', '.join(sorted(used))}, added in schema 28; declare "
+                '"schema_version": 28 to use it'
             )
 
     return errors
@@ -1723,6 +1730,149 @@ def _schema_twenty_seven_uses(spec: dict[str, Any]) -> set[str]:
     return used
 
 
+def _schema_twenty_eight_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that schema 28 added, by name (Q943a, `docs/plan-speed.md`).
+
+    * ``pieces.speed`` -- a piece type's speed, a rank (absent: 0, the slowest). When the
+      two pieces moving in a round differ in speed, the faster move is made first, as a move
+      of an alternating game, and the slower is then made only if its piece still stands
+      and the move can still be made on that board (§2.4, §2.5).
+
+    Collected whatever its value, since an older spec may not write even a refused one.
+    """
+    if has_speeds(spec):
+        return {"pieces.speed"}
+    return set()
+
+
+def has_speeds(spec_or_pieces: Any) -> bool:
+    """Whether any piece type writes a ``speed`` (schema 28), whatever its value."""
+    pieces = spec_or_pieces.get("pieces") if isinstance(spec_or_pieces, dict) else spec_or_pieces
+    return any(isinstance(piece, dict) and "speed" in piece for piece in _listed(pieces))
+
+
+def piece_speeds(spec_or_pieces: Any) -> dict[str, int]:
+    """Each declared piece id's speed (schema 28, `docs/plan-speed.md` §2.1): its ``speed``,
+    and 0 (the slowest, the default) where it writes none or something the validator
+    refuses. The one reader of the key, shared by the validator, the compiler and every
+    surface."""
+    pieces = spec_or_pieces.get("pieces") if isinstance(spec_or_pieces, dict) else spec_or_pieces
+    speeds: dict[str, int] = {}
+    for piece in _listed(pieces):
+        if not isinstance(piece, dict) or not isinstance(piece.get("id"), str):
+            continue
+        value = piece.get("speed", 0)
+        valid = isinstance(value, int) and not isinstance(value, bool) and value > 0
+        speeds[piece["id"]] = value if valid else 0
+    return speeds
+
+
+def _never_moved(rules: Any) -> set[str]:
+    """The declared types no player ever moves: portal ends and wild pieces."""
+    listed = rules.get("npcs") if isinstance(rules, dict) else None
+    wild = {npc.get("piece") for npc in _listed(listed) if isinstance(npc, dict)}
+    return portal_piece_ids(rules) | {pid for pid in wild if isinstance(pid, str)}
+
+
+def speed_ranks_in_use(spec: dict[str, Any]) -> list[int]:
+    """The distinct speeds of the types a player can move, 0 counted for every one that
+    names none, in order (§2.1: they must be 0 to *k*, none skipped)."""
+    skipped = _never_moved(spec.get("rules"))
+    return sorted({speed for pid, speed in piece_speeds(spec).items() if pid not in skipped})
+
+
+def speeds_order_a_round(spec: dict[str, Any]) -> bool:
+    """Whether some type one player can hold and some type the other can hold differ in
+    speed (over `simultaneous_holdings`); otherwise every round is an equal-speed round and
+    the speeds are inert (§4.1). False for a game that declares none."""
+    if not has_speeds(spec):
+        return False
+    speeds = piece_speeds(spec)
+    first, second = simultaneous_holdings(spec)
+    return any(
+        speeds[x] != speeds[y] for x in first for y in second if x in speeds and y in speeds
+    )
+
+
+def has_equal_speed_opponent(spec: dict[str, Any], piece_id: str) -> bool:
+    """Whether, for some player who can hold ``piece_id``, the other player can hold a type
+    of the same speed. A collision (and a swap that meets) happens only between equal
+    speeds (§2.3), so a type with none never collides. True where no player can hold the
+    type, which is not speed's business."""
+    speeds = piece_speeds(spec)
+    held = simultaneous_holdings(spec)
+    holders = [player for player in (0, 1) if piece_id in held[player]]
+    if not holders:
+        return True
+    mine = speeds.get(piece_id, 0)
+    return any(speeds.get(other, 0) == mine for player in holders for other in held[1 - player])
+
+
+def _any_equal_speed_meeting(spec: dict[str, Any]) -> bool:
+    """Whether some type one player can hold and some type the other can hold share a
+    speed, so that a collision can happen at all (§2.3)."""
+    speeds = piece_speeds(spec)
+    first, second = simultaneous_holdings(spec)
+    return any(speeds.get(x, 0) == speeds.get(y, 0) for x in first for y in second)
+
+
+def _check_speed_coherence(
+    spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """Schema 28 (Q943a): ``pieces[].speed`` and every refusal of `docs/plan-speed.md` §4.1,
+    in words. A speed orders the two moves of a round, so it needs the round rule; speeds
+    are ranks, so one game has one spelling; and they must be able to order some round."""
+    written = [
+        (index, piece) for index, piece in enumerate(pieces)
+        if isinstance(piece, dict) and "speed" in piece
+    ]
+    if not written:
+        return
+    if not is_simultaneous(rules):
+        errors.append(
+            "pieces[].speed orders the two moves of a round, and this game has none "
+            "(rules.simultaneous); leave it out"
+        )
+        return
+    malformed = False
+    portals = portal_piece_ids(rules)
+    wild = _never_moved(rules) - portals
+    for index, piece in written:
+        value = piece["speed"]
+        if value == 0 and not isinstance(value, bool):
+            errors.append(f"pieces[{index}].speed 0 is the default (the slowest); leave it out")
+            malformed = True
+        elif isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            errors.append(
+                f"pieces[{index}].speed must be a whole number of at least 1, got {value!r}"
+            )
+            malformed = True
+        if piece.get("id") in portals:
+            errors.append(f"pieces[{index}].speed is on a portal, which never moves; leave it out")
+        if piece.get("id") in wild:
+            errors.append(
+                f"pieces[{index}].speed is on a wild piece (rules.npcs), which steps after both "
+                "players' moves whatever its speed; leave it out"
+            )
+    if malformed:
+        return
+    whole = {**spec, "rules": rules, "pieces": pieces}
+    ranks = speed_ranks_in_use(whole)
+    if ranks != list(range(len(ranks))):
+        dense = ", ".join(f"{old} as {new}" for new, old in enumerate(ranks) if old != new)
+        errors.append(
+            "pieces[].speed: speeds are ranks, and only their order is a rule, so the speeds "
+            "in use (0 for every piece that names none) must be 0, 1, 2, ... with none "
+            f"skipped; they are {ranks}: write {dense}"
+        )
+        return
+    if not speeds_order_a_round(whole):
+        errors.append(
+            "pieces[].speed never orders a round: every piece one player can hold has the "
+            "speed of every piece the other can hold; leave it out"
+        )
+
+
 # Schema 27 (Q936): the third value of ``rules.extinction.per_type``, beside ``true`` and
 # ``false``. Each listed kind is counted on its own against a side that starts with it.
 EXTINCTION_PER_TYPE_OWN = "own"
@@ -1764,9 +1914,12 @@ def simultaneous_swap_pair(spec: dict[str, Any]) -> tuple[str, str] | None:
     each is a capture of the other: without such a pair no swap can happen and
     ``swap: "collision"`` can never fire (`docs/archive/plan-round-chase.md` §3 R2). Over
     `simultaneous_holdings`, so a type a player can come to hold counts; a piece takes a
-    type when its ``captures`` allows it and it has a move that may capture."""
+    type when its ``captures`` allows it and it has a move that may capture. Schema 28
+    (Q943a): only a pair of equal speed, since between unequal speeds the faster takes the
+    slower where it stands and no swap happens (`docs/plan-speed.md` §2.5, case B)."""
     pieces = [piece for piece in spec.get("pieces") or [] if isinstance(piece, dict)]
     by_id = {piece["id"]: piece for piece in pieces if isinstance(piece.get("id"), str)}
+    speeds = piece_speeds(pieces)
 
     def takes(attacker: str, victim: str) -> bool:
         piece = by_id[attacker]
@@ -1781,7 +1934,10 @@ def simultaneous_swap_pair(spec: dict[str, Any]) -> tuple[str, str] | None:
     first, second = simultaneous_holdings(spec)
     for x in sorted(first):
         for y in sorted(second):
-            if x in by_id and y in by_id and takes(x, y) and takes(y, x):
+            if (
+                x in by_id and y in by_id and speeds[x] == speeds[y]
+                and takes(x, y) and takes(y, x)
+            ):
                 return x, y
     return None
 
@@ -1874,13 +2030,18 @@ def simultaneous_holdings(spec: dict[str, Any]) -> tuple[set[str], set[str]]:
 
 def simultaneous_tie_pair(spec: dict[str, Any]) -> tuple[str, str] | None:
     """The first pair of a player-0 type and a player-1 type whose collision is a tie (both
-    beat the other, or neither does), or ``None`` when no tie can occur (§3.1, F)."""
+    beat the other, or neither does), or ``None`` when no tie can occur (§3.1, F). Schema 28
+    (Q943a): over pairs of equal speed only, since pieces of different speeds never collide
+    (`docs/plan-speed.md` §2.3, §3.3)."""
     pieces = [piece for piece in spec.get("pieces") or [] if isinstance(piece, dict)]
     by_id = {piece["id"]: piece for piece in pieces if isinstance(piece.get("id"), str)}
     declared = list(by_id)
+    speeds = piece_speeds(pieces)
     first, second = simultaneous_holdings(spec)
     for x in sorted(first):
         for y in sorted(second):
+            if speeds.get(x, 0) != speeds.get(y, 0):
+                continue
             x_beats = y in beats_of(by_id[x], declared)
             y_beats = x in beats_of(by_id[y], declared)
             if x_beats == y_beats:
@@ -2094,10 +2255,11 @@ def _check_chase_switches(
                 f'rules.simultaneous.swap must be "{SIMULTANEOUS_SWAP_COLLISION}", got {swap!r}'
             )
         elif simultaneous_swap_pair({**spec, "rules": rules, "pieces": pieces}) is None:
+            speed = " and has its speed (pieces[].speed)" if has_speeds(pieces) else ""
             errors.append(
                 'rules.simultaneous.swap "collision" can never fire: no piece of one player '
-                "can take a piece of the other that can take it back, so no two moves can "
-                "each end on the other's square; leave it out"
+                f"can take a piece of the other that can take it back{speed}, so no two moves "
+                "can each end on the other's square; leave it out"
             )
     if "both" in rule:
         both = rule["both"]
@@ -2167,6 +2329,14 @@ def _check_simultaneous_coherence(
             errors.append(
                 f"pieces[{index}].beats is what the piece beats when beats is left out (its "
                 "captures, or every piece); leave it out"
+            )
+        elif (
+            has_speeds(pieces) and isinstance(piece.get("id"), str)
+            and not has_equal_speed_opponent({**spec, "rules": rules, "pieces": pieces}, piece["id"])
+        ):
+            errors.append(
+                f"pieces[{index}].beats is read only when two pieces of one speed collide, and "
+                "no piece of the other player has this one's speed (pieces[].speed); leave it out"
             )
 
     def refuse(what: str, why: str) -> None:
@@ -2252,7 +2422,17 @@ def _check_simultaneous_coherence(
                 "a royal in a placement stock",
                 "both players place at once, and a royal could be traded before the game starts",
             )
-    if tie in SIMULTANEOUS_TIES:
+    if tie in SIMULTANEOUS_TIES and has_speeds(pieces) and not _any_equal_speed_meeting(
+        {**spec, "rules": rules, "pieces": pieces}
+    ):
+        # Schema 28 (Q943a, `docs/plan-speed.md` §3.3): pieces of different speeds never
+        # collide, so where no two opposing types share a speed no collision can happen.
+        errors.append(
+            f"rules.simultaneous.tie {tie!r} can never be read: pieces of different speeds "
+            "never collide (pieces[].speed), and no piece of one player has the speed of a "
+            "piece of the other; leave it out"
+        )
+    elif tie in SIMULTANEOUS_TIES:
         pair = simultaneous_tie_pair({**spec, "rules": rules, "pieces": pieces})
         if tie == "impossible" and pair is not None:
             errors.append(
@@ -3325,6 +3505,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     _check_fixed_facings(spec, pieces, errors)
     _check_simultaneous_coherence(spec, pieces, rules, errors)
     _check_spy_coherence(spec, pieces, rules, errors)
+    _check_speed_coherence(spec, pieces, rules, errors)
 
     if isinstance(rules.get("castling"), dict):
         castling = rules["castling"]

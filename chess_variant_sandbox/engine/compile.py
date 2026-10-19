@@ -35,12 +35,14 @@ from chess_variant_sandbox.spec.schema import (
     SpecError,
     absent_squares,
     beats_of,
+    has_speeds,
     hex_distance,
     npc_immune_attackers,
     npc_routes,
     npc_starts,
     obstacle_squares,
     parse_square,
+    piece_speeds,
     portal_bars_that_can_bind,
     portal_end_ids,
     portal_groups,
@@ -885,6 +887,10 @@ class SimRule:
       the initiative, the token is dealt to the announcer when the first announced round
       begins, so the answerer cannot win at will every tie it chooses to enter. False in
       every other game.
+    * ``speed`` -- schema 28 (Q943a, `docs/plan-speed.md` §4.2): ``[type]``, each type's
+      speed (``pieces[].speed``, 0 where none is written, and 0 for a portal end), over every
+      type. **Empty when no piece declares one**, so no earlier game's tables move and the
+      core never enters its ordered round.
     """
 
     tie: int
@@ -900,6 +906,7 @@ class SimRule:
     both_score: bool = False
     zobrist_rest: tuple[int, ...] = ()
     deal_initiative: bool = False
+    speed: tuple[int, ...] = ()
 
     @property
     def chases(self) -> bool:
@@ -943,7 +950,21 @@ def _compile_simultaneous(
         both_score=simultaneous_switch(rules, "both"),
         zobrist_rest=rest,
         deal_initiative=tie == TIE_INITIATIVE and bool(spy_ids(pieces)),
+        speed=_compile_speeds(pieces, index_of, n_types),
     )
+
+
+def _compile_speeds(
+    pieces: list[dict[str, Any]], index_of: dict[str, int], n_types: int
+) -> tuple[int, ...]:
+    """``SimRule.speed``: each type's speed, or empty when no piece declares one (§4.1's
+    inert default)."""
+    if not has_speeds(pieces):
+        return ()
+    speed = [0] * n_types
+    for pid, value in piece_speeds(pieces).items():
+        speed[index_of[pid]] = value
+    return tuple(speed)
 
 
 @dataclass(frozen=True)

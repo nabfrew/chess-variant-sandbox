@@ -274,6 +274,28 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "for an ordinary piece; never write false."
                 ),
             },
+            "speed": {
+                "type": "integer",
+                "minimum": 1,
+                "description": (
+                    "Schema 28. Only in a game played in rounds (rules.simultaneous): this "
+                    "piece's speed, a rank; omit it for 0, the slowest, and never write 0. A "
+                    "higher speed moves first. When the two pieces moving in a round have the "
+                    "same speed the round is resolved as always (collisions, beats, the tie). "
+                    "When they differ, the faster move is made first, exactly as chosen, as a "
+                    "move of an alternating game, and if it ends the game the round ends "
+                    "there. Then the slower move is made if its piece still stands where it "
+                    "was and the move is still one that piece could make on the new board (a "
+                    "move onto a square the faster piece now holds is a capture of it if the "
+                    "piece may capture there); otherwise it is void and the piece stays, or "
+                    "lost if the piece was taken or changed. So a slower piece cannot flee a "
+                    "faster strike, and unequal speeds never collide or swap. Only the order "
+                    "is a rule: the speeds in use, 0 counted for every piece that names none, "
+                    "must be 0, 1, 2, ... with none skipped, and some piece of one player "
+                    "must differ in speed from some piece of the other. Never on a portal or "
+                    "a wild piece."
+                ),
+            },
             "facing": _object(
                 {
                     "axes": {

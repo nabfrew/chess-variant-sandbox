@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from retired_specs import retired_preview_path
 from test_site_admin import DULL, Site, _running_site
 
 from chess_variant_sandbox.site import correspondence, matches, stages
@@ -40,16 +41,25 @@ from chess_variant_sandbox.web.server import App
 ARCHIVE = Path(__file__).resolve().parent.parent / "archive"
 RULESETS = Path(__file__).resolve().parent.parent / "rulesets"
 
-PREVIEWS = {
-    # Q942c's S1 (`docs/archive/plan-round-chase.md` §5): Gardner in rounds with the rest.
-    "gardner-in-rounds-resting.json": "4da669bb3d50",
+ARCHIVED_PREVIEWS = {
     # Q935f's SP2 (`plan-spy.md` §5): a spy game starts by turns and ends in rounds once a
     # spy falls.
     "gardner-with-spies-resting.json": "1d798bedbf66",
 }
-"""The previews, by file and by the mechanics hash each was measured under (Q942c, Q935f):
-the round and spy games less the three that joined the library (`JOINED`) and the six that
-Q962b retired (`docs/reference/previews-2026-10-18.md`; their files are `tests/_retired_*.json`)."""
+"""The previews in `archive/`, by file and by the mechanics hash each was measured under: the
+round and spy games less the three that joined the library (`JOINED`), the six that Q962b
+retired and the one Q962c retired (`docs/reference/previews-2026-10-18.md`; their files are
+`tests/_retired_*.json`)."""
+
+ROUND_PREVIEW = "4da669bb3d50"
+ROUND_PREVIEW_FILE = "gardner-in-rounds-resting.json"
+"""A preview played in rounds, for the tests that need one. `archive/` has none since Q962c
+retired S1 (`docs/archive/plan-round-chase.md` §5) as a near copy of breather, so the test
+checkout takes the retired file, which still carries its preview sentence: the site's handling
+of a round preview is still code that has to hold."""
+
+PREVIEWS = {**ARCHIVED_PREVIEWS, ROUND_PREVIEW_FILE: ROUND_PREVIEW}
+"""The previews of the test checkout (`_root`)."""
 
 JOINED_ROUNDS = {
     "watering-hole.json": "5c0b017473f5",
@@ -63,10 +73,6 @@ JOINED_TURNS = {"riders-and-leapers.json": "26636602fae0"}
 way (Q936t): a Library game offered the alternating ladder (`opponents.RUNGS`)."""
 
 JOINED = {**JOINED_ROUNDS, **JOINED_TURNS}
-
-ROUND_PREVIEW = "4da669bb3d50"
-ROUND_PREVIEW_FILE = "gardner-in-rounds-resting.json"
-"""A preview played in rounds, for the tests that need one (S1, `docs/archive/plan-round-chase.md` §5)."""
 
 SPY_PREVIEWS = frozenset({"gardner-with-spies-resting.json"})
 """The preview that starts by turns (`library` `rounds` is false for a spy game, Q935c) and
@@ -86,8 +92,15 @@ def _root(tmp_path: Path) -> Path:
     (tmp_path / "runs").mkdir()
     shutil.copy(RULESETS / "dull.json", tmp_path / "rulesets" / "dull.json")
     for name in (*PREVIEWS, *JOINED, PLAIN):
-        shutil.copy(ARCHIVE / name, tmp_path / "archive" / name)
+        shutil.copy(_source(name), tmp_path / "archive" / name)
     return tmp_path
+
+
+def _source(name: str) -> Path:
+    """Where the test checkout's file `name` comes from: `archive/`, or the retired round preview."""
+    if name == ROUND_PREVIEW_FILE:
+        return retired_preview_path("gardner-in-rounds-resting")
+    return ARCHIVE / name
 
 
 # ----------------------------------------------------------------- the files themselves
@@ -96,7 +109,7 @@ def _root(tmp_path: Path) -> Path:
 class TestTheFiles:
     def test_the_four_say_they_are_previews_and_keep_their_hashes(self) -> None:
         for name, digest in PREVIEWS.items():
-            spec = load_spec(ARCHIVE / name)
+            spec = load_spec(_source(name))
             assert spec_hash(spec) == digest, "the mark is outside the mechanics hash"
             assert validate_spec(spec) == []
             said = library.preview_sentence(spec)
@@ -110,7 +123,7 @@ class TestTheFiles:
             path.name for path in ARCHIVE.glob("*.json")
             if library.preview_sentence(load_spec(path)) is not None
         }
-        assert marked == set(PREVIEWS)
+        assert marked == set(ARCHIVED_PREVIEWS)
 
     def test_the_three_that_joined_say_nothing_and_keep_their_hashes(self) -> None:
         for name, digest in JOINED.items():
@@ -121,7 +134,7 @@ class TestTheFiles:
             assert ("simultaneous" in spec["rules"]) == (name in JOINED_ROUNDS)
 
     def test_an_empty_sentence_is_refused(self) -> None:
-        spec = load_spec(ARCHIVE / ROUND_PREVIEW_FILE)
+        spec = load_spec(_source(ROUND_PREVIEW_FILE))
         spec["provenance"]["preview"] = "  "
         assert any("provenance.preview" in problem for problem in validate_spec(spec))
         spec["provenance"]["preview"] = 3

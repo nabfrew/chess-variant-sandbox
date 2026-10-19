@@ -86,7 +86,7 @@ _NUMBER_WORDS = {
     9: "nine", 10: "ten", 11: "eleven", 12: "twelve", 13: "thirteen", 14: "fourteen",
     15: "fifteen", 16: "sixteen", 17: "seventeen", 18: "eighteen", 19: "nineteen",
     20: "twenty", 21: "twenty_one", 22: "twenty_two", 23: "twenty_three", 24: "twenty_four",
-    25: "twenty_five", 26: "twenty_six", 27: "twenty_seven",
+    25: "twenty_five", 26: "twenty_six", 27: "twenty_seven", 28: "twenty_eight",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(SCHEMA_VERSION, SCHEMA_VERSION)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(schema, _COLLECTOR, None)
@@ -1990,7 +1990,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `SCHEMA_VERSION`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 27
+_FEATURES_ARE_FOR_SCHEMA = 28
 
 
 @dataclass(frozen=True)
@@ -2320,6 +2320,15 @@ def _parent_spy() -> dict:
     return rounds
 
 
+def _parent_speed() -> dict:
+    """Gardner in rounds with a swift king (`plan-speed.md` §6.1's T1, Q943a): the king at
+    speed 1, every other type at 0."""
+    rounds = _parent_rounds()
+    rounds["schema_version"] = 28
+    next(p for p in rounds["pieces"] if p["id"] == "K")["speed"] = 1
+    return rounds
+
+
 def _parent_beats() -> dict:
     """Rounds where a pawn beats nothing in a collision (§6.8's second showcase idea)."""
     rounds = _parent_rounds()
@@ -2384,34 +2393,14 @@ def _armies_differ(spec: dict) -> bool:
     return len(set(first) & set(second)) < 2 and len(set(first) | set(second)) >= 2
 
 
-# Schema 27's inventory so far (`plan-spy.md` §2.2): Q936's ``"own"``, riding on
-# `rules.extinction`; `count-each-kind` enters it on a game whose armies differ and leaves
-# it to the summed count. Q942a's three chase switches ride on `rules.simultaneous`, and
-# `curb-the-chase` enters and leaves each; Q935a adds its row here. Schema 26's four rows
-# (Q918a) retired with the bump; `play-at-once`, `break-the-tie` and `set-a-collision`
-# still cross them.
+# Schema 28's inventory (`plan-speed.md` §4.1): Q943a's one name, `pieces.speed`, riding on
+# `rules.simultaneous`; `set-a-speed` enters it (a type made faster than the rest) and leaves
+# it (every speed taken away), and `play-at-once` takes it down with the rounds. Schema 27's
+# five rows (Q936, Q942a, Q935a) retired with the bump; `count-each-kind`, `curb-the-chase`
+# and `plant-a-spy` still cross them.
 _FEATURES: dict[str, _Feature] = {
-    "Q936 per_type own": _Feature(
-        "extinction", frozenset({"rules.extinction.per_type.own"}), True, "gap+own",
-        _parent_own_kinds, likely=_armies_differ,
-    ),
-    "Q942a rest": _Feature(
-        "simultaneous", frozenset({"rules.simultaneous.rest"}), True, "rounds+rest",
-        lambda: _parent_chase("rest", True), likely=is_simultaneous,
-    ),
-    "Q942a swap": _Feature(
-        "simultaneous", frozenset({"rules.simultaneous.swap"}), True, "rounds+swap",
-        lambda: _parent_chase("swap", "collision"), likely=is_simultaneous,
-    ),
-    "Q942a both": _Feature(
-        "simultaneous", frozenset({"rules.simultaneous.both"}), True, "rounds+both",
-        lambda: _parent_chase("both", "score"), likely=is_simultaneous,
-    ),
-    # Q935a: the spy rides on the rounds it decides; `plant-a-spy` enters it (making the
-    # game one in rounds first where it alternates) and leaves it, and `play-at-once`
-    # takes it down with the rounds.
-    "Q935a spy": _Feature(
-        "simultaneous", frozenset({"pieces.spy"}), True, "rounds+spy", _parent_spy,
+    "Q943a speed": _Feature(
+        "simultaneous", frozenset({"pieces.speed"}), True, "rounds+speed", _parent_speed,
         likely=is_simultaneous,
     ),
 }
@@ -2424,6 +2413,9 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
+    # Q943a's speed: Q943c builds and grades its showcases (`plan-speed.md` §5, §6: T1 to
+    # T3), after Q943b gives the players the rule's tactic; it deletes this row.
+    "Q943a speed": "Q943c, plan-speed.md §6",
     # Q936's `"own"` went on 2026-10-17, when Q936s archived its showcase, two armies of
     # different kinds (`archive/riders-and-leapers`; `extinction-any-kind.md` §5, coverage
     # row 72). Empty again at schema 27.
@@ -2495,6 +2487,7 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
         "rules.extinction.per_type.own", "rules.simultaneous.rest", "rules.simultaneous.swap",
         "rules.simultaneous.both", "pieces.spy",
     }),
+    28: frozenset({"pieces.speed"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -2503,6 +2496,11 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    "schema 28: pieces.speed": (
+        "coverage row 73: owed by Q943c (`plan-speed.md` §6's T1 to T3, pre-registered), "
+        "which builds the showcases once Q943b has given the round players speed's tactic; "
+        "this entry goes the day one lands"
+    ),
     # Schema 27's `rules.extinction.per_type.own` went on 2026-10-17, when Q936s archived
     # its showcase (`extinction-any-kind.md` §5; coverage row 72).
     # Schema 27's `pieces.spy` went on 2026-10-17, when Q935f archived its showcases

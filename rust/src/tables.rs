@@ -745,6 +745,9 @@ pub struct SimTables {
     /// `[player * n_squares + square]`: XORed in for each player's rested square; empty
     /// unless `rest`.
     pub zobrist_rest: Vec<u64>,
+    /// Schema 28 (Q943a, `docs/plan-speed.md` §4.2): `[type]`, each type's speed. Empty
+    /// unless a piece declares one, so `make_round` never orders a round in any other game.
+    pub speed: Vec<u8>,
 }
 
 impl SimTables {
@@ -2333,7 +2336,15 @@ impl Tables {
                     "the chase switches do not fit this ruleset's squares",
                 ));
             }
+            // Schema 28 (Q943a): empty unless a piece declares a speed.
+            let speed: Vec<u8> = field(source, keys::SIM_SPEED)?;
+            if !(speed.is_empty() || speed.len() == tables.n_types) {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "the speeds do not fit this ruleset's types",
+                ));
+            }
             tables.simultaneous = Some(Box::new(SimTables {
+                speed,
                 rest,
                 swap_collides: switch(1),
                 both_score: switch(2),
@@ -2809,6 +2820,7 @@ pub mod keys {
         SIM_CHASE => "sim_chase",
         SIM_COLLISION => "sim_collision",
         SIM_RULE => "sim_rule",
+        SIM_SPEED => "sim_speed",
         SPY_DEAL => "spy_deal",
         SPY_TYPES => "spy_types",
         ZOBRIST_REST => "zobrist_rest",

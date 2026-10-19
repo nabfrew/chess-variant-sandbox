@@ -58,12 +58,13 @@ def is_round(engine: Engine, state: GameState) -> bool:
 
 
 def twin_spec(spec: dict[str, Any]) -> dict[str, Any]:
-    """The alternating twin (§1.1): the spy flags, ``beats`` and ``rules.simultaneous``
-    taken out, everything else as written."""
+    """The alternating twin (§1.1): the spy flags, ``beats``, schema 28's ``speed`` and
+    ``rules.simultaneous`` taken out, everything else as written."""
     twin = copy.deepcopy(spec)
     for piece in twin["pieces"]:
         piece.pop("spy", None)
         piece.pop("beats", None)
+        piece.pop("speed", None)
     twin["rules"].pop("simultaneous", None)
     twin["name"] = f"{spec['name']} (alternating twin)"
     return twin

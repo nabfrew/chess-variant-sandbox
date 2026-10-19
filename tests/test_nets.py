@@ -8,6 +8,7 @@ unreadable refuses to play (Q709). Design: `docs/reference/learned-evaluator.md`
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -243,3 +244,45 @@ def test_a_store_round_trips_and_is_checked_against_its_record(tmp_path: Path) -
             load_net(engine.spec.hash, PROCEDURE, tmp_path)
     finally:
         unregister_net(PROCEDURE, engine.spec.hash)
+
+
+# Q961: each rated net's raw output along three random games (seeds 1-3) of its own
+# ruleset, frozen from main's build before the forward pass summed in `i32` and stopped
+# zeroing a `MAX_ACCUMULATOR` buffer (build 716b8cd696a241ef): (ruleset, store procedure,
+# positions, sha256 of the outputs as little-endian i64s, first 16 hex digits, and each
+# game's last output). These are the five games' rated nets as of 2026-10-19.
+FROZEN_RATED = [
+    ("intransitive", "0eaad64c4586", 832, "8bcf4424da70de8d", [965, -646, -925]),
+    ("racingkings", "1851f0c2e373", 796, "c3e3375ead902900", [4122, 707, 1009]),
+    ("kingofthehill", "db5ef1bc938e", 536, "f8960a921b1bb0e9", [-3753, -3995, -3798]),
+    ("rps-v2", "c30820cdf2de", 861, "be7e2e3c0e173054", [-2068, -2465, -3733]),
+    ("gardner", "5fe1cb87d4c9", 344, "24f7f20142cf4213", [-4439, -109, -77]),
+]
+
+
+@pytest.mark.parametrize(("name", "procedure", "count", "digest", "last"), FROZEN_RATED)
+def test_a_rated_net_evaluates_every_position_as_it_did_before_q961(
+    name: str, procedure: str, count: int, digest: str, last: list[int]
+) -> None:
+    """The core's net output is bit-identical to the build before Q961's speed-ups.
+
+    A mismatch with the games' moves unchanged is the forward pass moving. A movegen
+    change that moves a random game breaks it too; then the freeze is re-taken on a build
+    whose net arithmetic is held by the oracle test above.
+    """
+    engine = _engine(f"rulesets/{name}.json")
+    record = load_net(engine.spec.hash, procedure, ROOT / nets.STORE_DIR)
+    assert record is not None and record.playing, (name, procedure)
+    outputs = hashlib.sha256()
+    seen, ends = 0, []
+    for seed in (1, 2, 3):
+        game = play_game(engine, ("random", "random"), seed=seed, collect_series=False)
+        answers = engine.core.net_line(
+            _pack(engine.initial_state()), record.weights, list(game.moves)
+        )
+        for raw, _inputs, fresh in answers:
+            assert raw == fresh
+            outputs.update(int(raw).to_bytes(8, "little", signed=True))
+            seen += 1
+        ends.append(answers[-1][0])
+    assert (seen, outputs.hexdigest()[:16], ends) == (count, digest, last), name

@@ -22,6 +22,12 @@ move, and the answer comes from the stored proof; a move the search could not se
 wrong. There is no timer and nothing to keep up: a miss is just a game you lost, and the positions you have solved show
 on your own page, for you alone. About eight hundred positions are on offer across the seven games.
 
+### One fewer preview
+
+*Gardner in rounds resting* leaves the previews. It turned out to be *breather* with two of its rules taken away, and it
+played the same way, so it offered nothing *breather* doesn't. Its page and games are kept. The one preview left is
+*gardner with spies resting*.
+
 ## 2026-10-18
 
 ### Circe now follows the real Circe rule

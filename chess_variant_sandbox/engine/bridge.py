@@ -811,6 +811,11 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         "zobrist_rest": (
             list(spec.simultaneous.zobrist_rest) if spec.simultaneous is not None else []
         ),
+        # Schema 28 (Q943a): each type's speed, `[type]`; empty unless a piece declares one,
+        # so the core never orders a round and no earlier fingerprint moves.
+        "sim_speed": (
+            list(spec.simultaneous.speed) if spec.simultaneous is not None else []
+        ),
         # Schema 27 (Q935a): each player's spy types, two lists, and whether the initiative
         # is dealt to the announcer at the first announced round (`plan-spy.md` E10). Empty
         # and false in every game without a spy, so no earlier fingerprint moves.
@@ -981,6 +986,8 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "spy_types": [],
     "spy_deal": False,
     "zobrist_rest": [],
+    # Schema 28 (Q943a). Empty unless a piece declares a speed.
+    "sim_speed": [],
 }
 
 # Keys that are part of what every game means, whatever rules it declares: the board's

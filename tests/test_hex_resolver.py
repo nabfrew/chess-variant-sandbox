@@ -298,6 +298,7 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "facing_fixed",  # Q869
     "simultaneous_rest", "simultaneous_swap_collides", "simultaneous_both_score",  # Q942a
     "spy_types",  # Q935a
+    "speed_ranks", "speed_royal", "speed_by_value", "speed_by_reach",  # Q943a
 })
 _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/almost": "9035530ccf64d8cd",
@@ -394,7 +395,7 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     # The same features as gardner in rounds: `distance.features` has none for the tie rule.
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-with-the-initiative` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was ef35aeadf82e3d4e.
     "archive/watering-hole": "449300665f7cd831",  # Q918e, schema 26
-    "archive/gardner-in-rounds-resting": "e058e13b9d1bc774",  # Q942c, schema 27
+    # Q962c, 2026-10-19: `archive/gardner-in-rounds-resting` retired from the previews as a near copy of breather (`docs/reference/previews-2026-10-18.md`); the row was e058e13b9d1bc774.
     # The same features as resting: each chase switch is one feature of `distance` that
     # `_ADDED_SINCE` leaves out, and both add one special rule.
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-where-swaps-collide` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was e058e13b9d1bc774.

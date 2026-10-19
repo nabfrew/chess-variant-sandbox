@@ -347,7 +347,13 @@ class TestTheFingerprintsPointAtSomething:
 # the distinct re-score beside a score, `docs/reference/repeated-games.md` §6). No total,
 # component or interval moves; the seat's verdicts move on §4.3's games. It was
 # "55b5cc39b3896211" after Q947e; Q953a's library re-score is under it.
-FROZEN_METRICS = "983645dfe3d2a18f"
+#
+# **Moved 2026-10-19 by Q943a (schema 28, speed in rounds)**: `spec/complexity.py` charges
+# speeds (`_speed_extras`) and `engine/engine.py` documents the ordered round's events. No
+# library game declares a speed, so no number should move: every committed and archived spec
+# keeps its complexity, tables and prose byte for byte (main against the branch). It was
+# "983645dfe3d2a18f" after Q953a; the library replay owed with Q961 re-scores under it.
+FROZEN_METRICS = "a10833f919319aab"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:

@@ -52,10 +52,12 @@ from chess_variant_sandbox.spec.schema import (
     beats_of,
     can_double_step,
     castling_spans,
+    has_speeds,
     is_simultaneous,
     obstacle_squares,
     opening_counts,
     parse_square,
+    piece_speeds,
     placed_ids,
     portal_groups,
     portal_open_ends,
@@ -167,6 +169,8 @@ _GONE_WORDS = {
     "tie": "the tie rule for collisions",
     "swap": "the collision of swapping pieces",
     "both": "the score settling an ending both players reach at once",
+    "speed": "the pieces' speeds",
+    "speed ranks": "the gap in the pieces' speeds",
 }
 
 
@@ -178,6 +182,8 @@ def _gone_words(key: str) -> str:
         return f"the wild {key.split(':', 1)[1]}'s immunity"
     if key.startswith("beats:"):
         return f"the {key.split(':', 1)[1]}'s own collision table"
+    if key.startswith("speed:"):
+        return f"the {key.split(':', 1)[1]}'s speed"
     if key.startswith("carries:"):
         return f"the filter on the portal at {key.split(':', 1)[1]}"
     return _GONE_WORDS.get(key, key.replace("_", " "))
@@ -1775,8 +1781,10 @@ def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
         for piece in spec.get("pieces", []):
             if isinstance(piece, dict):
                 piece.pop("beats", None)
-                # Schema 27: a spy decides when rounds begin, so it goes with them.
+                # Schema 27: a spy decides when rounds begin, so it goes with them; schema
+                # 28's speed orders a round's moves, so it goes too.
                 piece.pop("spy", None)
+                piece.pop("speed", None)
         settle_schema_version(spec)
         return "the players take turns again"
     del rng
@@ -1890,6 +1898,69 @@ def _curb_the_chase(spec: dict[str, Any], rng: random.Random) -> str | None:
         spec.update(trial)
         return _CHASE_WORDS[key][0]
     return None
+
+
+def _set_a_speed(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Give a piece type a speed, change one, or take the speeds away (schema 28,
+    `docs/plan-speed.md` §4.3). Only in a game played in rounds. In: a type at 0 is made
+    faster than every other (one rank above the top), or one with a speed is moved a rank;
+    the ranks are then closed up so none is skipped (`speed_ranks_in_use`). Out: every speed
+    goes, and the round is today's again. Each child must pass the validator, so speeds that
+    can never order a round, or a `beats`/`tie` they would leave inert, are not drawn."""
+    if not is_simultaneous(spec):
+        return None
+    pieces = [p for p in spec.get("pieces", []) if isinstance(p, dict) and isinstance(p.get("id"), str)]
+    if has_speeds(pieces) and rng.random() < 0.3:
+        for piece in pieces:
+            piece.pop("speed", None)
+        settle_schema_version(spec)
+        return "every piece moves at one speed again"
+    skipped = portal_piece_ids(spec.get("rules")) | {
+        npc.get("piece") for npc in (spec.get("rules", {}).get("npcs") or []) if isinstance(npc, dict)
+    }
+    movers = [p for p in pieces if p["id"] not in skipped]
+    for piece in rng.sample(movers, len(movers)):
+        trial = copy.deepcopy(spec)
+        target = next(p for p in trial["pieces"] if isinstance(p, dict) and p.get("id") == piece["id"])
+        speeds = piece_speeds(trial)
+        now = speeds.get(piece["id"], 0)
+        top = max((speeds[p["id"]] for p in movers), default=0)
+        new = top + 1 if now == 0 else now + rng.choice((-1, 1))
+        if new <= 0:
+            target.pop("speed", None)
+        else:
+            target["speed"] = new
+        _close_up_speeds(trial, skipped)
+        settle_schema_version(trial)
+        if validate_spec(trial):
+            continue
+        spec.clear()
+        spec.update(trial)
+        name = str(piece.get("name", piece["id"]))
+        final = piece_speeds(spec).get(piece["id"], 0)
+        if final == 0:
+            return f"the {name} is among the slowest pieces again"
+        return f"the {name} now has speed {final}: in a round it moves before slower pieces"
+    return None
+
+
+def _close_up_speeds(spec: dict[str, Any], skipped: set[Any]) -> None:
+    """Renumber the speeds in use to 0, 1, 2, ... with none skipped, keeping their order
+    (schema 28's ranks); a type that lands on 0 loses its key, and no speed is left on a
+    type no player moves."""
+    pieces = [p for p in spec.get("pieces", []) if isinstance(p, dict)]
+    speeds = piece_speeds(pieces)
+    ranks = sorted({speed for pid, speed in speeds.items() if pid not in skipped})
+    renumber = {old: new for new, old in enumerate(ranks)}
+    for piece in pieces:
+        if piece.get("id") in skipped:
+            piece.pop("speed", None)
+            continue
+        new = renumber.get(speeds.get(str(piece.get("id")), 0), 0)
+        if new:
+            piece["speed"] = new
+        else:
+            piece.pop("speed", None)
 
 
 def _plant_a_spy(spec: dict[str, Any], rng: random.Random) -> str | None:
@@ -3163,6 +3234,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("sweep-a-slider", _sweep_a_slider),
     Operator("curb-the-chase", _curb_the_chase),
     Operator("plant-a-spy", _plant_a_spy),
+    Operator("set-a-speed", _set_a_speed),
 )
 
 

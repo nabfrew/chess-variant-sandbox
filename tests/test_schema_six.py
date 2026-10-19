@@ -554,8 +554,9 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
     # showcases, which declare none; 97 since Q935f's two spy showcases, which declare none
     # either; 98 since Q936s's `riders-and-leapers`, which declares none
     # either; 92 since Q962b retired six previews (`docs/reference/previews-2026-10-18.md`),
-    # none of which declared `reach`.
-    assert len(paths) == 92
+    # none of which declared `reach`; 91 since Q962c retired gardner in rounds resting, which
+    # declared none either.
+    assert len(paths) == 91
 
     with_reach: dict[str, tuple[frozenset[int], frozenset[int]]] = {}
     for path in paths:

@@ -185,6 +185,8 @@ RETIRED_PREVIEWS = {
     "gardner-in-rounds-where-swaps-collide": "7985900696d7",
     "gardner-in-rounds-scored": "a90a8db7e2dd",
     "gardner-with-spies": "f4c62a33798d",
+    # Q962c (2026-10-19): a near copy of `archive/breather.json`, the rest without its two endings.
+    "gardner-in-rounds-resting": "4da669bb3d50",
 }
 
 HERE = Path(__file__).resolve().parent

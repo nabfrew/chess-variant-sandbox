@@ -1034,6 +1034,11 @@ _EVENT_COLLISION, _EVENT_VOID, _EVENT_INITIATIVE, _EVENT_BARRED = 0, 1, 2, 3
 # Schema 27 (Q942a, `swap: "collision"`): two pieces that swapped squares met; the square is
 # the first player's destination. Q942b draws the clash between the two squares.
 _EVENT_SWAP = 4
+# Schema 28 (Q943a, `docs/plan-speed.md` §4.2): an ordered round -- the faster player (5,
+# the square its move ended on), a slower move lost with its piece (6, its origin) or never
+# played because the faster move ended the game (7). Q943b draws the two beats.
+_EVENT_ORDER, _EVENT_LOST, _EVENT_UNPLAYED = 5, 6, 7
+_EVENT_NAMES = ("collision", "void", "initiative", "barred", "swap", "order", "lost", "unplayed")
 
 
 # `ScoringRule.count` as the score's name in the both-fire sentence: what a side was ahead
@@ -1117,8 +1122,8 @@ def round_reveal(
 
     `moves` is each seat's `{from, to, void}`, `events` each event as `{kind, square,
     player}`, `results` each seat's move in one word (`void`, `won`, `lost`, `both lost`,
-    or None), `words` the sentences, in the order the events came. `sides` is what the
-    board calls the two players (`viz.pieces.side_names`).
+    schema 28's `unplayed`, or None), `words` the sentences, in the order the events came.
+    `sides` is what the board calls the two players (`viz.pieces.side_names`).
     """
     spec = engine.spec
     width = spec.width
@@ -1137,6 +1142,7 @@ def round_reveal(
     origins = [None if move_type(m) == MOVE_DROP else move_from(m) for m in moves]
     targets = [move_to(m) for m in moves]
     voids = {player for kind, _square, player in events if kind == _EVENT_VOID}
+    ordered = any(kind == _EVENT_ORDER for kind, _square, _player in events)
     results: list[str | None] = [None, None]
     words: list[str] = []
     if len(voids) == 2:
@@ -1147,7 +1153,12 @@ def round_reveal(
     for kind, square, player in events:
         if kind == _EVENT_VOID:
             results[player] = "void"
-            if len(voids) == 1:
+            if ordered:
+                words.append(
+                    f"{piece(player)} could no longer go to {named(targets[player])} on the "
+                    f"board the faster move left: its move was void and it stayed."
+                )
+            elif len(voids) == 1:
                 words.append(
                     f"{piece(player)} on {named(square)} went for {named(targets[player])}, "
                     f"which had moved: its move was void and it stayed."
@@ -1176,6 +1187,18 @@ def round_reveal(
                 f"The tie went to {sides[player]}, who held the initiative; "
                 f"it passes to {sides[1 - player]}."
             )
+        elif kind == _EVENT_ORDER:
+            words.append(f"{piece(player)} was faster and moved first.")
+        elif kind == _EVENT_LOST:
+            results[player] = "lost"
+            words.append(
+                f"{piece(player)} was taken or changed before it could move: its move was lost."
+            )
+        elif kind == _EVENT_UNPLAYED:
+            results[player] = "unplayed"
+            words.append(
+                f"The faster move ended the game, so {piece(player)}'s move was not played."
+            )
         elif kind == _EVENT_BARRED:
             pair = next((bar for bar in after.bars if bar[0] == square), None)
             there = f"{named(pair[0])} and {named(pair[1])}" if pair else named(square)
@@ -1186,6 +1209,7 @@ def round_reveal(
     swapped = (
         origins[0] is not None and origins[1] is not None
         and targets[0] == origins[1] and targets[1] == origins[0] and not voids
+        and not ordered
         and not any(kind == _EVENT_SWAP for kind, _square, _player in events)
     )
     if swapped:
@@ -1204,8 +1228,7 @@ def round_reveal(
             for seat in (0, 1)
         ],
         "events": [
-            {"kind": ("collision", "void", "initiative", "barred", "swap")[kind], "square": square,
-             "player": player}
+            {"kind": _EVENT_NAMES[kind], "square": square, "player": player}
             for kind, square, player in events
         ],
         "results": results,

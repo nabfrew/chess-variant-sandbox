@@ -996,6 +996,84 @@ def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) 
             if set(beats) == default and len(set(beats)) == len(beats):
                 piece.pop("beats")
                 dropped.append(f"beats:{piece.get('id')}")
+    dropped.extend(_settle_speeds(spec, listed, rules))
+    return dropped
+
+
+def _settle_speeds(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) -> list[str]:
+    """Schema 28 (Q943a, `docs/plan-speed.md` §4.1): what an edit can leave of the speeds
+    that the validator refuses. Speeds in a game no longer in rounds go; ranks an edit
+    left with a gap are closed up, keeping their order; speeds that can no longer order a
+    round go; and a tie rule or a `beats` that speeds have left with no equal-speed meeting
+    goes."""
+    from chess_variant_sandbox.spec.schema import (
+        _any_equal_speed_meeting,
+        has_equal_speed_opponent,
+        has_speeds,
+        is_simultaneous,
+        piece_speeds,
+        portal_piece_ids,
+        speed_ranks_in_use,
+        speeds_order_a_round,
+    )
+
+    if not has_speeds(listed):
+        return []
+    dropped: list[str] = []
+
+    def drop_speeds() -> None:
+        for piece in listed:
+            if isinstance(piece, dict):
+                piece.pop("speed", None)
+        dropped.append("speed")
+
+    valid = all(
+        not isinstance(piece, dict) or "speed" not in piece or (
+            isinstance(piece["speed"], int) and not isinstance(piece["speed"], bool)
+            and piece["speed"] > 0
+        )
+        for piece in listed
+    )
+    if not valid:
+        return []
+    if not is_simultaneous(rules):
+        drop_speeds()
+        return dropped
+    skipped = portal_piece_ids(rules) | {
+        npc.get("piece") for npc in rules.get("npcs") or [] if isinstance(npc, dict)
+    }
+    for piece in listed:
+        if isinstance(piece, dict) and piece.get("id") in skipped and "speed" in piece:
+            piece.pop("speed")
+            dropped.append(f"speed:{piece.get('id')}")
+    ranks = speed_ranks_in_use(spec)
+    if ranks != list(range(len(ranks))):
+        renumber = {old: new for new, old in enumerate(ranks)}
+        speeds = piece_speeds(listed)
+        for piece in listed:
+            if not isinstance(piece, dict) or "speed" not in piece:
+                continue
+            new = renumber.get(speeds.get(str(piece.get("id")), 0), 0)
+            if new:
+                piece["speed"] = new
+            else:
+                piece.pop("speed")
+        dropped.append("speed ranks")
+    if has_speeds(listed) and not speeds_order_a_round(spec):
+        drop_speeds()
+    if not has_speeds(listed):
+        return dropped
+    rule = rules.get("simultaneous")
+    if isinstance(rule, dict) and "tie" in rule and not _any_equal_speed_meeting(spec):
+        rule.pop("tie")
+        dropped.append("tie")
+    for piece in listed:
+        if (
+            isinstance(piece, dict) and isinstance(piece.get("beats"), list)
+            and isinstance(piece.get("id"), str) and not has_equal_speed_opponent(spec, piece["id"])
+        ):
+            piece.pop("beats")
+            dropped.append(f"beats:{piece.get('id')}")
     return dropped
 
 

@@ -478,6 +478,15 @@ def _check_unsupported_rules(
             "pieces[].spy: a game whose turns become rounds when a spy is lost has no "
             "counterpart; Fairy-Stockfish always has a side to move"
         )
+    if compiled.simultaneous is not None and compiled.simultaneous.speed:
+        # Schema 28 (Q943a, `docs/plan-speed.md` §4.6). Speed orders a round's two moves, so
+        # it lives only beside the rounds refused just below; named apart so the reason says
+        # which rule asked for them. Read off the compiled table, empty without a speed.
+        # Speed changes no legal move at a round's start, so the twin check still holds.
+        reasons.append(
+            "pieces[].speed: a faster move made before a slower one in the same round has no "
+            "counterpart; Fairy-Stockfish has no round"
+        )
     if compiled.simultaneous is not None:
         # Schema 26 (Q918a). Fairy-Stockfish has a side to move and no round in which both
         # players move at once (`docs/archive/plan-simultaneous.md` §6.5). The per-side generator is
@@ -684,6 +693,12 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
             "schema 27: a spy game alternates and then plays rounds, and Fairy-Stockfish has "
             "no round; refused with rules.simultaneous, which a spy game must declare, and "
             "read off the compiled rule (compiled.spy)",
+        ),
+        "speed": (
+            _REFUSED,
+            "schema 28: only beside rules.simultaneous, which is refused whole: Fairy-Stockfish "
+            "has no round to order, and speed changes no legal move at a round's start, so the "
+            "per-side generator is still checked through the alternating twin",
         ),
     },
     "move": {

@@ -461,6 +461,14 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "both choose in secret. A spy game must be played in rounds, and a lost spy never "
         "comes back.",
     ),
+    # Schema 28 (Q943a): speed.
+    "pieces.speed": (
+        "speed",
+        "Only when both players move at once: a higher speed moves first. When the two "
+        "moving pieces differ in speed, the faster move is made first and the slower one "
+        "after it, on the board the faster left, if it still can be; otherwise it is lost or "
+        "stays put. Equal speeds move together. Leave it empty for the slowest, 0.",
+    ),
     "rules.portals.kind": (
         "how it works",
         "Fold portals, where momentum portals are the usual kind: a piece may stand in a "
