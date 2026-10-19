@@ -1345,6 +1345,9 @@ function render() {
   // boxes shown beside a control go with the view that held them; the fixed one is
   // outside `view` and would otherwise outlive its page.
   clearToast();
+  // The board alone (Q638, `board.js`) is the board's view; any page drawn leaves it. A page
+  // that loads this file without the board's (the landing page's tests) has no view to leave.
+  if (typeof setBoardFull === 'function') setBoardFull(false, 'route');
   document.getElementById('tagline').textContent = TAGLINE_SERVED;
   // A new view starts at its own top. The page it replaces kept the window's scroll, so
   // a game opened from the bottom of the library arrived scrolled to its middle -- past

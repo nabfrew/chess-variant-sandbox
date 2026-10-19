@@ -47,6 +47,12 @@ from chess_variant_sandbox.spec.complexity import expand_symmetry
 RULESETS = Path(__file__).resolve().parents[1] / "rulesets"
 
 
+def _committed(name: str) -> Path:
+    """A ruleset's file, in `rulesets/` or, for one moved to the Library (Q512), `archive/`."""
+    path = RULESETS / f"{name}.json"
+    return path if path.exists() else RULESETS.parent / "archive" / f"{name}.json"
+
+
 def _pyffish() -> Any:
     """The library, or a skip. Imported lazily so collection never needs it."""
     return pytest.importorskip("pyffish", reason="pyffish is an optional dev dependency")
@@ -58,7 +64,7 @@ def _spec(name: str) -> dict[str, Any]:
         return shogi_forward()
     if name == SHOGI_ARRIVING:
         return shogi_arriving()
-    return load_spec(RULESETS / f"{name}.json")
+    return load_spec(_committed(name))
 
 
 # Rulesets whose rules have no counterpart at all, with the word that has to appear in
@@ -100,7 +106,7 @@ MUST_TRANSLATE = (
 
 
 # Every committed ruleset that translates, and therefore every one whose translation
-# has to be *right*. Checked against `pyffish` rather than against an installed binary:
+# has to be *right*. `sardines` is in `archive/` since Q512 and still held here. Checked against `pyffish` rather than against an installed binary:
 # which of these a given engine can play depends on its version, and pinning that would
 # make the test a statement about somebody's machine. See `chess-variant-sandbox fairy` for that.
 TRANSLATES = (
@@ -481,7 +487,7 @@ class TestTheTranslationIsWellFormed:
         report it -- the roster simply offers one fewer opponent.
         """
         try:
-            translate(load_spec(RULESETS / f"{name}.json"))
+            translate(load_spec(_committed(name)))
         except Untranslatable as refused:
             pytest.fail(f"{name} no longer translates: {refused}")
 

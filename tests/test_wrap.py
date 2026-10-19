@@ -52,6 +52,8 @@ from chess_variant_sandbox.spec.canonical import spec_hash
 from chess_variant_sandbox.spec.schema import validate_spec
 
 RULESETS = Path(__file__).resolve().parents[1] / "rulesets"
+# Four of the six wrapped boards left the Baseline for the Library (Q512); their ladders stay.
+ARCHIVE = Path(__file__).resolve().parents[1] / "archive"
 
 # The five boards schema 5 shipped with, and the four added after them. `tunnel` was
 # renamed `tunnel-vertical` when `tunnel-horizontal` arrived beside it: only the display
@@ -98,7 +100,8 @@ OPENING_PERFT: dict[str, dict[int, int]] = {
 
 
 def _load(name: str) -> dict[str, Any]:
-    return load_spec(RULESETS / f"{name}.json")
+    path = RULESETS / f"{name}.json"
+    return load_spec(path if path.exists() else ARCHIVE / f"{name}.json")
 
 
 def _files_join_both_ways(name: str) -> bool:

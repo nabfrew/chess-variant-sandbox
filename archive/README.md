@@ -96,7 +96,7 @@ square. `D` moved seven times in 256 games and `Z` never. The prediction, its gr
 the lines are in that file's note 8.
 
 `weathervane.json` and `weathervane-torus.json` -- schema 8's showcase and its wrapped
-twin, and the cleanest controls this project has. Each is `rulesets/sardines.json` with
+twin, and the cleanest controls this project has. Each is `sardines.json` (in `rulesets/` until Q512) with
 directional pawns, the torus one with `rules.wrap` as well, and **nothing else changed**:
 same 8x8 board, same 32-piece army, same rules, every square occupied from the start. Both
 are archived rather than promoted for the reason `quarry` is -- a game built to exercise a
@@ -847,6 +847,29 @@ the swift king reads in 2 of 4 runs and is not viable, the swift knights are not
 and both stay previews; the watering hole by speed is **viable in 3 of 4 runs, 0.557
 [0.500, 0.616]**, every graded game decided at the hole in about 18 plies with the seat level
 (0.520 first seat), below its parent's 0.608 with the intervals overlapping.
+
+## Out of the Baseline (Q512, 2026-10-19)
+
+Six games left `rulesets/` for here, by the review that settled which games set the scale
+(`docs/reference/baseline-review.md` §2.2's gates, §2.3's table; the procedure is
+`docs/reference/baseline-procedure.md`). Each is this project's own design rather than a game
+people chose to play (B1), and five were also made to show or isolate a rule (B3):
+
+| file | name | why it left |
+|---|---|---|
+| `onewaycylinder.json` | *one-way cylinder chess* | project design; the one-way seam's showcase |
+| `onewaytorus.json` | *one-way torus chess* | project design; the one-way seam on both axes |
+| `torus-less-extended.json` | *rear guard torus chess* | project design; also schema 25's showcase |
+| `crazyhouse-torus.json` | *torus crazyhouse* | project design |
+| `sardines.json` | *sardines* | a generated family's plain cell, the control for `weathervane` |
+| `chess-oriented-pawns.json` | *chess with turning pawns* | schema 8's showcase |
+
+Each spec's `provenance.history` now opens with that reason as one sentence, which the site
+shows as the move's reason at the next `site load`. `provenance` is outside the mechanics hash,
+so every hash, run, rating and score stays as it was; what changes is that `calibrate` no
+longer reads them as human-band games. Their perft ladders and literal equalities stay in the
+tests under the new paths. §2.3's other four, `onewaytunnel`, `tunnel-vertical`,
+`torus-extended` and `sardines-torus`, had already left the tree as near copies (Q868, below).
 
 ## Retired by the library audit (Q868, 2026-10-12)
 

@@ -6,7 +6,7 @@ vectors through its orientation and a placement still sets it, but the core gene
 rotation for it (``Tables::turns_of``), the move graph gives it no rotation edges, and
 ``facing_alignment`` leaves it out, since its frame is the setup's and not a choice.
 
-The showcase is the rear guard: `rulesets/torus-less-extended.json`, whose second pawn type
+The showcase is the rear guard: `archive/torus-less-extended.json`, whose second pawn type
 ``V`` (a pawn's moves written backwards, drawn right way up for one player only) became an
 ordinary pawn placed facing backwards. The test that matters most is that the respelling is
 the same game: the old two-pawn spelling is rebuilt here from the new file, hashes to the
@@ -35,8 +35,8 @@ from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, _schema_twenty_fiv
 from chess_variant_sandbox.spec.transform import settle_schema_version
 
 ROOT = Path(__file__).resolve().parents[1]
-REAR_GUARD = ROOT / "rulesets" / "torus-less-extended.json"
-TORUS_HAND = ROOT / "rulesets" / "crazyhouse-torus.json"
+REAR_GUARD = ROOT / "archive" / "torus-less-extended.json"
+TORUS_HAND = ROOT / "archive" / "crazyhouse-torus.json"
 OLD_REAR_GUARD = "3194d3a2251b"
 
 
@@ -172,7 +172,7 @@ class TestTheCompiler:
 
 
     @pytest.mark.parametrize(
-        "path", ["rulesets/torus-less-extended.json", "rulesets/chess-oriented-pawns.json"]
+        "path", ["archive/torus-less-extended.json", "archive/chess-oriented-pawns.json"]
     )
     def test_no_attack_source_carries_a_facing_its_type_never_holds(self, path: str) -> None:
         """Q869's pruning: a rook on a board where only the pawn faces has one frame per

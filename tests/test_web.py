@@ -6613,7 +6613,9 @@ class TestWhatReachesThePage:
         #
         # 137 since Q943b: an ordered round's reveal draws a lost move's arrow (numbers only,
         # `lostArrowHtml`) and an unplayed move's struck ghost (`drawPiece` and numbers).
-        assert len(sites) == 137
+        # 138 since Q638: *full screen* turns into *leave full screen* and back
+        # (`setBoardFull`), its icon and its constant words (`fullWords`).
+        assert len(sites) == 138
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
@@ -7925,7 +7927,9 @@ class TestTheLegendUnderTheBoard:
         assert "rose hatching" in said, "dobutsu promotes too"
 
     def test_a_one_way_seam_is_named_where_there_is_one(self, games) -> None:
-        game = next(game for game in games if game.name == "one-way cylinder chess")
+        # In the Library since Q512, so listed with the archive.
+        library_games = library.discover(RULESETS, library.RUNS_DIR, corpus.ARCHIVE_DIR)
+        game = next(game for game in library_games if game.name == "one-way cylinder chess")
         assert "blue line" in _board_legend(_ruleset_block(game))
         assert "blue line" not in _board_legend(_ruleset_block(next(
             game for game in games if game.name == "chess")))
@@ -8113,9 +8117,12 @@ class TestThePlayFrame:
         between = _in_page("", "frameHtml(false, 'leaderboard', false, "
                                 "{you: 0, mayCancel: false})")
         assert '<div class="row frame-status between" data-frame="status">' in between
-        assert PAGE.count("classList.toggle('narrow'") == 1
-        start = PAGE.index("function fitBoard()")
-        assert "classList.toggle('narrow'" in PAGE[start:PAGE.index("\n}\n", start)]
+        # Two fits mark it: `fitBoard`, and its branch for the board alone (Q638, `fitFull`),
+        # each from the strip's width in the layout it lays out.
+        assert PAGE.count("classList.toggle('narrow'") == 2
+        for fit in ("function fitBoard()", "function fitFull("):
+            start = PAGE.index(fit)
+            assert "classList.toggle('narrow'" in PAGE[start:PAGE.index("\n}\n", start)]
         assert "const STRIP_NARROW = 560;" in PAGE
         # Nothing hides the strip or gives it a height of its own.
         for hidden in ("strip.hidden", "strip.style.display", "strip.style.height",
@@ -9001,7 +9008,7 @@ class TestTheBoardWithoutEdges:
         piece the board draws on h2 flies in from two files *right* of it -- the copy of
         b1 one repeat along -- and a second copy walks out of the board at b1.
         """
-        engine = Engine(load_spec(RULESETS / "onewaycylinder.json"))
+        engine = Engine(load_spec(library.ARCHIVE_DIR / "onewaycylinder.json"))
         before, after, last = _ply(engine, ["Ph2-h4", "Pa7-a6", "Nb1-h2"])
         watched = _watch_ply(self._rules(engine), before, after, last)
 
@@ -9026,7 +9033,7 @@ class TestTheBoardWithoutEdges:
     def test_an_ordinary_move_on_the_same_board_is_left_alone(self) -> None:
         """The seam is only for the moves that cross it. `Ph2-h4` is one piece, one
         travel, and no copy of anything."""
-        engine = Engine(load_spec(RULESETS / "onewaycylinder.json"))
+        engine = Engine(load_spec(library.ARCHIVE_DIR / "onewaycylinder.json"))
         before, after, last = _ply(engine, ["Ph2-h4"])
         watched = _watch_ply(self._rules(engine), before, after, last)
 

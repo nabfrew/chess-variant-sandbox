@@ -241,7 +241,10 @@ class TestWhichPiecesPoint:
 
     @staticmethod
     def _turning(name: str) -> dict[str, bool]:
-        compiled = Engine(load_spec(RULESETS / name)).spec
+        path = RULESETS / name
+        if not path.exists():  # moved to the Library (Q512)
+            path = path.parent.parent / "archive" / name
+        compiled = Engine(load_spec(path)).spec
         return dict(zip(compiled.piece_ids, directional_types(compiled), strict=True))
 
     def test_nothing_turns_on_a_chess_board(self) -> None:
@@ -258,7 +261,7 @@ class TestWhichPiecesPoint:
         """A facing is a direction by construction -- the validator refuses one whose
         turn changes no move -- and it moves during the game rather than following the
         seat. Here the pawn has one and the other five pieces do not."""
-        compiled = Engine(load_spec(RULESETS / "chess-oriented-pawns.json")).spec
+        compiled = Engine(load_spec(ARCHIVE / "chess-oriented-pawns.json")).spec
         assert self._turning("chess-oriented-pawns.json") == {
             "P": True, "N": False, "B": False, "R": False, "Q": False, "K": False
         }
@@ -276,7 +279,7 @@ class TestWhichPiecesPoint:
         at 180. That is the facing being told truthfully rather than the seat's 180 that
         used to land on every black piece: black's knights and king stay upright.
         """
-        spec = load_spec(RULESETS / "chess-oriented-pawns.json")
+        spec = load_spec(ARCHIVE / "chess-oriented-pawns.json")
         engine = Engine(spec)
         state = engine.initial_state()
         moves = engine.legal_moves(state)
@@ -710,7 +713,7 @@ class TestTheReplayDrawsTheSameBoard:
         )
         assert plain["wrap"] is None, "a board with edges says so, and skips all of it"
 
-        spec = load_spec(RULESETS / "onewaycylinder.json")
+        spec = load_spec(ARCHIVE / "onewaycylinder.json")
         seen = _payload(
             render_position(
                 spec, Engine(spec).initial_state(), tmp_path / "oneway.html"

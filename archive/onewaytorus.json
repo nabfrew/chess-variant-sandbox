@@ -240,6 +240,6 @@
     "origin": "generated",
     "author": "stage 25",
     "theme": "an asymmetric seam",
-    "history": "Written to exercise the per-player, per-edge spelling of rules.wrap -- the first committed ruleset whose two armies do not share a board shape."
+    "history": "Moved to the Library: it is this project's own design, written to show the one-way seam on both axes, and the Baseline keeps to games people chose to play that were not made to show a rule. Written to exercise the per-player, per-edge spelling of rules.wrap -- the first committed ruleset whose two armies do not share a board shape."
   }
 }

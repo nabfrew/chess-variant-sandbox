@@ -20,6 +20,7 @@ from chess_variant_sandbox.spec import load_spec
 from chess_variant_sandbox.spec.transform import clear_facing, strip_rule
 
 RULESETS = Path(__file__).resolve().parents[1] / "rulesets"
+ARCHIVE = Path(__file__).resolve().parents[1] / "archive"
 CORPUS = sorted(path.stem for path in RULESETS.glob("*.json"))
 
 
@@ -134,19 +135,20 @@ class TestDescriptors:
         what the test moves, and the second assertion pins the alternative explanation
         shut by putting chess itself in the same cell once its en passant goes.
         """
-        turned = load_spec(RULESETS / "chess-oriented-pawns.json")
+        # In the Library since Q512, so read from `archive/` rather than from `cells`.
+        turned = load_spec(ARCHIVE / "chess-oriented-pawns.json")
+        filed = grid.descriptor(turned)
         plain = clear_facing(copy.deepcopy(turned), "P")
-        assert grid.descriptor(plain) == grid.descriptor(turned)
-        assert grid.descriptor(turned) == cells["chess-oriented-pawns"]
+        assert grid.descriptor(plain) == filed
         # It is the missing rule that files it apart from chess, not the orientation:
         # the `rules` axis counts `spec["rules"]`, and a facing is a piece property
         # counted apart in `complexity.facing_pieces`.
         assert (
             grid.descriptor(strip_rule(copy.deepcopy(load_spec(RULESETS / "chess.json")),
                                        "en_passant"))
-            == cells["chess-oriented-pawns"]
+            == filed
         )
-        assert cells["chess-oriented-pawns"][4] == 0 and cells["chess"][4] == 1
+        assert filed[4] == 0 and cells["chess"][4] == 1
 
     @pytest.mark.parametrize(
         ("key", "dead", "live"),

@@ -27,7 +27,10 @@ RULESETS = Path(__file__).resolve().parent.parent / "rulesets"
 
 
 def load(name: str) -> dict[str, Any]:
-    return json.loads((RULESETS / f"{name}.json").read_text(encoding="utf-8"))
+    path = RULESETS / f"{name}.json"
+    if not path.exists():  # moved to the Library (Q512)
+        path = RULESETS.parent / "archive" / f"{name}.json"
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 class TestFuzzMain:

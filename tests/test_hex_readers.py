@@ -290,10 +290,10 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "rulesets/berolina": "733c98e8156d9fb6",  # Q614 (W7): its description, for a player; 2026-10-18: its description, written as the game's idea (was 32995edcf561f5e3)
     "rulesets/capablanca": "536dd74dd518d9da",  # 2026-10-18: its description, written as the game's idea (was d828fec94fd054ae)
     "rulesets/chess": "9d9595bc228f1a31",  # Q614 (W7): its description, for a player
-    "rulesets/chess-oriented-pawns": "853eb17527f25798",  # Q868: its description, what its difference does in play (was e6142ab640c179da); Q870: its name (was e47286e8484e42c2); 2026-10-18: its description, written as the game's idea (was e5f76b8db6fdd732)
+    "archive/chess-oriented-pawns": "853eb17527f25798",  # Q868: its description, what its difference does in play (was e6142ab640c179da); Q870: its name (was e47286e8484e42c2); 2026-10-18: its description, written as the game's idea (was e5f76b8db6fdd732)
     "rulesets/courier": "e05e5ce959b9dc4a",
     "rulesets/crazyhouse": "16e10ba0206002db",
-    "rulesets/crazyhouse-torus": "3e32273fcfbf13c3",  # Q869: the rear pawn respelled as a fixed facing, its pieces, setup and description (was 7ce10112bc1451ad); Q868: its description, what its difference does in play (was bade932232d89bc0); Q870: its name (was b729ce8de185148e); 2026-10-18: its description, written as the game's idea (was 2081116914528e2a)
+    "archive/crazyhouse-torus": "3e32273fcfbf13c3",  # Q869: the rear pawn respelled as a fixed facing, its pieces, setup and description (was 7ce10112bc1451ad); Q868: its description, what its difference does in play (was bade932232d89bc0); Q870: its name (was b729ce8de185148e); 2026-10-18: its description, written as the game's idea (was 2081116914528e2a)
     "rulesets/cylinder": "05ba8b9746256db8",  # Q614 (W7): its description, for a player
     "rulesets/dobutsu": "27c16c4bde91223c",
     "rulesets/dull": "69ec95c7a39e4b21",  # Q614 (W7): its description, for a player
@@ -304,8 +304,8 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "rulesets/knightmate": "85ebf632b6c8ee77",
     "rulesets/losalamos": "db5abe9fee8431d2",
     "rulesets/makruk": "c49065a985ace362",
-    "rulesets/onewaycylinder": "4adbd11f9fcc7c1d",  # Q868: its description, what its difference does in play (was b75662db94554476); 2026-10-18: its description, written as the game's idea (was cfdba2286a0599e5)
-    "rulesets/onewaytorus": "00911754603d811d",  # Q868: its description, what its difference does in play (was df8b34635ed44d36); 2026-10-18: its description, written as the game's idea (was ef3a79c884c820b5)
+    "archive/onewaycylinder": "4adbd11f9fcc7c1d",  # Q868: its description, what its difference does in play (was b75662db94554476); 2026-10-18: its description, written as the game's idea (was cfdba2286a0599e5)
+    "archive/onewaytorus": "00911754603d811d",  # Q868: its description, what its difference does in play (was df8b34635ed44d36); 2026-10-18: its description, written as the game's idea (was ef3a79c884c820b5)
     "rulesets/racingkings": "320df46297d70604",
     "rulesets/rps-hierarchy-chess": "36fdaff7d499e344",  # Q962: its description, for a player (was b49fdbd4c30baca8)
     "rulesets/rps-v1": "2054c4c7aa052c77",  # Q614 (W7): its description, for a player; Q962: its description, for a player (was d482b0f390f351bc)
@@ -313,12 +313,12 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "rulesets/rps-v3": "faf58cbf931bfa7d",  # Q614 (W7): its description, for a player; Q962: its description, for a player (was 743a34fb916aeea0); 2026-10-18: its description, written as the game's idea (was 0a856e0d2d334a31)
     "rulesets/rps-v4": "6e3de97a74e242a0",  # Q962: its description, for a player (was 9143427c049ab048); 2026-10-18: its description, written as the game's idea (was e6af1b103a4f3389)
     "rulesets/rps-v5": "192b8a8a18be50d4",  # Q614 (W7): its description, for a player; Q962: its description, for a player (was 79d5d8b4b48ee0c3); 2026-10-18: its description, written as the game's idea (was 3f56a66baeef47d7)
-    "rulesets/sardines": "e3cdf99cf0097bd6",  # Q614 (W7): its description, for a player; 2026-10-18: its description, written as the game's idea (was 63de85e559ca5e19)
+    "archive/sardines": "e3cdf99cf0097bd6",  # Q614 (W7): its description, for a player; 2026-10-18: its description, written as the game's idea (was 63de85e559ca5e19)
     "rulesets/shatranj": "828ec1dae768fb98",  # Q614 (W7): its description, for a player
     "rulesets/shogi": "1d9b14e68510b70a",
     "rulesets/threecheck": "b20a73916fc5ffa6",
     "rulesets/torus": "862c66721e158df7",  # Q868: its description, what its difference does in play (was b04e8dda82800fe1); Q870: its description names a renamed sibling (was d9c59025017f94c5); 2026-10-18: its description, written as the game's idea (was 4762590e8cff1d7e)
-    "rulesets/torus-less-extended": "bb925d1cc7b11aba",  # Q869: the rear pawn respelled as a fixed facing, its pieces, setup and description (was da67440bc118259c); Q868: its description, what its difference does in play (was ca1ff7ab3635f952); Q870: its name (was 5d8ae197d82a2302); 2026-10-18: its description, written as the game's idea (was fe44d3b1896efe3d)
+    "archive/torus-less-extended": "bb925d1cc7b11aba",  # Q869: the rear pawn respelled as a fixed facing, its pieces, setup and description (was da67440bc118259c); Q868: its description, what its difference does in play (was ca1ff7ab3635f952); Q870: its name (was 5d8ae197d82a2302); 2026-10-18: its description, written as the game's idea (was fe44d3b1896efe3d)
     "rulesets/xiangqi": "3099db784f4f8484",  # 2026-10-18: its description, written as the game's idea (was c661457848db5457)
 }
 

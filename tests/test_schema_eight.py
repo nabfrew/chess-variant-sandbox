@@ -579,7 +579,7 @@ class TestTheShowcase:
         from chess_variant_sandbox.spec import load_spec
 
         weathervane = load_spec("archive/weathervane.json")
-        sardines = load_spec("rulesets/sardines.json")
+        sardines = load_spec("archive/sardines.json")
         assert weathervane["board"] == sardines["board"]
         assert weathervane["rules"] == sardines["rules"]
         stripped = [
@@ -601,7 +601,7 @@ class TestTheShowcase:
         from chess_variant_sandbox.spec import load_spec
 
         cell = load_spec(path)
-        sardines = load_spec("rulesets/sardines.json")
+        sardines = load_spec("archive/sardines.json")
         feature = self.FAMILY[path]
         wraps = feature in ("wrap", "both")
         faces = feature in ("facing", "both")

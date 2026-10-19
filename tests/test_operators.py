@@ -37,6 +37,7 @@ from chess_variant_sandbox.spec.schema import (
 
 ROOT = Path(__file__).resolve().parents[1]
 RULESETS = ROOT / "rulesets"
+ARCHIVE = ROOT / "archive"
 CORPUS = sorted(path.stem for path in RULESETS.glob("*.json"))
 
 # Everything committed and playable, which is what a design run actually meets: the
@@ -347,7 +348,7 @@ class TestMutation:
         parents = [specs[name] for name in ("chess", "crazyhouse", "gardner")]
         parents += [load_spec(ROOT / "archive" / f"{name}.json") for name in ("wormhole", "wolves")]
         parents += [specs[name] for name in ("makruk", "dobutsu", "shogi")]
-        parents.append(load_spec(RULESETS / "chess-oriented-pawns.json"))
+        parents.append(load_spec(ARCHIVE / "chess-oriented-pawns.json"))
         # Schema 26's `set-a-collision` and `break-the-tie` work on a game played in rounds,
         # and none is committed until Q918e: the Gardner test spec stands in.
         parents.append(load_spec(ROOT / "tests" / "_simultaneous_gardner.json"))
@@ -2279,9 +2280,9 @@ def _parent_one_patrol() -> dict:
 
 
 def _parent_rear_guard() -> dict:
-    """`rulesets/torus-less-extended` as committed: a rear guard of pawns placed facing
+    """`archive/torus-less-extended` as committed: a rear guard of pawns placed facing
     backwards that no move turns, the showcase."""
-    return load_spec(RULESETS / "torus-less-extended.json")
+    return load_spec(ARCHIVE / "torus-less-extended.json")
 
 
 def _parent_rounds(**extra: object) -> dict:
@@ -2427,7 +2428,7 @@ _SHOWCASE_OWED: dict[str, str] = {
     # (`archive/gardner-with-spies`, `-resting`; `plan-spy.md` §5, coverage row 71).
     # Empty again at schema 26: Q918e archived its four showcases (`archive/gardner-in-rounds`,
     # `-with-meek-pawns`, `-with-the-initiative`, `archive/watering-hole`).
-    # Empty again at schema 25: its showcase, `rulesets/torus-less-extended.json`, is the
+    # Empty again at schema 25: its showcase, `archive/torus-less-extended.json`, is the
     # game the bump was for (Q869). Schema 24's fold is shown by `archive/crease.json` (Q844b).
 }
 
@@ -4087,7 +4088,7 @@ class TestNeverForcedWithNoPlyLimit:
 
 class TestClearFacingTakesOnePieceBack:
     def test_only_that_pieces_facing_and_starting_facing_go(self) -> None:
-        spec = load_spec(RULESETS / "chess-oriented-pawns.json")
+        spec = load_spec(ARCHIVE / "chess-oriented-pawns.json")
         spec["pieces"].reverse()
         _piece(spec, "N")["facing"] = {"axes": 4}
         spec["setup"]["placements"].append(

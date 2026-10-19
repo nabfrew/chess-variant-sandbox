@@ -203,7 +203,7 @@
   "2eefcd835b3b",
   "f4d6b877db0487f4"
  ],
- "rulesets/chess-oriented-pawns.json": [
+ "archive/chess-oriented-pawns.json": [
   "57c73975c905",
   "14634e9299b50c1f"
  ],
@@ -215,7 +215,7 @@
   "0b96463ffba7",
   "6a2c2b35ebd81aa9"
  ],
- "rulesets/crazyhouse-torus.json": [
+ "archive/crazyhouse-torus.json": [
   "ab865f3f954a",
   "3bfc5035e11fa70a"
  ],
@@ -263,11 +263,11 @@
   "eaa48ed29ad7",
   "f0370a1c57428d08"
  ],
- "rulesets/onewaycylinder.json": [
+ "archive/onewaycylinder.json": [
   "b02bbe8da72c",
   "24381af9073370f7"
  ],
- "rulesets/onewaytorus.json": [
+ "archive/onewaytorus.json": [
   "c6ff883e5919",
   "1c5023b466655b4e"
  ],
@@ -299,7 +299,7 @@
   "a7b6f22e6b73",
   "c7d1e39de6a41bdf"
  ],
- "rulesets/sardines.json": [
+ "archive/sardines.json": [
   "9f538ab85a77",
   "5aee4192139d1582"
  ],
@@ -315,7 +315,7 @@
   "b1f536573c22",
   "d8942d85f7547f77"
  ],
- "rulesets/torus-less-extended.json": [
+ "archive/torus-less-extended.json": [
   "3194d3a2251b",
   "9faa4ac2f961659a"
  ],

@@ -307,10 +307,10 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/bastion": "04500d3db1737a81",
     "rulesets/berolina": "488735d94bc4a1ee",
     "rulesets/capablanca": "8cfb5815c674f10c",
-    "rulesets/chess-oriented-pawns": "f1530cae8408d901",
+    "archive/chess-oriented-pawns": "f1530cae8408d901",
     "rulesets/chess": "c638843d0cbb3fe4",
     "rulesets/courier": "425cdfa92363dc89",
-    "rulesets/crazyhouse-torus": "efcaa301e7874eff",  # Q869: the rear pawn respelled as a fixed facing (was a0afec7cf0db257c)
+    "archive/crazyhouse-torus": "efcaa301e7874eff",  # Q869: the rear pawn respelled as a fixed facing (was a0afec7cf0db257c)
     "rulesets/crazyhouse": "89bef2937fd67dd5",
     "rulesets/cylinder": "fe858992498b3166",
     "rulesets/dobutsu": "291093f5f614ed54",
@@ -322,8 +322,8 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/knightmate": "f510d76d13cadc00",
     "rulesets/losalamos": "563f6210d832dcb9",
     "rulesets/makruk": "e91699390ef310ea",
-    "rulesets/onewaycylinder": "ff6c7bc9512dedfa",
-    "rulesets/onewaytorus": "d97610a080d2797a",
+    "archive/onewaycylinder": "ff6c7bc9512dedfa",
+    "archive/onewaytorus": "d97610a080d2797a",
     "rulesets/racingkings": "e36e3c227d55b6cc",
     "rulesets/rps-hierarchy-chess": "34e88e16719159cf",
     "rulesets/rps-v1": "9d62600de20d2821",
@@ -331,11 +331,11 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/rps-v3": "34ee8433fa237eea",
     "rulesets/rps-v4": "c272f0494f483dcf",
     "rulesets/rps-v5": "b91364abfa8fc2c9",
-    "rulesets/sardines": "de0716da8f51261b",
+    "archive/sardines": "de0716da8f51261b",
     "rulesets/shatranj": "291e3c37e50edd01",
     "rulesets/shogi": "9399bd9c1e2cc449",
     "rulesets/threecheck": "d193b87292055a74",
-    "rulesets/torus-less-extended": "1dcc63ed58bc931e",  # Q869: the rear pawn respelled as a fixed facing (was 0870ea5726ae3adf)
+    "archive/torus-less-extended": "1dcc63ed58bc931e",  # Q869: the rear pawn respelled as a fixed facing (was 0870ea5726ae3adf)
     "rulesets/torus": "a9b670d4a057ad89",
     "rulesets/xiangqi": "51cec6a3a851bc63",
     "archive/andernach": "352d33d9f6b29010",  # Q540, schema 17

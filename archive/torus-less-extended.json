@@ -1,10 +1,10 @@
 {
-  "schema_version": 5,
-  "name": "one-way cylinder chess",
-  "description": "Chess on a board whose side edges are joined, but each player may cross the join in one direction only. White's pieces may run off the a-file and reappear on the h-file, never the reverse; Black's may run off the h-file onto the a-file. Each player crosses off their own left-hand side, which is White's queen's side and Black's king's side, so the two armies play under different geometry on the same board: a White rook on the a-file reaches round to the h-file, while a Black rook there meets an edge. Where a board joined both ways leaves no side edge to trap a king against, here each king keeps one edge it cannot cross, and every attack has to be planned around which way the join lets each piece through. Castling never uses the join.",
+  "schema_version": 25,
+  "name": "rear guard torus chess",
+  "description": "Chess on a board with no edges, made playable by a rear guard. On a seven by fourteen board with both pairs of opposite edges joined, a piece leaving any edge reappears on the opposite one, and an army has no safe back: whatever lies behind it leads through the join to the enemy. So behind each army's pieces stands a second rank of pawns, placed facing backwards towards the join and never turned round: ordinary pawns that step, double-step on their first move and capture the way they face. Each army is a sandwich rather than a front, deciding how far to push forward while its rear guard holds the way round the back. A White pawn promotes on the thirteenth or fourteenth rank, whichever it comes to first, and Black's on the mirror ranks: a front pawn after crossing the board, a rear pawn just three steps back, across the join. With empty ranks there instead, the back ranks lie open to each other through the join and the opening is a scramble of captures; the rear guard closes that route and halves the moves on offer at the start, so the game opens like chess.",
   "board": {
-    "width": 8,
-    "height": 8
+    "width": 7,
+    "height": 14
   },
   "pieces": [
     {
@@ -35,7 +35,7 @@
           "min_range": 2,
           "mode": "move",
           "condition": {
-            "from_rank": 1
+            "first_move": true
           }
         },
         {
@@ -49,7 +49,11 @@
           "symmetry": "lateral",
           "mode": "capture"
         }
-      ]
+      ],
+      "facing": {
+        "axes": 2,
+        "turns": false
+      }
     },
     {
       "id": "N",
@@ -157,47 +161,58 @@
       {
         "piece": "P",
         "squares": [
-          "a2",
-          "b2",
-          "c2",
-          "d2",
-          "e2",
-          "f2",
-          "g2",
-          "h2"
+          "a5",
+          "b5",
+          "c5",
+          "d5",
+          "e5",
+          "f5",
+          "g5"
         ]
+      },
+      {
+        "piece": "P",
+        "squares": [
+          "a3",
+          "b3",
+          "c3",
+          "d3",
+          "e3",
+          "f3",
+          "g3"
+        ],
+        "facing": "backward"
       },
       {
         "piece": "R",
         "squares": [
-          "a1",
-          "h1"
+          "a4"
         ]
       },
       {
         "piece": "N",
         "squares": [
-          "b1",
-          "g1"
+          "b4",
+          "g4"
         ]
       },
       {
         "piece": "B",
         "squares": [
-          "c1",
-          "f1"
+          "c4",
+          "f4"
         ]
       },
       {
         "piece": "Q",
         "squares": [
-          "d1"
+          "d4"
         ]
       },
       {
         "piece": "K",
         "squares": [
-          "e1"
+          "e4"
         ]
       }
     ]
@@ -207,7 +222,10 @@
     "stalemate": "draw",
     "promotion": {
       "piece": "P",
-      "rank": "last",
+      "ranks": [
+        12,
+        13
+      ],
       "to": [
         "Q",
         "R",
@@ -215,7 +233,6 @@
         "N"
       ]
     },
-    "en_passant": true,
     "castling": {
       "king": "K",
       "rook": "R",
@@ -225,17 +242,25 @@
     "repetition_draw": 3,
     "no_progress_draw": 100,
     "wrap": {
-      "files_by_player": {
-        "0": "left",
-        "1": "right"
-      }
+      "files": "both",
+      "ranks": "both"
     }
   },
   "provenance": {
     "added": "2026-08-28",
     "origin": "generated",
     "author": "stage 25",
-    "theme": "an asymmetric seam",
-    "history": "Written to exercise the per-player, per-edge spelling of rules.wrap -- the first committed ruleset whose two armies do not share a board shape."
+    "theme": "a board with no corners",
+    "history": "Moved to the Library: it is this project's own design, and the Baseline keeps to games people chose to play. Stripped back the extra row from the extended version. Q869 (2026-10-13): the rear pawn, once a piece of its own with a pawn's moves written backwards, respelled as a pawn placed facing backwards with a facing no move turns (schema 25); the same game move for move, was 3194d3a2251b"
+  },
+  "appearance": {
+    "icons": {
+      "P": "pawn",
+      "N": "knight",
+      "B": "bishop",
+      "R": "rook",
+      "Q": "queen",
+      "K": "king"
+    }
   }
 }

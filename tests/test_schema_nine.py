@@ -88,13 +88,13 @@ FROZEN: dict[str, tuple[str, str]] = {
     # Q869, 2026-10-13: the attack sources keep only the frames a type can stand in, so a
     # piece that faces no way loses its sources for the facings it never holds; the same
     # games move for move (played and perft-compared both ways). was 711c14261a57f2dc
-    "rulesets/chess-oriented-pawns.json": ("57c73975c905", "d3841caf15b539ee"),
+    "archive/chess-oriented-pawns.json": ("57c73975c905", "d3841caf15b539ee"),
     "rulesets/chess.json": ("4c1922ffae26", "94a4a49ab238a4e2"),
     "rulesets/courier.json": ("0b96463ffba7", "43c2fe4fb1ab1401"),
     # Q869, 2026-10-13: the rear pawn `V` respelled as a pawn placed facing backwards with a
     # facing no move turns (schema 25), so the hand holds one kind of pawn and returns it
     # facing forward: a new game, `runs/ab865f3f954a-*` kept. was ab865f3f954a / db15f09d67ddd2d1
-    "rulesets/crazyhouse-torus.json": ("9598e603241d", "5842b620af27402b"),
+    "archive/crazyhouse-torus.json": ("9598e603241d", "5842b620af27402b"),
     "rulesets/crazyhouse.json": ("bb5d97520084", "97ab14ffca01037a"),
     "rulesets/cylinder.json": ("a9306688fe57", "6a56433c2492eaf3"),
     "rulesets/dobutsu.json": ("a2f0c65ceedf", "d158e949aa940a34"),
@@ -123,8 +123,8 @@ FROZEN: dict[str, tuple[str, str]] = {
     "rulesets/knightmate.json": ("50a3da8f75e7", "09bf8280bead8d65"),
     "rulesets/losalamos.json": ("fcbb53d53ce4", "48e1a3d58f9c6bd5"),
     "rulesets/makruk.json": ("eaa48ed29ad7", "fc1b479eb1a32a55"),
-    "rulesets/onewaycylinder.json": ("b02bbe8da72c", "0449ce95d1a9ac76"),
-    "rulesets/onewaytorus.json": ("c6ff883e5919", "05787a033547e413"),
+    "archive/onewaycylinder.json": ("b02bbe8da72c", "0449ce95d1a9ac76"),
+    "archive/onewaytorus.json": ("c6ff883e5919", "05787a033547e413"),
     # Q868, 2026-10-12: `rulesets/onewaytunnel.json` (`da7647bf02e1`/`fac342b6c6256f3c`) retired by the library audit (`docs/archive/plan-library-audit.md`); its runs stay.
     "rulesets/racingkings.json": ("66b001f1b790", "48c162212370a86a"),
     "rulesets/rps-hierarchy-chess.json": ("c0e0c35f78b1", "cee254479fe50d0f"),
@@ -150,7 +150,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     # `f43d462fe570`/`9ec1b5e290fc928c` when the user gave the pawn its double step.
     # Both older measurements stay in `docs/reference/corpus-replay-2026-09-11.md`,
     # marked superseded.
-    "rulesets/sardines.json": ("9f538ab85a77", "685dcd4a16589d0e"),
+    "archive/sardines.json": ("9f538ab85a77", "685dcd4a16589d0e"),
     "rulesets/shatranj.json": ("67270a8805a0", "14a6ff87ac93cbe0"),
     # Q454 (B3 of `docs/reference/traditional-shogi.md`), 2026-09-25: re-frozen on purpose,
     # the user's decision to make it traditional shogi. Schema 15's `on_leaving` goes on
@@ -164,7 +164,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     # Q869, 2026-10-13: the rear pawn `V` respelled as a pawn placed facing backwards with a
     # facing no move turns (schema 25); the same game move for move (perft and random walks
     # agree), a new hash, `runs/3194d3a2251b-*` kept. was 3194d3a2251b / 83d672ca1a180146
-    "rulesets/torus-less-extended.json": ("8d9fb1b4c0b4", "802c13af5c7fbcf1"),
+    "archive/torus-less-extended.json": ("8d9fb1b4c0b4", "802c13af5c7fbcf1"),
     "rulesets/torus.json": ("5f9c1bfcf85a", "e10795221943c852"),
     # Q434, 2026-09-25: `rulesets/tunnel-horizontal.json` (`195564f716ec`/
     # `d974a81ecff48da0`) was retired here, by the user's decision: its lone promotion
@@ -258,7 +258,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     "archive/weathervane-half-turn.json": ("8fc3939243d5", "7e9a6e3b57386450"),
     # The family's facing cell, Q180, seed 20261254. Re-frozen from
     # `b88e98dab286`/`55501435ca71e297`, which was the pre-edit sardines plus facing and
-    # so had stopped being the plain cell's control. This one is `rulesets/sardines`'
+    # so had stopped being the plain cell's control. This one is `archive/sardines`'
     # army and rules with `facing` on the pawn, by construction rather than by a test
     # noticing afterwards, which is what `test_only_the_pawn_differs_from_sardines` reads.
     # Q869, 2026-10-13: the attack sources keep only the frames a type can stand in, so a

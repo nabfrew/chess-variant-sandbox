@@ -794,6 +794,53 @@ RULES = """
     .promo-pick .promo-piece, .promo-pick .promo-sq { width: 56px; height: 56px; }
     .promo-pieces .promo-pick.promo-route { width: 148px; font-size: 16px; }
   }
+  /* The board alone (Q638, `board.js` `setBoardFull`): the play frame as a view of its own
+     over the page, on the page's paper, holding only what a move needs: the strip (whose
+     move, the result), the board with its banner and its cards, the slot a round or a game
+     between two people sends its move from, the hand of a game with drops, and the way out.
+     Upright, the strip and the way out share the top row and the rest stand under the
+     board; on its side (`.wide`, which `fitFull` sets from the window) the board takes the
+     height and the rest stand in a column beside it. Once the game is over the review row
+     joins them, since the banner's *review* steps back through the game. `fitFull` sizes the board to the room
+     left, so the rows carry margins rather than gaps: an empty slot or hand takes nothing.
+     The control is a phone's and a tablet's (or a narrow window's); at a desk it is not
+     offered, except to leave a view a window was narrow for when it opened. */
+  @media (min-width: 861px) and (hover: hover) and (pointer: fine) {
+    html:not(.board-full) .frame-controls #fullBoard { display: none; }
+  }
+  html.board-full, html.board-full body { overflow: hidden; overscroll-behavior: none; }
+  html.board-full .play-frame {
+    position: fixed; inset: 0; z-index: 60; margin: 0; box-sizing: border-box; overflow: hidden;
+    display: grid; align-content: center; gap: 0 12px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "status bar" "board board" "send send" "hand hand" "review review";
+    padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right))
+             max(8px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+    background: var(--paper) 0 0 / 180px, var(--bg);
+  }
+  html.board-full .play-frame > .row:not([data-frame]), html.board-full .play-frame > #ground,
+  html.board-full .play-frame > .piece-says, html.board-full .play-frame > .frame-legend {
+    display: none; }
+  html.board-full .play-frame > .frame-status { grid-area: status; margin: 0; max-width: none; }
+  html.board-full .play-frame > .board-row { display: contents; }
+  html.board-full .play-frame .board-panel { grid-area: board; justify-self: center; margin-top: 8px; }
+  html.board-full .play-frame .corr-send { grid-area: send; max-width: none; }
+  html.board-full .play-frame > .hand { grid-area: hand; margin-top: 8px; }
+  html.board-full .play-frame > .hand:empty { display: none; }
+  html.board-full .play-frame > .frame-status.ended ~ #review { display: flex; grid-area: review;
+                                                                margin-top: 8px; }
+  html.board-full .play-frame > .frame-controls { grid-area: bar; margin: 0; align-self: start;
+                                                  flex-wrap: nowrap; }
+  html.board-full .frame-controls > :not(#fullBoard) { display: none; }
+  html.board-full .frame-controls > #fullBoard { flex: 0 0 auto; min-width: var(--ctl-h); }
+  html.board-full .play-frame.wide {
+    align-content: stretch; grid-template-columns: minmax(0, 1fr) minmax(200px, 36%);
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
+    grid-template-areas: "board status" "board send" "board hand" "board review" "board bar";
+  }
+  html.board-full .play-frame.wide .board-panel { margin-top: 0; align-self: center; }
+  html.board-full .play-frame.wide > .frame-controls { align-self: end; justify-self: end; }
+  html.board-full .toast.error { z-index: 70; }
   button.danger { border-color: var(--alarm); color: var(--alarm); }
   .moves div.result { margin-top: 4px; }
   .moves .sign { font-weight: 700; }

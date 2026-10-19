@@ -104,6 +104,6 @@
     "added": "2026-09-04",
     "origin": "human",
     "source": "modification of chess",
-    "history": "trying out the piece orientation rule."
+    "history": "Moved to the Library: it is the showcase written for pawns that face a direction, and the Baseline keeps to games people chose to play that were not made to show a rule. trying out the piece orientation rule."
   }
 }

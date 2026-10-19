@@ -77,6 +77,12 @@ from chess_variant_sandbox.spec.schema import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _committed(name: str) -> Path:
+    """A ruleset's file, in `rulesets/` or, for one moved to the Library (Q512), `archive/`."""
+    path = ROOT / "rulesets" / f"{name}.json"
+    return path if path.exists() else ROOT / "archive" / f"{name}.json"
 # Every committed and archived spec, for the walks that are one test per spec (Q749).
 CORPUS_PATHS = sorted((ROOT / "rulesets").glob("*.json")) + sorted((ROOT / "archive").glob("*.json"))
 
@@ -1116,7 +1122,7 @@ class TestAHandMayStartWithSomethingInIt:
     def test_a_ruleset_without_a_stock_still_crosses(self) -> None:
         """Read off the compiled rule, so shogi and crazyhouse are untouched."""
         for name in ("crazyhouse", "shogi"):
-            spec = json.loads((ROOT / "rulesets" / f"{name}.json").read_text(encoding="utf-8"))
+            spec = json.loads(_committed(name).read_text(encoding="utf-8"))
             compiled = compile_spec(spec)
             assert compiled.drops is not None and not compiled.drops.stock
             assert not compiled.moveless_types
@@ -1129,7 +1135,7 @@ class TestAHandMayStartWithSomethingInIt:
         """The boundary fields are empty when nothing is stocked, which is all of them."""
         for name in ("crazyhouse", "shogi", "dobutsu", "crazyhouse-torus"):
             compiled = compile_spec(
-                json.loads((ROOT / "rulesets" / f"{name}.json").read_text(encoding="utf-8"))
+                json.loads(_committed(name).read_text(encoding="utf-8"))
             )
             tables = build_tables(compiled)
             assert tables["drops_stock"] == [] and tables["drops_unlimited"] == []
@@ -1511,7 +1517,7 @@ class TestACaptureThatChangesSidesIsCountedAtBothEnds:
     def test_every_from_captures_ruleset_does_it(self) -> None:
         """Four rulesets, one arithmetic -- so the term names a family, not a ruleset."""
         for name in ("crazyhouse", "crazyhouse-torus", "shogi", "dobutsu"):
-            engine = Engine(json.loads((ROOT / "rulesets" / f"{name}.json").read_text(encoding="utf-8")))
+            engine = Engine(json.loads(_committed(name).read_text(encoding="utf-8")))
             assert engine.spec.drops is not None and engine.spec.drops.from_captures
             evaluator = Evaluator.for_spec(engine.spec)
             held, capture_delta, drop_delta = _capture_then_redrop(

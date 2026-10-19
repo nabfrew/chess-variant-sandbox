@@ -13,6 +13,19 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-19
 
+### The board alone, full screen, on a phone
+
+On a phone or tablet, the play page now has a *full screen* button: the board alone fills the screen, upright or on its
+side, with the side to move and the result still in view. Turning the phone keeps the game where it was, and the back
+gesture returns to the page.
+
+### Proven positions are back on their games' pages
+
+Since 16 October the site had quietly lost track of some of its stored files: the proven positions, the ladders of
+computer players for a few games made here, and designs members saved in that time. They are all restored. The filter
+for games with proven positions now finds the seven that have them. Six of the project's own early designs are now listed
+in the library, each with a sentence on why.
+
 ### Find the games with proven positions
 
 The games list can now be narrowed to games that have proven positions to solve: open *narrow it down* and choose

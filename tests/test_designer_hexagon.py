@@ -29,6 +29,12 @@ ARCHIVE = ROOT / "archive"
 RULESETS = ROOT / "rulesets"
 
 
+def _committed(name: str) -> Path:
+    """A ruleset's file, in `rulesets/` or, for one moved to the Library (Q512), `archive/`."""
+    path = RULESETS / f"{name}.json"
+    return path if path.exists() else ARCHIVE / f"{name}.json"
+
+
 def _square(name: str, width: int) -> int:
     return (int(name[1:]) - 1) * width + (ord(name[0]) - ord("a"))
 
@@ -153,7 +159,7 @@ class TestTheWrapCardShowsTheBoardsOwnSides:
 
     @pytest.mark.parametrize("name", ["cylinder", "onewaytorus"])
     def test_a_rectangle_keeps_its_two_axes_and_its_words(self, name: str) -> None:
-        html = _wrap_card(load_spec(RULESETS / f"{name}.json"))
+        html = _wrap_card(load_spec(_committed(name)))
         paths = {path for path in _paths(html) if path.startswith("wrap.")}
         assert paths and all(path.split(".")[1].startswith(("files", "ranks")) for path in paths)
         assert "the side edges" in html and "the top and bottom sides" not in html
@@ -321,7 +327,7 @@ class TestASquareSeamIsCrossedTheShortWay:
 
     def test_the_compiler_lists_a_joined_rectangles_copies(self) -> None:
         def listed(name: str) -> dict[str, tuple[tuple[int, int], tuple[bool, bool]]]:
-            compiled = compile_spec(load_spec(RULESETS / f"{name}.json"))
+            compiled = compile_spec(load_spec(_committed(name)))
             assert compiled.copies == ()
             return {one.side: (one.vector, one.permission) for one in compiled.grid_copies}
 
@@ -347,7 +353,7 @@ class TestASquareSeamIsCrossedTheShortWay:
         assert offers[0]["move"] == {"kind": "leap", "vectors": [[-1, -1]]}
 
     def test_a_one_way_seam_is_crossed_only_the_way_the_first_player_may(self) -> None:
-        spec = load_spec(RULESETS / "onewaytorus.json")
+        spec = load_spec(ARCHIVE / "onewaytorus.json")
         assert spec["rules"]["wrap"]["files_by_player"]["0"] == "left"
         across = _teach(spec, "a4", ["h4"])
         assert across and across[0]["move"] == {"kind": "leap", "vectors": [[-1, 0]]}

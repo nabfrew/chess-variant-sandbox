@@ -42,6 +42,12 @@ from chess_variant_sandbox.spec import load_spec
 
 RULESETS = Path(__file__).resolve().parents[1] / "rulesets"
 
+
+def _committed(name: str) -> Path:
+    """A ruleset's file, in `rulesets/` or, for one moved to the Library (Q512), `archive/`."""
+    path = RULESETS / f"{name}.json"
+    return path if path.exists() else RULESETS.parent / "archive" / f"{name}.json"
+
 # The ten `rules` keys that decide a result, wholly or in part (Q96).
 RESULT_RULES = {
     "checkmate",
@@ -59,10 +65,11 @@ RESULT_RULES = {
 FOOLS_MATE = ["f2f3", "e7e5", "g2g4", "d8h4"]
 
 # Every committed ruleset that translates: `tests/test_fairy.py`'s `TRANSLATES`, whose
-# test holds the list to the corpus. None in `archive/` translates. Shogi was refused from
-# Q438 until Q454 put `on_leaving` on its entries; the nearest shogi that asks neither of
-# its two rules (`fairy_shogi`) stays beside it, for its shape alone: a hand that holds a
-# piece that is not one-way, and one-way pieces off the pawn slot.
+# test holds the list to the corpus. `sardines` is the one in `archive/` (moved there by
+# Q512). Shogi was refused from Q438 until Q454 put `on_leaving` on its entries; the
+# nearest shogi that asks neither of its two rules (`fairy_shogi`) stays beside it, for its
+# shape alone: a hand that holds a piece that is not one-way, and one-way pieces off the
+# pawn slot.
 TRANSLATES = (
     "almost", "antichess", "atomic", "bastion", "berolina", "capablanca", "chess",
     "courier", "crazyhouse", "dobutsu", "dull", "gardner", "horde", "kingofthehill",
@@ -80,7 +87,7 @@ def _spec(name: str, **rules: Any) -> dict[str, Any]:
 
     ``SHOGI_FORWARD`` is not a file: it is the nearest shogi that translates (Q438).
     """
-    spec = shogi_forward() if name == SHOGI_FORWARD else load_spec(RULESETS / f"{name}.json")
+    spec = shogi_forward() if name == SHOGI_FORWARD else load_spec(_committed(name))
     if rules:
         spec["rules"].update(rules)
         spec["schema_version"] = max(spec.get("schema_version", 1), 2)

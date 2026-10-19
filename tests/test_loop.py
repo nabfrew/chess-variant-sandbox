@@ -630,10 +630,12 @@ def test_the_brief_does_not_forbid_a_game_the_corpus_already_scores() -> None:
 
     from chess_variant_sandbox.llm.propose import DESIGN_BRIEF, SCHEMA_PREAMBLE
 
-    rulesets = Path(__file__).resolve().parents[1] / "rulesets"
+    # The Baseline and the Library: `onewaycylinder` moved to the Library (Q512).
+    root = Path(__file__).resolve().parents[1]
     specs = {
         path.stem: json.loads(path.read_text(encoding="utf-8"))
-        for path in sorted(rulesets.glob("*.json"))
+        for folder in ("rulesets", "archive")
+        for path in sorted((root / folder).glob("*.json"))
     }
 
     # Separately-stated armies, and a per-player seam. One committed ruleset each is

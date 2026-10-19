@@ -62,7 +62,7 @@ class TestEveryLibraryFileSaysWhenItJoined:
             # day of the name they arrived under (`sardines-torus`, `tunnel-vertical`); both
             # left the library on 2026-10-12 (Q868).
             ("rulesets/cylinder.json", "2026-08-28"),
-            ("rulesets/onewaytorus.json", "2026-08-30"),
+            ("archive/onewaytorus.json", "2026-08-30"),
             # One of the five files that had no provenance block at all.
             ("rulesets/rps-v2.json", "2026-08-21"),
         ],

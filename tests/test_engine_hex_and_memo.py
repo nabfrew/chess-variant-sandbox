@@ -19,6 +19,7 @@ from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.spec import load_spec
 
 RULESETS = Path(__file__).resolve().parents[1] / "rulesets"
+ARCHIVE = Path(__file__).resolve().parents[1] / "archive"
 
 
 class TestEverySidesCopyCarriesItsOwnPermissions:
@@ -26,7 +27,7 @@ class TestEverySidesCopyCarriesItsOwnPermissions:
         """Each player leaves by one file edge and one rank edge, and the two players by
         opposite ones, so every side and corner has its own pair: a mutant that reads the
         other edge's flag or the other player's (`compile.py:2631`-`2647`) moves one."""
-        spec = load_spec(RULESETS / "onewaytorus.json")
+        spec = load_spec(ARCHIVE / "onewaytorus.json")
         assert spec["rules"]["wrap"] == {
             "files_by_player": {"0": "left", "1": "right"},
             "ranks_by_player": {"0": "top", "1": "bottom"},

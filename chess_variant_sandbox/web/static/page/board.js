@@ -202,6 +202,7 @@ async function showBoard(snapshot, how) {
   const watch = document.getElementById('watch');
   if (watch) watch.onclick = () => restart([WATCH_AGENT, WATCH_AGENT], false);
   document.getElementById('flip').onclick = () => { FLIPPED = !FLIPPED; drawBoard(); };
+  wireFullButton();
   // A refused take-back is answered under the button that asked for it. A rated game
   // draws no take-back at all -- the store refuses one, and a control whose only answer
   // is a refusal is worse than no control.
@@ -353,6 +354,8 @@ function frameHtml(inline, mode, watched, between, rounds, puzzle) {
       ${rated || between || puzzle ? '' : `<button id="undo" class="quiet" title="take your last move back"
         >${barWords('undo', 'take back')}</button>`}
       <button id="flip" class="quiet" title="turn the board around">${barWords('flip', 'flip')}</button>
+      ${inline ? '' : `<button id="fullBoard" class="quiet" title="${
+        BOARD_FULL ? FULL_TITLE_OUT : FULL_TITLE_IN}">${fullWords(BOARD_FULL)}</button>`}
       <span class="row shift" id="shift"></span>
       ${between && between.you !== null ? `<button id="draw" class="quiet"
         title="offer a draw; it stands until the other player accepts it, declines it or moves"
@@ -388,6 +391,8 @@ const FRAME_ICONS = {
   cancel: '<circle cx="12" cy="12" r="8"/><path d="m9 9 6 6M15 9l-6 6"/>',
   decline: '<path d="M5 12h14"/><path d="m7 19 10-14"/>',
   again: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/>',
+  full: '<path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/>',
+  unfull: '<path d="M9 4v5H4"/><path d="M15 4v5h5"/><path d="M9 20v-5H4"/><path d="M15 20v-5h5"/>',
 };
 
 function frameIcon(name) {
@@ -454,6 +459,8 @@ function fitBoard() {
   const legend = document.querySelector('[data-frame="legend"]');
   if (box.length !== 4 || !(box[2] > 0) || !(box[3] > 0) || !panel || !controls) return;
   const ratio = box[3] / box[2];
+  // The board alone (Q638) is sized to the view's room, not the page's.
+  if (BOARD_FULL && !BOARD_INLINE) { fitFull(svg, panel, ratio); return; }
   const tall = node => (node && node.getBoundingClientRect
     ? node.getBoundingClientRect().height : 0);
   const bottom = node => (node && !node.hidden && node.getBoundingClientRect
@@ -562,9 +569,165 @@ let FIT_WIRED = false;
 function wireFit() {
   if (FIT_WIRED || typeof window.addEventListener !== 'function') return;
   FIT_WIRED = true;
-  window.addEventListener('resize', () => {
+  const refit = () => {
     if (SESSION) { fitBoard(); fitPortals(document.getElementById('board')); }
-  });
+  };
+  window.addEventListener('resize', refit);
+  // Turning a phone round (Q638): Safari has been known to report the old size to the
+  // `resize` that comes with it, so the fit is taken again once the turn has settled.
+  window.addEventListener('orientationchange', () => setTimeout(refit, 250));
+}
+
+// ------------------------------------------------------------------ the board alone (Q638)
+
+// The user, 2026-10-02, on their own iPhone (first-visit-study.md §1.2a): *"it would maybe be
+// nice if it would put the board and only the board in full screen mode."* The bar's *full
+// screen* turns the play frame into a view of its own over the page (`html.board-full`, the
+// stylesheet's): the strip (whose move, the result), the board with its banner and its
+// cards, the slot a round or a game between two people sends its move from (and where a
+// round's order is said), the hand of a game with drops, the way out, and once the game is
+// over the review row the banner's *review* steps with. Nothing about the
+// game changes, so a move is played there as anywhere, and turning the phone round refits
+// the board (`fitFull`) without leaving the view.
+//
+// The browser's Fullscreen API hides its bars where it has one. Where it has none (an
+// iPhone's Safari) or refuses, the view is the same, filling the window: the view is the
+// page's class either way, so the two can never disagree about what is drawn. A history
+// entry is pushed on the way in, so a phone's back gesture leaves the view rather than the
+// game; leaving by the control or by the browser's own way out takes it back off. Any
+// other page leaves the view (`render`).
+let BOARD_FULL = false;
+let FULL_PUSHED = false;   // the history entry the view pushed, still on top
+let FULL_NATIVE = false;   // the browser's own full screen is the view's
+const FULL_TITLE_IN = 'the board alone, filling the screen; the moves are played as ever';
+const FULL_TITLE_OUT = 'back to the page round the board';
+
+function fullWords(on) {
+  return on ? barWords('unfull', 'leave full screen') : barWords('full', 'full screen');
+}
+
+function fullscreenNow() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+// Settle what a promise-returning browser call answers, so a refusal is nobody's error.
+function quietly(call) {
+  try {
+    const answer = call();
+    if (answer && typeof answer.catch === 'function') answer.catch(() => {});
+  } catch (error) { /* the view stands without it */ }
+}
+
+// `how` says who asked: 'button', 'fullscreen' (the browser left its own), 'popstate' (the
+// back gesture took the entry off already) or 'route' (another page is being drawn).
+function setBoardFull(on, how) {
+  on = !!on;
+  if (on === BOARD_FULL) return;
+  BOARD_FULL = on;
+  const root = document.documentElement;
+  if (root && root.classList) root.classList.toggle('board-full', on);
+  const button = document.getElementById('fullBoard');
+  if (button) {
+    button.innerHTML = fullWords(on);
+    button.title = on ? FULL_TITLE_OUT : FULL_TITLE_IN;
+  }
+  if (on) {
+    wireFull();
+    try {
+      history.pushState({ boardFull: true }, '');
+      FULL_PUSHED = true;
+    } catch (error) { FULL_PUSHED = false; }
+    const ask = root && (root.requestFullscreen || root.webkitRequestFullscreen);
+    if (ask && (document.fullscreenEnabled || document.webkitFullscreenEnabled)) {
+      quietly(() => ask.call(root, { navigationUI: 'hide' }));
+    }
+  } else {
+    if (how !== 'fullscreen' && fullscreenNow()) {
+      const out = document.exitFullscreen || document.webkitExitFullscreen;
+      if (out) quietly(() => out.call(document));
+    }
+    FULL_NATIVE = false;
+    const pushed = FULL_PUSHED;
+    FULL_PUSHED = false;
+    if (pushed && (how === 'button' || how === 'fullscreen')) {
+      try { history.back(); } catch (error) { /* the entry stays; it is this page's */ }
+    }
+  }
+  if (SESSION) { fitBoard(); fitPortals(document.getElementById('board')); }
+}
+
+function wireFull() {
+  if (wireFull.wired || typeof document.addEventListener !== 'function') return;
+  wireFull.wired = true;
+  const changed = () => {
+    if (fullscreenNow()) { if (BOARD_FULL) FULL_NATIVE = true; return; }
+    if (BOARD_FULL && FULL_NATIVE) setBoardFull(false, 'fullscreen');
+  };
+  document.addEventListener('fullscreenchange', changed);
+  document.addEventListener('webkitfullscreenchange', changed);
+  if (typeof window.addEventListener === 'function') {
+    window.addEventListener('popstate', event => {
+      if (!BOARD_FULL || (event && event.state && event.state.boardFull)) return;
+      FULL_PUSHED = false;
+      setBoardFull(false, 'popstate');
+    });
+  }
+}
+
+function wireFullButton() {
+  const button = document.getElementById('fullBoard');
+  if (button) button.onclick = () => setBoardFull(!BOARD_FULL, 'button');
+}
+
+// The board as large as the view leaves it. Upright, the strip and the way out share the
+// top row and the slot and the hand stand under the board; on its side the board takes the
+// height and those stand in a column beside it. Which one is the window's shape, set here
+// as `.wide` so the stylesheet and this arithmetic agree. The panel's rim is read off the
+// drawn boxes, and its wood, a share of its width, again until the width stops moving.
+function fitFull(svg, panel, ratio) {
+  const frame = panel.closest ? panel.closest('.play-frame') : null;
+  if (!frame || typeof frame.getBoundingClientRect !== 'function') return;
+  const status = document.querySelector('[data-frame="status"]');
+  const controls = document.querySelector('[data-frame="controls"]');
+  const send = document.getElementById('corrSend');
+  const hand = document.getElementById('hand');
+  const review = document.getElementById('review');
+  const row = document.getElementById('boardRow');
+  const wide = window.innerWidth > window.innerHeight;
+  if (frame.classList) frame.classList.toggle('wide', wide);
+  if (row && row.classList) row.classList.remove('beside');
+  if (status && status.style) status.style.maxWidth = '';
+  if (send && send.style) send.style.maxWidth = '';
+  const styleOf = node => (typeof getComputedStyle === 'function' ? getComputedStyle(node) : {});
+  const px = value => parseFloat(value) || 0;
+  const shown = node => !!(node && !node.hidden && typeof node.getBoundingClientRect === 'function');
+  const tall = node => (shown(node) ? node.getBoundingClientRect().height : 0);
+  const outer = node => { const height = tall(node); return height > 0 ? height + px(styleOf(node).marginTop) : 0; };
+  // The strip's lines follow its width, as they do above the page's own board.
+  const across = shown(status) ? status.getBoundingClientRect().width : 0;
+  if (status && status.classList) status.classList.toggle('narrow', across > 0 && across < STRIP_NARROW);
+  const pad = styleOf(frame);
+  const box = frame.getBoundingClientRect();
+  const innerW = box.width - px(pad.paddingLeft) - px(pad.paddingRight);
+  const innerH = box.height - px(pad.paddingTop) - px(pad.paddingBottom);
+  const roomW = wide ? innerW - across - px(pad.columnGap) : innerW;
+  const roomH = (wide ? innerH : innerH - Math.max(tall(status), tall(controls))
+    - outer(send) - outer(hand) - outer(review))
+    - px(styleOf(panel).marginTop);
+  let width = Math.max(0, Math.floor(roomW));
+  for (let pass = 0; pass < 4; pass += 1) {
+    panel.style.width = width + 'px';
+    panel.style.maxWidth = width + 'px';
+    const outside = panel.getBoundingClientRect();
+    const inside = svg.getBoundingClientRect();
+    const wood = outside.width - inside.width;
+    const rim = outside.height - inside.height;
+    const next = Math.max(0, Math.floor(Math.min(roomW - wood, (roomH - rim) / ratio) + wood));
+    if (next === width) break;
+    width = next;
+  }
+  panel.style.width = width + 'px';
+  panel.style.maxWidth = width + 'px';
 }
 
 function applySnapshot(snapshot, animate = true) {
