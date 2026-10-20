@@ -3,7 +3,7 @@
 `docs/plan-website.md`, *Proven positions*. R9a (`chess_variant_sandbox/puzzles.py`,
 `docs/reference/proven-positions.md`) proved positions from the library's own recorded
 games won for the side to move, offline, and wrote them as `runs/puzzles/<hash>.json`
-(`puzzles.FORMAT` 2; 1 is still read). This module reads that record and offers each
+(`puzzles.FORMAT` 3; 1 and 2 are still read). This module reads that record and offers each
 position two ways:
 
 - **Convert it**: a real game from the position against *hardest*, the strongest
@@ -23,10 +23,11 @@ ended, whose side to move is not the record's, or whose legal moves are not the 
 root moves -- a record proved under rules or a core that no longer hold. It never
 re-judges one. *Find the move* compares a move number with the record's numbers.
 
-**Too easy** (Q993a, `docs/plan-proven.md` §3). The loader also leaves out, and counts, a
-position the pre-registered test calls trivial (`puzzles.trivial`): a win in one with more
-than one winning move (T1), half the moves or more proved to win (T2), or, in a `FORMAT` 2
-record, T3's stored answer that nothing the defender does changes the win (`none`). It
+**Too easy** (Q993a, Q993f, `docs/plan-proven.md` §3). The loader also leaves out, and
+counts, a position the test calls trivial (`puzzles.trivial`): a win in one with more than
+one winning move (T1), half the moves or more proved to win (T2), in a `FORMAT` 2 or 3
+record T3's stored answer that nothing the defender does changes the win (`none`), and in
+a `FORMAT` 3 record T4's, that the defender can only make the loss come sooner (`none`). It
 reads the record's numbers and decides nothing; the basis line says how many and why.
 
 **The seven tests** (`docs/reference/no-dark-patterns.md`). No timer and no streak; a
@@ -118,9 +119,17 @@ class Record:
     positions: tuple[Position, ...]
     dropped: int
     too_easy: int = 0
-    """Positions that replay but the triviality test leaves out (T1, T2 or T3)."""
+    """Positions that replay but the triviality test leaves out (T1, T2, T3 or T4)."""
     defence: bool = False
-    """Whether the record carries T3's answers (`FORMAT` 2 with `defence_nodes`)."""
+    """Whether the record carries T3's answers (`FORMAT` 2 or 3 with `defence_nodes`)."""
+    hasten: bool = False
+    """Whether the record carries T4's answers (`FORMAT` 3 with `hasten_nodes`)."""
+
+    @property
+    def tests(self) -> str:
+        """The last part of the triviality test this record could apply: `T2` (T1 and T2,
+        read off the proofs), `T3` or `T4`, which names the basis line's clause."""
+        return "T4" if self.hasten else "T3" if self.defence else "T2"
 
     def find(self, position_id: str) -> Position | None:
         return next((found for found in self.positions if found.id == position_id), None)
@@ -223,6 +232,8 @@ def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | N
         dropped=dropped,
         too_easy=too_easy,
         defence=data.get("format") != 1 and bool((data.get("basis") or {}).get("defence_nodes")),
+        hasten=data.get("format") not in (1, 2)
+        and bool((data.get("basis") or {}).get("hasten_nodes")),
     )
 
 
@@ -310,7 +321,7 @@ def basis_said(record: Record) -> str:
         said += f"Proved on {record.made}."
     if record.too_easy:
         said += (f" Of the {_thousands(won)} it proved, " if won else " ") + (
-            f"{_thousands(record.too_easy)} {TOO_EASY[record.defence]}")
+            f"{_thousands(record.too_easy)} {TOO_EASY[record.tests]}")
     if record.dropped:
         said += (
             f" {record.dropped} more no longer replay under these rules, so they are "
@@ -320,18 +331,25 @@ def basis_said(record: Record) -> str:
 
 
 TOO_EASY = {
-    True: (
+    "T4": (
+        "were left out as too easy: the win was the very next move with more than one way "
+        "to make it, half the moves or more won, or nothing the defender could do put the "
+        "win off, only bring it sooner."
+    ),
+    "T3": (
         "were left out as too easy: the win was the very next move with more than one way "
         "to make it, half the moves or more won, or nothing the defender could do changed "
         "it."
     ),
-    False: (
+    "T2": (
         "were left out as too easy: the win was the very next move with more than one way "
         "to make it, or half the moves or more won."
     ),
 }
 """The basis line's clause for the positions the triviality test leaves out (test 7),
-keyed by whether the record carries T3's answers: it names only the tests applied."""
+keyed by the last part the record could apply (`Record.tests`): it names only the tests
+applied. T4's clause covers T3's, since a defender who cannot change the win cannot put it
+off either."""
 
 
 def _turns(count: int) -> str:

@@ -240,13 +240,15 @@ class TestTheLoader:
         assert {found.id for found in record.positions} == {row["id"] for row in kept}
         assert len(record.positions) + record.too_easy == data["counts"]["won"]
         assert record.singles == sum(1 for row in kept if row["single"])
-        if data["format"] == 2:
+        if data["format"] >= 2:
             assert record.defence and record.too_easy == data["counts"]["trivial"]
+        assert record.hasten == (data["format"] == 3)
 
     def test_too_easy_positions_are_left_out_counted_and_named(self, tmp_path: Path) -> None:
         """The pre-registered test (`plan-proven.md` §3.1) at load: T1, T2 and T3's `none`
         are left out and counted; T3's `some` and `unsettled` are kept, since a reply the
-        probe could not settle counts as a say. Every part is read off the record."""
+        probe could not settle counts as a say. Every part is read off the record. Here
+        the record is a `FORMAT` 2 one, with no T4 (`test_t4_...` reads a `FORMAT` 3)."""
         both = _position("1-0-2", {TAKE: "won", STEP: "won"}, ends_in=3)  # 2 of 5: kept
         t1 = _position("1-1-2", {TAKE: "won", STEP: "won"}, ends_in=1)
         t2 = _position("1-2-2", {move: "won" for move in LEGAL[:3]}, ends_in=3)
@@ -255,12 +257,14 @@ class TestTheLoader:
         unsure = _position("1-5-2", {TAKE: "won", STEP: "won"}, ends_in=3,
                            defence="unsettled")
         record = _record([ONE, both, t1, t2, t3, some, unsure])
+        record["format"] = 2
         record["basis"]["defence_nodes"] = puzzles.DEFENCE_NODES
         _write(tmp_path, record)
         loaded = _load(tmp_path)
         assert [found.id for found in loaded.positions] == [
             "0-0-2", "1-0-2", "1-4-2", "1-5-2"]
         assert loaded.too_easy == 3 and loaded.dropped == 0 and loaded.defence
+        assert not loaded.hasten and loaded.tests == "T3"
         said = proven.basis_said(loaded)
         assert ("Of the 3 it proved, 3 were left out as too easy: the win was the very next move with more "
                 "than one way to make it, half the moves or more won, or nothing the "
@@ -279,6 +283,39 @@ class TestTheLoader:
         assert "half the moves or more won." in said and "defender" not in said
         # Nothing left out, nothing said.
         assert "too easy" not in proven.basis_said(_load(_fresh(tmp_path, [ONE, both])))
+
+    def test_t4_leaves_out_a_defence_that_can_only_hasten_it(self, tmp_path: Path) -> None:
+        """`plan-proven.md` §3.6 at load, in a `FORMAT` 3 record: T4's `none` is left out
+        whatever T3 answered, T4's `some` and `unsettled` are kept, and the basis line
+        names T4's reason in plain words. The answers are read off the record."""
+        pair = {TAKE: "won", STEP: "won"}
+        hastens = _position("1-0-2", pair, ends_in=3, defence="some", hasten="none")
+        march = _position("1-1-2", pair, ends_in=3, defence="none", hasten="none")
+        put_off = _position("1-2-2", pair, ends_in=3, defence="some", hasten="some")
+        unsure = _position("1-3-2", pair, ends_in=3, defence="some", hasten="unsettled")
+        record = _record([ONE, hastens, march, put_off, unsure])
+        assert record["format"] == 3
+        record["basis"]["defence_nodes"] = puzzles.DEFENCE_NODES
+        record["basis"]["hasten_nodes"] = puzzles.DEFENCE_NODES
+        _write(tmp_path, record)
+        loaded = _load(tmp_path)
+        assert [found.id for found in loaded.positions] == ["0-0-2", "1-2-2", "1-3-2"]
+        assert loaded.too_easy == 2 and loaded.dropped == 0
+        assert loaded.defence and loaded.hasten and loaded.tests == "T4"
+        said = proven.basis_said(loaded)
+        assert ("2 were left out as too easy: the win was the very next move with more than "
+                "one way to make it, half the moves or more won, or nothing the defender "
+                "could do put the win off, only bring it sooner.") in said
+        assert site_words.hits(said) == [], said
+        # A `FORMAT` 2 record's stray `hasten` is not T4's basis: no hasten_nodes, no T4
+        # named; the answer itself is still the record's, read by `trivial`.
+        old = _record([ONE, put_off])
+        old["format"] = 2
+        old["basis"]["defence_nodes"] = puzzles.DEFENCE_NODES
+        _write(tmp_path, old)
+        os.utime(proven.path(tmp_path, DIGEST), ns=(10**18, 10**18))
+        loaded = _load(tmp_path)
+        assert not loaded.hasten and loaded.tests == "T3"
 
 
 # ------------------------------------------------------------------- find the move

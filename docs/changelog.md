@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-20
 
+### Fewer, better proven positions
+
+The proven positions no longer include the ones that are too easy, where the defender's moves change nothing; the list
+says how many were left out and why. Every position left has exactly one winning move to find: 119 across the seven games, 16 on *Intransitive*.
+
 ### Scores kept from a sample say so
 
 When the engine changes in a way that should not move any game, a score can now be confirmed by replaying a sample of its
