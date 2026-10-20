@@ -523,6 +523,7 @@ class TestTheMemory:
         written = path.read_bytes(), path.stat().st_mtime_ns
         # A restarted server: nothing in this process remembers the map.
         graphing._MAPS.clear()
+        graphing._DRAWS.clear()
         again = built(LIBRARY, tmp_path)
         assert (path.read_bytes(), path.stat().st_mtime_ns) == written
         assert {node.hash: (node.x, node.y) for node in again.nodes} == {
@@ -557,6 +558,7 @@ class TestTheMemory:
         held["version"] = "m0"
         path.write_text(json.dumps(held), encoding="utf-8")
         graphing._MAPS.clear()
+        graphing._DRAWS.clear()
         cold = built(LIBRARY, tmp_path / "elsewhere")
         again = built(LIBRARY, tmp_path)
         assert json.loads(path.read_text(encoding="utf-8"))["version"] == families.MAP_VERSION
@@ -1013,11 +1015,19 @@ class TestWhatSizesADot:
 class TestThePairCache:
     SPECS = [BASE, spec("one", check_limit=1), spec("two", check_limit=2), far("away")]
 
+    @pytest.fixture(autouse=True)
+    def _nothing_compiled_yet(self) -> None:
+        """The process's compile digests (`graphing._TWINS`) answer any runs directory, so
+        what an earlier test in this worker compiled is forgotten: these count compiles."""
+        graphing._TWINS.clear()
+
     def cold(self) -> None:
         """Forget what this process remembers, so only the files can answer."""
         relate._PAIRS.clear()
         relate._normal_cached.cache_clear()
         graphing._MAPS.clear()
+        graphing._DRAWS.clear()
+        graphing._TWINS.clear()
 
     def test_a_second_call_computes_no_pair_and_compiles_no_spec(
         self, tmp_path: Path
@@ -1028,6 +1038,18 @@ class TestThePairCache:
         self.cold()
         second = built(self.SPECS, tmp_path)
         assert (second.computed, second.compiled) == (0, 0)
+        assert second.as_dict() == first.as_dict()
+
+    def test_a_second_runs_directory_is_answered_from_the_process(
+        self, tmp_path: Path
+    ) -> None:
+        """M5: a game's page asks for the map in whatever runs directory its server has, so
+        the compile digests and the draw are kept by what they are functions of -- the
+        mechanics hash, the library and the memory -- not by the file: the same map, and
+        nothing compiled again."""
+        first = built(self.SPECS, tmp_path / "one")
+        second = built(self.SPECS, tmp_path / "two")
+        assert second.compiled == 0
         assert second.as_dict() == first.as_dict()
 
     def test_a_new_game_costs_its_own_compile_and_the_lines_it_drew(

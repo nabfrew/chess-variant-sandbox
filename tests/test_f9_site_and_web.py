@@ -53,7 +53,7 @@ class TestLoadReport:
     def test_every_table_has_its_line_in_the_order_it_is_loaded(self) -> None:
         names = [line.split()[0] for line in site_load.Report().summary().splitlines()[1:]]
         assert names == ["games", "retired", "moved", "rested", "measurements", "ratings",
-                         "matches", "links"]
+                         "matches"]
 
     def test_the_notes_and_the_files_that_would_not_load_come_last_each_in_its_own_words(
         self,

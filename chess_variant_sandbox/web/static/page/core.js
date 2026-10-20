@@ -598,10 +598,11 @@ const GLOSS = {
   lineage: ['What it came from',
     "Games invented here are revisions of an earlier game, so they form families. This is"
     + " which family, and how many revisions deep."],
-  // The words the server sends about two games are `spec/relate.py`'s similarity index.
-  // The weighing said here is that module's two constants, `SIMILARITY_RATIO` and
-  // `SETTING_WEIGHT`, and `tests/test_web.py` holds the two sentences to them.
-  likeness: ['What differs, by kind',
+  // What differs between two games, by kind: `spec/relate.py`'s similarity counts. The
+  // weighing said here is that module's two constants, `SIMILARITY_RATIO` and
+  // `SETTING_WEIGHT`, and `tests/test_web.py` holds the two sentences to them. It orders
+  // nothing: which games are near is the map's likeness (`alike`, M5 of `docs/plan-map.md`).
+  differs: ['What differs, by kind',
     "The count of rules apart is a count of edits, and every edit counts one: the board,"
     + " the setup, one piece's moves, or one rule of the game. The words marked by kind"
     + " sort what differs into four kinds. Rules are the rules of the game that one of"
@@ -612,9 +613,8 @@ const GLOSS = {
     + " are starting squares held by something different. Each kind weighs eight of the"
     + " kind after it, so eight squares count as one piece, eight pieces as one mechanism"
     + " and eight mechanisms as one rule, and a draw clock or a piece's price counts as"
-    + " one square. Games the same number of rules away are listed the most alike first."
-    + " A game with nothing within three rules is ordered by a count of fifty-five"
-    + " features instead, which picked its relatives better."],
+    + " one square. How alike two games are is a different reading, the map's, and it is"
+    + " what the games like this one are listed by."],
   candidate: ['Not kept yet',
     "It came out of a design run and lives in runs/, which git ignores -- so it lasts"
     + " until the next clean-up unless it is archived or promoted."],
@@ -750,7 +750,8 @@ const GLOSS = {
     + " board. Two games are as alike as the rare things they share: something few games"
     + " in the library have counts for a lot, and something nearly every game has counts"
     + " for almost nothing. 1 is the same game; 0 means they share nothing rare. A line"
-    + " joins two games when each is among the other's nearest few."],
+    + " joins two games when each is among the other's nearest few, and a game's page"
+    + " lists the games most like it the same way, in the same order."],
   // A family's name on the score panel opens this, with the family's own question from
   // `metrics/glossary.py` as the (i)'s extra (G27), so a tap reads what a hover does.
   family: ['What this part of the score asks',
@@ -873,9 +874,10 @@ const SITE_GLOSS = {
     + " won, and so on. They let you find games of one kind, and show which kinds nobody"
     + " has made yet."],
   // A8.
-  likeness: ['What differs, by kind',
+  differs: ['What differs, by kind',
     "Rules count most, then ways of moving, then kinds of piece, then starting squares."
-    + " The fewer the differences, the more alike."],
+    + " This says what is different; how alike two games are is the map's reading, and it"
+    + " is what the games like this one are listed by."],
   // A9.
   fairy: ['An engine written by other people',
     "Fairy-Stockfish is a chess-variant engine written by other people. Where it can play"

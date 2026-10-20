@@ -86,7 +86,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from chess_variant_sandbox.site import links, provisional, quota, resting, spine, stages, terms
+from chess_variant_sandbox.site import provisional, quota, resting, spine, stages, terms
 from chess_variant_sandbox.spec import relate
 
 DESIGNED = "designed"
@@ -225,12 +225,6 @@ def keep(
     holds that game, because `games.parent` references `games.hash`. A fork of a draft
     nobody saved on the site has no parent row.
 
-    The draft's links are written in the same transaction, so a draft's page lists its
-    neighbours from the moment it is saved rather than from the next deploy. Comparing it
-    against the seventy games the library holds costs about 50 milliseconds, which is why
-    it is here rather than in the check's child process (`site/links.py`). Saving the same
-    rules again writes no link either, because the pairs already carry this reading.
-
     `restate` writes `spec`'s name and description over an existing row's, and only where
     `restatable` still answers that it may (Q595); the rules in the row are not touched,
     since they are the hash and are the same.
@@ -242,11 +236,6 @@ def keep(
         )
         found = cursor.fetchone()
     if found is not None:
-        # A deleted game gets no links back. Its rules were taken away for good and a
-        # link is a sentence about them, so saving the same rules again must not write
-        # the sentence back -- the same reason `load` never writes a deleted row again.
-        if found[2] is None:
-            links.write(connection, digest, dict(spec))
         screened = bool(found[3])
         if passed and not screened and found[2] is None:
             with connection.cursor() as cursor:
@@ -281,7 +270,6 @@ def keep(
                 passed,
             ),
         )
-    links.write(connection, digest, dict(spec))
     return Kept(digest, UNLISTED, created=True, revoked=False, screen_passed=passed)
 
 

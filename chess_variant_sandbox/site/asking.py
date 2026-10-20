@@ -32,8 +32,16 @@ abusive text) sized to the one write a stranger makes on the site:
   dropped, empty read as none, and capped at `quota.ASK_NOTE_LENGTH`. Both caps are check
   constraints too. Like a suggestion, the note is stored as typed and every page that shows
   it sets `textContent`, so a note full of tags is a note full of tags.
-- *No mail*: nothing is sent when a request arrives, to the visitor or to the maintainer.
-  The one message this can lead to is the invitation the maintainer chooses to send.
+- *No mail to the visitor*: nothing is sent to the address that asked. The one message a
+  request can bring it is the invitation the maintainer chooses to send.
+
+**The owner is told** (Q979, the user, 2026-10-19): a request that wrote a row is mailed to
+the site's owner (`mail.asked_for_invitation`, to `mail.OWNER_VAR`'s address), saying who
+asked and linking `GRANTED_AT`, the admin panel's table. The row is committed first and the
+mail goes after, off the request's thread, so a send that fails or hangs loses nothing,
+is only logged, and the visitor reads `CONFIRMED` as fast whether the address was new or
+not. A request that wrote nothing (a member's address, a repeat) sends nothing. No owner's
+address in the settings means nobody is mailed, as before.
 
 Nothing here commits; the caller owns the transaction, as in `suggestions` and `reports`.
 """
@@ -49,6 +57,10 @@ from chess_variant_sandbox.site import identity, mail, quota
 
 PATH = "/request-invitation"
 """The page with the form. A constant page: it reads no cookie and no store."""
+
+GRANTED_AT = "/admin#requests"
+"""Where the owner's mail points (Q979): the admin panel's *Requests for an invitation*,
+whose heading carries the id."""
 
 BUTTON = "Request an invitation"
 """The words on the way to the form, wherever the site says accounts are by invitation."""

@@ -398,6 +398,30 @@ def warm_library() -> None:
 
 
 @pytest.fixture(scope="session")
+def warm_map(warm_library: None, tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Draw the library's map once in this process, before a timed request needs it.
+
+    A game's page names the games most like it from the map (M5 of `docs/plan-map.md`), so
+    a server over the whole library with a runs directory of its own -- a test's `tmp_path`
+    -- draws the map on its first `/api/game`: every spec compiled for the twin check and
+    the picture drawn cold, about fifteen seconds on one core. The process keeps both by
+    what they are functions of (`graphing._TWINS`, `graphing._DRAWS`), not by the runs
+    directory, so this pays it once in setup, in a directory of its own, and every such
+    server after it in the worker draws nothing. It also draws the map the tree's own
+    `runs/` remembers, settled from its memory as the app would (writing nothing when the
+    library has not moved), for a server over `library.RUNS_DIR`. Take it in a test that
+    serves `/api/game` over the committed and archived library.
+    """
+    from chess_variant_sandbox.web import graphing, library
+    from chess_variant_sandbox.web.server import MAPPED
+
+    games = library.discover(library.RULESET_DIR, library.RUNS_DIR, library.ARCHIVE_DIR)
+    mapped = [game for game in games if game.source in MAPPED]
+    graphing.build(mapped, tmp_path_factory.mktemp("map"))
+    graphing.near(mapped[0], mapped, library.RUNS_DIR, 1)
+
+
+@pytest.fixture(scope="session")
 def chess_spec() -> dict:
     return load_spec(RULESETS / "chess.json")
 

@@ -184,8 +184,11 @@ def _running_site() -> Iterator[Site]:
 
 
 @pytest.fixture
-def site() -> Iterator[Site]:
+def site(request: pytest.FixtureRequest) -> Iterator[Site]:
     with _running_site() as running:
+        # A game page over the whole library names the games like it from the map (M5):
+        # drawn in setup, once a database is found, rather than in the first test's call.
+        request.getfixturevalue("warm_map")
         yield running
 
 

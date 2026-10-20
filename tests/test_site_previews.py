@@ -296,7 +296,6 @@ class TestTheLoad:
             listed = ", ".join(f"'{digest}'" for digest in PREVIEWS.values())
             assert site.count("measurements", f"hash in ({listed})") == 0
             assert site.count("ratings", f"game in ({listed})") == 0
-            assert site.count("links", f"a in ({listed}) or b in ({listed})") == 0
             # A second load writes nothing, and taking the mark off makes it a Library game.
             assert not loader.load(site.store, root).written
             path = root / "archive" / ROUND_PREVIEW_FILE

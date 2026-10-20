@@ -66,13 +66,13 @@ from chess_variant_sandbox.site import (
     depths,
     designs,
     drafts,
+    finding,
     game_page,
     identity,
     inviting,
     kept,
     leaderboard,
     legality,
-    links,
     mail,
     matches,
     members,
@@ -118,7 +118,6 @@ from chess_variant_sandbox.web.page import front, shell
 from chess_variant_sandbox.web.page import game as game_drawing
 from chess_variant_sandbox.web.server import (
     BROWSER_PREFIX,
-    MAPPED,
     PAGE_PATHS,
     RULES_ROUTE,
     VENDOR_PREFIX,
@@ -265,6 +264,11 @@ class SiteApp(App):
         # Requests for an invitation, by network address (Q831): `quota.ASKS_A_SOURCE` a
         # day from one, so one source cannot spend the site's `ASKS_A_DAY`.
         self.asks = quota.Asks()
+        # The owner's mails about those requests (Q979), each sent on a thread of its own
+        # after the row is committed, so the visitor never waits on the sender and how
+        # long the answer took says nothing about the address. `settle` waits for them.
+        self._telling: list[threading.Thread] = []
+        self._telling_lock = threading.Lock()
         # Every dispatched request, counted by the hour with nobody named
         # (`docs/plan-usage.md`). *Show me*'s people are read off `presses`.
         self.usage = usage.Counter(lambda: self.presses)
@@ -278,7 +282,7 @@ class SiteApp(App):
         # started by `serve` and woken by each submission. A test drains it by hand.
         self.checks = legality.Checker(self._connection, self.runs_dir)
         # G3: each game's near list for its own address, reused for a few minutes.
-        self.near = game_page.NearCache()
+        self.near_cache = game_page.NearCache()
         # G4: the games a search engine may index, for the sitemap and `/game` without script.
         self.listing = game_page.ListedCache()
 
@@ -384,7 +388,6 @@ class SiteApp(App):
         if len(parts) == 3 and parts[:2] == ("api", "game"):
             self._playable(parts[2])
             found = {**super().get(path, asked), **self._standing(parts[2])}
-            found["links"] = self._links(parts[2])
             # A stored player the picker left out is named and no more (G19): the file it
             # is in and the command that repairs it are the maintainer's.
             found["refusedStores"] = [
@@ -1145,10 +1148,19 @@ class SiteApp(App):
         """
         with self._connection() as connection:
             found = game_page.drawn(
-                connection, digest, self.known(), self.game, self.near,
-                seo.site_base(),
+                connection, digest, self.known(), self.game, self.near_cache,
+                seo.site_base(), self._near_names,
             )
         return None if found is None else game_drawing.draw(found)
+
+    def _near_names(self, game: library.Game) -> tuple[game_drawing.Near, ...]:
+        """The games a game's own address names as near it: `near`'s, by name alone."""
+        return tuple(
+            game_drawing.Near(hash=digest, name=name)
+            for digest, name in library.near_names(
+                game, self.mapped(self.known().values()), self.runs_dir
+            )
+        )
 
     # ------------------------------------------------------- the doors for crawlers (G4)
 
@@ -1174,51 +1186,18 @@ class SiteApp(App):
         """`sitemap.xml`, its addresses written on `base`."""
         return seo.sitemap(base, self.listed_pages())
 
-    def _links(self, digest: str) -> list[dict[str, Any]]:
-        """This game's neighbours, narrowed to the games this person may be shown.
-
-        The local application hands `library.detail` the whole library. On the site that
-        listing holds drafts nobody has published, and a link names a game and spells out
-        what it differs from another in -- so an unnarrowed neighbour list is the widest
-        door onto somebody else's unlisted rules. G7 of `docs/archive/plan-game-graph.md`
-        is the row, and the store's `links` table is what closes it.
-
-        The store chooses which neighbours and in what order; `library.neighbours` says
-        what differs and what the score did. So neither the sentence nor the gap is
-        worked out in two places, and the narrowing is one SQL predicate rather than a
-        filter applied after a list has already been cut to sixty.
-
-        A game the table has no rows for has no links here, rather than the library's
-        unnarrowed set. The deploy writes them before the app restarts, so the empty
-        answer belongs to a store nothing has loaded yet, and the narrow answer is the
-        safe one to be wrong with.
-        """
-        game = self.game(digest)
-        # A preview has no neighbours and is nobody's (Q931): the table holds no pair
-        # with one, and this says so again for a store loaded before it was a preview.
-        if game.source == library.PREVIEW:
-            return []
-        with self._connection() as connection:
-            near = links.neighbours(
-                connection, digest, self.viewer, self.role == admin.ADMIN
-            )
-        known = self.known()
-        others = library.scored(known[link.hash] for link in near if link.hash in known)
-        return library.neighbours(game, others)
-
     def findable(self, games: Iterable[library.Game]) -> set[str]:
         """Which of these games this person may be shown: the store's answer, not the tree's.
 
         What `App._between` asks of a gap's two ends. It used to ask whether each was a
         game the map draws, which kept everybody's drafts out -- the owner's included --
-        and let a game an admin had killed in. `links.findable` is the predicate every
-        neighbour list here is narrowed by: the library, this person's own games whatever
-        state they are in, every live game for an admin, and a killed or deleted game for
-        nobody. So the game between a person's own draft and a library game can be built,
+        and let a game an admin had killed in. `finding.findable` is the store's predicate:
+        the library, this person's own games whatever state they are in, every live game
+        for an admin, and a killed or deleted game for nobody. So the game between a person's own draft and a library game can be built,
         and nobody can build one out of somebody else's unlisted draft.
         """
         with self._connection() as connection:
-            return links.findable(
+            return finding.findable(
                 connection,
                 self.viewer,
                 self.role == admin.ADMIN,
@@ -1242,14 +1221,21 @@ class SiteApp(App):
         """
         from chess_variant_sandbox.web import graphing
 
+        return graphing.graph(
+            self.mapped(self.refresh()), self.runs_dir, overlays=[browse.OVERLAY]
+        )
+
+    def mapped(self, games: Iterable[library.Game]) -> list[library.Game]:
+        """The games the map draws, less what the store has taken off the library.
+
+        The one population for the map and for every near list on the site -- a game's
+        page, its own address and a draft's gap button (M5 of `docs/plan-map.md`) -- so a
+        killed game is named on none of them, and the map is one answer for everybody: no
+        list names a person's unlisted draft to anybody but, on its own page, its owner.
+        """
         with self._connection() as connection:
             gone = admin.unlisted_games(connection)
-        games = [
-            game
-            for game in self.refresh()
-            if game.source in MAPPED and game.hash not in gone
-        ]
-        return graphing.graph(games, self.runs_dir, overlays=[browse.OVERLAY])
+        return [game for game in super().mapped(games) if game.hash not in gone]
 
     def _graph_people(self) -> dict[str, Any]:
         """The site's own two numbers for every game the map draws.
@@ -1729,13 +1715,53 @@ class SiteApp(App):
         The form is checked first, which costs nothing; then the connection's day
         (`quota.Asks`, a 429); then the site's day and the row, in one transaction. The
         answer is `asking.CONFIRMED` whether a row was written or not, so it says nothing
-        about the address. Nothing is mailed.
+        about the address. A row that was written is forwarded to the owner (Q979) once
+        it is committed, off this thread; nothing is mailed to the visitor.
         """
         address, note = asking.checked(body.get("email"), body.get("note"))
         self.asks.take(self.source)
         with self._connection() as connection:
-            asking.ask(connection, address, note)
+            written = asking.ask(connection, address, note)
+        if written:
+            self._tell_owner(address, note)
         return {"said": asking.CONFIRMED}
+
+    def _tell_owner(self, address: str, note: str | None) -> None:
+        """Mail the owner a request that was just kept (Q979), on a thread of its own.
+
+        No owner's address in the settings means nobody is told. The request is already
+        committed, so whatever the sender does -- refuses, raises, hangs until its
+        timeout -- costs it nothing: the failure is printed, without the owner's address,
+        and the visitor's answer has already gone or goes regardless. Nothing retries;
+        the request waits on the admin panel either way.
+        """
+        owner = mail.owner_address()
+        if owner is None:
+            return
+
+        def tell() -> None:
+            try:
+                link = f"{mail.site_url()}{asking.GRANTED_AT}"
+                self.send(mail.asked_for_invitation(owner, address, note, link))
+            except Exception as error:  # noqa: BLE001 - any failure of the sender is the same
+                said = str(error).replace(owner, f"${mail.OWNER_VAR}")
+                print(f"a request for an invitation was kept, but the owner was not "
+                      f"mailed: {said}", file=sys.stderr)
+
+        thread = threading.Thread(target=tell, name="tell-owner", daemon=True)
+        with self._telling_lock:
+            self._telling = [one for one in self._telling if one.is_alive()]
+            # Started under the lock, so `settle` never joins a thread not yet started.
+            thread.start()
+            self._telling.append(thread)
+
+    def settle(self, timeout: float = 30.0) -> None:
+        """Wait for the owner's mails in flight to be handed to the sender. For tests,
+        and for anything that must not stop the process with one half sent."""
+        with self._telling_lock:
+            waiting = list(self._telling)
+        for thread in waiting:
+            thread.join(timeout)
 
     # ----------------------------------------------------------- the maintainer's page
 
@@ -3316,6 +3342,12 @@ def serve(
         else f"invitations: no {mail.KEY_VAR}, so `chess-variant-sandbox site invite --no-send` "
         f"prints the link"
     )
+    # Q979. Whether a request for an invitation reaches the owner by mail; the address is
+    # the owner's own and is never printed, only whether the setting is there.
+    if mail.owner_address() is None:
+        print(f"requests for an invitation: no {mail.OWNER_VAR}, so they wait on /admin unmailed")
+    else:
+        print(f"requests for an invitation: mailed to the address {mail.OWNER_VAR} names")
     # The handle is not printed. It is the one half of the maintenance account that a
     # journal would carry in clear, and this line only has to say whether there is one.
     # A refusal is the same line with its reason, and the site serves either way.

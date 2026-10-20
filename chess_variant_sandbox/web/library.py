@@ -952,20 +952,14 @@ def detail(game: Game, others: Iterable[Game] | None = None) -> dict[str, Any]:
     parts, because a player wants one rule at a time next to the board it governs and a
     wall of preformatted text is not that.
 
-    ``others`` is the rest of the library, and without it the page carries no links. A
-    draft in the editor is not in the library and has nothing to be a neighbour of, so
-    that caller passes nothing rather than being given an empty list to explain.
+    ``others`` is the rest of the library, which names the reference game a piece is
+    said to move like. The games near this one are not here: they are the map's
+    (`neighbours`, over the map's own games), and the server adds them (`App.near`).
     """
     from chess_variant_sandbox.site import stages
 
     cell = descriptor(game.spec)
     return {
-        # A preview has no neighbours and is nobody's (Q931): a link carries the gap
-        # between two scores, and a preview is in no comparison.
-        "links": (
-            [] if others is None or game.source == PREVIEW
-            else neighbours(game, scored(others))
-        ),
         **game.summary(),
         # *Where it stands*: the level's sentence and the designer's track, from the
         # same word the card carries (Q503b).
@@ -1016,120 +1010,96 @@ def detail(game: Game, others: Iterable[Game] | None = None) -> dict[str, Any]:
     }
 
 
-# How many rules apart two games may be and still be drawn as neighbours, and how many
-# neighbours one page lists. Three is the threshold of `docs/archive/plan-game-graph.md`
-# §3: past it the links stop being a reading and become a ranking of how unlike
-# everything else a game is.
-# The cap is the busiest game's degree at three with room over it, so no real page is cut.
-NEAR = 3
-MOST_LINKS = 60
-# How many relatives a game with nothing within `NEAR` is shown instead.
-FAR_FEW = 4
+# How many games one page names as like this one: the map's panel's `families.MUTUAL`
+# open and the rest folded (`detail.js`), twelve in all, which is also what the page the
+# server draws for a game's own address names (`web/page/game.py`'s `NEAR_SHOWN`).
+MOST_LINKS = 12
 
 
-def neighbours(game: Game, others: Iterable[Game]) -> list[dict[str, Any]]:
-    """Which games this one is nearest to, in rules, nearest first.
+def neighbours(
+    game: Game, mapped: Iterable[Game], runs_dir: Path | str
+) -> dict[str, Any]:
+    """The games most like this one on the map, most alike first, and what each pair is.
 
-    The count and the sentences are `spec/relate.py`'s and nothing here second-guesses
-    them. What this adds is the join: each link carries the neighbour's name and hash so
-    the page can be a list of links, and the gap between the two scores where both games
-    carry a *current* measurement under the same weights.
+    **One meaning of near** (M5 of `docs/plan-map.md`). Which games and in what order is
+    `graphing.near`'s, which reads the map built over `mapped` -- the same games, the same
+    `spec/likeness.py` relation and its order -- so this page, the map's panel and the
+    site's page for a game's own address name the same games in the same order, and the
+    first `families.MUTUAL` here are the panel's *games like this one*. `mapped` is the
+    map's population as the server draws it (`App.mapped`); a game not on the map (a draft,
+    a candidate) is ranked against the map's games by the same relation.
+
+    What each link adds is the reading: how alike the two are and the rarest things both
+    have (the map's words), what differs between them -- `spec/relate.py`'s count of rules
+    and its sentences, which explain a difference and rank nothing -- and the gap between
+    the two scores where both carry a *current* measurement under the same weights.
 
     **The gap is withheld unless both sides are current.** A missing measurement shows no
     number, and a stale one shows a provisional number (`Game.score`) that never enters a
     comparison: a difference of two numbers one of which is a past value is not a
-    separation claim anyone can make. Scores under two weights
-    versions never share a leaderboard, so a pair that straddles a version has no gap
-    however fresh both are.
+    separation claim anyone can make. Scores under two weights versions never share a
+    leaderboard, so a pair that straddles a version has no gap however fresh both are.
 
-    **Within three rules the order is the count, then the similarity index, then the
-    name.** A step is a designer's edit and `units` counts them, so a game one rule away
-    comes before one two rules away whatever else differs. Among games the same number of
-    rules away, `relate.similarity` weighs what the rules touch -- a rule of the game over
-    a way of moving over a piece over a starting square -- so a hub's twenty-odd one-rule
-    neighbours open with a changed draw clock and a swapped piece rather than with
-    whichever name is first in the alphabet. It is the order the map's panel lists the
-    same lines in (`docs/archive/plan-game-graph.md` §9.5's T3). The number is
-    `relate`'s, and every link carries it with its counts and its words, so the page
-    prints the reading and does no arithmetic on it.
-
-    **Nothing within three rules is a real answer**, and a quarter of the corpus is in
-    it -- the regional games sit 5 to 21 rules from anything. Rather than an empty panel
-    those get their nearest four, with the distance said plainly, because *nothing here is
-    like this game* is the most useful thing the page can tell somebody about `shogi`.
-
-    **The four are `spec/distance.py`'s**, which also picks the map's faint line to a far
-    game, so the page and the map name the same nearest relative. At that range a count
-    of rules ties and ranks badly, and so does the index: `docs/archive/plan-game-graph.md`
-    §9.5's T5 scored the count, the similarity index, a variant of it and `distance.py`
-    against a list of accepted relatives written first, and `distance.py` put the most of
-    them in the four -- 22 of 33 against the count's 19 and the index's 15. Each such link
-    carries the distance, which is what orders it, and `units` and `similarity` still say
-    how many rules apart the two games are and what kind of rules they are.
-
-    Costs about a millisecond a pair the first time and nothing afterwards: `relate`
-    memoises each spec's normal form, each pair it has compared and each form's tier
-    readings, so one visit to a library of seventy games warms seventy of its pairs and a
-    second visit to any page computes none. A far game's page also pays `distance.py`
-    against every game, about 25 ms over the corpus, and only when nothing is within three
-    rules.
+    Answers `{"links", "onMap", "community", "open"}`: `community` is the map's family the
+    game is in (`{id, name}`) or `None`, and `open` how many links the page shows before
+    folding the rest. About a millisecond a link the first time (`relate` memoises each
+    pair) and the map's own cost, which a warm map does not pay again (`graphing._MAPS`).
     """
     from chess_variant_sandbox.spec import relate
+    from chess_variant_sandbox.web import families
 
+    found, by_hash = _nearest(game, mapped, runs_dir)
+    if found is None:
+        return {"links": [], "onMap": False, "community": None, "open": families.MUTUAL}
     mine = relate.normal_form(game.spec)
-    found: list[tuple[int, str, Game, relate.NormalForm, relate.Relation]] = []
-    for other in others:
-        if other.hash == game.hash:
-            continue
-        theirs = relate.normal_form(other.spec)
-        relation = relate.relate_forms(mine, theirs)
-        found.append((relation.units, other.name.lower(), other, theirs, relation))
-
-    # The index is read only for the pairs a page lists, which within `NEAR` is every
-    # pair that far and past it is four.
-    near = [
-        (units, relate.similarity_forms(mine, theirs), name, other, relation)
-        for units, name, other, theirs, relation in found
-        if units <= NEAR
-    ]
-    if near:
-        near.sort(key=lambda entry: (entry[0], entry[1].index, entry[2], entry[3].hash))
-        return [
-            _link(game, other, relation, alike)
-            for _, alike, _, other, relation in near[:MOST_LINKS]
-        ]
-
-    # Far from everything: the nearest four by feature, so the panel says how far rather
-    # than nothing at all. Every one of them is above `NEAR`, and the page says so.
-    held = {other.hash: (other, theirs, relation) for _, _, other, theirs, relation in found}
-    four = nearest_by_feature(
-        game.spec, ((other.hash, other.name, other.spec) for other, _, _ in held.values())
-    )
     links = []
-    for span, digest in four:
-        other, theirs, relation = held[digest]
-        links.append(_link(game, other, relation, relate.similarity_forms(mine, theirs), span))
-    return links
+    for row in found.like:
+        other = by_hash[str(row["hash"])]
+        theirs = relate.normal_form(other.spec)
+        links.append(
+            _link(
+                game, other, row,
+                relate.relate_forms(mine, theirs), relate.similarity_forms(mine, theirs),
+            )
+        )
+    return {
+        "links": links,
+        "onMap": found.on_map,
+        "community": found.community,
+        "open": families.MUTUAL,
+    }
 
 
-def nearest_by_feature(
-    spec: dict[str, Any], others: Iterable[tuple[str, str, dict[str, Any]]]
-) -> list[tuple[float, str]]:
-    """The `FAR_FEW` of `others` nearest `spec` by `spec/distance.py`, as `(distance, hash)`.
+def near_names(
+    game: Game, mapped: Iterable[Game], runs_dir: Path | str
+) -> list[tuple[str, str]]:
+    """`neighbours`' games as `(hash, name)`, in its order, without reading each pair.
 
-    `others` is `(hash, name, spec)`. A tie goes by the name, lower-cased, and then the
-    hash, as the map's faint line once broke it, and `distance` rounds to four places, so
-    ties are real. This is which four a far game's page lists, here and on the site
-    (`site/links.py::neighbours`), so the local application and the site name the same
-    four in the same order. (The map's faint line to the first retired at M4 of
-    `docs/plan-map.md`; this list moves to `spec/likeness.py` at M5.)
+    What the page for a game's own address names (`site/game_page.py`): the same list,
+    for a reader who is shown names and nothing else.
     """
-    from chess_variant_sandbox.spec.distance import distance
+    found, by_hash = _nearest(game, mapped, runs_dir)
+    if found is None:
+        return []
+    return [(by_hash[str(row["hash"])].hash, by_hash[str(row["hash"])].name) for row in found.like]
 
-    spans = sorted(
-        (distance(spec, theirs), name.lower(), digest) for digest, name, theirs in others
-    )
-    return [(span, digest) for span, _, digest in spans[:FAR_FEW]]
+
+def _nearest(
+    game: Game, mapped: Iterable[Game], runs_dir: Path | str
+) -> tuple[Any, dict[str, Game]]:
+    """`graphing.near` over the scored part of `mapped`, and those games by hash.
+
+    `None` for a preview, which has no neighbours and is nobody's (Q931: a link carries the
+    gap between two scores, and a preview is in no comparison), and where the map holds
+    no game.
+    """
+    from chess_variant_sandbox.web import graphing
+
+    population = scored(mapped)
+    if is_preview(game) or not population:
+        return None, {}
+    found = graphing.near(game, population, runs_dir, MOST_LINKS)
+    return found, {other.hash: other for other in population}
 
 
 # The same counts as `relate.Similarity.sentence` says them, in a visitor's words (G40 of
@@ -1163,23 +1133,25 @@ def likeness_words(counts: Mapping[str, int]) -> str:
 def _link(
     game: Game,
     other: Game,
+    row: Mapping[str, Any],
     relation: Any,
     alike: Any,
-    distance: float | None = None,
 ) -> dict[str, Any]:
     first = relation.differences[0] if relation.differences else None
     return {
         "hash": other.hash,
         "name": other.name,
         "source": other.source,
+        # The map's reading of the pair, which is what orders the list: how alike the two
+        # are (0 to 1), the rarest things both have, in words, and whether a line joins
+        # them on the map (each among the other's nearest).
+        "likeness": row["likeness"],
+        "shares": list(row["shares"]),
+        "line": bool(row["line"]),
+        # What differs, which orders nothing: `relate`'s count of rules apart, and its
+        # `similarity` counts said by kind (`{index, counts, words}`, with the site's words).
         "units": relation.units,
-        # `relate.similarity`'s reading of the pair: `{index, counts, words}`, the same
-        # shape a line on the map carries. The index orders a link within `NEAR` among
-        # the links as many rules away, and the words say what kind of rules differ.
         "similarity": {**alike.as_dict(), "site": likeness_words(alike.counts)},
-        # `spec/distance.py`'s number on a far game's four, which is what orders them, and
-        # `None` on a link within `NEAR`, which the count and the index order.
-        "distance": distance,
         # The kind of the first difference, which is the whole kind on a one-rule link
         # and the one a mixed link is filed under. Every kind on the link travels too, so
         # a filter never has to guess from the first.

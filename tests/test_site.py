@@ -1412,28 +1412,9 @@ STORE: dict[str, tuple[str, ...]] = {
     # empties a person out of their rows rather than removing them, so a suggestion by
     # somebody who has gone reads as *a former player*.
     "suggestions": ("id", "author", "kind", "body", "created", "done"),
-    # `0012_links.sql`, G7 of `docs/archive/plan-game-graph.md`. One row per unordered pair
-    # of games, `a < b`, with the count of rules that differ and -- within three -- the
-    # reading. `relate` is the version the row was taken under, so a reading that moves
-    # is recomputed rather than trusted, and both ends cascade so no row can name a
-    # `games` row that is not there.
-    "links": (
-        "a",
-        "b",
-        "units",
-        "kind",
-        "kinds",
-        "unit",
-        "sentence",
-        "differences",
-        "relate",
-        "computed",
-        # `0013_similarity.sql`, T4 of the same archive copy's §9.5. The similarity index
-        # and its six counts, so the store orders a game's links as `web/library.py` does. Both
-        # nullable: a row from before the migration has neither and is compared again.
-        "similarity",
-        "counts",
-    ),
+    # `0012_links.sql` (G7) and `0013_similarity.sql` kept every pair's `relate` reading;
+    # `0038_links_retired.sql` dropped the table when near took the map's one meaning (M5
+    # of `docs/plan-map.md`).
     "usage_samples": (
         "at",
         "cpu_busy",
@@ -1524,10 +1505,8 @@ INDEXES = (
     # `0011_suggestions.sql`, Q279's two reads by author: this person's own list, and the
     # rolling day the daily allowance counts over.
     "suggestions_by_author",
-    # `0012_links.sql`, G7's one read asked from either end: this game's links, nearest
-    # first. Both columns carry it, because a pair is stored once in sort order.
-    "links_by_a",
-    "links_by_b",
+    # (`0012_links.sql`'s `links_by_a` and `links_by_b` went with their table at
+    # `0038_links_retired.sql`.)
     # `0015_provisional.sql`, Q312. The one standing result a game has, which is every
     # reader's question and which the index makes at most one; and a game's history.
     "provisional_one_standing",

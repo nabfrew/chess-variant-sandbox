@@ -32,7 +32,7 @@ from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.spec import load_spec, spec_hash
 from chess_variant_sandbox.tournament.play import choose_move
 from chess_variant_sandbox.viz.pieces import icons_for
-from chess_variant_sandbox.web import keeping, library
+from chess_variant_sandbox.web import families, graphing, keeping, library
 from chess_variant_sandbox.web import server as server_module
 from chess_variant_sandbox.web.play import Sessions
 from chess_variant_sandbox.web.server import App, PortInUse, Server, handler_for, serve, warm
@@ -399,13 +399,65 @@ class TestLibrary:
         assert [game.summary()["index"] for game in found] == [None]
 
 
-class TestAGamesNeighbours:
-    """`docs/archive/plan-game-graph.md` G1: which other games are a rule or two from this one.
+def _variants(root: Path, edits: dict[str, dict]) -> list[library.Game]:
+    """`gardner` as `base`, and one committed game per entry, made by the edit it names.
 
-    The count and the sentence are `spec/relate.py`'s and are tested there, against specs
-    rather than against any game. What is tested here is the join -- a link carries the
-    neighbour's name and hash so the page can be a list of links, and it carries the gap
-    between two scores only where both can honestly be read.
+    An edit's `rules` update the base's rules and its `values` move pieces' prices. A small
+    library of cheap games, so the map these tests build over it costs a fraction of a
+    second rather than the whole library's compile.
+    """
+    base = load_spec(RULESETS / "gardner.json")
+    base["name"] = "base"
+    (root / "rulesets").mkdir(parents=True, exist_ok=True)
+    (root / "runs").mkdir(parents=True, exist_ok=True)
+    written = {"base": base}
+    for name, edit in edits.items():
+        made = json.loads(json.dumps(base))
+        made["name"] = name
+        made["rules"].update(edit.get("rules", {}))
+        for piece in made["pieces"]:
+            if piece["id"] in edit.get("values", {}):
+                piece["value"] = edit["values"][piece["id"]]
+        written[name] = made
+    for name, spec in written.items():
+        (root / "rulesets" / f"{name}.json").write_text(json.dumps(spec), encoding="utf-8")
+    return library.discover(root / "rulesets", root / "runs")
+
+
+# Seven games around `base`: a price, a setting, a new rule, two rules at once, and one
+# that changes a great deal, so the most alike and the least alike are both real.
+VARIANTS = {
+    "a-price": {"values": {"Q": 8}},
+    "a-setting": {"rules": {"promotion": {"piece": "P", "rank": "last", "to": ["Q"]}}},
+    "a-new-rule": {"rules": {"stalemate": "loss"}},
+    "two-rules": {"rules": {"stalemate": "loss", "max_plies": 120}},
+    "a-clock": {"rules": {"max_plies": 90}},
+    "far": {"rules": {"stalemate": "win", "max_plies": 60,
+                      "promotion": {"piece": "P", "rank": "last", "to": ["N"]}},
+            "values": {"Q": 4, "R": 2, "N": 9}},
+}
+
+
+@pytest.fixture(scope="module")
+def variants(tmp_path_factory: pytest.TempPathFactory) -> list[library.Game]:
+    """`VARIANTS`' library, and one runs directory for the module, so its map is built once."""
+    return _variants(tmp_path_factory.mktemp("variants"), VARIANTS)
+
+
+def _runs(games: list[library.Game]) -> Path:
+    """The runs directory beside these games' rulesets, where their map remembers itself."""
+    return Path(games[0].path).parent.parent / "runs"
+
+
+class TestAGamesNeighbours:
+    """M5 of `docs/plan-map.md`: a game's page lists the games most like it, by the map.
+
+    `library.neighbours` asks `graphing.near` which games and in what order -- the map's
+    own games, ranked by the map's likeness -- and adds the reading of each pair: what both
+    have, what differs (`spec/relate.py`'s count and sentences, tested there) and the gap
+    between two scores where both can honestly be read. So what is held here is that the
+    page's list *is* the map's, a game off the map is ranked by the same relation, nothing
+    orders by the count of rules any more, and the gap is read and never computed.
     """
 
     def _two_games(self, tmp_path: Path, **rules) -> list[library.Game]:
@@ -423,15 +475,17 @@ class TestAGamesNeighbours:
         (tmp_path / "runs").mkdir(exist_ok=True)
         return library.discover(tmp_path / "rulesets", tmp_path / "runs")
 
-    def test_a_detail_view_with_no_library_behind_it_draws_no_links(self, tmp_path) -> None:
-        """A draft in the editor is in no library and has nothing to be a neighbour of."""
+    def test_a_detail_view_carries_no_links_of_its_own(self, tmp_path) -> None:
+        """The games near a game are the map's, which the server adds (`App.near`)."""
         found = self._two_games(tmp_path, stalemate="loss")
-        assert library.detail(found[0])["links"] == []
+        assert "links" not in library.detail(found[0], found)
 
     def test_one_changed_rule_is_one_link_that_says_which_rule(self, tmp_path) -> None:
         found = self._two_games(tmp_path, stalemate="loss")
-        links = library.detail(found[0], found)["links"]
+        near = library.neighbours(found[0], found, tmp_path / "runs")
+        links = near["links"]
         assert [link["name"] for link in links] == ["second"]
+        assert links[0]["hash"] == found[1].hash
         assert links[0]["units"] == 1
         assert links[0]["kind"] == "ending"
         assert links[0]["kinds"] == ["ending"]
@@ -439,64 +493,104 @@ class TestAGamesNeighbours:
         # stalemate rule" is a link nobody can act on.
         assert links[0]["sentence"] == "what a player with no move gets"
         assert links[0]["differences"][0]["unit"] == "rules.stalemate"
-        assert links[0]["hash"] == found[1].hash
+        # The map's reading: how alike -- a library of two shares nothing rare, since what
+        # both games have weighs nothing -- and whether a line joins them on the map.
+        assert links[0]["likeness"] == 0.0
+        assert links[0]["shares"] == [] and links[0]["line"] is False
+        assert "distance" not in links[0]
+        assert near["onMap"] is True and near["open"] == families.MUTUAL
 
-    def test_a_game_is_never_its_own_neighbour(self, chess_game, games) -> None:
-        links = library.detail(chess_game, games)["links"]
-        assert chess_game.hash not in {link["hash"] for link in links}
+    def test_a_game_is_never_its_own_neighbour(self, variants) -> None:
+        for game in variants:
+            links = library.neighbours(game, variants, _runs(variants))["links"]
+            assert game.hash not in {link["hash"] for link in links}, game.name
+            assert len(links) == len(variants) - 1, "a small library lists every other game"
 
-    def test_the_nearest_come_first(self, chess_game, games) -> None:
-        links = library.detail(chess_game, games)["links"]
-        assert links
-        assert [link["units"] for link in links] == sorted(
-            link["units"] for link in links
-        )
-        assert links[0]["units"] == 1
+    def test_the_most_alike_come_first(self, variants) -> None:
+        for game in variants:
+            alike = [
+                link["likeness"]
+                for link in library.neighbours(game, variants, _runs(variants))["links"]
+            ]
+            assert alike == sorted(alike, reverse=True), game.name
 
-    def test_a_game_far_from_everything_still_says_how_far(self, games) -> None:
-        """A quarter of the library has no neighbour within three rules.
+    def test_the_page_opens_on_the_map_s_own_games_like_this_one(self, variants) -> None:
+        """One meaning of near: the page's first `MUTUAL` are the map panel's `like`, in its
+        order, with its likeness, its words and its lines; and the page's community is the
+        node's."""
+        drawn = graphing.build(variants, _runs(variants))
+        for node in drawn.nodes:
+            game = next(one for one in variants if one.hash == node.hash)
+            near = library.neighbours(game, variants, _runs(variants))
+            opened = near["links"][: near["open"]]
+            assert [
+                {key: link[key] for key in ("hash", "likeness", "shares", "line")}
+                for link in opened
+            ] == [dict(row, shares=list(row["shares"])) for row in node.like], game.name
+            community = near["community"]
+            assert (community or {}).get("id") == node.community, game.name
 
-        Named by game because the plan's own evidence is: shogi's nearest relative is
-        twenty-one rules away, and an empty panel would say nothing about that. The
-        claim under test is that such a game gets a link at all and that its links are
-        honestly outside the near threshold.
-        """
-        far = next(game for game in games if game.name == "shogi")
-        links = library.detail(far, games)["links"]
-        assert links
-        assert min(link["units"] for link in links) > library.NEAR
+    def test_the_order_is_the_map_s_relation_and_nothing_else(self, variants) -> None:
+        """`base`'s list is the map's likeness order (`Likeness.nearest`), whatever the
+        counts of rules say: the order the page used to have, fewest rules apart first,
+        orders nothing now."""
+        base = next(game for game in variants if game.name == "base")
+        links = library.neighbours(base, variants, _runs(variants))["links"]
+        drawn = graphing._drawn(variants, _runs(variants))
+        assert [link["hash"] for link in links] == [
+            drawn.ids[other]
+            for other in drawn.relation.nearest(drawn.at[base.hash], len(variants))
+        ]
 
-    def test_a_far_game_is_shown_the_four_nearest_by_feature(self, games) -> None:
-        """`docs/archive/plan-game-graph.md` §9.5's T5: at that range `spec/distance.py` ranks.
+    def test_a_game_off_the_map_is_ranked_against_the_map_s_games(
+        self, variants, tmp_path
+    ) -> None:
+        """A draft is not on the map, and its page still lists the library's games most
+        like it, by the same relation with itself counted in -- and the map is unchanged."""
+        before = graphing.build(variants, _runs(variants))
+        [draft] = [
+            game for game in _variants(tmp_path, {"a-draft": {"values": {"Q": 7}}})
+            if game.name == "a-draft"
+        ]
+        near = library.neighbours(draft, variants, _runs(variants))
+        assert (near["onMap"], near["community"]) == (False, None)
+        hashes = [link["hash"] for link in near["links"]]
+        assert set(hashes) <= {game.hash for game in variants}
+        assert draft.hash not in hashes
+        assert not any(link["line"] for link in near["links"])
+        alike = [link["likeness"] for link in near["links"]]
+        assert alike == sorted(alike, reverse=True)
+        # A price moved: the base it was moved from and the game that moved the same
+        # price elsewhere are the most like it.
+        assert {link["name"] for link in near["links"][:2]} == {"base", "a-price"}
+        after = graphing.build(variants, _runs(variants))
+        assert [node.like for node in after.nodes] == [node.like for node in before.nodes]
 
-        The four are the four smallest distances in the library, nearest first, and each
-        carries its number. Nothing left off the list is nearer than the last one on it.
-        """
-        from chess_variant_sandbox.spec.distance import distance
+    def test_the_game_least_like_the_rest_still_has_its_list(self, variants) -> None:
+        """There is no far case: every game has the games most like it, said as alike as
+        they are, and no other ranking takes over past some count of rules."""
+        far = next(game for game in variants if game.name == "far")
+        links = library.neighbours(far, variants, _runs(variants))["links"]
+        assert len(links) == len(variants) - 1
+        assert all("distance" not in link for link in links)
 
-        far = next(game for game in games if game.name == "shogi")
-        links = library.detail(far, games)["links"]
-        assert len(links) == library.FAR_FEW
-        by_hash = {game.hash: game for game in games}
-        spans = [link["distance"] for link in links]
-        assert spans == [distance(far.spec, by_hash[link["hash"]].spec) for link in links]
-        assert spans == sorted(spans)
-        listed = {link["hash"] for link in links} | {far.hash}
-        assert all(
-            distance(far.spec, game.spec) >= spans[-1]
-            for game in games if game.hash not in listed
-        )
+    def test_the_list_is_cut_at_the_page_s_twelve(self, tmp_path) -> None:
+        many = {f"clock-{plies}": {"rules": {"max_plies": plies}} for plies in range(60, 200, 10)}
+        games = _variants(tmp_path, many)
+        assert len(games) > library.MOST_LINKS + 1
+        near = library.neighbours(games[0], games, tmp_path / "runs")
+        assert len(near["links"]) == library.MOST_LINKS
 
-    def test_a_link_within_three_rules_carries_no_distance(self, chess_game, games) -> None:
-        """The count orders those, and a number beside it would be a second ranking."""
-        links = library.detail(chess_game, games)["links"]
-        assert links
-        assert all(link["distance"] is None for link in links)
+    def test_a_preview_has_no_neighbours(self, variants) -> None:
+        preview = replace(variants[0], source=library.PREVIEW)
+        near = library.neighbours(preview, variants, _runs(variants))
+        assert near["links"] == [] and near["onMap"] is False
 
     def test_an_unmeasured_pair_shows_no_gap(self, tmp_path) -> None:
         """A difference of two numbers one of which may not be shown is not a number."""
         found = self._two_games(tmp_path, stalemate="loss")
-        assert library.detail(found[0], found)["links"][0]["gap"] is None
+        [link] = library.neighbours(found[0], found, tmp_path / "runs")["links"]
+        assert link["gap"] is None
 
     def test_a_gap_is_read_from_the_two_measurements_and_never_computed(
         self, tmp_path
@@ -504,16 +598,14 @@ class TestAGamesNeighbours:
         """Both ends are the two games' own stored numbers, and the gap is their difference.
 
         Two games one rule apart, each handed a current score (the memo `Game.score`
-        fills, so no measurement has to be played). Until Q745 this read the tree's own
-        library, where a worktree has no `runs/` and so no gap, and its asserts never ran;
-        that reading is `test_every_gap_in_this_trees_library_is_read_from_its_two_ends`.
+        fills, so no measurement has to be played).
         """
         first, second = self._two_games(tmp_path, stalemate="loss")
         first._score_cache = {"status": "current", "index": 0.5, "sd": 0.01,
                               "weights_version": "v12", "seeds": [0, 1000, 2000, 3000]}
         second._score_cache = {"status": "current", "index": 0.62, "sd": 0.02,
                                "weights_version": "v12", "seeds": [0]}
-        [link] = library.detail(first, [first, second])["links"]
+        [link] = library.neighbours(first, [first, second], tmp_path / "runs")["links"]
         gap = link["gap"]
         assert (gap["index"], gap["otherIndex"]) == (0.5, 0.62)
         assert gap["gap"] == pytest.approx(0.12)
@@ -521,20 +613,6 @@ class TestAGamesNeighbours:
         assert gap["clear"] is True
         assert (gap["seeds"], gap["otherSeeds"]) == ([0, 1000, 2000, 3000], [0])
         assert gap["weights"] == "v12"
-
-    def test_every_gap_in_this_trees_library_is_read_from_its_two_ends(
-        self, chess_game, games
-    ) -> None:
-        """The same, on the library as measured: the main checkout's `runs/`, not a worktree's."""
-        gaps = [link["gap"] for link in library.detail(chess_game, games)["links"]]
-        gaps = [gap for gap in gaps if gap is not None]
-        if not gaps:
-            pytest.skip("no neighbour of chess has two current scores in this tree's runs/")
-        for gap in gaps:
-            assert gap["gap"] == pytest.approx(gap["otherIndex"] - gap["index"])
-            assert gap["clear"] is (abs(gap["gap"]) > 2 * gap["spread"])
-            assert gap["weights"]
-            assert gap["seeds"] and gap["otherSeeds"]
 
     def test_each_end_of_a_gap_says_how_many_runs_it_rests_on(self) -> None:
         """Q339. A library game's four runs and a candidate's one can be the two ends of
@@ -573,7 +651,7 @@ class TestAGamesNeighbours:
     def test_the_page_draws_the_panel_and_the_way_into_a_neighbour(self) -> None:
         from page_text import PAGE
 
-        assert "Games near this one" in PAGE
+        assert "Games like this one" in PAGE and "Games near this one" not in PAGE
         assert "linksHtml(game)" in PAGE
         # The name is a button that opens that game, which is the point of the panel.
         assert "data-link=" in PAGE
@@ -617,108 +695,31 @@ def _alike(index: float, words: str) -> dict:
 
 
 class TestTheSimilarityReadingOnThePage:
-    """`docs/archive/plan-game-graph.md` §9.5's T3: the similarity index orders and explains.
+    """`docs/archive/plan-game-graph.md` §9.5's T3, after M5 of `docs/plan-map.md`.
 
-    `relate.units` still decides which games are neighbours and how many rules apart they
-    are. Among games the same number of rules away, the index says which is the most alike,
-    and its words -- *no rules, 6 mechanisms, 1 piece* -- say what kind of thing differs.
-    The game's own page and the map's panel list one game's neighbours in the same order
-    and print the same words. A far game keeps `spec/distance.py`'s order, which is T5's
-    verdict, and `TestAGamesNeighbours` holds that.
+    The similarity index once ordered a game's neighbours among games as many rules away.
+    Near now has one meaning, the map's likeness (`TestAGamesNeighbours`), and the index's
+    counts are left with what they were always also for: saying *what differs*, by kind --
+    *no rules, 6 mechanisms, 1 piece* -- beside each game like this one. They order nothing.
 
     `tests/test_relate.py` holds what the counts are and what the index weighs them at.
-    What is held here is that the server hands both to the page and the page does no
+    What is held here is that the server hands the words to the page and the page does no
     arithmetic on them.
     """
 
-    def _library(self, tmp_path: Path, variants: dict[str, dict]) -> list[library.Game]:
-        """A base game and one variant per entry, each made by the edit it names."""
-        base = load_spec(RULESETS / "gardner.json")
-        base["name"] = "base"
-        (tmp_path / "rulesets").mkdir()
-        (tmp_path / "runs").mkdir()
-        written = {"base": base}
-        for name, edit in variants.items():
-            made = json.loads(json.dumps(base))
-            made["name"] = name
-            made["rules"].update(edit.get("rules", {}))
-            for piece in made["pieces"]:
-                if piece["id"] in edit.get("values", {}):
-                    piece["value"] = edit["values"][piece["id"]]
-            written[name] = made
-        for name, spec in written.items():
-            (tmp_path / "rulesets" / f"{name}.json").write_text(
-                json.dumps(spec), encoding="utf-8"
-            )
-        return library.discover(tmp_path / "rulesets", tmp_path / "runs")
-
-    def test_games_as_many_rules_away_come_the_most_alike_first(self, tmp_path) -> None:
-        """Three games one rule from the base, named so the alphabet orders them wrongly.
-
-        A price is the least a rule can change, a rule set differently is more, and a rule
-        the base does not have at all is the most.
-        """
+    def test_each_link_says_what_differs_by_kind_in_relate_s_words(self, variants) -> None:
         from chess_variant_sandbox.spec import relate
 
-        found = self._library(tmp_path, {
-            "a-new-rule": {"rules": {"check_limit": 3}},
-            "b-a-price": {"values": {"Q": 8}},
-            "c-a-setting": {"rules": {"promotion": {"piece": "P", "rank": "last", "to": ["Q"]}}},
-        })
-        base = next(game for game in found if game.name == "base")
-        links = library.neighbours(base, found)
-        assert [link["units"] for link in links] == [1, 1, 1]
-        by_name = {game.name: game for game in found}
-        readings = [relate.similarity(base.spec, by_name[link["name"]].spec) for link in links]
+        base = next(game for game in variants if game.name == "base")
+        by_hash = {game.hash: game for game in variants}
+        links = library.neighbours(base, variants, _runs(variants))["links"]
+        readings = [relate.similarity(base.spec, by_hash[link["hash"]].spec) for link in links]
         assert [link["similarity"] for link in links] == [
             {**one.as_dict(), "site": library.likeness_words(one.counts)} for one in readings
         ]
-        assert [one.index for one in readings] == sorted(one.index for one in readings)
-        assert [link["name"] for link in links] == ["b-a-price", "c-a-setting", "a-new-rule"]
-
-    def test_the_count_still_comes_first(self, tmp_path) -> None:
-        """A game two rules away is behind every game one rule away, however alike."""
-        found = self._library(tmp_path, {
-            "one-rule": {"rules": {"check_limit": 3}},
-            "two-prices": {"values": {"Q": 8, "R": 4}},
-        })
-        base = next(game for game in found if game.name == "base")
-        links = library.neighbours(base, found)
-        assert [(link["name"], link["units"]) for link in links] == [
-            ("one-rule", 1), ("two-prices", 2)
-        ]
-        assert links[0]["similarity"]["index"] > links[1]["similarity"]["index"]
-
-    def test_a_far_game_s_four_carry_the_reading_in_the_features_order(self, games) -> None:
-        """The words are true at any range; the order past three rules is not the index's."""
-        from chess_variant_sandbox.spec import relate
-
-        far = next(game for game in games if game.name == "shogi")
-        by_hash = {game.hash: game for game in games}
-        links = library.neighbours(far, games)
-        assert all(link["distance"] is not None for link in links)
-        readings = [relate.similarity(far.spec, by_hash[link["hash"]].spec) for link in links]
-        assert [link["similarity"] for link in links] == [
-            {**one.as_dict(), "site": library.likeness_words(one.counts)} for one in readings
-        ]
-
-    def test_chess_s_one_rule_neighbours_open_as_the_plan_records(self, tmp_path) -> None:
-        """T3's own acceptance, over the committed and archived specs the map draws.
-
-        Named by game because the plan's evidence is: the draw clock, the one swapped
-        piece and the bishop that sweeps are the three most alike of chess's one-rule
-        neighbours, where before this they came in the alphabet's order.
-        """
-        found = library.discover(RULESETS, tmp_path, corpus.ARCHIVE_DIR)
-        chess = next(game for game in found if game.name == "chess")
-        links = library.neighbours(chess, found)
-        assert [link["name"] for link in links[:3]] == [
-            "perpetual", "almost chess", "sweeping bishop chess"
-        ]
-        berolina = next(link for link in links if link["name"] == "berolina")
-        assert berolina["similarity"]["words"] == "no rules, 6 mechanisms, 1 piece"
-        # G40: the site's words for the same counts.
-        assert berolina["similarity"]["site"] == "no rules, 6 ways of moving, 1 piece"
+        # They order nothing: the list is the map's, most alike first.
+        alike = [link["likeness"] for link in links]
+        assert alike == sorted(alike, reverse=True)
 
     # ------------------------------------------------------------------ on the map
 
@@ -764,33 +765,42 @@ class TestTheSimilarityReadingOnThePage:
         assert "the camel; a hex board" in drawn
         assert "the camel leaps further" in drawn and "one rule apart" in drawn
         assert 'data-gloss="alike"' in drawn
-    def test_a_near_link_says_apart_and_a_far_one_says_differs_in(self) -> None:
-        """A far game's four come in the features' order, so their count is no distance.
-
-        Printed as *23 rules apart* under a list ordered by something else, the count
-        reads as the order and the order reads as wrong. The sentence above the four
-        names what orders them.
-        """
-        near = {"hash": "h1", "name": "near", "units": 1, "distance": None,
-                "kinds": [], "differences": [], "gap": None,
-                "similarity": _alike(392, "no rules, 6 mechanisms, 1 piece")}
-        far = [
-            {"hash": f"f{at}", "name": f"far{at}", "units": units, "distance": span,
+    def test_the_page_opens_on_the_panel_s_few_and_folds_the_rest(self) -> None:
+        """The game's page prints the server's list as it came: the first `open` rows, the
+        rest folded as less alike, each with how alike, what both have and what differs."""
+        links = [
+            {"hash": f"h{at}", "name": f"game{at}", "units": units, "likeness": alike,
+             "shares": ["the camel"] if at == 0 else [], "line": at < 2,
              "kinds": [], "differences": [], "gap": None,
-             "similarity": _alike(3000, "4 rules, 8 mechanisms")}
-            for at, (units, span) in enumerate([(23, 0.08), (21, 0.09)])
+             "similarity": _alike(392, "no rules, 6 mechanisms, 1 piece")}
+            for at, (units, alike) in enumerate([(3, 0.8), (1, 0.6), (0, 0.5), (23, 0.1)])
         ]
-        shown_near = _in_the_page("", f"linksHtml({json.dumps({'links': [near]})})")
-        assert "1 rule apart" in shown_near
-        assert "by kind: no rules, 6 mechanisms, 1 piece" in shown_near
-        assert "most alike first" in shown_near
+        game = {"links": links, "open": 2, "onMap": True,
+                "community": {"id": "f1", "name": "the camel"}}
+        shown = _in_the_page("", f"linksHtml({json.dumps(game)})")
+        assert "Games like this one" in shown and "most alike first" in shown
+        assert "0.800 alike, a line on the map" in shown
+        assert "0.100 alike" in shown and "0.100 alike, a line" not in shown
+        assert "both have the camel" in shown
+        assert "3 rules apart" in shown and "1 rule apart" in shown
+        assert "the same rules, written two ways" in shown
+        assert "by kind: no rules, 6 mechanisms, 1 piece" in shown
+        assert "2 more, less alike" in shown
+        assert shown.index("game0") < shown.index("game1") < shown.index("game2")
+        assert "in the community <b>the camel</b>" in shown
+        # No other ranking takes over past a count of rules.
+        assert not re.search(r"differs in \d+ rules?", shown)
+        assert "fifty-five features" not in shown and "faint line" not in shown
 
-        shown_far = _in_the_page("", f"linksHtml({json.dumps({'links': far})})")
-        assert "differs in 23 rules" in shown_far and "differs in 21 rules" in shown_far
-        assert not re.search(r"\d+ rules? apart", shown_far)
-        assert "fifty-five features" in shown_far
-        assert shown_far.index("far0") < shown_far.index("far1")
-        assert "by kind: 4 rules, 8 mechanisms" in shown_far
+    def test_the_page_says_where_the_map_puts_the_game(self) -> None:
+        link = {"hash": "h", "name": "near", "units": 1, "likeness": 0.5, "shares": [],
+                "line": False, "kinds": [], "differences": [], "gap": None}
+        unusual = _in_the_page("", "linksHtml(" + json.dumps(
+            {"links": [link], "open": 5, "onMap": True, "community": None}) + ")")
+        assert "unusual: in no community" in unusual
+        off = _in_the_page("", "linksHtml(" + json.dumps(
+            {"links": [link], "open": 5, "onMap": False, "community": None}) + ")")
+        assert "not on the map" in off
 
     # ------------------------------------------------------------ no arithmetic
 
@@ -813,15 +823,16 @@ class TestTheSimilarityReadingOnThePage:
 
         from chess_variant_sandbox.spec import relate
 
-        entry = CORE.split("  likeness: [", 1)[1].split("],", 1)[0]
-        assert relate.SIMILARITY_RATIO == 8, "the likeness gloss says eight"
+        entry = CORE.split("  differs: [", 1)[1].split("],", 1)[0]
+        assert relate.SIMILARITY_RATIO == 8, "the differs gloss says eight"
         assert "eight squares count as one piece" in entry
-        assert relate.SETTING_WEIGHT == 0.5, "the likeness gloss says half"
+        assert relate.SETTING_WEIGHT == 0.5, "the differs gloss says half"
         assert "set differently counts half" in entry
-        # Beside the sentence that heads a game's list. The map's lines are the new
-        # likeness (M4 of `docs/plan-map.md`) and carry their own (i), `alike`.
-        assert "info('likeness')" in DETAIL and "info('alike')" in GRAPH
-        assert "info('likeness')" not in GRAPH
+        # Beside the sentence that heads a game's list, which is ordered by the map's
+        # likeness and carries its (i), `alike`, as the map's panel does (M5).
+        assert "info('differs')" in DETAIL and "info('alike')" in DETAIL
+        assert "info('alike')" in GRAPH and "info('differs')" not in GRAPH
+        assert "info('likeness')" not in CORE + DETAIL + GRAPH
 
 
 class TestTheMap:
@@ -3722,7 +3733,8 @@ class TestADeliberateExample:
         game["exhibit"] = self.SAID
         game["links"] = [{
             "hash": "eeeeeeeeeeee", "name": "its neighbour", "units": 1, "kinds": ["rules"],
-            "differences": [], "similarity": None, "distance": None,
+            "likeness": 0.5, "shares": [], "line": True,
+            "differences": [], "similarity": None,
             "gap": None, "exhibit": "Kept on purpose as the neighbour.",
         }]
         html = _page_on(accounts, "#/game/dddddddddddd", game)["html"]
@@ -11355,16 +11367,16 @@ class TestBuildingAGameByHand:
     ) -> None:
         """Q429. The map offers *make the game in between* on a gap and draws no drafts,
         so the game between a draft and the library had a route and no page. A draft's own
-        page carries the library game nearest it -- the first library game its own list of
-        neighbours names -- and the press is the map's own request.
+        page carries the library game most like it -- the first of its own *games like
+        this one* (M5: the map's likeness) -- and the press is the map's own request.
 
-        A second draft one rule away is the nearest game of all, and is not the one named:
-        the other end is a *library* game, which is what the map's gaps join.
+        A second draft one rule away is named nowhere on the page: the games like this one
+        are the map's games, and the other end of a gap is a *library* game, which is what
+        the map's gaps join.
         """
         from chess_variant_sandbox.spec import relate
 
         app = self._two_game_library(tmp_path, monkeypatch)
-        dull = load_spec(RULESETS / "dull.json")
         draft = self._dull_with("dull, longer and harsher", max_plies=80, stalemate="loss")
         kept = app.post("/api/design/save", {"spec": draft})
         beside = app.post(
@@ -11375,17 +11387,20 @@ class TestBuildingAGameByHand:
         page = app.get(f"/api/game/{kept['hash']}")
         near = page["between"]
 
-        assert page["links"][0]["hash"] == beside["hash"], "the other draft is nearest"
-        library_links = [
-            link for link in page["links"] if link["source"] in server_module.MAPPED
-        ]
-        assert near["hash"] == library_links[0]["hash"] == spec_hash(dull)
-        assert (near["name"], near["units"], near["distance"]) == ("dull", 2, None)
-        assert {near["from"], near["taken"]} == {kept["hash"], spec_hash(dull)}
+        assert beside["hash"] not in {link["hash"] for link in page["links"]}
+        assert all(link["source"] in server_module.MAPPED for link in page["links"])
+        assert (page["onMap"], page["community"]) == (False, None)
+        first = page["links"][0]
+        assert (near["hash"], near["likeness"], near["units"]) == (
+            first["hash"], first["likeness"], first["units"]
+        )
+        assert near["units"] == 2 and "distance" not in near
+        assert {near["from"], near["taken"]} == {kept["hash"], first["hash"]}
+        other = app.game(first["hash"]).spec
 
         made = app.get(f"/api/design/{near['from']}", {"between": near["taken"]})["between"]
         assert made["words"] == near["words"]
-        assert relate.units(made["spec"], dull) == 1
+        assert relate.units(made["spec"], other) == 1
         assert relate.units(made["spec"], draft) == 1
 
     def test_one_rule_from_the_library_has_nothing_in_between(
@@ -11402,7 +11417,9 @@ class TestBuildingAGameByHand:
         near = app.get(f"/api/game/{kept['hash']}")["between"]
 
         assert near["units"] == 1
-        assert near["why"] == "dull is one rule from this game, so no game stands between them."
+        assert near["why"] == (
+            f"{near['name']} is one rule from this game, so no game stands between them."
+        )
         assert not {"from", "taken", "words"} & set(near)
 
     def test_a_library_game_s_page_is_sent_none(self, tmp_path, monkeypatch) -> None:
@@ -11414,27 +11431,24 @@ class TestBuildingAGameByHand:
 
     def test_the_page_draws_what_the_server_sent_and_nothing_else(self) -> None:
         """No button without an answer, the button with one, a sentence instead of the
-        button where there is no game in between, and the words for what *nearest* was
-        measured by in both cases the server can send."""
+        button where there is no game in between, and the words for what *most like* was
+        measured by: the map's likeness, the same as the games like this one."""
         mine = {"hash": "d1", "name": "my draft", "between": None}
         assert _in_the_page("", f"betweenHtml({json.dumps(mine)})").strip() == ""
 
-        near = {"hash": "l1", "name": "dull", "units": 2, "distance": None,
+        near = {"hash": "l1", "name": "dull", "units": 2, "likeness": 0.5,
                 "from": "d1", "taken": "l1", "words": "how long a game may run"}
         drawn = _in_the_page("", f"betweenHtml({json.dumps({**mine, 'between': near})})")
         assert 'id="between"' in drawn and "make the game in between" in drawn
         assert "<b>my draft</b> with how long a game may run taken from" in drawn
-        assert "<b>dull</b>, 2 rules away" in drawn
-        assert "nearest by how many rules the two differ in" in drawn
+        assert "most like this one is <b>dull</b>, 0.500 alike" in drawn
+        assert "2 rules apart" in drawn and 'data-gloss="alike"' in drawn
+        assert "nearest by how many rules" not in drawn and "overall likeness" not in drawn
 
-        far = {**near, "distance": 0.0455, "units": 5}
-        drawn = _in_the_page("", f"betweenHtml({json.dumps({**mine, 'between': far})})")
-        assert "by overall likeness" in drawn and "differs from it in 5 rules" in drawn
-
-        why = {"hash": "l1", "name": "dull", "units": 1, "distance": None,
+        why = {"hash": "l1", "name": "dull", "units": 1, "likeness": 0.7,
                "why": "dull is one rule from this game, so no game stands between them."}
         drawn = _in_the_page("", f"betweenHtml({json.dumps({**mine, 'between': why})})")
-        assert "no game stands between them" in drawn and "one rule away" in drawn
+        assert "no game stands between them" in drawn and "one rule apart" in drawn
         assert 'id="between"' not in drawn
 
     def test_the_press_asks_the_map_s_route_and_opens_the_map_s_editor(self) -> None:
@@ -11452,7 +11466,7 @@ class TestBuildingAGameByHand:
           api = path => { asked.push(path); return Promise.resolve(reply); };
           mapOpenDraft = (answer, made) => opened.push([answer.hash, made.spec.name]);
           wireBetween({ hash: 'd1', name: 'mine', between: { hash: 'l1', name: 'dull',
-            units: 2, distance: null, from: 'l1', taken: 'd1', words: 'w' } });
+            units: 2, likeness: 0.5, from: 'l1', taken: 'd1', words: 'w' } });
           button.onclick();
           setTimeout(() => {
             reply = { hash: 'l1', between: { why: 'nothing after all' } };
@@ -11652,7 +11666,7 @@ class TestBuildingAnOpponent:
         assert path.read_bytes() == before
 
     def test_an_older_clash_leaves_the_picker_alone_and_says_so(
-        self, tmp_path, chess_game
+        self, tmp_path, chess_game, warm_map
     ) -> None:
         """Q446. Only the clashing entry is left out, and the game page names it.
 

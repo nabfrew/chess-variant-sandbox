@@ -23,7 +23,7 @@ import secrets
 import threading
 import time
 import webbrowser
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Protocol
@@ -494,8 +494,22 @@ class App:
         """
         from chess_variant_sandbox.web import graphing
 
-        games = [game for game in self.refresh() if game.source in MAPPED]
-        return graphing.graph(games, self.runs_dir)
+        return graphing.graph(self.mapped(self.refresh()), self.runs_dir)
+
+    def mapped(self, games: Iterable[library.Game]) -> list[library.Game]:
+        """The games the map draws, out of this listing: the committed and archived ones.
+
+        The one population for the map and for every list that names a game as near or
+        like another (`near`), so the two are always drawn over the same library (M5 of
+        `docs/plan-map.md`). The site leaves out what an admin took off the library
+        (`site/server.SiteApp.mapped`).
+        """
+        return [game for game in games if game.source in MAPPED]
+
+    def near(self, game: library.Game) -> dict[str, Any]:
+        """The games most like this one on the map, and what each pair is
+        (`library.neighbours`): a game's page names these, and nothing else names near."""
+        return library.neighbours(game, self.mapped(self.known().values()), self.runs_dir)
 
     # ---------------------------------------------------------------- endpoints
 
@@ -534,10 +548,12 @@ class App:
             # view that can disagree with itself about the game it is describing.
             game = self.game(digest)
             refused = opponents.refusals(digest, game.path, heuristics=self.heuristics_dir)
+            # The games like this one, on the map's relation (M5 of `docs/plan-map.md`):
+            # the page's list, and the draft's gap button's nearest library game.
+            near = self.near(game)
             return {
-                # The whole library travels in, because a game's neighbours are the one
-                # thing on its page that cannot be worked out from the game alone.
                 **library.detail(game, self.known().values()),
+                **near,
                 # The card's band, from the listing `self.game` just refreshed, so the
                 # page and the card cannot answer differently about the same game.
                 "band": library.bands(self.known().values()).get(digest),
@@ -568,7 +584,7 @@ class App:
                 # A draft's own gap button: the library game nearest it, and the game in
                 # between the two or why there is none. Null on a library game, and on a
                 # draft this person may not build from.
-                "between": self._nearest(game),
+                "between": self._nearest(game, near["links"]),
             }
         if len(parts) == 3 and parts[:2] == ["api", "rating"]:
             run = self.ratings.get(parts[2])
@@ -703,7 +719,7 @@ class App:
         Both ends are asked, not only the query's. The query's hash is named by the
         browser, and the path's is gated by whoever serves the route for *may this be
         opened* -- which on the site lets anybody open an unlisted draft by its link.
-        Opening a game is not being allowed to find it (`site/links.py`), and building
+        Opening a game is not being allowed to find it (`site/finding.py`), and building
         from it is the second.
 
         The refusal is worded as it was when the rule was the map's, because a game
@@ -730,18 +746,18 @@ class App:
         """
         return {game.hash for game in games}
 
-    def _nearest(self, game: library.Game) -> dict[str, Any] | None:
+    def _nearest(
+        self, game: library.Game, links: Sequence[Mapping[str, Any]]
+    ) -> dict[str, Any] | None:
         """*Make the game in between* on a draft's own page, against the nearest library game.
 
         The map offers the button on a gap and draws no drafts, so the game between a
         person's own draft and the library had a route (`_between`) and no page. A draft's
-        page is where it goes, and it needs a second end: the library game nearest the
-        draft, which is the first game `library.neighbours` names among the games the map
-        draws. So *nearest* is what the page's own list of neighbours means by it -- the
-        count of rules the two differ in, then the similarity index, then the name -- and,
-        where nothing in the library is within three rules, `spec/distance.py`'s features,
-        which is how the map picks the game its faint line goes to. `distance` on the
-        answer says which of the two chose it.
+        page is where it goes, and it needs a second end: the library game most like the
+        draft, which is the first of the page's own *games like this one* (`links`, from
+        `near`) that this person may be shown. So *nearest* means here what it means on
+        the page and on the map: the map's likeness (M5 of `docs/plan-map.md`).
+        `likeness` on the answer says how alike, and `units` how many rules apart.
 
         Answered only where the press would be: both ends findable, the question
         `_between` asks when the button is pressed. On the site that is the owner of an
@@ -758,22 +774,20 @@ class App:
         """
         if game.source not in DRAFTED:
             return None
-        mapped = {other.hash: other for other in self.known().values() if other.source in MAPPED}
-        shown = self.findable([game, *mapped.values()])
+        known = self.known()
+        listed = [known[str(link["hash"])] for link in links if str(link["hash"]) in known]
+        shown = self.findable([game, *listed])
         if game.hash not in shown:
             return None
-        near = library.neighbours(
-            game, [other for digest, other in mapped.items() if digest in shown]
-        )
-        if not near:
+        link = next((one for one in links if str(one["hash"]) in shown), None)
+        if link is None:
             return None
-        link = near[0]
-        other = mapped[str(link["hash"])]
+        other = known[str(link["hash"])]
         answer: dict[str, Any] = {
             "hash": other.hash,
             "name": other.name,
             "units": link["units"],
-            "distance": link["distance"],
+            "likeness": link["likeness"],
         }
         if link["units"] == 1:
             answer["why"] = (

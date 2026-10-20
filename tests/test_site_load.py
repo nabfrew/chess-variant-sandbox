@@ -205,7 +205,7 @@ class Scratch:
         moved would show here even though the values it sits beside did not.
         """
         found: dict[str, list[Any]] = {}
-        for table in ("users", "games", "measurements", "ratings", "matches", "links"):
+        for table in ("users", "games", "measurements", "ratings", "matches"):
             with self.connection.cursor() as cursor:
                 cursor.execute(f"select * from {table} order by 1")
                 found[table] = cursor.fetchall()
@@ -313,11 +313,6 @@ class TestASecondRunChangesNothing:
         assert (second.games.added, second.games.updated) == (0, 0)
         assert (second.measurements.added, second.measurements.updated) == (0, 0)
         assert (second.ratings.added, second.matches.added) == (0, 0)
-        # G7's own half of the acceptance: not only *writes nothing* but *compares
-        # nothing*. The comparison is the expensive half -- 2,415 pairs on the real
-        # library -- and a deploy runs this step every time.
-        assert (second.links.added, second.links.updated) == (0, 0)
-        assert second.links.computed == 0
         assert store.snapshot() == before
 
     def test_the_counts_are_what_the_tree_holds(self, store: Scratch, tree: Path) -> None:

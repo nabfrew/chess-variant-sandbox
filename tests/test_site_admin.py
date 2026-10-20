@@ -326,9 +326,11 @@ def corpus_listed(site: Site, request: pytest.FixtureRequest) -> None:
     for every ruleset: 13 s on an xdist worker's one core with no load (Q415). That is too
     close to the socket's limit on a shared machine. `conftest.warm_library` pays it
     here instead. It is asked for by name, after `site` has found a database, so a run
-    without one skips before paying anything.
+    without one skips before paying anything. A game page over the whole library names
+    the games like it from the map (M5), so the map is drawn here too (`warm_map`).
     """
     request.getfixturevalue("warm_library")
+    request.getfixturevalue("warm_map")
 
 
 # --------------------------------------------------------------------- who is an admin

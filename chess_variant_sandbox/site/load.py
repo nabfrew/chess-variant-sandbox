@@ -15,12 +15,10 @@ Four sources, four tables and one seeding:
     runs/opponents/<hash>.json      -> measurements   the whole ladder, and its top rung
                                     -> ratings        seated through `rating.reseed`
     runs/human/games.jsonl          -> matches        the maintainer's own games, history
-    the games just written          -> links          how near each pair is (`site/links.py`)
 
-The links are the one table whose source is the store rather than the tree, because a
-draft saved on the site is a game the map and a game page can be near to and has no file
-in `rulesets/`. G7 of `docs/archive/plan-game-graph.md` is the row; the reading is
-`spec/relate.py`'s and this only stores it.
+Until M5 of `docs/plan-map.md` a fifth step compared every pair of the store's games into
+`links`; near now means the map's likeness, worked out by the app over the map's own games
+(`web/graphing.near`), and `0038_links_retired.sql` dropped the table.
 
 ## Idempotent by reading first
 
@@ -83,7 +81,7 @@ from typing import Any
 from chess_variant_sandbox import corpus
 from chess_variant_sandbox.measurement import Measurement
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS
-from chess_variant_sandbox.site import badges, links, rating, resting, rounds
+from chess_variant_sandbox.site import badges, rating, resting, rounds
 from chess_variant_sandbox.site.matches import LEADERBOARD, LOCAL_APP
 from chess_variant_sandbox.spec.canonical import load_spec, spec_hash
 from chess_variant_sandbox.web.human import HumanGame, HumanRecord
@@ -115,7 +113,7 @@ PREVIEW = "preview"
 """A file in `archive/` that says it is a preview (`provenance.preview`, Q931): a new kind of
 game still being tested, listed in its own tab and played as practice. Its row is written
 and corrected like an archived game's, and nothing that scores reads it: no measurement row,
-no seeded ratings, no badges (`load`), no links (`links.specs_of`)."""
+no seeded ratings and no badges (`load`)."""
 LOADED_ORIGINS = (CORPUS, ARCHIVED, PREVIEW)
 """The origins this module owns. A row carrying either may be corrected from the
 files; a row carrying anything else belongs to whoever uploaded it, and §3's *the same
@@ -175,7 +173,6 @@ class Report:
     measurements: Change = field(default_factory=Change)
     ratings: Change = field(default_factory=Change)
     matches: Change = field(default_factory=Change)
-    links: links.Written = field(default_factory=links.Written)
     skipped: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
@@ -189,7 +186,6 @@ class Report:
             + self.measurements.written
             + self.ratings.written
             + self.matches.written
-            + self.links.written
         )
 
     def summary(self) -> str:
@@ -204,7 +200,6 @@ class Report:
             f"  measurements {self.measurements}",
             f"  ratings      {self.ratings}",
             f"  matches      {self.matches}",
-            f"  links        {self.links}",
         ]
         lines += [f"  {note}" for note in self.notes]
         lines += [f"  skipped: {reason}" for reason in self.skipped]
@@ -793,11 +788,6 @@ def load(
     written from, so one load answers *what is here* and *what has left* from one reading
     of the tree.
 
-    The links come after the matches and read the store rather than `specs`, so a draft
-    somebody saved before this table existed gets its pairs on the next deploy. They are
-    the run's one expensive step -- 2,415 comparisons and about 1.4 seconds on a library
-    of seventy -- and a second load compares none of them.
-
     The badges that sit on a game go last, because a load is one of the three events that
     can complete U1: a game with its people and its ratings already in place earns it on
     the load that finds its measurement current. Games nobody has rated are dropped from
@@ -856,7 +846,6 @@ def load(
     report.ratings = seed_ratings(connection, list(scored), runs_dir)
     report.matches, missing = load_matches(connection, runs_dir, owner, set(specs))
     report.skipped.extend(missing)
-    report.links = links.fill(connection, links.specs_of(connection))
     granted = badges.grant_for_games(connection, list(scored))
     if granted:
         report.notes.append(f"granted {len(granted)} badge(s) on the library's games")

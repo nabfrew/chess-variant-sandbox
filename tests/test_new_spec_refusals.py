@@ -120,12 +120,15 @@ def test_a_retired_game_s_page_still_draws(tmp_path: Path) -> None:
     """The site's fallback for a hash the tree no longer holds (`site/kept.py`)."""
     spec = _retired()
     game = kept.game_from(RETIRED_HASH, str(spec["name"]), spec, tmp_path)
-    # The committed games only (Q749): the page's links compare it with every game it is
-    # handed, and the archive's sixty more were 1.2 s of the test's 2.3.
+    # The committed games only (Q749): the games like it are ranked against every game
+    # it is handed, and the archive's sixty more were 1.2 s of the test's 2.3. Not on the
+    # map, it is ranked against the map's games by the map's relation (M5).
     others = [one for one in library.discover(ROOT / "rulesets", tmp_path) if one.source == "committed"]
     page = library.detail(game, others)
     assert page["source"] == "retired"
-    assert page["ruleLines"] and page["pieces"] and page["links"]
+    assert page["ruleLines"] and page["pieces"]
+    near = library.neighbours(game, others, tmp_path)
+    assert near["links"] and near["onMap"] is False
 
 
 def test_a_match_on_it_still_replays() -> None:

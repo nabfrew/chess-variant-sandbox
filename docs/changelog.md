@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-20
 
+### Asking for an invitation reaches a person
+
+When you ask for an invitation, the person who runs the site now gets an email about it straight away, so
+your request no longer waits to be noticed. The privacy notice says so.
+
 ### Circe mortal diagonals
 
 A new game to try: circe chess where a captured queen or bishop is gone for good, while a captured knight, rook or pawn
@@ -25,7 +30,8 @@ well above circe on the project's measure of how interesting a game is.
 
 The map of games is redrawn from scratch. Games now sit near the games they share their rarer rules with, families are
 found and named automatically from what marks them out, each game lists the five most like it and what they share, and
-the unusual games are listed on their own. Adding a game no longer reshuffles the map.
+the unusual games are listed on their own. Adding a game no longer reshuffles the map. A game's own page lists the same
+games like it as the map does, in the same order.
 
 ### The computer varies its play from game to game
 

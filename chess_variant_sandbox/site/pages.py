@@ -1212,9 +1212,10 @@ def admin(handle: str, players: bool = False, *, user: int | None = None) -> str
         "<th>expires</th><th>accepted</th></tr></thead>\n"
         '<tbody id="invites"></tbody></table></div>\n'
         # Q831. What visitors asked for from the sign-in page, oldest first.
-        "<h2>Requests for an invitation</h2>\n"
+        '<h2 id="requests">Requests for an invitation</h2>\n'
         '<p class="under">Visitors ask from the sign-in page, with an address and, if '
-        "they like, a note. <em>send an invitation</em> sends the ordinary invitation, from "
+        "they like, a note, and each new request is emailed to you too, when the box "
+        "names your address. <em>send an invitation</em> sends the ordinary invitation, from "
         "you; <em>decline</em> sends nothing. Either way the person is told nothing but "
         "the invitation, if you send one. A request from an address that already has an "
         "account, or that already asked, is not kept, and the person is not told so. An "
@@ -1681,8 +1682,8 @@ def privacy() -> str:
         # person asking has no account, and the row is deleted once it is answered.
         "<h2>Asking for an invitation</h2>\n"
         "<p>If you ask for an invitation, the site keeps the email address and the note "
-        "you wrote, and when, for the person who runs the site to read; nobody else sees "
-        "them. The address is used for one thing, the invitation, if they send you one, "
+        "you wrote, and when, for the person who runs the site to read, and emails both "
+        "to them; nobody else sees them. The address is used for one thing, the invitation, if they send you one, "
         "and no other mail goes to it. A request is deleted "
         f"{quota.ASK_KEPT.days} days after it is answered.</p>\n"
         f"{_ask_button()}\n"

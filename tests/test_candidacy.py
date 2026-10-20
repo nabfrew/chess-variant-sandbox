@@ -928,11 +928,13 @@ def _game_for_views(stage: str = "Baseline") -> dict[str, Any]:
         "refusedStores": [opponents.unavailable("own piece values")],
         "provenance": {"origin": "evolved", "run": "run-2026-09-01", "generation": 3,
                        "theme": "more drops", "parents": ["0a1b2c3d4e5f"]},
-        "links": [{"hash": "0a1b2c3d4e5f", "name": "near", "units": 1, "distance": None,
+        "links": [{"hash": "0a1b2c3d4e5f", "name": "near", "units": 1, "likeness": 0.62,
+                   "shares": ["the camel"], "line": True,
                    "kinds": ["rule"], "differences": [{"sentence": "a draw clock"}],
                    "similarity": {"words": "1 rule, 28 squares, 1 clock or price",
                                   "site": "1 rule, 28 starting squares, 1 limit or price"},
                    "gap": None}],
+        "onMap": True, "community": {"id": "f1", "name": "near chess"}, "open": 5,
         "designer": {"passesScreen": True, "tried": 3, "forkedBy": ["bo"],
                      "rules": {"passesScreen": "Its rules passed the playability check."}},
         "shortlist": {"says": "On trial.", "checks": [], "mine": True, "nominable": True},
@@ -1363,7 +1365,7 @@ class TestTheShellAndItsInfosSpeakToAVisitor:
         site = _run_page("ACCOUNTS = true;",
                          "Object.keys(SITE_GLOSS).map(key => glossEntry(key))")
         shared = _run_page("", "Object.keys(SITE_GLOSS).map(key => GLOSS[key])")
-        assert {"index", "stale", "roster", "elo", "siteScale", "kind", "likeness",
+        assert {"index", "stale", "roster", "elo", "siteScale", "kind", "differs",
                 "fairy", "moveRule"} <= set(keys)
         assert local == shared, "the local application reads the glossary as written"
         for key, mine, theirs in zip(keys, site, local, strict=True):

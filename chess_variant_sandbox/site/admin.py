@@ -785,11 +785,10 @@ def delete_game(connection: Any, game: str, viewer: int | None, admin: bool = Fa
     same numbers afterwards -- they just name a deleted game.
 
     The measurement goes with the rules. It is a reading of a spec nobody can read any
-    more, and `measurements` is a view the loader rebuilds from `runs/` in any case. The
-    links go for the stronger reason: a link says *these two games differ in the promotion
-    rule*, which is the rules themselves said from one step away, and the user's decision
-    of 2026-09-18 is that the rules go. Both tables are rebuilt from what is still there,
-    so neither loses anything a load cannot put back for the games that remain.
+    more, and `measurements` is a view the loader rebuilds from `runs/` in any case, so
+    it loses nothing a load cannot put back for the games that remain. (The store's
+    `links` rows went too, until near took the map's meaning and the table retired: M5 of
+    `docs/plan-map.md`.)
     """
     state = state_of(connection, game)
     if state is None:
@@ -805,12 +804,8 @@ def delete_game(connection: Any, game: str, viewer: int | None, admin: bool = Fa
         raise AdminError(
             "only the person who made a game, or an admin, can delete it"
         )
-    # Imported here rather than at the top: `site/links.py` reaches the web layer for the
-    # one threshold both halves share, and a maintainer running `chess-variant-sandbox site admin`
-    # should not load the engine to make somebody an admin.
-    from chess_variant_sandbox.site import links, provisional
+    from chess_variant_sandbox.site import provisional
 
-    links.forget(connection, game)
     # A number measured on the designer's machine goes the way the measurement does. Its
     # row stays, superseded, and the next `provisional.sweep` takes its records (Q312).
     provisional.withdraw(connection, game)

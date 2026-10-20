@@ -297,15 +297,9 @@ def build(
     The first build with no `runs/graph/map.json` draws the picture cold and writes that
     file; every build after it settles from it, and one over an unchanged library keeps it.
     """
-    listed = sorted(games, key=lambda game: (game.name.lower(), game.hash))
-    runs = Path(runs_dir)
-    cache = _Cache(runs / CACHE_NAME / CACHE_FILE)
-    cache.read()
-
-    groups = _twin_groups(listed, cache)
+    listed, cache, groups, drawn = _prepared(games, Path(runs_dir))
     nodes = {group[0].hash: group for group in groups}
     by_hash = {game.hash: group[0].hash for group in groups for game in group}
-    drawn = _drawn([group[0] for group in groups], runs)
     found = drawn.map
 
     lines = [_line(pair, weight, drawn, nodes, cache) for pair, weight in found.lines.items()]
@@ -364,6 +358,136 @@ def build(
     )
 
 
+def _prepared(
+    games: Iterable[Game], runs: Path
+) -> tuple[list[Game], _Cache, list[list[Game]], _Drawn]:
+    """The games in the map's order, the pair cache, the twin groups and the map over them.
+
+    What `build` and `near` both stand on, so a game's own page and the map read one map.
+    """
+    listed = sorted(games, key=lambda game: (game.name.lower(), game.hash))
+    cache = _Cache(runs / CACHE_NAME / CACHE_FILE)
+    cache.read()
+    groups = _twin_groups(listed, cache)
+    return listed, cache, groups, _drawn([group[0] for group in groups], runs)
+
+
+# ------------------------------------------------------------------- one meaning of near
+#
+# M5 of `docs/plan-map.md`. Every list on the site or the local application that names
+# games as near or like another reads this, and this reads the map: the same games, the
+# same `spec/likeness.py` relation over them and the same order (`Likeness.nearest`), so a
+# game's page and its panel on the map open on the same games in the same order, and its
+# first `families.MUTUAL` are exactly the panel's *games like this one*. What two games
+# differ in stays `relate`'s, said beside each row by the caller; it ranks nothing.
+
+
+@dataclass(frozen=True)
+class Nearness:
+    """A game's nearest on the map, most alike first, and where the map puts it.
+
+    `on_map` is whether the game is one of the map's dots (or a second spelling of one);
+    a game the map does not draw -- a draft, a candidate -- is ranked against the map's
+    games by the same relation with itself added (`near`). `community` is the map's family
+    the game is in, `{id, name}`, or `None`: unusual on the map, or not on it. Each row of
+    `like` is `{hash, likeness, shares, line}`, the shape of a map node's `like`.
+    """
+
+    on_map: bool
+    community: dict[str, str] | None
+    like: tuple[dict[str, Any], ...]
+
+
+def near(
+    game: Game, games: Iterable[Game], runs_dir: Path | str, few: int
+) -> Nearness:
+    """The `few` games on the map over `games` most like `game`, most alike first.
+
+    `games` is the map's population as its caller draws it (`App.mapped`), so the page
+    and the map cannot be handed two libraries. On the map, the order is the map's own
+    relation's (`Likeness.nearest`, which `families` cuts at `MUTUAL` for the panel);
+    a second spelling of one of its games reads as that game. Off it, the relation is
+    taken over the map's games and this one -- the library's view of rarity, with this
+    game counted in it, as it would be the day it joined -- and the map is unchanged.
+
+    Costs nothing new on the map once it is warm (`_MAPS`); a game off it pays one
+    relation over the library, about 55 ms at 92 games, kept per game for the process.
+    """
+    _, cache, groups, drawn = _prepared(games, Path(runs_dir))
+    cache.write()
+    by_hash = {member.hash: group[0].hash for group in groups for member in group}
+    digest = by_hash.get(game.hash)
+    if digest is not None:
+        mine = drawn.at[digest]
+        family = drawn.map.family_of.get(digest)
+        named = {one.id: one.name for one in drawn.map.families}
+        return Nearness(
+            on_map=True,
+            community=None if family is None else {"id": family, "name": named[family]},
+            like=tuple(
+                _row(drawn, drawn.relation, drawn.forms, mine, other)
+                for other in drawn.relation.nearest(mine, few)
+            ),
+        )
+    relation, forms = _beside(drawn, game)
+    mine = len(drawn.ids)
+    return Nearness(
+        on_map=False,
+        community=None,
+        like=tuple(
+            _row(drawn, relation, forms, mine, other, said=False)
+            for other in relation.nearest(mine, few)
+        ),
+    )
+
+
+# How many games off the map keep their relation in one process: a draft's page is read
+# again as it is edited, and the library it is ranked against changes rarely.
+_BESIDE_KEPT = 64
+
+
+def _beside(drawn: _Drawn, game: Game) -> tuple[Likeness, tuple[relate.NormalForm, ...]]:
+    """The map's relation with one more game added at the end, kept per game."""
+    form = relate.normal_form(game.spec)
+    held = drawn.beside.get(form.key)
+    if held is None:
+        forms = (*drawn.forms, form)
+        held = (likeness_of_forms(forms), forms)
+        if len(drawn.beside) >= _BESIDE_KEPT:
+            drawn.beside.pop(next(iter(drawn.beside)))
+        drawn.beside[form.key] = held
+    return held
+
+
+def _row(
+    drawn: _Drawn,
+    relation: Likeness,
+    forms: Sequence[relate.NormalForm],
+    mine: int,
+    other: int,
+    said: bool = True,
+) -> dict[str, Any]:
+    """One game like another: its hash, how alike, what both have, whether a line joins.
+
+    `mine` and `other` index `relation` and `forms`; past the map's own games (a game off
+    the map, added at the end) nothing is joined by a line, and what the two share is said
+    afresh rather than kept with the map's (`said`).
+    """
+    digest = drawn.ids[other]
+    if said:
+        shares = _shared(drawn, (drawn.ids[mine], digest))
+    else:
+        shares = tuple(families.shared_words(relation, [mine, other], forms, SHARES))
+    pair = _key(drawn.ids[mine], digest) if mine < len(drawn.ids) else None
+    return {
+        "hash": digest,
+        "likeness": round(relation.similarity(mine, other), 3),
+        "shares": shares,
+        # Whether a line joins the two: each is among the other's nearest.
+        "line": pair is not None and pair in drawn.map.lines,
+    }
+
+
 # ------------------------------------------------------------------------ twins (S7)
 
 
@@ -408,12 +532,29 @@ class _Drawn:
     relation: Likeness
     at: dict[str, int]
     said: dict[tuple[str, ...], tuple[str, ...]] = field(default_factory=dict)
+    # A game off the map, ranked against it (`near`): the relation with it added, by its
+    # normal-form key.
+    beside: dict[str, tuple[Likeness, tuple[relate.NormalForm, ...]]] = field(
+        default_factory=dict
+    )
 
 
 # The last map built over each memory file in this process: the library it was built over,
 # the memory file as it stood after the build, and the map. A request over the same library
 # and the same memory is answered from here; anything else builds again.
 _MAPS: dict[str, tuple[str, tuple[int, int] | None, _Drawn]] = {}
+
+# Every draw this process has made, by what a draw is a function of: the library
+# (`_library_key`) and the memory it settled from (the file's digest, `None` for a cold
+# draw). Exact, since a draw is deterministic in both, and shared by every runs directory,
+# so a second server over the same games -- a test's, a scratch tree's -- draws nothing
+# again. A few are kept: one per library and memory a process meets.
+_DRAWS: dict[tuple[str, str | None], families.FamilyMap] = {}
+_DRAWS_KEPT = 8
+
+# Every compile digest this process has worked out, by mechanics hash (`_Cache.twin`): exact
+# for the reason the file's is, and shared by every runs directory for `_DRAWS`' reason.
+_TWINS: dict[str, str] = {}
 
 
 def _drawn(representatives: Sequence[Game], runs: Path) -> _Drawn:
@@ -433,10 +574,16 @@ def _drawn(representatives: Sequence[Game], runs: Path) -> _Drawn:
     if held is not None and held[0] == key and held[1] == _stamp(memory):
         return held[2]
     forms = tuple(relate.normal_form(by[digest].spec) for digest in ids)
-    found = mapping.build(
-        list(ids), list(forms), [by[digest].name for digest in ids],
-        families.read_memory(memory),
-    )
+    previous = families.read_memory(memory)
+    basis = (key, None if previous is None else _content(memory))
+    found = _DRAWS.get(basis)
+    if found is None:
+        found = mapping.build(
+            list(ids), list(forms), [by[digest].name for digest in ids], previous
+        )
+        if len(_DRAWS) >= _DRAWS_KEPT:
+            _DRAWS.pop(next(iter(_DRAWS)))
+        _DRAWS[basis] = found
     with contextlib.suppress(OSError):
         families.write_memory(memory, found)
     drawn = _Drawn(
@@ -465,6 +612,14 @@ def _library_key(games: Sequence[Game]) -> str:
         sort_keys=True, separators=(",", ":"), default=str,
     )
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def _content(path: Path) -> str | None:
+    """A digest of the memory file's bytes, or `None` where it cannot be read."""
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
 
 
 def _stamp(path: Path) -> tuple[int, int] | None:
@@ -540,17 +695,10 @@ def _shared(drawn: _Drawn, games: Sequence[str]) -> tuple[str, ...]:
 def _like(digest: str, drawn: _Drawn) -> tuple[dict[str, Any], ...]:
     """This game's nearest by likeness, nearest first, with what each pair shares."""
     mine = drawn.at[digest]
-    found = []
-    for other in drawn.map.neighbours.get(digest, ()):
-        pair = (digest, other) if digest <= other else (other, digest)
-        found.append({
-            "hash": other,
-            "likeness": round(drawn.relation.similarity(mine, drawn.at[other]), 3),
-            "shares": _shared(drawn, pair),
-            # Whether a line joins the two: each is among the other's nearest.
-            "line": pair in drawn.map.lines,
-        })
-    return tuple(found)
+    return tuple(
+        _row(drawn, drawn.relation, drawn.forms, mine, drawn.at[other])
+        for other in drawn.map.neighbours.get(digest, ())
+    )
 
 
 def _line(
@@ -1155,6 +1303,11 @@ class _Cache:
         held = self.specs.get(game.hash)
         if held is not None:
             return held
+        held = _TWINS.get(game.hash)
+        if held is not None:
+            self.specs[game.hash] = held
+            self._dirty = True
+            return held
         from chess_variant_sandbox.engine.bridge import canonical_tables
         from chess_variant_sandbox.engine.compile import compile_spec
 
@@ -1166,6 +1319,7 @@ class _Cache:
             default=lambda value: value.hex() if isinstance(value, bytes) else repr(value),
         )
         answer = hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+        _TWINS[game.hash] = answer
         self.specs[game.hash] = answer
         self.compiled += 1
         self._dirty = True

@@ -23,6 +23,7 @@ Everything with a store needs `CHESS_VARIANT_SANDBOX_TEST_DATABASE_URL` and skip
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Iterator
 from http.client import HTTPConnection
 from pathlib import Path
@@ -58,6 +59,8 @@ def site(monkeypatch: pytest.MonkeyPatch) -> Iterator[Site]:
     """
     monkeypatch.setenv(mail.URL_VAR, SITE_URL)
     monkeypatch.delenv(mail.KEY_VAR, raising=False)
+    # No owner to tell, unless a test names one (Q979's tests, below).
+    monkeypatch.delenv(mail.OWNER_VAR, raising=False)
     monkeypatch.delenv(admin.NAME_VAR, raising=False)
     monkeypatch.delenv(admin.PASSWORD_VAR, raising=False)
     monkeypatch.setattr(quota, "ASKS_A_SOURCE", 1000)
@@ -538,6 +541,143 @@ class TestTheCaps:
         )
         assert values["Characters one request's note may be"] == str(quota.ASK_NOTE_LENGTH)
         assert (quota.ASKS_A_DAY, quota.ASK_NOTE_LENGTH, quota.ASK_EMAIL_LENGTH) == (20, 500, 254)
+
+
+# ------------------------------------------------------------- the owner is told
+
+
+OWNER = "owner@example.invalid"
+"""A made-up owner's address. The real one is the box's alone (`mail.OWNER_VAR`)."""
+
+GRANTED = f"{SITE_URL}{asking.GRANTED_AT}"
+
+
+class TestTheOwnerIsTold:
+    """Q979 (the user, 2026-10-19): a kept request is mailed to the owner, who is named only
+    by the box's settings; whatever the sender does, the request and the visitor's answer
+    are as they were."""
+
+    def test_a_kept_request_mails_the_owner_who_asked_and_the_grant_link(
+        self, site: Site, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(mail.OWNER_VAR, OWNER)
+        answer = _ask(site, " Eve@Example.com ", "A friend on a chess forum.")
+        _confirmed(answer)
+        site.app.settle()
+        assert site.sent.messages == [
+            mail.asked_for_invitation(
+                OWNER, "eve@example.com", "A friend on a chess forum.", GRANTED
+            )
+        ]
+        [told] = site.sent.messages
+        assert told.to == OWNER
+        assert "eve@example.com" in told.subject
+        assert "eve@example.com asked for an invitation" in told.body
+        assert "> A friend on a chess forum." in told.body
+        assert f"    {SITE_URL}/admin#requests\n" in told.body
+        # The visitor's answer is the one sentence, and never the owner's address.
+        assert OWNER not in answer.text
+        # And the request is kept, as if nobody had been told.
+        assert _rows(site) == [("eve@example.com", "A friend on a chess forum.", False, None)]
+
+    def test_the_link_lands_on_the_panels_table(self) -> None:
+        path, _, anchor = asking.GRANTED_AT.partition("#")
+        assert path == "/admin" and path in routes.ADMIN_ONLY
+        page = site_pages.admin("boss")
+        assert f'<h2 id="{anchor}">Requests for an invitation</h2>' in page
+        assert page.count(f'id="{anchor}"') == 1
+
+    def test_no_note_says_so(self) -> None:
+        told = mail.asked_for_invitation(OWNER, "fay@example.com", None, GRANTED)
+        assert "They left no note." in told.body
+        assert "\n> " not in told.body
+
+    def test_a_note_is_quoted_so_it_cannot_become_a_link_or_a_paragraph(self) -> None:
+        note = "Hi.\n\n    https://evil.example/claim\nbye"
+        told = mail.asked_for_invitation(OWNER, "gus@example.com", note, GRANTED)
+        assert "> Hi.\n>\n>     https://evil.example/claim\n> bye" in told.body
+        markup = mail.html_of(told.body)
+        assert 'href="https://evil.example' not in markup
+        assert f'<a href="{GRANTED}">' in markup
+
+    def test_without_the_setting_nothing_is_sent_and_the_request_is_kept(
+        self, site: Site
+    ) -> None:
+        _confirmed(_ask(site, "eve@example.com", "Hello."))
+        site.app.settle()
+        assert site.sent.messages == []
+        assert _rows(site) == [("eve@example.com", "Hello.", False, None)]
+
+    def test_a_request_that_wrote_nothing_mails_nobody(
+        self, site: Site, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(mail.OWNER_VAR, OWNER)
+        site.person("cass")
+        _confirmed(_ask(site, "eve@example.com"))
+        _confirmed(_ask(site, "eve@example.com", "again"))
+        _confirmed(_ask(site, "cass@example.invalid"))
+        site.app.settle()
+        assert [message.to for message in site.sent.messages] == [OWNER]
+        assert "eve@example.com" in site.sent.messages[0].subject
+
+    def test_a_failing_sender_keeps_the_request_and_the_visitors_answer(
+        self, site: Site, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setenv(mail.OWNER_VAR, OWNER)
+
+        def refuse(message: mail.Message) -> None:
+            raise mail.MailError(f"the sending service refused the message (422): {message.to}")
+
+        site.app.send = refuse
+        answer = _ask(site, "eve@example.com", "A note.")
+        _confirmed(answer)
+        site.app.settle()
+        assert _rows(site) == [("eve@example.com", "A note.", False, None)]
+        assert OWNER not in answer.text
+        logged = capsys.readouterr().err
+        assert "the owner was not mailed" in logged
+        # The sender's own words named the owner; the journal gets the setting's name.
+        assert OWNER not in logged
+        assert f"${mail.OWNER_VAR}" in logged
+        # And the panel has it, to grant as any other.
+        boss = site.signed_in("boss", admin.ADMIN)
+        assert [row["email"] for row in _pending(boss)] == ["eve@example.com"]
+
+    def test_a_sender_that_hangs_does_not_hold_the_visitor(
+        self, site: Site, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(mail.OWNER_VAR, OWNER)
+        release = threading.Event()
+        reached = threading.Event()
+        held: list[mail.Message] = []
+
+        def hang(message: mail.Message) -> None:
+            reached.set()
+            release.wait(30)
+            held.append(message)
+
+        site.app.send = hang
+        try:
+            _confirmed(_ask(site, "eve@example.com"))
+            # The answer came back while the sender was still holding the message.
+            assert reached.wait(10)
+            assert held == []
+            assert _rows(site) == [("eve@example.com", None, False, None)]
+        finally:
+            release.set()
+            site.app.settle()
+        assert [message.to for message in held] == [OWNER]
+
+    def test_no_site_address_means_no_mail_and_a_kept_request(
+        self, site: Site, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setenv(mail.OWNER_VAR, OWNER)
+        monkeypatch.delenv(mail.URL_VAR)
+        _confirmed(_ask(site, "eve@example.com"))
+        site.app.settle()
+        assert site.sent.messages == []
+        assert _rows(site) == [("eve@example.com", None, False, None)]
+        assert mail.URL_VAR in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------- the words

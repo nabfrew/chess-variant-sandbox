@@ -178,8 +178,10 @@ def package_calls() -> list[tuple[Path, list[tuple[str, str]]]]:
 
 
 class TestTestThree:
-    """Every message the package builds is an invitation or a move email, and a move
-    email is built in one place, which reads the box first."""
+    """Every message the package builds for a person is an invitation or a move email, and
+    a move email is built in one place, which reads the box first. The one other message
+    is the owner's word of a request for an invitation (Q979), which goes to the address
+    the box's settings name and to no visitor or member."""
 
     def test_messages_are_built_only_by_the_two_builders(self, package_calls) -> None:
         built = {
@@ -188,10 +190,16 @@ class TestTestThree:
             for function, name in calls
             if name == "Message"
         }
-        assert built == {("mail.py", "invitation"), ("mail.py", "your_move")}
+        assert built == {
+            ("mail.py", "invitation"),
+            ("mail.py", "your_move"),
+            ("mail.py", "asked_for_invitation"),
+        }
 
     def test_each_builder_has_one_caller(self, package_calls) -> None:
-        callers: dict[str, set[tuple[str, str]]] = {"invitation": set(), "your_move": set()}
+        callers: dict[str, set[tuple[str, str]]] = {
+            "invitation": set(), "your_move": set(), "asked_for_invitation": set()
+        }
         for path, calls in package_calls:
             if path.name == "mail.py":
                 continue
@@ -201,7 +209,17 @@ class TestTestThree:
         assert callers == {
             "invitation": {("identity.py", "send_invitation")},
             "your_move": {("move_email.py", "due")},
+            # The nested `tell` and the method around it, which the walk counts both.
+            "asked_for_invitation": {("server.py", "_tell_owner"), ("server.py", "tell")},
         }
+
+    def test_the_owners_message_goes_to_the_owner_alone(self) -> None:
+        """Its recipient is `mail.owner_address()`, read once, and nothing else."""
+        source = (PACKAGE / "site" / "server.py").read_text(encoding="utf-8")
+        body = source[source.index("def _tell_owner(") :]
+        body = body[: body.index("\n    def ", 1)]
+        assert "owner = mail.owner_address()" in body
+        assert "mail.asked_for_invitation(owner, " in body
 
     def test_nothing_else_reaches_the_sending_service(self) -> None:
         for path in sorted(PACKAGE.rglob("*.py")):  # the text, so nothing is parsed

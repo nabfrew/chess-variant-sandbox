@@ -20,6 +20,14 @@ they are read here and nowhere else, the way `db.py` owns the database URL:
 from the outside, and the app behind Caddy never sees that address on a request it
 answers. All three are absent on a development machine, which is why `chess-variant-sandbox site invite
 --no-send` prints the link instead.
+
+A third kind of message goes to the site's owner and nobody else (Q979): when a visitor
+asks for an invitation, `asked_for_invitation` says who asked and links the admin panel's
+table where the request is granted. Its address is one more variable, read here alone:
+
+    MAIL_OWNER      where a request for an invitation is forwarded; private, so it lives
+                    in the box's settings beside the key and in no file of this
+                    repository. Absent means the request is kept and nobody is mailed.
 """
 
 from __future__ import annotations
@@ -38,6 +46,7 @@ API_URL = "https://api.resend.com/emails"
 KEY_VAR = "MAIL_API_KEY"
 FROM_VAR = "MAIL_FROM"
 URL_VAR = "CHESS_VARIANT_SANDBOX_SITE_URL"
+OWNER_VAR = "MAIL_OWNER"
 
 # Long enough for a slow API, short enough that a maintainer's command does not appear to
 # hang. Nothing retries: a send that failed is one the person can run again.
@@ -127,6 +136,14 @@ def html_of(body: str) -> str:
     return '<!DOCTYPE html><html lang="en"><body>' + "\n".join(parts) + "</body></html>"
 
 
+def owner_address() -> str | None:
+    """Where a visitor's request for an invitation is forwarded, or None: nobody is told.
+
+    The value is the box's own, never this repository's, and nothing prints it.
+    """
+    return os.environ.get(OWNER_VAR, "").strip() or None
+
+
 def configured() -> bool:
     """Whether this machine can send at all. Printed at start; never a promise it works."""
     return bool(os.environ.get(KEY_VAR, "").strip() and os.environ.get(FROM_VAR, "").strip())
@@ -198,6 +215,34 @@ def invitation(to: str, link: str, inviter: str | None = None, days: int = 14) -
             f"off in one click. The link works once and expires in {_lasts(days)}; if you "
             "weren't expecting it, ignore it and nothing happens.\n\n"
             f"{JUNK_TIP}\n"
+        ),
+    )
+
+
+def asked_for_invitation(to: str, address: str, note: str | None, link: str) -> Message:
+    """The owner's word that a visitor asked for an invitation (Q979).
+
+    Sent to `owner_address` and to nobody else, so it is not one of the messages test 3
+    governs: no visitor or member ever receives it. It says who asked -- the address and
+    the note, all the visitor gave -- and links the admin panel's table, where the
+    request is granted or declined. Each line of the note is quoted with `> `, so a note
+    cannot make a paragraph of its own and `html_of` cannot turn a visitor's text into a
+    link; it stays text a person reads.
+    """
+    if note:
+        quoted = "\n".join(f"> {line}".rstrip() for line in note.splitlines())
+        said = f"Their note:\n\n{quoted}"
+    else:
+        said = "They left no note."
+    return Message(
+        to=to,
+        subject=f"A request for an invitation from {address}",
+        body=(
+            f"{address} asked for an invitation to {SITE_NAME}.\n\n"
+            f"{said}\n\n"
+            "Grant it or decline it on the admin panel; they are told nothing unless you "
+            "send the invitation:\n\n"
+            f"    {link}\n"
         ),
     )
 

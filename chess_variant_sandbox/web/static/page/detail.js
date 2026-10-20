@@ -590,117 +590,100 @@ function wirePlayPerson(game, hash) {
   };
 }
 
-// --------------------------------------------------------- the games nearest this one
+// --------------------------------------------------------- the games like this one
 //
-// G1 of `docs/archive/plan-game-graph.md`. Which other games in the library are a rule or
-// two from this one, nearest first, each saying what differs and what that did to the
-// score.
+// M5 of `docs/plan-map.md`: one meaning of near. Which games and in what order are the
+// server's (`library.neighbours`), read off the map: the map's own games, most alike first
+// by the map's likeness, so this list and the map's panel for the same game open on the
+// same games in the same order, and the first `open` of them are the panel's *games like
+// this one*. A game the map does not draw -- a draft -- is ranked against the map's games
+// the same way. Nothing here ranks, re-sorts, cuts at a count of rules or works out a
+// number: there is no far case, because every game has its most alike.
 //
-// The count, the sentence and the kind are the server's -- `spec/relate.py` compares the
-// two rule sets after ignoring how each game happens to be written down -- and this page
-// works nothing out. It cannot: a renamed piece and a reordered list cost twelve and
-// eighty-five JSON leaves and no rules at all, which is the whole reason the comparison
-// is not a diff.
-//
-// A game with nothing within three rules still gets a panel. A quarter of the library is
-// in that position -- shogi is twenty-one rules from its nearest relative -- and *nothing
-// here is like this game* is the most useful thing the page can say about it.
-//
-// The order is the server's and this page keeps it (`docs/archive/plan-game-graph.md`
-// §9.5, T3 and T5). Within three rules it is the count, then the similarity index, so
-// games the same number of rules away come the most alike first; past three it is
-// `spec/distance.py`'s fifty-five features, because at that range the count and the index
-// both rank worse. So
-// the words under a far game's four say how many rules each differs in without calling
-// it a distance, and the sentence above them names what they are ordered by.
+// Each row says how alike and what both have (the map's words), then what differs --
+// `spec/relate.py`'s count of rules and its sentences, which explain a difference and
+// order nothing -- and what the two scores make of it.
 
 function linksHtml(game) {
   const links = game.links || [];
   if (!links.length) return '';
-  // One rule away is the reading worth opening the page on: the game with exactly one
-  // thing changed. Two and three rules away are real neighbours and there can be forty
-  // of them -- chess has forty-one -- so they fold away rather than filling the column.
-  const closest = links.filter(link => link.units === 1);
-  const shown = closest.length ? closest : links.filter(link => link.units <= 3);
-  const rest = links.filter(link => shown.indexOf(link) < 0);
-  const far = !shown.length;
-  const said = far
-    ? `Nothing in the library is within three rules of this one &mdash; it is its own
-       thing. Below are the ${links.length === 1 ? 'one game'
-         : countWord(links.length) + ' games'} closest to it, closest first, by overall
-       likeness (the same measure the map's faint lines use). Each says how many rules it differs in.${info('likeness')}`
-    : `${shown.length === 1 ? 'One game' : shown.length + ' games'} in the library ${
-       shown.length === 1 ? 'differs' : 'differ'} from this one in ${
-       closest.length ? 'exactly one rule' : 'two or three rules'}. The rules are
-       compared after setting aside how each game is written down, so renaming a piece
-       or reordering a list costs nothing, and games the same number of rules away are
-       listed the most alike first.${info('likeness')}`;
-  const more = rest.length && !far
-    ? `<details style="margin-top:10px">
-        <summary class="muted small">${rest.length} more, two or three rules away</summary>
-        ${rest.map(linkRow).join('')}
-      </details>`
-    : '';
+  const open = game.open || links.length;
+  const shown = links.slice(0, open);
+  const rest = links.slice(open);
+  const where = !game.onMap
+    ? `This game is not on the map, which draws the library's games, so these are the
+       library's games most like it.`
+    : game.community
+      ? `On the map it is in the community <b>${esc(game.community.name)}</b>.`
+      : `On the map it is unusual: in no community, because nothing in the library is
+         close enough to it.`;
   // Said once rather than under every row. Where nothing in the library can be read --
   // a fresh checkout, or a corpus waiting on a re-score -- the per-row sentence was the
-  // same apology twenty-two times over.
+  // same apology twelve times over.
   const scored = links.some(link => link.gap);
+  const more = rest.length
+    ? `<details style="margin-top:10px">
+        <summary class="muted small">${rest.length} more, less alike</summary>
+        ${rest.map(link => linkRow(link, scored)).join('')}
+      </details>`
+    : '';
   const nothing = scored ? '' : `<div class="muted small" style="margin-top:10px">No
-    scores to compare yet. A link says what a rule did to the score once both games
-    ${ACCOUNTS ? 'have a current score' : 'carry a measurement this checkout can read'}.</div>`;
-  return sectionHtml('near', 'Games near this one', `<div class="panel">
-      <div class="muted small" style="margin-bottom:4px">${said}</div>
-      ${(far ? links : shown).map(link => linkRow(link, scored)).join('')}
+    scores to compare yet. A link says what the difference did to the score once both
+    games ${ACCOUNTS ? 'have a current score' : 'carry a measurement this checkout can read'}.</div>`;
+  return sectionHtml('near', 'Games like this one', `<div class="panel">
+      <div class="muted small" style="margin-bottom:4px">The games most like this one,
+        most alike first: two games are as alike as the rare things they share${
+        info('alike')}. Each says what differs between the two, by kind${
+        info('differs')}. ${where}</div>
+      ${shown.map(link => linkRow(link, scored)).join('')}
       ${more}
       ${nothing}
     </div>`);
 }
 
-// One neighbour: its name as the way in, how many rules apart, what differs, and what the
-// two scores say. The kind of rule is a tag because it is the thing the map will colour
-// links by, and reading the word here is what makes that legend familiar later.
-//
-// A far game's four come in the features' order, so their count of rules is said as what
-// it is -- how many rules the two differ in -- and not as *apart*, which beside a list in
-// another order reads as the order. The server marks those four by carrying `distance`.
+// One game like this one: its name as the way in, how alike the two are and what both
+// have, then what differs and what the two scores say. The kind of rule is a tag because
+// it is the thing the map colours a difference by.
 function linkRow(link, scored) {
-  const count = `${link.units} rule${link.units === 1 ? '' : 's'}`;
-  const rules = link.distance === null || link.distance === undefined
-    ? count + ' apart' : 'differs in ' + count;
+  const apart = link.units
+    ? `${link.units} rule${link.units === 1 ? '' : 's'} apart`
+    : 'the same rules, written two ways';
   const kinds = (link.kinds || []).map(kind =>
     `<span class="tag">${esc(kind)}</span>`).join(' ');
   return `<div style="margin-top:10px; padding-top:9px; border-top:1px solid var(--line)">
     <div class="row" style="gap:8px; align-items:baseline">
       <button class="crumb" data-link="${esc(link.hash)}"
         style="color:var(--ink); font-weight:600">${esc(link.name)}</button>
-      <span class="muted small">${esc(rules)}</span>
-      ${kinds}
+      <span class="muted small">${esc(fmt(link.likeness))} alike${
+        link.line ? ', a line on the map' : ''}</span>
     </div>
-    <div class="small">${esc(linkWords(link))}</div>
-    ${likenessLine(link.similarity)}
+    ${(link.shares || []).length ? `<div class="small muted">both have ${
+      esc(link.shares.join('; '))}</div>` : ''}
+    <div class="small"><span class="muted">${esc(apart)}${
+      link.units ? ':' : ''}</span> ${esc(linkWords(link))} ${kinds}</div>
+    ${differsLine(link.similarity)}
     ${scored ? gapLine(link.gap) : ''}
     ${exhibitHtml(link.exhibit)}
   </div>`;
 }
 
-// The similarity index's reading of one pair, in the server's words: *no rules, 6
-// mechanisms, 1 piece*. Printed as it came, because the counts and the weighing that
-// ranks them are `spec/relate.py`'s. The map's panels print the same line through this
-// function. What the kinds are is the (i) beside the sentence that heads the list.
+// What differs between the two, by kind, in the server's words: *no rules, 6 mechanisms, 1
+// piece* (`spec/relate.py`'s similarity counts, said by `library.likeness_words`). Printed
+// as it came: the counts and their weighing are the server's, and they order nothing.
 //
-// The site reads it in a visitor's words where the server sent them (`library.likeness_words`,
-// G40): *what differs: 1 rule, 28 starting squares*. The map's panels, which have no such
-// words yet, keep the server's line.
-function likenessLine(similarity) {
+// The site reads it in a visitor's words where the server sent them (G40): *what differs: 1
+// rule, 28 starting squares*.
+function differsLine(similarity) {
   if (!similarity || !similarity.words) return '';
   const site = ACCOUNTS && similarity.site;
   return `<div class="muted small">${site ? 'what differs' : 'by kind'}: ${
     esc(site || similarity.words)}</div>`;
 }
 
-// What differs, in words. A near link says all of it. A far one says the first few and
-// how many are left: shogi is twenty rules from its nearest relative, and twenty clauses
-// in one sentence is a paragraph nobody reads to find out that the answer is *a lot*.
+// What differs, in words. A pair a few rules apart says all of it; one many rules apart
+// says the first few and how many are left: shogi is twenty rules from the game most like
+// it, and twenty clauses in one sentence is a paragraph nobody reads to find out that the
+// answer is *a lot*.
 function linkWords(link) {
   const parts = (link.differences || []).map(difference => difference.sentence);
   if (parts.length <= 4) return parts.join('; ');
@@ -747,11 +730,9 @@ function wireLinks() {
 //
 // Q429. The map offers *make the game in between* on a gap, and the map draws no drafts,
 // so the game between a person's own draft and the library could be built and could not
-// be reached. A draft's own page offers it, against the one library game nearest the
-// draft, and says which game that is and by what it is nearest: the count of rules the
-// two differ in, the most alike first among games as many rules away -- the order of the
-// list of games near this one -- or, where nothing in the library is within three rules,
-// the count of fifty-five features the map's faint line is drawn by.
+// be reached. A draft's own page offers it, against the library game most like the draft
+// -- the first of its own *games like this one* it may build from, by the map's likeness
+// (M5 of `docs/plan-map.md`) -- and says which game that is and how alike.
 //
 // All of it is the server's (`App._nearest`): which game, whether a game in between can
 // be built and the phrase for the rule that moves, or the sentence saying why there is
@@ -766,13 +747,9 @@ function betweenHtml(game) {
   const near = game.between;
   if (!near) return '';
   const count = near.units === 1 ? 'one rule' : `${near.units} rules`;
-  const which = near.distance === null || near.distance === undefined
-    ? `The library game nearest this one is <b>${esc(near.name)}</b>, ${count} away:
-       nearest by how many rules the two differ in, and among games as many rules away
-       the most alike, which is the order the games near this one are listed in.`
-    : `Nothing in the library is within three rules of this one. The library game
-       closest to it, by overall likeness (the same measure the map's faint lines use),
-       is <b>${esc(near.name)}</b>, which differs from it in ${count}.`;
+  const which = `The library game most like this one is <b>${esc(near.name)}</b>, ${
+    esc(fmt(near.likeness))} alike${info('alike')} and ${count} apart: the first of the
+    games like this one.`;
   if (!near.words) {
     return sectionHtml('between', 'The game in between', `<div class="panel">
         <div class="muted small">${which}</div>

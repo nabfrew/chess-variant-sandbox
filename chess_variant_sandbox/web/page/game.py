@@ -9,7 +9,7 @@ has an address of its own, `/game/<hash>`, and the server answers it with the si
   characters) and a canonical address in the head; `noindex` where the game is not listed;
 - in `#view`, its name, board, description, its score with what the score rests on (the run
   count, the scoring rules' version and the day; a provisional one marked as provisional, as
-  everywhere), and links to the games near it, each at its own address.
+  everywhere), and links to the games most like it, each at its own address.
 
 The router replaces `#view` once it draws, so a person with script sees the page they always
 saw; this is what a reader without script, a crawler and an unfurler get. The hash stays in
@@ -39,7 +39,8 @@ ROUTE = re.compile(r"^/game/([0-9a-f]{8,64})$")
 # A search result shows about this many characters of a description.
 DESCRIPTION_LIMIT = 160
 
-# How many near games the page names: the nearest, in the store's order.
+# How many near games the page names: the most alike first, in the order the game's page
+# and the map list them (`library.neighbours`, M5 of `docs/plan-map.md`).
 NEAR_SHOWN = 12
 
 _MONTHS = (
@@ -226,7 +227,7 @@ def view(drawn: Drawn) -> str:
     board = board_words(drawn.spec)
     near = drawn.near[:NEAR_SHOWN]
     near_html = (
-        '<h3>Games near this one</h3>\n<ul class="drawnNear">'
+        '<h3>Games like this one</h3>\n<ul class="drawnNear">'
         + "".join(
             f'<li><a href="{escape(path(one.hash), quote=True)}">'
             f'{escape(one.name or "An unnamed game")}</a></li>'

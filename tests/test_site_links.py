@@ -1,26 +1,23 @@
-"""How near two of the store's games are, and who may be told. G7.
+"""What the site names as near a game, and who may build from it. G7, then M5.
 
-The G7 row of `docs/archive/plan-game-graph.md`, which is *the plan* below: the migration,
-the load step, a draft's pairs at save, and rows removed on delete. Its acceptance is three
-sentences and each one is a class here -- a second load compares nothing, deleting a game
-leaves no row that names it, and a private draft's links reach only somebody who may see
-the draft.
+The G7 row of `docs/archive/plan-game-graph.md` put every pair of the store's games in a
+`links` table, ranked by `spec/relate.py`'s count of rules and narrowed per person, because
+a draft could be a neighbour and an unlisted draft's existence is its owner's business.
+M5 of `docs/plan-map.md` gave *near* one meaning everywhere: the map's likeness, over the
+map's own games (`web/graphing.near`), which are the same for everybody. So a game's page
+names the map's games most like it, a draft's page ranks the map's games against it, no
+draft is named on anybody's page, and `0038_links_retired.sql` dropped the table.
 
-The last is the stage's point and is asked of four people: a signed-out visitor, another
-signed-in member, the draft's owner and an admin. It is asked over HTTP against a real
-store, because *a person cannot see this* is a property of the answer a browser gets and
-not of a function's return value.
+What stays G7's is the line between *openable* and *findable* (`site/finding.py`): an
+unlisted draft opens by its link, and nobody but its owner (or an admin) may build the
+game between it and a library game. It is asked over HTTP against a real store, of a
+signed-out visitor, another member, the owner and an admin, because *a person cannot see
+this* is a property of the answer a browser gets and not of a function's return value.
 
 **The library here is four specs in a `tmp_path` of its own**, three of them one rule
-apart and one far from all of them, so the near case and the far case are both real
-without a committed ruleset being involved. Nothing here works out a legal move, an
-outcome or a score; `spec/relate.py` says what differs and this stores it.
-
-T4 of the plan's §9.5 adds the similarity index to every row, and the last class asks
-what that is for: that the site names the neighbours the local application names, in the
-same order. That claim is about real games -- chess, which many games are near, and
-shogi, which nothing is -- so it is asked over eighteen committed and archived rulesets,
-and its tests say which games in their names.
+apart and one far from all of them, without a committed ruleset being involved. The last
+class asks it of real games: that the site, the local application and the map name the
+same games in the same order, over eighteen committed and archived rulesets, named.
 
 Everything needs a real Postgres and skips with a reason without one; `tests/test_site.py`
 has the recipe for a throwaway cluster.
@@ -45,13 +42,10 @@ from retired_specs import REBUILT
 
 from chess_variant_sandbox.site import (
     admin,
-    badges,
     drafts,
+    finding,
     identity,
-    links,
     migrate,
-    resting,
-    rounds,
     screening,
 )
 from chess_variant_sandbox.site import load as loader
@@ -60,7 +54,7 @@ from chess_variant_sandbox.site import server as site_server
 from chess_variant_sandbox.site.db import connect
 from chess_variant_sandbox.site.server import SiteApp
 from chess_variant_sandbox.spec import relate, spec_hash
-from chess_variant_sandbox.web import designing, graphing, library
+from chess_variant_sandbox.web import designing, families, library
 from chess_variant_sandbox.web.server import REQUEST_HEADER, REQUEST_VALUE, Server
 from chess_variant_sandbox.web.server import App as LocalApp
 
@@ -194,36 +188,11 @@ class Site:
         assert answer.status == 200, answer.text
         return browser
 
-    def pairs(self) -> dict[tuple[str, str], int]:
-        with self.store.cursor() as cursor:
-            cursor.execute("select a, b, units from links")
-            return {(str(a), str(b)): int(units) for a, b, units in cursor.fetchall()}
-
-    def row(self, first: str, second: str) -> tuple[Any, ...] | None:
-        low, high = sorted((first, second))
-        with self.store.cursor() as cursor:
-            cursor.execute(
-                "select units, kind, kinds, unit, sentence, differences, relate"
-                "  from links where a = %s and b = %s",
-                (low, high),
-            )
-            return cursor.fetchone()
-
-    def likeness(self) -> dict[tuple[str, str], tuple[Any, Any]]:
-        """Every pair's similarity index and its counts, as the table holds them."""
-        return _likeness(self.store)
-
-
-def _likeness(store: Any) -> dict[tuple[str, str], tuple[Any, Any]]:
-    with store.cursor() as cursor:
-        cursor.execute("select a, b, similarity, counts from links")
-        return {(str(a), str(b)): (index, counts) for a, b, index, counts in cursor.fetchall()}
-
 
 @contextlib.contextmanager
 def _running_site(root: Path) -> Iterator[Site]:
     """The site on a port of its own, over `root`'s library and the session's store."""
-    url, name = site_store.emptied("no store to keep links in")
+    url, name = site_store.emptied("no store to run the site on")
 
     def open_one() -> Any:
         connection = connect(url)
@@ -285,168 +254,10 @@ def _saved(browser: Browser, spec: dict[str, Any]) -> Answer:
     return answer
 
 
-class _Counting:
-    """A connection that writes down which verb each statement went through."""
-
-    def __init__(self, inner: Any) -> None:
-        self.inner = inner
-        self.calls: list[str] = []
-
-    @contextlib.contextmanager
-    def cursor(self) -> Iterator[Any]:
-        with self.inner.cursor() as cursor:
-            yield _CountingCursor(cursor, self.calls)
-
-
-class _CountingCursor:
-    def __init__(self, inner: Any, calls: list[str]) -> None:
-        self.inner = inner
-        self.calls = calls
-
-    def execute(self, *args: Any, **kwargs: Any) -> Any:
-        self.calls.append("execute")
-        return self.inner.execute(*args, **kwargs)
-
-    def executemany(self, *args: Any, **kwargs: Any) -> Any:
-        self.calls.append("executemany")
-        return self.inner.executemany(*args, **kwargs)
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self.inner, name)
-
-
 def _link_hashes(browser: Browser, digest: str) -> set[str]:
     answer = browser.get(f"/api/game/{digest}")
     assert answer.status == 200, answer.text
     return {str(link["hash"]) for link in answer.payload["links"]}
-
-
-# --------------------------------------------------------------- what the load writes
-
-
-class TestTheTableTheLoadFills:
-    """Every pair of the store's games, in sort order, under this reading of them."""
-
-    def test_every_pair_gets_a_row_with_relate_s_own_count(self, site: Site, tree: Path) -> None:
-        report = _load(site, tree)
-
-        wanted = {
-            tuple(sorted((first, second))): relate.units(LIBRARY[first], LIBRARY[second])
-            for first in LIBRARY
-            for second in LIBRARY
-            if first < second
-        }
-        assert len(wanted) == 6, "four games make six pairs"
-        assert site.pairs() == wanted
-        assert (report.links.added, report.links.computed) == (6, 6)
-
-    def test_a_near_pair_carries_the_reading_and_a_far_one_carries_the_count(
-        self, site: Site, tree: Path
-    ) -> None:
-        """Past three rules a list of differences is a ranking rather than a reading, so
-        the columns are left empty. `NEAR` is `web/library.py`'s, shared rather than
-        repeated."""
-        _load(site, tree)
-
-        near = site.row(LEFT_HASH, MIDDLE_HASH)
-        assert near is not None
-        relation = relate.relate(LEFT, MIDDLE)
-        assert relation.units == 1, "the fixture's siblings are one rule apart"
-        units, kind, kinds, unit, sentence, differences, version = near
-        assert units == 1
-        assert (kind, unit, sentence) == (
-            relation.differences[0].kind,
-            relation.differences[0].unit,
-            relation.sentence,
-        )
-        assert list(kinds) == [relation.differences[0].kind]
-        assert differences == [one.as_dict() for one in relation.differences]
-        assert version == links.RELATE
-
-        far = site.row(LEFT_HASH, FAR_HASH)
-        assert far is not None
-        assert far[0] > links.NEAR, "the fixture's far spec is well past the threshold"
-        assert far[1:6] == ("", [], "", "", None)
-
-    def test_every_pair_carries_relate_s_index_and_its_counts(
-        self, site: Site, tree: Path
-    ) -> None:
-        """T4 of the plan's §9.5. The far pairs too: a far game's relatives are ranked,
-        and the index is what the site orders by beside the count."""
-        _load(site, tree)
-
-        wanted = {}
-        for first in LIBRARY:
-            for second in LIBRARY:
-                if first < second:
-                    alike = relate.similarity(LIBRARY[first], LIBRARY[second])
-                    wanted[(first, second)] = (alike.index, alike.counts)
-        assert site.likeness() == wanted
-        assert all(index > 0 for index, _ in wanted.values()), "six different games"
-
-    def test_the_stamp_names_the_reading_and_the_weighing(self) -> None:
-        """The stored index moves with the ratio and the setting's weight, which can
-        change without `RELATE_VERSION` moving, so both are in the row's stamp."""
-        assert relate.RELATE_VERSION in links.RELATE
-        assert f"{relate.SIMILARITY_RATIO}:1" in links.RELATE
-        assert f"setting {relate.SETTING_WEIGHT:g}" in links.RELATE
-
-    def test_a_second_load_compares_nothing_and_writes_nothing(
-        self, site: Site, tree: Path
-    ) -> None:
-        """G7's first acceptance sentence, and the reason the deploy can run this every
-        time. The comparison is the expensive half."""
-        _load(site, tree)
-        before = site.pairs()
-
-        second = _load(site, tree)
-
-        assert (second.links.added, second.links.updated) == (0, 0)
-        assert second.links.computed == 0
-        assert second.links.unchanged == 6
-        assert site.pairs() == before
-
-    def test_the_pairs_go_to_the_store_in_one_batch(self, site: Site, tree: Path) -> None:
-        """Not one statement per pair: at 500 games the round trips were about 60 s of a
-        115 s version bump, and a save pays the same per pair against the library. What
-        is sent is one read of the rows held and one batch, however many pairs there are."""
-        _load(site, tree)
-        wanted = site.pairs()
-        with site.store.cursor() as cursor:
-            cursor.execute("delete from links")
-        counted = _Counting(site.store)
-
-        filled = links.fill(counted, LIBRARY)
-        links.forget(site.store, LEFT_HASH)
-        saved = links.write(counted, LEFT_HASH, LEFT)
-
-        assert (filled.added, saved.added) == (6, 3)
-        assert counted.calls == [
-            "execute",  # fill: the pairs held
-            "executemany",  # fill: all six
-            "execute",  # write: the other games' specs
-            "execute",  # write: this game's pairs held
-            "executemany",  # write: all three
-        ]
-        assert site.pairs() == wanted
-
-    def test_a_reading_that_moves_is_taken_again(
-        self, site: Site, tree: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """`relate` is on the row, so a version bump recomputes rather than a migration."""
-        _load(site, tree)
-        monkeypatch.setattr(links, "RELATE", "r-next")
-
-        again = _load(site, tree)
-
-        assert (again.links.added, again.links.updated) == (0, 6)
-        assert again.links.computed == 6
-        with site.store.cursor() as cursor:
-            cursor.execute("select distinct relate from links")
-            assert [row[0] for row in cursor.fetchall()] == ["r-next"]
-
-
-# ------------------------------------------------- the first load after `0013`
 
 
 @contextlib.contextmanager
@@ -454,7 +265,7 @@ def _scratch_store() -> Iterator[Any]:
     """A connection to an empty schema of its own, no migration run, dropped afterwards."""
     url = os.environ.get(TEST_URL_ENV, "").strip()
     if not url:
-        pytest.skip(f"{TEST_URL_ENV} is unset: no store to keep links in")
+        pytest.skip(f"{TEST_URL_ENV} is unset: no store to migrate")
     pytest.importorskip("psycopg", reason="the site extra is not installed here")
     name = f"links_test_{secrets.token_hex(6)}"
     store = connect(url)
@@ -472,150 +283,59 @@ def _scratch_store() -> Iterator[Any]:
         store.close()
 
 
-class TestTheFirstLoadAfterTheIndexArrived:
-    """T4's first acceptance sentence: the first load after `0013_similarity.sql`
-    compares every pair and the second compares none.
+# ----------------------------------------------------------- the table that retired
 
-    Asked of a store that really was at `0012`: the migrations before `0013` run, the
-    games are loaded, and the links are the rows the code of that time wrote -- `relate`'s
-    count and reading stamped with `RELATE_VERSION` alone, and no index. Then `0013` runs
-    over them, which is what the deploy does.
-    """
 
-    def test_the_old_rows_are_compared_once_and_then_never(
-        self, tree: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        older = tmp_path / "migrations-before-0013"
-        older.mkdir()
-        for migration in migrate.available():
-            if migration.number < 13:
-                (older / migration.name).write_text(migration.sql, encoding="utf-8")
+class TestTheLinksTableRetired:
+    """M5: no list ranks by the store's pairs any more, so nothing writes them and
+    `0038_links_retired.sql` takes the table, rows and all, off a store that has one."""
 
+    def test_the_migration_drops_a_table_that_holds_rows(self, tree: Path) -> None:
+        before = [one for one in migrate.available() if one.number < 38]
         with _scratch_store() as store:
+            older = tree / "migrations-before-0038"
+            older.mkdir()
+            for migration in before:
+                (older / migration.name).write_text(migration.sql, encoding="utf-8")
             migrate.run(store, older)
-            with monkeypatch.context() as patched:
-                patched.setattr(links, "fill", lambda connection, specs: links.Written())
-                # Today's badges read `games.screen_passed`, which `0016_drafts.sql` adds;
-                # the load of that time granted from a table without it, and no badge is
-                # what this test is about.
-                patched.setattr(badges, "grant_for_games", lambda connection, games: [])
-                # The same for the resting sweep, which reads `0020_resting.sql`'s column.
-                patched.setattr(resting, "rest", lambda connection: [])
-                # And the round's three reads, of `0021_rounds.sql`'s tables (Q503h).
-                patched.setattr(rounds, "confirmed", lambda connection: {})
-                patched.setattr(
-                    rounds, "sweep", lambda connection: rounds.Swept(None, [], [], [])
-                )
-                patched.setattr(loader, "shortlisted_specs", lambda connection, known: {})
-                loader.load(store, tree)
             with store.cursor() as cursor:
-                for first in LIBRARY:
-                    for second in LIBRARY:
-                        if first < second:
-                            relation = relate.relate(LIBRARY[first], LIBRARY[second])
-                            cursor.execute(
-                                "insert into links (a, b, units, kind, kinds, unit,"
-                                " sentence, differences, relate) values"
-                                " (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)",
-                                (first, second, relation.units,
-                                 *links._reading(relation), relate.RELATE_VERSION),
-                            )
+                cursor.execute(
+                    "insert into games (hash, spec, name, origin) values"
+                    " ('aaaa', '{}'::jsonb, 'a', 'corpus'), ('bbbb', '{}'::jsonb, 'b', 'corpus')"
+                )
+                cursor.execute("insert into links (a, b, units, relate)"
+                               " values ('aaaa', 'bbbb', 1, 'r')")
             store.commit()
 
             report = migrate.run(store)
             store.commit()
-            # First of what the deploy applies; every later migration comes with it.
-            assert report.applied[0] == "0013_similarity.sql", report.summary()
-            assert set(_likeness(store).values()) == {(None, None)}
 
-            once = loader.load(store, tree)
-            store.commit()
-            assert (once.links.added, once.links.updated) == (0, 6)
-            assert once.links.computed == 6
-            assert None not in {index for index, _ in _likeness(store).values()}
+            assert list(report.applied) == ["0038_links_retired.sql"], report.summary()
+            with store.cursor() as cursor:
+                cursor.execute("select to_regclass('links')")
+                assert cursor.fetchone()[0] is None
+                cursor.execute("select count(*) from games")
+                assert cursor.fetchone()[0] == 2, "the games the pairs named stay"
 
-            twice = loader.load(store, tree)
-            store.commit()
-            assert (twice.links.added, twice.links.updated) == (0, 0)
-            assert (twice.links.computed, twice.links.unchanged) == (0, 6)
-
-    def test_a_row_without_the_index_is_not_held_whatever_its_stamp(
-        self, site: Site, tree: Path
-    ) -> None:
-        """`_held` reads the columns as well as the stamp, so a row that somehow carries
-        this stamp and no index is compared again rather than trusted."""
-        _load(site, tree)
-        with site.store.cursor() as cursor:
-            cursor.execute(
-                "update links set similarity = null where a = %s and b = %s",
-                tuple(sorted((LEFT_HASH, FAR_HASH))),
-            )
-        site.store.commit()
-
-        again = _load(site, tree)
-
-        assert (again.links.added, again.links.updated) == (0, 1)
-        assert again.links.computed == 1
-
-
-# ------------------------------------------------------------- what a save writes
-
-class TestADraftHasItsLinksAtOnce:
-    def test_the_save_writes_the_draft_s_pairs_in_its_own_transaction(
-        self, site: Site, tree: Path
-    ) -> None:
-        _load(site, tree)
-        ada = site.signed_in("ada")
-
-        _saved(ada, DRAFT)
-
-        assert set(site.pairs()) >= {
-            tuple(sorted((DRAFT_HASH, digest))) for digest in LIBRARY
-        }
-        assert site.pairs()[tuple(sorted((DRAFT_HASH, LEFT_HASH)))] == relate.units(
-            DRAFT, LEFT
-        )
-
-    def test_saving_the_same_rules_again_compares_nothing(
-        self, site: Site, tree: Path
-    ) -> None:
-        _load(site, tree)
-        ada = site.signed_in("ada")
-        _saved(ada, DRAFT)
-        before = site.pairs()
-
-        _saved(ada, DRAFT)
-
-        assert site.pairs() == before
-
-    def test_a_save_compares_this_game_against_the_library_and_nothing_else(
-        self, site: Site, tree: Path
-    ) -> None:
-        """What the plan's §4 costs as *a new game*: one comparison per other game, and
-        no second pass over the pairs that already exist. The wall clock is in the plan;
-        the count is what a test can hold."""
-        _load(site, tree)
+    def test_the_load_and_a_save_write_no_pair(self, site: Site, tree: Path) -> None:
+        report = _load(site, tree)
+        assert "links" not in report.summary()
         _saved(site.signed_in("ada"), DRAFT)
-        links.forget(site.store, DRAFT_HASH)
-        site.store.commit()
-
-        written = links.write(site.store, DRAFT_HASH, DRAFT)
-        site.store.commit()
-
-        assert written.computed == len(LIBRARY)
-        assert (written.added, written.updated) == (len(LIBRARY), 0)
+        with site.store.cursor() as cursor:
+            cursor.execute("select to_regclass('links')")
+            assert cursor.fetchone()[0] is None
 
 
-# ------------------------------------------------------------- who may be shown one
+# ----------------------------------------------------------- who is named as near
 
 
-class TestWhoMayBeShownALink:
-    """G7's third acceptance sentence, asked of four people.
+class TestWhoIsNamedAsNear:
+    """One meaning of near, and one answer for everybody: the map's games.
 
-    An unlisted draft opens by its link, as it always has. What it must not do is be
-    *found* -- named on somebody else's page, counted in their neighbour list, or spelled
-    out in a rule difference. That is the line between openable and findable, and it is
-    one predicate in `site/links.py`.
+    A game's page names the map's games most like it, and the map draws the library less
+    what an admin took off it -- the same for a visitor, a member, a draft's owner and an
+    admin. So an unlisted draft is named on nobody's page, which is G7's acceptance kept
+    without a per-person table: its existence stays its owner's business.
     """
 
     def _unlisted_draft(self, site: Site, monkeypatch: pytest.MonkeyPatch) -> Browser:
@@ -627,73 +347,81 @@ class TestWhoMayBeShownALink:
         assert kept.payload["visibility"] == drafts.UNLISTED
         return ada
 
-    def test_a_visitor_is_told_nothing_about_it_at_all(
-        self, site: Site, tree: Path, monkeypatch: pytest.MonkeyPatch
+    def test_a_game_s_page_names_the_map_s_games_most_alike_first(
+        self, site: Site, tree: Path
     ) -> None:
         _load(site, tree)
-        self._unlisted_draft(site, monkeypatch)
 
         answer = site.browser().get(f"/api/game/{LEFT_HASH}")
 
-        assert answer.status == 200
-        assert {str(link["hash"]) for link in answer.payload["links"]} == {
-            MIDDLE_HASH, RIGHT_HASH
+        assert answer.status == 200, answer.text
+        page = answer.payload
+        assert {str(link["hash"]) for link in page["links"]} == {
+            MIDDLE_HASH, RIGHT_HASH, FAR_HASH
         }
-        # Not its hash, not its name, not a sentence about what it differs in.
-        assert DRAFT_HASH not in answer.text
-        assert str(DRAFT["name"]) not in answer.text
+        alike = [link["likeness"] for link in page["links"]]
+        assert alike == sorted(alike, reverse=True)
+        assert page["onMap"] is True and page["open"] == families.MUTUAL
+        # The far game is the least like `left`, and is still named: there is no far case.
+        assert page["links"][-1]["hash"] == FAR_HASH
 
-    def test_another_signed_in_person_is_told_nothing_either(
-        self, site: Site, tree: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_the_page_and_the_map_agree(self, site: Site, tree: Path) -> None:
+        """The map's panel lists each game's `like`; the page opens on the same games."""
         _load(site, tree)
-        self._unlisted_draft(site, monkeypatch)
-        bob = site.signed_in("bob")
+        drawn = site.browser().get("/api/graph").payload
+        for node in drawn["nodes"]:
+            page = site.browser().get(f"/api/game/{node['hash']}").payload
+            assert [link["hash"] for link in page["links"][: page["open"]]] == [
+                row["hash"] for row in node["like"]
+            ], node["name"]
+            assert (page["community"] or {}).get("id") == node["community"]
 
-        answer = bob.get(f"/api/game/{LEFT_HASH}")
-
-        assert DRAFT_HASH not in answer.text
-        assert str(DRAFT["name"]) not in answer.text
-
-    def test_the_owner_sees_their_own_draft_among_the_neighbours(
+    def test_nobody_is_told_of_an_unlisted_draft(
         self, site: Site, tree: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Not a visitor, not another member, not even its owner on a library game's page:
+        the map draws no drafts, so no list of the map's games names one."""
+        _load(site, tree)
+        ada = self._unlisted_draft(site, monkeypatch)
+        boss = site.signed_in("boss", admin.ADMIN)
+
+        for person in (site.browser(), site.signed_in("bob"), ada, boss):
+            answer = person.get(f"/api/game/{LEFT_HASH}")
+            assert answer.status == 200
+            # Not its hash, not its name, not a sentence about what it differs in.
+            assert DRAFT_HASH not in answer.text
+            assert str(DRAFT["name"]) not in answer.text
+
+    def test_a_draft_s_own_page_names_the_library_games_most_like_it(
+        self, site: Site, tree: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Ranked against the map's games by the map's relation, and the same list for
+        whoever opens it by its link."""
         _load(site, tree)
         ada = self._unlisted_draft(site, monkeypatch)
 
-        assert _link_hashes(ada, LEFT_HASH) == {MIDDLE_HASH, RIGHT_HASH, DRAFT_HASH}
+        lists = []
+        for person in (ada, site.browser()):
+            page = person.get(f"/api/game/{DRAFT_HASH}").payload
+            assert (page["onMap"], page["community"]) == (False, None)
+            lists.append([link["hash"] for link in page["links"]])
+        assert lists[0] == lists[1]
+        assert set(lists[0]) == set(LIBRARY)
+        assert lists[0][-1] == FAR_HASH
 
-    def test_an_admin_sees_it_too(
-        self, site: Site, tree: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        _load(site, tree)
-        self._unlisted_draft(site, monkeypatch)
-        boss = site.signed_in("boss", admin.ADMIN)
-
-        assert DRAFT_HASH in _link_hashes(boss, LEFT_HASH)
-
-    def test_a_draft_that_passed_the_check_is_still_found_by_nobody_else(
+    def test_a_game_on_trial_is_not_on_the_map_and_so_named_by_nobody(
         self, site: Site, tree: Path
     ) -> None:
-        """Q503a: a save lists nothing, so a pass alone makes nobody else's page name it."""
-        _load(site, tree)
-        _saved(site.signed_in("ada"), DRAFT)
-
-        assert DRAFT_HASH not in _link_hashes(site.browser(), LEFT_HASH)
-
-    def test_a_game_on_trial_is_public_and_everybody_sees_it(
-        self, site: Site, tree: Path
-    ) -> None:
-        """The other half of the same rule: visibility decides, and a game its designer
-        published is listed. `site` stubs the check to pass."""
+        """The map draws the library -- committed and archived games -- and near is the
+        map's, so a draft its designer put on trial is near nothing until it joins it."""
         _load(site, tree)
         _saved(site.signed_in("ada"), DRAFT)
         site_store.on_trial(site.store, DRAFT_HASH)
 
-        assert DRAFT_HASH in _link_hashes(site.browser(), LEFT_HASH)
+        assert DRAFT_HASH not in _link_hashes(site.browser(), LEFT_HASH)
 
     def test_a_killed_game_is_named_to_nobody(self, site: Site, tree: Path) -> None:
-        """An admin's *no more of this* reaches the links as well as the listing."""
+        """An admin's *no more of this* reaches the near lists as well as the map."""
         _load(site, tree)
         admin.kill_game(site.store, MIDDLE_HASH)
         site.store.commit()
@@ -702,16 +430,13 @@ class TestWhoMayBeShownALink:
         assert MIDDLE_HASH not in _link_hashes(site.browser(), LEFT_HASH)
         assert MIDDLE_HASH not in _link_hashes(boss, LEFT_HASH)
 
-    def test_the_far_game_is_reached_by_the_nearest_four_rule(
-        self, site: Site, tree: Path
-    ) -> None:
-        """A game nothing is within three rules of is shown its nearest few instead of an
-        empty panel, which is `web/library.py`'s rule and the store's half of it."""
+    def test_a_retired_game_is_named_to_nobody(self, site: Site, tree: Path) -> None:
         _load(site, tree)
+        with site.store.cursor() as cursor:
+            cursor.execute("update games set retired = now() where hash = %s", (MIDDLE_HASH,))
+        site.store.commit()
 
-        assert _link_hashes(site.browser(), FAR_HASH) == {
-            LEFT_HASH, MIDDLE_HASH, RIGHT_HASH
-        }
+        assert MIDDLE_HASH not in _link_hashes(site.browser(), LEFT_HASH)
 
 
 # ---------------------------------------------- the gap button on a person's own game
@@ -742,10 +467,10 @@ class TestTheGapButtonOnAPersonsOwnGame:
     """*Make the game in between* with a person's own draft at one end (Q354).
 
     `?between=` used to take only the games the map draws, which kept every draft out --
-    its owner's too -- and let in a game an admin had killed. It asks `links.findable`
-    now, the predicate every neighbour list here is narrowed by, of both ends: the path's
-    as well as the query's, because anybody may *open* an unlisted draft by its link and
-    that is not the same as being allowed to find it.
+    its owner's too -- and let in a game an admin had killed. It asks `finding.findable`
+    now, the store's predicate, of both ends: the path's as well as the query's, because
+    anybody may *open* an unlisted draft by its link and that is not the same as being
+    allowed to find it.
     """
 
     def _unlisted_draft(self, site: Site, monkeypatch: pytest.MonkeyPatch) -> Browser:
@@ -804,9 +529,8 @@ class TestTheGapButtonOnAPersonsOwnGame:
     def test_a_game_on_trial_is_everybody_s_end(
         self, site: Site, tree: Path
     ) -> None:
-        """The other half of the rule. A game on trial is named on everybody's neighbour
-        list, so everybody may build between it and its neighbour. `site` stubs the check
-        to pass."""
+        """The other half of the rule. A game on trial is public, so everybody may build
+        between it and a library game. `site` stubs the check to pass."""
         _load(site, tree)
         _saved(site.signed_in("ada"), GAPPED)
         site_store.on_trial(site.store, GAPPED_HASH)
@@ -847,13 +571,13 @@ class TestTheGapButtonOnAPersonsOwnGame:
             ada = int(cursor.fetchone()[0])
         asked = [LEFT_HASH, GAPPED_HASH, "0" * 16]
 
-        assert links.findable(site.store, among=asked) == {LEFT_HASH}
-        assert links.findable(site.store, ada, among=asked) == {LEFT_HASH, GAPPED_HASH}
-        assert links.findable(site.store, admin=True, among=asked) == {
+        assert finding.findable(site.store, among=asked) == {LEFT_HASH}
+        assert finding.findable(site.store, ada, among=asked) == {LEFT_HASH, GAPPED_HASH}
+        assert finding.findable(site.store, admin=True, among=asked) == {
             LEFT_HASH, GAPPED_HASH
         }
-        assert links.findable(site.store, among=[]) == set()
-        assert links.findable(site.store) == set(LIBRARY)
+        assert finding.findable(site.store, among=[]) == set()
+        assert finding.findable(site.store) == set(LIBRARY)
 
 
 class TestTheGapButtonOnADraftsOwnPage:
@@ -861,8 +585,9 @@ class TestTheGapButtonOnADraftsOwnPage:
 
     The route above has let an owner build between their draft and a library game since
     Q354, and no page offered it: the map draws no drafts. A draft's own page now carries
-    the library game nearest it and the game in between, answered only where the press
-    would be (`App._nearest` asks `findable` of both ends, as `_between` does). So the
+    the library game most like it -- the first of its own *games like this one*, the map's
+    likeness (M5) -- and the game in between, answered only where the press would be
+    (`App._nearest` asks `findable` of both ends, as `_between` does). So the
     owner of an unlisted draft is offered it, and a stranger who opened the draft by its
     link -- which anybody may -- is sent nothing to press.
     """
@@ -893,25 +618,26 @@ class TestTheGapButtonOnADraftsOwnPage:
     def test_the_owner_is_offered_it_and_the_press_builds_it(
         self, site: Site, tree: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The nearest library game is the first the page's own neighbour list names --
-        three are two rules out, and the name breaks the tie as it does there -- and the
-        press is the map's request, which builds a game one rule from each end."""
+        """The library game most like it is the first the page's own list names -- three
+        are two rules out, alike as one another, and the map's relation breaks the tie --
+        and the press is the map's request, which builds a game one rule from each end."""
         _load(site, tree)
         ada = self._unlisted_draft(site, monkeypatch)
 
         page = self._page(ada, GAPPED_HASH)
         near = page["between"]
+        first = page["links"][0]
 
-        assert near["hash"] == page["links"][0]["hash"] == LEFT_HASH
-        assert (near["name"], near["units"], near["distance"]) == ("left", 2, None)
-        assert {near["from"], near["taken"]} == {GAPPED_HASH, LEFT_HASH}
+        assert near["hash"] == first["hash"] in {LEFT_HASH, MIDDLE_HASH, RIGHT_HASH}
+        assert (near["units"], near["likeness"]) == (2, first["likeness"])
+        assert {near["from"], near["taken"]} == {GAPPED_HASH, near["hash"]}
 
         pressed = _between(ada, near["from"], near["taken"])
         assert pressed.status == 200, pressed.text
         made = pressed.payload["between"]
         assert made["words"] == near["words"]
         assert relate.units(made["spec"], GAPPED) == 1
-        assert relate.units(made["spec"], LEFT) == 1
+        assert relate.units(made["spec"], LIBRARY[near["hash"]]) == 1
 
     def test_a_stranger_who_opens_it_by_its_link_is_offered_nothing(
         self, site: Site, tree: Path, monkeypatch: pytest.MonkeyPatch
@@ -937,88 +663,30 @@ class TestTheGapButtonOnADraftsOwnPage:
         _saved(site.signed_in("ada"), GAPPED)
         site_store.on_trial(site.store, GAPPED_HASH)
 
-        near = self._page(site.browser(), GAPPED_HASH)["between"]
+        page = self._page(site.browser(), GAPPED_HASH)
+        near = page["between"]
 
-        assert near["hash"] == LEFT_HASH and "words" in near
+        assert near["hash"] == page["links"][0]["hash"] and "words" in near
 
     def test_the_nearest_is_among_the_games_this_person_may_be_shown(
         self, site: Site, tree: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A game an admin killed is off the map and no end of a gap, so it is not the
-        nearest either: the next one is, and its press is answered."""
+        most alike either: the next one is, and its press is answered."""
         _load(site, tree)
         ada = self._unlisted_draft(site, monkeypatch)
-        admin.kill_game(site.store, LEFT_HASH)
+        killed = self._page(ada, GAPPED_HASH)["between"]["hash"]
+        admin.kill_game(site.store, killed)
         site.store.commit()
 
-        near = self._page(ada, GAPPED_HASH)["between"]
+        page = self._page(ada, GAPPED_HASH)
+        near = page["between"]
 
-        assert near["hash"] == MIDDLE_HASH
+        assert killed not in {link["hash"] for link in page["links"]}
+        assert near["hash"] == page["links"][0]["hash"] != killed
         pressed = _between(ada, near["from"], near["taken"])
         assert pressed.status == 200, pressed.text
         assert "spec" in pressed.payload["between"]
-
-
-# ------------------------------------------------------------ what a delete takes
-
-
-class TestWhatADeleteTakesWithIt:
-    """G7's second acceptance sentence. A link is the rules said from one step away."""
-
-    def _retire(self, site: Site, digest: str) -> None:
-        with site.store.cursor() as cursor:
-            cursor.execute(
-                "update games set retired = now() where hash = %s", (digest,)
-            )
-        site.store.commit()
-
-    def test_deleting_a_game_leaves_no_row_that_names_it(
-        self, site: Site, tree: Path
-    ) -> None:
-        _load(site, tree)
-        assert any(MIDDLE_HASH in pair for pair in site.pairs())
-        self._retire(site, MIDDLE_HASH)
-        boss = site.signed_in("boss", admin.ADMIN)
-
-        answer = boss.post(f"/api/game/{MIDDLE_HASH}/delete")
-
-        assert answer.status == 200, answer.text
-        assert not any(MIDDLE_HASH in pair for pair in site.pairs())
-        # The other games keep theirs: a delete is about one game's rules.
-        assert site.pairs()[tuple(sorted((LEFT_HASH, RIGHT_HASH)))] == relate.units(
-            LEFT, RIGHT
-        )
-
-    def test_saving_the_deleted_rules_again_does_not_write_them_back(
-        self, site: Site, tree: Path
-    ) -> None:
-        """A delete with a way back is not one, and a link is a sentence about the rules."""
-        _load(site, tree)
-        ada = site.signed_in("ada")
-        _saved(ada, DRAFT)
-        self._retire(site, DRAFT_HASH)
-        with site.store.cursor() as cursor:
-            cursor.execute(
-                "update games set owner = (select id from users where handle = 'ada')"
-                " where hash = %s",
-                (DRAFT_HASH,),
-            )
-        site.store.commit()
-        assert ada.post(f"/api/game/{DRAFT_HASH}/delete").status == 200
-
-        _saved(ada, DRAFT)
-
-        assert not any(DRAFT_HASH in pair for pair in site.pairs())
-
-    def test_a_retired_game_keeps_its_rows_and_is_simply_not_offered(
-        self, site: Site, tree: Path
-    ) -> None:
-        """§4 of the plan: a retired game's rows stay and the listing query hides it."""
-        _load(site, tree)
-        self._retire(site, MIDDLE_HASH)
-
-        assert any(MIDDLE_HASH in pair for pair in site.pairs())
-        assert MIDDLE_HASH not in _link_hashes(site.browser(), LEFT_HASH)
 
 
 # --------------------------------------------------------------------- and the map
@@ -1057,17 +725,12 @@ class TestTheMapAsksTheStore:
         assert DRAFT_HASH not in self._nodes(ada)
 
 
-# ------------------------------------------- the site's order is the local application's
+# ---------------------------------- the site's games are the local application's and the map's
 
-# Eighteen of the committed and archived rulesets, named by file because the plan's claims
-# are about these games. Chess and the games one or two rules from it, so its links are
-# many and the index orders them differently from the alphabet; shogi, which nothing is
-# within three rules of, with the four `distance.py` names for it on the whole corpus
-# (crazyhouse, courier, shatranj, makruk) and the four the count of rules names instead
-# (marchfield, reckoning, shatranj, gardner), so the two rules pick different games; and
-# the corpus's twin pair. Eighteen rather than seventy-one, because the whole corpus's
-# first load is about sixteen seconds here and these eighteen take the class about two.
-# The whole corpus was run once by hand for T4's record: all 71 pages agree.
+# Eighteen of the committed and archived rulesets, named by file because the claims are
+# about these games: chess and the games one or two rules from it; shogi, which nothing
+# here is within three rules of; and the corpus's twin pair. Eighteen rather than the
+# whole library, so the class's map is drawn in a second or two.
 COMMITTED = (
     "chess", "almost", "berolina", "atomic", "crazyhouse", "kingofthehill", "knightmate",
     "shogi", "courier", "shatranj", "makruk", "gardner",
@@ -1117,14 +780,12 @@ def _local_links(root: Path, digest: str) -> list[dict[str, Any]]:
     return list(json.loads(json.dumps(app.get(f"/api/game/{digest}")["links"])))
 
 
-class TestTheSiteOrdersAsTheLocalApplicationDoes:
-    """T4 of `docs/archive/plan-game-graph.md` §9.5, and what T5 left: the site asks this table
-    which neighbours a game has, and it has to name the ones the local application names,
-    in the same order. Within three rules that is the count, then the index, then the
-    name. Past three it is `distance.py`'s four, where the table used to hand over the
-    count's four and the page only re-sorted them."""
+class TestTheSiteTheLocalApplicationAndTheMapNameTheSameGames:
+    """M5's acceptance on real games: one ranking of *near* on the map, the game page and
+    the panel, on both servers. Chess, which many games are like; shogi, which few are; and
+    the corpus's twin pair, which the map draws as one dot."""
 
-    def test_chess_near_many_lists_the_same_links_on_both(
+    def test_chess_lists_the_same_games_on_both_servers_and_the_map(
         self, corpus: Site, corpus_tree: Path
     ) -> None:
         chess = _hash_of("chess")
@@ -1132,16 +793,24 @@ class TestTheSiteOrdersAsTheLocalApplicationDoes:
         answer = corpus.browser().get(f"/api/game/{chess}")
 
         assert answer.status == 200, answer.text
-        site = answer.payload["links"]
-        assert site == _local_links(corpus_tree, chess)
-        assert all(link["units"] <= links.NEAR for link in site)
-        assert [link["hash"] for link in site[:3]] == [
-            _hash_of("perpetual"), _hash_of("almost"), _hash_of("chess-sweeping-bishops")
-        ], "a clock, a piece, then a mechanism: the index's order, not the alphabet's"
+        site = answer.payload
+        assert site["links"] == _local_links(corpus_tree, chess)
+        node = next(
+            node for node in corpus.browser().get("/api/graph").payload["nodes"]
+            if node["hash"] == chess
+        )
+        assert [link["hash"] for link in site["links"][: site["open"]]] == [
+            row["hash"] for row in node["like"]
+        ]
+        assert [link["likeness"] for link in site["links"][: site["open"]]] == [
+            row["likeness"] for row in node["like"]
+        ]
 
-    def test_shogi_far_from_everything_lists_the_same_four_on_both(
+    def test_shogi_far_from_most_games_lists_the_same_games_on_both(
         self, corpus: Site, corpus_tree: Path
     ) -> None:
+        """Nothing here is within three rules of shogi, and its page is ordered by the
+        same likeness as chess's: no second ranking takes over far out."""
         shogi = _hash_of("shogi")
 
         answer = corpus.browser().get(f"/api/game/{shogi}")
@@ -1149,64 +818,28 @@ class TestTheSiteOrdersAsTheLocalApplicationDoes:
         assert answer.status == 200, answer.text
         site = answer.payload["links"]
         assert site == _local_links(corpus_tree, shogi)
-        wanted = ["crazyhouse", "courier", "shatranj", "makruk"]
-        assert [link["hash"] for link in site] == [_hash_of(stem) for stem in wanted]
-        assert all(link["distance"] is not None for link in site)
+        assert min(link["units"] for link in site) > 3, "the fixture is no longer far"
+        alike = [link["likeness"] for link in site]
+        assert alike == sorted(alike, reverse=True)
+        assert all("distance" not in link for link in site)
 
-    def test_shogi_s_four_are_the_features_and_not_the_count_s(
+    def test_the_page_for_a_game_s_own_address_names_them_in_the_same_order(
         self, corpus: Site
     ) -> None:
-        """The case the old table got wrong. By the count of rules, then the name, shogi's
-        four would be marchfield, reckoning, shatranj and gardner."""
-        shogi = _hash_of("shogi")
-        by_count = sorted(
-            (relate.units(_corpus_spec("shogi"), _corpus_spec(stem)), stem)
-            for stem in (*COMMITTED, *ARCHIVED)
-            if stem != "shogi"
-        )
-        assert [stem for _, stem in by_count[:4]] == [
-            "marchfield", "reckoning", "shatranj", "gardner"
-        ], "the fixture no longer separates the two rules"
-
-        found = links.neighbours(corpus.store, shogi)
-
-        assert [link.hash for link in found] == [
-            _hash_of(stem) for stem in ("crazyhouse", "courier", "shatranj", "makruk")
-        ]
-
-    def test_the_table_orders_chess_s_links_by_count_then_index_then_name(
-        self, corpus: Site
-    ) -> None:
-        """The order the cap cuts at, so the store cuts where `library.neighbours` does."""
         chess = _hash_of("chess")
+        page = corpus.browser().get(f"/api/game/{chess}").payload
+        html = corpus.browser().get(f"/game/{chess}").text
+        named = [link["name"] for link in page["links"]]
+        at = [html.index(f">{name}</a>") for name in named]
+        assert at == sorted(at)
 
-        found = links.neighbours(corpus.store, chess)
+    def test_a_second_spelling_reads_as_the_dot_the_map_draws(self, corpus: Site) -> None:
+        """`wolves-immune` compiles to `wolves`' tables, so the map draws one dot for the
+        two and both pages name the games like that dot -- neither names the other."""
+        wolves, immune = _hash_of("wolves"), _hash_of("wolves-immune")
 
-        keys = [(link.units, link.similarity, link.name.lower(), link.hash) for link in found]
-        assert keys == sorted(keys)
-        assert all(link.similarity is not None for link in found)
-        cut = links.neighbours(corpus.store, chess, most=3)
-        assert [link.hash for link in cut] == [link.hash for link in found[:3]]
-        assert [link.name for link in cut] != sorted(link.name for link in found)[:3]
+        one = corpus.browser().get(f"/api/game/{wolves}").payload["links"]
+        other = corpus.browser().get(f"/api/game/{immune}").payload["links"]
 
-    def test_the_wolves_twins_keep_their_own_row_and_their_own_index(
-        self, corpus: Site, tmp_path: Path
-    ) -> None:
-        """T4's last sentence. The map merges two specs that compile to one set of tables
-        and reads them at 0; the table compiles nothing, so the pair keeps what `relate`
-        says, as it keeps its own count, which is what the game page reads too."""
-        wolves, immune = _corpus_spec("wolves"), _corpus_spec("wolves-immune")
-        games = {game.hash: game for game in library.discover(
-            corpus.app.ruleset_dir, corpus.app.runs_dir, corpus.app.archive_dir
-        )}
-        cache = graphing._Cache(tmp_path / graphing.CACHE_FILE)
-        first, second = games[spec_hash(wolves)], games[spec_hash(immune)]
-        assert cache.twin(first) == cache.twin(second), "the corpus's twins have parted"
-
-        low, high = sorted((first.hash, second.hash))
-        pair = (low, high)
-        index, counts = corpus.likeness()[pair]
-        alike = relate.similarity(wolves, immune)
-        assert (index, counts) == (alike.index, alike.counts)
-        assert index > 0
-        assert corpus.pairs()[pair] == relate.units(wolves, immune) > 0
+        assert [link["hash"] for link in one] == [link["hash"] for link in other]
+        assert not {wolves, immune} & {link["hash"] for link in one}

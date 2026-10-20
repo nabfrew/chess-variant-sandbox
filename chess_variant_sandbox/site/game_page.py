@@ -2,7 +2,7 @@
 
 `web/page/game.py` draws; this decides what is drawn, from the store and the library the
 site already holds. The doors are the game page's own (`SiteApp._playable`, `drafts.listed`,
-`links.neighbours`), asked here as a visitor would be answered, because the page is the same
+`SiteApp.near`), asked here as a visitor would be answered, because the page is the same
 bytes for everybody: it reads no cookie, so a crawler, a visitor and a member get one page,
 and what a member may see beyond it is the router's to draw.
 
@@ -14,11 +14,12 @@ and what a member may see beyond it is the router's to draw.
 - An address naming no game the store or the library holds is the 404, without re-reading
   the library: an invented hash costs one query, never a walk of the tree.
 
-The near games are the visitor's neighbour list (`links.neighbours` with nobody signed in),
-cached per game for `NEAR_SECONDS`, because a far game's list is worked out from every
-game's rules (`links._far`) and a crawler reads every page in a burst. A game killed in that
-window can stay named on a neighbour's page for at most that long; its own address answers
-404 at once.
+The near games are the page's own list in its order (`library.near_names`, the caller's
+`near_of`): the map's games most like this one by the map's likeness, which is one answer
+for everybody (M5 of `docs/plan-map.md`). They are cached per game for `NEAR_SECONDS`,
+because a game the map does not draw is ranked by a relation over the whole library and a
+crawler reads every page in a burst. A game killed in that window can stay named on a
+neighbour's page for at most that long; its own address answers 404 at once.
 """
 
 from __future__ import annotations
@@ -30,13 +31,13 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from chess_variant_sandbox.site import drafts, links, seo
+from chess_variant_sandbox.site import drafts, seo
 from chess_variant_sandbox.web import library
 from chess_variant_sandbox.web.page import front
 from chess_variant_sandbox.web.page import game as drawing
 
 NEAR_SECONDS = 300.0
-"""How long one game's near list is reused before the store is asked again."""
+"""How long one game's near list is reused before it is asked for again."""
 
 LISTED_SECONDS = 300.0
 """How long the list of indexable games (the sitemap's, and `/game`'s without script) is
@@ -207,14 +208,6 @@ class NearCache:
             self._held.clear()
 
 
-def near_of(connection: Any, digest: str) -> tuple[drawing.Near, ...]:
-    """The games a visitor is shown as near this one, nearest first."""
-    return tuple(
-        drawing.Near(hash=one.hash, name=one.name)
-        for one in links.neighbours(connection, digest)
-    )
-
-
 def drawn(
     connection: Any,
     digest: str,
@@ -222,6 +215,7 @@ def drawn(
     game_of: Callable[[str], library.Game],
     near: NearCache,
     base: str,
+    near_of: Callable[[library.Game], tuple[drawing.Near, ...]],
 ) -> drawing.Drawn | None:
     """What `/game/<digest>` draws, or `None` for the 404.
 
@@ -243,7 +237,7 @@ def drawn(
             return None
     nearby = (
         () if game.source == library.PREVIEW
-        else near.get(digest, lambda: near_of(connection, digest))
+        else near.get(digest, lambda: near_of(game))
     )
     return drawing.Drawn(
         hash=digest,
