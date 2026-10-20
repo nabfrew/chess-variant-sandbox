@@ -33,7 +33,12 @@ train = ["numpy>=1.26,<2.3"]
 # `uv sync` installs none: the local application never opens a database, and a person
 # who wants to play a game they invented should not build a driver to do it.
 # `[binary]` ships libpq in the wheel, so the box needs no system Postgres headers.
-site = ["psycopg[binary]>=3.2"]
+#
+# `resvg-py` draws each game's link-preview picture (G6, `web/page/game_picture.py`): the
+# starting position as SVG, rasterised to the PNG unfurlers ask for. resvg is a Rust SVG
+# renderer with no system libraries and no network or file access of its own, shipped as one
+# abi3 wheel per platform; without it a game's page names the site's own picture.
+site = ["psycopg[binary]>=3.2", "resvg-py>=0.5,<0.6"]
 
 [project.scripts]
 chess-variant-sandbox = "chess_variant_sandbox.cli:main"

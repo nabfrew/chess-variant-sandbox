@@ -259,6 +259,10 @@ class TestWhatACrawlerReads:
                    for href, _ in _fetch(site.port, f"/game/{DISTANT_HASH}").links())
 
     def test_a_head_request_answers_as_the_get(self, site: Site) -> None:
+        # The first read asks for the game's picture (G6), and the next names it: both
+        # reads below come after it is made.
+        _fetch(site.port, f"/game/{SHORT_HASH}")
+        site.app.pictures.settle()
         got = _fetch(site.port, f"/game/{SHORT_HASH}")
         head = _fetch(site.port, f"/game/{SHORT_HASH}", "HEAD")
         assert head.status == 200 and head.html == ""

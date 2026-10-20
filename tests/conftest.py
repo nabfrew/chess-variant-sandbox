@@ -289,6 +289,19 @@ def the_tracked_stores_do_not_move() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def game_pictures_only_where_a_test_asks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A site makes each game's link-preview picture (G6) on a thread of its own after a
+    read of `/game` or of the game's page, about 0.1 CPU-s a game. Every site test reads
+    those, so with pictures on, a test over the whole library paid seconds of drawing in the
+    background, which the duration guard counts as the test's. A site in a test makes none
+    unless the test says so (`Pictures(can_draw=True)`, or `pictures.can_draw = True` on a
+    running site, as `test_site_doors.py::TestTheGamePictures` does)."""
+    from chess_variant_sandbox.web.page import game_picture
+
+    monkeypatch.setattr(game_picture, "available", lambda: False)
+
+
+@pytest.fixture(autouse=True)
 def registrations_end_with_their_test() -> Iterator[None]:
     """What a test registers by name is gone when it ends (Q431).
 

@@ -216,11 +216,14 @@ def drawn(
     near: NearCache,
     base: str,
     near_of: Callable[[library.Game], tuple[drawing.Near, ...]],
+    picture_of: Callable[[str, library.Game], str | None] | None = None,
 ) -> drawing.Drawn | None:
     """What `/game/<digest>` draws, or `None` for the 404.
 
     `known` is the library as last read and `game_of` the site's one-game reader
     (`SiteApp.game`: the tree, then the store's copy of a retired game's rules).
+    `picture_of` names the game's own link-preview picture where one is made
+    (`game_pictures.Pictures.address`, G6), and the site's stands in where it says nothing.
     """
     row = row_of(connection, digest)
     if row is None:
@@ -249,4 +252,5 @@ def drawn(
         near=nearby,
         indexable=indexable(row, game),
         base=base,
+        picture=(picture_of(digest, game) if picture_of is not None else None) or "",
     )

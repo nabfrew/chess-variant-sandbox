@@ -16,7 +16,7 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 ### Links to the site show a preview
 
 Paste a link to the site, or to any game on it, into a chat or a post and it now shows a card with the page's
-title, a short description and a picture.
+title, a short description and a picture. A game's card shows that game's own starting position.
 
 ### Asking for an invitation reaches a person
 

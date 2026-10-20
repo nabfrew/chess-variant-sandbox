@@ -16,7 +16,10 @@ What a search engine gets over HTTP from a running site, against a library of in
   words in the view, in the hero's own markup so the router's clone lands them where they
   stood; `/game` lists every listed game for a reader without script, inside `<noscript>`;
 - **the link previews** (G5): every page carries Open Graph and Twitter card tags, its title,
-  description, type, whole address and the site's picture, which is served at 1200 × 630.
+  description, type, whole address and the site's picture, which is served at 1200 × 630;
+- **a picture per game** (G6): a game's page names its own picture once the site has made
+  it, the site's until then; `/game` asks for every listed game's; the picture is served
+  for a year to anybody who can open the game, and is the 404 for anybody else.
 
 The site tests need a real Postgres and skip with a reason without one
 (`tests/site_store.py`).
@@ -56,7 +59,7 @@ from test_site_links import Site, _load, _running_site, _saved
 
 from chess_variant_sandbox.site import admin, mail, pages, routes, screening, seo
 from chess_variant_sandbox.web import landing
-from chess_variant_sandbox.web.page import front, picture
+from chess_variant_sandbox.web.page import front, game_picture, picture
 from chess_variant_sandbox.web.page import game as drawing
 from chess_variant_sandbox.web.page.shell import NAME
 
@@ -75,7 +78,8 @@ KEPT_OUT = ("/api/library", f"/api/game/{SHORT_HASH}", "/signin", "/signin?then=
 # What a page needs to draw, which a crawler that renders must be able to fetch.
 LET_IN = (*PUBLIC, "/game?from=mail", "/rules.md", "/static/page/core.js",
           "/static/shell.js", "/static/site/post.js", "/static/fonts/x.woff2",
-          "/static/vendor/x.js", "/favicon.svg", "/static/picture/site-0.png")
+          "/static/vendor/x.js", "/favicon.svg", "/static/picture/site-0.png",
+          f"/picture/game/{SHORT_HASH}-0123456789abcdef.png")
 
 _SITEMAP = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
 
@@ -355,7 +359,14 @@ def _picture_address() -> str:
 
 class TestThePreviews:
     """G5 of `docs/plan-growth.md`: a link pasted into a chat program or a post unfurls
-    into the page's title, description and the site's picture, from the tags in the head."""
+    into the page's title, description and the site's picture, from the tags in the head.
+
+    With no game's own picture made (G6's are `TestTheGamePictures`'), so that every page
+    here names the site's."""
+
+    @pytest.fixture(autouse=True)
+    def _no_game_pictures(self, site: Site) -> None:
+        site.app.pictures.can_draw = False
 
     def test_every_public_page_carries_the_open_graph_and_twitter_tags(
         self, site: Site
@@ -391,14 +402,14 @@ class TestThePreviews:
         assert titles[f"/game/{SHORT_HASH}"] == "Short walk: play it online"
         assert len(set(titles.values())) == len(titles), titles
 
-    def test_a_games_page_points_at_its_picture_which_is_the_sites_until_g6(
+    def test_a_games_page_points_at_the_sites_picture_until_its_own_is_made(
         self, site: Site
     ) -> None:
         for digest in (SHORT_HASH, MEDIUM_HASH):
             page = _fetch(site.port, f"/game/{digest}")
             assert _tag(page, "og:image") == _picture_address(), digest
             assert _tag(page, "og:description") == unescape(page.meta("description") or "")
-        # One place says which picture a game's page shows, for G6 to change.
+        # One place says which picture a game's page shows: the site's without its own.
         drawn = drawing.Drawn(hash=SHORT_HASH, name="x", description="", spec={},
                               score=None, stale=False, near=(), indexable=True,
                               base=SITE_URL)
@@ -445,3 +456,111 @@ class TestThePreviews:
             assert _tag(page, "og:title") and _tag(page, "twitter:card"), path
             for key in ("og:url", "og:image", "twitter:image"):
                 assert _tag(page, key) is None, (path, key)
+
+
+def _get(port: int, path: str) -> tuple[int, dict[str, str], bytes]:
+    connection = HTTPConnection("127.0.0.1", port, timeout=60)
+    try:
+        connection.request("GET", path)
+        found = connection.getresponse()
+        return found.status, {k.lower(): v for k, v in found.getheaders()}, found.read()
+    finally:
+        connection.close()
+
+
+needs_resvg = pytest.mark.skipif(
+    not game_picture.available(), reason="resvg-py is the site extra's: uv sync --extra site")
+
+
+@needs_resvg
+class TestTheGamePictures:
+    """G6: a game's page names a picture of its own starting position, drawn on the site
+    from the still board, once that picture is made; the site's picture until then."""
+
+    @pytest.fixture(autouse=True)
+    def _game_pictures(self, site: Site) -> None:
+        """Pictures on, which the suite leaves off elsewhere (`conftest.py`)."""
+        site.app.pictures.can_draw = True
+
+    def test_a_games_page_names_its_own_picture_once_it_is_made(self, site: Site) -> None:
+        first = _fetch(site.port, f"/game/{SHORT_HASH}")
+        assert _tag(first, "og:image") == _picture_address()
+        site.app.pictures.settle()
+
+        page = _fetch(site.port, f"/game/{SHORT_HASH}")
+        image = _tag(page, "og:image")
+        assert image and image.startswith(SITE_URL + game_picture.PREFIX)
+        found = game_picture.ROUTE.match(image[len(SITE_URL):])
+        assert found is not None and found.group(1) == SHORT_HASH
+        assert _tag(page, "twitter:image") == image
+        assert _tag(page, "og:image:alt") == _tag(page, "twitter:image:alt") \
+            == game_picture.alt("Short walk")
+        assert (_tag(page, "og:image:width"), _tag(page, "og:image:height")) == ("1200", "630")
+
+        status, headers, body = _get(site.port, image[len(SITE_URL):])
+        assert status == 200
+        assert headers["content-type"] == "image/png"
+        assert "max-age=31536000" in headers["cache-control"]
+        assert picture.size(body) == (1200, 630)
+        assert len(body) < picture.BYTES_MOST
+
+    def test_each_game_has_a_picture_of_its_own(self, site: Site) -> None:
+        for digest in (SHORT_HASH, MEDIUM_HASH):
+            _fetch(site.port, f"/game/{digest}")
+        site.app.pictures.settle()
+        images = {digest: _tag(_fetch(site.port, f"/game/{digest}"), "og:image")
+                  for digest in (SHORT_HASH, MEDIUM_HASH)}
+        assert len(set(images.values())) == 2
+        bodies = {_get(site.port, str(image)[len(SITE_URL):])[2] for image in images.values()}
+        assert len(bodies) == 2
+
+    def test_the_games_list_asks_for_every_listed_games_picture(self, site: Site) -> None:
+        assert _fetch(site.port, "/game").status == 200
+        site.app.pictures.settle()
+        assert site.app.pictures.held() == len(LIBRARY)
+        for digest in LIBRARY:
+            image = _tag(_fetch(site.port, f"/game/{digest}"), "og:image")
+            assert image and image.startswith(SITE_URL + game_picture.PREFIX), digest
+
+    def test_only_a_made_picture_of_a_game_a_visitor_can_open_is_served(
+        self, site: Site
+    ) -> None:
+        _fetch(site.port, "/game")
+        site.app.pictures.settle()
+        images = {digest: str(_tag(_fetch(site.port, f"/game/{digest}"), "og:image"))
+                  [len(SITE_URL):] for digest in (SHORT_HASH, MEDIUM_HASH, LONG_HASH)}
+        assert all(_get(site.port, path)[0] == 200 for path in images.values())
+
+        admin.kill_game(site.store, MEDIUM_HASH)
+        site.store.commit()
+        with site.store.cursor() as cursor:
+            cursor.execute("update games set deleted = now(), spec = null where hash = %s",
+                           (LONG_HASH,))
+        site.store.commit()
+        named = game_picture.ROUTE.match(images[SHORT_HASH])
+        assert named is not None
+        key = named.group(2)
+        for path in (images[MEDIUM_HASH], images[LONG_HASH],
+                     game_picture.path(SHORT_HASH, "0123456789abcdef"),
+                     game_picture.path("0123456789abcdef", key),
+                     images[SHORT_HASH] + "x", images[SHORT_HASH].replace(".png", ".svg")):
+            assert _get(site.port, path)[0] == 404, path
+        assert _get(site.port, images[SHORT_HASH])[0] == 200
+
+    def test_a_picture_is_drawn_once_for_many_reads(self, site: Site) -> None:
+        made: list[str] = []
+        drawn_by = site.app.pictures.make
+
+        def counted(drawing_text: str) -> bytes:
+            made.append(drawing_text)
+            return drawn_by(drawing_text)
+
+        site.app.pictures.make = counted
+        for _ in range(4):
+            _fetch(site.port, f"/game/{SHORT_HASH}")
+            _fetch(site.port, "/game")
+        site.app.pictures.settle()
+        for _ in range(3):
+            _fetch(site.port, f"/game/{SHORT_HASH}")
+        site.app.pictures.settle()
+        assert len(made) == len(LIBRARY)

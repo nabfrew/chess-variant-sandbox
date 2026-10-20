@@ -82,14 +82,14 @@ def _whole(address: str | None) -> bool:
 
 
 def preview_lines(title: str, description: str, canonical: str | None = None,
-                  image: str = "") -> str:
+                  image: str = "", image_alt: str = picture.ALT) -> str:
     """The link preview's tags (G5 of `docs/plan-growth.md`, §2.2): what a chat program, a
     post or a search engine's card shows when somebody pastes the address. Open Graph's
     title, description, type, site name, address and picture, and Twitter's card with its
     own title, description and picture. The title leaves off the site's name, which
     `og:site_name` carries. The address and the picture are whole addresses or absent.
     The picture's size and type are the site picture's (`picture.WIDTH`, `HEIGHT`, `TYPE`),
-    which a game's own picture (G6) keeps."""
+    which a game's own picture (G6, `game_picture.py`) keeps; `image_alt` says what it shows."""
     said = title.removesuffix(f" · {NAME}") or NAME
     rows: list[tuple[str, str, str]] = [
         ("property", "og:site_name", NAME),
@@ -105,7 +105,7 @@ def preview_lines(title: str, description: str, canonical: str | None = None,
             ("property", "og:image:type", picture.TYPE),
             ("property", "og:image:width", str(picture.WIDTH)),
             ("property", "og:image:height", str(picture.HEIGHT)),
-            ("property", "og:image:alt", picture.ALT),
+            ("property", "og:image:alt", image_alt),
         ]
     rows += [
         ("name", "twitter:card", PREVIEW_CARD),
@@ -113,7 +113,7 @@ def preview_lines(title: str, description: str, canonical: str | None = None,
         ("name", "twitter:description", description),
     ]
     if _whole(image):
-        rows += [("name", "twitter:image", image), ("name", "twitter:image:alt", picture.ALT)]
+        rows += [("name", "twitter:image", image), ("name", "twitter:image:alt", image_alt)]
     return "".join(
         f'<meta {kind}="{key}" content="{escape(value, quote=True)}">\n'
         for kind, key, value in rows
@@ -121,16 +121,18 @@ def preview_lines(title: str, description: str, canonical: str | None = None,
 
 
 def head_lines(title: str, description: str, canonical: str | None = None,
-               index: bool = True, image: str = "") -> str:
+               index: bool = True, image: str = "", image_alt: str = picture.ALT) -> str:
     """The head's lines beyond the title: a description, a canonical address when the page
     has one, `noindex` when it is not for a search engine's index, and the link preview's
-    tags (`preview_lines`) for the page's `title` and its picture `image`."""
+    tags (`preview_lines`) for the page's `title` and its picture `image`, which shows
+    `image_alt`."""
     lines = [f'<meta name="description" content="{escape(description, quote=True)}">']
     if canonical is not None:
         lines.append(f'<link rel="canonical" href="{escape(canonical, quote=True)}">')
     if not index:
         lines.append('<meta name="robots" content="noindex">')
-    return "\n".join(lines) + "\n" + preview_lines(title, description, canonical, image)
+    return "\n".join(lines) + "\n" + preview_lines(title, description, canonical, image,
+                                                    image_alt)
 
 
 def home(base: str = "") -> str:

@@ -28,7 +28,8 @@ from dataclasses import dataclass
 from html import escape
 from typing import Any
 
-from chess_variant_sandbox.web.page import front, page
+from chess_variant_sandbox.web.page import front, game_picture, page
+from chess_variant_sandbox.web.page import picture as site_picture
 from chess_variant_sandbox.web.page.shell import NAME
 
 # The address. The hash is `spec.canonical.HASH_LENGTH` lowercase hex characters today; the
@@ -77,8 +78,10 @@ class Drawn:
     `score` is `library.Game.score` (the latest estimate with its `status`, `revision`,
     `measured_at` and `seeds`, or `None`), `stale` whether a measurement exists that is no
     longer current, `indexable` whether the game is listed (an unlisted draft, a retired or a
-    resting game opens by its link and says `noindex`), and `base` the site's own address,
-    without a trailing slash, for the canonical (empty: the canonical is the path alone).
+    resting game opens by its link and says `noindex`), `base` the site's own address,
+    without a trailing slash, for the canonical (empty: the canonical is the path alone), and
+    `picture` the path of the game's own link-preview picture where one is made (G6,
+    `site/game_pictures.py`; empty: the site's picture stands in).
     """
 
     hash: str
@@ -90,6 +93,7 @@ class Drawn:
     near: tuple[Near, ...]
     indexable: bool
     base: str = ""
+    picture: str = ""
 
 
 # ------------------------------------------------------------------------ the words
@@ -214,16 +218,24 @@ def canonical(drawn: Drawn) -> str:
 
 
 def picture(drawn: Drawn) -> str:
-    """The game's link-preview picture, a whole address where the site has one. The site's
-    own picture for every game until G6 draws each its starting position: this is the one
-    place that changes."""
+    """The game's link-preview picture, a whole address where the site has one: its own
+    starting position (G6, `game_picture.py`) once that is made, the site's picture until
+    then, so the tag never names a picture that is not there."""
+    if drawn.picture:
+        return drawn.base + drawn.picture
     return front.picture_address(drawn.base)
+
+
+def picture_alt(drawn: Drawn) -> str:
+    """What `picture` shows, for a reader who cannot see it."""
+    return game_picture.alt(drawn.name) if drawn.picture else site_picture.ALT
 
 
 def head(drawn: Drawn) -> str:
     """The lines the head carries beyond the title (`front.head_lines`)."""
     return front.head_lines(title(drawn.name), meta_description(drawn), canonical(drawn),
-                            drawn.indexable, image=picture(drawn))
+                            drawn.indexable, image=picture(drawn),
+                            image_alt=picture_alt(drawn))
 
 
 def view(drawn: Drawn) -> str:

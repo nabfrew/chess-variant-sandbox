@@ -68,6 +68,7 @@ from chess_variant_sandbox.site import (
     drafts,
     finding,
     game_page,
+    game_pictures,
     identity,
     inviting,
     kept,
@@ -114,10 +115,11 @@ from chess_variant_sandbox.web import (
     refreshing,
 )
 from chess_variant_sandbox.web.page import SCRIPTS as PAGE_SCRIPTS
-from chess_variant_sandbox.web.page import front, picture, shell
+from chess_variant_sandbox.web.page import front, game_picture, picture, shell
 from chess_variant_sandbox.web.page import game as game_drawing
 from chess_variant_sandbox.web.server import (
     BROWSER_PREFIX,
+    IMMUTABLE,
     PAGE_PATHS,
     RULES_ROUTE,
     VENDOR_PREFIX,
@@ -285,6 +287,9 @@ class SiteApp(App):
         self.near_cache = game_page.NearCache()
         # G4: the games a search engine may index, for the sitemap and `/game` without script.
         self.listing = game_page.ListedCache()
+        # G6: each game's link-preview picture, made once on a thread of its own and kept in
+        # runs/pictures/.
+        self.pictures = game_pictures.Pictures(self.runs_dir / game_pictures.DIRECTORY)
 
     @property
     def viewer(self) -> int | None:
@@ -1149,9 +1154,19 @@ class SiteApp(App):
         with self._connection() as connection:
             found = game_page.drawn(
                 connection, digest, self.known(), self.game, self.near_cache,
-                seo.site_base(), self._near_names,
+                seo.site_base(), self._near_names, self.pictures.address,
             )
         return None if found is None else game_drawing.draw(found)
+
+    def game_picture(self, digest: str, key: str) -> bytes | None:
+        """G6: a game's link-preview picture, or `None` for the 404: a game a visitor cannot
+        open (`game_page.drawn`'s doors), or a picture this site has not made."""
+        with self._connection() as connection:
+            row = game_page.row_of(connection, digest)
+        if (row is None and digest not in self.known()) or (
+                row is not None and not row.openable):
+            return None
+        return self.pictures.served(digest, key)
 
     def _near_names(self, game: library.Game) -> tuple[game_drawing.Near, ...]:
         """The games a game's own address names as near it: `near`'s, by name alone."""
@@ -1180,7 +1195,13 @@ class SiteApp(App):
     def games_page(self) -> str:
         """`/game`: the single page, with its head and every listed game drawn in for a
         reader without script."""
-        return front.games(seo.site_base(), self.listed_pages())
+        listed = self.listed_pages()
+        known = self.known()
+        # G6: every listed game's picture, asked for once per listing, so the deploy's warm
+        # read of this page draws the library's pictures before anybody shares one.
+        self.pictures.want_all(listed, (
+            (one.hash, known[one.hash]) for one in listed if one.hash in known))
+        return front.games(seo.site_base(), listed)
 
     def sitemap(self, base: str) -> str:
         """`sitemap.xml`, its addresses written on `base`."""
@@ -2993,6 +3014,10 @@ def site_handler_for(app: SiteApp) -> type[Any]:
             if digest is not None:
                 self._game_page(digest)
                 return
+            shown = game_picture.ROUTE.match(parsed.path)
+            if shown is not None:
+                self._game_picture(shown.group(1), shown.group(2))
+                return
             if self._front(parsed.path):
                 return
             if not served_elsewhere(parsed.path):
@@ -3157,6 +3182,23 @@ def site_handler_for(app: SiteApp) -> type[Any]:
                 self._lost()
             else:
                 self._html(body)
+
+        def _game_picture(self, digest: str, key: str) -> None:
+            """A game's link-preview picture (G6), cached for a year since a new picture is a
+            new address; the not-found page for anything else. Timed and counted as
+            `game_pictures.ROUTE`."""
+            timed = usage.Timing(lambda: app.game_picture(digest, key))
+            app.usage.enter()
+            try:
+                body = timed()
+            finally:
+                app.usage.leave()
+            status = 404 if body is None else 200
+            app.usage.record(game_pictures.ROUTE, "", status, "", None, timed.cpu, timed.wall)
+            if body is None:
+                self._lost()
+            else:
+                self._send(200, body, game_picture.TYPE, cache=IMMUTABLE)
 
         def _front(self, path: str) -> bool:
             """G4: the front page, the games, `robots.txt` and `sitemap.xml`, each with what a
