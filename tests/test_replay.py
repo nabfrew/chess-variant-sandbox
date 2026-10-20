@@ -75,6 +75,9 @@ E1_CHESS_CHILD = "2f81b3ec2c36"
 # from E1's gardner child on gardner; both stored whole as accepted, not kept.
 G3_CHILD = "56026eae103c"
 G3_GARDNER_CHILD = "7444909265ed"
+# Generation 3c (plan-teacher §9.19-9.20, Q969b, Q969g): the chained replay from 2R, from E1's
+# gardner child and from E1's chess child; the first two stored whole, chess's JSON refused.
+G3C_CHILDREN = ("b14f1d190426", "ae241123e674", "0bbc0c08b1ee")
 
 # Made-up procedure names for the random nets standing in for a parent and its parent.
 PARENT = "abcdefabcdef"
@@ -155,9 +158,10 @@ def test_the_field_is_absent_until_set_and_no_stored_name_moves() -> None:
         procedure = Procedure.from_dict(recipe)
         name = meta.stem.partition("-")[2]
         # Q713, Q715, Q716, Q724: E1's child and its two guard children, and generation 3's
-        # child and its gardner guard child, are the stored recipes with a replay set; every
-        # other reads back without the field, under its old name.
-        if name in (E1_CHILD, E1_GARDNER_CHILD, E1_CHESS_CHILD, G3_CHILD, G3_GARDNER_CHILD):
+        # child and its gardner guard child, and generation 3c's three (Q969g), are the stored
+        # recipes with a replay set; every other reads back without the field, under its old name.
+        if name in (E1_CHILD, E1_GARDNER_CHILD, E1_CHESS_CHILD, G3_CHILD, G3_GARDNER_CHILD,
+                    *G3C_CHILDREN):
             assert procedure.replay is not None and "replay" in recipe, meta.name
         else:
             assert procedure.replay is None and "replay" not in procedure.as_dict(), meta.name

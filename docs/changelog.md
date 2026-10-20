@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-20
 
+### A newer computer player on Intransitive and Gardner
+
+The learned computer player on *Intransitive* and on Gardner is a newer one, trained on its predecessors' games. Gardner's
+score moved up with it.
+
 ### Links to the site show a preview
 
 Paste a link to the site, or to any game on it, into a chat or a post and it now shows a card with the page's

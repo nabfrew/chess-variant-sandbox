@@ -51,8 +51,11 @@ INTRANSITIVE = "29d5213b02b2"
 PROCEDURE = "df1148b26ff6"
 AGENT = f"minimax:net={PROCEDURE},nodes=6400"
 # Generation 2R (E1, `archive/plan-teacher.md` §9.13.8), generation 1's child: kept by R5-1 once
-# both guards held (Q716, §9.13.12), so since then it is the net the picker offers.
-OFFERED = "0eaad64c4586"
+# both guards held (Q716, §9.13.12). It stays kept, and is generation 3c's parent.
+KEPT_2R = "0eaad64c4586"
+# Generation 3c (the chained replay, `plan-teacher.md` §9.19), 2R's child: kept by R5-1 once
+# both guards held (Q969g, §9.20), so since then it is the net the picker offers.
+OFFERED = "b14f1d190426"
 OFFERED_AGENT = f"minimax:net={OFFERED},nodes=6400"
 # Generation 2 (T5-g2, `archive/plan-teacher.md` §9.11.2): accepted and not kept (G-N failed
 # on A25), filed by Q712 under the hash its verdict was read on (§9.13.6 there).
@@ -92,7 +95,7 @@ class TestIntransitivesNet:
         assert entry.about == "looks at 6,400 positions before each move"
         assert "rated like the other computer players" in entry.plan
         assert "practice" not in entry.plan
-        assert "94%" in entry.plan and "400 games" in entry.plan
+        assert "96%" in entry.plan and "400 games" in entry.plan
         for words in (entry.label, entry.plan, entry.group):
             assert not site_words.hits(words), words
         # Every other player is the one it was before.
@@ -260,7 +263,7 @@ class TestTheGenericPath:
 
 class TestIntransitivesKeptNet:
     def test_its_stores_say_which_generations_were_kept(self) -> None:
-        for procedure in (OFFERED, PROCEDURE, "db5ef1bc938e"):
+        for procedure in (OFFERED, KEPT_2R, PROCEDURE, "db5ef1bc938e"):
             path = ROOT / STORE_DIR / f"{INTRANSITIVE}-{procedure}.json"
             assert json.loads(path.read_text("utf-8"))["kept"] is True, procedure
 
@@ -273,7 +276,7 @@ class TestIntransitivesKeptNet:
         the old hash; here it is filed under the current one, the worst case (a store that
         claims a verdict on this game), with its `kept` verdict and without one: accepted,
         its parent generation 1, and a higher acceptance score than generation 1. The kept
-        line's newest, generation 2R (kept by Q716), is what is offered."""
+        line's newest, generation 3c (kept by Q969g), is what is offered."""
         spec = _spec("intransitive")
         for path in (ROOT / STORE_DIR).glob(f"{INTRANSITIVE}-*"):
             shutil.copy(path, tmp_path)
@@ -323,17 +326,28 @@ class TestGenerationTwosStore:
         # Nothing claims a verdict on the current game it never had.
         assert not list((ROOT / STORE_DIR).glob(f"{INTRANSITIVE}-{CHILD}.*"))
 
-    def test_e1s_child_is_kept_after_its_guards_and_offered(self) -> None:
+    def test_e1s_child_is_kept_after_its_guards(self) -> None:
         """Q713 (archive/plan-teacher §9.13.8): generation 2R, `0eaad64c4586`, passed every target
         gate and was stored whole under the current hash with no `kept` verdict; Q716
-        (§9.13.12) wrote `kept: true` once G-G held on gardner and on chess (R5-1), so it,
-        not generation 1, is what the picker offers."""
-        data = json.loads((ROOT / STORE_DIR / f"{INTRANSITIVE}-{OFFERED}.json").read_text("utf-8"))
+        (§9.13.12) wrote `kept: true` once G-G held on gardner and on chess (R5-1). It keeps
+        it in every branch of generation 3c (§9.19.3), whose child replaced it in the picker."""
+        data = json.loads((ROOT / STORE_DIR / f"{INTRANSITIVE}-{KEPT_2R}.json").read_text("utf-8"))
         assert data["verdict"] == ACCEPTED and data["kept"] is True
         assert "R5-1" in data["kept_by"] and "9.13.12" in data["kept_by"]
         assert data["lineage"]["parent"] == PROCEDURE and data["recipe"]["replay"]
         assert data["confirmation"]["seed"] == 2_000_000
         assert data["weights_sha256"].startswith("f82ee574")
+
+    def test_generation_3c_is_kept_after_its_guards_and_offered(self) -> None:
+        """Q969g (plan-teacher §9.20): generation 3c, `b14f1d190426`, 2R's chained-replay child,
+        passed every target gate and G-G held on gardner and on chess (R5-1), so it is kept
+        and, as the kept line's newest, what the picker offers."""
+        data = json.loads((ROOT / STORE_DIR / f"{INTRANSITIVE}-{OFFERED}.json").read_text("utf-8"))
+        assert data["verdict"] == ACCEPTED and data["kept"] is True
+        assert "R5-1" in data["kept_by"] and "9.20" in data["kept_by"]
+        assert data["lineage"]["parent"] == KEPT_2R and data["recipe"]["replay"]
+        assert data["confirmation"]["seed"] == 2_000_000
+        assert data["weights_sha256"].startswith("6ce71c69")
         (entry,) = opponents.learned_for(INTRANSITIVE, ROOT / STORE_DIR, _spec("intransitive"))
         assert entry.agent == OFFERED_AGENT
 
