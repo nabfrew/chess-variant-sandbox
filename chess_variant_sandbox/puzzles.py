@@ -13,10 +13,17 @@ move whose score is at least `PROVEN` was searched to a forced win, and one at m
 `WIN_SCORE - ply` while no evaluation comes near that. Anything between is *open*: the
 budget ran out first, and the move is neither won nor lost as far as anyone knows.
 
-The record, `runs/puzzles/<hash>.json` (`FORMAT` 1), is what the site loads (R9b). Each
+The record, `runs/puzzles/<hash>.json` (`FORMAT` 2), is what the site loads (R9b). Each
 position carries its prefix, the side to move, its result (`won` or `lost` for the side to
 move), the plies to the ending under best play as far as the proof saw it, and every root
 move's score and proof, so *find the move* is a lookup.
+
+**Too easy** (`docs/plan-proven.md` §3.1, pre-registered before anything was counted). A
+position is trivial under T1 (a win in one with two or more winning moves), T2 (half the
+legal moves or more proved won), both read off the record's own proofs (`trivial`), or T3
+(the defence has no say: after the shortest winning move, every reply leaves a win exactly
+two plies shorter), which asks the core again (`defence`). `FORMAT` 2 adds each asked
+position's T3 answer and the basis it was asked on; `FORMAT` 1 records carry no T3.
 """
 
 from __future__ import annotations
@@ -34,8 +41,13 @@ from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.tournament.play import eval_values
 from chess_variant_sandbox.tournament.record import GameRecord
 
-FORMAT = 1
+FORMAT = 2
+FORMATS = (1, 2)
+"""Every record format a reader accepts: 1 has no T3 answers, 2 has them."""
 NODES = 20_000_000
+# T3's budget a reply (`plan-proven.md` §3.1): a tenth of the proof's, since each of 20 to
+# 30 replies is asked and the position after a reply is two plies nearer its end.
+DEFENCE_NODES = 2_000_000
 MAX_DEPTH = 400
 MAX_PIECES = 6
 # Positions proved per game, at most. E2 found 241 on *Intransitive*'s predecessor and the
@@ -51,6 +63,13 @@ NEAR = 12
 PROVEN = WIN_SCORE - 1000
 
 WON, LOST, OPEN = "won", "lost", "open"
+
+# T3's answers, a position's `defence` in a `FORMAT` 2 record (absent where T3 does not
+# apply): no reply changed the shortest win; some reply was proved to change it; or none
+# was proved to, but at least one the probe could not settle, which counts as a say.
+NONE, SOME, UNSETTLED = "none", "some", "unsettled"
+DEFENCES = (NONE, SOME, UNSETTLED)
+T1, T2, T3 = "T1", "T2", "T3"
 
 
 @dataclass(frozen=True)
@@ -207,16 +226,150 @@ def verdict(
     return row
 
 
-def counts(rows: Iterable[dict[str, Any]]) -> dict[str, int]:
-    """The record's tally: what was asked, what was proved, and how many set one move."""
+def counts(rows: Iterable[dict[str, Any]], defence: bool = False) -> dict[str, int]:
+    """The record's tally: what was asked, what was proved, how many set one move, and,
+    where T3 was asked (`defence`), its answers and how many positions are too easy to
+    offer under T1, T2 and T3."""
     tally = {"candidates": 0, "forced": 0, "won": 0, "lost": 0, "open": 0,
              "single": 0, "others_lost": 0}
+    defences = dict.fromkeys(DEFENCES, 0)
+    easy = 0
     for row in rows:
         tally["candidates"] += 1
         tally[row["result"]] += 1
         tally["single"] += bool(row.get("single"))
         tally["others_lost"] += bool(row.get("others_lost"))
+        if row.get("defence") in defences:
+            defences[row["defence"]] += 1
+        easy += bool(trivial(row))
+    if defence:
+        tally.update({f"defence_{answer}": count for answer, count in defences.items()})
+        tally["trivial"] = easy
     return tally
+
+
+# ------------------------------------------------------------------- too easy (§3.1)
+
+
+def winning_moves(row: dict[str, Any]) -> int:
+    """W: the root moves the record proves won. An *open* move is not won."""
+    return sum(1 for entry in row.get("scores") or [] if entry.get("proof") == WON)
+
+
+def trivial(row: dict[str, Any]) -> tuple[str, ...]:
+    """The parts of the pre-registered test (`plan-proven.md` §3.1) a won position fails.
+
+    Empty where the position is kept. Read off the record alone, deciding nothing: `n` is
+    the record's `ends_in`, `L` its number of root moves, `W` those proved won.
+
+    - **T1**, over at once with a choice: n = 1 and W >= 2;
+    - **T2**, a wasted move still wins: W >= L / 2;
+    - **T3**, the defence has no say: the record's stored `defence` answer is `none`
+      (`defence` asks the core for it; a `FORMAT` 1 record has none to read).
+
+    A position that is not a proved win is not offered at all, so it fails nothing here.
+    """
+    if row.get("result") != WON:
+        return ()
+    legal = len(row.get("scores") or [])
+    won = winning_moves(row)
+    parts = []
+    if int(row.get("ends_in") or 0) == 1 and won >= 2:
+        parts.append(T1)
+    if legal and 2 * won >= legal:
+        parts.append(T2)
+    if row.get("defence") == NONE:
+        parts.append(T3)
+    return tuple(parts)
+
+
+def key_move(row: dict[str, Any]) -> dict[str, Any] | None:
+    """The attacker's shortest winning move: among the root moves proved won, those with
+    the least `ends_in`, and of those the first in the engine's order (the record's)."""
+    won = [entry for entry in row.get("scores") or [] if entry.get("proof") == WON]
+    if not won:
+        return None
+    shortest = min(int(entry["ends_in"]) for entry in won)
+    return next(entry for entry in won if int(entry["ends_in"]) == shortest)
+
+
+def asks_defence(row: dict[str, Any]) -> bool:
+    """Whether T3 is put to this position: a proved win with two or more winning moves
+    that T1 and T2 keep (`plan-proven.md` §3.3: those already left out are not asked)."""
+    return row.get("result") == WON and winning_moves(row) >= 2 and not trivial(
+        {key: value for key, value in row.items() if key != "defence"}
+    )
+
+
+def defence(
+    engine: Engine,
+    row: dict[str, Any],
+    nodes: int = DEFENCE_NODES,
+    max_depth: int = MAX_DEPTH,
+    goal: float = GOAL_PIECES,
+    immune: float = IMMUNE_PIECES,
+    state: GameState | None = None,
+) -> str | None:
+    """T3 (`plan-proven.md` §3.1): does anything the defender does change the count?
+
+    None where T3 does not apply (not a proved win, or fewer than two winning moves).
+    Otherwise the position is reached (see `state`), the attacker's shortest winning move
+    (`key_move`) is applied, and for **every** legal reply the core is asked
+    (`Engine.root_scores` at `nodes`, the analysis evaluator and the given weights) about
+    the position it leaves. A reply has no say only when the core proves that position won
+    for the attacker with a shortest win of exactly n - 2 plies (or the game has ended
+    there, in the attacker's win, with n = 2). Answers: `none` (no reply had a say),
+    `some` (a reply was proved to change it: a longer or shorter win, or no win), or
+    `unsettled` (none was proved to, but the probe could not settle at least one, which
+    counts as a say). The first reply proved to have a say decides the answer, so the
+    rest are not asked; the answer is the same either way.
+
+    `state` is the position itself where the caller holds it; otherwise the record's
+    prefix is replayed. Rule 3: every legal move, outcome and score is the core's; this
+    compares the numbers.
+    """
+    if row.get("result") != WON or winning_moves(row) < 2:
+        return None
+    key = key_move(row)
+    assert key is not None
+    want = int(row["ends_in"]) - 2
+    attacker = int(row["side"])
+    if state is None:
+        state = engine.play(engine.initial_state(), [int(move) for move in row["moves"]])
+    if state.side_to_move != attacker:
+        raise ValueError(f"{row.get('id')}: the record's side is not the side to move")
+    after = engine.apply(state, int(key["move"]))
+    replies = engine.legal_moves(after)
+    ended = engine.terminal(after, replies)
+    if ended is not None:
+        # The winning move ends the game (n = 1): there is no reply to make.
+        return NONE if ended.winner == attacker else SOME
+    if after.side_to_move == attacker:
+        raise ValueError(f"{row.get('id')}: the attacker moves again; T3 asks of a reply")
+    values = eval_values(engine.spec)
+    said = NONE
+    for reply in replies:
+        there = engine.apply(after, reply)
+        legal = engine.legal_moves(there)
+        outcome = engine.terminal(there, legal)
+        if outcome is not None:
+            answer = NONE if outcome.winner == attacker and want == 0 else SOME
+        elif there.side_to_move != attacker:
+            raise ValueError(f"{row.get('id')}: the defender moves again; T3 asks of a reply")
+        else:
+            best = max(engine.root_scores(there, values, nodes, max_depth, goal, immune))
+            proof = proof_of(best)
+            if proof == WON:
+                answer = NONE if ends_in(best, there.ply) == want else SOME
+            elif proof == LOST:
+                answer = SOME
+            else:
+                answer = UNSETTLED
+        if answer == SOME:
+            return SOME
+        if answer == UNSETTLED:
+            said = UNSETTLED
+    return said
 
 
 def record(
@@ -231,34 +384,47 @@ def record(
     distinct: int | None = None,
     near: int | None = NEAR,
     cap: int = CAP,
+    defence_nodes: int | None = None,
+    defence_built: str | None = None,
+    defence_made: datetime.date | None = None,
 ) -> dict[str, Any]:
     """The record the site loads: the basis, the tally, and the proved positions only.
 
     Open and forced positions are counted and left out, since nothing can be offered from
     them; lost ones stay, as a proof the side to move cannot escape is still a proof.
     `distinct` is how many positions the runs held before `sample` took `cap` of them.
+
+    Rows that carry T3's answer (`defence`) keep it, and `defence_nodes` names the budget
+    it was asked at, with the core and the day (`defence_built`, `defence_made`): the
+    basis of every `none` the site leaves out. Positions too easy to offer stay in the
+    record; the reader leaves them out (`trivial`), so the record holds every proof.
     """
     ordered = sorted(rows, key=lambda row: (row["seed"], row["game"], row["ply"]))
+    basis: dict[str, Any] = {
+        "probe": "Engine.root_scores",
+        "nodes": nodes,
+        "max_depth": MAX_DEPTH,
+        "proven_at": PROVEN,
+        "goal": GOAL_PIECES,
+        "immune": IMMUNE_PIECES,
+        "built": built,
+        "runs": [f"{engine.spec.hash}-{seed}" for seed in seeds],
+        "max_pieces": max_pieces,
+        "distinct": len(ordered) if distinct is None else distinct,
+        "near": near,
+        "cap": cap,
+    }
+    if defence_nodes is not None:
+        basis["defence_nodes"] = defence_nodes
+        basis["defence_built"] = defence_built
+        basis["defence_made"] = (defence_made or datetime.date.today()).isoformat()
     return {
         "format": FORMAT,
         "ruleset_hash": engine.spec.hash,
         "name": name,
         "made": (made or datetime.date.today()).isoformat(),
-        "basis": {
-            "probe": "Engine.root_scores",
-            "nodes": nodes,
-            "max_depth": MAX_DEPTH,
-            "proven_at": PROVEN,
-            "goal": GOAL_PIECES,
-            "immune": IMMUNE_PIECES,
-            "built": built,
-            "runs": [f"{engine.spec.hash}-{seed}" for seed in seeds],
-            "max_pieces": max_pieces,
-            "distinct": len(ordered) if distinct is None else distinct,
-            "near": near,
-            "cap": cap,
-        },
-        "counts": counts(ordered),
+        "basis": basis,
+        "counts": counts(ordered, defence=defence_nodes is not None),
         "positions": [row for row in ordered if row["result"] in (WON, LOST)],
     }
 

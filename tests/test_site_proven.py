@@ -16,8 +16,10 @@ that a loss marks nothing, no take-back, a restart to the position, refusals (ra
 visitor, a watch), the marks' privacy (yours only, deleted on leaving), the game page's
 section and the profile's lines, and the export that says which moves were the board's.
 
-On specs, never chess (rule 5): `dull` set up as one grunt a side, so that after two
-forced moves the first player has one capture that ends the game. Nothing here works out a
+On specs, never chess (rule 5): `dull` set up as four grunts for the first player and
+one for the second, so that after two moves the first player has five moves, one of them
+a capture that ends the game. Five, so that one or two winning moves is fewer than half
+and the triviality test (Q993a) keeps the record's positions; it is tested on its own. Nothing here works out a
 legal move or an outcome; the engine answers, and the records are written from what it
 answered. The store tests need `CHESS_VARIANT_SANDBOX_TEST_DATABASE_URL` and skip without it.
 """
@@ -49,12 +51,12 @@ DULL = json.loads((library.RULESET_DIR / "dull.json").read_text(encoding="utf-8"
 
 
 def _spec() -> dict[str, Any]:
-    """One grunt a side: b1 for the first player, c4 for the second. Each has one move,
-    and then the first player may take the second's last piece."""
+    """Grunts on a1, b1, d1 and e1 for the first player and c4 for the second: after
+    b1-b2 and c4-c3 the first player has five moves, and b2xc3 takes the last piece."""
     spec = json.loads(json.dumps(DULL))
     spec["name"] = "proven test"
     spec["setup"] = {"mirror": False, "placements": [
-        {"piece": "G", "squares": ["b1"], "player": 0},
+        {"piece": "G", "squares": ["a1", "b1", "d1", "e1"], "player": 0},
         {"piece": "G", "squares": ["c4"], "player": 1},
     ]}
     spec["rules"]["max_plies"] = 40
@@ -91,13 +93,15 @@ def _position(
     result: str = "won",
     ends_in: int = 1,
     side: int = 0,
+    rest: str = "open",
+    **extra: Any,
 ) -> dict[str, Any]:
     """A record's position in R9a's shape, the root moves in the engine's order with the
     proof each is given here (a record is data; what is tested is what the site does
     with it)."""
     scores = []
     for move in LEGAL:
-        proof = proofs[move]
+        proof = proofs.get(move, rest)
         entry: dict[str, Any] = {
             "move": move, "text": ENGINE.describe_move(AT, move),
             "score": {"won": 999_999.0, "lost": -999_999.0}.get(proof, 0.5), "proof": proof,
@@ -113,11 +117,12 @@ def _position(
         "ends_in": ends_in, "winning": winning, "single": single,
         "others_lost": single and all(e["proof"] == "lost" for e in scores if e["proof"] != "won"),
         "scores": scores,
+        **extra,
     }
 
 
 ONE = _position("0-0-2", {TAKE: "won", STEP: "open"}, ends_in=1)
-LOSES = _position("0-1-2", {TAKE: "won", STEP: "lost"}, ends_in=3)
+LOSES = _position("0-1-2", {TAKE: "won"}, ends_in=3, rest="lost")
 BOTH = _position("0-2-2", {TAKE: "won", STEP: "won"}, ends_in=2)
 
 
@@ -149,6 +154,13 @@ def runs(tmp_path: Path) -> Path:
     """A runs directory holding the test game's record: three offered positions."""
     _write(tmp_path, _record([ONE, LOSES, BOTH]))
     return tmp_path
+
+
+def _fresh(root: Path, positions: list[dict[str, Any]]) -> Path:
+    """A runs directory of its own holding a record of these positions."""
+    runs = root / f"fresh-{len(list(root.glob('fresh-*')))}"
+    _write(runs, _record(positions))
+    return runs
 
 
 def _load(runs: Path) -> proven.Record:
@@ -215,15 +227,58 @@ class TestTheLoader:
     )
     def test_every_delivered_record_is_offered_whole(self, path: Path | None) -> None:
         """The site's loader drops nothing from a record R9a delivered: under today's rules
-        every prefix replays to its position. Skips where no record is on disk."""
+        every prefix replays to its position, and every won position is either offered or
+        left out as too easy, never lost. Skips where no record is on disk."""
         if path is None:
             pytest.skip("no runs/puzzles/ record here")
         data = json.loads(path.read_text(encoding="utf-8"))
         record = proven.load(path.parent.parent, path.stem, find(path.stem).spec)
         assert record is not None
         assert record.dropped == 0
-        assert len(record.positions) == data["counts"]["won"]
-        assert record.singles == data["counts"]["single"]
+        won = [row for row in data["positions"] if row["result"] == "won"]
+        kept = [row for row in won if not puzzles.trivial(row)]
+        assert {found.id for found in record.positions} == {row["id"] for row in kept}
+        assert len(record.positions) + record.too_easy == data["counts"]["won"]
+        assert record.singles == sum(1 for row in kept if row["single"])
+        if data["format"] == 2:
+            assert record.defence and record.too_easy == data["counts"]["trivial"]
+
+    def test_too_easy_positions_are_left_out_counted_and_named(self, tmp_path: Path) -> None:
+        """The pre-registered test (`plan-proven.md` §3.1) at load: T1, T2 and T3's `none`
+        are left out and counted; T3's `some` and `unsettled` are kept, since a reply the
+        probe could not settle counts as a say. Every part is read off the record."""
+        both = _position("1-0-2", {TAKE: "won", STEP: "won"}, ends_in=3)  # 2 of 5: kept
+        t1 = _position("1-1-2", {TAKE: "won", STEP: "won"}, ends_in=1)
+        t2 = _position("1-2-2", {move: "won" for move in LEGAL[:3]}, ends_in=3)
+        t3 = _position("1-3-2", {TAKE: "won", STEP: "won"}, ends_in=3, defence="none")
+        some = _position("1-4-2", {TAKE: "won", STEP: "won"}, ends_in=3, defence="some")
+        unsure = _position("1-5-2", {TAKE: "won", STEP: "won"}, ends_in=3,
+                           defence="unsettled")
+        record = _record([ONE, both, t1, t2, t3, some, unsure])
+        record["basis"]["defence_nodes"] = puzzles.DEFENCE_NODES
+        _write(tmp_path, record)
+        loaded = _load(tmp_path)
+        assert [found.id for found in loaded.positions] == [
+            "0-0-2", "1-0-2", "1-4-2", "1-5-2"]
+        assert loaded.too_easy == 3 and loaded.dropped == 0 and loaded.defence
+        said = proven.basis_said(loaded)
+        assert ("Of the 3 it proved, 3 were left out as too easy: the win was the very next move with more "
+                "than one way to make it, half the moves or more won, or nothing the "
+                "defender could do changed it.") in said
+        assert site_words.hits(said) == [], said
+        # A `FORMAT` 1 record is still read, with T1 and T2 and no T3 to name.
+        old = _record([ONE, both, t1, t2])
+        old["format"] = 1
+        _write(tmp_path, old)
+        os.utime(proven.path(tmp_path, DIGEST), ns=(10**18, 10**18))
+        loaded = _load(tmp_path)
+        assert [found.id for found in loaded.positions] == ["0-0-2", "1-0-2"]
+        assert loaded.too_easy == 2 and not loaded.defence
+        said = proven.basis_said(loaded)
+        assert "Of the 3 it proved, 2 were left out as too easy" in said
+        assert "half the moves or more won." in said and "defender" not in said
+        # Nothing left out, nothing said.
+        assert "too easy" not in proven.basis_said(_load(_fresh(tmp_path, [ONE, both])))
 
 
 # ------------------------------------------------------------------- find the move
@@ -295,6 +350,7 @@ class TestTheWords:
         sentences = [
             proven.basis_said(record), proven.NOT_HERE, proven.NO_TAKE_BACK,
             proven.SIGN_IN_TO_CONVERT, *proven.TRY_SAID.values(), m.PUZZLE_IS_PRACTICE,
+            *proven.TOO_EASY.values(),
             proven.view(record, SPEC, "0-0-2")["said"],
             *(proven.answer(record, "0-0-2", move)["said"] for move in LEGAL),
             proven.answer(record, "0-1-2", STEP)["said"],

@@ -3,7 +3,8 @@
 `docs/plan-website.md`, *Proven positions*. R9a (`chess_variant_sandbox/puzzles.py`,
 `docs/reference/proven-positions.md`) proved positions from the library's own recorded
 games won for the side to move, offline, and wrote them as `runs/puzzles/<hash>.json`
-(`puzzles.FORMAT` 1). This module reads that record and offers each position two ways:
+(`puzzles.FORMAT` 2; 1 is still read). This module reads that record and offers each
+position two ways:
 
 - **Convert it**: a real game from the position against *hardest*, the strongest
   computer player every board offers. It is a practice match started from the record's
@@ -22,6 +23,12 @@ ended, whose side to move is not the record's, or whose legal moves are not the 
 root moves -- a record proved under rules or a core that no longer hold. It never
 re-judges one. *Find the move* compares a move number with the record's numbers.
 
+**Too easy** (Q993a, `docs/plan-proven.md` §3). The loader also leaves out, and counts, a
+position the pre-registered test calls trivial (`puzzles.trivial`): a win in one with more
+than one winning move (T1), half the moves or more proved to win (T2), or, in a `FORMAT` 2
+record, T3's stored answer that nothing the defender does changes the win (`none`). It
+reads the record's numbers and decides nothing; the basis line says how many and why.
+
 **The seven tests** (`docs/reference/no-dark-patterns.md`). No timer and no streak; a
 person's marks (`proven_marks`) are read on their own page alone and no count across
 people is read anywhere; nothing expires; a failed try writes nothing and is a game the
@@ -36,7 +43,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from chess_variant_sandbox.puzzles import FORMAT, LOST, OPEN, WON
+from chess_variant_sandbox.puzzles import FORMATS, LOST, OPEN, WON, trivial
 from chess_variant_sandbox.web import card_rules, opponents
 from chess_variant_sandbox.web.library import engine_for
 
@@ -110,6 +117,10 @@ class Record:
     counts: dict[str, int]
     positions: tuple[Position, ...]
     dropped: int
+    too_easy: int = 0
+    """Positions that replay but the triviality test leaves out (T1, T2 or T3)."""
+    defence: bool = False
+    """Whether the record carries T3's answers (`FORMAT` 2 with `defence_nodes`)."""
 
     def find(self, position_id: str) -> Position | None:
         return next((found for found in self.positions if found.id == position_id), None)
@@ -132,7 +143,8 @@ def load(runs_dir: Path | str, digest: str, spec: dict[str, Any] | None) -> Reco
     """The game's record, its positions replayed through today's rules, or None.
 
     None where there is no record (three of the launch set have none, and every member's
-    game), where it is not `FORMAT` 1 or not this game's, and where no spec is given. A
+    game), where it is not a format it reads (`FORMATS`) or not this game's, and where no
+    spec is given. A
     record is read once a process for each version of the file on disk and these rules,
     since the replay costs a few tenths of a second on a record of 150.
     """
@@ -171,14 +183,18 @@ def offered(runs_dir: Path | str, digest: str, spec: dict[str, Any] | None) -> i
 
 
 def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | None:
-    if data.get("format") != FORMAT or data.get("ruleset_hash") != digest:
+    if data.get("format") not in FORMATS or data.get("ruleset_hash") != digest:
         return None
     engine = engine_for(spec)
     kept: list[tuple[int, int, dict[str, Any]]] = []
     dropped = 0
+    too_easy = 0
     for order, row in enumerate(data.get("positions") or []):
         if not isinstance(row, dict) or row.get("result") != WON or not _replays(engine, row):
             dropped += 1
+            continue
+        if trivial(row):
+            too_easy += 1
             continue
         kept.append((int(row.get("ends_in") or 0), order, row))
     # Shortest proved win first, then the record's own order: a fixed order the server
@@ -205,6 +221,8 @@ def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | N
         counts={key: int(value) for key, value in (data.get("counts") or {}).items()},
         positions=positions,
         dropped=dropped,
+        too_easy=too_easy,
+        defence=data.get("format") != 1 and bool((data.get("basis") or {}).get("defence_nodes")),
     )
 
 
@@ -290,12 +308,30 @@ def basis_said(record: Record) -> str:
         )
     if record.made:
         said += f"Proved on {record.made}."
+    if record.too_easy:
+        said += (f" Of the {_thousands(won)} it proved, " if won else " ") + (
+            f"{_thousands(record.too_easy)} {TOO_EASY[record.defence]}")
     if record.dropped:
         said += (
             f" {record.dropped} more no longer replay under these rules, so they are "
             "not offered."
         )
     return said
+
+
+TOO_EASY = {
+    True: (
+        "were left out as too easy: the win was the very next move with more than one way "
+        "to make it, half the moves or more won, or nothing the defender could do changed "
+        "it."
+    ),
+    False: (
+        "were left out as too easy: the win was the very next move with more than one way "
+        "to make it, or half the moves or more won."
+    ),
+}
+"""The basis line's clause for the positions the triviality test leaves out (test 7),
+keyed by whether the record carries T3's answers: it names only the tests applied."""
 
 
 def _turns(count: int) -> str:

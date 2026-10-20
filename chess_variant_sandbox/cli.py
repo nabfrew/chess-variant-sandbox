@@ -653,6 +653,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="a campaign root of <hash>-<seed> directories to take runs from instead of "
              "playing them; a run is taken only where a sample of it re-derives here",
     )
+    measure.add_argument(
+        "--recertify",
+        action="store_true",
+        help="where a score owes a replay only because the code that plays games moved, "
+             "replay a sample of its games instead and keep it, labelled re-certified "
+             "from a sample (compute-economy.md section 3.5); a run the sample refuses "
+             "is played again",
+    )
     measure.set_defaults(handler=_cmd_measure)
 
     refresh = sub.add_parser(
@@ -1532,7 +1540,10 @@ def _measure_all(targets: list[str], args: argparse.Namespace) -> int:
     pool_size = args.workers if args.workers > 0 else max(1, (os.cpu_count() or 2) - 1)
     seeds = _seed_set(args)
     pooled: dict[str, corpus.Candidate] = {}
-    if pool_size > 1 and not args.force and getattr(args, "adopt", None) is None:
+    if (
+        pool_size > 1 and not args.force and getattr(args, "adopt", None) is None
+        and not getattr(args, "recertify", False)
+    ):
         for digest in targets:
             try:
                 candidate = corpus.find(digest, runs_dir=args.runs)
@@ -1643,6 +1654,8 @@ def _report_staleness(targets: list[str], args: argparse.Namespace) -> int:
         # a single run are not the same claim. A stale line says the reason instead, and
         # `Staleness.cost` already counts the runs inside it.
         said = status.reason or f"current, {status.runs} run{'' if status.runs == 1 else 's'}"
+        if status.current and status.certified:
+            said += f", {status.certified}"
         print(f"  {status.name:22} [{status.hash}] {said}")
 
     behind = stale_build()
@@ -1837,6 +1850,7 @@ def _measure_one(digest: str, args: argparse.Namespace, force: bool) -> int:
     _measure_candidate(
         candidate, args.runs, args.weights, workers=args.workers, force=force,
         seeds=_seed_set(args), adopt=getattr(args, "adopt", None), say=print,
+        recertify=getattr(args, "recertify", False),
     )
     return 0
 
@@ -1850,16 +1864,27 @@ def _measure_candidate(
     seeds: tuple[int, ...] | None,
     adopt: Path | None,
     say: Any,
+    recertify: bool = False,
 ) -> None:
-    """`corpus.refresh` on one game, with its report, whichever path runs it."""
+    """`corpus.refresh` on one game, with its report, whichever path runs it.
+
+    ``recertify`` asks `corpus.recertify` first (C6), which keeps a score through a
+    replay a sample can stand in for and hands every other repair to `refresh`.
+    """
     say(f"{candidate.name} [{candidate.hash}] -- {candidate.stage}")
     if candidate.run is not None:
         say(f"  from {candidate.run}")
-    stored = corpus.refresh(
-        candidate, runs_dir=runs, weights=weights, workers=workers,
-        report=lambda line: say(f"  {line}"), force=force,
-        seeds=seeds, adopt_from=adopt,
-    )
+    if recertify and not force and adopt is None and seeds is None:
+        stored = corpus.recertify(
+            candidate, runs_dir=runs, weights=weights, workers=workers,
+            report=lambda line: say(f"  {line}"),
+        )
+    else:
+        stored = corpus.refresh(
+            candidate, runs_dir=runs, weights=weights, workers=workers,
+            report=lambda line: say(f"  {line}"), force=force,
+            seeds=seeds, adopt_from=adopt,
+        )
     say(f"  {corpus.measurement_dir(candidate.hash, runs)}")
     if not stored.stored.get("viable"):
         say("  not viable on this roster; it cannot be promoted as it stands")

@@ -195,7 +195,7 @@ class TestOneGame:
         owed = SimpleNamespace(current=False, stored={},
                                staleness=SimpleNamespace(refit=True, needs="refit"))
         monkeypatch.setattr(corpus, "read_measurement", lambda *a, **k: owed)
-        monkeypatch.setattr(corpus, "check_fit", lambda spec, workers=0: SimpleNamespace(
+        monkeypatch.setattr(corpus, "check_fit", lambda spec, workers=0, **_ignored: SimpleNamespace(
             outcome=found, failures=("weights moved by 0.3",)))
         monkeypatch.setattr(corpus, "refresh", lambda *a, **k: pytest.fail("it ran"))
         outcome = refresher.repair(digest, Path("runs"))

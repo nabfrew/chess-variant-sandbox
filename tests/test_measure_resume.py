@@ -121,7 +121,9 @@ def library(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Games:
     monkeypatch.setattr(corpus, "CANONICAL_GAMES", 1)
     monkeypatch.setattr(corpus, "EXPECTED_LIBRARY_SEEDS", SEEDS)
 
-    def fit(spec: dict[str, Any], store: Any = None, workers: int = 0) -> Any:
+    def fit(
+        spec: dict[str, Any], store: Any = None, workers: int = 0, **_ignored: Any
+    ) -> Any:
         verdict = SimpleNamespace(accepted=False, accept_score=0.0)
         return SimpleNamespace(outcome=MADE_HERE, core="test", stored=None, failures=(),
                                fit=verdict)

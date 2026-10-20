@@ -719,7 +719,7 @@ class TestSeedBySeed:
                     "games": 0, "ratings": {"standings": []},
                 }), encoding="utf-8")
 
-        def fit(spec, workers=0):
+        def fit(spec, workers=0, **_ignored):
             calls["fit"].append(spec)
             return _Checked()
 
@@ -1040,7 +1040,7 @@ class TestSeedBySeed:
     def _answer(self, monkeypatch, fresh) -> list[int]:
         calls: list[int] = []
 
-        def fit_ruleset(spec, workers=0):
+        def fit_ruleset(spec, workers=0, **_ignored):
             calls.append(1)
             return fresh
 

@@ -180,6 +180,10 @@ class Game:
         joined["measured_at"] = history.file_date(
             self.measurement.directory / "canonical.json"
         )
+        # Where a sample re-certified the games on code that did not play them (C6,
+        # `compute-economy.md` §3.5): how large it was, so the page can say so beside the
+        # number (`certifiedMarkHtml`). `None` on a score its games were played for.
+        joined["certified"] = certified_payload(basis)
         return joined
 
     @property
@@ -329,6 +333,9 @@ class Game:
             "status": self.status,
             "revision": None if score is None else score.get("revision"),
             "measuredAt": None if score is None else score.get("measured_at"),
+            # How large a sample re-certified it (C6), or `None`: the card says *from a
+            # sample* beside a number its games were not all played for.
+            "certified": None if score is None else score.get("certified"),
             "viable": None if score is None else score.get("viable"),
             "weights": None if score is None else score.get("weights_version"),
             # How many runs the number rests on, and which. A mean of four runs and a
@@ -449,6 +456,19 @@ class Game:
             },
             "descent": len(parents),
         }
+
+
+def certified_payload(basis: Any) -> dict[str, Any] | None:
+    """A re-certified score's sample, as every payload carries it (C6), or ``None``.
+
+    ``sample`` games of ``games`` were played again on the code of ``build`` and came out
+    the same, which is what keeps the score current; the page draws it as *re-certified
+    from a sample of n games*, and a full replay, which writes no certificate, clears it.
+    """
+    found = getattr(basis, "certified", None)
+    if found is None:
+        return None
+    return {"sample": found.sample, "games": found.games, "build": found.build}
 
 
 def _stamp(path: Path) -> tuple[str, int, int]:

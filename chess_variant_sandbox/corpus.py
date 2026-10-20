@@ -31,7 +31,7 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +48,7 @@ from chess_variant_sandbox.loop.archive import Archive
 from chess_variant_sandbox.loop.screen import ROUND_BUDGET_FACTOR
 from chess_variant_sandbox.measurement import (
     BUILTIN_PLAYER,
+    UNVERIFIED,
     Basis,
     FitReading,
     Measurement,
@@ -422,6 +423,20 @@ def run_dir(digest: str, seed: int = CANONICAL_SEED, runs_dir: Path = RUNS_DIR) 
     return Path(runs_dir) / f"{digest}-{seed}"
 
 
+FIT_GAMES_DIR = "fit-games"
+"""Under `runs/`: each library fit's kept games, `<hash>-<procedure>/` (C6, `fit_games_dir`)."""
+
+
+def fit_games_dir(digest: str, runs_dir: Path = RUNS_DIR) -> Path:
+    """Where a fit check keeps the games it played for this ruleset's store (C6).
+
+    Beside the measurements in `runs/`, which git ignores, rather than beside the store in
+    `fitted/`, which it does not: they are the evidence a later re-certification samples
+    one in eight of (`adopt.recertify_fit`), not part of the player.
+    """
+    return Path(runs_dir) / FIT_GAMES_DIR / f"{digest}-{procedure_digest()}"
+
+
 def player_digest(fit: FittedObjective) -> str:
     """Which objective this store makes the roster play, as `Basis.fit` records it (Q80c).
 
@@ -598,6 +613,9 @@ class ScoringStatus:
     # four runs and a single run are not the same claim and nothing that shows one should
     # be able to show it without saying which.
     runs: int = 0
+    # Where the score is current because a sample re-certified it (C6), what the stamp
+    # says of it (`Certificate.words`); empty for a score its games were played for.
+    certified: str = ""
 
     @property
     def current(self) -> bool:
@@ -616,6 +634,7 @@ class ScoringStatus:
             "viable": self.viable,
             "weights_version": self.weights_version,
             "runs": self.runs,
+            "certified": self.certified,
         }
 
 
@@ -681,6 +700,10 @@ def status_of(
         viable=numbers.get("viable") if stored.current else None,
         weights_version=str(numbers.get("weights_version", "")),
         runs=len(numbers.get("runs") or []),
+        certified=(
+            "re-" + stored.basis.certified.words()
+            if stored.basis is not None and stored.basis.certified is not None else ""
+        ),
     )
 
 
@@ -766,6 +789,7 @@ def _measure_seeds(
     totals: dict[int, float | None] | None = None,
     adopt_from: Path | None = None,
     fitted: bool = False,
+    carry: Basis | None = None,
 ) -> Measurement:
     """Bring every run of one game to the state `work` asks for, then write its file.
 
@@ -779,6 +803,12 @@ def _measure_seeds(
     said each run scored, which is how a run read as it stands is checked against the file
     that named it. ``fitted`` says `refresh` has already made the fit this core's answer,
     so it is not checked a second time.
+
+    **A certificate is carried, never dropped short of a full replay** (C6). Where the
+    stored stamp was re-certified from a sample and some run it names is not played again
+    here, the new stamp keeps what played the games and the certificate (``carry``, or the
+    stored stamp's own), so a re-score never turns a sampled basis into a played one. A
+    measurement that replays every run it holds writes none: that is what clears the label.
     """
     say = report if callable(report) else (lambda _message: None)
     if not work:
@@ -799,7 +829,7 @@ def _measure_seeds(
     if (plays or adopt_from is not None) and not fitted and fits_its_roster(
         canonical_agents(candidate.hash, spec=candidate.spec)
     ):
-        _fit_once(candidate, workers, say)
+        _fit_once(candidate, workers, say, runs_dir)
 
     # The score's history (Q649, `docs/archive/plan-confidence.md` §3.2 step 3). After the fit,
     # because the fit decides the basis this write will stamp, and before any run is
@@ -825,6 +855,13 @@ def _measure_seeds(
         )
         say(f"  the measurement it replaces is kept as {history.PREVIOUS_DIR}/{kept}")
 
+    if carry is None and outgoing is not None and outgoing.basis is not None and (
+        outgoing.basis.certified is not None
+        and not set(outgoing.basis.seeds) <= {seed for seed, need in work.items()
+                                              if need == "replay"}
+    ):
+        carry = outgoing.basis
+
     origins: dict[int, str] = {}
     if adopt_from is not None:
         for seed in list(plays):
@@ -843,7 +880,7 @@ def _measure_seeds(
         )
         for seed in sorted(work)
     ]
-    measurement = _store(candidate, runs_dir, readings, weighting, say)
+    measurement = _store(candidate, runs_dir, readings, weighting, say, carry=carry)
     if kept is not None and outgoing is not None and measurement.basis is not None:
         incoming = {**measurement.stored, "basis": measurement.basis.as_dict()}
         # §3.2 step 4 (Q650): what the replacement says about the players, if anything.
@@ -944,7 +981,9 @@ def judge_convergence(
         return f"{convergence.NO_VERDICT}: {error}"
 
 
-def _fit_once(candidate: Candidate, workers: int, say: Any) -> Reproduction:
+def _fit_once(
+    candidate: Candidate, workers: int, say: Any, runs_dir: Path | None = None
+) -> Reproduction:
     """The ruleset's fitted objective, made this core's answer once for every run of it.
 
     The roster carries `fit=`, and `resolve_fit` refuses to default: a game played by a
@@ -959,9 +998,18 @@ def _fit_once(candidate: Candidate, workers: int, say: Any) -> Reproduction:
     core, so the fit its roster plays has to be that core's answer, or the stamp would
     read `stale (refit)` the moment it was written. What the check found goes through
     `say`, so it is in `measure`'s report and not only on stderr.
+
+    With ``runs_dir``, a check that plays keeps its games under `fit_games_dir` (C6), so
+    the next re-certification on another core samples them rather than refitting.
     """
     say("fitting this ruleset's objective")
-    found = check_fit(candidate.spec, workers=workers)
+    found = (
+        check_fit(candidate.spec, workers=workers)
+        if runs_dir is None
+        else check_fit(
+            candidate.spec, workers=workers, keep=fit_games_dir(candidate.hash, runs_dir)
+        )
+    )
     verdict = found.fit
     say(f"  {_checked(found)}")
     say(
@@ -1273,10 +1321,12 @@ def _store(
     readings: list[RunReading],
     weighting: Any,
     say: Any,
+    carry: Basis | None = None,
 ) -> Measurement:
     """Write the one file every reader trusts, and hand it back already judged.
 
-    The only writer of a `canonical.json`, and the only place a basis is stamped. It
+    The only writer of a `canonical.json` but `recertify`'s re-stamp, and the only place
+    a basis is stamped. It
     combines the runs through `metrics.seeds.combine` -- which is where the mean, the
     interval, the verdict and the mean ladder are defined -- and writes the file and the
     mean's own `index-<weights>.json` into `runs/<hash>/`, a directory that holds no
@@ -1328,15 +1378,18 @@ def _store(
         json.dumps(combined.detail, indent=2), encoding="utf-8"
     )
 
-    basis = current_basis(
+    now = current_basis(
         candidate.hash, weights_version, candidate.spec, combined.seeds
     )
+    # A carried certificate (C6) keeps what played the games beside it: the runs not
+    # played again here are still the older code's, vouched for by the sample.
+    basis = now if carry is None else _carried(now, carry)
     measurement = Measurement(
         hash=candidate.hash,
         directory=out,
         stored=stored,
         basis=basis,
-        staleness=basis.stale_against(basis),
+        staleness=basis.stale_against(now),
     )
     measurement.save(out / "canonical.json")
     say(_summary(candidate, combined, weights_version))
@@ -1506,7 +1559,7 @@ def refresh(
     fitted = False
     player_changed = False
     if stored is not None and stored.staleness.refit and not force:
-        found = _fit_once(candidate, workers, say)
+        found = _fit_once(candidate, workers, say, runs_dir)
         fitted = True
         # A stamp that records no fit is read through the store, and the store is now the
         # new fit, so for it the check itself is what says the old player is gone. A stamp
@@ -1540,6 +1593,171 @@ def refresh(
         candidate, runs_dir, weights, workers, report, work,
         totals=totals, adopt_from=adopt_from, fitted=fitted,
     )
+
+
+def _carried(now: Basis, carry: Basis) -> Basis:
+    """``now`` with ``carry``'s played fields and certificate: a re-certified stamp, re-scored."""
+    return replace(
+        now,
+        engine=carry.engine,
+        tables=carry.tables,
+        players=carry.players,
+        agents_source=carry.agents_source,
+        fit=carry.fit,
+        certified=carry.certified,
+    )
+
+
+# ---------------------------------------------------------- sampled re-certification
+
+
+def recertify(
+    candidate: Candidate,
+    runs_dir: Path = RUNS_DIR,
+    weights: str = DEFAULT_WEIGHTS,
+    workers: int = 0,
+    report: Any = None,
+) -> Measurement:
+    """Keep this game's score through a change that should move no game, by a sample (C6).
+
+    `docs/reference/compute-economy.md` §3.5, under the user's answer B (2026-10-02): a
+    score kept by a sample is shown *re-certified from a sample* and its stamp carries the
+    sample as its basis (`measurement.Certificate`). The repair `measure --recertify` buys
+    in place of the replay `refresh` would pay:
+
+    1. **Only a replay is replaced.** A current file, one that owes a re-score or less, and
+       one a sample cannot speak for (another roster, net, seed set or ruleset:
+       `Basis.certifiable`) go to `refresh` as they always did.
+    2. **The fit, one game in eight**, where the roster plays a fit the loaded core has not
+       verified: `adopt.recertify_fit` over the games its last check kept
+       (`fit_games_dir`). Where none are kept, or the sample differs, the exact check
+       runs (`check_fit`), keeping its games for the next time; a check that changes the
+       player sends the whole game to its replay.
+    3. **Every run, by a sample** (`adopt.recertify_run`, `RECERTIFY_PER_AGENT` games with
+       each agent first, six blunder trials), in place. A run the sample refuses is
+       played again in full, as adopt replayed xiangqi's three; a game none of whose runs
+       holds is replayed as `refresh` would.
+    4. **The stamp.** The stored stamp keeps what played the games and gains the
+       certificate; whatever else it owes (a re-score, a missing seed, the refused runs) is
+       then paid by `_measure_seeds`, which carries the certificate through. Where nothing
+       else is owed, the file is re-stamped and its numbers are not touched.
+
+    A later replay of every run clears the label (`_measure_seeds`); a later change to
+    the code the sample ran on stales the score again, as it would any stamp.
+    """
+    from chess_variant_sandbox.tournament import adopt
+
+    say = report if callable(report) else (lambda _message: None)
+    expected = expected_seeds(candidate.stage)
+    stored = read_measurement(candidate.hash, runs_dir, weights, candidate.spec, expected)
+    if stored is None or stored.basis is None:
+        say(f"{candidate.name}: no stamped measurement for a sample to stand in for")
+        return refresh(candidate, runs_dir, weights, workers, report)
+    if stored.current:
+        say(f"{candidate.name}: already current")
+        return stored
+    if stored.staleness.stored_needs not in ("replay", "refit"):
+        say(f"{candidate.name}: owes no replay, so there is nothing for a sample to save")
+        return refresh(candidate, runs_dir, weights, workers, report)
+
+    now = current_basis(candidate.hash, weights, candidate.spec, expected)
+    after = stored.basis.certifiable(now)
+    if after.stored_needs == "replay":
+        say(f"{candidate.name}: a sample cannot stand in for this -- "
+            f"{after.summary()}")
+        return refresh(candidate, runs_dir, weights, workers, report)
+    behind = stale_build()
+    if behind is not None:
+        raise CorpusError(behind)
+    say(f"{candidate.name}: {stored.staleness.summary()}")
+    say("  re-certifying from a sample instead of replaying")
+
+    agents = canonical_agents(candidate.hash, spec=candidate.spec)
+    if fits_its_roster(agents) and now.fit == UNVERIFIED:
+        if not _recertify_fit(candidate, runs_dir, workers, say):
+            say("  the roster's player changed, so its games are played again")
+            return refresh(candidate, runs_dir, weights, workers, report)
+        now = current_basis(candidate.hash, weights, candidate.spec, expected)
+
+    checks = [
+        adopt.recertify_run(
+            candidate.spec, seed, run_dir(candidate.hash, seed, runs_dir),
+            TournamentConfig(
+                agents=agents, games_per_pairing=CANONICAL_GAMES, seed=seed,
+                workers=workers,
+            ),
+            workers=workers, say=say,
+        )
+        for seed in stored.basis.seeds
+    ]
+    kept = [check for check in checks if check.certified]
+    refused = [check.seed for check in checks if not check.certified]
+    for check in checks:
+        if not check.certified:
+            say(f"  seed {check.seed}: not re-certified -- {check.reason}; "
+                "it is played again")
+    if not kept:
+        say("  no run held, so the game is replayed")
+        return refresh(candidate, runs_dir, weights, workers, report, force=True)
+
+    sample = sum(check.sampled for check in kept)
+    games = sum(check.games for check in kept)
+    certified = stored.basis.certify(now, sample, games)
+    owed = certified.stale_against(now)
+    say(f"  {sample} of {games} games replayed exactly; "
+        f"{owed.summary() or 'nothing more is owed'}")
+    each = "" if owed.stored_needs == "refit" else owed.stored_needs
+    work = {seed: ("replay" if seed in refused else each) for seed in stored.basis.seeds}
+    for seed in owed.missing_seeds:
+        work[seed] = "replay"
+    if not any(work.values()):
+        return _restamp(stored, certified, now, say)
+    totals = {
+        int(run["seed"]): run.get("index")
+        for run in stored.stored.get("runs") or []
+        if isinstance(run, dict) and run.get("seed") is not None
+    }
+    return _measure_seeds(
+        candidate, runs_dir, weights, workers, report, work,
+        totals=totals, fitted=True, carry=certified,
+    )
+
+
+def _recertify_fit(candidate: Candidate, runs_dir: Path, workers: int, say: Any) -> bool:
+    """The fit, re-certified by a sample or checked in full; False if its player changed."""
+    from chess_variant_sandbox.agents.fitted import load_fit
+    from chess_variant_sandbox.tournament import adopt
+
+    store = load_fit(candidate.hash, procedure_digest(), fit_store())
+    if store is not None:
+        reason = adopt.recertify_fit(
+            candidate.spec, store, fit_games_dir(candidate.hash, runs_dir), workers, say
+        )
+        if not reason:
+            say("  the fit: re-certified by one in eight of its games")
+            return True
+        say(f"  the fit: {reason}, so it is checked in full")
+    found = _fit_once(candidate, workers, say, runs_dir)
+    return store is not None and player_digest(found.fit) == player_digest(store)
+
+
+def _restamp(stored: Measurement, basis: Basis, now: Basis, say: Any) -> Measurement:
+    """Write the stored measurement back with a re-certified stamp; no number moves.
+
+    `_store`'s one sibling. The file's numbers are the ones it held, read from it, and only
+    `basis` is new; `Measurement.save` writes it, so the shape is the one `_store` writes.
+    """
+    measurement = Measurement(
+        hash=stored.hash,
+        directory=stored.directory,
+        stored={key: value for key, value in stored.stored.items() if key != "basis"},
+        basis=basis,
+        staleness=basis.stale_against(now),
+    )
+    measurement.save(stored.directory / "canonical.json")
+    if basis.certified is not None:
+        say(f"  re-stamped: {basis.certified.words()}")
+    return measurement
 
 
 def poolable(

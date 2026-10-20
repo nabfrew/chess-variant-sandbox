@@ -2947,6 +2947,7 @@ function scoreHtml(score, guide, band, trust) {
       score.viable === false ? ', and ruled out' : ''
     } &middot; ${esc(rulesVersion(score.weights_version))}${info('weights')}</div>
     ${provisionalMarkHtml(score)}
+    ${certifiedMarkHtml(score)}
     ${runsHtml(score)}
     ${isProvisional(score) ? '' : bandHtml(band)}
     ${trustHtml(trust, score.status)}

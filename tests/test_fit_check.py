@@ -95,7 +95,9 @@ class Fitter:
         self.fresh = fresh
         self.calls = 0
 
-    def __call__(self, spec: dict[str, Any], workers: int = 0) -> FittedObjective:
+    def __call__(
+        self, spec: dict[str, Any], workers: int = 0, **_ignored: Any
+    ) -> FittedObjective:
         self.calls += 1
         return self.fresh
 

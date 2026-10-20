@@ -70,9 +70,8 @@ from chess_variant_sandbox.agents.fitted import (
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.tournament import runner
 from chess_variant_sandbox.tournament.duel import settled
-from chess_variant_sandbox.tournament.heuristics import head_to_head
 from chess_variant_sandbox.tournament.play import replay
-from chess_variant_sandbox.tournament.record import GameRecord
+from chess_variant_sandbox.tournament.record import GameRecord, write_records
 from chess_variant_sandbox.tournament.runner import TournamentConfig, run_tournament
 
 Sample = tuple[tuple[float, ...], float]
@@ -172,6 +171,7 @@ def fit_ruleset(
     workers: int = 0,
     verify: bool = True,
     curtail: bool = False,
+    keep: Path | None = None,
 ) -> FittedObjective:
     """Fit this ruleset's objective, check it, and return the verdict.
 
@@ -188,9 +188,16 @@ def fit_ruleset(
     ``curtail`` stops the acceptance match once its verdict is settled (``acceptance``):
     the same verdict, the prefix's score, and ``accept_games`` the games it was decided
     after. The procedure digest does not move, since the verdict function is the same.
+
+    ``keep`` is a directory the fit's games and its match's are written into
+    (`FIT_GAMES_FILE`, `ACCEPT_GAMES_FILE`), for `check_fit` to vouch for with `KEPT_FILE`
+    once it knows which store stands. They change nothing about the fit.
     """
     engine = Engine(spec)
     procedure = procedure_digest()
+    if keep is not None:
+        Path(keep).mkdir(parents=True, exist_ok=True)
+        (Path(keep) / KEPT_FILE).unlink(missing_ok=True)
 
     result = run_tournament(
         spec,
@@ -203,6 +210,9 @@ def fit_ruleset(
         ),
     )
     samples = harvest(engine, result.records)
+    if keep is not None:
+        write_records(result.records, Path(keep) / FIT_GAMES_FILE)
+        write_records([], Path(keep) / ACCEPT_GAMES_FILE)
 
     # A ruleset whose games end inside the opening skip yields no rows at all --
     # `mutant-cramped-board` and `mutant-gardner-uniform` are both over in fewer than
@@ -245,6 +255,8 @@ def fit_ruleset(
         workers,
         curtail=curtail,
     )
+    if keep is not None:
+        write_records(list(match.records), Path(keep) / ACCEPT_GAMES_FILE)
     final = _record(
         engine.spec.hash,
         procedure,
@@ -274,6 +286,16 @@ def beats(scores: Sequence[float]) -> bool:
 
 def _match_score(scores: Sequence[float]) -> float:
     return round(sum(scores) / len(scores), 4) if scores else 0.5
+
+
+def _head_to_head(records: Sequence[GameRecord], first: str) -> float:
+    """`heuristics.head_to_head`'s total over its games, term for term."""
+    total = 0.0
+    played = 0
+    for record in records:
+        total += record.score_for(0 if record.agents[0] == first else 1)
+        played += 1
+    return round(total / played, 4) if played else 0.5
 
 
 @dataclass(frozen=True)
@@ -345,11 +367,6 @@ def acceptance(
     agrees with those two; so its answer is exactly the games' answer (held to brute force
     over every game completion in ``tests/test_fit_curtail.py``).
     """
-    if not curtail:
-        score = head_to_head(spec, candidate, reference, games_per_pairing, seed, workers)
-        planned = 2 * games_per_pairing
-        return Acceptance(score > 0.5, score, planned, planned)
-
     config = TournamentConfig(
         agents=(candidate, reference),
         games_per_pairing=games_per_pairing,
@@ -358,6 +375,14 @@ def acceptance(
         include_self_play=False,
         collect_series=False,
     )
+    if not curtail:
+        # `head_to_head`'s tournament and its total, taken here so the games come back
+        # with the verdict: a check that keeps them (`check_fit`'s ``keep``) is what a
+        # later re-certification samples (`adopt.recertify_fit`).
+        played = run_tournament(spec, config).records
+        score = _head_to_head(played, candidate)
+        planned = 2 * games_per_pairing
+        return Acceptance(score > 0.5, score, planned, planned, tuple(played))
     order = reading_order(runner.schedule(config))
     batch = config.resolved_workers()
     if play is None:
@@ -465,6 +490,14 @@ def _record(
 VECTOR_TOLERANCE = 1e-9
 
 REPRODUCED_DIR = "reproduced"
+
+# What a check that played the fit keeps of its games, where it is asked to (C6,
+# `compute-economy.md` §3.5): the fit's games, the acceptance match's, and the digest of
+# the store they are the games of. A later re-certification replays one in eight of each
+# (`adopt.recertify_fit`) rather than the whole fit.
+FIT_GAMES_FILE = "fit-games.jsonl"
+ACCEPT_GAMES_FILE = "accept-games.jsonl"
+KEPT_FILE = "kept.json"
 
 # What a check did, in the order `check_fit` tries them.
 MADE_HERE = "made here"
@@ -724,6 +757,7 @@ def check_fit(
     spec: dict[str, Any],
     store: str | Path | None = None,
     workers: int = 0,
+    keep: Path | None = None,
 ) -> Reproduction:
     """Make this ruleset's stored fit the loaded core's answer, as cheaply as that can be.
 
@@ -734,6 +768,10 @@ def check_fit(
       new fit, as `fit --force` would, with its maker's basis beside it.
     - No store at all: the ruleset is fitted, since a fresh fit is this core's answer by
       construction and the check's promise is only that the store is, on return.
+
+    ``keep``, where given, is where a check that plays keeps the games it played and the
+    digest of the store they vouch for (`KEPT_FILE`): the new store's, or the stored one's
+    where it reproduced. A check that plays nothing leaves it as it was.
     """
     store = fit_store() if store is None else store
     basis = reproduction_basis(spec)
@@ -754,14 +792,20 @@ def check_fit(
             )
 
     recorded, differs = (True, ()) if stored is None else basis_gap(stored, store, basis)
-    fresh = fit_ruleset(spec, workers=workers)
+    fresh = (
+        fit_ruleset(spec, workers=workers)
+        if keep is None
+        else fit_ruleset(spec, workers=workers, keep=keep)
+    )
     if stored is None:
         _replace_store(fresh, path, store, basis)
+        _vouch(keep, fresh)
         return Reproduction(FITTED, core, path, fresh, None, fresh)
 
     failures = tuple(differences(stored, fresh))
     if failures:
         _replace_store(fresh, path, store, basis)
+        _vouch(keep, fresh)
         return Reproduction(
             REFIT, core, path, fresh, stored, fresh, failures,
             recorded=recorded, differs=differs,
@@ -771,10 +815,21 @@ def check_fit(
     # may differ in a way the tests above deliberately allow.
     register_fit(stored, replace=True)
     sidecar = _add_basis(stored, basis, store)
+    _vouch(keep, stored)
     return Reproduction(
         REPRODUCED, core, path, stored, stored, fresh, sidecar=sidecar,
         recorded=recorded, differs=differs,
     )
+
+
+def _vouch(keep: Path | None, fit: FittedObjective) -> None:
+    """Name the store the kept games are the games of, once the check knows which stands."""
+    if keep is None or not (Path(keep) / FIT_GAMES_FILE).exists():
+        return
+    record = {"store_digest": store_digest(fit), "core": _loaded_core()}
+    with open(Path(keep) / KEPT_FILE, "w", encoding="utf-8", newline="\n") as handle:
+        json.dump(record, handle, indent=2)
+        handle.write("\n")
 
 
 def _replace_store(

@@ -21,6 +21,14 @@ replay would write, rather than a second reading of the rules.
 game and computes no component: it reads a schedule, plays through the runner and copies
 three files. A measurement's basis is stamped by `corpus._store` as it always was, and the
 sample is what entitles that stamp to cover games this checkout did not just play.
+
+**The same units re-certify a run in place** (C6, `docs/reference/compute-economy.md`
+§3.5): `recertify_run` asks of a library run already in `runs/` what `adopt_run` asks of
+a campaign's, after a change that should move no game, and copies nothing. Its sample is
+larger and spread over the pairings (`spread`, `RECERTIFY_PER_AGENT`), pre-registered in
+§3.5 from §3.3's table, and `recertify_fit` samples the fit one game in eight, as the
+site's tier two does. What it entitles is weaker than adoption's, and the stamp says so:
+`measurement.Certificate`, and the page's *re-certified from a sample*.
 """
 
 from __future__ import annotations
@@ -31,7 +39,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from chess_variant_sandbox.tournament import slices
+from chess_variant_sandbox.agents.fitted import FittedObjective
+from chess_variant_sandbox.tournament import fitting, slices
 from chess_variant_sandbox.tournament.analysis import BLUNDER_SAMPLE, CorpusAnalysis
 from chess_variant_sandbox.tournament.record import GameRecord, read_records
 from chess_variant_sandbox.tournament.runner import TournamentConfig, schedule
@@ -50,6 +59,20 @@ SAMPLE_BLUNDERS = 6
 # What a record may differ in and still be the same game. Wall-clock is a fact about the
 # machine that played it.
 IGNORED_FIELDS = ("duration_ms",)
+
+# A re-certification's sample (C6), pre-registered in `compute-economy.md` §3.5 before any
+# re-certification ran: four games with each roster agent in the first seat, spread over
+# its opponents, so 32 of a run's 256 and about 128 of a library game's 1,024. On
+# Q281a6's change (§3.3) that misses a game as sparse as *sweeping bishops* (2.3% of its
+# games changed) about 5% of the time and is expected to certify 0.05 changed games
+# wrongly over the library, against adopt's 16 a run (30%, 0.30). The blunder trials stay
+# one in eight, six of the forty-eight.
+RECERTIFY_PER_AGENT = 4
+RECERTIFY_BLUNDERS = SAMPLE_BLUNDERS
+
+# One in this many of the fit's games and of its acceptance match's is replayed, the share
+# the site's tier two samples (`site/spotcheck.SHARE`, `archive/plan-client-compute.md` T1).
+FIT_SHARE = 8
 
 
 @dataclass(frozen=True)
@@ -220,6 +243,158 @@ def _sample(records: list[GameRecord], config: TournamentConfig) -> list[int]:
 # --------------------------------------------------------------- the re-derivation
 
 
+def spread(records: list[GameRecord], config: TournamentConfig, per_agent: int) -> list[int]:
+    """``per_agent`` games with each roster agent in the first seat, evenly over its games.
+
+    `_sample` takes each agent's first games in record order, which the schedule lays out
+    opponent by opponent, so its two are usually against one opponent. A re-certification
+    is the only evidence a changed core played the games the stamp names, so its sample
+    is spread: the k-th of n picks is the agent's game at ``k * len // n``, which with four
+    picks of 32 games lands on every other opponent. Read off the records, as `_sample` is.
+    """
+    by_agent: dict[str, list[int]] = {}
+    for index, record in enumerate(records):
+        first = record.agents[0]
+        if first in config.agents:
+            by_agent.setdefault(first, []).append(index)
+    chosen: list[int] = []
+    for indices in by_agent.values():
+        taken = min(per_agent, len(indices))
+        chosen.extend(indices[(k * len(indices)) // taken] for k in range(taken))
+    return sorted(chosen)
+
+
+@dataclass(frozen=True)
+class Recertification:
+    """What a sample said about one run already in place (C6)."""
+
+    seed: int
+    certified: bool
+    # Games replayed equal and games the run holds; both 0 when it was refused first.
+    sampled: int = 0
+    games: int = 0
+    reason: str = ""
+
+
+def recertify_run(
+    spec: dict[str, Any],
+    seed: int,
+    run: Path,
+    config: TournamentConfig,
+    workers: int = 0,
+    say: Any = None,
+    per_agent: int = RECERTIFY_PER_AGENT,
+    blunders: int = RECERTIFY_BLUNDERS,
+) -> Recertification:
+    """Whether a run in place still holds on this checkout, by a sample of it (C6).
+
+    `adopt_run`'s steps 2 to 4 against the run's own directory: its claims, its seats, and
+    the sample re-derived and compared byte for byte (`duration_ms` aside), its games, the
+    analyses of those the pass grades, and the first ``blunders`` of the blunder trials.
+    Nothing is written, here or anywhere: `corpus.recertify` stamps the certificate, and
+    a run refused here is replayed in full, as adopt replayed xiangqi's three.
+    """
+    report = say if callable(say) else (lambda _message: None)
+    if not (run / "games.jsonl").exists():
+        return Recertification(seed=seed, certified=False, reason=f"{run} holds no games")
+    records = list(read_records(run / "games.jsonl"))
+    tasks = schedule(config)
+
+    reason = _claims(run, config, len(tasks), len(records)) or _seated(records, tasks)
+    if reason:
+        return Recertification(seed=seed, certified=False, reason=reason)
+    analysis_path = run / "analysis.json"
+    if not analysis_path.exists():
+        return Recertification(
+            seed=seed, certified=False, reason=f"{run} has no analysis.json to check"
+        )
+    stored = CorpusAnalysis.load(analysis_path)
+
+    sample = spread(records, config, per_agent)
+    report(f"  seed {seed}: replaying {len(sample)} of {len(records)} games and "
+           f"{min(blunders, len(stored.blunders))} of {len(stored.blunders)} blunder trials")
+    reason = _rederived(spec, records, stored, sample, config, workers, blunders)
+    if reason:
+        return Recertification(seed=seed, certified=False, reason=reason)
+    return Recertification(
+        seed=seed, certified=True, sampled=len(sample), games=len(records)
+    )
+
+
+def recertify_fit(
+    spec: dict[str, Any],
+    fit: FittedObjective,
+    kept: Path,
+    workers: int = 0,
+    say: Any = None,
+) -> str:
+    """Whether a fit store still holds on this core, by one in eight of its games; why not.
+
+    The site's tier two, on a library store (`site/spotcheck._replay`): the games the fit
+    and its acceptance match played, kept beside the store's measurement when a check
+    last played them (`fitting.check_fit`'s ``keep``), are first shown to be *this* store's
+    -- the regression over the kept fit games gives its samples and vector, the kept match
+    its verdict -- and then one in eight of each is played again and compared byte for byte.
+    ``""`` is a fit certified by the sample; anything else names what failed, and the
+    caller then runs the exact check (`check_fit`), which re-derives the whole fit.
+    """
+    from chess_variant_sandbox.agents import fitted as fitted_module
+
+    report = say if callable(say) else (lambda _message: None)
+    marker = kept / fitting.KEPT_FILE
+    try:
+        stamp = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "no fit games are kept for this store"
+    if not isinstance(stamp, dict) or stamp.get("store_digest") != fitting.store_digest(fit):
+        return "the kept fit games are another store's"
+    fit_records = list(read_records(kept / fitting.FIT_GAMES_FILE))
+    accept_records = list(read_records(kept / fitting.ACCEPT_GAMES_FILE))
+
+    provisional = slices.gather_fit(spec, fit_records)
+    failures = fitting.differences(
+        fit, slices.gather_verdict(provisional, accept_records)
+    )
+    if failures:
+        return "the kept fit games do not give the store: " + "; ".join(failures)
+
+    fits = list(range(len(fit_records)))[::FIT_SHARE]
+    accepts = list(range(len(accept_records)))[::FIT_SHARE] if slices.needs_a_match(
+        provisional
+    ) else []
+    report(f"  the fit: replaying {len(fits)} of {len(fit_records)} fit games and "
+           f"{len(accepts)} of {len(accept_records)} acceptance games")
+    key = (fit.procedure, fit.ruleset_hash)
+    before = fitted_module.registered_fits().get(key)
+    roster = slices.canonical_config(workers=workers)
+    try:
+        if fits:
+            played = slices.parse_records(slices.run_unit(
+                slices.Unit(slices.FIT, 0, 1, tuple(fits)), spec, config=roster
+            ))
+            for index, fresh in zip(fits, played, strict=True):
+                if _bare(fresh) != _bare(fit_records[index]):
+                    return f"fit game {index} replays differently here"
+        if accepts:
+            # The match was played by the provisional fit, before its verdict, as
+            # `fit_ruleset` and `slices.gather_verdict` play it.
+            played = slices.parse_records(slices.run_unit(
+                slices.Unit(slices.ACCEPT, 0, 1, tuple(accepts)), spec,
+                fit=provisional, config=roster,
+            ))
+            for index, fresh in zip(accepts, played, strict=True):
+                if _bare(fresh) != _bare(accept_records[index]):
+                    return f"acceptance game {index} replays differently here"
+    finally:
+        # The replay registered the provisional fit under the game's name; the store's own
+        # verdict is what the roster plays, so the registry is put back.
+        if before is not None:
+            fitted_module.register_fit(before, replace=True)
+        else:
+            fitted_module.register_fit(fit, replace=True)
+    return ""
+
+
 def _rederived(
     spec: dict[str, Any],
     records: list[GameRecord],
@@ -227,6 +402,7 @@ def _rederived(
     sample: list[int],
     config: TournamentConfig,
     workers: int,
+    blunders: int = SAMPLE_BLUNDERS,
 ) -> str:
     """Play, analyse and blunder the sample again, and say the first thing that differs.
 
@@ -266,7 +442,7 @@ def _rederived(
     trials = slices.blunder_units(records, 1, BLUNDER_SAMPLE, at_zero.seed)
     if not trials:
         return "" if not stored.blunders else "this checkout draws no blunder trials here"
-    drawn = trials[0].games[:SAMPLE_BLUNDERS]
+    drawn = trials[0].games[:blunders]
     derived = slices.parse_blunders(slices.run_unit(
         slices.Unit(phase=slices.BLUNDER, part=0, parts=1, games=tuple(drawn)),
         spec,
@@ -278,7 +454,7 @@ def _rederived(
     # first entries.
     if len(stored.blunders) < len(derived):
         return (
-            f"{len(derived)} of the first {SAMPLE_BLUNDERS} draws yield a trial here and "
+            f"{len(derived)} of the first {blunders} draws yield a trial here and "
             f"the stored pass kept {len(stored.blunders)}"
         )
     for place, trial in enumerate(derived):

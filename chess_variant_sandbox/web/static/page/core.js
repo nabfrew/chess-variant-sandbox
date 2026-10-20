@@ -517,6 +517,15 @@ const GLOSS = {
     + " stays on the card so the library is not blank while the work is owed, and it is"
     + " never current: it has no band, no trust level and no place in a comparison until"
     + " the repair named beside it runs and the estimate is current again."],
+  // C6 (`docs/reference/compute-economy.md` §3.5, the user's answer B of 2026-10-02): a
+  // current score whose games a sample re-certified on code that did not play them.
+  certifiedScore: ['Re-certified from a sample',
+    "The engine's code changed after this game's runs were played, in a way that should"
+    + " move no game. Rather than replaying every run, a sample of its games (a share of"
+    + " each run, and of the analysis and the fit) was played again on the new code and"
+    + " came out byte for byte the same, so the score was kept as current. A sample can"
+    + " miss a change that touches few games, which is why it says so. The next full"
+    + " replay plays every game again and clears this."],
   // Drawn only where there is a store, so in a visitor's words on both servers.
   provisional: ['Measured on its designer\'s computer',
     "Your browser can play and score a game itself, so you need not wait for the site."
@@ -852,6 +861,13 @@ const SITE_GLOSS = {
     + " happens on its own. Until then it is not compared with other games, so it says"
     + " nothing about which of two games is clearly better, and how far to trust it is"
     + " not shown."],
+  // C6: the same fact in a visitor's words (`docs/reference/plain-words.md`).
+  certifiedScore: ['Kept from a sample',
+    "The computer players changed after this game was measured, in a way that should not"
+    + " change how any game is played. So instead of playing all of its games again, the"
+    + " site played some of them again and they came out exactly the same, and the score"
+    + " was kept. A few games could still have come out differently, so it says so here."
+    + " The next time the library is measured in full, every game is played again."],
   // A3.
   roster: ['The computer players',
     "Every score comes from the same computer players, from one that moves at random to"
@@ -1105,6 +1121,36 @@ function provisionalMarkHtml(estimate) {
   if (!isProvisional(estimate)) return '';
   return `<div class="small provisionalMark"><span class="tag stale">provisional</span>${
     info('provisionalScore')} ${esc(provisionalSentence(estimate))}</div>`;
+}
+
+// C6: a current score some of whose games were not played by today's code, kept because a
+// sample of them replayed exactly (`library.certified_payload`). Empty for any other.
+function isCertified(estimate) {
+  return !!estimate && !!estimate.certified && !isProvisional(estimate);
+}
+
+function certifiedSentence(estimate) {
+  if (!isCertified(estimate)) return '';
+  const found = estimate.certified;
+  const sample = Number(found.sample) || 0;
+  const games = Number(found.games) || 0;
+  if (ACCOUNTS) {
+    return `Kept from a sample: after the computer players last changed, ${
+      sample.toLocaleString('en')} of its ${games.toLocaleString('en')} games were played`
+      + ' again and came out exactly the same. They are all played again the next time the'
+      + ' library is measured in full.';
+  }
+  return `Re-certified from a sample of ${sample.toLocaleString('en')} games: ${
+    games.toLocaleString('en')} were played on earlier code, and these replayed byte for`
+    + ` byte on core ${found.build || '?'}. The next full replay clears this.`;
+}
+
+// The mark beside a re-certified number: the words and their (i), then the sentence.
+function certifiedMarkHtml(estimate) {
+  if (!isCertified(estimate)) return '';
+  return `<div class="small certifiedMark"><span class="tag">${
+    ACCOUNTS ? 'kept from a sample' : 're-certified from a sample'}</span>${
+    info('certifiedScore')} ${esc(certifiedSentence(estimate))}</div>`;
 }
 
 function rulesVersion(version) {

@@ -384,8 +384,13 @@ function scoreTag(game) {
     + (runs ? `, as the ${runsPhrase(game.seeds)}` : '')
     + (ACCOUNTS ? `, under ${rulesVersion(game.weights)}` : ` (scoring rules ${game.weights})`);
   const split = splitSentences(game.runVerdict, game.runs).join(' ');
-  return `<span class="${cls}" title="${esc(said + (split ? '. ' + split : '.'))}">${
-    label}</span>`;
+  // C6: a number kept from a sample says so inside the pill, as the run count does,
+  // since a phone has no hover; the sentence is the title's.
+  const sampled = isCertified(game);
+  const kept = sampled ? ' ' + certifiedSentence(game) : '';
+  return `<span class="${cls}" title="${esc(said + (split ? '. ' + split : '.') + kept)}">${
+    label}${sampled ? ' <span class="muted">from a sample</span>' : ''}</span>${
+    sampled ? info('certifiedScore') : ''}`;
 }
 
 // A score measured on somebody's own machine, which the server has checked and has not

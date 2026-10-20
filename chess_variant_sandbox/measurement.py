@@ -1507,6 +1507,90 @@ def _player(fit: str) -> str:
 
 
 @dataclass(frozen=True)
+class Certificate:
+    """A sample that re-certified a measurement's games on code that did not play them.
+
+    C6 (`docs/reference/compute-economy.md` §3.5), under the user's answer B of 2026-10-02:
+    after a change that should move no game, a library score may stay current because a
+    sample of its games replayed byte for byte -- *labelled*, with the sample as its basis.
+    So the stamp keeps what played the games (`Basis.engine`, `tables`, `players`,
+    `agents_source`, `fit`) exactly as it was, and this records what the sample was
+    replayed on: the same five fields, taken when it was. `Basis.stale_against` compares
+    the certificate's five in place of the stamp's own, so the score is current exactly
+    while the code the sample ran on still is, and a later change stales it again.
+
+    ``sample`` is how many tournament games replayed equal, ``games`` how many games the
+    certificate covers (every game of the runs it kept). Both are in the stamp, and in the
+    page's words (*re-certified from a sample of 128 games*), because a sample can miss a
+    change that touches few games (§3.3), and a reader is owed how large it was.
+
+    A full replay writes a stamp with none, which is what clears the label: the games are
+    then the current code's own.
+    """
+
+    sample: int
+    games: int
+    engine: str
+    tables: str
+    players: str = ""
+    agents_source: str = ""
+    fit: str = ""
+
+    def __post_init__(self) -> None:
+        for name in ("sample", "games"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"a certificate's {name} is a positive count, not {value!r}")
+        if self.sample > self.games:
+            raise ValueError(f"a sample of {self.sample} cannot cover {self.games} games")
+        if not self.engine:
+            raise ValueError("a certificate names the core its sample was replayed on")
+
+    @property
+    def build(self) -> str:
+        """The core the sample replayed on."""
+        return _core_of(self.engine)
+
+    def words(self) -> str:
+        """`certified: sample 128/1024 on <build>`, as `measure --check` prints it."""
+        return f"certified: sample {self.sample}/{self.games} on {self.build}"
+
+    def as_dict(self) -> dict[str, Any]:
+        found: dict[str, Any] = {
+            "sample": self.sample,
+            "games": self.games,
+            "engine": self.engine,
+            "tables": self.tables,
+        }
+        for name in ("players", "agents_source", "fit"):
+            if getattr(self, name):
+                found[name] = getattr(self, name)
+        return found
+
+    @classmethod
+    def from_dict(cls, data: Any) -> Certificate:
+        """The certificate a stamp wrote. Raises `ValueError` on one this module did not.
+
+        A stamp whose certificate cannot be read cannot say what its games were checked
+        on, and `Basis.from_dict` reads it as no basis at all, the replay reading.
+        """
+        if not isinstance(data, dict):
+            raise ValueError("a certificate is an object")
+        try:
+            return cls(
+                sample=data["sample"],
+                games=data["games"],
+                engine=str(data["engine"]),
+                tables=str(data["tables"]),
+                players=str(data.get("players") or ""),
+                agents_source=str(data.get("agents_source") or ""),
+                fit=str(data.get("fit") or ""),
+            )
+        except KeyError as missing:
+            raise ValueError(f"a certificate without {missing}") from None
+
+
+@dataclass(frozen=True)
 class Basis:
     """Everything a stored measurement depends on.
 
@@ -1583,6 +1667,12 @@ class Basis:
     # The code reading of `AGENTS_SOURCES` when this was stamped. Compared only where the
     # players cannot be read now, so it is the old rule exactly where the new one is blind.
     agents_source: str = ""
+    # The sample that re-certified these games on code that did not play them (C6,
+    # `Certificate`), or ``None``: every stamp a played or re-scored measurement writes,
+    # and every stamp before the field, so no stored file changes shape. Present, its
+    # five fields stand in for the five above in `stale_against`, and the page labels the
+    # score *re-certified from a sample*.
+    certified: Certificate | None = None
     # Today's `bytes_fingerprint` for `engine`, `metrics` and `analysis`. Set only on a
     # basis taken now, never stored and never part of equality. A stamp from before the
     # code reading holds these values, and it clears where it still matches them.
@@ -1669,6 +1759,53 @@ class Basis:
         """
         return replace(self, played=BROWSER, checked=checked)
 
+    def certify(self, current: Basis, sample: int, games: int) -> Basis:
+        """This stamp, re-certified on ``current``'s code by a sample of ``sample`` games.
+
+        Everything this stamp says stays as it is -- which code played the games, which
+        weights scored them, which pass analysed them -- and the certificate records the
+        code the sample was replayed on. The fit it records is the player the roster
+        plays now: ``current.fit``, or the store's own where ``current`` reads the store
+        `UNVERIFIED`, because a sampled fit check (`adopt.recertify_fit`) vouches for the
+        store without being one the sidecar lists.
+        """
+        fit = current.fit
+        if fit == UNVERIFIED:
+            fit = current.fit_reading.player if current.fit_reading is not None else ""
+        return replace(self, certified=Certificate(
+            sample=sample,
+            games=games,
+            engine=current.engine,
+            tables=current.tables,
+            players=current.players,
+            agents_source=current.agents_source,
+            fit=fit,
+        ))
+
+    def certifiable(self, current: Basis) -> Staleness:
+        """What this stamp would still owe once a sample re-certified it on ``current``.
+
+        `corpus.recertify` asks this before it replays anything. A sample stands in for
+        the core, the runner, the tables, the players and the fit; it does not stand in for
+        a different roster, a different net, different seeds, another ruleset or a browser's
+        games, so a stamp stale for any of those still owes its replay here.
+        """
+        return self.certify(current, 1, 1).stale_against(current)
+
+    def _as_played_now(self) -> Basis:
+        """The stamp with the certificate's five fields read as its own, for comparison."""
+        found = self.certified
+        if found is None:
+            return self
+        return replace(
+            self,
+            engine=found.engine,
+            tables=found.tables,
+            players=found.players,
+            agents_source=found.agents_source,
+            fit=found.fit,
+        )
+
     def as_dict(self) -> dict[str, Any]:
         stamp: dict[str, Any] = {
             "ruleset_hash": self.ruleset_hash,
@@ -1699,6 +1836,9 @@ class Basis:
             stamp["players"] = self.players
         if self.agents_source:
             stamp["agents_source"] = self.agents_source
+        # Only on a stamp a sample re-certified, so every played one keeps its shape.
+        if self.certified is not None:
+            stamp["certified"] = self.certified.as_dict()
         return stamp
 
     @classmethod
@@ -1720,6 +1860,14 @@ class Basis:
         checked = str(data.get("checked") or "")
         if not provenance_reads(played, checked):
             return None
+        # Absent on every stamp but a re-certified one. Present and unreadable, the stamp
+        # cannot say what its games were checked on, which is the replay reading.
+        certified: Certificate | None = None
+        if data.get("certified") is not None:
+            try:
+                certified = Certificate.from_dict(data["certified"])
+            except (TypeError, ValueError):
+                return None
         try:
             return cls(
                 ruleset_hash=str(data["ruleset_hash"]),
@@ -1763,6 +1911,7 @@ class Basis:
                 # Absent on every stamp before Q631, where it means *not recorded*.
                 players=str(data.get("players") or ""),
                 agents_source=str(data.get("agents_source") or ""),
+                certified=certified,
             )
         except (KeyError, TypeError, ValueError):
             return None
@@ -1835,25 +1984,32 @@ class Basis:
         if current.known_seed_sets and self.seeds not in current.known_seed_sets:
             reasons.append("measured on seeds the project does not use")
             needs = "replay"
-        if _moved(self.engine, current.engine, current.engine_bytes):
-            reasons.append("the core, the schedule or the game loop changed since it was played")
+        # From here to the nets, what played the games -- or, on a stamp a sample
+        # re-certified (C6), what the sample was replayed on, which stands in for it.
+        played_now = self._as_played_now()
+        since = (
+            "it was re-certified from a sample" if self.certified is not None
+            else "it was played"
+        )
+        if _moved(played_now.engine, current.engine, current.engine_bytes):
+            reasons.append(f"the core, the schedule or the game loop changed since {since}")
             needs = "replay"
         # The players (Q631). Where both sides read them, they decide; where either could
         # not, the agents' source does, which is the rule before the players were read. A
         # stamp from before Q631 records neither, and is a replay.
-        if self.players and current.players:
-            if self.players != current.players:
-                reasons.append("the players the core is handed changed since it was played")
+        if played_now.players and current.players:
+            if played_now.players != current.players:
+                reasons.append(f"the players the core is handed changed since {since}")
                 needs = "replay"
-        elif self.agents_source != current.agents_source:
+        elif played_now.agents_source != current.agents_source:
             reasons.append(
-                "the agents changed since it was played, and what they hand the core "
+                f"the agents changed since {since}, and what they hand the core "
                 "cannot be read on both sides"
-                if self.agents_source
+                if played_now.agents_source
                 else "it does not record what the core was handed to play"
             )
             needs = "replay"
-        if self.tables != current.tables:
+        if played_now.tables != current.tables:
             # The per-ruleset half, and the one that is usually *not* the reason. An edit
             # to `engine/compile.py` reaches here only if it changed what this ruleset
             # compiles to; if it did not, this field is equal and the measurement stands.
@@ -1865,17 +2021,28 @@ class Basis:
         # flag, `refit`, that becomes `needs` only when nothing else is owed.
         refit = False
         reading = current.fit_reading
+        # A certificate taken on the loaded core vouches for the store's player on it: the
+        # fit was checked with the sample (`adopt.recertify_fit`), one in eight of its
+        # games, so the store is this core's answer for this measurement without being one
+        # the sidecar lists.
+        sampled_fit = (
+            self.certified is not None
+            and bool(self.certified.fit)
+            and self.certified.build == _core_of(current.engine)
+        )
         if reading is not None and current.fit:
-            if current.fit == UNVERIFIED:
+            if current.fit == UNVERIFIED and not sampled_fit:
                 refit = True
                 reasons.append(_fit_unverified(reading, _core_of(current.engine)))
             else:
+                now = reading.player if current.fit == UNVERIFIED else current.fit
                 # Absent is every stamp written before the field. The store says which
                 # objective played where the core that played the games made or
                 # reproduced it; anywhere else nothing says, and those games were played
                 # on another core, which the check above has already sent to a replay.
-                played = self.fit or (
-                    reading.player if _core_of(self.engine) in reading.verified_on else ""
+                played = played_now.fit or (
+                    reading.player
+                    if _core_of(played_now.engine) in reading.verified_on else ""
                 )
                 if not played:
                     reasons.append(
@@ -1883,9 +2050,9 @@ class Basis:
                         "made or reproduced on the core that played it"
                     )
                     needs = "replay"
-                elif played != current.fit:
+                elif played != now:
                     reasons.append(
-                        f"it played {_player(played)}, and {_player(current.fit)} plays now"
+                        f"it played {_player(played)}, and {_player(now)} plays now"
                     )
                     needs = "replay"
 

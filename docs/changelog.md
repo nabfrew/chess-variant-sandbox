@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-20
 
+### Scores kept from a sample say so
+
+When the engine changes in a way that should not move any game, a score can now be confirmed by replaying a sample of its
+games instead of all of them. Such a score is marked as kept from a sample.
+
 ### A newer computer player on Intransitive and Gardner
 
 The learned computer player on *Intransitive* and on Gardner is a newer one, trained on its predecessors' games. Gardner's

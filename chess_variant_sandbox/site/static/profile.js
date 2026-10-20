@@ -715,7 +715,8 @@ function drawProven(lines) {
   lead.className = 'under';
   lead.textContent = 'Positions the computer proved won for the side to move, from each '
     + "game's page. Only you see this. A try that did not end in your win is not counted "
-    + 'against you, and nothing here expires.';
+    + 'against you, and nothing here expires. Each count is of the positions the game '
+    + 'offers now, so one later left out as too easy is no longer counted.';
   where.appendChild(lead);
   const list = document.createElement('ul');
   list.className = 'lines';
