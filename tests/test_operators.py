@@ -31,7 +31,6 @@ from chess_variant_sandbox.spec.schema import (
     REPETITION_NEVER,
     SCHEMA_VERSION,
     SCORING_COUNTS,
-    is_simultaneous,
     opening_counts,
 )
 
@@ -88,6 +87,7 @@ _NUMBER_WORDS = {
     15: "fifteen", 16: "sixteen", 17: "seventeen", 18: "eighteen", 19: "nineteen",
     20: "twenty", 21: "twenty_one", 22: "twenty_two", 23: "twenty_three", 24: "twenty_four",
     25: "twenty_five", 26: "twenty_six", 27: "twenty_seven", 28: "twenty_eight",
+    29: "twenty_nine",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(SCHEMA_VERSION, SCHEMA_VERSION)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(schema, _COLLECTOR, None)
@@ -1991,7 +1991,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `SCHEMA_VERSION`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 28
+_FEATURES_ARE_FOR_SCHEMA = 29
 
 
 @dataclass(frozen=True)
@@ -2330,6 +2330,15 @@ def _parent_speed() -> dict:
     return rounds
 
 
+def _parent_rest() -> dict:
+    """Gardner, alternating, with a queen that rests a turn after it moves (schema 29's one
+    name, `pieces.rest`, Q983a): the smallest edit, on the plainest host (no round needed)."""
+    gardner = load_spec(RULESETS / "gardner.json")
+    gardner["schema_version"] = 29
+    next(p for p in gardner["pieces"] if p["id"] == "Q")["rest"] = 1
+    return gardner
+
+
 def _parent_beats() -> dict:
     """Rounds where a pawn beats nothing in a collision (§6.8's second showcase idea)."""
     rounds = _parent_rounds()
@@ -2394,15 +2403,15 @@ def _armies_differ(spec: dict) -> bool:
     return len(set(first) & set(second)) < 2 and len(set(first) | set(second)) >= 2
 
 
-# Schema 28's inventory (`plan-speed.md` §4.1): Q943a's one name, `pieces.speed`, riding on
-# `rules.simultaneous`; `set-a-speed` enters it (a type made faster than the rest) and leaves
-# it (every speed taken away), and `play-at-once` takes it down with the rounds. Schema 27's
-# five rows (Q936, Q942a, Q935a) retired with the bump; `count-each-kind`, `curb-the-chase`
-# and `plant-a-spy` still cross them.
+# Schema 29's inventory (`plan-rest.md` §5.1): Q983a's one name, `pieces.rest`, a piece
+# property riding on no rule (alternating or rounds); `tire-a-piece` enters it (a type made
+# to rest) and leaves it (the last rest lowered to none), and in a game in rounds
+# `curb-the-chase` turns every piece's rest on and off. Schema 28's row (Q943a, `pieces.speed`)
+# retired with the bump; `set-a-speed` still crosses it.
 _FEATURES: dict[str, _Feature] = {
-    "Q943a speed": _Feature(
-        "simultaneous", frozenset({"pieces.speed"}), True, "rounds+speed", _parent_speed,
-        likely=is_simultaneous,
+    "Q983a rest": _Feature(
+        None, frozenset({"pieces.rest"}), True, "gardner+rest", _parent_rest,
+        likely=lambda spec: True,
     ),
 }
 
@@ -2485,10 +2494,12 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
         "rules.simultaneous.tie 'impossible'", "pieces[].beats",
     }),
     27: frozenset({
-        "rules.extinction.per_type.own", "rules.simultaneous.rest", "rules.simultaneous.swap",
-        "rules.simultaneous.both", "pieces.spy",
+        "rules.extinction.per_type.own", "rules.simultaneous.swap", "rules.simultaneous.both",
+        "pieces.spy",
     }),
     28: frozenset({"pieces.speed"}),
+    # Schema 27's `rules.simultaneous.rest` left 27's set when schema 29 retired it for this.
+    29: frozenset({"pieces.rest"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says

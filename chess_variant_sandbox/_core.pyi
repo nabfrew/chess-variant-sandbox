@@ -26,15 +26,16 @@ from typing import Any
 # (board, side_to_move, unmoved, ep_target, ep_victim, halfmove, ply, key,
 #  repetition, checks, hands,
 #  (colour, remaining, turns_taken, points, goal_left_by, portal_bar, folds,
-#   (initiative, void_run, bars, rest)))
-# The last group is schema 26's (Q918a): who holds the initiative (-1 for no such rule),
-# the void run's pair ((-1, -1) for none) and the barred pairs; then schema 27's (Q942a)
-# rested squares, one per player ((-1, -1) for none).
-Rounds = tuple[int, tuple[int, int], list[tuple[int, int]], tuple[int, int]]
+#   (initiative, void_run, bars), rest))
+# The round group is schema 26's (Q918a): who holds the initiative (-1 for no such rule),
+# the void run's pair ((-1, -1) for none) and the barred pairs. ``rest`` is schema 29's
+# (Q983a): each player's resting pieces, ``(square, turns left)`` by square, empty for none.
+Rounds = tuple[int, tuple[int, int], list[tuple[int, int]]]
+Rest = tuple[list[tuple[int, int]], list[tuple[int, int]]]
 State = tuple[
     bytes, int, bytes, int, int, int, int, int, list[int],
     tuple[int, int], tuple[list[int], list[int]],
-    tuple[bytes, int, int, tuple[float, float], int, tuple[int, int], list[int], Rounds],
+    tuple[bytes, int, int, tuple[float, float], int, tuple[int, int], list[int], Rounds, Rest],
 ]
 
 # What a round's meetings did (schema 26): ``(event, square, player)``, the event 0 a
@@ -221,7 +222,9 @@ def regret_solve(
 ) -> tuple[list[float], list[float]]: ...
 
 REGRET_ITERATIONS: int
-RESTED_ROYAL: float
+RESTED_ROYAL_PIECES: float
+# Q986b: a finished round's value in the round search, in mean non-royal pieces.
+ROUND_WIN_PIECES: float
 # Q935h: the spy term's weight, in mean non-royal pieces, for the oracle to be held to it.
 SPY_PIECES: float
 

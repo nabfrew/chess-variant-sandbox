@@ -850,7 +850,7 @@ class TestTheSitesWordsAreAVisitors:
 # The (i)s `docs/archive/plan-understanding.md` §3.1 confirms are never drawn on the site: they sit
 # behind `!ACCOUNTS`, a withheld route, or have no caller. The local application keeps them.
 _NOT_DRAWN_ON_THE_SITE = frozenset({
-    "unscored", "fitted", "lineage", "candidate", "archived", "committed", "rulesetHash",
+    "unscored", "lineage", "candidate", "archived", "committed", "rulesetHash",
     "designRun", "thumb",
 })
 
@@ -904,10 +904,9 @@ def _score_panel(site: bool, ruled_out: bool = False) -> str:
 
 
 # A game page's own views, as `served_by_the_page` and the W3 tests render them: one game
-# payload with a stale score, a ladder table of the fitted players that scored it, a
+# payload with a stale score, a ladder table of the canonical players that scored it, a
 # picker table, a refused store, a provenance from a design run, a link and a draft's marks.
-_LADDER = ("random", "greedy", "minimax:fit=98f172aeac49,nodes=1600",
-           "minimax:fit=98f172aeac49,nodes=6400")
+_LADDER = ("random", "greedy", "minimax:nodes=800", "minimax:nodes=6400")
 
 
 def _game_for_views(stage: str = "Baseline") -> dict[str, Any]:

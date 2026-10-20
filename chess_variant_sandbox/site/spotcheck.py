@@ -2,7 +2,7 @@
 
 `docs/archive/plan-client-compute.md`'s row *Tier two, the sample job*, re-aimed at *Publish* by
 `docs/archive/plan-game-pipeline.md` Q503e. Tier one (`legality`) has walked every submitted game
-for legal moves and outcomes, re-derived the fit and scored the records itself. What it
+for legal moves and outcomes and scored the records itself. What it
 cannot prove is that the rostered players chose those moves, the search counters, the
 probe's `near_best` counts and each blunder trial's new winner. This job proves them for a
 sample: it plays the sampled games again on the server's own core and requires every byte
@@ -18,9 +18,7 @@ From the result's own records under `runs/provisional/<id>/`, drawn by `draw`:
 - **the probe of every sampled game the analysis pass grades**, compared with its stored
   analysis;
 - **6 of the blunder sampler's picks**, each trial run again and compared with the stored
-  trial for that game, or with its absence when the trial found no move to force;
-- **one in eight of the fit games and of the acceptance match's games**, because the
-  tournament's `fit=` player is the vector those games produced.
+  trial for that game, or with its absence when the trial found no move to force.
 
 The sample is an HMAC of the submission's text under a key the server draws once and does
 not keep (`seal`), stored on the job (`jobs.sample`). So it is the same when drawn twice
@@ -71,8 +69,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from chess_variant_sandbox.agents import fitted
-from chess_variant_sandbox.agents.fitted import FittedObjective
 from chess_variant_sandbox.measurement import LEGAL, built_fingerprint
 from chess_variant_sandbox.site import provisional, quota
 from chess_variant_sandbox.tournament import slices
@@ -99,9 +95,6 @@ GAMES = 32
 
 TRIALS = 6
 """Blunder trials replayed, at most."""
-
-SHARE = 8
-"""One in this many of the fit games and of the acceptance games is replayed."""
 
 IGNORED = frozenset({"duration_ms"})
 """Fields no two machines share, left out of every comparison."""
@@ -130,27 +123,18 @@ class Sample:
 
     games: tuple[int, ...]
     trials: tuple[int, ...]
-    fit: tuple[int, ...]
-    accept: tuple[int, ...]
 
 
-def draw(
-    sealed: str, *, games: int, picks: Sequence[int], fit: int, accept: int
-) -> Sample:
+def draw(sealed: str, *, games: int, picks: Sequence[int]) -> Sample:
     """The sample a seal names: a pure function of the seal and the records' sizes.
 
     `games` is how many tournament games there are, `picks` the blunder sampler's picks as
-    tournament indices (in its draw order), `fit` and `accept` how many fit and acceptance
-    games. Its own `random.Random`, seeded by the seal, never the module's.
+    tournament indices (in its draw order). Its own `random.Random`, seeded by the seal, never the module's.
     """
     rng = random.Random(int(sealed, 16))
     chosen = tuple(sorted(rng.sample(range(games), min(GAMES, games))))
     trials = tuple(sorted(rng.sample(list(picks), min(TRIALS, len(picks)))))
-    fits = tuple(sorted(rng.sample(range(fit), max(1, fit // SHARE)))) if fit else ()
-    accepts = (
-        tuple(sorted(rng.sample(range(accept), max(1, accept // SHARE)))) if accept else ()
-    )
-    return Sample(games=chosen, trials=trials, fit=fits, accept=accepts)
+    return Sample(games=chosen, trials=trials)
 
 
 # ------------------------------------------------------------------ filing a check
@@ -373,13 +357,7 @@ def _check(
     )
     picks = [g for unit in slices.blunder_units(stored.records, seed=roster.seed)
              for g in unit.games]
-    sample = draw(
-        sealed,
-        games=len(stored.records),
-        picks=picks,
-        fit=len(stored.fit_records),
-        accept=len(stored.accept_records),
-    )
+    sample = draw(sealed, games=len(stored.records), picks=picks)
     stamped = result.basis.engine.rpartition("-")[2]
     try:
         replayed = _replay(spec, roster, stored, sample, budget)
@@ -411,9 +389,6 @@ class _Stored:
 
     records: list[GameRecord]
     analysis: CorpusAnalysis
-    verdict: FittedObjective
-    fit_records: list[GameRecord]
-    accept_records: list[GameRecord]
 
     @classmethod
     def read(cls, where: Path) -> _Stored:
@@ -424,9 +399,6 @@ class _Stored:
         return cls(
             records=slices.parse_records(text(provisional.GAMES)),
             analysis=CorpusAnalysis.load(where / "analysis.json"),
-            verdict=FittedObjective.from_dict(json.loads(text(provisional.FIT))),
-            fit_records=slices.parse_records(text(provisional.FIT_GAMES)),
-            accept_records=slices.parse_records(text(provisional.ACCEPT_GAMES)),
         )
 
 
@@ -443,76 +415,45 @@ def _replay(
     analysed_at = {index: n for n, index in enumerate(graded)}
     graded_set = set(graded)
     trials = {(trial.seed, tuple(trial.agents)): trial for trial in stored.analysis.blunders}
-    key = (stored.verdict.procedure, stored.verdict.ruleset_hash)
-    before = fitted.registered_fits().get(key)
-    try:
-        for index in sample.games:
-            budget.check()
-            text = slices.run_unit(
-                slices.Unit(slices.TOURNAMENT, 0, 1, (index,)), spec, fit=stored.verdict,
-                config=roster,
+    for index in sample.games:
+        budget.check()
+        text = slices.run_unit(
+            slices.Unit(slices.TOURNAMENT, 0, 1, (index,)), spec, config=roster
+        )
+        _same(_one(text), records[index].as_dict(), "the tournament's", index, records)
+    probed = [index for index in sample.games if index in graded_set]
+    for index in probed:
+        budget.check()
+        text = slices.run_unit(
+            slices.Unit(slices.ANALYSIS, 0, 1, (index,)), spec,
+            records=[records[index]], config=roster,
+        )
+        _same(
+            _one(text), stored.analysis.games[analysed_at[index]].as_dict(),
+            "the analysis of the tournament's", index, records,
+        )
+    for index in sample.trials:
+        budget.check()
+        text = slices.run_unit(
+            slices.Unit(slices.BLUNDER, 0, 1, (index,)), spec,
+            records=[records[index]], config=roster,
+        )
+        record = records[index]
+        kept = trials.get((record.seed, tuple(record.agents)))
+        lines = [line for line in text.splitlines() if line.strip()]
+        mine = json.loads(lines[0]) if lines else None
+        if (mine is None) != (kept is None):
+            found = "no trial" if mine is None else "a trial"
+            raise _Differs(
+                f"the blunder trial on the tournament's game {index} (seed "
+                f"{record.seed}): the site's replay found {found} and the score did not"
             )
-            _same(_one(text), records[index].as_dict(), "the tournament's", index, records)
-        probed = [index for index in sample.games if index in graded_set]
-        for index in probed:
-            budget.check()
-            text = slices.run_unit(
-                slices.Unit(slices.ANALYSIS, 0, 1, (index,)), spec, fit=stored.verdict,
-                records=[records[index]], config=roster,
-            )
-            _same(
-                _one(text), stored.analysis.games[analysed_at[index]].as_dict(),
-                "the analysis of the tournament's", index, records,
-            )
-        for index in sample.trials:
-            budget.check()
-            text = slices.run_unit(
-                slices.Unit(slices.BLUNDER, 0, 1, (index,)), spec, fit=stored.verdict,
-                records=[records[index]], config=roster,
-            )
-            record = records[index]
-            kept = trials.get((record.seed, tuple(record.agents)))
-            lines = [line for line in text.splitlines() if line.strip()]
-            mine = json.loads(lines[0]) if lines else None
-            if (mine is None) != (kept is None):
-                found = "no trial" if mine is None else "a trial"
-                raise _Differs(
-                    f"the blunder trial on the tournament's game {index} (seed "
-                    f"{record.seed}): the site's replay found {found} and the score did not"
-                )
-            if mine is not None and kept is not None:
-                _same(mine, kept.as_dict(), "the blunder trial on the tournament's", index,
-                      records)
-        for index in sample.fit:
-            budget.check()
-            text = slices.run_unit(
-                slices.Unit(slices.FIT, 0, 1, (index,)), spec, config=roster
-            )
-            _same(_one(text), stored.fit_records[index].as_dict(), "the fit's", index,
-                  stored.fit_records)
-        if sample.accept:
-            budget.check()
-            # The match was played by the provisional fit, before its verdict: the same
-            # vector, accepted until the match says otherwise (`slices.gather_verdict`).
-            match_fit = slices.gather_fit(spec, stored.fit_records)
-            for index in sample.accept:
-                budget.check()
-                text = slices.run_unit(
-                    slices.Unit(slices.ACCEPT, 0, 1, (index,)), spec, fit=match_fit,
-                    config=roster,
-                )
-                _same(_one(text), stored.accept_records[index].as_dict(),
-                      "the acceptance match's", index, stored.accept_records)
-    finally:
-        # A replay registers the fit it plays under the game's name; the server's registry
-        # is left as the replay found it, so no later game is played by the match's fit.
-        if before is not None:
-            fitted.register_fit(before, replace=True)
-        else:
-            fitted._FITTED.pop(key, None)
+        if mine is not None and kept is not None:
+            _same(mine, kept.as_dict(), "the blunder trial on the tournament's", index,
+                  records)
     return (
-        f"{len(sample.games)} games, {len(probed)} analyses, {len(sample.trials)} trials, "
-        f"{len(sample.fit)} + {len(sample.accept)} fit and acceptance games equal"
+        f"{len(sample.games)} games, {len(probed)} analyses, {len(sample.trials)} trials "
+        "equal"
     )
 
 

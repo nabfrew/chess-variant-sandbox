@@ -132,7 +132,9 @@ RULE_KEY_SETS: dict[tuple[str, ...], set[str]] = {
     # A portal group is a pair or a map, and one card offers both spellings.
     ("portals",): schema._PORTAL_KEYS | schema._PORTAL_ENDS_KEYS,
     ("portals", "ends"): schema._PORTAL_END_KEYS,
-    ("simultaneous",): schema._SIMULTANEOUS_KEYS,
+    # `rest` is schema 29's retired switch (`pieces[].rest` replaced it): the shape check lets it
+    # through only so that its one refusal is the retirement's, and no designer draws it.
+    ("simultaneous",): schema._SIMULTANEOUS_KEYS - {"rest"},
     ("scoring",): schema._SCORING_KEYS,
     ("reach",): schema._REACH_KEYS,
     ("extinction",): schema._EXTINCTION_KEYS,

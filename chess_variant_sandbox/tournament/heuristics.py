@@ -171,12 +171,6 @@ class HeuristicReport:
     rows: list[MatchRow] = field(default_factory=list)
     vocabulary_version: int = VOCABULARY_VERSION
     games_per_pairing: int = MATCH_GAMES
-    # What the agreement columns were measured against: empty for the built-in
-    # evaluator, a fit procedure's digest for a fitted one. Two reports with different
-    # values here are two quantities and must never share a table -- the field exists so
-    # that cannot happen silently, the way a weights version stops two indices from
-    # sharing a leaderboard.
-    baseline: str = ""
 
     @property
     def k(self) -> int:
@@ -195,7 +189,6 @@ class HeuristicReport:
             "nodes": self.nodes,
             "depth_reached": self.depth_reached,
             "games_per_pairing": self.games_per_pairing,
-            "baseline": self.baseline,
             "k": self.k,
             "measurable": self.measurable,
             "rows": [row.as_dict() for row in self.rows],
@@ -219,7 +212,6 @@ class HeuristicReport:
             rows=[MatchRow.from_dict(row) for row in data.get("rows", [])],
             vocabulary_version=int(data.get("vocabulary_version", VOCABULARY_VERSION)),
             games_per_pairing=int(data.get("games_per_pairing", MATCH_GAMES)),
-            baseline=str(data.get("baseline", "")),
         )
 
     @classmethod
@@ -305,32 +297,17 @@ def measure_heuristics(
     games: int = MATCH_GAMES,
     nodes: int | None = None,
     workers: int = 0,
-    baseline_fit: str = "",
 ) -> HeuristicReport:
-    """Play the three comparisons for every heuristic in the set.
-
-    ``baseline_fit`` changes *what the heuristics are compared against* and nothing else.
-    Empty means the built-in evaluator, which is every number this pass has ever
-    produced. A procedure digest puts a fitted objective in that seat, which is the
-    honest scorer for a fitted ladder: `heuristic_agreement` named stage 17B's target
-    before 17B ran and caught what it missed, and it costs no calibration campaign, so it
-    can say whether fitting worked in the same terms the earlier change was judged in.
-
-    The two reports are different quantities and must not share a table. ``baseline`` on
-    the report is what says which one this is.
-    """
+    """Play the three comparisons for every heuristic in the set, against the built-in
+    evaluator."""
     engine = Engine(spec)
     heuristic_set.register()
 
     budget = nodes if nodes is not None else _choose_budget(engine, heuristic_set, seed)
     depth = _depth_reached(engine, heuristic_set.heuristics[0], budget, seed)
 
-    base_shallow = _shallow(None, baseline_fit)
-    base_deep = (
-        f"minimax:fit={baseline_fit},nodes={budget}"
-        if baseline_fit
-        else f"minimax:nodes={budget}"
-    )
+    base_shallow = _shallow(None)
+    base_deep = f"minimax:nodes={budget}"
 
     rows = []
     for heuristic in heuristic_set.heuristics:
@@ -360,29 +337,17 @@ def measure_heuristics(
         depth_reached=depth,
         rows=rows,
         games_per_pairing=games,
-        baseline=baseline_fit,
     )
 
 
-def _shallow(digest: str | None, baseline_fit: str = "") -> str:
+def _shallow(digest: str | None) -> str:
     """The shallow arm: a fixed two plies, with or without a heuristic objective.
 
-    ``None`` gives the same arm running whatever objective the *baseline* is, which is
-    what ``heuristic_agreement`` compares against -- so the two sides of that comparison
+    ``None`` gives the same arm on the built-in evaluator, which is what
+    ``heuristic_agreement`` compares against -- so the two sides of that comparison
     differ only in what they are maximising, never in how far they look.
-
-    ``baseline_fit`` names a fitted objective to stand in that baseline's place. Empty is
-    the built-in evaluator and reproduces every committed number; a procedure digest asks
-    the same question of a ladder whose objective was fitted rather than written, which is
-    stage 28.4 -- and it is only ever applied to the ``None`` arm, because a heuristic and
-    a fit are two answers to one question and an agent may not name both.
     """
-    if digest is not None:
-        prefix = f"h={digest},"
-    elif baseline_fit:
-        prefix = f"fit={baseline_fit},"
-    else:
-        prefix = ""
+    prefix = f"h={digest}," if digest is not None else ""
     return f"minimax:{prefix}max_depth={SHALLOW_DEPTH},nodes={SHALLOW_NODES}"
 
 
@@ -391,10 +356,9 @@ def head_to_head(
 ) -> float:
     """``first``'s score, both colours, so a seat advantage cannot be mistaken for skill.
 
-    Public because the fitted objective's acceptance test asks the same question of the
-    same shape -- does this objective beat the one it replaces, at equal budget -- and
-    two definitions of "score, both colours" would be two ways to disagree about what a
-    match result is.
+    Public because every acceptance test asks the same question of the same shape --
+    does this objective beat the one it replaces, at equal budget -- and two definitions
+    of "score, both colours" would be two ways to disagree about what a match result is.
 
     Run through the ordinary tournament runner rather than a loop over ``play_game``,
     which is not a detail: the runner schedules every game's seed before any thread

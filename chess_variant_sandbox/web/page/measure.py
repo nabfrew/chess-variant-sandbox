@@ -31,12 +31,11 @@ the work is the package's own `tournament/slices.py`.
   place, and draws. It never reads a request, a reply, a record or a seed.
 - `slices.gather_request` is the Python half, which runs in the one worker that gathers.
   Each call is one step: it takes the replies to the units it dealt last, gathers them
-  with B0's own functions (`gather_fit`, `gather_verdict`, `gather_measurement`) and
-  answers with the next phase's unit requests, or with the result. What it must remember
-  between steps -- the settled spec, the verdict, the tournament's records -- goes out in
-  its answer as a `state` string, which the page hands back unread. So a step is a
-  function of its text and nothing else, which is what B6 needs to resume from stored
-  units.
+  with B0's own functions (`gather_analysis`, `gather_measurement`) and answers with the
+  next phase's unit requests, or with the result. What it must remember between steps
+  -- the settled spec and the tournament's records -- goes out in its answer as a `state`
+  string, which the page hands back unread. So a step is a function of its text and
+  nothing else, which is what B6 needs to resume from stored units.
 
 **No worker is sent Python (Q458).** Both halves' Python is in the wheel: a worker is told
 on load whether it gathers, and imports `gather_request` from the wheel it installed, as

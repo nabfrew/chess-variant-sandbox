@@ -31,11 +31,13 @@ from typing import Any
 from chess_variant_sandbox.spec.complexity import expand_symmetry, measure_complexity
 from chess_variant_sandbox.spec.schema import (
     REPETITION_NEVER,
+    REST_MAX,
     STOCK_UNLIMITED,
     WRAP_PAIRS,
     absent_squares,
     facing_turns,
     obstacle_squares,
+    piece_rests,
     piece_speeds,
     portal_groups,
     portal_map_shape,
@@ -397,13 +399,29 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         ),
         **_portal_features(rules.get("portals")),
         **_simultaneous_features(spec),
+        **_rest_features(spec),
+    }
+
+
+def _rest_features(spec: dict[str, Any]) -> dict[str, float]:
+    """Schema 29 (Q983a, `docs/plan-rest.md` §5.7): the mean rest over the declared types and
+    the largest, each over ``REST_MAX``, in any game, so a spec differing only by its rests
+    is not at distance zero and a heavier rest reads farther than a lighter one. They replace
+    schema 27's ``simultaneous_rest`` (the round's switch, `"rest": 1` on every piece now)."""
+    rests = list(piece_rests(spec).values())
+    if not rests or not any(rests):
+        return {"rest_mean": 0.0, "rest_max": 0.0}
+    return {
+        "rest_mean": sum(rests) / len(rests) / REST_MAX,
+        "rest_max": max(rests) / REST_MAX,
     }
 
 
 def _simultaneous_features(spec: dict[str, Any]) -> dict[str, float]:
     """Schema 26 (Q918a): the round itself, its tie rule, and the share of pieces whose
     collision table (`beats`) is their own, so a spec differing only by any of them is not
-    at distance zero; and schema 27's three chase switches (Q942a), one feature each."""
+    at distance zero; and schema 27's chase switches (Q942a), one feature each (the third, the
+    round's rest, is schema 29's ``pieces[].rest``, `_rest_features`)."""
     rules: dict[str, Any] = spec["rules"] if isinstance(spec.get("rules"), dict) else {}
     rule = rules.get("simultaneous")
     tie = rule.get("tie") if isinstance(rule, dict) else None
@@ -414,7 +432,6 @@ def _simultaneous_features(spec: dict[str, Any]) -> dict[str, float]:
         "simultaneous_initiative": 1.0 if tie == "initiative" else 0.0,
         "simultaneous_impossible": 1.0 if tie == "impossible" else 0.0,
         "beats_share": beats / len(pieces) if pieces else 0.0,
-        "simultaneous_rest": 1.0 if simultaneous_switch(rules, "rest") else 0.0,
         "simultaneous_swap_collides": 1.0 if simultaneous_switch(rules, "swap") else 0.0,
         "simultaneous_both_score": 1.0 if simultaneous_switch(rules, "both") else 0.0,
         # Schema 27 (Q935a): the spy, so a spy game is never at distance zero from its

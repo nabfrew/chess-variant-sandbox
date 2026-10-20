@@ -310,7 +310,8 @@ class TestTheLinksTableRetired:
             report = migrate.run(store)
             store.commit()
 
-            assert list(report.applied) == ["0038_links_retired.sql"], report.summary()
+            # The first one run; later migrations (`0039_rest_on_pieces.sql`) follow it.
+            assert list(report.applied)[:1] == ["0038_links_retired.sql"], report.summary()
             with store.cursor() as cursor:
                 cursor.execute("select to_regclass('links')")
                 assert cursor.fetchone()[0] is None

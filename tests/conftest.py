@@ -13,7 +13,6 @@ import site_store
 import tables_cache
 
 import chess_variant_sandbox.engine.compile as compile_module
-from chess_variant_sandbox.agents.fitted import STORE_ENV
 from chess_variant_sandbox.engine import CompiledSpec, Engine
 from chess_variant_sandbox.spec import load_spec
 
@@ -163,38 +162,10 @@ def pytest_runtest_teardown(item: pytest.Item) -> None:
     compile_memo.bypass = False
 
 
-# The three stores git tracks. Each is a directory of evidence keyed by ruleset hash --
+# The two stores git tracks. Each is a directory of evidence keyed by ruleset hash --
 # what an opponent was given to play one game with -- so what makes them worth anything
 # is that every file in them was put there on purpose.
-TRACKED_STORES = ("fitted", "heuristics", "valuations")
-
-
-@pytest.fixture(scope="session", autouse=True)
-def fits_are_written_somewhere_temporary(
-    tmp_path_factory: pytest.TempPathFactory,
-) -> Iterator[Path]:
-    """A green run must leave the tree clean, and until Q91 it did not.
-
-    `corpus.measure` fits a candidate on its way to measuring it, and `ensure_fit` is the
-    one writer whose caller names no path -- so `test_corpus.py`'s five-square fixture
-    wrote `fitted/ee26d2322244-*.json` into the store git tracks, where a `git add -A`
-    could commit it, and once did. This points that default at a temporary directory for
-    the session.
-
-    **Writes only.** `load_fit(hash)` with no root still reads `fitted/`, because tests
-    that ask whether chess has a committed fit are asking about the repository's store
-    and would otherwise turn silently into skips.
-    """
-    store = tmp_path_factory.mktemp("fit-store")
-    previous = os.environ.get(STORE_ENV)
-    os.environ[STORE_ENV] = str(store)
-    try:
-        yield store
-    finally:
-        if previous is None:
-            os.environ.pop(STORE_ENV, None)
-        else:
-            os.environ[STORE_ENV] = previous
+TRACKED_STORES = ("heuristics", "valuations")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -257,14 +228,13 @@ def tables_are_cached_somewhere_temporary(
 def the_tracked_stores_do_not_move() -> Iterator[None]:
     """Nothing the suite runs may add to, or remove from, a store git tracks.
 
-    The fixture above closes the one leak that was found; this is what would find the
-    next one, and it is deliberately about the *directories* rather than about
-    `ensure_fit`. A store is written through several paths -- `chess-variant-sandbox fit`, `chess-variant-sandbox
-    values`, the browser's opponent builder -- and any of them reached with a default
+    It is deliberately about the *directories* rather than about one writer. A store is
+    written through several paths -- `chess-variant-sandbox values`, the browser's
+    opponent builder -- and any of them reached with a default
     root writes into the repository. Comparing the listing before and after turns "a
     green run leaves the tree clean" into something the suite itself asserts.
 
-    Names, not contents: a test that rewrote a committed fit with identical bytes is not
+    Names, not contents: a test that rewrote a committed store with identical bytes is not
     a defect worth failing a run over, and reading 186 files twice a session is not worth
     paying for. `git status` is the check for content; this is the check for provenance.
     """
@@ -305,7 +275,7 @@ def game_pictures_only_where_a_test_asks(monkeypatch: pytest.MonkeyPatch) -> Non
 def registrations_end_with_their_test() -> Iterator[None]:
     """What a test registers by name is gone when it ends (Q431).
 
-    `heuristics._HEURISTICS`, `valuations._VALUATIONS` and `fitted._FITTED` are
+    `heuristics._HEURISTICS` and `valuations._VALUATIONS` are
     module-level lookups an agent string resolves through, and nothing ever empties them.
     So a test's answer could depend on what an earlier test in the same process
     registered. Under `-n 4` that is whichever tests xdist happened to hand the same
@@ -329,11 +299,11 @@ def registrations_end_with_their_test() -> Iterator[None]:
     runs. Registrations made in a module- or session-scoped fixture predate the snapshot
     and survive it, as that fixture's scope says they should.
     """
-    from chess_variant_sandbox.agents import fitted, heuristics, valuations
+    from chess_variant_sandbox.agents import heuristics, valuations
 
     held = [
         (registry, dict(registry))
-        for registry in (heuristics._HEURISTICS, valuations._VALUATIONS, fitted._FITTED)
+        for registry in (heuristics._HEURISTICS, valuations._VALUATIONS)
     ]
     yield
     for registry, before in held:

@@ -7,16 +7,16 @@ where `chess_variant_sandbox` is the wheel from `build/browser/` and the core is
 WebAssembly build. Each answers with the text `run` returns, and the test compares the two
 answers field by field.
 
-So this file decides nothing about the games. Every record, analysis, vector and score in
-a reply comes out of the package itself, through the same calls a measurement makes --
-`slices.run_request` for the canonical games and the analysis, `slices.gather_fit` for the
-regression, `slices.measure_in_slices` for a whole measurement -- and a difference between
-the two replies is a difference between the two builds, never between two harnesses.
+So this file decides nothing about the games. Every record, analysis and score in a reply
+comes out of the package itself, through the same calls a measurement makes --
+`slices.run_request` for the canonical games and the analysis, `slices.measure_in_slices`
+for a whole measurement -- and a difference between the two replies is a difference
+between the two builds, never between two harnesses.
 
 It imports nothing from the repository but the installed package, because inside Pyodide
 the package under test is the wheel's and the tree is not on `sys.path`. It is stdlib and
 `chess_variant_sandbox` only, and it keeps no state between tasks beyond what the package
-keeps: a fit registered by one task is registered for the next, exactly as in a worker.
+keeps, exactly as in a worker.
 
     python tests/browser/identity_probe.py < job.json > reply.json
 """
@@ -80,12 +80,6 @@ def describe(extra: dict[str, Any]) -> dict[str, Any]:
 # ------------------------------------------------------------------------ the tasks
 
 
-def _fit(task: dict[str, Any]) -> Any:
-    from chess_variant_sandbox.agents.fitted import FittedObjective
-
-    return FittedObjective.from_dict(task["fit"]) if task.get("fit") else None
-
-
 def _roster() -> Any:
     """The canonical roster at one thread, which is what a browser worker has."""
     from chess_variant_sandbox.tournament import slices
@@ -103,17 +97,17 @@ def sample(task: dict[str, Any]) -> dict[str, str]:
     """
     from chess_variant_sandbox.tournament import slices
 
-    spec, verdict, config = task["spec"], _fit(task), _roster()
+    spec, config = task["spec"], _roster()
     unit = slices.Unit(
         phase=slices.TOURNAMENT, part=0, parts=1, games=tuple(task["games"])
     )
-    played = slices.run_request(slices.request(unit, spec, fit=verdict, config=config))
+    played = slices.run_request(slices.request(unit, spec, config=config))
     answer = {"games": played}
     if task.get("analyse"):
         records = slices.parse_records(played)
         text = ""
         for piece in slices.analysis_units(records, 1):
-            request = slices.request(piece, spec, fit=verdict, records=records, config=config)
+            request = slices.request(piece, spec, records=records, config=config)
             text += slices.run_request(request)
         answer["analysis"] = text
     return answer
@@ -133,22 +127,6 @@ def games(task: dict[str, Any]) -> dict[str, str]:
     return {"games": "".join(line + "\n" for line in lines)}
 
 
-def fit(task: dict[str, Any]) -> dict[str, str]:
-    """The fit's games and its regression, which is what tier one re-runs on the server.
-
-    No acceptance match: that is 48 games at the top rung and a vector's verdict, and the
-    `measure` task below plays one whole on a board small enough to afford it.
-    """
-    from chess_variant_sandbox.tournament import slices
-
-    spec, config = task["spec"], _roster()
-    text = ""
-    for unit in slices.playing_units(slices.FIT, slices.fit_config(), 1):
-        text += slices.run_request(slices.request(unit, spec, config=config))
-    verdict = slices.gather_fit(spec, slices.parse_records(text))
-    return {"games": text, "verdict": json.dumps(verdict.as_dict(), sort_keys=True)}
-
-
 def perft(task: dict[str, Any]) -> dict[str, str]:
     from chess_variant_sandbox.engine import Engine
 
@@ -158,7 +136,7 @@ def perft(task: dict[str, Any]) -> dict[str, str]:
 
 
 def measure(task: dict[str, Any]) -> dict[str, str]:
-    """A whole measurement from nothing: fit, acceptance, tournament, analysis, score.
+    """A whole measurement from nothing: tournament, analysis, blunder trials, score.
 
     `measure_in_slices` at one slice and one thread, into a directory of its own, and the
     files it wrote read back as text. The headline goes back as `repr`, so a reader can
@@ -172,7 +150,6 @@ def measure(task: dict[str, Any]) -> dict[str, str]:
         answer = {name: (out / name).read_text(encoding="utf-8") for name in MEASURE_FILES}
         index = out / f"index-{gathered.result.weights_version}.json"
         answer["index"] = index.read_text(encoding="utf-8")
-    answer["verdict"] = json.dumps(gathered.fit.as_dict(), sort_keys=True)
     answer["headline"] = repr(gathered.index)
     return answer
 
@@ -180,7 +157,6 @@ def measure(task: dict[str, Any]) -> dict[str, str]:
 TASKS = {
     "sample": sample,
     "games": games,
-    "fit": fit,
     "perft": perft,
     "measure": measure,
 }

@@ -1427,8 +1427,8 @@ def test_the_facing_term_is_exactly_zero_where_nothing_turns(name: str) -> None:
     `facing_alignment` was appended to a fixed-length vocabulary, which orphans every
     stored fourteen-weight vector whatever it reads. What says the corpus *replay* owes
     nothing beyond that bookkeeping is this: on a ruleset with no facing the term returns
-    `0.0` before any arithmetic runs, so a refit's fifteenth column is identically zero
-    and its other fourteen weights come out where they were. Read over a played game
+    `0.0` before any arithmetic runs, so a re-derived vector's fifteenth column is
+    identically zero and its other fourteen weights come out where they were. Read over a played game
     rather than from the opening, because "nothing turns" has to hold at every position.
     """
     from chess_variant_sandbox.agents.features import VOCABULARY, FeatureEvaluator, feature_context
@@ -1581,11 +1581,11 @@ def test_a_board_with_a_third_owner_is_searched_the_same_way_on_both_sides(
 def test_the_feature_vocabulary_agrees_on_a_board_with_a_third_owner(
     label: str, build: Any
 ) -> None:
-    """The same board, read by the terms a fitted heuristic is regressed on.
+    """The same board, read by the terms a stated heuristic weighs.
 
     This is the arm that matters most, and the one nothing else in the suite reaches: the
-    vocabulary is what `chess-variant-sandbox fit` draws a weight vector against, so a term that reads a
-    boar as the enemy would be fitted around rather than noticed. Six of the fourteen
+    vocabulary is what every stored weight vector is read against, so a term that reads a
+    boar as the enemy would be weighted around rather than noticed. Six of the fourteen
     terms are scaled by `total_material`, which is why an arm weighting only `material`
     would still pass while the context underneath it disagreed.
     """
@@ -1870,9 +1870,9 @@ def test_a_core_built_after_a_field_was_added_is_caught_too() -> None:
     """The direction that raises nothing at all, and so would otherwise play on.
 
     A core *newer* than the package -- an older branch checked out over a fresh build --
-    hands back a field the package does not read. Nothing throws: `_unpack` takes the seven
-    it knows (five until schema 20's `portal_bar`, six until schema 22's `folds`) and drops
-    the eighth on the floor. It is caught because the position that goes
+    hands back a field the package does not read. Nothing throws: `_unpack` takes the nine
+    it knows (five until schema 20's `portal_bar`, six until schema 22's `folds`, eight
+    until schema 29's `rest`) and drops the tenth on the floor. It is caught because the position that goes
     back in is a field shorter than the one that came out, which is a comparison that
     needs no version number on either side to make.
     """
@@ -1885,7 +1885,7 @@ def test_a_core_built_after_a_field_was_added_is_caught_too() -> None:
 
     message = core_boundary_mismatch(newer, _unpack, _pack)
     assert message is not None
-    assert "slot 11 carries 9 fields where this package writes 8" in message
+    assert "slot 11 carries 10 fields where this package writes 9" in message
     assert "maturin develop --release" in message
 
 
@@ -2037,3 +2037,26 @@ def test_the_own_kinds_arms_end_by_extinction_and_the_margin_changes_the_game() 
     assert play_game(engine, ("random", "random"), seed=5).reason == "extinction"
     weighted = play_game(engine, (_margin_player(), "greedy"), seed=5).moves
     assert weighted != play_game(engine, ("minimax:nodes=150", "greedy"), seed=5).moves
+
+
+# Schema 29 (Q983a, `docs/plan-rest.md` §5.3): rest in alternating play, which no committed
+# ruleset reaches. Both sides of the boundary drive the same core, whose generator filters the
+# resting pieces' moves and whose `make` keeps the list, so a search reads one game; the arm
+# plays it through both loops, and checks the rest really binds in the game played.
+REST_ARMS = ["_rest_checkmate", "_rest_drops"]
+
+
+@pytest.mark.parametrize("name", REST_ARMS)
+def test_an_alternating_rest_game_is_played_the_same_way_on_both_sides(name: str) -> None:
+    engine = Engine(load_spec(Path(__file__).parent / f"{name}.json"))
+    _assert_same_played(engine, ("minimax:nodes=150", "greedy"))
+    played = play_game(engine, ("minimax:nodes=150", "greedy"), seed=5)
+    state = engine.initial_state()
+    bound = 0
+    for move in played.moves:
+        mover = state.side_to_move
+        if state.rest[mover]:
+            free = engine.legal_moves(state.with_(rest=((), ())))
+            bound += len(engine.legal_moves(state)) < len(free)
+        state = engine.apply(state, move)
+    assert bound > 0, "the rest never removed a move in the game played"

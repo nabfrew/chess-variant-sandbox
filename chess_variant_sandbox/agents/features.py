@@ -63,25 +63,18 @@ from chess_variant_sandbox.engine.compile import UNREACHABLE, WILD, CompiledSpec
 # `rules.npcs` changes what they read -- but every such ruleset previously raised an
 # `IndexError` here or read a boar as the enemy, so there was no vector anywhere that had
 # been drawn against the old answer. On the two-owner rulesets every stored heuristic set
-# and every fit was drawn on, `owner == WILD` is never true and each edit was a no-op to
-# the bit. A bump would have orphaned every store and moved `procedure_digest()` to buy a
-# change to no number that existed.
+# was drawn on, `owner == WILD` is never true and each edit was a no-op to the bit. A
+# bump would have orphaned every store to buy a change to no number that existed.
 #
 # **`facing_alignment` bumped it to 2, and that argument does not transfer.** The
 # question is not whether the new term *reads* zero on a ruleset with no facing -- it
 # does, exactly, before any arithmetic runs -- but whether a stored vector still names a
 # player. It does not: a vector is fixed-length by construction, so a fourteen-weight
-# store is refused by its own length at `FeatureEvaluator.__init__`, by
-# `FittedObjective.__post_init__` and by `Heuristic.__post_init__`, and the refusal in
-# `from_dict` for an unbumped edit ("one of them was edited without a bump") is exactly
-# the state an unbumped addition would leave the corpus in. So the bump is owed by the
-# *shape* of the vector rather than by the value of any term, and it is owed whether or
-# not a ruleset faces. Two things follow and both are measured rather than assumed:
-# `procedure_digest()` moves, so `corpus.CANONICAL_AGENTS` moves and every stored basis
-# is stale by roster; and a refit on a ruleset with no facing reproduces its previous
-# vector in its first fourteen weights **to the bit**, because a column that is
-# identically zero decomposes out of the ridge -- `tests/test_fitted.py` asserts that,
-# and it is what says the replay owed here should reproduce rather than move.
+# store is refused by its own length at `FeatureEvaluator.__init__` and by
+# `Heuristic.__post_init__`, and the refusal in `from_dict` for an unbumped edit ("one
+# of them was edited without a bump") is exactly the state an unbumped addition would
+# leave the stores in. So the bump is owed by the *shape* of the vector rather than by
+# the value of any term, and it is owed whether or not a ruleset faces.
 VOCABULARY_VERSION = 2
 
 VOCABULARY: tuple[str, ...] = (
@@ -505,11 +498,11 @@ class FeatureEvaluator:
     ) -> tuple[float, ...]:
         """Every term, whatever this instance's weights say.
 
-        Deliberately ignores ``_active``: a fit needs the whole vocabulary read off a
-        position, including the terms the *current* weights zero out, because deciding
-        which ones matter is the fit's job rather than its input. Nothing in a search
-        calls this -- ``evaluate`` is still the dot product with the zeros skipped, so a
-        weight of zero still means absent where it is load-bearing.
+        Deliberately ignores ``_active``: a reader of single terms (the oracle tests in
+        `tests/test_backends.py`) needs the whole vocabulary read off a position,
+        including the terms the *current* weights zero out. Nothing in a search calls
+        this -- ``evaluate`` is still the dot product with the zeros skipped, so a weight
+        of zero still means absent where it is load-bearing.
         """
         context = self.context
         return tuple(
@@ -837,8 +830,8 @@ class FeatureEvaluator:
         right, backward, left* clockwise, and `setup.orientation` declares which way
         forward is for each army -- so "how much of its own forward is this piece still
         pointing" reads three declared rules and no preference. Whether pointing forward
-        is *good* is what the weight is for, and the fit is entitled to answer with a
-        negative number.
+        is *good* is what the weight is for, and a stated vector is entitled to answer
+        with a negative number.
 
         Exactly `+1.0`, `0.0` or `-1.0` per piece, read out of `_ALIGNMENT` by quarter
         turns, so the sum is an exact integer however many pieces there are and the term

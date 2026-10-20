@@ -38,7 +38,6 @@ QUIET_AFTER_DEFAULT_S = 3 * 600
 
 # What each repair does, in the local application's words (`upkeep.js`' `REPAIRS`).
 REPAIRS = {
-    "refit": "checking its fit",
     "rescore": "scoring again",
     "reanalyse": "analysing and scoring again",
     "replay": "playing again",
@@ -56,7 +55,6 @@ LADDER_COUNTED = {"ladder": "missing", "top-up": "short", "re-rate": "to rate ag
 # Why a game was refused, in plain words, by `refresher`'s refusal kinds.
 REFUSALS = {
     refresher.STALE_BUILD: "the game engine changed and was not compiled again",
-    refresher.FIT_NOT_REPRODUCED: "its fitted player could not be reproduced on this build",
     refresher.GATE_NEWLY_FAILED: "it passed its checks before and fails them now",
     refresher.COMMIT_MOVED: "the code changed while it was being measured",
     refresher.CHANGED_COMMITTED_FILES: "measuring it changed files kept in the repository",
@@ -207,11 +205,6 @@ def view(runs_dir: Path) -> dict[str, Any]:
             number = "no score" if index is None else f"{float(index):.4f}"
             said.append(f"Last repaired: {_game(last)}, {_work(last.get('needs'))}, "
                         f"now {number}.")
-    merged = status.get("owed_merge") or []
-    if merged:
-        said.append(f"Waiting to be merged into main from branch {refresher.BRANCH}: "
-                    + ", ".join(str(m) for m in merged) + ".")
-
     standing = [r for r in status.get("refusals") or [] if isinstance(r, Mapping)]
     refused = sorted((_refusal(r) for r in standing), key=lambda r: r["at"], reverse=True)
     raw = status.get("last_refusal")

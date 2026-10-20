@@ -27,7 +27,6 @@ one button labelled "keep", and refuses to promote what has not been tested.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from collections.abc import Mapping
@@ -36,21 +35,11 @@ from pathlib import Path
 from typing import Any
 
 from chess_variant_sandbox import history
-from chess_variant_sandbox.agents.fitted import (
-    FitError,
-    FittedObjective,
-    fit_store,
-    procedure_digest,
-    store_path,
-)
 from chess_variant_sandbox.agents.nets import STORE_DIR, rated_net
 from chess_variant_sandbox.loop.archive import Archive
 from chess_variant_sandbox.loop.screen import ROUND_BUDGET_FACTOR
 from chess_variant_sandbox.measurement import (
-    BUILTIN_PLAYER,
-    UNVERIFIED,
     Basis,
-    FitReading,
     Measurement,
     players_fingerprint,
     stale_build,
@@ -78,18 +67,6 @@ from chess_variant_sandbox.tournament.analysis import CorpusAnalysis, analyse_co
 # the runner's own, so a campaign given to `measure` was opened and ignored, and a
 # measurement killed partway replayed every game (`docs/reference/campaign-checkpoints.md`).
 from chess_variant_sandbox.tournament.checkpoint import run_tournament
-from chess_variant_sandbox.tournament.fitting import (
-    FITTED,
-    MADE_HERE,
-    REFIT,
-    REPRODUCED,
-    REPRODUCED_BEFORE,
-    Reproduction,
-    basis_gap,
-    check_fit,
-    reproduction_basis,
-    verified_cores,
-)
 
 RULESET_DIR = Path("rulesets")
 ARCHIVE_DIR = Path("archive")
@@ -102,20 +79,20 @@ RUNS_DIR = Path("runs")
 # one-off tournament, and `loop.DEFAULT_AGENTS` is smaller again because a design run
 # spends it once per generation -- so a candidate measured by either is not comparable
 # with the corpus, and saying that in code is the first half of what `test` is for.
-# The procedure, not the vector, is the player. `v9` puts the fitted objective on every
-# searching rung: one name, the same on every board, whose weight vector is derived per
-# ruleset exactly as `eval_values` already derives piece values. Stage 28 measured what
-# that buys before it was adopted -- 10 of 39 rulesets accept a fit and 6 clear the noise,
-# and on the other 33 `resolve_fit(...).weights` returns nothing and these are, agent for
-# agent, the `v8` players. `random` and `greedy` have no objective to fit: greedy scores
-# one ply of material and that is its definition.
 #
-# The digest is computed rather than written out, so a change to any fit constant moves
-# the roster, which moves every stored `Basis`, which marks every measurement stale. A
-# literal would leave the roster naming a procedure that no longer exists.
-_FITTED_BUDGETS = (100, 200, 400, 800, 1600, 6400)
+# Every searching rung is `minimax:nodes=N` on the built-in objective, the same player
+# definition on every board; `random` and `greedy` are the two rungs below search. Where
+# a learned net is rated the searching rungs play it instead (`canonical_agents`, Q502h).
+#
+# **A spy game** (schema 27, Q935d; `docs/plan-spy.md` §3.3, §3.4) is measured on this
+# roster too: `minimax` plays every phase of one (its blind rounds as `matrix:nodes=N`
+# would), and a stored objective, a net, `matrix:` and `mcts:` are refused on one. Its
+# budgets are these, not the round ladder's sixteen-fold ones: a spy game starts
+# alternating, where these are the measured rungs, and Q930's finding that its round
+# phases need 25,600 nodes to separate players is read beside the score (§3.4).
+LADDER_BUDGETS = (100, 200, 400, 800, 1600, 6400)
 CANONICAL_AGENTS = ("random", "greedy") + tuple(
-    f"minimax:fit={procedure_digest()},nodes={budget}" for budget in _FITTED_BUDGETS
+    f"minimax:nodes={budget}" for budget in LADDER_BUDGETS
 )
 CANONICAL_GAMES = 4
 CANONICAL_SEED = 0
@@ -127,24 +104,13 @@ CANONICAL_SEED = 0
 # `docs/reference/round-roster-budgets.md` §6). At the same budgets the bottom rungs were
 # greedy under other names: a round player always finishes greedy's whole one-round matrix
 # and spends nothing more when that matrix holds its budget. `loop.screen.round_roster`
-# applies the same factor, so one rule says what a budget means in rounds. No fitted
-# objective: the round players play the built-in one only, and whether they need their own
-# is read from this ladder's monotonicity (the plan's *Q918d, as built*). The stamp names
-# the roster, so a round game's score is never read as though the ladder were the
-# alternating one.
+# applies the same factor, so one rule says what a budget means in rounds. The round
+# players play the built-in objective only, and whether they need their own is read from
+# this ladder's monotonicity (the plan's *Q918d, as built*). The stamp names the roster,
+# so a round game's score is never read as though the ladder were the alternating one.
 ROUND_AGENTS = ("random", "greedy") + tuple(
-    f"matrix:nodes={budget * ROUND_BUDGET_FACTOR}" for budget in _FITTED_BUDGETS
+    f"matrix:nodes={budget * ROUND_BUDGET_FACTOR}" for budget in LADDER_BUDGETS
 )
-
-# The roster a spy game is measured on (schema 27, Q935d; `docs/plan-spy.md` §3.3, §3.4):
-# the canonical ladder's eight places and budgets, `minimax:nodes=N` on the built-in
-# objective. `minimax` plays every phase of a spy game (its blind rounds as `matrix:nodes=N`
-# would), and a stored objective, `matrix:` and `mcts:` are refused on one, so there is one
-# name per budget and no fit. The budgets are the alternating ladder's, not the round
-# ladder's sixteen-fold ones: a spy game starts alternating, where these are the measured
-# rungs, and Q930's finding that its round phases need 25,600 nodes to separate players is
-# read beside the score, not built into it (§3.4).
-SPY_AGENTS = ("random", "greedy") + tuple(f"minimax:nodes={budget}" for budget in _FITTED_BUDGETS)
 
 # Where the measuring roster reads a game's learned net from (Q502h). Relative, as
 # `RUNS_DIR` is: every command runs from a checkout's root, and the box serves from its.
@@ -155,18 +121,19 @@ def canonical_agents(
     digest: str, nets_dir: Path | None = None, spec: dict[str, Any] | None = None
 ) -> tuple[str, ...]:
     """The roster this game's committed score means: `CANONICAL_AGENTS`, its net ladder,
-    for a game played in rounds `ROUND_AGENTS`, or for a spy game `SPY_AGENTS`.
+    or for a game played in rounds `ROUND_AGENTS`.
 
     **A game in rounds** is known by its spec (``rules.simultaneous``), so a caller holding
     one passes it; without it the alternating roster is named, which matches no round
     game's stamp and so reads stale, the safe direction (`current_basis` says the same of
-    the tables). **A spy game** (schema 27, ``pieces[].spy``) is one too, by its spec, and
-    is asked first: it declares ``rules.simultaneous`` but starts alternating.
+    the tables). **A spy game** (schema 27, ``pieces[].spy``) is known by its spec too, and
+    is asked first: it declares ``rules.simultaneous`` but starts alternating, so it takes
+    `CANONICAL_AGENTS` and never a net.
 
     **Where a learned net is rated** (`nets.rated_net`: kept, or accepted and confirmed
     where no generation line runs), every searching rung plays that net at the same
-    budget, `minimax:net=<procedure>,nodes=N` for N of `_FITTED_BUDGETS`, in place of the
-    fitted objective; `random` and `greedy` are unchanged. The user's answers: the
+    budget, `minimax:net=<procedure>,nodes=N` for N of `LADDER_BUDGETS`, in place of the
+    built-in objective; `random` and `greedy` are unchanged. The user's answers: the
     measuring players *"become smarter where they are trained"* (2026-09-28) and each kept
     generation joins the measuring set at once (2026-10-03, `docs/archive/decisions.md`).
     The whole ladder moves, not one rung, because every skill component asks whether
@@ -179,20 +146,16 @@ def canonical_agents(
     moment its store lands, and the refresher replays it (`docs/archive/plan-evolving-score.md` §6.4).
     """
     if spec is not None and plays_with_spies(spec):
-        return SPY_AGENTS
+        return CANONICAL_AGENTS
     if spec is not None and plays_in_rounds(spec):
         return ROUND_AGENTS
     procedure = rated_net(digest, NETS_DIR if nets_dir is None else nets_dir)
     if not procedure:
         return CANONICAL_AGENTS
     return ("random", "greedy") + tuple(
-        f"minimax:net={procedure},nodes={budget}" for budget in _FITTED_BUDGETS
+        f"minimax:net={procedure},nodes={budget}" for budget in LADDER_BUDGETS
     )
 
-
-def fits_its_roster(agents: tuple[str, ...]) -> bool:
-    """Whether any player of this roster plays the fitted objective (none on a net ladder)."""
-    return any("fit=" in agent for agent in agents)
 
 # The seeds a library game is measured on, and the seeds everything else is. A run is a
 # tournament from one seed, and `docs/reference/run-to-run-spread.md` measured that four
@@ -423,73 +386,6 @@ def run_dir(digest: str, seed: int = CANONICAL_SEED, runs_dir: Path = RUNS_DIR) 
     return Path(runs_dir) / f"{digest}-{seed}"
 
 
-FIT_GAMES_DIR = "fit-games"
-"""Under `runs/`: each library fit's kept games, `<hash>-<procedure>/` (C6, `fit_games_dir`)."""
-
-
-def fit_games_dir(digest: str, runs_dir: Path = RUNS_DIR) -> Path:
-    """Where a fit check keeps the games it played for this ruleset's store (C6).
-
-    Beside the measurements in `runs/`, which git ignores, rather than beside the store in
-    `fitted/`, which it does not: they are the evidence a later re-certification samples
-    one in eight of (`adopt.recertify_fit`), not part of the player.
-    """
-    return Path(runs_dir) / FIT_GAMES_DIR / f"{digest}-{procedure_digest()}"
-
-
-def player_digest(fit: FittedObjective) -> str:
-    """Which objective this store makes the roster play, as `Basis.fit` records it (Q80c).
-
-    `builtin` for a refused or empty fit, since the agent then plays the built-in
-    objective whatever the vector says; otherwise `fit:` and twelve hex digits over the
-    procedure and the vector. The score, the samples, the loss and the core stay out: they
-    do not change the player, so a refused vector that drifts, or an accepted one whose
-    score moves, moves nothing.
-    """
-    if not fit.weights:
-        return BUILTIN_PLAYER
-    canonical = json.dumps(
-        {"procedure": fit.procedure, "vector": list(fit.vector)},
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return "fit:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
-
-
-def fit_reading(
-    digest: str,
-    store: str | Path | None = None,
-    spec: dict[str, Any] | None = None,
-) -> FitReading | None:
-    """This ruleset's fit store as the basis taken now needs it, or ``None`` if it has none.
-
-    The store under today's procedure and the cores it is verified on: those its sidecar
-    records it made or reproduced under, with this game's tables, players and runner as
-    they are now (`fitting.verified_cores`, Q892). Needs only the hash to find the store,
-    so a reader holding no spec still gets an answer; without ``spec`` the tables cannot
-    be compared and it is verified nowhere, the direction `current_basis` takes. A store this procedure cannot read is read as none, as
-    `fitted.load_all` skips one: it is not a verdict anything would play.
-    """
-    root = fit_store() if store is None else store
-    path = store_path(digest, procedure_digest(), root)
-    if not path.exists():
-        return None
-    try:
-        fit = FittedObjective.load(path)
-    except (FitError, OSError, ValueError, KeyError):
-        return None
-    recorded, differs = (
-        (True, ()) if spec is None else basis_gap(fit, root, reproduction_basis(spec))
-    )
-    return FitReading(
-        player=player_digest(fit),
-        made_on=fit.build,
-        verified_on=verified_cores(fit, root, spec),
-        recorded=recorded,
-        differs=differs,
-    )
-
-
 def current_basis(
     digest: str,
     weights: str = DEFAULT_WEIGHTS,
@@ -515,14 +411,6 @@ def current_basis(
     No spec is looked up here. `read_measurement` is where a bare hash is resolved into
     a spec, because that is where the directories to search in are already arguments.
 
-    **The one thing read from disk is the fit store** (Q80c), by hash alone, because
-    which objective the roster's fitted rungs play is decided by it and nothing else:
-    `fitted/<hash>-<procedure>.json` and the cores its sidecar says it was made or
-    reproduced on under this spec's tables, players and runner (Q892). A ruleset with no
-    store records no fit, and the check is skipped. **Nor does a roster that plays no
-    fitted objective** (a game whose net is rated, Q502h): its fit store decides no
-    player, so a refit there would stale a score for a player nobody sat down.
-
     **The roster is this game's** (`canonical_agents`, Q502h), read from `nets/`.
     """
     agents = canonical_agents(digest, spec=spec)
@@ -535,7 +423,6 @@ def current_basis(
         tables=tables_fingerprint(spec) if spec is not None else "",
         verdict_rule=VERDICT_RULE,
         known_seed_sets=KNOWN_SEED_SETS,
-        fit=fit_reading(digest, spec=spec) if fits_its_roster(agents) else None,
         # What the runner would hand the core (Q631); `""`, *cannot say*, without a spec.
         players=players_fingerprint(spec, agents) if spec is not None else "",
     )
@@ -603,7 +490,7 @@ class ScoringStatus:
     name: str
     stage: str
     state: str  # current | stale | absent
-    needs: str  # "" | refit | rescore | reanalyse | replay
+    needs: str  # "" | rescore | reanalyse | replay
     reason: str
     index: float | None = None
     sd: float | None = None
@@ -788,21 +675,16 @@ def _measure_seeds(
     work: dict[int, str],
     totals: dict[int, float | None] | None = None,
     adopt_from: Path | None = None,
-    fitted: bool = False,
     carry: Basis | None = None,
 ) -> Measurement:
     """Bring every run of one game to the state `work` asks for, then write its file.
 
-    One fit, then the seeds in ascending order, then one write. That shape is the whole
-    of what several seeds cost beyond one: the fit is a property of the spec and costs a
-    minute or two, so paying it per run would nearly double a four-run measurement for
-    four identical answers.
+    The seeds in ascending order, then one write.
 
     ``work`` maps each seed to what it owes -- ``replay``, ``reanalyse``, ``rescore`` or
     ``""`` for a run that is read as it stands. ``totals`` is what the stored measurement
     said each run scored, which is how a run read as it stands is checked against the file
-    that named it. ``fitted`` says `refresh` has already made the fit this core's answer,
-    so it is not checked a second time.
+    that named it.
 
     **A certificate is carried, never dropped short of a full replay** (C6). Where the
     stored stamp was re-certified from a sample and some run it names is not played again
@@ -825,15 +707,8 @@ def _measure_seeds(
         if behind is not None:
             raise CorpusError(behind)
 
-    # A net ladder plays no fitted objective (Q502h), so its fit is no part of the basis.
-    if (plays or adopt_from is not None) and not fitted and fits_its_roster(
-        canonical_agents(candidate.hash, spec=candidate.spec)
-    ):
-        _fit_once(candidate, workers, say, runs_dir)
-
-    # The score's history (Q649, `docs/archive/plan-confidence.md` §3.2 step 3). After the fit,
-    # because the fit decides the basis this write will stamp, and before any run is
-    # touched: a measurement under another basis is kept whole under `previous/<n>/`, its
+    # The score's history (Q649, `docs/archive/plan-confidence.md` §3.2 step 3). Before any
+    # run is touched: a measurement under another basis is kept whole under `previous/<n>/`, its
     # runs that are played again moved and the rest copied. Its ledger line is written
     # once the new file is, so a measurement that fails half way leaves no line.
     outgoing = read_measurement(
@@ -979,73 +854,6 @@ def judge_convergence(
         ).said
     except (CorpusError, OSError, ValueError, KeyError, WeightsError) as error:
         return f"{convergence.NO_VERDICT}: {error}"
-
-
-def _fit_once(
-    candidate: Candidate, workers: int, say: Any, runs_dir: Path | None = None
-) -> Reproduction:
-    """The ruleset's fitted objective, made this core's answer once for every run of it.
-
-    The roster carries `fit=`, and `resolve_fit` refuses to default: a game played by a
-    fitted agent is reproducible only with its store in hand. So the fit is part of
-    measuring a candidate, not a thing somebody has to remember to run first. It is
-    deterministic in the spec, it costs a minute or two against the tournament's several,
-    and a candidate whose fit is refused plays the built-in objective -- which is most of
-    the committed rulesets.
-
-    **Checked, not reused** (Q80d). `check_fit` plays nothing for a store made or already
-    reproduced on the loaded core, and re-derives any other: a replay stamps the loaded
-    core, so the fit its roster plays has to be that core's answer, or the stamp would
-    read `stale (refit)` the moment it was written. What the check found goes through
-    `say`, so it is in `measure`'s report and not only on stderr.
-
-    With ``runs_dir``, a check that plays keeps its games under `fit_games_dir` (C6), so
-    the next re-certification on another core samples them rather than refitting.
-    """
-    say("fitting this ruleset's objective")
-    found = (
-        check_fit(candidate.spec, workers=workers)
-        if runs_dir is None
-        else check_fit(
-            candidate.spec, workers=workers, keep=fit_games_dir(candidate.hash, runs_dir)
-        )
-    )
-    verdict = found.fit
-    say(f"  {_checked(found)}")
-    say(
-        f"  {'accepted' if verdict.accepted else 'refused'} at "
-        f"{verdict.accept_score:.4f}; "
-        f"{'the fitted' if verdict.accepted else 'the built-in'} objective plays"
-    )
-    return found
-
-
-def _checked(found: Reproduction) -> str:
-    """What `check_fit` did, in one line for `measure`'s report."""
-    core = found.core
-    if found.outcome == MADE_HERE:
-        return f"the stored fit was made on this core ({core}); nothing played"
-    if found.outcome == REPRODUCED_BEFORE:
-        return f"the stored fit was already reproduced on this core ({core}); nothing played"
-    if found.outcome == REPRODUCED:
-        return (
-            f"the stored fit reproduces on core {core} (made on "
-            f"{found.stored.build if found.stored else '?'}); the store stands"
-        )
-    if found.outcome == REFIT:
-        return (
-            f"the stored fit does not reproduce on core {core} "
-            f"({'; '.join(found.failures)}); the new fit replaces it"
-            + ("" if _same_player(found) else ", and the roster's player changed")
-        )
-    return f"no fit was stored; this core's ({core}) is stored now"
-
-
-def _same_player(found: Reproduction) -> bool:
-    """Whether the check left the roster playing the objective it played before it."""
-    if found.outcome == FITTED or found.stored is None:
-        return False
-    return player_digest(found.stored) == player_digest(found.fit)
 
 
 def _adopt_seed(
@@ -1493,14 +1301,6 @@ def refresh(
     * **`replay`** -- the tournament is about a match nobody would play now, so all three
       passes run again.
 
-    And a fourth repair that runs *before* those and implies none of them (Q80d):
-
-    * **`refit`** -- the fit the roster resolves to was neither made nor reproduced on the
-      loaded core (`Staleness.refit`). `check_fit` re-derives it; the staleness is read
-      again, and what is still owed is done: nothing when the player is unchanged, a
-      replay of this game's own seeds when it changed, and whatever else was owed
-      already, now playing a fit this core vouches for.
-
     The middle cases rest on the invariant the whole project rests on: `metrics` reads
     persisted records and never a live engine, so the games do not have to be played
     again to be scored again -- and the analysis pass reads the same records, so they do
@@ -1552,46 +1352,16 @@ def refresh(
     if stored is not None:
         say(f"{candidate.name}: {stored.staleness.summary()}")
 
-    # The fourth repair, first (Q80d). A fit this core has not re-derived is checked
-    # before anything is played, and the staleness is read again: a fit that reproduces,
-    # or whose refit leaves the player unchanged, owes nothing more, and one whose player
-    # changed owes its own seeds' replay.
-    fitted = False
-    player_changed = False
-    if stored is not None and stored.staleness.refit and not force:
-        found = _fit_once(candidate, workers, say, runs_dir)
-        fitted = True
-        # A stamp that records no fit is read through the store, and the store is now the
-        # new fit, so for it the check itself is what says the old player is gone. A stamp
-        # that records one is compared by the re-read below.
-        silent = stored.basis is not None and not stored.basis.fit
-        player_changed = silent and not _same_player(found)
-        reread = read_measurement(
-            candidate.hash, runs_dir, weights, candidate.spec, expected
-        )
-        if reread is not None:
-            stored = reread
-        if stored.current and not player_changed:
-            say(f"{candidate.name}: current, its fit re-derived on this core")
-            return stored
-        if not stored.current:
-            say(f"{candidate.name}: {stored.staleness.summary()}")
-
     covered = sorted(set(expected) | set(held))
     if force or stored is None:
         work = {seed: "replay" for seed in covered}
     else:
         owed = stored.staleness.stored_needs
-        if player_changed:
-            say("  the roster's player changed, so the runs it played are played again")
-            owed = "replay"
-        # Paid above; nothing is owed for it per run.
-        owed = "" if owed == "refit" else owed
         work = {seed: ("replay" if seed not in held else owed) for seed in covered}
 
     return _measure_seeds(
         candidate, runs_dir, weights, workers, report, work,
-        totals=totals, adopt_from=adopt_from, fitted=fitted,
+        totals=totals, adopt_from=adopt_from,
     )
 
 
@@ -1603,7 +1373,6 @@ def _carried(now: Basis, carry: Basis) -> Basis:
         tables=carry.tables,
         players=carry.players,
         agents_source=carry.agents_source,
-        fit=carry.fit,
         certified=carry.certified,
     )
 
@@ -1628,16 +1397,11 @@ def recertify(
     1. **Only a replay is replaced.** A current file, one that owes a re-score or less, and
        one a sample cannot speak for (another roster, net, seed set or ruleset:
        `Basis.certifiable`) go to `refresh` as they always did.
-    2. **The fit, one game in eight**, where the roster plays a fit the loaded core has not
-       verified: `adopt.recertify_fit` over the games its last check kept
-       (`fit_games_dir`). Where none are kept, or the sample differs, the exact check
-       runs (`check_fit`), keeping its games for the next time; a check that changes the
-       player sends the whole game to its replay.
-    3. **Every run, by a sample** (`adopt.recertify_run`, `RECERTIFY_PER_AGENT` games with
+    2. **Every run, by a sample** (`adopt.recertify_run`, `RECERTIFY_PER_AGENT` games with
        each agent first, six blunder trials), in place. A run the sample refuses is
        played again in full, as adopt replayed xiangqi's three; a game none of whose runs
        holds is replayed as `refresh` would.
-    4. **The stamp.** The stored stamp keeps what played the games and gains the
+    3. **The stamp.** The stored stamp keeps what played the games and gains the
        certificate; whatever else it owes (a re-score, a missing seed, the refused runs) is
        then paid by `_measure_seeds`, which carries the certificate through. Where nothing
        else is owed, the file is re-stamped and its numbers are not touched.
@@ -1656,7 +1420,7 @@ def recertify(
     if stored.current:
         say(f"{candidate.name}: already current")
         return stored
-    if stored.staleness.stored_needs not in ("replay", "refit"):
+    if stored.staleness.stored_needs != "replay":
         say(f"{candidate.name}: owes no replay, so there is nothing for a sample to save")
         return refresh(candidate, runs_dir, weights, workers, report)
 
@@ -1673,12 +1437,6 @@ def recertify(
     say("  re-certifying from a sample instead of replaying")
 
     agents = canonical_agents(candidate.hash, spec=candidate.spec)
-    if fits_its_roster(agents) and now.fit == UNVERIFIED:
-        if not _recertify_fit(candidate, runs_dir, workers, say):
-            say("  the roster's player changed, so its games are played again")
-            return refresh(candidate, runs_dir, weights, workers, report)
-        now = current_basis(candidate.hash, weights, candidate.spec, expected)
-
     checks = [
         adopt.recertify_run(
             candidate.spec, seed, run_dir(candidate.hash, seed, runs_dir),
@@ -1706,8 +1464,7 @@ def recertify(
     owed = certified.stale_against(now)
     say(f"  {sample} of {games} games replayed exactly; "
         f"{owed.summary() or 'nothing more is owed'}")
-    each = "" if owed.stored_needs == "refit" else owed.stored_needs
-    work = {seed: ("replay" if seed in refused else each) for seed in stored.basis.seeds}
+    work = {seed: ("replay" if seed in refused else owed.stored_needs) for seed in stored.basis.seeds}
     for seed in owed.missing_seeds:
         work[seed] = "replay"
     if not any(work.values()):
@@ -1719,26 +1476,8 @@ def recertify(
     }
     return _measure_seeds(
         candidate, runs_dir, weights, workers, report, work,
-        totals=totals, fitted=True, carry=certified,
+        totals=totals, carry=certified,
     )
-
-
-def _recertify_fit(candidate: Candidate, runs_dir: Path, workers: int, say: Any) -> bool:
-    """The fit, re-certified by a sample or checked in full; False if its player changed."""
-    from chess_variant_sandbox.agents.fitted import load_fit
-    from chess_variant_sandbox.tournament import adopt
-
-    store = load_fit(candidate.hash, procedure_digest(), fit_store())
-    if store is not None:
-        reason = adopt.recertify_fit(
-            candidate.spec, store, fit_games_dir(candidate.hash, runs_dir), workers, say
-        )
-        if not reason:
-            say("  the fit: re-certified by one in eight of its games")
-            return True
-        say(f"  the fit: {reason}, so it is checked in full")
-    found = _fit_once(candidate, workers, say, runs_dir)
-    return store is not None and player_digest(found.fit) == player_digest(store)
 
 
 def _restamp(stored: Measurement, basis: Basis, now: Basis, say: Any) -> Measurement:
@@ -1769,13 +1508,12 @@ def poolable(
     """Whether `refresh` would only re-score or re-analyse games already on disk.
 
     What `measure` asks before it sends a game through a process pool (R7 of
-    `docs/reference/perf-survey-2026-09.md`). Such a game plays nothing, fits nothing and
-    writes only its own directories, so games like it can run side by side; one that owes a
+    `docs/reference/perf-survey-2026-09.md`). Such a game plays nothing and writes only its own directories, so games like it can run side by side; one that owes a
     tournament already uses every core and runs alone, as does anything this cannot vouch
     for. It reads what `refresh` reads and decides nothing for it: the worker calls
     `refresh` itself, so a pooled game takes the serial path's every step.
 
-    Conservative on purpose. A refit, a missing seed, a run whose games are gone, or a
+    Conservative on purpose. A missing seed, a run whose games are gone, or a
     stamp that cannot be read all say no, and the game is repaired serially as before.
     """
     expected = tuple(sorted(seeds)) if seeds else expected_seeds(candidate.stage)
@@ -1785,7 +1523,7 @@ def poolable(
     if stored is None or stored.current or stored.basis is None:
         return False
     staleness = stored.staleness
-    if staleness.refit or staleness.missing_seeds:
+    if staleness.missing_seeds:
         return False
     if staleness.stored_needs not in ("rescore", "reanalyse"):
         return False

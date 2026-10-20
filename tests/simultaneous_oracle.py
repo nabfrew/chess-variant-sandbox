@@ -3,9 +3,9 @@
 `docs/archive/plan-simultaneous.md` §6.1: resolution is checked by this oracle alone. It resolves
 one round from the compiled tables and the two move words, in the plan's order (§2, §4),
 and returns the position the core's `make_round` must reach -- board, hands, colouring,
-tally, rights, clocks, the initiative, the void run, the bars and (schema 27, Q942a) the
-rested squares; schema 27's swap meeting is resolved here too, and `legal_for` filters a
-player's moves by the rest. Schema 28 (Q943a, `docs/plan-speed.md` §2.4, §4.2): a round
+tally, rights, clocks, the initiative, the void run, the bars and the resting pieces (schema
+29's `pieces[].rest`, by `tests/rest_oracle.py`, the rest's own oracle); schema 27's swap
+meeting is resolved here too, and `legal_for` filters a player's moves by the rest. Schema 28 (Q943a, `docs/plan-speed.md` §2.4, §4.2): a round
 between unequal speeds is two moves in order, each through the same step, the faster first,
 the endings read between them, and the slower made, void or lost. CLAUDE.md rule 3 allows
 it: it is a declared test oracle. It asks the engine only questions the engine's own tests
@@ -34,6 +34,7 @@ from chess_variant_sandbox.engine.moves import (
     decode_move,
 )
 from chess_variant_sandbox.engine.state import GameState
+from tests.rest_oracle import after_turn, as_rest, legal, lists_of
 
 NO_PAIR = (-1, -1)
 
@@ -99,23 +100,11 @@ def _standoff_after(state: GameState, void: list[bool], origins: list[int | None
 
 
 def legal_for(engine: Engine, state: GameState, player: int) -> list[int]:
-    """Schema 27 (Q942a, `docs/archive/plan-round-chase.md` §3 R1): `player`'s moves under the rest.
-
-    The core's moves on the same board with nothing resting, less the rested piece's,
-    unless that would leave none (the lift); in the core's order. Without `rest` the
-    position's rest is `(-1, -1)` and this is the core's list.
-    """
-    unrested = engine.legal_moves_for(state.with_(rest=NO_PAIR), player)
-    rested = state.rest[player]
-    if rested < 0:
-        return unrested
-
-    def from_rested(move: int) -> bool:
-        origin, _, kind, _ = decode_move(move)
-        return kind != MOVE_DROP and origin == rested
-
-    kept = [move for move in unrested if not from_rested(move)]
-    return kept if kept else unrested
+    """`player`'s moves in a round under the rest (schema 29, `docs/plan-rest.md` §3.7; schema
+    27's round rest before it): `tests/rest_oracle.py::legal`, the moves with nothing resting
+    less the resting pieces', unless that would leave none (the lift). Without a rest the
+    position rests nothing and this is the core's list."""
+    return legal(engine, state, player)
 
 
 def offered(engine: Engine, state: GameState, player: int, move: int) -> bool:
@@ -508,20 +497,17 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
             touched.update((origin, target))
             flags["material"] |= eaten != 0
 
-    # Schema 27 (Q942a, R1): each moved piece rests where it ended the round (its origin if
-    # it stood, turned or was void), while that square holds its player's piece; a slower
-    # move lost or unplayed rests nothing (schema 28).
+    # Schema 29 (Q983a, `pieces[].rest`): a round is a turn of each player, so each
+    # player's rests count down, and each moved piece rests where it ended the round (its
+    # origin if it stood, turned or was void), while that square holds its player's piece; a
+    # slower move lost or unplayed rests nothing (schema 28). `tests/rest_oracle.py`.
     rest = state.rest
-    if sim.rest:
-        ends = []
+    if spec.rest:
+        lists = lists_of(state)
         for i in (0, 1):
-            end = plans[i]["target"] if arriving[i] else plans[i]["origin"]
-            ok = (
-                not gone[i] and end is not None and board[end] != 0
-                and spec.owner_of(board[end]) == i
-            )
-            ends.append(end if ok else -1)
-        rest = (ends[0], ends[1])
+            end = None if gone[i] else plans[i]["target"] if arriving[i] else plans[i]["origin"]
+            lists = after_turn(engine, lists, bytes(board), i, end)
+        rest = as_rest(lists)
 
     # Step 9: the void run and the bars.
     run, bars, _ = _standoff_after(state, void, [plans[0]["origin"], plans[1]["origin"]], touched)

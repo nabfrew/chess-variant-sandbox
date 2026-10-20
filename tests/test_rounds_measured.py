@@ -316,7 +316,6 @@ class TestTheRoundRoster:
         assert round_roster(
             ("random", "greedy") + tuple(f"minimax:nodes={b}" for b in budgets)
         ) == corpus.ROUND_AGENTS
-        assert not corpus.fits_its_roster(corpus.ROUND_AGENTS)
 
     def test_an_alternating_game_keeps_its_roster(self) -> None:
         spec = load_spec(ROOT / "rulesets" / "gardner.json")

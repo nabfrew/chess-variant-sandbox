@@ -264,16 +264,24 @@ class TestThePhases:
         )
         assert quiet.initiative == 1
 
-    def test_e11_the_first_round_starts_with_nothing_resting(self) -> None:
+    def test_an_alternating_turn_rests_the_piece_that_made_it(self) -> None:
+        """Schema 29 (Q983a, `docs/plan-rest.md` §3.10): one rest in every phase, so an
+        alternating or reply turn rests its piece as a round does (`plan-spy.md` E11, *an
+        alternating turn rests nothing*, is superseded), and the count runs into the rounds."""
         engine = _engine("_spy_resting")
+        c4 = engine._square_index("c4")
         state = _position(engine, {"a1": "K", "a4": "R", "c2": "S"}, {"d5": "K", "c4": "S"})
         state = engine.apply(state, _move(engine, state, "a4", "c4"))
+        assert state.rest == (((c4, 1),), ())
         state = engine.apply(state, _move(engine, state, "d5", "c4"))
-        assert state.rest == (-1, -1)
-        # The king that made the reply may move again in round 1.
+        # The rook was taken where it rested, so its rest ended; the king that replied rests.
+        assert state.rest == ((), ((c4, 1),))
+        # Round 1: the king is all Black has, so its rest is lifted and it may move.
         king = _move(engine, state, "c4", "c5", player=1)
         after = engine.apply_round(state, _move(engine, state, "a1", "a2", player=0), king)
-        assert after.rest == (engine._square_index("a2"), engine._square_index("c5"))
+        assert after.rest == (
+            ((engine._square_index("a2"), 1),), ((engine._square_index("c5"), 1),)
+        )
 
     def test_e12_a_reply_turn_ends_as_any_turn_and_a_round_as_any_round(self) -> None:
         engine = _engine("_spy_small")

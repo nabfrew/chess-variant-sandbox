@@ -1,5 +1,5 @@
 {
-  "schema_version": 27,
+  "schema_version": 29,
   "board": {
     "width": 5,
     "height": 5
@@ -26,7 +26,8 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "R",
@@ -44,7 +45,8 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "N",
@@ -62,7 +64,8 @@
           "symmetry": "dihedral8",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "P",
@@ -91,7 +94,8 @@
           "symmetry": "lateral",
           "mode": "capture"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "S",
@@ -111,7 +115,8 @@
           "symmetry": "rotate4",
           "mode": "move"
         }
-      ]
+      ],
+      "rest": 1
     }
   ],
   "setup": {
@@ -169,7 +174,6 @@
     "repetition_draw": 3,
     "no_progress_draw": 60,
     "simultaneous": {
-      "rest": true,
       "tie": "initiative"
     }
   },

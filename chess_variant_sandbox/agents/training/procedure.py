@@ -3,7 +3,7 @@
 A procedure is every choice that decides which net comes out, given a ruleset and a core:
 who plays the self-play games and how many, which positions become samples and how they
 are labelled, the network's widths, and the optimiser's schedule and seed. Its digest is
-the ``net=`` name, the same string on every board, exactly as ``fit=`` names a fitting
+the ``net=`` name, the same string on every board, exactly as ``values=`` names a search
 procedure (``learned-evaluator.md`` §1). Two procedures that differ in anything differ in
 name.
 

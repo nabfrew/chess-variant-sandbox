@@ -34,10 +34,8 @@ import site_store
 from chess_variant_sandbox import corpus, measurement
 from chess_variant_sandbox.measurement import (
     BROWSER,
-    BUILTIN_PLAYER,
     LEGAL,
     Basis,
-    FitReading,
     sample_check,
 )
 from chess_variant_sandbox.site import admin, awards, browse, db, provisional
@@ -71,10 +69,8 @@ def _now(spec: dict[str, Any] | None = None) -> Basis:
 
 
 def _sent(basis: Basis) -> dict[str, Any]:
-    """What a browser sends for this basis: played in a browser, saying which objective its
-    fitted rungs played (Q468). No fit store is read under test, so the server's basis
-    records none and the built-in objective stands in for the browser's own fit."""
-    return replace(basis, fit=basis.fit or BUILTIN_PLAYER).in_browser().as_dict()
+    """What a browser sends for this basis: the same stamp, played in a browser."""
+    return basis.in_browser().as_dict()
 
 
 def _one_run(digest: str, spec: Any) -> Basis | None:
@@ -196,37 +192,6 @@ class TestTheRefusalByFingerprint:
         for reason, stamp in cases.items():
             said = provisional.refusal(_sent(stamp), now)
             assert said is not None and reason in said, (reason, said)
-
-    def test_the_fit_is_compared_as_every_other_field_is(self) -> None:
-        """Q468. A browser's stamp says which objective played, and a different one is
-        refused with both named: against the store where the game has one, and against
-        the server's own regression (`refitted`) where it does not."""
-        told_nothing = _now()
-        assert told_nothing.fit == "" and told_nothing.fit_reading is None
-        mine, other = "fit:aaaaaaaaaaaa", "fit:0123456789ab"
-        core = told_nothing.engine.rpartition("-")[2]
-        stored = replace(
-            told_nothing,
-            fit=mine,
-            fit_reading=FitReading(player=mine, made_on=core, verified_on=frozenset({core})),
-        )
-        derived = provisional.refitted(told_nothing, mine)
-        assert derived == stored and derived.fit_reading == stored.fit_reading
-        for server in (stored, derived):
-            assert provisional.refusal(_sent(server), server) is None
-            said = provisional.refusal(_sent(replace(server, fit=other)), server)
-            assert said is not None
-            assert f"it played the fitted objective {other}" in said
-            assert f"the fitted objective {mine} plays now" in said
-        # With no store and no regression yet, nothing says what the server would play.
-        assert provisional.refusal(_sent(replace(told_nothing, fit=other)), told_nothing) is None
-
-        silent = replace(stored, fit="").in_browser().as_dict()
-        assert "fit" not in silent
-        for server in (stored, told_nothing):
-            assert "which objective its fitted players played" in str(
-                provisional.refusal(silent, server)
-            )
 
     def test_a_stamp_that_cannot_vouch_for_itself_is_refused(self) -> None:
         now = _now()

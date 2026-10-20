@@ -33,17 +33,15 @@ page, and nothing reads it as a gate.
 set, and no score's `Basis` names it.
 
 **Its own basis.** `runs/<hash>/premise.json`, beside `canonical.json`, stamped with a
-`PremiseBasis`: who played (the top rung's spelling, the core, the tables, the fit store's
-player, the nets), the rule by value, this check's own code, and Fairy-Stockfish's
-identity. A mismatch is *stale*, with a reason, never a verdict. A failing verdict that has
+`PremiseBasis`: who played (the top rung's spelling, the core, the tables, the nets), the
+rule by value, this check's own code, and Fairy-Stockfish's identity. A mismatch is *stale*, with a reason, never a verdict. A failing verdict that has
 gone stale keeps its mark (`Premise.marked`): a stale fail is not a pass.
 
 **Whose top rung.** The game's own measuring roster, `corpus.canonical_agents(hash)` (Q912):
 `CANONICAL_AGENTS` to the letter where no learned net is rated, and the net ladder
 (`minimax:net=<procedure>,nodes=N`, Q502h) where one is, so the check is played by the
-player that scores the game. A newly rated net moves that game's top rung, its `net` and
-its `fit` (a net ladder plays no fitted objective), which stales that game's verdict and no
-other's; the re-check is then played by the net.
+player that scores the game. A newly rated net moves that game's top rung and its `net`,
+which stales that game's verdict and no other's; the re-check is then played by the net.
 """
 
 from __future__ import annotations
@@ -205,7 +203,7 @@ def _fairy_plays(spec: dict[str, Any]) -> str:
 class PremiseBasis:
     """Everything a premise verdict depends on. Compared field by field.
 
-    The player fields (`engine`, `tables`, `fit`, `net`) are taken from `Basis.current`,
+    The player fields (`engine`, `tables`, `net`) are taken from `Basis.current`,
     the score's own, so the verdict is about the players the score was played by and
     stales with them. `fairy_code` is `""` where the game has no Fairy-Stockfish
     counterpart; `fairy_engine` is `""` there too, `FAIRY_ABSENT` where it translates and
@@ -216,7 +214,6 @@ class PremiseBasis:
     player: str
     engine: str
     tables: str
-    fit: str
     net: str
     rule: str
     code: str
@@ -235,8 +232,7 @@ class PremiseBasis:
         tables and reads stale, as `corpus.current_basis` does.
 
         ``agents`` ``None`` is the game's own measuring roster (`corpus.canonical_agents`,
-        read off `nets/` as the score's is), and the fit is read only where that roster
-        plays one (`corpus.fits_its_roster`), the score's rule exactly (Q912)."""
+        read off `nets/` as the score's is), the score's rule exactly (Q912)."""
         from chess_variant_sandbox import corpus
 
         roster = tuple(corpus.canonical_agents(digest, spec=spec) if agents is None else agents)
@@ -247,7 +243,6 @@ class PremiseBasis:
             games_per_pairing=0,
             seeds=(),
             tables=tables_fingerprint(spec) if spec is not None else "",
-            fit=corpus.fit_reading(digest, spec=spec) if corpus.fits_its_roster(roster) else None,
         )
         translates = spec is not None and _fairy_translates(spec)
         return cls(
@@ -257,7 +252,6 @@ class PremiseBasis:
             # premise check is not read through `Basis.players`.
             engine=f"{score.engine}+{score.agents_source}",
             tables=score.tables,
-            fit=score.fit,
             net=score.net,
             rule=rule.spelled(),
             code=code_fingerprint(*PREMISE_SOURCES),
@@ -271,7 +265,6 @@ class PremiseBasis:
             "player": self.player,
             "engine": self.engine,
             "tables": self.tables,
-            "fit": self.fit,
             "net": self.net,
             "rule": self.rule,
             "code": self.code,
@@ -286,7 +279,7 @@ class PremiseBasis:
             return None
         try:
             return cls(**{key: str(data[key]) for key in (
-                "ruleset_hash", "player", "engine", "tables", "fit", "net", "rule",
+                "ruleset_hash", "player", "engine", "tables", "net", "rule",
                 "code", "fairy_code", "fairy_engine",
             )})
         except (KeyError, TypeError):
@@ -305,10 +298,6 @@ class PremiseBasis:
             reasons.append("the core, the agents or the game loop changed since it was checked")
         if self.tables != current.tables:
             reasons.append("this game compiles to different tables than it was checked on")
-        if self.fit != current.fit:
-            reasons.append(
-                f"its players' fit was {self.fit or 'none'}, and is {current.fit or 'none'} now"
-            )
         if self.net != current.net:
             reasons.append(
                 f"its nets were {self.net or 'none'}, and are {current.net or 'none'} now"

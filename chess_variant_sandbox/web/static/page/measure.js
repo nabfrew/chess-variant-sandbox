@@ -26,8 +26,6 @@ let HERE_POLL = 2000;
 // What each step is, in words. The keys are the gathering half's step names.
 const HERE_STEPS = {
   loading: 'loading the engine into this browser',
-  fit: 'playing the games its own opponent learns from',
-  accept: 'playing that opponent against the ordinary one',
   tournament: 'playing the tournament',
   reading: 'reading every game back',
   gathering: 'putting the pieces together',

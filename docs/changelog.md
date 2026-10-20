@@ -11,6 +11,14 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-21
+
+### Rest for each kind of piece, and a stronger opponent in rounds
+
+How long a piece must wait after it moves is now set for each kind of piece, in any game, whether players take turns or
+move at once. The hardest computer player in games played in rounds is much stronger. Every score was measured again
+for these changes: some games moved, both watering holes now end too quickly to count as viable, and courier rose.
+
 ## 2026-10-20
 
 ### Make a game played in rounds in one step

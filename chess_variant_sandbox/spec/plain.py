@@ -430,12 +430,8 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "Impossible: a promise, checked, that no two pieces that can meet ever tie, because "
         "the two armies are different pieces in a ring of who beats whom.",
     ),
-    # Schema 27 (Q942a): the switches against a royal chased round after round.
-    "rules.simultaneous.rest": (
-        "a piece that moved rests",
-        "The piece that made a player's move may not make it again the next round, unless it "
-        "is the only one that can move: a piece cannot run or strike two rounds running.",
-    ),
+    # Schema 27 (Q942a): the switches against a royal chased round after round (the third,
+    # the round's rest, is schema 29's `pieces.rest`).
     "rules.simultaneous.swap": (
         "two pieces swapping squares",
         "Collision: two pieces that each move onto the other's square meet as if they had "
@@ -460,6 +456,14 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "moves first, in the open, and the other answers knowing it. Once neither has one, "
         "both choose in secret. A spy game must be played in rounds, and a lost spy never "
         "comes back.",
+    ),
+    # Schema 29 (Q983a): rest, a piece property in any game.
+    "pieces.rest": (
+        "rests after it moves",
+        "How many of its player's turns this piece sits out after it moves, 1 to 4. A resting "
+        "piece still stands: it attacks, blocks, gives check and can be taken; it just may not "
+        "move, unless nothing else can. In a game in rounds a round is a turn. Leave it empty "
+        "and the piece never rests.",
     ),
     # Schema 28 (Q943a): speed.
     "pieces.speed": (

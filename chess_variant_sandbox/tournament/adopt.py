@@ -26,8 +26,7 @@ sample is what entitles that stamp to cover games this checkout did not just pla
 §3.5): `recertify_run` asks of a library run already in `runs/` what `adopt_run` asks of
 a campaign's, after a change that should move no game, and copies nothing. Its sample is
 larger and spread over the pairings (`spread`, `RECERTIFY_PER_AGENT`), pre-registered in
-§3.5 from §3.3's table, and `recertify_fit` samples the fit one game in eight, as the
-site's tier two does. What it entitles is weaker than adoption's, and the stamp says so:
+§3.5 from §3.3's table. What it entitles is weaker than adoption's, and the stamp says so:
 `measurement.Certificate`, and the page's *re-certified from a sample*.
 """
 
@@ -39,8 +38,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from chess_variant_sandbox.agents.fitted import FittedObjective
-from chess_variant_sandbox.tournament import fitting, slices
+from chess_variant_sandbox.tournament import slices
 from chess_variant_sandbox.tournament.analysis import BLUNDER_SAMPLE, CorpusAnalysis
 from chess_variant_sandbox.tournament.record import GameRecord, read_records
 from chess_variant_sandbox.tournament.runner import TournamentConfig, schedule
@@ -69,10 +67,6 @@ IGNORED_FIELDS = ("duration_ms",)
 # one in eight, six of the forty-eight.
 RECERTIFY_PER_AGENT = 4
 RECERTIFY_BLUNDERS = SAMPLE_BLUNDERS
-
-# One in this many of the fit's games and of its acceptance match's is replayed, the share
-# the site's tier two samples (`site/spotcheck.SHARE`, `archive/plan-client-compute.md` T1).
-FIT_SHARE = 8
 
 
 @dataclass(frozen=True)
@@ -319,80 +313,6 @@ def recertify_run(
     return Recertification(
         seed=seed, certified=True, sampled=len(sample), games=len(records)
     )
-
-
-def recertify_fit(
-    spec: dict[str, Any],
-    fit: FittedObjective,
-    kept: Path,
-    workers: int = 0,
-    say: Any = None,
-) -> str:
-    """Whether a fit store still holds on this core, by one in eight of its games; why not.
-
-    The site's tier two, on a library store (`site/spotcheck._replay`): the games the fit
-    and its acceptance match played, kept beside the store's measurement when a check
-    last played them (`fitting.check_fit`'s ``keep``), are first shown to be *this* store's
-    -- the regression over the kept fit games gives its samples and vector, the kept match
-    its verdict -- and then one in eight of each is played again and compared byte for byte.
-    ``""`` is a fit certified by the sample; anything else names what failed, and the
-    caller then runs the exact check (`check_fit`), which re-derives the whole fit.
-    """
-    from chess_variant_sandbox.agents import fitted as fitted_module
-
-    report = say if callable(say) else (lambda _message: None)
-    marker = kept / fitting.KEPT_FILE
-    try:
-        stamp = json.loads(marker.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return "no fit games are kept for this store"
-    if not isinstance(stamp, dict) or stamp.get("store_digest") != fitting.store_digest(fit):
-        return "the kept fit games are another store's"
-    fit_records = list(read_records(kept / fitting.FIT_GAMES_FILE))
-    accept_records = list(read_records(kept / fitting.ACCEPT_GAMES_FILE))
-
-    provisional = slices.gather_fit(spec, fit_records)
-    failures = fitting.differences(
-        fit, slices.gather_verdict(provisional, accept_records)
-    )
-    if failures:
-        return "the kept fit games do not give the store: " + "; ".join(failures)
-
-    fits = list(range(len(fit_records)))[::FIT_SHARE]
-    accepts = list(range(len(accept_records)))[::FIT_SHARE] if slices.needs_a_match(
-        provisional
-    ) else []
-    report(f"  the fit: replaying {len(fits)} of {len(fit_records)} fit games and "
-           f"{len(accepts)} of {len(accept_records)} acceptance games")
-    key = (fit.procedure, fit.ruleset_hash)
-    before = fitted_module.registered_fits().get(key)
-    roster = slices.canonical_config(workers=workers)
-    try:
-        if fits:
-            played = slices.parse_records(slices.run_unit(
-                slices.Unit(slices.FIT, 0, 1, tuple(fits)), spec, config=roster
-            ))
-            for index, fresh in zip(fits, played, strict=True):
-                if _bare(fresh) != _bare(fit_records[index]):
-                    return f"fit game {index} replays differently here"
-        if accepts:
-            # The match was played by the provisional fit, before its verdict, as
-            # `fit_ruleset` and `slices.gather_verdict` play it.
-            played = slices.parse_records(slices.run_unit(
-                slices.Unit(slices.ACCEPT, 0, 1, tuple(accepts)), spec,
-                fit=provisional, config=roster,
-            ))
-            for index, fresh in zip(accepts, played, strict=True):
-                if _bare(fresh) != _bare(accept_records[index]):
-                    return f"acceptance game {index} replays differently here"
-    finally:
-        # The replay registered the provisional fit under the game's name; the store's own
-        # verdict is what the roster plays, so the registry is put back.
-        if before is not None:
-            fitted_module.register_fit(before, replace=True)
-        else:
-            fitted_module.register_fit(fit, replace=True)
-    return ""
 
 
 def _rederived(

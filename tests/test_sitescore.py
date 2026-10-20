@@ -162,9 +162,11 @@ class TestTheTestsAGameMustPass:
 
 class TestNamesAndLikeness:
     def test_a_ladder_row_is_named_for_a_person(self) -> None:
-        """G17: the ladder that scored a game plays its own fitted players."""
-        assert opponents.table_name("minimax:fit=98f172aeac49,nodes=6400") == (
-            "the 6,400-position player")
+        """G17: the ladder that scored a game plays its own players, at budgets the
+        picker does not offer, or a learned net."""
+        assert opponents.table_name("minimax:nodes=800") == "the 800-position player"
+        assert opponents.table_name("minimax:net=98f172aeac49,nodes=6400") == (
+            "the learned player at 6,400 positions")
         assert opponents.table_name("minimax:nodes=1600") == "medium"
         assert opponents.table_name("random") == "random"
         assert opponents.table_name("nonsense") == "the computer"

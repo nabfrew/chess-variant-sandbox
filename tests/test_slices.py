@@ -22,63 +22,20 @@ import pytest
 import test_index_quality
 
 from chess_variant_sandbox import measurement
-from chess_variant_sandbox.agents import fitted
 from chess_variant_sandbox.spec import load_spec
 from chess_variant_sandbox.tournament import slices
 from chess_variant_sandbox.tournament.analysis import analyse_corpus
-from chess_variant_sandbox.tournament.heuristics import head_to_head
 from chess_variant_sandbox.tournament.runner import TournamentConfig, run_tournament
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 RULESETS = REPOSITORY / "rulesets"
 
-# The two specs the acceptance names, picked by what `fitted/` says about them: the first
-# accepts its fitted objective and dull refuses it, so between them they exercise both
-# arms of the verdict every later unit is handed.
-#
-# **The accepting one was dobutsu until Q437.** The refits `v11` A6 forced
-# (`docs/reference/v11-calibration.md`, B1) refused dobutsu's fit at 0.1250 and left no
-# committed spec under 64 squares with an accepted one. Kingofthehill is 8x8 and picked
-# over the other two that accept (chess, racingkings) on cost and on margin. Its games are
-# short (29 plies against chess's 82), so one seed of `corpus.measure`, fit included, took
-# 31.3 s at one worker on core `0596a87d9f1daaab`, where dobutsu took 9.5 s. The smallest
-# spec that accepts, `mutant-gardner-shuffle` (5x5), took 31.0 s and accepts at 0.5938.
-# Kingofthehill accepts at 0.7083 over 48 games, about three standard errors clear of the
-# bar rather than one, and a fresh fit on that core reached the verdict its committed store
-# made on an older one. So it is the accepting spec least likely to flip under the next
-# core change. If one does flip it, the assertion that it accepts says so, and `fitted/`
-# lists the verdicts to choose from.
-#
-# **Kingofthehill flipped too**, at the Q281a6 refit on core `2468e338` (0.7083 to 0.2917,
-# `docs/reference/replay-2026-09-29.md`), and the slow tier stayed red on it for a week
-# because nothing read it (Q743). So the accepting spec is no longer a name: it is read from
-# `fitted/` when the measurement runs (`_accepting`), the committed ruleset with the
-# smallest board whose committed fit under today's procedure accepts, the larger margin
-# breaking a tie. On 2026-10-05 that is gardner (5x5, 0.6146). A refit that flips it moves
-# the choice to the next one rather than turning this red; a fresh fit that disagrees with
-# the committed store still fails, below and in `test_the_sliced_verdict_is_...`.
-ACCEPTS = "accepts"
-REFUSES = "dull"
-
-
-def _accepting() -> str:
-    """The committed ruleset, by file stem, the slices test measures as the accepting one."""
-    from chess_variant_sandbox.spec.canonical import spec_hash
-
-    procedure = fitted.procedure_digest()
-    found = []
-    for path in sorted(RULESETS.glob("*.json")):
-        spec = load_spec(path)
-        verdict = fitted.load_fit(spec_hash(spec), procedure)
-        if verdict is not None and verdict.accepted:
-            area = int(spec["board"]["width"]) * int(spec["board"]["height"])
-            found.append((area, -verdict.accept_score, path.stem))
-    assert found, f"no committed ruleset accepts its fit under procedure {procedure}"
-    return min(found)[2]
-
-
-def _named(role: str) -> str:
-    return _accepting() if role == ACCEPTS else role
+# The two specs the acceptance measures, by file stem. Until Q558 they were picked by the
+# fitted objective's verdict, one that accepted its fit and one that refused it, so both arms
+# of the verdict every later unit was handed were exercised. The fitted objective is gone and
+# the canonical roster is the plain ladder, so the pair is B0's original one: both cheap to
+# measure, and dobutsu drops pieces, which dull never does.
+MEASURED = ("dobutsu", "dull")
 
 # The library, read from the main checkout even in a worktree, as the index audit reads it.
 # Read only. Before Q398 this was the worktree's own `runs/`, which does not exist, so the
@@ -312,6 +269,26 @@ LIBRARY = test_index_quality.RUNS
 # `canonical.json` carries the tree's own reading again; the replaced measurements, with the
 # stamp this window held, are kept under each game's `runs/<hash>/previous/`
 # (`docs/reference/replay-2026-10-19b.md`).
+#
+# **Opened 2026-10-19 by Q558** (the fitted objective removed), **2026-10-20 by Q983a** (schema
+# 29, rest as a piece-type property) and **Q986b** (a finished round at `ROUND_WIN_PIECES` mean
+# pieces), **merged into one window by Q558m** (2026-10-20). Each was built and held unmerged
+# against the same stamp, the one Q968's replay left the library, so together they open one
+# window, not three. Q558's metrics sources (`metrics/glossary.py`'s near-best sentence,
+# `tournament/heuristics.py`), Q983a's `spec/complexity.py`, `engine/state.py`,
+# `engine/engine.py` and `agents/evaluation.py`, and Q986b's `agents/evaluation.py` move
+# `metrics` (`FROZEN_METRICS`); Q983a and Q986b move `analysis` (`FROZEN_ANALYSIS`); the core
+# moves the build fingerprint; the canonical roster's searching rungs become `minimax:nodes=N`
+# (a replay of every library game); and breather and the spy preview are new hashes owed their
+# measurement. **Q558r's replay empties it**, paying all three at once.
+#
+# **Emptied 2026-10-21 by Q558r**, that replay: the 95 library games (93 measured and the two
+# new hashes) re-played, re-analysed and re-scored on core `90fc7dd1f00152c4` under `metrics`
+# "c57c854e32129d3a" and `analysis` "a0aa597a07b63b94", on `minimax:nodes=N` rungs. The 71 games
+# whose players did not change (66 on a refused fit, 5 on a net) moved no record, file or score;
+# the 18 that lost an accepted fit and the round games moved. Every library `canonical.json`
+# carries the tree's own reading again; the replaced measurements, with the stamp this window
+# held, are kept under each game's `runs/<hash>/previous/` (`docs/reference/replay-2026-10-20.md`).
 STALE_WINDOW: dict[str, str] = {}
 
 
@@ -410,6 +387,7 @@ class TestAUnitAsText:
         spec, config, _records = played
         unit = slices.playing_units(slices.TOURNAMENT, config, 2)[1]
         payload = json.loads(slices.request(unit, spec, config=config))
+        assert set(payload) == {"unit", "spec", "roster"}
         assert payload["unit"]["games"] == list(unit.games)
         assert "seed" not in payload["unit"]
         assert payload["roster"]["seed"] == config.seed
@@ -493,64 +471,6 @@ class TestSlicingDoesNotChangeTheGames:
         assert [records[index].seed for index in drawn] == [
             trial.seed for trial in reference.blunders
         ]
-
-
-class TestTheFitIsAnInputToEveryLaterUnit:
-    """No `fitted/` store in a browser, so the verdict travels in the request."""
-
-    @staticmethod
-    def _unfitted(dull_spec) -> tuple[dict, str]:
-        """A game with no verdict anywhere: dull with one piece worth something else.
-
-        A piece value is inside the mechanics hash, so this is a different game to every
-        reader, and `fitted/` has no file for it. That is the browser's situation for
-        every draft, which is the case the request format exists for.
-        """
-        from chess_variant_sandbox.spec.canonical import spec_hash
-
-        spec = dict(dull_spec)
-        spec["pieces"] = [dict(piece) for piece in spec["pieces"]]
-        spec["pieces"][0]["value"] = 7.5
-        return spec, spec_hash(spec)
-
-    def test_a_roster_carrying_a_fit_cannot_be_played_without_the_verdict(
-        self, dull_spec, monkeypatch
-    ) -> None:
-        monkeypatch.setattr(fitted, "_FITTED", {})
-        spec, digest = self._unfitted(dull_spec)
-        assert not fitted.store_path(digest, fitted.procedure_digest()).exists()
-        config = TournamentConfig(
-            agents=(f"minimax:fit={fitted.procedure_digest()},nodes=100",),
-            games_per_pairing=1,
-        )
-        unit = slices.playing_units(slices.TOURNAMENT, config, 1)[0]
-        with pytest.raises(fitted.FitError):
-            slices.run_request(slices.request(unit, spec, config=config))
-
-    def test_the_same_unit_runs_once_the_verdict_is_in_the_request(
-        self, dull_spec, monkeypatch
-    ) -> None:
-        monkeypatch.setattr(fitted, "_FITTED", {})
-        spec, digest = self._unfitted(dull_spec)
-        procedure = fitted.procedure_digest()
-        verdict = fitted.FittedObjective(
-            ruleset_hash=digest,
-            procedure=procedure,
-            vector=(0.0,) * len(fitted.VOCABULARY),
-            accepted=False,
-            accept_score=0.0,
-            samples=0,
-            loss=0.0,
-        )
-        config = TournamentConfig(
-            agents=(f"minimax:fit={procedure},nodes=100",), games_per_pairing=1
-        )
-        unit = slices.playing_units(slices.TOURNAMENT, config, 1)[0]
-        text = slices.run_request(
-            slices.request(unit, spec, fit=verdict, config=config)
-        )
-        assert len(slices.parse_records(text)) == 1
-        assert fitted.registered_fits()[(procedure, digest)] == verdict
 
 
 class TestTheModuleIsDownstream:
@@ -688,85 +608,53 @@ class TestTheStaleWindow:
         assert _unmatched(dict(self.WINDOW), {}) == ["metrics", "analysis"]
 
 
-@pytest.mark.slow
-class TestTheAcceptanceMatchTotal:
-    """The one piece of arithmetic this module restates rather than calls."""
-
-    def test_it_equals_the_total_head_to_head_takes(self, dull_spec) -> None:
-        config = TournamentConfig(
-            agents=("greedy", "random"),
-            games_per_pairing=2,
-            seed=5,
-            include_self_play=False,
-            collect_series=False,
-        )
-        records = run_tournament(dull_spec, config).records
-        assert slices.match_score(records, "greedy") == head_to_head(
-            dull_spec, "greedy", "random", 2, 5, 0
-        )
-
-
 @pytest.fixture(scope="module")
 def measured(tmp_path_factory):
-    """`corpus.measure` on each of the two rulesets, run once and read four times.
+    """`corpus.measure` on each of the two rulesets, run once and read three times.
 
     The real canonical roster, at one thread, and at the one seed the comparison reads.
     A committed ruleset is measured at `EXPECTED_LIBRARY_SEEDS` by default, and until Q437
-    this played all four and compared one. Both games are cheap to measure (`ACCEPTS` says
-    how cheap), which is the only reason B0's acceptance can be a test rather than a run
-    recorded in a document.
+    this played all four and compared one. Both games are cheap to measure, which is the
+    only reason B0's acceptance can be a test rather than a run recorded in a document.
     """
     from chess_variant_sandbox import corpus
     from chess_variant_sandbox.spec.canonical import spec_hash
 
     work = tmp_path_factory.mktemp("slices-measured")
     done = {}
-    for name in (ACCEPTS, REFUSES):
-        spec = load_spec(RULESETS / f"{_named(name)}.json")
+    for name in MEASURED:
+        spec = load_spec(RULESETS / f"{name}.json")
         digest = spec_hash(spec)
         corpus.measure(
             corpus.Candidate(
                 hash=digest, name=str(spec["name"]), spec=spec,
-                path=RULESETS / f"{_named(name)}.json", stage="committed",
+                path=RULESETS / f"{name}.json", stage="committed",
             ),
             runs_dir=work / name,
             workers=1,
             seeds=(corpus.CANONICAL_SEED,),
         )
-        done[name] = (
-            spec,
-            work / name / f"{digest}-{corpus.CANONICAL_SEED}",
-            fitted.load_fit(digest, fitted.procedure_digest(), fitted.fit_store()),
-        )
+        done[name] = (spec, work / name / f"{digest}-{corpus.CANONICAL_SEED}")
     return work, done
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("name", [ACCEPTS, REFUSES])
+@pytest.mark.parametrize("name", MEASURED)
 @pytest.mark.parametrize("count", [1, 3, 4])
 def test_a_sliced_measurement_writes_what_corpus_measure_writes(
     name, count, measured
 ) -> None:
-    """B0's acceptance: the canonical roster, one ruleset that accepts a fit and one
-    that refuses, at one slice, three and four.
+    """B0's acceptance: the canonical roster, on two rulesets, at one slice, three and four.
 
-    Every phase runs, the fit included, so what is compared is a whole measurement and
-    not a tournament with the hard part handed to it. `games.jsonl` is compared with
-    `duration_ms` dropped, because a slice is timed separately from the whole; the other
-    three files are compared as bytes.
+    Every phase runs, so what is compared is a whole measurement. `games.jsonl` is compared
+    with `duration_ms` dropped, because a slice is timed separately from the whole; the
+    other three files are compared as bytes.
     """
     work, done = measured
-    spec, whole, fitted_verdict = done[name]
-    assert fitted_verdict is not None
-    assert fitted_verdict.accepted is (name == ACCEPTS), (
-        f"{spec['name']}'s fit {'accepted' if fitted_verdict.accepted else 'refused'} at "
-        f"{fitted_verdict.accept_score} on this core, where its committed store in fitted/ "
-        "says otherwise (ACCEPTS is read from it): this core re-derives a different "
-        "verdict, so the store owes a refit (`fit --check`) before this test means anything"
-    )
+    spec, whole = done[name]
 
     sliced = work / f"sliced-{name}-{count}"
-    gathered = slices.measure_in_slices(
+    slices.measure_in_slices(
         spec, sliced, slices=count, config=slices.canonical_config(workers=1)
     )
 
@@ -780,33 +668,6 @@ def test_a_sliced_measurement_writes_what_corpus_measure_writes(
     index = next(whole.glob("index-*.json"))
     assert (sliced / index.name).read_bytes() == index.read_bytes()
 
-    # The fit phases reach the verdict `fit_ruleset` reached, which is the half of the
-    # measurement no file above would have caught: a wrong vector plays a different
-    # roster and would have shown up as different games, but a wrong *accept score* on
-    # the right vector would not.
-    assert gathered.fit.as_dict() == fitted_verdict.as_dict()
-
     # A sliced measurement is provisional: the file every reader trusts is not its to
     # write, and the basis stamp belongs where the result is re-derived.
     assert not (sliced / "canonical.json").exists()
-
-
-@pytest.mark.slow
-@pytest.mark.parametrize("name", [ACCEPTS, REFUSES])
-def test_the_sliced_verdict_is_the_one_the_repository_committed(name, measured) -> None:
-    """The fit reproduced from games, against the store `fitted/` tracks.
-
-    `build` is left out: a committed verdict names the core it was made on, and this one
-    names the core in this checkout. Everything a player reads is compared.
-    """
-    _work, done = measured
-    spec, _whole, made = done[name]
-    from chess_variant_sandbox.spec.canonical import spec_hash
-
-    committed = fitted.load_fit(spec_hash(spec), fitted.procedure_digest())
-    if committed is None:
-        pytest.skip(f"{name} has no committed fit under this procedure")
-    assert made is not None
-    assert {k: v for k, v in made.as_dict().items() if k != "build"} == {
-        k: v for k, v in committed.as_dict().items() if k != "build"
-    }

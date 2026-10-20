@@ -62,7 +62,7 @@ import re
 import shutil
 import sys
 from collections.abc import Callable, Collection, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
@@ -72,7 +72,6 @@ from chess_variant_sandbox.measurement import (
     LEGAL,
     SAMPLE,
     Basis,
-    FitReading,
     read_check,
     sample_check,
 )
@@ -100,27 +99,12 @@ last three are where it ends."""
 DIRECTORY = "provisional"
 """Where the records live, under the runs root. Never `runs/<hash>-<seed>/`."""
 
-RECORD_FILES = re.compile(
-    r"^(games\.jsonl|tournament\.json|analysis\.json|index-v\d+\.json"
-    r"|fit\.json|fit\.jsonl|accept\.jsonl)$"
-)
-"""The files a result may carry: `slices.measure_in_slices`' four, the fit beside them, and
-never the fifth. `canonical.json` is what every official reader trusts, and only the
-server's own run writes it."""
+RECORD_FILES = re.compile(r"^(games\.jsonl|tournament\.json|analysis\.json|index-v\d+\.json)$")
+"""The files a result may carry: `slices.measure_in_slices`' four, and never the fifth.
+`canonical.json` is what every official reader trusts, and only the server's own run
+writes it."""
 
 GAMES = "games.jsonl"
-
-FIT = "fit.json"
-"""The fit's verdict as tier one re-derived it, in `fitted/`'s own shape. The tournament's
-`fit=` players cannot be replayed without its vector, so tier two needs it."""
-
-FIT_GAMES = "fit.jsonl"
-"""The games the fit was regressed on, as tier one walked them."""
-
-ACCEPT_GAMES = "accept.jsonl"
-"""The acceptance match's games, as tier one walked them; empty when the fit was refused
-before its match. Tier two samples these and the fit's at the tournament's rate (§5)."""
-
 
 INCOMPLETE = "The score arrived incomplete; measure it again."
 CHANGED = ("The site has changed how it scores games since; this score is out of date. "
@@ -197,10 +181,6 @@ def refusal(submitted: Mapping[str, Any] | None, current: Basis) -> str | None:
     would stamp its own. The build fingerprint is asked first and named on its own,
     because it is the common case and it has a remedy the page acts on: a browser holding
     an old cached module fetches the current one.
-
-    `fit`, which objective the fitted rungs played, must be stamped, and it is compared
-    wherever `current` knows the answer: from the fit store before the walk, when the game
-    has one, and from the server's own regression after it (`refitted`).
     """
     stamp = Basis.from_dict(dict(submitted) if isinstance(submitted, Mapping) else None)
     if stamp is None:
@@ -216,12 +196,6 @@ def refusal(submitted: Mapping[str, Any] | None, current: Basis) -> str | None:
             f"this server runs {here}), so the page fetches the current module and "
             "measures again"
         )
-    if not stamp.fit:
-        # A browser re-derives the fit on every measurement, so its stamp can always say
-        # which objective the fitted rungs played. Absent on a server's stamp means *made
-        # before the field*, and is read through the fit store; nothing a browser sends
-        # was made before it, so absence here says nothing and is refused (Q468).
-        return "its basis does not say which objective its fitted players played"
     staleness = stamp.stale_against(current.in_browser())
     if staleness.needs:
         return "it was not measured on what the server measures now: " + "; ".join(
@@ -247,24 +221,6 @@ def _build(engine: str) -> str:
     return engine.rpartition("-")[2]
 
 
-def refitted(current: Basis, player: str) -> Basis:
-    """`current` with the objective the server's own regression of the fit games plays.
-
-    `player` is `corpus.player_digest` of the verdict tier one re-derived. The server's
-    one-run basis reads `Basis.fit` from the fit store, and a visitor's design has none
-    (the browser re-derives its fit and the server never stores it), so before the walk
-    there is nothing to compare the stamp's `fit` with. After it, this is what the server
-    would play, derived on this core, and `refusal` against it compares `fit` as it
-    compares every other field. It is also the stamp `record` stores (Q468).
-    """
-    core = _build(current.engine)
-    return replace(
-        current,
-        fit=player,
-        fit_reading=FitReading(player=player, made_on=core, verified_on=frozenset({core})),
-    )
-
-
 def record(
     connection: Any,
     runs_dir: Path,
@@ -284,8 +240,7 @@ def record(
     scored the records with the server's own metrics, so `headline` and `viable` are the
     server's numbers and never the browser's. What is checked here is what this module
     owns: the stamp matches the server's basis (`refusal`), the game is the submitter's
-    own, and the files are the four a measurement writes and the fit's three
-    (`RECORD_FILES`).
+    own, and the files are the four a measurement writes (`RECORD_FILES`).
 
     The game's standing result, if it has one, is superseded in the same transaction.
     Its records stay on disk until `sweep` runs after the commit.

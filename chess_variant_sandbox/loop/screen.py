@@ -90,7 +90,7 @@ QUICK_KILL_PLIES = 12
 # roster with `matrix:nodes=F*N` wherever the alternating one has `minimax:nodes=N`, as
 # `corpus.ROUND_AGENTS` mirrors the canonical ladder: `random` and `greedy` play rounds
 # already (greedy reads the round as a matrix game). Only a bare node budget maps; an
-# objective (`h=`, `fit=`, `values=`, `net=`) is refused on these games, and so is `mcts:`,
+# objective (`h=`, `values=`, `net=`) is refused on these games, and so is `mcts:`,
 # so a roster holding one has no round counterpart.
 #
 # F is `ROUND_BUDGET_FACTOR`, the one rule for what a budget means in rounds (Q944a,
@@ -103,7 +103,7 @@ QUICK_KILL_PLIES = 12
 ROUND_BUDGET_FACTOR = 16
 _ROUND_SAFE = ("random", "greedy")
 # The options that name a stored objective, which a spy game refuses as a round game does.
-_OBJECTIVES = ("h", "fit", "values", "net")
+_OBJECTIVES = ("h", "values", "net")
 _MINIMAX_BUDGET = re.compile(r"minimax:nodes=(\d+)")
 
 

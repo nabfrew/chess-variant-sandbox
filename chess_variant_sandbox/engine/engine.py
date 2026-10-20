@@ -99,12 +99,10 @@ def _pack(state: GameState) -> tuple[Any, ...]:
         (
             state.colour, state.remaining, state.turns_taken, state.points,
             state.goal_left_by, state.portal_bar, list(state.folds),
-            # Schema 26 (Q918a): the initiative, the void run and the bars; schema 27
-            # (Q942a): the rested squares.
-            (
-                state.initiative, state.void_run, [tuple(bar) for bar in state.bars],
-                state.rest,
-            ),
+            # Schema 26 (Q918a): the initiative, the void run and the bars.
+            (state.initiative, state.void_run, [tuple(bar) for bar in state.bars]),
+            # Schema 29 (Q983a): each player's resting pieces, a field of every position.
+            ([tuple(entry) for entry in state.rest[0]], [tuple(entry) for entry in state.rest[1]]),
         ),
     )
 
@@ -136,7 +134,10 @@ def _unpack(packed: State) -> GameState:
         initiative=packed[11][7][0],
         void_run=(packed[11][7][1][0], packed[11][7][1][1]),
         bars=tuple((bar[0], bar[1]) for bar in packed[11][7][2]),
-        rest=(packed[11][7][3][0], packed[11][7][3][1]),
+        rest=(
+            tuple((square, left) for square, left in packed[11][8][0]),
+            tuple((square, left) for square, left in packed[11][8][1]),
+        ),
     )
 
 

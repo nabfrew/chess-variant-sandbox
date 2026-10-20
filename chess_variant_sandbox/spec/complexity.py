@@ -224,11 +224,29 @@ _PORTAL_FOLD = 1.0
 
 
 # Schema 27 (Q942a, `docs/archive/plan-round-chase.md` §3): each chase switch is one more sentence
-# a player is taught about the round -- a moved piece rests, a swap is a collision, a double
-# ending goes to the score -- so each is charged as one exception on top of `simultaneous`,
-# and only at the value that turns it on (the validator refuses the others).
+# a player is taught about the round -- a swap is a collision, a double ending goes to the
+# score -- so each is charged as one exception on top of `simultaneous`, and only at the
+# value that turns it on (the validator refuses the others). The third, the round's rest,
+# became schema 29's `pieces[].rest` (`_rest_extras`) at the same charge.
 _SIMULTANEOUS_SWITCH = 1.0
-_SIMULTANEOUS_SWITCHES = {"rest": True, "swap": "collision", "both": "score"}
+_SIMULTANEOUS_SWITCHES = {"swap": "collision", "both": "score"}
+
+# Schema 29 (Q983a, `docs/plan-rest.md` §5.7): the rest is one rule a player is taught, charged
+# once at the switch's cost it replaced, plus a little for each distinct rest beyond the first
+# (a fact about pieces a player has to remember), so a uniform `"rest": 1` costs exactly what
+# `rules.simultaneous.rest` did. Read off the spelling, as the spy and the speeds are.
+_REST = _SIMULTANEOUS_SWITCH
+_REST_PER_VALUE = 0.25
+
+
+def _rest_extras(pieces: Any) -> float:
+    """What a game's rests cost: the rule once and each distinct rest beyond the first."""
+    values = {
+        piece["rest"] for piece in (pieces if isinstance(pieces, list) else [])
+        if isinstance(piece, dict) and isinstance(piece.get("rest"), int)
+        and not isinstance(piece.get("rest"), bool) and piece["rest"] > 0
+    }
+    return _REST + _REST_PER_VALUE * (len(values) - 1) if values else 0.0
 
 
 # Schema 27 (Q935a, `docs/plan-spy.md` §2.6): a spy is a piece flag that changes the turn
@@ -486,7 +504,10 @@ def measure_complexity(spec: dict[str, Any]) -> SpecComplexity:
             for vector in move.get("vectors", []):
                 directions.update(expand_symmetry(tuple(vector), symmetry))
 
-    special_rules = _count_special_rules(rules) + _spy_extras(pieces) + _speed_extras(pieces)
+    special_rules = (
+        _count_special_rules(rules) + _spy_extras(pieces) + _speed_extras(pieces)
+        + _rest_extras(pieces)
+    )
 
     # Schema 12: a `landing` set is charged as a descriptor is, per set and per expanded
     # direction, so a wide throw costs rule mass. Its directions are counted apart from the

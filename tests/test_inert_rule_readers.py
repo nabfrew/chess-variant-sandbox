@@ -158,7 +158,7 @@ READERS: dict[str, dict[str, str]] = {
         "nothing can be taken",
         "game.rs::leaves_royal_attacked": "the blast in the legality filter, behind an "
         "occupied target, and who is capturing; neither exists without a capture",
-        "game.rs::generate_legal": "refuses the pin shortcut; the same verdict by the slower "
+        "game.rs::generate_checked": "refuses the pin shortcut; the same verdict by the slower "
         "route, so it moves no answer",
         "eval.rs::of": "`Immunity::of` declines the immunity term under an explosion. "
         "**Evaluator, not rules**: with no capture the term's premise is gone anyway; "
@@ -183,6 +183,7 @@ READERS: dict[str, dict[str, str]] = {
         "stock, so no type is unlimited and the mean is the undeclared one; also copies "
         "`has_drops`",
         "eval.rs::with_immunity": "the same `mean_non_royal`, the same answer",
+        "eval.rs::round_win": "Q986b: the same `mean_non_royal`, the same answer",
         "eval.rs::of": "`Immunity::of` skips unlimited drop types, of which there are none",
         "features.rs::new": "copies `has_drops` for `HAND_MATERIAL`",
     },
@@ -227,7 +228,7 @@ READERS: dict[str, dict[str, str]] = {
     "royal_facing_forbidden": {
         "game.rs::leaves_royal_attacked": "called only under `needs_check_filter()`, which "
         "requires a royal type",
-        "game.rs::generate_legal": "refuses the pin shortcut, inside the same royal-only "
+        "game.rs::generate_checked": "refuses the pin shortcut, inside the same royal-only "
         "branch",
     },
     "facing_lines": {"tables.rs::facing_from": "the accessor `royals_face` reads"},
@@ -367,7 +368,7 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::make": "`delivered`, over standing royals",
         "game.rs::make_fold": "schema 22: the same `delivered` after a fold's own move",
         "game.rs::leaves_royal_attacked": "the legality filter, over standing royals",
-        "game.rs::generate_legal": "the pin shortcut's single-royal premise",
+        "game.rs::generate_checked": "the pin shortcut's single-royal premise",
         "game.rs::restrict": "`forbid_check`'s filter, over standing royals",
         "game.rs::is_forbidden_drop_mate": "whether a drop checks a standing royal",
     },

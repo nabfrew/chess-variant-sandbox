@@ -228,6 +228,28 @@ def test_agent_config_round_trips_through_its_text_form() -> None:
     assert str(parse_agent(str(config))) == str(config)
 
 
+@pytest.mark.parametrize(
+    "agent",
+    [
+        # Q558 retired the fitted objective; stored rosters and records still spell it.
+        "minimax:fit=98f172aeac49,nodes=100",
+        "greedy:fit=98f172aeac49",
+        "matrix:fit=98f172aeac49,nodes=100",
+        "minimax:nodes=100,depth=3",
+    ],
+)
+def test_an_option_no_player_reads_is_refused(small_spec: dict, agent: str) -> None:
+    """A player sat down without an option it was named with would play something else
+    under that name, so an unread option is refused, natively and in the oracle alike."""
+    from chess_variant_sandbox.agents import build_agent, native_spec
+
+    engine = Engine(small_spec)
+    with pytest.raises(ValueError, match="reads no option"):
+        native_spec(agent, engine.spec.hash)
+    with pytest.raises(ValueError, match="reads no option"):
+        build_agent(agent, engine)
+
+
 class TestWhereTheCommandWrites:
     """Q335: `chess-variant-sandbox tournament` with no `--out` cannot land on a library run.
 

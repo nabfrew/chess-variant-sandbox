@@ -25,9 +25,10 @@
 // one void round (the core's `voidRun`) or two in a row (`bars`), are linked on the board
 // (`roundMarks`, `standoffLine`), so a person knows why the capture is not offered.
 //
-// **The rest** (schema 27, `rest`). The piece each player moved last round wears a badge
-// (`roundRests`, `restBadge`): it may not move this round, so the board offers none of its
-// moves, unless it is all that player has.
+// **The rest** (schema 29, `pieces[].rest`; schema 27's round rest before it). A resting
+// piece wears a badge (`positionRests`, `restBadge`) from the position's `resting`, in any
+// game: it may not move this turn, so the board offers none of its moves, unless it is all
+// that player has.
 //
 // Nothing here works out a move, an outcome or a choice. Who won a collision, which move
 // was void and what is barred are the core's; the page draws them.
@@ -59,12 +60,11 @@ function roundClash(last) {
   return { squares: [first.from, first.to], winner: swap.player };
 }
 
-// Schema 27 (Q942a, `rest`): the rested squares the round now open carries, player 0's
-// first, the core's state: `[{player, square}]`, empty under any game without the rule.
-function roundRests(round) {
-  if (!round || !round.rest) return [];
-  return round.rest.map((square, player) => ({ player, square }))
-    .filter(rest => rest.square !== null && rest.square !== undefined);
+// Schema 29 (Q983a, `pieces[].rest`): the resting pieces of the position on screen, the
+// core's state (`resting`, `[{player, square, left}]`, player 0's first), in any game,
+// alternating or in rounds; empty under any game without a rest.
+function positionRests(resting) {
+  return (resting || []).filter(rest => rest.square !== null && rest.square !== undefined);
 }
 
 // What a revealed round shows, as motions: each seat's move as the core reported it, and

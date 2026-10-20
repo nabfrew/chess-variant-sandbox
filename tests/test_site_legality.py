@@ -4,8 +4,9 @@
 what holds each part:
 
 * a submission with one illegal move, one move after a terminal position, one wrong
-  outcome, one missing seed or one altered fit vector is refused by name --
-  `TestTheFiveRefusals`, and `TestTheOtherRefusals` for the rest of the names;
+  outcome or one missing seed is refused by name -- `TestTheRowsRefusals` (the row's
+  fifth, an altered fit vector, went with the fitted objective in Q558), and
+  `TestTheOtherRefusals` for the rest of the names;
 * an honest submission is scored to the server's own number -- `TestTheHonestCase` on a
   small roster, and `test_an_honest_chess_submission_scores_to_the_servers_number`, `slow`,
   on chess's whole canonical measurement;
@@ -18,8 +19,8 @@ what holds each part:
   one, as every store test does.
 
 The honest submission is made the way a browser makes one: every phase's units run through
-B0's request text and their replies gathered in part order. `dull` is small and its fit
-reaches the acceptance match, so both halves of the verdict are walked.
+B0's request text and their replies gathered in part order. `dull` is small enough to walk
+often.
 """
 
 from __future__ import annotations
@@ -39,8 +40,6 @@ from test_schema_twenty_four import GAMES
 
 from chess_variant_sandbox import corpus, measurement
 from chess_variant_sandbox.agents.evaluation import Evaluator
-from chess_variant_sandbox.agents.features import VOCABULARY
-from chess_variant_sandbox.agents.fitted import FittedObjective, procedure_digest
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.moves import MOVE_DROP, MOVE_FOLD, MOVE_ROTATE, move_type
 from chess_variant_sandbox.measurement import LEGAL, Basis
@@ -85,31 +84,20 @@ class Measured:
     spec: dict[str, Any]
     roster: TournamentConfig
     current: Basis
-    verdict: FittedObjective
     phases: dict[str, str]
     index: float
     viable: bool
     files: dict[str, str]
 
     @property
-    def player(self) -> str:
-        """Which objective the fitted rungs played: the digest of the browser's own fit."""
-        return corpus.player_digest(self.verdict)
-
-    @property
     def stamp(self) -> Basis:
-        """What the browser stamps: the server's basis, played in a browser, with its fit."""
-        return replace(self.current, fit=self.player).in_browser()
+        """What the browser stamps: the server's basis, played in a browser."""
+        return self.current.in_browser()
 
     def upload(self, **changed: Any) -> str:
-        """The slim upload, with any phase's text (by its name), the `verdict` or the
-        `basis` replaced."""
+        """The slim upload, with any phase's text (by its name) or the `basis` replaced."""
         phases = {**self.phases, **{k: v for k, v in changed.items() if k in slices.PHASES}}
-        return legality.upload(
-            changed.get("basis", self.stamp),
-            changed.get("verdict", self.verdict),
-            phases,
-        )
+        return legality.upload(changed.get("basis", self.stamp), phases)
 
     def rows(self, phase: str) -> list[dict[str, Any]]:
         return [json.loads(line) for line in self.phases[phase].splitlines() if line]
@@ -127,36 +115,19 @@ def measure_as_a_browser(
 ) -> Measured:
     """Every phase's units through B0's request text, gathered in part order."""
 
-    def phase(units: list[slices.Unit], fit: Any = None, records: Any = None) -> str:
+    def phase(units: list[slices.Unit], records: Any = None) -> str:
         return "".join(
-            slices.run_request(
-                slices.request(unit, spec, fit=fit, records=records, config=roster)
-            )
+            slices.run_request(slices.request(unit, spec, records=records, config=roster))
             for unit in units
         )
 
-    fit_text = phase(slices.playing_units(slices.FIT, slices.fit_config(), parts))
-    provisional_fit = slices.gather_fit(spec, slices.parse_records(fit_text))
-    accept_text = ""
-    verdict = provisional_fit
-    if slices.needs_a_match(provisional_fit):
-        accept_text = phase(
-            slices.playing_units(
-                slices.ACCEPT, slices.accept_config(provisional_fit.procedure), parts
-            ),
-            fit=provisional_fit,
-        )
-        verdict = slices.gather_verdict(provisional_fit, slices.parse_records(accept_text))
-    tournament_text = phase(slices.playing_units(slices.TOURNAMENT, roster, parts), fit=verdict)
+    tournament_text = phase(slices.playing_units(slices.TOURNAMENT, roster, parts))
     records = slices.parse_records(tournament_text)
-    analysis_text = phase(slices.analysis_units(records, parts), fit=verdict, records=records)
-    blunder_text = phase(
-        slices.blunder_units(records, parts, seed=roster.seed), fit=verdict, records=records
-    )
+    analysis_text = phase(slices.analysis_units(records, parts), records=records)
+    blunder_text = phase(slices.blunder_units(records, parts, seed=roster.seed), records=records)
     gathered = slices.gather_measurement(
         spec,
         out,
-        verdict,
         records,
         slices.gather_analysis(
             slices.parse_analyses(analysis_text), slices.parse_blunders(blunder_text)
@@ -181,10 +152,7 @@ def measure_as_a_browser(
         spec=spec,
         roster=roster,
         current=current,
-        verdict=verdict,
         phases={
-            slices.FIT: fit_text,
-            slices.ACCEPT: accept_text,
             slices.TOURNAMENT: tournament_text,
             slices.ANALYSIS: analysis_text,
             slices.BLUNDER: blunder_text,
@@ -196,9 +164,9 @@ def measure_as_a_browser(
 
 
 def small_roster() -> TournamentConfig:
-    """Both kinds of seat the pass tells apart, and a `fit=` player, two games a pairing."""
+    """Both kinds of seat the pass tells apart, and a searching rung, two games a pairing."""
     return slices.canonical_config(
-        agents=("random", "greedy", f"minimax:fit={procedure_digest()},nodes=100"),
+        agents=("random", "greedy", "minimax:nodes=100"),
         games_per_pairing=2,
         seed=0,
         workers=1,
@@ -241,25 +209,21 @@ class TestTheHonestCase:
         for name in (*FILES, index):
             assert scored.files[name] == honest.files[name], name
 
-    def test_the_fit_travels_beside_the_four_files(self, honest: Measured) -> None:
+    def test_the_four_files_and_nothing_else(self, honest: Measured) -> None:
         scored = legality.score(honest.check(honest.upload()), honest.current.weights_version)
-        assert FittedObjective.from_dict(json.loads(scored.files[provisional.FIT])) == honest.verdict
-        assert scored.files[provisional.FIT_GAMES] == honest.phases[slices.FIT]
-        assert scored.files[provisional.ACCEPT_GAMES] == honest.phases[slices.ACCEPT]
+        assert set(scored.files) == {*FILES, f"index-{honest.current.weights_version}.json"}
         assert all(provisional.RECORD_FILES.match(name) for name in scored.files)
         assert "canonical.json" not in scored.files
 
-    def test_the_verdict_it_re_derives_is_the_browsers(self, honest: Measured) -> None:
-        checked = honest.check(honest.upload())
-        assert checked.fit == honest.verdict
-        assert checked.accept_records, "dull's fit reaches its acceptance match"
+    def test_the_basis_it_holds_is_the_servers(self, honest: Measured) -> None:
+        assert honest.check(honest.upload()).basis == honest.current
 
 
-# ---------------------------------------------------------------- the five refusals
+# ---------------------------------------------------------------- the row's refusals
 
 
-class TestTheFiveRefusals:
-    """The row's acceptance: each of the five is refused by its own name."""
+class TestTheRowsRefusals:
+    """The row's acceptance: each is refused by its own name."""
 
     def test_one_illegal_move(self, honest: Measured) -> None:
         rows = honest.rows(slices.TOURNAMENT)
@@ -300,21 +264,12 @@ class TestTheFiveRefusals:
             assert "the submission says" in str(found)
 
     def test_one_missing_seed(self, honest: Measured) -> None:
-        for phase in (slices.TOURNAMENT, slices.FIT, slices.ACCEPT):
-            rows = honest.rows(phase)
-            gone = rows.pop(3)
-            found = refused(honest, honest.upload(**{phase: lines(rows)}))
-            assert found.name == legality.MISSING_SEED, phase
-            assert (found.phase, found.seed) == (phase, gone["seed"])
-            assert f"missing seed {gone['seed']}" in str(found)
-
-    def test_one_altered_fit_vector(self, honest: Measured) -> None:
-        data = honest.verdict.as_dict()
-        term = max(range(len(VOCABULARY)), key=lambda i: abs(data["weights"][i]))
-        data["weights"][term] = round(data["weights"][term] + 0.000001, 6)
-        found = refused(honest, honest.upload(verdict=data))
-        assert found.name == legality.FIT_VECTOR
-        assert VOCABULARY[term] in str(found)
+        rows = honest.rows(slices.TOURNAMENT)
+        gone = rows.pop(3)
+        found = refused(honest, honest.upload(tournament=lines(rows)))
+        assert found.name == legality.MISSING_SEED
+        assert (found.phase, found.seed) == (slices.TOURNAMENT, gone["seed"])
+        assert f"missing seed {gone['seed']}" in str(found)
 
 
 class TestTheOtherRefusals:
@@ -324,12 +279,6 @@ class TestTheOtherRefusals:
         rows[game]["moves"].pop()
         found = refused(honest, honest.upload(tournament=lines(rows)))
         assert found.name == legality.UNFINISHED and found.game == game
-
-    def test_a_fit_game_is_walked_as_a_tournament_game_is(self, honest: Measured) -> None:
-        rows = honest.rows(slices.FIT)
-        rows[5]["winner"] = 0 if rows[5]["winner"] is None else None
-        found = refused(honest, honest.upload(fit=lines(rows)))
-        assert (found.name, found.phase, found.game) == (legality.WRONG_OUTCOME, slices.FIT, 5)
 
     def test_a_game_the_schedule_does_not_hold(self, honest: Measured) -> None:
         rows = honest.rows(slices.TOURNAMENT)
@@ -349,18 +298,6 @@ class TestTheOtherRefusals:
         rows = honest.rows(slices.TOURNAMENT)
         rows[0], rows[1] = rows[1], rows[0]
         assert refused(honest, honest.upload(tournament=lines(rows))).name == legality.OUT_OF_ORDER
-
-    def test_a_verdict_that_is_not_the_matchs(self, honest: Measured) -> None:
-        for key, value in (("accepted", not honest.verdict.accepted), ("accept_score", 0.99)):
-            data = {**honest.verdict.as_dict(), key: value}
-            found = refused(honest, honest.upload(verdict=data))
-            assert found.name == legality.FIT_VERDICT and key in str(found)
-
-    def test_an_acceptance_game_is_walked_too(self, honest: Measured) -> None:
-        rows = honest.rows(slices.ACCEPT)
-        rows[0]["moves"].append(rows[0]["moves"][-1])
-        found = refused(honest, honest.upload(accept=lines(rows)))
-        assert (found.name, found.phase) == (legality.AFTER_TERMINAL, slices.ACCEPT)
 
     def test_an_analysis_of_other_games_or_impossible_counts(self, honest: Measured) -> None:
         rows = honest.rows(slices.ANALYSIS)
@@ -402,8 +339,9 @@ class TestTheOtherRefusals:
         data = json.loads(text)
         cases = {
             "not JSON": "{",
-            "form": json.dumps({**data, "schema": 2}),
-            "lacks the phases": json.dumps({**data, "phases": {"fit": ""}}),
+            # Form 1 carried the fit and its acceptance match, gone in Q558.
+            "form": json.dumps({**data, "schema": 1}),
+            "lacks the phases": json.dumps({**data, "phases": {slices.TOURNAMENT: ""}}),
             "no measurement has": json.dumps(
                 {**data, "phases": {**data["phases"], "extra": ""}}
             ),
@@ -427,64 +365,7 @@ class TestTheOtherRefusals:
             legality.AFTER_TERMINAL,
             legality.WRONG_OUTCOME,
             legality.MISSING_SEED,
-            legality.FIT_VECTOR,
         } <= set(legality.NAMES)
-
-
-# ------------------------------------------------------------------- the stamp's fit
-
-OTHER_PLAYER = "fit:0123456789ab"
-"""A `Basis.fit` no regression of these games gives."""
-
-
-class TestTheStampsFitIsCompared:
-    """Q468: `Basis.fit` is held to what the server would play, as every field is."""
-
-    def test_the_honest_stamp_carries_the_player_its_fit_gives(self, honest: Measured) -> None:
-        checked = honest.check(honest.upload())
-        assert checked.basis is not None
-        assert checked.basis.fit == honest.player == corpus.player_digest(checked.fit)
-        assert json.loads(honest.upload())["basis"]["fit"] == honest.player
-
-    def test_a_stamp_that_does_not_say_is_refused_before_any_walk(
-        self, honest: Measured
-    ) -> None:
-        silent = replace(honest.stamp, fit="")
-        found = refused(honest, honest.upload(basis=silent))
-        assert found.name == legality.BASIS and found.phase is None
-        assert "which objective its fitted players played" in str(found)
-
-    def test_a_stamp_whose_fit_its_games_do_not_give_is_refused(
-        self, honest: Measured
-    ) -> None:
-        """A visitor's design has no fit store, so the regression is the only answer."""
-        assert honest.current.fit_reading is None
-        found = refused(honest, honest.upload(basis=replace(honest.stamp, fit=OTHER_PLAYER)))
-        assert found.name == legality.BASIS and found.phase == slices.FIT
-        said = str(found)
-        assert f"it played the fitted objective {OTHER_PLAYER}" in said
-        assert "plays now" in said
-
-    def test_a_game_with_a_store_holds_the_stamp_to_it_before_any_walk(
-        self, honest: Measured
-    ) -> None:
-        core = measurement.built_fingerprint()
-        stored = replace(
-            honest.current,
-            fit=OTHER_PLAYER,
-            fit_reading=measurement.FitReading(
-                player=OTHER_PLAYER, made_on=core, verified_on=frozenset({core})
-            ),
-        )
-        with pytest.raises(Refused) as caught:
-            legality.check(honest.spec, legality.read_upload(honest.upload()), stored)
-        assert caught.value.name == legality.BASIS and caught.value.phase is None
-        assert f"the fitted objective {OTHER_PLAYER} plays now" in str(caught.value)
-        # The stamp matches the store, and the walk's own regression still refuses it.
-        matching = replace(honest.stamp, fit=OTHER_PLAYER)
-        with pytest.raises(Refused) as caught:
-            legality.check(honest.spec, legality.read_upload(honest.upload(basis=matching)), stored)
-        assert caught.value.name == legality.BASIS and caught.value.phase == slices.FIT
 
 
 # -------------------------------------------------------------------- the slim form
@@ -502,7 +383,7 @@ class TestTheSlimForm:
             assert not set(legality.REBUILT_ANALYSIS_FIELDS) & set(row)
             assert "near_best" in row
         assert data["phases"][slices.BLUNDER] == honest.phases[slices.BLUNDER]
-        assert data["fit"] == honest.verdict.as_dict()
+        assert set(data) == {"schema", "basis", "phases"}
 
     def test_a_slim_line_is_still_b0s_line(self, honest: Measured) -> None:
         """No second parser: B0's own readers read the slim text."""
@@ -599,8 +480,14 @@ class TestTheWalkReadsAsTheCoreAndThePassDo:
 
     def test_a_game_without_series_rebuilds_none(self, honest: Measured) -> None:
         checked = honest.check(honest.upload())
-        assert all(not r.branching and not r.material for r in checked.fit_records)
         assert all(r.branching for r in checked.records if r.moves)
+        engine = Engine(honest.spec)
+        evaluator = Evaluator.for_engine(engine, mobility_weight=0.0)
+        for index, record in enumerate(checked.records):
+            bare = legality.walk(
+                engine, evaluator, record, phase=slices.TOURNAMENT, game=index, series=False
+            ).record
+            assert not bare.branching and not bare.material and not bare.captures
 
 
 class TestTheModuleIsDownstream:
@@ -705,7 +592,6 @@ class TestTheJob:
         assert result.headline == store.measured.index
         assert result.viable == store.measured.viable
         assert result.basis == replace(store.measured.stamp, checked=LEGAL)
-        assert result.basis.fit == store.measured.player
         state, error, log, _ = store.job(job)
         assert (state, error) == (legality.DONE, None)
         assert log == f"provisional result {result.id}: {store.measured.index:.4f}"
@@ -713,7 +599,8 @@ class TestTheJob:
         where = store.runs / "provisional" / str(result.id)
         for name in FILES:
             assert (where / name).read_text(encoding="utf-8") == store.measured.files[name]
-        assert (where / provisional.FIT).is_file()
+        index = f"index-{store.measured.current.weights_version}.json"
+        assert {path.name for path in where.iterdir()} == {*FILES, index}
         assert not list(store.runs.rglob("canonical.json"))
 
         assert legality.sweep(store.connection, store.runs) == [job]
@@ -738,25 +625,6 @@ class TestTheJob:
         assert sorted(p.name for p in (store.runs / "provisional").iterdir()) == sorted(
             [str(first.result.id), legality.UPLOADS]
         )
-
-    def test_a_stamp_whose_fit_differs_is_refused_and_records_nothing(
-        self, store: Store
-    ) -> None:
-        """Q468. Filed (a visitor's design has no store to refuse it by), then refused by
-        the walk's own regression; the honest stamp beside it is taken."""
-        wrong = replace(store.measured.stamp, fit=OTHER_PLAYER)
-        job = store.file(store.measured.upload(basis=wrong))
-        finished = store.run(job)
-        assert finished.state == legality.REFUSED and finished.result is None
-        assert finished.refusal is not None and finished.refusal.name == legality.BASIS
-        state, error, _, _ = store.job(job)
-        assert state == legality.REFUSED
-        assert error is not None and f"the fitted objective {OTHER_PLAYER}" in error
-        assert store.results() == []
-
-        taken = store.run(store.file())
-        assert taken.state == legality.DONE and taken.result is not None
-        assert taken.result.basis.fit == store.measured.player
 
     def test_a_newer_pass_supersedes_the_standing_result(self, store: Store) -> None:
         first = store.run(store.file())
@@ -973,10 +841,10 @@ class TestTheSubmissionRoute:
 
 @pytest.mark.slow
 def test_an_honest_chess_submission_scores_to_the_servers_number(tmp_path: Path) -> None:
-    """The row's acceptance on chess's whole canonical measurement, fit included.
+    """The row's acceptance on chess's whole canonical measurement.
 
-    A few minutes at four threads: the fit, its acceptance match at 6,400 nodes, 256
-    games, the analysis and the blunder trials, all through B0's request text.
+    A few minutes at four threads: 256 games, the analysis and the blunder trials, all
+    through B0's request text.
     """
     spec = load_spec(RULESETS / "chess.json")
     roster = slices.canonical_config(workers=4)

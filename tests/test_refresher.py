@@ -7,17 +7,17 @@ calls are `test_history`'s stubs, on `test_corpus`'s five-square game):
   on a gate's edge, the oldest estimate and the hash; on a fixture library through the real
   `corpus.survey`.
 - **One game**: `refresh <hash>` repairs a stale game as `measure` would, and refuses a
-  stale build, a fit that does not reproduce, a gate the repair newly fails and a repair
-  that raised.
+  stale build, a gate the repair newly fails and a repair that raised.
 - **The loop**, over a fake `Machine`: one game per lease, `deliver` after each, no game
-  spanning two commits, a refusal skipping one game and never retried, a stale build
+  spanning two commits, a refusal skipping one game and never retried, a repair that
+  changed a committed file refused and put back, a stale build
   halting until main moves, waiting while another heavy job holds the machine, a rebuild
   when `rust/` moved, the status file.
 - **The order never changes a number**: two games repaired in either order give the same
   files.
-- **The real machine's parts that need no core**: fast-forward and merge in a real git
-  repository, the porcelain reading, staging, delivery through `history.deliver`, the
-  lease status reading, a worktree that moved under a repair.
+- **The real machine's parts that need no core**: fast-forward in a real git repository,
+  the porcelain reading, staging, delivery through `history.deliver`, the lease status
+  reading, a worktree that moved under a repair.
 """
 
 from __future__ import annotations
@@ -38,7 +38,6 @@ from chess_variant_sandbox import corpus, history, measurement, refresher
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS
 from chess_variant_sandbox.refresher import Item, Outcome, Stored
 from chess_variant_sandbox.spec import spec_hash
-from chess_variant_sandbox.tournament import fitting
 
 # ------------------------------------------------------------------ fixtures
 
@@ -116,8 +115,8 @@ class TestTheOrder:
         stored = {"a": Stored(index=0.9), "b": Stored(), "c": Stored(), "d": Stored()}
         queue = refresher.order(
             [status("a", "replay", name="dobutsu"), status("b", "reanalyse"),
-             status("c", "rescore"), status("d", "refit")], stored)
-        assert [i.needs for i in queue] == ["refit", "rescore", "reanalyse", "replay"]
+             status("c", "rescore")], stored)
+        assert [i.needs for i in queue] == ["rescore", "reanalyse", "replay"]
 
     def test_within_a_repair_value_then_age_then_hash(self) -> None:
         stored = {
@@ -148,7 +147,7 @@ class TestTheOrder:
 
     def test_each_repair_takes_its_lease(self) -> None:
         assert {needs: item("x", needs).lease for needs in refresher.REPAIR_ORDER} == {
-            "refit": "heavy", "rescore": "quiet", "reanalyse": "heavy", "replay": "heavy"}
+            "rescore": "quiet", "reanalyse": "heavy", "replay": "heavy"}
 
     def test_the_launch_set_names_games_the_library_has(self) -> None:
         names = {str(json.loads(path.read_text(encoding="utf-8")).get("name"))
@@ -186,20 +185,6 @@ class TestOneGame:
         outcome = refresher.repair(digest, Path("runs"))
         assert outcome.refusal == refresher.STALE_BUILD
         assert stubbed["score"] == []
-
-    @pytest.mark.parametrize("found", [fitting.REFIT, fitting.FITTED])
-    def test_a_fit_that_does_not_reproduce_is_refused_before_a_game_is_played(
-        self, library: Path, monkeypatch: pytest.MonkeyPatch, found: str
-    ) -> None:
-        digest = library_game(library, SPEC)
-        owed = SimpleNamespace(current=False, stored={},
-                               staleness=SimpleNamespace(refit=True, needs="refit"))
-        monkeypatch.setattr(corpus, "read_measurement", lambda *a, **k: owed)
-        monkeypatch.setattr(corpus, "check_fit", lambda spec, workers=0, **_ignored: SimpleNamespace(
-            outcome=found, failures=("weights moved by 0.3",)))
-        monkeypatch.setattr(corpus, "refresh", lambda *a, **k: pytest.fail("it ran"))
-        outcome = refresher.repair(digest, Path("runs"))
-        assert outcome.refusal == refresher.FIT_NOT_REPRODUCED and outcome.needs == "refit"
 
     def test_a_gate_the_repair_newly_fails_is_refused(
         self, library: Path, monkeypatch: pytest.MonkeyPatch, stubbed  # noqa: F811
@@ -264,8 +249,7 @@ class FakeMachine:
     during_repair: Any = None
     calls: list[tuple[str, ...]] = field(default_factory=list)
     holding: str | None = None
-    # Commits main holds, for `unmerged`; and a Ctrl-C at the first sleep.
-    merged: set[str] = field(default_factory=set)
+    # A Ctrl-C at the first sleep.
     interrupt_on_sleep: bool = False
     # What `slow_tier` returns (a green run by default), or raises; and the files it leaves
     # changed (`test_refresher_slow_tier.py`).
@@ -343,17 +327,9 @@ class FakeMachine:
     def changed(self) -> list[str]:
         return list(self.changes)
 
-    def keep(self, it: Item, paths: list[str]) -> str:
-        self.calls.append(("keep", it.hash, *paths))
-        self.changes = []
-        return "k1"
-
     def discard(self, paths: list[str]) -> None:
         self.calls.append(("discard", *paths))
         self.changes = []
-
-    def unmerged(self, commits: list[str]) -> list[str]:
-        return [commit for commit in commits if commit not in self.merged]
 
     def slow_tier(self) -> refresher.SlowTier:
         assert self.holding == refresher.SLOW_TIER_LEASE
@@ -523,35 +499,29 @@ class TestTheLoop:
         assert loop(machine, tmp_path).run() == 1
         assert machine.did("repair") == []
 
-    def test_fit_evidence_is_kept_and_anything_else_refused(self, tmp_path: Path) -> None:
-        machine = FakeMachine(owed={"a": ("refit", "s")},
-                              changes=["fitted/reproduced/x.json"])
+    def test_a_repair_that_changed_any_committed_file_is_refused(self, tmp_path: Path) -> None:
+        """Nothing a repair writes is ever committed: a committed file it changed, wherever
+        it is, refuses the repair, and the change is put back."""
+        changed = ["nets/x.json", "rulesets/chess.json"]
+        machine = FakeMachine(owed={"b": ("rescore", "s")}, changes=list(changed))
         loop(machine, tmp_path).run()
-        assert machine.did("keep") == [("keep", "a", "fitted/reproduced/x.json")]
-        assert machine.did("deliver") == [("deliver", "a")]
-        assert refresher.read_status(tmp_path)["owed_merge"] == ["k1"]  # type: ignore[index]
-
-        # Once main holds the fit commit it is owed no merge, and the log says so
-        # (Q693r's first real run: the list only ever grew).
-        machine.merged = {"k1"}
-        loop(machine, tmp_path).run()
-        assert refresher.read_status(tmp_path)["owed_merge"] == []  # type: ignore[index]
-        assert any(line["event"] == "merged" and line["commits"] == ["k1"]
-                   for line in refresher.read_log(tmp_path))
-
-        other = FakeMachine(owed={"b": ("rescore", "s")}, changes=["rulesets/chess.json"])
-        loop(other, tmp_path / "other").run()
-        assert other.did("deliver") == [] and other.did("discard") == [
-            ("discard", "rulesets/chess.json")]
-        refusal = refresher.read_status(tmp_path / "other")["last_refusal"]  # type: ignore[index]
+        assert machine.did("deliver") == []
+        assert machine.did("discard") == [("discard", *changed)]
+        status = refresher.read_status(tmp_path)
+        assert status is not None
+        refusal = status["last_refusal"]
         assert refusal["kind"] == refresher.CHANGED_COMMITTED_FILES
+        assert "nets/x.json" in refusal["reason"] and "rulesets/chess.json" in refusal["reason"]
+        assert "owed_merge" not in status
 
     def test_a_refused_repair_puts_back_what_it_changed(self, tmp_path: Path) -> None:
-        machine = FakeMachine(owed={"a": ("refit", "s")}, changes=["fitted/a.json"],
-                              refuse={"a": refresher.FIT_NOT_REPRODUCED})
+        machine = FakeMachine(owed={"a": ("rescore", "s")}, changes=["nets/a.json"],
+                              refuse={"a": refresher.GATE_NEWLY_FAILED})
         loop(machine, tmp_path).run()
-        assert machine.did("discard") == [("discard", "fitted/a.json")]
-        assert machine.did("keep") == [] and machine.did("deliver") == []
+        assert machine.did("discard") == [("discard", "nets/a.json")]
+        assert machine.did("deliver") == []
+        refusal = refresher.read_status(tmp_path)["last_refusal"]  # type: ignore[index]
+        assert refusal["kind"] == refresher.GATE_NEWLY_FAILED
 
     def test_the_status_file_says_what_is_owed_and_what_was_done(self, tmp_path: Path) -> None:
         machine = FakeMachine(owed={"a": ("rescore", "s"), "b": ("replay", "s")})
@@ -559,7 +529,7 @@ class TestTheLoop:
         looping.step()
         status = refresher.read_status(tmp_path)
         assert status is not None
-        assert status["owed_counts"] == {"refit": 0, "rescore": 1, "reanalyse": 0, "replay": 1}
+        assert status["owed_counts"] == {"rescore": 1, "reanalyse": 0, "replay": 1}
         assert [row["hash"] for row in status["owed"]] == ["a", "b"]
         assert status["last_done"]["hash"] == "a" and status["commit"] == "c1"
         assert isinstance(status["age_s"], int) and status["age_s"] >= 0
@@ -652,8 +622,8 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> refresher.GitMachin
     main.mkdir()
     git(main, "init", "-q", "-b", "main")
     (main / ".gitignore").write_text("runs/\n.claude/worktrees/\n", encoding="utf-8")
-    (main / "fitted").mkdir()
-    (main / "fitted" / "a.json").write_text("{}", encoding="utf-8")
+    (main / "nets").mkdir()
+    (main / "nets" / "a.json").write_text("{}", encoding="utf-8")
     git(main, "add", "-A")
     git(main, "commit", "-qm", "one")
     worktree = main / ".claude" / "worktrees" / "refresher"
@@ -674,38 +644,16 @@ class TestTheRealMachine:
         assert refresher.rebuild_needed(["rust/lib.rs"])
         assert not refresher.rebuild_needed(["chess_variant_sandbox/cli.py"])
 
-    def test_its_own_fit_commits_are_merged_with_main_never_rewritten(self, repo) -> None:
-        (repo.worktree / "fitted" / "b.json").write_text("{}", encoding="utf-8")
-        assert repo.changed() == ["fitted/b.json"]
-        kept = repo.keep(item("h", "refit", name="lancers"), ["fitted/b.json"])
-        assert kept == repo.head() and repo.changed() == []
-        (repo.main_checkout / "x.txt").write_text("x", encoding="utf-8")
-        git(repo.main_checkout, "add", "-A")
-        git(repo.main_checkout, "commit", "-qm", "three")
-        assert repo.behind()
-        assert repo.advance() == ["x.txt"]
-        # Ahead of main by its own commit and the merge, and not behind it.
-        assert not repo.behind()
-        log = git(repo.worktree, "rev-list", "HEAD")
-        assert kept in log and git(repo.main_checkout, "rev-parse", "main").strip() in log
-
-        # Owed a merge until main holds it; a commit the branch does not hold (unknown to
-        # git, or main's own) is owed nothing.
-        main_head = git(repo.main_checkout, "rev-parse", "main").strip()
-        assert repo.unmerged([kept, "0" * 40, main_head]) == [kept]
-        git(repo.main_checkout, "merge", "-q", "--no-edit", refresher.BRANCH)
-        assert repo.unmerged([kept]) == []
-
     def test_the_porcelain_is_read_whole_and_a_discard_puts_it_back(self, repo) -> None:
-        (repo.worktree / "fitted" / "a.json").write_text('{"x": 1}', encoding="utf-8")
-        (repo.worktree / "fitted" / "new.json").write_text("{}", encoding="utf-8")
+        (repo.worktree / "nets" / "a.json").write_text('{"x": 1}', encoding="utf-8")
+        (repo.worktree / "nets" / "new.json").write_text("{}", encoding="utf-8")
         (repo.worktree / "runs").mkdir()
         (repo.worktree / "runs" / "ignored.json").write_text("{}", encoding="utf-8")
         # The first line starts with a space (" M"); a stripped read would cut its name.
-        assert repo.changed() == ["fitted/a.json", "fitted/new.json"]
+        assert repo.changed() == ["nets/a.json", "nets/new.json"]
         repo.discard(repo.changed())
         assert repo.changed() == []
-        assert (repo.worktree / "fitted" / "a.json").read_text(encoding="utf-8") == "{}"
+        assert (repo.worktree / "nets" / "a.json").read_text(encoding="utf-8") == "{}"
 
     def test_a_worktree_that_moves_under_a_repair_is_refused(self, repo) -> None:
         heads = iter(["c1", "c2"])

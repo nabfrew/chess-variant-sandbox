@@ -13,7 +13,13 @@ from __future__ import annotations
 import random
 from typing import Any
 
-from chess_variant_sandbox.agents.base import NativeSpec, SearchStats, register, register_native
+from chess_variant_sandbox.agents.base import (
+    NativeSpec,
+    SearchStats,
+    refuse_unknown_options,
+    register,
+    register_native,
+)
 from chess_variant_sandbox.agents.evaluation import GOAL_PIECES, IMMUNE_PIECES, WIN_SCORE, Evaluator
 from chess_variant_sandbox.agents.matrix import (
     RoundSearch,
@@ -84,6 +90,12 @@ REPAIR_OPTIONS = {"keep": KEEP_TABLE, "threats": THREATS, "loud_drops": LOUD_DRO
 # ``_core.DEFAULT_REPAIRS`` by a test, so it moves the build fingerprint too. Today's
 # player before Q502i is ``threats=0``.
 DEFAULT_REPAIRS = THREATS
+
+# Every option a minimax player reads; any other is refused (`refuse_unknown_options`).
+OPTIONS = (
+    "nodes", "mobility", "max_depth", "goal", "immune", "h", "values", "net",
+    *REPAIR_OPTIONS,
+)
 
 
 def repairs_of(options: dict[str, Any]) -> int:
@@ -708,6 +720,7 @@ def _pair(announcer: int, announced: int, answer: int) -> tuple[int, int]:
 
 @register("minimax")
 def _build_minimax(engine: Engine, options: dict[str, Any]) -> MinimaxAgent:
+    refuse_unknown_options(options, OPTIONS, "minimax")
     if engine.spy:
         # Schema 27 (Q935b): a spy game is played on the built-in objective only, as a
         # round game is (`docs/plan-spy.md` §3.3).
@@ -728,6 +741,7 @@ def _build_minimax(engine: Engine, options: dict[str, Any]) -> MinimaxAgent:
 
 @register_native("minimax")
 def _native_minimax(options: dict[str, Any], ruleset_hash: str = "") -> NativeSpec:
+    refuse_unknown_options(options, OPTIONS, "minimax")
     return (
         "minimax",
         int(options.get("nodes", 20_000)),

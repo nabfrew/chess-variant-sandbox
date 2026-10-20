@@ -53,8 +53,7 @@ SPEC = {
 SEED = 1000
 
 # Two searching players, so every game is one the analysis pass grades and every blunder
-# trial has a game to be drawn from. Neither carries `fit=`, so nothing here needs a
-# fitted store in place first.
+# trial has a game to be drawn from.
 #
 # The minimax player spells `threats=0`, the search before Q502i's repair, as a small-sample
 # fixture pinned to the old search does (`.claude/rules/agents-and-eval.md`). With the repair

@@ -978,7 +978,7 @@ RULES = """
     border-bottom: 1px solid var(--line); }
   table.ratings td { padding: 3px 4px; vertical-align: top; }
   /* An opponent with no rating table row is named by its parameters, and
-     `minimax:fit=98f172aeac49,nodes=1600` is one word to a browser. Unbroken, it set the
+     `minimax:net=0eaad64c4586,nodes=1600` is one word to a browser. Unbroken, it set the
      table's width and the phone scrolled sideways. */
   table.ratings td, table.ratings th { overflow-wrap: anywhere; }
   table.ratings tbody tr:nth-child(odd) { background: var(--stripe); }

@@ -82,10 +82,10 @@ def _synthetic(verdict: str, rule: premise.Rule = premise.RULE) -> dict[str, Any
 class TestThePlayers:
     def test_the_top_rung_is_the_most_nodes_and_the_ceiling_multiplies_them(self) -> None:
         assert premise.top_rung(ROSTER) == "minimax:nodes=24"
-        fitted = "minimax:fit=98f172aeac49,nodes=6400"
-        assert premise.top_rung(("random", "minimax:fit=98f172aeac49,nodes=100", fitted)) == fitted
-        assert premise.ceiling_of(fitted, 8) == "minimax:fit=98f172aeac49,nodes=51200"
-        assert premise.fairy_of(fitted) == "fairystockfish:nodes=6400"
+        netted = "minimax:net=000000000001,nodes=6400"
+        assert premise.top_rung(("random", "minimax:net=000000000001,nodes=100", netted)) == netted
+        assert premise.ceiling_of(netted, 8) == "minimax:net=000000000001,nodes=51200"
+        assert premise.fairy_of(netted) == "fairystockfish:nodes=6400"
 
     def test_a_roster_with_no_search_is_refused(self) -> None:
         with pytest.raises(ValueError, match="no searching player"):
@@ -117,12 +117,10 @@ class TestTheGamesOwnRoster:
         now = premise.PremiseBasis.current(DIGEST, SPEC)
         assert now.player == "minimax:net=000000000001,nodes=6400"
         assert now.net == "000000000001=net:" + hashlib.sha256(blob).hexdigest()[:12]
-        # The score's rule: a net ladder plays no fitted objective, so it reads no fit.
-        assert now.fit == ""
         assert premise.ceiling_of(now.player, 8) == "minimax:net=000000000001,nodes=51200"
         assert premise.fairy_of(now.player) == "fairystockfish:nodes=6400"
         reasons = then.stale_against(now)
-        assert any("strongest player was minimax:fit=" in reason for reason in reasons)
+        assert any("strongest player was minimax:nodes=6400" in reason for reason in reasons)
         assert any("its nets were none" in reason for reason in reasons)
 
     def test_on_the_library_the_stamp_moves_for_the_rated_net_games_alone(self) -> None:
@@ -152,7 +150,7 @@ class TestTheGamesOwnRoster:
                     moved[digest] = differs
         assert set(moved) == set(ROLLED_OUT)
         for digest, differs in moved.items():
-            assert {"player", "net"} <= differs <= {"player", "net", "fit"}, digest
+            assert differs == {"player", "net"}, digest
 
 
 # ------------------------------------------------------------------ end to end
@@ -247,7 +245,6 @@ class TestItsBasis:
         [
             ("engine", "the core, the agents or the game loop changed"),
             ("tables", "compiles to different tables"),
-            ("fit", "fit was"),
             ("net", "its nets were"),
             ("code", "the check itself changed"),
             ("fairy_code", "translation of this game changed"),
@@ -271,14 +268,14 @@ class TestItsBasis:
 
     def test_no_binary_here_does_not_stale_a_verdict_one_played(self) -> None:
         stored = premise.PremiseBasis(
-            DIGEST, "p", "e", "t", "", "", "r", "c", "fc", "Fairy-Stockfish 14@abc"
+            DIGEST, "p", "e", "t", "", "r", "c", "fc", "Fairy-Stockfish 14@abc"
         )
-        here = premise.PremiseBasis(DIGEST, "p", "e", "t", "", "", "r", "c", "fc",
+        here = premise.PremiseBasis(DIGEST, "p", "e", "t", "", "r", "c", "fc",
                                     premise.FAIRY_ABSENT)
         assert stored.stale_against(here) == ()
         # The other way round it is stale: a binary here can play what was not played.
         assert "one is installed now" in " ".join(here.stale_against(stored))
-        other = premise.PremiseBasis(DIGEST, "p", "e", "t", "", "", "r", "c", "fc",
+        other = premise.PremiseBasis(DIGEST, "p", "e", "t", "", "r", "c", "fc",
                                      "Fairy-Stockfish 15@def")
         assert other.stale_against(stored)
 

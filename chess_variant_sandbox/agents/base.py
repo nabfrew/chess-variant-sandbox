@@ -16,7 +16,7 @@ than living in a runner's local variable.
 from __future__ import annotations
 
 import random
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -135,11 +135,11 @@ NATIVE_VALUES = 8
 
 # A resolver sees the options and the hash of the ruleset the agent is about to play.
 #
-# The second argument arrived with the fitted objective and is not decoration. A stated
-# heuristic resolves through a content-addressed digest and needs no ruleset -- the
-# digest *is* the vector. A *fitted* objective is the opposite by design: the name
-# carries the procedure, which is the same string on every board, and the vector it
-# produces is per-ruleset, so resolution cannot happen without knowing which board.
+# The second argument is not decoration. A stated heuristic resolves through a
+# content-addressed digest and needs no ruleset -- the digest *is* the vector. A searched
+# table (`values=`) or a learned net (`net=`) is the opposite by design: the name carries
+# the procedure, which is the same string on every board, and what it produces is
+# per-ruleset, so resolution cannot happen without knowing which board.
 # Every caller already holds an engine; the hash travels rather than a global binding,
 # because a module-level "current ruleset" would be wrong the moment two rulesets are
 # open at once, and it would be wrong silently.
@@ -176,8 +176,8 @@ def native_spec(config: AgentConfig | str, ruleset_hash: str = "") -> NativeSpec
 
     ``ruleset_hash`` defaults to empty because most agents do not need it and every
     caller that does not pass one is asking about an agent that cannot depend on the
-    board. An agent that *does* -- a fitted objective -- raises rather than resolving to
-    something, so the default cannot quietly produce the wrong player.
+    board. An agent that *does* -- a searched table or a learned net -- raises rather than
+    resolving to something, so the default cannot quietly produce the wrong player.
     """
     if isinstance(config, str):
         config = parse_agent(config)
@@ -208,6 +208,22 @@ def parse_agent(text: str) -> AgentConfig:
             raise ValueError(f"agent option {chunk!r} must be written key=value")
         options[key.strip()] = _coerce(value.strip())
     return AgentConfig(kind=kind, options=options)
+
+
+def refuse_unknown_options(options: dict[str, Any], known: Iterable[str], kind: str) -> None:
+    """Raise if ``options`` holds a key this kind of player does not read.
+
+    An option nobody reads is not harmless: the player sits down without it and plays
+    something else under the name that spells it, the failure this project ranks worst.
+    A retired option is the case that makes it real, since stored rosters and records
+    still spell one.
+    """
+    unknown = sorted(set(options) - set(known))
+    if unknown:
+        raise ValueError(
+            f"{kind} reads no option {', '.join(unknown)}; it reads "
+            f"{', '.join(sorted(known))}"
+        )
 
 
 def build_agent(config: AgentConfig | str, engine: Engine) -> Agent:

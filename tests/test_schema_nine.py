@@ -417,13 +417,19 @@ FROZEN: dict[str, tuple[str, str]] = {
     # (`docs/reference/previews-2026-10-18.md`), its file kept as `tests/_retired_*.json`; its runs stay.
     # Q962, 2026-10-18: against the chase renamed `archive/breather.json`, name and description only;
     # the mechanics hash is the same.
-    "archive/breather.json": ("632c199e4589", "359f27e3538d5415"),
+    # Q983a, 2026-10-20: rewritten for schema 29, the old switch as `"rest": 1` on every piece
+    # (`docs/plan-rest.md` §4.5), the same game move for move (`tests/test_rest_equivalence.py`);
+    # it was `632c199e4589`/`359f27e3538d5415`, whose runs stay.
+    "archive/breather.json": ("b8687024cfc6", "dea79e1326627218"),
     # Q935f, 2026-10-17: the spy's showcases (`docs/plan-spy.md` §5; `tests/test_showcases_q935f.py`):
     # Gardner with spies (SP1, `pieces.spy`, the mechanics of Q935d's draft) and Gardner with
     # spies resting (SP2, with `rest`). New.
     # Q962b, 2026-10-18: `archive/gardner-with-spies.json` (`f4c62a33798d`/`7e3a92c5d12b44dd`) retired from the previews
     # (`docs/reference/previews-2026-10-18.md`), its file kept as `tests/_retired_*.json`; its runs stay.
-    "archive/gardner-with-spies-resting.json": ("1d798bedbf66", "8a309ac4ab581f8e"),
+    # Q983a, 2026-10-20: rewritten for schema 29, `"rest": 1` on every piece, which now rests the
+    # alternating phase too (`docs/plan-rest.md` §3.10, §4.5): the nearest new game; it was
+    # `1d798bedbf66`/`8a309ac4ab581f8e`, whose runs stay.
+    "archive/gardner-with-spies-resting.json": ("8ce37482d0de", "695d1804a70fbd97"),
     # Q936s, 2026-10-17: the showcase of `"per_type": "own"`, two armies of different kinds
     # (`docs/reference/extinction-any-kind.md` §5; `tests/test_showcases_q936s.py`). New;
     # measured first as `30c055a056ec` (tables `d53eb61a71b4745e`), re-frozen the same day when

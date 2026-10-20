@@ -448,6 +448,14 @@ class Session:
             # folds. A fold is not on the board byte, so the page reads it here, and draws
             # it under the pieces.
             "folds": fold_payload(engine, self.state),
+            # Schema 29 (Q983a, `pieces[].rest`): every resting piece, `{player, square,
+            # left}`, player 0's first: a piece that made its player's move and may not make
+            # it for that player's next `left` turns unless it is all that player can move.
+            # The core's state, in every game, alternating or in rounds; `[]` without a rest.
+            "resting": [
+                {"player": player, "square": square, "left": left}
+                for player in (0, 1) for square, left in self.state.rest[player]
+            ],
             "ply": self.state.ply,
             # A game in rounds has no check (§2.5): a royal under attack may simply move.
             "inCheck": (
@@ -912,10 +920,6 @@ class Session:
             # drawn and never worked out.
             "voidRun": list(run) if run[0] >= 0 and run[1] >= 0 else None,
             "bars": [list(bar) for bar in self.state.bars],
-            # Schema 27 (Q942a, `rest`): each player's rested square, player 0's first, or
-            # None: the piece that made that player's move last round, which may not move
-            # this one unless it is all that player can move. The core's state, drawn.
-            "rest": [square if square >= 0 else None for square in self.state.rest],
         }
         if reader is not None and mine is not None and reader != announcer:
             # Q918f: the reader's own sealed move, described as an offered move is, so the

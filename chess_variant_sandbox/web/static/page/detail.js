@@ -922,17 +922,10 @@ function measuringHtml(game) {
   const ladder = `${roster} standard opponents playing ${per} games against each other in
     every pairing${info('roster')}, which is where every score on this site comes from`;
 
-  // One entry per repair `Staleness.needs` can ask for. It asks for four, and the
-  // button used to offer two -- so a game whose analysis pass had changed, and whose
-  // games are perfectly good, said "measure it again" and read as a replay. `refit`
-  // (Q80c, `docs/reference/refit-repair.md`) is the newest and weakest: the games and the
-  // scoring both stand, and only the objective the roster's fitted rungs play was
-  // accepted on a build other than this one, so it is checked against this one before
-  // anything else runs -- left unnamed it fell to the fallback below and read as a
-  // replay, which is the one thing it is not.
+  // One entry per repair `Staleness.needs` can ask for besides a replay. The button used
+  // to offer two -- so a game whose analysis pass had changed, and whose games are
+  // perfectly good, said "measure it again" and read as a replay.
   const repairs = {
-    refit: ['check its fit',
-      'the games still stand; the objective the opponents play was accepted on a different build, so it is checked against this one before anything is scored again'],
     rescore: ['score it again',
       'the games still stand; only the scoring runs again, which is seconds'],
     reanalyse: ['analyse and score it again',
@@ -1383,7 +1376,7 @@ const LADDER_SCALE = 'in the tournament';
 // number out of each in one column would invent a comparison nobody made.
 //
 // A table is a snapshot of whoever was in the picker when it was worked out, and the
-// picker is live: an engine installed since, a rule of thumb proposed since, a fit or a
+// picker is live: an engine installed since, a rule of thumb proposed since, a
 // valuation accepted since is offered above and has no row here. The panel used to
 // draw the rows it had and nothing else, so an opponent you could start a game against
 // this minute was simply missing from "how hard each opponent is" with no sign that it
@@ -1391,7 +1384,7 @@ const LADDER_SCALE = 'in the tournament';
 // engine. Now the difference between the roster and the table is named, both ways.
 //
 // Only for the picker's own table. The rated ladder's rows are the canonical agents --
-// `minimax:fit=...,nodes=6400` and its rungs -- which are not picker entries at all, so
+// `minimax:nodes=6400` and its rungs -- which are not picker entries at all, so
 // a diff against the roster there would call the whole ladder "no longer offered" and
 // the whole picker "not rated yet"; its note says the honest thing in one sentence.
 //
@@ -1414,7 +1407,7 @@ function strengthHtml(game) {
         : 'work out how hard each one is'}</button>
       <span class="muted small">plays them against each other, which ${ratingWait(true)}</span>
     </div>` : '';
-  // A stored fit or searched table the roster left out as stale (Q142), in the server's
+  // A searched table or rule of thumb the roster left out as stale (Q142), in the server's
   // own sentence: what is stale, and the command that repairs it. It is refused rather
   // than played as the built-in objective under its own name; `opponents.refused_stores`
   // says why. Here because rating the picker is where one of them used to fail, with a
@@ -1451,7 +1444,7 @@ function strengthHtml(game) {
     const ladderRow = (entry && entry.store === 'ladder') || s.group === 'search depth'
       || s.group === 'computer players, weakest first';
     // In the picker's table and not in the picker: a rule of thumb whose set was
-    // regenerated, a fit that has since been refused. Its number still stands; it is
+    // regenerated, a valuation that has since been refused. Its number still stands; it is
     // just not a game you can start, and the row says so rather than looking like one.
     const gone = picker && !entry ? ' <span class="muted small">(no longer available)</span>' : '';
     const number = `<b>${s.rating > 0 ? '+' : ''}${Math.round(s.rating)}</b>`;
@@ -2390,7 +2383,7 @@ function sidePicker(game, options, table) {
 // and its strength in the server's words under it (`optionStrength`, Q579's), the chosen
 // one bordered in the action colour. A player every strong seat is taken from says so on
 // its card in a muted line (L11), never in red. The rest of the roster -- the rules of
-// thumb, the fit, the outside engine -- is longer than a row of cards should be, so it
+// thumb, the priced pieces, the outside engine -- is longer than a row of cards should be, so it
 // stays in the menu, behind *more*; the menu is the seat's one value either way, and a
 // card only sets it. Where the roster has no ladder at all the menu is drawn as before.
 function seatCardsHtml(id, options, chosen, table, game) {
@@ -2494,7 +2487,7 @@ function armyHtml(army) {
 // strength.
 //
 // The seat itself comes first, then the rungs every board shares, and everything else
-// under *more*: the plans, the fit and the outside engine are extras, and most of them
+// under *more*: the plans, the priced pieces and the outside engine are extras, and most of them
 // are not rated on a given game.
 //
 // **An option leads with the opponent's name, then its strength** (F7, \u00a73.3 of

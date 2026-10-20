@@ -357,7 +357,7 @@ def test_the_screen_plays_a_spy_game_by_its_players() -> None:
     assert spy_roster(("random", "greedy", "minimax:nodes=6400")) == (
         "random", "greedy", "minimax:nodes=6400"
     )
-    for refused in ("matrix:nodes=1600", "mcts:nodes=100", "minimax:fit=98f172aeac49,nodes=100"):
+    for refused in ("matrix:nodes=1600", "mcts:nodes=100", "minimax:h=abc123,nodes=100"):
         with pytest.raises(ValueError, match="cannot play a spy game"):
             spy_roster((refused,))
 
@@ -379,10 +379,12 @@ def test_a_guarded_spy_is_not_taken_for_a_rook(agent: str) -> None:
 # The searching players on the two games every bump holds still, taken on main's core
 # 904e4c25ccc0edf4 before Q935b and on this one, and equal (`plan-spy.md` §2.3): the spy's
 # instances of the searches and its evaluator line leave every game without a spy alone.
+# Q986b (2026-10-20) re-pinned the round game on purpose: a finished round is worth
+# `ROUND_WIN_PIECES` mean pieces in the round search, a new round player. It was a559af13... .
 _INERT = {
     "rulesets/chess.json": "454a5507328148886b9f5c39b091907dc686caca91ee57beda7cf16a7b64a782",
     "tests/_retired_gardner_in_rounds.json":
-        "a559af1335baedbba61966f359914a6f4615ad14a8a82e3a1a88fcd924fe9e7f",
+        "ea68bf59be2363fef170199cada924fac4b354a18be67e43e2e3726c2d22c835",
 }
 
 

@@ -11,13 +11,11 @@ to its designer alone.
 
 A measurement in the browser is B0's units (`tournament/slices.py`), and the text a phase's
 units send back, concatenated in part order, is that phase's whole output. The upload is
-those five texts, with the fit's verdict as every later unit was handed it and the stamp
-the browser made. `upload` writes it and `read_upload` reads it, and they are the only
+those three texts and the stamp the browser made. `upload` writes it and `read_upload` reads it, and they are the only
 writer and reader, so there is one form and not two:
 
-    {"schema": 1, "basis": {...}, "fit": {...},
-     "phases": {"fit": "<JSON Lines>", "accept": ..., "tournament": ...,
-                "analysis": ..., "blunder": ...}}
+    {"schema": 2, "basis": {...},
+     "phases": {"tournament": "<JSON Lines>", "analysis": ..., "blunder": ...}}
 
 It is *slim* because `upload` drops from each line the fields the walk rebuilds: a game's
 per-ply series, and every analysis field but `near_best`. Those are half of `analysis.json`
@@ -31,25 +29,18 @@ reads the text: Python writes it in the browser and Python reads it here.
 
 1. **The basis.** `provisional.refusal`: the browser's stamp against the server's one-run
    basis. A stale cached module is refused by its build fingerprint before anything is
-   walked, and the page fetches the current module. The stamp's `fit` is compared with
-   the fit store here when the game has one, and again after step 4 with the player the
-   server's own regression gives, which is the stamp a pass stores (Q468).
-2. **The schedules are the server's.** It builds the fit's, the acceptance match's and the
-   tournament's schedules itself and refuses any difference by name: a missing seed, a game
-   the schedule does not hold, a seed played twice, other players, or another order.
+   walked, and the page fetches the current module.
+2. **The schedule is the server's.** It builds the tournament's schedule itself and
+   refuses any difference by name: a missing seed, a game the schedule does not hold, a
+   seed played twice, other players, or another order.
 3. **The walk asks the core at every ply** (`CLAUDE.md` rule 3). A move after a terminal
    position, a move outside `Engine.legal_moves`, moves that stop before the game ends, and
    a stated winner or reason that differ from the core's verdict are refused, each naming
    the game and the ply. The same walk rebuilds the series and the analysis fields.
-4. **The fit is re-derived.** The server regresses the walked fit games itself
-   (`slices.gather_fit`, which is `fitting.harvest` and `logistic_fit`), totals the walked
-   acceptance match (`slices.gather_verdict`), and requires the six-decimal vector and the
-   verdict to match the submitted ones. Without this a forged vector would replay cleanly
-   in tier two, because the agent string carries the procedure and no weights.
-5. **The analysis covers the graded games, and the trials are the sampler's.** Which games
+4. **The analysis covers the graded games, and the trials are the sampler's.** Which games
    the pass grades and which it forces a blunder into are functions of the records, so the
    server lists both and refuses a submission that covers others.
-6. **The score is the server's.** `slices.gather_measurement` scores the walked records with
+5. **The score is the server's.** `slices.gather_measurement` scores the walked records with
    the ordinary metrics, and that is the number `provisional.record` stores.
 
 ## What stays unproven
@@ -102,15 +93,13 @@ import os
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 from chess_variant_sandbox import corpus
 from chess_variant_sandbox.agents.evaluation import Evaluator
-from chess_variant_sandbox.agents.features import VOCABULARY
-from chess_variant_sandbox.agents.fitted import FitError, FittedObjective
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.moves import move_from
 from chess_variant_sandbox.measurement import Basis, built_fingerprint
@@ -157,8 +146,6 @@ ILLEGAL_MOVE = "illegal-move"
 AFTER_TERMINAL = "move-after-terminal"
 UNFINISHED = "unfinished"
 WRONG_OUTCOME = "wrong-outcome"
-FIT_VECTOR = "fit-vector"
-FIT_VERDICT = "fit-verdict"
 ANALYSIS = "analysis"
 BLUNDER = "blunder"
 STORE = "store"
@@ -174,8 +161,6 @@ NAMES: tuple[str, ...] = (
     AFTER_TERMINAL,
     UNFINISHED,
     WRONG_OUTCOME,
-    FIT_VECTOR,
-    FIT_VERDICT,
     ANALYSIS,
     BLUNDER,
     STORE,
@@ -183,8 +168,6 @@ NAMES: tuple[str, ...] = (
 
 # How each playing phase is named in a sentence.
 _CALLED = {
-    slices.FIT: "the fit games",
-    slices.ACCEPT: "the acceptance match",
     slices.TOURNAMENT: "the tournament",
 }
 
@@ -234,10 +217,9 @@ class Refused(ValueError):
 
 @dataclass(frozen=True)
 class Upload:
-    """What a browser sent: its stamp, the fit's verdict, and each phase's gathered text."""
+    """What a browser sent: its stamp and each phase's gathered text."""
 
     basis: Mapping[str, Any] | None
-    fit: Mapping[str, Any] | None
     phases: Mapping[str, str]
 
 
@@ -273,10 +255,8 @@ def read_upload(text: str | bytes) -> Upload:
     if not all(isinstance(value, str) for value in phases.values()):
         raise Refused(UNREADABLE, "each phase is carried as the text its units sent back")
     basis = data.get("basis")
-    fit = data.get("fit")
     return Upload(
         basis=basis if isinstance(basis, dict) else None,
-        fit=fit if isinstance(fit, dict) else None,
         phases={str(name): str(value) for name, value in phases.items()},
     )
 
@@ -290,13 +270,9 @@ class Checked:
 
     spec: dict[str, Any]
     roster: TournamentConfig
-    fit: FittedObjective
-    fit_records: list[GameRecord]
-    accept_records: list[GameRecord]
     records: list[GameRecord]
     analysis: CorpusAnalysis
-    # The server's one-run basis with `fit` set to the objective its own regression plays
-    # (`provisional.refitted`): the stamp the submission was held to, and the one stored.
+    # The server's one-run basis: the stamp the submission was held to, and the one stored.
     basis: Basis | None = None
 
 
@@ -333,25 +309,15 @@ def check(spec: dict[str, Any], sent: Upload, current: Basis) -> Checked:
             BASIS, f"the basis is for the game {current.ruleset_hash}, not {engine.spec.hash}"
         )
     roster = roster_of(current)
-    submitted_fit = _verdict(sent.fit, engine.spec.hash)
 
-    fit_sent = _records(sent.phases[slices.FIT], slices.FIT)
-    accept_sent = _records(sent.phases[slices.ACCEPT], slices.ACCEPT)
     tournament_sent = _records(sent.phases[slices.TOURNAMENT], slices.TOURNAMENT)
     analyses_sent = _analyses(sent.phases[slices.ANALYSIS])
     trials_sent = _trials(sent.phases[slices.BLUNDER])
 
-    # The schedules the server can build before walking anything. The acceptance match's
-    # waits for the regression, because whether there is a match at all is the server's
-    # vector's to say and not the submitted one's.
-    same_schedule(slices.FIT, fit_sent, runner.schedule(slices.fit_config()))
+    # The schedule, before walking anything.
     same_schedule(slices.TOURNAMENT, tournament_sent, runner.schedule(roster))
 
     evaluator = Evaluator.for_engine(engine, mobility_weight=0.0)
-    fit_records = [
-        walk(engine, evaluator, record, phase=slices.FIT, game=index).record
-        for index, record in enumerate(fit_sent)
-    ]
     walked = [
         walk(
             engine,
@@ -364,49 +330,15 @@ def check(spec: dict[str, Any], sent: Upload, current: Basis) -> Checked:
         for index, record in enumerate(tournament_sent)
     ]
 
-    provisional_fit = slices.gather_fit(spec, fit_records)
-    accept_records: list[GameRecord] = []
-    if slices.needs_a_match(provisional_fit):
-        same_schedule(
-            slices.ACCEPT,
-            accept_sent,
-            runner.schedule(slices.accept_config(provisional_fit.procedure)),
-        )
-        accept_records = [
-            walk(engine, evaluator, record, phase=slices.ACCEPT, game=index).record
-            for index, record in enumerate(accept_sent)
-        ]
-        verdict = slices.gather_verdict(provisional_fit, accept_records)
-    else:
-        if accept_sent:
-            raise Refused(
-                UNSCHEDULED,
-                "the fit games regress to a fit that is refused before its match, so there "
-                f"is no acceptance match, and the submission has {len(accept_sent)} games of one",
-                phase=slices.ACCEPT,
-            )
-        verdict = provisional_fit
-    same_verdict(submitted_fit, verdict)
-    # The stamp's `fit` against what the server would play: the player its own regression
-    # gives, which on a visitor's design is the only answer there is (Q468). Compared as
-    # `refusal` compares every field, so a mismatch names both players.
-    held = provisional.refitted(current, corpus.player_digest(verdict))
-    reason = provisional.refusal(sent.basis, held)
-    if reason is not None:
-        raise Refused(BASIS, f"the result was refused: {reason}", phase=slices.FIT)
-
     records = [step.record for step in walked]
     analyses = rebuilt_analyses(records, walked, analyses_sent)
     trials = rebuilt_trials(records, walked, trials_sent, roster.seed)
     return Checked(
         spec=spec,
         roster=roster,
-        fit=verdict,
-        fit_records=fit_records,
-        accept_records=accept_records,
         records=records,
         analysis=CorpusAnalysis(games=analyses, blunders=trials),
-        basis=held,
+        basis=current,
     )
 
 
@@ -428,9 +360,7 @@ def score(checked: Checked, weights: str) -> Scored:
     """The server's own score of the walked records, and the files a result carries.
 
     `slices.gather_measurement` writes the four files a run directory holds and scores
-    them with the ordinary metrics. The fit travels beside them -- its verdict and the
-    games it was regressed and accepted on -- because tier two replays a sample of those
-    too, and the tournament's `fit=` players cannot be replayed without the vector.
+    them with the ordinary metrics.
     """
     with tempfile.TemporaryDirectory(prefix="legality-") as scratch:
         out = Path(scratch)
@@ -438,7 +368,6 @@ def score(checked: Checked, weights: str) -> Scored:
             gathered = slices.gather_measurement(
                 checked.spec,
                 out,
-                checked.fit,
                 checked.records,
                 checked.analysis,
                 config=checked.roster,
@@ -456,17 +385,7 @@ def score(checked: Checked, weights: str) -> Scored:
             for path in sorted(out.iterdir())
             if path.is_file()
         }
-    files[provisional.FIT] = json.dumps(checked.fit.as_dict(), indent=2) + "\n"
-    files[provisional.FIT_GAMES] = _jsonl(checked.fit_records)
-    files[provisional.ACCEPT_GAMES] = _jsonl(checked.accept_records)
     return Scored(headline=headline, viable=viable, files=files, unscored=unscored)
-
-
-def _jsonl(records: Iterable[GameRecord]) -> str:
-    """Records as JSON Lines, in `write_records`' own spelling."""
-    return "".join(
-        json.dumps(record.as_dict(), separators=(",", ":")) + "\n" for record in records
-    )
 
 
 # ------------------------------------------------------------------- reading lines
@@ -566,23 +485,6 @@ def _trials(text: str) -> list[BlunderTrial]:
             ) from error
     return found
 
-
-def _verdict(data: Mapping[str, Any] | None, game: str) -> FittedObjective:
-    if data is None:
-        raise Refused(UNREADABLE, "the upload carries no fit verdict", phase=slices.FIT)
-    try:
-        verdict = FittedObjective.from_dict(dict(data))
-    except (FitError, KeyError, TypeError, ValueError) as error:
-        raise Refused(
-            UNREADABLE, f"the fit verdict cannot be read: {error}", phase=slices.FIT
-        ) from error
-    if verdict.ruleset_hash != game:
-        raise Refused(
-            FIT_VERDICT,
-            f"the fit verdict is for the game {verdict.ruleset_hash}, not {game}",
-            phase=slices.FIT,
-        )
-    return verdict
 
 
 # ------------------------------------------------------------------ the schedules
@@ -687,7 +589,7 @@ def walk(
 
     `series` rebuilds the per-ply `branching`, `material` and `captures` the way
     `play.play_game_python` records them, which `tests/test_backends.py` holds to the
-    core's own. Without it the series are empty, as a fit or acceptance game's are.
+    core's own. Without it the series are empty.
 
     The analysis fields are `analysis._analyse_game`'s reading of the same positions,
     without the probe search that only `near_best` needs.
@@ -837,42 +739,6 @@ def walk(
 def _ending(winner: int | None, reason: str) -> str:
     who = "a draw" if winner is None else f"a win for seat {winner}"
     return f"{who} by {reason}"
-
-
-# ------------------------------------------------------------------ the fit's verdict
-
-
-def same_verdict(submitted: FittedObjective, server: FittedObjective) -> None:
-    """Refuse a fit whose vector or verdict is not the one its games give.
-
-    The vector is compared at the six decimals `fitted.unit` rounds it to, and named by
-    its first differing term. The verdict -- accepted or not, the match score, the games
-    and the regression's own sample count and loss -- is compared after it.
-    """
-    if submitted.procedure != server.procedure:
-        raise Refused(
-            FIT_VERDICT,
-            f"the fit names the procedure {submitted.procedure}, and this server fits "
-            f"by {server.procedure}",
-            phase=slices.FIT,
-        )
-    for term, sent, derived in zip(VOCABULARY, submitted.vector, server.vector, strict=True):
-        if round(sent, 6) != round(derived, 6):
-            raise Refused(
-                FIT_VECTOR,
-                f"the fit's vector gives {term} {sent:.6f}, and its games regress to "
-                f"{derived:.6f}",
-                phase=slices.FIT,
-            )
-    for name in ("accepted", "accept_score", "accept_games", "samples", "loss"):
-        sent_value, derived_value = getattr(submitted, name), getattr(server, name)
-        if sent_value != derived_value:
-            raise Refused(
-                FIT_VERDICT,
-                f"the fit's verdict says {name} {sent_value!r}, and its games give "
-                f"{derived_value!r}",
-                phase=slices.FIT,
-            )
 
 
 # ---------------------------------------------------------- the analysis and trials

@@ -56,9 +56,10 @@ PREVIOUS_DIR = "previous"
 # view of a game page on the site). False sends a visitor none of it.
 SHOW_WAS_TO_VISITORS = True
 
-# The basis fields that say *who played*: the roster, its fitted objective, its nets and
-# what the runner hands the core for them (`measurement.Basis`). A replacement that moved
-# one of these was made by other players; `convergence` reads the same set.
+# The basis fields that say *who played*: the roster, its nets and what the runner hands
+# the core for them (`measurement.Basis`), and `fit`, the fitted objective a stamp from
+# before Q558 (2026-10-19) records. A replacement that moved one of these was made by
+# other players; `convergence` reads the same set.
 PLAYER_FIELDS = ("agents", "fit", "net", "players", "agents_source")
 
 

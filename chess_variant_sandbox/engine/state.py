@@ -122,12 +122,14 @@ class GameState:
     initiative: int = -1
     void_run: tuple[int, int] = (-1, -1)
     bars: tuple[tuple[int, int], ...] = ()
-    # Schema 27 (Q942a, ``rules.simultaneous.rest``): ``(player 0's square, player 1's
-    # square)`` of the piece each player's last round moved, which may not make that
-    # player's move this round unless nothing else can; -1 for none, and ``(-1, -1)`` for
-    # every game without the rule. Written only by a round. In the Zobrist key, since the
-    # same board with a different piece resting has different legal moves.
-    rest: tuple[int, int] = (-1, -1)
+    # Schema 29 (Q983a, ``pieces[].rest``, `docs/plan-rest.md` §4.2): each player's resting
+    # pieces, ``((square, turns left), ...)`` by square, player 0's first. A piece that made
+    # its player's move may not make it again while it rests (unless nothing else can, the
+    # lift); ``turns left`` counts that player's own turns, alternating turns or rounds.
+    # ``((), ())`` for every game without a rest. In the Zobrist key, since the same board
+    # with a different piece resting has different legal moves. (Schema 27's
+    # ``rules.simultaneous.rest`` kept ``(square, square)`` here; schema 29 retired it.)
+    rest: tuple[tuple[tuple[int, int], ...], tuple[tuple[int, int], ...]] = ((), ())
 
     def with_(self, **changes: Any) -> GameState:
         return replace(self, **changes)

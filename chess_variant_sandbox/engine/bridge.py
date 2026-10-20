@@ -801,16 +801,20 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
                 *spec.simultaneous.zobrist_states,
             ] if spec.simultaneous is not None else []
         ),
-        # Schema 27 (Q942a): the chase switches, `[rest, swap_collides, both_score]`, and
-        # under `rest` the rested squares' keys (player 0's squares, then player 1's). Both
-        # empty unless a switch is on, so no schema-26 game's fingerprint moves.
+        # Schema 27 (Q942a): the chase switches, `[0, swap_collides, both_score]`, empty
+        # unless a switch is on. The first slot was schema 27's `rest`, which schema 29
+        # (Q983a) moved to `piece_rest` below; it is always 0 now and kept only so that no
+        # game with `swap` or `both` and no rest has its tables fingerprint moved.
         "sim_chase": (
-            [int(sim.rest), int(sim.swap_collides), int(sim.both_score)]
+            [0, int(sim.swap_collides), int(sim.both_score)]
             if (sim := spec.simultaneous) is not None and sim.chases else []
         ),
-        "zobrist_rest": (
-            list(spec.simultaneous.zobrist_rest) if spec.simultaneous is not None else []
-        ),
+        # Schema 29 (Q983a, `docs/plan-rest.md` §4.2, §4.3): each type's rest, `[type]`, and
+        # one key per (turns left, player, square), `((left - 1) * 2 + player) * n_squares
+        # + square`. Both empty unless a piece declares a rest, in any game, alternating or
+        # in rounds, so no other game's fingerprint moves.
+        "piece_rest": list(spec.rest),
+        "zobrist_rest": list(spec.zobrist_rest),
         # Schema 28 (Q943a): each type's speed, `[type]`; empty unless a piece declares one,
         # so the core never orders a round and no earlier fingerprint moves.
         "sim_speed": (
@@ -981,10 +985,12 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "sim_rule": [],
     "sim_collision": [],
     "zobrist_sim": [],
-    # Schema 27 (Q942a). Empty unless a chase switch is on (`rest` for the keys).
+    # Schema 27 (Q942a). Empty unless a chase switch is on.
     "sim_chase": [],
     "spy_types": [],
     "spy_deal": False,
+    # Schema 29 (Q983a). Empty unless a piece declares a rest.
+    "piece_rest": [],
     "zobrist_rest": [],
     # Schema 28 (Q943a). Empty unless a piece declares a speed.
     "sim_speed": [],

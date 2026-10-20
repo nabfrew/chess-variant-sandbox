@@ -7,8 +7,8 @@ audit goes through -- with `mutant.json` naming its base, and `calibrate` refusi
 corpus that has no `same` entry.
 
 The corpus is built once, on a roster small enough for the fast suite. The command's own
-roster is `corpus.CANONICAL_AGENTS`, which fits every game first and plays 256 games an
-entry; `build` reads it at call time so the test can swap it, and nothing else differs.
+roster is `corpus.CANONICAL_AGENTS`, which plays 256 games an entry; `build` reads it at
+call time so the test can swap it, and nothing else differs.
 """
 
 from __future__ import annotations
@@ -284,23 +284,6 @@ class TestAdoption:
             spec, world["library"], ROSTER[:-1], GAMES
         )
         assert source is None and "roster" in reason
-
-    def test_the_fit_is_paid_for_what_is_played_and_not_for_what_is_adopted(
-        self, world, tmp_path, monkeypatch
-    ) -> None:
-        fitted: list[str] = []
-        monkeypatch.setattr(
-            calibration_corpus, "ensure_fit",
-            lambda spec, workers=0: fitted.append(str(spec["name"])),
-        )
-        members, _ = calibration_corpus.membership(world["rulesets"], (MUTANT,))
-        by_name = {member.name: member for member in members}
-        for name in (ADOPTED, MUTANT):
-            calibration_corpus._write_entry(
-                by_name[name], tmp_path, world["library"], ROSTER, GAMES, 0,
-                True, 1, lambda _message: None,
-            )
-        assert fitted == [MUTANT]
 
 
 class TestMembership:

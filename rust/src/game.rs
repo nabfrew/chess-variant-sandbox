@@ -25,6 +25,10 @@ mod rounds;
 #[path = "spy.rs"]
 mod spy;
 pub use spy::Phase;
+// Schema 29 (Q983a): rest as a piece-type property, one rest for turns and rounds.
+#[path = "rest.rs"]
+mod rest;
+pub use rest::{rest_lists_from, RestLists, NO_REST};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Reason {
@@ -429,11 +433,15 @@ pub struct Game<'t> {
     /// Schema 26: the barred pairs (§2.7), ascending; empty in almost every position. In
     /// the key.
     pub bars: Vec<[i16; 2]>,
-    /// Schema 27 (Q942a, `rules.simultaneous.rest`): each player's rested square, the
-    /// piece that made that player's move in the last round, or -1. Written only by
-    /// `make_round` (`docs/plan-spy.md` E11); `[-1, -1]` in every game without the rule. In
-    /// the key (`SimTables::rest_key`).
-    pub rest: [i16; 2],
+    /// Schema 29 (Q983a, `pieces[].rest`, `docs/plan-rest.md` §4.2): each player's resting
+    /// pieces, `(square, turns left, the code that rested there)`, written by `make`,
+    /// `make_fold` and `make_round` at the end of each player's turn (`rest_after_turn`),
+    /// read by both generators (`rest_filter`). `NO_REST` in every game without the rule. In
+    /// the key (`RestTables::key`).
+    pub resting: RestLists,
+    /// `resting` before each move still on the undo stack, oldest first: `goal_left_log`'s
+    /// shape, empty and never touched without the rule, so `Undo` does not grow.
+    rest_log: Vec<RestLists>,
     /// Schema 26: one `RoundUndo` per round still on the stack.
     round_undo: Vec<rounds::RoundUndo>,
     /// Schema 26: what the last round did, `(event, square, player)` (`rounds::EVENT_*`),
@@ -480,8 +488,8 @@ pub struct Snapshot {
     pub initiative: i8,
     pub void_run: [i16; 2],
     pub bars: Vec<[i16; 2]>,
-    /// Schema 27 (Q942a): the rested squares.
-    pub rest: [i16; 2],
+    /// Schema 29 (Q983a): the resting pieces.
+    pub resting: RestLists,
 }
 
 /// Schema 26: who holds the initiative at the start, or -1 where the tie is not it.
@@ -548,7 +556,8 @@ impl<'t> Game<'t> {
             initiative: initiative_start(t),
             void_run: NO_BAR,
             bars: Vec::new(),
-            rest: NO_BAR,
+            resting: NO_REST,
+            rest_log: Vec::new(),
             round_undo: Vec::new(),
             round_log: Vec::new(),
             spy_deals: Vec::new(),
@@ -607,7 +616,8 @@ impl<'t> Game<'t> {
             initiative: snapshot.initiative,
             void_run: snapshot.void_run,
             bars: snapshot.bars.clone(),
-            rest: snapshot.rest,
+            resting: snapshot.resting,
+            rest_log: Vec::new(),
             round_undo: Vec::new(),
             round_log: Vec::new(),
             spy_deals: Vec::new(),
@@ -639,7 +649,7 @@ impl<'t> Game<'t> {
             initiative: self.initiative,
             void_run: self.void_run,
             bars: self.bars.clone(),
-            rest: self.rest,
+            resting: self.resting,
         }
     }
 
@@ -683,7 +693,8 @@ impl<'t> Game<'t> {
         self.initiative = snapshot.initiative;
         self.void_run = snapshot.void_run;
         self.bars.clone_from(&snapshot.bars);
-        self.rest = snapshot.rest;
+        self.resting = snapshot.resting;
+        self.rest_log.clear();
         self.round_undo.clear();
         self.round_log.clear();
         // The check bits describe the position that just went away. The royal hint is
@@ -777,9 +788,10 @@ impl<'t> Game<'t> {
                 }
             }
         }
-        // Schema 26: the initiative, the void run and the bars; schema 27's rested squares;
-        // zero in an alternating game.
+        // Schema 26: the initiative, the void run and the bars; zero in an alternating game.
         digest ^= self.standoff_key();
+        // Schema 29: the resting pieces; zero in a game without a rest.
+        digest ^= self.rest_key();
         digest
     }
 
@@ -2391,6 +2403,16 @@ impl<'t> Game<'t> {
             self.portal_bar = bar;
         }
 
+        // Schema 29 (Q983a, `docs/plan-rest.md` §3.2-§3.4): the end of the player's turn (a
+        // long turn is refused beside rest). The piece that made the move stands where the
+        // move ended: its origin for a turn in place or a strike that stays, else the
+        // target; one blown up or eaten in the phase stands nowhere, which the board says.
+        if t.rest.is_some() {
+            self.rest_log.push(self.resting);
+            let end = if kind == MOVE_ROTATE || stayed { origin } else { target };
+            key ^= self.rest_after_turn(player, Some(end));
+        }
+
         self.undo.push(Undo {
             origin,
             target,
@@ -2563,6 +2585,9 @@ impl<'t> Game<'t> {
             self.portal_bar =
                 self.portal_bar_log.pop().expect("bar log shorter than the undo stack");
         }
+        if self.t.rest.is_some() {
+            self.resting = self.rest_log.pop().expect("rest log shorter than the undo stack");
+        }
         self.ply -= 1;
         self.check_memo.set([-1, -1]);
     }
@@ -2631,6 +2656,12 @@ impl<'t> Game<'t> {
             };
             key ^= portals.bar_key(t.n_squares, self.portal_bar) ^ portals.bar_key(t.n_squares, bar);
             self.portal_bar = bar;
+        }
+        // Schema 29: a fold's own move is the player's turn, so its rests count down; no
+        // piece made it (a portal end never rests), so nothing enters.
+        if t.rest.is_some() {
+            self.rest_log.push(self.resting);
+            key ^= self.rest_after_turn(player, None);
         }
         self.undo.push(Undo {
             origin,
@@ -2701,6 +2732,9 @@ impl<'t> Game<'t> {
         if self.t.portals.as_deref().is_some_and(|portals| portals.has_no_back) {
             self.portal_bar =
                 self.portal_bar_log.pop().expect("bar log shorter than the undo stack");
+        }
+        if self.t.rest.is_some() {
+            self.resting = self.rest_log.pop().expect("rest log shorter than the undo stack");
         }
         self.ply -= 1;
         self.check_memo.set([-1, -1]);
@@ -4055,9 +4089,45 @@ impl<'t> Game<'t> {
 
 impl<'t> Game<'t> {
     /// Every move the side to move may play, appended to `out`.
+    ///
+    /// Schema 29 (Q983a, `docs/plan-rest.md` §3.7): the rest filters after the check filter
+    /// and before `restrict`, lifted when it would leave nothing; and when `restrict` then
+    /// empties a list the rest shortened, the list is made again without it, so the rest
+    /// alone never leaves a player without a move. One test in every game without a rest.
     pub fn generate_legal(&mut self, out: &mut Vec<u32>) {
-        let t = self.t;
         let base = out.len();
+        self.generate_checked(out, base);
+        if self.t.rest.is_some() {
+            self.rest_then_restrict(out, base);
+        } else {
+            self.restrict(out, base);
+        }
+    }
+
+    /// `generate_legal`'s tail under a rest, out of line so a game without one carries
+    /// neither it nor a second copy of the generator (Q983a's benches).
+    #[inline(never)]
+    fn rest_then_restrict(&mut self, out: &mut Vec<u32>, base: usize) {
+        let rested = self.rest_filter(self.side, out, base);
+        self.restrict(out, base);
+        if rested && out.len() == base {
+            self.regenerate_checked(out, base);
+        }
+    }
+
+    /// The list made again without the rest (§3.7): rare, so out of line.
+    #[cold]
+    #[inline(never)]
+    fn regenerate_checked(&mut self, out: &mut Vec<u32>, base: usize) {
+        self.generate_checked(out, base);
+        self.restrict(out, base);
+    }
+
+    /// The side to move's pseudo-legal moves less those that leave its royal attacked,
+    /// appended to `out` from `base`.
+    #[inline(always)]
+    fn generate_checked(&mut self, out: &mut Vec<u32>, base: usize) {
+        let t = self.t;
         self.generate_pseudo_legal(out);
 
         if t.needs_check_filter() {
@@ -4181,9 +4251,6 @@ impl<'t> Game<'t> {
                 }
             }
         }
-
-        // Schema 2 restrictions: applied after the check filter
-        self.restrict(out, base);
     }
 
     /// Apply the restriction rules that narrow an already-legal move list.

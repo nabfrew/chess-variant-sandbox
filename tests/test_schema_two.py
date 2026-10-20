@@ -586,6 +586,10 @@ def test_a_forbidden_drop_mate_does_not_ask_itself_the_same_question_forever() -
 
 
 _EVERY_RULESET = sorted(RULESETS.glob("*.json")) + sorted((RULESETS.parent / "archive").glob("*.json"))
+# Schema 29 (Q983a): no committed or archived game rests in alternating play until Q983d's
+# showcases land, so the two alternating rest test specs join the walk (the incremental key
+# with resting pieces in it, every ply).
+_EVERY_RULESET += sorted(Path(__file__).parent.glob("_rest_*.json"))
 
 
 def test_the_walk_below_reads_the_whole_corpus() -> None:

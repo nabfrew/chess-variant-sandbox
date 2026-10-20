@@ -15,8 +15,7 @@ key `calibration.calibrate` joins a null to its base on.
 library's `runs/<hash>/canonical.json` is current by roster, core, build and tables: a
 game is a function of `(hash, seed, agents)`, so those are the games a replay would play,
 and they are copied byte for byte. Anything else -- every mutant, and a committed game the
-library cannot vouch for -- is played at seed 0 on `corpus.CANONICAL_AGENTS`, after its
-objective is fitted on the current core. The library is only ever read.
+library cannot vouch for -- is played at seed 0 on `corpus.CANONICAL_AGENTS`. The library is only ever read.
 
 **The analysis pass runs on every entry**, adopted or played, so the whole corpus rests on
 one pass. **Scoring happens only when asked**, under the version named:
@@ -41,7 +40,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from chess_variant_sandbox.agents.base import parse_agent
 from chess_variant_sandbox.corpus import (
     CANONICAL_AGENTS,
     CANONICAL_GAMES,
@@ -70,7 +68,6 @@ from chess_variant_sandbox.spec.canonical import load_spec, spec_hash
 from chess_variant_sandbox.spec.schema import validate_spec
 from chess_variant_sandbox.tournament import TournamentConfig, rate, read_records, run_tournament
 from chess_variant_sandbox.tournament.analysis import CorpusAnalysis, analyse_corpus
-from chess_variant_sandbox.tournament.fitting import ensure_fit
 
 MANIFEST = "corpus.json"
 PARTIAL = ".partial"
@@ -284,7 +281,6 @@ def build(
         if behind is not None:
             raise CorpusError(behind)
 
-    fitted = any("fit" in parse_agent(agent).options for agent in agents)
     say(
         f"{len(members)} entries into {out}: "
         f"{sum(1 for m in members if m.mutant is None)} committed games and "
@@ -301,7 +297,7 @@ def build(
             entry = Written(member.directory, member.name, "kept")
         else:
             source, reason = _write_entry(
-                member, out, library, agents, games, seed, fitted, workers, say
+                member, out, library, agents, games, seed, workers, say
             )
             origin = "played" if source is None else "adopted"
             manifest["entries"][member.directory] = {
@@ -346,7 +342,6 @@ def _write_entry(
     agents: tuple[str, ...],
     games: int,
     seed: int,
-    fitted: bool,
     workers: int,
     say: Callable[[str], None],
 ) -> tuple[Path | None, str]:
@@ -371,9 +366,6 @@ def _write_entry(
             shutil.copyfile(source / name, partial / name)
         say(f"  {member.directory}: adopted from {source}")
     else:
-        if fitted:
-            # The roster carries `fit=`, and `resolve_fit` refuses to default.
-            ensure_fit(member.spec, workers=workers)
         say(f"  {member.directory}: played" + (f" -- {reason}" if reason else ""))
         run_tournament(
             member.spec,

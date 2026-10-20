@@ -720,18 +720,28 @@ def walk_digest(names: list[str], seeds: int = 3, rounds: int = 60) -> str:
                 a = rng.choice(engine.legal_moves_for(state, 0))
                 b = rng.choice(engine.legal_moves_for(state, 1))
                 state, phase, events = engine.apply_round_with_phase(state, a, b)
-                rows.append(repr((name, seed, state, phase, events)))
+                # Schema 29 (Q983a) moved the rest to a list; none of these specs rests, and
+                # the position is shown in schema 27's empty shape so the digest stays one.
+                assert state.rest == ((), ()), (name, state.rest)
+                rows.append(repr((name, seed, state.with_(rest=(-1, -1)), phase, events)))
     return hashlib.sha256("\n".join(rows).encode()).hexdigest()
 
 
+# Schema 29 (Q983a): the two resting specs left this digest when the rest became
+# `pieces[].rest` (a new hash, so new keys); `tests/test_rest_equivalence.py` holds them to the
+# old games move for move instead.
 SPEEDLESS = sorted(
-    path.stem for path in HERE.glob("_simultaneous_*.json") if "speed" not in path.stem
+    path.stem for path in HERE.glob("_simultaneous_*.json")
+    if "speed" not in path.stem and path.stem not in ("_simultaneous_resting", "_simultaneous_scored")
 )
 
 # Taken with main's package and core (47490df3bfedc24b, before Q943a) and with this one, and
 # equal (481 rounds over the twelve speedless round test specs): a round game that declares
-# no speed is resolved byte for byte as it was, its events included.
-SPEEDLESS_DIGEST = "44198b8c1ac430dcbe89a291045ee12c02f67f0661cf63ad044ccf9eb57cd3fc"
+# no speed is resolved byte for byte as it was, its events included. It was
+# "44198b8c1ac430dcbe89a291045ee12c02f67f0661cf63ad044ccf9eb57cd3fc" over the twelve; Q983a
+# re-took it over the ten without a rest, equal with main's package and core (4271f9ff, core
+# 2acbc7a08a2785f2) and with this one.
+SPEEDLESS_DIGEST = "81a30e836fd3f995d7b4ae05c5e9c235729c8f9d437e8eb42bfd82442dd08960"
 
 
 def test_a_round_game_without_speed_plays_byte_for_byte_as_before() -> None:
@@ -766,7 +776,7 @@ def test_a_speed_games_moves_are_still_the_alternating_twins(name: str) -> None:
         for player in (0, 1):
             ours = engine.legal_moves_for(state, player)
             alternating = state.with_(
-                side_to_move=player, initiative=-1, void_run=(-1, -1), bars=(), rest=(-1, -1)
+                side_to_move=player, initiative=-1, void_run=(-1, -1), bars=(), rest=((), ())
             )
             if not state.bars:
                 assert ours == other.legal_moves(alternating)

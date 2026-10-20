@@ -173,7 +173,7 @@ class TestTheOrder:
 
         everything = [it(needs) for needs in reversed(refresher.QUEUE_ORDER)]
         assert [i.needs for i in sorted(everything, key=lambda i: i.key)] == [
-            "refit", "rescore", "reanalyse", "replay", "ladder", "top-up", "re-rate"]
+            "rescore", "reanalyse", "replay", "ladder", "top-up", "re-rate"]
 
 
 # ------------------------------------------------------------------ one ladder, here

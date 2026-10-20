@@ -151,15 +151,26 @@ IMMUNE_PIECES = 1.0
 ROYAL_VALUE = 0.0
 WIN_SCORE = 1_000_000.0
 
+# Q986b (`docs/reference/round-hardest-weakness.md` §10): what a finished round is worth in the
+# round search, in mean non-royal pieces (``round_win`` multiplies it out, as ``goal_weight``
+# does ``goal_pieces``). Not ``WIN_SCORE``: regret matching+ at ``REGRET_ITERATIONS`` resolves
+# a matrix only to a fraction of its range, so beside a ±10⁶ cell every evaluation was noise
+# and the round players spread over every move that did not lose this round (§3). Not a fixed
+# number of units either (Q986, §9): a unit is a piece on the watering hole and a fifth of one
+# on Gardner. ``rust/src/eval.rs::ROUND_WIN_PIECES`` is the core's copy, exported as
+# ``_core.ROUND_WIN_PIECES`` and held to this one by ``tests/test_round_nets.py``.
+ROUND_WIN_PIECES = 100.0
+
 # Schema 27 (Q942b, `docs/archive/plan-round-chase.md` §3 R1): what a rested royal that a standing
-# enemy piece reaches costs its side in a round's evaluation, mine minus theirs. Half a win:
-# the strike lands next round unless the side answers it by taking the other royal in the
-# same round, so it is nearly a loss, and it stays below every decided game
-# (``WIN_SCORE - ply``), so a royal actually taken is still the worse cell. A depth-one round
-# player is otherwise blind to the rule's main tactic. ``rust/src/eval.rs::RESTED_ROYAL`` is
-# the core's copy, exported as ``_core.RESTED_ROYAL`` and held to this one by
+# enemy piece reaches costs its side in a round's evaluation, mine minus theirs, in mean
+# non-royal pieces. Half a win: the strike lands next round unless the side answers it by
+# taking the other royal in the same round, so it is nearly a loss, and it stays below every
+# finished round (``round_win - ply / 1000``), so a royal actually taken is still the worse
+# cell. A depth-one round player is otherwise blind to the rule's main tactic. Half of
+# ``WIN_SCORE`` until Q986b. ``rust/src/eval.rs::RESTED_ROYAL_PIECES`` is the core's copy,
+# exported as ``_core.RESTED_ROYAL_PIECES`` and held to this one by
 # ``tests/test_round_players_rest.py``.
-RESTED_ROYAL = WIN_SCORE / 2.0
+RESTED_ROYAL_PIECES = ROUND_WIN_PIECES / 2.0
 
 # Schema 27 (Q935h, `docs/plan-spy.md` §6.1): what holding the only spy is worth, in mean
 # non-royal pieces, mine minus theirs (``Evaluator.spy_edge``). The spy's ``value`` prices the
@@ -417,6 +428,15 @@ class Evaluator:
         out. ``rust/src/eval.rs`` derives it the same way from the same three inputs.
         """
         return self.goal_pieces * _mean_non_royal(
+            self.values, self.spec.royal_types, inexhaustible_types(self.spec)
+        )
+
+    @property
+    def rested_royal(self) -> float:
+        """Q986b: what a rested or caught royal costs its side in a round, in material
+        units: ``RESTED_ROYAL_PIECES`` mean non-royal pieces (``eval.rs``'s field of the
+        same name, the same product)."""
+        return RESTED_ROYAL_PIECES * _mean_non_royal(
             self.values, self.spec.royal_types, inexhaustible_types(self.spec)
         )
 
@@ -719,8 +739,10 @@ class Evaluator:
         legal moves on this board, in seat order. ``eval.rs::evaluate_round`` is the
         same function.
 
-        Under ``rest`` (schema 27, Q942b) a side whose rested royal a standing enemy piece
-        reaches (``rested_royal_falls``) is ``RESTED_ROYAL`` from a loss, mine minus theirs.
+        Under a rest (schema 27's round rest, Q942b; schema 29's ``pieces[].rest`` since
+        Q983a) a side whose resting royal a standing enemy piece reaches
+        (``rested_royal_falls``) is ``RESTED_ROYAL_PIECES`` mean pieces from a loss, mine minus
+        theirs.
         ``lists`` are both players' legal moves on this board; a caller without them (the
         analysis probe's ruler) has them asked of the engine, and only when a piece rests
         or a speed is declared.
@@ -729,7 +751,7 @@ class Evaluator:
         a royal that a strictly faster enemy piece takes next round unanswered
         (``caught_royal_falls``): a side whose royal falls either way is one near-loss."""
         score = self._score(state, player, counts[player] - counts[1 - player])
-        rested = state.rest[0] >= 0 or state.rest[1] >= 0
+        rested = bool(state.rest[0] or state.rest[1])
         sim = self.spec.simultaneous
         speed = sim.speed if sim is not None else ()
         if rested or speed:
@@ -745,7 +767,8 @@ class Evaluator:
             theirs = falls(1 - player)
             mine = falls(player)
             if theirs != mine:
-                score += RESTED_ROYAL if theirs else -RESTED_ROYAL
+                price = self.rested_royal
+                score += price if theirs else -price
         return score
 
     def _score(self, state: GameState, player: int, mobility: int) -> float:
@@ -1435,16 +1458,27 @@ def _royal_loss_ends_it(spec: CompiledSpec, side: int) -> bool:
 def rested_royal_falls(
     spec: CompiledSpec, state: GameState, side: int, lists: tuple[list[int], list[int]]
 ) -> bool:
-    """Whether ``side``'s royal stands rested with a standing enemy piece that reaches it
-    (schema 27, Q942b; ``eval.rs::rested_royal_falls`` is the same test).
+    """Whether ``side``'s royal stands resting with a standing enemy piece that reaches it
+    (schema 27, Q942b; over schema 29's resting list since Q983a; ``eval.rs::rested_royal_falls``
+    is the same test).
 
-    The piece on ``state.rest[side]`` is ``side``'s royal, its only one (no other on the
-    board, none in hand) and one whose loss ends the game; ``lists[side]`` has no move off
-    that square (the rest was not lifted); and ``lists[1 - side]``, whose rested piece's
-    moves are already gone, has a move that lands on it and takes."""
-    square = state.rest[side]
-    if square < 0:
-        return False
+    One of ``side``'s resting pieces (``state.rest[side]``) is ``side``'s royal, its only one
+    (no other on the board, none in hand) and one whose loss ends the game; ``lists[side]``
+    has no move off that square (the rest was not lifted); and ``lists[1 - side]``, whose
+    resting pieces' moves are already gone, has a move that lands on it and takes. With every
+    type resting 1 at most one piece rests a player, and this is schema 27's term."""
+    return any(
+        _royal_resting_falls(spec, state, side, square, lists) for square, _ in state.rest[side]
+    )
+
+
+def _royal_resting_falls(
+    spec: CompiledSpec,
+    state: GameState,
+    side: int,
+    square: int,
+    lists: tuple[list[int], list[int]],
+) -> bool:
     royals = spec.royal_types
     value = state.board[square]
     if not value or spec.owner_of(value) != side or spec.type_of(value) not in royals:
@@ -1531,3 +1565,10 @@ def caught_royal_falls(
         ):
             return False
     return True
+
+
+def round_win(spec: CompiledSpec, values: tuple[float, ...]) -> float:
+    """Q986b: a finished round's worth in the round search, in the units of an evaluator
+    whose piece values are ``values``: ``ROUND_WIN_PIECES`` mean non-royal pieces.
+    ``rust/src/eval.rs::round_win`` is the same product."""
+    return ROUND_WIN_PIECES * _mean_non_royal(values, spec.royal_types, inexhaustible_types(spec))

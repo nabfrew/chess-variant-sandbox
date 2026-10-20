@@ -185,7 +185,14 @@ RETIRED_PREVIEWS = {
     "gardner-in-rounds-where-swaps-collide": "7985900696d7",
     "gardner-in-rounds-scored": "a90a8db7e2dd",
     "gardner-with-spies": "f4c62a33798d",
-    # Q962c (2026-10-19): a near copy of `archive/breather.json`, the rest without its two endings.
+}
+
+# Retired previews kept byte for byte though the validator now refuses them, so a test can hold
+# the refusal: Q962c's near copy of `archive/breather.json` (2026-10-19, the rest without its two
+# endings) writes schema 27's `rules.simultaneous.rest`, which schema 29 retired (Q983a,
+# `docs/plan-rest.md` §4.4, §4.5). Its rewrite is `tests/_simultaneous_resting.json`
+# (`tests/test_rest_equivalence.py`); its site row is rewritten by the store's migration.
+REFUSED_PREVIEWS = {
     "gardner-in-rounds-resting": "4da669bb3d50",
 }
 
@@ -194,7 +201,7 @@ HERE = Path(__file__).resolve().parent
 
 def retired_preview_path(name: str) -> Path:
     """Where the retired preview `name` (its old `archive/` stem) is kept now."""
-    assert name in RETIRED_PREVIEWS, f"{name} is not a retired preview"
+    assert name in RETIRED_PREVIEWS or name in REFUSED_PREVIEWS, f"{name} is not a retired preview"
     return HERE / f"_retired_{name.replace('-', '_')}.json"
 
 

@@ -33,7 +33,7 @@ from chess_variant_sandbox.spec.reachability import (
 if TYPE_CHECKING:
     from chess_variant_sandbox.engine.compile import StrikeRule
 
-SCHEMA_VERSION = 28
+SCHEMA_VERSION = 29
 
 # Every version is accepted, and the number a spec declares is a claim about which
 # feature set it uses rather than a date stamp. That is what keeps a bump cheap:
@@ -44,7 +44,7 @@ SCHEMA_VERSION = 28
 # the rules need.
 SUPPORTED_SCHEMA_VERSIONS = (
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-    25, 26, 27, 28,
+    25, 26, 27, 28, 29,
 )
 
 # The movement primitive table. Extending the design space means adding a row here,
@@ -779,7 +779,7 @@ _MOVE_KEYS = {
 _CONDITION_KEYS = {"from_rank", "first_move", "region"}
 _PIECE_KEYS = {
     "id", "name", "royal", "value", "moves", "region", "promoted_from", "captures",
-    "facing", "beats", "spy", "speed",
+    "facing", "beats", "spy", "speed", "rest",
 }
 # ``appearance`` and ``provenance`` are deliberately *outside* the mechanics.
 # ``canonical.MECHANIC_KEYS`` is what the content hash covers, so anything added inside
@@ -1175,6 +1175,17 @@ def validate_spec(spec: Any, *, new: bool = True) -> list[str]:
                 f"the spec uses {', '.join(sorted(used))}, added in schema 28; declare "
                 '"schema_version": 28 to use it'
             )
+    if version < 29:
+        used = _schema_twenty_nine_uses(spec)
+        if used:
+            errors.append(
+                f"the spec uses {', '.join(sorted(used))}, added in schema 29; declare "
+                '"schema_version": 29 to use it'
+            )
+    # Schema 29 (Q983a, `docs/plan-rest.md` §4.4): the old rest is refused at every version,
+    # by admission and by the loader alike, since a loader that still compiled it would be
+    # a second rest beside `pieces[].rest`.
+    _refuse_the_retired_rest(spec, errors)
 
     return errors
 
@@ -1696,9 +1707,10 @@ def _schema_twenty_seven_uses(spec: dict[str, Any]) -> set[str]:
       at least one, so two armies of different kinds can each lose by running out of any
       one of their own.
 
-    * ``rules.simultaneous.rest`` -- Q942a, `docs/archive/plan-round-chase.md` §3 R1: the piece that
-      made a player's move in a round may not make that player's move in the next, unless
-      it is the only piece that can move;
+    * ``rules.simultaneous.rest`` -- Q942a, `docs/archive/plan-round-chase.md` §3 R1, the piece
+      that made a player's move resting the next round -- was here until schema 29 retired it
+      for ``pieces[].rest`` (Q983a, `docs/plan-rest.md` §4.4); it is refused at every version
+      now, so this collector no longer names it;
     * ``rules.simultaneous.swap`` -- Q942a, R2: two moves that each end on the other's
       origin meet as a collision (``beats`` and the tie decide) instead of passing;
     * ``rules.simultaneous.both`` -- Q942a, X1: an ending that fires for both players in
@@ -1743,6 +1755,120 @@ def _schema_twenty_eight_uses(spec: dict[str, Any]) -> set[str]:
     if has_speeds(spec):
         return {"pieces.speed"}
     return set()
+
+
+def _schema_twenty_nine_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that schema 29 added, by name (Q983a, `docs/plan-rest.md`).
+
+    * ``pieces.rest`` -- a piece type's rest, 1 to ``REST_MAX`` (absent: 0, it never rests).
+      A piece that makes its player's move may not make that player's move during that
+      player's next *rest* turns (an alternating turn or a round), unless the rest would
+      leave the player no legal move, when it is lifted for that turn (§3).
+
+    Collected whatever its value, since an older spec may not write even a refused one.
+    """
+    if has_rests(spec):
+        return {"pieces.rest"}
+    return set()
+
+
+# Schema 29 (Q983a, `docs/plan-rest.md` §3.1): the longest rest a type may declare. At 4 a
+# piece moves at most one turn in five; it bounds each player's resting list (one piece
+# enters a turn and none stays longer than this) and the key's table. A showcase that needs
+# more raises it here and in the core (`rust/src/tables.rs::REST_MAX`).
+REST_MAX = 4
+
+# The one message the old switch is refused with, at every version (§4.4).
+RETIRED_REST = (
+    'rules.simultaneous.rest was retired in schema 29: write "rest": 1 on each piece type '
+    "instead (pieces[].rest), which is the same rest for a game in rounds"
+)
+
+
+def has_retired_rest(spec_or_rules: Any) -> bool:
+    """Whether a spec (or its ``rules``) writes schema 27's ``rules.simultaneous.rest``, which
+    schema 29 retired (`docs/plan-rest.md` §4.4), whatever its value."""
+    rules = spec_or_rules
+    if isinstance(spec_or_rules, dict) and "pieces" in spec_or_rules:
+        rules = spec_or_rules.get("rules")
+    return (
+        isinstance(rules, dict)
+        and isinstance(rules.get("simultaneous"), dict)
+        and "rest" in rules["simultaneous"]
+    )
+
+
+def _refuse_the_retired_rest(spec: dict[str, Any], errors: list[str]) -> None:
+    if has_retired_rest(spec):
+        errors.append(RETIRED_REST)
+
+
+def has_rests(spec_or_pieces: Any) -> bool:
+    """Whether any piece type writes a ``rest`` (schema 29), whatever its value."""
+    pieces = spec_or_pieces.get("pieces") if isinstance(spec_or_pieces, dict) else spec_or_pieces
+    return any(isinstance(piece, dict) and "rest" in piece for piece in _listed(pieces))
+
+
+def piece_rests(spec_or_pieces: Any) -> dict[str, int]:
+    """Each declared piece id's rest (schema 29, `docs/plan-rest.md` §3.1): its ``rest``, and
+    0 (it never rests, the default) where it writes none or something the validator refuses.
+    The one reader of the key, shared by the validator, the compiler and every surface."""
+    pieces = spec_or_pieces.get("pieces") if isinstance(spec_or_pieces, dict) else spec_or_pieces
+    rests: dict[str, int] = {}
+    for piece in _listed(pieces):
+        if not isinstance(piece, dict) or not isinstance(piece.get("id"), str):
+            continue
+        value = piece.get("rest", 0)
+        valid = isinstance(value, int) and not isinstance(value, bool) and 0 < value <= REST_MAX
+        rests[piece["id"]] = value if valid else 0
+    return rests
+
+
+def _check_rest_coherence(
+    spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """Schema 29 (Q983a): ``pieces[].rest`` and every refusal of `docs/plan-rest.md` §3.1, in
+    words. The value is a count of turns, 1 to ``REST_MAX``; the default (0) is never written;
+    a type no player moves never rests; and a turn of several moves is refused beside it."""
+    written = [
+        (index, piece) for index, piece in enumerate(pieces)
+        if isinstance(piece, dict) and "rest" in piece
+    ]
+    if not written:
+        return
+    portals = portal_piece_ids(rules)
+    wild = _never_moved(rules) - portals
+    for index, piece in written:
+        value = piece["rest"]
+        if value == 0 and not isinstance(value, bool):
+            errors.append(f"pieces[{index}].rest 0 is the default (it never rests); leave it out")
+        elif (
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+            or value > REST_MAX
+        ):
+            errors.append(
+                f"pieces[{index}].rest must be a whole number of turns from 1 to {REST_MAX}, "
+                f"got {value!r}"
+            )
+        pid = piece.get("id")
+        if pid in portals:
+            errors.append(f"pieces[{index}].rest is on a portal, which nobody moves; leave it out")
+        elif pid in wild:
+            errors.append(
+                f"pieces[{index}].rest is on a wild piece (rules.npcs), which moves in its own "
+                "phase, never as a player's move; leave it out"
+            )
+        elif not _listed(piece.get("moves")) and not piece_has_stock(rules, pid):
+            errors.append(
+                f"pieces[{index}].rest is on a piece with no moves that no hand can drop: a "
+                "piece that never moves never rests; leave it out"
+            )
+    if turn_is_long(rules):
+        errors.append(
+            "pieces[].rest beside a turn longer than one move (rules.turn moves or ramp): "
+            "inside a turn of several moves a rest would need a second rule, for a piece that "
+            "moved earlier in the same turn; use one move per turn, or leave the rest out"
+        )
 
 
 def has_speeds(spec_or_pieces: Any) -> bool:
@@ -1885,25 +2011,27 @@ SIMULTANEOUS_TIES = ("initiative", "impossible")
 # Schema 27 (Q942a, `docs/archive/plan-round-chase.md` §3, §4): the three switches against the royal
 # chase, each off when absent and each with exactly one value that turns it on. Writing the
 # off value out (``false``, or ``"chase"``/``"draw"``) is refused, one game one spelling.
-SIMULTANEOUS_CHASE_KEYS = ("rest", "swap", "both")
+# Schema 29 (Q983a) retired ``rest`` for ``pieces[].rest``: it is still a key the shape check
+# lets through, so that the one message a spec carrying it gets is the retirement's
+# (`RETIRED_REST`), never an unknown key beside it.
+SIMULTANEOUS_CHASE_KEYS = ("swap", "both")
 SIMULTANEOUS_SWAP_COLLISION = "collision"
 SIMULTANEOUS_BOTH_SCORE = "score"
-_SIMULTANEOUS_KEYS = {"tie", *SIMULTANEOUS_CHASE_KEYS}
+_SIMULTANEOUS_KEYS = {"tie", "rest", *SIMULTANEOUS_CHASE_KEYS}
 
 
 def simultaneous_switch(rules: Any, key: str) -> bool:
     """Whether a simultaneous game turns on one of schema 27's chase switches (Q942a).
 
     The one reader of the spelling, shared by the validator, the compiler and every
-    surface: ``rest`` is on at ``true``, ``swap`` at ``"collision"``, ``both`` at
-    ``"score"``; anything else, absent included, is off."""
+    surface: ``swap`` is on at ``"collision"``, ``both`` at ``"score"``; anything else,
+    absent included, is off. Schema 29 (Q983a) retired the third, ``rest``, for
+    ``pieces[].rest`` (`piece_rests`)."""
     if isinstance(rules, dict) and "pieces" in rules:
         rules = rules.get("rules")
     if not is_simultaneous(rules):
         return False
     value = rules["simultaneous"].get(key)
-    if key == "rest":
-        return value is True
     return value == {"swap": SIMULTANEOUS_SWAP_COLLISION, "both": SIMULTANEOUS_BOTH_SCORE}[key]
 
 
@@ -2231,18 +2359,10 @@ def _check_spy_coherence(
 def _check_chase_switches(
     spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
 ) -> None:
-    """Schema 27 (Q942a): the three chase switches' spellings and refusals
-    (`docs/archive/plan-round-chase.md` §3 R1, R2, X1)."""
+    """Schema 27 (Q942a): the chase switches' spellings and refusals
+    (`docs/archive/plan-round-chase.md` §3 R2, X1). R1's ``rest`` was retired by schema 29
+    (`RETIRED_REST`, refused in `validate_spec` at every version)."""
     rule = rules["simultaneous"]
-    if "rest" in rule:
-        rest = rule["rest"]
-        if rest is False:
-            errors.append(
-                "rules.simultaneous.rest false is the default (a piece may move in "
-                "consecutive rounds); leave it out"
-            )
-        elif rest is not True:
-            errors.append(f"rules.simultaneous.rest must be true, got {rest!r}")
     if "swap" in rule:
         swap = rule["swap"]
         if swap == "chase":
@@ -3506,6 +3626,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     _check_simultaneous_coherence(spec, pieces, rules, errors)
     _check_spy_coherence(spec, pieces, rules, errors)
     _check_speed_coherence(spec, pieces, rules, errors)
+    _check_rest_coherence(spec, pieces, rules, errors)
 
     if isinstance(rules.get("castling"), dict):
         castling = rules["castling"]

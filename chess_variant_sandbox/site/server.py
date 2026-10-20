@@ -867,7 +867,7 @@ class SiteApp(App):
             # right now because every strong seat is taken, each with the words the
             # opponent list puts after its name, so the list says *busy* before anybody
             # picks it. Only the ladder's rungs reach `quota.STRONG_NODES`; every plan and
-            # fit plays at 6,400. Empty when a seat is free.
+            # searched table plays at 6,400. Empty when a seat is free.
             standing["busy"] = (
                 {
                     entry.agent: quota.BUSY_SAID
@@ -1291,7 +1291,7 @@ class SiteApp(App):
         """Who plays this game, read against the same rules the page is drawn from.
 
         The local application resolves the spec out of the last listing, which a retired
-        game is not in. Without it the fitted opponents and the outside engine would be
+        game is not in. Without it the stored opponents and the outside engine would be
         judged against no rules at all, and the panel would name players this game cannot
         offer. Nobody can start a match on a retired game -- `matches.start` refuses it --
         so this is about the page telling the truth rather than about seating anybody.
@@ -2883,7 +2883,7 @@ def _carry_on(found: matches.Row, user: int) -> dict[str, Any]:
     `label` is the opponent in words, off the ladder every board shares. The profile has
     no roster to look a player up in and would otherwise print `minimax:nodes=1600`; the
     game page has its own roster and uses that instead, which also names the plans and
-    the fitted objectives this list cannot.
+    the searched tables this list cannot.
     """
     seat = found.seat_of(rating.person(user))
     other = found.seat1 if seat == 0 else found.seat0

@@ -44,7 +44,7 @@ RULESETS = Path(__file__).resolve().parent.parent / "rulesets"
 ARCHIVED_PREVIEWS = {
     # Q935f's SP2 (`plan-spy.md` §5): a spy game starts by turns and ends in rounds once a
     # spy falls.
-    "gardner-with-spies-resting.json": "1d798bedbf66",
+    "gardner-with-spies-resting.json": "8ce37482d0de",  # rewritten by Q983a, was 1d798bedbf66
     # Q943c's two Gardner speed showcases (`plan-speed.md` §6.1), played in rounds: not
     # viable as Q943d measured them (§6.5), so they stay previews.
     "gardner-in-rounds-with-a-swift-king.json": "d8bb879440ce",
@@ -55,19 +55,22 @@ under: the round and spy games less the four that joined the library (`JOINED`),
 Q962b retired and the one Q962c retired (`docs/reference/previews-2026-10-18.md`; their files
 are `tests/_retired_*.json`), and Q943c's two Gardner speed showcases."""
 
-ROUND_PREVIEW = "4da669bb3d50"
+ROUND_PREVIEW = "0c7c0191c850"
 ROUND_PREVIEW_FILE = "gardner-in-rounds-resting.json"
 """A preview played in rounds, for the tests that need one. `archive/` has none since Q962c
 retired S1 (`docs/archive/plan-round-chase.md` §5) as a near copy of breather, so the test
 checkout takes the retired file, which still carries its preview sentence: the site's handling
-of a round preview is still code that has to hold."""
+of a round preview is still code that has to hold. Since schema 29 (Q983a) the retired file is
+the old rest's refusal fixture, so the checkout takes its rewrite (`"rest": 1` on every piece,
+`tests/rest_equivalence.py::rewrite`), the same game under the hash `0c7c0191c850`."""
 
 PREVIEWS = {**ARCHIVED_PREVIEWS, ROUND_PREVIEW_FILE: ROUND_PREVIEW}
 """The previews of the test checkout (`_root`)."""
 
 JOINED_ROUNDS = {
     "watering-hole.json": "5c0b017473f5",
-    "breather.json": "632c199e4589",  # named gardner in rounds against the chase until Q962
+    # Named gardner in rounds against the chase until Q962; rewritten by Q983a, was 632c199e4589.
+    "breather.json": "b8687024cfc6",
     # Q943c's T3 (`plan-speed.md` §6.1), viable as Q943d measured it (§6.5); joined by Q943f.
     "watering-hole-by-speed.json": "423a29997264",
 }
@@ -99,15 +102,20 @@ def _root(tmp_path: Path) -> Path:
     (tmp_path / "runs").mkdir()
     shutil.copy(RULESETS / "dull.json", tmp_path / "rulesets" / "dull.json")
     for name in (*PREVIEWS, *JOINED, PLAIN):
-        shutil.copy(_source(name), tmp_path / "archive" / name)
+        (tmp_path / "archive" / name).write_text(
+            json.dumps(_source(name), indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
     return tmp_path
 
 
-def _source(name: str) -> Path:
-    """Where the test checkout's file `name` comes from: `archive/`, or the retired round preview."""
+def _source(name: str) -> dict[str, Any]:
+    """The test checkout's file `name`: from `archive/`, or the retired round preview's
+    schema-29 rewrite."""
     if name == ROUND_PREVIEW_FILE:
-        return retired_preview_path("gardner-in-rounds-resting")
-    return ARCHIVE / name
+        from rest_equivalence import rewrite
+
+        return rewrite(load_spec(retired_preview_path("gardner-in-rounds-resting")))
+    return load_spec(ARCHIVE / name)
 
 
 # ----------------------------------------------------------------- the files themselves
@@ -116,7 +124,7 @@ def _source(name: str) -> Path:
 class TestTheFiles:
     def test_the_four_say_they_are_previews_and_keep_their_hashes(self) -> None:
         for name, digest in PREVIEWS.items():
-            spec = load_spec(_source(name))
+            spec = _source(name)
             assert spec_hash(spec) == digest, "the mark is outside the mechanics hash"
             assert validate_spec(spec) == []
             said = library.preview_sentence(spec)
@@ -141,7 +149,7 @@ class TestTheFiles:
             assert ("simultaneous" in spec["rules"]) == (name in JOINED_ROUNDS)
 
     def test_an_empty_sentence_is_refused(self) -> None:
-        spec = load_spec(_source(ROUND_PREVIEW_FILE))
+        spec = _source(ROUND_PREVIEW_FILE)
         spec["provenance"]["preview"] = "  "
         assert any("provenance.preview" in problem for problem in validate_spec(spec))
         spec["provenance"]["preview"] = 3

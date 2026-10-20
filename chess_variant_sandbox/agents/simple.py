@@ -12,7 +12,13 @@ from __future__ import annotations
 import random
 from typing import Any
 
-from chess_variant_sandbox.agents.base import NativeSpec, SearchStats, register, register_native
+from chess_variant_sandbox.agents.base import (
+    NativeSpec,
+    SearchStats,
+    refuse_unknown_options,
+    register,
+    register_native,
+)
 from chess_variant_sandbox.agents.evaluation import GOAL_PIECES, IMMUNE_PIECES, Evaluator
 from chess_variant_sandbox.agents.matrix import (
     RoundSearch,
@@ -195,8 +201,13 @@ def _native_random(options: dict[str, Any], ruleset_hash: str = "") -> NativeSpe
     return ("random", 0, 0.0, 0, 0, 0.0, 0.0, (), (), 0.0, b"", 0)
 
 
+# Every option a greedy player reads; any other is refused (`refuse_unknown_options`).
+GREEDY_OPTIONS = ("mobility", "goal", "immune", "h", "values", "net")
+
+
 @register("greedy")
 def _build_greedy(engine: Engine, options: dict[str, Any]) -> GreedyAgent:
+    refuse_unknown_options(options, GREEDY_OPTIONS, "greedy")
     if engine.simultaneous:
         refuse_alternating_objective(options, "greedy", spy=engine.spy)
     return GreedyAgent(
@@ -212,6 +223,7 @@ def _build_greedy(engine: Engine, options: dict[str, Any]) -> GreedyAgent:
 
 @register_native("greedy")
 def _native_greedy(options: dict[str, Any], ruleset_hash: str = "") -> NativeSpec:
+    refuse_unknown_options(options, GREEDY_OPTIONS, "greedy")
     return (
         "greedy",
         0,

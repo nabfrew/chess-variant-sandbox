@@ -1,10 +1,10 @@
 """Schema 27 (Q942b): the round players' term for a rested royal under a standing attacker.
 
-`docs/archive/plan-round-chase.md` §3 R1 and the Q942b row of §4.2. Under `rules.simultaneous.rest`
-a royal that moved cannot move the next round, so a royal resting where a standing enemy
+`docs/archive/plan-round-chase.md` §3 R1 and the Q942b row of §4.2. Under the rest (schema 27's
+`rules.simultaneous.rest`, schema 29's `"rest": 1` on every piece since Q983a) a royal that moved cannot move the next round, so a royal resting where a standing enemy
 piece reaches is all but lost, and a depth-one matrix player saw nothing of it. Both sides of
 the boundary price it now (`eval.rs::rested_royal_falls`, its oracle
-`agents/evaluation.py::rested_royal_falls`, `RESTED_ROYAL` each): held to each other on the
+`agents/evaluation.py::rested_royal_falls`, `RESTED_ROYAL_PIECES` each): held to each other on the
 four round test specs Q942a added, the test itself on hand-built positions (the lift, a
 rested attacker, a second royal), and a `greedy` player that runs its royal to the one square
 no standing piece reaches.
@@ -21,7 +21,7 @@ from test_matrix_players import core_round, oracle_round, walk
 
 import chess_variant_sandbox._core as _core
 from chess_variant_sandbox.agents import evaluation
-from chess_variant_sandbox.agents.evaluation import RESTED_ROYAL, rested_royal_falls
+from chess_variant_sandbox.agents.evaluation import RESTED_ROYAL_PIECES, rested_royal_falls
 from chess_variant_sandbox.engine import Engine, GameState
 from chess_variant_sandbox.engine.engine import _square_name
 from chess_variant_sandbox.engine.moves import decode_move
@@ -41,8 +41,9 @@ def place(
     pieces: dict[str, tuple[str, int]],
     rest: tuple[str | None, str | None] = (None, None),
 ) -> GameState:
-    """A position with these pieces and these rested squares, keyed by the slow hash."""
-    rested = tuple(-1 if name is None else engine._square_index(name) for name in rest)
+    """A position with these pieces and these rested squares (each resting one round, schema
+    29's list), keyed by the slow hash."""
+    rested = tuple(() if name is None else ((engine._square_index(name), 1),) for name in rest)
     state = engine.make_state(pieces).with_(rest=rested)
     key = engine._compute_hash(state)
     return state.with_(key=key, repetition=(key,))
@@ -57,8 +58,10 @@ def falls(engine: Engine, state: GameState, side: int) -> bool:
 
 
 def test_the_price_is_the_cores() -> None:
-    assert _core.RESTED_ROYAL == RESTED_ROYAL
-    assert 0 < RESTED_ROYAL < evaluation.WIN_SCORE - 1000
+    assert _core.RESTED_ROYAL_PIECES == RESTED_ROYAL_PIECES
+    # Below every finished round in the round search (Q986b: `round_win - ply / 1000`, in
+    # mean pieces `ROUND_WIN_PIECES`), so a royal actually taken is still the worse cell.
+    assert 0 < RESTED_ROYAL_PIECES < evaluation.ROUND_WIN_PIECES - 1
 
 
 # --------------------------------------------------------------- the test itself
@@ -78,8 +81,10 @@ def test_a_rested_royal_a_standing_piece_reaches_falls() -> None:
     both = lists(engine, state)
     counts = (len(both[0]), len(both[1]))
     with_term = evaluator.evaluate_round(engine, state, 0, counts, both)
-    without = evaluator.evaluate_round(engine, state.with_(rest=(-1, -1)), 0, counts, both)
-    assert with_term - without == RESTED_ROYAL
+    without = evaluator.evaluate_round(engine, state.with_(rest=((), ())), 0, counts, both)
+    # Q986b: half a round win in this game's mean pieces, not half of `WIN_SCORE`.
+    assert evaluator.rested_royal == RESTED_ROYAL_PIECES * 4.65
+    assert with_term == without + evaluator.rested_royal
     # The probe's ruler passes no lists: the engine is asked for them, the same number.
     assert evaluator.evaluate_round(engine, state, 0, counts) == with_term
 
@@ -115,7 +120,7 @@ def test_a_side_with_a_second_royal_has_one_to_spare() -> None:
 def _assert_term_rounds_agree(name: str, agents: tuple[str, ...], rounds: int, seed: int) -> None:
     engine = Engine(load(name))
     states = walk(engine, rounds, seed=seed)
-    if engine.spec.simultaneous is not None and engine.spec.simultaneous.rest:
+    if engine.spec.rest:
         states.append(place(engine, RESTED, rest=(None, "b4")))
     for index, state in enumerate(states):
         for agent in agents:
@@ -179,7 +184,7 @@ def test_without_the_term_the_same_player_would_run_up_the_file(
     square, so the test above is the term's doing and not the position's."""
     engine = Engine(load("resting"))
     state = place(engine, RUN)
-    monkeypatch.setattr(evaluation, "RESTED_ROYAL", 0.0)
+    monkeypatch.setattr(evaluation, "RESTED_ROYAL_PIECES", 0.0)
     _, strategy, _, _ = oracle_round(engine, "greedy", state, 1, seed=0)
     weights = _king_weights(engine, state, strategy)
     assert weights["a4"] > 0.2, weights

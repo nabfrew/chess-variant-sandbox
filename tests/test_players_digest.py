@@ -2,8 +2,9 @@
 
 `docs/reference/compute-economy.md` §2.3. Before this, `agents/*.py` sat in the `engine` source set, so
 any code edit to any agent module -- `nets.py`, `heuristics.py`, `valuations.py`, the
-fit-making half of `fitted.py`, none of which a rated roster reaches -- staled the whole
-library by replay. batch-0925 paid 91 minutes for 0 file differences in 280 runs.
+fit-making half of `fitted.py` (since removed, Q558), none of which a rated roster
+reaches -- staled the whole library by replay. batch-0925 paid 91 minutes for 0 file
+differences in 280 runs.
 
 Both directions are held here, against specs:
 
@@ -24,7 +25,7 @@ from chess_variant_sandbox import corpus, measurement
 from chess_variant_sandbox.measurement import Basis
 from chess_variant_sandbox.spec import spec_hash
 
-# A committed spec with a committed fit store, so every canonical rung resolves.
+# A committed spec, on which every canonical rung resolves.
 SPEC_PATH = measurement.ROOT / "rulesets" / "gardner.json"
 
 _CACHED = (
@@ -109,7 +110,7 @@ class TestAnAgentsEditThatHandsTheCoreNothingNewStalesNothing:
                 path.read_text(encoding="utf-8") + "\n_Q631_EDIT = 1\n", encoding="utf-8"
             )
             edited.append(path.name)
-        assert {"nets.py", "heuristics.py", "valuations.py", "fitted.py"} <= set(edited)
+        assert {"nets.py", "heuristics.py", "valuations.py"} <= set(edited)
 
         monkeypatch.setattr(measurement, "ROOT", copy)
         _forget(sources=True)
@@ -120,7 +121,7 @@ class TestAnAgentsEditThatHandsTheCoreNothingNewStalesNothing:
             _forget(sources=True)
 
         assert after.agents_source != before.agents_source  # the edit was seen
-        for field in ("engine", "metrics", "analysis", "tables", "players", "fit", "net"):
+        for field in ("engine", "metrics", "analysis", "tables", "players", "net"):
             assert getattr(after, field) == getattr(before, field), field
         assert before.stale_against(after).current
 
@@ -179,8 +180,8 @@ class TestWhereThePlayersCannotBeRead:
     """`""` taken now: the agents' source decides, which is the rule before Q631."""
 
     def test_a_seat_that_does_not_resolve_cannot_say(self) -> None:
-        # A procedure no store holds, as on the server for a visitor's design.
-        assert measurement.players_fingerprint(_spec(), ("minimax:fit=000000000000,nodes=100",)) == ""
+        # A heuristic digest no store holds, as on the server for a visitor's design.
+        assert measurement.players_fingerprint(_spec(), ("minimax:h=000000000000,nodes=100",)) == ""
 
     def test_a_seat_with_no_native_form_cannot_say(self, monkeypatch) -> None:
         import chess_variant_sandbox.agents as agents

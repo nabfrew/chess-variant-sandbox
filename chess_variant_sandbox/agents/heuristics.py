@@ -147,8 +147,8 @@ class Heuristic:
         **The values enter the hashed blob only when the vector is non-empty**, so an
         opponent on the derived table serialises and hashes exactly as it did before
         this field existed. That is what keeps every committed set in `heuristics/`,
-        every `model/` set, any saved `custom/` store and every stored fit valid rather
-        than failing `from_dict`'s edited-file check. Empty means derived, the same
+        every `model/` set and any saved `custom/` store valid rather than failing
+        `from_dict`'s edited-file check. Empty means derived, the same
         convention the weights already use for the built-in objective.
 
         Scale invariance is one-sided on purpose. The weights are unit-scaled because

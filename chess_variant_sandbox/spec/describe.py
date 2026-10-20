@@ -38,6 +38,7 @@ from chess_variant_sandbox.spec.schema import (
     has_speeds,
     is_simultaneous,
     obstacle_squares,
+    piece_rests,
     piece_speeds,
     portal_groups,
     simultaneous_switch,
@@ -192,6 +193,8 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     # Schema 26 (Q918a): first of all, because it changes what a turn is more than a long
     # turn does, and every sentence below is read against it.
     lines.extend(_describe_simultaneous(spec, rules))
+    # Schema 29 (Q983a): which piece may make a turn's move, read against what a turn is.
+    lines.extend(_describe_rest(spec, rules))
 
     turn = rules.get("turn")
     if turn and int(turn.get("moves", 1)) > 1:
@@ -475,6 +478,12 @@ def _describe_piece(
     if piece.get("spy") is True:
         # Schema 27 (Q935a): the rules say what the spy does; the piece says it is one.
         notes.append("is a spy: who still has one decides how play goes (see the rules)")
+    rest = piece.get("rest")
+    if isinstance(rest, int) and not isinstance(rest, bool) and rest > 0:
+        # Schema 29 (Q983a): the rules say what a rest does; the piece says its own.
+        notes.append(
+            f"rests {rest} turn{'s' if rest > 1 else ''} after it moves (see the rules)"
+        )
     speed = piece.get("speed")
     if isinstance(speed, int) and not isinstance(speed, bool) and speed > 0:
         # Schema 28 (Q943a): the rules say what a speed does; the piece says its own.
@@ -1337,6 +1346,34 @@ def _capture_relation(spec: dict[str, Any]) -> str:
     )
 
 
+def _describe_rest(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """Schema 29 (Q983a, `docs/plan-rest.md` §3, §5.7): rest as a piece-type property, in any
+    game. One paragraph for the rule, and one sentence more where check is a rule, since a
+    resting piece's check must still be answered (§3.6)."""
+    rests = {pid: turns for pid, turns in piece_rests(spec).items() if turns > 0}
+    if not rests:
+        return []
+    by_turns = "; ".join(
+        f"{', '.join(pid for pid in rests if rests[pid] == turns)} {turns}"
+        for turns in sorted(set(rests.values()), reverse=True)
+    )
+    turn = "a round is a turn of both players" if is_simultaneous(rules) else (
+        "only its own player's turns count"
+    )
+    lines = [
+        f"A piece that makes its player's move then rests for that player's next n turns, n "
+        f"its type's ({by_turns}; every other piece never rests); {turn}. A resting piece "
+        "may not make its player's move, and still stands: it attacks, blocks, and can be "
+        "captured. A piece that turned in place, was dropped or struck without moving rests "
+        "too, as the piece it is after the move; one captured, moved or changed by the "
+        "other player rests no more. When every move a player has is a resting piece's, "
+        "the rest is lifted for that turn, so the rest never leaves a player without a move."
+    ]
+    if rules.get("win", "checkmate") == "checkmate" or rules.get("check_limit"):
+        lines.append("A resting piece gives check, and its check must still be answered.")
+    return lines
+
+
 def _describe_simultaneous(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
     """Schema 26 (Q918a): the round, the collision table, the tie, the void bar and what an
     ending reached by both means (`docs/reference/rounds.md` §2, §3); schema 27's chase
@@ -1344,7 +1381,6 @@ def _describe_simultaneous(spec: dict[str, Any], rules: dict[str, Any]) -> list[
     if not is_simultaneous(rules):
         return []
     tie = rules["simultaneous"].get("tie")
-    rest = simultaneous_switch(rules, "rest")
     swap = simultaneous_switch(rules, "swap")
     both = simultaneous_switch(rules, "both")
     spies = spy_ids(spec)
@@ -1399,12 +1435,6 @@ def _describe_simultaneous(spec: dict[str, Any], rules: dict[str, Any]) -> list[
             "capture, if the piece may capture there. Otherwise the slower move is void and "
             "its piece stays, or is lost with its piece. So pieces of different speeds never "
             "collide or swap; pieces of equal speed move at once, as above."
-        )
-    if rest:
-        lines.append(
-            "The piece that made a player's move in a round rests: it may not make that "
-            "player's move in the next round, unless it is the only piece that can move. A "
-            "piece that turned, was dropped or made a void move rests too."
         )
     clauses = []
     for piece in spec.get("pieces") or []:

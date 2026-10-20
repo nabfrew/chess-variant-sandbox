@@ -5186,7 +5186,7 @@ class TestTheSiteDrawsOnlyWhatItServes:
         # The opponents nobody has rated are one sentence under the leaderboard (L2), with
         # no reason the site withholds, since nothing there can be done about it (G15).
         said = " ".join(html.split())
-        assert ("<b>random</b>, <b>trade-up</b>, <b>fitted to this game</b> have no rating"
+        assert ("<b>random</b>, <b>trade-up</b>, <b>own piece values</b> have no rating"
                 " on this game yet, so they are not on it.") in said
         assert "not in the picker when this table" not in said
 
@@ -5627,26 +5627,13 @@ class TestTheOpponentMenuIsTrimmed:
         shown = self._options("ACCOUNTS = false;", None)
         assert shown == ["you", "hard (+446)"]
 
-    def test_a_taught_or_priced_opponent_says_what_it_does_in_a_players_words(self) -> None:
-        """P9-P11. What a fit plays for, by words a visitor reads (`TERM_WORDS`, one per
-        vocabulary term), and what it beat by the rung's name, never *the built-in
-        objective* or *the derived table*."""
+    def test_a_priced_opponent_says_what_it_does_in_a_players_words(self) -> None:
+        """P9-P11. What a searched valuation beat, by the rung's name, never *the
+        built-in objective* or *the derived table*."""
         from types import SimpleNamespace
 
-        from chess_variant_sandbox.agents.features import VOCABULARY
         from chess_variant_sandbox.web import opponents
 
-        assert set(opponents.TERM_WORDS) == set(VOCABULARY)
-        vector = [0.0] * len(VOCABULARY)
-        vector[VOCABULARY.index("mobility")] = 0.9
-        vector[VOCABULARY.index("material")] = -0.4
-        fit = SimpleNamespace(vector=vector, accept_games=48)
-        said = opponents._fitted_plan(fit)
-        assert said == (
-            "It learned what to aim for from games of this one: more freedom to move, "
-            "less material. It beat the ordinary hard player over 48 games, which is why "
-            "it is offered."
-        )
         valued = SimpleNamespace(piece_ids=("N", "B"), ratios=(1.2, 1.0),
                                  accept_score=0.78, accept_games=64)
         said = opponents._valued_plan(valued)
@@ -5654,7 +5641,6 @@ class TestTheOpponentMenuIsTrimmed:
         assert "78% of the points against" in said and "tuned by trial games" in said
         for machine in ("objective", "derived table", "hill-climbing", "budget"):
             assert machine not in said
-        assert opponents.FITTED_LABEL == "taught by this game"
 
     def test_the_plain_words_go_under_the_menu(self) -> None:
         """F7: the strength in plain words under the name, where a phone's menu does
@@ -6203,8 +6189,9 @@ def _game_payload(digest: str, site: bool) -> dict:
     roster = [entry.as_dict() for entry in opponents.ladder()] + [
         {"agent": "minimax:h=aaaaaaaaaaaa,nodes=6400", "label": "trade-up",
          "group": "plans, written by hand", "plan": "trade pieces", "store": "written"},
-        {"agent": "minimax:fit=bbbbbbbbbbbb,nodes=6400", "label": "fitted to this game",
-         "group": "fitted to this game", "plan": "learned", "store": "fitted"},
+        {"agent": "minimax:values=bbbbbbbbbbbb,nodes=6400", "label": "own piece values",
+         "group": "with this game's own piece values", "plan": "prices the pieces",
+         "store": "valuations"},
     ]
     rated = [entry["agent"] for entry in roster[1:-2]]
     payload = {
@@ -6246,7 +6233,7 @@ def _game_payload(digest: str, site: bool) -> dict:
                      "top": index == len(rated) - 1, "gone": False, "you": False}
                     for index in reversed(range(1, len(rated)))
                 ],
-                "unrated": [roster[1]["name"], "trade-up", "fitted to this game"],
+                "unrated": [roster[1]["name"], "trade-up", "own piece values"],
             },
         }
     return payload
@@ -8380,7 +8367,7 @@ class TestWhenTheAgentFails:
         opponent is", with no sign it had ever been asked about, because the table was
         rated before the engine joined and the panel drew the rows it had. Both
         directions of the difference are named now -- and only for the picker's own
-        table, because the rated ladder's rows are the canonical fit rungs, which are
+        table, because the rated ladder's rows are the canonical rungs, which are
         not picker entries and would all read as "no longer offered".
         """
         from page_text import PAGE
@@ -9008,35 +8995,10 @@ class TestTheOpponentsYouCanPick:
             if entry.store != "ladder":
                 assert entry.plan, f"{entry.label} has no plan"
 
-    def test_a_fit_that_lost_its_match_is_not_offered(self, chess_game) -> None:
-        """A refused fit resolves to the built-in objective, by design.
-
-        `FittedObjective.weights` is the empty tuple when the fit did not beat the
-        built-in one, which *is* the fallback -- so an agent naming a refused fit is
-        `minimax:nodes=6400` under a better name. Offering it would be the same mistake
-        as offering a heuristic set's anchor, and worse: a refusal is the evidence the
-        fit did not work.
-        """
-        from chess_variant_sandbox.agents.fitted import load_fit
-        from chess_variant_sandbox.web import opponents
-
-        offered = {entry.agent for entry in opponents.for_game(chess_game.hash)}
-        fit = load_fit(chess_game.hash)
-        if fit is None:
-            pytest.skip("no fitted objective is stored for chess")
-        named = any("fit=" in agent for agent in offered)
-        assert named is fit.accepted
-        # `dull` is in the store as a refusal, which is what makes this checkable.
-        refused = load_fit("fe7c42772c71")
-        if refused is not None and not refused.accepted:
-            assert not any(
-                "fit=" in entry.agent for entry in opponents.for_game("fe7c42772c71")
-            )
-
     def test_a_searched_valuation_is_offered_only_when_it_was_accepted(
         self, tmp_path, chess_game
     ) -> None:
-        """The same rule as a refused fit, and it is the same fallback underneath.
+        """A refused search is the built-in objective underneath.
 
         A refused search resolves to two empty tuples, so an agent naming one *is*
         `minimax:nodes=6400`. Offering it would hide a negative result behind a label,
@@ -9092,7 +9054,7 @@ class TestTheOpponentsYouCanPick:
         offered = opponents.valued_for(ruleset_hash, tmp_path)
         assert len(offered) == 1
         assert "values=" in offered[0].agent
-        # It says what it did, in English and per piece, the way a fitted vector does.
+        # It says what it did, in English and per piece.
         assert "what the rules imply" in offered[0].plan
 
     # -- Q142: a store from another vocabulary is refused, by name, with its repair ----
@@ -9124,12 +9086,12 @@ class TestTheOpponentsYouCanPick:
 
     @pytest.fixture
     def unregister(self):
-        from chess_variant_sandbox.agents import fitted, valuations
+        from chess_variant_sandbox.agents import valuations
 
         yield
-        for registry in (valuations._VALUATIONS, fitted._FITTED):
-            for key in [key for key in registry if key[1] == self.STALE]:
-                del registry[key]
+        registry = valuations._VALUATIONS
+        for key in [key for key in registry if key[1] == self.STALE]:
+            del registry[key]
 
     def test_a_searched_table_from_another_vocabulary_is_refused_with_its_repair(
         self, tmp_path, unregister
@@ -9139,13 +9101,13 @@ class TestTheOpponentsYouCanPick:
         from chess_variant_sandbox.agents.valuations import SEARCH, store_path
         from chess_variant_sandbox.web import opponents
 
-        values, fits = tmp_path / "valuations", tmp_path / "fitted"
+        values = tmp_path / "valuations"
         self._stale_valuation(values, accepted=True)
-        roster = opponents.for_game(self.STALE, tmp_path / "none", fits, values)
+        roster = opponents.for_game(self.STALE, tmp_path / "none", valuations=values)
         assert not any("values=" in entry.agent for entry in roster)
 
         ruleset = RULESETS / "chess.json"
-        said = opponents.refused_stores(self.STALE, ruleset, fits, values)
+        said = opponents.refused_stores(self.STALE, ruleset, valuations=values)
         assert len(said) == 1, said
         sentence = said[0]
         # What is stale: the opponent by its picker name, the file, both lengths.
@@ -9166,47 +9128,7 @@ class TestTheOpponentsYouCanPick:
 
         values = tmp_path / "valuations"
         self._stale_valuation(values, accepted=False)
-        assert opponents.refused_stores(self.STALE, None, tmp_path / "fitted", values) == []
-
-    def test_an_accepted_fit_only_a_retired_procedure_made_is_named_with_its_refit(
-        self, tmp_path, unregister
-    ) -> None:
-        """`load_fit` looks only under the current procedure, so an accepted fit filed
-        under a retired one used to leave the picker without a word."""
-        from chess_variant_sandbox.agents.fitted import procedure_digest
-        from chess_variant_sandbox.web import opponents
-
-        fits = tmp_path / "fitted"
-        fits.mkdir()
-        retired = fits / f"{self.STALE}-16a4528b0d53.json"
-        retired.write_text(json.dumps({
-            "ruleset_hash": self.STALE, "procedure": "16a4528b0d53",
-            "procedure_version": 1, "vocabulary_version": 1, "accepted": True,
-            "accept_score": 0.6, "weights": [0.1] * (len(VOCABULARY) - 1),
-        }), encoding="utf-8")
-        roster = opponents.for_game(self.STALE, tmp_path / "none", fits, tmp_path / "v")
-        assert not any("fit=" in entry.agent for entry in roster)
-
-        said = opponents.refused_stores(
-            self.STALE, RULESETS / "chess.json", fits, tmp_path / "v"
-        )
-        assert len(said) == 1, said
-        sentence = said[0]
-        assert f"'{opponents.FITTED_LABEL}' is not offered" in sentence
-        assert retired.as_posix() in sentence
-        assert "16a4528b0d53" in sentence and procedure_digest() in sentence
-        assert f"carries {len(VOCABULARY) - 1} weights" in sentence
-        assert "`chess-variant-sandbox fit rulesets/chess.json --force`" in sentence
-
-        # Once the current procedure has a store, the retired one is history, not news.
-        from chess_variant_sandbox.agents.fitted import FittedObjective, store_path
-
-        FittedObjective(
-            ruleset_hash=self.STALE, procedure=procedure_digest(),
-            vector=(0.1,) * len(VOCABULARY), accepted=False, accept_score=0.4,
-            samples=10, loss=0.6,
-        ).save(store_path(self.STALE, procedure_digest(), fits))
-        assert opponents.refused_stores(self.STALE, None, fits, tmp_path / "v") == []
+        assert opponents.refused_stores(self.STALE, None, valuations=values) == []
 
     def test_the_game_page_carries_what_its_roster_refused(self, games) -> None:
         """The payload's sentences are the roster's own verdict, from the same stores,
@@ -9267,7 +9189,7 @@ class TestTheOpponentsYouCanPick:
                 continue
             stored = [
                 entry for entry in opponents.for_game(game.hash)
-                if entry.store in ("fitted", "valuations")
+                if entry.store == "valuations"
             ]
             if not stored:
                 continue
@@ -10347,35 +10269,6 @@ class TestManagingTheScores:
         assert "reanalyse: 'analysing and scoring again'" in PAGE
         assert "reanalyse: ['analyse and score it again'," in PAGE
         assert "s.reanalyse" in PAGE
-
-    def test_the_page_names_the_fourth_repair_rather_than_reading_it_as_a_replay(self) -> None:
-        """`refit` (Q80c, `docs/reference/refit-repair.md`) is the fourth `Staleness.needs`
-        answer, and it fell to both tables' fallback, which reads as a replay -- the one
-        thing a reproduced fit costs nothing to redo.
-        """
-        from page_text import PAGE
-
-        assert "refit: 'checking its fit'" in PAGE
-        assert "refit: ['check its fit'," in PAGE
-
-    def test_the_upkeep_table_names_a_refit_row_rather_than_falling_back_to_playing_again(
-        self,
-    ) -> None:
-        """The row-by-row table used to have no entry for `refit`, so a game whose fit was
-        accepted on another build read `REPAIRS[g.needs] || 'playing again'` -- the
-        fallback for a game nothing has named, which told a reader a tournament was owed
-        when nothing had, unless the check itself moved the player.
-        """
-        rendered = _render_scoring({
-            "games": [{"name": "dull", "state": "stale", "needs": "refit",
-                       "reason": "stale (refit): its fit was made on core deadbeef and "
-                                 "has not been re-derived on this one"}],
-            "current": 0, "stale": 1, "absent": 0, "rescore": 0, "reanalyse": 0,
-            "replay": 0, "refit": 1, "roster": ["random"], "gamesPerPairing": 4,
-            "weights": "v11", "build": "", "sweep": None,
-        })
-        assert "checking its fit" in rendered
-        assert "playing again" not in rendered
 
     def test_the_page_and_the_command_line_agree_about_what_is_stale(self, tmp_path) -> None:
         """One survey behind both, rather than two loops that happen to agree."""
@@ -11705,8 +11598,8 @@ class TestBuildingAnOpponent:
                 assert build_agent(entry.agent, engine) is not None
 
         # Through the server, so the page is told about the store it was given. Only
-        # the sentences about stores in `heuristics`: chess's fit and valuation are the
-        # committed ones and say what they say.
+        # the sentences about stores in `heuristics`: chess's valuation is the
+        # committed one and says what it says.
         said = app.get(f"/api/game/{chess_game.hash}")["refusedStores"]
         assert [line for line in said if heuristics.as_posix() in line] == [
             "The opponent 'older' is not offered because it has the balance of 'written "
@@ -11735,7 +11628,7 @@ class TestBuildingAnOpponent:
         ]
         assert built == ["first"]
         said = opponents.refused_stores(
-            chess_game.hash, None, tmp_path / "fits", tmp_path / "values", heuristics
+            chess_game.hash, None, valuations=tmp_path / "values", heuristics=heuristics
         )
         assert len(said) == 1
         assert said[0].startswith("The opponent 'second' is not offered because it has "
@@ -12142,7 +12035,7 @@ class TestTheGamePageOnAPhone:
         A grid item is at least as wide as its own content unless it is told otherwise,
         so one long piece description set the column's width and the page scrolled
         sideways; and an opponent named by its parameters
-        (`minimax:fit=98f172aeac49,nodes=1600`) is one word to a browser, which set the
+        (`minimax:h=98f172aeac49,nodes=1600`) is one word to a browser, which set the
         rating table's.
         """
         from page_text import PAGE
@@ -14416,7 +14309,7 @@ class TestMeasuringOnThisComputer:
         setup = """
           DRAFT_CHECK = { hash: 'abc123def456', valid: true };
           HERE = { state: 'done', workers: 4, seconds: 125, heaps: [25165824, 30212096],
-            times: [['loading', 3.4], ['fit', 20], ['gathering', 1.5], ['gathering', 2]],
+            times: [['loading', 3.4], ['tournament', 20], ['gathering', 1.5], ['gathering', 2]],
             result: { hash: 'abc123def456', name: 'a draft', index: 0.81094, viable: true,
               violations: [], weights: 'v11', games: 256,
               components: [{ key: 'skill', title: 'Skill decides it', score: 0.912,
@@ -14433,7 +14326,7 @@ class TestMeasuringOnThisComputer:
         # The steps in the order they run, and the gathers between them added up at the end.
         assert (
             "2 min 5 s in all, on four cores: loading the engine into this browser, 3.4 s;"
-            " playing the games its own opponent learns from, 20.0 s;"
+            " playing the tournament, 20.0 s;"
             " putting the pieces together, 3.5 s." in now
         )
         assert "at most 29 MiB" in now
@@ -14621,16 +14514,16 @@ class TestTheGatheringHalf:
         answer: dict = json.loads(slices.gather_request(json.dumps({"spec": spec, "state": None})))
         return answer
 
-    def test_the_first_step_deals_the_fit_in_the_fixed_cut(self, dull) -> None:
+    def test_the_first_step_deals_the_tournament_in_the_fixed_cut(self, dull) -> None:
         from chess_variant_sandbox.tournament import runner, slices
 
         answer = self._first(dull)
-        assert answer["step"] == slices.FIT and answer["result"] is None
+        assert answer["step"] == slices.TOURNAMENT and answer["result"] is None
         assert isinstance(answer["state"], str)
         units = answer["units"]
         assert len(units) == slices.CUT
         assert [unit["part"] for unit in units] == list(range(slices.CUT))
-        assert all(unit["phase"] == slices.FIT and unit["plays"] for unit in units)
+        assert all(unit["phase"] == slices.TOURNAMENT and unit["plays"] for unit in units)
         covered: list[int] = []
         for shown in units:
             request = json.loads(shown["request"])
@@ -14638,7 +14531,7 @@ class TestTheGatheringHalf:
             unit = slices.Unit.from_dict(request["unit"])
             assert unit.name == shown["name"] and len(unit.games) == shown["games"]
             covered.extend(unit.games)
-        assert covered == list(range(len(runner.schedule(slices.fit_config()))))
+        assert covered == list(range(len(runner.schedule(slices.canonical_config()))))
 
     def test_the_draft_is_settled_before_anything_is_dealt(self, dull) -> None:
         """The number is for the game the designer's check hashed (`designing.settled`)."""
@@ -14657,13 +14550,15 @@ class TestTheGatheringHalf:
         from chess_variant_sandbox.tournament import slices
 
         state = self._first(dull)["state"]
-        short = {"fit": ["x"] * (slices.CUT - 1)}
-        with pytest.raises(slices.SliceError, match="missing fit-16-of-16"):
+        short = {"tournament": ["x"] * (slices.CUT - 1)}
+        with pytest.raises(slices.SliceError, match="missing tournament-16-of-16"):
             slices.gather_request(json.dumps({"state": state, "replies": short}))
         holed: list[str | None] = [""] * slices.CUT
         holed[2] = None
-        with pytest.raises(slices.SliceError, match="missing fit-3-of-16"):
-            slices.gather_request(json.dumps({"state": state, "replies": {"fit": holed}}))
+        with pytest.raises(slices.SliceError, match="missing tournament-3-of-16"):
+            slices.gather_request(
+                json.dumps({"state": state, "replies": {"tournament": holed}})
+            )
 
     def test_a_step_it_does_not_know_is_refused(self) -> None:
         from chess_variant_sandbox.tournament import slices
@@ -14687,8 +14582,8 @@ class TestTheGatheringHalf:
 @pytest.mark.slow
 def test_the_gathering_half_measures_what_measure_in_slices_does(tmp_path) -> None:
     """A whole measurement through `slices.gather_request`, as the page drives it, against
-    B0's reference on the same spec. Dull refuses its fit at the match, so all four steps
-    run: fit, acceptance, tournament, and the reading step with the score."""
+    B0's reference on the same spec. Two steps run: the tournament, and the reading step
+    with the score."""
     from chess_variant_sandbox import corpus
     from chess_variant_sandbox.tournament import slices
 
@@ -14703,7 +14598,7 @@ def test_the_gathering_half_measures_what_measure_in_slices_does(tmp_path) -> No
             slices.gather_request(json.dumps({"state": answer["state"], "replies": replies}))
         )
         steps.append(answer["step"])
-    assert steps == ["fit", "accept", "tournament", "reading", "done"]
+    assert steps == ["tournament", "reading", "done"]
 
     driven = answer["result"]
     reference = slices.measure_in_slices(spec, tmp_path, slices=4)
@@ -14712,11 +14607,10 @@ def test_the_gathering_half_measures_what_measure_in_slices_does(tmp_path) -> No
     )
     assert driven["index"] == reference.index
     assert {part["key"]: part["score"] for part in driven["components"]} == stored["scores"]
-    assert driven["fit"] == {"accepted": reference.fit.accepted, "score": reference.fit.accept_score}
+    assert "fit" not in driven
     assert driven["games"] == len(reference.records)
     current = corpus.current_basis(spec_hash(spec), spec=spec, seeds=corpus.ONE_SEED)
-    # `fit` is the measurement's own player, never a store's (Q468).
-    assert driven["basis"] == {**current.as_dict(), "fit": corpus.player_digest(reference.fit)}
+    assert driven["basis"] == current.as_dict()
 
     # B10: the upload the last step wrote is tier one's slim form, stamped as played in a
     # browser, and the server's own walk and score of it give the page's number.

@@ -520,15 +520,14 @@ class TestTheSimultaneousRecord:
                 compiled.hash, compiled.n_squares, compiled.n_types, compiled.width,
                 compiled.n_facings, compiled.n_owners,
                 simultaneous=True, initiative=tie == "initiative",
-            )[7]
-            rule = compiled.simultaneous
-            assert rule is not None and keys is not None
-            # Schema 27's rested squares (Q942a) are drawn after the standoff's, and only
-            # under `rest`: none here.
-            assert keys == (
-                rule.zobrist_initiative, rule.zobrist_squares, rule.zobrist_states, (),
             )
-            assert rule.zobrist_rest == ()
+            rule = compiled.simultaneous
+            assert rule is not None and keys[7] is not None
+            assert keys[7] == (rule.zobrist_initiative, rule.zobrist_squares, rule.zobrist_states)
+            # Schema 29's resting pieces (Q983a) are drawn last of all, after the standoff's,
+            # and only where a type rests: none here.
+            assert keys[8] == ()
+            assert compiled.zobrist_rest == ()
 
     def test_the_standoff_keys_are_as_many_as_they_are_read_and_sixty_four_bits_wide(
         self,

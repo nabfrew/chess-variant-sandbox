@@ -1,33 +1,24 @@
 """A measurement cut into units, and the units gathered back into its files.
 
-`corpus.measure` is one call that fits, plays, analyses and scores. It spreads the
+`corpus.measure` is one call that plays, analyses and scores. It spreads the
 tournament over threads inside the core and the analysis over a `ProcessPoolExecutor`,
 and a browser has neither. This module is the same measurement expressed as a list of
 **units** -- whole pieces of work that can run anywhere, name their games by schedule
 index, and hand back text -- with the arithmetic that joins them in the gathers between.
 
-Five phases, in order, and a gather after each:
+Three phases, in order, and a gather after each:
 
 | phase | a unit plays | its input | the gather |
 |---|---|---|---|
-| `fit` | a slice of the fit tournament | the spec | harvest the positions and regress |
-| `accept` | a slice of the acceptance match | the spec, the provisional vector | the verdict |
-| `tournament` | a slice of the canonical schedule | the spec, the verdict | ratings |
-| `analysis` | a slice of the graded games | the spec, the verdict, those games | -- |
-| `blunder` | a slice of the blunder trials | the spec, the verdict, those games | the score |
-
-**The fit's verdict is an input to every later unit.** `resolve_fit` is what turns
-`minimax:fit=<procedure>` into a player, and it refuses to default, so a worker with no
-`fitted/` store cannot play the canonical roster until somebody hands it the verdict.
-Passing it in the request is what makes a unit runnable on a machine that has only the
-text it was sent.
+| `tournament` | a slice of the canonical schedule | the spec | ratings |
+| `analysis` | a slice of the graded games | the spec, those games | -- |
+| `blunder` | a slice of the blunder trials | the spec, those games | the score |
 
 **Nothing here is a second implementation.** The unit runners call `runner._run_native`,
 `analysis._analyse_game` and `analysis._one_blunder` unchanged, and the gathers call
-`fitting.harvest`, `logistic_fit`, `rate` and `score_ruleset`. Those files are
-fingerprinted -- an edit to one owes a replay of every measurement in the corpus -- which
-is the whole reason this is a new module rather than a `slices=` argument on the old
-ones. What is new here is the cutting, the text format and the joining, and none of the
+`rate` and `score_ruleset`. Those files are fingerprinted -- an edit to one owes a replay
+of every measurement in the corpus -- which is the whole reason this is a new module
+rather than a `slices=` argument on the old ones. What is new here is the cutting, the text format and the joining, and none of the
 three decides a game.
 
 **How the work is divided must not change an answer.** Every seed is fixed by
@@ -59,27 +50,13 @@ from pathlib import Path
 from typing import Any
 
 from chess_variant_sandbox.agents.evaluation import Evaluator
-from chess_variant_sandbox.agents.features import VOCABULARY
-from chess_variant_sandbox.agents.fitted import (
-    ACCEPT_GAMES_PER_PAIRING,
-    ACCEPT_NODES,
-    ACCEPT_SEED,
-    FIT_AGENTS,
-    FIT_GAMES_PER_PAIRING,
-    FIT_SEED,
-    FittedObjective,
-    logistic_fit,
-    procedure_digest,
-    register_fit,
-)
-from chess_variant_sandbox.agents.fitted import unit as unit_vector
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.measurement import Basis
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS, glossary, load_weights, score_ruleset
 from chess_variant_sandbox.spec.canonical import spec_hash
 from chess_variant_sandbox.spec.transform import settle_schema_version
 from chess_variant_sandbox.tournament import analysis as analysis_pass
-from chess_variant_sandbox.tournament import fitting, runner
+from chess_variant_sandbox.tournament import runner
 from chess_variant_sandbox.tournament.analysis import (
     BLUNDER_SAMPLE,
     BlunderTrial,
@@ -90,19 +67,17 @@ from chess_variant_sandbox.tournament.ratings import RatingTable
 from chess_variant_sandbox.tournament.record import GameRecord
 from chess_variant_sandbox.tournament.runner import TournamentConfig, TournamentResult
 
-FIT = "fit"
-ACCEPT = "accept"
 TOURNAMENT = "tournament"
 ANALYSIS = "analysis"
 BLUNDER = "blunder"
 
 # The order a measurement runs them in. `analysis` and `blunder` both read the finished
 # tournament and neither reads the other, so a coordinator may deal them together.
-PHASES = (FIT, ACCEPT, TOURNAMENT, ANALYSIS, BLUNDER)
+PHASES = (TOURNAMENT, ANALYSIS, BLUNDER)
 
 # Which phases play games and which read finished ones. A reader of a unit needs to know
 # which, because only the second kind is sent record text.
-PLAYING_PHASES = (FIT, ACCEPT, TOURNAMENT)
+PLAYING_PHASES = (TOURNAMENT,)
 READING_PHASES = (ANALYSIS, BLUNDER)
 
 
@@ -186,33 +161,6 @@ def _units(phase: str, indices: Sequence[int], slices: int) -> list[Unit]:
 # ---------------------------------------------------------------- the schedules
 
 
-def fit_config(workers: int = 0) -> TournamentConfig:
-    """The games the fit reads. Constants of the procedure, so nobody may vary them."""
-    return TournamentConfig(
-        agents=FIT_AGENTS,
-        games_per_pairing=FIT_GAMES_PER_PAIRING,
-        seed=FIT_SEED,
-        workers=workers,
-        collect_series=False,
-    )
-
-
-def accept_config(procedure: str = "", workers: int = 0) -> TournamentConfig:
-    """The match that turns a vector into a verdict: the fit against what it replaces."""
-    digest = procedure or procedure_digest()
-    return TournamentConfig(
-        agents=(
-            f"minimax:fit={digest},nodes={ACCEPT_NODES}",
-            f"minimax:nodes={ACCEPT_NODES}",
-        ),
-        games_per_pairing=ACCEPT_GAMES_PER_PAIRING,
-        seed=ACCEPT_SEED,
-        workers=workers,
-        include_self_play=False,
-        collect_series=False,
-    )
-
-
 def canonical_config(
     agents: tuple[str, ...] | None = None,
     games_per_pairing: int | None = None,
@@ -289,7 +237,6 @@ def _graded(records: Sequence[GameRecord]) -> list[tuple[int, GameRecord]]:
 def run_unit(
     unit: Unit,
     spec: dict[str, Any],
-    fit: FittedObjective | None = None,
     records: Sequence[GameRecord] | None = None,
     config: TournamentConfig | None = None,
 ) -> str:
@@ -302,20 +249,13 @@ def run_unit(
 
     `config` is the measurement's roster and is read by a `tournament` unit, which needs
     the schedule its games are indices into, and by a `blunder` unit, which takes the
-    sampler's seed from it. The fit and acceptance phases are constants of the procedure
-    and ignore it.
+    sampler's seed from it.
     """
-    if fit is not None:
-        # The one piece of state a unit needs and cannot derive. Registered before the
-        # engine is asked for anything, because `native_spec` resolves `fit=` at the
-        # moment an agent string becomes a player.
-        register_fit(fit, replace=True)
-
     chosen = config if config is not None else canonical_config()
     if unit.phase in PLAYING_PHASES:
         return _lines(
             record.as_dict()
-            for record in _play(spec, _config_for(unit.phase, fit, chosen), unit.games)
+            for record in _play(spec, chosen, unit.games)
         )
 
     if records is None:
@@ -342,15 +282,6 @@ def run_unit(
     )
     return _lines(trial.as_dict() for trial in trials if trial is not None)
 
-
-def _config_for(
-    phase: str, fit: FittedObjective | None, roster: TournamentConfig
-) -> TournamentConfig:
-    if phase == FIT:
-        return fit_config(roster.workers)
-    if phase == ACCEPT:
-        return accept_config(fit.procedure if fit is not None else "", roster.workers)
-    return roster
 
 
 def _play(
@@ -394,15 +325,13 @@ def _lines(payloads: Any) -> str:
 def request(
     unit: Unit,
     spec: dict[str, Any],
-    fit: FittedObjective | None = None,
     records: Sequence[GameRecord] | None = None,
     config: TournamentConfig | None = None,
 ) -> str:
     """Everything a worker needs for one unit, as one JSON object.
 
-    Four keys and no fifth. `roster` is what the measurement's config tells a unit --
-    the agents, the games a pairing and the seed -- so the fit and acceptance constants
-    stay where the procedure digest covers them. The records travel as the JSON Lines a
+    Three keys and no fourth. `roster` is what the measurement's config tells a unit --
+    the agents, the games a pairing and the seed. The records travel as the JSON Lines a
     reading unit's games would occupy in `games.jsonl`, and only those games, so a unit's
     input is proportional to its work.
 
@@ -415,7 +344,6 @@ def request(
     payload: dict[str, Any] = {
         "unit": unit.as_dict(),
         "spec": spec,
-        "fit": fit.as_dict() if fit is not None else None,
         "roster": {
             "agents": list(chosen.agents),
             "games_per_pairing": chosen.games_per_pairing,
@@ -439,9 +367,6 @@ def run_request(payload: str) -> str:
     """
     data = json.loads(payload)
     unit = Unit.from_dict(data["unit"])
-    fit = (
-        FittedObjective.from_dict(data["fit"]) if data.get("fit") is not None else None
-    )
     records = (
         parse_records(data.get("records", "")) if unit.phase in READING_PHASES else None
     )
@@ -452,7 +377,7 @@ def run_request(payload: str) -> str:
         seed=int(roster["seed"]),
         workers=int(roster.get("workers", 0)),
     )
-    return run_unit(unit, data["spec"], fit=fit, records=records, config=config)
+    return run_unit(unit, data["spec"], records=records, config=config)
 
 
 def parse_records(text: str) -> list[GameRecord]:
@@ -492,7 +417,7 @@ def _parse(text: str) -> list[dict[str, Any]]:
 # there because the one worker that gathers writes it, under Pyodide, and that worker
 # imports this module and nothing under `site/` (B10). `legality.upload` is this function.
 
-UPLOAD_SCHEMA = 1
+UPLOAD_SCHEMA = 2
 """The upload's own version. A reader that does not know it refuses the upload."""
 
 REBUILT_RECORD_FIELDS: tuple[str, ...] = ("branching", "material", "captures")
@@ -512,11 +437,7 @@ REBUILT_ANALYSIS_FIELDS: tuple[str, ...] = (
 """Every analysis field but `near_best`, `seed` and `agents`: functions of the positions."""
 
 
-def upload(
-    basis: Basis | dict[str, Any],
-    fit: FittedObjective | dict[str, Any],
-    phases: dict[str, str],
-) -> str:
+def upload(basis: Basis | dict[str, Any], phases: dict[str, str]) -> str:
     """The slim upload: each phase's gathered text, less what the server's walk rebuilds.
 
     `phases` maps each of `PHASES` to the text its units sent back, concatenated in part
@@ -527,16 +448,13 @@ def upload(
     if missing:
         raise ValueError(f"an upload carries every phase; this one lacks {missing}")
     slim = {
-        FIT: _slim(phases[FIT], REBUILT_RECORD_FIELDS),
-        ACCEPT: _slim(phases[ACCEPT], REBUILT_RECORD_FIELDS),
         TOURNAMENT: _slim(phases[TOURNAMENT], REBUILT_RECORD_FIELDS),
         ANALYSIS: _slim(phases[ANALYSIS], REBUILT_ANALYSIS_FIELDS),
         BLUNDER: _slim(phases[BLUNDER], ()),
     }
     stamp = basis.as_dict() if isinstance(basis, Basis) else dict(basis)
-    verdict = fit.as_dict() if isinstance(fit, FittedObjective) else dict(fit)
     return json.dumps(
-        {"schema": UPLOAD_SCHEMA, "basis": stamp, "fit": verdict, "phases": slim},
+        {"schema": UPLOAD_SCHEMA, "basis": stamp, "phases": slim},
         separators=(",", ":"),
     )
 
@@ -554,82 +472,6 @@ def _slim(text: str, drop: Sequence[str]) -> str:
 # --------------------------------------------------------------------- the gathers
 
 
-def gather_fit(spec: dict[str, Any], records: Sequence[GameRecord]) -> FittedObjective:
-    """Regress the fit games into a provisional verdict, or into a refusal.
-
-    Two refusals never reach the acceptance match, and both are `fit_ruleset`'s: a
-    ruleset whose games end inside the opening skip yields no rows at all, and a vector
-    of zeros is a player that moves at random. `accepted` on what comes back is
-    provisional either way -- `gather_verdict` is what settles it -- and a refusal here
-    is already final, which is why `accept_units` for one is empty.
-    """
-    engine = Engine(spec)
-    procedure = procedure_digest()
-    samples = fitting.harvest(engine, list(records))
-    if not samples:
-        return fitting._record(
-            engine.spec.hash, procedure, (0.0,) * len(VOCABULARY), False, 0.0, 0, 0, 0.0
-        )
-
-    weights, _intercept, loss = logistic_fit(samples)
-    vector = unit_vector(weights)
-    if not any(vector):
-        return fitting._record(
-            engine.spec.hash, procedure, vector, False, 0.0, 0, len(samples), loss
-        )
-    return fitting._record(
-        engine.spec.hash, procedure, vector, True, 0.0, 0, len(samples), loss
-    )
-
-
-def needs_a_match(fit: FittedObjective) -> bool:
-    """Whether the acceptance phase has anything to play.
-
-    False for the two refusals `gather_fit` settles on its own, both of which leave an
-    all-zero vector behind. Their verdict is already final, so the acceptance phase is
-    listed with no units at all rather than with units nobody would read.
-    """
-    return any(fit.vector)
-
-
-def gather_verdict(
-    provisional: FittedObjective, records: Sequence[GameRecord]
-) -> FittedObjective:
-    """The acceptance match's result, as the verdict every later unit is handed.
-
-    Strictly better, which is `fit_ruleset`'s bar and not a new one: a fitted objective
-    that draws with the one it replaces has not earned a seat.
-    """
-    if not needs_a_match(provisional):
-        return provisional
-    score = match_score(records, accept_config(provisional.procedure).agents[0])
-    return fitting._record(
-        provisional.ruleset_hash,
-        provisional.procedure,
-        provisional.vector,
-        score > 0.5,
-        score,
-        2 * ACCEPT_GAMES_PER_PAIRING,
-        provisional.samples,
-        provisional.loss,
-    )
-
-
-def match_score(records: Sequence[GameRecord], first: str) -> float:
-    """``first``'s score over both colours.
-
-    `heuristics.head_to_head` plays this match and totals it in one call, and this is
-    that total taken over records somebody else played. `tests/test_slices.py` holds the
-    two to the same number so the copy cannot drift.
-    """
-    total = 0.0
-    played = 0
-    for record in records:
-        total += record.score_for(0 if record.agents[0] == first else 1)
-        played += 1
-    return round(total / played, 4) if played else 0.5
-
-
 def gather_analysis(
     analyses: Sequence[GameAnalysis], blunders: Sequence[BlunderTrial]
 ) -> CorpusAnalysis:
@@ -642,7 +484,6 @@ class Gathered:
 
     directory: Path
     spec: dict[str, Any]
-    fit: FittedObjective
     records: list[GameRecord]
     ratings: RatingTable
     analysis: CorpusAnalysis
@@ -656,7 +497,6 @@ class Gathered:
 def gather_measurement(
     spec: dict[str, Any],
     directory: str | Path,
-    fit: FittedObjective,
     records: Sequence[GameRecord],
     analysis: CorpusAnalysis,
     config: TournamentConfig | None = None,
@@ -690,7 +530,6 @@ def gather_measurement(
     return Gathered(
         directory=out,
         spec=spec,
-        fit=fit,
         records=list(records),
         ratings=tournament.ratings,
         analysis=analysis,
@@ -708,7 +547,6 @@ def measure_in_slices(
     weights: str = DEFAULT_WEIGHTS,
     config: TournamentConfig | None = None,
     blunder_sample: int = BLUNDER_SAMPLE,
-    fit: FittedObjective | None = None,
     report: Any = None,
 ) -> Gathered:
     """Run every unit here, in order, through the text interface, and gather.
@@ -718,46 +556,13 @@ def measure_in_slices(
     process rather than in workers is the only difference, and it is deliberately the
     only one -- each unit still goes out as a request string and comes back as text, so
     a bug that lives in the serialisation cannot hide behind a shared object.
-
-    `fit` is a verdict already in hand, which skips the first two phases. A browser has
-    no `fitted/` store and a new game has no verdict, so the ordinary path fits; a caller
-    measuring the same game twice, or resuming one, has the verdict already and re-playing
-    the fit games would be minutes spent to reach the same vector.
     """
     say = report if callable(report) else (lambda _message: None)
     chosen = config if config is not None else canonical_config()
 
-    if fit is not None:
-        verdict = fit
-        say("the fit's verdict was handed in; its games are not replayed")
-    else:
-        say(f"fit games, in {slices} slice(s)")
-        fit_records = _run_phase(
-            playing_units(FIT, fit_config(), slices), spec, parse_records, chosen
-        )
-        provisional = gather_fit(spec, fit_records)
-
-        if not needs_a_match(provisional):
-            say("  refused before the match: no rows to regress, or a vector of zeros")
-            verdict = provisional
-        else:
-            say(f"acceptance match, in {slices} slice(s)")
-            match = _run_phase(
-                playing_units(ACCEPT, accept_config(provisional.procedure), slices),
-                spec,
-                parse_records,
-                chosen,
-                fit=provisional,
-            )
-            verdict = gather_verdict(provisional, match)
-    say(
-        f"  {'accepted' if verdict.accepted else 'refused'} at "
-        f"{verdict.accept_score:.4f}"
-    )
-
     say(f"tournament, in {slices} slice(s)")
     records = _run_phase(
-        playing_units(TOURNAMENT, chosen, slices), spec, parse_records, chosen, fit=verdict
+        playing_units(TOURNAMENT, chosen, slices), spec, parse_records, chosen
     )
 
     say(f"{len(records)} games; the analysis pass, in {slices} slice(s)")
@@ -766,7 +571,6 @@ def measure_in_slices(
         spec,
         parse_analyses,
         chosen,
-        fit=verdict,
         records=records,
     )
     trials = _run_phase(
@@ -774,7 +578,6 @@ def measure_in_slices(
         spec,
         parse_blunders,
         chosen,
-        fit=verdict,
         records=records,
     )
 
@@ -782,7 +585,6 @@ def measure_in_slices(
     return gather_measurement(
         spec,
         directory,
-        verdict,
         records,
         gather_analysis(analyses, trials),
         config=chosen,
@@ -795,12 +597,11 @@ def _run_phase(
     spec: dict[str, Any],
     parse: Any,
     config: TournamentConfig,
-    fit: FittedObjective | None = None,
     records: Sequence[GameRecord] | None = None,
 ) -> list[Any]:
     gathered: list[Any] = []
     for unit in units:
-        text = run_request(request(unit, spec, fit=fit, records=records, config=config))
+        text = run_request(request(unit, spec, records=records, config=config))
         gathered.extend(parse(text))
     return gathered
 
@@ -831,9 +632,8 @@ def gather_request(payload: str, cut: int = CUT) -> str:
     remember goes out in ``state``, which the page hands back unread, so a step is a
     function of its text and nothing else.
 
-    **A draft is always measured from its fit**, because a browser has no `fitted/` and a
-    draft is a new game. The spec is settled first (`settle_schema_version`, what
-    `designing.settled` calls), so the number is for the game the designer's check hashed.
+    The spec is settled first (`settle_schema_version`, what `designing.settled` calls), so
+    the number is for the game the designer's check hashed.
     """
     data = json.loads(payload)
     if data.get("state") is None:
@@ -847,35 +647,18 @@ def gather_request(payload: str, cut: int = CUT) -> str:
 def _gather_step(state: dict[str, Any], replies: dict[str, Any]) -> dict[str, Any]:
     """The step after ``state['step']``: `measure_in_slices`, one phase at a time."""
     step = state["step"]
-    if step not in ("", FIT, ACCEPT, TOURNAMENT, READING):
+    if step not in ("", TOURNAMENT, READING):
         raise SliceError(f"a measurement has no step after {step!r}")
     spec = state["spec"]
     cut = int(state["cut"])
     roster = canonical_config()
 
     if step == "":
-        return _deal(state, FIT, playing_units(FIT, fit_config(), cut), roster)
+        return _deal(state, TOURNAMENT, playing_units(TOURNAMENT, roster, cut), roster)
 
-    # The fit's and the match's texts are kept to the end, because the upload carries
-    # every phase's text (B10) and the server walks them all.
+    # Every phase's text is kept to the end, because the upload carries them all (B10)
+    # and the server walks them all.
     texts = state.setdefault("texts", {})
-    if step == FIT:
-        texts[FIT] = _joined(state, replies, FIT)
-        texts[ACCEPT] = ""
-        provisional = gather_fit(spec, parse_records(texts[FIT]))
-        if not needs_a_match(provisional):
-            return _deal_tournament(state, provisional, roster)
-        state["provisional"] = provisional.as_dict()
-        units = playing_units(ACCEPT, accept_config(provisional.procedure), cut)
-        return _deal(state, ACCEPT, units, roster, fit=provisional)
-
-    if step == ACCEPT:
-        provisional = FittedObjective.from_dict(state.pop("provisional"))
-        texts[ACCEPT] = _joined(state, replies, ACCEPT)
-        match = parse_records(texts[ACCEPT])
-        return _deal_tournament(state, gather_verdict(provisional, match), roster)
-
-    verdict = FittedObjective.from_dict(state["verdict"])
     if step == TOURNAMENT:
         text = _joined(state, replies, TOURNAMENT)
         records = parse_records(text)
@@ -883,7 +666,7 @@ def _gather_step(state: dict[str, Any], replies: dict[str, Any]) -> dict[str, An
         units = analysis_units(records, cut) + blunder_units(
             records, cut, BLUNDER_SAMPLE, roster.seed
         )
-        return _deal(state, READING, units, roster, fit=verdict, records=records)
+        return _deal(state, READING, units, roster, records=records)
 
     # The reading step's replies, and the score. `gather_measurement` writes the four files
     # a run directory holds, and none of them is kept here: the page shows the result, and
@@ -893,24 +676,15 @@ def _gather_step(state: dict[str, Any], replies: dict[str, Any]) -> dict[str, An
     texts[BLUNDER] = _joined(state, replies, BLUNDER)
     analysis = gather_analysis(parse_analyses(texts[ANALYSIS]), parse_blunders(texts[BLUNDER]))
     with tempfile.TemporaryDirectory() as directory:
-        gathered = gather_measurement(spec, directory, verdict, records, analysis, config=roster)
+        gathered = gather_measurement(spec, directory, records, analysis, config=roster)
     result = _page_result(gathered, roster)
     # The stamp the site reads: this wheel's basis for the game, played in a browser.
     stamp = Basis.from_dict(result["basis"])
     if stamp is None:
         raise SliceError("this wheel wrote a basis it cannot read back")
-    phases = {FIT: texts[FIT], ACCEPT: texts[ACCEPT], TOURNAMENT: state["records"]}
-    phases.update({ANALYSIS: texts[ANALYSIS], BLUNDER: texts[BLUNDER]})
-    sent = upload(stamp.in_browser(), verdict, phases)
+    phases = {TOURNAMENT: state["records"], ANALYSIS: texts[ANALYSIS], BLUNDER: texts[BLUNDER]}
+    sent = upload(stamp.in_browser(), phases)
     return {"step": "done", "units": [], "result": result, "upload": sent}
-
-
-def _deal_tournament(
-    state: dict[str, Any], verdict: FittedObjective, roster: TournamentConfig
-) -> dict[str, Any]:
-    state["verdict"] = verdict.as_dict()
-    units = playing_units(TOURNAMENT, roster, int(state["cut"]))
-    return _deal(state, TOURNAMENT, units, roster, fit=verdict)
 
 
 def _deal(
@@ -918,7 +692,6 @@ def _deal(
     step: str,
     units: Sequence[Unit],
     roster: TournamentConfig,
-    fit: FittedObjective | None = None,
     records: Sequence[GameRecord] | None = None,
 ) -> dict[str, Any]:
     """The units of one step as the page deals them, and the state to hand back.
@@ -939,7 +712,7 @@ def _deal(
                 "name": unit.name,
                 "games": len(unit.games),
                 "plays": unit.phase in PLAYING_PHASES,
-                "request": request(unit, state["spec"], fit=fit, records=records, config=roster),
+                "request": request(unit, state["spec"], records=records, config=roster),
             }
             for unit in units
         ],
@@ -1000,10 +773,6 @@ def _page_result(gathered: Gathered, roster: TournamentConfig) -> dict[str, Any]
     basis = corpus.current_basis(
         digest, weights=result.weights_version, spec=spec, seeds=(roster.seed,)
     ).as_dict()
-    # Which objective the fitted rungs played is this measurement's own fit, never a store:
-    # the browser has none, and the server checks the stamp against its own regression of
-    # the fit games (`site.provisional.refusal`, Q468).
-    basis["fit"] = corpus.player_digest(gathered.fit)
     return {
         "hash": digest,
         "name": spec.get("name", ""),
@@ -1017,6 +786,5 @@ def _page_result(gathered: Gathered, roster: TournamentConfig) -> dict[str, Any]
         "components": components,
         "games": len(gathered.records),
         "seed": roster.seed,
-        "fit": {"accepted": gathered.fit.accepted, "score": gathered.fit.accept_score},
         "basis": basis,
     }

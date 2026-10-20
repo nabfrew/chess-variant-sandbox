@@ -7,9 +7,9 @@ nothing; this is what makes them *current* again, with nobody starting a campaig
 
 1. **What is owed**, read as `measure --check` reads it (`corpus.survey`), at the
    refresher's own commit, over the main checkout's `runs/`. No lease.
-2. **The order** (§6.2): cheapest repair first (`refit`, `rescore`, `reanalyse`,
-   `replay`), then value within a repair kind (`value_tier`), then the oldest estimate,
-   then the hash, so the order is reproducible. The order decides *when* a number
+2. **The order** (§6.2): cheapest repair first (`rescore`, `reanalyse`, `replay`), then
+   value within a repair kind (`value_tier`), then the oldest estimate, then the hash, so
+   the order is reproducible. The order decides *when* a number
    arrives, never *what* it is: every repair is `corpus.refresh` on one game, a pure
    function of the game's records and the code (`CLAUDE.md`, *Determinism*).
 3. **One game per lease**: the lease that game's repair needs (`LEASE_FOR`), held for
@@ -27,8 +27,8 @@ nothing; this is what makes them *current* again, with nobody starting a campaig
    `runs/` is current within one game and what a repair replaces is kept in the history
    ledger. It never deploys.
 6. **A refusal stops that game and is never retried**: a stale build (which stops the
-   whole loop until `main` moves, since every game would refuse), a fit that cannot be
-   reproduced on this core, a gate the repair newly fails, or a repair that raised. It is
+   whole loop until `main` moves, since every game would refuse), a repair that changed
+   committed files, a gate the repair newly fails, or a repair that raised. It is
    logged, the game is skipped, and the next one is taken. A refused game comes back only
    when its stored measurement changes (somebody repaired it) or a person clears it
    (`refresh --forget <hash>`).
@@ -85,14 +85,13 @@ LOG_FILE = "refresh-log.jsonl"
 BRANCH = "refresher"
 WORKTREE = Path(".claude") / "worktrees" / "refresher"
 
-# §6.2's first key: what each repair costs. A refit plays the fitting procedure and no
-# game; a re-score reads stored games; a re-analysis runs the pass over them first; a
-# replay plays every game again.
-REPAIR_ORDER = ("refit", "rescore", "reanalyse", "replay")
+# §6.2's first key: what each repair costs. A re-score reads stored games; a re-analysis
+# runs the pass over them first; a replay plays every game again.
+REPAIR_ORDER = ("rescore", "reanalyse", "replay")
 
 # The lease each repair takes (§6.1): `heavy` for anything that plays or analyses,
 # `quiet` for a re-score, whose bootstrap takes the whole machine for its seconds.
-LEASE_FOR = {"refit": "heavy", "rescore": "quiet", "reanalyse": "heavy", "replay": "heavy"}
+LEASE_FOR = {"rescore": "quiet", "reanalyse": "heavy", "replay": "heavy"}
 
 # Point 8 below: the ladder work, after every score (`docs/archive/plan-leaderboard.md` §2.2, L7).
 # A game with no picker ladder is rated; a short one is topped up (its newcomers play the
@@ -133,7 +132,6 @@ TOP_SHARE = 0.25
 
 # Refusals by kind, so the loop can tell one that stops it from one that skips a game.
 STALE_BUILD = "stale build"
-FIT_NOT_REPRODUCED = "fit not reproduced"
 GATE_NEWLY_FAILED = "gate newly failed"
 COMMIT_MOVED = "commit moved"
 CHANGED_COMMITTED_FILES = "changed committed files"
@@ -368,16 +366,13 @@ def repair(
 
     `corpus.refresh` does the work, exactly as `measure <hash>` would; this adds the three
     refusals §6.3 names, each checked where it can be known. A stale build is read before
-    anything runs. A stored fit that this core does not vouch for is checked first, and one
-    that does not reproduce (or does not exist) is refused before a game is played on it,
-    since a refit is a new player and a person decides whether to adopt one. A gate the
+    anything runs. A gate the
     stored file passed and the new one fails is refused after the repair, and the
     supervisor then delivers nothing.
     """
     from chess_variant_sandbox import corpus
     from chess_variant_sandbox.measurement import stale_build
     from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS
-    from chess_variant_sandbox.tournament.fitting import FITTED, REFIT
 
     weights = weights or DEFAULT_WEIGHTS
     lines: list[str] = []
@@ -409,15 +404,6 @@ def repair(
             note(f"{candidate.name}: already current")
             return done("", index=_number(stored.stored.get("index")),
                         viable=stored.stored.get("viable"))
-        if stored is not None and stored.staleness.refit:
-            found = corpus.check_fit(candidate.spec, workers=workers)
-            if found.outcome in (REFIT, FITTED):
-                why = (
-                    "no stored fit to reproduce" if found.outcome == FITTED
-                    else "the stored fit does not reproduce on this core: "
-                    + "; ".join(str(failure) for failure in found.failures)
-                )
-                return done(needs, FIT_NOT_REPRODUCED, why)
         measured = corpus.refresh(candidate, runs_dir, weights, workers=workers, report=note)
     except Exception as error:  # noqa: BLE001 - every failure is a logged refusal
         return done(needs, ERROR, f"{type(error).__name__}: {error}")
@@ -445,7 +431,6 @@ class Ledger:
         self.runs_dir = Path(self.runs_dir)
         self.status = read_status(self.runs_dir) or {}
         self.status.setdefault("refusals", [])
-        self.status.setdefault("owed_merge", [])
 
     @property
     def refusals(self) -> list[dict[str, Any]]:
@@ -854,17 +839,10 @@ class Machine(Protocol):
     def repair(self, item: Item) -> Outcome: ...  # one game or ladder, at that commit
     def deliver(self, item: Item) -> None: ...  # `history.deliver` into main's runs/
     def changed(self) -> list[str]: ...  # committed files the last repair changed
-    def keep(self, item: Item, paths: list[str]) -> str: ...  # commit them; the sha
     def discard(self, paths: list[str]) -> None: ...  # put them back
-    def unmerged(self, commits: list[str]) -> list[str]: ...  # those main does not hold
     def slow_tier(self) -> SlowTier: ...  # `pytest -m slow` at the worktree's commit
     def sleep(self, seconds: float) -> None: ...
 
-
-# A repair may change committed files under this directory alone: a fit reproduced on
-# this core adds its sidecar (`tournament/fitting.py`), which the main checkout needs too
-# before it reads the delivered file as current. Anything else changed is refused.
-KEPT_CHANGES = ("fitted/",)
 
 
 def rebuild_needed(paths: Iterable[str]) -> bool:
@@ -935,15 +913,6 @@ class Refresher:
         if halted:
             return "halted"
 
-        # A fit commit main now holds is owed no merge: without this `owed_merge` only
-        # grows, and `/admin` asks for a merge that was made (Q693r's first real run).
-        owed_merge = list(self.ledger.status.get("owed_merge") or [])
-        if owed_merge:
-            still = self.machine.unmerged(owed_merge)
-            if still != owed_merge:
-                self.ledger.log("merged", commits=[c for c in owed_merge if c not in still])
-                self.ledger.update(owed_merge=still)
-
         why = self.machine.busy()
         if why is not None:
             self.ledger.update(state="waiting", waiting_for=why, doing=None)
@@ -1008,12 +977,12 @@ class Refresher:
         return todo
 
     def _settle(self, item: Item, outcome: Outcome) -> str:
+        # A repair changes no committed file: one that did is refused, and put back.
         changed = self.machine.changed()
-        foreign = [path for path in changed if not path.startswith(KEPT_CHANGES)]
-        if not outcome.refused and foreign:
+        if not outcome.refused and changed:
             outcome = replace(
                 outcome, refusal=CHANGED_COMMITTED_FILES,
-                reason="the repair changed committed files: " + ", ".join(foreign),
+                reason="the repair changed committed files: " + ", ".join(changed),
             )
         if outcome.refused:
             if changed:
@@ -1031,13 +1000,9 @@ class Refresher:
                 self.machine.deliver(item)
         except Exception as error:  # noqa: BLE001 - logged; nothing is retried
             return self._halt(f"the delivery failed: {error}", item, kind=ERROR)
-        kept = ""
-        if changed:
-            kept = self.machine.keep(item, changed)
-            self.ledger.status["owed_merge"] = [*self.ledger.status["owed_merge"], kept]
         last = {"hash": item.hash, "name": item.name, "needs": outcome.needs or item.needs,
                 "index": outcome.index, "viable": outcome.viable, "commit": outcome.commit,
-                "seconds": outcome.seconds, "at": _now(), **({"kept": kept} if kept else {})}
+                "seconds": outcome.seconds, "at": _now()}
         self.ledger.log("repaired", **last)
         self.ledger.update(state="working", doing=None, last_done=last)
         self.say(f"  delivered in {outcome.seconds:.0f}s")
@@ -1178,20 +1143,13 @@ class GitMachine:
         return self._git("rev-parse", "HEAD")
 
     def behind(self) -> bool:
-        # Not `main != HEAD`: after a merge of main into fit commits of its own, HEAD is
-        # ahead of main and equal to nothing, and the worktree is up to date.
         done = self.run(["git", "merge-base", "--is-ancestor", "main", "HEAD"],
                         cwd=self.worktree, capture_output=True, text=True, check=False)
         return done.returncode != 0
 
     def advance(self) -> list[str]:
         before = self.head()
-        own = self._git("rev-list", "main..HEAD")
-        if own:
-            # Fit sidecars committed here and not yet merged: a merge, never a rewrite.
-            self._git("merge", "--no-edit", "main")
-        else:
-            self._git("merge", "--ff-only", "main")
+        self._git("merge", "--ff-only", "main")
         changed = self._git("diff", "--name-only", before, "HEAD")
         return [line for line in changed.splitlines() if line]
 
@@ -1283,28 +1241,9 @@ class GitMachine:
         text = self._git_raw("status", "--porcelain", "--untracked-files=all")
         return sorted(line[3:].strip() for line in text.splitlines() if line.strip())
 
-    def keep(self, item: Item, paths: list[str]) -> str:
-        self._git("add", "--", *paths)
-        self._git("commit", "-m", f"refresh: fit evidence for {item.name} [{item.hash}]",
-                  "-m", "Written by `chess-variant-sandbox refresh --library` (EV5); merge "
-                        "into main so its checkout reads the delivered measurement as current.")
-        return self.head()
-
     def discard(self, paths: list[str]) -> None:
         self._git("checkout", "--", ".")
         self._git("clean", "-fd", "--", *paths)
-
-    def unmerged(self, commits: list[str]) -> list[str]:
-        """The commits the worktree's branch holds and main does not yet. One the branch no
-        longer holds (it was reset away) is never merged by merging the branch, and is
-        owed nothing either."""
-
-        def holds(ref: str, commit: str) -> bool:
-            return self.run(["git", "merge-base", "--is-ancestor", commit, ref],
-                            cwd=self.worktree, capture_output=True, text=True,
-                            check=False).returncode == 0
-
-        return [c for c in commits if holds("HEAD", c) and not holds("main", c)]
 
     def slow_tier(self) -> SlowTier:
         """`pytest -m slow` in the worktree, on its own interpreter, read from its report.
@@ -1428,9 +1367,6 @@ def plain_status(status: Mapping[str, Any] | None) -> list[str]:
     if standing:
         lines.append(f"refused, not retried: {len(standing)} "
                      "(`refresh --forget <hash>` clears one)")
-    if status.get("owed_merge"):
-        lines.append(f"owed a merge into main: {', '.join(status['owed_merge'])} "
-                     f"(branch {BRANCH})")
     tier = status.get("slow_tier")
     lines.append(f"slow tier: {tier.get('summary')}" if isinstance(tier, Mapping)
                  else "slow tier: not run here yet (weekly, when watching and idle)")

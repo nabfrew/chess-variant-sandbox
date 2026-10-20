@@ -26,25 +26,13 @@ from test_corpus import SPEC, _find, _Scored, world  # noqa: F401  (`world` is a
 
 from chess_variant_sandbox import corpus, history, measurement
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS
-from chess_variant_sandbox.tournament import fitting
 
 
 @pytest.fixture
 def stubbed(world, monkeypatch) -> dict[str, list[Any]]:  # noqa: F811
-    """`measure`'s fit, tournament, pass and scorer as stubs; the scorer scores
+    """`measure`'s tournament, pass and scorer as stubs; the scorer scores
     ``totals[seed]`` so a test can say what the new measurement reads."""
     calls: dict[str, list[Any]] = {"play": [], "score": [], "totals": [0.6]}
-
-    class _Fit:
-        accepted = False
-        accept_score = 0.0
-
-    class _Checked:
-        outcome = fitting.MADE_HERE
-        core = "loaded"
-        fit = _Fit()
-        stored = _Fit()
-        failures = ()
 
     class _Ratings:
         standings: list[Any] = []
@@ -79,7 +67,6 @@ def stubbed(world, monkeypatch) -> dict[str, list[Any]]:  # noqa: F811
         return scored
 
     monkeypatch.setattr(corpus, "EXPECTED_LIBRARY_SEEDS", corpus.LIBRARY_SEEDS)
-    monkeypatch.setattr(corpus, "check_fit", lambda spec, workers=0, **_ignored: _Checked())
     monkeypatch.setattr(corpus, "run_tournament", play)
     monkeypatch.setattr(corpus, "analyse_corpus", analyse)
     monkeypatch.setattr(corpus, "score_ruleset", score)

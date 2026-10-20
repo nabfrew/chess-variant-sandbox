@@ -527,8 +527,8 @@ class TestTheDesigner:
 
 
 def _chase_spec() -> dict[str, Any]:
-    """Q942a's test spec with all three switches: `rest`, `swap: "collision"` and `both:
-    "score"` under material scoring."""
+    """Q942a's test spec with all three switches -- the rest (schema 29's `"rest": 1` on every
+    piece since Q983a), `swap: "collision"` and `both: "score"` -- under material scoring."""
     return json.loads((SPEC_PATH.parent / "_simultaneous_scored.json").read_text(encoding="utf-8"))
 
 
@@ -540,14 +540,18 @@ class TestTheChaseSwitches:
         session = _session((HUMAN, HUMAN), spec=_chase_spec())
         _placed(session, {**KINGS, "c2": ("P", 0), "c4": ("P", 1)})
         opening = session.snapshot()
-        assert opening["round"]["rest"] == [None, None]
+        assert opening["resting"] == []
         snapshot = _round(session, ("a1", "a2"), ("e5", "e4"))
         rest = [_square("a2"), _square("e4")]
-        assert snapshot["round"]["rest"] == rest
+        # Schema 29 (Q983a): the position's resting pieces, in the position block.
+        assert snapshot["resting"] == [
+            {"player": 0, "square": rest[0], "left": 1},
+            {"player": 1, "square": rest[1], "left": 1},
+        ]
         # The core leaves the rested king's moves out; the page only marks why.
         assert all(m["from"] != _square("a2") for m in snapshot["moves"])
-        rests = _in_page(f"const R = {json.dumps(snapshot['round'])};", "roundRests(R)")
-        assert rests == [{"player": 0, "square": rest[0]}, {"player": 1, "square": rest[1]}]
+        rests = _in_page(f"const R = {json.dumps(snapshot['resting'])};", "positionRests(R)")
+        assert rests == snapshot["resting"]
         badge = _in_page("", "restBadge(0, 0, 10, 1)")
         assert 'data-mark="rested"' in badge and 'fill="var(--rest)"' in badge
         legend = _in_page("", "legendEntries(new Set(['rested', 'clash']), null, '', null)")

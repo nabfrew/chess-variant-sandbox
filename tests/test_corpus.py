@@ -28,7 +28,6 @@ from chess_variant_sandbox.history import HISTORY_FILE
 from chess_variant_sandbox.loop.archive import Archive, Entry
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS
 from chess_variant_sandbox.spec import spec_hash
-from chess_variant_sandbox.tournament import fitting
 
 SPEC = {
     "schema_version": 1,
@@ -665,10 +664,7 @@ class TestSeedBySeed:
 
     The unit of work is a run rather than a measurement. A library game whose file names
     one seed and whose reader expects four owes three tournaments and nothing else; one
-    whose scorer moved owes a re-score of every run it has and no tournament at all. The
-    fit is a property of the spec, so it is paid once whatever the seeds cost -- and
-    paying it per run would nearly double a four-run measurement for four identical
-    answers.
+    whose scorer moved owes a re-score of every run it has and no tournament at all.
 
     Nothing here plays. The three expensive calls are counted instead, because what these
     tests are about is *how many* of each run, and a real tournament would say the same
@@ -683,20 +679,7 @@ class TestSeedBySeed:
         with the canonical roster in them, so the seed it wrote can be read back and the
         write rule sees a canonical run rather than somebody's one-off.
         """
-        calls: dict[str, list[Any]] = {"fit": [], "play": [], "analyse": [], "score": []}
-
-        class _Fit:
-            accepted = False
-            accept_score = 0.0
-
-        class _Checked:
-            """`check_fit`'s answer for a store made on the loaded core: nothing played."""
-
-            outcome = fitting.MADE_HERE
-            core = "loaded"
-            fit = _Fit()
-            stored = _Fit()
-            failures = ()
+        calls: dict[str, list[Any]] = {"play": [], "analyse": [], "score": []}
 
         class _Ratings:
             standings: list[Any] = []
@@ -719,10 +702,6 @@ class TestSeedBySeed:
                     "games": 0, "ratings": {"standings": []},
                 }), encoding="utf-8")
 
-        def fit(spec, workers=0, **_ignored):
-            calls["fit"].append(spec)
-            return _Checked()
-
         def play(spec, config, progress=False):
             calls["play"].append(config.seed)
             return _Tournament(seed=config.seed)
@@ -737,7 +716,6 @@ class TestSeedBySeed:
             calls["score"].append(_Scored(analysis=analysis, weights_version=weights.version))
             return calls["score"][-1]
 
-        monkeypatch.setattr(corpus, "check_fit", fit)
         monkeypatch.setattr(corpus, "run_tournament", play)
         monkeypatch.setattr(corpus, "analyse_corpus", analyse)
         monkeypatch.setattr(corpus, "score_ruleset", score)
@@ -797,7 +775,7 @@ class TestSeedBySeed:
         assert "replay 3 of 4 runs" in summary
         assert "not yet measured on seeds 1000, 2000 and 3000" in summary
 
-    def test_only_the_missing_seeds_are_played_and_the_fit_is_paid_once(
+    def test_only_the_missing_seeds_are_played(
         self, world, library_game, counted
     ) -> None:
         _measured(world, seeds=(0,))
@@ -805,10 +783,8 @@ class TestSeedBySeed:
 
         stored = corpus.refresh(library_game, runs_dir=world["runs"], workers=1)
 
-        # Three tournaments, at the three seeds the file did not name, and one fit for
-        # all of them.
+        # Three tournaments, at the three seeds the file did not name.
         assert counted["play"] == [1000, 2000, 3000]
-        assert len(counted["fit"]) == 1
         # The analysis pass runs at seed 0 for every run. A trial is fixed by the pass's
         # seed and the record it is drawn from, and the records differ by run, so the
         # trials already differ without the pass's own seed moving.
@@ -876,7 +852,7 @@ class TestSeedBySeed:
 
         stored = corpus.refresh(library_game, runs_dir=world["runs"], workers=1)
 
-        assert not counted["play"] and not counted["fit"]
+        assert not counted["play"]
         assert len(counted["score"]) == 4
         # Every score carries its repeats (Q953a), read off the runs' records on disk: the
         # four runs' one game each is one game played four times, and no game is in the
@@ -984,158 +960,6 @@ class TestSeedBySeed:
 
         with pytest.raises(corpus.CorpusError, match="another roster or seed"):
             corpus.refresh(library_game, runs_dir=world["runs"], workers=1)
-
-    # ------------------------------------------------------------ the refit (Q80d)
-    #
-    # `docs/reference/refit-repair.md`: a fit neither made nor reproduced on the loaded
-    # core is re-derived first, and the staleness read again. The real `check_fit` runs
-    # here, with `fit_ruleset` answering from a canned fit, because what is under test is
-    # what `refresh` does with the check's answer, not the 48-game match.
-
-    FOREIGN = "0000000000000000"
-
-    @staticmethod
-    def _fit(digest: str, build: str, **changes: Any):
-        from chess_variant_sandbox.agents.features import VOCABULARY
-        from chess_variant_sandbox.agents.fitted import FittedObjective, procedure_digest, unit
-
-        weights = [0.0] * len(VOCABULARY)
-        weights[VOCABULARY.index("material")] = 1.0
-        weights[VOCABULARY.index("centrality")] = 0.3
-        fields: dict[str, Any] = {
-            "ruleset_hash": digest, "procedure": procedure_digest(),
-            "vector": unit(tuple(weights)), "accepted": True, "accept_score": 0.625,
-            "accept_games": 48, "samples": 500, "loss": 0.5, "build": build,
-        }
-        return FittedObjective(**{**fields, **changes})
-
-    @pytest.fixture
-    def refit_world(self, world, library_game, counted, monkeypatch, tmp_path):
-        """A library game measured before `Basis.fit`, on a fit made on another core.
-
-        The stamp is today's in every field but `fit`, which it does not record, as every
-        measurement in `runs/` did on the day Q80c landed.
-        """
-        from chess_variant_sandbox.agents.fitted import STORE_ENV, store_path
-
-        store = tmp_path / "fits"
-        monkeypatch.setenv(STORE_ENV, str(store))
-        old = self._fit(world["hash"], self.FOREIGN)
-        old.save(store_path(world["hash"], old.procedure, store))
-        path = self._measured_silently(world)
-        # The real check, over a canned procedure.
-        monkeypatch.setattr(corpus, "check_fit", fitting.check_fit)
-        return {"store": store, "old": old, "path": path}
-
-    @staticmethod
-    def _measured_silently(world) -> Path:
-        """`_measured`, with the stamp's `fit` taken out as a pre-Q80c stamp has none."""
-        _measured(world, seeds=corpus.LIBRARY_SEEDS)
-        path = corpus.measurement_dir(world["hash"], world["runs"]) / "canonical.json"
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        payload["basis"].pop("fit", None)
-        path.write_text(json.dumps(payload), encoding="utf-8")
-        return path
-
-    def _answer(self, monkeypatch, fresh) -> list[int]:
-        calls: list[int] = []
-
-        def fit_ruleset(spec, workers=0, **_ignored):
-            calls.append(1)
-            return fresh
-
-        monkeypatch.setattr(fitting, "fit_ruleset", fit_ruleset)
-        return calls
-
-    def test_a_foreign_fit_reads_stale_refit_and_nothing_else(
-        self, world, refit_world
-    ) -> None:
-        stored = corpus.read_measurement(
-            world["hash"], world["runs"], spec=SPEC, seeds=corpus.LIBRARY_SEEDS
-        )
-        assert stored is not None and not stored.current
-        assert stored.staleness.needs == "refit" and stored.staleness.refit
-        assert stored.staleness.summary() == (
-            f"stale (refit): its fit was made on core {self.FOREIGN} and has not been "
-            "re-derived on this one"
-        )
-
-    def test_a_fit_that_reproduces_ends_current_with_no_tournament_played(
-        self, world, library_game, counted, refit_world, monkeypatch
-    ) -> None:
-        from chess_variant_sandbox.measurement import built_fingerprint
-
-        fitter = self._answer(
-            monkeypatch,
-            self._fit(world["hash"], built_fingerprint(), accept_score=0.6042),
-        )
-        before = refit_world["path"].read_bytes()
-        said: list[str] = []
-
-        stored = corpus.refresh(
-            library_game, runs_dir=world["runs"], workers=1, report=said.append
-        )
-
-        assert stored.current
-        assert len(fitter) == 1
-        assert not counted["play"] and not counted["analyse"] and not counted["score"]
-        # Nothing is rewritten: the store's sidecar is what now vouches for the stamp.
-        assert refit_world["path"].read_bytes() == before
-        assert fitting.reproduced_on(refit_world["old"], refit_world["store"]) == (
-            built_fingerprint(),
-        )
-        assert any("reproduces on core" in line for line in said), said
-
-    def test_a_refused_vector_that_drifts_plays_nothing(
-        self, world, library_game, counted, monkeypatch, tmp_path
-    ) -> None:
-        """The player is the built-in objective before and after, so nothing moved."""
-        from chess_variant_sandbox.agents.fitted import STORE_ENV, store_path
-        from chess_variant_sandbox.measurement import built_fingerprint
-
-        store = tmp_path / "fits"
-        monkeypatch.setenv(STORE_ENV, str(store))
-        old = self._fit(world["hash"], self.FOREIGN, accepted=False, accept_score=0.3)
-        old.save(store_path(world["hash"], old.procedure, store))
-        self._measured_silently(world)
-        monkeypatch.setattr(corpus, "check_fit", fitting.check_fit)
-        drifted = self._fit(
-            world["hash"], built_fingerprint(), accepted=False, accept_score=0.35,
-            samples=512,
-        )
-        self._answer(monkeypatch, drifted)
-
-        stored = corpus.refresh(library_game, runs_dir=world["runs"], workers=1)
-
-        assert stored.current
-        assert not counted["play"] and not counted["score"]
-        assert fitting.load_fit(world["hash"], old.procedure, store) == drifted
-
-    @pytest.mark.parametrize("stamp", ["silent", "recorded"])
-    def test_an_accepted_vector_that_changes_replays_exactly_its_own_seeds(
-        self, world, library_game, counted, refit_world, monkeypatch, stamp
-    ) -> None:
-        """Both readings of the stamp reach the replay: one that records no fit through
-        the check's own answer, and one that records the old player through the re-read."""
-        from chess_variant_sandbox.measurement import built_fingerprint
-
-        if stamp == "recorded":
-            payload = json.loads(refit_world["path"].read_text(encoding="utf-8"))
-            payload["basis"]["fit"] = corpus.player_digest(refit_world["old"])
-            refit_world["path"].write_text(json.dumps(payload), encoding="utf-8")
-        moved = self._fit(
-            world["hash"], built_fingerprint(),
-            vector=tuple(reversed(refit_world["old"].vector)),
-        )
-        fitter = self._answer(monkeypatch, moved)
-
-        stored = corpus.refresh(library_game, runs_dir=world["runs"], workers=1)
-
-        assert counted["play"] == list(corpus.LIBRARY_SEEDS)
-        assert len(fitter) == 1, "the refit is the fit the replay plays; it is not paid twice"
-        assert stored.current
-        assert stored.basis is not None
-        assert stored.basis.fit == corpus.player_digest(moved)
 
 
 class TestTheCommandLineAsksForRuns:

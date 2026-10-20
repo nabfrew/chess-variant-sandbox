@@ -114,7 +114,6 @@ OWNED = {
 # `tests/test_designer_coverage.py` holds it to the validator both ways: each listed `false`
 # is refused, and no option any menu offers is refused as a default.
 TRUE_ONLY = frozenset({
-    "rules.simultaneous.rest",
     "pieces[].spy",
     "rules.contacts.links[].own",
 })

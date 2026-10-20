@@ -34,7 +34,7 @@ pub(super) struct RoundUndo {
     initiative: i8,
     void_run: [i16; 2],
     bars: Vec<[i16; 2]>,
-    rest: [i16; 2],
+    resting: RestLists,
     npc_log: usize,
 }
 
@@ -133,14 +133,36 @@ impl<'t> Game<'t> {
 
     /// Every move `player` may make on this board: the alternating generator for that
     /// player, with no royal-safety filter (there is no check, §2.5), less the barred
-    /// capture-only moves (§2.7) and, under `rest` (schema 27), the rested piece's moves
-    /// unless they are all there is (the lift), before `restrict` so `must_capture` sees
-    /// fewer.
+    /// capture-only moves (§2.7) and, under a rest (schema 29, `pieces[].rest`), the resting
+    /// pieces' moves unless they are all there is (the lift, `rest_filter`), before
+    /// `restrict` so `must_capture` sees fewer; and made again without the rest when
+    /// `restrict` empties a list the rest shortened (`docs/plan-rest.md` §3.7).
     pub fn generate_legal_for(&mut self, player: usize, out: &mut Vec<u32>) {
         debug_assert!(!self.t.needs_check_filter(), "a simultaneous game has no check");
         let saved = self.side;
         self.side = player;
         let base = out.len();
+        self.generate_unbarred(player, out, base);
+        let rested = self.t.rest.is_some() && self.rest_filter(player, out, base);
+        self.restrict(out, base);
+        if rested && out.len() == base {
+            self.regenerate_unbarred(player, out, base);
+        }
+        self.side = saved;
+    }
+
+    /// The list made again without the rest (§3.7): rare, so out of line, which keeps a
+    /// second copy of the generator out of `generate_legal_for` (Q983a's benches).
+    #[cold]
+    #[inline(never)]
+    fn regenerate_unbarred(&mut self, player: usize, out: &mut Vec<u32>, base: usize) {
+        self.generate_unbarred(player, out, base);
+        self.restrict(out, base);
+    }
+
+    /// `player`'s pseudo-legal moves less the barred ones, appended to `out` from `base`;
+    /// `side` is already `player`.
+    fn generate_unbarred(&mut self, player: usize, out: &mut Vec<u32>, base: usize) {
         self.generate_pseudo_legal(out);
         if !self.bars.is_empty() {
             let mut write = base;
@@ -153,26 +175,6 @@ impl<'t> Game<'t> {
             }
             out.truncate(write);
         }
-        // Schema 27 (Q942a): `rest[player]` is set only under the rule, so every other game
-        // pays one comparison here.
-        let rested = self.rest[player];
-        if rested >= 0 {
-            let from_rested =
-                |m: u32| move_kind(m) != MOVE_DROP && move_from(m) == rested as usize;
-            if out[base..].iter().any(|&m| !from_rested(m)) {
-                let mut write = base;
-                for index in base..out.len() {
-                    let m = out[index];
-                    if !from_rested(m) {
-                        out[write] = m;
-                        write += 1;
-                    }
-                }
-                out.truncate(write);
-            }
-        }
-        self.restrict(out, base);
-        self.side = saved;
     }
 
     /// Whether `m` is one of a barred pair's capture-only moves for `player` (§2.7).
@@ -276,9 +278,6 @@ impl<'t> Game<'t> {
         if self.initiative == 1 {
             key ^= sim.zobrist_initiative;
         }
-        if sim.rest {
-            key ^= sim.rest_key(n, self.rest);
-        }
         key
     }
 
@@ -313,7 +312,7 @@ impl<'t> Game<'t> {
             initiative: self.initiative,
             void_run: self.void_run,
             bars: self.bars.clone(),
-            rest: self.rest,
+            resting: self.resting,
             npc_log: self.npc_log.len(),
         });
         self.round_log.clear();
@@ -406,23 +405,22 @@ impl<'t> Game<'t> {
             touched.set(to);
         }
 
-        // Schema 27 (Q942a, `rest`): each player's moved piece rests where it ended the round
-        // (its origin if it stood, turned or was void), if that square still holds that
-        // player's piece; a piece eliminated, eaten or turned over rests nowhere, and nor
-        // does a slower move lost or unplayed (schema 28).
-        if sim.rest {
+        // Schema 29 (Q983a, `pieces[].rest`): the round is a turn of each player, so each
+        // player's rests count down and the piece that made its move rests where it ended the
+        // round (its origin if it stood, turned or was void), if that square still holds that
+        // player's piece; a piece eliminated, eaten or turned over rests nowhere, and nor does
+        // a slower move lost or unplayed (schema 28).
+        let mut rest_key = 0u64;
+        if t.rest.is_some() {
             for i in 0..2 {
-                let end = if arriving[i] { Some(plans[i].target) } else { plans[i].origin };
-                self.rest[i] = match end {
-                    Some(square)
-                        if !gone[i]
-                            && self.board[square] != 0
-                            && t.owner_of(self.board[square]) == i =>
-                    {
-                        square as i16
-                    }
-                    _ => -1,
+                let end = if gone[i] {
+                    None
+                } else if arriving[i] {
+                    Some(plans[i].target)
+                } else {
+                    plans[i].origin
                 };
+                rest_key ^= self.rest_after_turn(i, end);
             }
         }
 
@@ -468,7 +466,8 @@ impl<'t> Game<'t> {
             progress || irreversible_kind || rights_changed || initiative_passed;
         self.halfmove = if progress { 0 } else { self.halfmove + 2 };
         self.ply += 2;
-        self.key = self.working_key ^ key_extra ^ standoff_before ^ self.standoff_key();
+        self.key =
+            self.working_key ^ key_extra ^ standoff_before ^ self.standoff_key() ^ rest_key;
         self.history.push(self.key);
         if irreversible {
             self.window = self.history.len() - 1;
@@ -860,7 +859,7 @@ impl<'t> Game<'t> {
         self.initiative = undo.initiative;
         self.void_run = undo.void_run;
         self.bars = undo.bars;
-        self.rest = undo.rest;
+        self.resting = undo.resting;
         self.npc_log.truncate(undo.npc_log);
         self.check_memo.set([-1, -1]);
     }

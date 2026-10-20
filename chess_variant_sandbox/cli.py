@@ -16,12 +16,12 @@ import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from chess_variant_sandbox import corpus
 from chess_variant_sandbox.agents import available_agents
 from chess_variant_sandbox.engine import Engine
-from chess_variant_sandbox.measurement import named, stale_build
+from chess_variant_sandbox.measurement import stale_build
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS, score_ruleset
 from chess_variant_sandbox.spec import load_spec, measure_complexity, spec_hash, validate_spec
 from chess_variant_sandbox.tournament import (
@@ -32,9 +32,6 @@ from chess_variant_sandbox.tournament import (
     read_records,
 )
 from chess_variant_sandbox.tournament.analysis import BLUNDER_SAMPLE
-
-if TYPE_CHECKING:
-    from chess_variant_sandbox.tournament.fitting import Reproduction
 
 DEFAULT_AGENTS = ("random", "greedy", "minimax:nodes=800", "minimax:nodes=3200")
 RUNS_DIR = Path("runs")
@@ -213,31 +210,7 @@ def _build_parser() -> argparse.ArgumentParser:
     heur.add_argument(
         "--generate-only", action="store_true", help="write the set and play nothing"
     )
-    heur.add_argument(
-        "--against-fit",
-        action="store_true",
-        help="measure agreement against this ruleset's fitted objective, not the built-in one",
-    )
     heur.set_defaults(handler=_cmd_heuristics)
-
-    fit = sub.add_parser(
-        "fit",
-        help="fit this ruleset's objective from games, and check it against the built-in one",
-    )
-    fit.add_argument("ruleset", help="ruleset file to fit an objective for")
-    fit.add_argument("--store", default="fitted", help="directory of fitted objectives")
-    fit.add_argument("--workers", type=int, default=0)
-    redo = fit.add_mutually_exclusive_group()
-    redo.add_argument(
-        "--force", action="store_true", help="refit even if a fit is already stored"
-    )
-    redo.add_argument(
-        "--check",
-        action="store_true",
-        help="re-derive a fit made on another core: record the loaded core beside the "
-             "store if it reproduces, save the new fit if it does not",
-    )
-    fit.set_defaults(handler=_cmd_fit)
 
     values = sub.add_parser(
         "values",
@@ -1524,7 +1497,7 @@ def _cmd_measure(args: argparse.Namespace) -> int:
 def _measure_all(targets: list[str], args: argparse.Namespace) -> int:
     """Repair every target, the re-score-only games side by side (R7 of the perf survey).
 
-    The repairs are planned first. A game that owes a tournament, a fit or anything
+    The repairs are planned first. A game that owes a tournament or anything
     `corpus.poolable` cannot vouch for runs here, in target order, as it always did: it
     already uses every core. The games that owe only a re-score or a re-analysis of games
     on disk then go through a process pool of `--workers` processes, each doing exactly
@@ -2184,17 +2157,6 @@ def _cmd_heuristics(args: argparse.Namespace) -> int:
             print(f"  {heuristic.digest}  {heuristic.name:<24} {heuristic.plan}")
         return 0
 
-    baseline = ""
-    if args.against_fit:
-        from chess_variant_sandbox.agents.fitted import load_fit, procedure_digest
-
-        baseline = procedure_digest()
-        if load_fit(compiled.hash, baseline) is None:
-            raise FileNotFoundError(
-                f"no fitted objective for {compiled.name} under procedure {baseline}; "
-                f"run `chess-variant-sandbox fit {args.ruleset}` first"
-            )
-
     started = time.perf_counter()
     report = measure_heuristics(
         spec,
@@ -2203,7 +2165,6 @@ def _cmd_heuristics(args: argparse.Namespace) -> int:
         games=args.games,
         nodes=args.nodes or None,
         workers=args.workers,
-        baseline_fit=baseline,
     )
     elapsed = time.perf_counter() - started
 
@@ -2228,74 +2189,6 @@ def _cmd_heuristics(args: argparse.Namespace) -> int:
         print(f"  {'headroom~legibility':<28}{correlation}")
     return 0
 
-
-def _cmd_fit(args: argparse.Namespace) -> int:
-    """Fit a weight vector for this ruleset, then ask whether it earned its place.
-
-    The check is the command's point, not a postscript. Stage 23 showed that *proposing*
-    weights over this vocabulary does not work; fitting them might, and the only thing
-    that separates the two claims is a match against the objective being replaced. A
-    refused fit is still written out, because a failure that leaves no file is a failure
-    nobody can read.
-
-    ``--check`` asks whether a stored fit is still the loaded core's answer (Q80b,
-    `docs/reference/refit-repair.md`). It exits 0 whatever the verdict, since the question
-    it answers is reproduction and it leaves the store answering it either way.
-    """
-    from chess_variant_sandbox.agents.features import VOCABULARY
-    from chess_variant_sandbox.agents.fitted import (
-        FittedObjective,
-        procedure_digest,
-        store_path,
-    )
-    from chess_variant_sandbox.engine import Engine
-    from chess_variant_sandbox.tournament.fitting import (
-        check_fit,
-        fit_ruleset,
-        save_fit,
-        unverified_reason,
-    )
-
-    spec = load_spec(args.ruleset)
-    compiled = Engine(spec).spec
-    procedure = procedure_digest()
-    path = store_path(compiled.hash, procedure, args.store)
-
-    if args.check:
-        started = time.perf_counter()
-        found = check_fit(spec, store=args.store, workers=args.workers)
-        fit = found.fit
-        print(f"{compiled.name}: {_reproduction(found, time.perf_counter() - started)}")
-    elif path.exists() and not args.force:
-        fit = FittedObjective.load(path)
-        print(f"{compiled.name}: reusing {path}")
-    else:
-        started = time.perf_counter()
-        fit = fit_ruleset(spec, workers=args.workers)
-        save_fit(fit, spec, args.store)
-        print(f"{compiled.name}: fitted in {time.perf_counter() - started:.1f}s -> {path}")
-
-    verdict = "accepted" if fit.accepted else "REFUSED, falls back to the built-in objective"
-    print(f"  procedure {procedure}  {fit.samples} positions  loss {fit.loss:.4f}")
-    print(
-        f"  against the built-in objective at equal budget: "
-        f"{fit.accept_score:.4f} +/-{fit.accept_error:.3f} over {fit.accept_games} "
-        f"games -- {verdict}"
-    )
-    # Reported, never enforced, exactly as `values` reports it. A verdict taken on
-    # another core is still a real number about a real player; what it is no longer is a
-    # number about *this* engine, and a reader has to be told which they are looking at.
-    # A store made or reproduced under this core and this game's tables, players and
-    # runner as they are now is this core's answer, whoever made it (Q892).
-    drifted = unverified_reason(fit, args.store, spec)
-    if drifted:
-        print(f"  NOTE: {drifted}")
-    for term, weight in zip(VOCABULARY, fit.vector, strict=True):
-        if weight:
-            print(f"    {term:<22} {weight:+.4f}")
-    if args.check:
-        return 0
-    return 0 if fit.accepted else 1
 
 
 # `train`'s flags, each a field of `training.procedure.Procedure`: the flag's name, its
@@ -2420,8 +2313,8 @@ def _add_train(sub: Any) -> None:
 def _cmd_train(args: argparse.Namespace) -> int:
     """Train, judge and store one ruleset's net (Q502f, `docs/reference/learned-evaluator.md` §8).
 
-    The store is written whatever the verdict, as `fit` writes a refused fit: a refusal
-    that leaves no file is one nobody can read. Only an accepted net plays.
+    The store is written whatever the verdict: a refusal that leaves no file is one nobody
+    can read. Only an accepted net plays.
     """
     try:
         from chess_variant_sandbox.agents.training.data import Dataset
@@ -2668,51 +2561,13 @@ def _duel_only(
     return 0
 
 
-def _reproduction(found: Reproduction, seconds: float) -> str:
-    """One line for what `fit --check` found and did."""
-    from chess_variant_sandbox.tournament import fitting
-
-    made = f"made on core {found.stored.build or 'unknown'}" if found.stored else ""
-    if found.stored and found.stored.build == found.core:
-        # The loaded core made it, so "reproduces on" it would say nothing; say what the
-        # check was for: the basis the store's games read (Q894).
-        if not found.recorded:
-            made += ", the loaded one, with no record of the tables, players and runner it read"
-        elif found.differs:
-            made += (
-                f", the loaded one, last verified where the {named(found.differs)} differ"
-            )
-    if found.outcome == fitting.MADE_HERE:
-        return f"{made}, the loaded one; nothing to check -> {found.path}"
-    if found.outcome == fitting.REPRODUCED_BEFORE:
-        return f"{made}, already reproduced on {found.core} -> {found.sidecar}"
-    if found.outcome == fitting.FITTED:
-        return f"no stored fit; fitted on core {found.core} in {seconds:.1f}s -> {found.path}"
-    if found.outcome == fitting.REFIT:
-        return (
-            f"{made}, does NOT reproduce on {found.core}: {'; '.join(found.failures)}; "
-            f"refit in {seconds:.1f}s -> {found.path}"
-        )
-    assert found.stored is not None and found.fresh is not None
-    score = ""
-    if found.fresh.accept_score != found.stored.accept_score:
-        score = (
-            f"; score {found.stored.accept_score:.4f} -> {found.fresh.accept_score:.4f}, "
-            "the same side of the bar"
-        )
-    return (
-        f"{made}, reproduces on {found.core} in {seconds:.1f}s (samples, vector and "
-        f"verdict equal{score}) -> {found.sidecar}"
-    )
-
 
 def _cmd_values(args: argparse.Namespace) -> int:
     """Search a piece-value table for this ruleset, then ask whether it earned its place.
 
-    The check is the command's point rather than a postscript, for the reason `fit` says
-    it: stage 30B showed that *fitting* piece values to game outcomes does not work, and
-    the only thing separating "searched them properly" from "found a different way to
-    lose" is a match, on a seed set the search never saw, against the table being
+    The check is the command's point rather than a postscript: stage 30B showed that
+    *fitting* piece values to game outcomes does not work, and the only thing separating
+    "searched them properly" from "found a different way to lose" is a match, on a seed set the search never saw, against the table being
     replaced. A refused search is still written out; a failure that leaves no file is a
     failure nobody can read.
     """

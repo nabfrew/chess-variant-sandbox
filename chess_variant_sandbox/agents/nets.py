@@ -3,7 +3,7 @@
 Design record: ``docs/reference/learned-evaluator.md``.
 
 **The name.** ``minimax:net=<procedure>,nodes=N`` (and ``greedy:net=<procedure>``) names a
-*training procedure*, the same string on every board, exactly as ``fit=`` does; the net
+*training procedure*, the same string on every board, as ``values=`` does; the net
 it produced for a ruleset is a file, ``nets/<ruleset-hash>-<procedure>.json`` beside its
 weights ``nets/<ruleset-hash>-<procedure>.net``. **Absent, refused or unreadable, the
 player refuses to play** (Q709): every place a ``net=`` player is built -- the core's
@@ -89,8 +89,8 @@ class Layout:
     max_plies: int
     # Q918g: a round game's own state after ``turn`` (``net.rs::Layout``), each segment only
     # where its rule is on, so every alternating layout is unchanged: who holds the
-    # initiative (2, under ``tie: "initiative"``), each player's rested square (2 x S, under
-    # ``rest``), the void run's two squares and the barred pairs' squares (2 x S each, in
+    # initiative (2, under ``tie: "initiative"``), each player's resting squares (2 x S, under
+    # a rest: schema 29's ``pieces[].rest``, Q983b widens it), the void run's two squares and the barred pairs' squares (2 x S each, in
     # every round game).
     initiative: int = 0
     rest: int = 0
@@ -116,7 +116,7 @@ class Layout:
         sim = getattr(spec, "simultaneous", None)
         rounds = sim is not None
         has_initiative = sim is not None and sim.tie == TIE_INITIATIVE
-        has_rest = sim is not None and bool(sim.rest)
+        has_rest = sim is not None and bool(spec.rest)
         initiative = turn + TURN_CAP
         rest = initiative + (2 if has_initiative else 0)
         void = rest + (2 * s if has_rest else 0)
@@ -181,8 +181,9 @@ class Layout:
             out.append(self.initiative + state.initiative)
         if self.has_rest:
             for player in range(2):
-                if 0 <= state.rest[player] < s:
-                    out.append(self.rest + player * s + state.rest[player])
+                for square, _ in state.rest[player]:
+                    if 0 <= square < s:
+                        out.append(self.rest + player * s + square)
         for player in range(2):
             if 0 <= state.void_run[player] < s:
                 out.append(self.void + player * s + state.void_run[player])

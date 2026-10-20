@@ -1,7 +1,7 @@
 {
-  "schema_version": 27,
+  "schema_version": 29,
   "name": "gardner with spies resting",
-  "description": "Win by taking the other side's king in Martin Gardner's minichess (chess on a 5x5 board, each side a rook, knight, bishop, queen and king behind a row of pawns), with the middle pawn replaced by a spy: a piece that steps one square straight, never captures, and is worth what it lets its owner see. While both spies stand, play alternates as in chess, with kings taken rather than mated. Once a spy falls (after its owner's one reply, so its taker can be taken back), the game moves in rounds: the side without a spy announces its move first, and the side with one answers with that move in view; once both spies are gone, both choose in secret. Seeing first would be crushing if an attacked piece could always step away, so in the rounds the piece that made a side's move rests through that side's next move, unless it is the only piece that can move. A piece that has just captured or dodged must stand, so an announced recapture still lands. Each spy is a target as well as an eye.",
+  "description": "Win by taking the other side's king in Martin Gardner's minichess (chess on a 5x5 board, each side a rook, knight, bishop, queen and king behind a row of pawns), with the middle pawn replaced by a spy: a piece that steps one square straight, never captures, and is worth what it lets its owner see. While both spies stand, play alternates as in chess, with kings taken rather than mated. Once a spy falls (after its owner's one reply, so its taker can be taken back), the game moves in rounds: the side without a spy announces its move first, and the side with one answers with that move in view; once both spies are gone, both choose in secret. Seeing first would be crushing if an attacked piece could always step away, so the piece that made a side's move rests through that side's next move, in the turns as in the rounds, unless it is the only piece that can move. A piece that has just captured or dodged must stand, so an announced recapture still lands, and no piece moves twice running at any point of the game. Each spy is a target as well as an eye.",
   "board": {
     "width": 5,
     "height": 5
@@ -34,7 +34,8 @@
           "symmetry": "lateral",
           "mode": "capture"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "N",
@@ -52,7 +53,8 @@
           "symmetry": "dihedral8",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "B",
@@ -70,7 +72,8 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "R",
@@ -88,7 +91,8 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "Q",
@@ -110,7 +114,8 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "K",
@@ -133,7 +138,8 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "S",
@@ -153,7 +159,8 @@
           "symmetry": "rotate4",
           "mode": "move"
         }
-      ]
+      ],
+      "rest": 1
     }
   ],
   "setup": {
@@ -222,16 +229,14 @@
     "max_plies": 200,
     "repetition_draw": 3,
     "no_progress_draw": 100,
-    "simultaneous": {
-      "rest": true
-    }
+    "simultaneous": {}
   },
   "provenance": {
     "added": "2026-10-17",
     "preview": "A preview: a new kind of game in which a lost spy turns the game into rounds, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
     "origin": "designed",
     "source": "docs/plan-spy.md, Q935f: the spy's showcases and design study (section 5)",
-    "history": "SP2, the design study's arm with rules.simultaneous.rest: Gardner with spies (SP1) with the rest, which plan-spy.md section 1.6 predicts restores the recapture that announced rounds take away. Pre-registered in docs/plan-spy.md section 5 before any graded game; the study and its grades are there.",
+    "history": "SP2, the design study's arm with rules.simultaneous.rest: Gardner with spies (SP1) with the rest, which plan-spy.md section 1.6 predicts restores the recapture that announced rounds take away. Pre-registered in docs/plan-spy.md section 5 before any graded game; the study and its grades are there. Rewritten for schema 29 by Q983a (2026-10-20): the old switch rules.simultaneous.rest as \"rest\": 1 on every piece (docs/plan-rest.md section 4.5).",
     "parents": [
       "e043fce6968e"
     ]

@@ -24,7 +24,7 @@ check a new match passes; `suggestions` is the box people write ideas into, read
 author and by an admin; and `pages` is the site's own short pages.
 `provisional` is a score a visitor's browser measured, held while the server checks it and
 read by nothing that ranks or awards (`docs/archive/plan-client-compute.md` §5), and `legality` is
-tier one's job, which walks such a measurement, re-derives its fit and scores it itself.
+tier one's job, which walks such a measurement and scores it itself.
 `stages` is the one word for where a game stands, Draft to Baseline, that every page
 names it by (`docs/plan-game-pipeline.md`, Q503b), and `shortlist` is the bar a trial
 game meets before its designer may nominate it, and the press (Q503f). `resting` takes a

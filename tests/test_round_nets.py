@@ -143,8 +143,8 @@ def _probes(engine: Engine) -> list[GameState]:
     return [
         start.with_(void_run=(a, c)),
         start.with_(bars=((a, c), (b, c))),
-        start.with_(rest=(b, c), initiative=0),
-        start.with_(rest=(-1, a), initiative=1),
+        start.with_(rest=(((b, 1),), ((c, 1),)), initiative=0),
+        start.with_(rest=((), ((a, 1),)), initiative=1),
     ]
 
 
@@ -413,10 +413,47 @@ def _ending_cells(engine: Engine, state: GameState) -> list[float]:
     return found
 
 
+@pytest.mark.parametrize(("path", "mean"), ((WATERING, 1.0), (CHASE, 4.65)))
+def test_an_ending_cell_is_worth_round_win_pieces_of_the_games_mean_piece(
+    path: str, mean: float
+) -> None:
+    """Q986b (`docs/reference/round-hardest-weakness.md` §10): a finished round is worth
+    ±(`ROUND_WIN_PIECES` mean non-royal pieces − ply / 1000) in the round search, on the core
+    and on the oracle alike: 100 units where every animal is one piece, 465 on Gardner's army,
+    so a round that holds an ending is valued on the same scale of pieces on both games."""
+    import chess_variant_sandbox._core as _core
+    from chess_variant_sandbox.agents.evaluation import RESTED_ROYAL_PIECES, ROUND_WIN_PIECES
+
+    assert _core.ROUND_WIN_PIECES == ROUND_WIN_PIECES == 100.0
+    assert _core.RESTED_ROYAL_PIECES == RESTED_ROYAL_PIECES == ROUND_WIN_PIECES / 2
+    engine = _engine(path)
+    search = RoundSearch(engine, round_evaluator(engine, 0.05, GOAL_PIECES, IMMUNE_PIECES))
+    assert search.round_win == pytest.approx(ROUND_WIN_PIECES * mean)
+    values = eval_values(engine.spec)
+    native = native_spec("greedy", engine.spec.hash)
+    ending = []
+    for seed in range(4):
+        record = play_game(engine, ("greedy", "greedy"), seed=seed, collect_series=False)
+        moves, state = list(record.moves), engine.initial_state()
+        for index in range(0, len(moves), 2):
+            if _ending_cells(engine, state):
+                ending.append(state)
+            state = engine.apply_round(state, moves[index], moves[index + 1])
+    assert ending
+    answers = engine.core.round_values([_pack(state) for state in ending[:6]], native, values)
+    for state, answer in zip(ending, answers, strict=False):
+        assert answer == _oracle_value(engine, state, None)
+        assert answer is not None and abs(answer[0]) <= search.round_win
+
+
 def test_a_round_with_an_ending_cell_is_no_longer_labelled_a_certainty() -> None:
-    """Q918h's defect, removed: in units an ending cell is worth ±(10⁶ − ply), so any weight
-    on it reads as a certainty once squashed; on expected score it is worth 1 (or 0), and the
-    round's label is the matrix game's value, between the cells."""
+    """Q918h's defect, removed twice: in units an ending cell was worth ±(10⁶ − ply), so any
+    weight on it read as a certainty once squashed; on expected score it is worth 1 (or 0),
+    and the round's label is the matrix game's value, between the cells. Since Q986b an ending
+    cell is worth ±`ROUND_WIN_PIECES` mean pieces in units too (100 on the watering hole, whose
+    pieces are worth one each), the evaluator is heard beside it, and a round the score label
+    calls open is open in units as well (it was 164 units, a 1.0 once squashed, against 0.84
+    on score in seed 0's seventh round)."""
     from chess_variant_sandbox.agents.training.data import squash
 
     engine = _engine(WATERING)
@@ -434,10 +471,9 @@ def test_a_round_with_an_ending_cell_is_no_longer_labelled_a_certainty() -> None
         scores = engine.core.round_values(packed, teacher, values, score_scale=1.0)
         for state, unit, score in zip(states, units, scores, strict=True):
             assert unit is not None and score is not None
-            certain = squash(unit[0], 1.0) in (0.0, 1.0) and abs(unit[0]) > 35
-            if certain and _ending_cells(engine, state) and 0.05 < score[0] < 0.95:
+            if _ending_cells(engine, state) and 0.05 < score[0] < 0.95:
                 graded.append((unit[0], score[0]))
-    # Seed 0's seventh round alone: 164 units (a 1.0 once squashed) against 0.84 on score.
+                assert squash(unit[0], 1.0) not in (0.0, 1.0) and abs(unit[0]) < 35, graded
     assert len(graded) >= 3, graded
 
 

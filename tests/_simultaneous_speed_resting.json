@@ -1,5 +1,5 @@
 {
-  "schema_version": 28,
+  "schema_version": 29,
   "name": "simultaneous resting with speeds",
   "description": "Q942a's test spec: Gardner in rounds where the piece that moved rests the next round.",
   "board": {
@@ -34,7 +34,8 @@
           "symmetry": "lateral",
           "mode": "capture"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "N",
@@ -53,7 +54,8 @@
           "mode": "both"
         }
       ],
-      "speed": 1
+      "speed": 1,
+      "rest": 1
     },
     {
       "id": "B",
@@ -71,7 +73,8 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "R",
@@ -89,7 +92,8 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "Q",
@@ -111,7 +115,8 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "K",
@@ -135,7 +140,8 @@
           "mode": "both"
         }
       ],
-      "speed": 1
+      "speed": 1,
+      "rest": 1
     }
   ],
   "setup": {
@@ -199,8 +205,6 @@
     "max_plies": 200,
     "repetition_draw": 3,
     "no_progress_draw": 100,
-    "simultaneous": {
-      "rest": true
-    }
+    "simultaneous": {}
   }
 }

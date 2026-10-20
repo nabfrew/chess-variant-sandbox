@@ -522,7 +522,7 @@ const GLOSS = {
   certifiedScore: ['Re-certified from a sample',
     "The engine's code changed after this game's runs were played, in a way that should"
     + " move no game. Rather than replaying every run, a sample of its games (a share of"
-    + " each run, and of the analysis and the fit) was played again on the new code and"
+    + " each run, and of its analysis) was played again on the new code and"
     + " came out byte for byte the same, so the score was kept as current. A sample can"
     + " miss a change that touches few games, which is why it says so. The next full"
     + " replay plays every game again and clears this."],
@@ -633,10 +633,6 @@ const GLOSS = {
   committed: ['Part of the yardstick',
     "It is in rulesets/. These are the games the scoring is calibrated against, which is"
     + " why adding one is a decision rather than a save."],
-  fitted: ['An opponent that learned what matters here',
-    "Instead of assuming material and mobility are what count, this one's priorities were"
-    + " fitted from games of this ruleset. It only plays where the fitted version actually"
-    + " beat the built-in one, and it says by how much."],
   thumb: ['An opponent with one idea',
     "It is a named plan, such as \'win material\' or \'take the middle\', written as a"
     + " set of priorities. All of them search the same number of positions, so choosing"

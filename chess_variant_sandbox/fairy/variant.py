@@ -487,6 +487,16 @@ def _check_unsupported_rules(
             "pieces[].speed: a faster move made before a slower one in the same round has no "
             "counterpart; Fairy-Stockfish has no round"
         )
+    if compiled.rest:
+        # Schema 29 (Q983a, `docs/plan-rest.md` §5.5). Fairy-Stockfish has no per-piece
+        # cooldown. Read off the compiled table, empty without a rest. The rest only filters
+        # the generator, so the generator itself is still checked through the twin with every
+        # rest removed, at positions where nothing rests; the filter is the rest oracle's
+        # (`tests/rest_oracle.py`).
+        reasons.append(
+            "pieces[].rest: a piece that may not move for its player's next turns after it "
+            "moves has no counterpart; Fairy-Stockfish has no per-piece wait"
+        )
     if compiled.simultaneous is not None:
         # Schema 26 (Q918a). Fairy-Stockfish has a side to move and no round in which both
         # players move at once (`docs/archive/plan-simultaneous.md` §6.5). The per-side generator is
@@ -699,6 +709,12 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
             "schema 28: only beside rules.simultaneous, which is refused whole: Fairy-Stockfish "
             "has no round to order, and speed changes no legal move at a round's start, so the "
             "per-side generator is still checked through the alternating twin",
+        ),
+        "rest": (
+            _REFUSED,
+            "schema 29: a piece that waits its player's next turns after it moves, read off "
+            "the compiled table (compiled.rest); Fairy-Stockfish has no per-piece wait, and "
+            "the generator is checked through the twin with every rest removed",
         ),
     },
     "move": {

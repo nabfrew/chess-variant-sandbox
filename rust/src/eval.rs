@@ -33,13 +33,31 @@ use crate::tables::{
 
 pub const WIN_SCORE: f64 = 1_000_000.0;
 
-/// Schema 27 (Q942b, `docs/archive/plan-round-chase.md` §3 R1): what a rested royal that a standing
-/// enemy piece reaches costs its side in a round's evaluation. Half a win: the strike lands
-/// next round unless the side answers it by taking the other royal in the same round, so it
-/// is nearly a loss, and it stays below every decided game (`WIN_SCORE - ply`), so a royal
-/// actually taken is still the worse cell. Mirrors `RESTED_ROYAL` in
+/// Q986b (`docs/reference/round-hardest-weakness.md` §10): what a finished round is worth in
+/// the round search, in mean non-royal pieces (`round_win` multiplies it out, as
+/// `goal_weight` multiplies out `goal_pieces`). Not `WIN_SCORE`: regret matching+ at
+/// `REGRET_ITERATIONS` resolves a matrix only to a fraction of its range, so beside a ±10⁶
+/// cell every evaluation was noise and the round players spread over every move that did not
+/// lose this round (§3). Not a fixed number of units either (Q986, §9): a unit is a piece on
+/// the watering hole and a fifth of one on Gardner. Mirrors `ROUND_WIN_PIECES` in
 /// `chess_variant_sandbox/agents/evaluation.py`; a test holds the two together.
-pub const RESTED_ROYAL: f64 = WIN_SCORE / 2.0;
+pub const ROUND_WIN_PIECES: f64 = 100.0;
+
+/// Schema 27 (Q942b, `docs/archive/plan-round-chase.md` §3 R1): what a rested royal that a standing
+/// enemy piece reaches costs its side in a round's evaluation, in mean non-royal pieces. Half
+/// a win: the strike lands next round unless the side answers it by taking the other royal in
+/// the same round, so it is nearly a loss, and it stays below every finished round
+/// (`round_win - ply / 1000`), so a royal actually taken is still the worse cell. Half of
+/// `WIN_SCORE` until Q986b. Mirrors `RESTED_ROYAL_PIECES` in
+/// `chess_variant_sandbox/agents/evaluation.py`; a test holds the two together.
+pub const RESTED_ROYAL_PIECES: f64 = ROUND_WIN_PIECES / 2.0;
+
+/// Q986b: a finished round's worth in the units of an evaluator whose piece values are
+/// `values`: `ROUND_WIN_PIECES` mean non-royal pieces. `agents/evaluation.py::round_win` is
+/// the oracle.
+pub fn round_win(t: &Tables, values: &[f64]) -> f64 {
+    ROUND_WIN_PIECES * mean_non_royal(values, &t.royal_types, t.drops.as_ref())
+}
 
 /// Schema 27 (Q935h, `docs/plan-spy.md` §6.1): what holding the only spy is worth, in mean
 /// non-royal pieces, mine minus theirs. A side that has a spy while the other has none
@@ -53,22 +71,25 @@ pub const RESTED_ROYAL: f64 = WIN_SCORE / 2.0;
 /// the two together.
 pub const SPY_PIECES: f64 = 1.0;
 
-/// Whether `side`'s royal stands rested on its square with a standing enemy piece that
-/// reaches it (schema 27, Q942b): the piece on `game.rest[side]` is `side`'s royal, its only
-/// one (none other on the board, none in hand) and one whose loss ends the game; `side` has
-/// no move from that square in `lists[side]` (so the rest was not lifted); and the other
-/// side has a move onto it in `lists[1 - side]` (whose rested piece's moves are already
-/// gone). `agents/evaluation.py::rested_royal_falls` is the same test.
+/// Whether `side`'s royal stands resting on its square with a standing enemy piece that
+/// reaches it (schema 27, Q942b; over schema 29's resting list since Q983a): one of `side`'s
+/// resting pieces is `side`'s royal, its only one (none other on the board, none in hand) and
+/// one whose loss ends the game; `side` has no move from that square in `lists[side]` (so the
+/// rest was not lifted); and the other side has a move onto it in `lists[1 - side]` (whose
+/// resting pieces' moves are already gone). With every type resting 1, at most one piece
+/// rests a player and this is schema 27's term to the bit; `docs/plan-rest.md` §5.4 (Q983b)
+/// generalises it. `agents/evaluation.py::rested_royal_falls` is the same test.
 pub fn rested_royal_falls(game: &Game<'_>, side: usize, lists: [&[u32]; 2]) -> bool {
+    game.resting_of(side)
+        .iter()
+        .any(|&(square, _)| royal_resting_falls(game, side, square as usize, lists))
+}
+
+fn royal_resting_falls(game: &Game<'_>, side: usize, square: usize, lists: [&[u32]; 2]) -> bool {
     use crate::tables::{
         move_from, move_kind, move_to, MOVE_DROP, MOVE_NORMAL, MOVE_PORTAL, MOVE_PROMOTION,
         MOVE_SWEEP,
     };
-    let rested = game.rest[side];
-    if rested < 0 {
-        return false;
-    }
-    let square = rested as usize;
     let t = game.t;
     let value = game.board[square];
     if value == 0 || t.owner_of(value) != side || !t.is_royal(t.type_of(value)) {
@@ -312,6 +333,9 @@ pub struct Evaluator {
     /// mean non-royal piece; zero in every game without a spy, which then pays one
     /// comparison per evaluated node.
     spy_weight: f64,
+    /// Q986b: what a rested or caught royal costs its side in a round, in material units:
+    /// `RESTED_ROYAL_PIECES` times the mean non-royal piece, as `spy_weight` is.
+    rested_royal: f64,
     has_capture_matrix: bool,
     /// How many pieces each side started with, of the types an `extinction` rule counts.
     /// The denominator of the shortfall term, and constant for the whole game.
@@ -493,6 +517,8 @@ impl Evaluator {
         } else {
             0.0
         };
+        let rested_royal =
+            RESTED_ROYAL_PIECES * mean_non_royal(&values, &t.royal_types, t.drops.as_ref());
         let initial_counts = match &t.extinction {
             Some(rule) => [0, 1].map(|player| {
                 let low = t.value_low(player) as usize;
@@ -521,6 +547,7 @@ impl Evaluator {
             prey: prey_types(t),
             spy_mask: t.spy.as_ref().map_or([0, 0], |spy| spy.mask),
             spy_weight,
+            rested_royal,
             has_capture_matrix: t.has_capture_matrix,
             initial_counts,
             has_drops: t.drops.is_some(),
@@ -936,7 +963,7 @@ impl Evaluator {
     /// `lists` are both players' legal moves on this board, in seat order. Their lengths
     /// are the mobility; their contents are read only under `rest` (schema 27, Q942b), by
     /// `rested_royal_falls`: a side whose rested royal a standing enemy piece reaches is
-    /// `RESTED_ROYAL` from a loss, mine minus theirs.
+    /// `RESTED_ROYAL_PIECES` mean pieces from a loss, mine minus theirs.
     ///
     /// Under speeds (schema 28, Q943b) the same price, once, for a royal that a strictly
     /// faster enemy piece takes next round unanswered (`caught_royal_falls`): a side whose
@@ -945,9 +972,10 @@ impl Evaluator {
     pub fn evaluate_round(&self, game: &Game<'_>, player: usize, lists: [&[u32]; 2]) -> f64 {
         let mobility = lists[player].len() as f64 - lists[1 - player].len() as f64;
         let mut score = self.score(game, player, mobility);
-        // `rest[side]` is set only under the rule, and `speed` is empty without a speed, so
-        // every other game pays two compares and one emptiness test.
-        let rested = game.rest[0] >= 0 || game.rest[1] >= 0;
+        // The resting lists are empty without a rest, and `speed` is empty without a speed,
+        // so every other game pays one test and one emptiness test.
+        let rested = game.t.rest.is_some()
+            && game.resting.iter().flatten().any(|entry| entry.live());
         let speed = game.t.simultaneous.as_deref().map_or(&[][..], |sim| &sim.speed[..]);
         if rested || !speed.is_empty() {
             let falls = |side: usize| {
@@ -957,7 +985,7 @@ impl Evaluator {
             let theirs = falls(1 - player);
             let mine = falls(player);
             if theirs != mine {
-                score += if theirs { RESTED_ROYAL } else { -RESTED_ROYAL };
+                score += if theirs { self.rested_royal } else { -self.rested_royal };
             }
         }
         score

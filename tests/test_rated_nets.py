@@ -11,10 +11,9 @@ again. `docs/reference/general-player.md` §7 has the rule; what is held here:
 - **What the roster becomes** (`corpus.canonical_agents`): every searching rung plays the net
   at the same budget, `random` and `greedy` unchanged; a game with no rated net keeps
   `CANONICAL_AGENTS` to the letter.
-- **What the score rests on** (`corpus.current_basis`): the net ladder, `Basis.net` naming the
-  bytes, and no fit, since no player of a net ladder plays one; so a kept generation stales
-  its game's score and nothing else's.
-- **What a measurement plays**: the net ladder, with no fit paid (the runner stubbed).
+- **What the score rests on** (`corpus.current_basis`): the net ladder and `Basis.net` naming
+  the bytes, so a kept generation stales its game's score and nothing else's.
+- **What a measurement plays**: the net ladder (the runner stubbed).
 - **What the trust line reads** (`trust` E-N): once the score plays the rated net, the
   earlier generations it was chosen over question nothing; a newer one still does.
 """
@@ -184,10 +183,8 @@ class TestTheRoster:
         assert [a.rpartition("nodes=")[2] for a in roster[2:]] == [
             a.rpartition("nodes=")[2] for a in corpus.CANONICAL_AGENTS[2:]
         ]
-        assert not corpus.fits_its_roster(roster)
-        assert corpus.fits_its_roster(corpus.CANONICAL_AGENTS)
 
-    def test_the_basis_names_the_net_and_no_fit(self, tmp_path: Path, monkeypatch) -> None:
+    def test_the_basis_names_the_net(self, tmp_path: Path, monkeypatch) -> None:
         before = corpus.current_basis(DIGEST, spec=SPEC)
         blob = _store(tmp_path, "000000000001")
         monkeypatch.setattr(corpus, "NETS_DIR", tmp_path)
@@ -196,7 +193,6 @@ class TestTheRoster:
         now = corpus.current_basis(DIGEST, spec=SPEC)
         assert now.agents == corpus.canonical_agents(DIGEST, tmp_path)
         assert now.net == "000000000001=net:" + hashlib.sha256(blob).hexdigest()[:12]
-        assert now.fit == "" and now.fit_reading is None
         assert now.players and now.players != before.players
         staleness = before.stale_against(now)
         assert staleness.needs == "replay"
@@ -212,7 +208,7 @@ class TestTheRoster:
 
 
 class TestAMeasurementPlaysTheNetLadder:
-    def test_it_plays_the_net_roster_and_pays_no_fit(self, tmp_path: Path, monkeypatch) -> None:
+    def test_it_plays_the_net_roster(self, tmp_path: Path, monkeypatch) -> None:
         runs = tmp_path / "runs"
         nets = tmp_path / "nets"
         _store(nets, "000000000001")
@@ -220,7 +216,6 @@ class TestAMeasurementPlaysTheNetLadder:
         monkeypatch.setattr(corpus, "EXPECTED_LIBRARY_SEEDS", corpus.ONE_SEED)
 
         played: list[tuple[str, ...]] = []
-        fitted: list[Any] = []
 
         class _Tournament:
             records: list[Any] = []
@@ -245,7 +240,6 @@ class TestAMeasurementPlaysTheNetLadder:
 
             raise WeightsError("stand-in: nothing to score")
 
-        monkeypatch.setattr(corpus, "check_fit", lambda *a, **k: fitted.append(a))
         monkeypatch.setattr(corpus, "run_tournament", play)
         monkeypatch.setattr(corpus, "analyse_corpus", analyse)
         monkeypatch.setattr(corpus, "score_ruleset", refuse)
@@ -256,7 +250,6 @@ class TestAMeasurementPlaysTheNetLadder:
         )
         stored = corpus.measure(candidate, runs_dir=runs, workers=1)
         assert played == [corpus.canonical_agents(DIGEST, nets)]
-        assert fitted == []
         assert stored.stored["agents"] == list(corpus.canonical_agents(DIGEST, nets))
         assert stored.basis is not None and stored.basis.net.startswith("000000000001=net:")
         assert stored.current

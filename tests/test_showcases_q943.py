@@ -103,7 +103,7 @@ def check_round(
     f = next(player for event, _square, player in events if event == EVENT_ORDER)
     s = 1 - f
     # The faster move, made alone as the alternating game makes it.
-    alone = state.with_(side_to_move=f, initiative=-1, void_run=(-1, -1), bars=(), rest=(-1, -1))
+    alone = state.with_(side_to_move=f, initiative=-1, void_run=(-1, -1), bars=(), rest=((), ()))
     middle = twin.apply(alone, words[f])
     middle = state.with_(board=middle.board, hands=middle.hands)
     origin, _target, move_kind, _ = decode_move(words[s])

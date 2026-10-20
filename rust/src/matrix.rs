@@ -143,12 +143,16 @@ fn pure(moves: &[u32], chosen: u32) -> Vec<f64> {
     moves.iter().map(|m| if *m == chosen { 1.0 } else { 0.0 }).collect()
 }
 
-/// A finished round's value for `seat`: a win sooner is worth more, as minimax's is.
-fn round_terminal_value(outcome: Outcome, game: &Game<'_>, seat: usize) -> f64 {
+/// A finished round's value for `seat`: `round_win` (`eval::ROUND_WIN_PIECES` mean pieces in
+/// the player's units), a win sooner worth more by `ply / 1000`, too little to cross a unit.
+/// Q986b: ±`WIN_SCORE` drowned the evaluator in the solve, and a fixed number of units
+/// (Q986) is a different number of pieces on every game
+/// (`docs/reference/round-hardest-weakness.md` §9, §10).
+fn round_terminal_value(outcome: Outcome, game: &Game<'_>, seat: usize, round_win: f64) -> f64 {
     if outcome.winner < 0 {
         return 0.0;
     }
-    let signed = WIN_SCORE - game.ply as f64;
+    let signed = round_win - game.ply as f64 / 1000.0;
     if outcome.winner as usize == seat {
         signed
     } else {
@@ -538,7 +542,7 @@ impl Player {
         let end = arena.len();
         if let Some(outcome) = game.round_terminal_with([&arena[base..mid], &arena[mid..end]]) {
             arena.truncate(base);
-            return Ok(round_terminal_value(outcome, game, seat));
+            return Ok(round_terminal_value(outcome, game, seat, self.round_win));
         }
         if depth == 0 {
             let value =

@@ -1,8 +1,7 @@
 """Comparing two players closely enough that a search can be run against the answer.
 
 ``head_to_head`` answers "did this player beat that one" at a standard error of about
-0.072 over 48 games, which is the resolution the fit's acceptance test was written at and
-is fine for a *verdict*. It is useless as an objective. The differences a coordinate
+0.072 over 48 games, which is fine for a *verdict*. It is useless as an objective. The differences a coordinate
 ascent has to walk through are around 0.02 to 0.05, and hill-climbing a statistic whose
 noise is three times its signal optimises the noise -- which is exactly what
 ``runs/stage30/pilots.py`` measured when six adjacent values of one parameter came back
@@ -544,7 +543,7 @@ def steering_duel(
 
 # Single games fit the same reading unchanged (Q800): a game's 0, 1/2 or 1 is a whole
 # number of quarters, and a verdict over their sum alone meets both conditions below, so
-# `settled` over games is exact for it (`fitting.acceptance`, the fit's `score > 0.5`).
+# `settled` over games is exact for it.
 Verdict = Callable[[Sequence[float]], bool]
 """A stamped duel's verdict, read off all of its seed-pairs.
 

@@ -30,8 +30,14 @@ import math
 import random
 from typing import Any
 
-from chess_variant_sandbox.agents.base import NativeSpec, SearchStats, register, register_native
-from chess_variant_sandbox.agents.evaluation import GOAL_PIECES, IMMUNE_PIECES, WIN_SCORE, Evaluator
+from chess_variant_sandbox.agents.base import (
+    NativeSpec,
+    SearchStats,
+    refuse_unknown_options,
+    register,
+    register_native,
+)
+from chess_variant_sandbox.agents.evaluation import GOAL_PIECES, IMMUNE_PIECES, Evaluator, round_win
 from chess_variant_sandbox.engine import Engine, GameState, Outcome
 
 # How many iterations of regret matching+ a matrix game is solved with. Chosen by the
@@ -44,12 +50,14 @@ REGRET_ITERATIONS = 100
 # budget ends a search long before this on any board worth playing.
 MAX_DEPTH = 64
 
-# The objective options a round player may not take. A heuristic, fitted or searched
-# objective reads one mover's mobility and was fitted on alternating play;
+# The objective options a round player may not take. A heuristic or searched
+# objective reads one mover's mobility and was made on alternating play;
 # `docs/archive/plan-simultaneous.md` §6.2 measures whether the round players need their own (Q918d).
 # A learned net may (Q918g, §6.4): one trained on rounds reads the round's own state. Not in
 # a spy game, whose turns and rounds no net has been trained across.
-_ALTERNATING_OBJECTIVES = ("h", "fit", "values")
+_ALTERNATING_OBJECTIVES = ("h", "values")
+# Every option a round player reads; any other is refused (`refuse_unknown_options`).
+MATRIX_OPTIONS = ("nodes", "mobility", "max_depth", "goal", "immune", "net")
 
 
 def solve(
@@ -135,11 +143,14 @@ def draw(moves: list[int], strategy: list[float], rng: random.Random) -> int:
     return moves[-1]
 
 
-def terminal_value(outcome: Outcome, state: GameState, seat: int) -> float:
-    """A finished round's value for ``seat``: a win sooner is worth more, as minimax's."""
+def terminal_value(outcome: Outcome, state: GameState, seat: int, win: float) -> float:
+    """A finished round's value for ``seat``: ``win`` (``evaluation.round_win``, in the
+    evaluator's units), a win sooner worth more by ``ply / 1000``, too little to cross a unit.
+    Q986b: ±``WIN_SCORE`` drowned the evaluator in the solve, and a fixed number of units is a
+    different number of pieces on every game (`docs/reference/round-hardest-weakness.md`)."""
     if outcome.is_draw:
         return 0.0
-    signed = WIN_SCORE - state.ply
+    signed = win - state.ply / 1000
     return signed if outcome.winner == seat else -signed
 
 
@@ -154,6 +165,8 @@ class RoundSearch:
         self.engine = engine
         # The built-in `Evaluator`, or a learned net's `nets.NetEvaluator` (Q918g).
         self.evaluator = evaluator
+        # Q986b: a finished round in this evaluator's units, `Player::round_win`'s product.
+        self.round_win = round_win(engine.spec, tuple(evaluator.values))
         self.nodes = 0
         self.budget = 0
         self.bounded = False
@@ -183,7 +196,7 @@ class RoundSearch:
         lists = (engine.legal_moves_for(state, 0), engine.legal_moves_for(state, 1))
         outcome = engine.terminal(state)
         if outcome is not None:
-            return terminal_value(outcome, state, seat)
+            return terminal_value(outcome, state, seat, self.round_win)
         if depth == 0:
             counts = (len(lists[0]), len(lists[1]))
             return self.evaluator.evaluate_round(engine, state, seat, counts, lists)
@@ -481,6 +494,7 @@ def _build_matrix(engine: Engine, options: dict[str, Any]) -> MatrixAgent:
     from chess_variant_sandbox.agents.nets import require_net
 
     refuse_alternating_objective(options, "matrix")
+    refuse_unknown_options(options, MATRIX_OPTIONS, "matrix")
     if engine.spy:
         raise ValueError(SPY_REFUSAL)
     return MatrixAgent(
@@ -499,6 +513,7 @@ def _native_matrix(options: dict[str, Any], ruleset_hash: str = "") -> NativeSpe
     from chess_variant_sandbox.agents.nets import require_net
 
     refuse_alternating_objective(options, "matrix")
+    refuse_unknown_options(options, MATRIX_OPTIONS, "matrix")
     return (
         "matrix",
         int(options.get("nodes", 1600)),

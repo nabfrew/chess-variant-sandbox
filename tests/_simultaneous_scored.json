@@ -1,5 +1,5 @@
 {
-  "schema_version": 27,
+  "schema_version": 29,
   "name": "simultaneous scored",
   "description": "Q942a's test spec: all three chase switches, and an ending both players reach in one round goes to the player ahead on material.",
   "board": {
@@ -34,7 +34,8 @@
           "symmetry": "lateral",
           "mode": "capture"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "N",
@@ -52,7 +53,8 @@
           "symmetry": "dihedral8",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "B",
@@ -70,7 +72,8 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "R",
@@ -88,7 +91,8 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "Q",
@@ -110,7 +114,8 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "K",
@@ -133,7 +138,8 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     }
   ],
   "setup": {
@@ -198,7 +204,6 @@
     "repetition_draw": 3,
     "no_progress_draw": 100,
     "simultaneous": {
-      "rest": true,
       "swap": "collision",
       "both": "score"
     },

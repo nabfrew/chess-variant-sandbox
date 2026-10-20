@@ -1763,10 +1763,11 @@ function drawBoard(previous) {
   const standing = AT ? null : SESSION.round;
   out += standoffHtml(standing, cell);
   // Schema 27 (Q942b): a swap that met, between its two squares, while it is the last
-  // round on screen; and each rested piece's badge, on the position still to be played.
+  // round on screen; and (schema 29) each resting piece's badge, on the position still to
+  // be played, in any game.
   const clashed = roundClash(last);
   out += clashHtml(clashed, cell);
-  const resting = SESSION.outcome ? [] : roundRests(standing);
+  const resting = SESSION.outcome || AT ? [] : positionRests(SESSION.resting);
   out += restsHtml(resting, cell);
   // Schema 28 (Q943b): which of the last round's two moves was made first, between speeds.
   const ordered = roundOrder(last);

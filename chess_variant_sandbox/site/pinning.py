@@ -2,8 +2,8 @@
 
 A computer seat is named by its agent string, and the plan asked whether the string pins
 the player. **It does not.** The string names a kind, a budget and, where there is one, a
-stored objective (`minimax:fit=<hash>,nodes=6400`, `minimax:h=<digest>,nodes=6400`), so a
-fitted or written objective is pinned by its hash. What it does not name is everything else
+stored objective (`minimax:h=<digest>,nodes=6400`), so a written objective is pinned by
+its hash. What it does not name is everything else
 a node-budgeted search is a function of: the core's build, the game's compiled tables and
 the piece values handed to the core. A core change that alters the search plays a different
 game under the same string, and so does a compiler or evaluator change. A learned seat's

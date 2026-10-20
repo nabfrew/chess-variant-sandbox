@@ -42,6 +42,7 @@ from chess_variant_sandbox.spec.schema import (
     PORTAL_PASSAGES,
     REACH_ON,
     REPETITION_NEVER,
+    REST_MAX,
     SCHEMA_VERSION,
     SCORING_COUNTS,
     SCREEN_OWNERS,
@@ -294,6 +295,28 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "must be 0, 1, 2, ... with none skipped, and some piece of one player "
                     "must differ in speed from some piece of the other. Never on a portal or "
                     "a wild piece."
+                ),
+            },
+            "rest": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": REST_MAX,
+                "description": (
+                    "Schema 29. How many of its player's turns this piece rests after it "
+                    "makes its player's move, 1 to 4; omit it for 0 (it never rests), and "
+                    "never write 0. In any game, played by turns or in rounds (a round is a "
+                    "turn of both players): a piece that moved, turned in place, was dropped, "
+                    "or struck without leaving its square may not make its player's move "
+                    "during that player's next rest turns, counted on the owner's own turns "
+                    "only, as the type it is after the move (a pawn promoted to a queen rests "
+                    "as the queen). A resting piece still stands: it attacks, blocks, gives "
+                    "check (which must be answered) and can be captured; captured, moved off "
+                    "its square or changed by the other player, it rests no more. When every "
+                    "move a player has is a resting piece's, the rest is lifted for that "
+                    "turn, so the rest never leaves a player without a move. Never on a "
+                    "portal or a wild piece, and not beside a turn of more than one move "
+                    "(rules.turn moves or ramp). Replaces schema 27's rules.simultaneous.rest, "
+                    "which is \"rest\": 1 on every piece of a game in rounds."
                 ),
             },
             "facing": _object(
@@ -1088,17 +1111,6 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "such as a circle of rock, paper and scissors)."
                         ),
                     },
-                    "rest": {
-                        "type": "boolean",
-                        "description": (
-                            "Schema 27. The piece that made a player's move in a round "
-                            "(moved, turned, was dropped, or made a void move) rests: it "
-                            "may not make that player's move in the next round, unless it "
-                            "is the only piece that can move. So a piece cannot run or "
-                            "strike two rounds running, and every attack gives a round's "
-                            "warning. Leave it out for no rest; never write false."
-                        ),
-                    },
                     "swap": {
                         "type": "string",
                         "enum": ["collision"],
@@ -1141,8 +1153,10 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "counts as two moves on the clocks. Not usable beside castling, en "
                     "passant, a sweep, check rules, a turn of more than one move, a "
                     "portal a player moves, a strike or contact position 'choose', a "
-                    "strike position 'stay', or drops.no_mate. Schema 27 adds three "
-                    "switches against a royal chased round after round: rest, swap and both."
+                    "strike position 'stay', or drops.no_mate. Schema 27 adds two "
+                    "switches against a royal chased round after round, swap and both; "
+                    "schema 29's pieces[].rest (\"rest\": 1 on every piece) is the rest "
+                    "that was the third."
                 ),
             ),
             "promote_on_entry": {

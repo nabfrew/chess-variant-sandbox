@@ -11,6 +11,10 @@ previews with Q962b, and S1 with Q962c as a near copy of S4
 (`docs/reference/previews-2026-10-18.md`); their files are `tests/_retired_*.json`
 (`retired_specs.retired_preview`).
 
+Schema 29 (Q983a, `docs/plan-rest.md` §4.5) retired the rest's switch for `"rest": 1` on every
+piece, the same rest in rounds: S1 is its retired file's rewrite (`rest_equivalence.rewrite`)
+and S4 the rewritten `archive/breather.json`, each the old game move for move.
+
 Every answer is the core's, through `Engine`; the clauses only compare squares and owners on
 the boards it returns. The material count in S3's clause is a declared test oracle: the sum
 of the declared piece values, the comparison `rules.scoring` `material` names.
@@ -25,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from rest_equivalence import rewrite
 from retired_specs import retired_preview
 from simultaneous_showcase_tally import is_swap
 
@@ -44,16 +49,18 @@ def load(name: str) -> dict[str, Any]:
 
 PARENT = retired_preview("gardner-in-rounds")
 SHOWCASES = {
-    "S1": retired_preview("gardner-in-rounds-resting"),
+    "S1": rewrite(retired_preview("gardner-in-rounds-resting")),
     "S2": retired_preview("gardner-in-rounds-where-swaps-collide"),
     "S3": retired_preview("gardner-in-rounds-scored"),
     "S4": load("breather"),
 }
+# The switches each writes in `rules.simultaneous`; the rest is `"rest": 1` on every piece of
+# the resting two since schema 29.
 SWITCHES = {
-    "S1": {"rest": True},
+    "S1": {},
     "S2": {"swap": "collision"},
     "S3": {"both": "score"},
-    "S4": {"rest": True, "swap": "collision", "both": "score"},
+    "S4": {"swap": "collision", "both": "score"},
 }
 # How many of the 20 random games end with both kings taken in one round (counted, pinned).
 BOTH_IN_RANDOM_PLAY = {"S3": 2, "S4": 1}
@@ -155,13 +162,17 @@ def random_games(
 def test_each_showcase_is_its_parent_with_its_switches_and_nothing_else() -> None:
     for name, spec in SHOWCASES.items():
         assert validate_spec(spec) == [], name
-        assert spec["schema_version"] == 27
+        assert spec["schema_version"] == (29 if name in RESTING else 27)
         assert spec["rules"]["simultaneous"] == SWITCHES[name]
         rebuilt = json.loads(json.dumps(PARENT))
         rebuilt["schema_version"] = 27
         rebuilt["rules"]["simultaneous"] = dict(SWITCHES[name])
         if name in SCORED:
             rebuilt["rules"]["scoring"] = {"count": "material"}
+        if name in RESTING:
+            rebuilt["schema_version"] = 29
+            for piece in rebuilt["pieces"]:
+                piece["rest"] = 1
         assert spec_hash(spec) == spec_hash(rebuilt), name
     assert len({spec_hash(spec) for spec in SHOWCASES.values()} | {spec_hash(PARENT)}) == 5
 
@@ -190,7 +201,7 @@ def test_no_piece_moves_two_rounds_running_except_under_the_lift(
     def visit(before: GameState, first: int, second: int, after: GameState) -> None:
         for player, move in ((0, first), (1, second)):
             legal = engine.legal_moves_for(before, player)
-            free = engine.legal_moves_for(before.with_(rest=(-1, -1)), player)
+            free = engine.legal_moves_for(before.with_(rest=((), ())), player)
             mover = last[player]
             if mover is not None and move_from(move) == mover:
                 # The same piece again: only when every legal move is that piece's.
@@ -225,7 +236,7 @@ def test_the_lift_offers_a_lone_king_its_moves(engines: dict[str, Engine]) -> No
         after = engine.apply_round(
             state, find(engine, state, 0, "c1", "c2"), find(engine, state, 1, "a5", "a4")
         )
-        assert after.rest[0] == square(engine, "c2")
+        assert after.rest[0] == ((square(engine, "c2"), 1),)
         moves = engine.legal_moves_for(after, 0)
         assert moves and all(move_from(m) == square(engine, "c2") for m in moves), name
         # Black's rook rests and its king is offered every move.
@@ -244,7 +255,7 @@ def test_the_lock_of_section_two_rests_both_pieces(engines: dict[str, Engine], n
         state, find(engine, state, 0, "b5", queen_to), find(engine, state, 1, "b4", king_to)
     )
     assert engine.terminal(after) is None
-    assert after.rest == (square(engine, queen_to), square(engine, king_to))
+    assert after.rest == (((square(engine, queen_to), 1),), ((square(engine, king_to), 1),))
     white, black = engine.legal_moves_for(after, 0), engine.legal_moves_for(after, 1)
     assert white and black
     assert all(move_from(m) != square(engine, queen_to) for m in white)

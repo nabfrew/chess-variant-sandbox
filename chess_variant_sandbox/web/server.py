@@ -561,7 +561,7 @@ class App:
                 # Why the outside engine is, or is not, among those opponents: the
                 # verdict the roster was just built from, so the two cannot disagree.
                 "fairyCheck": opponents.fairy_check(game.spec),
-                # A stored fit or searched table the roster just left out as stale, one
+                # A searched table the roster just left out as stale, one
                 # sentence each with the command that repairs it (Q142), and a built
                 # opponent it left out as a second spelling of a held plan (Q446). The
                 # strength panel shows them, because rating the picker is where one used
@@ -1177,9 +1177,6 @@ class App:
             # One count per repair, and all three, because `Staleness.needs` has three
             # answers. Counting only two put every `reanalyse` in with the replays and
             # told a reader that games nothing has invalidated have to be played again.
-            # `refit` is the fourth (Q80c): the fit is re-derived and nothing is played
-            # unless the roster's player changed.
-            "refit": sum(1 for status in statuses if status.needs == "refit"),
             "rescore": sum(1 for status in statuses if status.needs == "rescore"),
             "reanalyse": sum(1 for status in statuses if status.needs == "reanalyse"),
             "replay": sum(1 for status in statuses if status.needs == "replay"),

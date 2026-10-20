@@ -6,7 +6,7 @@ first, so a royal that a strictly faster enemy piece reaches can neither run nor
 first (§2.5 A, §3.2): it falls next round unless its side takes the attacker with a piece
 faster still. A depth-one round player saw nothing of that past its own matrix. Both sides of
 the boundary now price it (`eval.rs::caught_royal_falls`, its oracle
-`agents/evaluation.py::caught_royal_falls`) at `RESTED_ROYAL`, once beside the rested royal:
+`agents/evaluation.py::caught_royal_falls`) at `RESTED_ROYAL_PIECES` mean pieces, once beside the rested royal:
 held to each other on the speed test specs, the test itself on hand-built positions (the
 answer, a second attacker, an equal-speed attacker, a second royal), a `greedy` player that
 keeps its royal's shield where taking a piece would open the line, and every round player on
@@ -30,7 +30,7 @@ from test_matrix_players import core_round, oracle_round, walk
 from test_speed import gardner as speed_gardner
 
 from chess_variant_sandbox.agents import evaluation
-from chess_variant_sandbox.agents.evaluation import RESTED_ROYAL, caught_royal_falls
+from chess_variant_sandbox.agents.evaluation import caught_royal_falls
 from chess_variant_sandbox.engine import Engine, GameState
 from chess_variant_sandbox.engine.engine import _square_name
 from chess_variant_sandbox.engine.moves import decode_move
@@ -132,7 +132,7 @@ def test_the_price_is_the_rested_royals_and_counted_once() -> None:
     counts = (len(both[0]), len(both[1]))
     priced = evaluation.Evaluator.for_engine(engine).evaluate_round(engine, state, 0, counts, both)
     blind = evaluation.Evaluator.for_engine(twin).evaluate_round(twin, state, 0, counts, both)
-    assert priced - blind == RESTED_ROYAL
+    assert priced == blind + evaluation.Evaluator.for_engine(engine).rested_royal
     # The probe's ruler passes no lists: the engine is asked for them, the same number.
     assert evaluation.Evaluator.for_engine(engine).evaluate_round(engine, state, 0, counts) == priced
 
@@ -140,13 +140,16 @@ def test_the_price_is_the_rested_royals_and_counted_once() -> None:
 def test_a_royal_both_rested_and_caught_is_one_near_loss(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Under `rest` and speeds at once, player 1's king resting on a5 under the faster rook
-    falls by both tests, and is priced once: the number either test alone gives."""
+    """Under a rest (schema 29's `"rest": 1` on every piece) and speeds at once, player 1's
+    king resting on a5 under the faster rook falls by both tests, and is priced once: the
+    number either test alone gives."""
     spec = speed_gardner({"R": 1, "N": 2})
-    spec["rules"]["simultaneous"]["rest"] = True
+    spec["schema_version"] = 29
+    for piece in spec["pieces"]:
+        piece["rest"] = 1
     assert validate_spec(spec) == [], validate_spec(spec)
     engine = Engine(spec)
-    rested = place(engine, OPEN).with_(rest=(-1, engine._square_index("a5")))
+    rested = place(engine, OPEN).with_(rest=((), ((engine._square_index("a5"), 1),)))
     both = lists(engine, rested)
     sim = engine.spec.simultaneous
     assert sim is not None
@@ -156,7 +159,7 @@ def test_a_royal_both_rested_and_caught_is_one_near_loss(
     evaluator = evaluation.Evaluator.for_engine(engine)
     once = evaluator.evaluate_round(engine, rested, 0, counts, both)
     # The caught test alone (no piece rests), on the same lists: the same number.
-    unrested = rested.with_(rest=(-1, -1))
+    unrested = rested.with_(rest=((), ()))
     assert evaluator.evaluate_round(engine, unrested, 0, counts, both) == once
     # The rested test alone: the same number again.
     monkeypatch.setattr(evaluation, "caught_royal_falls", lambda *_: False)
@@ -189,12 +192,18 @@ def test_the_core_and_the_oracle_agree_on_every_speed_spec(name: str) -> None:
 
 
 # Player 1's bishop on a4 shields its king (speed 0) on a5 from player 0's rook (speed 1) on
-# a1, and may take player 0's knight on b5. Every bishop move opens the a-file, where the
-# rook's strike next round is over before the king can move. Before Q943b greedy took the
-# knight; the pawn's push keeps the shield.
+# a1, and may take player 0's knight on d1. Every bishop move opens the a-file, where the
+# rook's strike next round is over before the king can move, and the king's own pawns on b5
+# and b4 keep it on the file. Before Q943b greedy took the knight; the pawn's push keeps the
+# shield.
+#
+# Q986 moved the knight from b5 (where the king could take it) to d1 and walled the king in:
+# once a finished round was worth a bounded number of units and not 10⁶ (Q986b: 100 mean
+# pieces), greedy heard the evaluator and took the knight with the king, term or no term, so
+# the old position no longer showed the term's doing.
 SHIELD = {
-    "e1": ("K", 0), "a1": ("R", 0), "b5": ("N", 0),
-    "a5": ("K", 1), "a4": ("B", 1), "e4": ("P", 1),
+    "e1": ("K", 0), "a1": ("R", 0), "d1": ("N", 0),
+    "a5": ("K", 1), "a4": ("B", 1), "b5": ("P", 1), "b4": ("P", 1),
 }
 
 
@@ -217,7 +226,10 @@ def test_greedy_keeps_the_shield_a_faster_attacker_would_strike_through() -> Non
         assert move is not None
         start = _square_name(decode_move(move)[0], engine.spec.width)
         assert start != "a4", engine.describe_move(state, move)
-        assert _shield_weights(engine, state, strategy) < 0.001, strategy
+        # Q986b: half a round win is 232.5 units here, beside a rook's strike the column
+        # player may make anyway, so the term moves nearly all the weight off the bishop, not
+        # all of it (under 10⁶ it was all; the control below is over 0.9).
+        assert _shield_weights(engine, state, strategy) < 0.1, strategy
 
 
 def test_without_the_term_the_same_player_would_open_the_file(
@@ -237,14 +249,27 @@ def test_without_the_term_the_same_player_would_open_the_file(
 # The round players' short tournaments (`tests/inert_players.py::ROUND_TOURNAMENTS`, one game
 # a pairing), taken on main's core 9c09c4929d2fdc4a before Q943b and on this one, and equal:
 # the term reads an empty speed table on each of these games and runs nothing.
+#
+# Q983a (2026-10-20) re-pinned the three rewritten for schema 29 (`docs/plan-rest.md` §4.5):
+# breather and the scored test spec are new hashes whose records, with the hash and name left
+# out, are the old files' on main's core (4271f9ff) record for record; the spy game is the
+# nearest new game (its alternating phase rests). They were 55fa6c07..., eacc125d...,
+# fe92fc7b... .
+#
+# Q986b (2026-10-20) re-pinned three on purpose: a finished round is worth `ROUND_WIN_PIECES`
+# (100) mean pieces in the round search, not 10^6, a new player under every round name
+# (`docs/reference/round-hardest-weakness.md` §10). The watering hole's is Q986's pin (the
+# same player there: every piece is worth one). The spy game's one-game tournament never
+# reaches a round search's ending and is unmoved. They were a98e81e0..., 1bac2ed5...,
+# b73d89a9... .
 _INERT = {
-    "archive/breather.json": "55fa6c079145b4ec098fe12d0d3d00e2adb2201a5c4f05f417b48e86c1cd4fe0",
+    "archive/breather.json": "23a6c532fd0bb32f7512deed4207e43f6ceca0dea62df516b2e0a9184d3e79f5",
     "archive/watering-hole.json":
-        "1bac2ed57630a00586af0f11dcedb392e8d9d51c7733d9d77ba33d57846e6eae",
+        "86e042840f5cc9ac30322be448fb93f4dfde601fa8ba638c2cc0f5f355356e75",
     "archive/gardner-with-spies-resting.json":
-        "eacc125d4c35658aa145a2af672af83775df677f4509e933c27e7df5924fd221",
+        "0d8f72477bc1214062de25855bdfc8a6b6998338f27467c7183cb49fe7fb1447",
     "tests/_simultaneous_scored.json":
-        "fe92fc7b2fd1d2db58064623a1932da8f4a1478d7ea15651c6cf0f3ee6a7f0cb",
+        "1c848d867d424531619d50ac937f56f0e5851ab46fbca6345e8fe00a0c7a04d3",
 }
 
 
@@ -321,14 +346,16 @@ def test_a_speed_games_analysis_holds_the_four_tallies() -> None:
 
 
 # A speedless round game and an alternating one, analysed: the files' digests, taken with
-# main's `tournament/analysis.py` before Q943b and with this one, and equal.
+# main's `tournament/analysis.py` before Q943b and with this one, and equal. Q986b re-pinned
+# the round game's on purpose: its records are a new round player's (`ROUND_WIN_PIECES`); the
+# analysis pass is unchanged. It was 099aacbe... .
 ANALYSED = {
     "tests/_simultaneous_gardner.json": ("greedy", "matrix:nodes=200"),
     "rulesets/gardner.json": ("greedy", "minimax:nodes=200"),
 }
 _ANALYSIS_DIGESTS = {
     "tests/_simultaneous_gardner.json":
-        "099aacbe415debbd64694c26d521dc5daddad81ad12135bf758c7edd1932adc2",
+        "9bccaa3093a2b7791fe8146700ab8e4ba79acbf582a63dc279c90d46d1f5c598",
     "rulesets/gardner.json": "4b5c1c106b4487cff31c41e4ee8f912e33ba68f1cde785e9bc93e7aefdb07603",
 }
 

@@ -19,14 +19,7 @@
 // What each repair does, in the words a row of this table needs. One per answer
 // `Staleness.needs` gives; a row with no answer at all is a game nobody has measured,
 // and playing it is what that costs.
-//
-// `refit` (Q80c, `docs/reference/refit-repair.md`) is the weakest of the four: the games
-// and the scoring both stand, and only the objective the roster's fitted rungs play was
-// accepted on a build other than this one, so it is checked here before anything else
-// runs. Left unnamed it fell to the fallback below and read as a replay, which is the one
-// thing it is not -- it costs no tournament unless the check itself changes the player.
 const REPAIRS = {
-  refit: 'checking its fit',
   rescore: 'scoring again',
   reanalyse: 'analysing and scoring again',
   replay: 'playing again',

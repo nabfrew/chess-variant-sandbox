@@ -410,6 +410,10 @@ pub struct Player {
     /// player's own moves in generation order; empty for `random`. Read by the probe
     /// `Core.round_strategy`, never by play.
     pub strategy: Vec<f64>,
+    /// Q986b (`docs/reference/round-hardest-weakness.md` §10): what a finished round is worth
+    /// in the round search, in this player's evaluator units: `eval::ROUND_WIN_PIECES` mean
+    /// non-royal pieces of the values its objective reads. Read only by a round search.
+    round_win: f64,
 }
 
 /// How many plies from the root the killer table has room for. `MAX_DEPTH` is 64 and a
@@ -439,7 +443,9 @@ impl Player {
             ),
             _ => Objective::new(t, &spec.weights, &pair, mobility, goal, immune),
         };
+        let round_win = crate::eval::round_win(t, eval.values());
         Self {
+            round_win,
             eval,
             spec,
             stats: Stats::default(),

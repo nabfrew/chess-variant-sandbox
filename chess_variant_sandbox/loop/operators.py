@@ -46,6 +46,7 @@ from chess_variant_sandbox.spec.schema import (
     FACING_NAMES,
     HEX_SYMMETRIES,
     REPETITION_NEVER,
+    REST_MAX,
     SQUARE_SYMMETRIES,
     _any_equal_speed_meeting,
     _check_extinction_coherence,
@@ -54,11 +55,14 @@ from chess_variant_sandbox.spec.schema import (
     can_double_step,
     castling_spans,
     has_equal_speed_opponent,
+    has_rests,
     has_speeds,
     is_simultaneous,
     obstacle_squares,
     opening_counts,
     parse_square,
+    piece_has_stock,
+    piece_rests,
     piece_speeds,
     placed_ids,
     portal_groups,
@@ -1875,11 +1879,16 @@ def _break_the_tie(spec: dict[str, Any], rng: random.Random) -> str | None:
     return "a tied collision goes to the player holding the initiative, which then passes"
 
 
-# Schema 27 (Q942a, `docs/archive/plan-round-chase.md` §3): the three switches against a royal chased
-# round after round, each with the one value that turns it on.
-_CHASE_SWITCHES = {"rest": True, "swap": "collision", "both": "score"}
+# Schema 27 (Q942a, `docs/archive/plan-round-chase.md` §3): the switches against a royal chased
+# round after round, each with the one value that turns it on. The third, the round's rest,
+# is schema 29's `pieces[].rest` (Q983a): `rest` here turns on `"rest": 1` on every piece a
+# player moves, which is the old switch, and off takes every rest away.
+_CHASE_SWITCHES = {"swap": "collision", "both": "score"}
 _CHASE_WORDS = {
-    "rest": ("a piece that moved rests the next round", "a piece may move round after round again"),
+    "rest": (
+        "every piece rests for its player's next turn after it moves",
+        "no piece rests any more: a piece may move round after round again",
+    ),
     "swap": ("two pieces that swap squares now meet as a collision", "swapping pieces pass again"),
     "both": (
         "an ending both players reach in one round goes to the player ahead",
@@ -1889,23 +1898,34 @@ _CHASE_WORDS = {
 
 
 def _curb_the_chase(spec: dict[str, Any], rng: random.Random) -> str | None:
-    """Turn one of schema 27's chase switches on or off (`rules.simultaneous.rest`, `.swap`,
-    `.both`). Only in a game played in rounds; `both` brings a material count when the game
-    has no scoring rule, and leaves it when the switch goes."""
+    """Turn one of the chase remedies on or off: schema 27's `rules.simultaneous.swap` and
+    `.both`, and the rest (schema 29's `pieces[].rest`, the old round switch): on, every
+    piece a player moves rests 1; off, no piece rests. Only in a game played in rounds;
+    `both` brings a material count when the game has no scoring rule, and leaves it when the
+    switch goes."""
     if not is_simultaneous(spec):
         return None
     rules = spec["rules"]
     rule = rules["simultaneous"]
     stated = [key for key in _CHASE_SWITCHES if key in rule]
     absent = [key for key in _CHASE_SWITCHES if key not in rule]
+    (stated if has_rests(spec) else absent).append("rest")
     if stated and (not absent or rng.random() < 0.5):
         key = rng.choice(stated)
-        del rule[key]
+        if key == "rest":
+            for piece in pieces(spec):
+                piece.pop("rest", None)
+        else:
+            del rule[key]
         settle_schema_version(spec)
         return _CHASE_WORDS[key][1]
     for key in rng.sample(absent, len(absent)):
         trial = copy.deepcopy(spec)
-        trial["rules"]["simultaneous"][key] = _CHASE_SWITCHES[key]
+        if key == "rest":
+            for piece in _restable(trial):
+                piece["rest"] = 1
+        else:
+            trial["rules"]["simultaneous"][key] = _CHASE_SWITCHES[key]
         if key == "both" and not isinstance(trial["rules"].get("scoring"), dict):
             trial["rules"]["scoring"] = {"count": "material"}
         settle_schema_version(trial)
@@ -1914,6 +1934,54 @@ def _curb_the_chase(spec: dict[str, Any], rng: random.Random) -> str | None:
         spec.clear()
         spec.update(trial)
         return _CHASE_WORDS[key][0]
+    return None
+
+
+def _restable(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    """The piece types a rest may be written on (schema 29, `docs/plan-rest.md` §3.1): a type
+    a player moves, so never a portal end or a wild piece, and one with a move or a stock."""
+    found = spec.get("rules")
+    rules: dict[str, Any] = found if isinstance(found, dict) else {}
+    skipped = portal_piece_ids(rules) | {
+        npc.get("piece") for npc in (rules.get("npcs") or []) if isinstance(npc, dict)
+    }
+    return [
+        piece for piece in pieces(spec)
+        if isinstance(piece.get("id"), str) and piece["id"] not in skipped
+        and (piece.get("moves") or piece_has_stock(rules, piece["id"]))
+    ]
+
+
+def _tire_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Make a piece type rest after it moves, rest longer or shorter, or never rest (schema 29,
+    `docs/plan-rest.md` §5.7), in any game, alternating or in rounds. A type that never rests
+    is made to rest 1; one that rests is moved a turn up or down (0 takes the key away, and
+    none goes past `REST_MAX`). Each child must pass the validator, so a game of long turns,
+    where a rest is refused, gets none."""
+    if turn_is_long(spec.get("rules")):
+        return None
+    candidates = _restable(spec)
+    for piece in rng.sample(candidates, len(candidates)):
+        trial = copy.deepcopy(spec)
+        target = next(p for p in pieces(trial) if p.get("id") == piece["id"])
+        now = piece_rests(trial).get(piece["id"], 0)
+        new = 1 if now == 0 else now + rng.choice((-1, 1))
+        if new > REST_MAX:
+            new = now - 1
+        if new <= 0:
+            target.pop("rest", None)
+        else:
+            target["rest"] = new
+        settle_schema_version(trial)
+        if validate_spec(trial):
+            continue
+        spec.clear()
+        spec.update(trial)
+        name = str(piece.get("name", piece["id"]))
+        if new <= 0:
+            return f"the {name} no longer rests after it moves"
+        turns = "turn" if new == 1 else f"{new} turns"
+        return f"the {name} now rests for its player's next {turns} after it moves"
     return None
 
 
@@ -3252,6 +3320,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("curb-the-chase", _curb_the_chase),
     Operator("plant-a-spy", _plant_a_spy),
     Operator("set-a-speed", _set_a_speed),
+    Operator("tire-a-piece", _tire_a_piece),
 )
 
 

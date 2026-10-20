@@ -2,8 +2,8 @@
 //
 // `docs/archive/plan-client-compute.md` §8, stage B3. A measurement is cut into units by
 // `chess_variant_sandbox/tournament/slices.py` (B0), and a unit is one request text that
-// holds the spec, the unit's games by schedule index, the fit's verdict, the roster and,
-// for a reading phase, the records it reads. This worker loads Pyodide, installs the
+// holds the spec, the unit's games by schedule index, the roster and, for a reading
+// phase, the records it reads. This worker loads Pyodide, installs the
 // package's wheel, and hands each request to `slices.run_request`, which is the whole of
 // what a worker does. The core that plays is the package's own `_core`, built for
 // Pyodide's Emscripten target. The one worker a page's measurement gathers in (B5) also

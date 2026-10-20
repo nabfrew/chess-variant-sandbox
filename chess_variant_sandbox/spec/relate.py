@@ -356,7 +356,8 @@ def _key_of(form: NormalForm) -> str:
                     for key in ("captures", "facing", "region", "promoted_from")
                 } | ({"beats": piece["beats"]} if "beats" in piece else {})
                   | ({"spy": piece["spy"]} if "spy" in piece else {})
-                  | ({"speed": piece["speed"]} if "speed" in piece else {})),
+                  | ({"speed": piece["speed"]} if "speed" in piece else {})
+                  | ({"rest": piece["rest"]} if "rest" in piece else {})),
             )
             for pid, piece in form.pieces.items()
         )),
@@ -947,8 +948,9 @@ def _compare(
             turns = True
             found.append(Difference("pieces", "piece.facing", words.turns()))
         # Schema 27 (Q935a): a spy is a fact about the piece that decides the turn; schema
-        # 28's speed (Q943a) one that decides when its move is made in a round.
-        rest = ("region", "promoted_from", "beats", "spy", "speed")
+        # 28's speed (Q943a) one that decides when its move is made in a round; schema 29's
+        # rest (Q983a) one that decides when it may move again.
+        rest = ("region", "promoted_from", "beats", "spy", "speed", "rest")
         if _folded(_stated(one, rest), _PIECE_FIELDS, ids_a) != _folded(
             _stated(other, rest), _PIECE_FIELDS, ids_b
         ):
@@ -1290,6 +1292,9 @@ def rules_involved(form: NormalForm) -> frozenset[str]:
     # Schema 28 (Q943a): speeds change how a round is resolved, so they are a rule too.
     if any("speed" in piece for piece in form.pieces.values()):
         involved.add("piece.speed")
+    # Schema 29 (Q983a): a rest changes which piece may make a turn's move, so it is a rule.
+    if any("rest" in piece for piece in form.pieces.values()):
+        involved.add("piece.rest")
     return frozenset(involved)
 
 

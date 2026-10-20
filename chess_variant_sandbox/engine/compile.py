@@ -35,6 +35,7 @@ from chess_variant_sandbox.spec.schema import (
     SpecError,
     absent_squares,
     beats_of,
+    has_rests,
     has_speeds,
     hex_distance,
     npc_immune_attackers,
@@ -42,6 +43,7 @@ from chess_variant_sandbox.spec.schema import (
     npc_starts,
     obstacle_squares,
     parse_square,
+    piece_rests,
     piece_speeds,
     portal_bars_that_can_bind,
     portal_end_ids,
@@ -878,11 +880,10 @@ class SimRule:
       per square for each of the two squares of a standoff entry (``[square]`` for player
       0's square, ``[n_squares + square]`` for player 1's), then one per entry state (1, a
       run of one void round; 2, barred). Drawn after every other key.
-    * ``rest``, ``swap_collides``, ``both_score`` -- schema 27's three chase switches
-      (Q942a, `docs/archive/plan-round-chase.md` §3 R1, R2, X1), each false when absent.
-    * ``zobrist_rest`` -- under ``rest`` only, one key per square per player
-      (``[player * n_squares + square]``) for the square of the piece that player's move
-      rested; drawn after the standoff's, so no other game's key moves. Empty otherwise.
+    * ``swap_collides``, ``both_score`` -- schema 27's chase switches (Q942a,
+      `docs/archive/plan-round-chase.md` §3 R2, X1), each false when absent. R1's ``rest``
+      left this rule in schema 29 (Q983a) for the piece-type property
+      ``CompiledSpec.rest``, which an alternating game may declare too.
     * ``deal_initiative`` -- schema 27 (Q935a, `docs/plan-spy.md` E10): in a spy game under
       the initiative, the token is dealt to the announcer when the first announced round
       begins, so the answerer cannot win at will every tie it chooses to enter. False in
@@ -901,17 +902,15 @@ class SimRule:
     zobrist_initiative: int
     zobrist_squares: tuple[int, ...]
     zobrist_states: tuple[int, ...]
-    rest: bool = False
     swap_collides: bool = False
     both_score: bool = False
-    zobrist_rest: tuple[int, ...] = ()
     deal_initiative: bool = False
     speed: tuple[int, ...] = ()
 
     @property
     def chases(self) -> bool:
-        """Whether any of schema 27's chase switches is on (the boundary's ``sim_chase``)."""
-        return self.rest or self.swap_collides or self.both_score
+        """Whether any of schema 27's chase switches is on."""
+        return self.swap_collides or self.both_score
 
 
 def _compile_simultaneous(
@@ -919,7 +918,7 @@ def _compile_simultaneous(
     pieces: list[dict[str, Any]],
     index_of: dict[str, int],
     n_types: int,
-    draws: tuple[int, tuple[int, ...], tuple[int, ...], tuple[int, ...]] | None,
+    draws: tuple[int, tuple[int, ...], tuple[int, ...]] | None,
 ) -> SimRule | None:
     """`SimRule` for a simultaneous spec, ``None`` for an alternating one (§5.3)."""
     rule = rules.get("simultaneous")
@@ -935,7 +934,7 @@ def _compile_simultaneous(
         for victim in beaten:
             allowed[index_of[piece["id"]] * n_types + index_of[victim]] = True
     source = rules.get("strike") if isinstance(rules.get("strike"), dict) else None
-    initiative, squares, states, rest = draws
+    initiative, squares, states = draws
     return SimRule(
         tie=tie,
         initiative_start=1,
@@ -945,10 +944,8 @@ def _compile_simultaneous(
         zobrist_initiative=initiative,
         zobrist_squares=squares,
         zobrist_states=states,
-        rest=simultaneous_switch(rules, "rest"),
         swap_collides=simultaneous_switch(rules, "swap"),
         both_score=simultaneous_switch(rules, "both"),
-        zobrist_rest=rest,
         deal_initiative=tie == TIE_INITIATIVE and bool(spy_ids(pieces)),
         speed=_compile_speeds(pieces, index_of, n_types),
     )
@@ -965,6 +962,20 @@ def _compile_speeds(
     for pid, value in piece_speeds(pieces).items():
         speed[index_of[pid]] = value
     return tuple(speed)
+
+
+def _compile_rests(
+    pieces: list[dict[str, Any]], index_of: dict[str, int], n_types: int
+) -> tuple[int, ...]:
+    """``CompiledSpec.rest``: each type's rest (schema 29, Q983a, `docs/plan-rest.md` §4.3),
+    0 where none is written, over every type (a portal end's is 0), or **empty when no piece
+    declares one**, so no other game's tables move and the core never enters its rest."""
+    if not has_rests(pieces):
+        return ()
+    rest = [0] * n_types
+    for pid, value in piece_rests(pieces).items():
+        rest[index_of[pid]] = value
+    return tuple(rest) if any(rest) else ()
 
 
 @dataclass(frozen=True)
@@ -1253,6 +1264,23 @@ class CompiledSpec:
     # Schema 27 (Q935a): the spy, or ``None`` -- every game without one, whose boundary keys
     # for the rule cross empty. See ``SpyRule``. A spy game always has ``simultaneous``.
     spy: SpyRule | None = None
+    # Schema 29 (Q983a, `docs/plan-rest.md` §3, §4.3): [piece_type] -> how many of its
+    # player's turns a piece of that type rests after it makes its player's move, 0 for
+    # never. The type is the one that **stands at the end of the move** (a pawn promoted to
+    # a queen rests as the queen), which the core reads off the board, so nothing downstream
+    # needs a rule of its own. Empty when no type declares a rest -- every game before
+    # schema 29 -- which is what keeps their boundary bytes and keys where they were.
+    rest: tuple[int, ...] = ()
+    # One key per (turns left, player, square) for a resting piece,
+    # ``((left - 1) * 2 + player) * n_squares + square``, ``left`` 1 to ``max(rest)``; drawn
+    # last of all and only under the rule (`_build_zobrist`). For a game whose largest rest
+    # is 1 this is schema 27's layout, ``player * n_squares + square``. Empty otherwise.
+    zobrist_rest: tuple[int, ...] = ()
+
+    @property
+    def rest_max(self) -> int:
+        """The largest rest any type declares, 0 without the rule."""
+        return max(self.rest, default=0)
 
     def turns(self, piece_type: int) -> bool:
         """Whether a move may turn this type: it has more than one orientation and its
@@ -1665,14 +1693,14 @@ def _compile(
     )
     digest = spec_hash(spec)
     simultaneous = rules.get("simultaneous")
-    zob_pieces, zob_side, zob_ep, zob_colour, zob_turn, zob_bar, zob_fold, zob_sim = (
+    zob_pieces, zob_side, zob_ep, zob_colour, zob_turn, zob_bar, zob_fold, zob_sim, zob_rest = (
         _build_zobrist(
             digest, n_squares, n_types, width, n_facings, n_owners,
             portal_bar=any(group["no_straight_back"] for group in portal_groups(rules)),
             fold_ends=n_types - declared_types if has_folds else 0,
             simultaneous=isinstance(simultaneous, dict),
             initiative=isinstance(simultaneous, dict) and simultaneous.get("tie") == "initiative",
-            rest=simultaneous_switch(rules, "rest"),
+            rest_max=max(piece_rests(spec).values(), default=0),
         )
     )
     royal_types = tuple(i for i, p in enumerate(pieces) if p.get("royal", False))
@@ -1887,6 +1915,8 @@ def _compile(
         portals=portals,
         simultaneous=_compile_simultaneous(rules, list(spec["pieces"]), index_of, n_types, zob_sim),
         spy=_compile_spy(list(spec["pieces"]), index_of, board, n_types, n_facings),
+        rest=_compile_rests(list(spec["pieces"]), index_of, n_types),
+        zobrist_rest=zob_rest,
     )
     if obstacles:
         _reject_walled_in(compiled)
@@ -4449,7 +4479,7 @@ def _build_zobrist(
     fold_ends: int = 0,
     simultaneous: bool = False,
     initiative: bool = False,
-    rest: bool = False,
+    rest_max: int = 0,
 ) -> tuple[
     tuple[tuple[int, ...], ...],
     int,
@@ -4458,7 +4488,8 @@ def _build_zobrist(
     tuple[int, ...],
     tuple[int, ...],
     tuple[int, ...],
-    tuple[int, tuple[int, ...], tuple[int, ...], tuple[int, ...]] | None,
+    tuple[int, tuple[int, ...], tuple[int, ...]] | None,
+    tuple[int, ...],
 ]:
     """Seed the Zobrist table from the spec hash.
 
@@ -4515,8 +4546,10 @@ def _build_zobrist(
         holder = rng.getrandbits(64) if initiative else 0
         squares = tuple(rng.getrandbits(64) for _ in range(2 * n_squares))
         states = tuple(rng.getrandbits(64) for _ in range(VOID_RUN))
-        # Schema 27 (Q942a): the rested squares, one table per player, drawn after the
-        # standoff's and only under `rest`, so no schema-26 game's key moves.
-        resting = tuple(rng.getrandbits(64) for _ in range(2 * n_squares)) if rest else ()
-        sim = (holder, squares, states, resting)
-    return pieces, side, ep, colours, turns, bar, fold, sim
+        sim = (holder, squares, states)
+    # Schema 29 (Q983a, `docs/plan-rest.md` §4.2): the resting pieces, one key per (turns
+    # left, player, square), drawn last of all and only where a type rests, so no other
+    # game's key moves. Where schema 27's rested squares were drawn: after the standoff's in
+    # a round game, and in an alternating game (which has no standoff) after the folds.
+    resting = tuple(rng.getrandbits(64) for _ in range(rest_max * 2 * n_squares))
+    return pieces, side, ep, colours, turns, bar, fold, sim, resting

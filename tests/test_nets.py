@@ -225,7 +225,7 @@ def test_a_net_beside_another_objective_is_refused(registered: None) -> None:
     engine = _engine("rulesets/gardner.json")
     _net_player(engine, seed=5)
     with pytest.raises(ValueError, match="at once"):
-        native_spec(f"minimax:net={PROCEDURE},fit=98f172aeac49,nodes=100", engine.spec.hash)
+        native_spec(f"minimax:net={PROCEDURE},values=976d0dc3670c,nodes=100", engine.spec.hash)
     with pytest.raises(nets.NetError, match="which ruleset"):
         native_spec(f"minimax:net={PROCEDURE},nodes=100")
 

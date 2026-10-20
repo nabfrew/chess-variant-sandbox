@@ -6,7 +6,7 @@ the analysis pass walks it a step at a time by the phase the engine reports, pro
 as an alternating ply (stopping at the seam into rounds), an announced round by what each
 side knew and a blind round against the mix, forces blunders by the same readings, and
 counts what the phases did (`SPY_COUNTS`); every scored component says how it reads a spy
-game; the measuring roster is `corpus.SPY_AGENTS`. Asserted against the spy test specs
+game; the measuring roster is `corpus.CANONICAL_AGENTS`, never a net. Asserted against the spy test specs
 (`tests/_spy_*.json`) and hand-built positions on them.
 """
 
@@ -472,9 +472,9 @@ class TestTheSpyRoster:
         spec = _load("_spy_small")
         digest = spec_hash(spec)
         assert plays_with_spies(spec)
-        assert corpus.canonical_agents(digest, spec=spec) == corpus.SPY_AGENTS
+        assert corpus.canonical_agents(digest, spec=spec) == corpus.CANONICAL_AGENTS
         assert corpus.current_basis(digest, spec=spec, seeds=corpus.ONE_SEED).agents == (
-            corpus.SPY_AGENTS
+            corpus.CANONICAL_AGENTS
         )
 
     def test_the_spy_ladder_is_the_alternating_ladder_on_the_built_in_objective(self) -> None:
@@ -483,14 +483,13 @@ class TestTheSpyRoster:
         budgets = [int(a.split("nodes=")[1]) for a in corpus.CANONICAL_AGENTS if "nodes=" in a]
         assert ("random", "greedy") + tuple(
             f"minimax:nodes={budget}" for budget in budgets
-        ) == corpus.SPY_AGENTS
-        assert spy_roster(corpus.SPY_AGENTS) == corpus.SPY_AGENTS
-        assert not corpus.fits_its_roster(corpus.SPY_AGENTS)
+        ) == corpus.CANONICAL_AGENTS
+        assert spy_roster(corpus.CANONICAL_AGENTS) == corpus.CANONICAL_AGENTS
 
     def test_the_spy_players_hand_the_core_a_players_digest(self) -> None:
         from chess_variant_sandbox.measurement import players_fingerprint
 
-        assert players_fingerprint(_load("_spy_small"), corpus.SPY_AGENTS) != ""
+        assert players_fingerprint(_load("_spy_small"), corpus.CANONICAL_AGENTS) != ""
 
     def test_a_round_game_keeps_its_roster(self) -> None:
         spec = json.loads((HERE / "_simultaneous_gardner.json").read_text(encoding="utf-8"))
@@ -514,7 +513,7 @@ def test_measure_measures_a_spy_game_and_then_reads_it_current(tmp_path, capsys)
     assert cli.main(["measure", str(SMALL), "--runs", str(tmp_path), "--workers", "4"]) in (0, 1)
     digest = spec_hash(_load("_spy_small"))
     stored = json.loads((tmp_path / digest / "canonical.json").read_text(encoding="utf-8"))
-    assert tuple(stored["basis"]["agents"]) == corpus.SPY_AGENTS
+    assert tuple(stored["basis"]["agents"]) == corpus.CANONICAL_AGENTS
     analysis = json.loads((tmp_path / f"{digest}-0" / "analysis.json").read_text(encoding="utf-8"))
     assert all("spy" in game for game in analysis["games"])
     capsys.readouterr()

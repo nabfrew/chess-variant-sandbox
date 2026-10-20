@@ -360,7 +360,35 @@ class TestTheFingerprintsPointAtSomething:
 # No library game declares one, so no number should move (the round players' tournaments
 # and two analysis files are pinned equal in `tests/test_speed_players.py`). It was
 # "a10833f919319aab" after Q943a and Q966's replay; the next library replay re-scores under it.
-FROZEN_METRICS = "ed8e842a885544a3"
+#
+# **Moved 2026-10-19 by Q558 (the fitted objective removed)**: `tournament/heuristics.py`
+# loses `measure_heuristics`'s `baseline_fit` and `HeuristicReport.baseline`, which only the
+# removed `heuristics --against-fit` read, and `metrics/glossary.py`'s near-best sentence
+# says "learned net" for "fitted objective". No score, component or interval reads either,
+# so no number moves. It was "ed8e842a885544a3" after Q943b and Q968's replay; on
+# `claude/Q558`, held unmerged, it read "5e841a83a9a1d10f".
+#
+# **Moved 2026-10-20 by Q983a (schema 29, rest as a piece-type property)**: `spec/complexity.py`
+# charges `pieces[].rest` (`_rest_extras`, the old switch's 1.0 for a uniform rest),
+# `engine/state.py` and `engine/engine.py` carry the resting list as a field of every position,
+# and `agents/evaluation.py` reads the rested-royal term over that list. The library's one
+# rest game, breather, was rewritten to a new hash (the same game move for move) and the spy
+# preview to the nearest new game; no other game declares a rest, so no other number should
+# move. It was "ed8e842a885544a3" after Q943b and Q968's replay; on `claude/Q983a` it read
+# "dbb60c88575f6cc6".
+#
+# **Moved 2026-10-20 by Q986b (a finished round at `ROUND_WIN_PIECES` mean pieces)**:
+# `agents/evaluation.py` gains `ROUND_WIN_PIECES` (100) and `round_win`, and prices a rested
+# or caught royal at `RESTED_ROYAL_PIECES` (50) mean pieces, not half of `WIN_SCORE`; the term
+# is read only where a piece rests or declares a speed, so only round games move, and those
+# are replayed anyway (a new round player). On `claude/Q986b`, built on Q983a, it read
+# "1bae673288ef0490".
+#
+# **Merged 2026-10-20 by Q558m**: the three branches were built against the same stamp and held
+# unmerged; merged, the metrics sources are Q558's and Q983a's and Q986b's at once, which is
+# neither branch's value. No number moves for Q558's part; Q983a's and Q986b's are as above.
+# The library replay Q558r re-scores under it, paying all three moves once.
+FROZEN_METRICS = "c57c854e32129d3a"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -595,7 +623,15 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # **Moved 2026-10-19 by Q943b**: `agents/evaluation.py` and `tournament/analysis.py` (see
 # `FROZEN_METRICS`); a game without a speed is analysed byte for byte as before. It was
 # "031be810615f81e7" after Q947e and Q966's replay; the next library replay is the re-analysis.
-FROZEN_ANALYSIS = "8a7d2819c34b14a5"
+#
+# **Moved 2026-10-20 by Q983a**: `agents/evaluation.py` (the probe's ruler) and
+# `engine/state.py` (see `FROZEN_METRICS`). It was "8a7d2819c34b14a5" after Q943b and Q968's
+# replay; Q983c's replay is the re-analysis.
+#
+# **Moved 2026-10-20 by Q986b**: `agents/evaluation.py` (the probe's ruler; the rested royal is
+# now `RESTED_ROYAL_PIECES` mean pieces, see `FROZEN_METRICS`). It was "6aaf204a1094d816" after
+# Q983a; the replay batched after Q986b (Q558r) is the re-analysis.
+FROZEN_ANALYSIS = "a0aa597a07b63b94"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:
@@ -1354,19 +1390,19 @@ class TestWhatMakesAMeasurementStale:
     def test_a_roster_that_changed_players_says_which(self) -> None:
         """Since v9 a roster can differ with the same shape, so shape is not the reason.
 
-        Every searching rung carries a fitted objective, which makes
-        `minimax:nodes=6400` and `minimax:fit=P,nodes=6400` the same count at the same
+        A net ladder plays a learned evaluator on its searching rungs, which makes
+        `minimax:nodes=6400` and `minimax:net=P,nodes=6400` the same count at the same
         games a pairing and different players. Reporting only the shape rendered that as
         "different roster (2 agents at 4 games a pairing, not 2 at 4)", which reads as a
         bug rather than as something a person can act on.
         """
         stale = _basis(agents=("random", "minimax:nodes=400")).stale_against(
-            _basis(agents=("random", "minimax:fit=abc,nodes=400"))
+            _basis(agents=("random", "minimax:net=abc,nodes=400"))
         )
         assert stale.needs == "replay"
         summary = stale.summary()
         assert "minimax:nodes=400" in summary
-        assert "minimax:fit=abc,nodes=400" in summary
+        assert "minimax:net=abc,nodes=400" in summary
         # The shape is the same, so quoting it would be the confusing half.
         assert "2 agents at 4 games a pairing, not 2 at 4" not in summary
         # `random` is in both rosters and is not what changed.

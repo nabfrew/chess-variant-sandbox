@@ -32,6 +32,10 @@ pub const MAX_SQUARES: usize = 256;
 /// table, because the alternative is a per-type buffer sized at run time on a path that
 /// runs once per evaluated node.
 pub const MAX_PIECE_TYPES: usize = 24;
+/// Schema 29 (Q983a, `docs/plan-rest.md` §3.1): the longest rest a type may declare, and so
+/// how many of one player's pieces can rest at once (one enters a turn, none stays longer).
+/// `spec/schema.py::REST_MAX` is the validator's copy.
+pub const REST_MAX: usize = 4;
 
 pub const MOVE_NORMAL: u32 = 0;
 pub const MOVE_EN_PASSANT: u32 = 1;
@@ -734,17 +738,11 @@ pub struct SimTables {
     pub zobrist_squares: Vec<u64>,
     /// `[state - 1]`: 1 a run of one void round, 2 barred.
     pub zobrist_states: Vec<u64>,
-    /// Schema 27 (Q942a, `docs/archive/plan-round-chase.md` §3 R1): the piece that made a player's
-    /// move in a round may not make it in the next, unless nothing else can move.
-    pub rest: bool,
     /// Schema 27 (R2): two moves each ending on the other's origin meet as a collision.
     pub swap_collides: bool,
     /// Schema 27 (X1): an ending that fires for both players in one round goes to the
     /// player ahead under `rules.scoring`.
     pub both_score: bool,
-    /// `[player * n_squares + square]`: XORed in for each player's rested square; empty
-    /// unless `rest`.
-    pub zobrist_rest: Vec<u64>,
     /// Schema 28 (Q943a, `docs/plan-speed.md` §4.2): `[type]`, each type's speed. Empty
     /// unless a piece declares one, so `make_round` never orders a round in any other game.
     pub speed: Vec<u8>,
@@ -769,17 +767,28 @@ impl SimTables {
         z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
         z ^ (z >> 31)
     }
+}
 
-    /// The key of the rested squares, `NO_SQUARE` (-1) for none.
+/// Schema 29 (Q983a, `docs/plan-rest.md` §3, §4): rest as a piece-type property, as the
+/// compiler resolved it (`CompiledSpec.rest`). Boxed, as the rounds are, so a game without
+/// it pays one pointer, and `None` is the one flag every rest branch in the core tests.
+pub struct RestTables {
+    /// `[type]`: how many of its player's turns a piece of that type rests after it makes
+    /// its player's move, 0 for never. Read off the type that stands at the end of the move.
+    pub turns: Vec<u8>,
+    /// `[((left - 1) * 2 + player) * n_squares + square]`: XORed in for each resting piece.
+    pub zobrist: Vec<u64>,
+    /// The longest rest, and so how many of a player's `REST_MAX` slots can ever be live:
+    /// a player enters at most one piece a turn and each rests at most this many of its
+    /// turns, and an entry takes the first free slot. The core walks only these.
+    pub slots: usize,
+}
+
+impl RestTables {
+    /// The key of one resting piece: `player`'s, on `square`, with `left` turns to go.
     #[inline]
-    pub fn rest_key(&self, n_squares: usize, rest: [i16; 2]) -> u64 {
-        let mut key = 0u64;
-        for (player, &square) in rest.iter().enumerate() {
-            if square >= 0 {
-                key ^= self.zobrist_rest[player * n_squares + square as usize];
-            }
-        }
-        key
+    pub fn key(&self, n_squares: usize, player: usize, square: usize, left: u8) -> u64 {
+        self.zobrist[((left as usize - 1) * 2 + player) * n_squares + square]
     }
 }
 
@@ -1043,6 +1052,9 @@ pub struct Tables {
     /// are so a game without one pays one pointer. Never without
     /// `simultaneous` (the validator refuses it, and so does `from_py`).
     pub spy: Option<Box<SpyTables>>,
+    /// Schema 29 (Q983a): the rest, `None` for every game in which no type rests, alternating
+    /// or in rounds.
+    pub rest: Option<Box<RestTables>>,
 
     /// Schema 9's second key, `rules.promote_on_entry`: what a piece that *enters play*
     /// on a square becomes, as `[player][piece_type][square]` flattened in that order,
@@ -2209,6 +2221,7 @@ impl Tables {
             portals: None,
             simultaneous: None,
             spy: None,
+            rest: None,
             entry_promotion,
             piece_values,
             must_capture,
@@ -2324,16 +2337,13 @@ impl Tables {
                     "the simultaneous tables do not fit this ruleset's types and squares",
                 ));
             }
-            // Schema 27 (Q942a): empty unless a chase switch is on.
+            // Schema 27 (Q942a): empty unless a chase switch is on. The first slot was the
+            // round's rest, which schema 29 moved to `piece_rest`; it is always 0.
             let chase: Vec<u8> = field(source, keys::SIM_CHASE)?;
-            let zobrist_rest: Vec<u64> = field(source, keys::ZOBRIST_REST)?;
             let switch = |index: usize| chase.get(index).is_some_and(|flag| *flag != 0);
-            let rest = switch(0);
-            if !(chase.is_empty() || chase.len() == 3)
-                || zobrist_rest.len() != if rest { 2 * n } else { 0 }
-            {
+            if !(chase.is_empty() || chase.len() == 3) || switch(0) {
                 return Err(pyo3::exceptions::PyValueError::new_err(
-                    "the chase switches do not fit this ruleset's squares",
+                    "the chase switches do not fit this core (the round's rest is pieces[].rest)",
                 ));
             }
             // Schema 28 (Q943a): empty unless a piece declares a speed.
@@ -2345,10 +2355,8 @@ impl Tables {
             }
             tables.simultaneous = Some(Box::new(SimTables {
                 speed,
-                rest,
                 swap_collides: switch(1),
                 both_score: switch(2),
-                zobrist_rest,
                 tie: sim_rule[0] as u8,
                 initiative_start: sim_rule[1] as i8,
                 void_run: sim_rule[2] as u8,
@@ -2358,6 +2366,28 @@ impl Tables {
                 zobrist_squares: zobrist[1..1 + 2 * n].to_vec(),
                 zobrist_states: zobrist[1 + 2 * n..].to_vec(),
             }));
+        }
+
+        // Schema 29 (Q983a): the rest, both empty unless a type rests.
+        let piece_rest: Vec<u8> = field(source, keys::PIECE_REST)?;
+        let zobrist_rest: Vec<u64> = field(source, keys::ZOBRIST_REST)?;
+        if !piece_rest.is_empty() {
+            let max = piece_rest.iter().copied().max().unwrap_or(0) as usize;
+            if piece_rest.len() != tables.n_types
+                || max == 0
+                || max > REST_MAX
+                || zobrist_rest.len() != max * 2 * tables.n_squares
+            {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "the rest tables do not fit this ruleset's types and squares",
+                ));
+            }
+            tables.rest =
+                Some(Box::new(RestTables { turns: piece_rest, zobrist: zobrist_rest, slots: max }));
+        } else if !zobrist_rest.is_empty() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "rest keys without a rest",
+            ));
         }
 
         // Schema 27 (Q935a): the spy, empty unless a piece is one.
@@ -2824,6 +2854,7 @@ pub mod keys {
         SPY_DEAL => "spy_deal",
         SPY_TYPES => "spy_types",
         ZOBRIST_REST => "zobrist_rest",
+        PIECE_REST => "piece_rest",
         ZOBRIST_SIM => "zobrist_sim",
         ZOBRIST_PIECES => "zobrist_pieces",
         ZOBRIST_PORTAL_BAR => "zobrist_portal_bar",

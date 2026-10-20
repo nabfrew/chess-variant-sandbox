@@ -15,7 +15,6 @@ What is held down here, on a five-square game of its own (never chess):
   full replay clears it.
 - **The sample.** `adopt.spread` is the pre-registered 32 a run, spread over the
   opponents; a change outside the sample is missed, which is why the label exists.
-- **The fit**, one game in eight of its kept games and its match's.
 - **The page** draws the mark beside the number, in a visitor's words on the site.
 
 The games are four on a five-square board, which is where the `slow` marks come from.
@@ -33,8 +32,8 @@ from test_corpus import SPEC, _find, _Scored, world  # noqa: F401  (`world` is a
 from test_web import _in_page
 
 from chess_variant_sandbox import corpus
-from chess_variant_sandbox.measurement import UNVERIFIED, Basis, Certificate, FitReading
-from chess_variant_sandbox.tournament import adopt, fitting
+from chess_variant_sandbox.measurement import Basis, Certificate
+from chess_variant_sandbox.tournament import adopt
 from chess_variant_sandbox.tournament.record import read_records, write_records
 from chess_variant_sandbox.tournament.runner import TournamentConfig, run_tournament
 from chess_variant_sandbox.web import library
@@ -104,24 +103,6 @@ class TestTheStamp:
             assert Basis.from_dict({**stamp, "certified": broken}) is None, broken
         with pytest.raises(ValueError):
             Certificate(sample=1, games=1, engine="", tables="")
-
-    def test_a_sampled_fit_is_this_cores_answer_for_the_score(self) -> None:
-        """The fit store is unverified on the new core; the certificate vouches for it."""
-        reading = FitReading(player="fit:aaaaaaaaaaaa", made_on="0011223344556677",
-                             verified_on=frozenset({"0011223344556677"}))
-        now = _basis(fit=UNVERIFIED, fit_reading=reading)
-        played = _basis(engine=OLD_ENGINE, fit="fit:aaaaaaaaaaaa")
-        assert played.stale_against(now).refit
-
-        kept = played.certify(now, 128, 1024)
-
-        assert kept.certified is not None and kept.certified.fit == "fit:aaaaaaaaaaaa"
-        assert kept.stale_against(now).current
-        # A store that has since become another player is a replay, sample or not.
-        other = FitReading(player="fit:bbbbbbbbbbbb", made_on="x", verified_on=frozenset())
-        assert kept.stale_against(
-            _basis(fit=UNVERIFIED, fit_reading=other)
-        ).needs == "replay"
 
 
 # -------------------------------------------------------------------- the sample
@@ -323,45 +304,6 @@ class TestRecertifyingAScore:
 
         assert kept.current and kept.basis is not None and kept.basis.certified is None
         assert any("a sample cannot stand in for this" in line for line in lines)
-
-
-# ----------------------------------------------------------------------- the fit
-
-
-@pytest.mark.slow
-class TestTheFitByASample:
-    @pytest.fixture
-    def kept(self, tmp_path: Path) -> tuple[Any, Path]:
-        found = fitting.check_fit(SPEC, store=tmp_path / "fitted", workers=1,
-                                  keep=tmp_path / "kept")
-        return found.fit, tmp_path / "kept"
-
-    def test_a_check_keeps_the_games_of_the_store_that_stands(self, kept) -> None:
-        fit, where = kept
-        marker = json.loads((where / fitting.KEPT_FILE).read_text(encoding="utf-8"))
-        assert marker["store_digest"] == fitting.store_digest(fit)
-        assert list(read_records(where / fitting.FIT_GAMES_FILE))
-
-    def test_its_kept_games_certify_it(self, kept) -> None:
-        fit, where = kept
-        assert adopt.recertify_fit(SPEC, fit, where, workers=1) == ""
-
-    def test_a_kept_game_that_replays_differently_is_refused(self, kept) -> None:
-        fit, where = kept
-        name = (fitting.ACCEPT_GAMES_FILE
-                if list(read_records(where / fitting.ACCEPT_GAMES_FILE))
-                else fitting.FIT_GAMES_FILE)
-        records = list(read_records(where / name))
-        records[0].moves = list(records[0].moves)[:-1]
-        write_records(records, where / name)
-        assert adopt.recertify_fit(SPEC, fit, where, workers=1)
-
-    def test_games_kept_for_another_store_certify_nothing(self, kept) -> None:
-        fit, where = kept
-        (where / fitting.KEPT_FILE).write_text('{"store_digest": "other"}', encoding="utf-8")
-        assert "another store" in adopt.recertify_fit(SPEC, fit, where, workers=1)
-        (where / fitting.KEPT_FILE).unlink()
-        assert "no fit games are kept" in adopt.recertify_fit(SPEC, fit, where, workers=1)
 
 
 # ---------------------------------------------------------------------- the page

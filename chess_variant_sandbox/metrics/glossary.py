@@ -436,7 +436,7 @@ MEASUREMENTS: dict[str, Measurement] = {
             "at a full window, and this is one minus the share that come out near the "
             "best. The ruler is the same on every game: the built-in evaluator on the "
             "piece values the rules imply, and near means within the cheapest piece. "
-            "Where the players use a fitted objective, this still does not, so the "
+            "Where the players use a learned net, this still does not, so the "
             "number compares across games but can be blind where the built-in "
             "evaluator is.",
         reading="A band. Near 0 every move is as good as every other and there is "

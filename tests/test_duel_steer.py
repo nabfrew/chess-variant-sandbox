@@ -224,7 +224,6 @@ STAMPED = (
     "agents/training/procedure.py",
     "agents/valuations.py",
     "tournament/valuing.py",
-    "tournament/fitting.py",
 )
 
 # Callers of the rule outside ``duel.py``. Empty today. A steering caller joins it only

@@ -746,6 +746,11 @@ three. Pre-registered in §5 and §5.1 before any game was played, graded in §5
   (2026-10-18), which renamed it and rewrote its description to say what the game is in its own
   terms, since a visitor has never seen the chase and the previews that show it may go; the hash did
   not move.
+  **Rewritten for schema 29 by Q983a (2026-10-20)**: schema 27's `rules.simultaneous.rest` was
+  retired for `pieces[].rest`, and the rest is now `"rest": 1` on all six types
+  (`docs/plan-rest.md` §4.5). The same game move for move (`tests/test_rest_equivalence.py`, against
+  a fixture captured on the old core), under a new hash, **`b8687024cfc6`**; the old runs stay under
+  `632c199e4589`, and Q983c measures the new hash.
 
 Measured 2026-10-17 (v12, four runs each, the round roster): resting **0.630 [0.574, 0.673],
 viable** (3 of 4 runs accept, one unreadable), 0.853 of graded games decided; where swaps collide
@@ -773,6 +778,11 @@ Pre-registered in §5 and §5.7 before any graded game, graded in §5.8;
   strong band, the side without a spy still wins 0.23 of those games, and nearly all are decided,
   so the full announcement does not end the game. It fails the seat, and its holder's score is
   player- and value-dependent.
+  **Rewritten for schema 29 by Q983a (2026-10-20)**: `"rest": 1` on all seven types in place of
+  `rules.simultaneous.rest`, hash **`8ce37482d0de`**. Not the same game: under schema 29 an
+  alternating turn rests the piece that made it too (`docs/plan-rest.md` §3.10, `plan-spy.md` E11
+  superseded), so no piece moves twice running in any phase. The nearest new game, measured anew
+  by Q983c; the old runs stay under `1d798bedbf66`.
 
 Measured 2026-10-17 (v12, four runs each, `corpus.SPY_AGENTS`), and re-measured the same day under
 the evaluator's spy term (Q935h) by Q954's library replay (`docs/reference/replay-2026-10-17b.md`):

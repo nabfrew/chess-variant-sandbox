@@ -351,9 +351,10 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "Who moves, and when",
         "Several moves a turn; or both players choosing at once, neither seeing the other's "
         "move, with rules for what wins a collision, which pieces are fast enough to move "
-        "first, and spies whose loss takes a player's secrecy away.",
+        "first, and spies whose loss takes a player's secrecy away; and pieces that must rest "
+        "for some of their player's turns after they move, by turns or in rounds.",
         ("rules.turn", "rules.simultaneous", "pieces[].beats", "pieces[].speed",
-         "pieces[].spy"),
+         "pieces[].spy", "pieces[].rest"),
     ),
     (
         "Pieces nobody owns",

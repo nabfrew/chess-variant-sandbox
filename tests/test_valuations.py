@@ -10,10 +10,9 @@ seat's stream being derived from the seed and the seat, and a test that let it b
 approximate would let the whole estimator become a slightly biased win rate.
 
 ``agents/valuations.py`` is a piece-value table found by hill-climbing that estimator.
-Most of what is tested about it is the *refusals*, for the same reason ``test_fitted.py``
-is mostly about narrowness: a searched table that shipped without beating the derived one
-would be a differently-priced player wearing a better name, and the store is what makes
-that impossible to do quietly.
+Most of what is tested about it is the *refusals*, because narrowness is the point: a
+searched table that shipped without beating the derived one would be a differently-priced
+player wearing a better name, and the store is what makes that impossible to do quietly.
 """
 
 from __future__ import annotations
@@ -314,7 +313,7 @@ def test_a_weight_vector_from_another_vocabulary_is_refused_at_load(tmp_path):
     """Q430. Every store searched before `facing_alignment` carried fourteen weights, and
     the loader let them through: the procedure digest does not cover the vocabulary, so
     the file sat at the current path, and the core refused it on the first move of a
-    game against it. Refused here, accepted or not, as a fit store is. Run on an accepted
+    game against it. Refused here, accepted or not. Run on an accepted
     table only: `from_dict` measures the weights before it reads `accepted` at all, so the
     `[False]` case ran the same lines (Q754)."""
     from chess_variant_sandbox.agents.features import VOCABULARY
@@ -448,8 +447,8 @@ def test_an_accepted_search_reaches_the_agent_as_both_halves():
     "agent",
     [
         "minimax:h=aaaaaaaaaaaa,values=bbbbbbbbbbbb,nodes=400",
-        "minimax:fit=aaaaaaaaaaaa,values=bbbbbbbbbbbb,nodes=400",
-        "minimax:h=aaaaaaaaaaaa,fit=bbbbbbbbbbbb,nodes=400",
+        "minimax:net=aaaaaaaaaaaa,values=bbbbbbbbbbbb,nodes=400",
+        "minimax:h=aaaaaaaaaaaa,net=bbbbbbbbbbbb,nodes=400",
     ],
 )
 def test_two_claims_about_where_the_numbers_came_from_are_refused(agent):

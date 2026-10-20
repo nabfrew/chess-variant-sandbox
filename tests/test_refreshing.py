@@ -35,7 +35,7 @@ def _written(runs: Path, seconds_ago: float, **fields) -> None:
         seconds=seconds_ago)
     runs.mkdir(parents=True, exist_ok=True)
     (runs / refresher.STATUS_FILE).write_text(json.dumps(
-        {"refusals": [], "owed_merge": [], **fields,
+        {"refusals": [], **fields,
          "updated": then.isoformat(timespec="seconds")}), encoding="utf-8")
 
 
@@ -97,7 +97,7 @@ class TestTheStates:
 
     def test_every_refusal_kind_has_plain_words(self) -> None:
         kinds = {getattr(refresher, name) for name in (
-            "STALE_BUILD", "FIT_NOT_REPRODUCED", "GATE_NEWLY_FAILED", "COMMIT_MOVED",
+            "STALE_BUILD", "GATE_NEWLY_FAILED", "COMMIT_MOVED",
             "CHANGED_COMMITTED_FILES", "ERROR")}
         assert kinds == set(refreshing.REFUSALS)
 

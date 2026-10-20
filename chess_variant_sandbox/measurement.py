@@ -523,11 +523,11 @@ def _sources(*patterns: str) -> list[Path]:
 # `docs/reference/compute-economy.md` §2.3). The agents' Python decides a core-played game only through
 # what `runner._run_native` hands `core.run_tournament`: one native spec per seat and the
 # piece values. `Basis.players` hashes exactly that, per ruleset, the move `Basis.tables`
-# made for the compiler. So an edit to `agents/nets.py`, `heuristics.py` or the fit-making
-# half of `fitted.py` that hands the core nothing new stales nothing, and one that does
-# stales every ruleset it reaches. Where the handoff cannot be read (a seat with no native
-# form, a store this checkout lacks), `Basis.agents_source` -- the code reading of
-# `AGENTS_SOURCES` -- decides instead, which is the old rule.
+# made for the compiler. So an edit to `agents/nets.py` or `heuristics.py` that hands the
+# core nothing new stales nothing, and one that does stales every ruleset it reaches.
+# Where the handoff cannot be read (a seat with no native form, a store this checkout
+# lacks), `Basis.agents_source` -- the code reading of `AGENTS_SOURCES` -- decides
+# instead, which is the old rule.
 #
 # **The compiler is deliberately in no set, and used to be in this one.** What a compiler
 # produces is a better thing to fingerprint than a compiler is: `Basis.tables` hashes the
@@ -1278,13 +1278,13 @@ def players_fingerprint(spec: dict[str, Any], agents: tuple[str, ...]) -> str:
     `agents/` that changes no seat's spec and no value moves nothing, and one that does
     moves every ruleset it reaches (Q631, `docs/reference/compute-economy.md` §2.3).
 
-    The fit vector and the net bytes are inside the specs, so this overlaps `Basis.fit`
-    and `Basis.net` on purpose: those say which repair, this says whether the games stand.
+    The net bytes are inside the specs, so this overlaps `Basis.net` on purpose: that
+    says which net, this says whether the games stand.
 
     `""` means *cannot say*: a seat with no native form (the Python loop plays it, so its
-    source decides), or a seat that does not resolve here -- most often a fit store this
-    checkout lacks, as on the server for a visitor's design. `stale_against` then reads
-    `agents_source` instead, the rule before Q631. Any error resolving a seat lands here,
+    source decides), or a seat that does not resolve here -- most often a store this
+    checkout lacks. `stale_against` then reads `agents_source` instead, the rule before
+    Q631. Any error resolving a seat lands here,
     which is safe: the fallback is exact, only coarser.
     """
     from chess_variant_sandbox.agents import native_spec
@@ -1375,73 +1375,8 @@ def provenance_reads(played: str, checked: str) -> bool:
     return played == BROWSER and (not checked or read_check(checked) is not None)
 
 
-# Which objective the roster's fitted rungs played (`docs/reference/refit-repair.md`,
-# Q80c). A fit is stamped with the core that made it and nothing else, so on another core
-# "does this verdict still hold?" is answered only by re-deriving it, which is the fourth
-# repair, `refit`. The field records the *player*, not the core: a refused fit plays the
-# built-in objective whatever its vector says, so a refused vector that drifts moves nothing.
 BUILTIN_PLAYER = "builtin"
-"""`Basis.fit` where the fit was refused or could not be made: the built-in objective."""
-
-UNVERIFIED = "unverified"
-"""`Basis.fit` taken now, where the store was neither made nor reproduced on this core."""
-
-
-@dataclass(frozen=True)
-class FitReading:
-    """The ruleset's fit store as it stands, handed to `Basis.current` by `corpus`.
-
-    ``player`` is the store's digest (`BUILTIN_PLAYER`, or `fit:` and twelve hex digits
-    over the procedure and the vector), ``made_on`` the core that made it (``""`` when the
-    store records none) and ``verified_on`` every core it is known to be the answer on --
-    its maker and every core a check reproduced it on. Read from the store and its sidecar
-    by `tournament.fitting.fit_reading`, which this module cannot import.
-    """
-
-    player: str
-    made_on: str = ""
-    verified_on: frozenset[str] = frozenset()
-    # Why the store is not verified on the loaded core, read from the same sidecar
-    # (Q894, `fitting.basis_gap`). ``recorded`` False: the sidecar names no basis, so
-    # nothing says what the games read. ``differs``: the parts (core, tables, players,
-    # runner) where the newest recorded basis is not today's. The defaults are "not read",
-    # which keeps the older sentence.
-    recorded: bool = True
-    differs: tuple[str, ...] = ()
-
-
-def named(parts: tuple[str, ...]) -> str:
-    """`tables`, `core and tables`, `core, tables and runner`."""
-    if len(parts) <= 1:
-        return "".join(parts)
-    return f"{', '.join(parts[:-1])} and {parts[-1]}"
-
-
-def _fit_unverified(reading: FitReading, loaded: str) -> str:
-    """The `stale (refit)` sentence: what of the fit's basis is not the loaded one (Q894)."""
-    if not reading.recorded:
-        if reading.made_on == loaded:
-            return (
-                f"its fit was made on this core ({loaded}), but nothing records the "
-                "tables, players and runner its games read, so it has not been re-derived "
-                "under them"
-            )
-    elif reading.differs and reading.differs != ("core",):
-        return (
-            f"its fit was last verified where the {named(reading.differs)} differ, "
-            "and has not been re-derived on this one"
-        )
-    if reading.made_on:
-        return (
-            f"its fit was made on core {reading.made_on} and has not been re-derived "
-            "on this one"
-        )
-    return "its fit records no core and has not been re-derived on this one"
-
-
-def _core_of(engine: str) -> str:
-    """The build fingerprint out of an `engine` stamp, `<sources>-<build>`."""
-    return engine.rpartition("-")[2]
+"""`Basis.net` for a `net=` procedure that resolves to no net: the built-in objective."""
 
 
 # Which net each `net=` procedure in the roster played (Q502f). A `net=` name is a
@@ -1451,8 +1386,8 @@ def _core_of(engine: str) -> str:
 # the SHA-256 of the bytes the core was sent, or `builtin` where it was sent none. Taken
 # from `nets.net_bytes`, the one resolution every `net=` player goes through, so the
 # stamp and the player cannot disagree. Integer inference makes a net the same player on
-# every machine, so unlike a fit there is nothing for another core to re-derive: the
-# core's own changes are `engine`'s.
+# every machine, so there is nothing for another core to re-derive: the core's own
+# changes are `engine`'s.
 UNREADABLE_NET = "unreadable"
 """A `Basis.net` player whose store could not be read: no measurement could have used it."""
 
@@ -1499,11 +1434,9 @@ def net_players(agents: tuple[str, ...], ruleset_hash: str) -> str:
     return ",".join(parts)
 
 
-def _player(fit: str) -> str:
-    """A `Basis.fit` value in words."""
-    if fit == BUILTIN_PLAYER:
-        return "the built-in objective"
-    return f"the fitted objective {fit}"
+def _core_of(engine: str) -> str:
+    """The build fingerprint out of an `engine` stamp, `<sources>-<build>`."""
+    return engine.rpartition("-")[2]
 
 
 @dataclass(frozen=True)
@@ -1514,9 +1447,9 @@ class Certificate:
     after a change that should move no game, a library score may stay current because a
     sample of its games replayed byte for byte -- *labelled*, with the sample as its basis.
     So the stamp keeps what played the games (`Basis.engine`, `tables`, `players`,
-    `agents_source`, `fit`) exactly as it was, and this records what the sample was
-    replayed on: the same five fields, taken when it was. `Basis.stale_against` compares
-    the certificate's five in place of the stamp's own, so the score is current exactly
+    `agents_source`) exactly as it was, and this records what the sample was
+    replayed on: the same four fields, taken when it was. `Basis.stale_against` compares
+    the certificate's four in place of the stamp's own, so the score is current exactly
     while the code the sample ran on still is, and a later change stales it again.
 
     ``sample`` is how many tournament games replayed equal, ``games`` how many games the
@@ -1534,7 +1467,6 @@ class Certificate:
     tables: str
     players: str = ""
     agents_source: str = ""
-    fit: str = ""
 
     def __post_init__(self) -> None:
         for name in ("sample", "games"):
@@ -1562,7 +1494,7 @@ class Certificate:
             "engine": self.engine,
             "tables": self.tables,
         }
-        for name in ("players", "agents_source", "fit"):
+        for name in ("players", "agents_source"):
             if getattr(self, name):
                 found[name] = getattr(self, name)
         return found
@@ -1584,7 +1516,6 @@ class Certificate:
                 tables=str(data["tables"]),
                 players=str(data.get("players") or ""),
                 agents_source=str(data.get("agents_source") or ""),
-                fit=str(data.get("fit") or ""),
             )
         except KeyError as missing:
             raise ValueError(f"a certificate without {missing}") from None
@@ -1644,15 +1575,6 @@ class Basis:
     # number on the same games at every level of checking.
     played: str = ""
     checked: str = ""
-    # Which objective the fitted rungs played: `BUILTIN_PLAYER` or `fit:<12 hex>`, the
-    # store's digest over the procedure and the vector (Q80c). Taken now it is `UNVERIFIED`
-    # when the store was neither made nor reproduced on the loaded core, since only a refit
-    # can say what this core would play. `""` means *not recorded*: every stamp written
-    # before the field, and a basis taken now for a ruleset with no store. `stale_against`
-    # reads an absent stored value through `fit_reading` (the rule `analysis` follows: a
-    # covering fact decides, and nothing is rewritten), and skips the check when the
-    # basis taken now was told nothing.
-    fit: str = ""
     # Which net each `net=` procedure in the roster played: `net_players`. `""` where no
     # agent names a net, which is every canonical roster so far, so no stamp written before
     # the field changes shape or reads stale. Compared like the roster: a different net is
@@ -1686,9 +1608,6 @@ class Basis:
     known_seed_sets: tuple[tuple[int, ...], ...] = field(
         default=(), compare=False, repr=False
     )
-    # The fit store as it stands, on a basis taken now; never stored. `None` means *not
-    # told*, and the fit check is then skipped, as it is for `known_seed_sets`.
-    fit_reading: FitReading | None = field(default=None, compare=False, repr=False)
 
     @classmethod
     def current(
@@ -1701,7 +1620,6 @@ class Basis:
         tables: str = "",
         verdict_rule: str = "",
         known_seed_sets: tuple[tuple[int, ...], ...] = (),
-        fit: FitReading | None = None,
         players: str = "",
     ) -> Basis:
         """The basis a measurement taken right now would carry.
@@ -1714,20 +1632,10 @@ class Basis:
         spec, and this module is imported by readers that hold a hash and never a spec.
         `corpus.current_basis` is the one place that has both.
 
-        `fit` is the ruleset's fit store, passed in for the roster's reason. The stamp is
-        its player where the loaded core made or reproduced it, and `UNVERIFIED` where
-        not; no store at all records nothing.
-
         `players` is `players_fingerprint` for this roster, passed in for the tables'
         reason; `""` says it cannot be read, and the agents' source decides instead.
         """
         built = built_fingerprint()
-        if fit is None:
-            player = ""
-        elif built in fit.verified_on:
-            player = fit.player
-        else:
-            player = UNVERIFIED
         return cls(
             ruleset_hash=ruleset_hash,
             weights_version=weights_version,
@@ -1739,7 +1647,6 @@ class Basis:
             tables=tables,
             analysis=source_fingerprint("analysis"),
             verdict_rule=verdict_rule,
-            fit=player,
             net=net_players(tuple(agents), ruleset_hash),
             players=players,
             agents_source=source_fingerprint("agents"),
@@ -1747,7 +1654,6 @@ class Basis:
             metrics_bytes=bytes_fingerprint("metrics"),
             analysis_bytes=bytes_fingerprint("analysis"),
             known_seed_sets=known_seed_sets,
-            fit_reading=fit,
         )
 
     def in_browser(self, checked: str = "") -> Basis:
@@ -1764,14 +1670,8 @@ class Basis:
 
         Everything this stamp says stays as it is -- which code played the games, which
         weights scored them, which pass analysed them -- and the certificate records the
-        code the sample was replayed on. The fit it records is the player the roster
-        plays now: ``current.fit``, or the store's own where ``current`` reads the store
-        `UNVERIFIED`, because a sampled fit check (`adopt.recertify_fit`) vouches for the
-        store without being one the sidecar lists.
+        code the sample was replayed on.
         """
-        fit = current.fit
-        if fit == UNVERIFIED:
-            fit = current.fit_reading.player if current.fit_reading is not None else ""
         return replace(self, certified=Certificate(
             sample=sample,
             games=games,
@@ -1779,21 +1679,20 @@ class Basis:
             tables=current.tables,
             players=current.players,
             agents_source=current.agents_source,
-            fit=fit,
         ))
 
     def certifiable(self, current: Basis) -> Staleness:
         """What this stamp would still owe once a sample re-certified it on ``current``.
 
         `corpus.recertify` asks this before it replays anything. A sample stands in for
-        the core, the runner, the tables, the players and the fit; it does not stand in for
+        the core, the runner, the tables and the players; it does not stand in for
         a different roster, a different net, different seeds, another ruleset or a browser's
         games, so a stamp stale for any of those still owes its replay here.
         """
         return self.certify(current, 1, 1).stale_against(current)
 
     def _as_played_now(self) -> Basis:
-        """The stamp with the certificate's five fields read as its own, for comparison."""
+        """The stamp with the certificate's four fields read as its own, for comparison."""
         found = self.certified
         if found is None:
             return self
@@ -1803,7 +1702,6 @@ class Basis:
             tables=found.tables,
             players=found.players,
             agents_source=found.agents_source,
-            fit=found.fit,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -1824,10 +1722,6 @@ class Basis:
         if self.played:
             stamp["played"] = self.played
             stamp["checked"] = self.checked
-        # Only where it says something, so a stamp for a ruleset with no store is written
-        # as it was before the field existed.
-        if self.fit:
-            stamp["fit"] = self.fit
         # Likewise: only a roster naming a net writes it.
         if self.net:
             stamp["net"] = self.net
@@ -1903,9 +1797,6 @@ class Basis:
                 verdict_rule=str(data.get("verdict_rule") or ""),
                 played=played,
                 checked=checked,
-                # Absent on every stamp written before Q80c, and read in `stale_against`
-                # through the store's own record rather than as agreement.
-                fit=str(data.get("fit") or ""),
                 # Absent on every stamp whose roster named no net, where it means none.
                 net=str(data.get("net") or ""),
                 # Absent on every stamp before Q631, where it means *not recorded*.
@@ -1955,10 +1846,10 @@ class Basis:
             needs = "replay"
 
         if self.agents != current.agents or self.games_per_pairing != current.games_per_pairing:
-            # Shape first, and *which agents* when the shape matches. Since `v9` the
-            # roster can differ with the same count and the same games a pairing --
-            # every searching rung carries a fitted objective, so `minimax:nodes=6400`
-            # and `minimax:fit=...,nodes=6400` are the same shape and different players.
+            # Shape first, and *which agents* when the shape matches. The roster can differ
+            # with the same count and the same games a pairing -- a net ladder (Q502h)
+            # plays `minimax:net=...,nodes=6400` where another plays `minimax:nodes=6400`,
+            # the same shape and different players.
             # Reporting only the shape rendered that as "different roster (8 agents at 4
             # games a pairing, not 8 at 4)", which reads as a bug rather than a reason.
             if len(self.agents) == len(current.agents) and (
@@ -2016,46 +1907,6 @@ class Basis:
             reasons.append("this ruleset compiles to different tables than it was played on")
             needs = "replay"
 
-        # Which objective the fitted rungs played (Q80c). Its own block, after the replay
-        # block: a changed player is a replay, and a fit this core has not re-derived is a
-        # flag, `refit`, that becomes `needs` only when nothing else is owed.
-        refit = False
-        reading = current.fit_reading
-        # A certificate taken on the loaded core vouches for the store's player on it: the
-        # fit was checked with the sample (`adopt.recertify_fit`), one in eight of its
-        # games, so the store is this core's answer for this measurement without being one
-        # the sidecar lists.
-        sampled_fit = (
-            self.certified is not None
-            and bool(self.certified.fit)
-            and self.certified.build == _core_of(current.engine)
-        )
-        if reading is not None and current.fit:
-            if current.fit == UNVERIFIED and not sampled_fit:
-                refit = True
-                reasons.append(_fit_unverified(reading, _core_of(current.engine)))
-            else:
-                now = reading.player if current.fit == UNVERIFIED else current.fit
-                # Absent is every stamp written before the field. The store says which
-                # objective played where the core that played the games made or
-                # reproduced it; anywhere else nothing says, and those games were played
-                # on another core, which the check above has already sent to a replay.
-                played = played_now.fit or (
-                    reading.player
-                    if _core_of(played_now.engine) in reading.verified_on else ""
-                )
-                if not played:
-                    reasons.append(
-                        "it does not record which objective played, and its fit was not "
-                        "made or reproduced on the core that played it"
-                    )
-                    needs = "replay"
-                elif played != now:
-                    reasons.append(
-                        f"it played {_player(played)}, and {_player(now)} plays now"
-                    )
-                    needs = "replay"
-
         # Which nets played (Q502f). The roster check above catches a changed name; this
         # catches the same name resolving to other weights, or to none.
         if self.net != current.net:
@@ -2109,10 +1960,6 @@ class Basis:
                 f"not {current.verdict_rule}"
             )
             needs = needs or "rescore"
-        # Last, so every stronger repair has had its say: a refit is owed alongside any of
-        # them, and is the whole of the work only when nothing else is.
-        if refit and not needs:
-            needs = "refit"
 
         return Staleness(
             reasons=tuple(reasons),
@@ -2121,7 +1968,6 @@ class Basis:
             stored_needs=needs,
             stored_runs=len(self.seeds),
             expected_runs=len(current.seeds),
-            refit=refit,
         )
 
 
@@ -2143,9 +1989,6 @@ class Staleness:
     analysis pass that wrote `analysis.json` has changed, so that file has to be
     rewritten before the scoring pass reads it, and ``"replay"`` when the tournament
     itself is about a match nobody would play now. Each implies the ones before it.
-    ``"refit"`` is the fourth and weakest (Q80c): nothing else is owed, but the fit the
-    roster plays was not re-derived on the loaded core, and `refit` says so whatever
-    ``needs`` is.
 
     **The first of those only became reachable after an engine edit when `Basis` grew
     `tables`.** Before that, every change under `chess_variant_sandbox/engine/*.py` answered "replay"
@@ -2165,12 +2008,6 @@ class Staleness:
     stored_needs: str = ""
     stored_runs: int = 0
     expected_runs: int = 0
-    # The fourth repair (Q80c). The fit this measurement's roster resolves to was neither
-    # made nor reproduced on the loaded core, so only re-deriving it can say whether the
-    # players are the ones that played. Owed beside whatever `needs` says, and `needs` is
-    # `"refit"` only when nothing else is; `corpus.refresh` pays it first, then reads the
-    # staleness again.
-    refit: bool = False
 
     def __bool__(self) -> bool:
         return bool(self.needs)
@@ -2208,16 +2045,12 @@ class Staleness:
             "summary": self.summary(),
             "missingSeeds": list(self.missing_seeds),
             "storedNeeds": self.stored_needs,
-            "refit": self.refit,
         }
 
 
-# How each repair is spelled for a person, weakest first: each implies none before it and
-# the three after `refit` each imply the ones before them. `""` is current. `refit` is
-# first because it is what is owed only when nothing else is (Q80c): it re-derives the fit
-# and implies no replay unless the player changed.
+# How each repair is spelled for a person, weakest first: each implies the ones before it.
+# `""` is current.
 REPAIR_NAMES = {
-    "refit": "refit",
     "rescore": "re-score",
     "reanalyse": "re-analyse",
     "replay": "replay",
@@ -2275,7 +2108,7 @@ SINGLE_RUN_FORM = "stored in the single-run form"
 
 
 def _at_least_rescore(needs: str) -> str:
-    return "rescore" if needs in ("", "refit") else needs
+    return needs or "rescore"
 
 
 def load(path: Path, current: Basis, old_path: bool = False) -> Measurement | None:
@@ -2298,7 +2131,6 @@ def load(path: Path, current: Basis, old_path: bool = False) -> Measurement | No
     basis = Basis.from_dict(stored.get("basis"))
     staleness = UNKNOWN if basis is None else basis.stale_against(current)
     if old_path or not isinstance(stored.get("runs"), list):
-        # A refit is weaker than the re-score this form owes, so it gives way to it.
         staleness = replace(
             staleness,
             reasons=(*staleness.reasons, SINGLE_RUN_FORM),

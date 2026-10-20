@@ -1,8 +1,8 @@
 """Running the search: hill-climb a piece-value table against playing strength itself.
 
 ``agents/valuations.py`` holds the procedure's constants and the store; this is the pass
-that executes it, and it lives under ``tournament/`` for the reason the fit does -- it
-plays games, and ``agents/`` must not.
+that executes it, and it lives under ``tournament/`` because it plays games, and
+``agents/`` must not.
 
 **Coordinate ascent, one piece at a time, on a log scale.** Multiply one piece's value by
 a step, ask ``duel`` whether the resulting player beats the one it came from, keep it if
@@ -236,9 +236,8 @@ def _verdict(
         arms, vector, procedure, comparisons, accepted_steps, exhausted, plies,
         accepted=True, accept=None, ladder=None,
     )
-    # Registered before the matches because they play it *by its real name*, which is the
-    # discipline `register_fit(..., replace=True)` keeps and for the same reason: testing
-    # a different spelling would leave the resolution path itself untested, and that is
+    # Registered before the matches because they play it *by its real name*: testing a
+    # different spelling would leave the resolution path itself untested, and that is
     # where a searched player is most likely to be quietly wrong.
     register_valuation(provisional, replace=True)
     searched = f"minimax:values={procedure.digest},nodes={procedure.accept_nodes}"
@@ -268,10 +267,9 @@ def _verdict(
 
     final = _entry(
         arms, vector, procedure, comparisons, accepted_steps, exhausted, plies,
-        # Strictly better, which is the word the fit's bar was written in and the same
-        # bar. A margin here would be one chosen after seeing which rulesets it excludes;
-        # the measured error travels beside the verdict instead, so a reader can see
-        # which verdicts the sample could resolve.
+        # Strictly better. A margin here would be one chosen after seeing which rulesets it
+        # excludes; the measured error travels beside the verdict instead, so a reader can
+        # see which verdicts the sample could resolve.
         accepted=accept.score > 0.5,
         accept=accept,
         ladder=ladder,

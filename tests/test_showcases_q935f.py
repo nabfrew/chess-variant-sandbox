@@ -23,6 +23,12 @@ SP1 and its parent left the previews with Q962b (`docs/reference/previews-2026-1
 their files are `tests/_retired_*.json` (`retired_specs.retired_preview`), and SP2 is the spy's
 one showcase.
 
+Schema 29 (Q983a, `docs/plan-rest.md` §3.10, §4.5) retired SP2's `rules.simultaneous.rest` for
+`"rest": 1` on every piece, which rests the alternating phase too, so SP2's file is now the
+nearest new game. The study's SP2, the one its runs carry, is rebuilt here in the old spelling
+for its hash alone (`SP2_STUDY`; the validator refuses it now); SP2's alternating phase is its
+spy-less, rest-stripped twin's, but for the rest's filter, which `tests/rest_oracle.py` holds.
+
 Every answer is the core's, through `Engine`; the clauses compare squares and owners on the
 boards it returns.
 """
@@ -42,6 +48,7 @@ from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.moves import decode_move, move_from, move_to
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.spec import spec_hash, validate_spec
+from chess_variant_sandbox.spec.schema import RETIRED_REST
 
 ROOT = Path(__file__).parent.parent
 SEEDS = range(20)
@@ -55,6 +62,17 @@ def load(name: str) -> dict[str, Any]:
 SP1 = retired_preview("gardner-with-spies")
 SP2 = load("gardner-with-spies-resting")
 PARENT = retired_preview("gardner-in-rounds")
+
+
+def _study_sp2() -> dict[str, Any]:
+    """The study's SP2 as §5.1 registered it and its runs carry it: SP1 with schema 27's
+    `rules.simultaneous.rest`. Refused since schema 29; kept for its hash."""
+    out = copy.deepcopy(SP1)
+    out["rules"]["simultaneous"] = {"rest": True}
+    return out
+
+
+SP2_STUDY = _study_sp2()
 
 
 def twin(spec: dict[str, Any]) -> dict[str, Any]:
@@ -119,7 +137,7 @@ def owner(engine: Engine, state: GameState, at: int) -> int | None:
 def test_the_study_files_are_section_five_one() -> None:
     for spec in (SP1, SP2):
         assert not validate_spec(spec)
-        assert spec["schema_version"] == 27
+        assert spec["schema_version"] == (27 if spec is SP1 else 29)
         spies = [p for p in spec["pieces"] if p.get("spy")]
         assert len(spies) == 1
         spy = spies[0]
@@ -130,17 +148,22 @@ def test_the_study_files_are_section_five_one() -> None:
         ]
         assert {"piece": spy["id"], "squares": ["c2"]} in spec["setup"]["placements"]
         assert spec["setup"]["mirror"] is True
-    # SP1 is the parent with the c-pawn a spy; SP2 is SP1 with the rest, and nothing else.
+    # SP1 is the parent with the c-pawn a spy; SP2 is SP1 with the rest, and nothing else: in
+    # the study, schema 27's switch; since schema 29, `"rest": 1` on every piece.
     assert SP1["rules"] == {**PARENT["rules"], "simultaneous": {}}
-    assert SP2["rules"] == {**SP1["rules"], "simultaneous": {"rest": True}}
-    assert SP1["pieces"] == SP2["pieces"] and SP1["setup"] == SP2["setup"]
+    assert SP2["rules"] == SP1["rules"]
+    assert [{k: v for k, v in p.items() if k != "rest"} for p in SP2["pieces"]] == SP1["pieces"]
+    assert all(piece["rest"] == 1 for piece in SP2["pieces"])
+    assert SP1["setup"] == SP2["setup"]
     assert SP1["pieces"][:-1] == PARENT["pieces"]
+    assert spec_hash(SP2) == "8ce37482d0de"
     built = {
-        "SP1": SP1, "SP2": SP2, "T0": twin(SP1),
-        "V5 SP1": valued(SP1, 5), "V5 SP2": valued(SP2, 5),
+        "SP1": SP1, "SP2": SP2_STUDY, "T0": twin(SP1),
+        "V5 SP1": valued(SP1, 5), "V5 SP2": valued(SP2_STUDY, 5),
     }
     for name, spec in built.items():
-        assert not validate_spec(spec), name
+        errors = validate_spec(spec)
+        assert errors == ([RETIRED_REST] if "SP2" in name else []), name
         assert spec_hash(spec) == STUDY_HASHES[name], name
 
 
@@ -158,11 +181,13 @@ def knights_behind(spec: dict[str, Any]) -> dict[str, Any]:
 def test_the_q935g_remedy_is_sp2_with_knight_and_bishop_exchanged() -> None:
     """The graded game and its twin are built from SP2 here and carry the hashes §5.9
     registered, since the files live in the gitignored `runs/`."""
-    remedied = knights_behind(SP2)
-    assert remedied["pieces"] == SP2["pieces"] and remedied["rules"] == SP2["rules"]
+    remedied = knights_behind(SP2_STUDY)
+    assert remedied["pieces"] == SP2_STUDY["pieces"] and remedied["rules"] == SP2_STUDY["rules"]
     for spec, expected in ((remedied, "29406b08a677"), (twin(remedied), "ccdf3e5fa1c5")):
-        assert not validate_spec(spec)
         assert spec_hash(spec) == expected
+    assert validate_spec(twin(remedied)) == []
+    # Schema 29's SP2 takes the same remedy as a valid game.
+    assert validate_spec(knights_behind(SP2)) == []
 
 
 # --------------------------------------------------------- random play through the core
@@ -205,6 +230,34 @@ def test_sp1_alternates_move_for_move_as_its_twin() -> None:
             assert plain.apply(state, moves[0]).board == after.board
             compared += 1
     assert compared > 100
+
+
+def test_sp2_alternates_as_its_rest_stripped_twin_but_for_the_rest() -> None:
+    """Schema 29 (`docs/plan-rest.md` §3.10, §4.5): while both spies stand, SP2's moves are its
+    spy-less, rest-stripped twin's less the resting pieces' (the rest oracle's filter and lift),
+    and each turn's rest list is the oracle's."""
+    from rest_oracle import after_turn, as_rest, end_of_move, legal, lists_of
+
+    spy = Engine(SP2)
+    stripped = twin(SP2)
+    for piece in stripped["pieces"]:
+        piece.pop("rest")
+    plain = Engine(stripped)
+    compared = rested = 0
+    for seed in SEEDS:
+        for state, phase, moves, after in walk(spy, seed):
+            if phase != "alternating":
+                break
+            assert spy.legal_moves(state) == legal(plain, state)
+            lists = after_turn(
+                spy, lists_of(state), after.board, state.side_to_move,
+                end_of_move(spy, state, after, moves[0]),
+            )
+            assert after.rest == as_rest(lists)
+            assert plain.apply(state.with_(rest=((), ())), moves[0]).board == after.board
+            compared += 1
+            rested += bool(state.rest[state.side_to_move])
+    assert compared > 100 and rested > 50
 
 
 def test_claim_one_an_answerer_piece_that_moves_away_survives_in_random_play() -> None:

@@ -33,7 +33,6 @@ import pytest
 from chess_variant_sandbox import cli, corpus, refresher
 from chess_variant_sandbox.spec import spec_hash
 from chess_variant_sandbox.tournament import checkpoint
-from chess_variant_sandbox.tournament.fitting import MADE_HERE
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -111,8 +110,8 @@ def library(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Games:
     """A checkout with one committed game, on a roster small enough to play in seconds.
 
     The working directory is the checkout, as `measure` and the replay scripts expect: its
-    `rulesets/` holds the game and its `runs/` is where the measurement lands. The fit is
-    stubbed (no seat plays one), and the library expects `SEEDS`.
+    `rulesets/` holds the game and its `runs/` is where the measurement lands, and the
+    library expects `SEEDS`.
     """
     monkeypatch.chdir(tmp_path)
     (tmp_path / "rulesets").mkdir()
@@ -120,15 +119,6 @@ def library(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Games:
     monkeypatch.setattr(corpus, "CANONICAL_AGENTS", AGENTS)
     monkeypatch.setattr(corpus, "CANONICAL_GAMES", 1)
     monkeypatch.setattr(corpus, "EXPECTED_LIBRARY_SEEDS", SEEDS)
-
-    def fit(
-        spec: dict[str, Any], store: Any = None, workers: int = 0, **_ignored: Any
-    ) -> Any:
-        verdict = SimpleNamespace(accepted=False, accept_score=0.0)
-        return SimpleNamespace(outcome=MADE_HERE, core="test", stored=None, failures=(),
-                               fit=verdict)
-
-    monkeypatch.setattr(corpus, "check_fit", fit)
     return Games(monkeypatch)
 
 

@@ -97,7 +97,9 @@ pub struct Layout {
     /// alternating layout -- and every store and digest written for one -- is unchanged.
     /// `initiative`: two inputs, who holds the token, under `tie: "initiative"`.
     pub initiative: usize,
-    /// `rest`: `2 * n_squares`, each player's rested square, under `rest`.
+    /// `rest`: `2 * n_squares`, each player's resting squares, in a round game under a rest
+    /// (schema 29's `pieces[].rest`; schema 27's round rest was the same plane). Q983b widens
+    /// it to `2 * n_squares * R` and every game that rests (`docs/plan-rest.md` §5.4).
     pub rest: usize,
     /// `void`: `2 * n_squares`, the void run's two squares (player 0's, then player 1's).
     pub void: usize,
@@ -131,7 +133,7 @@ impl Layout {
         let sim = t.simultaneous.as_deref();
         let rounds = sim.is_some();
         let has_initiative = sim.is_some_and(|sim| sim.tie == 1);
-        let has_rest = sim.is_some_and(|sim| sim.rest);
+        let has_rest = rounds && t.rest.is_some();
         let initiative = turn + TURN_CAP;
         let rest = initiative + if has_initiative { 2 } else { 0 };
         let void = rest + if has_rest { 2 * n_squares } else { 0 };
@@ -223,9 +225,10 @@ impl Layout {
         }
         if self.has_rest {
             for player in 0..2 {
-                let square = game.rest[player];
-                if square >= 0 && (square as usize) < s {
-                    out.push((self.rest + player * s + square as usize) as u32);
+                for (square, _) in game.resting_of(player) {
+                    if square >= 0 && (square as usize) < s {
+                        out.push((self.rest + player * s + square as usize) as u32);
+                    }
                 }
             }
         }

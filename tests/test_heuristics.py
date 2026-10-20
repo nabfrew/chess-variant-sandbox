@@ -1138,7 +1138,8 @@ class TestThePass:
         report = HeuristicReport.load(out)
         assert report.as_dict() == stored
         assert report.ruleset_hash == compiled.hash
-        assert report.k == 3 and report.games_per_pairing == 1 and report.baseline == ""
+        assert report.k == 3 and report.games_per_pairing == 1
+        assert "baseline" not in stored
         # The budget is chosen, not given: the smallest rung at which the deep arm is deep.
         assert report.nodes == NODE_LADDER[0]
         assert report.depth_reached >= MIN_DEPTH and report.measurable
@@ -1211,12 +1212,9 @@ class TestThePass:
     def test_the_agreement_arms_differ_only_in_their_objective(self) -> None:
         from chess_variant_sandbox.tournament.heuristics import _shallow
 
-        plain, digest, fit = _shallow(None), _shallow("abc"), _shallow(None, "f1")
+        plain, digest = _shallow(None), _shallow("abc")
         assert plain == "minimax:max_depth=2,nodes=20000"
         assert digest == "minimax:h=abc,max_depth=2,nodes=20000"
-        assert fit == "minimax:fit=f1,max_depth=2,nodes=20000"
-        # A heuristic and a fit are two answers to one question; an arm never names both.
-        assert _shallow("abc", "f1") == digest
 
     def test_the_diagnostics_say_what_the_components_leave_out(self) -> None:
         from chess_variant_sandbox.tournament.heuristics import (

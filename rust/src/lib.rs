@@ -47,11 +47,14 @@ type StateIn = (
     Vec<u8>, u8, Vec<u8>, i16, i16, u32, u32, u64, Vec<u64>,
     (u32, u32),
     (Vec<u32>, Vec<u32>),
-    (Vec<u8>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds),
+    (Vec<u8>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest),
 );
-/// Schema 26 (Q918a): the initiative, the void run and the bars, slot 11's eighth element;
-/// schema 27 (Q942a) adds the rested squares.
-type Rounds = (i8, (i16, i16), Vec<(i16, i16)>, (i16, i16));
+/// Schema 26 (Q918a): the initiative, the void run and the bars, slot 11's eighth element.
+type Rounds = (i8, (i16, i16), Vec<(i16, i16)>);
+/// Schema 29 (Q983a): each player's resting pieces, `(square, turns left)` by square, slot
+/// 11's ninth element: a field of every position, alternating or in rounds (schema 27's
+/// rested squares were the round group's fourth).
+type Rest = (Vec<(i16, u8)>, Vec<(i16, u8)>);
 type StateOut<'py> = (
     Bound<'py, PyBytes>,
     u8,
@@ -64,7 +67,7 @@ type StateOut<'py> = (
     Vec<u64>,
     (u32, u32),
     (Vec<u32>, Vec<u32>),
-    (Bound<'py, PyBytes>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds),
+    (Bound<'py, PyBytes>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest),
 );
 
 /// What the wild-piece phase did on the way to a position (schema 9): one
@@ -154,7 +157,7 @@ fn snapshot_from(t: &Tables, state: &StateIn) -> Snapshot {
         initiative: state.11.7.0,
         void_run: [state.11.7.1.0, state.11.7.1.1],
         bars: state.11.7.2.iter().map(|&(a, b)| [a, b]).collect(),
-        rest: [state.11.7.3.0, state.11.7.3.1],
+        resting: crate::game::rest_lists_from(t, &board, [&state.11.8.0, &state.11.8.1]),
     }
 }
 
@@ -213,8 +216,8 @@ fn state_out<'py>(py: Python<'py>, game: &Game<'_>) -> StateOut<'py> {
                 game.initiative,
                 (game.void_run[0], game.void_run[1]),
                 game.bars.iter().map(|bar| (bar[0], bar[1])).collect(),
-                (game.rest[0], game.rest[1]),
             ),
+            (game.resting_of(0), game.resting_of(1)),
         ),
     )
 }
@@ -1076,7 +1079,9 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Q918b: the round players' solver iterations, for the same reason again.
     m.add("REGRET_ITERATIONS", crate::agents::REGRET_ITERATIONS)?;
     // Q942b: what a rested royal under a standing attacker costs, for the same reason again.
-    m.add("RESTED_ROYAL", crate::eval::RESTED_ROYAL)?;
+    m.add("RESTED_ROYAL_PIECES", crate::eval::RESTED_ROYAL_PIECES)?;
+    // Q986b: what a finished round is worth in the round search, for the same reason again.
+    m.add("ROUND_WIN_PIECES", crate::eval::ROUND_WIN_PIECES)?;
     // Q935h: what holding the only spy is worth, for the same reason again.
     m.add("SPY_PIECES", crate::eval::SPY_PIECES)?;
     m.add("__doc__", "Move generation, search and tournament execution.")?;

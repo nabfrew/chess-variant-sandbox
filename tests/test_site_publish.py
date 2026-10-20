@@ -70,16 +70,16 @@ class TestTheDraw:
     KEY = b"k" * 32
 
     def test_the_same_text_draws_the_same_sample(self) -> None:
-        text = '{"schema":1,"phases":{}}'
+        text = '{"schema":2,"phases":{}}'
         one, two = spotcheck.seal(text, self.KEY), spotcheck.seal(text, self.KEY)
         assert one == two and len(one) == 64
-        sizes = {"games": 256, "picks": list(range(0, 240, 5)), "fit": 48, "accept": 48}
+        sizes: dict[str, Any] = {"games": 256, "picks": list(range(0, 240, 5))}
         assert spotcheck.draw(one, **sizes) == spotcheck.draw(two, **sizes)
 
     def test_one_byte_more_or_changed_draws_another(self) -> None:
-        text = '{"schema":1,"phases":{"tournament":"{\\"nodes\\":400}"}}'
+        text = '{"schema":2,"phases":{"tournament":"{\\"nodes\\":400}"}}'
         changed = text.replace("400", "401")
-        sizes = {"games": 256, "picks": list(range(0, 240, 5)), "fit": 48, "accept": 48}
+        sizes: dict[str, Any] = {"games": 256, "picks": list(range(0, 240, 5))}
         drawn = spotcheck.draw(spotcheck.seal(text, self.KEY), **sizes)
         assert spotcheck.draw(spotcheck.seal(changed, self.KEY), **sizes) != drawn
         assert spotcheck.draw(spotcheck.seal(text + " ", self.KEY), **sizes) != drawn
@@ -89,14 +89,12 @@ class TestTheDraw:
     def test_its_sizes_are_the_plans(self) -> None:
         sealed = spotcheck.seal("anything", self.KEY)
         picks = list(range(3, 243, 5))
-        drawn = spotcheck.draw(sealed, games=256, picks=picks, fit=48, accept=48)
+        drawn = spotcheck.draw(sealed, games=256, picks=picks)
         assert len(drawn.games) == spotcheck.GAMES == 32
         assert len(set(drawn.games)) == 32 and all(0 <= g < 256 for g in drawn.games)
         assert len(drawn.trials) == spotcheck.TRIALS == 6 and set(drawn.trials) <= set(picks)
-        assert (len(drawn.fit), len(drawn.accept)) == (6, 6)
-        few = spotcheck.draw(sealed, games=12, picks=[1, 2], fit=5, accept=0)
+        few = spotcheck.draw(sealed, games=12, picks=[1, 2])
         assert few.games == tuple(range(12)) and few.trials == (1, 2)
-        assert (len(few.fit), few.accept) == (1, ())
 
 
 # --------------------------------------------------------------------- the store

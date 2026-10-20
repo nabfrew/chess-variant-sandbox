@@ -22,12 +22,12 @@ hill-climb walks through, so this runs against ``tournament/duel.py`` instead, w
 error is *measured* and which cancels outright everything two nearly-identical players
 agree about.
 
-**Identity is the procedure, exactly as it is for a fit.** ``values=<digest>`` names how
+**Identity is the procedure, exactly as it is for a net.** ``values=<digest>`` names how
 the table was found, not the table; the digest is the same string on every board and the
-table it produces is per-ruleset, which is the distinction ``agents/fitted.py`` argues at
-length and this module inherits whole. The store is keyed by the *search* half of the
-procedure alone, so a later change to how a valuation is used cannot invalidate the
-expensive part.
+table it produces is per-ruleset, so the name means one player definition on every board
+while the table is derived from the rules it is played on. The store is keyed by the
+*search* half of the procedure alone, so a later change to how a valuation is used cannot
+invalidate the expensive part.
 
 **A search that does not beat the derived table is refused by name**, and the refusal is
 stored. ``Valuation.values`` returns the empty tuple for a refused search, which is the
@@ -53,7 +53,7 @@ STORE_DIR = "valuations"
 
 # Bumped when the search changes in a way the constants below do not capture -- the
 # order pieces are visited in, what counts as an improvement, the shape of a step. The
-# same kind of number as ``fitted.PROCEDURE_VERSION``.
+# same kind of number as ``features.VOCABULARY_VERSION``.
 PROCEDURE_VERSION = 1
 
 
@@ -65,9 +65,9 @@ class ValuationError(ValueError):
 class SearchProcedure:
     """Everything about how a table is found. Hashed, and it is the store's key.
 
-    Frozen constants rather than call-site arguments, for the reason ``fitted.py`` gives:
-    a procedure that can differ between two rulesets in one run is not a procedure, and
-    the player it names is not one player.
+    Frozen constants rather than call-site arguments, because a procedure that can differ
+    between two rulesets in one run is not a procedure, and the player it names is not one
+    player.
     """
 
     version: int = PROCEDURE_VERSION
@@ -76,11 +76,11 @@ class SearchProcedure:
     # flipping between 400 and 25,600 nodes on xiangqi -- so the budget is part of the
     # procedure rather than of whoever ran it.
     nodes: int = 6_400
-    # Seed-pairs per comparison, so 96 games. Twice what the fit's acceptance test spends
-    # on a single verdict, which is exactly the ceiling Stage A's exit set for buying
-    # resolution, and it is spent because the pairing did not buy as much as that exit
-    # assumed: the measured standard error of one comparison is about 0.054 at 24 pairs
-    # and about 0.039 at 48.
+    # Seed-pairs per comparison, so 96 games. Twice the 48 games a single verdict was
+    # once given, which is exactly the ceiling Stage A's exit set for buying resolution,
+    # and it is spent because the pairing did not buy as much as that exit assumed: the
+    # measured standard error of one comparison is about 0.054 at 24 pairs and about
+    # 0.039 at 48.
     pairs: int = 48
     # The seed the whole search runs on. Fixed, deliberately: holding the randomness
     # still across every comparison is what "common random numbers" means, and it is
@@ -152,7 +152,7 @@ SEARCH = SearchProcedure()
 class Valuation:
     """One ruleset's searched table, and everything needed to distrust it.
 
-    ``accepted`` carries the same weight it does on a fit. A table that does not beat the
+    ``accepted`` carries the same weight it does on a net. A table that does not beat the
     derived one at equal budget is kept, reported and *not played*: ``values`` resolves
     to the empty tuple, which every agent already reads as the derived table. The vector
     stays in the file so a failure can be read rather than inferred from an absence.
@@ -313,9 +313,8 @@ class Valuation:
         # searched before a vocabulary bump holds one of the old length (Q142, Q430). The
         # procedure digest does not cover the vocabulary, so such a store sits at the
         # current procedure's path and nothing else stops it loading. Refused here, and
-        # accepted or not, as `FittedObjective` refuses a fit: read as this vocabulary it
-        # is a different player under an unchanged name, and its verdict was measured on
-        # the old one. Before this the loader let it through and the core refused it on
+        # accepted or not: read as this vocabulary it is a different player under an
+        # unchanged name, and its verdict was measured on the old one. Before this the loader let it through and the core refused it on
         # the first move, which is where a game against it or a rating run found out.
         weights = tuple(float(w) for w in data["weights"])
         if len(weights) != len(VOCABULARY):
@@ -359,9 +358,8 @@ class Valuation:
             return cls.from_dict(json.load(handle))
 
 
-# Keyed by `(procedure, ruleset_hash)`, mirroring `fitted._FITTED`, and for the same
-# reason: the procedure is the half the agent's name carries and the ruleset is the half
-# it deliberately does not.
+# Keyed by `(procedure, ruleset_hash)`: the procedure is the half the agent's name carries
+# and the ruleset is the half it deliberately does not.
 _VALUATIONS: dict[tuple[str, str], Valuation] = {}
 
 

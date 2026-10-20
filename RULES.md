@@ -1,12 +1,12 @@
-# The rule language, schema version 28
+# The rule language, schema version 29
 
-This is the whole language a game is written in, at schema version 28. A game
+This is the whole language a game is written in, at schema version 29. A game
 is one JSON file. It says how big the board is, what pieces there are and how each moves,
 where they start, and how the game is won; nothing about a game lives anywhere else. A
 person can write one by hand, or give this file to an AI and ask it for one.
 
 **Which version.** A game written from this reference should declare
-`"schema_version": 28`. A site or checkout running a later version still
+`"schema_version": 29`. A site or checkout running a later version still
 accepts it, because every version ever cut stays accepted, and a file may use only what
 the version it declares had. The site serves the reference for the version it runs at
 `/rules.md`; when that copy names a later version than this one, write from that copy.
@@ -38,7 +38,7 @@ fire, is refused with a line saying why, so trying an unfamiliar rule costs a ro
 - **How pieces move.** Besides chess's slides and leaps: a hop vaults one screening piece, as the xiangqi cannon captures or a grasshopper lands; a lame leap can be blocked on its way; a sweep clears every piece along its line. A piece can be kept to one part of the board, or point one way and spend a move turning. (`"slide"`, `"leap"`, `"hop"`, `"lame"`, `"sweep"`, `pieces[].region`, `pieces[].facing`)
 - **What a capture does.** A piece may be able to take only certain others, so armies can beat one another in a circle. A taken piece can become another piece, be sent home, change places with its taker, blow up with everything round it, or go into the captor's hand to be dropped back into play; a player can start with pieces in hand; captures can be compulsory. (`pieces[].captures`, `rules.strike`, `rules.contacts`, `rules.explode_on_capture`, `rules.drops`, `pieces[].promoted_from`, `rules.promote_on_entry`, `rules.must_capture`)
 - **The board.** Hexagons as well as squares; walls that give the board any outline or cut it in two; edges that join, so the board is a cylinder or a torus; portals that carry a piece across the board, which the players may be allowed to move. (`board.lattice`, `board.shape`, `rules.obstacles`, `rules.wrap`, `rules.portals`)
-- **Who moves, and when.** Several moves a turn; or both players choosing at once, neither seeing the other's move, with rules for what wins a collision, which pieces are fast enough to move first, and spies whose loss takes a player's secrecy away. (`rules.turn`, `rules.simultaneous`, `pieces[].beats`, `pieces[].speed`, `pieces[].spy`)
+- **Who moves, and when.** Several moves a turn; or both players choosing at once, neither seeing the other's move, with rules for what wins a collision, which pieces are fast enough to move first, and spies whose loss takes a player's secrecy away; and pieces that must rest for some of their player's turns after they move, by turns or in rounds. (`rules.turn`, `rules.simultaneous`, `pieces[].beats`, `pieces[].speed`, `pieces[].spy`, `pieces[].rest`)
 - **Pieces nobody owns.** Wild pieces that walk a fixed route, one step after every move, eat what they may, and pay a bounty to whoever takes them. (`rules.npcs`)
 - **Chess's own rules.** None is assumed: promotion, en passant and castling, each chess's answer to a problem chess has; and limits on giving check, on the royal pieces facing each other down an open file (xiangqi's rule), and on moves that strand a piece. (`rules.promotion`, `rules.en_passant`, `rules.castling`, `rules.forbid_check`, `rules.royal_facing`, `rules.forbid_immobility`)
 - **When a game stops.** How long a game may run, and when a repetition or a stall draws it; `rules.scoring` can decide such an ending instead. (`rules.max_plies`, `rules.repetition_draw`, `rules.no_progress_draw`)
@@ -95,7 +95,7 @@ that silently does nothing.
 
 ## The top level
 
-- **`schema_version`**: integer from 1 to 28. Optional; default 28, the version this reference describes. Which version of this language the file is written in. A file may declare any version from 1 up, but may use only what that version had; declaring the version this reference describes makes every key below available.
+- **`schema_version`**: integer from 1 to 29. Optional; default 29, the version this reference describes. Which version of this language the file is written in. A file may declare any version from 1 up, but may use only what that version had; declaring the version this reference describes makes every key below available.
 - **`name`**: string, at least 1. Required. The game's name, shown wherever the game is listed. It must not be blank.
 - **`description`**: string. Optional; default empty. How the game plays and what makes it worth playing, in a few sentences.
 - **`board`**: object. Required. The size and shape of the board. See *board* below.
@@ -125,6 +125,7 @@ The size and shape of the board.
 - **`beats`**: list of strings. Optional. Schema 26. Only in a simultaneous game (rules.simultaneous): the piece ids this one eliminates when the two collide, both moving onto the same square in one round. Omit it and it is the piece's captures, or every piece where captures is omitted too; never write that list out. If exactly one of the two beats the other, that one stands on the square and the other is eliminated; if both do or neither does, it is a tie (rules.simultaneous.tie). An empty list loses every collision it does not tie. Never on a portal.
 - **`spy`**: boolean. Optional. Schema 27. This piece is a spy, and the game is played in three phases by who still has one on the board. While both players have a spy, they take turns as usual. When one player loses their last spy, they first play one ordinary reply move if it is their turn; then the game is played in rounds (rules.simultaneous, which a spy game must declare) in which the player without a spy announces their move first and the other chooses knowing it, both resolved together. Once neither has a spy, both choose in secret. Both players must start with a spy on the board, nothing may bring one back (no promotion to it, no stock or hand holding it, no drops.from_captures, no strike.switches_sides), it may not be royal, and something of the other player's must be able to remove it. Leave it out for an ordinary piece; never write false.
 - **`speed`**: integer, at least 1. Optional. Schema 28. Only in a game played in rounds (rules.simultaneous): this piece's speed, a rank; omit it for 0, the slowest, and never write 0. A higher speed moves first. When the two pieces moving in a round have the same speed the round is resolved as always (collisions, beats, the tie). When they differ, the faster move is made first, exactly as chosen, as a move of an alternating game, and if it ends the game the round ends there. Then the slower move is made if its piece still stands where it was and the move is still one that piece could make on the new board (a move onto a square the faster piece now holds is a capture of it if the piece may capture there); otherwise it is void and the piece stays, or lost if the piece was taken or changed. So a slower piece cannot flee a faster strike, and unequal speeds never collide or swap. Only the order is a rule: the speeds in use, 0 counted for every piece that names none, must be 0, 1, 2, ... with none skipped, and some piece of one player must differ in speed from some piece of the other. Never on a portal or a wild piece.
+- **`rest`**: integer from 1 to 4. Optional. Schema 29. How many of its player's turns this piece rests after it makes its player's move, 1 to 4; omit it for 0 (it never rests), and never write 0. In any game, played by turns or in rounds (a round is a turn of both players): a piece that moved, turned in place, was dropped, or struck without leaving its square may not make its player's move during that player's next rest turns, counted on the owner's own turns only, as the type it is after the move (a pawn promoted to a queen rests as the queen). A resting piece still stands: it attacks, blocks, gives check (which must be answered) and can be captured; captured, moved off its square or changed by the other player, it rests no more. When every move a player has is a resting piece's, the rest is lifted for that turn, so the rest never leaves a player without a move. Never on a portal or a wild piece, and not beside a turn of more than one move (rules.turn moves or ramp). Replaces schema 27's rules.simultaneous.rest, which is "rest": 1 on every piece of a game in rounds.
 - **`facing`**: object. Optional. This piece has an orientation, and (unless turns is false) may spend a whole move turning to any other one instead of moving. Its move vectors are read rotated, so a pawn facing right advances east. Give it only to a piece whose moves are *not* symmetric under the turn -- a rook reads the same rays whichever way it faces, so turning one would be a move that does nothing, and the validator refuses that. A royal piece may not have one.
   - **`axes`**: one of `2`, `4`. Required. How many directions this piece can point: 2 for forward and backward, 4 for the quarter turns.
   - **`initial`**: one of `"forward"`, `"right"`, `"backward"`, `"left"`. Optional; default `"forward"`. Which way it points at the start, relative to its own forward. It must be one the piece can turn back to, so a piece with 2 axes has only forward and backward.
@@ -367,12 +368,11 @@ Each entry's keys:
 
 ### `rules.simultaneous`: both players moving at once
 
-*object*. Leave it out for no such rule. Schema 26. Both players move at once. Each round, each player chooses one of their own legal moves on the same board without seeing the other's; both are revealed and made together. Only two pieces moving onto the same square collide, and pieces.beats decides who survives. A piece that moves onto a square its target has just left lands there if its move could land on an empty square, and otherwise stays where it was (a capture-only move is void). Two such void moves at each other two rounds in a row bar that pair of moves for both players until either square changes. There is no check: rules.win must be 'royal_capture', 'annihilation' or 'none', and an ending reached by both players in the same round is a draw. A round counts as two moves on the clocks. Not usable beside castling, en passant, a sweep, check rules, a turn of more than one move, a portal a player moves, a strike or contact position 'choose', a strike position 'stay', or drops.no_mate. Schema 27 adds three switches against a royal chased round after round: rest, swap and both.
+*object*. Leave it out for no such rule. Schema 26. Both players move at once. Each round, each player chooses one of their own legal moves on the same board without seeing the other's; both are revealed and made together. Only two pieces moving onto the same square collide, and pieces.beats decides who survives. A piece that moves onto a square its target has just left lands there if its move could land on an empty square, and otherwise stays where it was (a capture-only move is void). Two such void moves at each other two rounds in a row bar that pair of moves for both players until either square changes. There is no check: rules.win must be 'royal_capture', 'annihilation' or 'none', and an ending reached by both players in the same round is a draw. A round counts as two moves on the clocks. Not usable beside castling, en passant, a sweep, check rules, a turn of more than one move, a portal a player moves, a strike or contact position 'choose', a strike position 'stay', or drops.no_mate. Schema 27 adds two switches against a royal chased round after round, swap and both; schema 29's pieces[].rest ("rest": 1 on every piece) is the rest that was the third.
 
 Its keys:
 
 - **`tie`**: one of `"initiative"`, `"impossible"`. Optional. What decides a collision that is a tie, the two pieces each beating the other or neither beating the other. Leave it out and both are eliminated, leaving the square empty; never write that out. 'initiative': one player holds the initiative, the second player at the start; a tie goes to the holder's piece, and the initiative then passes to the other player. 'impossible': a promise, checked, that no tie can ever occur, because for every piece each player can have, exactly one of the two beats the other (the armies use different pieces, such as a circle of rock, paper and scissors).
-- **`rest`**: boolean. Optional. Schema 27. The piece that made a player's move in a round (moved, turned, was dropped, or made a void move) rests: it may not make that player's move in the next round, unless it is the only piece that can move. So a piece cannot run or strike two rounds running, and every attack gives a round's warning. Leave it out for no rest; never write false.
 - **`swap`**: one of `"collision"`. Optional. Schema 27. 'collision': two moves that each end on the other's starting square meet as a collision, decided by pieces.beats and the tie rule, instead of the two pieces passing each other; a winner ends on its destination and a loser is removed. Leave it out and swapping pieces pass. Refused where no piece of one player can take a piece of the other that can take it back.
 - **`both`**: one of `"score"`. Optional. Schema 27. 'score': an ending both players reach in the same round (both royals taken, both armies gone, both on a goal) goes to the player ahead under rules.scoring, and is a draw only when the scores are equal. Leave it out and such a round is a draw. Requires rules.scoring.
 
@@ -519,7 +519,7 @@ example.
 
 ```json
 {
-  "schema_version": 28,
+  "schema_version": 29,
   "name": "Five by five",
   "description": "Chess on a five by five board: one rook, knight, bishop, queen and king a side behind five pawns. Pawns step one square and promote on the far rank; no castling, no en passant.",
   "board": {"width": 5, "height": 5},
@@ -600,7 +600,7 @@ example.
 
 ```json
 {
-  "schema_version": 28,
+  "schema_version": 29,
   "name": "Five by five with moving portals",
   "description": "The five by five game with a pair of portals on the middle rank, on b3 and d3. A piece whose move ends on one comes out one step beyond the other, in the direction it was going. Either player may spend a turn moving either portal one king's step to an empty square, but not straight back on the very next move.",
   "board": {"width": 5, "height": 5},

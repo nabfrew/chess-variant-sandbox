@@ -205,6 +205,13 @@ read, and not to be tuned against what it excludes.
 """
 
 
+# What a match whose moves its game's stored rules now refuse says (`session`).
+NO_LONGER_REPLAYS = (
+    "this game's rules were rewritten after this match was played, and its moves no longer "
+    "replay under them, so its board cannot be shown; its record and its result stand"
+)
+
+
 class MatchError(ValueError):
     """A match cannot be started, moved or ended as asked.
 
@@ -812,8 +819,17 @@ def session(connection: Any, match_id: str) -> Session:
         draw_offers=draw_offers(connection, match_id),
         puzzle=_puzzle_block(connection, found),
     )
-    for move, depth in _moves(connection, match_id):
-        built.replay(move, depth)
+    try:
+        for move, depth in _moves(connection, match_id):
+            built.replay(move, depth)
+    except MatchError:
+        raise
+    except ValueError as error:
+        # Schema 29 (Q983a, `docs/plan-rest.md` §4.6): a game's stored rules can be rewritten
+        # under it (the retired rest, `0039_rest_on_pieces.sql`), and a spy game's alternating
+        # phase rests now, so a move made before can be refused. The row and the result
+        # stand; the board does not come back, as for a deleted game's match.
+        raise MatchError(NO_LONGER_REPLAYS) from error
     return built
 
 

@@ -1,7 +1,9 @@
 """Schema 27 (Q942a): the three switches against the royal chase.
 
-`docs/archive/plan-round-chase.md` §3 R1 (`rules.simultaneous.rest`), R2 (`swap: "collision"`) and
-X1 (`both: "score"`), and the Q942a row of its §4.2: the keys and their refusals, one test
+`docs/archive/plan-round-chase.md` §3 R1 (the rest), R2 (`swap: "collision"`) and X1 (`both:
+"score"`), and the Q942a row of its §4.2. Schema 29 (Q983a, `docs/plan-rest.md` §4.4) retired
+R1's spelling, `rules.simultaneous.rest`, for `"rest": 1` on every piece, which is the same rest
+in rounds; the tests of R1 below play that spelling, and the old one is refused: the keys and their refusals, one test
 per rule on the positions of §2 and §3, the rest's legal-move filter and the rounds against
 the declared oracle (`tests/simultaneous_oracle.py`), the key against `_compute_hash`, and
 the joint perft of a `rest` spec frozen after the oracle agreed with it.
@@ -38,15 +40,25 @@ def load(name: str) -> dict[str, Any]:
 GARDNER = load("gardner")
 
 
-def gardner(**simultaneous: Any) -> dict[str, Any]:
+def gardner(*, resting: bool = False, **simultaneous: Any) -> dict[str, Any]:
     """Gardner in rounds at schema 27 with these switches, and material scoring under
-    `both`."""
+    `both`; ``resting``, R1, at schema 29: `"rest": 1` on every piece."""
     spec = copy.deepcopy(GARDNER)
-    spec["schema_version"] = 27
+    spec["schema_version"] = 29 if resting else 27
     spec["rules"]["simultaneous"] = dict(simultaneous)
     if simultaneous.get("both") == "score":
         spec["rules"]["scoring"] = {"count": "material"}
+    if resting:
+        for piece in spec["pieces"]:
+            piece["rest"] = 1
     return spec
+
+
+def rests(engine: Engine, first: str | None, second: str | None) -> tuple[Any, Any]:
+    """The position's rest when each player's moved piece rests one round on that square."""
+    return tuple(
+        ((square(engine, name), 1),) if name else () for name in (first, second)
+    )
 
 
 def square(engine: Engine, name: str) -> int:
@@ -88,26 +100,29 @@ LOCK = {
 
 
 def test_the_collector_names_each_switch_whatever_its_value() -> None:
-    for key, value in (("rest", True), ("swap", "collision"), ("both", "score"), ("rest", False)):
+    for key, value in (("swap", "collision"), ("both", "score"), ("swap", "chase")):
         spec = gardner(**{key: value})
         assert f"rules.simultaneous.{key}" in _schema_twenty_seven_uses(spec)
     assert not {
         name for name in _schema_twenty_seven_uses(GARDNER) if "simultaneous" in name
     }
+    # Schema 29 retired the rest's switch: no collector names it, and it is refused.
+    assert not _schema_twenty_seven_uses(gardner(rest=True)) & {"rules.simultaneous.rest"}
 
 
 def test_a_switch_at_schema_twenty_six_is_refused() -> None:
-    spec = gardner(rest=True)
+    spec = gardner(swap="collision")
     spec["schema_version"] = 26
     errors = validate_spec(spec)
-    assert any("rules.simultaneous.rest" in error and "schema 27" in error for error in errors)
+    assert any("rules.simultaneous.swap" in error and "schema 27" in error for error in errors)
 
 
 @pytest.mark.parametrize(
     ("simultaneous", "words"),
     [
-        ({"rest": False}, "rest false is the default"),
-        ({"rest": "yes"}, "rest must be true"),
+        ({"rest": True}, "rest was retired in schema 29"),
+        ({"rest": False}, "rest was retired in schema 29"),
+        ({"rest": "yes"}, "rest was retired in schema 29"),
         ({"swap": "chase"}, 'swap "chase" is the default'),
         ({"swap": "always"}, 'swap must be "collision"'),
         ({"both": "draw"}, 'both "draw" is the default'),
@@ -138,24 +153,32 @@ def test_each_switch_compiles_into_the_rule_and_crosses_only_when_on() -> None:
     plain = compile_spec(GARDNER)
     assert "sim_chase" not in canonical_tables(plain)
     assert "zobrist_rest" not in canonical_tables(plain)
-    for key, value, index in (("rest", True, 0), ("swap", "collision", 1), ("both", "score", 2)):
+    for key, value, index in (("swap", "collision", 1), ("both", "score", 2)):
         compiled = compile_spec(gardner(**{key: value}))
         assert compiled.simultaneous is not None
         tables = build_tables(compiled)
+        # The first slot was the round's rest, always 0 since schema 29.
         assert tables["sim_chase"] == [int(i == index) for i in range(3)]
-        assert len(tables["zobrist_rest"]) == (2 * compiled.n_squares if key == "rest" else 0)
+        assert tables["zobrist_rest"] == [] and tables["piece_rest"] == []
+    # The rest is a piece property now: `"rest": 1` on every piece crosses as `piece_rest`,
+    # with one key per (player, square), schema 27's layout, and no chase switch.
+    compiled = compile_spec(gardner(resting=True))
+    tables = canonical_tables(compiled)
+    assert "sim_chase" not in tables
+    assert tables["piece_rest"] == [1] * compiled.n_types
+    assert len(tables["zobrist_rest"]) == 2 * compiled.n_squares
 
 
 # ------------------------------------------------------------ R1, the rest
 
 
 def test_under_rest_the_two_pieces_of_the_lock_may_not_move_the_next_round() -> None:
-    engine = Engine(gardner(rest=True))
+    engine = Engine(gardner(resting=True))
     state = place(engine, LOCK)
     queen = find(engine, state, 0, "b5", "b4")
     king = find(engine, state, 1, "b4", "b5")
     after, _ = round_of(engine, state, queen, king)
-    assert after.rest == (square(engine, "b4"), square(engine, "b5"))
+    assert after.rest == rests(engine, "b4", "b5")
     white = engine.legal_moves_for(after, 0)
     black = engine.legal_moves_for(after, 1)
     assert white and black
@@ -168,20 +191,20 @@ def test_under_rest_the_two_pieces_of_the_lock_may_not_move_the_next_round() -> 
 
 
 def test_the_lift_offers_a_lone_piece_its_moves() -> None:
-    engine = Engine(gardner(rest=True))
+    engine = Engine(gardner(resting=True))
     state = place(engine, {"c1": ("K", 0), "c5": ("K", 1)})
     after, _ = round_of(
         engine, state, find(engine, state, 0, "c1", "c2"), find(engine, state, 1, "c5", "c4")
     )
-    assert after.rest == (square(engine, "c2"), square(engine, "c4"))
+    assert after.rest == rests(engine, "c2", "c4")
     for player, at in ((0, "c2"), (1, "c4")):
         moves = engine.legal_moves_for(after, player)
         assert moves and all(decode_move(m)[0] == square(engine, at) for m in moves)
-        assert moves == engine.legal_moves_for(after.with_(rest=(-1, -1)), player)
+        assert moves == engine.legal_moves_for(after.with_(rest=((), ())), player)
 
 
 def test_a_rested_royal_attacked_by_a_standing_piece_is_taken() -> None:
-    engine = Engine(gardner(rest=True))
+    engine = Engine(gardner(resting=True))
     state = place(engine, {"e1": ("K", 0), "d1": ("R", 0), "e5": ("K", 1), "a4": ("P", 1)})
     # Round 1: White's king steps aside, Black's king walks into the rook's file.
     state, _ = round_of(

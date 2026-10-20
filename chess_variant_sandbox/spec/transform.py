@@ -997,6 +997,33 @@ def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) 
                 piece.pop("beats")
                 dropped.append(f"beats:{piece.get('id')}")
     dropped.extend(_settle_speeds(spec, listed, rules))
+    dropped.extend(_settle_rests(listed, rules))
+    return dropped
+
+
+def _settle_rests(listed: list[Any], rules: dict[str, Any]) -> list[str]:
+    """Schema 29 (Q983a, `docs/plan-rest.md` §3.1, §5.1): what an edit can leave of the rests
+    that the validator refuses. A rest on a type no player moves (a portal end, a wild
+    piece) or on one that lost its last move and has no stock goes; and every rest goes
+    beside a turn of more than one move."""
+    from chess_variant_sandbox.spec.schema import piece_has_stock, portal_piece_ids, turn_is_long
+
+    written = [piece for piece in listed if isinstance(piece, dict) and "rest" in piece]
+    if not written:
+        return []
+    dropped: list[str] = []
+    if turn_is_long(rules):
+        for piece in written:
+            piece.pop("rest")
+        return ["rest"]
+    skipped = portal_piece_ids(rules) | {
+        npc.get("piece") for npc in rules.get("npcs") or [] if isinstance(npc, dict)
+    }
+    for piece in written:
+        pid = piece.get("id")
+        if pid in skipped or (not piece.get("moves") and not piece_has_stock(rules, pid)):
+            piece.pop("rest")
+            dropped.append(f"rest:{pid}")
     return dropped
 
 

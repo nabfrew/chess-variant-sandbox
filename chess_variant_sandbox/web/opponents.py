@@ -36,7 +36,6 @@ from pathlib import Path
 from typing import Any
 
 from chess_variant_sandbox.agents.fairy_stockfish import DEFAULT_NODES as FAIRY_STOCKFISH_NODES
-from chess_variant_sandbox.agents.fitted import STORE_DIR as FIT_DIR
 from chess_variant_sandbox.agents.heuristics import (
     STORE_DIR,
     Heuristic,
@@ -63,7 +62,7 @@ from chess_variant_sandbox.tournament.runner import TournamentConfig, run_tourna
 # It has to span the range, which is the part that is easy to get wrong. With a spine
 # topping out at 1,600 nodes every strong player beats all of it every time, and a
 # player with a perfect score has no determined rating at all -- they would come back
-# tied at whatever the fit's ceiling is. 6,400 nodes is cheap (three to eight
+# tied at whatever the rating fit's ceiling is. 6,400 nodes is cheap (three to eight
 # milliseconds a move) and loses often enough to everything above it to place them.
 SPINE: tuple[str, ...] = (
     "random",
@@ -178,7 +177,7 @@ class Opponent:
     plan: str = ""
     # Which store this came out of: "ladder" for the rungs every board shares, "written"
     # for the committed plans, "model" for the proposed ones, "custom" for what somebody
-    # built in the browser, and "fairy", "fitted" or "valuations".
+    # built in the browser, and "fairy", "valuations" or "learned".
     # `group` is a *label* and gets reworded; anything that needs to know where an
     # opponent came from asks this, so rewording a menu heading cannot empty a list.
     store: str = ""
@@ -208,7 +207,7 @@ class Opponent:
 
 # Schema 26 (Q918c, `docs/archive/plan-simultaneous.md` §6.2): the rungs of a game played in rounds.
 # `minimax:` and `mcts:` are refused there (one name never means two algorithms on one
-# game), and so is every stored objective (`h=`, `fit=`, `values=`, `net=`): the round
+# game), and so is every stored objective (`h=`, `values=`, `net=`): the round
 # players read the built-in evaluator only (Q918b). The names are the ladder's, so *medium*
 # is the middle of the picker on both kinds of game; each is its own rated player, named
 # by its own agent string, never the alternating rung's.
@@ -311,8 +310,8 @@ def name_of(agent: str, roster: list[Opponent] | None = None) -> str:
 def table_name(agent: str) -> str:
     """What a rating table's row calls a player no roster entry names (G17).
 
-    The ladder that scored a game plays its own players -- the built-in objective fitted to
-    the corpus, at six budgets -- which are not the picker's rungs, so a table of them named
+    The ladder that scored a game plays its own players -- the built-in objective, or a
+    learned net, at six budgets -- which are not the picker's rungs, so a table of them named
     each one by its agent string, or, once that was refused, all of them *the computer*.
     A searching player is named by what it does, *the 6,400-position player*; one the
     ladder names keeps that name, and anything else is `name_of`'s.
@@ -343,12 +342,11 @@ def table_name(agent: str) -> str:
 def for_game(
     ruleset_hash: str,
     root: str | Path = STORE_DIR,
-    fits: str | Path = FIT_DIR,
     valuations: str | Path = VALUE_DIR,
     spec: dict[str, Any] | None = None,
     nets: str | Path = NET_DIR,
 ) -> list[Opponent]:
-    """The ladder, plus every stated plan, fitted objective and searched valuation here,
+    """The ladder, plus every stated plan and searched valuation here,
     and the learned player where an accepted net for this ruleset is stored (Q683).
 
     Registers each set as a side effect, which is not incidental: ``resolve`` refuses an
@@ -375,7 +373,6 @@ def for_game(
         return ladder(rounds=True)
     roster = ladder()
     roster.extend(fairy_stockfish_for(spec))
-    roster.extend(fitted_for(ruleset_hash, fits))
     roster.extend(valued_for(ruleset_hash, valuations))
     roster.extend(learned_for(ruleset_hash, nets, spec))
     for store in _heuristic_stores(ruleset_hash, root):
@@ -552,15 +549,9 @@ def _fairy_plan(verified: Any) -> str:
     return text
 
 
-# What a fitted opponent searches. The same budget as the "hard" tier and as a stated
-# plan, for the same reason: choosing between the three has to vary the objective and
-# nothing else, or the comparison is about how long each one thought.
-FITTED_NODES = 6_400
-
-# What the picker calls the two stored objectives, before the acceptance score. Named
-# once because `refused_stores` has to call an absent opponent by the name it would have
-# had, or the sentence explaining its absence names something nobody can find.
-FITTED_LABEL = "taught by this game"
+# What the picker calls a searched valuation, before the acceptance score. Named once
+# because `refused_stores` has to call an absent opponent by the name it would have had,
+# or the sentence explaining its absence names something nobody can find.
 VALUED_LABEL = "own piece values"
 
 
@@ -572,98 +563,6 @@ def _against(nodes: int, ordinary: bool = False) -> str:
         if agent == f"minimax:nodes={nodes}":
             return f"the ordinary {name} player" if ordinary else name
     return f"the ordinary player at {nodes:,} positions"
-
-
-# Each term of the feature vocabulary as a visitor reads it after *more* or *less*, for
-# the sentence a fitted opponent's plan is (P10). `agents/features.GLOSSES` defines each
-# term for the model that writes a vector; these name it in a clause. A test holds the
-# two key sets together.
-TERM_WORDS: dict[str, str] = {
-    "material": "material",
-    "prey_weight": "weight on what its pieces can take right now",
-    "mobility": "freedom to move",
-    "advance": "advance up the board",
-    "centrality": "hold on the middle of the board",
-    "royal_exposure": "pressure on the royal pieces",
-    "territory_margin": "ground held",
-    "score_margin": "lead on the count",
-    "score_urgency": "lead on the count as time runs out",
-    "check_margin": "checks given",
-    "extinction_margin": "of the kind of piece that must not run out",
-    "hand_material": "pieces in hand",
-    "promotion_occupancy": "pieces standing ready to promote",
-    "reach_progress": "progress towards the winning squares",
-    "facing_alignment": "pieces facing forward",
-}
-
-
-def fitted_for(ruleset_hash: str, root: str | Path = FIT_DIR) -> list[Opponent]:
-    """The fitted objective for this ruleset, where there is one that was accepted.
-
-    **A refused fit is not offered.** ``FittedObjective.weights`` is the empty tuple when
-    the fit lost its acceptance match, and an agent naming it therefore plays the
-    built-in objective -- so listing it would be listing ``minimax:nodes=6400`` a second
-    time under a better name. That is exactly why index 0 of a heuristic set is skipped,
-    and it matters more here: a refusal is the *evidence* the fit did not work, and an
-    interface that offered it anyway would be hiding a negative result behind a label.
-
-    The label carries the acceptance score, because "fitted" on its own is a claim and
-    that number is what backs it: 0.93 on racing kings means the fitted objective took
-    93% of the points against the built-in one at the same budget.
-    """
-    from chess_variant_sandbox.agents.fitted import FitError, load_fit
-
-    try:
-        fit = load_fit(ruleset_hash, root=root)
-    except (FitError, OSError, ValueError):
-        # Not offered, and not silently: `refused_stores` says why on the page.
-        return []
-    if fit is None or not fit.accepted:
-        return []
-    return [
-        Opponent(
-            agent=f"minimax:fit={fit.procedure},nodes={FITTED_NODES}",
-            label=(
-                f"{FITTED_LABEL} ({fit.accept_score * 100:.0f}% of the points against "
-                f"{_against(FITTED_NODES)})"
-            ),
-            group="taught by this game's own games",
-            plan=_fitted_plan(fit),
-            store="fitted",
-        )
-    ]
-
-
-def _fitted_plan(fit: Any) -> str:
-    """What the fitted vector turned out to care about, as a sentence.
-
-    A weight vector nobody wrote still has to be *stateable* -- that is the whole reason
-    `Heuristic.plan` exists -- and the honest statement of a fit is its largest terms and
-    their signs. Three of them, because a fourteen-term list is not a sentence, and the
-    tail is near zero on every accepted fit in the store.
-    """
-    from chess_variant_sandbox.agents.features import VOCABULARY
-
-    ranked = sorted(
-        ((abs(weight), index) for index, weight in enumerate(fit.vector)), reverse=True
-    )
-    named = []
-    for size, index in ranked[:3]:
-        if size < 0.05:
-            break
-        term = TERM_WORDS.get(VOCABULARY[index], VOCABULARY[index].replace("_", " "))
-        named.append(f"{'more' if fit.vector[index] > 0 else 'less'} {term}")
-    beat = (
-        f"beat {_against(FITTED_NODES, ordinary=True)} over {fit.accept_games} games, "
-        "which is why it is offered."
-    )
-    if not named:
-        return f"It learned what to aim for from games of this one, and {beat}"
-    return (
-        "It learned what to aim for from games of this one: "
-        + ", ".join(named)
-        + f". It {beat}"
-    )
 
 
 # What a searched-valuation opponent searches: **the budget its own search was run at**,
@@ -690,8 +589,7 @@ def valued_for(ruleset_hash: str, root: str | Path = VALUE_DIR) -> list[Opponent
     two reasons at once. Costing nothing and buying the play experience is the whole
     trade; see `docs/reference/piece-values.md`.
 
-    **A refused search is not offered**, for the reason a refused fit is not: its
-    `values` resolve to the empty tuple, so an agent naming it plays the ordinary agent,
+    **A refused search is not offered**: its `values` resolve to the empty tuple, so an agent naming it plays the ordinary agent,
     and listing it would list `minimax:nodes=6400` a second time under a better name.
     """
     from chess_variant_sandbox.agents.valuations import ValuationError, load_valuation
@@ -726,10 +624,10 @@ def valued_for(ruleset_hash: str, root: str | Path = VALUE_DIR) -> list[Opponent
 def _valued_plan(valuation: Any) -> str:
     """What the search decided, as a sentence about the pieces that moved.
 
-    A table nobody wrote still has to be stateable, exactly as a fitted vector does, and
-    the honest statement of this one is short by construction: coordinate ascent keeps a
-    step only when it clears two measured standard errors, so an accepted valuation
-    usually moves one or two pieces and says so in a clause.
+    A table nobody wrote still has to be stateable, and the honest statement of this one
+    is short by construction: coordinate ascent keeps a step only when it clears two
+    measured standard errors, so an accepted valuation usually moves one or two pieces
+    and says so in a clause.
     """
     moved = [
         f"{piece} at {ratio:.2f}×"
@@ -1001,7 +899,7 @@ def _learned_plan(learned: _Learned, rated: bool = False) -> str:
 
     In a visitor's words: no net, no procedure, no node count beyond the strength line
     above it. The share is the acceptance duel's, the number that is the reason it is
-    offered, as the fitted and valued players' plans give theirs.
+    offered, as the valued players' plans give theirs.
     """
     rung = _against(learned.nodes, ordinary=True)
     taught = (
@@ -1021,24 +919,6 @@ def _learned_plan(learned: _Learned, rated: bool = False) -> str:
 
 
 # ------------------------------------------------ stored objectives this build refuses
-
-
-def _foreign_length(weights: Any) -> str:
-    """Why a stored weight vector is not one this build's vocabulary can read, or "".
-
-    Empty is the built-in objective and always readable. Anything else must be exactly
-    one weight per `VOCABULARY` term, which is the check `AgentSpec::from_parts` makes on
-    the far side of the boundary; asking it here is what lets the page name the store
-    rather than the core name the agent kind.
-    """
-    from chess_variant_sandbox.agents.features import VOCABULARY
-
-    if not weights or len(weights) == len(VOCABULARY):
-        return ""
-    return (
-        f"carries {len(weights)} weights where this build's feature vocabulary has "
-        f"{len(VOCABULARY)} terms"
-    )
 
 
 def _stored_refusal(path: Path) -> bool:
@@ -1068,15 +948,13 @@ def _ruleset_argument(path: str | Path | None, ruleset_hash: str) -> str:
 def refused_stores(
     ruleset_hash: str,
     ruleset_path: str | Path | None = None,
-    fits: str | Path = FIT_DIR,
     valuations: str | Path = VALUE_DIR,
     heuristics: str | Path = STORE_DIR,
 ) -> list[str]:
     """Why a stored objective for this ruleset is kept out of the picker, and the repair.
 
     The sentences of `refusals`, which says what this one does."""
-    return [said for _, said in refusals(ruleset_hash, ruleset_path, fits, valuations,
-                                         heuristics)]
+    return [said for _, said in refusals(ruleset_hash, ruleset_path, valuations, heuristics)]
 
 
 def unavailable(name: str) -> str:
@@ -1087,7 +965,6 @@ def unavailable(name: str) -> str:
 def refusals(
     ruleset_hash: str,
     ruleset_path: str | Path | None = None,
-    fits: str | Path = FIT_DIR,
     valuations: str | Path = VALUE_DIR,
     heuristics: str | Path = STORE_DIR,
 ) -> list[tuple[str, str]]:
@@ -1096,22 +973,18 @@ def refusals(
 
     **A stale store is refused, never played as the built-in objective** (Q142). The
     other way to meet one -- fall back to `minimax:nodes=6400` and say so -- was open, and
-    it is the failure this project ranks worst: an agent string that names a fitted or
-    searched player while the built-in one plays under it. The on-demand rating would
-    then file that player's Elo under the stored player's name, where it outlives the
+    it is the failure this project ranks worst: an agent string that names a searched
+    player while the built-in one plays under it. The on-demand rating would then file that player's Elo under the stored player's name, where it outlives the
     note that explained it. So the store is left out of the roster (and with it out of
     every game and every rating run, which all build from the roster), and this is the
     sentence the page shows instead: what is stale, and the command that repairs it.
 
-    One sentence per store, and only for a store that was *accepted*: a refused fit or
-    search was never offered, stale or not, and saying it is "not offered" would be news
-    about nothing. Three states are named. A searched valuation whose weight vector
-    predates a vocabulary bump, which is the one the core met on crazyhouse. A current
-    fit store that will not load. And an accepted fit filed only under a procedure this
-    build no longer runs, which `load_fit` never looks for and which would otherwise
-    vanish from the picker without a word.
+    One sentence per store, and only for a store that was *accepted*: a refused search was
+    never offered, stale or not, and saying it is "not offered" would be news about
+    nothing. The state named is a searched valuation whose weight vector predates a
+    vocabulary bump, which is the one the core met on crazyhouse.
 
-    Before them, one sentence per heuristic the picker left out of a store it offers the
+    Before it, one sentence per heuristic the picker left out of a store it offers the
     rest of, because it spells a held digest with other numbers (Q446): a `custom/` store
     built before Q433 can hold one. It names the entry, the player holding the digest,
     and the file it stays in. There is no command to name: taking it out of that file is
@@ -1119,8 +992,6 @@ def refusals(
     are read by `_heuristic_stores`, registering and all, exactly as `for_game` reads
     them, so the sentence and the picker cannot disagree about who was left out.
     """
-    from chess_variant_sandbox.agents.fitted import FitError, load_fit, procedure_digest
-    from chess_variant_sandbox.agents.fitted import store_path as fit_path
     from chess_variant_sandbox.agents.valuations import ValuationError, load_valuation
     from chess_variant_sandbox.agents.valuations import store_path as value_path
 
@@ -1157,36 +1028,6 @@ def refusals(
             refuse(VALUED_LABEL, f"the search stored in {here} cannot be read ({error})",
                    "values", "searches it again")
 
-    current = procedure_digest()
-    here = fit_path(ruleset_hash, current, fits).as_posix()
-    try:
-        fit = load_fit(ruleset_hash, root=fits)
-    except (FitError, OSError, ValueError) as error:
-        refuse(FITTED_LABEL, f"the fit stored in {here} cannot be read ({error})",
-               "fit", "refits it")
-        return said
-    if fit is not None:
-        return said
-    for path in sorted(Path(fits).glob(f"{ruleset_hash}-*.json")):
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if not isinstance(data, dict) or not data.get("accepted"):
-            continue
-        procedure = str(data.get("procedure", path.stem.rsplit("-", 1)[-1]))
-        if procedure == current:
-            continue
-        length = _foreign_length(data.get("weights") or ())
-        refuse(
-            FITTED_LABEL,
-            f"the only accepted fit stored for it, {path.as_posix()}, was made by "
-            f"procedure {procedure}, which this build no longer runs"
-            + (f", and {length}" if length else ""),
-            "fit",
-            f"refits it under procedure {current}",
-        )
-        break
     return said
 
 
@@ -1776,7 +1617,7 @@ def spine_roster() -> list[Opponent]:
 
     The players the site rates on its own server when a member publishes a game
     (`docs/archive/plan-leaderboard.md` §2.6 step 1): they are the same on every board, so they
-    need no heuristic store, fit or outside engine, and their 40 games cost seconds on most
+    need no heuristic store, searched table or outside engine, and their 40 games cost seconds on most
     games. The rest of the picker joins later as a top-up over these games (L6).
     """
     return [entry for entry in ladder() if entry.agent in SPINE]

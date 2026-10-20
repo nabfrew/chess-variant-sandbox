@@ -299,6 +299,7 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "simultaneous_rest", "simultaneous_swap_collides", "simultaneous_both_score",  # Q942a
     "spy_types",  # Q935a
     "speed_ranks", "speed_royal", "speed_by_value", "speed_by_reach",  # Q943a
+    "rest_mean", "rest_max",  # Q983a
 })
 _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/almost": "9035530ccf64d8cd",
