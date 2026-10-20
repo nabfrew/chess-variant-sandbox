@@ -106,6 +106,8 @@ def _served_text(site: Site, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str,
     for name in LIBRARY:
         digest = spec_hash(load_spec(library.RULESET_DIR / f"{name}.json"))
         data(f"/api/game/{name}", _get(visitor, f"/api/game/{digest}").payload)
+        # G3: the game's own address, drawn on the server for a reader without script.
+        page(f"/game/{name}", _get(visitor, f"/game/{digest}").text)
     draft = _saved(member, _template(name="a draft somebody kept")).payload["hash"]
     data("/api/game/<a draft>", _get(member, f"/api/game/{draft}").payload)
     return found

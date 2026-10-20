@@ -190,8 +190,15 @@ class TestTheRoute:
     def test_about_is_the_landing_page_anywhere(self, path: str) -> None:
         assert _route(path, "#/about")["shown"] == ["landing"]
 
+    @pytest.mark.parametrize("path", ["/", "/game"])
+    def test_an_old_game_link_is_handed_to_the_games_own_address(self, path: str) -> None:
+        """G3: `/#/game/<hash>` opens the game and the address bar then names it as
+        `/game/<hash>`, replacing the old address rather than adding a step to Back."""
+        assert _route(path, "#/game/abc123") == {
+            "shown": ["game abc123"], "moved": ["replace /game/abc123"], "at": "/game/abc123"}
+
     @pytest.mark.parametrize("hash_, shown", [
-        ("#/game/abc123", "game abc123"), ("#/play/s42", "play s42"), ("#/map", "map"),
+        ("#/play/s42", "play s42"), ("#/map", "map"),
         ("#/design", "design "), ("#/design/abc123", "design abc123"),
         ("#/whats-new", "whats-new"), ("#/round", "round "),
     ])
@@ -205,8 +212,8 @@ class TestTheRoute:
     def test_every_way_back_to_the_library_lands_on_game(self) -> None:
         """*Back* on a game, a deleted game, the map's *list*: each says `go('#/')`."""
         said = _route("/", "#/game/abc123", "location.hash = '#/'; render();")
-        assert said == {"shown": ["game abc123", "library"], "moved": ["replace /game"],
-                        "at": "/game"}
+        assert said == {"shown": ["game abc123", "library"],
+                        "moved": ["replace /game/abc123", "replace /game"], "at": "/game"}
 
     def test_the_name_goes_to_the_landing_page_and_back_and_forward_redraw(self) -> None:
         said = _route("/game", "", "goPath('/');"
@@ -374,19 +381,26 @@ class TestOnTheWire:
     def test_the_three_viewers_get_the_page_at_both_addresses(self) -> None:
         """Q723: a visitor, a member and a maintainer are each answered the one page at `/`
         and at `/game` (which of the two it draws is the router's, `TestTheRoute`), and an
-        address beside them is the not-found page with its way back to the games."""
+        address beside them is the not-found page with its way back to the games. Since G4
+        each address has its own head and its own words for a reader without script
+        (`tests/test_site_doors.py`), the same bytes for all three: no cookie is read."""
         from test_site_admin import _running_site
 
         from chess_variant_sandbox.site import admin, pages
         from chess_variant_sandbox.web.page import PAGE as SERVED
 
+        # The single page from its template on: the landing, then every script, in order.
+        tail = SERVED[SERVED.index('<template id="landingPage">'):]
         with _running_site() as site:
             browsers = {"visitor": site.browser(), "member": site.signed_in("ada"),
                         "admin": site.signed_in("root", admin.ADMIN)}
+            first: dict[str, str] = {}
             for who, browser in browsers.items():
                 for path in ("/", "/game", "/game?from=mail"):
                     answer = browser.get(path)
-                    assert (answer.status, answer.text == SERVED) == (200, True), (who, path)
+                    assert answer.status == 200, (who, path)
+                    assert answer.text.endswith(tail), (who, path)
+                    assert answer.text == first.setdefault(path, answer.text), (who, path)
                 for path in ("/games", "/game/abc123", "/landing"):
                     answer = browser.get(path)
                     assert (answer.status, answer.text) == (404, pages.not_found()), (who, path)
@@ -415,7 +429,7 @@ class TestAWholeCardOpensItsGame:
       const WENT = [];
       go = hash => WENT.push(hash);
       const press = (shelf, inLink) => NODES[shelf].onclick({ target: { closest: sel =>
-        sel === 'a, button' ? (inLink ? {} : null) : { dataset: { open: '#/game/aaa' } } } });
+        sel === 'a, button' ? (inLink ? {} : null) : { dataset: { open: '/game/aaa' } } } });
     """
     DATA = ("{ games: [{ hash: 'aaa', name: 'alpha' }],"
             " newGames: [{ hash: 'aaa', name: 'alpha', sentence: 's', added: 'today' }],"
@@ -430,9 +444,10 @@ class TestAWholeCardOpensItsGame:
                 self.SETUP + f"{fill}({self.DATA}); press('{shelf}', false);"
                 f" press('{shelf}', true);",
                 f"[NODES['{shelf}'].innerHTML, WENT]")
-            assert 'data-open="#/game/aaa"' in found[0], fill
+            # G3: the card names the game's own address.
+            assert 'data-open="/game/aaa"' in found[0], fill
             # The board pressed opens the game; a link pressed is left to the link.
-            assert found[1] == ["#/game/aaa"], fill
+            assert found[1] == ["/game/aaa"], fill
 
     def test_the_cards_say_they_can_be_pressed(self) -> None:
         from chess_variant_sandbox.web.page import style

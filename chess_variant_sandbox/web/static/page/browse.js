@@ -158,7 +158,7 @@ function forYouHtml(asked) {
       >A challenge for you</h3>` : ''}
     ${challenged.map(entry => `<div class="row" style="margin-top:6px">
       <span><b>${markHtml(entry.fromMark, 18)}${esc(entry.from)}</b> ${entry.rematch ? 'offers a rematch at'
-        : 'challenged you to'} <a href="#/game/${esc(entry.game)}">${esc(entry.name)}</a>
+        : 'challenged you to'} <a href="/game/${esc(entry.game)}">${esc(entry.name)}</a>
         <span class="muted small">&middot; ${esc(entry.seat)} &middot; ${
           entry.rated ? 'rated' : 'practice'}</span></span>
       <button class="primary" data-accept="${esc(entry.id)}">accept</button>

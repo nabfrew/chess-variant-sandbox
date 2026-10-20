@@ -15,7 +15,7 @@ from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.spec import load_spec
 from chess_variant_sandbox.viz import render_position
 from chess_variant_sandbox.viz.heading import directional_types
-from chess_variant_sandbox.viz.pieces import icon_for, icons_for, side_names
+from chess_variant_sandbox.viz.pieces import ASSET_ROOT, icon_for, icons_for, side_names
 
 RULESETS = Path(__file__).resolve().parents[1] / "rulesets"
 
@@ -223,6 +223,98 @@ def test_the_rps_pieces_are_drawn_rather_than_stood_in_for() -> None:
             assert icon is not None, f"no icon for {name}"
             assert icon["stem"].startswith(name)
         assert icon_for(name, 0)["href"] != icon_for(name, 1)["href"]
+
+
+# The pictures the first player wears: the light half of every pair, and every
+# single-colour file (shogi), which serves both seats.
+_SVG = ASSET_ROOT / "svg"
+_LIGHT_SIDE = sorted(
+    path
+    for path in _SVG.glob("*.svg")
+    if path.stem.endswith("-white") or not path.stem.endswith("-black")
+)
+_SHAPES = {"path", "circle", "ellipse", "rect", "polygon"}
+
+
+def _light_fills(svg: Path) -> list[str]:
+    """The opaque light fills a picture paints its shapes with, as a browser resolves them.
+
+    A declared oracle for the drawing. Fill comes from the element's own ``style``, then
+    its ``fill`` attribute, then a ``<style>`` class rule, then its parent; SVG's own
+    default is black. A fill under half opacity counts as see-through.
+    """
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(svg.read_bytes())
+    sheet = " ".join(node.text or "" for node in root.iter() if node.tag.endswith("style"))
+    classes = {
+        name: body for name, body in re.findall(r"\.([\w-]+)\s*\{([^}]*)\}", sheet)
+    }
+
+    def declared(node: ET.Element, prop: str) -> str | None:
+        style = node.get("style", "")
+        found = re.search(rf"(?:^|;)\s*{prop}\s*:\s*([^;]+)", style)
+        if found:
+            return found.group(1).strip()
+        if node.get(prop) is not None:
+            return str(node.get(prop)).strip()
+        for name in node.get("class", "").split():
+            found = re.search(rf"(?:^|;|\s){prop}\s*:\s*([^;]+)", classes.get(name, ""))
+            if found:
+                return found.group(1).strip()
+        return None
+
+    def light(colour: str) -> bool:
+        colour = colour.lower()
+        named = {"white": "#ffffff"}
+        colour = named.get(colour, colour)
+        if not re.fullmatch(r"#[0-9a-f]{3}|#[0-9a-f]{6}", colour):
+            return False
+        digits = colour[1:]
+        if len(digits) == 3:
+            digits = "".join(c * 2 for c in digits)
+        r, g, b = (int(digits[i : i + 2], 16) / 255 for i in (0, 2, 4))
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b >= 0.6
+
+    out: list[str] = []
+
+    def walk(node: ET.Element, fill: str, opacity: float) -> None:
+        if node.tag.split("}")[-1] in {"defs", "style", "title", "metadata"}:
+            return
+        fill = declared(node, "fill") or fill
+        for prop in ("opacity", "fill-opacity"):
+            value = declared(node, prop)
+            if value is not None:
+                opacity *= float(value)
+        if node.tag.split("}")[-1] in _SHAPES and light(fill) and opacity >= 0.5:
+            out.append(fill)
+        for child in node:
+            walk(child, fill, opacity)
+
+    walk(root, "#000000", 1.0)
+    return out
+
+
+@pytest.mark.skipif(not _LIGHT_SIDE, reason="icon library not fetched")
+@pytest.mark.parametrize("svg", _LIGHT_SIDE, ids=lambda p: p.stem)
+def test_the_first_players_pictures_are_filled_not_see_through(svg: Path) -> None:
+    """A white piece is a white body inside its outline, never the square showing through.
+
+    The Quivira glyphs (alfil, camel, wazir) arrive as a font's white pieces: black
+    outline, nothing inside. A white elephant on the watering hole board was the square
+    seen through a black line, beside lettered discs filled white (the user, 2026-10-19:
+    "the elephant svg isn't white, it's transparant"). Every picture the first player
+    wears paints some shape in an opaque light colour; a hollow one paints none.
+    """
+    assert _light_fills(svg), f"{svg.name} fills nothing light: its body is see-through"
+
+
+def test_the_elephant_the_first_player_wears_is_filled() -> None:
+    """The watering hole's elephant, by name, as the board looks it up."""
+    icon = icon_for("elephant", 0)
+    if icon is None:
+        pytest.skip("icon library not fetched")
+    assert _light_fills(_SVG / f"{icon['stem']}.svg")
 
 
 class TestWhichPiecesPoint:

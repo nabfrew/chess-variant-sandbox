@@ -152,7 +152,7 @@ class TestWhatAnotherMemberReads:
         page = _page(store, "ada", bea)
         assert "Secret draft" not in page
         assert "<h2>Games ada made</h2>" in page and "Out on trial" in page
-        assert f'href="/#/game/{shown}"' in page and "· On trial" in page
+        assert f'href="/game/{shown}"' in page and "· On trial" in page
         assert re.search(r"· published \d{1,2} [A-Z][a-z]{2} \d{4}", page)
 
     def test_a_cancelled_game_is_no_event(

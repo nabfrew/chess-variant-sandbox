@@ -11,7 +11,37 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-20
+
+### Circe mortal diagonals
+
+A new game to try: circe chess where a captured queen or bishop is gone for good, while a captured knight, rook or pawn
+is still reborn on its home square. The endless capture loops of plain circe stop, and games end in checkmate; it scores
+well above circe on the project's measure of how interesting a game is.
+
 ## 2026-10-19
+
+### A new map of the games
+
+The map of games is redrawn from scratch. Games now sit near the games they share their rarer rules with, families are
+found and named automatically from what marks them out, each game lists the five most like it and what they share, and
+the unusual games are listed on their own. Adding a game no longer reshuffles the map.
+
+### The computer varies its play from game to game
+
+Every game on the site used to start from the same random seed, so in a given position the computer always answered
+the same way. Each game now starts from its own seed, and a finished game still replays exactly.
+
+### The watering hole, easier to read
+
+The white elephant, camel and wazir were drawn see-through, so the board showed through them; they are filled white now.
+Both watering hole games, and the round versions of Gardner's minichess, now say first how you win.
+
+### Every game has its own address
+
+Each game now lives at its own web address, and the page carries the game's name, description, score and nearby games
+even before any script runs. A link to a game shared anywhere now names that game, and older links still open the right
+one. Search engines are now welcome: the site lists its games for them, and every page says what it is.
 
 ### The board alone, full screen, on a phone
 

@@ -8,6 +8,8 @@ async function showGame(hash) {
   SHOWN = null;
   // The game first, so the roster reads it from the cache rather than fetching it again.
   const game = await detailFor(hash);
+  // G3: the tab names the game, as the server's title for its address does.
+  setTitle(gameTitle(game.name));
   const anchored = offered('GET', '/api/human/' + hash);
   const [seats, mine] = await Promise.all([
     roster(hash), anchored ? humanFor(hash) : null,

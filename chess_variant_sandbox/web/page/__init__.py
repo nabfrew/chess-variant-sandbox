@@ -76,11 +76,19 @@ of the person's did.
 
 from __future__ import annotations
 
+from html import escape
 from pathlib import Path
 
 from chess_variant_sandbox.viz.wrapped import WRAPPED_FILE
 from chess_variant_sandbox.web import landing
-from chess_variant_sandbox.web.page.shell import TAGLINE, brand, footer, head_links, sections
+from chess_variant_sandbox.web.page.shell import (
+    NAME,
+    TAGLINE,
+    brand,
+    footer,
+    head_links,
+    sections,
+)
 from chess_variant_sandbox.web.page.style import STYLE
 
 # Where the page's scripts are served, and where they are read from.
@@ -100,19 +108,19 @@ SCRIPTS: dict[str, Path] = {
     for name in _ORDER
 }
 
-_HEAD = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Chess variant sandbox</title>
-""" + head_links() + """<style>"""
+def _head(title: str, head: str) -> str:
+    return (
+        '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f"<title>{escape(title)}</title>\n{head}" + head_links() + "<style>"
+    )
+
 
 # The header (plan-visual.md §3.4, V2): the mark and the name, the tagline the views write
 # their one-line summary into, the sections, and the corner. The footer: the links
 # `paintIdentity` writes into `#foot`, and the theme switch, which no view rewrites. Then the
 # landing page (Q718, `web/landing.py`), inert until `landing.js` clones it into the view.
-_BETWEEN = f"""
+_TOP = f"""
 </style>
 </head>
 <body>
@@ -125,18 +133,28 @@ _BETWEEN = f"""
     <span class="muted" id="runs"></span>
     <span class="muted small" id="who"></span>
   </header>
-  <div id="view"></div>
+  <div id="view">"""
+
+_BOTTOM = f"""</div>
   {footer()}
 </div>
 <template id="landingPage">{landing.HTML}</template>
-"""
-
-_TAIL = """</body>
+""" + "".join(f'<script src="{route}"></script>\n' for route in SCRIPTS) + """</body>
 </html>
 """
 
-PAGE = (
-    _HEAD + STYLE + _BETWEEN
-    + "".join(f'<script src="{route}"></script>\n' for route in SCRIPTS)
-    + _TAIL
-)
+# The parts of the page that never change, joined once: `page` puts a title, extra head
+# lines and a drawn view between them.
+_BEFORE_STYLE_END = STYLE + _TOP
+
+
+def page(title: str = NAME, head: str = "", view: str = "") -> str:
+    """The single page, with its own `<title>`, extra `<head>` lines and a view drawn on the
+    server (G3, `docs/plan-growth.md`): a game's own address carries its name, description
+    and canonical in the head and its page in `#view`, which a reader without script reads
+    and the router replaces once it draws. `head` and `view` are markup the caller has
+    already escaped; with neither, this is `PAGE`."""
+    return _head(title, head) + _BEFORE_STYLE_END + view + _BOTTOM
+
+
+PAGE = page()

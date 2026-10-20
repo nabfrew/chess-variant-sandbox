@@ -2744,7 +2744,7 @@ function lineageHtml(node) {
   const label = node.draft
     ? `<i>${esc(node.name || 'this draft')}</i>`
     : node.known
-      ? `<a href="#/game/${esc(node.hash)}">${esc(node.name || (ACCOUNTS ? 'a game with no name' : node.hash))}</a>`
+      ? `<a href="/game/${esc(node.hash)}">${esc(node.name || (ACCOUNTS ? 'a game with no name' : node.hash))}</a>`
       : `<span class="muted">a game this library cannot find</span>`;
   const shown = `${node.here ? '<b>' : ''}${label}${node.here ? '</b>' : ''}`;
   return `<ul class="lineage small" style="margin:4px 0 0; padding-left:16px">
@@ -3005,7 +3005,7 @@ function savedHtml(kept) {
   return `<div class="ok" style="margin-top:10px">
     ${savedWordsHtml(kept)} A change to its rules from here is a new game, and its
     family will show it.
-    <a href="#/game/${esc(kept.hash)}">open its page</a> ${copyLinkHtml(kept.hash)}
+    <a href="/game/${esc(kept.hash)}">open its page</a> ${copyLinkHtml(kept.hash)}
     ${rung ? `<div style="margin-top:6px; color:${kept.rungPassed
       ? 'var(--ink)' : 'var(--bad)'}">${rung}</div>` : ''}
     ${kept.said ? `<div style="margin-top:6px; color:var(--ink)">${esc(kept.said)}</div>` : ''}
@@ -3188,7 +3188,9 @@ async function showBotBuilder(hash) {
   // page (D47). The address is not linked there; somebody who types it meets the game
   // rather than sliders whose result nothing can keep.
   if (!offered('POST', '/api/opponent')) {
-    try { history.replaceState(null, '', '#/game/' + hash); } catch (error) { /* stays */ }
+    try { history.replaceState(null, '', gamePath(hash)); } catch (error) { /* stays */ }
+    RENDERED = location.href;
+    RENDERED_HASH = location.hash;
     return showGame(hash);
   }
   stopPolling();

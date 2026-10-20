@@ -234,6 +234,75 @@ class TestTheRow:
         assert "site load" not in str(error.value), "a visitor is not told a command"
 
 
+# ------------------------------------------------------------------------ the seed (Q987)
+
+
+def _seed_of(connection: Any, match_id: str) -> int:
+    with connection.cursor() as cursor:
+        cursor.execute("select seed from matches where id = %s", (match_id,))
+        return int(cursor.fetchone()[0])
+
+
+def _opening(store: Scratch, user: int, seed: int | None) -> tuple[str, int]:
+    """A match against the core's `random` player, the person's first offered move and
+    the reply: its id, and the move the computer chose. The reply is drawn from the
+    seat's stream at `seed + ply`, so it is the seed that decides which one."""
+    match = m.start(store.connection, SHORT_HASH, m.SANDBOX, ["human", "random"], user, seed=seed)
+    _move(store.connection, match.id)
+    m.play_agent(store.connection, match.id)
+    store.connection.commit()
+    return match.id, int(m.session(store.connection, match.id).played[1])
+
+
+class TestTheSeed:
+    """A match nobody named a seed for gets a fresh one, written in its row, and a named
+    one is kept (Q987, `docs/reference/round-hardest-weakness.md` §7)."""
+
+    def test_two_new_matches_get_different_seeds(self, store: Scratch) -> None:
+        user = store.user("ada")
+        made = [
+            m.start(store.connection, SHORT_HASH, m.SANDBOX, ["human", AGENT], user)
+            for _ in range(4)
+        ]
+        seeds = [_seed_of(store.connection, match.id) for match in made]
+        assert len(set(seeds)) == len(seeds), "two matches were given the same seed"
+        assert [match.seed for match in made] == seeds, "the row is not what was played"
+
+    def test_a_named_seed_is_kept_and_zero_is_one_like_any_other(self, store: Scratch) -> None:
+        user = store.user("ada")
+        for named in (0, 7, 2**31 - 1):
+            match = m.start(
+                store.connection, SHORT_HASH, m.SANDBOX, ["human", AGENT], user, seed=named
+            )
+            assert _seed_of(store.connection, match.id) == named
+
+    def test_a_stored_match_replays_identically(self, store: Scratch) -> None:
+        """Read back through a connection that never saw it, a match is the same game:
+        the same seed, the same moves, the same board. And a second match given that seed
+        meets the same reply, so the seed in the row is what the reply was drawn from."""
+        user = store.user("ada")
+        match_id, reply = _opening(store, user, None)
+        seed = _seed_of(store.connection, match_id)
+        first = m.session(store.connection, match_id)
+
+        second = store.open()
+        try:
+            reopened = m.session(second, match_id)
+        finally:
+            second.close()
+
+        assert reopened.seed == first.seed == seed
+        assert reopened.played == first.played
+        assert reopened.snapshot()["board"] == first.snapshot()["board"]
+        assert _opening(store, user, seed)[1] == reply
+
+    def test_the_reply_moves_with_the_seed(self, store: Scratch) -> None:
+        """Under one seed for every game the computer answered a position the same way
+        in every game; under twelve named seeds it does not."""
+        user = store.user("ada")
+        assert len({_opening(store, user, named)[1] for named in range(12)}) > 1
+
+
 # ------------------------------------------------------------ how far the machine looked
 
 
@@ -1795,6 +1864,29 @@ class TestTheApp:
         assert len(reopened["history"]) == 2
         found = m.row(store.connection, snapshot["id"])
         assert found.mode == m.LEADERBOARD and found.plies == 2 and found.top is True
+
+    def test_a_session_route_draws_a_fresh_seed_and_keeps_a_named_one(
+        self, store: Scratch, app: SiteApp
+    ) -> None:
+        """No page names a seed, so each start draws one and writes it in the row (Q987);
+        a request that names one, 0 included, gets exactly that, and junk is refused."""
+        user = store.user("ada")
+        store.game(spec_hash(DULL), DULL, LADDER)
+        store.connection.commit()
+        app.connect = store.open
+        app.viewer = user
+        body = {"hash": spec_hash(DULL), "seats": ["human", AGENT]}
+        try:
+            drawn = [app.post("/api/session", body)["id"] for _ in range(3)]
+            named = [app.post("/api/session", {**body, "seed": seed})["id"] for seed in (0, 5)]
+            with pytest.raises(ValueError, match="whole number"):
+                app.post("/api/session", {**body, "seed": "fresh"})
+        finally:
+            app.viewer = None
+
+        seeds = [_seed_of(store.connection, match_id) for match_id in drawn]
+        assert len(set(seeds)) == len(seeds)
+        assert [_seed_of(store.connection, match_id) for match_id in named] == [0, 5]
 
     def test_undo_is_refused_on_the_leaderboard_and_offered_in_sandbox(
         self, store: Scratch, app: SiteApp

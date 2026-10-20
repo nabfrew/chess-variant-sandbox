@@ -83,10 +83,10 @@ function fillNewShelf(data) {
   const added = shelf.dataset.added || '{day}';
   shelf.innerHTML = shown.map(card => {
     const game = byHash.get(card.hash);
-    return `<div class="newGame panel" data-open="#/game/${esc(card.hash)}">
+    return `<div class="newGame panel" data-open="/game/${esc(card.hash)}">
       ${thumbHtml(game) || '<div class="thumb"></div>'}
       <div class="newGameText">
-        <a class="memberGameName" href="#/game/${esc(card.hash)}">${esc(card.name)}</a>
+        <a class="memberGameName" href="/game/${esc(card.hash)}">${esc(card.name)}</a>
         <p class="newGameSentence small" title="${esc(card.sentence)}">${esc(card.sentence)}</p>
         <div class="row newGamePills"><span class="tag newTag">${
           esc(added.replace('{day}', card.added))}</span>${scoreTag(game)}</div>
@@ -120,7 +120,7 @@ function fillPicks(data) {
     if (!panel) return;
     if (!card || !byHash.has(card.hash)) { panel.remove(); return; }
     const game = byHash.get(card.hash);
-    const link = '#/game/' + card.hash;
+    const link = gamePath(card.hash);
     panel.removeAttribute('aria-busy');
     document.getElementById(key + 'Board').innerHTML = thumbHtml(game);
     const name = panel.querySelector('[data-name]');
@@ -186,12 +186,12 @@ function fillMembersShelf(data) {
     const maker = `${markHtml(entry.mark, 16)}<span>${esc(entry.by)}</span>`;
     const by = VIEWER && entry.mark
       ? `<a href="/players/${encodeURIComponent(entry.by)}">${maker}</a>` : maker;
-    return `<div class="memberGame panel" data-open="#/game/${esc(entry.hash)}">
+    return `<div class="memberGame panel" data-open="/game/${esc(entry.hash)}">
       ${game ? thumbHtml(game) : '<div class="thumb"></div>'}
       <div class="memberGameText">
-        <a class="memberGameName" href="#/game/${esc(entry.hash)}" title="${esc(entry.name)}">${esc(entry.name)}</a>
+        <a class="memberGameName" href="/game/${esc(entry.hash)}" title="${esc(entry.name)}">${esc(entry.name)}</a>
         <div class="memberGameBy small">by ${by}</div>
-        <a class="button primary memberGamePlay" href="#/game/${esc(entry.hash)}">Play</a>
+        <a class="button primary memberGamePlay" href="/game/${esc(entry.hash)}">Play</a>
       </div>
     </div>`;
   }).join('');
@@ -249,7 +249,7 @@ function startLandingBoard(named) {
     // is not read as one more of the starting games.
     const today = entry.today && caption.dataset.today
       ? `<span class="muted">${esc(caption.dataset.today)} &middot; </span>` : '';
-    caption.innerHTML = `${today}<a href="#/game/${esc(entry.game.hash)}"><b>${
+    caption.innerHTML = `${today}<a href="/game/${esc(entry.game.hash)}"><b>${
       esc(entry.game.name)}</b></a>${entry.sentence ? ': ' + esc(entry.sentence) : ''}`;
   };
 

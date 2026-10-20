@@ -272,17 +272,18 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     # Q962b, 2026-10-18: `archive/gardner-in-rounds` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was 3bf914a9177e31c5.
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-with-meek-pawns` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was b793c277f73875c2.
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-with-the-initiative` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was d4228395719912a8.
-    "archive/watering-hole": "7b9304551e1aa4e6",  # Q918e, schema 26; Q962: its description, for a player (was b06570f1fcf442e8); 2026-10-18: its description, written as the game's idea (was b2c0fe985587b544)
+    "archive/watering-hole": "d4cf86accc2bac5b",  # Q918e, schema 26; Q962: its description, for a player (was b06570f1fcf442e8); 2026-10-18: its description, written as the game's idea (was b2c0fe985587b544); Q981 (2026-10-19): its description, the objective first (was 7b9304551e1aa4e6)
     # Q962c, 2026-10-19: `archive/gardner-in-rounds-resting` retired from the previews as a near copy of breather (`docs/reference/previews-2026-10-18.md`); the row was d8b686bb1ae96bac.
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-where-swaps-collide` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was 5ecf690c98ed62f8.
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-scored` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was 21bb31cf3d019bd6.
-    "archive/breather": "e8fa3ceebdd3d5a3",  # Q942c, schema 27; Q962: its file, name and description (was archive/gardner-in-rounds-against-the-chase, e6b51ce8b7b2e11b); 2026-10-18: its description, written as the game's idea (was 77bebee4de9a7bd8)
+    "archive/breather": "7614206d2a5d6bfb",  # Q942c, schema 27; Q962: its file, name and description (was archive/gardner-in-rounds-against-the-chase, e6b51ce8b7b2e11b); 2026-10-18: its description, written as the game's idea (was 77bebee4de9a7bd8); Q981 (2026-10-19): its description, the objective first (was e8fa3ceebdd3d5a3)
     # Q962b, 2026-10-18: `archive/gardner-with-spies` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was d42324fc3f1bb1be.
-    "archive/gardner-with-spies-resting": "816d0aff92f03381",  # Q935f, schema 27; 2026-10-18: its description, written as the game's idea (was 6ef889f11a8119cc)
+    "archive/gardner-with-spies-resting": "cfa66ba4e72a1cb4",  # Q935f, schema 27; 2026-10-18: its description, written as the game's idea (was 6ef889f11a8119cc); Q981 (2026-10-19): its description, the objective first (was 816d0aff92f03381)
     "archive/riders-and-leapers": "358b832b1209f1d3",  # Q936s, schema 27
-    "archive/gardner-in-rounds-with-a-swift-king": "10d26a1f6ccbb0b7",  # Q943c, schema 28
-    "archive/gardner-in-rounds-with-swift-knights": "0c130d20a3e50438",  # Q943c, schema 28
-    "archive/watering-hole-by-speed": "6a4b3d3c15788a29",  # Q943c, schema 28
+    "archive/gardner-in-rounds-with-a-swift-king": "33aebb098bad52cf",  # Q943c, schema 28; Q981 (2026-10-19): its description, the objective first (was 10d26a1f6ccbb0b7)
+    "archive/gardner-in-rounds-with-swift-knights": "838056e4e0605922",  # Q943c, schema 28; Q981 (2026-10-19): its description, the objective first (was 0c130d20a3e50438)
+    "archive/watering-hole-by-speed": "669784117af5b5df",  # Q943c, schema 28; Q981 (2026-10-19): its description, the objective first (was 6a4b3d3c15788a29)
+    "archive/circe-mortal-diagonals": "53fb92c560611d5e",  # Q798, schema 17
     "rulesets/almost": "0ea224823977572d",
     "rulesets/antichess": "74c73dff0811c4a6",
     "rulesets/atomic": "e77e414d76c510af",

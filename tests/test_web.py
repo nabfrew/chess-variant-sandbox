@@ -722,52 +722,48 @@ class TestTheSimilarityReadingOnThePage:
 
     # ------------------------------------------------------------------ on the map
 
-    def test_the_map_lists_a_game_s_lines_by_count_then_index_then_name(self) -> None:
-        """Steps by how many rules apart and then the index; faint lines by distance.
+    def test_the_map_lists_the_games_like_this_one_in_the_server_s_order(self) -> None:
+        """M4: a game's panel lists its nearest as `like` sends them, nearest first.
 
-        `xray`'s faint line is the longer in rules and the nearer by features, so it
-        comes first of the two: the features chose both lines and the features order
-        them.
+        Replaces the rule-step lines' order (count, then index, then features), which left
+        the map with those lines. A game a line joins holds that line up; any other holds
+        the game up. The order, the shares and which are joined are the server's.
         """
-        names = ["hub", "alpha", "zulu", "beta", "xray", "yankee"]
-        nodes = [{"hash": name, "name": name, "names": [name]} for name in names]
-        links = [
-            {"source": "hub", "target": "alpha", "type": "rule", "units": 1,
-             "similarity": _alike(512, "1 rule")},
-            {"source": "beta", "target": "hub", "type": "gap", "units": 2,
-             "similarity": _alike(16, "no rules, 2 pieces")},
-            {"source": "hub", "target": "zulu", "type": "rule", "units": 1,
-             "similarity": _alike(8, "no rules, 1 piece")},
-            {"source": "yankee", "target": "hub", "type": "nearest", "units": 9,
-             "distance": 0.2, "similarity": _alike(3000, "5 rules")},
-            {"source": "hub", "target": "xray", "type": "nearest", "units": 20,
-             "distance": 0.1, "similarity": _alike(4000, "7 rules")},
+        names = ["hub", "zulu", "alpha", "beta"]
+        nodes = [{"hash": name, "name": name, "names": [name], "like": []} for name in names]
+        nodes[0]["like"] = [
+            {"hash": "zulu", "likeness": 0.8, "shares": ["the camel"], "line": True},
+            {"hash": "alpha", "likeness": 0.5, "shares": [], "line": False},
+            {"hash": "beta", "likeness": 0.4, "shares": ["a hex board"], "line": True},
+        ]
+        lines = [
+            {"source": "beta", "target": "hub", "likeness": 0.4, "shares": [], "gap": None},
+            {"source": "hub", "target": "zulu", "likeness": 0.8, "shares": [], "gap": None},
         ]
         setup = (
-            f"MAP_DATA = {json.dumps({'nodes': nodes, 'links': links})};"
+            f"MAP_DATA = {json.dumps({'nodes': nodes, 'neighbours': lines})};"
             "MAP_AT = Object.fromEntries(MAP_DATA.nodes.map(node => [node.hash, node]));"
         )
-        drawn = _in_the_page(setup, "mapNeighboursHtml(MAP_AT.hub)")
-        order = re.findall(r"<b>(\w+)</b>", drawn)
-        assert order == ["zulu", "alpha", "beta", "xray", "yankee"]
-        assert "by kind: no rules, 1 piece" in drawn
-
+        drawn = _in_the_page(setup, "mapLikeHtml(MAP_AT.hub)")
+        assert re.findall(r"<b>(\w+)</b>", drawn) == ["zulu", "alpha", "beta"]
+        assert 'data-line-row="1"' in drawn and 'data-line-row="0"' in drawn
+        assert 'data-node-row="alpha"' in drawn
+        assert "both have the camel" in drawn
     def test_a_line_s_panel_prints_the_server_s_words(self) -> None:
-        """The acceptance's own words, printed as they came, with the (i) beside them."""
+        """How alike, what both have and what differs, printed as they came, with the (i)."""
         nodes = [{"hash": name, "name": name, "names": [name]} for name in ("one", "two")]
-        link = {"source": "one", "target": "two", "type": "rule", "units": 1,
-                "kinds": ["piece"], "differences": [], "sentence": "",
-                "similarity": _alike(392, "no rules, 6 mechanisms, 1 piece")}
+        line = {"source": "one", "target": "two", "likeness": 0.42, "units": 1,
+                "shares": ["the camel", "a hex board"], "kinds": ["piece"],
+                "differences": [{"kind": "pieces", "sentence": "the camel leaps further"}],
+                "sentence": "the camel leaps further", "gap": None}
         setup = (
-            f"MAP_DATA = {json.dumps({'nodes': nodes, 'links': [link], 'counts': {}})};"
+            f"MAP_DATA = {json.dumps({'nodes': nodes, 'neighbours': [line], 'counts': {}, 'kinds': [], 'mutual': 5})};"
             "MAP_AT = Object.fromEntries(MAP_DATA.nodes.map(node => [node.hash, node]));"
         )
-        drawn = _in_the_page(setup, "mapLinkPanel(MAP_DATA.links[0])")
-        assert "no rules, 6 mechanisms, 1 piece" in drawn
-        assert 'data-gloss="likeness"' in drawn
-
-    # ------------------------------------------------------------ on a game's page
-
+        drawn = _in_the_page(setup, "mapLinePanel(MAP_DATA.neighbours[0])")
+        assert "the camel; a hex board" in drawn
+        assert "the camel leaps further" in drawn and "one rule apart" in drawn
+        assert 'data-gloss="alike"' in drawn
     def test_a_near_link_says_apart_and_a_far_one_says_differs_in(self) -> None:
         """A far game's four come in the features' order, so their count is no distance.
 
@@ -803,7 +799,7 @@ class TestTheSimilarityReadingOnThePage:
         from page_text import PAGE
 
         assert "similarity.counts" not in PAGE
-        assert "similarity.index" in PAGE and "similarity.words" in PAGE
+        assert "similarity.words" in PAGE
         for count in ("rules", "settings", "mechanisms", "pieces", "squares", "books"):
             assert f"counts.{count}" not in PAGE, count
 
@@ -822,8 +818,10 @@ class TestTheSimilarityReadingOnThePage:
         assert "eight squares count as one piece" in entry
         assert relate.SETTING_WEIGHT == 0.5, "the likeness gloss says half"
         assert "set differently counts half" in entry
-        # Beside the sentence that heads a game's list, and beside the words on a line.
-        assert "info('likeness')" in DETAIL and "info('likeness')" in GRAPH
+        # Beside the sentence that heads a game's list. The map's lines are the new
+        # likeness (M4 of `docs/plan-map.md`) and carry their own (i), `alike`.
+        assert "info('likeness')" in DETAIL and "info('alike')" in GRAPH
+        assert "info('likeness')" not in GRAPH
 
 
 class TestTheMap:
@@ -934,7 +932,8 @@ class TestTheMap:
 
         from chess_variant_sandbox.spec import relate
 
-        assert "kind.words" in GRAPH
+        assert "mapKindWords(difference.kind)" in GRAPH
+        assert "MAP_DATA.kinds.find" in GRAPH and "found.words" in GRAPH
         for kind in relate.KINDS:
             assert f"'{kind}'" not in GRAPH, kind
 
@@ -956,32 +955,31 @@ class TestTheMap:
         from page_text import GRAPH, PAGE
 
         assert "go('#/game/' + open.dataset.open)" in PAGE
-        # The words on a link are the payload's, per rule and joined.
+        # The words on a line are the payload's: what differs, rule by rule, and what both
+        # have.
         assert "esc(difference.sentence)" in GRAPH
-        assert "esc(link.sentence)" in GRAPH
+        assert "esc(line.shares.join('; '))" in GRAPH
 
-    def test_the_four_kinds_of_line_are_told_apart_and_each_has_a_swatch(self) -> None:
-        """A reader must not have to click to tell a gap from a nearest relative.
+    def test_the_two_kinds_of_line_are_told_apart_and_each_has_a_swatch(self) -> None:
+        """A line of likeness and an arrow for *made from*, a swatch each in the legend.
 
-        The legend carries a drawn swatch of each, which is what makes the four kinds
-        readable without a click. How the drawing itself tells them apart -- solid,
-        dashed, dotted, and grey with an arrowhead -- is `TestTheExplorer`'s.
+        M4 retired the rule-step lines -- one rule apart, a gap, a nearest relative -- and
+        their swatches with them; what is left is two claims a reader must still tell
+        apart without a click.
         """
         from page_text import GRAPH
 
-        for kind in ("rule", "gap", "nearest", "lineage"):
-            assert f"mapLineSwatch('{kind}')" in GRAPH or f"'{kind}'" in GRAPH
-        # The legend says what each one is, in plain words.
-        for said in ("one rule apart", "a gap: two or three rules, nothing in between",
-                     "nearest relative", "made from"):
-            assert said in GRAPH
-
+        assert "mapLineSwatch('line')" in GRAPH and "mapLineSwatch('lineage')" in GRAPH
+        assert "a line: each is" in GRAPH and "<span>made from <span" in GRAPH
+        for gone in ("mapLineSwatch('gap')", "mapLineSwatch('nearest')",
+                     "a gap: two or three rules", "nearest relative"):
+            assert gone not in GRAPH, gone
     def test_the_first_call_says_what_it_is_waiting_for(self) -> None:
         """Five seconds cold, instant afterwards, so the wait says which it is."""
         from page_text import PAGE
 
         assert "pending('Drawing the map" in PAGE
-        assert "every pair of games is compared" in PAGE
+        assert "every game is read and placed" in PAGE
 
     # ------------------------------------------------- G4: the score, and narrowing it
 
@@ -1015,23 +1013,19 @@ class TestTheMap:
         # invention, because the drawing falls back to the panel a dot sits on.
         assert "explorerColour(fill || 'var(--panel)')" in EXPLORER
 
-    def test_a_line_says_which_design_step_makes_one_game_from_the_other(self) -> None:
-        """The operator's own words, where the payload carries a draw that landed.
+    def test_the_operator_sentence_and_the_game_in_between_left_with_their_lines(self) -> None:
+        """M4: the rule-step lines retired, and with them the two things only they carried.
 
-        `graphing` makes the draws and decides what landed; the page prints `reach.words`
-        and names the end it starts from, because an edit has a direction and a line has
-        two ends. A line with no sentence prints nothing rather than an apology.
+        The operator's own sentence on a one-rule line (a deploy-time sweep, `graphing`'s
+        `_sweep`) and *make the game in between* on a gap. A game's own *and now try*
+        stays: it asks the designer, live, which small changes apply.
         """
-        from page_text import GRAPH
+        from page_text import EXPLORER, GRAPH
 
-        step = self._body("mapReachHtml")
-        assert "esc(reach.words)" in step
-        assert "reach.from" in step
-        assert "if (!reach) return ''" in step
-        # No operator is named here, and no draw is made here.
-        assert "reach.operator" not in GRAPH
-        assert "${mapReachHtml(link)}" in GRAPH
-
+        for gone in ("mapReachHtml", "reach.words", "mapBetweenHtml", "mapMakeBetween",
+                     "data-between", "link.between"):
+            assert gone not in GRAPH + EXPLORER, gone
+        assert "mapAskSteps(" in EXPLORER and "function mapAskSteps(hash)" in GRAPH
     def test_the_gap_on_a_line_is_the_game_page_own_sentence(self) -> None:
         """One pair must not read `clear` in one place and `no clear change` in another.
 
@@ -1041,8 +1035,8 @@ class TestTheMap:
         """
         from page_text import GRAPH
 
-        assert "gapLine(link.gap)" in GRAPH
-        assert "gapLine(mapGapFrom(link, node.hash))" in GRAPH
+        assert "gapLine(line.gap)" in GRAPH
+        assert "gapLine(mapGapFrom(line, node.hash))" in GRAPH
         assert "toFixed(" not in GRAPH
         # Read from the other end the two numbers change places. Nothing else moves, and
         # nothing here recomputes a difference.
@@ -1085,13 +1079,14 @@ class TestTheMap:
         assert 'id="mapShow"' not in GRAPH
 
 
-class TestTheMapDrawsSimilarity:
-    """`docs/archive/plan-graph-map.md` S3 and S4: the lines are likeness, and the reader focuses.
+class TestTheMapDrawsLikeness:
+    """`docs/plan-map.md` M4 (after `docs/archive/plan-graph-map.md` S3 and S4).
 
-    The payload's `similar` rows are the map's lines, as wide as their `bond`, in their
-    community's colour; a slider over `levels` chooses the cut, and the count beside it
-    is the level's own. Hover, a local view and the find box look at part of the map;
-    none of them moves a dot or works out a neighbour.
+    The payload's `neighbours` are the map's lines -- two games each among the other's
+    nearest -- every one drawn, as wide as their `likeness`, in their community's colour.
+    There is no cut and no slider: which pairs are near enough is each game's own nearest.
+    Hover, a local view and the find box look at part of the map; none of them moves a dot
+    or works out a neighbour.
     """
 
     @staticmethod
@@ -1103,69 +1098,37 @@ class TestTheMapDrawsSimilarity:
         rest = source.find("\nfunction ", start + 1)
         return source[start:rest if rest > 0 else len(source)]
 
-    @staticmethod
-    def _rows() -> tuple[list[dict], list[dict], list[str]]:
-        """Similarity rows at every level, and the server's own counts over them."""
-        from chess_variant_sandbox.web import graphing
+    def test_every_line_the_payload_sends_is_drawn_and_no_cut_is_compared(self) -> None:
+        """M4 retired the slider (a cut over `levels`, read on 69 games): each line the
+        server sends is an element, and nothing on the page compares a level or a cut."""
+        from page_text import PAGE
 
-        nodes = [f"g{index}" for index in range(9)]
-        indexes = [1, 8, 256, 300, 400, 512, 520, 600, 700, 768, 256, 512]
-        rows = []
-        for at, index in enumerate(indexes):
-            rows.append({
-                "source": nodes[at % 9], "target": nodes[(at * 4 + 1) % 9],
-                "index": index, "bond": round(graphing.bond(index), 3),
-                "level": next(cut for cut in graphing.LEVELS if index <= cut),
-                "words": "no rules",
-            })
-        return rows, graphing._levels(rows, nodes), nodes
-
-    def test_the_slider_at_each_level_draws_the_lines_the_level_names(self) -> None:
-        """The plan's proof: the page's comparison agrees with the server's count."""
-        rows, levels, nodes = self._rows()
-        payload = {
-            "nodes": [{"hash": hash_, "name": hash_, "names": [hash_]} for hash_ in nodes],
-            "similar": rows, "levels": levels, "communities": [], "counts": {},
-        }
-        shown = _in_the_page(
-            f"MAP_DATA = {json.dumps(payload)};",
-            "JSON.stringify(mapLevels().map(level => { MAP_CUT = level.cut;"
-            " return [level.cut, mapSimilar().filter(mapSimilarShown).length]; }))",
-        )
-        drawn = dict(json.loads(shown))
-        assert drawn == {level["cut"]: level["lines"] for level in levels}
-        # Every cut draws something the one before it did not, so the test says something.
-        assert len(set(drawn.values())) == len(levels)
-        # And the comparison is two server integers, nothing worked out.
-        assert "return row.level <= MAP_CUT;" in self._body("mapSimilarShown")
-
-    def test_the_map_opens_at_the_servers_cut_with_the_rule_steps_off(self) -> None:
-        opening = self._body("explorerOpeningLines")
-        assert "mapDefaultLevel()" in opening and "MAP_STEPS = !opened" in opening
-        assert "explorerOpeningLines();" in self._body("showExplorer")
-        assert "explorerOpeningLines();" in self._body("explorerReset")
-        # The four rule-step kinds of line go with the one switch.
-        assert "!MAP_STEPS" in self._body("mapLinkHidden")
-        assert "!MAP_STEPS" in self._body("mapArrowHidden")
-        assert 'id="exploreSteps"' in self._body("explorerLinesHtml")
-        assert "MAP_STEPS ? '' : ' hidden'" in self._body("mapLegendHtml")
-        # The slider walks the payload's levels and prints the level's own counts.
-        slider = self._body("explorerLinesHtml")
-        assert 'type="range"' in slider and "levels.length - 1" in slider
-        said = self._body("explorerCutSay")
-        assert "level.lines" in said and "level.alone" in said
-
-    def test_a_line_is_as_wide_as_its_bond_in_its_communitys_colour(self) -> None:
+        elements = self._body("explorerElements")
+        assert "mapLines().forEach((line, index)" in elements
+        assert "kind: 'line'" in elements
+        for gone in ("MAP_CUT", "mapLevels", "mapSimilar", "row.level", "exploreCut",
+                     "MAP_DATA.levels", "MAP_DATA.similar", "MAP_DATA.links"):
+            assert gone not in PAGE, gone
+    def test_the_map_opens_with_the_arrows_off_and_one_switch_brings_them(self) -> None:
+        """The rule-step switch left with its lines (M4); the arrows keep a switch of their
+        own, off at opening and again at *reset*."""
+        assert "MAP_ARROWS = false;" in self._body("showExplorer")
+        assert "MAP_ARROWS = false;" in self._body("explorerReset")
+        assert "return !MAP_ARROWS;" in self._body("mapArrowHidden")
+        assert 'id="exploreArrows"' in self._body("explorerLinesHtml")
+        assert "explorerSetArrows(arrows.checked)" in self._body("wireExplorer")
+        for gone in ("MAP_STEPS", "exploreSteps", "mapLinkHidden"):
+            assert gone not in self._body("explorerLinesHtml") + self._body("wireExplorer")
+    def test_a_line_is_as_wide_as_its_likeness_in_its_communitys_colour(self) -> None:
         from page_text import EXPLORER
 
-        assert "bond: row.bond" in self._body("explorerElements")
-        assert "const EXPLORER_BOND = 'mapData(bond," in EXPLORER
-        assert "{ selector: 'edge.similar', style: { 'width': EXPLORER_BOND } }" in EXPLORER
-        assert "explorerColour(mapSimilarColour(row))" in EXPLORER
-        colour = self._body("mapSimilarColour")
+        assert "likeness: line.likeness" in self._body("explorerElements")
+        assert "const EXPLORER_WIDTH = 'mapData(likeness," in EXPLORER
+        assert "{ selector: 'edge.line', style: { 'width': EXPLORER_WIDTH } }" in EXPLORER
+        assert "explorerColour(mapLineColour(line))" in EXPLORER
+        colour = self._body("mapLineColour")
         assert "from.community === to.community" in colour
         assert "'var(--muted)'" in colour
-
     def test_communities_of_three_or_more_take_eight_colours_in_payload_order(self) -> None:
         """A pair stays neutral, and a ninth community never gets a generated hue."""
         from chess_variant_sandbox.web.page.style import STYLE
@@ -1199,24 +1162,22 @@ class TestTheMapDrawsSimilarity:
 
     def test_a_community_chip_lights_its_members_and_the_lines_between_them(self) -> None:
         nodes = [{"hash": name, "name": name, "names": [name]} for name in "abcd"]
-        rows = [
-            {"source": "a", "target": "b", "level": 256, "index": 1, "bond": 4.7},
-            {"source": "b", "target": "c", "level": 512, "index": 512, "bond": 2.0},
-            {"source": "a", "target": "c", "level": 768, "index": 768, "bond": 1.8},
-            {"source": "c", "target": "d", "level": 256, "index": 8, "bond": 3.9},
+        lines = [
+            {"source": "a", "target": "b", "likeness": 0.9},
+            {"source": "b", "target": "c", "likeness": 0.5},
+            {"source": "a", "target": "c", "likeness": 0.3},
+            {"source": "c", "target": "d", "likeness": 0.7},
         ]
         community = {"id": "k", "members": ["a", "b", "c"], "names": ["a", "b", "c"],
                      "size": 3, "centre": "b", "name": "k"}
-        payload = {"nodes": nodes, "links": [], "lineage": [], "similar": rows,
+        payload = {"nodes": nodes, "lineage": [], "neighbours": lines,
                    "communities": [community], "counts": {}}
         shown = _in_the_page(
-            f"MAP_DATA = {json.dumps(payload)}; MAP_CUT = 512;"
-            " MAP_PICK = { kind: 'community', at: 0 };",
-            "JSON.stringify([...mapLit().similar].sort())",
+            f"MAP_DATA = {json.dumps(payload)}; MAP_PICK = {{ kind: 'community', at: 0 }};",
+            "JSON.stringify([...mapLit().lines].sort())",
         )
-        # The line out to `d` is not the community's, and the one at 768 is not drawn.
-        assert json.loads(shown) == [0, 1]
-
+        # The line out to `d` is not the community's.
+        assert json.loads(shown) == [0, 1, 2]
     def test_hover_lights_the_drawn_neighbours_and_gives_way_to_a_pick(self) -> None:
         from page_text import EXPLORER
 
@@ -1311,15 +1272,15 @@ class TestTheOutlines:
           { id: 'two', name: 'the second', size: 3, members: ['d', 'e', 'f'] },
           { id: 'pair', name: 'a pair', size: 2, members: ['g', 'h'] },
         ],
-        links: [], lineage: [], similar: [],
+        lineage: [], neighbours: [],
       };
       const pairs = [['a', 'b'], ['b', 'c'], ['a', 'c'], ['d', 'e'], ['e', 'f'], ['c', 'd'],
                      ['g', 'h']];
       EXPLORER = cytoscape({ headless: true, elements: names.map((name, at) => ({
           group: 'nodes', data: { id: 'n' + at, at: at, kind: 'node', name: name },
           position: { x: at * 10, y: 0 } }))
-        .concat(pairs.map(([from, to], at) => ({ group: 'edges', classes: 'similar',
-          data: { id: 's' + at, kind: 'similar', source: 'n' + names.indexOf(from),
+        .concat(pairs.map(([from, to], at) => ({ group: 'edges', classes: 'line',
+          data: { id: 's' + at, kind: 'line', source: 'n' + names.indexOf(from),
                   target: 'n' + names.indexOf(to) } }))) });
       const drawn = [];
       EXPLORER_BUBBLES = {
@@ -1364,7 +1325,7 @@ class TestTheOutlines:
         assert first[("d", "e", "f")]["fill"] == "var(--community-2)"
         assert said["labels"][0] == "\u25cf the first community"
 
-    def test_the_outlines_are_drawn_again_when_the_cut_the_local_view_or_a_fold_changes(
+    def test_the_outlines_are_drawn_again_when_a_line_the_local_view_or_a_fold_changes(
         self,
     ) -> None:
         """Only an outline whose holding changed is drawn again; the rest are left."""
@@ -1375,7 +1336,7 @@ class TestTheOutlines:
           // The same picture again draws nothing.
           explorerPaintHulls();
           said.again = count();
-          // The cut takes a line inside the first community off.
+          // A line inside the first community is taken off the drawing.
           EXPLORER.getElementById('s2').addClass('off');
           explorerPaintHulls();
           said.cut = [count(), now().map(path => path.lines)];
@@ -1408,13 +1369,12 @@ class TestTheOutlines:
         assert said["off"] == [0, 0]
 
     def test_every_change_to_what_is_drawn_reaches_the_outlines(self) -> None:
-        """The cut, the rule-step switch, a fold, *hide the rest* and the local view all
+        """The arrows' switch, a fold, *hide the rest* and the local view all
         repaint through `explorerPaintLit`, which ends in the local view's paint, which
         ends in the outlines'."""
         assert "explorerPaintHulls();" in self._body("explorerPaintLocal")
         assert "explorerPaintLocal();" in self._body("explorerPaintLit")
-        for caller in ("explorerSetCut", "explorerSetSteps", "explorerFoldDone",
-                       "explorerLocal"):
+        for caller in ("explorerSetArrows", "explorerFoldDone", "explorerLocal"):
             assert "explorerPaintLit();" in self._body(caller), caller
         # A pick or a pointer changes what is lit, not what is drawn: a colour only.
         assert "explorerHullsFade();" in self._body("explorerHover")
@@ -1440,72 +1400,40 @@ class TestTheOutlines:
         assert "explorerHullNames(frame)" in self._body("explorerPaintNames")
         assert ".mapHullName {" in STYLE and "pointer-events: none" in STYLE
 
-    # The server's picture of a small library, drawn headless by the page's own elements,
-    # and at every cut the payload offers, what each outline holds by the page's own choice.
-    # An outline reaches `nodeR1` past a game's edge and `edgeR1` past a line, and no
-    # further, so two outlines cannot meet while everything one holds is further from
-    # everything the other holds than their two reaches together.
-    APART = """
-      explorerColour = colour => colour;
-      explorerNamesSoon = () => {};
-      MAP_DATA = %(payload)s;
-      MAP_AT = {};
-      MAP_DATA.nodes.forEach(node => { MAP_AT[node.hash] = node; });
-      MAP_STEPS = false;
-      MAP_OFF = { nearest: true };
-      EXPLORER = cytoscape({ headless: true, layout: { name: 'preset' },
-                             elements: explorerElements() });
-      const near = (p, a, b) => {
-        const dx = b.x - a.x, dy = b.y - a.y, run = dx * dx + dy * dy;
-        const t = run ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / run))
-          : 0;
-        return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
-      };
-      const reach = EXPLORER_HULL_REACH;
-      const parts = path => path.members.map(dot => ({ at: dot.position(),
-          r: dot.data('across') / 2 + reach.nodeR1 }))
-        .concat(path.lines.map(line => ({ from: line.source().position(),
-          to: line.target().position(), r: reach.edgeR1 })));
-      const gap = (one, other) => {
-        if (one.at && other.at) return Math.hypot(one.at.x - other.at.x, one.at.y - other.at.y);
-        if (one.at) return near(one.at, other.from, other.to);
-        if (other.at) return near(other.at, one.from, one.to);
-        return Math.min(near(one.from, other.from, other.to), near(one.to, other.from, other.to),
-                        near(other.from, one.from, one.to), near(other.to, one.from, one.to));
-      };
-      const said = { cuts: [] };
-      mapLevels().forEach(level => {
-        MAP_CUT = level.cut;
-        explorerPaintLines();
-        explorerPaintHulls();
-        const held = now().map(path => ({ members: EXPLORER.nodes().filter(dot =>
-          path.nodes.includes(dot.data('name'))), lines: EXPLORER.edges().filter(line =>
-          path.lines.includes(line.id())) }));
-        let slack = Infinity;
-        held.forEach((one, i) => held.slice(i + 1).forEach(other => parts(one).forEach(a =>
-          parts(other).forEach(b => { slack = Math.min(slack, gap(a, b) - a.r - b.r); }))));
-        said.cuts.push({ cut: level.cut, outlines: held.length, slack: slack / EXPLORER_UNIT });
-      });
-    """
+    def test_a_community_drawn_in_two_places_is_outlined_in_each(self) -> None:
+        """M4: the server says where a community is drawn (`parts`), and each place gets an
+        outline of its own in the community's one colour, rather than one outline stretched
+        across the map between them.
 
-    def test_no_two_outlines_can_meet_on_the_servers_picture_at_any_cut(
-        self, tmp_path: Path
-    ) -> None:
-        """Q477. Nothing on the page lays the map out, so the picture every outline is drawn
-        over is the server's, and the server holds two communities `COMPONENT_GAP` apart.
-        This holds the page's outline reach inside that gap, at every cut."""
-        import test_graphing
-
-        graph = test_graphing.built(test_graphing.TestTheSimilarityLines.SPECS, tmp_path)
-        payload = json.dumps(graph.as_dict())
-        said = self._run(self.APART % {"payload": payload})
-        cuts = said["cuts"]
-        assert [cut["cut"] for cut in cuts] == [level["cut"] for level in graph.levels]
-        # Two outlines to keep apart at the default cut, or the test holds nothing.
-        assert max(cut["outlines"] for cut in cuts) >= 2
-        for cut in cuts:
-            if cut["outlines"] >= 2:
-                assert cut["slack"] > 0, cut
+        This replaces Q477's *no two outlines can meet on the server's picture at any cut*,
+        a promise of the layout by community (`COMPONENT_GAP` between knots) that M3's
+        picture does not make: it draws games by likeness, so two communities alike can sit
+        side by side. What holds instead is the first test here -- an outline keeps clear
+        of every drawn game that is not its own.
+        """
+        said = self._run("""
+          MAP_DATA.communities[0].parts = [['a', 'b'], ['c']];
+          MAP_DATA.communities[1].parts = [['d', 'e', 'f']];
+          explorerPaintHulls();
+          const said = { ids: [...EXPLORER_OUTLINES.keys()].sort(),
+                         drawn: now().map(path => [path.nodes, path.fill]) };
+        """)
+        # `c` alone is one game, which is no outline; `a b` is, under the community's colour.
+        assert said["ids"] == ["one#0", "two#0"]
+        assert sorted(said["drawn"]) == [
+            [["a", "b"], "var(--community-1)"], [["d", "e", "f"], "var(--community-2)"],
+        ]
+        both = self._run("""
+          MAP_DATA.communities[0].parts = [['a', 'b'], ['c', 'd']];
+          MAP_DATA.communities[0].members = ['a', 'b', 'c', 'd'];
+          MAP_DATA.communities[1].members = ['e', 'f'];
+          MAP_DATA.communities[1].size = 2;
+          explorerPaintHulls();
+          const said = now().map(path => [path.nodes, path.fill]);
+        """)
+        assert sorted(both) == [
+            [["a", "b"], "var(--community-1)"], [["c", "d"], "var(--community-1)"],
+        ]
 
 
 SAMPLE_CHANGELOG = """# Changelog
@@ -1842,7 +1770,7 @@ class TestTheExplorer:
 
         from chess_variant_sandbox.spec import relate
 
-        assert "mapKindColour(kind)" in EXPLORER
+        assert "mapKindColour" not in EXPLORER
         for kind in relate.KINDS:
             assert f"'{kind}'" not in EXPLORER, kind
 
@@ -1850,10 +1778,10 @@ class TestTheExplorer:
         """What the map draws, drawn again in the library's own stylesheet."""
         from page_text import EXPLORER
 
-        # Solid in the kind's colour, dashed in it, faint and dotted, grey with the
-        # arrowhead at the middle.
-        assert "'line-style': 'dashed'" in EXPLORER
-        assert "'line-style': 'dotted'" in EXPLORER
+        # A line as wide as its likeness, and grey with the arrowhead at the middle. The
+        # dashed gap and the dotted nearest relative left with the rule steps (M4).
+        assert "{ selector: 'edge.line', style: { 'width': EXPLORER_WIDTH } }" in EXPLORER
+        assert "'line-style'" not in EXPLORER
         assert "'mid-target-arrow-shape': 'triangle'" in EXPLORER
         assert "explorerColour('var(--faint)')" in EXPLORER
         # The fill is the map's ramp, resolved: nothing here decides what a score looks
@@ -1940,7 +1868,7 @@ class TestTheExplorer:
 
         assert "${mapLegendHtml()}" in EXPLORER
         assert "mapFound()" in EXPLORER
-        assert "mapLinkHidden(link)" in EXPLORER
+        assert "mapArrowHidden()" in EXPLORER
         assert "mapSayLit(found)" in EXPLORER
         # The same five states, from the listing's own score menu, and one of each
         # control: they are written here because the shell is, not read from the map.
@@ -1952,18 +1880,18 @@ class TestTheExplorer:
         for drawn in ("mapLegendHtml", "mapScaleHtml", "mapLineSwatch"):
             assert f"function {drawn}" not in EXPLORER
 
-    def test_a_chip_moves_no_dot(self) -> None:
+    def test_the_arrows_switch_moves_no_dot(self) -> None:
         """The plan's acceptance for this stage, and the map's own test of it.
 
-        A chip reaches the lines and nothing else. Every position arrived with the
-        payload and was written once; the paint a chip calls selects only edges.
+        The arrows' switch reaches the arrows and nothing else. Every position arrived
+        with the payload and was written once; the paint the switch calls selects only
+        edges. (The kind chips this held until M4 left with the rule-step lines.)
         """
         hiding = self._body("explorerPaintLines")
         for reached in ("nodes(", "position", "getElementById('n"):
             assert reached not in hiding, reached
         assert "EXPLORER.edges()" in hiding
-        assert "explorerPaintLines();" in self._body("explorerToggle")
-
+        assert "explorerPaintLines();" in self._body("explorerSetArrows")
     def test_a_filter_lights_and_a_line_with_an_unlit_end_fades(self) -> None:
         """A filter lights; it never hides. A line between two lit games keeps its colour.
 
@@ -1974,7 +1902,7 @@ class TestTheExplorer:
         from page_text import EXPLORER, GRAPH
 
         lit = self._body("explorerPaintLit")
-        assert "lit(link.source) && lit(link.target)" in lit
+        assert "lit(line.source) && lit(line.target)" in lit
         assert "toggleClass('faded'" in lit
         # Nothing in the lighting pass takes a game away except the one control that
         # says it does, and that control is a reader's own press. Twice, because a folded
@@ -2116,13 +2044,12 @@ class TestTheExplorer:
         assert "if (!folded || first === second) return;" in lines
         assert "held.count += 1" in lines
         assert "kind: 'grouped'" in lines
-        # The colour is the kind's where every line it stands for is of one kind, and
-        # grey where they are not. Which is `page/graph.js`'s colour either way.
-        assert "explorerKindColour(kinds[0])" in lines
+        # Grey, whatever it stands for: a line of likeness has no kind of rule.
+        assert "colour: explorerColour('var(--muted)')" in lines
         assert "'label': 'data(count)'" in EXPLORER
-        # A line whose kind a chip has hidden is not counted into the total, so a chip
-        # and a fold read together.
-        assert "if (mapLinkHidden(link))" in lines
+        # An arrow the switch has hidden is not counted into the total, so the switch and
+        # a fold read together.
+        assert "if (mapArrowHidden())" in lines
 
     def test_a_folded_dot_opens_a_panel_for_a_group(self) -> None:
         """A group is not a game, so it does not get the game's panel.
@@ -2163,8 +2090,9 @@ class TestTheExplorer:
         assert json.loads(shown) == ["c0", "c2", "c3"]
         assert "open this community" in GRAPH
         opened = self._body("showExplorer")
-        assert "MAP_OFF = { nearest: true };" in opened
-        assert "MAP_OFF = { nearest: true };" in self._body("explorerReset")
+        assert "MAP_ARROWS = false;" in opened
+        assert "MAP_ARROWS = false;" in self._body("explorerReset")
+        assert "MAP_OFF" not in PAGE
 
     def test_nothing_on_the_page_lays_the_map_out_and_reset_undoes_everything(self) -> None:
         """The one control over the picture as a whole, and no layout beside it.
@@ -2302,8 +2230,7 @@ class TestTheExplorer:
         from chess_variant_sandbox.web import graphing
 
         graph = graphing.build([], tmp_path)
-        assert [size["key"] for size in graph.as_dict()["sizes"]] == ["links"]
-        assert graphing.LINKS_FULL == 8
+        assert [size["key"] for size in graph.as_dict()["sizes"]] == ["neighbours"]
         # Every entry carries the four things the legend needs, and the two ends are
         # real values rather than nought and one.
         assert set(graphing._sizes([], None)[0]) == {
@@ -2430,7 +2357,7 @@ class TestTheExplorer:
         overlaid = graphing.build([], tmp_path, overlays=["people"])
         assert overlaid.as_dict()["overlays"] == ["people"]
         # A key added to or taken from the payload is a cache under a new shape.
-        assert graphing.GRAPH_VERSION == "g14"
+        assert graphing.GRAPH_VERSION == "g15"
 
 
 class TestWhatsNew:
@@ -8320,7 +8247,7 @@ class TestADraftsLinkCanBeCopied:
 
     def test_the_link_is_the_routers_game_address_on_this_origin(self) -> None:
         setup = "location.origin = 'https://example.test';"
-        assert _in_page(setup, "gameLink('abc123')") == "https://example.test/#/game/abc123"
+        assert _in_page(setup, "gameLink('abc123')") == "https://example.test/game/abc123"
         from page_text import CORE
 
         assert "parts[0] === 'game'" in CORE

@@ -39,7 +39,10 @@ chancellor (a whole knight on a sliver of upturned battlements) read as a knight
 to a first-time visitor; the archbishop, by the same rule, is his bishop's mitre
 with the knight's head rising from behind its point, where Commons' is a whole
 knight on a bishop's foot. Alfil, camel and wazir are Quivira glyphs, a second and
-slightly different style. The shogi set is Hari Seldon's westernised tiles; the
+slightly different style. A font's white piece is an outline with nothing inside it,
+so the three white ones here have that body filled white beneath the outline
+(`fetch.py`'s `FILLED`); as downloaded, a white elephant on a board was the square
+showing through a black line. The shogi set is Hari Seldon's westernised tiles; the
 xiangqi set is Inductiveload's discs. Mixing the families on one board will look
 like several sets, because it is.
 
@@ -94,7 +97,9 @@ anything outside its allowlist. As it stands: 54 CC BY-SA 3.0, 28 public domain,
 11 CC BY-SA 4.0, 12 CC0, 1 GFDL. `CREDITS.md` names the author, licence and source
 page for each one.
 
-Of the 78 non-xiangqi files, 68 are redistributed byte-for-byte unmodified; the
+Of the 78 non-xiangqi files, 65 are redistributed byte-for-byte unmodified; the
+three white Quivira glyphs are the originals with their body filled white beneath
+the outline, under the same CC BY-SA 4.0; the
 two chancellor files are Cburnett's rook and knight rearranged and the two
 archbishop files his bishop and knight, under his CC BY-SA 3.0, and the six rock, paper and scissors files are originals released CC0. The 28
 xiangqi files are each one disc cut out of a four-up source sheet; that source is

@@ -97,6 +97,7 @@ from chess_variant_sandbox.site import identity, matches, quota, rating
 from chess_variant_sandbox.site.matches import AGREED, BETWEEN_PEOPLE, CANCELLED, MatchError, Row
 from chess_variant_sandbox.web import draw_offer
 from chess_variant_sandbox.web.library import engine_for
+from chess_variant_sandbox.web.play import fresh_seed
 
 PRACTICE = matches.SANDBOX
 """The mode a game between two people takes on rules with no rated computer players."""
@@ -575,7 +576,7 @@ def start(
     game: str,
     players: Sequence[int],
     by: int | None = None,
-    seed: int = 0,
+    seed: int | None = None,
 ) -> Row:
     """Seat two people at one game, in board order, and write the row.
 
@@ -589,6 +590,9 @@ def start(
     account that cannot sign in, and for a person already at `quota.CORRESPONDENCE_AT_ONCE`
     games in flight. The mode is the game's, never a choice: rated on rules with rated
     computer players, practice elsewhere (§1.3).
+
+    `seed` is the challenge's own draw, which also chose who moves first; `/admin`'s
+    pairing names none and gets a fresh one (`play.fresh_seed`, Q987), never 0.
     """
     if len(players) != 2:
         raise MatchError("a game between people has two of them")
@@ -610,6 +614,7 @@ def start(
             )
     mode = mode_for(connection, game)
     match_id = secrets.token_urlsafe(9)
+    seed = fresh_seed() if seed is None else seed
     with connection.cursor() as cursor:
         cursor.execute(
             "insert into matches (id, game, mode, seed, seat0_user, seat1_user, times)"

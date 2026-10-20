@@ -1,0 +1,246 @@
+{
+  "schema_version": 17,
+  "name": "circe mortal diagonals",
+  "description": "Circe chess, invented by Pierre Monreal in 1967, sends a captured piece home instead of off the board: it reappears at once on its starting square, and is lost for good only if that square is occupied. Played as it stands, the rule has a flaw. A queen or bishop taken on a square its own starting square can see goes home and takes straight back, the enemy piece goes home and takes back in turn, and two queens facing each other down an open file can take and retake on the same square for the rest of the game. This version cures it by keeping the rebirth for the knights, rooks and pawns and taking it away from the queen and the bishops: a queen or bishop that is taken is gone, as in ordinary chess. That makes every capture a question of whose loss is the lasting one. A knight, rook or pawn can be thrown at almost anything, since while its home square is free it costs only the time to walk back out, so a knight that takes a bishop and is taken in turn has won a piece for two moves. The queen and bishops are the only pieces that can be won for keeps short of filling a home square, and so the ones each side has to guard and to hunt. As in circe, a reborn piece stands as if it had never moved, so a rook that comes home may castle again.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "strike": {
+      "effect": "capture",
+      "position": "home",
+      "immune": [
+        "K",
+        "Q",
+        "B"
+      ]
+    }
+  },
+  "provenance": {
+    "added": "2026-10-19",
+    "origin": "human",
+    "source": "Circe chess (P. Monreal, 1967), with the queen and bishops left out of the rebirth",
+    "history": "The showcase for rules.strike.immune naming a non-royal piece (Q798, 2026-10-19): circe with the queen and bishops immune and nothing else changed. Pre-registered in docs/reference/schema-showcase-coverage.md (Q798), where two earlier versions are logged: mortal pawns alone (the queens still looped) and the mortal queen alone (the bishops did).",
+    "parents": [
+      "54a0a193da0f"
+    ]
+  }
+}

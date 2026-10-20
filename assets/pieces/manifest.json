@@ -11,11 +11,12 @@
   "alfil-white": {
     "file": "svg/alfil-white.svg",
     "viewBox": "0 0 12 12",
-    "bytes": 1709,
+    "bytes": 3675,
     "source": "https://commons.wikimedia.org/wiki/File:White_alfil.svg",
     "author": "Kwamikagami",
     "licence": "CC BY-SA 4.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0",
+    "modified": "the outline's body filled white beneath it, so the piece is not see-through on a board; the outline itself is unchanged"
   },
   "amazon-black": {
     "file": "svg/amazon-black.svg",
@@ -85,11 +86,12 @@
   "camel-white": {
     "file": "svg/camel-white.svg",
     "viewBox": "0 0 12 12",
-    "bytes": 1691,
+    "bytes": 3625,
     "source": "https://commons.wikimedia.org/wiki/File:White_chess_camel.svg",
     "author": "Kwamikagami",
     "licence": "CC BY-SA 4.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0",
+    "modified": "the outline's body filled white beneath it, so the piece is not see-through on a board; the outline itself is unchanged"
   },
   "centaur-black": {
     "file": "svg/centaur-black.svg",
@@ -681,11 +683,12 @@
   "wazir-white": {
     "file": "svg/wazir-white.svg",
     "viewBox": "0 0 12 12",
-    "bytes": 1344,
+    "bytes": 2806,
     "source": "https://commons.wikimedia.org/wiki/File:White_wazir.svg",
     "author": "Kwamikagami",
     "licence": "CC BY-SA 4.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0",
+    "modified": "the outline's body filled white beneath it, so the piece is not see-through on a board; the outline itself is unchanged"
   },
   "xiangqi-advisor-black": {
     "file": "svg/xiangqi-advisor-black.svg",

@@ -60,6 +60,43 @@ from chess_variant_sandbox.web.library import Game, engine_for
 
 HUMAN = "human"
 
+SEEDS = 2**31
+"""How many seeds a game can be given: `fresh_seed` draws below it, and the store's
+`seed` column (`bigint`) and the core's `u64` take any of them."""
+
+
+def fresh_seed() -> int:
+    """A seed for a game nobody named one for, drawn from the operating system (Q987).
+
+    Every game on either server used to run with seed 0 when the request named none, so
+    the computer chose the same move in the same position at the same ply in every game
+    anyone played (a round game's mixed strategy is drawn from `seed + ply`;
+    `docs/reference/round-hardest-weakness.md` §1). The seed is drawn once, when the
+    game starts, and kept with it -- the match row, or the session -- so a game is still a
+    pure function of `(ruleset_hash, seed, agent_configs)` and replays exactly. `secrets`,
+    not `random`: nothing here may share a stream with anything else.
+    """
+    return secrets.randbelow(SEEDS)
+
+
+def seed_asked(asked: Any) -> int:
+    """The seed a request named, or a fresh one when it named none.
+
+    `asked` is the body's `seed`, absent or null for a page that does not name one, which
+    every page does today. A named seed is kept exactly, whatever it is, because a test or
+    a reproduction that names one depends on it; anything that is not a whole number is
+    refused rather than guessed at.
+    """
+    if asked is None:
+        return fresh_seed()
+    if isinstance(asked, bool) or (isinstance(asked, float) and not asked.is_integer()):
+        raise ValueError(f"a seed is a whole number, and {asked!r} is not one")
+    try:
+        return int(asked)
+    except (TypeError, ValueError):
+        raise ValueError(f"a seed is a whole number, and {asked!r} is not one") from None
+
+
 # The agent kinds whose search in the core deepens one move at a time, and so the only
 # ones whose reported depth says how far they looked. The core reports zero for every
 # other kind (`rust/src/agents.rs::Stats::depth`), which from a searching player would
@@ -1287,14 +1324,19 @@ class Sessions:
         self._limit = limit
 
     def start(
-        self, game: Game, seats: tuple[str, str], seed: int = 0, scratch: bool = False
+        self,
+        game: Game,
+        seats: tuple[str, str],
+        seed: int | None = None,
+        scratch: bool = False,
     ) -> Session:
+        """Hold a new game; `seed` None (nobody named one) draws a `fresh_seed`."""
         engine = engine_for(game.spec)
         session = Session(
             id=secrets.token_urlsafe(9),
             game=game,
             seats=seats,
-            seed=seed,
+            seed=fresh_seed() if seed is None else seed,
             state=engine.initial_state(),
             scratch=scratch,
             played_by=seats_played(seats, engine.spec.hash),

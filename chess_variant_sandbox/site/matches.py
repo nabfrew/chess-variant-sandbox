@@ -114,7 +114,7 @@ from chess_variant_sandbox.site import finishes, pinning, proven, quota, rating,
 from chess_variant_sandbox.web import draw_offer, opponents
 from chess_variant_sandbox.web.human import HUMAN, RESIGNED, HumanGame, summarise
 from chess_variant_sandbox.web.library import Game, engine_for
-from chess_variant_sandbox.web.play import Session
+from chess_variant_sandbox.web.play import Session, fresh_seed
 from chess_variant_sandbox.web.play import Sessions as PlaySessions
 
 SANDBOX = "sandbox"
@@ -378,7 +378,7 @@ def start(
     mode: str,
     seats: Sequence[str],
     user: int | None = None,
-    seed: int = 0,
+    seed: int | None = None,
     rematch_of: str | None = None,
     puzzle: tuple[str, Sequence[int]] | None = None,
 ) -> Row:
@@ -430,6 +430,10 @@ def start(
     game's record after the engine replayed it. The row starts with the prefix as its
     moves, source `puzzle`, and is practice with one person in it and no rematch; the
     columns' checks (`0037_proven_positions.sql`) hold it to that one layer down too.
+
+    `seed` is the one the request named, kept exactly; None, which is every page's start
+    and every proven-position try, draws a fresh one (`play.fresh_seed`, Q987). Either way
+    it is written in the row, and every reply and replay of the match reads it from there.
     """
     if mode not in MODES:
         raise MatchError(f"a match is {SANDBOX} or {LEADERBOARD}, not {mode!r}")
@@ -506,6 +510,7 @@ def start(
         if (net := _played(seat, game)) is not None
     }
     match_id = secrets.token_urlsafe(9)
+    seed = fresh_seed() if seed is None else seed
     columns, players = _seat_columns(seats, user)
     # H3, named only where there is one, as `played` is, so every other match writes what
     # it wrote before `0032_human_data.sql`.

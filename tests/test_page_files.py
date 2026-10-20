@@ -54,8 +54,13 @@ _TAG = re.compile(r"<script([^>]*)>(.*?)</script>", re.S)
 
 
 def _served_pages() -> dict[str, str]:
-    """Every HTML page a server sends: the application's, and each of the site's."""
-    return {"/": page.PAGE, **page_names.site_pages()}
+    """Every HTML page a server sends: the application's, and each of the site's, its two
+    front doors (G4) among them."""
+    from chess_variant_sandbox.web.page import front
+
+    doors = {"/ on the site": front.home("https://site.example"),
+             "/game on the site": front.games("", [front.Listed("0123456789ab", "A <game>")])}
+    return {"/": page.PAGE, **doors, **page_names.site_pages()}
 
 
 class TestNoServedPageCarriesAScriptBody:
@@ -90,7 +95,7 @@ class TestNoServedPageCarriesAScriptBody:
             path for path, html in _served_pages().items()
             if "<script" in html.replace(shell_tag, "")
         }
-        assert scripted == {"/", "/join", "/signin", "/profile", "/players", "/suggestions",
+        assert scripted == {"/", "/ on the site", "/game on the site", "/join", "/signin", "/profile", "/players", "/suggestions",
                             "/admin", "/challenge_link", "/players/ada", "/request_invitation"}
 
 

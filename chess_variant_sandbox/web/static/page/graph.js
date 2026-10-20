@@ -1,33 +1,34 @@
 // The library as a map, in words: the legend, the panels, and what they read.
 //
-// `docs/archive/plan-game-graph.md` G3 to G7, and §8.2. The second view of the library --
-// *list* beside *map* -- drawn from one call to `GET /api/graph`. The drawing is
-// `page/explorer.js`'s and is what `#/map` opens; what lives here is everything the map says
-// in words, and the readings of the payload the drawing and the panels share.
+// `docs/archive/plan-game-graph.md` G3 to G7 built the map's words; `docs/plan-map.md` M4
+// put the new map under them. The second view of the library -- *list* beside *map* --
+// drawn from one call to `GET /api/graph`. The drawing is `page/explorer.js`'s and is what
+// `#/map` opens; what lives here is everything the map says in words, and the readings of
+// the payload the drawing and the panels share.
 //
 // **This module places nothing and computes nothing.** Every coordinate is the server's and
-// no coordinate is written here at all. It works out no distance between two games, compares
-// no rules, reads no spec and asks the engine nothing: which games are near which, what
-// differs between them, which pairs are a gap, which games are far from everything and which
-// communities the likeness lines form all arrive in the payload, already decided.
+// no coordinate is written here at all. It works out no likeness between two games,
+// compares no rules, reads no spec and asks the engine nothing: which games are alike,
+// what they share and what differs between them, which communities they form and which
+// games are unusual all arrive in the payload, already decided.
 //
 // Three things the map has to answer that the payload deliberately leaves open:
 //
-// **A line has to say which of four things it is.** A solid coloured line is one rule apart
-// and its colour is which rule; a dashed line is a gap, two or three rules with no game
-// standing between them; a faint dotted line is the nearest relative of a game nothing
-// reaches; an arrow is *this game was written as a revision of that one*. They are four
-// different claims and a reader must not have to click to tell them apart, so the legend
-// carries a swatch of each.
+// **A line has to say which of two things it is.** A line in a community's colour, or in
+// grey between two communities, joins two games that are each among the other's nearest,
+// and its width is how alike they are; a grey line with an arrowhead is *this game was made
+// from that one*. They are different claims, and the legend carries a swatch of each.
 //
-// **A name at every dot is a smear.** Seventy names at the width of the whole map overlap
-// several times over, so `mapLabelOrder` ranks them -- whatever is held up first, then the
-// busiest games -- and the drawing paints down that order until a name would land on one
-// already there.
+// **A name at every dot is a smear.** Ninety names at the width of the whole map overlap
+// several times over, so `mapLabelOrder` ranks them -- whatever is held up first, then each
+// community's centre, then the busiest games -- and the drawing paints down that order
+// until a name would land on one already there. Zooming in makes room for the rest.
 //
-// **A community is a place.** The server's communities are a partition -- every game in one
-// or none -- so a community can be outlined on the drawing, lit from its chip and folded into
-// one dot, and a game is never in two of them (`docs/archive/plan-graph-map.md` S5).
+// **A community is a place, or two.** The server's communities are a partition -- every
+// game in one or none -- so a community can be outlined on the drawing, lit from its chip
+// and folded into one dot, and a game is never in two of them. The picture keeps games
+// alike near each other, so a community whose halves share little but one thing can be
+// drawn in two places; the server says so (`parts`) and each place gets its own outline.
 //
 // Two more the score brought with it (G4):
 //
@@ -45,12 +46,10 @@
 //
 // And one the remix brought (G6):
 //
-// **A game a reader makes from the map is made by the server.** *And now try* and *make the
-// game in between* are two presses that end in the editor holding a draft, and neither works
-// out what that draft is. Which design steps apply to a game is the designer's answer, and
-// whether two games have a third between them is on the link before anything is pressed. The
-// drawing is still one call to `GET /api/graph`; a press is a second question, to
-// `GET /api/design/<hash>`, which is the route *make your own from this* already asks.
+// **A game a reader makes from the map is made by the server.** *And now try* ends in the
+// editor holding a draft, and does not work out what that draft is: which small changes to
+// the rules apply to a game is the designer's answer, asked of `GET /api/design/<hash>`,
+// which is the route *make your own from this* already asks.
 
 // ------------------------------------------------- the map, and what a reader asked of it
 //
@@ -58,20 +57,16 @@
 // and writes back to them, because one library read two ways would be two libraries.
 
 let MAP_DATA = null,   // the payload, exactly as `/api/graph` sent it
-    MAP_AT = {},       // hash -> node, which is the join every link needs
-    // What is held up: {kind: 'node'|'link'|'arrow'|'similar'|'community'|'group', at:
-    // <index>}. One at a time -- holding two things up is holding nothing up.
+    MAP_AT = {},       // hash -> node, which is the join every line needs
+    // What is held up: {kind: 'node'|'line'|'arrow'|'community'|'group', at: <index>}.
+    // One at a time -- holding two things up is holding nothing up.
     MAP_PICK = null,
-    MAP_ON = null,     // the hashes and link indexes that pick lights, as two Sets
-    MAP_OFF = {},      // kinds of rule, and kinds of line, currently hidden
+    MAP_ON = null,     // the hashes and line indexes that pick lights, as three Sets
     MAP_FIND = '',     // what is typed in the find box, which lights games by name
     MAP_SHOW = '',     // which measurements are lit, in the listing's own five states
-    // The similarity cut the lines are drawn at: one of the payload's `levels`, and a
-    // line is drawn when its own `level` is at most it. Two server integers, compared.
-    MAP_CUT = 0,
-    // Whether the rule-step lines -- one rule apart, a gap, a nearest relative and made
-    // from -- are drawn as well. Off when the map opens: the similarity lines are the map.
-    MAP_STEPS = false,
+    // Whether the arrows from a game to one made from it are drawn. Off when the map
+    // opens: the lines of likeness are the map.
+    MAP_ARROWS = false,
     // What a dot's fill says: 'community', the colour of the community it is drawn in,
     // or 'ramp', its score on the library's own ramp.
     MAP_PAINT = 'community',
@@ -101,51 +96,36 @@ function wireViewSwitch() {
 
 function mapSummary() {
   const counts = MAP_DATA.counts;
-  if (!mapLevels().length) return `${counts.nodes} games, ${counts.oneRule} pairs one rule apart`;
-  return `${counts.nodes} games, ${counts.similar} pairs alike enough for a line, in`
-    + ` ${counts.communities} communities`;
+  return `${counts.nodes} games in ${counts.communities} communities, and ${
+    counts.unusual} unusual ones`;
 }
 
-// ---------------------------------------------------------- the similarity lines
+// ------------------------------------------------------------------------ the lines
 //
-// `docs/archive/plan-graph-map.md` S3. Every pair of games within the last cut is a row in
-// `similar`, carrying the index, its `bond` (how tightly the two are bound, which is
-// what a line's width is), the first cut that draws it, and the index's own sentence.
-// `levels` are the cuts a reader may choose, each with the server's count of lines and
-// of games left with none. Nothing here counts either: the page compares a row's level
-// with the cut in hand, and prints the level's own numbers.
+// `docs/plan-map.md` M4. Every pair of games each among the other's nearest is a row in
+// `neighbours`, carrying how alike the two are (`likeness`, which is the line's width),
+// the rarest things both have (`shares`), and what differs between them in rules, which
+// is `spec/relate.py`'s reading. There is no cut to choose: which lines exist is the
+// server's, and every one of them is drawn.
 
-function mapLevels() {
-  return (MAP_DATA && MAP_DATA.levels) || [];
+function mapLines() {
+  return (MAP_DATA && MAP_DATA.neighbours) || [];
 }
 
-// The cut the map opens on, which the server marks.
-function mapDefaultLevel() {
-  const levels = mapLevels();
-  return levels.find(level => level.default) || levels[levels.length - 1] || null;
-}
-
-function mapLevelNow() {
-  return mapLevels().find(level => level.cut === MAP_CUT) || null;
-}
-
-// Whether one similarity row is drawn at the cut in hand. The one comparison the
-// slider makes, of two integers the server sent.
-function mapSimilarShown(row) {
-  return row.level <= MAP_CUT;
-}
-
-function mapSimilar() {
-  return (MAP_DATA && MAP_DATA.similar) || [];
+// The index of the line between two games, or -1 where none joins them.
+function mapLineBetween(one, other) {
+  return mapLines().findIndex(line =>
+    (line.source === one && line.target === other)
+    || (line.source === other && line.target === one));
 }
 
 // ----------------------------------------------------------------- the communities
 //
-// The server's partition of the games the default cut joins: Louvain over the lines,
-// weighted by their bond, with a name for each and its centre. Every community of three
-// or more gets a colour of its own, in the payload's order, while there are colours to
-// give; a pair is already visible as a pair, and eight is about as many colours as a
-// reader tells apart. A game in no coloured community keeps the neutral dot.
+// The server's partition of the games that have a community, with a name for each, its
+// centre and where it is drawn. Every community of three or more gets a colour of its own,
+// in the payload's order, while there are colours to give; a pair is already visible as a
+// pair, and eight is about as many colours as a reader tells apart. A game in no coloured
+// community keeps the neutral dot.
 
 const MAP_COLOURED = 3;
 const MAP_COLOURS = 8;
@@ -172,69 +152,31 @@ function mapCommunityColour(id) {
   return id && at >= 0 && at < MAP_COLOURS ? `var(--community-${at + 1})` : '';
 }
 
-// A similarity line's colour: its community's where both ends are in the same one, and
-// the neutral colour where they are not.
-function mapSimilarColour(row) {
-  const from = MAP_AT[row.source], to = MAP_AT[row.target];
+// A line's colour: its community's where both ends are in the same one, and the neutral
+// colour where they are not.
+function mapLineColour(line) {
+  const from = MAP_AT[line.source], to = MAP_AT[line.target];
   const shared = from && to && from.community && from.community === to.community;
   return (shared && mapCommunityColour(from.community)) || 'var(--muted)';
 }
 
 // ------------------------------------------------------------------------- the legend
 //
-// What the lines mean, in words, and the same chips are the controls that hide them. What
-// each line *is* stays on screen; which rule a colour means, and the families, fold into a
-// panel that opens only where there is room above the map for it.
+// What the dots, the lines and the colours mean, in words. The communities are the key,
+// and the one list of them; the score ramp says what a fill means only while the fill is
+// the score; the two kinds of line are a swatch each.
 
 function mapLegendHtml() {
-  const counts = MAP_DATA.counts;
-  const lines = [
-    ['rule', mapLineSwatch('rule'), 'one rule apart', counts.oneRule,
-     'The two games differ in exactly one rule, and the colour says which kind of rule.'],
-    ['gap', mapLineSwatch('gap'), 'a gap: two or three rules, nothing in between',
-     counts.gaps,
-     'Two or three rules differ and no game in the library stands between them, so the'
-     + ' game in the middle is one nobody has made.'],
-    ['nearest', mapLineSwatch('nearest'), 'nearest relative', counts.nearest,
-     'Nothing in the library is within three rules of this game. The faint line goes to'
-     + ' the closest to it by overall likeness, which is a weak link rather than a family.'],
-    ['lineage', mapLineSwatch('lineage'), 'made from', counts.lineage,
-     'One game was made as a new version of the other. The arrow points at the'
-     + ' newer one, and it is drawn however far apart the two are.'],
-  ];
-  const types = lines.map(([key, swatch, words, count, why]) => `
-    <button class="chip${MAP_OFF[key] ? ' off' : ''}" data-line="${esc(key)}"
-      title="${esc(why)} Click to hide these.">${swatch}${esc(words)}
-      <span class="muted">${count}</span></button>`).join('');
-
-  const kinds = MAP_DATA.kinds.map(kind => `
-    <button class="chip${MAP_OFF[kind.kind] ? ' off' : ''}" data-kind="${esc(kind.kind)}"
-      ${kind.links ? '' : 'disabled '}title="${esc(kind.links
-        ? kind.links + ' lines differ in ' + kind.words + '. Click to hide them.'
-        : 'No two games here differ in ' + kind.words + '.')}"><span class="dot"
-      style="background:${esc(mapKindColour(kind.kind))}"></span>${esc(kind.words)}
-      <span class="muted">${kind.links}</span></button>`).join('');
-
-  // The communities come first, because they are what the map is drawn by. The score
-  // ramp says what a fill means only while the fill is the score. The rule-step lines
-  // and their kinds are behind the one switch that draws them; what each
-  // of them *is* stays on screen while it is on, and which rule a colour means folds
-  // away. The picture is what a reader came for, and a legend that fills the first
-  // screen puts it below the fold.
   return `<div class="mapLegend">
     ${mapCommunitiesHtml()}
     <div id="mapScale"${MAP_PAINT === 'ramp' ? '' : ' hidden'}>${mapScaleHtml()}</div>
-    <div id="mapSteps" class="mapLegend"${MAP_STEPS ? '' : ' hidden'}>
-    <div class="chips">${types}</div>
-    <details class="mapKinds" id="mapLegend">
-      <summary class="muted small">Which rule a colour means, and what to hide</summary>
-      <div class="muted small" style="margin-top:8px">Each dot is a game and each line is
-        how two of them differ. The rules are compared after setting aside how each game
-        happens to be written down, so renaming a piece or reordering a list costs
-        nothing. A solid line's colour says which kind of rule differs; a dashed line
-        takes the colour of the first of its two or three.</div>
-      <div class="chips">${kinds}</div>
-    </details>
+    <div class="row muted small" style="gap:4px 14px">
+      <span class="row" style="gap:6px; flex-wrap:nowrap">${mapLineSwatch('line')}<span>a line: each is
+        among the other's ${MAP_DATA.mutual} nearest, thicker the more alike${
+        info('alike')}</span></span>
+      <span class="row" style="gap:6px; flex-wrap:nowrap"${MAP_ARROWS ? '' : ' hidden'}
+        id="mapArrowsKey">${mapLineSwatch('lineage')}<span>made from <span
+        class="muted">${MAP_DATA.counts.lineage}</span></span></span>
     </div>
   </div>`;
 }
@@ -256,18 +198,18 @@ function mapCommunitiesHtml() {
       <span class="muted">${community.size}</span><span class="muted" data-folded
         hidden>&middot; folded</span></button>`;
   }).join('');
-  // Folded on a phone, where thirteen chips are a screen of their own above the map.
+  // Folded on a phone, where sixteen chips are a screen of their own above the map.
   return `<details id="mapCommunitiesBox"${window.innerWidth > 720 ? ' open' : ''}>
-    <summary class="muted small">${communities.length} communities, drawn together and in
-      one colour</summary>
-    <div class="muted small" style="margin:6px 0">The lines inside each are tighter than
-      its lines to the rest. Click one to light it; its panel folds it into one dot.
-      Coloured by community, a hollow dot is a game in a pair or in none.</div>
+    <summary class="muted small">${communities.length} communities${info('community')},
+      drawn together and in one colour</summary>
+    <div class="muted small" style="margin:6px 0">Each is named by what marks it out from
+      the rest of the library. Click one to light it; its panel folds it into one dot. A
+      hollow dot is a game in a pair, or an unusual game in none.</div>
     <div class="chips" id="mapCommunities">${chips}</div></details>`;
 }
 
 // What a dot's fill says, which is the one thing on the map a colour means that is not a
-// kind of rule. Both ends of the ramp are printed as numbers: the scale is the library's
+// community. Both ends of the ramp are printed as numbers: the scale is the library's
 // own range rather than nought to one, so a colour read against an imagined scale would
 // be read wrong. Five stepped dots rather than a gradient, because a dot is a shape the
 // stylesheet already has and this legend is a key rather than a picture.
@@ -313,15 +255,15 @@ function mapFillAt(at) {
   return `color-mix(in oklab, var(--meter) ${share}%, var(--panel))`;
 }
 
+// The two kinds of line, as the legend draws them: a line of likeness, solid, and an
+// arrow for *made from*, grey with its head.
 function mapLineSwatch(type) {
-  const dash = { rule: '', gap: '5 4', nearest: '.5 4', lineage: '' }[type] || '';
   const arrow = type === 'lineage'
     ? '<path d="M14,1.2 L20,5 L14,8.8 z" fill="var(--muted)"></path>' : '';
-  const colour = type === 'rule' || type === 'gap' ? 'var(--ink)'
-    : type === 'nearest' ? 'var(--faint)' : 'var(--muted)';
+  const colour = type === 'lineage' ? 'var(--muted)' : 'var(--ink)';
   return `<svg class="swatch" width="22" height="10" aria-hidden="true"><line x1="1" y1="5"
-    x2="${type === 'lineage' ? 15 : 21}" y2="5" stroke="${colour}" stroke-width="1.8"
-    stroke-linecap="round"${dash ? ` stroke-dasharray="${dash}"` : ''}></line>${arrow}</svg>`;
+    x2="${type === 'lineage' ? 15 : 21}" y2="5" stroke="${colour}" stroke-width="${
+      type === 'lineage' ? 1.6 : 2.6}" stroke-linecap="round"></line>${arrow}</svg>`;
 }
 
 // A kind of rule's colour, with grey behind it: a kind the schema grows before the
@@ -356,12 +298,10 @@ function mapScoreWords(node) {
     score.viable === false ? ', and ruled out' : ''}`;
 }
 
-// What kind of claim one line is, in the words the legend uses for it.
-function mapLinkWhat(link) {
-  const rules = link.units === 1 ? 'one rule' : link.units + ' rules';
-  if (link.type === 'rule') return 'one rule apart';
-  if (link.type === 'gap') return `a gap, ${rules} apart with nothing in between`;
-  return `nearest relative, ${rules} apart`;
+// How many rules apart one line's two games are, in the words the panels use.
+function mapRulesApart(line) {
+  if (!line.units) return 'the same rules, written two ways';
+  return line.units === 1 ? 'one rule apart' : `${line.units} rules apart`;
 }
 
 // --------------------------------------------------------------------------- the names
@@ -399,7 +339,7 @@ function mapOverlaps(one, other) {
 
 // -------------------------------------------------------- finding a game, and filtering
 //
-// Seventy dots and no way to ask *where is this one* would make the map a puzzle for
+// Ninety dots and no way to ask *where is this one* would make the map a puzzle for
 // anybody who arrived knowing which game they wanted. Typing lights every name that
 // matches and fades the rest. Enter goes to the first match.
 //
@@ -446,35 +386,27 @@ function mapSayLit(found) {
 
 // ----------------------------------------------------------------- holding one thing up
 
-// The nodes and the lines one pick lights, as two sets. Everything else on the map is
+// The nodes and the lines one pick lights, as three sets. Everything else on the map is
 // faded rather than hidden, so the shape a reader is looking at stays where it was.
 function mapLit() {
-  const nodes = new Set(), links = new Set(), arrows = new Set(), similar = new Set();
+  const nodes = new Set(), lines = new Set(), arrows = new Set();
   if (!MAP_PICK) return null;
-  // The similarity lines drawn at this cut with an end among `inside`, and their ends;
-  // or, with `both`, only those with both ends among them.
-  const alike = (inside, both) => mapSimilar().forEach((row, index) => {
-    if (!mapSimilarShown(row)) return;
-    const ends = [inside.has(row.source), inside.has(row.target)];
+  // The lines with an end among `inside`, and their ends; or, with `both`, only those
+  // with both ends among them.
+  const alike = (inside, both) => mapLines().forEach((line, index) => {
+    const ends = [inside.has(line.source), inside.has(line.target)];
     if (both ? !(ends[0] && ends[1]) : !(ends[0] || ends[1])) return;
-    similar.add(index);
-    nodes.add(row.source);
-    nodes.add(row.target);
+    lines.add(index);
+    nodes.add(line.source);
+    nodes.add(line.target);
   });
   if (MAP_PICK.kind === 'node') {
     const node = MAP_DATA.nodes[MAP_PICK.at];
     if (!node) return null;
     nodes.add(node.hash);
     alike(new Set([node.hash]), false);
-    // A rule-step line that is not drawn lights nothing: its far end would be lit for a
-    // line the reader cannot see.
-    MAP_DATA.links.forEach((link, index) => {
-      if (link.source !== node.hash && link.target !== node.hash) return;
-      if (mapLinkHidden(link)) return;
-      links.add(index);
-      nodes.add(link.source);
-      nodes.add(link.target);
-    });
+    // An arrow that is not drawn lights nothing: its far end would be lit for a line the
+    // reader cannot see.
     MAP_DATA.lineage.forEach((arrow, index) => {
       if (arrow.source !== node.hash && arrow.target !== node.hash) return;
       if (mapArrowHidden()) return;
@@ -482,12 +414,12 @@ function mapLit() {
       nodes.add(arrow.source);
       nodes.add(arrow.target);
     });
-  } else if (MAP_PICK.kind === 'link') {
-    const link = MAP_DATA.links[MAP_PICK.at];
-    if (!link) return null;
-    links.add(MAP_PICK.at);
-    nodes.add(link.source);
-    nodes.add(link.target);
+  } else if (MAP_PICK.kind === 'line') {
+    const line = mapLines()[MAP_PICK.at];
+    if (!line) return null;
+    lines.add(MAP_PICK.at);
+    nodes.add(line.source);
+    nodes.add(line.target);
   } else if (MAP_PICK.kind === 'arrow') {
     const arrow = MAP_DATA.lineage[MAP_PICK.at];
     if (!arrow) return null;
@@ -501,20 +433,7 @@ function mapLit() {
     if (!group) return null;
     const inside = new Set(group.members);
     inside.forEach(hash => nodes.add(hash));
-    MAP_DATA.links.forEach((link, index) => {
-      if (!inside.has(link.source) && !inside.has(link.target)) return;
-      if (mapLinkHidden(link)) return;
-      links.add(index);
-      nodes.add(link.source);
-      nodes.add(link.target);
-    });
     alike(inside, false);
-  } else if (MAP_PICK.kind === 'similar') {
-    const row = mapSimilar()[MAP_PICK.at];
-    if (!row) return null;
-    similar.add(MAP_PICK.at);
-    nodes.add(row.source);
-    nodes.add(row.target);
   } else if (MAP_PICK.kind === 'community') {
     // A community lights its own games and the lines drawn between them.
     const community = mapCommunityAt(MAP_PICK.at);
@@ -523,27 +442,12 @@ function mapLit() {
     inside.forEach(hash => nodes.add(hash));
     alike(inside, true);
   }
-  return { nodes, links, arrows, similar };
+  return { nodes, lines, arrows };
 }
 
-// ------------------------------------------------------------------- hiding a kind of line
-//
-// A chip hides lines and nothing else, and what it hides is one question: is this line's
-// kind off. The drawing asks it once per line.
-
-// A line goes when its kind of line is hidden, or when every kind of rule on it is. A gap
-// carries two or three kinds, so hiding one of them leaves it drawn -- it still says
-// something about the kinds that are showing.
-//
-// All four kinds of rule-step line go together while their switch is off.
-function mapLinkHidden(link) {
-  if (!MAP_STEPS || MAP_OFF[link.type]) return true;
-  const kinds = link.kinds || [];
-  return kinds.length > 0 && kinds.every(kind => MAP_OFF[kind]);
-}
-
+// Whether the arrows are off: one switch, off at opening.
 function mapArrowHidden() {
-  return !MAP_STEPS || !!MAP_OFF.lineage;
+  return !MAP_ARROWS;
 }
 
 // --------------------------------------------------------------------------- the panel
@@ -560,12 +464,9 @@ function paintMapPanel() {
 
 function mapPanelHtml() {
   if (MAP_PICK && MAP_PICK.kind === 'node') return mapNodePanel(MAP_DATA.nodes[MAP_PICK.at]);
-  if (MAP_PICK && MAP_PICK.kind === 'link') return mapLinkPanel(MAP_DATA.links[MAP_PICK.at]);
+  if (MAP_PICK && MAP_PICK.kind === 'line') return mapLinePanel(mapLines()[MAP_PICK.at]);
   if (MAP_PICK && MAP_PICK.kind === 'arrow') return mapArrowPanel(MAP_DATA.lineage[MAP_PICK.at]);
   if (MAP_PICK && MAP_PICK.kind === 'group') return mapGroupPanel(mapGroupAt(MAP_PICK.at));
-  if (MAP_PICK && MAP_PICK.kind === 'similar') {
-    return mapSimilarPanel(mapSimilar()[MAP_PICK.at]);
-  }
   if (MAP_PICK && MAP_PICK.kind === 'community') {
     return mapCommunityPanel(mapCommunityAt(MAP_PICK.at));
   }
@@ -574,32 +475,29 @@ function mapPanelHtml() {
 
 function mapNothingPanel() {
   const counts = MAP_DATA.counts;
-  const far = MAP_DATA.nodes.filter(node => node.far).length;
-  const level = mapLevelNow(), opened = mapDefaultLevel();
-  const drawn = level ? `${counts.nodes} games. A line joins two games at least this
-      alike${info('likeness')}, as the slider sets it, and the thicker the line the more
-      alike the two: with the slider where it is that is ${level.lines} lines, and
-      ${level.alone} games have none. A community${info('community')} is a group of games
-      more like each other than like the rest, drawn together in one colour.${counts.alone
-      ? ` The ${counts.alone} games in the row at the bottom have no game close enough
-      to be in one.` : ''}` : `${counts.nodes} games.`;
+  // The unusual games, furthest from everything first: a finding, not a leftover row.
+  const unusual = (MAP_DATA.unusual || []).map(one => MAP_AT[one.hash]).filter(Boolean);
   return `<h3 style="margin-top:0">The library, laid out</h3>
-    <div class="small">${drawn}</div>
-    <div class="muted small" style="margin-top:10px">The lines between games one to three
-      rules apart have their own switch: ${counts.oneRule} pairs differ in exactly one rule, ${counts.gaps} pairs are
-      two or three rules apart with nothing in between${far ? `, and ${far === 1
-      ? 'the one game' : `the ${far} games`} with nothing within three rules ${far === 1
-      ? 'has' : 'each have'} one faint line to the game closest to it, by overall
-      likeness` : ''}.</div>
+    <div class="small">${counts.nodes} games, each drawn near the games most like it. A
+      line joins two games when each is among the other's ${MAP_DATA.mutual} nearest, and
+      the thicker the line the more alike the two${info('alike')}. A community${
+      info('community')} is a group of games more like each other than like the rest,
+      drawn together in one colour and named by what marks it out.</div>
+    ${unusual.length ? `<div class="muted small" style="margin-top:10px">${unusual.length}
+      unusual games are in no community: nothing in the library is close enough to them.
+      The furthest from everything first:</div>
+    <div class="chips" style="margin-top:6px">${unusual.map(node => `<button class="chip"
+      data-node-row="${esc(node.hash)}">${esc(node.name)}</button>`).join('')}</div>`
+      : ''}
     ${MAP_DATA.scale ? `<div class="muted small" style="margin-top:10px">Coloured by
       score, a game's dot is filled by what it scored, deeper for a higher score, and left
       hollow where there is no ${ACCOUNTS ? 'current score'
         : 'score this checkout can read'}. The ring inside a dot marks a
       game the checks ruled out.</div>` : ''}
     <div class="muted small" style="margin-top:10px">Point at a game to light it and its
-      neighbours, click it for what it is and what is near it, or a line for how alike
-      the two are. Drag to move the map, scroll or pinch to zoom, and Tab to walk the
-      games from the keyboard.</div>
+      neighbours, click it for what it is and the games like it, or a line for what the
+      two share and what differs. Drag to move the map, scroll or pinch to zoom, and Tab to
+      walk the games from the keyboard.</div>
     ${counts.twins ? `<div class="muted small" style="margin-top:10px">${counts.twins === 1
       ? 'Two of the games are the same rules written two ways, shown as one dot.'
       : `${counts.twins} pairs of games are the same rules written two ways, each pair
@@ -621,8 +519,7 @@ function mapNodePanel(node) {
       esc(node.names.slice(1).join(', '))}: the same rules, written two ways.</div>` : ''}
     <div class="row muted small" style="gap:8px">
       <span>${esc(node.board)}</span><span>&middot;</span>
-      <span>${node.degree === 1 ? '1 link' : node.degree + ' links'}</span>
-      ${node.far ? '<span>&middot;</span><span>nothing within three rules</span>' : ''}
+      <span>${node.degree === 1 ? '1 line' : node.degree + ' lines'}</span>
     </div>
     ${split.length ? `<div class="muted small" style="margin-top:6px">${
       esc(split.join(' '))}</div>` : ''}
@@ -636,81 +533,101 @@ function mapNodePanel(node) {
     ${mapTryHtml(node)}
     ${home ? `<div class="muted small" style="margin-top:10px">In the community
       <button class="chip" data-community="${home.index}">${
-        esc(home.community.name)}</button></div>` : ''}
-    ${mapAlikeHtml(node)}
-    ${mapNeighboursHtml(node)}`;
+        esc(home.community.name)}</button></div>`
+      : `<div class="muted small" style="margin-top:10px">Unusual: in no community, because
+        nothing in the library is close enough to it.</div>`}
+    ${mapLikeHtml(node)}`;
 }
 
-// The games this one has a line to at the cut in hand, most alike first -- the rows
-// arrive nearest first, so they are listed in the order they came -- each with the
-// index's own sentence. A press holds that line up.
-function mapAlikeHtml(node) {
-  const mine = [];
-  mapSimilar().forEach((row, index) => {
-    if (!mapSimilarShown(row)) return;
-    if (row.source !== node.hash && row.target !== node.hash) return;
-    const other = MAP_AT[row.source === node.hash ? row.target : row.source];
-    if (other) mine.push({ row, index, other });
-  });
-  if (!mine.length) {
-    return `<div class="muted small" style="margin-top:10px">No game is this alike, so
-      no line reaches it with the slider where it is.</div>`;
-  }
-  return `<div class="muted small" style="margin-top:10px">${mine.length === 1
-      ? 'One line' : mine.length + ' lines'} with the slider where it is, most alike
-      first</div>
-    <div class="links">${mine.map(({ row, index, other }) => `
-    <button class="linkRow" data-similar-row="${index}">
+// The games like this one, nearest first, each with the rarest things the two share. A
+// game joined to this one by a line -- each among the other's nearest -- holds that line
+// up when pressed, and says what the two scores make of it; any other holds that game up.
+// The order, the words and which are joined are the server's.
+function mapLikeHtml(node) {
+  const like = (node.like || []).filter(row => MAP_AT[row.hash]);
+  if (!like.length) return '';
+  const rows = like.map(row => ({ row, at: row.line ? mapLineBetween(node.hash, row.hash) : -1 }));
+  // Said once for the whole list rather than under every row, which is the game page's
+  // rule: where nothing here can be read, five rows of the same apology is the loudest
+  // thing in the panel.
+  const scored = rows.some(({ at }) => at >= 0 && mapLines()[at].gap);
+  return `<div class="muted small" style="margin-top:12px">Games like this one, most alike
+      first${info('alike')}</div>
+    ${scored || !rows.some(({ at }) => at >= 0) ? '' : `<div class="muted small"
+      style="margin-top:6px">No scores to compare yet. A line says what the difference did
+      to the score once both games ${ACCOUNTS ? 'have a current score'
+        : 'carry a measurement this checkout can read'}.</div>`}
+    <div class="links">${rows.map(({ row, at }) => {
+      const other = MAP_AT[row.hash];
+      const line = at >= 0 ? mapLines()[at] : null;
+      return `<button class="linkRow" ${line ? `data-line-row="${at}"`
+        : `data-node-row="${esc(row.hash)}"`}>
       <div class="row" style="gap:8px; align-items:baseline">
-        <b>${esc(other.name)}</b><span class="muted small">${esc(String(row.index))}</span>
+        <b>${esc(other.name)}</b><span class="muted small">${esc(fmt(row.likeness))} alike${
+          line ? ', a line' : ''}</span>
       </div>
-      <div class="small muted">${esc(row.words)}</div>
-    </button>`).join('')}</div>`;
+      ${row.shares.length ? `<div class="small muted">both have ${
+        esc(row.shares.join('; '))}</div>` : ''}
+      ${line && scored ? gapLine(mapGapFrom(line, node.hash)) : ''}
+    </button>`;
+    }).join('')}</div>`;
 }
 
-// One similarity line: how alike its two games are, in the index's own words. Where the
-// two are also joined by a rule step, the press that opens that line's own panel -- what
-// differs rule by rule, and what it did to the score -- is offered.
-function mapSimilarPanel(row) {
-  const from = row && MAP_AT[row.source], to = row && MAP_AT[row.target];
+// One line: how alike its two games are, what they share and what differs between them,
+// and what the two scores make of it. Every word is the payload's.
+function mapLinePanel(line) {
+  const from = line && MAP_AT[line.source], to = line && MAP_AT[line.target];
   if (!from || !to) return mapNothingPanel();
-  const step = MAP_DATA.links.findIndex(link =>
-    (link.source === row.source && link.target === row.target)
-    || (link.source === row.target && link.target === row.source));
+  const rules = (line.differences || []).length ? `<div class="links">${
+    line.differences.map(difference => `
+      <div class="linkRow">
+        <span class="chip" style="cursor:default"><span class="dot"
+          style="background:${esc(mapKindColour(difference.kind))}"></span>${
+          esc(mapKindWords(difference.kind))}</span>
+        <div class="small" style="margin-top:4px">${esc(difference.sentence)}</div>
+      </div>`).join('')}</div>` : '';
   return `<h3 style="margin-top:0">How alike</h3>
     <div class="row" style="gap:8px">
-      <button class="crumb" data-node-row="${esc(row.source)}"
+      <button class="crumb" data-node-row="${esc(line.source)}"
         style="color:var(--ink); font-weight:600">${esc(from.name)}</button>
       <span class="muted small">and</span>
-      <button class="crumb" data-node-row="${esc(row.target)}"
+      <button class="crumb" data-node-row="${esc(line.target)}"
         style="color:var(--ink); font-weight:600">${esc(to.name)}</button>
     </div>
-    <div class="small" style="margin-top:8px"><span class="muted">By kind:</span>
-      ${esc(row.words)}${info('likeness')}</div>
-    <div class="muted small" style="margin-top:8px">Likeness ${
-      esc(String(row.index))}, where 0 is the same game and a higher number less alike.
-      The line is drawn once the slider reaches ${row.level}, and the thicker it is the
-      more alike the two.</div>
-    ${step >= 0 ? `<div class="row" style="margin-top:10px"><button
-      data-link-row="${step}">what differs, rule by rule</button></div>` : ''}
+    <div class="small" style="margin-top:8px">${esc(fmt(line.likeness))} alike, where 1 is
+      the same game and 0 means they share nothing rare${info('alike')}. Each is among the
+      other's ${MAP_DATA.mutual} nearest, which is why a line joins them.</div>
+    ${line.shares.length ? `<div class="small" style="margin-top:8px"><span
+      class="muted">Both have:</span> ${esc(line.shares.join('; '))}</div>` : ''}
+    <div class="small" style="margin-top:8px"><span class="muted">What differs:</span>
+      ${esc(mapRulesApart(line))}${(line.differences || []).length ? ''
+        : line.units ? ', too many to list one by one' : ''}.</div>
+    ${rules}
+    ${mapGapHtml(line, from, to)}
     <div class="row" style="margin-top:10px">
-      <button data-open="${esc(row.source)}">open ${esc(from.name)}</button>
-      <button data-open="${esc(row.target)}">open ${esc(to.name)}</button>
+      <button data-open="${esc(line.source)}">open ${esc(from.name)}</button>
+      <button data-open="${esc(line.target)}">open ${esc(to.name)}</button>
     </div>`;
 }
 
-// One community: the server's name for it, what sets it apart in the server's words
-// where something does, the game most like the rest of it, and every member as a press.
+// One community: the server's name for it, what marks it out in the server's words where
+// something does, the game most like the rest of it, where it is drawn, and every member
+// as a press.
 function mapCommunityPanel(community) {
   if (!community) return mapNothingPanel();
   const centre = MAP_AT[community.centre];
   const why = community.words
-    ? `Most of them have a rule that few games outside do: <b>${esc(community.words)}</b>.`
-    : 'No one rule sets them apart; they are alike in many small ways.';
+    ? `What marks them out: <b>${esc(community.words)}</b>, which most of them have and
+      few games outside do.`
+    : 'No one thing marks them out; they are alike in many small ways.';
+  const places = (community.parts || []).length;
   return `<h3 style="margin-top:0">${esc(community.name)}</h3>
-    <div class="small">${community.size} games, drawn together because the lines between
-      them are tighter than their lines to the rest of the library. ${why}${centre
+    <div class="small">${community.size} games, each among the nearest of others here
+      rather than of the rest of the library. ${why}${centre
         ? ` The one most like the rest of them is <b>${esc(centre.name)}</b>.` : ''}</div>
+    ${places > 1 ? `<div class="muted small" style="margin-top:8px">Drawn in ${places}
+      places: the map keeps each game beside the games most like it, and parts of this
+      community share little but what names it.</div>` : ''}
     ${community.size >= MAP_COLOURED ? `<div class="row" style="margin-top:10px">
       <button data-fold-group="${esc(community.id)}">fold it into one dot</button></div>`
       : ''}
@@ -750,67 +667,14 @@ function mapTryHtml(node) {
       </button>`).join('')}</div>`;
 }
 
-// Every line that touches this game, nearest first, each saying what differs in the
-// payload's own words and what the two scores make of it. The same reading the game's own
-// page lists, over the same links and through the same `gapLine` and `likenessLine`.
-function mapNeighboursHtml(node) {
-  const mine = [];
-  MAP_DATA.links.forEach((link, index) => {
-    if (link.source !== node.hash && link.target !== node.hash) return;
-    const other = MAP_AT[link.source === node.hash ? link.target : link.source];
-    if (other) mine.push({ link, index, other });
-  });
-  mine.sort((a, b) => mapLineOrder(a.link, b.link)
-    || a.other.name.localeCompare(b.other.name));
-  if (!mine.length) {
-    return `<div class="muted small" style="margin-top:10px">No line reaches this
-      game.</div>`;
-  }
-  // Said once for the whole list rather than under every row, which is the game page's
-  // rule: where nothing here can be read, twenty-two rows of the same apology is the
-  // loudest thing in the panel.
-  const scored = mine.some(({ link }) => link.gap);
-  return `<div class="muted small" style="margin-top:12px">The games a few rules away,
-      fewest first${MAP_STEPS ? '' : ', drawn when their lines are on'}</div>
-    ${scored ? '' : `<div class="muted small" style="margin-top:10px">No scores to
-      compare yet. A line says what a rule did to the score once both games ${ACCOUNTS
-        ? 'have a current score' : 'carry a measurement this checkout can read'}.</div>`}
-    <div class="links">${mine.map(({ link, index, other }) => `
-    <button class="linkRow" data-link-row="${index}">
-      <div class="row" style="gap:8px; align-items:baseline">
-        <b>${esc(other.name)}</b>
-        <span class="muted small">${esc(mapLinkWhat(link))}</span>
-      </div>
-      ${link.type === 'nearest' ? '' : `<div class="small muted">${
-        esc(link.sentence)}</div>`}
-      ${likenessLine(link.similarity)}
-      ${scored ? gapLine(mapGapFrom(link, node.hash)) : ''}
-    </button>`).join('')}</div>`;
-}
-
-// Which of two lines on one game's panel is listed first, out of numbers the payload
-// carries. A step -- one rule, or a gap -- comes before a faint line, and steps go by how
-// many rules apart, then by the similarity index, so a hub's one-rule lines open with the
-// most alike rather than by name. Faint lines go by `distance`, the features' number that
-// chose them: `docs/archive/plan-game-graph.md` §9.5's T5 found the count and the index
-// both rank a far game's relatives worse. One end of a faint line has nothing within three
-// rules, so the line is longer than any step and putting it last moves no step. The game's
-// own page lists its links in the same order, which is `library.neighbours`'s.
-function mapLineOrder(one, other) {
-  const faint = one.type === 'nearest', otherFaint = other.type === 'nearest';
-  if (faint !== otherFaint) return faint ? 1 : -1;
-  if (faint) return one.distance - other.distance;
-  return one.units - other.units || one.similarity.index - other.similarity.index;
-}
-
-// One link's gap, read from the end a reader is standing at. The payload signs it from
-// the link's own source, so seen from the other end the two numbers change places, each
+// One line's gap, read from the end a reader is standing at. The payload signs it from
+// the line's own source, so seen from the other end the two numbers change places, each
 // with its run count, and the difference changes sign. Nothing else about it moves, and
 // the words stay `gapLine`'s --
 // the same sentence the game's own page prints about the same pair.
-function mapGapFrom(link, hash) {
-  const gap = link.gap;
-  if (!gap || link.source === hash) return gap || null;
+function mapGapFrom(line, hash) {
+  const gap = line.gap;
+  if (!gap || line.source === hash) return gap || null;
   return {
     ...gap,
     index: gap.otherIndex,
@@ -824,113 +688,11 @@ function mapGapFrom(link, hash) {
   };
 }
 
-function mapLinkPanel(link) {
-  const from = link && MAP_AT[link.source], to = link && MAP_AT[link.target];
-  if (!from || !to) return mapNothingPanel();
-  const says = {
-    rule: 'Exactly one rule differs. Everything else about these two games is the same,'
-      + ' once you set aside how each one is written down.',
-    gap: 'These differ in two or three rules and no game in the library stands between'
-      + ' them. The game with one of these changes and not the other is one nobody has'
-      + ' made.',
-    nearest: 'Nothing in the library is within three rules of these two, and this is the'
-      + ' closest to it, by overall likeness (the same measure the map\'s faint lines'
-      + ' use). It is a weak link: at this'
-      + ' range a list of the rules that differ is not something anybody reads.',
-  }[link.type] || '';
-  const rules = link.type === 'nearest' ? '' : `<div class="links">${
-    (link.differences || []).map(difference => `
-      <div class="linkRow">
-        <span class="chip" style="cursor:default"><span class="dot"
-          style="background:${esc(mapKindColour(difference.kind))}"></span>${
-          esc(mapKindWords(difference.kind))}</span>
-        <div class="small" style="margin-top:4px">${esc(difference.sentence)}</div>
-      </div>`).join('')}</div>`;
-  return `<h3 style="margin-top:0">${esc(mapLinkWhat(link))}</h3>
-    <div class="row" style="gap:8px">
-      <button class="crumb" data-node-row="${esc(link.source)}"
-        style="color:var(--ink); font-weight:600">${esc(from.name)}</button>
-      <span class="muted small">and</span>
-      <button class="crumb" data-node-row="${esc(link.target)}"
-        style="color:var(--ink); font-weight:600">${esc(to.name)}</button>
-    </div>
-    <div class="muted small" style="margin-top:8px">${esc(says)}</div>
-    ${mapLikenessHtml(link)}
-    ${rules}
-    ${mapReachHtml(link)}
-    ${mapBetweenHtml(link)}
-    ${mapGapHtml(link, from, to)}
-    <div class="row" style="margin-top:10px">
-      <button data-open="${esc(link.source)}">open ${esc(from.name)}</button>
-      <button data-open="${esc(link.target)}">open ${esc(to.name)}</button>
-    </div>`;
-}
-
-// The similarity index's reading of the line in the server's words, such as *no rules, 6
-// mechanisms, 1 piece* for a pawn that moves another way. The heading's *one rule apart*
-// counts edits; this says what kind of thing those edits touch, and the (i) says how the
-// kinds are weighed. Printed as it came: the counts and the index are `spec/relate.py`'s.
-function mapLikenessHtml(link) {
-  const similarity = link.similarity;
-  if (!similarity || !similarity.words) return '';
-  return `<div class="small" style="margin-top:8px"><span class="muted">By kind:</span>
-    ${esc(similarity.words)}${info('likeness')}</div>`;
-}
-
-// The design step that makes one of these games out of the other, where one of the design
-// loop's own edits reaches it. The words are that edit's own, written when it made the
-// child: what differs is a reading of two files, and this is the move somebody would make.
-// The line above says which way round to read it, because a line has two ends and an edit
-// has a direction, and a third of the one-rule lines have one at all.
-function mapReachHtml(link) {
-  const reach = link && link.reach;
-  if (!reach) return '';
-  const from = MAP_AT[reach.from];
-  const to = MAP_AT[reach.from === link.source ? link.target : link.source];
-  if (!from || !to) return '';
-  return `<div class="muted small" style="margin-top:10px">One small change to the rules
-      of <b>${esc(from.name)}</b> makes <b>${esc(to.name)}</b></div>
-    <div class="links"><div class="linkRow"><div class="small">${
-      esc(reach.words)}</div></div></div>`;
-}
-
-// The game nobody has made, on a line that says two games have nothing between them.
-// Whether one can be built is the server's answer and arrives on the link; what the
-// panel does with it is say which game it would be, in the two ends' own names and the
-// payload's own phrase for the rule that moves. Where there is none the payload sends a
-// sentence saying why, and that sentence is printed instead of a button.
-function mapBetweenHtml(link) {
-  const made = link && link.between;
-  if (!made) return '';
-  if (!made.words) {
-    return `<div class="muted small" style="margin-top:10px">${esc(made.why)}</div>`;
-  }
-  const on = MAP_AT[made.from], taken = MAP_AT[made.taken];
-  if (!on || !taken) return '';
-  const held = MAP_TRY[mapBetweenKey(link)] || {};
-  return `<div class="muted small" style="margin-top:10px">The game in between is
-      <b>${esc(on.name)}</b> with ${esc(made.words)} taken from
-      <b>${esc(taken.name)}</b>. Nobody has made it.</div>
-    <div class="row" style="margin-top:8px">
-      <button data-between="${esc(String(MAP_DATA.links.indexOf(link)))}">make the game
-        in between</button>
-    </div>
-    ${held.state === 'asking' ? `<div class="muted small" style="margin-top:6px">Building
-      it&hellip;</div>` : ''}
-    ${held.state === 'failed' ? `<div class="muted small" style="margin-top:6px">${
-      esc(held.why)}</div>` : ''}`;
-}
-
-function mapBetweenKey(link) {
-  return link.source + ':' + link.target;
-}
-
 // ------------------------------------------------------------- opening the editor on it
 //
-// Both buttons end here: the server hands back a draft, the editor takes it, and nothing
-// is written down anywhere until somebody presses save in there. The draft carries its
-// own description, which is the server's sentence about what was changed -- the words of
-// the design step, or which rule was carried across from which game.
+// The server hands back a draft, the editor takes it, and nothing is written down
+// anywhere until somebody presses save in there. The draft carries its own description,
+// which is the server's sentence about what was changed -- the words of the design step.
 
 function mapAskSteps(hash) {
   if (MAP_TRY[hash] && MAP_TRY[hash].state !== 'failed') return;
@@ -954,27 +716,6 @@ function mapTakeStep(hash, step, seed) {
     .then(answer => mapOpenDraft(answer, answer.remix))
     .catch(error => {
       MAP_TRY[hash] = { state: 'failed', why: errorWords(error) };
-      paintMapPanel();
-    });
-}
-
-function mapMakeBetween(link) {
-  const made = link.between;
-  if (!made || !made.words) return;
-  const key = mapBetweenKey(link);
-  MAP_TRY[key] = { state: 'asking' };
-  paintMapPanel();
-  api('/api/design/' + made.from + '?between=' + encodeURIComponent(made.taken))
-    .then(answer => {
-      if (!answer.between || !answer.between.spec) {
-        MAP_TRY[key] = { state: 'failed', why: answer.between
-          ? answer.between.why : 'There is no game in between these two after all.' };
-        return paintMapPanel();
-      }
-      mapOpenDraft(answer, answer.between);
-    })
-    .catch(error => {
-      MAP_TRY[key] = { state: 'failed', why: errorWords(error) };
       paintMapPanel();
     });
 }
@@ -1008,18 +749,18 @@ function mapOpenDraft(answer, made) {
   go('#/design');
 }
 
-// What the two scores make of this line, which is the question the whole map is a way of
-// asking: *what did this rule do*. The sentence is `gapLine`'s, the game page's own, so
-// one pair cannot read `clear` in one place and `no clear change` in the other; the line
-// above it names which game the sentence is about, because here there are two of them.
+// What the two scores make of this line: *what did the difference do*. The sentence is
+// `gapLine`'s, the game page's own, so one pair cannot read `clear` in one place and `no
+// clear change` in the other; the line above it names which game the sentence is about,
+// because here there are two of them.
 //
 // Where there is no gap the panel says which of the two cannot be read, or that the two
 // were scored under different rules -- "measured and alike" and "not measured" are
 // different news, and so is "measured under something else".
-function mapGapHtml(link, from, to) {
-  if (link.gap) {
+function mapGapHtml(line, from, to) {
+  if (line.gap) {
     return `<div class="small" style="margin-top:10px"><b>${esc(to.name)}</b> against
-      <b>${esc(from.name)}</b></div>${gapLine(link.gap)}${mapMovedHtml(link.gap)}`;
+      <b>${esc(from.name)}</b></div>${gapLine(line.gap)}${mapMovedHtml(line.gap)}`;
   }
   const missing = [from, to].filter(end => !end.score).map(end => end.name);
   if (!missing.length) {
@@ -1065,7 +806,7 @@ function mapGroupAt(index) {
 }
 
 // A measurement's name in words. `metrics/glossary.py` decides it and the payload carries
-// it, for the same reason the legend never prints a kind's schema name.
+// it, for the same reason the panel never prints a kind's schema name.
 function mapComponentWords(key) {
   return (MAP_DATA.components || {})[key] || key;
 }
@@ -1102,8 +843,8 @@ function mapArrowPanel(arrow) {
 function mapGroupPanel(group) {
   if (!group) return mapNothingPanel();
   const why = group.words
-    ? `Most of them have a rule that few games outside do: <b>${esc(group.words)}</b>.`
-    : 'No one rule sets them apart; they are alike in many small ways.';
+    ? `What marks them out: <b>${esc(group.words)}</b>.`
+    : 'No one thing marks them out; they are alike in many small ways.';
   return `<h3 style="margin-top:0">${esc(group.name)}</h3>
     <div class="small">${group.size} games of one community, folded into one dot. ${why}
       Open it to put every one of them back where it was; the lines this dot carries are
@@ -1115,6 +856,7 @@ function mapGroupPanel(group) {
         <b>${esc(name)}</b></button>`).join('')}</div>`;
 }
 
+// A kind of rule in words, from the payload's `kinds`, which `graphing.KIND_WORDS` decides.
 function mapKindWords(kind) {
   const found = MAP_DATA.kinds.find(entry => entry.kind === kind);
   return (found && found.words) || kind;

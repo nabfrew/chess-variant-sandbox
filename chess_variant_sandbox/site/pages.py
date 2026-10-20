@@ -46,10 +46,10 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
-from chess_variant_sandbox.site import asking, quota, terms
+from chess_variant_sandbox.site import asking, quota, routes, seo, terms
 from chess_variant_sandbox.site import badges as site_badges
 from chess_variant_sandbox.viz import pieces
-from chess_variant_sandbox.web.page import marks, shell
+from chess_variant_sandbox.web.page import front, marks, shell
 from chess_variant_sandbox.web.page.style import STYLE as APP_STYLE
 
 COOKIE = "chess_variant_sandbox_session"
@@ -350,8 +350,16 @@ def _shell(
     here: str = "",
     data: dict[str, Any] | None = None,
     players: bool = False,
+    *,
+    description: str,
+    path: str | None = None,
 ) -> str:
     """One page, in the application's shell.
+
+    Every page says what it is in a description (G4 of `docs/plan-growth.md`). A page with
+    an address of its own (`path`) names it as its canonical, on the site's address
+    (`seo.site_base`), and says `noindex` when `robots.txt` keeps crawlers off it
+    (`seo.disallowed`); a page without one (a token's, the not-found page) says `noindex`.
 
     The header and the footer are the app's, drawn here in the markup its own stylesheet
     expects -- `chess_variant_sandbox/web/page/style.py`, imported above rather than answered with a
@@ -366,13 +374,19 @@ def _shell(
     so no value can close the tag.
     """
     tail = "".join(f'<script src="{SCRIPT_PREFIX}{name}.js"></script>\n' for name in scripts)
+    head = front.head_lines(
+        description,
+        None if path is None else seo.site_base() + path,
+        index=path is not None and not seo.disallowed(path),
+    )
     if data is not None:
         held = json.dumps(data).replace("<", "\\u003c")
         tail = f'<script type="application/json" id="page-data">{held}</script>\n' + tail
     return (
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-        f"<title>{escape(title)}</title>\n{shell.head_links()}<style>{STYLE}</style>\n</head>\n"
+        f"<title>{escape(title)}</title>\n{head}{shell.head_links()}<style>{STYLE}</style>\n"
+        "</head>\n"
         '<body>\n<div class="wrap">\n'
         '  <header class="top">\n'
         f'    <h1 class="brand"><a href="/">{shell.brand()}</a></h1>\n'
@@ -385,6 +399,48 @@ def _shell(
         f'<main class="{kind}">\n{body}\n</main>\n'
         f"{_foot(here, players)}\n</div>\n{tail}</body>\n</html>\n"
     )
+
+
+# What each page says in a search result (G4): one sentence, under 160 characters, never the
+# same for two pages (`tests/test_site_doors.py` holds both).
+NOT_FOUND_SAYS = "There is nothing at this address on Chess variant sandbox."
+MAIL_OFF_SAYS = "Switch off the emails that say it is your move in a correspondence game."
+JOIN_SAYS = (
+    "Join Chess variant sandbox with the invitation you were sent: choose a handle and a "
+    "password, and the account is yours."
+)
+SIGNIN_SAYS = (
+    "Sign in to Chess variant sandbox to play members by correspondence, keep a rating on "
+    "each game and publish the games you design."
+)
+ASK_SAYS = (
+    "Accounts on Chess variant sandbox are by invitation: leave your email address, and the "
+    "person who runs the site can send you one."
+)
+CHALLENGE_SAYS = "A challenge to a game by correspondence on Chess variant sandbox."
+PROFILE_SAYS = "Your own page on Chess variant sandbox: your games, your ratings and your badges."
+MEMBER_SAYS = "{handle}'s page on Chess variant sandbox: the games they made and played."
+PLAYERS_SAYS = "Find the members of Chess variant sandbox by name, and challenge one to a game."
+SUGGESTIONS_SAYS = (
+    "Write down an idea for a rule or for Chess variant sandbox, and read the ones you sent."
+)
+ADMIN_SAYS = "The maintenance page of Chess variant sandbox."
+CREDITS_SAYS = (
+    "Who drew the pieces on Chess variant sandbox, under which free licence, and the "
+    "typefaces the site is set in."
+)
+BADGES_SAYS = (
+    "Every badge on Chess variant sandbox and the one rule that earns it: the same list "
+    "for everybody."
+)
+PRIVACY_SAYS = (
+    "What Chess variant sandbox keeps about you and why: an account, your games and "
+    "ratings, and what leaving does."
+)
+TERMS_SAYS = (
+    "The terms of Chess variant sandbox: a game published here is for everybody, the site "
+    "claims no rights in it, and what it does not promise."
+)
 
 
 LINK = re.compile(r"^/c/[A-Za-z0-9_-]{1,64}$")
@@ -409,7 +465,7 @@ def mail_off(said: str) -> str:
         '<p class="under"><a href="/profile">Your page</a> has the box, for switching '
         "them on or off.</p>"
     )
-    return _shell("Move emails", body, kind="prose")
+    return _shell("Move emails", body, kind="prose", description=MAIL_OFF_SAYS)
 
 
 def not_found() -> str:
@@ -428,7 +484,7 @@ def not_found() -> str:
         '<div class="row"><a class="button primary" href="/game">See the games</a>'
         '<a class="button" href="/#/whats-new">What\'s new</a></div>'
     )
-    return _shell("No page here", body, kind="lost")
+    return _shell("No page here", body, kind="lost", description=NOT_FOUND_SAYS)
 
 
 def _who(handle: str, user: int | None, linked: bool = False) -> str:
@@ -525,7 +581,8 @@ def join(code: str, after: str | None = None) -> str:
         '<p class="small muted"><a href="/signin">I already have an account</a></p>'
     )
     scripts = ("post", "join")
-    return _shell("Join Chess variant sandbox", body, scripts, data={"then": _then(after)})
+    return _shell("Join Chess variant sandbox", body, scripts, data={"then": _then(after)},
+                  description=JOIN_SAYS, path="/join")
 
 
 def signin(after: str | None = None) -> str:
@@ -551,7 +608,8 @@ def signin(after: str | None = None) -> str:
     )
     scripts = ("post", "signin")
     return _shell(
-        "Sign in to Chess variant sandbox", body, scripts, data={"then": _then(after)}
+        "Sign in to Chess variant sandbox", body, scripts, data={"then": _then(after)},
+        description=SIGNIN_SAYS, path="/signin",
     )
 
 
@@ -592,7 +650,7 @@ def request_invitation() -> str:
         '<p class="small muted"><a href="/signin">I already have an account</a> · '
         '<a href="/privacy">what the site keeps</a></p>'
     )
-    return _shell(asking.BUTTON, body, ("post", "ask"))
+    return _shell(asking.BUTTON, body, ("post", "ask"), description=ASK_SAYS, path=asking.PATH)
 
 
 def challenge_link(token: str) -> str:
@@ -611,7 +669,7 @@ def challenge_link(token: str) -> str:
     )
     return _shell(
         "A challenge", body, ("post", "game-link", "play-link", "challenge"),
-        data={"token": token},
+        data={"token": token}, description=CHALLENGE_SAYS,
     )
 
 
@@ -689,7 +747,7 @@ def profile(handle: str, players: bool = False, *, user: int | None = None) -> s
     # rather than a link, because the page it would link to is this one.
     return _shell(
         f"{handle} on Chess variant sandbox", body, scripts, kind="wide", corner=_who(handle, user),
-        data=data, players=players,
+        data=data, players=players, description=PROFILE_SAYS, path="/profile",
     )
 
 
@@ -708,7 +766,7 @@ def _member_link(handle: str, user: int) -> str:
 
 
 def _game_link(digest: str, name: str) -> str:
-    return f'<a href="/#/game/{escape(digest, quote=True)}">{escape(name or "an unnamed game")}</a>'
+    return f'<a href="/game/{escape(digest, quote=True)}">{escape(name or "an unnamed game")}</a>'
 
 
 def _day(when: Any) -> str:
@@ -959,6 +1017,8 @@ def member(
         corner=_who(reader, viewer, linked=True),
         data={"handle": handle} if reading.get("challenge") else None,
         players=players,
+        description=MEMBER_SAYS.format(handle=handle),
+        path=routes.MEMBERS + handle,
     )
 
 
@@ -1025,6 +1085,7 @@ def players(handle: str, *, user: int | None = None, asked: str = "") -> str:
     return _shell(
         "Players on Chess variant sandbox", body, scripts, kind="wide",
         corner=_who(handle, user, linked=True), here="/players", data=data,
+        description=PLAYERS_SAYS, path="/players",
     )
 
 
@@ -1073,6 +1134,8 @@ def suggestions(handle: str, players: bool = False, *, user: int | None = None) 
         corner=_who(handle, user, linked=True),
         here="/suggestions",
         players=players,
+        description=SUGGESTIONS_SAYS,
+        path="/suggestions",
     )
 
 
@@ -1378,6 +1441,8 @@ def admin(handle: str, players: bool = False, *, user: int | None = None) -> str
         kind="sheet",
         corner=_who(handle, user, linked=True),
         players=players,
+        description=ADMIN_SAYS,
+        path="/admin",
     )
 
 
@@ -1464,7 +1529,8 @@ def credits() -> str:
         "1.1, served from this site rather than from a font service:</p>\n"
         f"<ul>\n{faces}</ul>\n"
     )
-    return _shell("Credits", body, kind="prose wide", here="/credits")
+    return _shell("Credits", body, kind="prose wide", here="/credits",
+                  description=CREDITS_SAYS, path="/credits")
 
 
 def badges() -> str:
@@ -1508,7 +1574,8 @@ def badges() -> str:
         f"somebody resigned and a game resigned after {quota.IDLE_SAID} count for none "
         "of these. Nothing here expires and nothing is taken back.</p>\n"
     )
-    return _shell("The badges on Chess variant sandbox", body, kind="prose", here="/badges")
+    return _shell("The badges on Chess variant sandbox", body, kind="prose", here="/badges",
+                  description=BADGES_SAYS, path="/badges")
 
 
 def _listed(steps: tuple[int, ...], kind: str) -> str:
@@ -1657,7 +1724,8 @@ def privacy() -> str:
         f'<p class="under">The <a href="{terms.PATH}">terms</a> say what publishing a game '
         "gives away and what the site does not promise.</p>\n"
     )
-    return _shell("Privacy", body, kind="prose", here="/privacy")
+    return _shell("Privacy", body, kind="prose", here="/privacy",
+                  description=PRIVACY_SAYS, path="/privacy")
 
 
 def terms_page() -> str:
@@ -1692,7 +1760,8 @@ def terms_page() -> str:
         f'on GitHub at <a href="{terms.CONTACT}" rel="noopener">'
         f"{escape(terms.CONTACT_SAID)}</a>.</p>\n"
     )
-    return _shell("Terms", body, kind="prose wide", here=terms.PATH)
+    return _shell("Terms", body, kind="prose wide", here=terms.PATH,
+                  description=TERMS_SAYS, path=terms.PATH)
 
 
 def _description_hint() -> str:

@@ -49,7 +49,8 @@ from chess_variant_sandbox.web.human import HUMAN, HumanGame, HumanRecord, picke
 from chess_variant_sandbox.web.keeping import Measurements
 from chess_variant_sandbox.web.opponents import Ratings
 from chess_variant_sandbox.web.page import PAGE, SCRIPTS, shell
-from chess_variant_sandbox.web.play import Session, Sessions
+from chess_variant_sandbox.web.page import game as game_page
+from chess_variant_sandbox.web.play import Session, Sessions, seed_asked
 
 # The header every state-changing request from the page carries. A browser lets a
 # cross-site form POST, but only a same-origin script may set a custom header, so its
@@ -477,7 +478,7 @@ class App:
         return game.spec if game is not None else None
 
     def graph(self) -> dict[str, Any]:
-        """The library as a map: nodes, links, lineage, clusters and coordinates.
+        """The library as a map: games, the lines of likeness, communities, lineage, places.
 
         **The corpus, not the listing.** A node is a committed or archived ruleset and
         nothing else. A design run's candidates are hundreds of near-identical children of
@@ -487,9 +488,9 @@ class App:
         site has a links table of its own with the visibility that needs
         (G7 of `docs/archive/plan-game-graph.md`), it hands it more.
 
-        Costs a compile of each spec and a comparison of each pair the first time -- about
-        six seconds on the committed corpus -- and nothing afterwards, because
-        `runs/graph/pairs.json` survives the restart.
+        The first call with no `runs/graph/map.json` reads every game and draws the
+        picture -- several seconds -- and writes that file; a later call settles from it,
+        and one over the same library is answered from memory (`graphing._MAPS`).
         """
         from chess_variant_sandbox.web import graphing
 
@@ -1011,7 +1012,7 @@ class App:
         if len(seats) != 2 or any(seat not in agents for seat in seats):
             raise ValueError(f"seats must be two of: {', '.join(agents)}")
         session = self.sessions.start(
-            draft, (str(seats[0]), str(seats[1])), seed=int(body.get("seed", 0)),
+            draft, (str(seats[0]), str(seats[1])), seed=seed_asked(body.get("seed")),
             scratch=True,
         )
         # The rules and pieces panels beside the board are `library.detail`'s, fetched by
@@ -1284,7 +1285,8 @@ class App:
         session = self.sessions.start(
             self.game(str(body["hash"])),
             (str(seats[0]), str(seats[1])),
-            seed=int(body.get("seed", 0)),
+            # A fresh seed unless the request names one (Q987): `play.seed_asked`.
+            seed=seed_asked(body.get("seed")),
         )
         # Noted before a move is played, so a game abandoned halfway through still
         # leaves a row. The gap between started and finished is the one bias automatic
@@ -1399,7 +1401,9 @@ def handler_for(app: App) -> type[BaseHTTPRequestHandler]:
 
         def do_GET(self) -> None:  # noqa: N802 - the stdlib's naming
             parsed = urlparse(self.path)
-            if parsed.path in PAGE_PATHS:
+            # A game's own address (G3) is the page too; the site draws the game into it
+            # for a reader without script, and here the router draws it as it always has.
+            if parsed.path in PAGE_PATHS or game_page.digest_of(parsed.path) is not None:
                 self._send(200, PAGE.encode("utf-8"), "text/html; charset=utf-8")
                 return
             if parsed.path.startswith(VENDOR_PREFIX):

@@ -2860,11 +2860,12 @@ class TestOneShell:
 
 class TestTheLinksOpenTheGame:
     """D0. The router reads `#/game/<hash>`; `/#<hash>` fell through to the library, so
-    every game named on the profile and on the maintainer's page opened the wrong page."""
+    every game named on the profile and on the maintainer's page opened the wrong page.
+    G3: every game now has its own address, `/game/<hash>`, which is what they write."""
 
     def test_both_pages_write_the_routers_own_address(self) -> None:
         for page in (page_text.inlined(site_pages.profile("ada")), page_text.inlined(site_pages.admin("boss"))):
-            assert "const GAME = '/#/game/';" in page
+            assert "const GAME = '/game/';" in page
             assert "link.href = GAME + " in page
             assert "'/#' + game.hash" not in page
         # Every link the profile draws -- a table row, a milestone line, a game named
@@ -2879,7 +2880,8 @@ class TestTheLinksOpenTheGame:
         from page_text import CORE
 
         assert "parts[0] === 'game' && parts[1]" in CORE
-        assert page_text.text("/static/site/game-link.js").splitlines()[-1] == "const GAME = '/#/game/';"
+        assert "parts = ['game', pathGame()];" in CORE
+        assert page_text.text("/static/site/game-link.js").splitlines()[-1] == "const GAME = '/game/';"
 
 
 class TestTheProfileIsInOrder:

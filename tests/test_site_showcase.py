@@ -196,7 +196,7 @@ class TestThePage:
         drawn = nodes["membersShelf"]["innerHTML"]
         assert "Ada&#39;s &lt;game&gt;" in drawn or "Ada's &lt;game&gt;" in drawn
         assert "by " in drawn and "ada" in drawn
-        assert drawn.count('href="#/game/abc123"') == 2 and ">Play</a>" in drawn
+        assert drawn.count('href="/game/abc123"') == 2 and ">Play</a>" in drawn
         assert nodes["membersEmpty"]["hidden"] and nodes["membersAll"]["hidden"]
         assert not nodes["landing-members"]["removed"] and not nodes["membersShelf"]["busy"]
         # A visitor reads the maker's name; a member can open their page.

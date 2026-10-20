@@ -9,11 +9,11 @@
 // layout units of one node radius, and this module multiplies each by one constant to get
 // the library's own model pixels. After that a position is a reader's -- a drag, or a
 // *reset* back to the server's -- and nothing else here writes one. There is no layout on
-// the page: the server's is already laid out by community, and one here would only pack
-// the communities together again (*tidy*, retired in Q477). It works out no distance,
-// compares no rules, reads no spec, formats no number and asks the engine nothing. What is
-// decided here is presentation: how big a dot is drawn, what colour a line is, what a tap
-// holds up.
+// the page: the server's picture keeps games alike near each other and remembers itself
+// from one build to the next (`docs/plan-map.md` M3), and one here would only draw another
+// (*tidy*, retired in Q477). It works out no distance, compares no rules, reads no spec,
+// formats no number and asks the engine nothing. What is decided here is presentation: how
+// big a dot is drawn, what colour a line is, what a tap holds up.
 //
 // Three things the graph library needs that an SVG did not:
 //
@@ -39,11 +39,13 @@
 //
 // **A community can be outlined.** A switch draws a smooth outline round each community of
 // three or more (`docs/archive/plan-graph-map.md` S5), in its colour and under the server's
-// name for it. The outline is the vendored `cytoscape-bubblesets`, which draws on an SVG
+// name for it -- one outline for each place the server says it is drawn (`parts`), so a
+// community drawn in two places is two outlines in one colour rather than one stretched
+// across the map. The outline is the vendored `cytoscape-bubblesets`, which draws on an SVG
 // layer under the dots from where the drawn dots and lines are -- so the outline is pixels,
 // like a line's width, and never a fact: which games are in a community is the server's.
-// Whatever changes what is drawn -- the cut, a fold, the local view, *hide the rest* --
-// draws the outlines again over what is left.
+// Whatever changes what is drawn -- a fold, the local view, *hide the rest* -- draws the
+// outlines again over what is left.
 //
 // **More than one thing can decide how big a dot is.** The payload carries a menu of size
 // keys, each with its rule in one sentence and its two real ends, and every dot carries its
@@ -130,10 +132,10 @@ const EXPLORER_PAN = 90;
 const EXPLORER_TEXT_PX = 12.5;
 const EXPLORER_TEXT_WIDTH = 0.58;
 const EXPLORER_TEXT_AIR = 0.6;
-// A similarity line's width, in model pixels, mapped straight from the server's `bond`:
-// the bond runs from under 2 at the loosest cut to 5 for one game written two ways, and
-// the width from a hair the eye still finds to the widest a line can be beside a dot.
-const EXPLORER_BOND = 'mapData(bond, 1.5, 5, 1.5, 13)';
+// A line's width, in model pixels, mapped straight from the server's `likeness`: 0 is two
+// games sharing nothing rare and 1 one game written two ways, and the width runs from a
+// hair the eye still finds to the widest a line can be beside a dot.
+const EXPLORER_WIDTH = 'mapData(likeness, 0, 1, 1.5, 12)';
 // The least zoom the find box's first match is shown at, so a match at the whole-map
 // view comes up close enough to read its neighbours.
 const EXPLORER_HOLD_ZOOM = 0.8;
@@ -143,9 +145,9 @@ const EXPLORER_STEPS_OUT = 2;
 // Whether the map opens with the communities outlined.
 const EXPLORER_HULLS_OPEN = true;
 // How far an outline reaches round what it holds, in layout units: full strength within
-// the first number of a dot and nothing past the second, and the same for a line. S2 keeps
-// two communities at least `COMPONENT_GAP` apart, and these keep an outline well inside
-// half of that, so two outlines do not run into each other.
+// the first number of a dot and nothing past the second, and the same for a line. Every
+// drawn game outside the community is handed to the outline as one to keep clear of, so
+// an outline bends round a game that is not its own rather than taking it in.
 const EXPLORER_HULL_REACH = {
   nodeR0: 0.9 * EXPLORER_UNIT, nodeR1: 1.9 * EXPLORER_UNIT,
   edgeR0: 0.45 * EXPLORER_UNIT, edgeR1: 1.0 * EXPLORER_UNIT,
@@ -181,14 +183,12 @@ async function showExplorer() {
   EXPLORER_BUBBLES = null;
   EXPLORER_OUTLINES = new Map();
   MAP_PAINT = 'community';
-  // The picture the explorer opens on. The sixteen nearest-relative lines are the longest
-  // on the map and cross everything, so they start hidden and their chip brings them back
-  // once the rule steps are on.
-  MAP_OFF = { nearest: true };
+  // The picture the explorer opens on: the lines of likeness, and the arrows off.
+  MAP_ARROWS = false;
   view.innerHTML = `
     <div class="row" style="justify-content:space-between; margin-bottom:12px">
-      <div class="muted small">Every game in the library, and how each one differs from
-        the rest. Drag to move, scroll or pinch to zoom, tap a game or a line.</div>
+      <div class="muted small">Every game in the library, each drawn near the games most
+        like it. Drag to move, scroll or pinch to zoom, tap a game or a line.</div>
       <div class="row">
         <input type="search" id="mapFind" placeholder="find a game"
           aria-label="find a game on the map" style="max-width:190px">
@@ -208,10 +208,10 @@ async function showExplorer() {
     <div id="mapLit" class="muted small" style="margin:-6px 0 10px"></div>
     <div id="exploreBody"></div>`;
   wireViewSwitch();
-  // The first call on a cold server compares every pair of games, which is about five
-  // seconds on seventy; every call after it is instant, because the comparisons are kept.
-  // So the wait says which of the two this is rather than spinning silently.
-  pending('Drawing the map. The first time, every pair of games is compared.');
+  // The first call on a server with no map of this library reads every game and draws the
+  // picture afresh, which is several seconds; every call after it is quick, because the map
+  // is remembered. So the wait says which of the two this is rather than spinning silently.
+  pending('Drawing the map. The first time, every game is read and placed.');
   // The first call can take seconds, and a person may leave the map before it answers.
   // Every await below is followed by `left()`, so a late answer draws nothing on the view
   // that replaced this one -- neither the body nor the header's tagline.
@@ -222,7 +222,6 @@ async function showExplorer() {
   MAP_DATA = data;
   MAP_AT = {};
   MAP_DATA.nodes.forEach(node => { MAP_AT[node.hash] = node; });
-  explorerOpeningLines();
   EXPLORER_PEOPLE = await explorerPeopleOverlay();
   if (left()) return;
   // The payload's first size key, which is the size the map has always drawn.
@@ -240,8 +239,7 @@ async function showExplorer() {
 }
 
 // The legend, the frame and the panel. The legend is `page/graph.js`'s, chips and all:
-// what a line means, which rule a colour is, the families, and both ends of the score
-// ramp as numbers.
+// the communities, what a line means, and both ends of the score ramp as numbers.
 function explorerBodyHtml() {
   return `<details class="panel mapControls" id="mapControls" open>
     <summary class="muted small">what the map draws, and its key</summary>
@@ -265,34 +263,16 @@ function explorerBodyHtml() {
     </div>`;
 }
 
-// ------------------------------------------------------------------ the lines, and cuts
+// ------------------------------------------------------------- the lines, and arrows
 //
-// `docs/archive/plan-graph-map.md` S3. The map's lines are the payload's `similar` rows, and a
-// slider over its `levels` chooses the cut: a row is drawn when its own `level` is at
-// most the cut, and the count beside the slider is the level's own. The rule-step lines
-// are one more switch, off when the map opens, and a dot's fill is the community it is
-// drawn in or its score, whichever the reader asks for.
-
-// The lines the map opens with: the server's default cut, and the rule steps off. A
-// payload with no cuts has no similarity lines, and then the rule steps are the map.
-function explorerOpeningLines() {
-  const opened = mapDefaultLevel();
-  MAP_CUT = opened ? opened.cut : 0;
-  MAP_STEPS = !opened;
-}
+// `docs/plan-map.md` M4. The map's lines are the payload's `neighbours`, every one of
+// them drawn: there is no cut to choose, because which games are alike enough for a line
+// is each game's own nearest, not one threshold over the library. The arrows from a game
+// to one made from it are one switch, off when the map opens, and a dot's fill is the
+// community it is drawn in or its score, whichever the reader asks for.
 
 function explorerLinesHtml() {
-  const levels = mapLevels();
-  const at = levels.findIndex(level => level.cut === MAP_CUT);
-  const slider = levels.length ? `<label class="pick" title="0 is the same game. Slide
-      right for more lines.">join games this alike or closer
-      <input type="range" id="exploreCut" min="0" max="${levels.length - 1}" step="1"
-        value="${at}" aria-label="how alike two games must be for a line"
-        aria-valuetext="${MAP_CUT}">
-      <b id="exploreCutValue">${MAP_CUT}</b>${info('likeness')}</label>
-    <span class="muted small" id="exploreCutSay"></span>` : '';
   return `<div class="row mapCtl">
-    ${slider}
     <label class="pick">colour the dots by
       <select id="explorePaint" aria-label="what the colour of a dot says">
         <option value="community"${MAP_PAINT === 'community' ? ' selected' : ''}>community</option>
@@ -302,48 +282,22 @@ function explorerLinesHtml() {
       of three or more games, in its colour and under its name."><input type="checkbox"
       id="exploreHulls"${EXPLORER_HULLS ? ' checked' : ''}> outline the communities</label>`
       : ''}
-    <label class="pick" title="One rule apart, a gap, a nearest relative and made from:
-      the lines counted in rules rather than by likeness."><input type="checkbox"
-      id="exploreSteps"${MAP_STEPS ? ' checked' : ''}> lines between games one to three
-      rules apart</label>
+    ${MAP_DATA.lineage.length ? `<label class="pick" title="An arrow from a game to one
+      made as a new version of it, drawn however far apart the two are."><input
+      type="checkbox" id="exploreArrows"${MAP_ARROWS ? ' checked' : ''}> arrows to the
+      games made from each</label>` : ''}
   </div>`;
 }
 
-// What the cut in hand draws, in the server's own numbers.
-function explorerCutSay() {
-  const level = mapLevelNow();
-  const value = document.getElementById('exploreCutValue');
-  const said = document.getElementById('exploreCutSay');
-  const slider = document.getElementById('exploreCut');
-  if (value) value.textContent = String(MAP_CUT);
-  if (slider) slider.setAttribute('aria-valuetext', String(MAP_CUT));
-  if (!said || !level) return;
-  said.textContent = `${level.lines} lines; ${level.alone === 1 ? 'one game has'
-    : level.alone + ' games have'} none${level.default ? ' (where the map opens)' : ''}.`;
-}
-
-// A new cut. Which lines are drawn, what a fold carries, what a pick lights and what the
-// panel lists all follow from it, so it is one repaint of each.
-function explorerSetCut(at) {
-  const level = mapLevels()[at];
-  if (!level) return;
-  MAP_CUT = level.cut;
+// The arrows on or off, with their key. What a fold carries, what a pick lights and what
+// the panel lists follow from it, so it is one repaint of each.
+function explorerSetArrows(on) {
+  MAP_ARROWS = !!on;
   MAP_ON = mapLit();
-  explorerCutSay();
-  explorerPaintLines();
-  explorerFoldPaint();
-  explorerPaintLit();
-  explorerPaintPanel();
-}
-
-// The rule-step lines on or off, with their chips.
-function explorerSetSteps(on) {
-  MAP_STEPS = on;
-  MAP_ON = mapLit();
-  const box = document.getElementById('exploreSteps');
-  if (box) box.checked = on;
-  const chips = document.getElementById('mapSteps');
-  if (chips) chips.hidden = !on;
+  const box = document.getElementById('exploreArrows');
+  if (box) box.checked = MAP_ARROWS;
+  const key = document.getElementById('mapArrowsKey');
+  if (key) key.hidden = !MAP_ARROWS;
   explorerPaintLines();
   explorerFoldPaint();
   explorerPaintLit();
@@ -653,12 +607,6 @@ function explorerPixel(colour) {
   return `rgb(${seen[0]}, ${seen[1]}, ${seen[2]})`;
 }
 
-// A kind of rule's colour, resolved. The fallback is the map's own: a kind the schema
-// grows before the stylesheet does draws in grey rather than not at all.
-function explorerKindColour(kind) {
-  return explorerColour(mapKindColour(kind));
-}
-
 // ------------------------------------------------------------------------ the elements
 //
 // One entry per dot and one per line, with everything the stylesheet reads carried as
@@ -680,8 +628,7 @@ function explorerElements() {
         // the hollow dot the map draws: the panel's own colour, which is the background
         // a dot sits on.
         fill: explorerFill(node),
-        // A game no similarity line reaches at the opening cut is in no community and
-        // sits in the row at the bottom, and its edge says so.
+        // An unusual game is in no community, and its edge says so.
         edge: explorerColour(node.community ? 'var(--ink)' : 'var(--muted)'),
       },
       position: explorerPlace(node),
@@ -721,35 +668,20 @@ function explorerElements() {
       classes: 'group away',
     });
   });
-  // The similarity lines, every row the payload sent: which of them are drawn is the
-  // cut's business, and a class. Added first so a rule step, when it is on, lies on top.
-  mapSimilar().forEach((row, index) => {
-    const from = MAP_AT[row.source], to = MAP_AT[row.target];
+  // The lines, every row the payload sent, as wide as the two games are alike. Added
+  // first so an arrow, when the arrows are on, lies on top.
+  mapLines().forEach((line, index) => {
+    const from = MAP_AT[line.source], to = MAP_AT[line.target];
     if (!from || !to) return;
     parts.push({
       group: 'edges',
       data: {
-        id: 's' + index, at: index, kind: 'similar', bond: row.bond,
+        id: 's' + index, at: index, kind: 'line', likeness: line.likeness,
         source: 'n' + MAP_DATA.nodes.indexOf(from),
         target: 'n' + MAP_DATA.nodes.indexOf(to),
-        colour: explorerColour(mapSimilarColour(row)),
+        colour: explorerColour(mapLineColour(line)),
       },
-      classes: 'similar',
-    });
-  });
-  MAP_DATA.links.forEach((link, index) => {
-    const from = MAP_AT[link.source], to = MAP_AT[link.target];
-    if (!from || !to) return;
-    parts.push({
-      group: 'edges',
-      data: {
-        id: 'l' + index, at: index, kind: 'link',
-        source: 'n' + MAP_DATA.nodes.indexOf(from),
-        target: 'n' + MAP_DATA.nodes.indexOf(to),
-        colour: link.type === 'nearest'
-          ? explorerColour('var(--faint)') : explorerKindColour(link.kind),
-      },
-      classes: link.type,
+      classes: 'line',
     });
   });
   MAP_DATA.lineage.forEach((arrow, index) => {
@@ -769,11 +701,11 @@ function explorerElements() {
   return parts;
 }
 
-// The four kinds of line, the fill, the ring and the names, as the library's own
-// stylesheet. Solid in the kind's colour is one rule apart, dashed in it is a gap, dotted
-// and faint is a nearest relative, and grey with an arrowhead at the middle is *made
-// from*. The arrowhead sits at the middle rather than the end because at the end it would
-// be under the dot it points at.
+// The two kinds of line, the fill, the ring and the names, as the library's own
+// stylesheet. A line of likeness is as wide as the two games are alike, in their
+// community's colour, and grey with an arrowhead at the middle is *made from*. The
+// arrowhead sits at the middle rather than the end because at the end it would be under
+// the dot it points at.
 function explorerStyle() {
   const mark = explorerColour('var(--hl-sel)');
   const faint = explorerColour('var(--faint)');
@@ -813,14 +745,11 @@ function explorerStyle() {
       'width': 1.7, 'line-color': 'data(colour)', 'curve-style': 'straight',
       'line-cap': 'round',
     } },
-    // A similarity line: as wide as its bond, in its community's colour or the neutral
-    // one. The width is the server's number, mapped; nothing here works one out.
-    { selector: 'edge.similar', style: { 'width': EXPLORER_BOND } },
-    { selector: 'edge.gap', style: { 'line-style': 'dashed', 'line-dash-pattern': [6, 5] } },
-    { selector: 'edge.nearest', style: { 'width': 1.5, 'line-style': 'dotted' } },
+    // A line: as wide as its two games are alike, in their community's colour or the
+    // neutral one. The width is the server's number, mapped; nothing here works one out.
+    { selector: 'edge.line', style: { 'width': EXPLORER_WIDTH } },
     // A folded group's line to the rest of the library: the lines its games had, drawn
-    // once and labelled with how many they were. The colour is the kind's where every one
-    // of them differs in the same kind of rule and grey where they do not.
+    // once and labelled with how many they were, in grey.
     { selector: 'edge.grouped', style: {
       'width': 2.6, 'label': 'data(count)', 'font-size': 'data(font)',
       'color': ink, 'text-outline-color': back, 'text-outline-width': 'data(halo)',
@@ -847,14 +776,13 @@ function explorerStyle() {
       'border-width': 2.6, 'border-color': mark,
     } },
     { selector: 'edge.picked', style: { 'width': 3.4, 'line-color': mark } },
-    { selector: 'edge.picked.similar', style: { 'width': EXPLORER_BOND } },
+    { selector: 'edge.picked.line', style: { 'width': EXPLORER_WIDTH } },
     { selector: 'edge.picked.lineage', style: { 'mid-target-arrow-color': mark } },
-    // The four things that take something off the drawing: a chip, the cut or the rule-step
-    // switch hiding a line (`off`), *hide the rest*, a fold -- which takes away the games
-    // it folded, the group dots of every group still open, and the lines a folded dot now
-    // carries instead -- and the local view (`aside`). A line with an end that is not
-    // displayed is not drawn, which is the library's own rule and why hiding a game needs
-    // nothing said about its lines.
+    // The four things that take something off the drawing: the arrows' switch (`off`),
+    // *hide the rest*, a fold -- which takes away the games it folded, the group dots of
+    // every group still open, and the lines a folded dot now carries instead -- and the
+    // local view (`aside`). A line with an end that is not displayed is not drawn, which
+    // is the library's own rule and why hiding a game needs nothing said about its lines.
     { selector: '.off, .hidden, .away, .aside', style: { 'display': 'none' } },
   ];
 }
@@ -887,9 +815,8 @@ function explorerDraw() {
     if (target === EXPLORER) return explorerPick(null);
     const held = target.data();
     if (held.kind === 'node') return explorerPick({ kind: 'node', at: held.at });
-    if (held.kind === 'link') return explorerPick({ kind: 'link', at: held.at });
+    if (held.kind === 'line') return explorerPick({ kind: 'line', at: held.at });
     if (held.kind === 'arrow') return explorerPick({ kind: 'arrow', at: held.at });
-    if (held.kind === 'similar') return explorerPick({ kind: 'similar', at: held.at });
     // A folded dot, and the lines it carries, both answer for the group.
     if (held.kind === 'group') return explorerPick({ kind: 'group', at: held.at });
     if (held.kind === 'grouped') return explorerPick({ kind: 'group', at: held.group });
@@ -947,12 +874,9 @@ function explorerSay() {
   const said = document.getElementById('exploreSay');
   if (!said) return;
   const counts = MAP_DATA.counts;
-  said.textContent = mapLevels().length
-    ? `${counts.nodes} games in ${counts.communities} communities. The thicker a line,`
-      + ' the more alike its two games. Point at a game to light its neighbours, tap one'
-      + ' for what it is, or move the slider for more lines or fewer.'
-    : `${counts.nodes} games, ${counts.links} lines and ${counts.lineage}`
-      + ' arrows. Tap one for what it is.';
+  said.textContent = `${counts.nodes} games in ${counts.communities} communities, and`
+    + ` ${counts.unusual} unusual ones in none. The thicker a line, the more alike its two`
+    + ' games. Point at a game to light its neighbours, or tap one for the games like it.';
 }
 
 function explorerZoom(factor) {
@@ -1080,17 +1004,17 @@ function explorerFoldPaint() {
   });
 }
 
-// The lines a folded dot carries. One per pair of ends, counting the lines it stands for
-// and collecting their kinds; a line between two games of one folded group is gone, which
-// is what folding them into one dot says about it. A line whose kind of rule is hidden is
-// not counted, so a chip and a fold read together rather than against each other.
+// The lines a folded dot carries. One per pair of ends, counting the lines it stands for;
+// a line between two games of one folded group is gone, which is what folding them into
+// one dot says about it. An arrow is counted only while the arrows are drawn, so the
+// switch and a fold read together rather than against each other.
 function explorerGroupLines(home) {
   const made = new Map();
   const gather = (line, index, kind) => {
     const first = home[line.source], second = home[line.target];
     if (!first || !second) return;
     const folded = first[0] === 'g' || second[0] === 'g';
-    EXPLORER.getElementById({ link: 'l', arrow: 'a', similar: 's' }[kind] + index)
+    EXPLORER.getElementById({ arrow: 'a', line: 's' }[kind] + index)
       .toggleClass('away', folded);
     if (!folded || first === second) return;
     // An arrow keeps its direction; a line has none, so its two ends are sorted and the
@@ -1098,19 +1022,10 @@ function explorerGroupLines(home) {
     const ends = kind === 'arrow' || first < second
       ? [first, second] : [second, first];
     const key = kind + '|' + ends[0] + '|' + ends[1];
-    const held = made.get(key)
-      || { kind: kind, source: ends[0], target: ends[1], count: 0, kinds: new Set() };
+    const held = made.get(key) || { kind: kind, source: ends[0], target: ends[1], count: 0 };
     held.count += 1;
-    (line.kinds || []).forEach(one => held.kinds.add(one));
     made.set(key, held);
   };
-  MAP_DATA.links.forEach((link, index) => {
-    if (mapLinkHidden(link)) {
-      EXPLORER.getElementById('l' + index).toggleClass('away', false);
-      return;
-    }
-    gather(link, index, 'link');
-  });
   MAP_DATA.lineage.forEach((arrow, index) => {
     if (mapArrowHidden()) {
       EXPLORER.getElementById('a' + index).toggleClass('away', false);
@@ -1118,26 +1033,17 @@ function explorerGroupLines(home) {
     }
     gather(arrow, index, 'arrow');
   });
-  // A similarity line counts only at the cut that draws it.
-  mapSimilar().forEach((row, index) => {
-    if (!mapSimilarShown(row)) {
-      EXPLORER.getElementById('s' + index).toggleClass('away', false);
-      return;
-    }
-    gather(row, index, 'similar');
-  });
+  mapLines().forEach((line, index) => gather(line, index, 'line'));
 
   const drawn = [];
   made.forEach(held => {
-    const kinds = [...held.kinds];
     const at = held.source[0] === 'g' ? held.source : held.target;
     drawn.push({
       group: 'edges',
       data: {
         id: 'x' + drawn.length, kind: 'grouped', group: Number(at.slice(1)),
         source: held.source, target: held.target, count: held.count,
-        colour: held.kind === 'arrow' || kinds.length !== 1
-          ? explorerColour('var(--muted)') : explorerKindColour(kinds[0]),
+        colour: explorerColour('var(--muted)'),
       },
       classes: held.kind === 'arrow' ? 'grouped lineage' : 'grouped',
     });
@@ -1217,9 +1123,18 @@ async function explorerSetHulls(on) {
   explorerPaintHulls();
 }
 
-// What each outline holds now: the community's games that are drawn -- not folded, not
-// set aside by the local view, not hidden -- and the drawn likeness lines between them.
-// A folded community is its dot and has no outline; one with fewer than
+// The outlines one community is drawn with: one for each place the server says it is
+// drawn (`parts`), the place holding its centre first, each under an id of its own. A
+// community the payload gives no parts is one place.
+function explorerHullParts(community) {
+  const parts = community.parts && community.parts.length
+    ? community.parts : [community.members];
+  return parts.map((members, at) => ({ id: community.id + '#' + at, members }));
+}
+
+// What each outline holds now: the games of one place of a community that are drawn --
+// not folded, not set aside by the local view, not hidden -- and the drawn lines between
+// them. A folded community is its dot and has no outline; a place with fewer than
 // `EXPLORER_HULL_LEAST` games on screen has none either.
 function explorerHullsWanted() {
   const wanted = new Map();
@@ -1227,14 +1142,16 @@ function explorerHullsWanted() {
   const shown = EXPLORER.nodes('[kind = "node"]').not('.away, .aside, .hidden');
   mapGroups().forEach(community => {
     if (EXPLORER_FOLDED.has(community.id)) return;
-    const inside = new Set(community.members);
-    const members = shown.filter(part => inside.has(MAP_DATA.nodes[part.data('at')].hash));
-    if (members.length < EXPLORER_HULL_LEAST) return;
-    const lines = members.edgesWith(members).filter('.similar').not('.off, .away');
-    const ids = parts => parts.map(part => part.id()).sort().join(' ');
-    wanted.set(community.id, {
-      community, members, lines, others: shown.not(members),
-      key: ids(members) + '|' + ids(lines),
+    explorerHullParts(community).forEach(place => {
+      const inside = new Set(place.members);
+      const members = shown.filter(part => inside.has(MAP_DATA.nodes[part.data('at')].hash));
+      if (members.length < EXPLORER_HULL_LEAST) return;
+      const lines = members.edgesWith(members).filter('.line').not('.off, .away');
+      const ids = parts => parts.map(part => part.id()).sort().join(' ');
+      wanted.set(place.id, {
+        community, members, lines, others: shown.not(members),
+        key: ids(members) + '|' + ids(lines),
+      });
     });
   });
   return wanted;
@@ -1258,7 +1175,7 @@ function explorerPaintHulls() {
   });
   wanted.forEach((want, id) => {
     if (EXPLORER_OUTLINES.has(id)) return;
-    const colour = mapCommunityColour(id);
+    const colour = mapCommunityColour(want.community.id);
     const path = EXPLORER_BUBBLES.addPath(want.members, want.lines, want.others, {
       className: 'mapHull',
       style: {
@@ -1342,9 +1259,10 @@ function explorerHullPlace(held, below) {
 }
 
 // The names the outlines carry, kept where they fit: whole, inside the frame, and clear of
-// a name already kept, biggest community first -- above the outline, else below it, else
-// not at all until a zoom makes room. What is kept is handed back as the first boxes the
-// games' own names must stay clear of.
+// a name already kept, biggest community first and each community's own places in the
+// server's order -- above the outline, else below it, else not at all until a zoom makes
+// room. What is kept is handed back as the first boxes the games' own names must stay
+// clear of.
 function explorerHullNames(frame) {
   const taken = [];
   if (!EXPLORER_OUTLINES.size) return taken;
@@ -1367,8 +1285,8 @@ function explorerHullNames(frame) {
     && box.x + box.w <= frame.width && box.y + box.h <= frame.height
     && !taken.some(other => mapOverlaps(other, box))
     && !games.some(other => mapOverlaps(other, box));
-  mapGroups().forEach(community => {
-    const held = EXPLORER_OUTLINES.get(community.id);
+  mapGroups().forEach(community => explorerHullParts(community).forEach(place => {
+    const held = EXPLORER_OUTLINES.get(place.id);
     if (!held) return;
     held.label.removeAttribute('display');
     const kept = [false, true].some(below => {
@@ -1379,7 +1297,7 @@ function explorerHullNames(frame) {
       return true;
     });
     if (!kept) held.label.setAttribute('display', 'none');
-  });
+  }));
   return taken;
 }
 
@@ -1401,34 +1319,23 @@ function explorerHullsFade() {
 // and the lines the page opened with.
 //
 // There was a *tidy* beside it, the graph library's own force layout over what was on
-// screen, and Q477 retired it. The server's picture is already a force layout, drawn one
-// community at a time with its lines pulling by their bond and the communities held
-// `COMPONENT_GAP` apart (`docs/archive/plan-graph-map.md` S2), which is what keeps two
-// outlines from running into each other. The library's layout pulls every dot towards one
-// point of the frame and packs whatever is not joined into rows, so over the whole map it
-// crossed ten pairs of outlines, and one run per community needs a second set of spacings
-// fitted to the dots and a fit back into each community's place -- the server's layout
-// again, drawn by other rules and with none of its promises. A reader who has dragged the
-// picture out of shape has *reset*.
+// screen, and Q477 retired it. The library's layout pulls every dot towards one point of
+// the frame and packs whatever is not joined into rows, so over the whole map it crossed
+// ten pairs of outlines; and the server's picture is the one that keeps games alike near
+// each other and stays where a returning reader left it (`docs/plan-map.md` M3). A layout
+// here would be another picture, drawn by other rules and with none of its promises. A
+// reader who has dragged the picture out of shape has *reset*.
 
 function explorerReset() {
   if (!EXPLORER) return;
   EXPLORER_FOLDED = new Set();
   EXPLORER_LOCAL = null;
-  MAP_OFF = { nearest: true };
-  view.querySelectorAll('[data-kind], [data-line]').forEach(chip => {
-    const key = chip.dataset.kind || chip.dataset.line;
-    chip.classList.toggle('off', !!MAP_OFF[key]);
-  });
-  // The cut and the switches the map opened with.
-  explorerOpeningLines();
-  const slider = document.getElementById('exploreCut');
-  if (slider) slider.value = String(mapLevels().findIndex(level => level.cut === MAP_CUT));
-  explorerCutSay();
-  const box = document.getElementById('exploreSteps');
-  if (box) box.checked = MAP_STEPS;
-  const chips = document.getElementById('mapSteps');
-  if (chips) chips.hidden = !MAP_STEPS;
+  // The switch the map opened with.
+  MAP_ARROWS = false;
+  const box = document.getElementById('exploreArrows');
+  if (box) box.checked = MAP_ARROWS;
+  const key = document.getElementById('mapArrowsKey');
+  if (key) key.hidden = !MAP_ARROWS;
   explorerSetPaint('community');
   explorerSetHulls(EXPLORER_HULLS_OPEN);
   EXPLORER.batch(() => {
@@ -1459,22 +1366,10 @@ function explorerHullsAfresh() {
   }, EXPLORER_HULL_SETTLE);
 }
 
-// --------------------------------------------------------------- hiding a kind of line
+// --------------------------------------------------------------- hiding the arrows
 //
-// A chip reaches the lines and nothing else. Every position arrived with the payload and
-// was written once, and the paint a chip calls selects no dot at all.
-
-function explorerToggle(key) {
-  MAP_OFF[key] = !MAP_OFF[key];
-  view.querySelectorAll(`[data-kind="${key}"], [data-line="${key}"]`).forEach(chip => {
-    chip.classList.toggle('off', !!MAP_OFF[key]);
-  });
-  explorerPaintLines();
-  // What a folded dot's line counts depends on which kinds are hidden, so a chip is a
-  // reason to work the folded lines out again.
-  explorerFoldPaint();
-  explorerPaintLit();
-}
+// The arrows' switch reaches the arrows and nothing else. Every position arrived with the
+// payload and was written once, and the paint the switch calls selects no dot at all.
 
 function explorerPaintLines() {
   if (!EXPLORER) return;
@@ -1482,14 +1377,9 @@ function explorerPaintLines() {
     EXPLORER.edges().forEach(part => {
       const held = part.data();
       // A folded dot's own line is built from the lines that are showing, so it is never
-      // one of the hidden ones.
-      if (held.kind === 'grouped') return;
-      if (held.kind === 'similar') {
-        part.toggleClass('off', !mapSimilarShown(mapSimilar()[held.at]));
-        return;
-      }
-      const link = held.kind === 'link' ? MAP_DATA.links[held.at] : null;
-      part.toggleClass('off', link ? mapLinkHidden(link) : mapArrowHidden());
+      // one of the hidden ones; and every line of likeness is drawn.
+      if (held.kind !== 'arrow') return;
+      part.toggleClass('off', mapArrowHidden());
     });
   });
 }
@@ -1522,20 +1412,15 @@ function explorerPaintLit() {
     // A line with both ends lit keeps its colour, which is the reading somebody who
     // narrowed the map to four games is asking for. Every other line fades, so the shape
     // is still there and the lit games are what the eye lands on.
-    MAP_DATA.links.forEach((link, index) => {
-      const ends = lit(link.source) && lit(link.target);
-      const part = EXPLORER.getElementById('l' + index);
-      part.toggleClass('faded', MAP_ON ? !MAP_ON.links.has(index) : !ends);
+    mapLines().forEach((line, index) => {
+      const ends = lit(line.source) && lit(line.target);
+      const part = EXPLORER.getElementById('s' + index);
+      part.toggleClass('faded', MAP_ON ? !MAP_ON.lines.has(index) : !ends);
     });
     MAP_DATA.lineage.forEach((arrow, index) => {
       const ends = lit(arrow.source) && lit(arrow.target);
       const part = EXPLORER.getElementById('a' + index);
       part.toggleClass('faded', MAP_ON ? !MAP_ON.arrows.has(index) : !ends);
-    });
-    mapSimilar().forEach((row, index) => {
-      const ends = lit(row.source) && lit(row.target);
-      const part = EXPLORER.getElementById('s' + index);
-      part.toggleClass('faded', MAP_ON ? !MAP_ON.similar.has(index) : !ends);
     });
     // A folded dot stands for its games, so it is lit when any of them is and it goes
     // under *hide the rest* only when none of them is left.
@@ -1597,10 +1482,10 @@ function explorerGoToFirstFound() {
 // `docs/archive/plan-graph-map.md` S4: three ways of looking at part of the map without losing
 // the rest of it. None of them moves a dot or works out a neighbour: a game's neighbours
 // are the lines the library says are drawn to it, which is `connectedEdges` over the
-// edges no switch, cut or fold has taken off.
+// edges no switch or fold has taken off.
 
-// The lines drawn now, as the library holds them. A line the cut, a chip or the rule-
-// step switch hid is `off`, and one a fold stands in for is `away`.
+// The lines drawn now, as the library holds them. An arrow the switch hid is `off`, and a
+// line a fold stands in for is `away`.
 function explorerDrawnLines(part) {
   return part.connectedEdges().not('.off, .away');
 }
@@ -1637,8 +1522,8 @@ function explorerHushOff() {
 }
 
 // The local view: one game and the games one or two steps out along the lines drawn now,
-// with everything else set aside. It is repainted whenever the lines change, so sliding
-// the cut in a local view widens or narrows it.
+// with everything else set aside. It is repainted whenever the lines change, so turning
+// the arrows on in a local view widens it along them.
 function explorerPaintLocal() {
   if (!EXPLORER) return;
   EXPLORER.batch(() => {
@@ -1820,7 +1705,7 @@ function explorerPaintPick() {
   if (!EXPLORER) return;
   EXPLORER.elements().removeClass('picked');
   if (!MAP_PICK) return;
-  const id = { node: 'n', link: 'l', arrow: 'a', group: 'g', similar: 's' }[MAP_PICK.kind];
+  const id = { node: 'n', line: 's', arrow: 'a', group: 'g' }[MAP_PICK.kind];
   if (!id) return;
   EXPLORER.getElementById(id + MAP_PICK.at).addClass('picked');
 }
@@ -1873,17 +1758,11 @@ function explorerKey(event) {
 // ------------------------------------------------------------------------- the wiring
 
 function wireExplorer() {
-  view.querySelectorAll('[data-kind], [data-line]').forEach(chip => {
-    chip.onclick = () => explorerToggle(chip.dataset.kind || chip.dataset.line);
-  });
   view.querySelectorAll('#mapCommunities [data-community]').forEach(chip => {
     chip.onclick = () => explorerPickCommunity(Number(chip.dataset.community));
   });
-  const cut = document.getElementById('exploreCut');
-  if (cut) cut.oninput = () => explorerSetCut(Number(cut.value));
-  explorerCutSay();
-  const steps = document.getElementById('exploreSteps');
-  if (steps) steps.onchange = () => explorerSetSteps(steps.checked);
+  const arrows = document.getElementById('exploreArrows');
+  if (arrows) arrows.onchange = () => explorerSetArrows(arrows.checked);
   const paint = document.getElementById('explorePaint');
   if (paint) paint.onchange = () => explorerSetPaint(paint.value);
   const hulls = document.getElementById('exploreHulls');
@@ -1900,10 +1779,6 @@ function wireExplorer() {
   }
   const reset = document.getElementById('exploreReset');
   if (reset) reset.onclick = () => explorerReset();
-  // Open where there is room for it above the drawing, and folded where opening it would
-  // put the picture below the fold.
-  const legend = document.getElementById('mapLegend');
-  if (legend) legend.open = window.innerWidth > 720 && window.innerHeight > 860;
   // On a phone the whole sheet of controls folds to its one line, so the drawing is on the
   // first screen (archive/plan-visual.md §1.1: the controls took it); one tap opens them.
   const controls = document.getElementById('mapControls');
@@ -2008,7 +1883,7 @@ function explorerRepaintTheme() {
 // One handler for the panel, which is redrawn on every pick, so a handler per button
 // would be rewired each time. A press that holds something else up goes through this
 // module, because a pick is a class on a drawn element; everything else -- opening a
-// game, asking for the design steps, making the game in between -- is `page/graph.js`'s
+// game, asking for the design steps, taking one -- is `page/graph.js`'s
 // own function, called with what the press named.
 function wireExplorerPanel() {
   const panel = document.getElementById('mapPanel');
@@ -2025,16 +1900,8 @@ function wireExplorerPanel() {
     if (step) {
       return mapTakeStep(step.dataset.from, step.dataset.step, step.dataset.seed);
     }
-    const made = event.target.closest('[data-between]');
-    if (made) return mapMakeBetween(MAP_DATA.links[Number(made.dataset.between)]);
-    const row = event.target.closest('[data-link-row]');
-    if (row) {
-      // A rule-step line asked for by name is drawn, so the switch comes on for it.
-      if (!MAP_STEPS) explorerSetSteps(true);
-      return explorerPick({ kind: 'link', at: Number(row.dataset.linkRow) });
-    }
-    const alike = event.target.closest('[data-similar-row]');
-    if (alike) return explorerPick({ kind: 'similar', at: Number(alike.dataset.similarRow) });
+    const row = event.target.closest('[data-line-row]');
+    if (row) return explorerPick({ kind: 'line', at: Number(row.dataset.lineRow) });
     const local = event.target.closest('[data-local]');
     if (local) return explorerLocal(Number(local.dataset.local), 1);
     const community = event.target.closest('[data-community]');

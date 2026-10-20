@@ -96,7 +96,8 @@ ALLOWED: tuple[Route, ...] = (
     Route(
         "GET",
         "/api/graph",
-        "the library as a map: which games are one rule apart, and where each sits. The "
+        "the library as a map: which games are alike, their communities, and where each "
+        "sits. The "
         "handler draws the committed corpus alone, so no draft and no unlisted game is "
         "on it; a user's game joins when the site has a links table of its own "
         "(G7 of `docs/archive/plan-game-graph.md`)",
@@ -502,6 +503,8 @@ MAIL_OFF = "/mail/off/"
 #   app's `browser_dir`, `build/browser/` (B1, B4). Only what that build's
 #   `manifest.json` names, and nothing while it has none. On the box Caddy answers
 #   these paths itself once B7 ships the build, and this is the fallback behind it.
+# - `/robots.txt` and `/sitemap.xml`, the doors for crawlers (G4, `site/seo.py`): the site's
+#   handler answers them, beside `/` and `/game` with their own heads.
 #
 # **Served to anybody.** They are constants: the same bytes for every viewer, nobody's
 # name read and no store touched. A path cannot reach out of any directory, because each
@@ -509,7 +512,7 @@ MAIL_OFF = "/mail/off/"
 STATIC: tuple[str, ...] = (
     "/static/vendor/", "/static/page/", "/static/site/", "/static/measure-worker.js", "/browser/",
     "/static/fonts/", "/static/shell.js", "/favicon.svg", "/favicon.ico", "/apple-touch-icon.png",
-    "/rules.md",
+    "/rules.md", "/robots.txt", "/sitemap.xml",
 )
 
 # The pages whose answer depends on who is asking, and so the only ones the cookie is

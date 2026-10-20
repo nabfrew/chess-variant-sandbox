@@ -129,3 +129,101 @@ class TestDeterminism:
         for split in splits:
             assert communities.modularity(split, weights) == pytest.approx(1 / 6)
         assert communities.partition(ring) == [["a", "b", "c"], ["d", "e", "f"]]
+
+
+def settled(
+    weights: dict[tuple[str, str], float],
+    start: list[list[str]],
+    known: str | list[str] = "",
+    nodes: str | list[str] = "",
+) -> list[list[str]]:
+    everyone = set(nodes) | {node for pair in weights for node in pair}
+    found = communities.settle(sorted(everyone), weights, start, list(known))
+    return sorted(sorted(part) for part in found)
+
+
+# One heavy triangle and one light pair, with `x` tied to both.
+PULLED = {
+    **clique("abc", 3.0),
+    ("p", "q"): 1.0,
+    ("x", "p"): 0.2,
+    ("x", "a"): 3.0,
+    ("x", "b"): 3.0,
+}
+
+
+class TestSettling:
+    """Communities settled from a partition already held (`docs/plan-map.md` §4, M2b)."""
+
+    def test_a_start_that_is_already_best_does_not_move(self) -> None:
+        best = communities.partition(BARBELL)
+        assert settled(BARBELL, best, "abcdefghij") == sorted(best)
+
+    def test_a_node_stays_while_one_line_holds_it_whatever_pulls_elsewhere(self) -> None:
+        """Louvain alone would move `x` to the triangle; a line to `p` keeps it put."""
+        start = [["a", "b", "c"], ["p", "q", "x"]]
+        assert settled(PULLED, start, "abcpqx") == [["a", "b", "c"], ["p", "q", "x"]]
+        cold = communities.partition(PULLED)
+        assert ["a", "b", "c", "x"] in sorted(sorted(part) for part in cold)
+
+    def test_a_node_no_line_holds_is_placed_afresh(self) -> None:
+        weights = {pair: w for pair, w in PULLED.items() if pair != ("x", "p")}
+        start = [["a", "b", "c"], ["p", "q", "x"]]
+        assert settled(weights, start, "abcpqx") == [["a", "b", "c", "x"], ["p", "q"]]
+
+    def test_a_known_node_joins_a_community_only_through_two_lines(self) -> None:
+        one = {**clique("abc", 3.0), ("x", "a"): 1.0}
+        assert settled(one, [["a", "b", "c"]], "abcx") == [["a", "b", "c"], ["x"]]
+        two = {**one, ("x", "b"): 1.0}
+        assert settled(two, [["a", "b", "c"]], "abcx") == [["a", "b", "c", "x"]]
+
+    def test_a_new_node_joins_through_one_line(self) -> None:
+        one = {**clique("abc", 3.0), ("x", "a"): 1.0}
+        assert settled(one, [["a", "b", "c"]], "abc") == [["a", "b", "c", "x"]]
+
+    def test_a_known_node_pairs_with_a_lone_node_through_one_line(self) -> None:
+        weights = {**clique("abc", 3.0), ("x", "y"): 1.0}
+        assert settled(weights, [["a", "b", "c"]], "abcxy") == [
+            ["a", "b", "c"], ["x", "y"],
+        ]
+
+    def test_a_community_left_in_two_pieces_is_cut_in_two(self) -> None:
+        weights = {**clique("abc", 1.0), **clique("def", 1.0)}
+        assert settled(weights, [["a", "b", "c", "d", "e", "f"]], "abcdef") == [
+            ["a", "b", "c"], ["d", "e", "f"],
+        ]
+
+    def test_two_held_communities_are_never_merged_whole(self) -> None:
+        """A ring of thirty triangles: folding would merge neighbours, settling never does."""
+        triangles = [[f"t{k:02}{corner}" for corner in "abc"] for k in range(30)]
+        weights: dict[tuple[str, str], float] = {}
+        for k, triangle in enumerate(triangles):
+            weights.update(clique(triangle))
+            weights[(triangle[2], triangles[(k + 1) % 30][0])] = 1.0
+        nodes = [node for triangle in triangles for node in triangle]
+        assert settled(weights, triangles, nodes) == sorted(triangles)
+
+    def test_a_node_with_no_line_is_alone(self) -> None:
+        assert settled(clique("abc"), [["a", "b", "c", "z"]], "abcz", "abcz") == [
+            ["a", "b", "c"], ["z"],
+        ]
+
+    def test_a_name_that_is_no_node_is_ignored(self) -> None:
+        start = [["a", "b", "c", "zz"], ["d", "e", "f"], ["g", "h", "i", "j"]]
+        assert ["a", "b", "c"] in settled(BARBELL, start, "abcdefghij")
+
+    def test_a_node_in_two_starting_communities_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="two starting"):
+            settled(BARBELL, [["a", "b"], ["b", "c"]])
+
+    def test_settling_reads_no_listing_order_and_draws_no_random_number(self) -> None:
+        random.seed(3)
+        before = random.getstate()
+        start = [["a", "b", "c", "d"], ["e", "f"]]
+        first = settled(BARBELL, start, "abcdef")
+        assert random.getstate() == before
+        listed = dict(reversed([((b, a), w) for (a, b), w in BARBELL.items()]))
+        found = communities.settle(
+            sorted("jihgfedcba", reverse=True), listed, [["f", "e"], ["d", "c", "b", "a"]], "fedcba"
+        )
+        assert sorted(sorted(part) for part in found) == first

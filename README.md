@@ -10,7 +10,12 @@ it, and it is measured again as the computer players get stronger.
 So if you have invented a chess-like game, this is where to find out whether it is any good: build it, play it, and
 read what the measurement says about it and how much weight that reading can bear.
 
-Everything runs on your own machine: `uv run chess-variant-sandbox serve --open` (see *Quick start*).
+**Play every game in the browser at [chess-variant-sandbox.com](https://chess-variant-sandbox.com)**, with nothing to
+install. The rule language the games are written in is set out in full at
+[chess-variant-sandbox.com/rules.md](https://chess-variant-sandbox.com/rules.md), the same text as [RULES.md](RULES.md)
+here.
+
+Everything also runs on your own machine: `uv run chess-variant-sandbox serve --open` (see *Quick start*).
 
 ## How games are made
 

@@ -1,9 +1,9 @@
 """Communities in a weighted graph: Louvain modularity, made deterministic.
 
-The map's similarity lines join games that differ by no more than one rule's weight, and
-the families those lines form are what the map is drawn around. This finds them. It
-knows nothing about games: it takes node names and a weight per pair and returns a
-partition, which `web/graphing.py` names and lays out.
+The map's lines join games each among the other's nearest by likeness, and the families
+those lines form are what the map is drawn around. This finds them. It knows nothing
+about games: it takes node names and a weight per pair and returns a partition, which
+`web/families.py` names and remembers (`docs/plan-map.md` M2).
 
 **The method** is `docs/archive/plan-graph-map.md` §4's, pre-registered there and first run in
 `docs/reference/graph-map-probe.py`: weighted Louvain at resolution 1, from `ORDERS` node
@@ -152,6 +152,103 @@ def louvain(
         members = dict(folded_members)
 
     return [sorted(held_members) for held_members in members.values()]
+
+
+def settle(
+    nodes: Iterable[str],
+    weights: Mapping[Pair, float],
+    start: Iterable[Iterable[str]],
+    known: Iterable[str] = (),
+    resolution: float = RESOLUTION,
+) -> list[list[str]]:
+    """Communities settled from a partition already held, moving as few nodes as it can.
+
+    `docs/plan-map.md` §4, M2b. `start` is the partition held (a name in it that is not a
+    node is ignored) and `known` every node it placed, together or alone; any other node
+    is new. The rule has a dead band, so that a node near a border does not cross it
+    whenever a line's weight wavers:
+
+    - **A node stays** in its community while a line joins it to another member there.
+    - **A node no line holds** -- new, alone, or cut off from its community -- is taken
+      out and placed afresh by Louvain's local move: into the community its lines gain
+      most in (the lines into it, less the community's degree times the node's share of
+      all degree), or alone when none gains. A *known* node joins a community of two or
+      more only through two or more of its lines, so one line that comes and goes moves
+      nobody; a new node, which has no place to keep, needs one.
+
+    Nodes are visited in sorted order, pass after pass until one moves nothing (each move
+    raises modularity, so the passes end), and the communities are then cut into their
+    connected parts. No community is ever merged whole and no random number is drawn.
+    """
+    adjacent: dict[str, dict[str, float]] = {node: {} for node in sorted(set(nodes))}
+    for (first, second), weight in canonical(weights).items():
+        if first in adjacent and second in adjacent:
+            adjacent[first][second] = weight
+            adjacent[second][first] = weight
+    order = list(adjacent)
+    seen = set(known)
+
+    # A community is a number: a held one its place in `start`, a lone node one past them.
+    home: dict[str, int] = {}
+    lone = 0
+    for part in start:
+        for node in sorted(set(part)):
+            if node in adjacent:
+                if node in home:
+                    raise ValueError(f"{node!r} is in two starting communities")
+                home[node] = lone
+        lone += 1
+    for node in order:
+        if node not in home:
+            home[node] = lone
+            lone += 1
+    size: dict[int, int] = defaultdict(int)
+    for node in order:
+        size[home[node]] += 1
+
+    degree = {node: sum(adjacent[node].values()) for node in order}
+    total = sum(degree.values()) / 2
+    held: dict[int, float] = defaultdict(float)
+    for node in order:
+        held[home[node]] += degree[node]
+
+    for _ in range(len(order) + 1):
+        moved = False
+        for node in order:
+            here = home[node]
+            if any(home[other] == here for other in adjacent[node]):
+                continue
+            links: dict[int, float] = defaultdict(float)
+            count: dict[int, int] = defaultdict(int)
+            for other, weight in adjacent[node].items():
+                links[home[other]] += weight
+                count[home[other]] += 1
+            held[here] -= degree[node]
+            size[here] -= 1
+            if size[here] == 0:
+                best, gain = here, 0.0
+            else:
+                best, gain = lone, 0.0
+            share = resolution * degree[node] / (2 * total) if total > 0 else 0.0
+            for community in sorted(links):
+                if node in seen and size[community] >= 2 and count[community] < 2:
+                    continue
+                value = links[community] - held[community] * share
+                if value > gain + _EPSILON:
+                    best, gain = community, value
+            if best == lone:
+                lone += 1
+            home[node] = best
+            held[best] += degree[node]
+            size[best] += 1
+            moved = moved or best != here
+        if not moved:
+            break
+
+    parts: dict[int, list[str]] = defaultdict(list)
+    for node in order:
+        parts[home[node]].append(node)
+    return split_disconnected(parts.values(), canonical(weights))
 
 
 def split_disconnected(

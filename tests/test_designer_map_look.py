@@ -69,7 +69,7 @@ class TestFlattened:
         assert "style.borderColor" not in DESIGN
 
     def test_inside_a_panel_a_group_is_a_rule_not_a_box(self) -> None:
-        for selector in (".ruleCard", ".freshNote", ".ruled", ".hereStep", ".mapKinds"):
+        for selector in (".ruleCard", ".freshNote", ".ruled", ".hereStep"):
             body = _rule(selector)
             assert not re.search(r"(?<![-\w])border:\s*1px", body), selector
             assert "box-shadow" not in body and "background" not in body, selector
@@ -79,8 +79,10 @@ class TestFlattened:
         assert "border-top:1px solid" not in DESIGN
 
     def test_the_maps_kinds_are_no_longer_a_panel_in_the_controls(self) -> None:
-        assert '<details class="mapKinds" id="mapLegend">' in GRAPH
-        assert 'class="panel" id="mapLegend"' not in GRAPH
+        """The fold of which rule a colour means left with the rule-step lines (M4 of
+        `docs/plan-map.md`); no panel of its own came back in its place."""
+        assert 'id="mapLegend"' not in GRAPH
+        assert "mapKinds" not in GRAPH
 
 
 class TestTheMapsControls:

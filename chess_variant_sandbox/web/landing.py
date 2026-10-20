@@ -541,6 +541,36 @@ def _ingredients_html(version: str) -> str:
         f"</div></details>")
 
 
+# The page's headline and its first paragraph: what the site is, in its first readable words.
+# The site draws both outside the template too (`drawn_intro`, G4 of `docs/plan-growth.md`),
+# and `web/page/front.py` makes the front page's description of them.
+HEADLINE = "Invent a chess-like game, play it straight away, and see how it measures up."
+LEAD = "A vibe-coded playground for designing chess-like strategy games."
+
+# The two ways in that every reader is offered, before `landing.js` adds the reader's own.
+_WAYS = (
+    '<a class="button primary" href="/game">See the games</a>'
+    '<a class="button" href="#/design">Build your own</a>'
+)
+
+
+def drawn_intro() -> str:
+    """The headline, the first paragraph and the two ways in, outside the `<template>` (G4).
+
+    The site puts this in `#view` at `/`, so a reader without script, and a crawler, reads
+    what the site is. It is the start of the hero's own markup, so when `landing.js` clones
+    the template over it the headline lands where it already stood and a person sees the
+    landing they always saw; only the board and the reader's own way in arrive with it.
+    """
+    return (
+        '<div class="landing"><section class="landingHero"><div class="landingIntro">'
+        f'<h2 class="landingTitle">{_e(HEADLINE)}</h2>'
+        f'<p class="landingLead">{_e(LEAD)}</p>'
+        f'<div class="row landingWays">{_WAYS}</div>'
+        "</div></section></div>"
+    )
+
+
 def html_page(version: str = DEFAULT_WEIGHTS) -> str:
     """The landing page's markup: the opening board's place, then the sections in order."""
     count, budgets, games = _players()
@@ -550,13 +580,10 @@ def html_page(version: str = DEFAULT_WEIGHTS) -> str:
     hero = (
         '<section class="landingHero">'
         '<div class="landingIntro">'
-        '<h2 class="landingTitle">Invent a chess-like game, play it straight away, and see '
-        "how it measures up.</h2>"
-        '<p class="landingLead">A vibe-coded playground for designing chess-like strategy '
-        "games.</p>"
+        f'<h2 class="landingTitle">{_e(HEADLINE)}</h2>'
+        f'<p class="landingLead">{_e(LEAD)}</p>'
         '<div class="row landingWays">'
-        '<a class="button primary" href="/game">See the games</a>'
-        '<a class="button" href="#/design">Build your own</a>'
+        + _WAYS +
         # Q723: everybody meets this page, so the third way in is the reader's own: the
         # door for a visitor to the site, a member's page for a member, and on the local
         # application neither (`landing.js` removes what does not apply).

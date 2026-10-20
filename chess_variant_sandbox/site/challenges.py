@@ -62,6 +62,7 @@ from chess_variant_sandbox.site import (
     stages,
 )
 from chess_variant_sandbox.site.matches import MatchError
+from chess_variant_sandbox.web.play import fresh_seed
 
 SEATS: dict[str, int | None] = {"first": 0, "second": 1, "either": None}
 """The challenger's seat as the page names it: moving first, second, or either, drawn."""
@@ -507,7 +508,7 @@ def _start(connection: Any, found: Challenge, acceptor: int) -> matches.Row:
     *Either* is drawn from the match's seed, so who moves first is reproducible from the
     row. A refusal from `correspondence.start` leaves the challenge waiting.
     """
-    seed = secrets.randbelow(2**31)
+    seed = fresh_seed()
     first = found.seat if found.seat is not None else seed % 2
     players = [found.challenger, acceptor] if first == 0 else [acceptor, found.challenger]
     made = correspondence.start(connection, found.game, players, by=found.challenger, seed=seed)

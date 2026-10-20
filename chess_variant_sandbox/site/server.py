@@ -66,6 +66,7 @@ from chess_variant_sandbox.site import (
     depths,
     designs,
     drafts,
+    game_page,
     identity,
     inviting,
     kept,
@@ -88,6 +89,7 @@ from chess_variant_sandbox.site import (
     rounds,
     routes,
     screening,
+    seo,
     shortlist,
     showcase,
     spine,
@@ -112,7 +114,8 @@ from chess_variant_sandbox.web import (
     refreshing,
 )
 from chess_variant_sandbox.web.page import SCRIPTS as PAGE_SCRIPTS
-from chess_variant_sandbox.web.page import shell
+from chess_variant_sandbox.web.page import front, shell
+from chess_variant_sandbox.web.page import game as game_drawing
 from chess_variant_sandbox.web.server import (
     BROWSER_PREFIX,
     MAPPED,
@@ -274,6 +277,10 @@ class SiteApp(App):
         # Tier one's runner (B10): the one thread that walks a submitted measurement,
         # started by `serve` and woken by each submission. A test drains it by hand.
         self.checks = legality.Checker(self._connection, self.runs_dir)
+        # G3: each game's near list for its own address, reused for a few minutes.
+        self.near = game_page.NearCache()
+        # G4: the games a search engine may index, for the sitemap and `/game` without script.
+        self.listing = game_page.ListedCache()
 
     @property
     def viewer(self) -> int | None:
@@ -1129,6 +1136,43 @@ class SiteApp(App):
                 raise
             name, spec = found
             return kept.game_from(digest, name, spec, self.runs_dir)
+
+    def game_page(self, digest: str) -> str | None:
+        """G3: the page a game's own address answers, or `None` for the 404.
+
+        The same bytes for everybody, so no cookie is read: `site/game_page.py` decides what
+        a visitor is shown and `web/page/game.py` draws it.
+        """
+        with self._connection() as connection:
+            found = game_page.drawn(
+                connection, digest, self.known(), self.game, self.near,
+                seo.site_base(),
+            )
+        return None if found is None else game_drawing.draw(found)
+
+    # ------------------------------------------------------- the doors for crawlers (G4)
+
+    def listed_pages(self) -> tuple[front.Listed, ...]:
+        """The games whose own address is indexable, reused `game_page.LISTED_SECONDS`."""
+
+        def read() -> tuple[front.Listed, ...]:
+            with self._connection() as connection:
+                return game_page.listed_pages(connection, self.known())
+
+        return self.listing.get(read)
+
+    def home_page(self) -> str:
+        """`/`: the single page, with its head and the landing's headline drawn in."""
+        return front.home(seo.site_base())
+
+    def games_page(self) -> str:
+        """`/game`: the single page, with its head and every listed game drawn in for a
+        reader without script."""
+        return front.games(seo.site_base(), self.listed_pages())
+
+    def sitemap(self, base: str) -> str:
+        """`sitemap.xml`, its addresses written on `base`."""
+        return seo.sitemap(base, self.listed_pages())
 
     def _links(self, digest: str) -> list[dict[str, Any]]:
         """This game's neighbours, narrowed to the games this person may be shown.
@@ -2186,7 +2230,9 @@ class SiteApp(App):
                 mode=str(body.get("mode") or matches.SANDBOX),
                 seats=[str(seats[0]), str(seats[1])],
                 user=self.viewer,
-                seed=int(body.get("seed", 0)),
+                # Fresh unless the request names one, drawn here and kept in the row
+                # (Q987): no page names one, and a rematch is a fresh match.
+                seed=play.seed_asked(body.get("seed")),
                 rematch_of=str(body["rematch_of"]) if body.get("rematch_of") else None,
             )
             return {
@@ -2915,6 +2961,12 @@ def site_handler_for(app: SiteApp) -> type[Any]:
             if parsed.path in pages.SCRIPTS:
                 self._script(pages.SCRIPTS[parsed.path])
                 return
+            digest = game_drawing.digest_of(parsed.path)
+            if digest is not None:
+                self._game_page(digest)
+                return
+            if self._front(parsed.path):
+                return
             if not served_elsewhere(parsed.path):
                 self._lost()
                 return
@@ -3060,6 +3112,43 @@ def site_handler_for(app: SiteApp) -> type[Any]:
             self._html(
                 pages.member(reading, viewer.handle, app.players_listed(), viewer=viewer.id)
             )
+
+        def _game_page(self, digest: str) -> None:
+            """A game's own address (G3): its page drawn on the server, or the not-found
+            page for a game a visitor cannot open. Timed and counted like an API route, as
+            `game_page.ROUTE`, so the hourly rows say what a read of it costs."""
+            timed = usage.Timing(lambda: app.game_page(digest))
+            app.usage.enter()
+            try:
+                body = timed()
+            finally:
+                app.usage.leave()
+            status = 404 if body is None else 200
+            app.usage.record(game_page.ROUTE, "", status, "", None, timed.cpu, timed.wall)
+            if body is None:
+                self._lost()
+            else:
+                self._html(body)
+
+        def _front(self, path: str) -> bool:
+            """G4: the front page, the games, `robots.txt` and `sitemap.xml`, each with what a
+            crawler reads. The same bytes for everybody: no cookie is read. Whether it
+            answered."""
+            if path in ("/", "/index.html"):
+                self._html(app.home_page())
+            elif path == front.GAMES_PATH:
+                self._html(app.games_page())
+            elif path == seo.ROBOTS_PATH:
+                base = seo.base_for(self.headers.get("Host"))
+                self._send(200, seo.robots(base).encode("utf-8"), seo.ROBOTS_TYPE,
+                           cache=seo.CACHE)
+            elif path == seo.SITEMAP_PATH:
+                base = seo.base_for(self.headers.get("Host"))
+                self._send(200, app.sitemap(base).encode("utf-8"), seo.SITEMAP_TYPE,
+                           cache=seo.CACHE)
+            else:
+                return False
+            return True
 
         def _html(self, body: str) -> None:
             self._send(200, body.encode("utf-8"), "text/html; charset=utf-8")

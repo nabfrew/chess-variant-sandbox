@@ -407,6 +407,7 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "archive/gardner-in-rounds-with-a-swift-king": "6fdc011869f7824a",  # Q943c, schema 28
     "archive/gardner-in-rounds-with-swift-knights": "6fdc011869f7824a",  # Q943c, schema 28
     "archive/watering-hole-by-speed": "b0e8b91febef654d",  # Q943c, schema 28
+    "archive/circe-mortal-diagonals": "352d33d9f6b29010",  # Q798, schema 17; circe's features: none reads `immune`
     "archive/wolves": "ad7a6f1e406f28f3",
 }
 

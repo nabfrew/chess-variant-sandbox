@@ -743,6 +743,14 @@ const GLOSS = {
     "Put it forward for this month's members' vote."],
   community: ['A community',
     "Games more like each other than like the rest."],
+  // The map's likeness (`spec/likeness.py`, `docs/plan-map.md` M4), said without its
+  // arithmetic: what is rare weighs most, and the number runs from 0 to 1.
+  alike: ['How alike two games are',
+    "Each game is what it is made of: its rules, its ways of moving, its pieces, its"
+    + " board. Two games are as alike as the rare things they share: something few games"
+    + " in the library have counts for a lot, and something nearly every game has counts"
+    + " for almost nothing. 1 is the same game; 0 means they share nothing rare. A line"
+    + " joins two games when each is among the other's nearest few."],
   // A family's name on the score panel opens this, with the family's own question from
   // `metrics/glossary.py` as the (i)'s extra (G27), so a tap reads what a hover does.
   family: ['What this part of the score asks',
@@ -1245,10 +1253,10 @@ function cannotHover() {
 // A game's address, to send to somebody (the first-visit study's B3). A saved draft is
 // listed nowhere, so its link is the one way anybody else reaches it, and two designers
 // found no way to share one: the page had no control for it. The button carries the
-// hash and nothing else; the address is this page's own origin and the router's
-// `#/game/` route, the one every link to a game uses.
+// hash and nothing else; the address is this page's own origin and the game's own
+// address, `/game/<hash>` (G3), which every link to a game writes.
 function gameLink(hash) {
-  return location.origin + '/#/game/' + hash;
+  return location.origin + gamePath(hash);
 }
 
 function copyLinkHtml(hash) {
@@ -1310,8 +1318,81 @@ function stopPolling() {
 // nothing and the route answers 404. That and a game the site will not open both land in
 // the library with the server's own sentence on screen.
 function go(hash) {
+  // A game has an address of its own (G3), so a way to one goes there rather than into the
+  // fragment: `go('#/game/<hash>')` and `go('/game/<hash>')` are both `/game/<hash>`.
+  const game = /^#?\/game\/([^/?#]+)$/.exec(hash);
+  if (game) return goPath(gamePath(game[1]));
   if (location.hash === hash) render();
   else location.hash = hash;
+}
+
+// G3 (`docs/plan-growth.md`): every game has an address of its own, `/game/<hash>`, which
+// the server answers with this page and the game drawn into it for a reader without
+// script (`web/page/game.py`). The router reads the address as it reads `#/game/<hash>`,
+// and hands an old `#/game/<hash>` link over to it (`render`), so the address bar, a
+// bookmark and a copied link all name the game the way a crawler can read.
+const GAME_PATH = /^\/game\/([0-9a-f]{8,64})\/?$/;
+
+function gamePath(hash) {
+  return '/game/' + hash;
+}
+
+// The game the address names, or null: `/game/<hash>`, read when no fragment names a route.
+function pathGame() {
+  const found = GAME_PATH.exec(location.pathname);
+  return found ? found[1] : null;
+}
+
+// A link to a game's address is followed without loading the page again, as the router's
+// own: the click is taken over unless it asks for a new tab or window, so a game in hand
+// and the listing already fetched survive it. Wired once, on the document.
+function wireGameLinks() {
+  if (wireGameLinks.done || typeof document.addEventListener !== 'function') return;
+  wireGameLinks.done = true;
+  document.addEventListener('click', event => {
+    if (event.defaultPrevented || event.button !== 0
+        || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const link = event.target && event.target.closest && event.target.closest('a[href]');
+    if (!link || (link.target && link.target !== '_self') || link.hasAttribute('download')) {
+      return;
+    }
+    const found = GAME_PATH.exec(link.getAttribute('href') || '');
+    if (!found) return;
+    event.preventDefault();
+    goPath(gamePath(found[1]));
+  });
+}
+
+// What the tab says, on every view (G3): a tab and a bookmark name what they hold. The
+// site's name closes it; a view with nothing of its own says the name alone.
+const SITE_NAME = 'Chess variant sandbox';
+
+function setTitle(words) {
+  if (words === null || words === undefined) return;
+  document.title = words ? words + ' · ' + SITE_NAME : SITE_NAME;
+}
+
+// The title a route opens with, before its view has fetched anything. A game whose name is
+// not in hand yet keeps the title it has (the server wrote it for a game's own address);
+// `showGame` names it once its page arrives.
+function viewTitle(parts) {
+  const hash = location.hash.replace(/^#/, '');
+  if (parts[0] === 'about' || (!parts.length && !onGamesPath() && hash !== '/')) return '';
+  if (parts[0] === 'game' && parts[1]) {
+    const known = DETAIL[parts[1]] || (LIBRARY || []).find(game => game.hash === parts[1]);
+    return known ? gameTitle(known.name) : null;
+  }
+  const named = {
+    map: 'The map of games', 'whats-new': "What's new", round: 'The round',
+    play: 'A game in progress', design: 'Build a game', opponent: 'Build an opponent',
+    run: 'Inventing a game',
+  };
+  return named[parts[0]] || 'Games';
+}
+
+// A game's own title, the one the server writes for its address (`web/page/game.py`).
+function gameTitle(name) {
+  return (name || 'An unnamed game') + ': play it online';
 }
 
 // Q723: the page answers two addresses. `/` is the landing page and `/game` the games, for
@@ -1341,6 +1422,9 @@ function onHistory() {
 function render() {
   wireInfo();
   wireCopyLinks();
+  // Wired at the first draw: a link pressed before it (the server-drawn page's) is an
+  // ordinary link and loads the game's address, which is the same page.
+  wireGameLinks();
   // An error belongs to the screen that raised it, and this is a different screen. The
   // boxes shown beside a control go with the view that held them; the fixed one is
   // outside `view` and would otherwise outlive its page.
@@ -1355,13 +1439,23 @@ function render() {
   // the window scrolls; the panels that scroll inside themselves, such as the board's
   // move list, are untouched.
   window.scrollTo(0, 0);
-  const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+  let parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   // Q723: `#/` is the games, said as `/game` (a saved `/#/` is replaced, not followed).
   if (!parts.length && location.hash.replace(/^#/, '') === '/') {
     try { history.replaceState(null, '', GAMES_PATH); } catch (error) { /* stays */ }
   }
+  // G3: a game named by the fragment, an old link's `/#/game/<hash>` or `/game#/game/<hash>`,
+  // is handed over to the game's own address, which replaces it rather than adding a step.
+  if (parts[0] === 'game' && parts[1] && parts.length === 2) {
+    try { history.replaceState(null, '', gamePath(parts[1])); } catch (error) { /* stays */ }
+  }
+  // With no fragment, the address names the game (`/game/<hash>`).
+  if (!parts.length && location.hash.replace(/^#/, '') !== '/' && pathGame()) {
+    parts = ['game', pathGame()];
+  }
   RENDERED = location.href;
   RENDERED_HASH = location.hash;
+  setTitle(viewTitle(parts));
   // Q718, Q723: the landing page, for everybody at the bare address and at `#/about`
   // anywhere. The games are `/game`, and `#/` wherever it is read.
   if (parts[0] === 'about' || (!parts.length && !onGamesPath()

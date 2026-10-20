@@ -981,24 +981,29 @@ _LIBRARY_CARDS = (
 
 _MAP_SETUP = """
 MAP_DATA = {
-  counts: { nodes: 70, specs: 71, twins: 1, oneRule: 30, gaps: 12, nearest: 5, scored: 50,
-            lineage: 9, links: 47, alone: 4, communities: 6 },
-  levels: [{ cut: 2, lines: 40, alone: 9 }, { cut: 3, lines: 80, alone: 4, default: true }],
+  counts: { nodes: 70, specs: 71, twins: 1, lines: 120, lineage: 9, communities: 6,
+            unusual: 4 },
+  mutual: 5,
   scale: { low: 0.1, high: 0.8 }, components: { skill_gradient: 'does thinking longer win' },
-  kinds: [{ kind: 'rules', words: 'how it is won', links: 3 }],
-  communities: [{ id: 0, name: 'the chess family', size: 5, names: ['a game'], members: [] }],
-  similar: [{ source: 'aaaaaaaaaaaa', target: 'cccccccccccc', index: 1.5, level: 2,
-              words: 'no rules, 6 mechanisms, 1 piece' }],
-  links: [{ source: 'aaaaaaaaaaaa', target: 'cccccccccccc', type: 'nearest', units: 4,
-            differences: [] }],
+  kinds: [{ kind: 'rules', words: 'how it is won', lines: 3 }],
+  communities: [{ id: 'f1', name: 'the chess family', words: 'the castling move', size: 5,
+                  names: ['a game'], members: ['aaaaaaaaaaaa'], centre: 'aaaaaaaaaaaa',
+                  parts: [['aaaaaaaaaaaa'], ['cccccccccccc']] }],
+  unusual: [{ hash: 'cccccccccccc', distance: 0.8 }],
+  neighbours: [{ source: 'aaaaaaaaaaaa', target: 'cccccccccccc', likeness: 0.42,
+                 shares: ['the castling move'], units: 4, kind: '', kinds: [],
+                 sentence: '', differences: [], gap: null }],
+  lineage: [],
   nodes: [
-    { hash: 'aaaaaaaaaaaa', name: 'a game', names: ['a game', 'a twin'], degree: 2,
-      far: true, board: '8x8', community: 0, score: null, staleness: null },
-    { hash: 'cccccccccccc', name: 'another', names: ['another'], degree: 1, far: false,
-      board: '8x8', community: 0, score: null, staleness: null }],
+    { hash: 'aaaaaaaaaaaa', name: 'a game', names: ['a game', 'a twin'], degree: 1,
+      unusual: false, board: '8x8', community: 'f1', score: null, staleness: null,
+      like: [{ hash: 'cccccccccccc', likeness: 0.42, shares: ['the castling move'],
+               line: true }] },
+    { hash: 'cccccccccccc', name: 'another', names: ['another'], degree: 1, unusual: true,
+      board: '8x8', community: null, score: null, staleness: null,
+      like: [{ hash: 'aaaaaaaaaaaa', likeness: 0.42, shares: [], line: true }] }],
 };
 MAP_AT = Object.fromEntries(MAP_DATA.nodes.map(node => [node.hash, node]));
-MAP_CUT = 3;
 """
 
 
@@ -1019,8 +1024,9 @@ def _library_and_map_views() -> list[tuple[str, str]]:
          "cardHtml({ ...CARD, components: { stall_rate: 0.1 } })",
          "BROWSE.sort = 'component:stall_rate';")
     for call in ("mapNothingPanel()", "mapNodePanel(MAP_AT.aaaaaaaaaaaa)",
-                 "mapSimilarPanel(MAP_DATA.similar[0])", "mapLinkPanel(MAP_DATA.links[0])",
-                 "mapLegendHtml()", "mapNeighboursHtml(MAP_AT.aaaaaaaaaaaa)",
+                 "mapNodePanel(MAP_AT.cccccccccccc)", "mapLinePanel(MAP_DATA.neighbours[0])",
+                 "mapCommunityPanel(MAP_DATA.communities[0])",
+                 "mapLegendHtml()", "mapLikeHtml(MAP_AT.aaaaaaaaaaaa)",
                  "mapMovedHtml({ moved: [{ key: 'skill_gradient', index: 0.4,"
                  " otherIndex: 0.6 }] })",
                  "mapArrowPanel({ source: 'cccccccccccc', target: 'aaaaaaaaaaaa', units: 1,"
@@ -1029,7 +1035,7 @@ def _library_and_map_views() -> list[tuple[str, str]]:
                  " steps: [{ operator: 'o', seed: 1, words: 'removed the pawn' }] }]"
                  ".map(held => (MAP_TRY.aaaaaaaaaaaa = held,"
                  " mapTryHtml(MAP_AT.aaaaaaaaaaaa))).join(' ')"):
-        view(f"the map ({call.split('(')[0]})", call, _MAP_SETUP)
+        view(f"the map ({call})", call, _MAP_SETUP)
     return found
 
 
@@ -1207,22 +1213,25 @@ class TestTheLibraryAndTheMapSpeakToAVisitor:
         assert "mean of four runs (scoring rules v11)" in local
         assert "replay 1 of 4 runs" in local and "A mean needs three" in local
 
-    def test_the_map_says_likeness_the_slider_and_small_changes(self) -> None:
+    def test_the_map_says_alike_communities_and_small_changes(self) -> None:
+        """M4 of `docs/plan-map.md`: the slider and the rule-step lines left the map, and
+        so did their words; a line now says how alike two games are and what they share."""
         views = self._views()
         said = " ".join(text for where, text in views.items() if where.startswith("the map"))
-        for words in ("A line joins two games at least this alike",
+        for words in ("A line joins two games when each is among the other's 5 nearest",
                       "A community i is a group of games more like each other than like"
-                      " the rest", "with the slider where it is",
+                      " the rest", "unusual games are in no community",
                       "Two of the games are the same rules written two ways, shown as one"
                       " dot.", "also listed as a twin: the same rules, written two ways",
                       "small changes to the rules", "The computer invented it, after 3"
-                      " rounds of changes.", "by overall likeness (the same measure the"
-                      " map's faint lines use)", "What changed most, of the eleven things"
-                      " measured", "The games a few rules away, fewest first",
-                      "where 0 is the same game"):
+                      " rounds of changes.", "What changed most, of the eleven things"
+                      " measured", "Games like this one, most alike first",
+                      "where 1 is the same game", "Both have:", "Drawn in 2 places",
+                      "What marks them out:", "4 rules apart, too many to list"):
             assert words in said, words
         for gone in ("similarity index", "the cut", "this cut", "design step", "design run",
-                     "generation", "fifty-five", "compile", "two files"):
+                     "generation", "fifty-five", "compile", "two files", "slider",
+                     "faint line", "rules away, fewest first"):
             assert gone not in said, gone
 
     def test_the_maps_controls_and_its_size_menu(self) -> None:
@@ -1230,10 +1239,12 @@ class TestTheLibraryAndTheMapSpeakToAVisitor:
 
         from chess_variant_sandbox.web import graphing
 
-        assert "join games this alike or closer" in EXPLORER
-        assert "lines between games one to three" in EXPLORER
+        assert "arrows to the" in EXPLORER and "games made from each" in EXPLORER
         assert "every game back where it" in EXPLORER and "server put it" not in EXPLORER
-        assert "or move the slider for more lines" in EXPLORER
+        assert "tap one for the games like it" in EXPLORER
+        for gone in ("join games this alike or closer", "lines between games one to three",
+                     "move the slider"):
+            assert gone not in EXPLORER, gone
         assert "'Not played here yet.'" in EXPLORER
         assert "one scored under older scoring rules" in inspect.getsource(graphing)
 

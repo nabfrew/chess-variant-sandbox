@@ -1489,8 +1489,8 @@ RULES = """
               padding: 6px 10px; background: var(--panel); border: 1px solid var(--line);
               border-radius: var(--r-ctl); box-shadow: var(--shadow-pop); }
   .mapLocal button { min-height: var(--ctl-h-sm); padding: 3px 10px; }
-  /* A control the map hides until it applies: the rule-step chips, the score key, the
-     local view's bar. Each carries a `display` of its own, which would beat `hidden`. */
+  /* A control the map hides until it applies: the arrows' key, the score key, the local
+     view's bar. Each carries a `display` of its own, which would beat `hidden`. */
   .mapLegend [hidden], .mapFrame [hidden] { display: none !important; }
   /* A community's name over its outline, on the outlines' own SVG layer under the dots.
      Ink with a halo of the page behind it, as a dot's name is drawn; the colour is the
@@ -1505,9 +1505,9 @@ RULES = """
   .chip .swatch { margin-right: 6px; vertical-align: -1px; }
   .chip.off { opacity: .45; text-decoration: line-through; }
   .mapLegend { display: grid; gap: 7px; margin-bottom: 12px; }
-  /* The map's controls (V8): one sheet above the drawing, its rows apart by space and the
-     fold of which rule a colour means by a rule, never a panel inside it. On a phone it
-     folds to its summary line (`wireExplorer`), so the drawing is on the first screen. */
+  /* The map's controls (V8): one sheet above the drawing, its rows apart by space, never
+     a panel inside it. On a phone it folds to its summary line (`wireExplorer`), so the
+     drawing is on the first screen. */
   .mapControls { margin-bottom: 16px; padding: 10px 15px; }
   .mapControls > summary { min-height: var(--hit); display: flex; align-items: center;
                            width: max-content; max-width: 100%; }
@@ -1517,8 +1517,6 @@ RULES = """
   /* The size row's sentence takes the room between its menu and *reset*, which ends the
      row; the communities are listed once, as the key, and fold from their panel (Q801). */
   .mapSay { flex: 1 1 200px; min-width: 0; }
-  .mapKinds { border-top: 1px solid var(--line); padding-top: 8px; }
-  .mapKinds > summary { min-height: var(--hit); display: flex; align-items: center; }
   .mapControls .mapLegend { margin-bottom: 4px; }
   .mapPanel .links { margin-top: 10px; max-height: 42vh; overflow-y: auto; }
   .mapPanel .linkRow { display: block; width: 100%; text-align: left; border: none;

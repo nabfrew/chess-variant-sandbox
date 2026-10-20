@@ -96,6 +96,18 @@ class TestStarting:
         assert c.between_people(rated) and c.between_people(practice)
         assert rated.seat0 == r.person(ada) and rated.seat1 == r.person(bo)
 
+    def test_a_pairing_that_names_no_seed_gets_a_fresh_one_and_a_named_one_is_kept(
+        self, store: Scratch
+    ) -> None:
+        """`/admin`'s pairing names no seed, and its games no longer all share seed 0
+        (Q987); a challenge's own draw, which chose who moves first, is kept."""
+        ada, bo, cy = store.user("ada"), store.user("bo"), store.user("cy")
+        first = c.start(store.connection, SHORT_HASH, [ada, bo])
+        second = c.start(store.connection, SHORT_HASH, [ada, cy])
+        named = c.start(store.connection, UNRATED_HASH, [bo, cy], seed=0)
+        assert first.seed != second.seed
+        assert named.seed == 0
+
     def test_a_person_cannot_play_themself(self, store: Scratch) -> None:
         ada = store.user("ada")
         with pytest.raises(m.MatchError, match="two different people"):

@@ -70,10 +70,10 @@ function entrantHtml(one) {
             until the close.</span>` : ''}</div>`;
   } else if (one.voting && one.why) {
     vote = `<div class="muted small" style="margin-top:6px">${esc(one.why)}
-      <a href="#/game/${esc(one.hash)}">Play it</a>.</div>`;
+      <a href="/game/${esc(one.hash)}">Play it</a>.</div>`;
   }
   return `<div class="entrant" style="margin-bottom:12px" data-hash="${esc(one.hash)}">
-      <div><a href="#/game/${esc(one.hash)}"><strong>${esc(one.name)}</strong></a>
+      <div><a href="/game/${esc(one.hash)}"><strong>${esc(one.name)}</strong></a>
         <span class="muted small">by ${personHtml(one.designer)}</span></div>
       <div class="small">${score} · ${stars} · ${esc(one.players)} ${
         one.players === 1 ? 'player' : 'players'}</div>

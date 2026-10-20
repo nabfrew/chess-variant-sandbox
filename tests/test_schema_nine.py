@@ -437,6 +437,10 @@ FROZEN: dict[str, tuple[str, str]] = {
     "archive/gardner-in-rounds-with-a-swift-king.json": ("d8bb879440ce", "8fa64f1ddc578b39"),
     "archive/gardner-in-rounds-with-swift-knights.json": ("bf230a962d10", "dea52f83bc92f1ef"),
     "archive/watering-hole-by-speed.json": ("423a29997264", "fad275be85810dff"),
+    # Q798, 2026-10-19: the showcase of `strike.immune` naming a non-royal piece, circe with
+    # the queen and bishops immune (`docs/reference/schema-showcase-coverage.md`, *Q798*;
+    # `tests/test_showcases_q798.py`). New, from `54a0a193da0f`.
+    "archive/circe-mortal-diagonals.json": ("d32ef74e88c0", "273c90637bf038ff"),
 }
 
 

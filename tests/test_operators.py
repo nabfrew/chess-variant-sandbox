@@ -2512,11 +2512,9 @@ _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
     # 57 to 61, `reference/portal-showcase-ideas.md`).
     # Schema 19's three rows went on 2026-10-10, when Q772a archived its showcases
     # (`docs/archive/plan-portals.md` §7 P4, coverage rows 53 to 55).
-    "schema 6: rules.strike.immune naming a non-royal piece": (
-        "audit row 11: all nine strike games list only `K`, which is royal and already "
-        "untakeable, so the key is inert in every one; a game that names a non-royal "
-        "piece is owed, and this entry goes the day it lands"
-    ),
+    # Schema 6's `rules.strike.immune naming a non-royal piece` went on 2026-10-19, when
+    # Q798 archived `archive/circe-mortal-diagonals` (circe with the queen and bishops
+    # immune; coverage row 11).
     # Q962b, 2026-10-18 (`docs/reference/previews-2026-10-18.md`): the two schema 26 names
     # whose only showcases were previews that did not work well. The rules are still held
     # by `tests/test_showcases_q918e.py` on the retired files (`tests/_retired_*.json`).

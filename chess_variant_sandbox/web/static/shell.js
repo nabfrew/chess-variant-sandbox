@@ -85,10 +85,12 @@
     // address, is in none of them.
     function here() {
       var path = window.location.pathname.replace(/\/+$/, '') || '/';
-      var page = path === '/' || path === '/index.html' || path === '/game';
+      // A game's own address (G3) is the application's page, in the games.
+      var game = /^\/game\/[0-9a-f]{8,64}$/.test(path);
+      var page = path === '/' || path === '/index.html' || path === '/game' || game;
       var hash = window.location.hash.replace(/^#/, '');
       var part = page ? (hash.replace(/^\/?/, '').split(/[/?]/)[0] || '') : null;
-      var bare = part === '' && path !== '/game' && hash !== '/';
+      var bare = part === '' && path !== '/game' && !game && hash !== '/';
       // The people page and a member's page (Q760) are in People.
       var people = path === '/players' || path.indexOf('/players/') === 0;
       var section = people ? 'players'

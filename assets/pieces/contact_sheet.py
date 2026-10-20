@@ -110,7 +110,8 @@ def main() -> int:
 
     out = ROOT / "index.html"
     out.write_text(
-        PAGE.format(count=len(manifest), sections="\n".join(sections)), encoding="utf-8"
+        PAGE.format(count=len(manifest), sections="\n".join(sections)), encoding="utf-8",
+        newline="\n",
     )
     print(f"wrote {out} ({len(manifest)} icons)")
     return 0

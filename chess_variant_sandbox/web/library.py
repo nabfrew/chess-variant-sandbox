@@ -1118,10 +1118,11 @@ def nearest_by_feature(
     """The `FAR_FEW` of `others` nearest `spec` by `spec/distance.py`, as `(distance, hash)`.
 
     `others` is `(hash, name, spec)`. A tie goes by the name, lower-cased, and then the
-    hash, as `graphing._fallback` breaks it, and `distance` rounds to four places, so
+    hash, as the map's faint line once broke it, and `distance` rounds to four places, so
     ties are real. This is which four a far game's page lists, here and on the site
     (`site/links.py::neighbours`), so the local application and the site name the same
-    four in the same order, and the first is the game the map's faint line is drawn to.
+    four in the same order. (The map's faint line to the first retired at M4 of
+    `docs/plan-map.md`; this list moves to `spec/likeness.py` at M5.)
     """
     from chess_variant_sandbox.spec.distance import distance
 

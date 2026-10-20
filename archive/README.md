@@ -848,6 +848,22 @@ and both stay previews; the watering hole by speed is **viable in 3 of 4 runs, 0
 [0.500, 0.616]**, every graded game decided at the hole in about 18 plies with the seat level
 (0.520 first seat), below its parent's 0.608 with the intervals overlapping.
 
+## `circe-mortal-diagonals.json` — schema 6, a strike that spares a piece other than the king (Q798)
+
+2026-10-19, a preview, unmeasured (`d32ef74e88c0`). The showcase of `rules.strike.immune` naming
+a non-royal piece (`docs/reference/schema-showcase-coverage.md`, row 11 and *Q798*): circe
+(`54a0a193da0f`) with the queen and bishops added to `immune`, so a queen or bishop that is
+taken is gone, while a taken knight, rook or pawn goes home as in circe. Under a chain the key
+only restates a missing link; under circe's rebirth it is the only way to say a kind stays dead.
+Kept because the immunity is what makes circe playable between the bots: every capture loop in
+circe (a reborn piece taking back from its home, again and again) has a queen or bishop in it,
+since a reborn knight, rook or pawn can never strike the square it fell on from home. In a
+short look six of six games between `minimax:nodes=400` and `1600` ended in checkmate,
+against circe's two, with 5 queen-or-bishop sacrifices against circe's 649. Two versions came
+first and are logged in the record, not kept: mortal pawns alone (the queens still looped) and
+the mortal queen alone (the bishops did). `tests/test_showcases_q798.py` holds the rule
+without players. Owes its first `measure`.
+
 ## Out of the Baseline (Q512, 2026-10-19)
 
 Six games left `rulesets/` for here, by the review that settled which games set the scale
