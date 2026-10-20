@@ -24,13 +24,30 @@ Whether a control is easy to *find* is not a thing a test can hold; the record h
 
 from __future__ import annotations
 
+import copy
+import json
+import re
+from pathlib import Path
 from typing import Any
 
 import pytest
 from page_text import DESIGN
+from test_designer import _ADD_RULES, _kit_setup, _run_page
 
-from chess_variant_sandbox.spec import schema
-from chess_variant_sandbox.web import cards
+from chess_variant_sandbox.site import routes
+from chess_variant_sandbox.spec import schema, validate_spec
+from chess_variant_sandbox.web import cards, designing
+
+# The designer's form, kept where a test can read it after `drawDesigner` has drawn it.
+_CAPTURE_FORM = """
+const FORM = { innerHTML: '', querySelector: () => null, querySelectorAll: () => [] };
+const _byId = document.getElementById;
+document.getElementById = id => (id === 'form' ? FORM : _byId(id));
+function drawnForm() {
+  try { drawDesigner(); } catch (error) { /* the wiring needs a browser; the markup is drawn */ }
+  return FORM.innerHTML;
+}
+"""
 
 # The keys the hand-written form sets, each with a string the control is drawn with in the
 # page's source (`web/static/page/design.js`, with `cards.js`, `teaching.js`, `measure.js`).
@@ -232,3 +249,314 @@ class TestEveryKeyInsideARuleHasAField:
             f"rules {sorted(holding - set(RULE_KEY_SETS))} hold keys of their own that no "
             "validator key set here is compared with: add the row"
         )
+
+
+# ---------------------------------------------------------------------------------------------
+# Q995b: the four fixes of the record's §3, each held here.
+
+CHESS = json.loads((Path(__file__).resolve().parent.parent / "rulesets" / "chess.json")
+                   .read_text(encoding="utf-8"))
+
+# A path written the way the validator writes one, anywhere in a sentence a person reads.
+_RAW_PATH = re.compile(r"\b(?:rules|pieces|setup|board)(?:\[\d*\]|\.[a-z_]+)")
+
+
+def _problems(spec: dict[str, Any]) -> list[str]:
+    return validate_spec(designing.settled(spec))
+
+
+class TestRoundsIsOneStepFromChess:
+    """Fix 1. From a copy of chess, rounds used to be three round trips, each conflict found
+    by fixing the one before (F2). Now one choice makes every change, says each in words,
+    and leaves a game."""
+
+    def test_rounds_from_chess_makes_every_change_and_is_a_game(self) -> None:
+        answer = designing.take_turns(CHESS, "rounds")
+        assert answer["errors"] == []
+        made = answer["draft"]
+        assert isinstance(made["rules"]["simultaneous"], dict)
+        assert _problems(made) == []
+        assert made["rules"]["win"] == "royal_capture"
+        assert "castling" not in made["rules"] and "en_passant" not in made["rules"]
+        said = " ".join(answer["changes"])
+        assert len(answer["changes"]) == 3, answer["changes"]
+        for words in ("checkmate", "castling", "passing"):
+            assert words in said, words
+        assert not _RAW_PATH.search(said), said
+        assert CHESS["rules"].get("castling"), "the draft asked about is not changed in place"
+
+    def test_the_way_back_clears_what_only_rounds_reads(self) -> None:
+        rounds = designing.take_turns(CHESS, "rounds")["draft"]
+        rounds["pieces"][1]["speed"] = 1
+        rounds["pieces"][1]["beats"] = ["P"]
+        assert _problems(rounds) == []
+        back = designing.take_turns(rounds, "alternate")
+        assert back["errors"] == []
+        assert "simultaneous" not in back["draft"]["rules"]
+        assert "speed" not in back["draft"]["pieces"][1]
+        assert "beats" not in back["draft"]["pieces"][1]
+        assert _problems(back["draft"]) == []
+        assert len(back["changes"]) == 2, back["changes"]
+
+    def test_several_moves_a_turn_takes_out_what_it_must(self) -> None:
+        answer = designing.take_turns(CHESS, "several", {"moves": 2})
+        assert answer["errors"] == []
+        assert answer["draft"]["rules"]["turn"] == {"moves": 2}
+        assert "en_passant" not in answer["draft"]["rules"]
+        assert _problems(answer["draft"]) == []
+
+    def test_a_conflict_with_no_change_of_ours_refuses_in_words(self) -> None:
+        """A sweep can't be played in rounds, and taking a piece's way of moving away is
+        not a turn-taking choice's to make: the draft stays, and the reason is given."""
+        sweeping = copy.deepcopy(CHESS)
+        sweeping["pieces"][2]["moves"][0]["kind"] = "sweep"
+        assert _problems(sweeping) == []
+        answer = designing.take_turns(sweeping, "rounds")
+        assert answer["draft"] is None
+        assert any("sweep" in line for line in answer["errors"]), answer["errors"]
+        for line in answer["errors"]:
+            assert not _RAW_PATH.search(line), line
+
+    @pytest.mark.parametrize("way", designing.TURN_WAYS)
+    def test_each_way_from_every_template_is_a_game(self, way: str) -> None:
+        for template in designing.templates():
+            answer = designing.take_turns(template["spec"], way)
+            assert answer["errors"] == [], (template["key"], answer["errors"])
+            assert _problems(answer["draft"]) == [], template["key"]
+
+    def test_a_fresh_designer_says_round(self) -> None:
+        """The word a newcomer searched the page for (F1). Rendered as the page draws its
+        first panel, from the first template, and read as visible text."""
+        spec = designing.templates()[0]["spec"]
+        drawn = _run_page(
+            _kit_setup() + f"DRAFT = {json.dumps(spec)};" + _CAPTURE_FORM,
+            "drawnForm()",
+        )
+        visible = re.sub(r"<[^>]+>", " ", drawn)
+        first = visible.split("The pieces")[0]
+        assert re.search(r"\bin rounds\b", first), "the first panel names rounds"
+        assert "how the players take turns" in first
+
+    def test_the_page_asks_the_server_for_the_changes(self) -> None:
+        """Rule 3: the page proposes a way and draws the answer; which changes it needs is
+        the validator's, through `designing.take_turns`."""
+        assert "'/api/design/turns'" in DESIGN
+        assert routes.find("POST", "/api/design/turns") is not None
+
+
+class TestEveryReasonAtOnceInPlainWords:
+    """Fix 2. A refused rule said the validator's first sentence, raw."""
+
+    def test_rounds_from_chess_names_all_three_conflicts(self) -> None:
+        answer = designing.refusals(CHESS, {"simultaneous": {}})
+        reasons = answer["refused"]["simultaneous"]
+        assert isinstance(reasons, list) and len(reasons) == 3, reasons
+        said = " ".join(reasons)
+        for words in ("checkmate", "castling", "passing"):
+            assert words in said, words
+        for line in reasons:
+            assert not _RAW_PATH.search(line), line
+            assert "_" not in line, line
+
+    def test_every_refusal_on_every_template_is_plain(self) -> None:
+        candidates = {"simultaneous": {}, "castling": {"king": "K", "rook": "R"},
+                      "en_passant": True, "forbid_check": True, "turn": {"moves": 2}}
+        for template in designing.templates() + [{"key": "chess", "spec": CHESS}]:
+            answer = designing.refusals(template["spec"], candidates)
+            for key, reasons in answer["refused"].items():
+                assert isinstance(reasons, list) and reasons, (template["key"], key)
+                for line in reasons:
+                    assert not _RAW_PATH.search(line), (template["key"], key, line)
+
+    def test_the_menu_lists_every_reason_under_its_rule(self) -> None:
+        drawn = _run_page(
+            _kit_setup() + f"DRAFT = {json.dumps(CHESS)};"
+            " RULE_REFUSED = { simultaneous: ['first reason.', 'second reason.'] };",
+            "ruleMenuHtml()",
+        )
+        assert "first reason." in drawn and "second reason." in drawn
+        assert drawn.index("first reason.") < drawn.index("second reason.")
+
+
+# The five sentences the validator writes about a field of the whole army (`pieces[].key`),
+# each with a draft that raises it. Built on chess in rounds, where speed and the spy mean
+# something, except where the point is that they don't.
+def _in_rounds() -> dict[str, Any]:
+    return designing.take_turns(CHESS, "rounds")["draft"]
+
+
+def _army_cases() -> list[tuple[str, dict[str, Any]]]:
+    no_rounds = copy.deepcopy(CHESS)
+    no_rounds["pieces"][1]["speed"] = 1
+    gap = _in_rounds()
+    gap["pieces"][1]["speed"] = 2
+    # A speed on a piece nobody can hold orders nothing.
+    level = _in_rounds()
+    level["pieces"].append({"id": "X", "name": "runner", "value": 1, "speed": 1,
+                            "moves": [{"kind": "leap", "vectors": [[0, 1]]}]})
+    spy_alone = copy.deepcopy(CHESS)
+    spy_alone["pieces"][1]["spy"] = True
+    gained = _in_rounds()
+    gained["pieces"][1]["spy"] = True
+    gained["rules"]["promotion"]["to"] = ["Q", "R", "B", "N"]
+    return [
+        ("pieces[].speed orders the two moves of a round", no_rounds),
+        ("pieces[].speed: speeds are ranks", gap),
+        ("pieces[].speed never orders a round", level),
+        ("pieces[].spy: a spy decides when a game plays in rounds", spy_alone),
+        ("pieces[].spy beside", gained),
+    ]
+
+
+class TestAPieceFieldIsNamedWhereItIs:
+    """Fix 3. A problem about `pieces[].speed` or `pieces[].spy` opened *Where the game comes
+    from* and named neither the piece nor the field (F3)."""
+
+    @pytest.mark.parametrize("index", range(5))
+    def test_each_army_sentence_names_the_piece_and_the_field(self, index: int) -> None:
+        opening, spec = _army_cases()[index]
+        raised = [line for line in _problems(spec) if line.startswith(opening)]
+        assert raised, f"the validator no longer says {opening!r}: {_problems(spec)}"
+        for line in raised:
+            said = designing.plain_problem(line, spec)
+            assert not said.startswith("Where the game comes from"), said
+            assert not _RAW_PATH.search(said), said
+            assert "piece" in said.lower(), said
+
+    def test_speed_without_rounds_says_where_rounds_are_chosen(self) -> None:
+        opening, spec = _army_cases()[0]
+        line = next(p for p in _problems(spec) if p.startswith(opening))
+        said = designing.plain_problem(line, spec)
+        assert said.startswith("Piece 2 (knight)"), said
+        assert "in rounds" in said and "how the players take turns" in said
+
+    def test_several_pieces_are_named_together(self) -> None:
+        spec = copy.deepcopy(CHESS)
+        spec["pieces"][1]["speed"] = 1
+        spec["pieces"][2]["speed"] = 1
+        line = next(p for p in _problems(spec) if p.startswith("pieces[].speed"))
+        said = designing.plain_problem(line, spec)
+        assert said.startswith("Pieces 2 (knight) and 3 (bishop)"), said
+
+    def test_a_version_sentence_names_the_field(self) -> None:
+        spec = copy.deepcopy(CHESS)
+        spec["pieces"][1]["speed"] = 1
+        said = designing.plain_problem(
+            'the spec uses pieces.speed, added in schema 28; declare "schema_version": 28 '
+            "to use it", spec)
+        assert "where the game comes from" not in said.lower(), said
+        assert "speed" in said and "knight" in said, said
+
+
+# A refused default, as the validator words one.
+_DEFAULT_REFUSED = r"\b(?:false|0|\"[a-z_]+\"|'[a-z_]+') is the default\b|\bmust be true\b"
+
+# Where each generated root's fields go in a spec, for setting one alone.
+_ROOTS = {"piece": ("pieces", 0), "move": ("pieces", 0, "moves", 0),
+          "placement": ("setup", "placements", 0)}
+
+
+def _menus(fields: list[dict[str, Any]], path: tuple[Any, ...] = ()) -> list[tuple[tuple, dict]]:
+    """Every menu in a field tree, by its path; a list's first item stands for every item."""
+    out: list[tuple[tuple, dict]] = []
+    for field in fields:
+        here = (*path, field["key"])
+        if field["control"] == "menu":
+            out.append((here, field))
+        elif field["control"] == "card":
+            out += _menus(field["fields"], here)
+        elif field["control"] == "list" and field["item"]["control"] == "card":
+            out += _menus(field["item"]["fields"], (*here, 0))
+    return out
+
+
+def _set(spec: dict[str, Any], path: tuple[Any, ...], value: Any) -> bool:
+    """Set one value inside a spec, through what is already there; False where the path
+    passes through nothing (a list with no item, a part the card did not add)."""
+    node: Any = spec
+    for step in path[:-1]:
+        if isinstance(step, int):
+            if not isinstance(node, list) or len(node) <= step:
+                return False
+            node = node[step]
+        else:
+            if not isinstance(node, dict):
+                return False
+            node = node.setdefault(step, {})
+    if not isinstance(node, dict):
+        return False
+    node[path[-1]] = value
+    return True
+
+
+class TestNoMenuOffersARefusedDefault:
+    """Fix 4 (the record's §4.3). Three menus offered a *no* the validator refuses as the
+    default written out (F4). Every option of every menu the card model draws is set alone
+    on each template, with its rule added as the page adds it, and on chess in rounds; the
+    validator must not refuse it as a default."""
+
+    def _built(self) -> dict[str, dict[str, Any]]:
+        held = {
+            t["key"]: {"spec": t["spec"], "preview": designing.check(t["spec"])["preview"]}
+            for t in designing.templates()
+        }
+        rounds = _in_rounds()
+        held["chess in rounds"] = {"spec": rounds, "preview": designing.check(rounds)["preview"]}
+        return _run_page(_kit_setup() + f"const TEMPLATES = {json.dumps(held)};" + _ADD_RULES,
+                         "addEveryRule(TEMPLATES)")
+
+    def test_no_option_is_refused_as_the_default(self) -> None:
+        model = cards.card_model()
+        refused: list[str] = []
+        for template, rules in self._built().items():
+            for rule in model["rules"]:
+                with_rule = rules[rule["key"]]
+                for path, menu in _menus([rule]):
+                    for option in menu["options"]:
+                        trial = copy.deepcopy(with_rule)
+                        if not _set(trial["rules"], path, option["value"]):
+                            continue
+                        refused += [f"{template}: rules.{'.'.join(map(str, path))} = "
+                                    f"{option['value']!r}: {line}"
+                                    for line in _problems(trial)
+                                    if re.search(_DEFAULT_REFUSED, line)
+                                    and f".{path[-1]}" in line]
+            base = rules[model["rules"][0]["key"]]
+            for root, where in _ROOTS.items():
+                for path, menu in _menus(model[root]):
+                    for option in menu["options"]:
+                        trial = copy.deepcopy(base)
+                        if not _set(trial, (*where, *path), option["value"]):
+                            continue
+                        refused += [f"{template}: {root}.{'.'.join(map(str, path))} = "
+                                    f"{option['value']!r}: {line}"
+                                    for line in _problems(trial)
+                                    if re.search(_DEFAULT_REFUSED, line)
+                                    and f".{path[-1]}" in line]
+        assert not refused, "\n".join(refused)
+
+    @pytest.mark.parametrize("path", sorted(cards.TRUE_ONLY))
+    def test_each_true_only_switch_is_refused_as_false(self, path: str) -> None:
+        """`cards.TRUE_ONLY` says what the schema does not; it must keep agreeing with the
+        validator, or it would hide a *no* somebody may choose."""
+        spec = _in_rounds()
+        spec["rules"]["contacts"] = {"position": "stay", "immune": ["K"],
+                                     "links": [{"mover": "N", "onto": "P", "onto_to": "B"}]}
+        dotted = path.replace("[]", ".0").split(".")
+        steps = tuple(int(step) if step.isdigit() else step for step in dotted)
+        assert _set(spec, steps, False)
+        key = steps[-1]
+        assert any(re.search(_DEFAULT_REFUSED, line) and f".{key}" in line
+                   for line in _problems(spec)), (path, _problems(spec))
+
+    def test_the_true_only_menus_offer_yes_alone(self) -> None:
+        model = cards.card_model()
+        trees = {"rules": model["rules"], "pieces[]": model["piece"]}
+        found = {}
+        for prefix, fields in trees.items():
+            for path, menu in _menus(fields):
+                dotted = prefix + "." + ".".join(
+                    "[]" if isinstance(step, int) else str(step) for step in path)
+                found[dotted.replace(".[]", "[]")] = [o["value"] for o in menu["options"]]
+        for path in cards.TRUE_ONLY:
+            assert found[path] == [True], (path, found.get(path))

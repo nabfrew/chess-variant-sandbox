@@ -3,7 +3,7 @@
 `docs/plan-website.md`, *Proven positions*. R9a (`chess_variant_sandbox/puzzles.py`,
 `docs/reference/proven-positions.md`) proved positions from the library's own recorded
 games won for the side to move, offline, and wrote them as `runs/puzzles/<hash>.json`
-(`puzzles.FORMAT` 3; 1 and 2 are still read). This module reads that record and offers each
+(`puzzles.FORMAT` 4; 1 to 3 are still read). This module reads that record and offers each
 position two ways:
 
 - **Convert it**: a real game from the position against *hardest*, the strongest
@@ -23,12 +23,14 @@ ended, whose side to move is not the record's, or whose legal moves are not the 
 root moves -- a record proved under rules or a core that no longer hold. It never
 re-judges one. *Find the move* compares a move number with the record's numbers.
 
-**Too easy** (Q993a, Q993f, `docs/plan-proven.md` §3). The loader also leaves out, and
-counts, a position the test calls trivial (`puzzles.trivial`): a win in one with more than
-one winning move (T1), half the moves or more proved to win (T2), in a `FORMAT` 2 or 3
-record T3's stored answer that nothing the defender does changes the win (`none`), and in
-a `FORMAT` 3 record T4's, that the defender can only make the loss come sooner (`none`). It
-reads the record's numbers and decides nothing; the basis line says how many and why.
+**Too easy** (Q993a, Q993f, Q993g, `docs/plan-proven.md` §3). The loader also leaves out,
+and counts, a position the test calls trivial (`puzzles.trivial`): a win in one with more
+than one winning move (T1), half the moves or more proved to win (T2), in a `FORMAT` 2 to 4
+record T3's stored answer that nothing the defender does changes the win (`none`), in a
+`FORMAT` 3 or 4 record T4's, that the defender can only make the loss come sooner
+(`none`), and in a `FORMAT` 4 record T5's, that the computer's two quickest players played
+a winning move (`found`). It reads the record's numbers and decides nothing; the basis line
+says how many and why, and a game left with none offered says that in a sentence (`NONE_LEFT`).
 
 **The seven tests** (`docs/reference/no-dark-patterns.md`). No timer and no streak; a
 person's marks (`proven_marks`) are read on their own page alone and no count across
@@ -119,16 +121,20 @@ class Record:
     positions: tuple[Position, ...]
     dropped: int
     too_easy: int = 0
-    """Positions that replay but the triviality test leaves out (T1, T2, T3 or T4)."""
+    """Positions that replay but the triviality test leaves out (T1 to T5)."""
     defence: bool = False
     """Whether the record carries T3's answers (`FORMAT` 2 or 3 with `defence_nodes`)."""
     hasten: bool = False
-    """Whether the record carries T4's answers (`FORMAT` 3 with `hasten_nodes`)."""
+    """Whether the record carries T4's answers (`FORMAT` 3 or 4 with `hasten_nodes`)."""
+    shallow: bool = False
+    """Whether the record carries T5's answers (`FORMAT` 4 with `shallow_nodes`)."""
 
     @property
     def tests(self) -> str:
         """The last part of the triviality test this record could apply: `T2` (T1 and T2,
-        read off the proofs), `T3` or `T4`, which names the basis line's clause."""
+        read off the proofs), `T3`, `T4` or `T5`, which names the basis line's clause."""
+        if self.shallow:
+            return "T5"
         return "T4" if self.hasten else "T3" if self.defence else "T2"
 
     def find(self, position_id: str) -> Position | None:
@@ -234,6 +240,8 @@ def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | N
         defence=data.get("format") != 1 and bool((data.get("basis") or {}).get("defence_nodes")),
         hasten=data.get("format") not in (1, 2)
         and bool((data.get("basis") or {}).get("hasten_nodes")),
+        shallow=data.get("format") not in (1, 2, 3)
+        and bool((data.get("basis") or {}).get("shallow_nodes")),
     )
 
 
@@ -331,6 +339,12 @@ def basis_said(record: Record) -> str:
 
 
 TOO_EASY = {
+    "T5": (
+        "were left out as too easy: the win was the very next move with more than one way "
+        "to make it, half the moves or more won, nothing the defender could do put the win "
+        "off, or a quick look found it: greedy or easy, two of the weakest computer players, "
+        "played a winning move."
+    ),
     "T4": (
         "were left out as too easy: the win was the very next move with more than one way "
         "to make it, half the moves or more won, or nothing the defender could do put the "
@@ -349,7 +363,15 @@ TOO_EASY = {
 """The basis line's clause for the positions the triviality test leaves out (test 7),
 keyed by the last part the record could apply (`Record.tests`): it names only the tests
 applied. T4's clause covers T3's, since a defender who cannot change the win cannot put it
-off either."""
+off either; T5's adds the quick players, by their names on the site's list of players."""
+
+NONE_LEFT = (
+    "None to solve on this game. The computer proved some positions won here, and every "
+    "one was too easy to set as a challenge; how they were proved, and why each was left "
+    "out, is below."
+)
+"""What the game's page says where a record is there but offers no position (Q993g): the
+reason in a sentence, never an empty list."""
 
 
 def _turns(count: int) -> str:
@@ -419,6 +441,7 @@ def section(
         "positions": positions,
         "yours": yours,
         "signInToConvert": "" if signed_in else SIGN_IN_TO_CONVERT,
+        "none": "" if positions else NONE_LEFT,
     }
 
 
@@ -587,11 +610,14 @@ def profile_lines(
     they converted and how many moves they found, of how many it offers.
 
     Counted against the positions offered now, so a mark on a position a later record no
-    longer offers is not counted. A game with no record left reads its marks alone.
+    longer offers is not counted. A game with no record left, or none it still offers,
+    reads its marks alone.
     """
     lines = []
     for game in sorted(marked, key=lambda digest: (names.get(digest, "").lower(), digest)):
         record = records.get(game)
+        if record is not None and not record.positions:
+            record = None
         offered = {found.id for found in record.positions} if record is not None else None
         singles = (
             {found.id for found in record.positions if found.single}

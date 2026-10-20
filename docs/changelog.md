@@ -13,6 +13,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-20
 
+### Make a game played in rounds in one step
+
+The designer now opens with how the players take turns: one after the other, in rounds, or more than one move a turn.
+Choosing rounds makes every change the game needs, lists them, and lets you undo them. When a rule can't go in a game,
+the designer gives every reason at once, in plain words, beside the rule it concerns.
+
 ### The rules document helps you design, not only write
 
 The published description of the rule language now opens with a map of what each family of rules is for, and adds a
@@ -21,7 +27,8 @@ section on how a game that passes every check can still play badly. It also says
 ### Fewer, better proven positions
 
 The proven positions no longer include the ones that are too easy, where the defender's moves change nothing; the list
-says how many were left out and why. Every position left has exactly one winning move to find: 119 across the seven games, 16 on *Intransitive*.
+says how many were left out and why. A position stays only if it has exactly one winning move and the quick computer
+players don't find it: 21 across the seven games, 3 on *Intransitive*. A game where every position was too easy says so.
 
 ### Scores kept from a sample say so
 

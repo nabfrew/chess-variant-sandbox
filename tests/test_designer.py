@@ -657,8 +657,13 @@ class TestARuleThatDoesNotGoInThisGame:
         answer = designing.refusals(spec, self._candidates(spec))
         assert answer["asked"] is True
         assert sorted(answer["refused"]) == sorted(_CANNOT["skirmish"])
-        for key, says in _CANNOT["skirmish"].items():
-            assert says in answer["refused"][key], key
+        # Every reason, in the designer's words (Q995b): never the validator's path.
+        for key, reasons in answer["refused"].items():
+            assert isinstance(reasons, list) and reasons, key
+            for line in reasons:
+                assert not re.search(r"\brules\.[a-z_]+", line), (key, line)
+        assert any("no piece is marked royal" in line
+                   for line in answer["refused"]["forbid_check"])
 
     def test_a_draft_that_is_not_a_game_is_asked_nothing(self) -> None:
         """Every rule would be refused for the draft's own errors, which greys the whole
@@ -673,7 +678,7 @@ class TestARuleThatDoesNotGoInThisGame:
         spec = next(t for t in designing.templates() if t["key"] == "skirmish")["spec"]
         drawn = _run_page(
             _kit_setup() + f"DRAFT = {json.dumps(spec)};"
-            " RULE_REFUSED = { forbid_check: 'no piece is marked royal' };",
+            " RULE_REFUSED = { forbid_check: ['no piece is marked royal'] };",
             "ruleMenuHtml()",
         )
         title = describe.RULE_WORDS["forbid_check"][0]

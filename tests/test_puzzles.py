@@ -469,6 +469,13 @@ def test_t3_replays_the_records_prefix(engine: Engine, records: list[GameRecord]
             engine, row, nodes=SMALL, state=state)
         assert puzzles.hasten(engine, row, nodes=SMALL) == puzzles.hasten(
             engine, row, nodes=SMALL, state=state)
+    # T5 too, asked of every proved win in the runs.
+    won = [row for row in rows if row["result"] == puzzles.WON]
+    assert won
+    for row in won[:3]:
+        state = engine.play(engine.initial_state(), row["moves"])
+        assert puzzles.shallow(engine, row, nodes=SMALL) == puzzles.shallow(
+            engine, row, nodes=SMALL, state=state)
 
 
 def test_a_format_three_record_keeps_t3_and_t4_and_names_their_basis(
@@ -490,7 +497,7 @@ def test_a_format_three_record_keeps_t3_and_t4_and_names_their_basis(
                           defence_made=datetime.date(2026, 10, 20),
                           hasten_nodes=SMALL, hasten_built="test",
                           hasten_made=datetime.date(2026, 10, 21))
-    assert data["format"] == 3 == puzzles.FORMAT and puzzles.FORMATS == (1, 2, 3)
+    assert data["format"] == 4 == puzzles.FORMAT and puzzles.FORMATS == (1, 2, 3, 4)
     assert data["basis"]["defence_nodes"] == SMALL == data["basis"]["hasten_nodes"]
     assert data["basis"]["defence_made"] == "2026-10-20"
     assert data["basis"]["hasten_made"] == "2026-10-21"
@@ -516,12 +523,135 @@ def test_a_format_three_record_keeps_t3_and_t4_and_names_their_basis(
     assert "defence_nodes" not in plain["basis"] and "trivial" not in plain["counts"]
 
 
+# ------------------------------------------------------- seen at a glance (Q993g)
+#
+# `docs/plan-proven.md` §3.7, pre-registered: T5 asks the core's two quick players, from
+# eight fixed seeds, what they play, and reads each choice against the record's proofs,
+# asking the core again of the position an `open` choice leaves.
+
+
+def test_t5_reads_the_stored_answer() -> None:
+    proofs = ["won", "open", "open", "open", "open"]
+    assert puzzles.trivial(_row(3, proofs, shallow=puzzles.FOUND)) == (puzzles.T5,)
+    for kept in (puzzles.MISSED, None):
+        assert puzzles.trivial(_row(3, proofs, shallow=kept)) == ()
+    assert puzzles.trivial(_row(3, proofs, hasten=puzzles.NONE, shallow=puzzles.FOUND)) == (
+        puzzles.T4, puzzles.T5)
+
+
+def test_t5_is_asked_of_every_proved_win_t1_to_t4_keep() -> None:
+    assert puzzles.asks_shallow(_row(3, ["won", "open", "open"]))  # one key
+    assert puzzles.asks_shallow(_row(3, ["won", "won", "open", "open", "open"]))
+    assert not puzzles.asks_shallow(_row(1, ["won", "won", "open", "open", "open"]))  # T1
+    assert not puzzles.asks_shallow(_row(3, ["won", "won", "open"]))  # T2
+    assert not puzzles.asks_shallow(
+        _row(3, ["won", "won", "open", "open", "open"], hasten=puzzles.NONE))  # T4
+    assert not puzzles.asks_shallow({**_row(3, ["won", "open", "open"]), "result": "lost"})
+    # T5's own stored answer does not stop it being asked again, nor T3 or T4 asking.
+    found = _row(3, ["won", "open", "open"], shallow=puzzles.FOUND, shallow_moves={})
+    assert puzzles.asks_shallow(found)
+    assert puzzles.asks_defence(
+        _row(3, ["won", "won", "open", "open", "open"], shallow=puzzles.FOUND))
+
+
+TAKES = {"a1": ("K", 0), "c3": ("S", 0), "c4": ("K", 1), "e5": ("T", 1)}  # Sc3xc4 wins at once
+
+
+def test_t5_finds_a_win_in_one_from_every_seed(engine: Engine) -> None:
+    state = engine.make_state(TAKES, side_to_move=0)
+    row = puzzles.verdict(engine, state, nodes=SMALL)
+    assert row["single"] and row["ends_in"] == 1
+    answer = puzzles.shallow(engine, row, nodes=SMALL, state=state)
+    assert answer is not None
+    found, played = answer
+    assert found == puzzles.FOUND
+    key = engine.find_move(state, "Sc3xc4")
+    assert set(played) == set(puzzles.SHALLOW_AGENTS)
+    assert played["greedy"] == [key] * len(puzzles.SHALLOW_SEEDS)
+    # The same position asked again is the same answer: the seeds fix every choice.
+    assert puzzles.shallow(engine, row, nodes=SMALL, state=state) == answer
+
+
+class _Plays(Engine):
+    """The core, except that every player plays one fixed move: what is tested is how T5
+    reads a choice, not which choice the core makes."""
+
+    def __init__(self, spec: dict[str, Any], move: int, settles: bool = True) -> None:
+        super().__init__(spec)
+        self.fixed = move
+        self.settles = settles
+
+    def select_move(self, state: Any, agent: Any, values: Any, seed: int = 0) -> int | None:
+        return self.fixed
+
+    def root_scores(self, state: Any, values: Any, nodes: int, max_depth: int,
+                    goal: float = 0.0, immune: float = 0.0) -> list[float]:
+        if not self.settles:
+            return [0.0] * len(self.legal_moves(state))
+        return super().root_scores(state, values, nodes, max_depth, goal, immune)
+
+
+def test_t5_reads_each_choice_against_the_record_and_asks_again_where_it_is_open(
+    engine: Engine,
+) -> None:
+    state, row = _asked(engine, NO_SAY)
+    won = [entry for entry in row["scores"] if entry["proof"] == puzzles.WON]
+    rest = [entry for entry in row["scores"] if entry["proof"] != puzzles.WON]
+    key = int(won[0]["move"])
+
+    def ask(move: int, record: dict[str, Any], settles: bool = True) -> str:
+        answer = puzzles.shallow(_Plays(SPEC, move, settles), record, nodes=SMALL, state=state)
+        assert answer is not None
+        assert answer[1] == {agent: [move] * 8 for agent in puzzles.SHALLOW_AGENTS}
+        return answer[0]
+
+    assert ask(key, row) == puzzles.FOUND  # proved won in the record
+    other = int(rest[0]["move"])
+    lost = {**row, "scores": [{**entry, "proof": "lost"} if entry["move"] == other else entry
+                              for entry in row["scores"]]}
+    assert ask(other, lost) == puzzles.MISSED  # proved lost: not asked again
+    # The key left `open` in a record: the core, asked of the position it leaves, proves
+    # it won for the mover, so the choice wins anyway.
+    hidden = {**row, "scores": [{**entry, "proof": "open"} if entry["move"] == key else entry
+                                for entry in row["scores"]]}
+    assert ask(key, hidden) == puzzles.FOUND
+    # The same, where the second ask cannot settle it: a miss, never a find.
+    assert ask(key, hidden, settles=False) == puzzles.MISSED
+
+
+def test_t5_does_not_apply_to_a_position_not_won(engine: Engine) -> None:
+    state = engine.make_state(TAKES, side_to_move=0)
+    row = puzzles.verdict(engine, state, nodes=SMALL)
+    assert puzzles.shallow(engine, {**row, "result": "lost"}, nodes=SMALL, state=state) is None
+
+
+def test_a_format_four_record_keeps_t5_and_names_its_basis(engine: Engine) -> None:
+    state = engine.make_state(TAKES, side_to_move=0)
+    row = {**puzzles.verdict(engine, state, nodes=SMALL), "id": "9-0-0", "seed": 9,
+           "game": 0, "ply": 0, "moves": []}
+    asked = puzzles.shallow(engine, row, nodes=SMALL, state=state)
+    assert asked is not None
+    rows = [{**row, "shallow": asked[0], "shallow_moves": asked[1]}]
+    data = puzzles.record(engine, "puzzle probe", (0,), rows, built="test",
+                          shallow_nodes=SMALL, shallow_built="test",
+                          shallow_made=datetime.date(2026, 10, 20))
+    basis = data["basis"]
+    assert basis["shallow_agents"] == list(puzzles.SHALLOW_AGENTS)
+    assert basis["shallow_seeds"] == list(range(8))
+    assert basis["shallow_nodes"] == SMALL and basis["shallow_made"] == "2026-10-20"
+    assert data["counts"]["shallow_found"] == 1 and data["counts"]["shallow_missed"] == 0
+    assert data["counts"]["trivial"] == 1
+    assert data["positions"][0]["shallow_moves"] == asked[1]
+    plain = puzzles.record(engine, "puzzle probe", (0,), rows, built="test")
+    assert "shallow_nodes" not in plain["basis"] and "shallow_found" not in plain["counts"]
+
+
 # ------------------------------------------------- the count, over the seven (§3.2)
 
 SHAPES = Path(__file__).with_name("_proven_shapes.json")
-"""Each delivered record's won positions as `[n, L, W, defence, hasten]`: what T1 to T4
-read (`defence` and `hasten` null where T3 and T4 were not asked), so the count holds
-without the records."""
+"""Each delivered record's won positions as `[n, L, W, defence, hasten, shallow]`: what T1
+to T5 read (`defence`, `hasten` and `shallow` null where T3, T4 and T5 were not asked), so
+the count holds without the records."""
 
 # `plan-proven.md` §3.2, by game: positions, T1, T2, T1 or T2, left, left with one key.
 COUNT_32 = {
@@ -536,11 +666,13 @@ COUNT_32 = {
 
 
 def _shaped(
-    n: int, legal: int, won: int, answer: str | None, hastens: str | None = None
+    n: int, legal: int, won: int, answer: str | None, hastens: str | None = None,
+    seen: str | None = None,
 ) -> dict[str, Any]:
     proofs = ["won"] * won + ["open"] * (legal - won)
     return _row(n, proofs, **({"defence": answer} if answer else {}),
-                **({"hasten": hastens} if hastens else {}))
+                **({"hasten": hastens} if hastens else {}),
+                **({"shallow": seen} if seen else {}))
 
 
 def _shapes() -> dict[str, Any]:
@@ -553,7 +685,7 @@ def test_the_count_of_plan_proven_32_holds_over_the_fixture() -> None:
     for name, game in shapes.items():
         rows = [_shaped(*shape) for shape in game["positions"]]
         parts = [set(puzzles.trivial(row)) for row in rows]
-        assert all(len(shape) == 5 for shape in game["positions"]), name
+        assert all(len(shape) == 6 for shape in game["positions"]), name
         t1 = sum(puzzles.T1 in found for found in parts)
         t2 = sum(puzzles.T2 in found for found in parts)
         either = sum(bool(found & {puzzles.T1, puzzles.T2}) for found in parts)
@@ -606,11 +738,40 @@ def test_the_t4_count_of_proven_positions_62_holds_over_the_fixture() -> None:
         # T4 was asked of exactly the positions T3 was (`asks_defence`).
         assert [shape[3] is None for shape in shapes] == [shape[4] is None for shape in shapes]
         answers = [shape[4] for shape in shapes if shape[4] is not None]
-        kept = [row for row in map(lambda shape: _shaped(*shape), shapes)
+        # The offer as it stood with T1 to T4 alone (Q993f), before T5's answers.
+        kept = [row for row in map(lambda shape: _shaped(*shape[:5]), shapes)
                 if not puzzles.trivial(row)]
         one = sum(puzzles.winning_moves(row) == 1 for row in kept)
         assert (len(answers), answers.count(puzzles.NONE), answers.count(puzzles.SOME),
                 answers.count(puzzles.UNSETTLED), len(kept), one) == COUNT_T4[name], name
+
+
+# `proven-positions.md` §6.3, by game: T5 asked, `found` (left out), `missed`, offered, and
+# of those offered how many have one winning move. `plan-proven.md` §3.7 predicted the
+# offered column before it was counted; the grade is in the record.
+COUNT_T5 = {
+    "intransitive": (16, 13, 3, 3, 3),
+    "los alamos": (12, 11, 1, 1, 1),
+    "cylinder chess": (19, 15, 4, 4, 4),
+    "quarry": (15, 14, 1, 1, 1),
+    "reckoning": (21, 13, 8, 8, 8),
+    "wolves": (14, 13, 1, 1, 1),
+    "glinski hexagonal chess": (22, 19, 3, 3, 3),
+}
+
+
+def test_the_t5_count_of_proven_positions_63_holds_over_the_fixture() -> None:
+    for name, game in _shapes().items():
+        shapes = game["positions"]
+        # T5 was asked of exactly what T1 to T4 keep (`asks_shallow`).
+        assert [puzzles.asks_shallow(_shaped(*shape[:5])) for shape in shapes] == [
+            shape[5] is not None for shape in shapes], name
+        answers = [shape[5] for shape in shapes if shape[5] is not None]
+        kept = [row for row in map(lambda shape: _shaped(*shape), shapes)
+                if not puzzles.trivial(row)]
+        one = sum(puzzles.winning_moves(row) == 1 for row in kept)
+        assert (len(answers), answers.count(puzzles.FOUND), answers.count(puzzles.MISSED),
+                len(kept), one) == COUNT_T5[name], name
 
 
 def test_the_fixture_is_the_delivered_records() -> None:
@@ -625,6 +786,6 @@ def test_the_fixture_is_the_delivered_records() -> None:
         assert game["hash"] == path.stem
         assert game["positions"] == [
             [row["ends_in"], len(row["scores"]), puzzles.winning_moves(row),
-             row.get("defence"), row.get("hasten")]
+             row.get("defence"), row.get("hasten"), row.get("shallow")]
             for row in data["positions"] if row["result"] == puzzles.WON
         ]

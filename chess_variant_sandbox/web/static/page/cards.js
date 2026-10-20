@@ -828,10 +828,25 @@ function ruleMenuHtml() {
     ${refusedRulesHtml(shut, byKey)}`;
 }
 
-// The rules this draft cannot take, and the validator's reason for each (option A9).
+// The rules this draft cannot take, and every reason for each (option A9), in the
+// designer's words (Q995b: it was the validator's first sentence, raw, so from chess the
+// rounds rule named checkmate and castling and taking in passing came one at a time).
 // Out of the menu rather than greyed inside it, because a disabled option cannot be
 // chosen and a reason nobody can reach is a reason nobody reads. The wolf cost eight
 // actions before this sentence arrived (finding 2.10); here it arrives before the first.
+// A turn-taking rule says where it is chosen in one press, with the changes it needs.
+const TURN_RULES = { simultaneous: 'in rounds', turn: 'more than one move a turn' };
+
+function refusedReasonsHtml(key) {
+  const reasons = [].concat(RULE_REFUSED[key] || []);
+  const turn = TURN_RULES[key]
+    ? `<div class="small">Choose '${esc(TURN_RULES[key])}' under <i>how the players take
+        turns</i>, at the top, to make the changes this needs in one step, or to see why it
+        can't.</div>` : '';
+  return `<ul class="refusedReasons muted small">${
+    reasons.map(line => `<li>${esc(line)}</li>`).join('')}</ul>${turn}`;
+}
+
 function refusedRulesHtml(shut, byKey) {
   if (!shut.length) return '';
   // Asked only of a draft that is a game, so while one is half made these are the last
@@ -844,7 +859,7 @@ function refusedRulesHtml(shut, byKey) {
       complete game. It is asked again as soon as the draft is one.</div>` : ''}
     <ul class="refusedList">${shut.map(key => `<li>
       <b>${esc(ruleTitle(key, byKey[key].label))}</b>
-      <span class="muted small">${esc(RULE_REFUSED[key])}</span></li>`).join('')}</ul>
+      ${refusedReasonsHtml(key)}</li>`).join('')}</ul>
   </details>`;
 }
 

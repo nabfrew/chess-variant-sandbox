@@ -105,6 +105,20 @@ OWNED = {
     "placement": frozenset({"piece", "player", "squares"}),
 }
 
+# Switches the validator accepts only as `true`: `false` written out is the default stated,
+# one game under two hashes, and refused (*'a spy' false is the default; leave it out*).
+# The model's schema types each as a plain boolean, so the menu offered *no* and a working
+# game turned into a refusal (Q995a F4). Each is a menu of *not said / yes* here. The
+# schema saying it itself (`{"const": true}`, which `field_for` reads too) is the fix that
+# belongs in `spec/jsonschema.py`; until then this list says it, and
+# `tests/test_designer_coverage.py` holds it to the validator both ways: each listed `false`
+# is refused, and no option any menu offers is refused as a default.
+TRUE_ONLY = frozenset({
+    "rules.simultaneous.rest",
+    "pieces[].spy",
+    "rules.contacts.links[].own",
+})
+
 _SQUARES_SUFFIX = "Algebraic squares such as a1 or e4."
 _MENU_LIMIT = 40
 _PLAYER_LABELS = {"0": "first player", "1": "second player"}
@@ -266,8 +280,11 @@ def field_for(node: dict[str, Any], path: str, key: str, required: bool) -> dict
     if "enum" in node:
         return {**base, "control": "menu",
                 "options": _options(node["enum"], node.get("description", ""))}
+    if "const" in node:
+        return {**base, "control": "menu", "options": _options([node["const"]], "")}
     if kind == "boolean":
-        return {**base, "control": "menu", "options": _options([True, False], "")}
+        values = [True] if path in TRUE_ONLY else [True, False]
+        return {**base, "control": "menu", "options": _options(values, "")}
     if kind == ["string", "integer"]:
         return {**base, "control": "rank"}
     if kind in ("integer", "number"):

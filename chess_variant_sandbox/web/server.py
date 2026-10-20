@@ -857,6 +857,11 @@ class App:
             # Which absent rules this draft could not take, tried by the validator. The
             # candidate cards are the browser's; nothing here decides what one holds.
             return designing.refusals(body.get("spec"), body.get("candidates") or {})
+        if parts == ["api", "design", "turns"]:
+            # The draft played another way (one after the other, in rounds, several moves
+            # a turn), with every change that way needs, asked of the validator (Q995b).
+            return designing.take_turns(body.get("spec"), str(body.get("way", "")),
+                                        body.get("card"))
         if parts == ["api", "design", "steps"]:
             return self._draft_steps_or_one(body)
         if parts == ["api", "design", "save"]:

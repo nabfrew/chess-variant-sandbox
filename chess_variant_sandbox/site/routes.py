@@ -152,8 +152,15 @@ ALLOWED: tuple[Route, ...] = (
     Route(
         "POST",
         "/api/design/rules",
-        "which absent rules this draft cannot take, in the validator's own words; one "
-        "validate per rule and about forty milliseconds for all of them",
+        "which absent rules this draft cannot take, and every reason for each in plain "
+        "words; one validate per rule and about forty milliseconds for all of them",
+    ),
+    Route(
+        "POST",
+        "/api/design/turns",
+        "the draft played another way -- one after the other, in rounds, or several moves "
+        "a turn -- with every change that way needs and a sentence for each (Q995b); in "
+        "memory, writes nothing, a few validates",
     ),
     Route(
         "POST",

@@ -242,7 +242,8 @@ class TestTheLoader:
         assert record.singles == sum(1 for row in kept if row["single"])
         if data["format"] >= 2:
             assert record.defence and record.too_easy == data["counts"]["trivial"]
-        assert record.hasten == (data["format"] == 3)
+        assert record.hasten == (data["format"] >= 3)
+        assert record.shallow == (data["format"] >= 4)
 
     def test_too_easy_positions_are_left_out_counted_and_named(self, tmp_path: Path) -> None:
         """The pre-registered test (`plan-proven.md` §3.1) at load: T1, T2 and T3's `none`
@@ -294,7 +295,7 @@ class TestTheLoader:
         put_off = _position("1-2-2", pair, ends_in=3, defence="some", hasten="some")
         unsure = _position("1-3-2", pair, ends_in=3, defence="some", hasten="unsettled")
         record = _record([ONE, hastens, march, put_off, unsure])
-        assert record["format"] == 3
+        record["format"] = 3
         record["basis"]["defence_nodes"] = puzzles.DEFENCE_NODES
         record["basis"]["hasten_nodes"] = puzzles.DEFENCE_NODES
         _write(tmp_path, record)
@@ -316,6 +317,59 @@ class TestTheLoader:
         os.utime(proven.path(tmp_path, DIGEST), ns=(10**18, 10**18))
         loaded = _load(tmp_path)
         assert not loaded.hasten and loaded.tests == "T3"
+
+    def test_t5_leaves_out_a_move_seen_at_a_glance(self, tmp_path: Path) -> None:
+        """`plan-proven.md` §3.7 at load, in a `FORMAT` 4 record: T5's `found` is left out,
+        its `missed` and a position it was not asked of are kept, and the basis line names
+        T5's reason in plain words, the quick players by their names on the site."""
+        seen = _position("1-0-2", {TAKE: "won"}, ends_in=3, shallow="found")
+        missed = _position("1-1-2", {TAKE: "won"}, ends_in=3, shallow="missed")
+        record = _record([ONE, seen, missed])
+        assert record["format"] == 4
+        record["basis"] |= {"defence_nodes": puzzles.DEFENCE_NODES,
+                            "hasten_nodes": puzzles.DEFENCE_NODES,
+                            "shallow_nodes": puzzles.DEFENCE_NODES}
+        _write(tmp_path, record)
+        loaded = _load(tmp_path)
+        assert [found.id for found in loaded.positions] == ["0-0-2", "1-1-2"]
+        assert loaded.too_easy == 1 and loaded.shallow and loaded.tests == "T5"
+        said = proven.basis_said(loaded)
+        assert ("1 were left out as too easy: the win was the very next move with more than "
+                "one way to make it, half the moves or more won, nothing the defender could "
+                "do put the win off, or a quick look found it: greedy or easy, two of the "
+                "weakest computer players, played a winning move.") in said
+        assert site_words.hits(said) == [], said
+        # A `FORMAT` 3 record is still read, and names no T5.
+        old = _record([ONE, missed])
+        old["format"] = 3
+        old["basis"] |= {"defence_nodes": puzzles.DEFENCE_NODES,
+                         "hasten_nodes": puzzles.DEFENCE_NODES}
+        _write(tmp_path, old)
+        os.utime(proven.path(tmp_path, DIGEST), ns=(10**18, 10**18))
+        loaded = _load(tmp_path)
+        assert not loaded.shallow and loaded.tests == "T4"
+
+    def test_a_record_with_every_position_too_easy_says_so(self, tmp_path: Path) -> None:
+        """Q993g: a game whose every proved position was left out offers none, and its
+        section says so in a sentence rather than listing nothing; the games list does
+        not count it as having any, and the profile reads the person's marks alone."""
+        seen = _position("1-0-2", {TAKE: "won"}, ends_in=3, shallow="found")
+        record = _record([seen])
+        record["basis"]["shallow_nodes"] = puzzles.DEFENCE_NODES
+        runs = tmp_path / "all-gone"
+        _write(runs, record)
+        loaded = _load(runs)
+        assert loaded.positions == () and loaded.too_easy == 1
+        section = proven.section(loaded, None, signed_in=False)
+        assert section["count"] == 0 and section["positions"] == []
+        assert section["none"] == proven.NONE_LEFT
+        assert "too easy" in section["basis"]
+        assert proven.section(_load(_fresh(tmp_path, [ONE])), None, False)["none"] == ""
+        assert proven.offered(runs, DIGEST, SPEC) == 0
+        lines = proven.profile_lines(
+            {DIGEST: {"1-0-2": {proven.CONVERTED}}}, {DIGEST: loaded}, {DIGEST: "proven test"})
+        assert lines == [{"hash": DIGEST, "name": "proven test", "converted": 1, "found": 0,
+                          "of": None, "singles": None}]
 
 
 # ------------------------------------------------------------------- find the move
@@ -387,6 +441,7 @@ class TestTheWords:
         sentences = [
             proven.basis_said(record), proven.NOT_HERE, proven.NO_TAKE_BACK,
             proven.SIGN_IN_TO_CONVERT, *proven.TRY_SAID.values(), m.PUZZLE_IS_PRACTICE,
+            proven.NONE_LEFT,
             *proven.TOO_EASY.values(),
             proven.view(record, SPEC, "0-0-2")["said"],
             *(proven.answer(record, "0-0-2", move)["said"] for move in LEGAL),
@@ -680,6 +735,23 @@ class TestThroughTheSite:
         finally:
             app.viewer = None
 
+    def test_a_game_whose_every_position_was_too_easy_says_so_on_its_page(
+        self, store: Scratch, app: SiteApp
+    ) -> None:
+        """Q993g: the section is sent with no position and the sentence; its addresses
+        have nothing to draw."""
+        app.connect = store.open
+        record = _record([_position("1-0-2", {TAKE: "won"}, ends_in=3, shallow="found")])
+        record["basis"]["shallow_nodes"] = puzzles.DEFENCE_NODES
+        where = _write(app.runs_dir, record)
+        os.utime(where, ns=(10**18, 10**18))
+        _as(app, None)
+        section = app._standing(DIGEST)["standing"]["proven"]
+        assert section["count"] == 0 and section["positions"] == []
+        assert section["none"] == proven.NONE_LEFT
+        with pytest.raises(KeyError):
+            app.get(f"/api/proven/{DIGEST}/1-0-2")
+
     def test_a_game_with_no_record_has_no_section_and_no_address(
         self, store: Scratch, app: SiteApp, tmp_path: Path
     ) -> None:
@@ -723,6 +795,21 @@ class TestTheGamePageDraws:
 
         assert _in_page(_GAME + "GAMEX.standing.proven = null;", "provenHtml(GAMEX)") == ""
         assert _in_page("const GAMEX = { standing: {} };", "provenHtml(GAMEX)") == ""
+
+    def test_none_left_is_said_in_a_sentence_and_lists_nothing(self) -> None:
+        """Q993g: the server's sentence and the basis, no list, no menu, no buttons."""
+        from test_web import _in_page
+
+        gone = (_GAME + "GAMEX.standing.proven.positions = [];"
+                " GAMEX.standing.proven.count = 0;"
+                f" GAMEX.standing.proven.none = {json.dumps(proven.NONE_LEFT)};")
+        panel = html.unescape(_in_page(gone, "provenHtml(GAMEX)"))
+        assert "Proven positions" in panel and proven.NONE_LEFT in panel
+        assert 'id="provenNone"' in panel and "Proved on 2026-10-18." in panel
+        for absent in ('id="provenPick"', "<option", 'id="provenOn"', "You have converted"):
+            assert absent not in panel
+        assert _in_page(_GAME + "GAMEX.standing.proven.positions = [];",
+                        "provenHtml(GAMEX)") == ""
 
     def test_a_position_offers_convert_and_the_moves_without_scores(self) -> None:
         from test_web import _in_page

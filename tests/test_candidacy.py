@@ -1088,6 +1088,22 @@ def _designer_views() -> list[tuple[str, str]]:
          ".map(t => (TEACHING = t, teachOffersHtml(8))).join(' ')")
     view("the rule cards' refusals", "DRAFT_CHECK = { valid: false };",
          "refusedRulesHtml(['x'], { x: { label: 'x' } })")
+    # Q995b: the reasons themselves, as the server words them, list opened. From chess, a
+    # game in rounds is refused for three rules at once.
+    chess = json.loads((RULESETS / "chess.json").read_text(encoding="utf-8"))
+    refused = designing.refusals(chess, {"simultaneous": {}, "promote_on_entry": True})
+    keys = json.dumps(sorted(refused["refused"]))
+    view("the rule cards' refusals, every reason", f"RULE_REFUSED = {json.dumps(refused['refused'])};",
+         f"refusedRulesHtml({keys}, Object.fromEntries({keys}.map(k => [k, {{ label: k }}])))")
+    # And how the players take turns, with what a choice changed and what refused one.
+    turned = designing.take_turns(chess, "rounds")
+    sweeping = json.loads(json.dumps(chess))
+    sweeping["pieces"][2]["moves"][0]["kind"] = "sweep"
+    stuck = designing.take_turns(sweeping, "rounds")
+    view("how the players take turns", f"DRAFT = {json.dumps(turned['draft'])};",
+         f"[turnSaidHtml({{ way: 'rounds', changes: {json.dumps(turned['changes'])} }}),"
+         f" turnSaidHtml({{ way: 'rounds', errors: {json.dumps(stuck['errors'])} }}),"
+         " turnsHtml()].join(' ')")
     view("trying small changes", "TRY_OPEN = false;", "tryHtml()")
     view("measuring in the browser", "DRAFT_CHECK = { hash: 'a' };",
          "[hereOwnHtml({ result: { index: 0.5, games: 256, weights: 'v11' } }, null),"

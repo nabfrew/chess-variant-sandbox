@@ -3077,7 +3077,19 @@ function scoreHtml(score, guide, band, trust) {
 // here counts anybody else. The local application sends no `proven`, and draws nothing.
 function provenHtml(game) {
   const proven = game.standing && game.standing.proven;
-  if (!proven || !(proven.positions || []).length) return '';
+  if (!proven) return '';
+  // Q993g: a record whose every position was too easy says so, rather than listing none.
+  if (!(proven.positions || []).length) {
+    if (!proven.none) return '';
+    return `<div class="panel proven" id="proven" style="margin-top:14px">
+    <h3 style="margin-top:0">Proven positions${info('provenPositions')}</h3>
+    <p class="muted small" id="provenNone">${esc(proven.none)}</p>
+    <details class="muted small" style="margin-top:8px">
+      <summary>how these were proved</summary>
+      <p id="provenBasis">${esc(proven.basis)}</p>
+    </details>
+  </div>`;
+  }
   const sideWord = side => provenSide(game, side);
   const options = proven.positions.map(entry => `<option value="${esc(entry.id)}">${
     entry.number} · ${esc(sideWord(entry.side))} to move, a win in ${entry.endsIn} turn${

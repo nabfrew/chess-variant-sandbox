@@ -13,7 +13,7 @@ move whose score is at least `PROVEN` was searched to a forced win, and one at m
 `WIN_SCORE - ply` while no evaluation comes near that. Anything between is *open*: the
 budget ran out first, and the move is neither won nor lost as far as anyone knows.
 
-The record, `runs/puzzles/<hash>.json` (`FORMAT` 3), is what the site loads (R9b). Each
+The record, `runs/puzzles/<hash>.json` (`FORMAT` 4), is what the site loads (R9b). Each
 position carries its prefix, the side to move, its result (`won` or `lost` for the side to
 move), the plies to the ending under best play as far as the proof saw it, and every root
 move's score and proof, so *find the move* is a lookup.
@@ -24,9 +24,11 @@ legal moves or more proved won), both read off the record's own proofs (`trivial
 (the defence has no say: after the shortest winning move, every reply leaves a win exactly
 two plies shorter), which asks the core again (`defence`). T4 (`plan-proven.md` §3.6,
 adopted after the look that motivated it): the defence can only hasten it, every reply
-leaves a win at most two plies shorter, asked the same way (`hasten`). `FORMAT` 2 adds
-each asked position's T3 answer and the basis it was asked on, `FORMAT` 3 T4's beside it;
-`FORMAT` 1 records carry neither.
+leaves a win at most two plies shorter, asked the same way (`hasten`). T5 (`plan-proven.md`
+§3.7, pre-registered): seen at a glance, the core's two quickest players, asked from eight
+fixed seeds, play a move that wins (`shallow`). `FORMAT` 2 adds each asked position's T3
+answer and the basis it was asked on, `FORMAT` 3 T4's beside it, `FORMAT` 4 T5's; `FORMAT`
+1 records carry none of them.
 """
 
 from __future__ import annotations
@@ -41,12 +43,13 @@ from typing import Any
 from chess_variant_sandbox.agents.evaluation import GOAL_PIECES, IMMUNE_PIECES, WIN_SCORE
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.state import GameState
-from chess_variant_sandbox.tournament.play import eval_values
+from chess_variant_sandbox.tournament.play import choose_move, eval_values
 from chess_variant_sandbox.tournament.record import GameRecord
 
-FORMAT = 3
-FORMATS = (1, 2, 3)
-"""Every record format a reader accepts: 1 has no T3 answers, 2 has them, 3 adds T4's."""
+FORMAT = 4
+FORMATS = (1, 2, 3, 4)
+"""Every record format a reader accepts: 1 has no T3 answers, 2 has them, 3 adds T4's, 4
+adds T5's."""
 NODES = 20_000_000
 # T3's budget a reply (`plan-proven.md` §3.1): a tenth of the proof's, since each of 20 to
 # 30 replies is asked and the position after a reply is two plies nearer its end.
@@ -75,7 +78,18 @@ DEFENCES = (NONE, SOME, UNSETTLED)
 # T4's answers, a position's `hasten` in a `FORMAT` 3 record, are the same three words
 # read against *at most* n - 2: `none` is that no reply did anything but keep pace or lose
 # faster; `some`, that a reply was proved to put the win off or escape it.
-T1, T2, T3, T4 = "T1", "T2", "T3", "T4"
+T1, T2, T3, T4, T5 = "T1", "T2", "T3", "T4", "T5"
+
+# T5 (`plan-proven.md` §3.7): the core's two quickest players a person meets, at their own
+# budgets on the built-in objective (*greedy* and *easy* on the site), each asked from these
+# fixed seeds. A position's `shallow` is `found` where any choice wins and `missed` where none
+# does; there is no third answer, since a choice the core cannot prove won counts as a miss.
+SHALLOW_AGENTS = ("greedy", "minimax:nodes=400")
+SHALLOW_SEEDS = tuple(range(8))
+FOUND, MISSED = "found", "missed"
+SHALLOWS = (FOUND, MISSED)
+# The record fields a later test adds to a row; what was asked before it never reads them.
+ANSWERS = ("defence", "hasten", "shallow", "shallow_moves")
 
 
 @dataclass(frozen=True)
@@ -233,15 +247,18 @@ def verdict(
 
 
 def counts(
-    rows: Iterable[dict[str, Any]], defence: bool = False, hasten: bool = False
+    rows: Iterable[dict[str, Any]], defence: bool = False, hasten: bool = False,
+    shallow: bool = False,
 ) -> dict[str, int]:
     """The record's tally: what was asked, what was proved, how many set one move, and,
     where T3 was asked (`defence`), its answers and how many positions are too easy to
-    offer under T1, T2, T3 and, where T4 was asked (`hasten`), its answers too."""
+    offer under T1, T2, T3 and, where T4 was asked (`hasten`) or T5 (`shallow`), their
+    answers too."""
     tally = {"candidates": 0, "forced": 0, "won": 0, "lost": 0, "open": 0,
              "single": 0, "others_lost": 0}
     defences = dict.fromkeys(DEFENCES, 0)
     hastens = dict.fromkeys(DEFENCES, 0)
+    shallows = dict.fromkeys(SHALLOWS, 0)
     easy = 0
     for row in rows:
         tally["candidates"] += 1
@@ -252,12 +269,16 @@ def counts(
             defences[row["defence"]] += 1
         if row.get("hasten") in hastens:
             hastens[row["hasten"]] += 1
+        if row.get("shallow") in shallows:
+            shallows[row["shallow"]] += 1
         easy += bool(trivial(row))
     if defence:
         tally.update({f"defence_{answer}": count for answer, count in defences.items()})
     if hasten:
         tally.update({f"hasten_{answer}": count for answer, count in hastens.items()})
-    if defence or hasten:
+    if shallow:
+        tally.update({f"shallow_{answer}": count for answer, count in shallows.items()})
+    if defence or hasten or shallow:
         tally["trivial"] = easy
     return tally
 
@@ -281,7 +302,9 @@ def trivial(row: dict[str, Any]) -> tuple[str, ...]:
     - **T3**, the defence has no say: the record's stored `defence` answer is `none`
       (`defence` asks the core for it; a `FORMAT` 1 record has none to read);
     - **T4**, the defence can only hasten it (§3.6): the stored `hasten` answer is `none`
-      (`hasten` asks the core; only a `FORMAT` 3 record has it).
+      (`hasten` asks the core; a `FORMAT` 3 or 4 record has it);
+    - **T5**, seen at a glance (§3.7): the stored `shallow` answer is `found` (`shallow`
+      asks the core; only a `FORMAT` 4 record has it).
 
     A position that is not a proved win is not offered at all, so it fails nothing here.
     """
@@ -298,6 +321,8 @@ def trivial(row: dict[str, Any]) -> tuple[str, ...]:
         parts.append(T3)
     if row.get("hasten") == NONE:
         parts.append(T4)
+    if row.get("shallow") == FOUND:
+        parts.append(T5)
     return tuple(parts)
 
 
@@ -315,8 +340,19 @@ def asks_defence(row: dict[str, Any]) -> bool:
     """Whether T3 and T4 are put to this position: a proved win with two or more winning
     moves that T1 and T2 keep (`plan-proven.md` §3.3: those already left out are not
     asked). T4 is asked of the same positions as T3 (§3.6), whatever T3 answered."""
-    return row.get("result") == WON and winning_moves(row) >= 2 and not trivial(
-        {key: value for key, value in row.items() if key not in ("defence", "hasten")}
+    return row.get("result") == WON and winning_moves(row) >= 2 and not trivial(_unasked(row))
+
+
+def _unasked(row: dict[str, Any]) -> dict[str, Any]:
+    """The row as the proofs left it, before any engine-asked test's answer."""
+    return {key: value for key, value in row.items() if key not in ANSWERS}
+
+
+def asks_shallow(row: dict[str, Any]) -> bool:
+    """Whether T5 is put to this position (`plan-proven.md` §3.7): a proved win that T1 to
+    T4 keep, read with T3's and T4's stored answers and without T5's own."""
+    return row.get("result") == WON and not trivial(
+        {key: value for key, value in row.items() if key not in ("shallow", "shallow_moves")}
     )
 
 
@@ -434,6 +470,67 @@ def _says(
     return said
 
 
+def shallow(
+    engine: Engine,
+    row: dict[str, Any],
+    agents: tuple[str, ...] = SHALLOW_AGENTS,
+    seeds: tuple[int, ...] = SHALLOW_SEEDS,
+    nodes: int = DEFENCE_NODES,
+    max_depth: int = MAX_DEPTH,
+    goal: float = GOAL_PIECES,
+    immune: float = IMMUNE_PIECES,
+    state: GameState | None = None,
+) -> tuple[str, dict[str, list[int]]] | None:
+    """T5 (`plan-proven.md` §3.7): do the core's quick players play a move that wins?
+
+    None where the position is not a proved win. Otherwise each of `agents` is asked from
+    each of `seeds` what it plays here (`choose_move`: the core's own player, its seat
+    stream fixed by the seed), and each move chosen is read against the record: proved
+    `won` wins, proved `lost` does not, and an `open` one is asked again of the position
+    it leaves (`Engine.terminal`, else `Engine.root_scores` at `nodes` with the given
+    weights), winning only where the core proves that position won for the mover. The
+    answer is `found` when any choice wins and `missed` when none does, with the moves
+    each agent played in seed order. The first choice proved to win decides it, so the
+    rest are not asked again; the answer is the same either way.
+
+    `state` is the position itself where the caller holds it; otherwise the record's
+    prefix is replayed. Rule 3: every move, outcome and score is the core's; this compares.
+    """
+    if row.get("result") != WON:
+        return None
+    mover = int(row["side"])
+    if state is None:
+        state = engine.play(engine.initial_state(), [int(move) for move in row["moves"]])
+    if state.side_to_move != mover:
+        raise ValueError(f"{row.get('id')}: the record's side is not the side to move")
+    proofs = {int(entry["move"]): entry["proof"] for entry in row.get("scores") or []}
+    played: dict[str, list[int]] = {}
+    for agent in agents:
+        moves = []
+        for seed in seeds:
+            move = choose_move(engine, agent, state, seed=seed)
+            if move is None or move not in proofs:
+                raise ValueError(f"{row.get('id')}: {agent} played no root move of the record")
+            moves.append(move)
+        played[agent] = moves
+    values = eval_values(engine.spec)
+
+    def wins(move: int) -> bool:
+        if proofs[move] != OPEN:
+            return proofs[move] == WON
+        after = engine.apply(state, move)
+        legal = engine.legal_moves(after)
+        outcome = engine.terminal(after, legal)
+        if outcome is not None:
+            return outcome.winner == mover
+        best = proof_of(max(engine.root_scores(after, values, nodes, max_depth, goal, immune)))
+        return best == (WON if after.side_to_move == mover else LOST)
+
+    chosen = list(dict.fromkeys(move for moves in played.values() for move in moves))
+    answer = FOUND if any(wins(move) for move in chosen) else MISSED
+    return answer, played
+
+
 def record(
     engine: Engine,
     name: str,
@@ -452,6 +549,11 @@ def record(
     hasten_nodes: int | None = None,
     hasten_built: str | None = None,
     hasten_made: datetime.date | None = None,
+    shallow_nodes: int | None = None,
+    shallow_built: str | None = None,
+    shallow_made: datetime.date | None = None,
+    shallow_agents: tuple[str, ...] = SHALLOW_AGENTS,
+    shallow_seeds: tuple[int, ...] = SHALLOW_SEEDS,
 ) -> dict[str, Any]:
     """The record the site loads: the basis, the tally, and the proved positions only.
 
@@ -462,7 +564,9 @@ def record(
     Rows that carry T3's answer (`defence`) keep it, and `defence_nodes` names the budget
     it was asked at, with the core and the day (`defence_built`, `defence_made`): the
     basis of every `none` the site leaves out; T4's answers (`hasten`) likewise with
-    `hasten_nodes`, `hasten_built` and `hasten_made`. Positions too easy to offer stay in
+    `hasten_nodes`, `hasten_built` and `hasten_made`; T5's (`shallow`, `shallow_moves`) with
+    `shallow_nodes` (the second ask's budget), the players and seeds asked, `shallow_built`
+    and `shallow_made`. Positions too easy to offer stay in
     the record; the reader leaves them out (`trivial`), so the record holds every proof.
     """
     ordered = sorted(rows, key=lambda row: (row["seed"], row["game"], row["ply"]))
@@ -488,6 +592,12 @@ def record(
         basis["hasten_nodes"] = hasten_nodes
         basis["hasten_built"] = hasten_built
         basis["hasten_made"] = (hasten_made or datetime.date.today()).isoformat()
+    if shallow_nodes is not None:
+        basis["shallow_agents"] = list(shallow_agents)
+        basis["shallow_seeds"] = list(shallow_seeds)
+        basis["shallow_nodes"] = shallow_nodes
+        basis["shallow_built"] = shallow_built
+        basis["shallow_made"] = (shallow_made or datetime.date.today()).isoformat()
     return {
         "format": FORMAT,
         "ruleset_hash": engine.spec.hash,
@@ -495,7 +605,8 @@ def record(
         "made": (made or datetime.date.today()).isoformat(),
         "basis": basis,
         "counts": counts(ordered, defence=defence_nodes is not None,
-                         hasten=hasten_nodes is not None),
+                         hasten=hasten_nodes is not None,
+                         shallow=shallow_nodes is not None),
         "positions": [row for row in ordered if row["result"] in (WON, LOST)],
     }
 

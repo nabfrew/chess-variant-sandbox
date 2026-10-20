@@ -6554,7 +6554,10 @@ class TestWhatReachesThePage:
         # `lostArrowHtml`) and an unplayed move's struck ghost (`drawPiece` and numbers).
         # 138 since Q638: *full screen* turns into *leave full screen* and back
         # (`setBoardFull`), its icon and its constant words (`fullWords`).
-        assert len(sites) == 138
+        # 139 since Q995b: how the players take turns redrawn in place (`drawTurns`), its
+        # three constant ways and the server's sentences of what changed, each through
+        # `esc`.
+        assert len(sites) == 139
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")

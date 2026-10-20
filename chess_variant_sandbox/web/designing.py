@@ -65,6 +65,7 @@ from chess_variant_sandbox.spec.describe import (
     move_sentence,
     plain_move_sentence,
 )
+from chess_variant_sandbox.spec.plain import field_words
 from chess_variant_sandbox.spec.plain import plain_problem as _spec_plain_problem
 from chess_variant_sandbox.spec.schema import (
     HEX_SYMMETRIES,
@@ -1217,8 +1218,8 @@ def portal_problem(problem: str, spec: Any = None, sides: Any = None) -> dict[st
                     f"{also.group(1)}. Each end goes on a square of its own."}
         off_map = re.match(r"must be a square on the board, got (.*)$", rest)
         if off_map:
-            return {**place, "says": f"{who} has an end that isn't on a square of this board "
-                    f"({off_map.group(1).strip(chr(39))}). Put it on an empty square."}
+            return {**place, "says": f"{who} has an end that "
+                    f"{_off_board_words(off_map.group(1))}. Put it on an empty square."}
     filtered = re.match(_P_PAIR + r"\.(?:carries\.(orange|blue)|ends\[(\d+)\]\.carries) (.*)$",
                         text)
     if filtered:
@@ -1240,9 +1241,8 @@ def portal_problem(problem: str, spec: Any = None, sides: Any = None) -> dict[st
     off = re.match(_P_PAIR + r"\.(orange|blue) must be a square on the board, got (.*)$", text)
     if off:
         pair, end = int(off.group(1)) + 1, off.group(2)
-        return {"pair": pair, "end": end, "says": f"Pair {pair}'s {_END_ORDER[end]} end isn't "
-                f"on a square of this board ({off.group(3).strip(chr(39))}). Put it on an "
-                "empty square."}
+        return {"pair": pair, "end": end, "says": f"Pair {pair}'s {_END_ORDER[end]} end "
+                f"{_off_board_words(off.group(3))}. Put it on an empty square."}
     both = re.match(_P_PAIR + r" puts both ends on (\S+); a pair needs two squares$", text)
     if both:
         pair = int(both.group(1)) + 1
@@ -1377,11 +1377,160 @@ def _portal_piece_problem(
     return None
 
 
+def _off_board_words(got: str) -> str:
+    """Where an end is said to be that is not a square: *isn't on a square of this board
+    (z9)*, or, for an end not put down yet (a new card's, written as nothing), *isn't on
+    the board yet* rather than the validator's *None* (Q995b)."""
+    got = got.strip().strip(chr(39))
+    if got in ("None", "null", ""):
+        return "isn't on the board yet"
+    return f"isn't on a square of this board ({got})"
+
+
 def plain_problem(problem: str, spec: Any = None, sides: Any = None) -> str:
-    """A validator problem in the designer's words: a portal's (D7) where it is one, and
-    `spec.plain`'s for every other."""
+    """A validator problem in the designer's words: a portal's (D7) where it is one, two
+    rules that can't go together (`_beside_problem`), a field of the whole army
+    (`_army_problem`, Q995b), and `spec.plain`'s for every other."""
     said = portal_problem(problem, spec, sides)
-    return said["says"] if said else _spec_plain_problem(problem, spec)
+    if said:
+        return said["says"]
+    words = (_beside_problem(problem, spec) or _army_problem(problem, spec)
+             or _spec_plain_problem(problem, spec))
+    # `spec.plain` names a rule where the validator wrote its path, and a path after an
+    # article (*a rules.strike whose chain ...*) became *a the rule 'what a taken piece
+    # becomes' whose chain*. The article goes.
+    return re.sub(r"\ban? (the rule ')", r"\1", words)
+
+
+# ------------------------------------------------------------------ two rules that can't meet
+
+# The validator's sentence for a rule refused beside another (`rules.simultaneous beside
+# rules.castling: castling moves two pieces in one move, ...`). `spec.plain` reads the two
+# paths as two places run together (*The rule 'both players moving at once' beside the
+# rule 'castling': ...*), which is the sentence a newcomer met three times on the way from
+# chess to rounds (Q995a F2). Said here as one thing that can't go with another.
+_BESIDE = re.compile(r"^rules\.(?P<rule>\w+) beside (?P<what>.+?): (?P<why>.+)$")
+
+
+def _thing_words(what: str, spec: Any) -> str:
+    """The other half of a *beside* sentence, as the cards call it."""
+    win = re.fullmatch(r"rules\.win '(\w+)'( \(the default\))?", what)
+    if win:
+        return f"winning by {win[1].replace('_', ' ')}" + (", the default" if win[2] else "")
+    valued = re.fullmatch(r"rules\.(\w+)(?:\.(\w+))? '([^']*)'", what)
+    if valued:
+        value = valued[3].replace("_", " ")
+        if valued[2] is None:
+            return f"the rule '{_rule_title(valued[1])}' set to '{value}'"
+        words = field_words(f"rules.{valued[1]}.{valued[2]}")
+        label = words[0] if words else valued[2].replace("_", " ")
+        return f"'{label}' set to '{value}' in the rule '{_rule_title(valued[1])}'"
+    field = re.fullmatch(r"rules\.(\w+)\.(\w+)", what)
+    if field:
+        words = field_words(f"rules.{field[1]}.{field[2]}")
+        label = words[0] if words else field[2].replace("_", " ")
+        return f"'{label}' in the rule '{_rule_title(field[1])}'"
+    rule = re.fullmatch(r"rules\.(\w+)", what)
+    if rule:
+        return f"the rule '{_rule_title(rule[1])}'"
+    # *a portal a player moves (moved_by)*: the key in brackets is the text's, not a word.
+    said = _spec_plain_problem(re.sub(r" \([a-z]+_[a-z_]+\)", "", what), spec).rstrip(".")
+    return said[:1].lower() + said[1:]
+
+
+def _beside_problem(problem: str, spec: Any) -> str | None:
+    """*The rule 'both players moving at once' can't go with the rule 'castling': castling moves two pieces in
+    one move, and a round has one each.* The rule first, then what is in its way, then the
+    validator's reason in plain words."""
+    found = _BESIDE.match(problem)
+    if found is None or found["rule"] == "portals":
+        return None
+    title = _rule_title(found["rule"])
+    why = _spec_plain_problem(found["why"], spec)
+    return (f"The rule '{title}' can't go with {_thing_words(found['what'], spec)}: "
+            f"{why[:1].lower()}{why[1:]}")
+
+
+# ------------------------------------------------------------------ a field of the whole army
+
+# The validator checks some piece fields across the army at once and names them with no
+# index (`pieces[].speed`, and `pieces.speed` in a version sentence). `spec.plain` reads a
+# path into `pieces` only by its index, so these five sentences, about the newest fields,
+# opened *Where the game comes from* and named neither the piece nor the field (Q995a F3).
+# Here the pieces that carry the field are named from the draft.
+_ARMY_PATH = re.compile(r"\bpieces(?:\[\])?\.(?P<key>[a-z_]+)\b")
+
+# The three a newcomer meets most: a field of a game in rounds set on a game that is not
+# in one. Each says where rounds are chosen.
+_ROUNDS_ONLY = (
+    (re.compile(r"^pieces\[\]\.speed orders the two moves of a round, and this game has none"),
+     "speed", "a speed only matters in a game played in rounds", "clear {its} speed"),
+    (re.compile(r"^pieces\[\]\.spy: a spy decides when a game plays in rounds"),
+     "spy", "a spy only works in a game played in rounds", "take {its} spy away"),
+    (re.compile(r"^pieces\[\d+\]\.beats says who wins a collision, and only matters"),
+     "beats", "who a piece beats in a collision only matters in a game played in rounds",
+     "clear who {it} beats"),
+)
+_CHOOSE_ROUNDS = "Choose 'in rounds' under 'how the players take turns', or"
+
+
+def _carrying(spec: Any, key: str) -> list[int]:
+    pieces = spec.get("pieces") if isinstance(spec, dict) else None
+    if not isinstance(pieces, list):
+        return []
+    return [index for index, piece in enumerate(pieces)
+            if isinstance(piece, dict) and key in piece]
+
+
+def _pieces_called(spec: Any, indices: list[int]) -> str:
+    """*Piece 2 (knight)*, *Pieces 2 (knight) and 3 (bishop)*: the place `spec.plain`
+    gives one piece, for one or several."""
+    pieces = spec["pieces"]
+
+    def one(index: int) -> str:
+        name = pieces[index].get("name")
+        return f"{index + 1}" + (f" ({name})" if isinstance(name, str) and name.strip() else "")
+
+    named = [one(index) for index in indices]
+    if len(named) == 1:
+        return f"Piece {named[0]}"
+    return f"Pieces {', '.join(named[:-1])} and {named[-1]}"
+
+
+def _army_problem(problem: str, spec: Any) -> str | None:
+    """A problem about a field of the army, with the pieces that carry it named."""
+    beats = re.match(r"^pieces\[(\d+)\]\.beats", problem)
+    for pattern, key, says, way_out in _ROUNDS_ONLY:
+        if not pattern.match(problem):
+            continue
+        carriers = [int(beats[1])] if key == "beats" and beats else _carrying(spec, key)
+        if not carriers or not all(index < len(spec["pieces"]) for index in carriers):
+            break
+        several = len(carriers) > 1
+        out = way_out.format(its="their" if several else "its", it="they" if several else "it")
+        return f"{_pieces_called(spec, carriers)}: {says}. {_CHOOSE_ROUNDS} {out}."
+    if _ARMY_PATH.search(problem) is None:
+        return None
+    plural: list[tuple[str, str]] = []
+
+    def name(found: re.Match[str]) -> str:
+        key = found["key"]
+        words = field_words(f"pieces.{key}")
+        label = words[0] if words else key.replace("_", " ")
+        # The path the sentence is about, at its start or as what a version sentence says
+        # the draft uses, is the pieces that carry it; one inside a reason is the field.
+        subject = found.start() == 0 or problem[:found.start()].endswith("uses ")
+        carriers = _carrying(spec, key) if subject else []
+        if not carriers:
+            return f"every piece's '{label}'" if subject else f"'{label}'"
+        if len(carriers) > 1:
+            plural.append((_pieces_called(spec, carriers[:1]), _pieces_called(spec, carriers)))
+        return f"pieces[{carriers[0]}].{key}"
+
+    said = _spec_plain_problem(_ARMY_PATH.sub(name, problem), spec)
+    for alone, every in plural:
+        said = said.replace(alone, every).replace(alone.lower(), every.lower())
+    return said
 
 
 def plain_problems(problems: list[str], spec: Any = None, sides: Any = None) -> list[str]:
@@ -1635,7 +1784,7 @@ def _changes_from(parent: dict[str, Any] | None, spec: dict[str, Any]) -> list[s
 
 
 def refusals(spec: Any, candidates: dict[str, Any]) -> dict[str, Any]:
-    """Which of these rules this draft cannot take, in the validator's own words.
+    """Which of these rules this draft cannot take, and every reason why, in plain words.
 
     Option A9. The wild-piece refusal beside a strike is a good sentence and it arrived
     eight actions after the wolf was made (finding 2.10), so the menu asks for it before
@@ -1647,6 +1796,11 @@ def refusals(spec: Any, candidates: dict[str, Any]) -> dict[str, Any]:
     the same `validate_spec` every other rung asks. A draft that is not a game yet gets
     no refusals at all -- every rule would be refused for the draft's own errors, which
     is a menu greyed out from end to end and says nothing about any rule.
+
+    **Every reason, at once, in the designer's words** (Q995b). This used to be the
+    validator's first sentence, raw: from chess, rounds said only checkmate, and castling
+    and taking in passing were each found by fixing the one before (Q995a F2). Each entry
+    is now the whole list, through `plain_problems`.
     """
     import copy
 
@@ -1661,8 +1815,158 @@ def refusals(spec: Any, candidates: dict[str, Any]) -> dict[str, Any]:
         trial.setdefault("rules", {})[str(key)] = value
         problems = _worth_saying(validate_spec(settled(trial)))
         if problems:
-            refused[str(key)] = problems[0]
+            # Every reason once: several validator lines can read as one sentence.
+            refused[str(key)] = list(dict.fromkeys(plain_problems(problems, trial)))
     return {"refused": refused, "asked": True}
+
+
+# ------------------------------------------------------------------ how the players take turns
+
+# The three ways, as the top of the designer offers them (Q995b): one after the other (no
+# key), in rounds (`rules.simultaneous`), and more than one move a turn (`rules.turn`).
+TURN_WAYS = ("alternate", "rounds", "several")
+
+
+def _royal_names(trial: dict[str, Any]) -> str:
+    names = [piece["name"] for piece in trial.get("pieces") or []
+             if isinstance(piece, dict) and piece.get("royal") is True
+             and isinstance(piece.get("name"), str) and piece["name"].strip()]
+    return " or ".join(dict.fromkeys(names)) or "royal piece"
+
+
+def _drop_rule(trial: dict[str, Any], key: str) -> bool:
+    rules = trial.get("rules")
+    return isinstance(rules, dict) and rules.pop(key, None) is not None
+
+
+def _drop_in_rule(trial: dict[str, Any], key: str, inner: str) -> bool:
+    rule = (trial.get("rules") or {}).get(key)
+    return isinstance(rule, dict) and rule.pop(inner, None) is not None
+
+
+def _drop_on_pieces(trial: dict[str, Any], key: str, only: int | None = None) -> list[str]:
+    """The names of the pieces a field was taken off."""
+    out = []
+    for index, piece in enumerate(trial.get("pieces") or []):
+        if isinstance(piece, dict) and key in piece and (only is None or only == index):
+            del piece[key]
+            out.append(str(piece.get("name") or piece.get("id")))
+    return out
+
+
+def _why(found: re.Match[str], spec: Any) -> str:
+    said = _spec_plain_problem(found["why"], spec).rstrip(".")
+    return said[:1].lower() + said[1:]
+
+
+def _remedy(problem: str, trial: dict[str, Any]) -> str | None:
+    """Make the one change that answers this problem, and say it; None where no change
+    is ours to make.
+
+    A change a turn-taking choice brings with it, and only those: a rule that cannot be
+    played in rounds is taken out, a piece field that only means something in rounds is
+    cleared. Which ones is the validator's to say -- this reads its sentences and never
+    decides that a rule conflicts. A conflict with no change here (a sweep, a portal a
+    player moves) stays a problem, and the choice is refused with it in plain words.
+    """
+    rounds = re.match(r"^rules\.simultaneous beside (?P<what>.+?): (?P<why>.+)$", problem)
+    if rounds:
+        what = rounds["what"]
+        if re.fullmatch(r"rules\.win 'checkmate'( \(the default\))?", what):
+            trial.setdefault("rules", {})["win"] = "royal_capture"
+            return (f"Taking the {_royal_names(trial)} now wins, in place of checkmate: "
+                    "there is no check when both players move at once.")
+        dropped = re.fullmatch(
+            r"rules\.(checkmate|forbid_check|check_limit|castling|en_passant)"
+            r"|rules\.(royal_facing) 'forbidden'", what)
+        if dropped:
+            key = dropped[1] or dropped[2]
+            if _drop_rule(trial, key):
+                return f"The rule '{_rule_title(key)}' is taken out: {_why(rounds, trial)}."
+            return None
+        # Where a strike or a meeting puts its piece is not taken out: a chain needs the
+        # piece to stay, so the change would trade one refusal for another, and the
+        # person reads the first one, which is the reason.
+        if what == "rules.drops.no_mate" and _drop_in_rule(trial, "drops", "no_mate"):
+            words = field_words("rules.drops.no_mate")
+            label = words[0] if words else "no mate"
+            return (f"'{label}' is taken out of the rule '{_rule_title('drops')}': "
+                    f"{_why(rounds, trial)}.")
+        return None
+    if problem.startswith("pieces[].speed orders the two moves of a round"):
+        names = _drop_on_pieces(trial, "speed")
+        return (f"The speed is cleared from the {_list_words(names)}: a speed only orders "
+                "the two moves of a round.") if names else None
+    if problem.startswith("pieces[].spy: a spy decides when a game plays in rounds"):
+        names = _drop_on_pieces(trial, "spy")
+        return (f"The {_list_words(names)} {'is' if len(names) == 1 else 'are'} no longer "
+                "a spy: a spy only works in rounds.") if names else None
+    beats = re.match(r"^pieces\[(\d+)\]\.beats says who wins a collision", problem)
+    if beats:
+        names = _drop_on_pieces(trial, "beats", int(beats[1]))
+        return (f"Who the {names[0]} beats in a collision is cleared: it only matters when "
+                "both players move at once.") if names else None
+    passing = re.match(r"^rules\.en_passant beside a turn longer than one move", problem)
+    if passing and _drop_rule(trial, "en_passant"):
+        return (f"The rule '{_rule_title('en_passant')}' is taken out: in a turn of several moves a "
+                "player could take their own pawn in passing.")
+    return None
+
+
+def take_turns(spec: Any, way: str, card: Any = None) -> dict[str, Any]:
+    """The draft played another way, with every change that way needs made at once.
+
+    The top of the designer offers how the players take turns (Q995b, from Q995a's F1 and
+    F2): one after the other, in rounds, or more than one move a turn. From a copy of
+    chess, rounds used to be three round trips: the rule was refused for checkmate, and
+    then for castling, and then for taking in passing, each found alone. Here the choice
+    is made, the validator is asked, and each problem it raises that a turn-taking choice
+    answers is answered (`_remedy`), until none is left; what was changed comes back in
+    sentences, so the page can say it and undo can take the whole step back.
+
+    ``card`` is what the rule's card would arrive holding (the page's `fieldDefault`, as
+    `refusals` takes it), used where the draft does not state the rule already.
+
+    The answer is ``{"draft", "changes", "errors"}``. A choice that would leave a problem
+    the draft did not have before is not made: ``draft`` is None and ``errors`` says every
+    reason, in plain words. The draft is never changed in place.
+    """
+    import copy
+
+    if not isinstance(spec, dict) or way not in TURN_WAYS:
+        raise DesignError(f"a draft and one of {', '.join(TURN_WAYS)}")
+    before = set(_worth_saying(validate_spec(settled(spec))))
+    trial = copy.deepcopy(spec)
+    rules = trial.setdefault("rules", {})
+    if not isinstance(rules, dict):
+        raise DesignError("a draft whose rules can be read")
+    if way != "rounds":
+        rules.pop("simultaneous", None)
+    if way != "several":
+        rules.pop("turn", None)
+    if way == "rounds" and not isinstance(rules.get("simultaneous"), dict):
+        rules["simultaneous"] = card if isinstance(card, dict) else {}
+    if way == "several" and not isinstance(rules.get("turn"), dict):
+        rules["turn"] = card if isinstance(card, dict) else {"moves": 2}
+
+    changes: list[str] = []
+    for _ in range(12):
+        problems = _worth_saying(validate_spec(settled(trial)))
+        said = None
+        for problem in problems:
+            if problem in before:
+                continue
+            said = _remedy(problem, trial)
+            if said:
+                changes.append(said)
+                break
+        if said is None:
+            break
+    left = [problem for problem in _worth_saying(validate_spec(settled(trial)))
+            if problem not in before]
+    if left:
+        return {"draft": None, "changes": [], "errors": plain_problems(left, trial)}
+    return {"draft": trial, "changes": changes, "errors": []}
 
 
 def _errors_of(error: Exception, spec: Any = None) -> list[str]:

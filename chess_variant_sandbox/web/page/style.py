@@ -1365,9 +1365,20 @@ RULES = """
              overflow-y: auto; }
   .tryList button { display: block; width: 100%; text-align: left; font-size: 12.5px;
                     line-height: 1.35; padding: 5px 8px; min-height: var(--ctl-h-sm); }
-  /* The rules this draft cannot take, each with the validator's own sentence. */
+  /* The rules this draft cannot take, each with every reason, in plain words (Q995b). */
   .refusedList { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
   .refusedList b { display: block; }
+  .refusedReasons, .turnSaid ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+  /* How the players take turns (Q995b): the first panel's three ways, each a radio with its
+     sentence, and under them what the last choice changed. */
+  .turnWays { border: 0; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; min-width: 0; }
+  .turnWays > legend { font-size: 12px; color: var(--muted); padding: 0; margin-bottom: 4px; }
+  .turnWay { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px;
+             align-items: start; cursor: pointer; }
+  .turnWay input { margin-top: 3px; }
+  .turnWay .cardSays { display: block; }
+  .turnSaid { margin: 4px 0 0; }
+  .turnSaid button { margin-top: 6px; }
   @media (max-width: 720px) {
     .paletteList li { grid-template-columns: auto 1fr; }
     .paletteGames { grid-column: 2; }

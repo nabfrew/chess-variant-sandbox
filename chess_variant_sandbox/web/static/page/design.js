@@ -561,6 +561,7 @@ function drawDesigner() {
           placeholder="What is this game? One sentence, in your own words: the library shows it under the name."
           >${esc(DRAFT.description || '')}</textarea></label>
       ${boardFormHtml(board)}
+      <div id="dTurns">${turnsHtml()}</div>
     </div>
 
     <h3>The pieces</h3>
@@ -621,6 +622,119 @@ function drawDesigner() {
     </details>`;
 
   wireDesigner();
+  wireTurns(form);
+}
+
+// ------------------------------------------------------- how the players take turns
+//
+// Q995b (`docs/reference/designer-coverage.md` F1, F2). A game in rounds was a rule card
+// at the foot of the rules panel under a name without *round*, and from a copy of chess it
+// was not in the menu at all: three conflicts stood in the way, each named alone, in the
+// validator's voice. Now the way the players take turns is the first panel's, beside the
+// board's size, and choosing one asks the server for the draft played that way. The
+// server makes every change the way needs and says each (`designing.take_turns`); which
+// rules are in the way is the validator's, never this page's. The whole step is one
+// draft replaced, so one undo takes it back.
+
+const TURN_WAYS = [
+  ['alternate', 'one after the other', 'a player moves, then the other, as in chess'],
+  ['rounds', 'in rounds', 'both players choose a move in secret, and both moves are made at once'],
+  ['several', 'more than one move a turn', 'each player makes several moves in a row'],
+];
+// What a choice is called in the sentence that follows it.
+const TURN_NOW = { alternate: 'one move after the other', rounds: 'in rounds',
+                   several: 'with more than one move a turn' };
+
+let TURN_SAID = null,    // { key, way, changes } after a choice; { key, way, errors } for a refused one
+    TURN_ASKING = '';    // the way being asked for, while the server answers
+
+// Which way the draft is played now, read off the rules it states.
+function turnWay() {
+  const rules = DRAFT.rules || {};
+  if (rules.simultaneous && typeof rules.simultaneous === 'object') return 'rounds';
+  if (rules.turn && typeof rules.turn === 'object') return 'several';
+  return 'alternate';
+}
+
+function turnsHtml() {
+  const now = TURN_ASKING || turnWay();
+  const said = TURN_SAID && TURN_SAID.key === JSON.stringify(DRAFT) ? TURN_SAID : null;
+  return `<fieldset class="turnWays">
+      <legend>how the players take turns</legend>
+      ${TURN_WAYS.map(([way, label, says]) => `<label class="turnWay">
+        <input type="radio" name="dTurnWay" value="${way}" data-turnway="${way}"${
+          way === now ? ' checked' : ''}${TURN_ASKING ? ' disabled' : ''}>
+        <span><b>${esc(label)}</b><span class="muted small cardSays">${esc(says)}</span></span>
+      </label>`).join('')}
+      <div id="dTurnSaid" aria-live="polite">${turnSaidHtml(said)}</div>
+    </fieldset>`;
+}
+
+// What the last choice changed, or why it could not be made: every reason at once.
+function turnSaidHtml(said) {
+  if (!said) return '';
+  const label = (TURN_WAYS.find(([way]) => way === said.way) || [])[1] || said.way;
+  if (said.errors && said.errors.length) {
+    return `<div class="error small turnSaid"><b>'${esc(label)}' can't be chosen for this game
+      yet</b>, so nothing was changed. ${said.errors.length === 1 ? 'The reason'
+        : `All ${said.errors.length} reasons`}:
+      <ul>${said.errors.map(line => `<li>${esc(line)}</li>`).join('')}</ul></div>`;
+  }
+  const changes = said.changes || [];
+  return `<div class="ok small turnSaid">Now played ${esc(TURN_NOW[said.way] || label)}.
+      ${changes.length ? `For that, ${changes.length === 1 ? 'this' : `these ${changes.length}`}
+        changed too:<ul>${changes.map(line => `<li>${esc(line)}</li>`).join('')}</ul>`
+        : 'Nothing else needed to change.'}
+      <button class="quiet" id="dTurnUndo">undo this</button></div>`;
+}
+
+function drawTurns() {
+  const box = document.getElementById('dTurns');
+  if (!box) return;
+  box.innerHTML = turnsHtml();
+  wireTurns(box);
+}
+
+function wireTurns(root) {
+  if (!root || !root.querySelectorAll) return;
+  root.querySelectorAll('[data-turnway]').forEach(node => {
+    node.onchange = () => { if (node.checked) chooseTurnWay(node.dataset.turnway); };
+  });
+  const undo = root.querySelector('#dTurnUndo');
+  if (undo) undo.onclick = () => stepDraft(false);
+}
+
+// One press: the draft as the server makes it for this way, recorded at once so that undo
+// is the step before it, and drawn with what changed.
+function chooseTurnWay(way) {
+  if (TURN_ASKING || way === turnWay()) return;
+  const model = cardModel();
+  const key = { rounds: 'simultaneous', several: 'turn' }[way];
+  const field = key && model ? model.rules.find(f => f.key === key) : null;
+  const card = field ? fieldDefault(field, [key], 'rules') : null;
+  const from = JSON.stringify(DRAFT);
+  TURN_ASKING = way;
+  drawTurns();
+  return api('/api/design/turns', { spec: DRAFT, way, card }).then(answer => {
+    TURN_ASKING = '';
+    if (JSON.stringify(DRAFT) !== from) { drawTurns(); return; }
+    if (!answer || !answer.draft) {
+      TURN_SAID = { key: from, way, errors: (answer && answer.errors) || [] };
+      drawTurns();
+      return;
+    }
+    snapshotDraft();
+    DRAFT = answer.draft;
+    snapshotDraft();
+    TURN_SAID = { key: JSON.stringify(DRAFT), way, changes: answer.changes || [] };
+    drawDesigner();
+    checkDraft();
+    loadMoveMap();
+  }).catch(error => {
+    TURN_ASKING = '';
+    TURN_SAID = { key: from, way, errors: [errorWords(error)] };
+    drawTurns();
+  });
 }
 
 // ------------------------------------------------ a piece out of a game that already plays
@@ -1624,6 +1738,8 @@ function snapshotDraft() {
   // What a design step changed is true of the draft that press made and of no other, so
   // an edit or an undo takes the sentence with it.
   if (TRY_SAID && TRY_SAID.key !== now) TRY_SAID = null;
+  // So is what a turn-taking choice changed (Q995b).
+  if (TURN_SAID && TURN_SAID.key !== now) TURN_SAID = null;
   // And so is a game in hand: it was played under the rules as they stood when it
   // started, and these are not those rules any more.
   if (BENCH_PLAY && BENCH_PLAY.key !== now) {
