@@ -503,6 +503,9 @@ MAIL_OFF = "/mail/off/"
 #   app's `browser_dir`, `build/browser/` (B1, B4). Only what that build's
 #   `manifest.json` names, and nothing while it has none. On the box Caddy answers
 #   these paths itself once B7 ships the build, and this is the fallback behind it.
+# - `/static/picture/`, the link-preview picture every page's head names (G5,
+#   `web/page/picture.py`), from `chess_variant_sandbox/web/static/picture/`. Only what its
+#   `manifest.json` names, cached for a year: a new picture is a new file name.
 # - `/robots.txt` and `/sitemap.xml`, the doors for crawlers (G4, `site/seo.py`): the site's
 #   handler answers them, beside `/` and `/game` with their own heads.
 #
@@ -512,7 +515,7 @@ MAIL_OFF = "/mail/off/"
 STATIC: tuple[str, ...] = (
     "/static/vendor/", "/static/page/", "/static/site/", "/static/measure-worker.js", "/browser/",
     "/static/fonts/", "/static/shell.js", "/favicon.svg", "/favicon.ico", "/apple-touch-icon.png",
-    "/rules.md", "/robots.txt", "/sitemap.xml",
+    "/static/picture/", "/rules.md", "/robots.txt", "/sitemap.xml",
 )
 
 # The pages whose answer depends on who is asking, and so the only ones the cookie is

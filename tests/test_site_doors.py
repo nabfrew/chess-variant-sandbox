@@ -14,7 +14,9 @@ What a search engine gets over HTTP from a running site, against a library of in
   says `noindex` itself;
 - **the landing's headline and first paragraph** are outside the `<template>`, the first
   words in the view, in the hero's own markup so the router's clone lands them where they
-  stood; `/game` lists every listed game for a reader without script, inside `<noscript>`.
+  stood; `/game` lists every listed game for a reader without script, inside `<noscript>`;
+- **the link previews** (G5): every page carries Open Graph and Twitter card tags, its title,
+  description, type, whole address and the site's picture, which is served at 1200 × 630.
 
 The site tests need a real Postgres and skip with a reason without one
 (`tests/site_store.py`).
@@ -27,6 +29,7 @@ import re
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from html import unescape
+from http.client import HTTPConnection
 from pathlib import Path
 from urllib.robotparser import RobotFileParser
 
@@ -53,8 +56,9 @@ from test_site_links import Site, _load, _running_site, _saved
 
 from chess_variant_sandbox.site import admin, mail, pages, routes, screening, seo
 from chess_variant_sandbox.web import landing
-from chess_variant_sandbox.web.page import front
+from chess_variant_sandbox.web.page import front, picture
 from chess_variant_sandbox.web.page import game as drawing
+from chess_variant_sandbox.web.page.shell import NAME
 
 LIBRARY = {SHORT_HASH, MEDIUM_HASH, LONG_HASH, DISTANT_HASH}
 
@@ -71,7 +75,7 @@ KEPT_OUT = ("/api/library", f"/api/game/{SHORT_HASH}", "/signin", "/signin?then=
 # What a page needs to draw, which a crawler that renders must be able to fetch.
 LET_IN = (*PUBLIC, "/game?from=mail", "/rules.md", "/static/page/core.js",
           "/static/shell.js", "/static/site/post.js", "/static/fonts/x.woff2",
-          "/static/vendor/x.js", "/favicon.svg")
+          "/static/vendor/x.js", "/favicon.svg", "/static/picture/site-0.png")
 
 _SITEMAP = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
 
@@ -328,3 +332,116 @@ class TestTheFrontDoors:
             assert head.status == 200 and head.html == "", path
             assert head.headers["content-length"] == got.headers["content-length"], path
 
+
+
+# ------------------------------------------------------------- the link previews (G5)
+
+
+def _tag(page: Fetched, key: str) -> str | None:
+    """One Open Graph (`property`) or Twitter card (`name`) tag's value, unescaped; the tag
+    must be in the head, and there once."""
+    kind = "property" if key.startswith("og:") else "name"
+    found = re.findall(rf'<meta {kind}="{re.escape(key)}" content="([^"]*)">', page.html)
+    assert len(found) <= 1, (key, found)
+    if not found:
+        return None
+    assert page.html.index(f'<meta {kind}="{key}"') < page.html.index("</head>"), key
+    return unescape(found[0])
+
+
+def _picture_address() -> str:
+    return SITE_URL + picture.site_path()
+
+
+class TestThePreviews:
+    """G5 of `docs/plan-growth.md`: a link pasted into a chat program or a post unfurls
+    into the page's title, description and the site's picture, from the tags in the head."""
+
+    def test_every_public_page_carries_the_open_graph_and_twitter_tags(
+        self, site: Site
+    ) -> None:
+        for path in PUBLIC:
+            page = _fetch(site.port, path)
+            assert page.status == 200, path
+            said = page.meta("description")
+            assert said, path
+            # Open Graph: the title, the description, the type, the site and a whole
+            # address for both the page (its canonical) and the picture.
+            assert _tag(page, "og:site_name") == NAME, path
+            assert _tag(page, "og:type") == front.PREVIEW_TYPE == "website", path
+            assert _tag(page, "og:title") == page.title.removesuffix(f" · {NAME}"), path
+            assert _tag(page, "og:description") == unescape(said), path
+            assert _tag(page, "og:url") == page.canonical == SITE_URL + path, path
+            assert _tag(page, "og:image") == _picture_address(), path
+            assert _tag(page, "og:image:type") == "image/png", path
+            assert (_tag(page, "og:image:width"), _tag(page, "og:image:height")) == (
+                "1200", "630"), path
+            assert _tag(page, "og:image:alt") == picture.ALT, path
+            # Twitter's card says the same, with the picture across the top.
+            assert _tag(page, "twitter:card") == "summary_large_image", path
+            assert _tag(page, "twitter:title") == _tag(page, "og:title"), path
+            assert _tag(page, "twitter:description") == unescape(said), path
+            assert _tag(page, "twitter:image") == _picture_address(), path
+
+    def test_each_kind_of_page_previews_under_its_own_title(self, site: Site) -> None:
+        titles = {path: _tag(_fetch(site.port, path), "og:title") for path in PUBLIC}
+        assert titles["/"] == NAME
+        assert titles["/game"] == "Games"
+        # A game's own page names the game, never the site alone.
+        assert titles[f"/game/{SHORT_HASH}"] == "Short walk: play it online"
+        assert len(set(titles.values())) == len(titles), titles
+
+    def test_a_games_page_points_at_its_picture_which_is_the_sites_until_g6(
+        self, site: Site
+    ) -> None:
+        for digest in (SHORT_HASH, MEDIUM_HASH):
+            page = _fetch(site.port, f"/game/{digest}")
+            assert _tag(page, "og:image") == _picture_address(), digest
+            assert _tag(page, "og:description") == unescape(page.meta("description") or "")
+        # One place says which picture a game's page shows, for G6 to change.
+        drawn = drawing.Drawn(hash=SHORT_HASH, name="x", description="", spec={},
+                              score=None, stale=False, near=(), indexable=True,
+                              base=SITE_URL)
+        assert drawing.picture(drawn) == _picture_address()
+        assert drawing.picture(drawn) in drawing.head(drawn)
+
+    def test_the_picture_each_page_names_is_served_at_1200_by_630(self, site: Site) -> None:
+        image = _tag(_fetch(site.port, f"/game/{SHORT_HASH}"), "og:image")
+        assert image and image.startswith(SITE_URL)
+        connection = HTTPConnection("127.0.0.1", site.port, timeout=60)
+        try:
+            connection.request("GET", image[len(SITE_URL):])
+            found = connection.getresponse()
+            body = found.read()
+            headers = {k.lower(): v for k, v in found.getheaders()}
+        finally:
+            connection.close()
+        assert found.status == 200
+        assert headers["content-type"] == "image/png"
+        assert "max-age=31536000" in headers["cache-control"]
+        assert picture.size(body) == (1200, 630)
+        assert len(body) == picture.site_entry()["bytes"]
+
+    def test_a_page_kept_from_the_index_still_unfurls(self, site: Site) -> None:
+        """A challenge link is what a member pastes into a chat: no canonical, so no
+        `og:url` (the unfurler keeps the address it was given), but the rest is there."""
+        _saved(site.signed_in("ada"), DRAFT)
+        for path in ("/c/abc123", f"/game/{DRAFT_HASH}", "/signin"):
+            page = _fetch(site.port, path)
+            assert page.status == 200, path
+            assert page.meta("robots") == "noindex", path
+            assert _tag(page, "og:title") and _tag(page, "og:description"), path
+            assert _tag(page, "og:image") == _picture_address(), path
+            assert _tag(page, "og:url") == page.canonical, path
+
+    def test_without_a_site_address_no_tag_names_a_part_address(
+        self, site: Site, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A development machine has only paths, and a preview's address and picture must
+        be whole: they are left out rather than written as paths."""
+        monkeypatch.delenv(mail.URL_VAR)
+        for path in ("/", "/badges"):
+            page = _fetch(site.port, path)
+            assert _tag(page, "og:title") and _tag(page, "twitter:card"), path
+            for key in ("og:url", "og:image", "twitter:image"):
+                assert _tag(page, key) is None, (path, key)

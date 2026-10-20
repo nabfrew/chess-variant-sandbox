@@ -48,7 +48,7 @@ from chess_variant_sandbox.web.evolving import Runs
 from chess_variant_sandbox.web.human import HUMAN, HumanGame, HumanRecord, picker_ratings
 from chess_variant_sandbox.web.keeping import Measurements
 from chess_variant_sandbox.web.opponents import Ratings
-from chess_variant_sandbox.web.page import PAGE, SCRIPTS, shell
+from chess_variant_sandbox.web.page import PAGE, SCRIPTS, picture, shell
 from chess_variant_sandbox.web.page import game as game_page
 from chess_variant_sandbox.web.play import Session, Sessions, seed_asked
 
@@ -1426,6 +1426,9 @@ def handler_for(app: App) -> type[BaseHTTPRequestHandler]:
             if parsed.path.startswith(shell.FONT_PREFIX):
                 self._font(parsed.path[len(shell.FONT_PREFIX):])
                 return
+            if parsed.path.startswith(picture.PREFIX):
+                self._picture(parsed.path[len(picture.PREFIX):])
+                return
             if parsed.path in shell.icons():
                 body, kind = shell.icons()[parsed.path]
                 self._send(200, body, kind, cache=shell.ICON_CACHE)
@@ -1480,6 +1483,16 @@ def handler_for(app: App) -> type[BaseHTTPRequestHandler]:
                 self._send_json(404, {"error": f"no such file: {name}"})
                 return
             self._send(200, (shell.FONT_DIR / name).read_bytes(), entry["type"], cache=IMMUTABLE)
+
+        def _picture(self, name: str) -> None:
+            """The link-preview picture (G5, `web/page/picture.py`), or 404 for any other
+            name: the fonts' rule, a lookup in its manifest and never a path, and a year's
+            cache, since a new picture is a new file name."""
+            entry = picture.pictures().get(name)
+            if entry is None:
+                self._send_json(404, {"error": f"no such file: {name}"})
+                return
+            self._send(200, (picture.DIR / name).read_bytes(), entry["type"], cache=IMMUTABLE)
 
         def _script(self, path: Path) -> None:
             """One of the page's own scripts, served as the worker script is.

@@ -114,7 +114,7 @@ from chess_variant_sandbox.web import (
     refreshing,
 )
 from chess_variant_sandbox.web.page import SCRIPTS as PAGE_SCRIPTS
-from chess_variant_sandbox.web.page import front, shell
+from chess_variant_sandbox.web.page import front, picture, shell
 from chess_variant_sandbox.web.page import game as game_drawing
 from chess_variant_sandbox.web.server import (
     BROWSER_PREFIX,
@@ -2943,7 +2943,9 @@ def served_elsewhere(path: str) -> bool:
     page for gets the not-found page (V7) rather than a line of JSON a browser shows raw.
     """
     return (
-        path.startswith(("/api/", VENDOR_PREFIX, shell.FONT_PREFIX, BROWSER_PREFIX))
+        path.startswith(
+            ("/api/", VENDOR_PREFIX, shell.FONT_PREFIX, picture.PREFIX, BROWSER_PREFIX)
+        )
         or path in (*PAGE_PATHS, shell.SHELL_SCRIPT_ROUTE, WORKER_ROUTE, RULES_ROUTE)
         or path in shell.icons()
         or path in PAGE_SCRIPTS

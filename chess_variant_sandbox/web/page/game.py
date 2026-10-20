@@ -213,9 +213,17 @@ def canonical(drawn: Drawn) -> str:
     return drawn.base + path(drawn.hash)
 
 
+def picture(drawn: Drawn) -> str:
+    """The game's link-preview picture, a whole address where the site has one. The site's
+    own picture for every game until G6 draws each its starting position: this is the one
+    place that changes."""
+    return front.picture_address(drawn.base)
+
+
 def head(drawn: Drawn) -> str:
     """The lines the head carries beyond the title (`front.head_lines`)."""
-    return front.head_lines(meta_description(drawn), canonical(drawn), drawn.indexable)
+    return front.head_lines(title(drawn.name), meta_description(drawn), canonical(drawn),
+                            drawn.indexable, image=picture(drawn))
 
 
 def view(drawn: Drawn) -> str:

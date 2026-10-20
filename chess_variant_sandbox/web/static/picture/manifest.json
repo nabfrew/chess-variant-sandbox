@@ -1,0 +1,16 @@
+{
+  "note": "The site's link-preview picture (G5, `web/page/picture.py`), served at GET /static/picture/<file> and nothing else, cached for a year: a new picture is a new file name. `source` is the digest of the page it was photographed from; remake it with `uv run python -m chess_variant_sandbox.web.page.picture`.",
+  "files": [
+    {
+      "file": "site-69d11c9934be.png",
+      "role": "site",
+      "type": "image/png",
+      "width": 1200,
+      "height": 630,
+      "bytes": 172416,
+      "sha256": "69d11c9934bea4264d8748292dc0d219c2390137dd9b35e101df142ecd4e71dd",
+      "source": "a3b4b4a502c1af4f73e95459fde02f2b02e4a746a443a0053829078cd56cd5bf",
+      "alt": "Chess variant sandbox: the invader rook beside a wooden board"
+    }
+  ]
+}

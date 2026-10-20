@@ -360,6 +360,8 @@ def _shell(
     an address of its own (`path`) names it as its canonical, on the site's address
     (`seo.site_base`), and says `noindex` when `robots.txt` keeps crawlers off it
     (`seo.disallowed`); a page without one (a token's, the not-found page) says `noindex`.
+    Every page carries the link preview's tags too (G5, `front.preview_lines`), with the
+    site's picture, so a challenge link pasted into a chat shows what it is.
 
     The header and the footer are the app's, drawn here in the markup its own stylesheet
     expects -- `chess_variant_sandbox/web/page/style.py`, imported above rather than answered with a
@@ -374,10 +376,13 @@ def _shell(
     so no value can close the tag.
     """
     tail = "".join(f'<script src="{SCRIPT_PREFIX}{name}.js"></script>\n' for name in scripts)
+    base = seo.site_base()
     head = front.head_lines(
+        title,
         description,
-        None if path is None else seo.site_base() + path,
+        None if path is None else base + path,
         index=path is not None and not seo.disallowed(path),
+        image=front.picture_address(base),
     )
     if data is not None:
         held = json.dumps(data).replace("<", "\\u003c")
