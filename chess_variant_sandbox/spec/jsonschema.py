@@ -868,8 +868,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "Wild pieces are pieces neither player owns. After every move each one "
                     "steps to the next square of its route and eats whatever stands there "
                     "that its type may capture, or waits if it may not. A royal piece "
-                    "standing where a wild piece steps next is in check from it. Taking a "
-                    "wild piece is worth its bounty."
+                    "standing where a wild piece steps next is in check from it when that "
+                    "type may capture the royal. Taking a wild piece is worth its bounty."
                 ),
             },
             "portals": {

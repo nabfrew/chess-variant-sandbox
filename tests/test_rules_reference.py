@@ -18,14 +18,17 @@ import pytest
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
 from chess_variant_sandbox.spec.reference import (
+    _BASIC_PIECE_KEYS,
     COMMAND,
     DEFAULTS,
+    FAMILIES,
     NOTES,
     described,
     render_reference,
     schema_paths,
 )
 from chess_variant_sandbox.spec.schema import (
+    MOVE_KINDS,
     SCHEMA_VERSION,
     SUPPORTED_SCHEMA_VERSIONS,
     validate_spec,
@@ -114,3 +117,45 @@ class TestTheTables:
             if literal is None or "enum" not in node:
                 continue
             assert json.loads(literal.group(1)) in node["enum"], path
+
+
+class TestTheMapOfTheLanguage:
+    """Q994: *What the language can make* places every family of rule, so a reader who was
+    given only this file sees the whole range before the key-by-key reference
+    (`docs/reference/rules-md-blind-trial.md` §2.4). Held to the schema both ways: a key
+    added to the language fails here until it is placed, and a key removed fails as a
+    stale entry."""
+
+    def _placed(self) -> list[str]:
+        return [key for _, _, keys in FAMILIES for key in keys]
+
+    def test_it_places_every_rule_piece_feature_board_shape_and_movement_kind(self) -> None:
+        schema = rule_spec_schema(strict=True)
+        rules = {f"rules.{key}" for key in schema["properties"]["rules"]["properties"]}
+        pieces = {
+            f"pieces[].{key}"
+            for key in schema["properties"]["pieces"]["items"]["properties"]
+            if key not in _BASIC_PIECE_KEYS
+        }
+        board = {
+            f"board.{key}"
+            for key in schema["properties"]["board"]["properties"]
+            if key not in ("width", "height")
+        }
+        assert set(self._placed()) == rules | pieces | board | set(MOVE_KINDS)
+
+    def test_each_key_is_placed_once(self) -> None:
+        placed = self._placed()
+        assert len(placed) == len(set(placed))
+
+    def test_every_key_it_names_exists(self) -> None:
+        paths = set(schema_paths())
+        named = [key for key in self._placed() if key not in MOVE_KINDS]
+        assert [key for key in named if key not in paths] == []
+
+    def test_the_committed_file_carries_the_map_and_the_play_section_once(self) -> None:
+        text = RULES.read_text(encoding="utf-8")
+        assert text.count("## What the language can make") == 1
+        assert text.count("## A valid game is not yet a good one") == 1
+        for title, _, _ in FAMILIES:
+            assert text.count(f"- **{title}.**") == 1, title

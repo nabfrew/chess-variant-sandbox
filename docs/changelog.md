@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-20
 
+### The rules document helps you design, not only write
+
+The published description of the rule language now opens with a map of what each family of rules is for, and adds a
+section on how a game that passes every check can still play badly. It also says exactly when a wild piece gives check.
+
 ### Fewer, better proven positions
 
 The proven positions no longer include the ones that are too easy, where the defender's moves change nothing; the list

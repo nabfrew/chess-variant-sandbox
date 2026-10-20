@@ -26,6 +26,48 @@ the version it declares had. The site serves the reference for the version it ru
    words as `validate`, and the game you were editing is left as it was; a good one becomes
    your draft, to see on the board, play against the computer and save.
 
+## What the language can make
+
+The reference below goes key by key, in the order a file is written. These are the
+same keys by what they do to play. Every family is checked the same way: a file that
+asks for two rules the language cannot play together, or for a rule that could never
+fire, is refused with a line saying why, so trying an unfamiliar rule costs a round of
+`validate`.
+
+- **How a game is won.** The object need not be checkmate. A royal piece can simply be taken, or there can be none; a game can be a race to some squares, a fight to run the other side out of a kind of piece, a count of checks given, ground claimed by moving onto it, or a score read when time runs out. Changing the object changes what every piece is for. (`rules.win`, `rules.checkmate`, `rules.stalemate`, `pieces[].royal`, `rules.bare_royal`, `rules.check_limit`, `rules.reach`, `rules.extinction`, `rules.territory`, `rules.scoring`)
+- **How pieces move.** Besides chess's slides and leaps: a hop vaults one screening piece, as the xiangqi cannon captures or a grasshopper lands; a lame leap can be blocked on its way; a sweep clears every piece along its line. A piece can be kept to one part of the board, or point one way and spend a move turning. (`"slide"`, `"leap"`, `"hop"`, `"lame"`, `"sweep"`, `pieces[].region`, `pieces[].facing`)
+- **What a capture does.** A piece may be able to take only certain others, so armies can beat one another in a circle. A taken piece can become another piece, be sent home, change places with its taker, blow up with everything round it, or go into the captor's hand to be dropped back into play; a player can start with pieces in hand; captures can be compulsory. (`pieces[].captures`, `rules.strike`, `rules.contacts`, `rules.explode_on_capture`, `rules.drops`, `pieces[].promoted_from`, `rules.promote_on_entry`, `rules.must_capture`)
+- **The board.** Hexagons as well as squares; walls that give the board any outline or cut it in two; edges that join, so the board is a cylinder or a torus; portals that carry a piece across the board, which the players may be allowed to move. (`board.lattice`, `board.shape`, `rules.obstacles`, `rules.wrap`, `rules.portals`)
+- **Who moves, and when.** Several moves a turn; or both players choosing at once, neither seeing the other's move, with rules for what wins a collision, which pieces are fast enough to move first, and spies whose loss takes a player's secrecy away. (`rules.turn`, `rules.simultaneous`, `pieces[].beats`, `pieces[].speed`, `pieces[].spy`)
+- **Pieces nobody owns.** Wild pieces that walk a fixed route, one step after every move, eat what they may, and pay a bounty to whoever takes them. (`rules.npcs`)
+- **Chess's own rules.** None is assumed: promotion, en passant and castling, each chess's answer to a problem chess has; and limits on giving check, on the royal pieces facing each other down an open file (xiangqi's rule), and on moves that strand a piece. (`rules.promotion`, `rules.en_passant`, `rules.castling`, `rules.forbid_check`, `rules.royal_facing`, `rules.forbid_immobility`)
+- **When a game stops.** How long a game may run, and when a repetition or a stall draws it; `rules.scoring` can decide such an ending instead. (`rules.max_plies`, `rules.repetition_draw`, `rules.no_progress_draw`)
+
+## A valid game is not yet a good one
+
+`validate` says whether a file is a game; it cannot say whether the game is worth playing.
+When a game is measured, computer players of several strengths play it against one another
+many times, and it is ruled out as not viable when the stronger players mostly draw or most
+games never finish, when many games are over within a few moves, when one side wins far
+more often than the other, or when thinking longer does not make a player stronger. Some
+things the rules allow make a poor game even so, and each is easy to miss without a board:
+
+- **A capture on the first move.** Set out the starting position and look at every first
+  move of both players. A hopping piece behind its own pawn, on a line that runs to
+  something of the other side's, captures at once; so does a slider on an open line. The
+  opening is then a forced exchange that every game begins with.
+- **A rule used up early.** The rule a game is built around should still matter in the
+  middle game. A wild piece that can be killed at once, a goal reached in a few moves, or a
+  hazard every piece can simply stay away from leaves behind the game it was meant to
+  change.
+- **Rules carried over from chess.** Castling, en passant and the pawn's double step solve
+  problems chess has. Keep one when the new game has that problem.
+- **A first player who is simply ahead.** Whoever moves first is a move ahead, and a race,
+  a goal or an early capture can turn that move into a win.
+
+The `description` is part of the design: say in it what decision the game asks a player to
+keep making, and what a game of it tends to look like.
+
 ## Coordinates and directions
 
 - **Squares** are written as in chess: a file letter then a rank number, `a1` in the
@@ -285,7 +327,7 @@ Its keys:
 
 ### `rules.npcs`: wild pieces
 
-*list of objects, at least 1*. Leave it out for no such rule. Wild pieces are pieces neither player owns. After every move each one steps to the next square of its route and eats whatever stands there that its type may capture, or waits if it may not. A royal piece standing where a wild piece steps next is in check from it. Taking a wild piece is worth its bounty.
+*list of objects, at least 1*. Leave it out for no such rule. Wild pieces are pieces neither player owns. After every move each one steps to the next square of its route and eats whatever stands there that its type may capture, or waits if it may not. A royal piece standing where a wild piece steps next is in check from it when that type may capture the royal. Taking a wild piece is worth its bounty.
 
 Each entry's keys:
 
