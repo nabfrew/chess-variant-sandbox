@@ -401,6 +401,10 @@ class SiteApp(App):
             found["history"] = history_shown(found, self.role == admin.ADMIN)
             found["trust"] = self._trust_line(parts[2], found.get("trust"))
             return _without_records(found)
+        if len(parts) == 3 and parts[:2] == ("api", "proven"):
+            # Q993b: the positions' own page, the list with the reader's marks.
+            self._playable(parts[2])
+            return self._proven_page(parts[2], asked)
         if len(parts) == 4 and parts[:2] == ("api", "proven"):
             # R9b: one proven position, drawn, and where it has one winning move its moves.
             self._playable(parts[2])
@@ -1445,19 +1449,22 @@ class SiteApp(App):
             marked = proven.games_marked(connection, viewer)
             proven_names = browse.names(connection, sorted(marked))
         known = self.known()
-        proven_lines = proven.profile_lines(
-            marked,
-            {
-                game: proven.load(self.runs_dir, game, known[game].spec if game in known else None)
-                for game in marked
-            },
-            proven_names,
-        )
+        proven_records = {
+            game: proven.load(self.runs_dir, game, known[game].spec if game in known else None)
+            for game in marked
+        }
+        proven_lines = proven.profile_lines(marked, proven_records, proven_names)
+        # Q993b: the share of every proven position on the site this person has solved,
+        # across every game that offers some, counted live against what each offers now.
+        proven_share = proven.overall(
+            marked, proven.everywhere(self.runs_dir, {d: g.spec for d, g in known.items()})
+        ) if marked else None
         return {
             "user": viewer,
             # R9b. On each game this person has solved a proven position on, how many they
             # converted and how many moves they found, of how many it offers. Theirs alone.
             "proven": proven_lines,
+            "provenShare": proven_share,
             # Q503b. *Your games*: the games this person made, grouped by level, each
             # with its next step (`stages.yours`).
             "yourGames": designed,
@@ -2310,7 +2317,21 @@ class SiteApp(App):
         marks = (
             None if self.viewer is None else proven.marks_on(connection, self.viewer, digest)
         )
-        return proven.section(record, marks, signed_in=self.viewer is not None)
+        return proven.summary(record, marks)
+
+    def _proven_page(self, digest: str, asked: dict[str, str]) -> dict[str, Any]:
+        """Q993b: `GET /api/proven/<hash>`, the positions' own page (`proven.page`): the
+        list, its groups and chips, and the reader's progress. A visitor's right picks this
+        visit come back as `found` (ids, comma-separated), held in the page and kept
+        nowhere; a signed-in reader's are their stored marks, and `found` is not read."""
+        record, game = self._proven_record(digest)
+        marks = None
+        if self.viewer is not None:
+            with self._connection() as connection:
+                marks = proven.marks_on(connection, self.viewer, digest)
+        visit = {part for part in str(asked.get("found") or "").split(",") if part}
+        return {**proven.page(record, marks, visit), "name": game.name,
+                "sides": list(library.sides(game))}
 
     def _start_try(self, digest: str, position_id: str, body: dict[str, Any]) -> Any:
         """*Convert it*: a practice game from a proven position against *hardest*.
@@ -3014,7 +3035,9 @@ def site_handler_for(app: SiteApp) -> type[Any]:
             if parsed.path in pages.SCRIPTS:
                 self._script(pages.SCRIPTS[parsed.path])
                 return
-            digest = game_drawing.digest_of(parsed.path)
+            digest = game_drawing.digest_of(parsed.path) or game_drawing.proven_digest_of(
+                parsed.path
+            )
             if digest is not None:
                 self._game_page(digest)
                 return

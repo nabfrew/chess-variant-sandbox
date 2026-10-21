@@ -13,6 +13,13 @@
 // gives that width to the board.
 let BOARD_INLINE = false;
 
+// Q993b: the third chrome, a try from a proven position drawn on the positions' own page
+// (`proven.js`), with the list beside the board in place of the moves, rules and pieces.
+// `BOARD_PROVEN` is that page's half (`how.proven`): its words, its *previous* and *next*,
+// a new try drawn where this one was, and `moved`, which every snapshot of the try passes
+// through so the list can tick its row from the finish's reply.
+let BOARD_PROVEN = null;
+
 // How long a button that ends the game (*resign*, *cancel the game*) stays armed after its
 // first press, in ms. It was six seconds, and two of the first-visit study's readers met
 // it reverting before their second press (N1). Fifteen gives a person time to read *really
@@ -42,6 +49,7 @@ function leaveBoard() {
   TIMELINE = [];
   TIMELINE_FOR = null;
   BOARD_INLINE = false;
+  BOARD_PROVEN = null;
   CORR_HELD = null;
   ROUND_SENDING = false;
   PROMO = null;
@@ -50,8 +58,8 @@ function leaveBoard() {
   stopCorrPoll();
 }
 
-// `how` is `{ mount }` for a board drawn inside another view, and absent for the page's
-// own board.
+// `how` is `{ mount }` for a board drawn inside another view, `{ mount, proven }` for a try
+// on the proven positions' own page (Q993b), and absent for the page's own board.
 async function showBoard(snapshot, how) {
   stopPolling();
   stopCorrPoll();
@@ -60,10 +68,12 @@ async function showBoard(snapshot, how) {
   PROMO = null;
   PROMO_LOOKING = false;
   PROMO_PIECE = null;
-  const inline = !!(how && how.mount);
+  const proven = (how && how.mount && how.proven) || null;
+  const inline = !!(how && how.mount) && !proven;
   BOARD_INLINE = inline;
+  BOARD_PROVEN = proven;
   BOARD_FOCUS = null;
-  const root = inline ? how.mount : view;
+  const root = how && how.mount ? how.mount : view;
   SESSION = snapshot;
   SHOWN = null;
   SELECTED = null;
@@ -76,7 +86,7 @@ async function showBoard(snapshot, how) {
   OPEN_TAB = null;
   const rules = snapshot.ruleset;
   // G3: the tab says which game is on the board. An inline board leaves its page's title.
-  if (!inline && rules && rules.name) setTitle('Playing ' + rules.name);
+  if (!inline && !proven && rules && rules.name) setTitle('Playing ' + rules.name);
   // A deep link to a game in progress never visited the picker, so the roster that
   // names the seats has to be fetched here as well. Without it a rule of thumb is
   // labelled with its own digest. A draft has no page to ask, so it takes the ladder
@@ -109,16 +119,17 @@ async function showBoard(snapshot, how) {
   root.innerHTML = `
     ${inline ? `<div class="muted small">This is a game of the rules as they stand right
       now. Nothing about it is kept, and changing the draft ends it.</div>`
-      : `<button class="crumb" id="back">&larr; ${
-        rules.scratch ? 'back to the editor' : esc(rules.name)}</button>`}
+      : proven ? '' : `<button class="crumb" id="back">&larr; ${
+        rules.scratch ? 'back to the editor'
+          : snapshot.puzzle ? 'proven positions on ' + esc(rules.name) : esc(rules.name)}</button>`}
     ${!inline && rules.scratch ? `<div class="muted small" style="margin-top:8px">
       This is a trial of <b>${esc(rules.name)}</b>, and this trial isn't recorded: nothing
       about it is kept, and going back to the editor leaves no trace of it.</div>` : ''}
     ${snapshot.demo ? `<div class="ok" style="margin-top:8px">${esc(snapshot.demo.says)}
       The computer played these moves. Step forward to watch them, or move from here.</div>` : ''}
-    ${snapshot.puzzle ? `<div class="ok" id="puzzleSays" style="margin-top:8px"
+    ${snapshot.puzzle && !proven ? `<div class="ok" id="puzzleSays" style="margin-top:8px"
       aria-live="polite">${esc(puzzleSaid(snapshot))}</div>` : ''}
-    <div class="split${inline ? ' alone' : ''}" style="margin-top:10px">
+    <div class="split${inline || proven ? ' alone' : ''}" style="margin-top:10px">
       <div class="play-frame">
         ${inline ? `<div class="row small" style="margin-bottom:8px">
           <div>${seatHtml(0)}</div><span class="muted">vs</span><div>${seatHtml(1)}</div>
@@ -126,6 +137,9 @@ async function showBoard(snapshot, how) {
         ${frameHtml(inline, snapshot.mode, watched, between, (!!snapshot.round || !!snapshot.spy) && !watched, !!snapshot.puzzle)}
         <div class="row" id="review" style="margin-top:8px"></div>
         ${between ? '' : `<div class="row" style="margin-top:8px">
+          ${proven ? `<button id="provenPrev" class="quiet" title="the position before this one on the list"
+            >${esc(proven.words.previous)}</button><button id="provenNext" class="quiet"
+            title="the position after this one on the list">${esc(proven.words.next)}</button>` : ''}
           ${snapshot.puzzle ? `<button id="again"
             title="a new practice game from the same proven position, against hardest"
             >try it again from the position</button>` : `<button id="again">new game</button>
@@ -135,8 +149,10 @@ async function showBoard(snapshot, how) {
             watch it play itself</button>`}`}
         </div>`}
         <div id="ground" class="muted small" style="margin-top:6px"></div>
+        ${proven ? `<div class="ok small" id="puzzleSays" style="margin-top:8px"
+          aria-live="polite">${esc(puzzleSaid(snapshot))}</div>` : ""}
       </div>
-      ${inline ? '' : `<div class="panel boardSide">
+      ${inline || proven ? '' : `<div class="panel boardSide">
         <div class="seatLines">
           <div>${seatHtml(0)}</div>
           <div style="margin-top:6px">${seatHtml(1)}</div>
@@ -180,7 +196,7 @@ async function showBoard(snapshot, how) {
     // it, so the body names the game and the position and nothing else.
     if (snapshot.puzzle) {
       return api('/api/session', { hash: rules.hash, puzzle: snapshot.puzzle.id })
-        .then(open_).catch(fail);
+        .then(next => (proven ? proven.again(next) : open_(next))).catch(fail);
     }
     const body = { hash: rules.hash, seats };
     if (snapshot.mode && seats.includes('human')) body.mode = snapshot.mode;
@@ -190,8 +206,13 @@ async function showBoard(snapshot, how) {
   // Never by presence: the designer has a crumb of its own called `back`, and an inline
   // board that looked one up would rewire the editor's way out of the page.
   if (inline) document.getElementById('stopPlay').onclick = () => stopPlayingHere();
-  else document.getElementById('back').onclick = () =>
-    go(rules.scratch ? '#/design' : '#/game/' + rules.hash);
+  else if (proven) {
+    document.getElementById('provenPrev').onclick = () => proven.previous();
+    document.getElementById('provenNext').onclick = () => proven.next();
+  } else document.getElementById('back').onclick = () =>
+    go(rules.scratch ? '#/design'
+      : snapshot.puzzle ? '#/proven/' + rules.hash + '/' + snapshot.puzzle.id
+        : '#/game/' + rules.hash);
   const again = document.getElementById('again');
   if (again) again.onclick = () => restart(snapshot.seats);
   // A rematch with the seats exchanged, which is the whole of "let me try that as the
@@ -779,6 +800,7 @@ function puzzleSaid(snapshot) {
 function notePuzzle(snapshot) {
   const line = document.getElementById('puzzleSays');
   if (line && snapshot.puzzle) line.textContent = puzzleSaid(snapshot);
+  if (snapshot.puzzle && BOARD_PROVEN && BOARD_PROVEN.moved) BOARD_PROVEN.moved(snapshot);
 }
 
 // An agent that fails has to say so. This used to `.catch(fail)`, which prepends an error
@@ -3290,20 +3312,27 @@ function drawEnded() {
   const parts = verdictParts(outcome);
   const again = ['again', 'rematch'].map(id => document.getElementById(id))
     .find(node => node && !node.hidden);
-  const key = `${outcome.winner}|${outcome.reason}|${again ? again.id : ''}|${TIMELINE.length}`;
+  // Q993b: on the proven positions' own page the banner's primary is *next position*, and
+  // the try again sits beside it (S6: one primary, naming its result).
+  const next = BOARD_PROVEN ? document.getElementById('provenNext') : null;
+  const key = `${outcome.winner}|${outcome.reason}|${again ? again.id : ''}|${
+    next && !next.disabled ? 'next' : ''}|${TIMELINE.length}`;
   banner.hidden = false;
   if (banner.dataset.built === key) return;
   banner.dataset.built = key;
   const word = again ? (again.querySelector && again.querySelector('.w')
     ? again.querySelector('.w').textContent : again.textContent).trim() : '';
   banner.className = `frame-ended ${resultFor(outcome)}`;
+  const going = next && !next.disabled ? next.textContent.trim() : '';
   banner.innerHTML = `<div class="ended-head">${esc(parts.head)}</div>${
     parts.how ? `<div class="ended-how">${esc(parts.how)}</div>` : ''}<div class="row">${
-    again ? `<button class="primary" data-ended="again">${esc(word)}</button>` : ''}${
+    going ? `<button class="primary" data-ended="next">${esc(going)}</button>` : ''}${
+    again ? `<button class="${going ? '' : 'primary'}" data-ended="again">${esc(word)}</button>` : ''}${
     TIMELINE.length > 1 ? '<button class="quiet" data-ended="review">review</button>' : ''}</div>`;
   banner.querySelectorAll('[data-ended]').forEach(node => {
     node.onclick = () => {
       if (node.dataset.ended === 'review') stepBy(-1);
+      else if (node.dataset.ended === 'next') next.click();
       else if (again) again.click();
     };
   });

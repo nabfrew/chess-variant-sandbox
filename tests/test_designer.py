@@ -1205,10 +1205,11 @@ class TestAChangeCanBeTakenBack:
         from page_text import PAGE
 
         assert "Start again from" not in PAGE
-        # Two dialogs on the whole page, and each is in front of something with no way
-        # back: the corpus replay, which spends minutes, and deleting a game's rules
-        # (Q303). A third would be a dialog in front of something undo already covers.
-        assert PAGE.count("confirm(") == 2
+        # Three dialogs on the whole page, and each is in front of something with no way
+        # back: the corpus replay, which spends minutes, deleting a game's rules (Q303),
+        # and (Q993b) leaving a try at a proven position before its end, which abandons
+        # the game. A fourth would be a dialog in front of something undo already covers.
+        assert PAGE.count("confirm(") == 3
         assert "Delete ' + game.name + ' for good?" in PAGE
 
 

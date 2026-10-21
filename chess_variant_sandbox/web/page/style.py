@@ -489,6 +489,33 @@ RULES = """
   @media (max-width: 860px) {
     .gameTop, .gameRest { grid-template-columns: minmax(0, 1fr); }
   }
+  /* Q993b: a game's proven positions on a page of their own (plan-proven.md §2.2): the
+     frame and the list side by side, as the game page draws its play column and its side,
+     the frame first on a phone. A row is a link: its number is the one loud thing (S5),
+     the side and *one winning move* its muted lines, and the reader's state a word with an
+     ink tick on the right, never a colour (S4). The current row is neutral, as the move
+     list's is. */
+  .proven-frame .frame-status { --strip-lines: 3; }
+  @media (min-width: 561px) { .proven-frame .frame-status { --strip-lines: 2; } }
+  .frame-status #provenStatus { display: -webkit-box; -webkit-box-orient: vertical;
+                                -webkit-line-clamp: var(--strip-lines); overflow: hidden; min-width: 0; }
+  .proven-still { width: 100%; margin: 0 auto 0 0; }
+  .proven-still svg { display: block; width: 100%; height: auto; }
+  .proven-frame .frame-controls { margin-top: 8px; }
+  .proven-list .chips { margin: 8px 0 4px; }
+  .proven-group { margin-top: 8px; }
+  .proven-group > summary { font-weight: 600; cursor: pointer; min-height: var(--hit);
+                            display: flex; align-items: center; }
+  .proven-rows { list-style: none; margin: 0; padding: 0; }
+  .proven-row { display: grid; grid-template-columns: 2.4em minmax(0, 1fr) auto; gap: 8px;
+                align-items: center; min-height: var(--hit); padding: 4px 8px;
+                border-radius: var(--r-ctl); color: var(--ink); text-decoration: none; }
+  .proven-row:hover { background: var(--sunk); }
+  .proven-row.on { background: var(--now); }
+  .proven-row .n { font-family: var(--f-mono); font-size: 18px; font-weight: 600; }
+  .proven-row .what { display: flex; flex-direction: column; min-width: 0; }
+  .proven-row .done { font-size: 13px; color: var(--ink); white-space: nowrap; }
+  .proven-open { font-weight: 600; }
   /* K1: the start position at the head of the play column, drawn large before any game
      starts; its width is held so a tall board's foot stays on the first screen. */
   .opening { margin: 0; width: 100%; }

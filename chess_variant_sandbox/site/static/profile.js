@@ -702,8 +702,10 @@ function drawDone(lines, held) {
 
 // R9b (`site/proven.py`): the proven positions this person solved, a line a game, theirs
 // alone. A count of their own marks against what the game offers, never anybody else's,
-// and no section at all until there is a mark (§1.5: no empty heading).
-function drawProven(lines) {
+// and no section at all until there is a mark (§1.5: no empty heading). Since Q993b each
+// line names the game's share solved and links to its positions' own page, and the share
+// across every game with proven positions leads, counted live by the server.
+function drawProven(lines, share) {
   const where = document.getElementById('proven');
   if (!where) return;
   where.replaceChildren();
@@ -711,31 +713,49 @@ function drawProven(lines) {
   const heading = document.createElement('h2');
   heading.textContent = 'Proven positions you solved';
   where.appendChild(heading);
+  if (share && share.said) {
+    const all = document.createElement('p');
+    all.id = 'provenShare';
+    all.textContent = share.said;
+    where.appendChild(all);
+  }
   const lead = document.createElement('p');
   lead.className = 'under';
-  lead.textContent = 'Positions the computer proved won for the side to move, from each '
-    + "game's page. Only you see this. A try that did not end in your win is not counted "
-    + 'against you, and nothing here expires. Each count is of the positions the game '
-    + 'offers now, so one later left out as too easy is no longer counted.';
+  lead.textContent = 'Positions the computer proved won for the side to move, each '
+    + "game's on a page of its own. Only you see this. A try that did not end in your win "
+    + 'is not counted against you, and nothing here expires. Each count is of the positions '
+    + 'the game offers now, so one later left out as too easy is no longer counted, and '
+    + 'one added lowers the share.';
   where.appendChild(lead);
   const list = document.createElement('ul');
   list.className = 'lines';
   for (const line of lines) {
     const item = document.createElement('li');
+    item.appendChild(provenLink(line.hash, line.name));
     const said = [];
-    said.push(line.of === null ? 'Converted ' + line.converted
-      : 'Converted ' + line.converted + ' of ' + line.of);
+    if (line.of !== null && line.of !== undefined) {
+      said.push('solved ' + line.solved + ' of ' + line.of + ' (' + line.share + ')');
+    }
+    said.push(line.of === null ? 'converted ' + line.converted
+      : 'converted ' + line.converted + ' of ' + line.of);
     if (line.found || line.singles) {
       said.push(line.singles === null ? 'found the move in ' + line.found
         : 'found the move in ' + line.found + ' of ' + line.singles);
     }
-    words(item, said.join(', ') + ' on ');
-    item.appendChild(gameLink(line.hash, line.name));
-    words(item, '.');
+    words(item, ': ' + said.join(', ') + '.');
     list.appendChild(item);
   }
   where.appendChild(list);
 }
+
+// A game's proven positions, at their own address (Q993b): the game's name, linked to the
+// game's own address (`gameLink`, the one place it is written) and on to its positions.
+function provenLink(hash, name) {
+  const link = gameLink(hash, name);
+  if (link.tagName === 'A') link.setAttribute('href', link.getAttribute('href') + PROVEN);
+  return link;
+}
+const PROVEN = '/proven';
 
 // One bin of one axis. The counts first, then a few of the untried games by name,
 // because the line is there so a person can pick one rather than to list the library
@@ -818,7 +838,7 @@ async function draw() {
   drawBackToDraft(payload.backToDraft || []);
   drawGames(payload.games, payload.counts.tried > 0);
   drawDone(payload.milestones || [], payload.badges || []);
-  drawProven(payload.proven || []);
+  drawProven(payload.proven || [], payload.provenShare);
   drawStillOpen(payload.stillOpen || []);
   if (!payload.games.length) say('You have no rated games yet. Pick one and play it.');
 }

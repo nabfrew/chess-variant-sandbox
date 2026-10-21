@@ -13,6 +13,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-21
 
+### A page for each game's proven positions
+
+Each game's proven positions now have a page of their own: the board beside the list, ticks on the ones you have solved,
+how much of the game you have done, and previous and next, so you can work through them without leaving. Your profile
+shows how much of all of them you have solved.
+
 ### Rest for each kind of piece, and a stronger opponent in rounds
 
 How long a piece must wait after it moves is now set for each kind of piece, in any game, whether players take turns or

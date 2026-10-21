@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import re
+import tempfile
 import threading
 import time
 from dataclasses import replace
@@ -1669,7 +1670,45 @@ def served_by_the_page() -> list[tuple[str, str]]:
         " ruleset: { sides: ['white', 'black'] } };",
         "['extinction', 'bare_royal', 'something_new']"
         ".map(reason => verdictText({ winner: 1, reason })).join(' ')"))))
+    # Q993b: a game's proven positions on their own page, signed in and as a visitor, and
+    # the game page's panel that leads there, each over the server's own words.
+    found.extend(_proven_views())
     return [(where, text) for where, text in found if text]
+
+
+def _proven_views() -> list[tuple[str, str]]:
+    """The proven positions' own page and the game page's panel (Q993b), as the site draws
+    them from what `site/proven.py` sends."""
+    from test_site_proven import BOTH, DIGEST, LOSES, ONE, SPEC, _load, _record, _write
+
+    from chess_variant_sandbox.site import proven
+
+    found: list[tuple[str, str]] = []
+    with tempfile.TemporaryDirectory() as folder:
+        runs = Path(folder)
+        _write(runs, _record([ONE, LOSES, BOTH]))
+        record = _load(runs)
+        view = proven.view(record, SPEC, "0-0-2")
+        states = ((None, set()), (None, {"0-0-2"}), ({}, set()),
+                  ({"0-0-2": {proven.CONVERTED}}, set()))
+        pages = [{**proven.page(record, marks, visit), "name": "proven test",
+                  "sides": ["white", "black"]} for marks, visit in states]
+        games = [{"hash": DIGEST, "standing": {"proven": proven.summary(record, marks)}}
+                 for marks, _visit in states]
+        # One run of the page for every state, each drawn as the view draws it.
+        drawn = _run_page(
+            f"ACCOUNTS = true; const PAGES = {json.dumps(pages)};"
+            f" const GAMES = {json.dumps(games)};",
+            f"PAGES.map(data => {{ PROVEN = {{ hash: '{DIGEST}', data, id: '0-0-2',"
+            " playing: null }; return provenViewHtml(data) + provenListHtml()"
+            f" + provenFrameHtml({json.dumps(view)}); }})"
+            ".concat(GAMES.map(game => provenHtml(game)))",
+        )
+        for index, html in enumerate(drawn):
+            where = ("the proven positions' page" if index < len(states)
+                     else "the game page's proven positions")
+            found.append((where, site_words.visible(str(html))))
+    return found
 
 
 class TestAForkIsToldWhatItChanged:

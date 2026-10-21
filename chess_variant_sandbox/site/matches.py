@@ -855,7 +855,10 @@ def _puzzle_block(connection: Any, found: Row) -> dict[str, Any] | None:
     if held is None:
         return None
     side = 1 if found.is_computer(0) else 0
-    return proven.try_snapshot(held[0], held[1], side)
+    # Q993b: the mark the finish wrote rides on the reply, so the positions' page ticks its
+    # row without asking again. Read only once the game is over: a running try has none new.
+    marked = found.result is not None and proven.converted_by(connection, found.id)
+    return proven.try_snapshot(held[0], held[1], side, marked)
 
 
 def _verdict(found: Row) -> dict[str, Any] | None:
@@ -1014,6 +1017,12 @@ def _advance(
             reason=str(outcome.get("reason") or ""),
             left=False,
         )
+        # Q993b: the reply to the move that ends a try carries the mark its finish wrote,
+        # so the positions' page ticks the row from this answer without asking again.
+        if isinstance(snapshot.get("puzzle"), dict):
+            snapshot["puzzle"] = {
+                **snapshot["puzzle"], "converted": proven.converted_by(connection, match_id),
+            }
     return snapshot
 
 

@@ -6544,7 +6544,12 @@ class TestWhatReachesThePage:
         # 139 since Q995b: how the players take turns redrawn in place (`drawTurns`), its
         # three constant ways and the server's sentences of what changed, each through
         # `esc`.
-        assert len(sites) == 139
+        # 143 since Q993b: the proven positions' own page (`proven.js`) replaces the game
+        # page's three (`wireProven`) with seven: the view drawn and emptied before its wait,
+        # the local application's constant sentence, the list redrawn (`provenListHtml`) and
+        # the frame drawn, emptied, or a constant *Drawing the position…* (`provenFrameHtml`).
+        # Every name, side, move text and server sentence through `esc`; the rest numbers.
+        assert len(sites) == 143
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
@@ -12079,8 +12084,9 @@ class TestTheGamePageOnAPhone:
         assert narrow < PAGE.index(".boardSide { display: flex;") < narrow + 1200
         # Q307. The designer plays a draft on this same markup with no second column at
         # all, which is what `.alone` says -- so the selector has no `nth-child(2)` to
-        # turn on there and the game page's rule cannot reorder the editor's board.
-        assert "${inline ? '' : `<div class=\"panel boardSide\">" in board
+        # turn on there and the game page's rule cannot reorder the editor's board. Q993b:
+        # nor the proven positions' page, whose list stands beside the board instead.
+        assert "${inline || proven ? '' : `<div class=\"panel boardSide\">" in board
 
 
 class TestAnOpenGameIsFoundAgain:
@@ -13711,8 +13717,10 @@ class TestOneBoardInTwoPlaces:
 
     def test_the_mount_is_what_says_which_of_the_two_it_is(self) -> None:
         body = self._show()
-        assert "const inline = !!(how && how.mount);" in body
-        assert "const root = inline ? how.mount : view;" in body
+        # Q993b: a third chrome, the proven positions' page, is a mount with `proven`.
+        assert "const proven = (how && how.mount && how.proven) || null;" in body
+        assert "const inline = !!(how && how.mount) && !proven;" in body
+        assert "const root = how && how.mount ? how.mount : view;" in body
         assert "root.innerHTML = `" in body
         assert "view.innerHTML" not in body
 
@@ -13726,8 +13734,8 @@ class TestOneBoardInTwoPlaces:
     def test_an_inline_board_carries_neither(self) -> None:
         body = self._show()
         # Both are written as the `inline` arm of one conditional rather than as a
-        # second template, so a control added to the board is added to both boards.
-        assert "${inline ? '' : `<div class=\"panel boardSide\">" in body
+        # second template, so a control added to the board is added to every board.
+        assert "${inline || proven ? '' : `<div class=\"panel boardSide\">" in body
         assert 'id="stopPlay"' in body
 
     def test_the_crumb_is_wired_by_the_chrome_and_never_by_presence(self) -> None:
@@ -13745,8 +13753,15 @@ class TestOneBoardInTwoPlaces:
         clears is checked by running it, in `tests/test_designer.py`."""
         from page_text import PAGE
 
+        from chess_variant_sandbox.web.page import SCRIPT_DIR as PAGE_SCRIPTS
+
         assert PAGE.count("function leaveBoard(") == 1
-        assert PAGE.count("leaveBoard();") == 1
+        # Its callers: the designer, and (Q993b) the proven positions' page, which gives a
+        # try up when another position is chosen or the view is drawn again.
+        callers = {name: (PAGE_SCRIPTS / f"{name}.js").read_text(encoding="utf-8")
+                   .count("leaveBoard();") for name in ("design", "proven")}
+        assert callers == {"design": 1, "proven": 2}
+        assert PAGE.count("leaveBoard();") == sum(callers.values())
 
 
 def test_the_sticky_board_covers_no_panel_below_it() -> None:

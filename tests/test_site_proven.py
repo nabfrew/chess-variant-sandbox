@@ -360,16 +360,19 @@ class TestTheLoader:
         _write(runs, record)
         loaded = _load(runs)
         assert loaded.positions == () and loaded.too_easy == 1
-        section = proven.section(loaded, None, signed_in=False)
-        assert section["count"] == 0 and section["positions"] == []
+        section = proven.summary(loaded, None)
+        assert section["count"] == 0 and section["said"] == ""
         assert section["none"] == proven.NONE_LEFT
         assert "too easy" in section["basis"]
-        assert proven.section(_load(_fresh(tmp_path, [ONE])), None, False)["none"] == ""
+        assert proven.summary(_load(_fresh(tmp_path, [ONE])), None)["none"] == ""
+        page = proven.page(loaded, None)
+        assert page["positions"] == [] and page["none"] == proven.NONE_LEFT
         assert proven.offered(runs, DIGEST, SPEC) == 0
         lines = proven.profile_lines(
             {DIGEST: {"1-0-2": {proven.CONVERTED}}}, {DIGEST: loaded}, {DIGEST: "proven test"})
         assert lines == [{"hash": DIGEST, "name": "proven test", "converted": 1, "found": 0,
-                          "of": None, "singles": None}]
+                          "of": None, "singles": None, "solved": None, "share": None}]
+        assert proven.overall({DIGEST: {"1-0-2": {proven.CONVERTED}}}, {DIGEST: loaded}) is None
 
 
 # ------------------------------------------------------------------- find the move
@@ -451,22 +454,91 @@ class TestTheWords:
         for sentence in sentences:
             assert site_words.hits(sentence) == [], sentence
 
-    def test_the_section_counts_the_readers_own_marks_and_nobody_elses(
+    def test_the_page_counts_the_readers_own_marks_and_nobody_elses(
         self, runs: Path
     ) -> None:
+        """Q993b: the positions' own page (`GET /api/proven/<hash>`): the list in the
+        loader's order, grouped by turns to the win, each row's state in words, the chips'
+        counts, and the progress line with each game's share as a percentage."""
         record = _load(runs)
-        visitor = proven.section(record, None, signed_in=False)
-        assert visitor["yours"] is None and visitor["signInToConvert"]
-        assert visitor["count"] == 3 and visitor["singles"] == 2
+        visitor = proven.page(record, None)
+        assert visitor["signedIn"] is False and visitor["signInToConvert"]
+        assert visitor["keep"] == proven.PAGE_WORDS["keep"] and visitor["progress"] == ""
+        assert visitor["count"] == 3 and visitor["singles"] == 2 and visitor["share"] is None
         assert [entry["id"] for entry in visitor["positions"]] == ["0-0-2", "0-2-2", "0-1-2"]
-        mine = proven.section(
-            record, {"0-0-2": {proven.CONVERTED, proven.FOUND}, "gone": {proven.FOUND}},
-            signed_in=True,
-        )
-        assert mine["yours"] == {"converted": 1, "found": 1}
-        assert mine["signInToConvert"] == ""
+        assert [(group["heading"], group["ids"]) for group in visitor["groups"]] == [
+            ("Wins in 1 turn", ["0-0-2"]), ("Wins in 2 turns", ["0-2-2"]),
+            ("Wins in 3 turns", ["0-1-2"])]
+        assert visitor["chips"] == [
+            {"key": "unsolved", "label": "not solved yet", "count": 3},
+            {"key": "single", "label": "one winning move", "count": 2}]
+        # Absent is not nought: no marks reads as a count of positions, never *0 of 3*.
+        none = proven.page(record, {})
+        assert none["progress"] == "3 positions to solve." and none["share"] is None
+        assert none["keep"] == "" and none["signInToConvert"] == ""
+        mine = proven.page(
+            record, {"0-0-2": {proven.CONVERTED, proven.FOUND}, "gone": {proven.FOUND}})
+        assert mine["progress"] == (
+            "You have solved 1 of 3 (33%): converted 1, found the move in 1 of the 2 with one "
+            "winning move. Only you see this.")
+        assert mine["share"] == {"solved": 1, "of": 3, "said": "33%"}
         assert mine["positions"][0]["converted"] and mine["positions"][0]["found"]
+        assert mine["positions"][0]["done"] == "converted and found"
+        assert [row["solved"] for row in mine["positions"]] == [True, False, False]
+        assert mine["chips"][0]["count"] == 2
         assert not any(key in json.dumps(mine) for key in ("people", "everyone", "others"))
+        # A visitor's finds this visit are counted for the visit and kept nowhere; an id the
+        # record does not offer is not counted.
+        visit = proven.page(record, None, {"0-1-2", "nonsense"})
+        assert [row["done"] for row in visit["positions"]] == ["", "", proven.FOUND_FOR_VISIT]
+        assert visit["progress"] == (
+            "On this visit you have found the move in 1 of 3 (33%). Nothing is kept.")
+        assert visit["chips"][0]["count"] == 2
+        # A signed-in reader's page ignores a visit's ids: their marks are stored.
+        assert proven.page(record, {}, {"0-1-2"})["positions"][2]["solved"] is False
+
+    def test_a_chip_that_would_narrow_nothing_is_not_sent(self, tmp_path: Path) -> None:
+        """Every position with one winning move (all 21 offered today): *one winning move*
+        narrows nothing, so only *not solved yet* is offered."""
+        record = _load(_fresh(tmp_path, [ONE, LOSES]))
+        assert record.singles == 2 == len(record.positions)
+        assert [chip["key"] for chip in proven.page(record, None)["chips"]] == ["unsolved"]
+
+    def test_the_share_is_rounded_down_and_never_nought_when_some_are_solved(self) -> None:
+        assert [proven.share_said(*pair) for pair in ((0, 3), (1, 3), (2, 3), (3, 3), (1, 300),
+                                                      (199, 200), (0, 0))] == [
+            "0%", "33%", "66%", "100%", "under 1%", "99%", ""]
+
+    def test_the_game_page_carries_a_summary_and_no_list(self, runs: Path) -> None:
+        """Q993b: the game page's panel is a summary and a link; the list is the page's."""
+        record = _load(runs)
+        visitor = proven.summary(record, None)
+        assert "positions" not in visitor and visitor["count"] == 3
+        assert visitor["said"].startswith("3 positions from this game") and visitor["yours"] == ""
+        assert visitor["open"] == "open them" and visitor["basis"] == ""
+        assert proven.summary(record, {})["yours"] == ""
+        mine = proven.summary(record, {"0-2-2": {proven.CONVERTED}})
+        assert mine["yours"].startswith("You have solved 1 of 3 (33%)")
+
+    def test_the_overall_share_counts_every_game_with_positions(
+        self, runs: Path, tmp_path: Path
+    ) -> None:
+        """The user's decision (`plan-proven.md` §4): the share of every proven position on
+        the site, across every game, counted against what each offers now."""
+        record = _load(runs)
+        other = proven.Record(game="b" * 12, made="", basis={}, counts={}, positions=(
+            proven.Position(id="x", number=1, moves=(), side=0, ends_in=1, pieces=2,
+                            single=True, others_lost=False, scores=()),), dropped=0)
+        marked = {DIGEST: {"0-0-2": {proven.FOUND}, "gone": {proven.CONVERTED}}}
+        found = proven.overall(marked, {DIGEST: record, "b" * 12: other, "c" * 12: None})
+        assert found == {"solved": 1, "of": 4, "games": 2, "share": "25%",
+                         "said": "Across all 2 games with proven positions you have solved "
+                                 "1 of 4 (25%)."}
+        assert proven.overall({}, {DIGEST: record}) is None
+        # Every record on disk for a game the site knows, and none for one it does not.
+        assert set(proven.everywhere(runs, {DIGEST: SPEC})) == {DIGEST}
+        assert proven.everywhere(runs, {}) == {}
+        assert proven.everywhere(tmp_path / "nothing", {DIGEST: SPEC}) == {}
 
     def test_the_profile_counts_against_what_is_offered_now(self, runs: Path) -> None:
         record = _load(runs)
@@ -479,9 +551,9 @@ class TestTheWords:
         )
         assert lines == [
             {"hash": "bbbbbbbbbbbb", "name": "another", "converted": 0, "found": 1,
-             "of": None, "singles": None},
+             "of": None, "singles": None, "solved": None, "share": None},
             {"hash": DIGEST, "name": "proven test", "converted": 2, "found": 1,
-             "of": 3, "singles": 2},
+             "of": 3, "singles": 2, "solved": 2, "share": "66%"},
         ]
 
     def test_a_try_seats_the_person_on_the_side_to_move_against_hardest(
@@ -498,12 +570,26 @@ class TestTheWords:
         assert proven.seats_for(second) == ["minimax:nodes=200000", "human"]
 
     def test_the_routes_are_registered_for_anybody(self) -> None:
-        for method, path in (("GET", "/api/proven/<hash>/<position>"),
+        for method, path in (("GET", "/api/proven/<hash>"),
+                             ("GET", "/api/proven/<hash>/<position>"),
                              ("POST", "/api/proven/<hash>/<position>/find")):
             found = [route for route in routes.OWN
                      if route.method == method and route.path == path]
             assert found and found[0].visitor == ""
         assert routes.find("GET", f"/api/proven/{DIGEST}/0-0-2") is not None
+        assert routes.find("GET", f"/api/proven/{DIGEST}") is not None
+
+    def test_the_positions_have_an_address_of_their_own(self) -> None:
+        """`/game/<hash>/proven[/<position>]`, answered with the game's own page."""
+        from chess_variant_sandbox.web.page import game as drawing
+
+        assert drawing.proven_digest_of(f"/game/{DIGEST}/proven") == DIGEST
+        assert drawing.proven_digest_of(f"/game/{DIGEST}/proven/0-0-2") == DIGEST
+        assert drawing.proven_digest_of(f"/game/{DIGEST}/proven/") == DIGEST
+        for other in (f"/game/{DIGEST}", f"/game/{DIGEST}/provenx", f"/game/{DIGEST}/proven/a/b",
+                      "/game/XYZ/proven"):
+            assert drawing.proven_digest_of(other) is None, other
+        assert drawing.digest_of(f"/game/{DIGEST}/proven") is None
         assert routes.find("POST", f"/api/proven/{DIGEST}/0-0-2/find") is not None
 
 
@@ -666,18 +752,29 @@ class TestThroughTheSite:
             started = _as(app, ada).post("/api/session", {"hash": DIGEST, "puzzle": "0-0-2"})
             assert started["seats"] == ["human", proven.OPPONENT]
             assert started["puzzle"]["id"] == "0-0-2" and started["mode"] == m.SANDBOX
+            assert started["puzzle"]["converted"] is False
             done = app.post(f"/api/session/{started['id']}/move", {"move": TAKE})
             assert done["outcome"]["winner"] == done["puzzle"]["side"] == 0
+            # Q993b: the finish's reply carries the mark it wrote, so the page ticks its row
+            # without asking again.
+            assert done["puzzle"]["converted"] is True
             section = app._standing(DIGEST)["standing"]["proven"]
-            assert section["yours"] == {"converted": 1, "found": 0}
-            assert section["positions"][0]["converted"] is True
-            lines = app.get("/api/profile")["proven"]
-            assert lines == [{"hash": DIGEST, "name": "proven test", "converted": 1,
-                              "found": 0, "of": 3, "singles": 2}]
-            # Somebody else reads none of it, on the game or on their own page.
-            assert _as(app, bo)._standing(DIGEST)["standing"]["proven"]["yours"] == {
-                "converted": 0, "found": 0}
+            assert section["yours"].startswith("You have solved 1 of 3 (33%): converted 1")
+            page = app.get(f"/api/proven/{DIGEST}")
+            assert page["positions"][0]["converted"] is True
+            assert page["positions"][0]["done"] == "converted"
+            assert page["name"] == "proven test" and len(page["sides"]) == 2
+            profile = app.get("/api/profile")
+            assert profile["proven"] == [{"hash": DIGEST, "name": "proven test", "converted": 1,
+                                          "found": 0, "of": 3, "singles": 2, "solved": 1,
+                                          "share": "33%"}]
+            assert profile["provenShare"]["said"] == (
+                "Across all 1 game with proven positions you have solved 1 of 3 (33%).")
+            # Somebody else reads none of it, on the game, its positions or their own page.
+            assert _as(app, bo)._standing(DIGEST)["standing"]["proven"]["yours"] == ""
+            assert app.get(f"/api/proven/{DIGEST}")["positions"][0]["converted"] is False
             assert app.get("/api/profile")["proven"] == []
+            assert app.get("/api/profile")["provenShare"] is None
         finally:
             app.viewer = None
 
@@ -709,10 +806,17 @@ class TestThroughTheSite:
         app.connect = store.open
         _as(app, None)
         section = app._standing(DIGEST)["standing"]["proven"]
-        assert section["yours"] is None
-        assert section["signInToConvert"] == proven.SIGN_IN_TO_CONVERT
+        assert section["yours"] == ""
+        page = app.get(f"/api/proven/{DIGEST}")
+        assert page["signInToConvert"] == proven.SIGN_IN_TO_CONVERT
+        assert page["keep"] == "Sign in to keep what you solve."
         right = app.post(f"/api/proven/{DIGEST}/0-0-2/find", {"move": TAKE})
         assert right["right"] is True and right["marked"] is False
+        assert _marks(store) == []
+        # Ticked for the visit: the page sends its finds back, the server counts them.
+        visit = app.get(f"/api/proven/{DIGEST}", {"found": "0-0-2,9-9-9"})
+        assert visit["positions"][0]["done"] == proven.FOUND_FOR_VISIT
+        assert visit["progress"].startswith("On this visit you have found the move in 1 of 3")
         assert _marks(store) == []
         with pytest.raises(m.MatchError, match="hardest is for people with an account"):
             app.post("/api/session", {"hash": DIGEST, "puzzle": "0-0-2"})
@@ -747,8 +851,9 @@ class TestThroughTheSite:
         os.utime(where, ns=(10**18, 10**18))
         _as(app, None)
         section = app._standing(DIGEST)["standing"]["proven"]
-        assert section["count"] == 0 and section["positions"] == []
+        assert section["count"] == 0 and "positions" not in section
         assert section["none"] == proven.NONE_LEFT
+        assert app.get(f"/api/proven/{DIGEST}")["none"] == proven.NONE_LEFT
         with pytest.raises(KeyError):
             app.get(f"/api/proven/{DIGEST}/1-0-2")
 
@@ -761,6 +866,8 @@ class TestThroughTheSite:
         assert app._standing(DIGEST)["standing"]["proven"] is None
         with pytest.raises(KeyError):
             app.get(f"/api/proven/{DIGEST}/0-0-2")
+        with pytest.raises(KeyError):
+            app.get(f"/api/proven/{DIGEST}")
 
 
 # ------------------------------------------------------------------- the page draws
@@ -768,27 +875,59 @@ class TestThroughTheSite:
 
 _GAME = f"""
 const GAMEX = {{ name: 'Proven test', hash: '{DIGEST}', sides: ['north', 'south'], standing: {{
-  proven: {{ basis: 'Proved on 2026-10-18.', count: 2, singles: 1, signInToConvert: '',
-    yours: {{ converted: 1, found: 0 }},
-    positions: [
-      {{ id: '0-0-2', number: 1, side: 0, endsIn: 1, single: true, converted: true, found: false }},
-      {{ id: '0-1-2', number: 2, side: 1, endsIn: 3, single: false, converted: false, found: false }}
-    ] }} }} }};
+  proven: {{ count: 2, singles: 1, said: '2 positions from this game, to play out.',
+    yours: 'You have solved 1 of 2 (50%). Only you see this.', none: '', basis: '',
+    open: 'open them' }} }} }};
 """
 
 
-class TestTheGamePageDraws:
-    def test_the_section_lists_the_positions_in_the_servers_order(self) -> None:
+def _proven_view(signed_in: bool = True) -> str:
+    """The positions' page as the page holds it: three rows, the first converted, the
+    second and third not, in two groups, with the server's words."""
+    rows = [
+        {"id": "0-0-2", "number": 1, "side": 0, "endsIn": 1, "single": True,
+         "converted": True, "found": False, "solved": True, "done": "converted"},
+        {"id": "0-1-2", "number": 2, "side": 1, "endsIn": 3, "single": True,
+         "converted": False, "found": False, "solved": False, "done": ""},
+        {"id": "0-2-2", "number": 3, "side": 0, "endsIn": 3, "single": False,
+         "converted": False, "found": False, "solved": False, "done": ""},
+    ]
+    data = {
+        "game": DIGEST, "name": "proven test", "sides": ["north", "south"],
+        "basis": "Proved on 2026-10-18.", "count": 3, "singles": 2, "positions": rows,
+        "groups": [{"endsIn": 1, "heading": "Wins in 1 turn", "ids": ["0-0-2"]},
+                   {"endsIn": 3, "heading": "Wins in 3 turns", "ids": ["0-1-2", "0-2-2"]}],
+        "chips": [{"key": "unsolved", "label": "not solved yet", "count": 2},
+                  {"key": "single", "label": "one winning move", "count": 2}],
+        "progress": "You have solved 1 of 3 (33%): converted 1. Only you see this."
+        if signed_in else "",
+        "signedIn": signed_in,
+        "signInToConvert": "" if signed_in else proven.SIGN_IN_TO_CONVERT,
+        "keep": "" if signed_in else proven.PAGE_WORDS["keep"],
+        "none": "", "words": proven.PAGE_WORDS,
+    }
+    return (f"ACCOUNTS = true; PROVEN = {{ hash: '{DIGEST}', data: {json.dumps(data)},"
+            " id: '0-0-2', playing: null };")
+
+
+class TestThePositionsPageDraws:
+    """Q993b (`docs/plan-proven.md` §2): the game page's panel, the positions' own page, its
+    list, *previous* and *next*, a try's end and the router, as the page's script runs
+    them."""
+
+    def test_the_game_page_panel_is_a_summary_and_a_link(self) -> None:
         from test_web import _in_page
 
         panel = html.unescape(_in_page(_GAME, "provenHtml(GAMEX)"))
-        assert "Proven positions" in panel and 'id="provenPick"' in panel
-        assert panel.index("1 · North to move, a win in 1 turn · one winning move") < \
-            panel.index("2 · South to move, a win in 3 turns")
-        assert "you converted it" in panel
-        assert "You have converted 1 of these 2, and found the move in 0 of the 1" in panel
-        assert "Only you see this." in panel and "Proved on 2026-10-18." in panel
-        assert "There is no clock, and nothing here expires." in panel
+        assert "Proven positions" in panel and "2 positions from this game" in panel
+        assert "You have solved 1 of 2 (50%)" in panel
+        assert f'href="/game/{DIGEST}/proven"' in panel and "open them" in panel
+        # The old panel's menu of every position, *before* and *after*, are gone.
+        for gone in ("<select", "provenPick", "<option", "provenOn", "convert it against"):
+            assert gone not in panel
+        visitor = html.unescape(_in_page(_GAME + "GAMEX.standing.proven.yours = '';",
+                                         "provenHtml(GAMEX)"))
+        assert 'id="provenYours"' not in visitor
 
     def test_no_section_without_proven_positions(self) -> None:
         from test_web import _in_page
@@ -797,40 +936,136 @@ class TestTheGamePageDraws:
         assert _in_page("const GAMEX = { standing: {} };", "provenHtml(GAMEX)") == ""
 
     def test_none_left_is_said_in_a_sentence_and_lists_nothing(self) -> None:
-        """Q993g: the server's sentence and the basis, no list, no menu, no buttons."""
+        """Q993g: the server's sentence and the basis, no list and no link."""
         from test_web import _in_page
 
-        gone = (_GAME + "GAMEX.standing.proven.positions = [];"
-                " GAMEX.standing.proven.count = 0;"
+        gone = (_GAME + "GAMEX.standing.proven.count = 0;"
+                " GAMEX.standing.proven.basis = 'Proved on 2026-10-18.';"
                 f" GAMEX.standing.proven.none = {json.dumps(proven.NONE_LEFT)};")
         panel = html.unescape(_in_page(gone, "provenHtml(GAMEX)"))
-        assert "Proven positions" in panel and proven.NONE_LEFT in panel
-        assert 'id="provenNone"' in panel and "Proved on 2026-10-18." in panel
-        for absent in ('id="provenPick"', "<option", 'id="provenOn"', "You have converted"):
-            assert absent not in panel
-        assert _in_page(_GAME + "GAMEX.standing.proven.positions = [];",
-                        "provenHtml(GAMEX)") == ""
+        assert proven.NONE_LEFT in panel and "Proved on 2026-10-18." in panel
+        assert 'id="provenOpen"' not in panel
+        assert _in_page(_GAME + "GAMEX.standing.proven.count = 0;", "provenHtml(GAMEX)") == ""
 
-    def test_a_position_offers_convert_and_the_moves_without_scores(self) -> None:
+    def test_the_list_draws_its_groups_rows_states_and_progress(self) -> None:
+        from test_web import _in_page
+
+        drawn = html.unescape(_in_page(_proven_view(), "provenListHtml()"))
+        assert drawn.index("Wins in 1 turn") < drawn.index("Wins in 3 turns")
+        assert "You have solved 1 of 3 (33%)" in drawn and 'id="provenKeep"' not in drawn
+        # A row a link to its position; the current one marked, neutrally.
+        assert f'href="/game/{DIGEST}/proven/0-1-2"' in drawn
+        assert drawn.count('class="proven-row on"') == 1 and drawn.count("aria-current") == 1
+        assert "North to move" in drawn and "South to move" in drawn
+        assert "✓</span> converted" in drawn and drawn.count("one winning move") >= 2
+        assert "not solved yet · 2" in drawn and 'data-chip="unsolved"' in drawn
+        visitor = html.unescape(_in_page(_proven_view(False), "provenListHtml()"))
+        assert "Sign in to keep what you solve." in visitor and 'id="provenProgress"' not in visitor
+        playing = html.unescape(_in_page(_proven_view() + "PROVEN.playing = '0-0-2';",
+                                         "provenListHtml()"))
+        assert "playing" in playing and "✓</span> converted" not in playing
+
+    def test_next_with_not_solved_yet_skips_a_solved_row(self) -> None:
+        from test_web import _in_page
+
+        setup = _proven_view() + "PROVEN.data.positions[1].solved = true;"
+        assert _in_page(setup, "[provenStep(1), provenStep(-1)]") == ["0-1-2", "0-2-2"]
+        assert _in_page(setup + "PROVEN_CHIPS.unsolved = true;",
+                        "[provenStep(1), provenStep(-1)]") == ["0-2-2", "0-2-2"]
+        assert _in_page(setup + "PROVEN_CHIPS.unsolved = true; PROVEN.id = '0-2-2';",
+                        "provenStep(1)") is None
+        assert _in_page(_proven_view() + "PROVEN_CHIPS.single = true;",
+                        "[provenStep(1), provenShown(PROVEN.data.positions[2])]") == ["0-1-2", False]
+
+    def test_a_trys_end_ticks_the_row_from_the_reply(self) -> None:
+        from test_web import _in_page
+
+        setup = _proven_view() + "PROVEN.id = '0-1-2'; PROVEN.playing = '0-1-2';"
+        running = _in_page(setup, "(provenMoved({ puzzle: { id: '0-1-2', converted: false },"
+                                  " outcome: null }), [PROVEN.playing, PROVEN.data.positions[1]])")
+        assert running[0] == "0-1-2" and running[1]["solved"] is False
+        won = _in_page(setup, "(provenMoved({ puzzle: { id: '0-1-2', converted: true },"
+                              " outcome: { winner: 1 } }), [PROVEN.playing, PROVEN.data.positions[1]])")
+        assert won[0] is None
+        assert won[1]["converted"] is True and won[1]["solved"] is True
+        assert won[1]["done"] == "converted"
+        lost = _in_page(setup, "(provenMoved({ puzzle: { id: '0-1-2', converted: false },"
+                               " outcome: { winner: 0 } }), [PROVEN.playing, PROVEN.data.positions[1]])")
+        assert lost[0] is None and lost[1]["solved"] is False
+
+    def test_a_visitors_find_is_ticked_for_the_visit_and_sent_back(self) -> None:
+        from test_web import _in_page
+
+        found = _in_page(
+            _proven_view(False) + "provenSolved('0-1-2', 'visit');",
+            f"[PROVEN.data.positions[1].done, [...PROVEN_VISIT['{DIGEST}']]]")
+        assert found == [proven.FOUND_FOR_VISIT, ["0-1-2"]]
+        asked = _in_page(
+            _proven_view(False) + f"PROVEN_VISIT['{DIGEST}'] = new Set(['0-1-2']);"
+            " let ASKED = ''; api = path => { ASKED = path; return new Promise(() => {}); };"
+            f" provenAsk('{DIGEST}');", "ASKED")
+        assert asked == f"/api/proven/{DIGEST}?found=0-1-2"
+
+    def test_the_frame_has_its_strip_board_bar_and_one_primary(self) -> None:
         from test_web import _in_page
 
         position = (
-            "const SPOT = { id: '0-0-2', number: 1, side: 0, endsIn: 1, single: true,"
-            " said: 'The computer proved a win.', preview: null,"
+            "const SPOT = { id: '0-1-2', number: 2, side: 1, endsIn: 3, single: true,"
+            " said: 'The computer proved a win.', preview: { width: 5, height: 5 },"
             " moves: [{ move: 7, text: 'Gb2xc3' }, { move: 9, text: 'Gb2-b3' }] };"
+            " boardPreview = () => '<svg></svg>';"
         )
-        drawn = html.unescape(_in_page(
-            _GAME + position, "provenAtHtml(GAMEX, GAMEX.standing.proven, SPOT)"
-        ))
-        assert 'id="provenConvert"' in drawn and "convert it against hardest" in drawn
-        assert 'data-proven-move="7"' in drawn and "Gb2-b3" in drawn
-        assert "Find the move" in drawn and 'id="provenShow"' in drawn
-        assert "North to move. The computer proved a win." in drawn
-        visitor = html.unescape(_in_page(
-            _GAME + position + "GAMEX.standing.proven.signInToConvert = 'Sign in to convert.';",
-            "provenAtHtml(GAMEX, GAMEX.standing.proven, SPOT)",
-        ))
-        assert 'id="provenConvert"' not in visitor and "Sign in to convert." in visitor
+        drawn = html.unescape(_in_page(_proven_view() + position, "provenFrameHtml(SPOT)"))
+        assert drawn.index('data-frame="status"') < drawn.index('data-frame="board"') \
+            < drawn.index('data-frame="controls"') < drawn.index("Find the move")
+        assert "South to move. The computer proved a win." in drawn
+        assert drawn.count('class="primary"') == 1 and "Play it out against hardest" in drawn
+        assert 'id="provenPrev"' in drawn and 'id="provenNext"' in drawn
+        assert 'data-proven-move="9"' in drawn and "Gb2-b3" in drawn
+        visitor = html.unescape(_in_page(_proven_view(False) + position, "provenFrameHtml(SPOT)"))
+        assert 'id="provenPlay"' not in visitor and proven.SIGN_IN_TO_CONVERT in visitor
+
+    def test_the_ended_banner_offers_next_position_first(self) -> None:
+        """On the positions' page the banner's primary is *next position*, with *try it
+        again* beside it; on any other board the game again is the primary."""
+        from test_web import _in_page
+
+        def banner(proven_chrome: bool) -> Any:
+            setup = (
+                "const NODES = {}; const button = (id, words) => ({ id, hidden: false,"
+                " disabled: false, textContent: words, querySelector: () => null,"
+                " click: () => { NODES.clicked = id; } });"
+                " NODES.ended = { hidden: true, dataset: {}, className: '', innerHTML: '',"
+                " querySelectorAll: () => [] };"
+                " NODES.again = button('again', 'try it again from the position');"
+                " NODES.provenNext = button('provenNext', 'next position');"
+                " document.getElementById = id => NODES[id] || null;"
+                " SESSION = { outcome: { winner: 1, reason: 'resigned' }, seats: ['human', 'x'],"
+                " ruleset: { sides: ['north', 'south'] }, sideToMove: 0 }; TIMELINE = [{}, {}];"
+                + (" BOARD_PROVEN = { words: {} };" if proven_chrome else "")
+            )
+            return _in_page(setup, "(drawEnded(), NODES.ended.innerHTML)")
+
+        here = html.unescape(banner(True))
+        assert '<button class="primary" data-ended="next">next position</button>' in here
+        assert '<button class="" data-ended="again">try it again from the position' in here
+        elsewhere = html.unescape(banner(False))
+        assert "next position" not in elsewhere
+        assert '<button class="primary" data-ended="again">' in elsewhere
+
+    def test_the_router_reads_the_positions_address(self) -> None:
+        from test_web import _in_page
+
+        assert _in_page("", f"[pathProven('/game/{DIGEST}/proven'),"
+                            f" pathProven('/game/{DIGEST}/proven/0-1-2'),"
+                            f" pathProven('/game/{DIGEST}'), provenPath('{DIGEST}', '0-1-2')]") == [
+            [DIGEST, ""], [DIGEST, "0-1-2"], None, f"/game/{DIGEST}/proven/0-1-2"]
+        assert _in_page("", f"PROVEN_FRAGMENT.exec('#/proven/{DIGEST}/0-1-2').slice(1)") == [
+            DIGEST, "0-1-2"]
+        # `go` hands the fragment over to the address, as it does a game's.
+        went = _in_page("let WENT = ''; goPath = path => { WENT = path; };"
+                        f" go('#/proven/{DIGEST}/0-1-2');", "WENT")
+        assert went == f"/game/{DIGEST}/proven/0-1-2"
 
     def test_the_board_says_how_a_try_ended_from_the_engines_outcome(self) -> None:
         from test_web import _in_page
@@ -854,14 +1089,18 @@ class TestTheGamePageDraws:
         assert 'id="undo"' in with_one and 'id="undo"' not in without
         assert 'id="resign"' in without
 
-    def test_the_profile_draws_your_lines(self) -> None:
+    def test_the_profile_draws_your_lines_linked_to_the_positions(self) -> None:
         profile = (REPOSITORY / "chess_variant_sandbox" / "site" / "static" / "profile.js"
                    ).read_text(encoding="utf-8")
         start = profile.index("function drawProven")
         body = profile[start: profile.index("\n}\n", start)]
         assert "if (!lines.length) return;" in body
         assert "Only you see this." in body
-        assert "drawProven(payload.proven || []);" in profile
+        assert "share.said" in body and "line.share" in body and "provenLink(" in body
+        assert "drawProven(payload.proven || [], payload.provenShare);" in profile
+        link = profile[profile.index("function provenLink"):]
+        assert "link.getAttribute('href') + PROVEN" in link[: link.index("\n}\n")]
+        assert "const PROVEN = '/proven';" in profile
 
 
 # ------------------------------------------------------ the games list's filter (Q972)

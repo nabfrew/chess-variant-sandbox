@@ -98,7 +98,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent.parent / "static" / "page"
 # The views in the order they load: the order they were concatenated in, kept.
 _ORDER = (
     "core", "wrapped", "wood", "stillboard", "browse", "graph", "explorer", "upkeep", "detail",
-    "design", "teaching", "cards", "portals", "measure", "board", "simultaneous", "runs", "whatsnew", "round", "landing",
+    "design", "teaching", "cards", "portals", "measure", "board", "simultaneous", "runs", "whatsnew",
+    "round", "proven", "landing",
     "boot",
 )
 

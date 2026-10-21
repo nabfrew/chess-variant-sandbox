@@ -430,6 +430,13 @@ OWN: tuple[Route, ...] = (
     # a visitor finds the move as a member does, and only a member's right pick is kept.
     Route(
         "GET",
+        "/api/proven/<hash>",
+        "a game's proven positions, its own page (Q993b): the list shortest proved win "
+        "first, grouped by turns to the win, the chips' counts and the reader's own "
+        "progress; a visitor's finds this visit are sent back and kept nowhere",
+    ),
+    Route(
+        "GET",
         "/api/proven/<hash>/<position>",
         "one of a game's proven positions, drawn, with whose move it is and, where the "
         "proof shows one winning move, the moves to pick from without their scores",

@@ -396,53 +396,243 @@ winner and `lost` at any other ending: it reads the outcome the board already dr
 decides nothing itself."""
 
 
-def try_snapshot(position_id: str, ply: int, side: int) -> dict[str, Any]:
+def try_snapshot(
+    position_id: str, ply: int, side: int, converted: bool = False
+) -> dict[str, Any]:
     """The `puzzle` block of a try's snapshot: which position, where its prefix ends, the
-    person's side and the board's sentences."""
-    return {"id": position_id, "from": ply, "side": side, **TRY_SAID}
+    person's side, the board's sentences, and whether the person holds the position's
+    `converted` mark, as the finish left it (Q993b): the reply to the move that ends a
+    won try carries the mark the finish wrote, so the positions' page ticks its row from
+    the reply without asking again."""
+    return {
+        "id": position_id, "from": ply, "side": side, "converted": converted, **TRY_SAID,
+    }
 
 
-# ------------------------------------------------------------------ the game's page
+def converted_by(connection: Any, match_id: str) -> bool:
+    """Whether the person at this try holds its position's `converted` mark: the row
+    `converted` writes at a won finish, or one an earlier try wrote. Read for the try's
+    snapshot (`matches._puzzle_block`)."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select exists (select 1 from proven_marks p join matches m"
+            " on p.game = m.game and p.position = m.puzzle"
+            " where m.id = %s and p.way = %s"
+            " and p.person in (m.seat0_user, m.seat1_user))",
+            (match_id, CONVERTED),
+        )
+        found = cursor.fetchone()
+    return bool(found and found[0])
 
 
-def section(
+# ---------------------------------------------------------- the positions' own page
+
+FOUND_FOR_VISIT = "found, for this visit"
+"""A visitor's right pick, ticked for the visit and kept nowhere (§2.2 *A visitor*)."""
+
+SOLVED_WORDS = {
+    (True, False): "converted",
+    (False, True): "found",
+    (True, True): "converted and found",
+}
+"""A row's state on the right of the list, a word with an ink tick, never a colour (S4)."""
+
+SINGLE = "one winning move"
+
+PAGE_WORDS = {
+    "play": "Play it out against hardest",
+    "next": "next position",
+    "nextShort": "next",
+    "previous": "previous",
+    "again": "try it again from the position",
+    "playing": "playing",
+    "single": SINGLE,
+    "keep": "Sign in to keep what you solve.",
+    "marked": "It is marked on your page.",
+    "leave": (
+        "Leave this game unfinished? It is a practice game from the position, and nothing "
+        "is kept of a try left before its end."
+    ),
+    "empty": "No position on the list passes the filters that are on.",
+    "alone": "No other position on the list passes the filters that are on.",
+    "open": "open them",
+    "find": "Find the move",
+    "findSaid": "Only one move here is proved to win. Pick it.",
+    "show": "show the proved move",
+    "converted": SOLVED_WORDS[(True, False)],
+    "found": SOLVED_WORDS[(False, True)],
+    "both": SOLVED_WORDS[(True, True)],
+    "visit": FOUND_FOR_VISIT,
+}
+"""The positions' page's own words (Q993b, `docs/plan-proven.md` §2.2), the server's, so
+the guard test reads them: the view's one primary, which names its result (S6), the quiet
+*previous* and *next*, the ended banner's *next position* and *try it again*, the line a
+visitor reads above the list, a row's state, and the confirmation a try in progress asks
+before it is left."""
+
+CHIPS = (
+    ("unsolved", "not solved yet"),
+    ("single", SINGLE),
+)
+"""The chips over the list (§2.2): each narrows it in place, and *previous* and *next* walk
+the list as narrowed. Their counts are the server's (`page`); a chip that would narrow
+nothing (every position, or none, has one winning move) is not sent."""
+
+
+def share_said(solved: int, of: int) -> str:
+    """A share solved as a percentage (the user, 2026-10-20, `plan-proven.md` §4: *"each
+    game's %"*). Rounded down, so *100%* is said only when every position is solved, and
+    *under 1%* rather than *0%* for a share that is not nought."""
+    if of <= 0:
+        return ""
+    whole = (100 * solved) // of
+    if solved and whole == 0:
+        return "under 1%"
+    return f"{whole}%"
+
+
+def _plural(count: int, word: str) -> str:
+    return f"{count} {word}{'' if count == 1 else 's'}"
+
+
+def _heading(ends_in: int) -> str:
+    return f"Wins in {_turns(ends_in)}"
+
+
+def solved_ids(record: Record, marks: dict[str, set[str]] | None) -> set[str]:
+    """The positions offered now that these marks solve, either way."""
+    mine = marks or {}
+    return {found.id for found in record.positions if mine.get(found.id)}
+
+
+def progress_said(record: Record, marks: dict[str, set[str]]) -> str:
+    """The progress line (§2.2), signed in: a count of the reader's own marks against what
+    is offered now, with the share as a percentage. With no mark it is the count of
+    positions alone, never *0 of n* (*absent is not nought*)."""
+    count = len(record.positions)
+    solved = solved_ids(record, marks)
+    if not solved:
+        return f"{_plural(count, 'position')} to solve."
+    converted = sum(1 for found in record.positions if CONVERTED in marks.get(found.id, set()))
+    found_ = sum(
+        1 for found in record.positions if found.single and FOUND in marks.get(found.id, set())
+    )
+    said = (
+        f"You have solved {len(solved)} of {count} ({share_said(len(solved), count)}): "
+        f"converted {converted}"
+    )
+    if record.singles:
+        said += (
+            f", found the move in {found_} of the {record.singles} with one winning move"
+        )
+    return said + ". Only you see this."
+
+
+def _visit_said(record: Record, found: set[str]) -> str:
+    """A visitor's line: what they found on this visit, kept nowhere."""
+    count = len(record.positions)
+    if not found:
+        return ""
+    return (
+        f"On this visit you have found the move in {len(found)} of {count} "
+        f"({share_said(len(found), count)}). Nothing is kept."
+    )
+
+
+def page(
     record: Record,
     marks: dict[str, set[str]] | None,
-    signed_in: bool,
+    visit: set[str] | None = None,
 ) -> dict[str, Any]:
-    """*Proven positions* on the game's page: the basis, the list, and the reader's marks.
+    """`GET /api/proven/<hash>`: the positions' own page (Q993b, `plan-proven.md` §2).
 
-    `marks` is the reader's own (`marks_on`), position id to the ways they solved it, and
-    None for a visitor, who has none. Nothing here counts anybody else.
+    The list in the loader's order (shortest proved win first), grouped by turns to the
+    win, each row with the reader's state in words; the chips' counts; the progress line;
+    the basis; and the page's own words. `marks` is the reader's own (`marks_on`), None for
+    a visitor, whose right picks this visit (`visit`, ids the page holds and sends back)
+    are counted for the visit and kept nowhere. Nothing here counts anybody else, and
+    nothing here judges a move: every answer is the record's.
     """
+    signed_in = marks is not None
     mine = marks or {}
-    positions = [
-        {
+    offered = {found.id for found in record.positions}
+    seen = (set(visit or ()) & offered) if not signed_in else set()
+    rows: list[dict[str, Any]] = []
+    for found in record.positions:
+        ways = mine.get(found.id, set())
+        done = SOLVED_WORDS.get((CONVERTED in ways, FOUND in ways), "")
+        if not signed_in and found.id in seen:
+            done = FOUND_FOR_VISIT
+        rows.append({
             "id": found.id,
             "number": found.number,
             "side": found.side,
             "endsIn": found.ends_in,
             "single": found.single,
-            "converted": CONVERTED in mine.get(found.id, set()),
-            "found": FOUND in mine.get(found.id, set()),
-        }
-        for found in record.positions
-    ]
-    yours = None
-    if marks is not None:
-        yours = {
-            "converted": sum(1 for entry in positions if entry["converted"]),
-            "found": sum(1 for entry in positions if entry["found"]),
-        }
+            "converted": CONVERTED in ways,
+            "found": FOUND in ways or found.id in seen,
+            "solved": bool(done),
+            "done": done,
+        })
+    groups: list[dict[str, Any]] = []
+    for row in rows:
+        if not groups or groups[-1]["endsIn"] != row["endsIn"]:
+            groups.append({"endsIn": row["endsIn"], "heading": _heading(row["endsIn"]),
+                           "ids": []})
+        groups[-1]["ids"].append(row["id"])
+    unsolved = sum(1 for row in rows if not row["solved"])
+    solved = len(rows) - unsolved
     return {
+        "game": record.game,
         "basis": basis_said(record),
-        "count": len(record.positions),
+        "count": len(rows),
         "singles": record.singles,
-        "positions": positions,
-        "yours": yours,
+        "positions": rows,
+        "groups": groups,
+        "chips": [
+            {"key": key, "label": label,
+             "count": unsolved if key == "unsolved" else record.singles}
+            for key, label in CHIPS
+            if key == "unsolved" or 0 < record.singles < len(rows)
+        ],
+        "progress": progress_said(record, mine) if signed_in else _visit_said(record, seen),
+        "share": (
+            {"solved": solved, "of": len(rows), "said": share_said(solved, len(rows))}
+            if rows and solved else None
+        ),
+        "signedIn": signed_in,
         "signInToConvert": "" if signed_in else SIGN_IN_TO_CONVERT,
-        "none": "" if positions else NONE_LEFT,
+        "keep": "" if signed_in else PAGE_WORDS["keep"],
+        "none": "" if rows else NONE_LEFT,
+        "words": PAGE_WORDS,
     }
+
+
+def summary(record: Record, marks: dict[str, set[str]] | None) -> dict[str, Any]:
+    """*Proven positions* on the game's page since Q993b: the count, the reader's progress
+    where there is any, and the way to the positions' own page. The list is that page's
+    (`page`), so a game page no longer ships a row a position. A record that offers nothing
+    keeps its sentence and its basis (`NONE_LEFT`)."""
+    count = len(record.positions)
+    solved = solved_ids(record, marks)
+    said = (
+        f"{_plural(count, 'position')} from this game that the computer proved won for the "
+        "side to move, to play out against hardest"
+        + (", or to find the one move that wins" if record.singles else "")
+        + ". There is no clock, and nothing here expires."
+    ) if count else ""
+    return {
+        "count": count,
+        "singles": record.singles,
+        "said": said,
+        "yours": progress_said(record, marks) if marks is not None and solved else "",
+        "none": "" if count else NONE_LEFT,
+        "basis": "" if count else basis_said(record),
+        "open": PAGE_WORDS["open"],
+    }
+
+
+# ------------------------------------------------------------------ one position
 
 
 def view(record: Record, spec: dict[str, Any], position_id: str) -> dict[str, Any]:
@@ -629,6 +819,7 @@ def profile_lines(
         if offered is not None:
             done = [pid for pid in done if pid in offered]
             found_ = [pid for pid in found_ if singles is not None and pid in singles]
+        solved = len(set(done) | set(found_))
         lines.append({
             "hash": game,
             "name": names.get(game, ""),
@@ -636,8 +827,49 @@ def profile_lines(
             "found": len(found_),
             "of": None if record is None else len(record.positions),
             "singles": None if record is None else record.singles,
+            # Q993b: each game's share solved, as a percentage, against what it offers now.
+            "solved": None if record is None else solved,
+            "share": None if record is None else share_said(solved, len(record.positions)),
         })
     return lines
+
+
+def overall(
+    marked: dict[str, dict[str, set[str]]], records: dict[str, Record | None]
+) -> dict[str, Any] | None:
+    """The share of every proven position on the site the person has solved, across every
+    game that offers some (the user, 2026-10-20, `plan-proven.md` §4: *"aggregate milestone
+    tracking % of proved positions of all games solved"*). Live: counted against what each
+    game offers now, so a re-proof that adds positions moves it down and takes nothing kept
+    away. None where nothing is offered or nothing is solved (*absent is not nought*)."""
+    offered = solved = games = 0
+    for game, record in records.items():
+        if record is None or not record.positions:
+            continue
+        games += 1
+        offered += len(record.positions)
+        solved += len(solved_ids(record, marked.get(game)))
+    if not offered or not solved:
+        return None
+    return {
+        "solved": solved, "of": offered, "games": games, "share": share_said(solved, offered),
+        "said": (
+            f"Across all {_plural(games, 'game')} with proven positions you have solved "
+            f"{solved} of {offered} ({share_said(solved, offered)})."
+        ),
+    }
+
+
+def everywhere(runs_dir: Path | str, specs: dict[str, dict[str, Any]]) -> dict[str, Record | None]:
+    """Every record on disk for a game the site knows, loaded (and cached) as its page
+    loads it: the denominator of `overall`. A file for a game the site does not know is
+    not read."""
+    where = Path(runs_dir) / DIRECTORY
+    try:
+        names = sorted(item.stem for item in where.glob("*.json"))
+    except OSError:
+        return {}
+    return {digest: load(runs_dir, digest, specs[digest]) for digest in names if digest in specs}
 
 
 def seats_for(position: Position) -> list[str]:

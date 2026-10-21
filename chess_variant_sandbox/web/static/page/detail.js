@@ -209,7 +209,6 @@ async function showGame(hash) {
   }
   wireCarryOn();
   wirePlayPerson(game, hash);
-  wireProven(game, hash);
   wireLinks();
   wireBetween(game);
   wireDeleting(game, hash);
@@ -3060,19 +3059,17 @@ function scoreHtml(score, guide, band, trust) {
 
 // ------------------------------------------------------------ proven positions
 //
-// R9b (`docs/plan-website.md` *Proven positions*, `site/proven.py`). Positions from this
-// game's own recorded games that the computer proved won for the side to move, offered
-// two ways: *convert it*, a practice game from the position against hardest, which the
-// game's own ending decides; and, where the proof shows one winning move, *find the move*,
-// answered from the stored proof. Everything here is the server's: the list and its
-// order, the drawing, the moves to pick from (never their scores) and every sentence. The
-// page sorts nothing and judges nothing. The reader's marks are their own, and nothing
-// here counts anybody else. The local application sends no `proven`, and draws nothing.
+// R9b (`docs/plan-website.md` *Proven positions*, `site/proven.py`); since Q993b
+// (`docs/plan-proven.md` §2) a summary and a link. Positions from this game's own recorded
+// games that the computer proved won for the side to move are worked through on a page of
+// their own (`proven.js`, `/game/<hash>/proven`): this panel says how many there are, the
+// reader's own progress where there is any, and the way there. Every sentence is the
+// server's. The local application sends no `proven`, and draws nothing.
 function provenHtml(game) {
   const proven = game.standing && game.standing.proven;
   if (!proven) return '';
   // Q993g: a record whose every position was too easy says so, rather than listing none.
-  if (!(proven.positions || []).length) {
+  if (!proven.count) {
     if (!proven.none) return '';
     return `<div class="panel proven" id="proven" style="margin-top:14px">
     <h3 style="margin-top:0">Proven positions${info('provenPositions')}</h3>
@@ -3083,133 +3080,11 @@ function provenHtml(game) {
     </details>
   </div>`;
   }
-  const sideWord = side => provenSide(game, side);
-  const options = proven.positions.map(entry => `<option value="${esc(entry.id)}">${
-    entry.number} · ${esc(sideWord(entry.side))} to move, a win in ${entry.endsIn} turn${
-    entry.endsIn === 1 ? '' : 's'}${entry.single ? ' · one winning move' : ''}${
-    entry.converted ? ' · you converted it' : ''}${entry.found ? ' · you found it' : ''}</option>`).join('');
-  const yours = proven.yours ? `<p class="small" id="provenYours">You have converted ${
-    proven.yours.converted} of these ${proven.count}, and found the move in ${
-    proven.yours.found} of the ${proven.singles} with one winning move. Only you see this.</p>` : '';
   return `<div class="panel proven" id="proven" style="margin-top:14px">
     <h3 style="margin-top:0">Proven positions${info('provenPositions')}</h3>
-    <div class="muted small">${proven.count} position${proven.count === 1 ? '' : 's'} from
-      this game that the computer proved won for the side to move. Convert one by playing it
-      out against hardest${proven.singles ? `, or, in the ${proven.singles} where only one
-      move wins, find that move` : ''}. There is no clock, and nothing here expires.</div>
-    <div class="row" style="margin-top:8px">
-      <label class="small" for="provenPick">position</label>
-      <select id="provenPick" style="max-width:min(100%, 24em)">${options}</select>
-      <button id="provenBack" class="quiet" title="the position before this one">before</button>
-      <button id="provenOn" class="quiet" title="the position after this one">after</button>
-    </div>
-    <div id="provenAt" aria-live="polite"></div>
-    ${yours}
-    <details class="muted small" style="margin-top:8px">
-      <summary>how these were proved</summary>
-      <p id="provenBasis">${esc(proven.basis)}</p>
-    </details>
+    <p class="muted small" id="provenSaid" style="margin:0">${esc(proven.said)}</p>
+    ${proven.yours ? `<p class="small" id="provenYours">${esc(proven.yours)}</p>` : ''}
+    <div class="row" style="margin-top:8px"><a id="provenOpen" class="proven-open"
+      href="${provenPath(game.hash)}">${esc(proven.open)}</a></div>
   </div>`;
-}
-
-// The side to move by the game's own name for it (*black*, *south*), else by its place.
-function provenSide(game, side) {
-  const named = (game.sides || [])[side];
-  const said = named || (side === 0 ? 'the first player' : 'the second player');
-  return said.charAt(0).toUpperCase() + said.slice(1);
-}
-
-function wireProven(game, hash) {
-  const proven = game.standing && game.standing.proven;
-  const pick = document.getElementById('provenPick');
-  if (!proven || !pick) return;
-  const at = document.getElementById('provenAt');
-  const ids = proven.positions.map(entry => entry.id);
-  const show = id => {
-    pick.value = id;
-    at.innerHTML = '<div class="muted small" style="margin-top:8px">Drawing the position…</div>';
-    api('/api/proven/' + hash + '/' + encodeURIComponent(id))
-      .then(position => {
-        if (pick.value !== id) return;
-        at.innerHTML = provenAtHtml(game, proven, position);
-        wireProvenAt(hash, proven, position);
-      })
-      .catch(error => { at.innerHTML = ''; fail(error, 'provenPick'); });
-  };
-  pick.onchange = () => show(pick.value);
-  const step = by => {
-    const here = ids.indexOf(pick.value);
-    const next = ids[(here + by + ids.length) % ids.length];
-    show(next);
-  };
-  document.getElementById('provenBack').onclick = () => step(-1);
-  document.getElementById('provenOn').onclick = () => step(1);
-  show(ids[0]);
-}
-
-function provenAtHtml(game, proven, position) {
-  const preview = Object.assign({}, position.preview, { hash: game.hash });
-  const tall = preview.height / Math.max(1, preview.width);
-  const convert = proven.signInToConvert
-    ? `<div class="muted small">${esc(proven.signInToConvert)}</div>`
-    : `<button class="primary" id="provenConvert"
-        title="a practice game from this position against hardest; you convert it if the game ends in your win"
-        >convert it against hardest</button>`;
-  const find = position.single && position.moves.length ? `
-    <h4 style="margin:12px 0 4px">Find the move</h4>
-    <div class="muted small">Only one move here is proved to win. Pick it.</div>
-    <div class="row proven-moves" style="margin-top:6px">${position.moves.map(entry =>
-      `<button class="quiet" data-proven-move="${entry.move}">${esc(entry.text)}</button>`).join('')}
-    </div>
-    <div id="provenSaid" class="small" style="margin-top:6px" aria-live="polite"></div>
-    <div class="row" style="margin-top:6px">
-      <button id="provenShow" class="quiet" title="say which move the computer proved, without picking one"
-        >show the proved move</button>
-    </div>` : '';
-  return `<figure class="opening" style="margin-top:10px; max-width:min(100%, calc(46vh / ${
-    tall.toFixed(3)}))">
-      <div role="img" aria-label="Proven position ${position.number}.">${provenBoard(preview, position.side)}</div>
-      <figcaption class="muted small">${esc(provenSide(game, position.side))} to move. ${
-        esc(position.said)}</figcaption>
-    </figure>
-    <div class="row" style="margin-top:8px">${convert}</div>
-    ${find}`;
-}
-
-// The still board from the side to move, as the board a try opens on is drawn: the one
-// flip the reader's own board would make, put back as soon as the drawing is made.
-function provenBoard(preview, side) {
-  const was = FLIPPED;
-  FLIPPED = side === 1;
-  try { return boardPreview(preview, null); } finally { FLIPPED = was; }
-}
-
-function wireProvenAt(hash, proven, position) {
-  const convert = document.getElementById('provenConvert');
-  if (convert) convert.onclick = () => {
-    pending('Setting up the position…');
-    api('/api/session', { hash, puzzle: position.id })
-      .then(open_).catch(error => fail(error, 'provenConvert'));
-  };
-  const said = document.getElementById('provenSaid');
-  const buttons = Array.from(document.querySelectorAll('[data-proven-move]'));
-  const ask = body => api('/api/proven/' + hash + '/' + encodeURIComponent(position.id) + '/find', body)
-    .then(answer => {
-      said.textContent = answer.said + (answer.marked ? ' It is marked on your page.' : '');
-      said.className = 'small ' + (answer.right ? 'ok' : 'muted');
-      if (answer.right || answer.shown) buttons.forEach(button => { button.disabled = true; });
-      const mark = (proven.positions || []).find(entry => entry.id === position.id);
-      if (mark && answer.marked && !mark.found) {
-        mark.found = true;
-        const option = Array.from(document.querySelectorAll('#provenPick option'))
-          .find(entry => entry.value === position.id);
-        if (option) option.textContent += ' · you found it';
-      }
-    })
-    .catch(error => fail(error, said));
-  buttons.forEach(button => {
-    button.onclick = () => ask({ move: Number(button.dataset.provenMove) });
-  });
-  const reveal = document.getElementById('provenShow');
-  if (reveal) reveal.onclick = () => ask({ show: true });
 }

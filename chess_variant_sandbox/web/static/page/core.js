@@ -1366,6 +1366,9 @@ function go(hash) {
   // fragment: `go('#/game/<hash>')` and `go('/game/<hash>')` are both `/game/<hash>`.
   const game = /^#?\/game\/([^/?#]+)$/.exec(hash);
   if (game) return goPath(gamePath(game[1]));
+  // Q993b: a game's proven positions have an address of their own too, the position in it.
+  const proven = PROVEN_FRAGMENT.exec(hash);
+  if (proven) return goPath(provenPath(proven[1], proven[2] ? decodeURIComponent(proven[2]) : ''));
   if (location.hash === hash) render();
   else location.hash = hash;
 }
@@ -1387,6 +1390,18 @@ function pathGame() {
   return found ? found[1] : null;
 }
 
+// Q993b (`docs/plan-proven.md` §2.1): a game's proven positions, `/game/<hash>/proven` and
+// `/game/<hash>/proven/<id>` with the position chosen, so a reload or a bookmark lands on the
+// same one. `#/proven/<hash>[/<id>]` names the same view and is handed over to the address.
+const PROVEN_PATH = /^\/game\/([0-9a-f]{8,64})\/proven(?:\/([^/?#]+))?\/?$/;
+const PROVEN_FRAGMENT = /^#?\/proven\/([^/?#]+)(?:\/([^/?#]+))?$/;
+
+// `[hash, id]` for a proven positions' address, or null.
+function pathProven(path) {
+  const found = PROVEN_PATH.exec(path === undefined ? location.pathname : path);
+  return found ? [found[1], found[2] ? decodeURIComponent(found[2]) : ''] : null;
+}
+
 // A link to a game's address is followed without loading the page again, as the router's
 // own: the click is taken over unless it asks for a new tab or window, so a game in hand
 // and the listing already fetched survive it. Wired once, on the document.
@@ -1400,10 +1415,12 @@ function wireGameLinks() {
     if (!link || (link.target && link.target !== '_self') || link.hasAttribute('download')) {
       return;
     }
-    const found = GAME_PATH.exec(link.getAttribute('href') || '');
-    if (!found) return;
+    const href = link.getAttribute('href') || '';
+    const found = GAME_PATH.exec(href);
+    const proven = found ? null : pathProven(href);
+    if (!found && !proven) return;
     event.preventDefault();
-    goPath(gamePath(found[1]));
+    goPath(found ? gamePath(found[1]) : href);
   });
 }
 
@@ -1425,6 +1442,10 @@ function viewTitle(parts) {
   if (parts[0] === 'game' && parts[1]) {
     const known = DETAIL[parts[1]] || (LIBRARY || []).find(game => game.hash === parts[1]);
     return known ? gameTitle(known.name) : null;
+  }
+  if (parts[0] === 'proven' && parts[1]) {
+    const known = DETAIL[parts[1]] || (LIBRARY || []).find(game => game.hash === parts[1]);
+    return known ? `Proven positions on ${known.name || 'an unnamed game'}` : null;
   }
   const named = {
     map: 'The map of games', 'whats-new': "What's new", round: 'The round',
@@ -1493,9 +1514,19 @@ function render() {
   if (parts[0] === 'game' && parts[1] && parts.length === 2) {
     try { history.replaceState(null, '', gamePath(parts[1])); } catch (error) { /* stays */ }
   }
-  // With no fragment, the address names the game (`/game/<hash>`).
+  // Q993b: `#/proven/<hash>[/<id>]` is handed over to the positions' own address.
+  if (parts[0] === 'proven' && parts[1]) {
+    try {
+      history.replaceState(null, '', provenPath(parts[1], parts[2] ? decodeURIComponent(parts[2]) : ''));
+    } catch (error) { /* stays */ }
+    parts = ['proven', parts[1], parts[2] ? decodeURIComponent(parts[2]) : ''];
+  }
+  // With no fragment, the address names the game (`/game/<hash>`), or its proven positions.
   if (!parts.length && location.hash.replace(/^#/, '') !== '/' && pathGame()) {
     parts = ['game', pathGame()];
+  }
+  if (!parts.length && location.hash.replace(/^#/, '') !== '/' && pathProven()) {
+    parts = ['proven', ...pathProven()];
   }
   RENDERED = location.href;
   RENDERED_HASH = location.hash;
@@ -1507,6 +1538,9 @@ function render() {
     return showLanding().catch(fail);
   }
   if (parts[0] === 'game' && parts[1]) return showGame(parts[1]).catch(fail);
+  if (parts[0] === 'proven' && parts[1]) {
+    return showProven(parts[1], parts[2] || '').catch(fail);
+  }
   // The library's second view: the same games as a map, drawn by the graph library and
   // steered. A place rather than a way of looking, unlike the filters, because it is a
   // page somebody links to. `#/map/explore` is where it was built and still leads here.
