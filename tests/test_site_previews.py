@@ -53,12 +53,17 @@ ARCHIVED_PREVIEWS = {
     # under the round player that sees a finished round's value
     # (`docs/reference/library-repair-2026-10-21.md` §2.2).
     "watering-hole-by-speed.json": "423a29997264",
+    # Q983d's three showcases of schema 29's rest (`plan-rest.md` §6.1): two by turns (U1
+    # Gardner, U3 chess) and one in rounds (U2 breather); previews until Q983e grades them.
+    "gardner-with-weary-heavies.json": "1d1d3c79ce19",
+    "breather-by-weight.json": "7ea0357fa8de",
+    "chess-with-a-weary-queen.json": "fee1ab560013",
 }
 """The previews in `archive/`, by file and by the mechanics hash each was or will be measured
 under: the round and spy games less the four that joined the library (`JOINED`), the six that
 Q962b retired and the one Q962c retired (`docs/reference/previews-2026-10-18.md`; their files
-are `tests/_retired_*.json`), and Q943c's three speed showcases (T3, the watering hole by speed,
-back from the library since Q996)."""
+are `tests/_retired_*.json`), Q943c's three speed showcases (T3, the watering hole by speed,
+back from the library since Q996), and Q983d's three rest showcases, two of them played by turns."""
 
 ROUND_PREVIEW = "0c7c0191c850"
 ROUND_PREVIEW_FILE = "gardner-in-rounds-resting.json"
@@ -91,6 +96,11 @@ JOINED = {**JOINED_ROUNDS, **JOINED_TURNS}
 SPY_PREVIEWS = frozenset({"gardner-with-spies-resting.json"})
 """The preview that starts by turns (`library` `rounds` is false for a spy game, Q935c) and
 offer the spy ladder, which has no round player (`opponents.SPY_RUNGS`)."""
+
+TURN_PREVIEWS = frozenset({"gardner-with-weary-heavies.json", "chess-with-a-weary-queen.json"})
+"""The previews played by turns from the first move to the last (Q983d's U1 and U3, schema 29's
+rest in alternating play): offered the alternating ladder (`opponents.RUNGS`), as any game by
+turns is."""
 
 PLAIN = "kyoto.json"
 """An archived game that is no preview, for the library's side of every comparison."""
@@ -197,7 +207,7 @@ class TestTheListing:
             assert game["levelSays"] == stages.SAYS[stages.PREVIEW]
             assert game["links"] == [] and game["band"] is None and game["trust"] is None
             agents = {entry["agent"] for entry in game["opponents"]}
-            if name in SPY_PREVIEWS:
+            if name in SPY_PREVIEWS or name in TURN_PREVIEWS:
                 assert game["rounds"] is False
                 assert ROUND_AGENT not in agents and any(a.startswith("minimax:") for a in agents)
             else:
@@ -374,8 +384,10 @@ def _round(browser: Any, snapshot: dict[str, Any]) -> dict[str, Any]:
 
 
 ROUND_PREVIEWS = sorted(
-    digest for name, digest in PREVIEWS.items() if name not in SPY_PREVIEWS
+    digest for name, digest in PREVIEWS.items()
+    if name not in SPY_PREVIEWS and name not in TURN_PREVIEWS
 )
+TURN_PREVIEW_HASHES = sorted(PREVIEWS[name] for name in TURN_PREVIEWS)
 SPY_PREVIEW_HASHES = sorted(PREVIEWS[name] for name in SPY_PREVIEWS)
 TURN_JOINED_HASHES = sorted(JOINED_TURNS.values())
 SPY_AGENT = "minimax:nodes=400"
@@ -401,6 +413,23 @@ class TestPlayingOne:
         self, previews_site: Site, digest: str
     ) -> None:
         """A game that alternates (Q936s, joined by Q936t) is played as any alternating game is."""
+        visitor = previews_site.browser()
+        started = visitor.post("/api/session", {"hash": digest, "seats": ["human", SPY_AGENT]})
+        assert started.status == 200, started.text
+        snapshot = dict(started.payload)
+        assert not snapshot.get("round")
+        sid = snapshot["id"]
+        moved = visitor.post(f"/api/session/{sid}/move", {"move": snapshot["moves"][0]["move"]})
+        assert moved.status == 200, moved.text
+        replied = visitor.post(f"/api/session/{sid}/agent", {})
+        assert replied.status == 200, replied.text
+        assert len(replied.payload["history"]) == 2
+
+    @pytest.mark.parametrize("digest", TURN_PREVIEW_HASHES)
+    def test_a_visitor_plays_a_turn_preview_against_the_ladder(
+        self, previews_site: Site, digest: str
+    ) -> None:
+        """A rest showcase played by turns (Q983d) is played as any alternating game is."""
         visitor = previews_site.browser()
         started = visitor.post("/api/session", {"hash": digest, "seats": ["human", SPY_AGENT]})
         assert started.status == 200, started.text

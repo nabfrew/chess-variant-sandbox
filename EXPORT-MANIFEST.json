@@ -1,5 +1,5 @@
 {
- "source_commit": "61e5e0b30c8cd936a7056d9dffea3341b6e1628d",
+ "source_commit": "eb23de6aeed2840e369fb4f243ddca18066b8fd7",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -81,13 +81,18 @@
   },
   {
    "path": "archive/README.md",
-   "bytes": 69103,
-   "sha256": "cb1b60ca8658c017cadb1c05fbb0fcdf9182ae20996c23b60fa17d2f84139359"
+   "bytes": 71147,
+   "sha256": "c2173a6bf4ccbdb1ab733efb40dab63d65c10d5df2688243a60ac3aa44cf2427"
   },
   {
    "path": "archive/andernach.json",
    "bytes": 5074,
    "sha256": "609797f22007f65d0b130f4dd81368d1d2ba76e920b11f650cb29147ea0ce770"
+  },
+  {
+   "path": "archive/breather-by-weight.json",
+   "bytes": 5721,
+   "sha256": "0b585dc8f140630642eaa575850f178a0aec4f845c1f629822d21cccf4e8b50c"
   },
   {
    "path": "archive/breather.json",
@@ -113,6 +118,11 @@
    "path": "archive/chess-sweeping-bishops.json",
    "bytes": 3347,
    "sha256": "b2cb9d6c7e7f649cca07a75497102d380cdb4ed6dcf9e31fd0390d9bd47c9173"
+  },
+  {
+   "path": "archive/chess-with-a-weary-queen.json",
+   "bytes": 5495,
+   "sha256": "1153621d261c328f7ba4223a64b7af78923d97dd5a7430e078dabd3c5f28a8b8"
   },
   {
    "path": "archive/circe-mortal-diagonals.json",
@@ -178,6 +188,11 @@
    "path": "archive/gardner-with-spies-resting.json",
    "bytes": 5730,
    "sha256": "efa9b26a609c244edb8ea22a208e04ad3d6621b317d2ffb7a3b513ca5acbfd98"
+  },
+  {
+   "path": "archive/gardner-with-weary-heavies.json",
+   "bytes": 5361,
+   "sha256": "4e54b236521a65e711663bc372fac557f5f75c87f153a4e5db063214cfdd2823"
   },
   {
    "path": "archive/grand.json",
@@ -2586,8 +2601,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 138217,
-   "sha256": "4ece51072542de3a87b8493ffa43a2331b3fd48cd8244933b53cf6fa20bb2db2"
+   "bytes": 138459,
+   "sha256": "9d83a2bf7c514dea94f8e98c6fcd9dae2e1ebb6276ece10f2031f911e2774051"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -4161,13 +4176,13 @@
   },
   {
    "path": "tests/test_hex_readers.py",
-   "bytes": 31767,
-   "sha256": "a51c644577ef0748c16ce1339d47c43ba5767318bbd2054a7e235d709e9752f7"
+   "bytes": 32003,
+   "sha256": "004f23625c24f03324ec83498eb78efddc2d01451134a6a98a0de8577d65e1a9"
   },
   {
    "path": "tests/test_hex_resolver.py",
-   "bytes": 20775,
-   "sha256": "b340cb8a4a0d60750d2ea6a06cf28809d167ea0c4056b99bddfef0a2bf7280e9"
+   "bytes": 21011,
+   "sha256": "d785c9ba980cb0242c61a1b6e5dacfc855d603fc72b0a31eb3627127d10291fe"
   },
   {
    "path": "tests/test_history.py",
@@ -4616,8 +4631,8 @@
   },
   {
    "path": "tests/test_schema_nine.py",
-   "bytes": 76888,
-   "sha256": "695408709ce054a60f94b0bd996413854f159349e16b299dedcca66c0ca8b960"
+   "bytes": 77514,
+   "sha256": "878f60199ff4ff34e8f52b0dbc4e5b48126c1db2587d928cbc8a932b76d3525e"
   },
   {
    "path": "tests/test_schema_nine_core.py",
@@ -4646,8 +4661,8 @@
   },
   {
    "path": "tests/test_schema_six.py",
-   "bytes": 60759,
-   "sha256": "68590ba2f8ea11b4ea96e10c907f3a80c95f8a326dc1f97ff1386226a35cd6da"
+   "bytes": 60833,
+   "sha256": "1c29b7a3be3b20cdf8ffef84727a025d75fa8370bc166665ff97b809f93b0831"
   },
   {
    "path": "tests/test_schema_sixteen.py",
@@ -4656,8 +4671,8 @@
   },
   {
    "path": "tests/test_schema_ten.py",
-   "bytes": 115861,
-   "sha256": "ee6c372a45c99d38590814fda0eb5f48415f6d98d404a50cc61f7f62b04317e7"
+   "bytes": 116002,
+   "sha256": "1e1bdb4e0f8ea3fa5d3e748fab4b9864b60584767b1c09dde02ddc4cc4412eda"
   },
   {
    "path": "tests/test_schema_thirteen.py",
@@ -4783,6 +4798,11 @@
    "path": "tests/test_showcases_q943.py",
    "bytes": 14590,
    "sha256": "f0b25996f069fb3399dde5de97ea4709c6c08078b096872f1a6146a12c529651"
+  },
+  {
+   "path": "tests/test_showcases_q983.py",
+   "bytes": 12074,
+   "sha256": "292b3a86dddfbb01d054e616c160ca9d196dc72fe9d79370a8d8b3c4e8833838"
   },
   {
    "path": "tests/test_simultaneous_oracle.py",
@@ -4936,8 +4956,8 @@
   },
   {
    "path": "tests/test_site_previews.py",
-   "bytes": 23223,
-   "sha256": "1f520026b9ad0659ae72c34714f99111f244e74870d17bad6bd71e9d807c67ab"
+   "bytes": 24940,
+   "sha256": "af277235a810bedccfd0576e2449d628cbf3c782774fa87f67d497aacabebf56"
   },
   {
    "path": "tests/test_site_proven.py",

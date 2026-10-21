@@ -454,6 +454,14 @@ FROZEN: dict[str, tuple[str, str]] = {
     # RULES.md alone and joined unchanged (`docs/reference/rules-md-blind-trial.md` §6, §7). New.
     "archive/the-golem-well.json": ("ad0750e4ec47", "a8fa59329182c00f"),
     "archive/kraken-ford.json": ("ea249ab8fbfc", "a8451b0cdbc3b454"),
+    # Q983d, 2026-10-21: the showcases of schema 29's rest (`docs/plan-rest.md` §6.1;
+    # `tests/test_showcases_q983.py`), each one change from a measured parent: U1 Gardner with
+    # the queen resting 2 and the rooks 1 (from `975dde173f01`), U2 breather with the rests
+    # by weight (from `b8687024cfc6`), U3 chess with the queen resting 1 (from
+    # `4c1922ffae26`). New.
+    "archive/gardner-with-weary-heavies.json": ("1d1d3c79ce19", "443c11ae88baf8a5"),
+    "archive/breather-by-weight.json": ("7ea0357fa8de", "abaae18d917e8aab"),
+    "archive/chess-with-a-weary-queen.json": ("fee1ab560013", "e0e507662bfb777a"),
 }
 
 

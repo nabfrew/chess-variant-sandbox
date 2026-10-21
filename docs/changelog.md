@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-21
 
+### Three games that show resting pieces
+
+Three new previews show how long-resting pieces change a game: Gardner where the queen and rooks tire, breather where
+pieces rest by weight, and chess where the queen sits out a turn after it moves.
+
 ### Two new games, designed by a model from the rules alone
 
 *The golem well* and *kraken ford* join the library. A model wrote each from the published rules and nothing else; both

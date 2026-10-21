@@ -1,0 +1,239 @@
+{
+  "schema_version": 29,
+  "name": "chess with a weary queen",
+  "description": "Chess exactly as it is played, except that the queen tires: after the queen moves, it must rest for its side's next turn. It still stands where it landed, attacking, defending, blocking and giving check, and its check must be answered, but it cannot move again until a turn of its side has passed. The rule takes one glance to read and changes the queen's whole character. It can no longer chase: a queen that gives check cannot follow it up on the next move, and a queen that grabs a pawn cannot step back out of danger at once, so every queen move has to be good for two turns rather than one. An early queen raid is riskier, since a resting queen that is attacked can be defended but not moved away, and the other pieces carry more of the game. A pawn promoted to a queen rests too, as the new queen. When the queen's moves are the only legal moves a side has, as when only the queen can answer a check, the rest is lifted for that turn.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "rest": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "added": "2026-10-21",
+    "preview": "A preview: a new kind of game in which a piece that moves must rest for some of its side's turns, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
+    "origin": "designed",
+    "source": "docs/plan-rest.md, Q983d: the showcases of schema 29's rest (section 6.1)",
+    "history": "U3 of docs/plan-rest.md section 6.1, pre-registered 2026-10-19 before schema 29 was built: chess (4c1922ffae26) with the queen at rest 1 and every other type at 0. One piece resting on the calibration baseline, the smallest legible rest. Built by Q983d (2026-10-21) exactly as registered; its control is chess played on this game's roster (section 6.2 as run).",
+    "parents": [
+      "4c1922ffae26"
+    ]
+  }
+}

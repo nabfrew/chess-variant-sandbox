@@ -870,6 +870,33 @@ and both stay previews; the watering hole by speed is **viable in 3 of 4 runs, 0
 [0.500, 0.616]**, every graded game decided at the hole in about 18 plies with the seat level
 (0.520 first seat), below its parent's 0.608 with the intervals overlapping.
 
+## `gardner-with-weary-heavies.json`, `breather-by-weight.json`, `chess-with-a-weary-queen.json` — schema 29, rest per piece type (Q983d)
+
+2026-10-21, three previews. The showcases of `pieces[].rest` (`docs/plan-rest.md` §6.1,
+pre-registered 2026-10-19 before the rule was built): a piece that makes its player's move then
+rests for that player's next *n* turns, *n* its type's (a round counts as a turn), still standing,
+attacking and giving check; lifted when it would leave a player no move. Each is one change from
+a measured parent, written exactly as registered, and `tests/test_showcases_q983.py` holds V1,
+the rule without players.
+
+- **`gardner-with-weary-heavies`** (`1d1d3c79ce19`, U1): Gardner (`975dde173f01`) with the
+  queen resting 2 and the rooks 1, by turns, won by checkmate. Asks whether per-type rest works
+  in alternating play under check: heavies rest longer, a resting queen's check must be
+  answered, a pawn promoted to a queen rests 2 as the queen.
+- **`breather-by-weight`** (`7ea0357fa8de`, U2): breather (`b8687024cfc6`) with the pawns freed,
+  knights, bishops and king at 1, rooks and queen at 2, in rounds. Asks whether the uniform
+  rest's cure for the royal chase survives per-type values.
+- **`chess-with-a-weary-queen`** (`fee1ab560013`, U3): chess (`4c1922ffae26`) with the queen
+  resting 1. The smallest legible rest, on the calibration baseline.
+
+Measured by Q983d (2026-10-21, `v12`, four runs; `plan-rest.md` §6.2 *as measured*, each beside
+a control played first on its roster): the weary heavies **0.711, not viable** on the seat, as
+Gardner itself is on this plain roster (0.708, the first seat winning every decided game between
+the two strongest players); breather by weight **0.536 [0.468, 0.584], viable 4 of 4**, below
+breather's 0.582 inside its interval, the chase share 0.029; chess with a weary queen **0.917
+[0.898, 0.937], viable 4 of 4**, beside chess's 0.909, the queen making 6.7% of moves against
+chess's 16.0%. All three stay previews until Q983e grades `plan-rest.md` §6.3.
+
 ## `circe-mortal-diagonals.json` — schema 6, a strike that spares a piece other than the king (Q798)
 
 2026-10-19, a preview, unmeasured (`d32ef74e88c0`). The showcase of `rules.strike.immune` naming

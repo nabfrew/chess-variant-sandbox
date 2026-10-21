@@ -286,6 +286,9 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "archive/circe-mortal-diagonals": "53fb92c560611d5e",  # Q798, schema 17
     "archive/the-golem-well": "017c7863f3d0b68f",  # Q994p, schema 28, a model's design (Q994's blind trial)
     "archive/kraken-ford": "023bb71386d444bd",  # Q994p, schema 28, a model's design (Q994's blind trial)
+    "archive/gardner-with-weary-heavies": "a4a0f238451bc857",  # Q983d, schema 29
+    "archive/breather-by-weight": "051424e49532e422",  # Q983d, schema 29
+    "archive/chess-with-a-weary-queen": "d441c25522408073",  # Q983d, schema 29
     "rulesets/almost": "0ea224823977572d",
     "rulesets/antichess": "74c73dff0811c4a6",
     "rulesets/atomic": "e77e414d76c510af",

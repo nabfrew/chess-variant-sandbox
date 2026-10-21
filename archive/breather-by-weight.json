@@ -1,0 +1,223 @@
+{
+  "schema_version": 29,
+  "name": "breather by weight",
+  "description": "Win by taking the other side's king in Martin Gardner's minichess (chess on a 5x5 board, each side a rook, knight, bishop, queen and king behind five pawns), played in rounds: both players choose a move in secret, both moves are made together, and there is no check, so a king is simply taken. After a piece moves it needs a breather, and how long depends on its weight: a knight, bishop or king sits out its side's next move, a rook or queen its side's next two, and a pawn never rests. The rest is what turns the guessing into a game. No piece but a pawn can strike twice running, so an attack gives warning, and a king that runs one round has to stand the next, so it must run where no enemy piece free to move can reach it. The heavy pieces hit hardest and are out of play longest: a queen spent on a threat the other player simply steps away from stands for two rounds as a target. The pawns, free every round, are the one force that can always move, the tempo a player falls back on while the pieces recover. Striking back is no answer, because two pieces that try to take each other in the same round collide and both die, kings included. When every move a side has belongs to a resting piece, the rest is lifted for that round. If both kings fall together, or the game runs too long, the side with more material left wins.",
+  "board": {
+    "width": 5,
+    "height": 5
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "rest": 1,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "rest": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "rest": 2,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "rest": 2,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "rest": 1,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "royal_capture",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "max_plies": 200,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "simultaneous": {
+      "swap": "collision",
+      "both": "score"
+    },
+    "scoring": {
+      "count": "material"
+    }
+  },
+  "provenance": {
+    "added": "2026-10-21",
+    "preview": "A preview: a new kind of game in which a piece that moves must rest for some of its side's turns, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
+    "origin": "designed",
+    "source": "docs/plan-rest.md, Q983d: the showcases of schema 29's rest (section 6.1)",
+    "history": "U2 of docs/plan-rest.md section 6.1, pre-registered 2026-10-19 before schema 29 was built: breather as rewritten for schema 29 (b8687024cfc6, rest 1 on every piece) with the pawns freed (rest 0), the knights, bishops and king left at 1, and the rooks and queen at 2. Per-type rest in rounds: whether the royal chase stays cured when pawns are free and the heavies rest longer. Built by Q983d (2026-10-21) exactly as registered; its control is breather's own measurement, on the same roster.",
+    "parents": [
+      "b8687024cfc6"
+    ]
+  }
+}
