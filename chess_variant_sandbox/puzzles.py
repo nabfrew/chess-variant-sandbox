@@ -31,6 +31,14 @@ leaves a win at most two plies shorter, asked the same way (`hasten`). T5 (`plan
 fixed seeds, play a move that wins (`shallow`). `FORMAT` 2 adds each asked position's T3
 answer and the basis it was asked on, `FORMAT` 3 T4's beside it, `FORMAT` 4 T5's; `FORMAT`
 1 records carry none of them.
+
+**Upkeep** (Q993d, `docs/plan-proven.md` §5). Nobody runs a driver: `survey` reads which
+Library and Baseline games are owed a record and why (`owes`: none yet, positions that no
+longer replay, or a record older than `FORMAT` or `PROOF_VERSION`), and `make` writes one
+whole, every stage resumable by its unit file under `runs/puzzles/work/<hash>/`: the count,
+the sample (`NEAR_MIN`, §3.5), the proofs, T3, T4 and T5. A game whose runs hold no small
+ending gets a record with none, so it is asked once. The refresher's proofs tier calls both
+(`refresher.py` point 9), and `chess-variant-sandbox proofs [--check]` is the same by hand.
 """
 
 from __future__ import annotations
@@ -67,6 +75,16 @@ CAP = 240
 # probe proves about eight plies ahead on *Intransitive*, and nothing proved further back
 # in the first, evenly spread sample (`proven-positions.md` §2), so twelve leaves room.
 NEAR = 12
+# And how near is too near (`plan-proven.md` §3.5, Q993d): a position fewer than this many
+# plies before its game's recorded end is a win in one or two by construction, which T1
+# mostly removes, so the sample skips it. Like `NEAR` it decides where an expensive search
+# points, never what a position is worth, and the basis names it (`near_min`).
+NEAR_MIN = 3
+# The probe's own version: a fix to the proof itself (`verdict`, the probe's budget or how a
+# score is read) that could change what was proved bumps it, and every record is owed again
+# (`owes`). A record written before it existed carries none and reads as version 1, the
+# probe as R9a ran it; a change to where the sample looks (`NEAR_MIN`) is not one.
+PROOF_VERSION = 1
 # A score this close to a win is the probe having reached an ending, not an evaluation:
 # no evaluator reads within a thousand of `WIN_SCORE`, and no game's clock runs that long.
 PROVEN = WIN_SCORE - 1000
@@ -183,6 +201,30 @@ def reached(engine: Engine, moves: Iterable[Any]) -> GameState | None:
     return state
 
 
+def replays(engine: Engine, row: dict[str, Any]) -> GameState | None:
+    """The position a record's row proved, if the engine still reaches it as the row says;
+    None where it does not.
+
+    Every prefix move is put to `legal_moves` before it is applied (`reached`), the position
+    must not have ended, the side to move must be the row's, and the engine's legal moves
+    must be the row's root moves in the same order. The engine answers each question. The
+    site's loader keeps a position only where this holds (`site/proven.py`), and a record
+    with a row that fails it is owed again (`owes`).
+    """
+    try:
+        side = int(row["side"])
+        scores = [int(entry["move"]) for entry in row["scores"]]
+        state = reached(engine, row["moves"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if state is None:
+        return None
+    legal = engine.legal_moves(state)
+    if engine.terminal(state, legal) is not None or state.side_to_move != side:
+        return None
+    return state if list(legal) == scores else None
+
+
 def renames(engine: Engine, data: dict[str, Any]) -> list[tuple[str, str]]:
     """`(old, new)` for every position of a record: its `seed-game-ply` id and the name
     its replayed prefix reaches (`name`), in the record's order. A prefix that no longer
@@ -201,6 +243,7 @@ def candidates(
     runs: Iterable[tuple[int, Iterable[GameRecord]]],
     max_pieces: int = MAX_PIECES,
     near: int | None = None,
+    near_min: int = 1,
 ) -> Iterator[Candidate]:
     """Every distinct non-terminal position with at most `max_pieces` in play.
 
@@ -212,6 +255,8 @@ def candidates(
     With `near`, only the positions a proof can reach: in a game the record says was won,
     with its winner to move, at most `near` plies before the recorded end. The record's
     result is read, not judged; whether the position is won is still the probe's answer.
+    `near_min` (with `near`) also skips those fewer than `near_min` plies before the end
+    (`NEAR_MIN`, §3.5); the default, 1, skips nothing, since no position is 0 plies before.
     """
     if engine.simultaneous or engine.spy:
         raise ValueError("a game of rounds has no position to prove move by move")
@@ -224,7 +269,7 @@ def candidates(
             state = engine.initial_state()
             for ply, move in enumerate([*record.moves, None]):
                 if near is None or (
-                    length - ply <= near and state.side_to_move == record.winner
+                    near_min <= length - ply <= near and state.side_to_move == record.winner
                 ):
                     pieces = pieces_in_play(state)
                     same = content(state)
@@ -630,6 +675,7 @@ def record(
     shallow_made: datetime.date | None = None,
     shallow_agents: tuple[str, ...] = SHALLOW_AGENTS,
     shallow_seeds: tuple[int, ...] = SHALLOW_SEEDS,
+    near_min: int | None = None,
 ) -> dict[str, Any]:
     """The record the site loads: the basis, the tally, and the proved positions only.
 
@@ -644,10 +690,13 @@ def record(
     `shallow_nodes` (the second ask's budget), the players and seeds asked, `shallow_built`
     and `shallow_made`. Positions too easy to offer stay in
     the record; the reader leaves them out (`trivial`), so the record holds every proof.
+    The basis names the probe's version (`PROOF_VERSION`) and, where the sample skipped the
+    last plies of each game (`NEAR_MIN`), `near_min`.
     """
     ordered = sorted(rows, key=lambda row: (row["seed"], row["game"], row["ply"]))
     basis: dict[str, Any] = {
         "probe": "Engine.root_scores",
+        "proof_version": PROOF_VERSION,
         "nodes": nodes,
         "max_depth": MAX_DEPTH,
         "proven_at": PROVEN,
@@ -660,6 +709,8 @@ def record(
         "near": near,
         "cap": cap,
     }
+    if near_min is not None:
+        basis["near_min"] = near_min
     if defence_nodes is not None:
         basis["defence_nodes"] = defence_nodes
         basis["defence_built"] = defence_built
@@ -693,3 +744,422 @@ def write(path: Path, data: dict[str, Any]) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=1), encoding="utf-8")
     tmp.replace(path)
+
+
+# ------------------------------------------------------------- upkeep (Q993d, §5)
+
+DIRECTORY = "puzzles"
+"""Where the records sit under `runs/`, and their work under `work/<hash>/`."""
+PROVE, REPROVE = "prove", "re-prove"
+NEEDS = (PROVE, REPROVE)
+"""What a game is owed: a record it has never had, then one it has that no longer holds."""
+STORED = "proofs:"
+"""A game's record file, hashed under this prefix: what a refusal of its proofs is keyed
+on, never to be mistaken for its `canonical.json` digest or its ladder's."""
+PROVE_BATCH = 8
+TEST_BATCH = 8
+"""Positions a unit file holds: what a killed run loses at most, per stage."""
+WORKERS = 8
+"""Threads a game is proved on: a `heavy` lease's slots, less two (the slow tier's eight)."""
+TESTS = ("defence", "hasten", "shallow")
+"""The engine-asked tests in the order they are asked: T3, T4, then T5 read with both."""
+
+
+def record_path(runs_dir: Path | str, digest: str) -> Path:
+    return Path(runs_dir) / DIRECTORY / f"{digest}.json"
+
+
+def work_dir(runs_dir: Path | str, digest: str) -> Path:
+    return Path(runs_dir) / DIRECTORY / "work" / digest
+
+
+def stored_of(runs_dir: Path | str, digest: str) -> str:
+    """The game's record file, hashed, or `proofs:absent`: what a refusal is keyed on."""
+    try:
+        body = record_path(runs_dir, digest).read_bytes()
+    except OSError:
+        return STORED + "absent"
+    return STORED + hashlib.sha256(body).hexdigest()[:16]
+
+
+@dataclass(frozen=True)
+class Standing:
+    """Where one Library or Baseline game's proven positions stand. `needs` is `""` when
+    nothing is owed, and `reason` then says why (current, a game of rounds, no runs)."""
+
+    hash: str
+    name: str
+    needs: str
+    reason: str
+    stored: str
+    made: str = ""
+
+    @property
+    def owed(self) -> bool:
+        return bool(self.needs)
+
+
+def library(root: Path | str = ".") -> list[tuple[str, str, dict[str, Any]]]:
+    """Every Library and Baseline game as `(hash, name, spec)`: `rulesets/` (the Baseline)
+    then `archive/` (the Library), each hash once. An archived preview is left out, as
+    the site leaves it out of every scored surface and `ladders_check.library` does."""
+    from chess_variant_sandbox.spec.canonical import load_spec, spec_hash
+    from chess_variant_sandbox.web.library import preview_sentence
+
+    found: dict[str, tuple[str, str, dict[str, Any]]] = {}
+    for directory, archived in (("rulesets", False), ("archive", True)):
+        folder = Path(root) / directory
+        for path in sorted(folder.glob("*.json")) if folder.is_dir() else ():
+            try:
+                spec = load_spec(path)
+            except (OSError, ValueError):
+                continue
+            if not isinstance(spec, dict):
+                continue
+            digest = spec_hash(spec)
+            if digest in found or (archived and preview_sentence(spec) is not None):
+                continue
+            found[digest] = (digest, str(spec.get("name") or path.stem), spec)
+    return list(found.values())
+
+
+def owes(engine: Engine, data: Any) -> str | None:
+    """Why a game's record is owed a re-proof, or None where it holds (§5.2 (ii), (iii)).
+
+    A record that is not this game's or cannot be read; one in a format older than the
+    code's (`FORMAT`); one proved by an older probe (`PROOF_VERSION`; a record without the
+    field is version 1); or one with a proved position the engine no longer reaches as the
+    record says (`replays`), or reaches twice. A record from newer code is not owed: this
+    checkout cannot tell it is wrong. The engine answers every replay; this counts.
+    """
+    if not isinstance(data, dict) or data.get("ruleset_hash") != engine.spec.hash:
+        return "the record cannot be read as this game's"
+    written = data.get("format")
+    if not isinstance(written, int) or isinstance(written, bool):
+        return "the record names no format"
+    if written < FORMAT:
+        return f"its record is format {written}, and the code writes {FORMAT}"
+    basis = data.get("basis")
+    version = basis.get("proof_version", 1) if isinstance(basis, dict) else 1
+    if isinstance(version, int) and version < PROOF_VERSION:
+        return f"it was proved by probe version {version}, and the code's is {PROOF_VERSION}"
+    rows = [row for row in data.get("positions") or []
+            if isinstance(row, dict) and row.get("result") == WON]
+    named: set[str] = set()
+    dropped = 0
+    for row in rows:
+        state = replays(engine, row)
+        called = None if state is None else name(state)
+        if called is None or called in named:
+            dropped += 1
+        else:
+            named.add(called)
+    if dropped:
+        return f"{dropped} of its {len(rows)} proved positions no longer replay"
+    return None
+
+
+def runs_missing(runs_dir: Path | str, digest: str, seeds: Iterable[int]) -> list[int]:
+    """The library seeds whose run has no games on disk."""
+    return [seed for seed in seeds
+            if not (Path(runs_dir) / f"{digest}-{seed}" / "games.jsonl").is_file()]
+
+
+def standing(
+    digest: str, game: str, spec: dict[str, Any], runs_dir: Path | str,
+    seeds: Iterable[int] | None = None,
+) -> Standing:
+    """One game's `Standing`: what it is owed, if anything, and why. Reads; proves nothing.
+
+    Owed (§5.2) where the game alternates and its library runs are on disk, and it has
+    (i) no record (`PROVE`) or (ii, iii) one `owes` finds wanting (`REPROVE`). A game of
+    rounds is never owed (a round has no position to prove move by move), nor one whose
+    runs are not all there yet: `measure` writes them, and then it is.
+    """
+    from chess_variant_sandbox.corpus import LIBRARY_SEEDS
+
+    seeds = tuple(LIBRARY_SEEDS if seeds is None else seeds)
+    stored = stored_of(runs_dir, digest)
+
+    def stands(needs: str, reason: str, made: str = "") -> Standing:
+        return Standing(digest, game, needs, reason, stored, made)
+
+    engine = Engine(spec)
+    if engine.simultaneous or engine.spy:
+        return stands("", "a game of rounds: no position to prove move by move")
+    path = record_path(runs_dir, digest)
+    data: Any = None
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = None
+        made = str(data.get("made") or "") if isinstance(data, dict) else ""
+        why = owes(engine, data)
+        if why is None:
+            rows = [row for row in data.get("positions") or []
+                    if isinstance(row, dict) and row.get("result") == WON]
+            offered = sum(1 for row in rows if not trivial(row))
+            return stands("", f"current: {len(rows)} proved, {offered} offered" if rows
+                          else "current: its runs held no small ending to prove", made)
+        needs, reason = REPROVE, why
+    else:
+        made = ""
+        needs, reason = PROVE, "no record"
+    missing = runs_missing(runs_dir, digest, seeds)
+    if missing:
+        return stands("", f"{reason}, and its library runs are not all on disk (seeds "
+                          f"{', '.join(str(seed) for seed in missing)}): measure writes them",
+                      made)
+    return stands(needs, reason, made)
+
+
+def survey(
+    runs_dir: Path | str, root: Path | str = ".", seeds: Iterable[int] | None = None,
+) -> list[Standing]:
+    """Every Library and Baseline game's `Standing`, in the library's order. Reads only."""
+    return [standing(digest, game, spec, runs_dir, seeds)
+            for digest, game, spec in library(root)]
+
+
+def _aside(path: Path, today: datetime.date) -> Path:
+    """A free name beside `path` for what is moved out of the way, dated, never over one."""
+    for n in range(1, 1000):
+        candidate = path.with_name(
+            f"{path.stem}.before-{today.isoformat()}{'' if n == 1 else f'-{n}'}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError(f"no free name beside {path}")
+
+
+def _standing_units(
+    expected: list[tuple[Path, list[str]]], built: str, nodes: int | None = None,
+) -> dict[Path, dict[str, Any]]:
+    """The unit files on disk that stand, by path.
+
+    A unit stands only where it covers the positions it should (its rows' ids, in order).
+    Of those, every one stands where the stage is whole on one build (and budget): a whole
+    stage proved on another core is one proof and is kept. Otherwise only those made on
+    this build stand, and the rest are asked again, so a record never mixes two builds in
+    one stage.
+    """
+    loaded: dict[Path, dict[str, Any]] = {}
+    for path, ids in expected:
+        try:
+            unit = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(unit, dict) and [row.get("id") for row in unit.get("rows") or []] == ids:
+            loaded[path] = unit
+    kinds = {(unit.get("built"), unit.get("nodes")) for unit in loaded.values()}
+    if len(loaded) == len(expected) and len(kinds) == 1:
+        return loaded
+    return {path: unit for path, unit in loaded.items()
+            if unit.get("built") == built and (nodes is None or unit.get("nodes") == nodes)}
+
+
+def _ask_units(
+    units: list[tuple[Path, list[Any]]],
+    standing: dict[Path, dict[str, Any]],
+    ask: Any,
+    unit_of: Any,
+    workers: int,
+    say: Any,
+    label: str,
+) -> None:
+    """Ask every missing unit's positions on one pool, and write each unit as it is whole,
+    in order: the slowest position of one unit never idles the other threads, and a killed
+    run loses only the units not yet written. The answers are the same however the work is
+    divided, since each position is asked alone."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    missing = [(path, items) for path, items in units if path not in standing]
+    if not missing:
+        return
+    with ThreadPoolExecutor(max(1, workers)) as pool:
+        futures = [(path, items, [pool.submit(ask, item) for item in items])
+                   for path, items in missing]
+        for done, (path, items, asked) in enumerate(futures, start=1):
+            answers = [future.result() for future in asked]
+            write(path, unit_of(items, answers))
+            say(f"  {label} {done} of {len(futures)} written")
+
+
+def make(
+    spec: dict[str, Any],
+    runs_dir: Path | str,
+    workers: int = WORKERS,
+    say: Any = None,
+    seeds: Iterable[int] | None = None,
+    nodes: int = NODES,
+    defence_nodes: int = DEFENCE_NODES,
+    today: datetime.date | None = None,
+) -> dict[str, Any]:
+    """Write one game's record whole (§5.2): count, sample, prove, T3, T4, T5, record.
+
+    The work is R9a's driver's, moved into the package: the candidates of the game's four
+    library runs (`candidates`, at most `MAX_PIECES` in play, `NEAR_MIN` to `NEAR` plies
+    before a won game's end, the winner to move), whole games sampled to `CAP` (`sample`),
+    each proved at `nodes` (`prove`), T3 and T4 asked of the proved wins T1 and T2 keep
+    with two or more winning moves, T5 of every proved win T1 to T4 keep, and the record
+    written (`record`) into `runs_dir`'s `puzzles/`, replacing any there, which is kept
+    beside the work as `record-<day>.json`. Each stage writes unit files under
+    `work/<hash>/` and a run picks up from them (`_standing_units`); a work directory
+    sampled another way is moved aside first, never written over. A game whose runs hold
+    no small ending gets a record with no position. Rule 3: every candidate, proof and
+    choice is the core's; this holds positions, asks, and counts.
+
+    Returns what it did: the counts, how many positions are offered, and the seconds each
+    stage took in this call (a stage picked up whole from disk took none).
+    """
+    import time
+
+    from chess_variant_sandbox import _core
+    from chess_variant_sandbox.corpus import LIBRARY_SEEDS
+    from chess_variant_sandbox.tournament.record import read_records
+
+    def note(line: str) -> None:
+        if say is not None:
+            say(line)
+
+    today = today or datetime.date.today()
+    seeds = tuple(LIBRARY_SEEDS if seeds is None else seeds)
+    engine = Engine(spec)
+    digest = engine.spec.hash
+    game = str(spec.get("name") or digest)
+    if engine.simultaneous or engine.spy:
+        raise ValueError("a game of rounds has no position to prove move by move")
+    runs_dir = Path(runs_dir)
+    missing = runs_missing(runs_dir, digest, seeds)
+    if missing:
+        raise FileNotFoundError(f"{game}: no library run on disk for seeds {missing}")
+    built = _core.BUILD_FINGERPRINT
+    seconds: dict[str, float] = {}
+
+    # The count and the sample, keyed by how it was taken.
+    work = work_dir(runs_dir, digest)
+    sampling = {"runs": [f"{digest}-{seed}" for seed in seeds], "max_pieces": MAX_PIECES,
+                "near": NEAR, "near_min": NEAR_MIN, "cap": CAP}
+    listed_path = work / "candidates.json"
+    listed: dict[str, Any] | None = None
+    try:
+        listed = json.loads(listed_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        listed = None
+    if listed is not None and listed.get("sampling") != sampling:
+        aside = _aside(work, today)
+        work.rename(aside)
+        note(f"{game}: its work was sampled another way; moved aside to {aside.name}")
+        listed = None
+    elif listed is None and work.exists() and any(work.iterdir()):
+        aside = _aside(work, today)
+        work.rename(aside)
+        note(f"{game}: its work had no count; moved aside to {aside.name}")
+    if listed is None:
+        began = time.monotonic()
+        games = 0
+
+        def records(seed: int) -> Iterator[GameRecord]:
+            nonlocal games
+            for one in read_records(runs_dir / f"{digest}-{seed}" / "games.jsonl"):
+                games += 1
+                yield one
+
+        distinct = sum(1 for _ in candidates(engine, ((seed, records(seed)) for seed in seeds)))
+        near = list(candidates(
+            engine, ((seed, read_records(runs_dir / f"{digest}-{seed}" / "games.jsonl"))
+                     for seed in seeds), near=NEAR, near_min=NEAR_MIN))
+        taken = sample(near)
+        listed = {"ruleset_hash": digest, "sampling": sampling, "games": games,
+                  "distinct": distinct, "near_count": len(near),
+                  "near_games": len({(c.seed, c.game) for c in near}),
+                  "candidates": [c.as_dict() for c in taken]}
+        write(listed_path, listed)
+        seconds["count"] = round(time.monotonic() - began, 1)
+        note(f"{game}: {games} games, {distinct} small positions, {len(near)} near a won "
+             f"end, {len(taken)} taken ({seconds['count']:.0f} s)")
+    taken_rows = list(listed["candidates"])
+
+    # The proofs.
+    began = time.monotonic()
+    units = [(work / f"batch-{start:04d}.json", taken_rows[start:start + PROVE_BATCH])
+             for start in range(0, len(taken_rows), PROVE_BATCH)]
+    kept = _standing_units([(path, [row["id"] for row in rows]) for path, rows in units],
+                           built)
+
+    def prove_row(row: dict[str, Any]) -> dict[str, Any]:
+        return prove(engine, Candidate(row["seed"], row["game"], row["ply"], row["pieces"],
+                                       tuple(row["moves"])), nodes=nodes)
+
+    _ask_units(units, kept, prove_row,
+               lambda _rows, proved: {"built": built, "nodes": nodes,
+                                      "made": today.isoformat(), "rows": proved},
+               workers, note, f"{game}: proofs, batch")
+    batches = [json.loads(path.read_text(encoding="utf-8")) for path, _rows in units]
+    if len({batch["built"] for batch in batches}) > 1:
+        raise RuntimeError(f"{game}: proofs from two builds")
+    rows = sorted((row for batch in batches for row in batch["rows"]),
+                  key=lambda row: (row["seed"], row["game"], row["ply"]))
+    proved_on = batches[0]["built"] if batches else built
+    made = max((datetime.date.fromisoformat(batch["made"]) for batch in batches
+                if batch.get("made")), default=today)
+    seconds["prove"] = round(time.monotonic() - began, 1)
+
+    # T3, T4, then T5, each read with the answers before it.
+    asked: dict[str, Any] = {}
+    asks = {"defence": asks_defence, "hasten": asks_defence, "shallow": asks_shallow}
+    questions = {"defence": defence, "hasten": hasten, "shallow": shallow}
+    for test in TESTS:
+        began = time.monotonic()
+        wanted = [row for row in rows if asks[test](row)]
+        test_units = [(work / f"{test}-{start:04d}.json", wanted[start:start + TEST_BATCH])
+                      for start in range(0, len(wanted), TEST_BATCH)]
+        kept = _standing_units(
+            [(path, [row["id"] for row in unit]) for path, unit in test_units],
+            built, defence_nodes)
+        question = questions[test]
+
+        def put(row: dict[str, Any], question: Any = question) -> Any:
+            return question(engine, row, nodes=defence_nodes)
+
+        def unit_of(unit: list[dict[str, Any]], answers: list[Any],
+                    test: str = test) -> dict[str, Any]:
+            if test == "shallow":
+                said = [{"id": row["id"], "shallow": answer[0], "shallow_moves": answer[1]}
+                        for row, answer in zip(unit, answers, strict=True)]
+                extra: dict[str, Any] = {"agents": list(SHALLOW_AGENTS),
+                                         "seeds": list(SHALLOW_SEEDS)}
+            else:
+                said = [{"id": row["id"], test: answer}
+                        for row, answer in zip(unit, answers, strict=True)]
+                extra = {}
+            return {"built": built, "nodes": defence_nodes, "made": today.isoformat(),
+                    **extra, "rows": said}
+
+        _ask_units(test_units, kept, put, unit_of, workers, note, f"{game}: {test}, batch")
+        loaded = [json.loads(path.read_text(encoding="utf-8")) for path, _unit in test_units]
+        answers = {row["id"]: {key: value for key, value in row.items() if key != "id"}
+                   for unit in loaded for row in unit["rows"]}
+        rows = [{**row, **answers[row["id"]]} if row["id"] in answers else row for row in rows]
+        # Stamped even when it asked no position: the test was applied, to none.
+        asked |= {f"{test}_nodes": defence_nodes,
+                  f"{test}_built": loaded[0]["built"] if loaded else built,
+                  f"{test}_made": max((datetime.date.fromisoformat(unit["made"])
+                                       for unit in loaded), default=today)}
+        seconds[test] = round(time.monotonic() - began, 1)
+        note(f"{game}: {test} asked of {len(wanted)} ({seconds[test]:.0f} s)")
+
+    data = record(engine, game, seeds, rows, proved_on, nodes=nodes, made=made,
+                  distinct=int(listed["distinct"]), near_min=NEAR_MIN, **asked)
+    out = record_path(runs_dir, digest)
+    if out.exists():
+        work.mkdir(parents=True, exist_ok=True)
+        old = work / f"record-{today.isoformat()}.json"
+        out.replace(_aside(old, today) if old.exists() else old)
+    write(out, data)
+    offered = sum(1 for row in data["positions"]
+                  if row.get("result") == WON and not trivial(row))
+    note(f"{game}: recorded {len(data['positions'])} proved, {offered} offered")
+    return {"hash": digest, "name": game, "counts": data["counts"],
+            "proved": len(data["positions"]), "offered": offered, "seconds": seconds,
+            "built": built}

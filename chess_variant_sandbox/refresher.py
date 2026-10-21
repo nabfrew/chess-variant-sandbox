@@ -51,6 +51,17 @@ nothing; this is what makes them *current* again, with nobody starting a campaig
    `ladders.py --runs` does (`rate_ladder`). A ladder is never delivered: `rerate` moves
    the old one aside and puts it back if the rating fails. A rating that fails, or that
    leaves the ladder still owing, is refused like a game, keyed on the ladder file.
+9. **Proven positions, after ladders** (Q993d, `docs/plan-proven.md` §5). Only when no
+   score and no ladder is owed does it read which Library and Baseline games are owed a
+   proven-positions record (`proof_items`, `puzzles.survey`): none yet (`prove`), then one
+   whose positions no longer replay or whose format or probe version is older than the
+   code's (`re-prove`); within each, the launch set, then the oldest record, then the
+   hash. One game a `heavy` lease: `puzzles.make` in a child of the worktree, writing the
+   record straight into the main checkout's `runs/puzzles/` as a ladder is written
+   (`prove_game`), its work resumable under `runs/puzzles/work/<hash>/`. A game whose runs
+   hold no small ending gets a record with none, so it is asked once. A proof that fails,
+   or leaves the game still owed, is refused keyed on the game's record file, and not
+   retried until that file changes or `--forget`.
 
 **What it writes**, beside the measurements in the main checkout's `runs/`:
 `refresh-status.json` (what it is doing, what is owed, the last game, the last refusal,
@@ -100,11 +111,29 @@ LEASE_FOR = {"rescore": "quiet", "reanalyse": "heavy", "replay": "heavy"}
 # `ladders.py` takes.
 LADDER_ORDER = ("ladder", "top-up", "re-rate")
 LEASE_FOR.update({needs: "heavy" for needs in LADDER_ORDER})
-# The whole queue's first key: every score repair before any ladder.
-QUEUE_ORDER = REPAIR_ORDER + LADDER_ORDER
+# Point 9: a game's proven positions, after every ladder (Q993d). A game with no record is
+# proved; one whose record no longer holds is proved again (`puzzles.NEEDS`). Each is up to
+# a few core-hours of the core's probe, under `heavy`.
+PROOF_ORDER = ("prove", "re-prove")
+LEASE_FOR.update({needs: "heavy" for needs in PROOF_ORDER})
+# The whole queue's first key: every score repair before any ladder, every ladder before
+# any proof.
+QUEUE_ORDER = REPAIR_ORDER + LADDER_ORDER + PROOF_ORDER
 # A ladder item's `stored` is its ladder file hashed under this prefix, never to be
-# mistaken for its game's `canonical.json` digest.
+# mistaken for its game's `canonical.json` digest; a proof item's is its record file's,
+# under `puzzles.STORED` (`proofs:`).
 LADDER_STORED = "ladder:"
+# The three parts of the queue, by what an item needs.
+SCORES, LADDERS, PROOFS = "scores", "ladders", "proofs"
+
+
+def part_of(needs: str) -> str:
+    """Which part of the queue a need belongs to: a score, a ladder or a proof."""
+    if needs in LADDER_ORDER:
+        return LADDERS
+    if needs in PROOF_ORDER:
+        return PROOFS
+    return SCORES
 
 # Leases another worktree may hold that keep the refresher waiting: a replay, a training
 # run, a campaign or a timed bench has the machine (the task's *never while a replay or
@@ -234,6 +263,15 @@ class Item:
     def ladder(self) -> bool:
         """Whether this is ladder work (point 8), not a score repair."""
         return self.needs in LADDER_ORDER
+
+    @property
+    def proofs(self) -> bool:
+        """Whether this is a game's proven positions (point 9)."""
+        return self.needs in PROOF_ORDER
+
+    @property
+    def part(self) -> str:
+        return part_of(self.needs)
 
     @property
     def lease(self) -> str:
@@ -445,25 +483,28 @@ class Ledger:
         record = {"hash": item.hash, "name": item.name, "needs": item.needs,
                   "stored": outcome.stored or item.stored, "kind": outcome.refusal,
                   "reason": outcome.reason, "commit": outcome.commit, "at": _now()}
-        # A game's score refusal and its ladder's are two: one never replaces the other.
+        # A game's score refusal, its ladder's and its proofs' are three: one never
+        # replaces another.
         kept = [r for r in self.refusals
-                if r.get("hash") != item.hash or _is_ladder(r) != item.ladder]
+                if r.get("hash") != item.hash or _part(r) != item.part]
         self.status["refusals"] = [*kept, record]
         self.status["last_refusal"] = record
         return record
 
-    def lapse(self, owed: Iterable[Item], ladders: bool = False) -> list[dict[str, Any]]:
+    def lapse(self, owed: Iterable[Item], ladders: bool = False,
+              part: str | None = None) -> list[dict[str, Any]]:
         """Drop the refusals that no longer stand, and return them.
 
         A refusal is of one stored file (`refused`): once the game's file has changed, or
         the game is owed nothing at all, it refuses nothing, and a standing count or an
         `/admin` row that still showed it would say a game is held back that is not
         (Q693r's first real run). ``owed`` is the whole survey, before `--only`: the score
-        survey's, or with ``ladders`` the ladder survey's, and only refusals of that kind
-        are read against it.
+        survey's, or with ``ladders`` the ladder survey's (``part`` names any of the three,
+        `PROOFS` the proofs survey's), and only refusals of that part are read against it.
         """
+        part = part or (LADDERS if ladders else SCORES)
         still = {(item.hash, item.stored) for item in owed}
-        gone = [r for r in self.refusals if _is_ladder(r) == ladders
+        gone = [r for r in self.refusals if _part(r) == part
                 and (r.get("hash"), r.get("stored")) not in still]
         kept = [r for r in self.refusals if r not in gone]
         if gone:
@@ -497,8 +538,8 @@ class Ledger:
             handle.write(json.dumps(line, sort_keys=True) + "\n")
 
 
-def _is_ladder(record: Mapping[str, Any]) -> bool:
-    return record.get("needs") in LADDER_ORDER
+def _part(record: Mapping[str, Any]) -> str:
+    return part_of(str(record.get("needs") or ""))
 
 
 def read_status(runs_dir: Path) -> dict[str, Any] | None:
@@ -541,6 +582,13 @@ def owed_counts(items: Iterable[Item]) -> dict[str, int]:
 
 def ladder_counts(items: Iterable[Item]) -> dict[str, int]:
     counts = {needs: 0 for needs in LADDER_ORDER}
+    for item in items:
+        counts[item.needs] += 1
+    return counts
+
+
+def proof_counts(items: Iterable[Item]) -> dict[str, int]:
+    counts = {needs: 0 for needs in PROOF_ORDER}
     for item in items:
         counts[item.needs] += 1
     return counts
@@ -690,6 +738,89 @@ def rate_ladder(
     return done(needs)
 
 
+# ------------------------------------------------------- proven positions (Q993d)
+
+
+def proof_items(runs_dir: Path, root: Path | None = None) -> list[Item]:
+    """The proven-positions work this tree owes over ``runs_dir``, in order. Reads (each
+    record's positions replayed through the engine); proves nothing.
+
+    The library is ``root``'s (default the working directory), read by `puzzles.survey`:
+    a game with no record (`prove`) before one whose record no longer holds (`re-prove`),
+    then the launch set, the oldest record, the hash.
+    """
+    from chess_variant_sandbox import puzzles
+
+    root = Path(root) if root is not None else Path.cwd()
+    items = [
+        Item(hash=found.hash, name=found.name, needs=found.needs, reason=found.reason,
+             tier=value_tier(found.name, found.hash, set(), Stored()),
+             measured=found.made, stored=found.stored)
+        for found in puzzles.survey(runs_dir, root) if found.owed
+    ]
+    return sorted(items, key=lambda item: item.key)
+
+
+def prove_game(
+    digest: str,
+    runs_dir: Path,
+    root: Path | None = None,
+    workers: int = 0,
+    say: Callable[[str], None] | None = None,
+) -> Outcome:
+    """Prove one game's positions now, or say why not: what `refresh <hash> --proofs` runs.
+
+    `puzzles.make` does the work, writing the record into ``runs_dir``'s `puzzles/` (its
+    work under `puzzles/work/<hash>/`, picked up where a killed run left it). A stale build
+    is refused first, as for a score. A proof that raises is an error; one that finishes
+    and leaves the game still owed is refused as the record it left, so the loop does not
+    prove it again and again.
+    """
+    from chess_variant_sandbox import puzzles
+    from chess_variant_sandbox.measurement import stale_build
+
+    lines: list[str] = []
+    started = time.monotonic()
+    runs = Path(runs_dir)
+
+    def note(line: str) -> None:
+        lines.append(str(line).strip())
+        if say is not None:
+            say(str(line))
+
+    def done(needs: str, refusal: str = "", reason: str = "", **rest: Any) -> Outcome:
+        return Outcome(hash=digest, needs=needs, refusal=refusal, reason=reason,
+                       seconds=round(time.monotonic() - started, 1), lines=tuple(lines),
+                       **rest)
+
+    behind = stale_build()
+    if behind is not None:
+        return done("", STALE_BUILD, behind)
+    needs = ""
+    try:
+        root = Path(root) if root is not None else Path.cwd()
+        games = [game for game in puzzles.library(root) if game[0] == digest]
+        if not games:
+            return done("", ERROR, f"no library game has the hash {digest}")
+        _digest, name, spec = games[0]
+        before = puzzles.standing(digest, name, spec, runs)
+        if not before.owed:
+            note(f"{name}: its proven positions owe nothing ({before.reason})")
+            return done("")
+        needs = before.needs
+        note(f"{name} [{digest}]: {needs} ({before.reason})")
+        made = puzzles.make(spec, runs, workers=workers or puzzles.WORKERS, say=note)
+        took = ", ".join(f"{stage} {seconds:.0f} s" for stage, seconds in made["seconds"].items())
+        note(f"{name}: {made['proved']} proved, {made['offered']} offered; {took}")
+        after = puzzles.standing(digest, name, spec, runs)
+    except Exception as error:  # noqa: BLE001 - every failure is a logged refusal
+        return done(needs, ERROR, f"{type(error).__name__}: {error}")
+    if after.owed:
+        return done(needs, ERROR, f"proved, and it is still owed {after.needs}: {after.reason}",
+                    stored=after.stored)
+    return done(needs)
+
+
 # ------------------------------------------------------------------ the slow tier
 
 
@@ -836,7 +967,8 @@ class Machine(Protocol):
     def release(self) -> None: ...
     def survey(self) -> list[Item]: ...  # the queue, at the worktree's commit
     def ladders(self) -> list[Item]: ...  # the ladder work, at the worktree's commit
-    def repair(self, item: Item) -> Outcome: ...  # one game or ladder, at that commit
+    def proofs(self) -> list[Item]: ...  # the proven-positions work, at that commit
+    def repair(self, item: Item) -> Outcome: ...  # one game, ladder or proof, at that commit
     def deliver(self, item: Item) -> None: ...  # `history.deliver` into main's runs/
     def changed(self) -> list[str]: ...  # committed files the last repair changed
     def discard(self, paths: list[str]) -> None: ...  # put them back
@@ -935,13 +1067,22 @@ class Refresher:
             refused_owed=len(items) - len(todo),
         )
         if todo:
-            # Scores keep priority: the ladders are not even read while one is owed.
-            self.ledger.update(ladders_owed=None, ladder_counts=None)
+            # Scores keep priority: the ladders and proofs are not even read while one is owed.
+            self.ledger.update(ladders_owed=None, ladder_counts=None,
+                               proofs_owed=None, proof_counts=None)
         else:
             try:
                 todo = self._ladders()
             except Exception as error:  # noqa: BLE001 - logged; main moving is the way on
                 return self._halt(f"the ladder survey failed: {error}", kind=ERROR)
+            if todo:
+                # Point 9: the proofs wait on every ladder, as the ladders wait on scores.
+                self.ledger.update(proofs_owed=None, proof_counts=None)
+            else:
+                try:
+                    todo = self._proofs()
+                except Exception as error:  # noqa: BLE001 - logged; main moving is the way on
+                    return self._halt(f"the proofs survey failed: {error}", kind=ERROR)
         if not todo:
             if self._slow_tier_due():
                 return self._slow_tier()
@@ -976,6 +1117,22 @@ class Refresher:
         )
         return todo
 
+    def _proofs(self) -> list[Item]:
+        """Point 9: the proven-positions work owed, once no score or ladder is, written to
+        the status file."""
+        items = self.machine.proofs()
+        for record in self.ledger.lapse(items, part=PROOFS):
+            self.ledger.log("lapsed", hash=record.get("hash"), name=record.get("name"),
+                            kind=record.get("kind"), stored=record.get("stored"))
+        if self.only is not None:
+            items = [item for item in items if item.hash in self.only]
+        todo = [item for item in items if not self.ledger.refused(item)]
+        self.ledger.update(
+            proofs_owed=[item.as_dict() for item in todo], proof_counts=proof_counts(todo),
+            proofs_refused=len(items) - len(todo),
+        )
+        return todo
+
     def _settle(self, item: Item, outcome: Outcome) -> str:
         # A repair changes no committed file: one that did is refused, and put back.
         changed = self.machine.changed()
@@ -995,17 +1152,22 @@ class Refresher:
             self.say(f"  refused ({outcome.refusal}): {outcome.reason}")
             return "refused"
         try:
-            # A ladder was written in place, into main's `runs/opponents/` (point 8).
-            if not item.ladder:
+            # A ladder was written in place, into main's `runs/opponents/` (point 8), and
+            # a record into main's `runs/puzzles/` (point 9): only a score is delivered.
+            if item.part == SCORES:
                 self.machine.deliver(item)
         except Exception as error:  # noqa: BLE001 - logged; nothing is retried
             return self._halt(f"the delivery failed: {error}", item, kind=ERROR)
         last = {"hash": item.hash, "name": item.name, "needs": outcome.needs or item.needs,
                 "index": outcome.index, "viable": outcome.viable, "commit": outcome.commit,
                 "seconds": outcome.seconds, "at": _now()}
+        if item.proofs and outcome.lines:
+            # What the proof found and what each stage took (`prove_game`'s last line).
+            last["said"] = outcome.lines[-1]
         self.ledger.log("repaired", **last)
         self.ledger.update(state="working", doing=None, last_done=last)
-        self.say(f"  delivered in {outcome.seconds:.0f}s")
+        self.say(f"  {'delivered' if item.part == SCORES else 'written'} in "
+                 f"{outcome.seconds:.0f}s")
         return "repaired"
 
     def _slow_tier_due(self) -> bool:
@@ -1197,6 +1359,13 @@ class GitMachine:
             raise RuntimeError(f"the ladder survey failed: {done.stderr.strip()[-400:]}")
         return [Item.from_dict(row) for row in json.loads(done.stdout)]
 
+    def proofs(self) -> list[Item]:
+        done = self._child("refresh", "--plan", "--part", "proofs", "--json",
+                           "--runs", str(self.main_runs))
+        if done.returncode != 0:
+            raise RuntimeError(f"the proofs survey failed: {done.stderr.strip()[-400:]}")
+        return [Item.from_dict(row) for row in json.loads(done.stdout)]
+
     def stage(self, digest: str) -> None:
         """Copy one game's stored measurement and runs from the main checkout's `runs/`."""
         stage_game(digest, self.main_runs, self.staging)
@@ -1208,6 +1377,11 @@ class GitMachine:
             # a ladder has no history to deliver through, and `rerate` keeps the old one.
             done = self._child("refresh", item.hash, "--ladder", "--json",
                                "--runs", str(self.main_runs))
+        elif item.proofs:
+            # Proved in place into main's `runs/puzzles/`, from the four library runs there:
+            # a record has no history to deliver through, and `make` keeps the old one.
+            done = self._child("refresh", item.hash, "--proofs", "--json",
+                               "--runs", str(self.main_runs), "--workers", str(self.workers))
         else:
             self.stage(item.hash)
             args = ["refresh", item.hash, "--json", "--runs", str(self.staging),
@@ -1340,7 +1514,8 @@ def plain_status(status: Mapping[str, Any] | None) -> list[str]:
     refused_owed = int(status.get("refused_owed") or 0)
     lines.append("owed: " + (", ".join(owed) or "nothing")
                  + (f" ({refused_owed} more owed and refused)" if refused_owed else ""))
-    following = list(status.get("owed") or []) + list(status.get("ladders_owed") or [])
+    following = (list(status.get("owed") or []) + list(status.get("ladders_owed") or [])
+                 + list(status.get("proofs_owed") or []))
     if following:
         first = following[0]
         lines.append(f"next: {first.get('name')} [{first.get('hash')}] {first.get('needs')}"
@@ -1354,10 +1529,20 @@ def plain_status(status: Mapping[str, Any] | None) -> list[str]:
                         if refused_ladders else ""))
     elif counts and any(counts.values()):
         lines.append("ladders: read once no score is owed (scores first)")
+    proofs = status.get("proof_counts")
+    if isinstance(proofs, Mapping):
+        owed_proofs = [f"{proofs[k]} {k}" for k in PROOF_ORDER if proofs.get(k)]
+        refused_proofs = int(status.get("proofs_refused") or 0)
+        lines.append("proofs owed: " + (", ".join(owed_proofs) or "nothing")
+                     + (f" ({refused_proofs} more owed and refused)"
+                        if refused_proofs else ""))
+    elif (counts and any(counts.values())) or (isinstance(ladders, Mapping)
+                                               and any(ladders.values())):
+        lines.append("proofs: read once no score or ladder is owed (scores, then ladders)")
     last = status.get("last_done")
     if last:
         lines.append(f"last: {last.get('name')} [{last.get('hash')}] {last.get('needs')}"
-                     + ("" if last.get("needs") in LADDER_ORDER
+                     + ("" if part_of(str(last.get("needs") or "")) != SCORES
                         else f" index {last.get('index')}"))
     refusal = status.get("last_refusal")
     if refusal:

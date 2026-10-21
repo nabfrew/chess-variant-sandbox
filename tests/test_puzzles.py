@@ -855,14 +855,22 @@ def test_the_t5_count_of_proven_positions_63_holds_over_the_fixture() -> None:
 
 
 def test_the_fixture_is_the_delivered_records() -> None:
-    """Skips where the records are not on disk (the gate re-runs it there)."""
+    """Skips where the records are not on disk (the gate re-runs it there).
+
+    The fixture is the seven records R9a proved and Q993a to Q993g answered, by hand. A
+    record the upkeep writes (`puzzles.make`, Q993d: a new game's, or one of the seven
+    proved again) names its `near_min`, and is no record of that snapshot, so it is not
+    read here; `test_refresher_proofs.py` holds what `make` writes."""
     paths = _delivered()
     if not paths:
         pytest.skip("no runs/puzzles/ record here")
     shapes = _shapes()
+    by_hash = {game["hash"]: name for name, game in shapes.items()}
     for path in paths:
         data = json.loads(path.read_text(encoding="utf-8"))
-        game = shapes[data["name"]]
+        if path.stem not in by_hash or "near_min" in (data.get("basis") or {}):
+            continue
+        game = shapes[by_hash[path.stem]]
         assert game["hash"] == path.stem
         assert game["positions"] == [
             [row["ends_in"], len(row["scores"]), puzzles.winning_moves(row),

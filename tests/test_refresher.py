@@ -257,6 +257,8 @@ class FakeMachine:
     tier_changes: list[str] = field(default_factory=list)
     # The ladder work (L7, `test_refresher_ladders.py`): game to (needs, stored digest).
     ladders_owed: dict[str, tuple[str, str]] = field(default_factory=dict)
+    # The proofs work (Q993d, `test_refresher_proofs.py`): game to (needs, stored digest).
+    proofs_owed: dict[str, tuple[str, str]] = field(default_factory=dict)
 
     def head(self) -> str:
         return self.commit
@@ -303,6 +305,13 @@ class FakeMachine:
                        for h, (needs, digest) in self.ladders_owed.items()),
                       key=lambda it: it.key)
 
+    def proofs(self) -> list[Item]:
+        self.calls.append(("proofs", self.commit))
+        return sorted((Item(hash=h, name=h, needs=needs, reason="", tier=3, measured="",
+                            stored=digest)
+                       for h, (needs, digest) in self.proofs_owed.items()),
+                      key=lambda it: it.key)
+
     def repair(self, it: Item) -> Outcome:
         assert self.holding == it.lease
         start = self.commit
@@ -316,6 +325,10 @@ class FakeMachine:
         if it.ladder:
             # Rated in place: nothing is delivered.
             self.ladders_owed.pop(it.hash, None)
+            return Outcome(hash=it.hash, needs=it.needs, commit=start)
+        if it.proofs:
+            # Proved in place: nothing is delivered either.
+            self.proofs_owed.pop(it.hash, None)
             return Outcome(hash=it.hash, needs=it.needs, commit=start)
         return Outcome(hash=it.hash, needs=it.needs, index=0.5, viable=True, commit=start)
 
@@ -808,11 +821,13 @@ class TestTheCommand:
         assert main(["refresh", "--plan", "--part", "scores", "--json", "--runs", "runs"]) == 0
         [row] = json.loads(capsys.readouterr().out)
         assert row["hash"] == digest and row["needs"] == "rescore" and row["lease"] == "quiet"
-        # The whole plan: the score first, then the game's missing ladder (L7).
+        # The whole plan: the score first, then the game's missing ladder (L7), then its
+        # proven positions, which it has never had (Q993d).
         assert main(["refresh", "--plan", "--json", "--runs", "runs"]) == 0
         rows = json.loads(capsys.readouterr().out)
         assert [(r["hash"], r["needs"], r["lease"]) for r in rows] == [
-            (digest, "rescore", "quiet"), (digest, "ladder", "heavy")]
+            (digest, "rescore", "quiet"), (digest, "ladder", "heavy"),
+            (digest, "prove", "heavy")]
 
     def test_one_game_as_json_is_one_line(self, library: Path, capsys) -> None:
         from chess_variant_sandbox.cli import main

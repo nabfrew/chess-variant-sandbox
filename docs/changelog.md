@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-21
 
+### Proven positions for more games, kept up to date
+
+When a game joins the library, its proven positions are now found and proved by themselves. Makruk offers its first,
+and the rest of the library is being worked through.
+
 ### Badges for proven positions
 
 Win every proven position on a game against the hardest computer player and you keep a badge for it. Do that on 5, 10

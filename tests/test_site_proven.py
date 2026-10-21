@@ -287,6 +287,10 @@ class TestTheLoader:
             pytest.skip("no runs/puzzles/ record here")
         data = json.loads(path.read_text(encoding="utf-8"))
         record = proven.load(path.parent.parent, path.stem, find(path.stem).spec)
+        if not data["positions"]:
+            # The upkeep's empty record (Q993d): asked once, and no record to a reader.
+            assert record is None
+            return
         assert record is not None
         assert record.dropped == 0
         won = [row for row in data["positions"] if row["result"] == "won"]

@@ -53,7 +53,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from chess_variant_sandbox.puzzles import FORMATS, LOST, OPEN, WON, name, reached, trivial
+from chess_variant_sandbox.puzzles import FORMATS, LOST, OPEN, WON, name, replays, trivial
 from chess_variant_sandbox.web import card_rules, opponents
 from chess_variant_sandbox.web.library import engine_for
 
@@ -165,8 +165,9 @@ _LOCK = threading.Lock()
 def load(runs_dir: Path | str, digest: str, spec: dict[str, Any] | None) -> Record | None:
     """The game's record, its positions replayed through today's rules, or None.
 
-    None where there is no record (three of the launch set have none, and every member's
-    game), where it is not a format it reads (`FORMATS`) or not this game's, and where no
+    None where there is no record (every member's game), where the record proved nothing
+    (the upkeep's empty record for a game with no small ending: three of the launch set),
+    where it is not a format it reads (`FORMATS`) or not this game's, and where no
     spec is given. A
     record is read once a process for each version of the file on disk and these rules,
     since the replay costs a few tenths of a second on a record of 150.
@@ -207,6 +208,11 @@ def offered(runs_dir: Path | str, digest: str, spec: dict[str, Any] | None) -> i
 
 def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | None:
     if data.get("format") not in FORMATS or data.get("ruleset_hash") != digest:
+        return None
+    if not data.get("positions"):
+        # The empty record (Q993d): the upkeep asked, and the game's runs held no small
+        # ending it could prove. It is there so the game is asked once; to a reader it is
+        # no record, and the game has no section, as before it was asked.
         return None
     engine = engine_for(spec)
     kept: list[tuple[int, int, str, dict[str, Any]]] = []
@@ -263,25 +269,8 @@ def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | N
 
 def _replays(engine: Any, row: dict[str, Any]) -> Any:
     """The position the record proved, if the engine still reaches it as the record says;
-    None where it does not.
-
-    Every prefix move is put to `legal_moves` before it is applied (`puzzles.reached`), the
-    position must not have ended, the side to move must be the record's, and the engine's
-    legal moves must be the record's root moves in the same order. The engine answers each
-    question.
-    """
-    try:
-        side = int(row["side"])
-        scores = [int(entry["move"]) for entry in row["scores"]]
-        state = reached(engine, row["moves"])
-    except (KeyError, TypeError, ValueError):
-        return None
-    if state is None:
-        return None
-    legal = engine.legal_moves(state)
-    if engine.terminal(state, legal) is not None or state.side_to_move != side:
-        return None
-    return state if list(legal) == scores else None
+    None where it does not (`puzzles.replays`, which the upkeep reads too, Q993d)."""
+    return replays(engine, row)
 
 
 def state_of(spec: dict[str, Any], position: Position) -> Any:
@@ -321,7 +310,12 @@ def basis_said(record: Record) -> str:
     which = []
     if pieces:
         which.append(f"with {pieces} pieces or fewer left")
-    if near:
+    near_min = basis.get("near_min")
+    if near and isinstance(near_min, int) and near_min > 1:
+        # The upkeep's sample (Q993d, `puzzles.NEAR_MIN`) skips the last plies of a game.
+        which.append(f"from {near_min} to {near} turns before the end of a game one side "
+                     "won, with the winner to move")
+    elif near:
         which.append(f"within {near} turns of the end of a game one side won, with the "
                      "winner to move")
     said = where + (", " + ", ".join(which) if which else "") + ". "

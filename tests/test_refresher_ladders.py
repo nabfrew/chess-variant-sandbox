@@ -173,7 +173,8 @@ class TestTheOrder:
 
         everything = [it(needs) for needs in reversed(refresher.QUEUE_ORDER)]
         assert [i.needs for i in sorted(everything, key=lambda i: i.key)] == [
-            "rescore", "reanalyse", "replay", "ladder", "top-up", "re-rate"]
+            "rescore", "reanalyse", "replay", "ladder", "top-up", "re-rate",
+            "prove", "re-prove"]
 
 
 # ------------------------------------------------------------------ one ladder, here
@@ -412,7 +413,8 @@ class TestWhatItSays:
         out = capsys.readouterr().out
         assert out.index("replay") < out.index(" ladder ") < out.index("top-up") < out.index(
             "re-rate")
-        assert "5 owed: 1 scores, then 4 ladders (the ladders wait until no score is owed)" in out
+        assert ("5 owed: 1 scores, then 4 ladders, then 0 proofs (the ladders and proofs "
+                "wait until no score is owed)") in out
 
     def test_a_ladder_is_paid_by_a_named_game_and_never_without_one(
         self, owing, rating, monkeypatch: pytest.MonkeyPatch, capsys

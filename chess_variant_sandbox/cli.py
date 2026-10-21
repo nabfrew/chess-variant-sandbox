@@ -10,6 +10,7 @@ rules that produced it.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import sys
@@ -655,12 +656,16 @@ def _build_parser() -> argparse.ArgumentParser:
                          help="with --watch, skip the weekly `pytest -m slow` run")
     refresh.add_argument("--plan", action="store_true",
                          help="print the queue, in order, and run nothing: the scores, "
-                              "then the ladder work")
-    refresh.add_argument("--part", choices=("all", "scores", "ladders"), default="all",
-                         help="with --plan, only the scores or only the ladder work")
+                              "then the ladder work, then the proven positions")
+    refresh.add_argument("--part", choices=("all", "scores", "ladders", "proofs"),
+                         default="all",
+                         help="with --plan, only the scores, the ladder work or the proofs")
     refresh.add_argument("--ladder", action="store_true",
                          help="with a named game, pay what its picker ladder owes instead "
                               "of its score (what the refresher runs for each ladder)")
+    refresh.add_argument("--proofs", action="store_true",
+                         help="with a named game, prove its proven positions instead of "
+                              "repairing its score (what the refresher runs for each proof)")
     refresh.add_argument("--status", action="store_true",
                          help="print what the refresher is doing, from its status file")
     refresh.add_argument("--forget", default="", metavar="HASH",
@@ -684,6 +689,24 @@ def _build_parser() -> argparse.ArgumentParser:
                          help="the refresher's worktree; default .claude/worktrees/refresher "
                               "under the main checkout")
     refresh.set_defaults(handler=_cmd_refresh)
+
+    proofs = sub.add_parser(
+        "proofs",
+        help="prove the proven positions every Library and Baseline game is owed, or one "
+             "game's; what the refresher does after scores and ladders",
+    )
+    proofs.add_argument(
+        "game", nargs="?", default="",
+        help="content hash or ruleset path; omit for every game that is owed",
+    )
+    proofs.add_argument("--check", action="store_true",
+                        help="report what is owed and why, and exit non-zero if anything "
+                             "is, proving nothing")
+    proofs.add_argument("--runs", type=Path, default=RUNS_DIR)
+    proofs.add_argument("--workers", type=int, default=0,
+                        help="threads to prove on (default: puzzles.WORKERS)")
+    proofs.add_argument("--json", action="store_true", help="machine-readable output")
+    proofs.set_defaults(handler=_cmd_proofs)
 
     strength = sub.add_parser(
         "premise",
@@ -1651,10 +1674,20 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
     if args.ladder and not args.hash:
         print("--ladder names a game: refresh <hash> --ladder", file=sys.stderr)
         return 2
+    if args.proofs and not args.hash:
+        print("--proofs names a game: refresh <hash> --proofs", file=sys.stderr)
+        return 2
+    if args.ladder and args.proofs:
+        print("a game's ladder and its proofs are two pieces of work: name one",
+              file=sys.stderr)
+        return 2
     if args.hash:
         runs = args.runs or RUNS_DIR
         if args.ladder:
             outcome = refresher.rate_ladder(args.hash, runs, say=None if args.json else print)
+        elif args.proofs:
+            outcome = refresher.prove_game(args.hash, runs, workers=args.workers,
+                                           say=None if args.json else print)
         else:
             outcome = refresher.repair(
                 args.hash, runs, args.weights, workers=args.workers,
@@ -1668,18 +1701,26 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
 
     if args.plan:
         runs = args.runs or RUNS_DIR
-        items = (refresher.queue(runs, args.weights) if args.part != "ladders" else [])
-        items += refresher.ladder_items(runs) if args.part != "scores" else []
+        items = (refresher.queue(runs, args.weights) if args.part in ("all", "scores")
+                 else [])
+        items += refresher.ladder_items(runs) if args.part in ("all", "ladders") else []
+        items += refresher.proof_items(runs) if args.part in ("all", "proofs") else []
         if args.json:
             print(json.dumps([item.as_dict() for item in items]))
             return 0
         for item in items:
             print(f"  {item.needs:9} tier {item.tier}  {item.name:22} [{item.hash}] "
                   f"{item.lease}: {item.reason}")
-        scores = sum(1 for item in items if not item.ladder)
-        print(f"\n{len(items)} owed: {scores} scores, then {len(items) - scores} ladders"
-              + (" (the ladders wait until no score is owed)" if scores and len(items) > scores
-                 else ""))
+        parts = {part: sum(1 for item in items if item.part == part)
+                 for part in (refresher.SCORES, refresher.LADDERS, refresher.PROOFS)}
+        waits = []
+        if parts[refresher.SCORES] and len(items) > parts[refresher.SCORES]:
+            waits.append("the ladders and proofs wait until no score is owed")
+        if parts[refresher.LADDERS] and parts[refresher.PROOFS]:
+            waits.append("the proofs until no ladder is")
+        print(f"\n{len(items)} owed: {parts[refresher.SCORES]} scores, then "
+              f"{parts[refresher.LADDERS]} ladders, then {parts[refresher.PROOFS]} proofs"
+              + (f" ({'; '.join(waits)})" if waits else ""))
         return 0
 
     main = refresher.main_checkout_of(Path.cwd())
@@ -1727,6 +1768,52 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
         say=print, only=only, slow_tier=False if args.no_slow_tier else None,
     )
     return loop.run()
+
+
+def _cmd_proofs(args: argparse.Namespace) -> int:
+    """Proven positions kept by hand, as `measure` keeps scores (Q993d, `plan-proven.md` §5.2).
+
+    `--check` reads every Library and Baseline game's standing (`puzzles.survey`) and proves
+    nothing: what is owed and why, and what is not and why not. Without it, each owed game
+    (or the named one, if owed) is proved here, one after another, by the refresher's own
+    call (`refresher.prove_game`), into ``--runs``' `puzzles/`.
+    """
+    from chess_variant_sandbox import puzzles, refresher
+
+    standings = puzzles.survey(args.runs)
+    if args.game:
+        digest = (spec_hash(load_spec(Path(args.game))) if Path(args.game).exists()
+                  else args.game)
+        standings = [found for found in standings if found.hash == digest]
+        if not standings:
+            print(f"{args.game}: not a Library or Baseline game here", file=sys.stderr)
+            return 2
+    owed = [found for found in standings if found.owed]
+    if args.check:
+        if args.json:
+            print(json.dumps([{**dataclasses.asdict(found), "owed": found.owed}
+                              for found in standings]))
+        else:
+            for found in standings:
+                print(f"  {found.needs or 'ok':9} {found.name:26} [{found.hash}] {found.reason}")
+            print(f"\n{len(owed)} of {len(standings)} owed: "
+                  + ", ".join(f"{sum(1 for f in owed if f.needs == needs)} {needs}"
+                              for needs in puzzles.NEEDS))
+        return 1 if owed else 0
+    failed = 0
+    for found in owed:
+        outcome = refresher.prove_game(found.hash, args.runs, workers=args.workers,
+                                       say=None if args.json else print)
+        if args.json:
+            print(json.dumps(outcome.as_dict()))
+        elif outcome.refused:
+            print(f"{found.name}: refused ({outcome.refusal}): {outcome.reason}")
+        else:
+            print(f"{found.name}: done in {outcome.seconds:.0f} s")
+        failed += outcome.refused
+    if not owed and not args.json:
+        print("nothing owed")
+    return 1 if failed else 0
 
 
 def _cmd_premise(args: argparse.Namespace) -> int:
