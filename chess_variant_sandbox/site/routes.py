@@ -534,13 +534,18 @@ MAIL_OFF = "/mail/off/"
 #   `render_reference()` as `/rules.md`, in the site's shell here and under the application's
 #   header on the local application. A constant, cached five minutes like `/rules.md`.
 #
-# **Served to anybody.** They are constants: the same bytes for every viewer, nobody's
-# name read and no store touched. A path cannot reach out of any directory, because each
+# - `/whats-new`, *What's new* drawn on the server (G11, `web/page/news_page.py`), and
+#   `/feeds/`, the two Atom feeds (`site/feeds.py`): the changelog's entries and the new
+#   games. Read from the changelog file and the store, never from a cookie.
+#
+# **Served to anybody.** They are the same bytes for every viewer and nobody's name is
+# read; all but the last (which reads the changelog and the store) touch no store. A path cannot reach out of any directory, because each
 # is served by a lookup in its manifest or table and never by resolving what was asked.
 STATIC: tuple[str, ...] = (
     "/static/vendor/", "/static/page/", "/static/site/", "/static/measure-worker.js", "/browser/",
     "/static/fonts/", "/static/shell.js", "/favicon.svg", "/favicon.ico", "/apple-touch-icon.png",
     "/static/picture/", "/rules.md", "/robots.txt", "/sitemap.xml", "/llms.txt", "/rules",
+    "/whats-new", "/feeds/",
 )
 
 # The pages whose answer depends on who is asking, and so the only ones the cookie is

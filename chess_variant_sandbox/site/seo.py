@@ -73,6 +73,7 @@ PAGES: tuple[str, ...] = (
     "/",
     front.GAMES_PATH,
     reference.PAGE,
+    front.NEWS_PATH,
     "/badges",
     terms.PATH,
     "/privacy",
@@ -80,7 +81,7 @@ PAGES: tuple[str, ...] = (
     asking.PATH,
 )
 """The site's fixed public pages, in the sitemap ahead of the games; `/rules`, the rule
-language as a page, since G8."""
+language as a page, since G8, and `/whats-new`, the changelog as a page, since G11."""
 
 _HOST = re.compile(r"^[A-Za-z0-9.-]+(:\d{1,5})?$")
 
@@ -181,6 +182,10 @@ def llms(base: str, games: Sequence[front.Listed]) -> str:
         "",
         f"- [The games]({base}{front.GAMES_PATH}): every game, each playable in the browser "
         "against the computer.",
+        f"- [New games, as an Atom feed]({base}{front.GAMES_FEED}): the newest games to "
+        "join, library and published.",
+        f"- [What's new]({base}{front.NEWS_PATH}): every change to the site in plain words, "
+        f"also [as an Atom feed]({base}{front.NEWS_FEED}).",
     ]
     rows += [f"- [{_bracketed(game.name or 'An unnamed game')}]({base}"
              f"{front.game_path(game.hash)})" for game in games]

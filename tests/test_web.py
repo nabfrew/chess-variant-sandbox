@@ -2695,8 +2695,10 @@ class TestWhatsNew:
         things."""
         from chess_variant_sandbox.site import pages
 
-        assert '<a href="/#/whats-new">what\'s new</a>' in pages.privacy()
-        assert '<a href="/#/whats-new">what\'s new</a>' in pages.credits()
+        # Since G11 the footer names the page the server draws, `/whats-new`, which a
+        # crawler can read; the application's own footer keeps the fragment it alone serves.
+        assert '<a href="/whats-new">what\'s new</a>' in pages.privacy()
+        assert '<a href="/whats-new">what\'s new</a>' in pages.credits()
 
 
 def _tags(tree: dict) -> set[str]:

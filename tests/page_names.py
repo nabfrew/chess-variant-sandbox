@@ -60,8 +60,22 @@ def site_pages() -> dict[str, str]:
             # reading with a challenge, so its script is among those parsed and walked.
             found["/players/ada"] = function(MEMBER_READING, "bo", viewer=2)
             continue
+        if name == "whats_new":
+            # Drawn from the changelog's payload (G11), not from strings.
+            found["/whats-new"] = function(WHATS_NEW_PAYLOAD)
+            continue
         found["/" + name] = function(*["ada"] * len(named))
     return found
+
+
+WHATS_NEW_PAYLOAD: dict[str, Any] = {
+    "days": [{"date": "2026-10-21", "words": "21 October 2026", "entries": [
+        {"heading": "A change", "blocks": [{"kind": "paragraph",
+                                           "runs": [{"t": "text", "s": "Something new."}]}]},
+    ]}],
+    "note": "",
+}
+"""What `/whats-new` is drawn from (`web/changelog.py`'s shape), for a page with no server."""
 
 
 MEMBER_READING: dict[str, Any] = {

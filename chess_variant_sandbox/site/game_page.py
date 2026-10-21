@@ -31,7 +31,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from chess_variant_sandbox.site import drafts, seo
+from chess_variant_sandbox.site import drafts, feeds, seo
 from chess_variant_sandbox.web import library
 from chess_variant_sandbox.web.page import front
 from chess_variant_sandbox.web.page import game as drawing
@@ -104,11 +104,13 @@ def indexable(row: Row | None, game: library.Game) -> bool:
     return row.listed
 
 
-def _rows(connection: Any) -> dict[str, tuple[Row, Any]]:
-    """Every game's switches and the day its row was made, in one query."""
+def _arrivals(connection: Any) -> dict[str, tuple[Row, Any, Any]]:
+    """Every game's switches, the moment its row was made and the moment a designer
+    published it (`None` for a game nobody published), in one query."""
     with connection.cursor() as cursor:
         cursor.execute(
-            "select hash, visibility, revoked, retired, deleted, rested, created from games"
+            "select hash, visibility, revoked, retired, deleted, rested, created, published"
+            " from games"
         )
         found = cursor.fetchall()
     return {
@@ -116,9 +118,20 @@ def _rows(connection: Any) -> dict[str, tuple[Row, Any]]:
             Row(visibility=str(one[1]), revoked=one[2] is not None, retired=one[3] is not None,
                 deleted=one[4] is not None, rested=one[5] is not None),
             one[6],
+            one[7],
         )
         for one in found
     }
+
+
+def _arrived(created: Any, published: Any) -> tuple[str, str]:
+    """When a game joined the site and how: the moment a designer published it, else the
+    moment its row was made (the loader's, for a library game), as RFC 3339 in UTC; nothing
+    when there is no row to say."""
+    when, kind = (published, "published") if published is not None else (created, "library")
+    if when is None or not hasattr(when, "astimezone"):
+        return "", ""
+    return feeds.stamp(when), kind
 
 
 def _day(created: Any, game: library.Game) -> str:
@@ -138,7 +151,7 @@ def listed_pages(
 ) -> tuple[front.Listed, ...]:
     """Every game whose own address is indexable, by name: the sitemap's games, and `/game`'s
     list without script. A killed or deleted game is never one, whatever its file says."""
-    rows = _rows(connection)
+    rows = _arrivals(connection)
     listed = []
     for digest, game in known.items():
         found = rows.get(digest)
@@ -146,8 +159,12 @@ def listed_pages(
         if row is not None and not row.openable:
             continue
         if indexable(row, game):
-            listed.append(front.Listed(hash=digest, name=game.name,
-                                       day=_day(None if found is None else found[1], game)))
+            arrived, kind = ("", "") if found is None else _arrived(found[1], found[2])
+            listed.append(front.Listed(
+                hash=digest, name=game.name,
+                day=_day(None if found is None else found[1], game),
+                arrived=arrived, kind=kind, about=game.description or "",
+            ))
     return tuple(sorted(listed, key=lambda one: (one.name.casefold(), one.hash)))
 
 

@@ -47,6 +47,25 @@ GAMES_DESCRIPTION = (
 
 GAMES_HEADING = "The games"
 
+NEWS_PATH = "/whats-new"
+"""*What's new* as a page of its own, drawn on the server (G11, `news_page.py`). The same
+view is still `#/whats-new` of the single page, for a person with script."""
+
+GAMES_FEED = "/feeds/games.atom"
+"""The Atom feed of new games, library and published (G11, `site/feeds.py`)."""
+
+NEWS_FEED = "/feeds/whats-new.atom"
+"""The Atom feed of the changelog, the entries *What's new* shows (G11)."""
+
+FEED_TYPE = "application/atom+xml"
+
+FEEDS: tuple[tuple[str, str], ...] = (
+    (GAMES_FEED, f"New games · {NAME}"),
+    (NEWS_FEED, f"What's new · {NAME}"),
+)
+"""Each feed's address and the title a feed reader offers it under, which are the feeds' own
+titles (`site/feeds.py`)."""
+
 
 def game_path(digest: str) -> str:
     """A game's own address (`game.py`'s `path`)."""
@@ -56,11 +75,19 @@ def game_path(digest: str) -> str:
 @dataclass(frozen=True)
 class Listed:
     """One game a search engine may index: its hash, its name and the day its page last
-    changed (`YYYY-MM-DD`, or empty when nothing says)."""
+    changed (`YYYY-MM-DD`, or empty when nothing says).
+
+    And, for the new-games feed (G11): `arrived`, the moment the game joined the site
+    (RFC 3339 in UTC, or empty when the store has no row to say), `kind` (`published` for a
+    game a designer published, `library` for one the loader made) and `about`, the
+    description."""
 
     hash: str
     name: str
     day: str = ""
+    arrived: str = ""
+    kind: str = ""
+    about: str = ""
 
 
 PREVIEW_TYPE = "website"
@@ -120,17 +147,31 @@ def preview_lines(title: str, description: str, canonical: str | None = None,
     )
 
 
+def feed_lines() -> str:
+    """The two feeds, as a browser or a feed reader finds them from any page's head (G11):
+    a `rel="alternate"` link each, by the path, which a reader resolves against the page."""
+    return "".join(
+        f'<link rel="alternate" type="{FEED_TYPE}" title="{escape(title, quote=True)}" '
+        f'href="{where}">\n'
+        for where, title in FEEDS
+    )
+
+
 def head_lines(title: str, description: str, canonical: str | None = None,
                index: bool = True, image: str = "", image_alt: str = picture.ALT) -> str:
     """The head's lines beyond the title: a description, a canonical address when the page
     has one, `noindex` when it is not for a search engine's index, and the link preview's
     tags (`preview_lines`) for the page's `title` and its picture `image`, which shows
-    `image_alt`."""
+    `image_alt`. A page that is for the index also links the two feeds (`feed_lines`, G11):
+    every page a person can be reading is a place to subscribe from, and a page that says
+    `noindex` (a sign-in, a token's) is not a page anybody subscribes from."""
     lines = [f'<meta name="description" content="{escape(description, quote=True)}">']
     if canonical is not None:
         lines.append(f'<link rel="canonical" href="{escape(canonical, quote=True)}">')
     if not index:
         lines.append('<meta name="robots" content="noindex">')
+    else:
+        lines.append(feed_lines().rstrip("\n"))
     return "\n".join(lines) + "\n" + preview_lines(title, description, canonical, image,
                                                     image_alt)
 

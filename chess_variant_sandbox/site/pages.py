@@ -49,7 +49,7 @@ from typing import Any
 from chess_variant_sandbox.site import asking, quota, routes, seo, terms
 from chess_variant_sandbox.site import badges as site_badges
 from chess_variant_sandbox.viz import pieces
-from chess_variant_sandbox.web.page import front, marks, rules_page, shell
+from chess_variant_sandbox.web.page import front, marks, news_page, rules_page, shell
 from chess_variant_sandbox.web.page.style import STYLE as APP_STYLE
 
 COOKIE = "chess_variant_sandbox_session"
@@ -328,7 +328,7 @@ def _foot(here: str = "", players: bool = False) -> str:
     links = (
         ("/game", "games"),
         ("/", "about"),
-        ("/#/whats-new", "what's new"),
+        (front.NEWS_PATH, "what's new"),
         *((("/players", "players"),) if players else ()),
         ("/suggestions", "suggestions"),
         ("/credits", "credits"),
@@ -487,7 +487,7 @@ def not_found() -> str:
         '<p class="lead">There is nothing at this address. It may have been mistyped, or '
         "the page may have moved.</p>\n"
         '<div class="row"><a class="button primary" href="/game">See the games</a>'
-        '<a class="button" href="/#/whats-new">What\'s new</a></div>'
+        f'<a class="button" href="{front.NEWS_PATH}">What\'s new</a></div>'
     )
     return _shell("No page here", body, kind="lost", description=NOT_FOUND_SAYS)
 
@@ -1545,6 +1545,15 @@ def rules() -> str:
     constant, like credits: it asks nobody's name."""
     return _shell(rules_page.TITLE, rules_page.body(), kind="prose rules", here=rules_page.PATH,
                   description=rules_page.DESCRIPTION, path=rules_page.PATH)
+
+
+def whats_new(payload: dict[str, Any]) -> str:
+    """*What's new* drawn on the server (G11 of `docs/plan-growth.md`): the changelog's entries
+    in the page, with `web/page/news_page.py` writing them from the payload the script's view
+    and the feeds read. It reads no cookie. A page of the site's own, so the footer is the
+    same, and a crawler and a person without script read what the script draws."""
+    return _shell(news_page.TITLE, news_page.body(payload), kind="news", here=news_page.PATH,
+                  description=news_page.DESCRIPTION, path=news_page.PATH)
 
 
 def badges() -> str:

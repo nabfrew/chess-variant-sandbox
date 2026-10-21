@@ -66,6 +66,7 @@ from chess_variant_sandbox.site import (
     depths,
     designs,
     drafts,
+    feeds,
     finding,
     game_page,
     game_pictures,
@@ -1312,6 +1313,19 @@ class SiteApp(App):
     def llms(self, base: str) -> str:
         """`llms.txt` (G8), its addresses written on `base`."""
         return seo.llms(base, self.listed_pages())
+
+    def games_feed(self, base: str) -> str:
+        """`/feeds/games.atom` (G11): the listed games that are new, its addresses on `base`."""
+        return feeds.games(base, self.listed_pages())
+
+    def news_feed(self, base: str) -> str:
+        """`/feeds/whats-new.atom` (G11): the entries *What's new* shows, on `base`."""
+        return feeds.news(base, self._whats_new())
+
+    def news_page(self) -> bytes:
+        """`/whats-new` (G11): the changelog drawn in the page, the same payload the script's
+        view and the feed read."""
+        return pages.whats_new(self._whats_new()).encode("utf-8")
 
     def rules_page(self) -> bytes:
         """`/rules` (G8): the rule language in the site's shell. The reference inside it is
@@ -3412,6 +3426,8 @@ def site_handler_for(app: SiteApp) -> type[Any]:
                 base = seo.base_for(self.headers.get("Host"))
                 self._send(200, app.llms(base).encode("utf-8"), seo.LLMS_TYPE,
                            cache=seo.CACHE)
+            elif path in (front.NEWS_PATH, front.GAMES_FEED, front.NEWS_FEED):
+                self._news(path)
             elif path == rules_page.PATH:
                 # G8: the rule language as a page, in the site's shell; the local handler's
                 # own drawing of it (under the application's header) is never reached here.
@@ -3420,6 +3436,28 @@ def site_handler_for(app: SiteApp) -> type[Any]:
             else:
                 return False
             return True
+
+        def _news(self, path: str) -> None:
+            """G11: *What's new* as a page and the two Atom feeds, each timed and counted in
+            `usage_hours` under its own row (`feeds.ROUTES`), so a feed's fetches by the hour
+            can be read. No cookie is read: the same bytes for everybody."""
+            base = seo.base_for(self.headers.get("Host"))
+            makers = {
+                front.NEWS_PATH: lambda: app.news_page(),
+                front.GAMES_FEED: lambda: app.games_feed(base).encode("utf-8"),
+                front.NEWS_FEED: lambda: app.news_feed(base).encode("utf-8"),
+            }
+            timed = usage.Timing(makers[path])
+            app.usage.enter()
+            try:
+                body = timed()
+            finally:
+                app.usage.leave()
+            app.usage.record(feeds.ROUTES[path], "", 200, "", None, timed.cpu, timed.wall)
+            if path == front.NEWS_PATH:
+                self._send(200, body, "text/html; charset=utf-8")
+            else:
+                self._send(200, body, feeds.TYPE, cache=feeds.CACHE)
 
         def _html(self, body: str) -> None:
             self._send(200, body.encode("utf-8"), "text/html; charset=utf-8")

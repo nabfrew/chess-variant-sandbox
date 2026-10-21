@@ -1609,7 +1609,8 @@ RULES = """
      entries ruled inside it, the date beside the sheet at a desk (held in view while its
      day scrolls by) and above it on a phone. */
   .news { max-width: 880px; }
-  .news > h2 { font-size: 28px; line-height: 34px; margin: 0 0 6px; }
+  .news > h1, .news > h2 { font-size: 28px; line-height: 34px; margin: 0 0 6px; }
+  .newsFeeds { margin: 8px 0 0; }
   .news > .small { max-width: 680px; margin-bottom: 4px; }
   .newsDay { margin-top: 26px; display: grid; gap: 8px 24px; }
   .newsDay > h3 { margin: 0; font-size: 17px; line-height: 24px; }

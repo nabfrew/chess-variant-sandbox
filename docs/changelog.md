@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-21
 
+### Follow what's new
+
+This page is now readable without scripts, and two feeds let a feed reader follow it: one for what changed, one for
+new games.
+
 ### Share a proven position
 
 Every proven position has a page of its own with a picture of the position, so a link to it shows the board. A button
