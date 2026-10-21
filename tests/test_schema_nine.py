@@ -403,7 +403,10 @@ FROZEN: dict[str, tuple[str, str]] = {
     # (`docs/reference/previews-2026-10-18.md`), its file kept as `tests/_retired_*.json`; its runs stay.
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-with-the-initiative.json` (`6278607c721b`/`8c4ede64bdaf6f6e`) retired from the previews
     # (`docs/reference/previews-2026-10-18.md`), its file kept as `tests/_retired_*.json`; its runs stay.
-    "archive/watering-hole.json": ("5c0b017473f5", "f264b4cdd576ed0b"),
+    # Q996, 2026-10-21: the armies one rank back, every guard two steps from the hole
+    # (`docs/reference/library-repair-2026-10-21.md` §2.1), a new game; it was
+    # `5c0b017473f5`/`f264b4cdd576ed0b`, whose runs stay.
+    "archive/watering-hole.json": ("417c19c2f6bd", "5bffaf00c8f5c5d4"),
     # Q942c, 2026-10-17: the showcases of schema 27's three switches against the royal chase
     # (`docs/archive/plan-round-chase.md` §5; `tests/test_showcases_q942.py`): Gardner in rounds
     # resting (`rest`, the mechanics of `tests/_simultaneous_resting.json`), where swaps

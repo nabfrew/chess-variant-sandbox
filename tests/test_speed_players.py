@@ -262,10 +262,14 @@ def test_without_the_term_the_same_player_would_open_the_file(
 # same player there: every piece is worth one). The spy game's one-game tournament never
 # reaches a round search's ending and is unmoved. They were a98e81e0..., 1bac2ed5...,
 # b73d89a9... .
+#
+# Q996 (2026-10-21) re-pinned the watering hole for its new game (the armies a rank back,
+# `417c19c2f6bd`, `docs/reference/library-repair-2026-10-21.md` §2.1), the core unchanged; it
+# was 86e04284... on `5c0b017473f5`.
 _INERT = {
     "archive/breather.json": "23a6c532fd0bb32f7512deed4207e43f6ceca0dea62df516b2e0a9184d3e79f5",
     "archive/watering-hole.json":
-        "86e042840f5cc9ac30322be448fb93f4dfde601fa8ba638c2cc0f5f355356e75",
+        "6fb8f7183f79c92fdae6835de1ba6597f2a4976e5b7670944b387c89aec2d56c",
     "archive/gardner-with-spies-resting.json":
         "0d8f72477bc1214062de25855bdfc8a6b6998338f27467c7183cb49fe7fb1447",
     "tests/_simultaneous_scored.json":

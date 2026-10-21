@@ -272,7 +272,7 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     # Q962b, 2026-10-18: `archive/gardner-in-rounds` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was 3bf914a9177e31c5.
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-with-meek-pawns` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was b793c277f73875c2.
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-with-the-initiative` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was d4228395719912a8.
-    "archive/watering-hole": "d4cf86accc2bac5b",  # Q918e, schema 26; Q962: its description, for a player (was b06570f1fcf442e8); 2026-10-18: its description, written as the game's idea (was b2c0fe985587b544); Q981 (2026-10-19): its description, the objective first (was 7b9304551e1aa4e6)
+    "archive/watering-hole": "193b889e85b2a4c7",  # Q918e, schema 26; Q996 (2026-10-21): the armies a rank back and its description (was d4cf86accc2bac5b); Q962: its description, for a player (was b06570f1fcf442e8); 2026-10-18: its description, written as the game's idea (was b2c0fe985587b544); Q981 (2026-10-19): its description, the objective first (was 7b9304551e1aa4e6)
     # Q962c, 2026-10-19: `archive/gardner-in-rounds-resting` retired from the previews as a near copy of breather (`docs/reference/previews-2026-10-18.md`); the row was d8b686bb1ae96bac.
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-where-swaps-collide` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was 5ecf690c98ed62f8.
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-scored` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was 21bb31cf3d019bd6.

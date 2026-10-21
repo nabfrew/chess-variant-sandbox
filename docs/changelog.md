@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-21
 
+### The watering hole is back
+
+The watering hole now starts its animals one row back from the hole, which gives the guards time against the stronger
+computer player, and it is a full library game again. The version with speed is a preview for now.
+
 ### Faster return visits
 
 Coming back to the site now downloads about a fifth of what it did: the page's styles and scripts are kept by your browser

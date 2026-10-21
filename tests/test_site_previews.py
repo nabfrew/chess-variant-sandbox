@@ -49,11 +49,16 @@ ARCHIVED_PREVIEWS = {
     # viable as Q943d measured them (§6.5), so they stay previews.
     "gardner-in-rounds-with-a-swift-king.json": "d8bb879440ce",
     "gardner-in-rounds-with-swift-knights.json": "bf230a962d10",
+    # Q943c's T3 joined the library (Q943f) and came back (Q996, 2026-10-21): not viable 0-4
+    # under the round player that sees a finished round's value
+    # (`docs/reference/library-repair-2026-10-21.md` §2.2).
+    "watering-hole-by-speed.json": "423a29997264",
 }
 """The previews in `archive/`, by file and by the mechanics hash each was or will be measured
 under: the round and spy games less the four that joined the library (`JOINED`), the six that
 Q962b retired and the one Q962c retired (`docs/reference/previews-2026-10-18.md`; their files
-are `tests/_retired_*.json`), and Q943c's two Gardner speed showcases."""
+are `tests/_retired_*.json`), and Q943c's three speed showcases (T3, the watering hole by speed,
+back from the library since Q996)."""
 
 ROUND_PREVIEW = "0c7c0191c850"
 ROUND_PREVIEW_FILE = "gardner-in-rounds-resting.json"
@@ -68,15 +73,14 @@ PREVIEWS = {**ARCHIVED_PREVIEWS, ROUND_PREVIEW_FILE: ROUND_PREVIEW}
 """The previews of the test checkout (`_root`)."""
 
 JOINED_ROUNDS = {
-    "watering-hole.json": "5c0b017473f5",
+    # Repaired by Q996 (2026-10-21), the armies a rank back; it was 5c0b017473f5.
+    "watering-hole.json": "417c19c2f6bd",
     # Named gardner in rounds against the chase until Q962; rewritten by Q983a, was 632c199e4589.
     "breather.json": "b8687024cfc6",
-    # Q943c's T3 (`plan-speed.md` §6.1), viable as Q943d measured it (§6.5); joined by Q943f.
-    "watering-hole-by-speed.json": "423a29997264",
 }
-"""Three round games that were previews and joined the library by taking the mark off (Q934,
-`docs/archive/plan-library-audit.md`; Q943f, `docs/plan-speed.md`): Library games played in
-rounds, on every scored surface."""
+"""Two round games that were previews and joined the library by taking the mark off (Q934,
+`docs/archive/plan-library-audit.md`): Library games played in rounds, on every scored surface.
+The third, Q943f's watering hole by speed, went back to the previews (Q996)."""
 
 JOINED_TURNS = {"riders-and-leapers.json": "26636602fae0"}
 """A game played by turns that was a preview (Q936s: `"per_type": "own"`) and joined the same

@@ -1,5 +1,5 @@
 {
- "source_commit": "24a16d68c74d0b1e11bd27f8a98ced24c726c7ee",
+ "source_commit": "1c0239fe6e659af4233604ffe0ce7874c5259e1a",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -81,8 +81,8 @@
   },
   {
    "path": "archive/README.md",
-   "bytes": 66611,
-   "sha256": "e372b0e0b8bf110beed61e29c5c700690e4eefc01fd2b2dc5b1f526908d7b165"
+   "bytes": 67684,
+   "sha256": "46d7198bafca553b14939af7b8ccba3f38da3f97b20681bf3ce35a0ecd3becfc"
   },
   {
    "path": "archive/andernach.json",
@@ -366,13 +366,13 @@
   },
   {
    "path": "archive/watering-hole-by-speed.json",
-   "bytes": 5628,
-   "sha256": "cb28ce150c4c6aaa0d17ff89f127e869bc1b69ae40a3844b6519a7956f045780"
+   "bytes": 6366,
+   "sha256": "032defc6d0ed3c6ee04b5f6c8c43af793f75f9692a184710e87d7efec180a26f"
   },
   {
    "path": "archive/watering-hole.json",
-   "bytes": 4848,
-   "sha256": "113414aa29711966b57dfdcbc2b708444bdaeacc63ea5d7bf4755781f1b96162"
+   "bytes": 5740,
+   "sha256": "ad46569536056816bbe1efcc4e16fd7423cee73880be534f931ccead996baae0"
   },
   {
    "path": "archive/weathervane-half-turn.json",
@@ -2576,8 +2576,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 137756,
-   "sha256": "12a8cb770720cfafbdccc752772166ba08b02e0e9e5ed817ac4c2fc6c06f657e"
+   "bytes": 138005,
+   "sha256": "21b12ae0f72b850b04603920955a00c69f93fe34bcd98d4c4900ce844f0ca7b4"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -4151,8 +4151,8 @@
   },
   {
    "path": "tests/test_hex_readers.py",
-   "bytes": 31466,
-   "sha256": "d50c442f1464e9a4e1dc0fd1a9ef74656931e344f6ad7a8e8212090f9f2e34a4"
+   "bytes": 31552,
+   "sha256": "ca80e90953bfe37f078f9375d8c7e58f6a127fe4313a5878ee9aeb8a3b25eebb"
   },
   {
    "path": "tests/test_hex_resolver.py",
@@ -4606,8 +4606,8 @@
   },
   {
    "path": "tests/test_schema_nine.py",
-   "bytes": 76328,
-   "sha256": "67f53e13b66d9d874e4bb7634423c2309fe37ac094c1a45faa2cf9b26be2271f"
+   "bytes": 76552,
+   "sha256": "8714affcdff2f1bc36bc89510bdca61da6fdab11968929282f13f05529e21a11"
   },
   {
    "path": "tests/test_schema_nine_core.py",
@@ -4926,8 +4926,8 @@
   },
   {
    "path": "tests/test_site_previews.py",
-   "bytes": 22912,
-   "sha256": "58b3e75d57eb8e936b7b1314e47c5b3d4de6ec06a449c9adfe111ddd3ee751a9"
+   "bytes": 23223,
+   "sha256": "1f520026b9ad0659ae72c34714f99111f244e74870d17bad6bd71e9d807c67ab"
   },
   {
    "path": "tests/test_site_proven.py",
@@ -5066,8 +5066,8 @@
   },
   {
    "path": "tests/test_speed_players.py",
-   "bytes": 17312,
-   "sha256": "39bfae81421655729999803518357aa37399ba29da0e67b897ef566e70eb61ab"
+   "bytes": 17536,
+   "sha256": "f6b399a61ad5ce8c266db237020a65424f59dfce0332bdfae835f270fa0addcf"
   },
   {
    "path": "tests/test_spy.py",

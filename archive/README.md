@@ -709,7 +709,13 @@ before anything was measured; `tests/test_showcases_q918e.py` holds the demonstr
   with no royal, and the one where the guess about the other player's move is the whole game
   (viable 4-0 at 0.608 [0.549, 0.652] on Q944a's round roster). The three Gardner games above
   stayed previews until Q962b (2026-10-18) retired them: each drew nearly nine games in ten, and
-  meek pawns' rule barely fired (*Previews retired*, below).
+  meek pawns' rule barely fired (*Previews retired*, below). **Repaired by Q996 (2026-10-21) as
+  `417c19c2f6bd`**: under the round player that sees a finished round's value (Q986b) the old
+  game was over in about six rounds, the first meeting at the hole deciding it, and the
+  quick-kill gate refused it 0-4 (0.531); the armies now start one rank back, every guard two
+  steps from the hole, so the opening is an approach. **0.344 [0.337, 0.441], viable 4-0**, 16.2
+  graded plies, 783 of 784 graded games won at the hole; the old hash's runs stay
+  (`docs/reference/library-repair-2026-10-21.md`).
 
 Measured 2026-10-15 (v12, four runs each, the round roster): Gardner in rounds **0.375
 [0.337, 0.421], not viable (refuse 4-0)**, 0.875 of graded games drawn, 0.483 by both kings
@@ -823,7 +829,7 @@ kinds is gone, and the only one with two different armies of paired kinds.
 
 ## `gardner-in-rounds-with-a-swift-king.json`, `gardner-in-rounds-with-swift-knights.json`, `watering-hole-by-speed.json` — schema 28, speed (Q943c)
 
-2026-10-19, the first two previews and the third in the library since Q943f (2026-10-19). The showcases of `pieces[].speed` (`docs/plan-speed.md` §6.1, pre-registered
+2026-10-19, three previews (the third in the library from Q943f, 2026-10-19, until Q996, 2026-10-21). The showcases of `pieces[].speed` (`docs/plan-speed.md` §6.1, pre-registered
 2026-10-16 before the rule was built): each piece type has a speed, a rank; when the two pieces
 moving in a round differ in speed, the faster move is made first as an ordinary move, and the
 slower is made afterwards only if it still can be. The first two are Gardner in
@@ -849,7 +855,13 @@ difference; the third is the game designed around the rule.
   is caught only standing still or by stepping where the hunter was going. Two arrivals at the
   hole are no longer a meeting: the faster gets there first. Held off main a few hours for an
   operator fix (`plan-speed.md` §6.1 *As built*). Joined the library by Q943f as its only game
-  with speeds: every round two moves in order and nothing colliding.
+  with speeds: every round two moves in order and nothing colliding. **Back to the previews by
+  Q996 (2026-10-21)**, mechanics unchanged: under Q986b's round player it measured 0.395, not
+  viable 0-4, its games over in about five rounds (quick kills 0.64 to 0.72 on the worst half): a
+  guard beside a faster hunter cannot run, so the guard ring falls in two or three rounds, and
+  none of five starting layouts tried kept the idea and passed the gate
+  (`docs/reference/library-repair-2026-10-21.md` §2.2). Its parent is the old watering hole
+  (`5c0b017473f5`), not the repaired one.
 
 Measured by Q943d (2026-10-19, v12, four runs on the round roster; `plan-speed.md` §6.5):
 the swift king reads in 2 of 4 runs and is not viable, the swift knights are not viable

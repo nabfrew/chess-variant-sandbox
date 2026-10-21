@@ -1,7 +1,7 @@
 {
   "schema_version": 26,
   "name": "watering hole",
-  "description": "Win by getting one of your animals onto the water hole at d4, the middle square, with none of the animals that eat it beside it; both players move at once. Almost every game is won at the hole, though eating all of the other side's animals wins too. Each round you each choose a move in secret and the two are made together, so every step is a guess about where the other side is going. Two animals stepping onto one square meet, and the one that eats the other wins; a hunter stepping onto the square its prey has just left finds it empty. White's elephants and cats face Black's dogs and rats on a 7x7 board, every animal stepping one square in any direction, and the four kinds form a chain across the two armies: elephant eats dog, dog eats cat, cat eats rat, rat eats elephant. Each of your animals hunts one enemy kind and flees the other, and no meeting is ever two of a kind, so none ends in a tie. Step toward the hole and you may walk into the one animal that eats you; hold back to guard it and the other side may slip through.",
+  "description": "Win by getting one of your animals onto the water hole at d4, the middle square, with none of the animals that eat it beside it; both players move at once. Each round you each choose a move in secret and the two are made together, so every step is a guess about where the other side is going. White's elephants and cats face Black's dogs and rats on a 7x7 board, every animal stepping one square in any direction, and the four kinds form a chain across the two armies: elephant eats dog, dog eats cat, cat eats rat, rat eats elephant. So each of your animals hunts one enemy kind and flees the other, and no meeting is ever two of a kind: two animals stepping onto one square meet and the one that eats the other wins, while a hunter stepping onto the square its prey has just left finds it empty. Nothing guards the hole but standing beside it, and only the one kind that eats an arriving animal can stop it there, so the game is a fight for the eight squares around the hole. Every animal starts at least two steps from it, so the opening is the approach: which guard to bring up first, and whether to step beside the hole on the very square the enemy hunter may be stepping to. Lose a guard and the hole is open to the kind it was keeping out; hold back to guard it and the other side may slip through. The armies once started beside the hole, and the game was over in three or four rounds; a rank further back, there is a game before the first meeting. Almost every game is won at the hole, though eating all of the other side's animals wins too.",
   "board": {
     "width": 7,
     "height": 7
@@ -115,7 +115,7 @@
         "piece": "E",
         "player": 0,
         "squares": [
-          "c3",
+          "c2",
           "e1",
           "a1"
         ]
@@ -124,7 +124,7 @@
         "piece": "C",
         "player": 0,
         "squares": [
-          "e3",
+          "e2",
           "c1",
           "g1"
         ]
@@ -133,7 +133,7 @@
         "piece": "R",
         "player": 1,
         "squares": [
-          "c5",
+          "c6",
           "e7",
           "a7"
         ]
@@ -142,7 +142,7 @@
         "piece": "D",
         "player": 1,
         "squares": [
-          "e5",
+          "e6",
           "c7",
           "g7"
         ]
@@ -183,7 +183,7 @@
     "added": "2026-10-15",
     "origin": "designed",
     "source": "docs/archive/plan-simultaneous.md, Q918e: a game designed around simultaneous moves",
-    "history": "Q918e (2026-10-15), the showcase of schema 26's rules.simultaneous.tie impossible and the game designed around guessing that docs/archive/plan-simultaneous.md \u00a76.8 asks for: a four-kind food chain split between two armies, so every meeting has a winner, and one shared goal square, so two arrivals in one round are a meeting and not a draw. Drafts v1 to v7 and why each changed are in docs/archive/plan-simultaneous.md, Q918e. Pre-registered there before it was measured. Joined the library from preview by Q934 (2026-10-17): the library's first game played in rounds and its only one with no royal, in which two arrivals on the one shared square are a meeting that always has a winner, so no game is drawn; viable 4-0 at 0.608 on the round roster (Q944a).",
+    "history": "Q918e (2026-10-15), the showcase of schema 26's rules.simultaneous.tie impossible and the game designed around guessing that docs/archive/plan-simultaneous.md \u00a76.8 asks for: a four-kind food chain split between two armies, so every meeting has a winner, and one shared goal square, so two arrivals in one round are a meeting and not a draw. Drafts v1 to v7 and why each changed are in docs/archive/plan-simultaneous.md, Q918e. Pre-registered there before it was measured. Joined the library from preview by Q934 (2026-10-17): the library's first game played in rounds and its only one with no royal, in which two arrivals on the one shared square are a meeting that always has a winner, so no game is drawn; viable 4-0 at 0.608 on the round roster (Q944a). Q996 (2026-10-21, docs/reference/library-repair-2026-10-21.md): with the round player that sees a finished round's value (Q986b) the game fell out of viable 0-4 at 0.531, its games over in about six rounds and refused by the quick-kill gate; the armies were moved one rank back, every guard two steps from the hole, a new game measured anew. It was 5c0b017473f5, whose runs stay.",
     "parents": []
   }
 }
