@@ -527,8 +527,12 @@ MAIL_OFF = "/mail/off/"
 # - `/static/picture/`, the link-preview picture every page's head names (G5,
 #   `web/page/picture.py`), from `chess_variant_sandbox/web/static/picture/`. Only what its
 #   `manifest.json` names, cached for a year: a new picture is a new file name.
-# - `/robots.txt` and `/sitemap.xml`, the doors for crawlers (G4, `site/seo.py`): the site's
-#   handler answers them, beside `/` and `/game` with their own heads.
+# - `/robots.txt` and `/sitemap.xml`, the doors for crawlers (G4, `site/seo.py`), and
+#   `/llms.txt`, the same for an assistant (G8): the site's handler answers them, beside `/`
+#   and `/game` with their own heads.
+# - `/rules`, the rule language as a page (G8, `web/page/rules_page.py`): drawn from the same
+#   `render_reference()` as `/rules.md`, in the site's shell here and under the application's
+#   header on the local application. A constant, cached five minutes like `/rules.md`.
 #
 # **Served to anybody.** They are constants: the same bytes for every viewer, nobody's
 # name read and no store touched. A path cannot reach out of any directory, because each
@@ -536,7 +540,7 @@ MAIL_OFF = "/mail/off/"
 STATIC: tuple[str, ...] = (
     "/static/vendor/", "/static/page/", "/static/site/", "/static/measure-worker.js", "/browser/",
     "/static/fonts/", "/static/shell.js", "/favicon.svg", "/favicon.ico", "/apple-touch-icon.png",
-    "/static/picture/", "/rules.md", "/robots.txt", "/sitemap.xml",
+    "/static/picture/", "/rules.md", "/robots.txt", "/sitemap.xml", "/llms.txt", "/rules",
 )
 
 # The pages whose answer depends on who is asking, and so the only ones the cookie is

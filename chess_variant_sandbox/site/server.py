@@ -115,12 +115,13 @@ from chess_variant_sandbox.web import (
     refreshing,
 )
 from chess_variant_sandbox.web.page import SCRIPTS as PAGE_SCRIPTS
-from chess_variant_sandbox.web.page import front, game_picture, picture, shell
+from chess_variant_sandbox.web.page import front, game_picture, picture, rules_page, shell
 from chess_variant_sandbox.web.page import game as game_drawing
 from chess_variant_sandbox.web.server import (
     BROWSER_PREFIX,
     IMMUTABLE,
     PAGE_PATHS,
+    RULES_CACHE,
     RULES_ROUTE,
     VENDOR_PREFIX,
     WORKER_ROUTE,
@@ -1210,6 +1211,15 @@ class SiteApp(App):
     def sitemap(self, base: str) -> str:
         """`sitemap.xml`, its addresses written on `base`."""
         return seo.sitemap(base, self.listed_pages())
+
+    def llms(self, base: str) -> str:
+        """`llms.txt` (G8), its addresses written on `base`."""
+        return seo.llms(base, self.listed_pages())
+
+    def rules_page(self) -> bytes:
+        """`/rules` (G8): the rule language in the site's shell. The reference inside it is
+        drawn once a process (`rules_page.drawn`); the shell around it is a few lines."""
+        return pages.rules().encode("utf-8")
 
     def findable(self, games: Iterable[library.Game]) -> set[str]:
         """Which of these games this person may be shown: the store's answer, not the tree's.
@@ -3249,7 +3259,7 @@ def site_handler_for(app: SiteApp) -> type[Any]:
 
         def _front(self, path: str) -> bool:
             """G4: the front page, the games, `robots.txt` and `sitemap.xml`, each with what a
-            crawler reads. The same bytes for everybody: no cookie is read. Whether it
+            crawler reads; G8: `llms.txt` and the rule language as a page. The same bytes for everybody: no cookie is read. Whether it
             answered."""
             if path in ("/", "/index.html"):
                 self._html(app.home_page())
@@ -3263,6 +3273,15 @@ def site_handler_for(app: SiteApp) -> type[Any]:
                 base = seo.base_for(self.headers.get("Host"))
                 self._send(200, app.sitemap(base).encode("utf-8"), seo.SITEMAP_TYPE,
                            cache=seo.CACHE)
+            elif path == seo.LLMS_PATH:
+                base = seo.base_for(self.headers.get("Host"))
+                self._send(200, app.llms(base).encode("utf-8"), seo.LLMS_TYPE,
+                           cache=seo.CACHE)
+            elif path == rules_page.PATH:
+                # G8: the rule language as a page, in the site's shell; the local handler's
+                # own drawing of it (under the application's header) is never reached here.
+                self._send(200, app.rules_page(), "text/html; charset=utf-8",
+                           cache=RULES_CACHE)
             else:
                 return False
             return True

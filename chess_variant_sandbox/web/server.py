@@ -48,7 +48,7 @@ from chess_variant_sandbox.web.evolving import Runs
 from chess_variant_sandbox.web.human import HUMAN, HumanGame, HumanRecord, picker_ratings
 from chess_variant_sandbox.web.keeping import Measurements
 from chess_variant_sandbox.web.opponents import Ratings
-from chess_variant_sandbox.web.page import PAGE, SCRIPTS, picture, shell
+from chess_variant_sandbox.web.page import PAGE, SCRIPTS, picture, rules_page, shell
 from chess_variant_sandbox.web.page import game as game_page
 from chess_variant_sandbox.web.play import Session, Sessions, seed_asked
 
@@ -132,6 +132,11 @@ WORKER_ROUTE = "/static/measure-worker.js"
 RULES_ROUTE = rule_reference.PUBLISHED
 RULES_TYPE = "text/markdown; charset=utf-8"
 RULES_CACHE = "public, max-age=300"
+
+# The same reference as a web page (G8, `web/page/rules_page.py`), drawn from the same
+# `render_reference()`, so the two cannot drift. The local application answers it with the
+# page under its own header; the site answers it in its pages' shell before dispatch.
+RULES_PAGE_ROUTE = rule_reference.PAGE
 
 
 def rules_markdown() -> bytes:
@@ -1447,6 +1452,10 @@ def handler_for(app: App) -> type[BaseHTTPRequestHandler]:
                 return
             if parsed.path == RULES_ROUTE:
                 self._send(200, rules_markdown(), RULES_TYPE, cache=RULES_CACHE)
+                return
+            if parsed.path == RULES_PAGE_ROUTE:
+                self._send(200, rules_page.local_bytes(), "text/html; charset=utf-8",
+                           cache=RULES_CACHE)
                 return
             if parsed.path in SCRIPTS:
                 self._script(SCRIPTS[parsed.path])

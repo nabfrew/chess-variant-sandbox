@@ -3892,10 +3892,12 @@ def read_rule_file(text: Any) -> dict[str, Any]:
 
 
 def rule_file_kit() -> dict[str, Any]:
-    """What the page needs to offer a rule file: the link to the published rule language,
-    the two controls' labels `RULES.md` tells a reader to use, and how much of a file to
-    send (one byte over the limit is enough for this module to refuse it in its words)."""
+    """What the page needs to offer a rule file: the links to the published rule language
+    (the page a person reads, G8, and the one Markdown file to give an AI), the two controls'
+    labels `RULES.md` tells a reader to use, and how much of a file to send (one byte over
+    the limit is enough for this module to refuse it in its words)."""
     return {
+        "rulesPage": reference.PAGE,
         "rulesUrl": reference.PUBLISHED,
         "load": reference.LOAD_CONTROL,
         "paste": reference.PASTE_CONTROL,

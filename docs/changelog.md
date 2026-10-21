@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-21
 
+### The rule language on a page of its own
+
+The description of the rule language is now a readable page, with a link on every heading so you can point someone at
+exactly the part they need. The landing page and the designer link to it.
+
 ### Set how long pieces rest in the designer
 
 One choice beside adding a piece sets how long every piece waits after it moves, and each piece's card can set its own.

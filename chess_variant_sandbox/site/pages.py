@@ -49,7 +49,7 @@ from typing import Any
 from chess_variant_sandbox.site import asking, quota, routes, seo, terms
 from chess_variant_sandbox.site import badges as site_badges
 from chess_variant_sandbox.viz import pieces
-from chess_variant_sandbox.web.page import front, marks, shell
+from chess_variant_sandbox.web.page import front, marks, rules_page, shell
 from chess_variant_sandbox.web.page.style import STYLE as APP_STYLE
 
 COOKIE = "chess_variant_sandbox_session"
@@ -246,7 +246,7 @@ _OWN = """
   }
 """
 
-STYLE = APP_STYLE + _OWN
+STYLE = APP_STYLE + _OWN + rules_page.STYLE
 
 # The pages' scripts: plain files under `site/static/`, served at `SCRIPT_PREFIX` by the
 # site's handler ahead of dispatch, as the application serves its own (Q513). A page lists
@@ -1537,6 +1537,14 @@ def credits() -> str:
     )
     return _shell("Credits", body, kind="prose wide", here="/credits",
                   description=CREDITS_SAYS, path="/credits")
+
+
+def rules() -> str:
+    """The rule language as a page (G8 of `docs/plan-growth.md`): `/rules.md`'s own text,
+    drawn by `web/page/rules_page.py` from the same `render_reference()`, in this shell. A
+    constant, like credits: it asks nobody's name."""
+    return _shell(rules_page.TITLE, rules_page.body(), kind="prose rules", here=rules_page.PATH,
+                  description=rules_page.DESCRIPTION, path=rules_page.PATH)
 
 
 def badges() -> str:

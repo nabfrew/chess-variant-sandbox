@@ -2087,9 +2087,9 @@ function startFromHtml(kit) {
 //
 // Q830b (`plan-website.md`, *LLM co-design*): the site offers no AI. A person who wants
 // one writes the game outside, by hand or with their own, from the rule language as one
-// file in the public repository, and brings the file here. The link, the button's label and
-// how much of a file to send are the kit's (`designing.rule_file_kit`), so the link is
-// spelt once and `RULES.md`'s *Trying a game* names this button by the same string.
+// file in the public repository, and brings the file here. The links (the page, G8, and the
+// Markdown file for an AI), the button's label and how much of a file to send are the kit's
+// (`designing.rule_file_kit`), so each link is spelt once and `RULES.md`'s *Trying a game* names this button by the same string.
 //
 // **The page reads nothing in the file.** It sends the text to `POST /api/design/load`,
 // which parses it, holds it to its size and depth, and asks the validator and the compiler
@@ -2104,8 +2104,10 @@ function ruleFileHtml(kit) {
       <div class="row small">
         <button id="dLoadFile" type="button">${esc(file.load)}</button>
         <span class="muted">Writing a game by hand, or with your own AI? Read
+          <a href="${esc(file.rulesPage || file.rulesUrl)}" target="_blank" rel="noopener"
+            title="opens in a new tab">the rule language</a> (for an AI,
           <a href="${esc(file.rulesUrl)}" target="_blank" rel="noopener"
-            title="opens in a new tab">the rule language</a>, write the game as a
+            title="opens in a new tab">the same as one Markdown file</a>), write the game as a
           <code>.json</code> file, and load it here.</span>
       </div>
       <div id="dLoadSaid" class="ruleSaid" aria-live="polite"></div>

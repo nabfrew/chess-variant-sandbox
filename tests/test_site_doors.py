@@ -17,6 +17,9 @@ What a search engine gets over HTTP from a running site, against a library of in
   stood; `/game` lists every listed game for a reader without script, inside `<noscript>`;
 - **the link previews** (G5): every page carries Open Graph and Twitter card tags, its title,
   description, type, whole address and the site's picture, which is served at 1200 × 630;
+- **the rule language as a page** (G8): `/rules` in the site's shell with every heading of
+  `RULES.md` an anchor, linked from the landing page, beside an unchanged `/rules.md`, and
+  `llms.txt` naming both and the games list;
 - **a picture per game** (G6): a game's page names its own picture once the site has made
   it, the site's until then; `/game` asks for every listed game's; the picture is served
   for a year to anybody who can open the game, and is the 404 for anybody else.
@@ -58,16 +61,17 @@ from test_site_game_page import (
 from test_site_links import Site, _load, _running_site, _saved
 
 from chess_variant_sandbox.site import admin, mail, pages, routes, screening, seo
+from chess_variant_sandbox.spec import reference
 from chess_variant_sandbox.web import landing
-from chess_variant_sandbox.web.page import front, game_picture, picture
+from chess_variant_sandbox.web.page import front, game_picture, picture, rules_page
 from chess_variant_sandbox.web.page import game as drawing
 from chess_variant_sandbox.web.page.shell import NAME
 
 LIBRARY = {SHORT_HASH, MEDIUM_HASH, LONG_HASH, DISTANT_HASH}
 
 # The site's public pages, each answered 200 to anybody.
-PUBLIC = ("/", "/game", "/badges", "/terms", "/privacy", "/credits", "/request-invitation",
-          f"/game/{SHORT_HASH}")
+PUBLIC = ("/", "/game", "/rules", "/badges", "/terms", "/privacy", "/credits",
+          "/request-invitation", f"/game/{SHORT_HASH}")
 
 # What a crawler must be kept out of, one address of each kind.
 KEPT_OUT = ("/api/library", f"/api/game/{SHORT_HASH}", "/signin", "/signin?then=/c/abc",
@@ -76,7 +80,7 @@ KEPT_OUT = ("/api/library", f"/api/game/{SHORT_HASH}", "/signin", "/signin?then=
             "/browser/manifest.json")
 
 # What a page needs to draw, which a crawler that renders must be able to fetch.
-LET_IN = (*PUBLIC, "/game?from=mail", "/rules.md", "/static/page/core.js",
+LET_IN = (*PUBLIC, "/game?from=mail", "/rules.md", "/llms.txt", "/static/page/core.js",
           "/static/shell.js", "/static/site/post.js", "/static/fonts/x.woff2",
           "/static/vendor/x.js", "/favicon.svg", "/static/picture/site-0.png",
           f"/picture/game/{SHORT_HASH}-0123456789abcdef.png")
@@ -564,3 +568,68 @@ class TestTheGamePictures:
             _fetch(site.port, f"/game/{SHORT_HASH}")
         site.app.pictures.settle()
         assert len(made) == len(LIBRARY)
+
+
+# ------------------------------------------------------------- the rule language (G8)
+
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+class TestTheRuleLanguage:
+    def test_rules_is_the_page_in_the_sites_shell_with_every_heading_an_anchor(
+        self, site: Site
+    ) -> None:
+        from test_rules_page import github_slug, headings_of
+
+        page = _fetch(site.port, rules_page.PATH)
+        assert page.status == 200
+        assert page.headers["content-type"] == "text/html; charset=utf-8"
+        assert page.title == rules_page.TITLE
+        assert unescape(page.meta("description") or "") == rules_page.DESCRIPTION
+        assert page.canonical == SITE_URL + rules_page.PATH
+        # The site's own footer, not the local application's.
+        assert '<a href="/credits">credits</a>' in page.html
+        taken: dict[str, int] = {}
+        for level, words in headings_of((ROOT / "RULES.md").read_text(encoding="utf-8")):
+            ident = github_slug(words, taken)
+            assert f'<h{level} id="{ident}">' in page.html, ident
+        # The same drawing of the reference as the local application's.
+        assert rules_page.body() in page.html
+
+    def test_rules_md_is_unchanged(self, site: Site) -> None:
+        found = _fetch(site.port, reference.PUBLISHED)
+        assert found.status == 200
+        assert found.html.encode("utf-8") == (ROOT / "RULES.md").read_bytes()
+        assert found.headers["content-type"] == "text/markdown; charset=utf-8"
+        assert found.headers["cache-control"] == "public, max-age=300"
+
+    def test_the_landing_and_the_sitemap_name_it(self, site: Site) -> None:
+        assert f'href="{rules_page.PATH}"' in _fetch(site.port, "/").html
+        assert (SITE_URL + rules_page.PATH, None) in _sitemap(site.port)
+        assert rules_page.PATH in seo.PAGES
+
+    def test_llms_txt_names_both_and_the_games_list(self, site: Site) -> None:
+        found = _fetch(site.port, seo.LLMS_PATH)
+        assert found.status == 200
+        assert found.headers["content-type"] == "text/plain; charset=utf-8"
+        text = found.html
+        lines = text.splitlines()
+        assert lines[0] == f"# {NAME}"
+        assert lines[2] == f"> {seo.LLMS_SUMMARY}"
+        links = dict((url, words) for words, url in
+                     re.findall(r"^- \[(.+?)\]\((\S+?)\)", text, re.M))
+        assert links[SITE_URL + reference.PUBLISHED] == "The rule language, as Markdown"
+        assert links[SITE_URL + reference.PAGE] == "The rule language, as a page"
+        assert links[SITE_URL + front.GAMES_PATH] == "The games"
+        # Every game the sitemap lists, by its name, and nothing else.
+        games = {url[len(SITE_URL + "/game/"):]: words for url, words in links.items()
+                 if url.startswith(SITE_URL + "/game/")}
+        assert set(games) == _games_in(_sitemap(site.port)) == LIBRARY
+        assert games[SHORT_HASH] == "Short walk"
+        assert f"({SITE_URL}{seo.DESIGNER})" in text
+        assert text.endswith("\n") and "\r" not in text
+
+    def test_a_game_name_cannot_break_out_of_its_link(self) -> None:
+        said = seo.llms("https://x", [front.Listed("ab" * 6, "a ]bad[ name\nhere")])
+        assert said.splitlines()[-1] == r"- [a \]bad\[ name here](https://x/game/abababababab)"

@@ -30,6 +30,7 @@ from typing import Any
 from chess_variant_sandbox.corpus import CANONICAL_AGENTS, CANONICAL_GAMES
 from chess_variant_sandbox.metrics.components import QUICK_KILL_PLIES
 from chess_variant_sandbox.metrics.scoring import DEFAULT_WEIGHTS, FLOOR, Weights, load_weights
+from chess_variant_sandbox.spec.reference import PAGE as RULES_PAGE
 
 # The contact line (Q720): the user's words, 2026-10-04, *"contact ... Refer to my github"*.
 # A profile page, never an email address, so the page hands out nothing a robot could
@@ -622,7 +623,11 @@ def html_page(version: str = DEFAULT_WEIGHTS) -> str:
             "reaching a square, and more.</p>"
             "<p>The designer puts the palette in front of you as cards and boards, with no "
             "programming. Change a rule and the board answers at once: where each piece can "
-            "go, and whether the rules still make a game.</p>")),
+            "go, and whether the rules still make a game.</p>"
+            # G8: the palette written down, the page a person reads and an AI is given.
+            f'<p>The whole palette is written down as <a href="{RULES_PAGE}">the rule '
+            "language</a>: a game is one file in it, which you can write by hand or ask an AI "
+            "to write, then load into the designer to see it on the board.</p>")),
         _section("play", "Play any of them now, against the computer", (
             "<p>Every game is playable in the browser straight away, against computer "
             "players from gentle to strong. No account is needed: a practice game has undo "
@@ -681,6 +686,8 @@ def html_page(version: str = DEFAULT_WEIGHTS) -> str:
             "communities of games more like each other than like the rest.</li>"
             '<li><a href="#/design">The designer</a>: start from a blank board, a template '
             "or any game in the library, and save and publish what you make.</li>"
+            f'<li><a href="{RULES_PAGE}">The rule language</a>: every rule a game can use, '
+            "written down, with what makes a valid game and what makes a good one.</li>"
             '<li data-needs="round"><a href="#/round">The monthly round</a>: members put games forward and vote '
             "on them.</li>"
             '<li data-needs="accounts"><a href="/badges">Badges</a> for things done, and a '

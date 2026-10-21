@@ -49,6 +49,11 @@ the link (Q830b): the designer sends it to the page with its kit (`GET /api/desi
 the route is this string too.
 """
 
+PAGE = "/rules"
+"""Where a reader finds the same text as a web page (G8 of `docs/plan-growth.md`): both
+servers draw it from `render_reference()` too (`web/page/rules_page.py`), with a link to
+every heading, so the page and `PUBLISHED` cannot say two different things."""
+
 TITLE = f"# The rule language, schema version {SCHEMA_VERSION}"
 """The reference's first line. It names the version, so any copy says what it is for;
 `deploy/deploy.sh`'s prove step reads it off the live `/rules.md` (`deploy/rules.py`)."""

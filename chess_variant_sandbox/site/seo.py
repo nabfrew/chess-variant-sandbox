@@ -1,4 +1,5 @@
-"""The doors for crawlers: `robots.txt`, `sitemap.xml`, and the site's own address (G4).
+"""The doors for crawlers: `robots.txt`, `sitemap.xml`, `llms.txt`, and the site's own
+address (G4, G8).
 
 G4 of `docs/plan-growth.md`, after the user's answer to G-Q1 (2026-10-19, A): search engines
 are let in. Three things are decided here, each in one place, so they cannot disagree:
@@ -13,6 +14,10 @@ are let in. Three things are decided here, each in one place, so they cannot dis
   game a search engine may index: exactly the games whose own address carries no `noindex`
   (`game_page.listed_pages`, which decides by `game_page.indexable`, the rule the game page
   draws by).
+- **What an assistant is pointed to** (G8, `llms.txt`, after llmstxt.org's proposal): what
+  the site is, the rule language as Markdown and as a page, and the games list with every
+  game `sitemap` lists. Whether any assistant reads it is unknown; the plan lists it as a
+  guess (`docs/plan-growth.md` §2.4).
 - **The site's own address**, for a canonical and a sitemap's `<loc>`: the
   `CHESS_VARIANT_SANDBOX_SITE_URL` the box's unit reads (`deploy/deploy.sh` writes it).
   Where it is unset (a development machine), a canonical is the path alone, and the two
@@ -28,13 +33,17 @@ from collections.abc import Sequence
 from html import escape
 
 from chess_variant_sandbox.site import asking, mail, terms
+from chess_variant_sandbox.spec import reference
 from chess_variant_sandbox.web.page import front
+from chess_variant_sandbox.web.page.shell import NAME
 
 ROBOTS_PATH = "/robots.txt"
 SITEMAP_PATH = "/sitemap.xml"
+LLMS_PATH = "/llms.txt"
 
 ROBOTS_TYPE = "text/plain; charset=utf-8"
 SITEMAP_TYPE = "application/xml; charset=utf-8"
+LLMS_TYPE = "text/plain; charset=utf-8"
 
 # Both files change only with a deploy or a game listed or taken off, so a crawler may keep
 # them an hour; the sitemap's own list is reused for `game_page.LISTED_SECONDS` besides.
@@ -62,14 +71,15 @@ DISALLOWED: tuple[str, ...] = (
 PAGES: tuple[str, ...] = (
     "/",
     front.GAMES_PATH,
+    reference.PAGE,
     "/badges",
     terms.PATH,
     "/privacy",
     "/credits",
     asking.PATH,
 )
-"""The site's fixed public pages, in the sitemap ahead of the games. `/rules`, the rule
-language as a page, joins them with G8."""
+"""The site's fixed public pages, in the sitemap ahead of the games; `/rules`, the rule
+language as a page, since G8."""
 
 _HOST = re.compile(r"^[A-Za-z0-9.-]+(:\d{1,5})?$")
 
@@ -119,3 +129,59 @@ def sitemap(base: str, games: Sequence[front.Listed]) -> str:
         + "\n".join(rows)
         + "\n</urlset>\n"
     )
+
+
+LLMS_SUMMARY = (
+    "A site for designing chess-like strategy games and playing them in the browser. Every "
+    "game is one JSON file in a declarative rule language; a validator checks a file and "
+    "names every mistake, a game engine plays it, and computer players measure it."
+)
+"""`llms.txt`'s one-line summary, its blockquote."""
+
+LLMS_HOW = (
+    "To write a new game, read the rule language, write the game as a JSON file, and load it "
+    "in the designer ({designer}) to check it, see it on the board and play it against the "
+    "computer. A score on a game is a preliminary estimate from computer play, and each one "
+    "says what it rests on."
+)
+"""`llms.txt`'s paragraph on what to do with the rule language, with the designer's address."""
+
+DESIGNER = "/#/design"
+"""The designer, a view of the single page (`shell.SECTIONS`' *Build*)."""
+
+
+def llms(base: str, games: Sequence[front.Listed]) -> str:
+    """`llms.txt`: what the site is, where the rule language is (as Markdown, the file to
+    give an assistant, and as a page), and the games list, with every game `sitemap` lists
+    by its name at its own address."""
+    rows = [
+        f"# {NAME}",
+        "",
+        f"> {LLMS_SUMMARY}",
+        "",
+        LLMS_HOW.format(designer=base + DESIGNER),
+        "",
+        "## The rule language",
+        "",
+        f"- [The rule language, as Markdown]({base}{reference.PUBLISHED}): the whole language "
+        "a game is written in, every key with its type, default and meaning, how a wrong "
+        "file is refused, and two worked examples. One file, to give an assistant to write "
+        "a game from.",
+        f"- [The rule language, as a page]({base}{reference.PAGE}): the same text as a web "
+        "page, with a link to every section.",
+        "",
+        "## The games",
+        "",
+        f"- [The games]({base}{front.GAMES_PATH}): every game, each playable in the browser "
+        "against the computer.",
+    ]
+    rows += [f"- [{_bracketed(game.name or 'An unnamed game')}]({base}"
+             f"{front.game_path(game.hash)})" for game in games]
+    return "\n".join(rows) + "\n"
+
+
+def _bracketed(name: str) -> str:
+    """A game's name as a Markdown link's words, on one line: a bracket in it cannot end
+    the link, and a line break cannot end the row."""
+    said = " ".join(name.split())
+    return said.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")

@@ -180,6 +180,7 @@ class TestTheLocalRoute:
 
     def test_the_kit_carries_the_link_and_the_controls_names(self, app: App) -> None:
         assert app.get("/api/design")["ruleFile"] == {
+            "rulesPage": reference.PAGE,
             "rulesUrl": reference.PUBLISHED,
             "load": reference.LOAD_CONTROL,
             "paste": reference.PASTE_CONTROL,
@@ -275,7 +276,11 @@ class TestThePage:
         link = re.search(r'<a href="([^"]+)" target="_blank" rel="noopener"[^>]*>'
                          r"the rule language</a>", html)
         assert link is not None, html
-        assert link.group(1) == reference.PUBLISHED
+        # G8: the page a person reads, and beside it the one file to give an AI.
+        assert link.group(1) == reference.PAGE
+        markdown = re.search(r'<a href="([^"]+)" target="_blank" rel="noopener"[^>]*>'
+                             r"the same as one Markdown file</a>", html)
+        assert markdown is not None and markdown.group(1) == reference.PUBLISHED, html
         assert "by hand, or with your own AI" in html
         # Above the board, where *start from* is.
         assert html.index('id="dLoadFile"') < html.index('class="designer bench"')
