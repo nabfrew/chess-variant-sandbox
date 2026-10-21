@@ -1679,7 +1679,17 @@ def served_by_the_page() -> list[tuple[str, str]]:
 def _proven_views() -> list[tuple[str, str]]:
     """The proven positions' own page and the game page's panel (Q993b), as the site draws
     them from what `site/proven.py` sends."""
-    from test_site_proven import BOTH, DIGEST, LOSES, ONE, SPEC, _load, _record, _write
+    from test_site_proven import (
+        BOTH,
+        DIGEST,
+        LOSES,
+        ONE,
+        ONE_ID,
+        SPEC,
+        _load,
+        _record,
+        _write,
+    )
 
     from chess_variant_sandbox.site import proven
 
@@ -1688,9 +1698,9 @@ def _proven_views() -> list[tuple[str, str]]:
         runs = Path(folder)
         _write(runs, _record([ONE, LOSES, BOTH]))
         record = _load(runs)
-        view = proven.view(record, SPEC, "0-0-2")
-        states = ((None, set()), (None, {"0-0-2"}), ({}, set()),
-                  ({"0-0-2": {proven.CONVERTED}}, set()))
+        view = proven.view(record, SPEC, ONE_ID)
+        states = ((None, set()), (None, {ONE_ID}), ({}, set()),
+                  ({ONE_ID: {proven.CONVERTED}}, set()))
         pages = [{**proven.page(record, marks, visit), "name": "proven test",
                   "sides": ["white", "black"]} for marks, visit in states]
         games = [{"hash": DIGEST, "standing": {"proven": proven.summary(record, marks)}}
@@ -1699,7 +1709,7 @@ def _proven_views() -> list[tuple[str, str]]:
         drawn = _run_page(
             f"ACCOUNTS = true; const PAGES = {json.dumps(pages)};"
             f" const GAMES = {json.dumps(games)};",
-            f"PAGES.map(data => {{ PROVEN = {{ hash: '{DIGEST}', data, id: '0-0-2',"
+            f"PAGES.map(data => {{ PROVEN = {{ hash: '{DIGEST}', data, id: '{ONE_ID}',"
             " playing: null }; return provenViewHtml(data) + provenListHtml()"
             f" + provenFrameHtml({json.dumps(view)}); }})"
             ".concat(GAMES.map(game => provenHtml(game)))",

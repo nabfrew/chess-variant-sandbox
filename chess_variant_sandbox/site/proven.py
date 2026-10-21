@@ -23,6 +23,13 @@ ended, whose side to move is not the record's, or whose legal moves are not the 
 root moves -- a record proved under rules or a core that no longer hold. It never
 re-judges one. *Find the move* compares a move number with the record's numbers.
 
+**A position's name is what it is** (Q993c, `docs/plan-proven.md` §5.3). The loader names
+each position it keeps by the state its replay reached (`puzzles.name`: the core's key and
+what the key leaves out), not by the record's `seed-game-ply`, and a second row reaching a
+position already named is dropped and counted. The page, the API, a try (`matches.puzzle`)
+and a mark (`proven_marks.position`) all use that name; `0040_proven_names.sql` moved the
+marks and tries stored before it.
+
 **Too easy** (Q993a, Q993f, Q993g, `docs/plan-proven.md` §3). The loader also leaves out,
 and counts, a position the test calls trivial (`puzzles.trivial`): a win in one with more
 than one winning move (T1), half the moves or more proved to win (T2), in a `FORMAT` 2 to 4
@@ -46,7 +53,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from chess_variant_sandbox.puzzles import FORMATS, LOST, OPEN, WON, trivial
+from chess_variant_sandbox.puzzles import FORMATS, LOST, OPEN, WON, name, reached, trivial
 from chess_variant_sandbox.web import card_rules, opponents
 from chess_variant_sandbox.web.library import engine_for
 
@@ -84,8 +91,9 @@ class Position:
     """One proved position, as the record holds it and the loader replayed it.
 
     `number` is its place in the order the page lists them, shortest proved win first;
-    `id` is the record's own name for it (`seed-game-ply`), which the store keys a mark
-    and a try by. `scores` are the record's root moves in the engine's order, each with
+    `id` is its name (`puzzles.name`, Q993c): a digest of the position the loader's replay
+    reached, never the record's `seed-game-ply`, so the store's marks and tries, keyed by
+    it, stay on the position whatever runs a later record is proved from. `scores` are the record's root moves in the engine's order, each with
     its `move`, `text` and `proof` (`won`, `lost` or `open`) and, when proved, `ends_in`.
     """
 
@@ -201,23 +209,31 @@ def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | N
     if data.get("format") not in FORMATS or data.get("ruleset_hash") != digest:
         return None
     engine = engine_for(spec)
-    kept: list[tuple[int, int, dict[str, Any]]] = []
+    kept: list[tuple[int, int, str, dict[str, Any]]] = []
+    named: set[str] = set()
     dropped = 0
     too_easy = 0
     for order, row in enumerate(data.get("positions") or []):
-        if not isinstance(row, dict) or row.get("result") != WON or not _replays(engine, row):
+        state = (
+            _replays(engine, row) if isinstance(row, dict) and row.get("result") == WON else None
+        )
+        # A second row reaching a position already named is the same position twice: the
+        # first is kept, as a record from the runs never holds one (`puzzles.candidates`).
+        called = None if state is None else name(state)
+        if called is None or called in named:
             dropped += 1
             continue
+        named.add(called)
         if trivial(row):
             too_easy += 1
             continue
-        kept.append((int(row.get("ends_in") or 0), order, row))
+        kept.append((int(row.get("ends_in") or 0), order, called, row))
     # Shortest proved win first, then the record's own order: a fixed order the server
     # decides, so the page sorts nothing.
     kept.sort(key=lambda entry: (entry[0], entry[1]))
     positions = tuple(
         Position(
-            id=str(row["id"]),
+            id=called,
             number=number,
             moves=tuple(int(move) for move in row["moves"]),
             side=int(row["side"]),
@@ -227,7 +243,7 @@ def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | N
             others_lost=bool(row.get("others_lost")),
             scores=tuple(dict(entry) for entry in row["scores"]),
         )
-        for number, (_ends, _order, row) in enumerate(kept, start=1)
+        for number, (_ends, _order, called, row) in enumerate(kept, start=1)
     )
     return Record(
         game=digest,
@@ -245,28 +261,27 @@ def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | N
     )
 
 
-def _replays(engine: Any, row: dict[str, Any]) -> bool:
-    """Whether the engine still reaches the position the record proved, as the record says.
+def _replays(engine: Any, row: dict[str, Any]) -> Any:
+    """The position the record proved, if the engine still reaches it as the record says;
+    None where it does not.
 
-    Every prefix move is put to `legal_moves` before it is applied, the position must not
-    have ended, the side to move must be the record's, and the engine's legal moves must
-    be the record's root moves in the same order. The engine answers each question.
+    Every prefix move is put to `legal_moves` before it is applied (`puzzles.reached`), the
+    position must not have ended, the side to move must be the record's, and the engine's
+    legal moves must be the record's root moves in the same order. The engine answers each
+    question.
     """
     try:
-        moves = [int(move) for move in row["moves"]]
         side = int(row["side"])
         scores = [int(entry["move"]) for entry in row["scores"]]
+        state = reached(engine, row["moves"])
     except (KeyError, TypeError, ValueError):
-        return False
-    state = engine.initial_state()
-    for move in moves:
-        if move not in engine.legal_moves(state):
-            return False
-        state = engine.apply(state, move)
+        return None
+    if state is None:
+        return None
     legal = engine.legal_moves(state)
     if engine.terminal(state, legal) is not None or state.side_to_move != side:
-        return False
-    return list(legal) == scores
+        return None
+    return state if list(legal) == scores else None
 
 
 def state_of(spec: dict[str, Any], position: Position) -> Any:

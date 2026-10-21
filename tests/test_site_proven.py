@@ -86,9 +86,31 @@ TAKE = ENGINE.find_move(AT, "Gb2xc3")
 STEP = ENGINE.find_move(AT, "Gb2-b3")
 
 
+# Other positions of the test game with the first player to move and five or six moves, so
+# one or two winning moves is fewer than half. A record holds a position once (Q993c: the
+# loader names a position by what it is, and a second row reaching it is dropped), so a
+# record of several positions draws them from here, each a position of its own.
+# `TRANSPOSED` reaches the second by another order.
+ELSEWHERE = [_prefix(*texts) for texts in (
+    ("Gd1-d2", "Gc4-c3"),
+    ("Ga1-a2", "Gc4-c3", "Gb1-b2", "Gc3-c2"),
+    ("Ga1-a2", "Gc4-c3", "Gd1-d2", "Gc3-c2"),
+    ("Ga1-a2", "Gc4-c3", "Ge1-e2", "Gc3-c2"),
+    ("Ga1-a2", "Gc4-c3", "Ga2-a3", "Gc3-c2"),
+    ("Gb1-b2", "Gc4-c3", "Ge1-e2", "Gc3-c2"),
+    ("Gb1-b2", "Gc4-c3", "Gb2-b3", "Gc3-c2"),
+)]
+TRANSPOSED = _prefix("Gb1-b2", "Gc4-c3", "Ga1-a2", "Gc3-c2")
+
+
+def _at(moves: list[int]) -> Any:
+    """Where a prefix leads, or the test position where it leads nowhere."""
+    return puzzles.reached(ENGINE, moves) or AT
+
+
 def _position(
     position_id: str,
-    proofs: dict[int, str],
+    proofs: dict[int, str] | int,
     moves: list[int] | None = None,
     result: str = "won",
     ends_in: int = 1,
@@ -98,12 +120,17 @@ def _position(
 ) -> dict[str, Any]:
     """A record's position in R9a's shape, the root moves in the engine's order with the
     proof each is given here (a record is data; what is tested is what the site does
-    with it)."""
+    with it). `proofs` is a proof a move, or how many of the first moves are won."""
+    prefix = list(PREFIX if moves is None else moves)
+    state = _at(prefix)
+    legal = ENGINE.legal_moves(state)
+    if isinstance(proofs, int):
+        proofs = {move: "won" for move in legal[:proofs]}
     scores = []
-    for move in LEGAL:
+    for move in legal:
         proof = proofs.get(move, rest)
         entry: dict[str, Any] = {
-            "move": move, "text": ENGINE.describe_move(AT, move),
+            "move": move, "text": ENGINE.describe_move(state, move),
             "score": {"won": 999_999.0, "lost": -999_999.0}.get(proof, 0.5), "proof": proof,
         }
         if proof != "open":
@@ -112,8 +139,8 @@ def _position(
     winning = sum(1 for entry in scores if entry["proof"] == "won")
     single = result == "won" and winning == 1
     return {
-        "id": position_id, "seed": 0, "game": 0, "ply": len(PREFIX), "pieces": 2,
-        "moves": list(PREFIX if moves is None else moves), "side": side, "result": result,
+        "id": position_id, "seed": 0, "game": 0, "ply": len(prefix), "pieces": 2,
+        "moves": prefix, "side": side, "result": result,
         "ends_in": ends_in, "winning": winning, "single": single,
         "others_lost": single and all(e["proof"] == "lost" for e in scores if e["proof"] != "won"),
         "scores": scores,
@@ -121,9 +148,18 @@ def _position(
     }
 
 
+def _named(row: dict[str, Any]) -> str:
+    """The name the site calls a record's position by: the engine's state, replayed."""
+    return puzzles.name(_at(row["moves"]))
+
+
 ONE = _position("0-0-2", {TAKE: "won", STEP: "open"}, ends_in=1)
-LOSES = _position("0-1-2", {TAKE: "won"}, ends_in=3, rest="lost")
-BOTH = _position("0-2-2", {TAKE: "won", STEP: "won"}, ends_in=2)
+LOSES_AT = ELSEWHERE[0]
+LOSES = _position("0-1-2", {ENGINE.find_move(_at(LOSES_AT), "Gd2xc3"): "won"}, LOSES_AT,
+                  ends_in=3, rest="lost")
+LOST_STEP = ENGINE.find_move(_at(LOSES_AT), "Gd2-d3")
+BOTH = _position("0-2-2", 2, ELSEWHERE[3], ends_in=2)
+ONE_ID, LOSES_ID, BOTH_ID = _named(ONE), _named(LOSES), _named(BOTH)
 
 
 def _record(positions: list[dict[str, Any]], digest: str = DIGEST) -> dict[str, Any]:
@@ -175,10 +211,10 @@ def _load(runs: Path) -> proven.Record:
 class TestTheLoader:
     def test_a_record_is_offered_shortest_win_first(self, runs: Path) -> None:
         record = _load(runs)
-        assert [found.id for found in record.positions] == ["0-0-2", "0-2-2", "0-1-2"]
+        assert [found.id for found in record.positions] == [ONE_ID, BOTH_ID, LOSES_ID]
         assert [found.number for found in record.positions] == [1, 2, 3]
         assert record.dropped == 0 and record.singles == 2
-        first = record.find("0-0-2")
+        first = record.find(ONE_ID)
         assert first is not None and first.moves == tuple(PREFIX) and first.side == 0
         assert first.ply == len(PREFIX)
 
@@ -197,9 +233,27 @@ class TestTheLoader:
         broken = {"id": "0-7-2", "result": "won"}
         _write(tmp_path, _record([ONE, illegal, other_moves, lost, wrong_side, broken]))
         record = _load(tmp_path)
-        assert [found.id for found in record.positions] == ["0-0-2"]
+        assert [found.id for found in record.positions] == [ONE_ID]
         assert record.dropped == 5
         assert "5 more no longer replay" in proven.basis_said(record)
+
+    def test_a_position_is_named_by_what_it_is_not_where_it_was_found(
+        self, tmp_path: Path
+    ) -> None:
+        """Q993c (`plan-proven.md` §5.3): the name is the replayed state's (`puzzles.name`),
+        never the record's `seed-game-ply`. Two prefixes reaching one position give one
+        name, so a record holding it twice offers it once and drops the other."""
+        here = _position("3-0-4", 1, ELSEWHERE[1], ends_in=3)
+        again = _position("0-9-4", 1, TRANSPOSED, ends_in=3)
+        assert here["moves"] != again["moves"] and _named(here) == _named(again)
+        assert _named(here) == puzzles.name(ENGINE.play(ENGINE.initial_state(), TRANSPOSED))
+        assert len({_named(row) for row in (ONE, LOSES, BOTH, here)}) == 4
+        _write(tmp_path, _record([ONE, here, again]))
+        record = _load(tmp_path)
+        assert [found.id for found in record.positions] == [ONE_ID, _named(here)]
+        assert record.find(_named(here)).moves == tuple(here["moves"])  # type: ignore[union-attr]
+        assert record.find("3-0-4") is None and record.find("0-0-2") is None
+        assert record.dropped == 1
 
     def test_no_record_another_games_or_another_format_is_none(self, tmp_path: Path) -> None:
         assert proven.load(tmp_path, DIGEST, SPEC) is None
@@ -237,7 +291,9 @@ class TestTheLoader:
         assert record.dropped == 0
         won = [row for row in data["positions"] if row["result"] == "won"]
         kept = [row for row in won if not puzzles.trivial(row)]
-        assert {found.id for found in record.positions} == {row["id"] for row in kept}
+        engine = engine_for(find(path.stem).spec)
+        names = dict(puzzles.renames(engine, data))
+        assert {found.id for found in record.positions} == {names[row["id"]] for row in kept}
         assert len(record.positions) + record.too_easy == data["counts"]["won"]
         assert record.singles == sum(1 for row in kept if row["single"])
         if data["format"] >= 2:
@@ -250,20 +306,19 @@ class TestTheLoader:
         are left out and counted; T3's `some` and `unsettled` are kept, since a reply the
         probe could not settle counts as a say. Every part is read off the record. Here
         the record is a `FORMAT` 2 one, with no T4 (`test_t4_...` reads a `FORMAT` 3)."""
-        both = _position("1-0-2", {TAKE: "won", STEP: "won"}, ends_in=3)  # 2 of 5: kept
-        t1 = _position("1-1-2", {TAKE: "won", STEP: "won"}, ends_in=1)
-        t2 = _position("1-2-2", {move: "won" for move in LEGAL[:3]}, ends_in=3)
-        t3 = _position("1-3-2", {TAKE: "won", STEP: "won"}, ends_in=3, defence="none")
-        some = _position("1-4-2", {TAKE: "won", STEP: "won"}, ends_in=3, defence="some")
-        unsure = _position("1-5-2", {TAKE: "won", STEP: "won"}, ends_in=3,
-                           defence="unsettled")
+        both = _position("1-0-2", 2, ELSEWHERE[0], ends_in=3)  # 2 of 5: kept
+        t1 = _position("1-1-2", 2, ELSEWHERE[1], ends_in=1)
+        t2 = _position("1-2-2", 3, ELSEWHERE[3], ends_in=3)  # 3 of 6
+        t3 = _position("1-3-2", 2, ELSEWHERE[4], ends_in=3, defence="none")
+        some = _position("1-4-2", 2, ELSEWHERE[5], ends_in=3, defence="some")
+        unsure = _position("1-5-2", 2, ELSEWHERE[6], ends_in=3, defence="unsettled")
         record = _record([ONE, both, t1, t2, t3, some, unsure])
         record["format"] = 2
         record["basis"]["defence_nodes"] = puzzles.DEFENCE_NODES
         _write(tmp_path, record)
         loaded = _load(tmp_path)
         assert [found.id for found in loaded.positions] == [
-            "0-0-2", "1-0-2", "1-4-2", "1-5-2"]
+            ONE_ID, _named(both), _named(some), _named(unsure)]
         assert loaded.too_easy == 3 and loaded.dropped == 0 and loaded.defence
         assert not loaded.hasten and loaded.tests == "T3"
         said = proven.basis_said(loaded)
@@ -277,7 +332,7 @@ class TestTheLoader:
         _write(tmp_path, old)
         os.utime(proven.path(tmp_path, DIGEST), ns=(10**18, 10**18))
         loaded = _load(tmp_path)
-        assert [found.id for found in loaded.positions] == ["0-0-2", "1-0-2"]
+        assert [found.id for found in loaded.positions] == [ONE_ID, _named(both)]
         assert loaded.too_easy == 2 and not loaded.defence
         said = proven.basis_said(loaded)
         assert "Of the 3 it proved, 2 were left out as too easy" in said
@@ -289,18 +344,18 @@ class TestTheLoader:
         """`plan-proven.md` §3.6 at load, in a `FORMAT` 3 record: T4's `none` is left out
         whatever T3 answered, T4's `some` and `unsettled` are kept, and the basis line
         names T4's reason in plain words. The answers are read off the record."""
-        pair = {TAKE: "won", STEP: "won"}
-        hastens = _position("1-0-2", pair, ends_in=3, defence="some", hasten="none")
-        march = _position("1-1-2", pair, ends_in=3, defence="none", hasten="none")
-        put_off = _position("1-2-2", pair, ends_in=3, defence="some", hasten="some")
-        unsure = _position("1-3-2", pair, ends_in=3, defence="some", hasten="unsettled")
+        hastens = _position("1-0-2", 2, ELSEWHERE[0], ends_in=3, defence="some", hasten="none")
+        march = _position("1-1-2", 2, ELSEWHERE[1], ends_in=3, defence="none", hasten="none")
+        put_off = _position("1-2-2", 2, ELSEWHERE[2], ends_in=3, defence="some", hasten="some")
+        unsure = _position("1-3-2", 2, ELSEWHERE[5], ends_in=3, defence="some",
+                           hasten="unsettled")
         record = _record([ONE, hastens, march, put_off, unsure])
         record["format"] = 3
         record["basis"]["defence_nodes"] = puzzles.DEFENCE_NODES
         record["basis"]["hasten_nodes"] = puzzles.DEFENCE_NODES
         _write(tmp_path, record)
         loaded = _load(tmp_path)
-        assert [found.id for found in loaded.positions] == ["0-0-2", "1-2-2", "1-3-2"]
+        assert [found.id for found in loaded.positions] == [ONE_ID, _named(put_off), _named(unsure)]
         assert loaded.too_easy == 2 and loaded.dropped == 0
         assert loaded.defence and loaded.hasten and loaded.tests == "T4"
         said = proven.basis_said(loaded)
@@ -322,8 +377,8 @@ class TestTheLoader:
         """`plan-proven.md` §3.7 at load, in a `FORMAT` 4 record: T5's `found` is left out,
         its `missed` and a position it was not asked of are kept, and the basis line names
         T5's reason in plain words, the quick players by their names on the site."""
-        seen = _position("1-0-2", {TAKE: "won"}, ends_in=3, shallow="found")
-        missed = _position("1-1-2", {TAKE: "won"}, ends_in=3, shallow="missed")
+        seen = _position("1-0-2", 1, ELSEWHERE[0], ends_in=3, shallow="found")
+        missed = _position("1-1-2", 1, ELSEWHERE[1], ends_in=3, shallow="missed")
         record = _record([ONE, seen, missed])
         assert record["format"] == 4
         record["basis"] |= {"defence_nodes": puzzles.DEFENCE_NODES,
@@ -331,7 +386,7 @@ class TestTheLoader:
                             "shallow_nodes": puzzles.DEFENCE_NODES}
         _write(tmp_path, record)
         loaded = _load(tmp_path)
-        assert [found.id for found in loaded.positions] == ["0-0-2", "1-1-2"]
+        assert [found.id for found in loaded.positions] == [ONE_ID, _named(missed)]
         assert loaded.too_easy == 1 and loaded.shallow and loaded.tests == "T5"
         said = proven.basis_said(loaded)
         assert ("1 were left out as too easy: the win was the very next move with more than "
@@ -353,7 +408,7 @@ class TestTheLoader:
         """Q993g: a game whose every proved position was left out offers none, and its
         section says so in a sentence rather than listing nothing; the games list does
         not count it as having any, and the profile reads the person's marks alone."""
-        seen = _position("1-0-2", {TAKE: "won"}, ends_in=3, shallow="found")
+        seen = _position("1-0-2", 1, ELSEWHERE[0], ends_in=3, shallow="found")
         record = _record([seen])
         record["basis"]["shallow_nodes"] = puzzles.DEFENCE_NODES
         runs = tmp_path / "all-gone"
@@ -369,10 +424,12 @@ class TestTheLoader:
         assert page["positions"] == [] and page["none"] == proven.NONE_LEFT
         assert proven.offered(runs, DIGEST, SPEC) == 0
         lines = proven.profile_lines(
-            {DIGEST: {"1-0-2": {proven.CONVERTED}}}, {DIGEST: loaded}, {DIGEST: "proven test"})
+            {DIGEST: {_named(seen): {proven.CONVERTED}}}, {DIGEST: loaded},
+            {DIGEST: "proven test"})
         assert lines == [{"hash": DIGEST, "name": "proven test", "converted": 1, "found": 0,
                           "of": None, "singles": None, "solved": None, "share": None}]
-        assert proven.overall({DIGEST: {"1-0-2": {proven.CONVERTED}}}, {DIGEST: loaded}) is None
+        assert proven.overall({DIGEST: {_named(seen): {proven.CONVERTED}}},
+                              {DIGEST: loaded}) is None
 
 
 # ------------------------------------------------------------------- find the move
@@ -380,12 +437,12 @@ class TestTheLoader:
 
 class TestFindTheMove:
     def test_the_proved_move_is_right(self, runs: Path) -> None:
-        said = proven.answer(_load(runs), "0-0-2", TAKE)
+        said = proven.answer(_load(runs), ONE_ID, TAKE)
         assert said["right"] is True and said["proof"] == "won"
         assert said["said"].startswith("Yes: Gb2xc3 is the move the computer proved wins")
 
     def test_an_open_move_is_not_settled_and_never_wrong(self, runs: Path) -> None:
-        said = proven.answer(_load(runs), "0-0-2", STEP)
+        said = proven.answer(_load(runs), ONE_ID, STEP)
         assert said["right"] is False and said["proof"] == "open"
         assert "not the move the computer proved" in said["said"]
         assert "could not settle" in said["said"]
@@ -393,36 +450,36 @@ class TestFindTheMove:
             assert word not in said["said"]
 
     def test_a_move_proved_lost_is_said_to_lose(self, runs: Path) -> None:
-        said = proven.answer(_load(runs), "0-1-2", STEP)
+        said = proven.answer(_load(runs), LOSES_ID, LOST_STEP)
         assert said["right"] is False and said["proof"] == "lost"
-        assert said["said"].startswith("No: the computer proved Gb2-b3 loses.")
+        assert said["said"].startswith("No: the computer proved Gd2-d3 loses.")
         assert "Every move here but one loses." in said["said"]
 
     def test_a_position_with_two_winning_moves_is_not_asked(self, runs: Path) -> None:
         with pytest.raises(ValueError, match="more than one winning move"):
-            proven.answer(_load(runs), "0-2-2", TAKE)
+            proven.answer(_load(runs), BOTH_ID, TAKE)
 
     def test_showing_the_move_names_it_and_is_no_pick(self, runs: Path) -> None:
-        said = proven.answer(_load(runs), "0-0-2", None, show=True)
+        said = proven.answer(_load(runs), ONE_ID, None, show=True)
         assert said["shown"] == "Gb2xc3" and said["right"] is False and said["proof"] is None
 
     def test_a_move_not_in_the_position_or_a_position_not_here_is_refused(
         self, runs: Path
     ) -> None:
         with pytest.raises(ValueError, match="not one of the moves"):
-            proven.answer(_load(runs), "0-0-2", 1)
+            proven.answer(_load(runs), ONE_ID, 1)
         with pytest.raises(KeyError):
             proven.answer(_load(runs), "9-9-9", TAKE)
 
     def test_the_drawing_sends_the_moves_and_never_their_scores(self, runs: Path) -> None:
-        drawn = proven.view(_load(runs), SPEC, "0-0-2")
+        drawn = proven.view(_load(runs), SPEC, ONE_ID)
         assert drawn["preview"]["board"] == list(AT.board)
         assert drawn["preview"]["toMove"] == 0
         assert [entry["move"] for entry in drawn["moves"]] == LEGAL
         assert all(set(entry) == {"move", "text"} for entry in drawn["moves"])
         assert "score" not in json.dumps(drawn["moves"]) and "proof" not in json.dumps(drawn)
         # Two winning moves: offered to convert, with nothing to pick from.
-        assert proven.view(_load(runs), SPEC, "0-2-2")["moves"] == []
+        assert proven.view(_load(runs), SPEC, BOTH_ID)["moves"] == []
 
 
 # ---------------------------------------------------------------- what the page reads
@@ -446,10 +503,10 @@ class TestTheWords:
             proven.SIGN_IN_TO_CONVERT, *proven.TRY_SAID.values(), m.PUZZLE_IS_PRACTICE,
             proven.NONE_LEFT,
             *proven.TOO_EASY.values(),
-            proven.view(record, SPEC, "0-0-2")["said"],
-            *(proven.answer(record, "0-0-2", move)["said"] for move in LEGAL),
-            proven.answer(record, "0-1-2", STEP)["said"],
-            proven.answer(record, "0-0-2", None, show=True)["said"],
+            proven.view(record, SPEC, ONE_ID)["said"],
+            *(proven.answer(record, ONE_ID, move)["said"] for move in LEGAL),
+            proven.answer(record, LOSES_ID, LOST_STEP)["said"],
+            proven.answer(record, ONE_ID, None, show=True)["said"],
         ]
         for sentence in sentences:
             assert site_words.hits(sentence) == [], sentence
@@ -465,10 +522,10 @@ class TestTheWords:
         assert visitor["signedIn"] is False and visitor["signInToConvert"]
         assert visitor["keep"] == proven.PAGE_WORDS["keep"] and visitor["progress"] == ""
         assert visitor["count"] == 3 and visitor["singles"] == 2 and visitor["share"] is None
-        assert [entry["id"] for entry in visitor["positions"]] == ["0-0-2", "0-2-2", "0-1-2"]
+        assert [entry["id"] for entry in visitor["positions"]] == [ONE_ID, BOTH_ID, LOSES_ID]
         assert [(group["heading"], group["ids"]) for group in visitor["groups"]] == [
-            ("Wins in 1 turn", ["0-0-2"]), ("Wins in 2 turns", ["0-2-2"]),
-            ("Wins in 3 turns", ["0-1-2"])]
+            ("Wins in 1 turn", [ONE_ID]), ("Wins in 2 turns", [BOTH_ID]),
+            ("Wins in 3 turns", [LOSES_ID])]
         assert visitor["chips"] == [
             {"key": "unsolved", "label": "not solved yet", "count": 3},
             {"key": "single", "label": "one winning move", "count": 2}]
@@ -477,7 +534,7 @@ class TestTheWords:
         assert none["progress"] == "3 positions to solve." and none["share"] is None
         assert none["keep"] == "" and none["signInToConvert"] == ""
         mine = proven.page(
-            record, {"0-0-2": {proven.CONVERTED, proven.FOUND}, "gone": {proven.FOUND}})
+            record, {ONE_ID: {proven.CONVERTED, proven.FOUND}, "gone": {proven.FOUND}})
         assert mine["progress"] == (
             "You have solved 1 of 3 (33%): converted 1, found the move in 1 of the 2 with one "
             "winning move. Only you see this.")
@@ -489,13 +546,13 @@ class TestTheWords:
         assert not any(key in json.dumps(mine) for key in ("people", "everyone", "others"))
         # A visitor's finds this visit are counted for the visit and kept nowhere; an id the
         # record does not offer is not counted.
-        visit = proven.page(record, None, {"0-1-2", "nonsense"})
+        visit = proven.page(record, None, {LOSES_ID, "nonsense"})
         assert [row["done"] for row in visit["positions"]] == ["", "", proven.FOUND_FOR_VISIT]
         assert visit["progress"] == (
             "On this visit you have found the move in 1 of 3 (33%). Nothing is kept.")
         assert visit["chips"][0]["count"] == 2
         # A signed-in reader's page ignores a visit's ids: their marks are stored.
-        assert proven.page(record, {}, {"0-1-2"})["positions"][2]["solved"] is False
+        assert proven.page(record, {}, {LOSES_ID})["positions"][2]["solved"] is False
 
     def test_a_chip_that_would_narrow_nothing_is_not_sent(self, tmp_path: Path) -> None:
         """Every position with one winning move (all 21 offered today): *one winning move*
@@ -517,7 +574,7 @@ class TestTheWords:
         assert visitor["said"].startswith("3 positions from this game") and visitor["yours"] == ""
         assert visitor["open"] == "open them" and visitor["basis"] == ""
         assert proven.summary(record, {})["yours"] == ""
-        mine = proven.summary(record, {"0-2-2": {proven.CONVERTED}})
+        mine = proven.summary(record, {BOTH_ID: {proven.CONVERTED}})
         assert mine["yours"].startswith("You have solved 1 of 3 (33%)")
 
     def test_the_overall_share_counts_every_game_with_positions(
@@ -529,7 +586,7 @@ class TestTheWords:
         other = proven.Record(game="b" * 12, made="", basis={}, counts={}, positions=(
             proven.Position(id="x", number=1, moves=(), side=0, ends_in=1, pieces=2,
                             single=True, others_lost=False, scores=()),), dropped=0)
-        marked = {DIGEST: {"0-0-2": {proven.FOUND}, "gone": {proven.CONVERTED}}}
+        marked = {DIGEST: {ONE_ID: {proven.FOUND}, "gone": {proven.CONVERTED}}}
         found = proven.overall(marked, {DIGEST: record, "b" * 12: other, "c" * 12: None})
         assert found == {"solved": 1, "of": 4, "games": 2, "share": "25%",
                          "said": "Across all 2 games with proven positions you have solved "
@@ -543,7 +600,7 @@ class TestTheWords:
     def test_the_profile_counts_against_what_is_offered_now(self, runs: Path) -> None:
         record = _load(runs)
         lines = proven.profile_lines(
-            {DIGEST: {"0-0-2": {proven.CONVERTED, proven.FOUND}, "0-2-2": {proven.CONVERTED},
+            {DIGEST: {ONE_ID: {proven.CONVERTED, proven.FOUND}, BOTH_ID: {proven.CONVERTED},
                       "gone": {proven.CONVERTED}},
              "bbbbbbbbbbbb": {"x": {proven.FOUND}}},
             {DIGEST: record, "bbbbbbbbbbbb": None},
@@ -559,7 +616,7 @@ class TestTheWords:
     def test_a_try_seats_the_person_on_the_side_to_move_against_hardest(
         self, runs: Path
     ) -> None:
-        first = _load(runs).find("0-0-2")
+        first = _load(runs).find(ONE_ID)
         assert first is not None
         assert proven.seats_for(first) == ["human", "minimax:nodes=200000"]
         assert proven.OPPONENT == "minimax:nodes=200000"
@@ -576,7 +633,7 @@ class TestTheWords:
             found = [route for route in routes.OWN
                      if route.method == method and route.path == path]
             assert found and found[0].visitor == ""
-        assert routes.find("GET", f"/api/proven/{DIGEST}/0-0-2") is not None
+        assert routes.find("GET", f"/api/proven/{DIGEST}/{ONE_ID}") is not None
         assert routes.find("GET", f"/api/proven/{DIGEST}") is not None
 
     def test_the_positions_have_an_address_of_their_own(self) -> None:
@@ -584,13 +641,13 @@ class TestTheWords:
         from chess_variant_sandbox.web.page import game as drawing
 
         assert drawing.proven_digest_of(f"/game/{DIGEST}/proven") == DIGEST
-        assert drawing.proven_digest_of(f"/game/{DIGEST}/proven/0-0-2") == DIGEST
+        assert drawing.proven_digest_of(f"/game/{DIGEST}/proven/{ONE_ID}") == DIGEST
         assert drawing.proven_digest_of(f"/game/{DIGEST}/proven/") == DIGEST
         for other in (f"/game/{DIGEST}", f"/game/{DIGEST}/provenx", f"/game/{DIGEST}/proven/a/b",
                       "/game/XYZ/proven"):
             assert drawing.proven_digest_of(other) is None, other
         assert drawing.digest_of(f"/game/{DIGEST}/proven") is None
-        assert routes.find("POST", f"/api/proven/{DIGEST}/0-0-2/find") is not None
+        assert routes.find("POST", f"/api/proven/{DIGEST}/{ONE_ID}/find") is not None
 
 
 # --------------------------------------------------------------------- the store
@@ -606,7 +663,7 @@ def store() -> Iterator[Scratch]:
 def _try(store: Scratch, user: int | None, position: dict[str, Any] = ONE) -> m.Row:
     found = m.start(
         store.connection, DIGEST, m.SANDBOX, ["human", proven.OPPONENT], user,
-        puzzle=(str(position["id"]), position["moves"]),
+        puzzle=(_named(position), position["moves"]),
     )
     store.connection.commit()
     return found
@@ -624,11 +681,11 @@ class TestATry:
         ada = store.user("ada")
         found = _try(store, ada)
         assert found.mode == m.SANDBOX and found.source == m.PUZZLE
-        assert m.puzzle_of(store.connection, found.id) == ("0-0-2", len(PREFIX))
+        assert m.puzzle_of(store.connection, found.id) == (ONE_ID, len(PREFIX))
         assert found.plies == len(PREFIX)
         snapshot = m.session(store.connection, found.id).snapshot()
         assert snapshot["board"] == list(AT.board) and snapshot["sideToMove"] == 0
-        assert snapshot["puzzle"]["id"] == "0-0-2" and snapshot["puzzle"]["side"] == 0
+        assert snapshot["puzzle"]["id"] == ONE_ID and snapshot["puzzle"]["side"] == 0
         assert snapshot["puzzle"]["from"] == len(PREFIX)
         assert snapshot["puzzle"]["said"] == proven.TRY_SAID["said"]
         # An ordinary match carries no block at all.
@@ -644,8 +701,8 @@ class TestATry:
         # The engine ended the game, and named the person's side the winner.
         assert snapshot["outcome"]["winner"] == 0
         assert m.row(store.connection, found.id).result == 1.0
-        assert _marks(store) == [(ada, DIGEST, "0-0-2", proven.CONVERTED, found.id)]
-        assert proven.marks_on(store.connection, ada, DIGEST) == {"0-0-2": {proven.CONVERTED}}
+        assert _marks(store) == [(ada, DIGEST, ONE_ID, proven.CONVERTED, found.id)]
+        assert proven.marks_on(store.connection, ada, DIGEST) == {ONE_ID: {proven.CONVERTED}}
         # Converting it again is still one mark.
         again = _try(store, ada)
         m.play(store.connection, again.id, TAKE)
@@ -668,7 +725,7 @@ class TestATry:
     def test_a_visitors_win_marks_nobody(self, store: Scratch) -> None:
         found = m.start(
             store.connection, DIGEST, m.SANDBOX, ["human", "minimax:nodes=6400"], None,
-            puzzle=("0-0-2", PREFIX),
+            puzzle=(ONE_ID, PREFIX),
         )
         m.play(store.connection, found.id, TAKE)
         store.connection.commit()
@@ -692,14 +749,14 @@ class TestATry:
         ada = store.user("ada")
         with pytest.raises(m.MatchError, match="practice"):
             m.start(store.connection, DIGEST, m.LEADERBOARD, ["human", proven.OPPONENT], ada,
-                    puzzle=("0-0-2", PREFIX))
+                    puzzle=(ONE_ID, PREFIX))
         with pytest.raises(m.MatchError, match="one person"):
             m.start(store.connection, DIGEST, m.SANDBOX, [proven.OPPONENT, proven.OPPONENT],
-                    ada, puzzle=("0-0-2", PREFIX))
+                    ada, puzzle=(ONE_ID, PREFIX))
         earlier = _try(store, ada)
         with pytest.raises(m.MatchError, match="started from the position"):
             m.start(store.connection, DIGEST, m.SANDBOX, ["human", proven.OPPONENT], ada,
-                    rematch_of=earlier.id, puzzle=("0-0-2", PREFIX))
+                    rematch_of=earlier.id, puzzle=(ONE_ID, PREFIX))
 
     def test_the_store_itself_holds_a_try_to_practice(self, store: Scratch) -> None:
         ada = store.user("ada")
@@ -714,8 +771,8 @@ class TestATry:
 
     def test_leaving_deletes_a_persons_marks(self, store: Scratch) -> None:
         ada, bo = store.user("ada"), store.user("bo")
-        proven.mark(store.connection, ada, DIGEST, "0-0-2", proven.FOUND)
-        proven.mark(store.connection, bo, DIGEST, "0-0-2", proven.FOUND)
+        proven.mark(store.connection, ada, DIGEST, ONE_ID, proven.FOUND)
+        proven.mark(store.connection, bo, DIGEST, ONE_ID, proven.FOUND)
         store.connection.commit()
         admin.forget(store.connection, "ada")
         store.connection.commit()
@@ -749,9 +806,9 @@ class TestThroughTheSite:
         ada, bo = store.user("ada"), store.user("bo")
         app.connect = store.open
         try:
-            started = _as(app, ada).post("/api/session", {"hash": DIGEST, "puzzle": "0-0-2"})
+            started = _as(app, ada).post("/api/session", {"hash": DIGEST, "puzzle": ONE_ID})
             assert started["seats"] == ["human", proven.OPPONENT]
-            assert started["puzzle"]["id"] == "0-0-2" and started["mode"] == m.SANDBOX
+            assert started["puzzle"]["id"] == ONE_ID and started["mode"] == m.SANDBOX
             assert started["puzzle"]["converted"] is False
             done = app.post(f"/api/session/{started['id']}/move", {"move": TAKE})
             assert done["outcome"]["winner"] == done["puzzle"]["side"] == 0
@@ -784,7 +841,7 @@ class TestThroughTheSite:
         ada = store.user("ada")
         app.connect = store.open
         try:
-            address = f"/api/proven/{DIGEST}/0-0-2"
+            address = f"/api/proven/{DIGEST}/{ONE_ID}"
             drawn = _as(app, ada).get(address)
             assert [entry["move"] for entry in drawn["moves"]] == LEGAL
             wrong = app.post(address + "/find", {"move": STEP})
@@ -794,7 +851,7 @@ class TestThroughTheSite:
             assert shown["marked"] is False and _marks(store) == []
             right = app.post(address + "/find", {"move": TAKE})
             assert right["right"] is True and right["marked"] is True
-            assert _marks(store) == [(ada, DIGEST, "0-0-2", proven.FOUND, None)]
+            assert _marks(store) == [(ada, DIGEST, ONE_ID, proven.FOUND, None)]
             with pytest.raises(ValueError, match="pick one"):
                 app.post(address + "/find", {"move": "Gb2xc3"})
         finally:
@@ -810,16 +867,16 @@ class TestThroughTheSite:
         page = app.get(f"/api/proven/{DIGEST}")
         assert page["signInToConvert"] == proven.SIGN_IN_TO_CONVERT
         assert page["keep"] == "Sign in to keep what you solve."
-        right = app.post(f"/api/proven/{DIGEST}/0-0-2/find", {"move": TAKE})
+        right = app.post(f"/api/proven/{DIGEST}/{ONE_ID}/find", {"move": TAKE})
         assert right["right"] is True and right["marked"] is False
         assert _marks(store) == []
         # Ticked for the visit: the page sends its finds back, the server counts them.
-        visit = app.get(f"/api/proven/{DIGEST}", {"found": "0-0-2,9-9-9"})
+        visit = app.get(f"/api/proven/{DIGEST}", {"found": f"{ONE_ID},9-9-9"})
         assert visit["positions"][0]["done"] == proven.FOUND_FOR_VISIT
         assert visit["progress"].startswith("On this visit you have found the move in 1 of 3")
         assert _marks(store) == []
         with pytest.raises(m.MatchError, match="hardest is for people with an account"):
-            app.post("/api/session", {"hash": DIGEST, "puzzle": "0-0-2"})
+            app.post("/api/session", {"hash": DIGEST, "puzzle": ONE_ID})
         assert store.rows() == 0
 
     def test_a_try_takes_nothing_but_the_game_and_the_position(
@@ -831,7 +888,7 @@ class TestThroughTheSite:
             for body in ({"mode": m.LEADERBOARD}, {"rematch_of": "x"}, {"seed": 7}):
                 with pytest.raises(m.MatchError, match="practice"):
                     _as(app, ada).post(
-                        "/api/session", {"hash": DIGEST, "puzzle": "0-0-2", **body}
+                        "/api/session", {"hash": DIGEST, "puzzle": ONE_ID, **body}
                     )
             with pytest.raises(KeyError):
                 app.post("/api/session", {"hash": DIGEST, "puzzle": "9-9-9"})
@@ -865,7 +922,7 @@ class TestThroughTheSite:
         _as(app, None)
         assert app._standing(DIGEST)["standing"]["proven"] is None
         with pytest.raises(KeyError):
-            app.get(f"/api/proven/{DIGEST}/0-0-2")
+            app.get(f"/api/proven/{DIGEST}/{ONE_ID}")
         with pytest.raises(KeyError):
             app.get(f"/api/proven/{DIGEST}")
 

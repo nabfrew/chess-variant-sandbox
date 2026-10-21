@@ -95,9 +95,10 @@ def test_every_candidate_is_a_distinct_small_unfinished_position(
         assert engine.terminal(state) is None
         assert puzzles.pieces_in_play(state) == candidate.pieces <= puzzles.MAX_PIECES
         assert candidate.moves == tuple(records[candidate.game].moves[: candidate.ply])
-        same = (state.key, state.hands, state.checks)
-        assert same not in seen
-        seen.add(same)
+        same = puzzles.content(state)
+        assert same[:3] == (state.key, state.hands, state.checks)
+        assert same not in seen and puzzles.name(state) not in seen
+        seen |= {same, puzzles.name(state)}
 
 
 def test_a_position_with_more_pieces_than_the_bound_is_not_a_candidate(
@@ -146,6 +147,85 @@ def test_a_game_of_rounds_is_refused() -> None:
     assert rounds.simultaneous
     with pytest.raises(ValueError):
         list(puzzles.candidates(rounds, []))
+
+
+# ------------------------------------------------------------------ a position's name (Q993c)
+
+
+def _reach(engine: Engine, *texts: str) -> Any:
+    state = engine.initial_state()
+    for text in texts:
+        state = engine.apply(state, engine.find_move(state, text))
+    return state
+
+
+# Frozen across rebuilds (`plan-proven.md` §5.3): the site keys people's marks and tries by
+# these names, so a core or compiler change that moves one moves every stored mark off its
+# position. If this fails, the build changed the core's key (`compile.py` seeds it from the
+# rules' hash) or `puzzles.content`: that change owes a store migration like
+# `0040_proven_names.sql`, never an edit of these numbers alone.
+FROZEN_NAMES = {
+    (): "10f4889a84a0fb52",
+    ("Sb1-b2",): "847c52d5ef54fab8",
+    ("Sb1-b2", "Sd5-d4"): "c501fb2704dd67af",
+    ("Sb1-b2", "Sd5-d4", "Tc1-d2"): "85a192d09e9e57d3",
+}
+
+
+def test_a_positions_name_is_pinned_across_a_rebuild(engine: Engine) -> None:
+    for texts, frozen in FROZEN_NAMES.items():
+        state = _reach(engine, *texts)
+        assert puzzles.name(state) == frozen, texts
+        assert len(frozen) == puzzles.NAME_LENGTH
+    # A fresh engine of the same rules, built again, names them the same.
+    assert puzzles.name(_reach(Engine(json.loads(json.dumps(SPEC))), "Sb1-b2")) == (
+        FROZEN_NAMES[("Sb1-b2",)])
+
+
+def test_two_prefixes_reaching_one_position_give_one_name(engine: Engine) -> None:
+    one = _reach(engine, "Sb1-b2", "Sd5-d4", "Tc1-d2")
+    other = _reach(engine, "Tc1-d2", "Sd5-d4", "Sb1-b2")
+    assert one.ply == other.ply and one.board == other.board
+    assert puzzles.name(one) == puzzles.name(other) == FROZEN_NAMES[
+        ("Sb1-b2", "Sd5-d4", "Tc1-d2")]
+    # The way there is not the position: a king that steps out and back reaches the
+    # start's board two turns later, and it is the start.
+    back = _reach(engine, "Ka1-a2", "Ke5-e4", "Ka2-a1", "Ke4-e5")
+    assert back.ply == 4 and back.board == engine.initial_state().board
+    assert puzzles.name(back) == FROZEN_NAMES[()]
+
+
+def test_what_the_key_leaves_out_tells_two_positions_apart(engine: Engine) -> None:
+    """The hands, the check counts, a colouring and the points are not in the core's key
+    (repetition never compares across them) and are in the name: a position with a piece
+    in hand is not the one without it. The states are the engine's with one field set, to
+    ask `name` alone; nothing here is a position the engine is asked to play."""
+    state = _reach(engine, "Sb1-b2")
+    called = puzzles.name(state)
+    for changed in (
+        state.with_(hands=((1, 0, 0), (0, 0, 0))),
+        state.with_(checks=(1, 0)),
+        state.with_(colour=bytes([1] + [0] * 24)),
+        state.with_(points=(1.0, 0.0)),
+        state.with_(side_to_move=1, key=state.key ^ 1),
+    ):
+        assert puzzles.name(changed) != called
+    for same in (state.with_(ply=99, halfmove=7, turns_taken=50), state.with_(unmoved=0),
+                 state.with_(repetition=())):
+        assert puzzles.name(same) == called
+
+
+def test_renames_name_every_position_a_record_replays(engine: Engine) -> None:
+    moves = [engine.find_move(engine.initial_state(), "Sb1-b2")]
+    data = {"positions": [
+        {"id": "0-0-1", "moves": moves},
+        {"id": "0-1-0", "moves": []},
+        {"id": "0-2-1", "moves": [123_456]},
+        {"id": "0-3-2", "moves": [moves[0], moves[0]]},
+    ]}
+    assert puzzles.renames(engine, data) == [
+        ("0-0-1", FROZEN_NAMES[("Sb1-b2",)]), ("0-1-0", FROZEN_NAMES[()])]
+    assert puzzles.reached(engine, ["x"]) is None
 
 
 # ------------------------------------------------------------------ sample

@@ -3,9 +3,11 @@
 `docs/plan-website.md`, *Proven positions* (R9a); the campaign and its numbers are
 `docs/reference/proven-positions.md`, driven by the script beside it.
 
-A position is named by where it was reached, a game of a library run and a ply, and is
-carried as the move prefix that reaches it, so there is no new position format: the site
-replays the prefix through the engine, as it replays any match. Its verdict is the core's
+A position is carried as the move prefix that reaches it, so there is no new position
+format: the site replays the prefix through the engine, as it replays any match. The record
+calls it by where it was found (`id`, `seed-game-ply`, a game of a library run and a ply);
+the site names it by what it is (`name`, Q993c), a digest of the replayed state, so a
+re-proof from other runs can neither move a person's mark onto another position nor lose it. Its verdict is the core's
 analysis probe (`Engine.root_scores`, a full-window search under a node budget), never
 Python's. This module holds positions, asks the core, and reads the numbers back: a root
 move whose score is at least `PROVEN` was searched to a forced win, and one at most
@@ -34,6 +36,7 @@ answer and the basis it was asked on, `FORMAT` 3 T4's beside it, `FORMAT` 4 T5's
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
@@ -120,6 +123,79 @@ def pieces_in_play(state: GameState) -> int:
     return sum(1 for cell in state.board if cell) + sum(sum(hand) for hand in state.hands)
 
 
+# ------------------------------------------------------------------ a position's name
+
+NAME_LENGTH = 16
+"""Hex characters of a position's name: 64 bits, against at most `CAP` positions a game."""
+
+
+def content(state: GameState) -> tuple[Any, ...]:
+    """What a position *is*, as the engine returned it (Q993c, `docs/plan-proven.md` §5.3).
+
+    The core's position key (`state.key`, the Zobrist key the core maintains and seeds from
+    the rules' hash) covers the board, the side to move, the en passant file and every part
+    of the state a repetition can return to. It leaves out, by design, what only an
+    irreversible move changes, since repetition never compares across it: the hands, the
+    check counts, a permanent colouring and the points. Those are here beside it, since two
+    positions apart in any of them can end differently.
+
+    Left out, as the key leaves them out: the counters (`ply`, `halfmove`, `turns_taken`,
+    the repetition window), which say how the position was reached, and the unmoved mask,
+    which says which pieces ever moved: a royal that stepped out and back makes it differ
+    on one board, and two prefixes reaching one position must name it once. Python
+    computes none of it; every field is the engine's.
+    """
+    return (
+        state.key,
+        tuple(tuple(hand) for hand in state.hands),
+        tuple(state.checks),
+        state.colour.hex(),
+        tuple(float(points) for points in state.points),
+    )
+
+
+def name(state: GameState) -> str:
+    """A position's name: a digest of its `content`, the same wherever and however it is
+    reached, in any run, under any build that keeps the core's key. The site keys a
+    person's marks and tries by it (`proven_marks.position`, `matches.puzzle`), so a
+    re-proof that finds the same position again finds their marks with it, and one that
+    finds another position can never inherit them."""
+    held = content(state)
+    text = json.dumps(
+        [held[0], [list(hand) for hand in held[1]], list(held[2]), held[3], list(held[4])],
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(text.encode("ascii")).hexdigest()[:NAME_LENGTH]
+
+
+def reached(engine: Engine, moves: Iterable[Any]) -> GameState | None:
+    """The position a prefix reaches, every move put to the engine's `legal_moves` before
+    it is applied, or None where one is not legal (or not a move at all)."""
+    state = engine.initial_state()
+    try:
+        prefix = [int(move) for move in moves]
+    except (TypeError, ValueError):
+        return None
+    for move in prefix:
+        if move not in engine.legal_moves(state):
+            return None
+        state = engine.apply(state, move)
+    return state
+
+
+def renames(engine: Engine, data: dict[str, Any]) -> list[tuple[str, str]]:
+    """`(old, new)` for every position of a record: its `seed-game-ply` id and the name
+    its replayed prefix reaches (`name`), in the record's order. A prefix that no longer
+    replays has no new name and is left out. What `0040_proven_names.sql` was written from,
+    and what its test reads it against."""
+    found = []
+    for row in data.get("positions") or []:
+        state = reached(engine, row.get("moves") or [])
+        if state is not None:
+            found.append((str(row["id"]), name(state)))
+    return found
+
+
 def candidates(
     engine: Engine,
     runs: Iterable[tuple[int, Iterable[GameRecord]]],
@@ -129,9 +205,9 @@ def candidates(
     """Every distinct non-terminal position with at most `max_pieces` in play.
 
     `runs` is `(seed, records)` in a fixed order; the first time a position is reached
-    names it, so the answer depends on the runs and their order, never on how the work
-    is divided. Distinct is by the position's key with the hands and the check counts
-    beside it, which the key leaves out because repetition never compares across them.
+    is divided. Distinct is by the position's `content`, its key with what the key
+    leaves out because repetition never compares across it (the hands, the check counts,
+    a permanent colouring, the points), which is what the site names it by (`name`).
 
     With `near`, only the positions a proof can reach: in a game the record says was won,
     with its winner to move, at most `near` plies before the recorded end. The record's
@@ -151,7 +227,7 @@ def candidates(
                     length - ply <= near and state.side_to_move == record.winner
                 ):
                     pieces = pieces_in_play(state)
-                    same = (state.key, state.hands, state.checks)
+                    same = content(state)
                     if (pieces <= max_pieces and same not in seen
                             and engine.terminal(state) is None):
                         seen.add(same)

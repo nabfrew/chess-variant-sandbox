@@ -1,5 +1,5 @@
 {
- "source_commit": "8aade3675c41794adba243a6c54ef9747f2ba315",
+ "source_commit": "4443c5d0a9e42c174a4cfb2de7374ae25e9760b3",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -1406,8 +1406,8 @@
   },
   {
    "path": "chess_variant_sandbox/puzzles.py",
-   "bytes": 27836,
-   "sha256": "e6be919cab77c48448e482c8837306416726cd50ef3cc1a2e0c0dbc1b6f369e9"
+   "bytes": 31343,
+   "sha256": "5fe372d35eb6b33f07c4d232d1eef278444bf9d8723838fdb9ec686bea3fade1"
   },
   {
    "path": "chess_variant_sandbox/refresher.py",
@@ -1755,6 +1755,11 @@
    "sha256": "7c4cc17091eebe9113155d0a9d571c170a9c97ab7d1dc3db5ad1a5587fcf8dc6"
   },
   {
+   "path": "chess_variant_sandbox/site/migrations/0040_proven_names.sql",
+   "bytes": 47940,
+   "sha256": "43c1e7ad4c53baa144713dac89130d1023a7780c35844dc5d9d3177e50189fb8"
+  },
+  {
    "path": "chess_variant_sandbox/site/milestones.py",
    "bytes": 31674,
    "sha256": "8e3e66dba2177b8ee312423ee12db38637a858753b9f6392a2703e0eab69d1c9"
@@ -1791,8 +1796,8 @@
   },
   {
    "path": "chess_variant_sandbox/site/proven.py",
-   "bytes": 36773,
-   "sha256": "d3aa19d2f7dbaefce3ec75f432408c048a386b9c23f244bbc26304b4745528a6"
+   "bytes": 37732,
+   "sha256": "eee540b5738110f36b1e34cca08bf00d1424d06c8c5b78764f761198c86491f0"
   },
   {
    "path": "chess_variant_sandbox/site/provisional.py",
@@ -3796,8 +3801,8 @@
   },
   {
    "path": "tests/test_candidacy.py",
-   "bytes": 98090,
-   "sha256": "8d99bc59cbaec7e6cb7b89e1af46883b5511b87c773e970065048c2091908a85"
+   "bytes": 98179,
+   "sha256": "9f6d3648b747a27fe964e426b28de3cac57f0f89938ca3a5625ab06ab0852cce"
   },
   {
    "path": "tests/test_card_answers.py",
@@ -4396,8 +4401,8 @@
   },
   {
    "path": "tests/test_puzzles.py",
-   "bytes": 37249,
-   "sha256": "8ba57188fa9691afb3369975f68aa81baf4da432c954fcc1a9f1e97aaf501396"
+   "bytes": 40935,
+   "sha256": "9dddda8641d3e90c56e377fda7ca58d195d3e25d2b72f8105543e6bd98223b7f"
   },
   {
    "path": "tests/test_rated_learned_player.py",
@@ -4876,8 +4881,13 @@
   },
   {
    "path": "tests/test_site_proven.py",
-   "bytes": 61729,
-   "sha256": "1ca2347c8eb4fbcc7a76ee6d524d7adca10f892ae0f3711e12c6543e66c046c4"
+   "bytes": 64606,
+   "sha256": "1643f6f7ec0a90be511ae40a602bccf2abfee5dd234b3bde9843f9ca918e3e28"
+  },
+  {
+   "path": "tests/test_site_proven_names.py",
+   "bytes": 9562,
+   "sha256": "e8a5b5d86c8956d550a7d98fb0a08d70ea72d1f07465dcc1ea619897d3e5afc7"
   },
   {
    "path": "tests/test_site_provisional.py",
