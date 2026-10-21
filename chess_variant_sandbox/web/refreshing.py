@@ -13,6 +13,13 @@ score ones (Q860) and works out no ladder state itself: `ladder_counts` set to `
 is a refresher that has not read the ladders because a score is owed, and a file without
 the keys is one written before Q822, of which nothing is said.
 
+Since Q993d the refresher also proves a game's positions once no score and no ladder is
+owed (`refresher.py` point 9), and its file carries `proofs_owed`, `proof_counts` and
+`proofs_refused` the same way (Q993h). A game owed a first record has none; one owed a
+*re*-proof has a record that no longer holds, so the line splits the owed games by whether
+a record exists. `proof_counts` set to ``None`` is a refresher that has not read them
+because a score or a ladder is owed, and a file without the keys is older than Q993d.
+
 It is the maintainer's: `/api/admin` and `/api/scoring`, both admin-only on the site, are
 its only routes, so a visitor is never sent it. A missing or unreadable file is not an
 error, it is a refresher that is not running here.
@@ -52,6 +59,15 @@ LADDERS = {
 }
 LADDER_COUNTED = {"ladder": "missing", "top-up": "short", "re-rate": "to rate again"}
 
+# What proving a game's positions does (`refresher.PROOF_ORDER`), as a repair is worded
+# above, and the short phrase for each in the line that counts them: a game that is owed
+# a first record has none, and one owed a re-proof has a record that no longer holds.
+PROOFS = {
+    "prove": "proving its positions",
+    "re-prove": "proving its positions again",
+}
+PROOF_COUNTED = {"prove": "with no record yet", "re-prove": "with a record that is out of date"}
+
 # Why a game was refused, in plain words, by `refresher`'s refusal kinds.
 REFUSALS = {
     refresher.STALE_BUILD: "the game engine changed and was not compiled again",
@@ -83,7 +99,7 @@ def _game(entry: Mapping[str, Any]) -> str:
 def _work(needs: Any) -> str:
     """A score repair or a ladder's work, in words; an unknown one as it was written."""
     needs = str(needs or "")
-    return REPAIRS.get(needs) or LADDERS.get(needs) or needs
+    return REPAIRS.get(needs) or LADDERS.get(needs) or PROOFS.get(needs) or needs
 
 
 def _refusal(entry: Mapping[str, Any]) -> dict[str, Any]:
@@ -92,8 +108,9 @@ def _refusal(entry: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "hash": str(entry.get("hash") or ""),
         "name": _game(entry),
-        "needs": REPAIRS.get(needs) or LADDERS.get(needs, ""),
+        "needs": REPAIRS.get(needs) or LADDERS.get(needs) or PROOFS.get(needs, ""),
         "ladder": needs in LADDERS,
+        "proof": needs in PROOFS,
         "why": REFUSALS.get(kind, kind or "refused"),
         "reason": str(entry.get("reason") or ""),
         "at": str(entry.get("at") or ""),
@@ -120,7 +137,9 @@ def view(runs_dir: Path) -> dict[str, Any]:
     `owedCounts` are what it found owed at its last survey, refused games apart.
     `laddersOwed`, `ladderCounts` and `laddersRefused` are the same for the ladders, each
     ``None`` while the ladders wait on a score and in a file written before Q822;
-    `ladders` says which (`read`, `waiting`, or `unknown`).
+    `ladders` says which (`read`, `waiting`, or `unknown`). `proofsOwed`, `proofCounts`
+    and `proofsRefused` are the same for the proven positions, which wait on scores and
+    ladders both; `proofs` says which.
     """
     status = refresher.read_status(runs_dir)
     state = state_of(status)
@@ -129,7 +148,9 @@ def view(runs_dir: Path) -> dict[str, Any]:
             "The refresher is not running here: it has never written a status."],
             "ageS": None, "doing": None, "owed": 0, "owedCounts": {}, "refusedOwed": 0,
             "refused": [], "lastDone": None, "lastRefusal": None, "ladders": "unknown",
-            "laddersOwed": None, "ladderCounts": None, "laddersRefused": None}
+            "laddersOwed": None, "ladderCounts": None, "laddersRefused": None,
+            "proofs": "unknown", "proofsOwed": None, "proofCounts": None,
+            "proofsRefused": None}
 
     age = status.get("age_s")
     doing = status.get("doing") if isinstance(status.get("doing"), Mapping) else None
@@ -195,11 +216,38 @@ def view(runs_dir: Path) -> dict[str, Any]:
             said.append(f"{ladders_refused} more ladder{' is' if ladders_refused == 1 else 's are'}"
                         " owed and refused, so it does not try them again.")
 
+    # The proven positions (point 9), as the file has them: `None` is a survey not made
+    # because a score or a ladder is owed; no key at all is a file from before Q993d.
+    proofs = ("unknown" if "proof_counts" not in status
+              else "waiting" if status.get("proof_counts") is None else "read")
+    proof_counts: dict[str, int] | None = None
+    proofs_owed = proofs_refused = None
+    if proofs == "waiting":
+        said.append("Proven positions: not read while a score or a ladder is owed (scores, "
+                    "then ladders).")
+    elif proofs == "read":
+        proof_counts = {k: int(v) for k, v in (status.get("proof_counts") or {}).items()
+                        if k in PROOFS and v}
+        proofs_owed = sum(proof_counts.values())
+        proofs_refused = int(status.get("proofs_refused") or 0)
+        if proofs_owed:
+            parts = [f"{proof_counts[k]} {PROOF_COUNTED[k]}" for k in refresher.PROOF_ORDER
+                     if proof_counts.get(k)]
+            said.append(f"{proofs_owed} game{' was' if proofs_owed == 1 else 's were'} owed "
+                        "proven positions at its last look: " + ", ".join(parts) + ".")
+        else:
+            said.append("No game was owed proven positions at its last look.")
+        if proofs_refused:
+            said.append(f"{proofs_refused} more game{' is' if proofs_refused == 1 else 's are'}"
+                        " owed proven positions and refused, so it does not try "
+                        f"{'it' if proofs_refused == 1 else 'them'} again"
+                        " (the reasons are in the table below).")
+
     last = status.get("last_done") if isinstance(status.get("last_done"), Mapping) else None
     if last:
         index = last.get("index")
-        if str(last.get("needs")) in LADDERS:
-            # A ladder has no score of its own to show.
+        if str(last.get("needs")) in LADDERS or str(last.get("needs")) in PROOFS:
+            # A ladder or a game's proven positions has no score of its own to show.
             said.append(f"Last done: {_game(last)}, {_work(last.get('needs'))}.")
         else:
             number = "no score" if index is None else f"{float(index):.4f}"
@@ -226,4 +274,8 @@ def view(runs_dir: Path) -> dict[str, Any]:
         "laddersOwed": ladders_owed,
         "ladderCounts": ladder_counts,
         "laddersRefused": ladders_refused,
+        "proofs": proofs,
+        "proofsOwed": proofs_owed,
+        "proofCounts": proof_counts,
+        "proofsRefused": proofs_refused,
     }

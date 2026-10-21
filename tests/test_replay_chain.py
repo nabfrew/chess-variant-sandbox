@@ -302,6 +302,10 @@ def test_each_part_harvested_alone_and_joined_is_the_chained_harvest(
     spec: dict, chain: tuple[Procedure, Procedure, Procedure], workers: int
 ) -> None:
     _one_recipe, _two_recipe, child = chain
+    # Labelling is 3.1 s of the 3.5 s at 1,500 nodes a position (Q997b); the claim is that
+    # the parts joined are the whole, array for array, whatever the labels are, so a small
+    # budget proves the same (`label_nodes` is not in the games' names or the links' nets).
+    child = child.with_(label_nodes=100)
     whole = harvest(spec, self_play(spec, child, workers=workers), child, workers=workers)
     parts = [
         harvest(spec, link_games(spec, child, link, workers=workers), child, workers=workers)
@@ -341,12 +345,14 @@ def test_a_one_link_replay_harvests_main_s_arrays_byte_for_byte(
     _one_recipe, two_recipe, _child = chain
     # Generation 2's recipe is E1's: one link, generation 0's games behind generation 1's.
     assert two_recipe.replay is not None and two_recipe.replay.prior is None
-    union = harvest(spec, self_play(spec, two_recipe, workers=1), two_recipe)
+    # Labelled at 100 nodes, not 1,500: both harvests label alike, and that was 1.6 s (Q997b).
+    labelled = two_recipe.with_(label_nodes=100)
+    union = harvest(spec, self_play(spec, two_recipe, workers=1), labelled)
     main = harvest(
         spec,
         [*self_play(spec, two_recipe.with_(replay=None), workers=1),
          *_main_replay_games(spec, two_recipe)],
-        two_recipe,
+        labelled,
     )
     for column in ("offsets", "inputs", "sides", "targets", "game", "ply", "results", "values"):
         assert getattr(union, column).tobytes() == getattr(main, column).tobytes(), column

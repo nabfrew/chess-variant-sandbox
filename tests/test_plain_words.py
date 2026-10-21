@@ -242,16 +242,18 @@ class TestTheRuleCardsWords:
 class TestTheSmallChangesNameTheRule:
     """M7: the map's *small changes to the rules* read the rule, never its key."""
 
-    def test_no_step_sentence_holds_a_key(self) -> None:
+    @pytest.mark.parametrize("name", DRAFTS)
+    def test_no_step_sentence_holds_a_key(self, name: str) -> None:
+        # One case a draft (Q997b: all three in one test cost 4-5 s); the claim holds for
+        # each draft's sentences alone, and each draft must itself reach the turn-limit rule.
         said: set[str] = set()
-        for name in DRAFTS:
-            spec = _spec(name)
-            for operator in OPERATORS:
-                for seed in range(12):
-                    child = copy.deepcopy(spec)
-                    line = operator.apply(child, random.Random(seed))
-                    if line:
-                        said.add(line)
+        spec = _spec(name)
+        for operator in OPERATORS:
+            for seed in range(12):
+                child = copy.deepcopy(spec)
+                line = operator.apply(child, random.Random(seed))
+                if line:
+                    said.add(line)
         assert any("the turn limit" in line or "the no-progress rule" in line for line in said)
         trouble = [(line, _hits(line)) for line in said
                    if _hits(line) or re.search(r"\b[a-z]+_[a-z_]+\b", line)]

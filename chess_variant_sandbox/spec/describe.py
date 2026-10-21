@@ -1128,7 +1128,7 @@ RULE_WORDS: dict[str, tuple[str, str]] = {
         "Wild pieces belong to neither player. After every move each one steps to the "
         "next square of its route and eats whatever stands there that its piece may "
         "take, or waits if it may not. A royal piece where one steps next is in check "
-        "from it, and taking one is worth its bounty.",
+        "from it when that piece may take a royal, and taking one is worth its bounty.",
     ),
     "simultaneous": (
         "playing in rounds: both players move at once",
@@ -1876,7 +1876,8 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
 
     Four things per wild piece -- what it is, where it walks, what it eats, what taking
     it is worth -- and one sentence that changes how every position is read: a royal
-    standing where a wild piece steps next is in check. A wild piece that is not stated
+    standing where a wild piece steps next is in check, when that piece's type may
+    capture a royal. A wild piece that is not stated
     is a piece on the board the page cannot account for, which is the territory failure
     with a face on it.
     """
@@ -1909,11 +1910,23 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
             eats = f"It eats only {', '.join(captures)} standing in its way"
         else:
             eats = "It eats nothing and simply blocks the square it stands on"
+        # The core gives the check only when the wild piece's type may capture the
+        # royal (`engine/compile.py`, the wild attack source): a list that leaves every
+        # royal out gives none, and saying otherwise is a rule the game does not have.
+        royals = {pid for pid, p in by_id.items() if p.get("royal")}
+        threatens_royal = captures is None or any(pid in royals for pid in captures)
         if captures is None or captures:
-            eats += (
-                "; a piece it eats is gone for good, and a royal piece standing where it "
-                "steps next is in check from it. Where it may not step, it waits"
-            )
+            eats += "; a piece it eats is gone for good"
+            if threatens_royal:
+                eats += (
+                    ", and a royal piece standing where it steps next is in check from it"
+                )
+            elif royals:
+                eats += (
+                    ", but it cannot take a royal piece, so one standing where it steps "
+                    "next is not in check from it"
+                )
+            eats += ". Where it may not step, it waits"
         bounty = npc.get("bounty", piece.get("value", 1))
         worth = (
             f"Taking it is worth {bounty:g} points."

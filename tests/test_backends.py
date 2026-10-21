@@ -110,9 +110,9 @@ def _assert_same_game(name: str, agents: tuple[str, str]) -> None:
     _assert_same_played(_engine(name), agents)
 
 
-def _assert_same_played(engine: Engine, agents: tuple[str, str]) -> None:
-    native = play_game(engine, agents, seed=5)
-    in_python = play_game_python(engine, agents, seed=5)
+def _assert_same_played(engine: Engine, agents: tuple[str, str], seed: int = 5) -> None:
+    native = play_game(engine, agents, seed=seed)
+    in_python = play_game_python(engine, agents, seed=seed)
 
     assert native.moves == in_python.moves
     assert (native.winner, native.reason) == (in_python.winner, in_python.reason)
@@ -173,7 +173,12 @@ def _rounds(name: str, max_plies: int | None = None) -> Engine:
 @pytest.mark.parametrize("name", ROUND_SPECS)
 @pytest.mark.parametrize("agents", ROUND_ROSTER, ids=lambda pair: f"{pair[0]}-vs-{pair[1]}")
 def test_a_round_game_is_identical_move_for_move(name: str, agents: tuple[str, str]) -> None:
-    _assert_same_played(_rounds(name, max_plies=24), agents)
+    # The matrix player on `portals` is cut at twelve plies, not 24 (Q997b): the Python
+    # oracle's series costs ~85 ms a ply there, so 24 plies were 2.3 s alone and 4.2 s on a
+    # busy machine. Its game uses the fold (e4) at plies 6 and 8, inside the cut; the whole
+    # game is the slow arm below, and the greedy pairing still plays 24.
+    plies = 12 if (name, agents[0]) == ("portals", "matrix:nodes=250") else 24
+    _assert_same_played(_rounds(name, max_plies=plies), agents)
 
 
 @pytest.mark.slow
@@ -1108,7 +1113,11 @@ def test_a_priced_objective_is_searched_the_same_way_on_both_sides(
     than the derived table because the share is a correction to a valuation.
     """
     engine = _engine(name)
-    _assert_same_played(engine, (_priced(engine, _spread_values(engine), name), opponent))
+    # Seed 5's game on rps-v1 against minimax is 234 plies and a no-progress draw, 2.8 s in the
+    # Python oracle's series (4.1 s on a busy machine, Q997b); seed 0's is 125 plies and decided
+    # (annihilated), 1.4 s, and plays the same prey-share path.
+    seed = 0 if (name, opponent) == ("rps-v1", "minimax:nodes=150") else 5
+    _assert_same_played(engine, (_priced(engine, _spread_values(engine), name), opponent), seed)
 
 
 @pytest.mark.parametrize("name", VALUE_ARMS)

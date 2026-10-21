@@ -33,7 +33,7 @@ from typing import Any
 
 import pytest
 
-from chess_variant_sandbox.engine import compile_spec
+from chess_variant_sandbox.engine import Engine, compile_spec
 from chess_variant_sandbox.spec.describe import (
     RULE_ALSO_CALLED,
     RULE_WORDS,
@@ -1108,6 +1108,67 @@ class TestTurnsPromotionsAndWildPieces:
         (line,) = [line for line in describe_rules(spec) if line.startswith("A wild")]
         assert ("It starts on d4 and, after every move, steps along d4, d5 and back to d4."
                 ) in line
+
+    @pytest.mark.parametrize("captures, gives_check", [
+        (None, True),
+        (["K"], True),
+        (["P", "K"], True),
+        (["P"], False),
+        ([], False),
+    ], ids=["anything", "the king", "pawn and king", "a pawn only", "nothing"])
+    def test_the_check_a_wild_piece_gives_is_the_one_the_core_gives(
+        self, captures: list[str] | None, gives_check: bool
+    ) -> None:
+        """A wild piece checks a royal only if its type may capture it (Q994, Q994w)."""
+        wild: dict[str, Any] = {
+            "id": "W", "name": "wolf", "value": 3,
+            "moves": [{"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4",
+                       "mode": "move"}],
+        }
+        if captures is not None:
+            wild["captures"] = captures
+        spec = {
+            "schema_version": 9,  # captures (3) and rules.npcs (9)
+            "name": "wolfcheck",
+            "description": "A king beside a wild piece that walks onto its square.",
+            "board": {"width": 5, "height": 5},
+            "pieces": [
+                {"id": "P", "name": "pawn", "value": 1,
+                 "moves": [{"kind": "slide", "vectors": [[0, 1]], "range": 1,
+                            "mode": "move"}]},
+                {"id": "K", "name": "king", "value": 0, "royal": True,
+                 "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]],
+                            "symmetry": "rotate4", "mode": "both"}]},
+                wild,
+            ],
+            "setup": {"mirror": True, "placements": [
+                {"piece": "K", "squares": ["a1"]}, {"piece": "P", "squares": ["e1"]}]},
+            "rules": {"win": "checkmate", "stalemate": "draw", "max_plies": 60,
+                      "npcs": [{"piece": "W", "route": ["c3", "c4"]}]},
+        }
+        # The wild piece starts on c3 and steps to c4 next: put player 0's king there.
+        engine = Engine(compile_spec(spec))
+        state = engine.initial_state()
+        compiled = engine.spec
+        width = compiled.width
+        board = bytearray(state.board)
+        king = compiled.piece_ids.index("K")
+        stride = compiled.n_facings * compiled.n_types
+        mine = next(
+            value for value in board
+            if value and (value - 1) % compiled.n_types == king and (value - 1) // stride == 0
+        )
+        for square, value in enumerate(board):
+            if value == mine:
+                board[square] = 0
+        board[3 * width + 2] = mine  # c4
+        state = dataclasses.replace(state, board=bytes(board))
+        assert engine.in_check(state, 0) is gives_check
+
+        (line,) = [line for line in describe_rules(spec) if line.startswith("A wild")]
+        assert ("is in check from it" in line and "not in check" not in line) is gives_check
+        if not gives_check and captures:
+            assert "not in check from it" in line
 
     @pytest.mark.parametrize("npc, value, worth", [
         ({}, None, "Taking it is worth 1 points."),

@@ -25,6 +25,7 @@ Whether a control is easy to *find* is not a thing a test can hold; the record h
 from __future__ import annotations
 
 import copy
+import functools
 import json
 import re
 from pathlib import Path
@@ -512,50 +513,62 @@ def _true_only_paths() -> set[str]:
     return found
 
 
+_ROUNDS_KEY = "chess in rounds"
+_TEMPLATE_KEYS = [t["key"] for t in designing.templates()] + [_ROUNDS_KEY]
+
+
+@functools.cache
+def _built_drafts() -> dict[str, dict[str, dict[str, Any]]]:
+    """Each template's draft with each rule added as the page adds it (one run of the page,
+    shared by every case; callers deep-copy before they change one)."""
+    held = {
+        t["key"]: {"spec": t["spec"], "preview": designing.check(t["spec"])["preview"]}
+        for t in designing.templates()
+    }
+    rounds = _in_rounds()
+    held[_ROUNDS_KEY] = {"spec": rounds, "preview": designing.check(rounds)["preview"]}
+    return _run_page(_kit_setup() + f"const TEMPLATES = {json.dumps(held)};" + _ADD_RULES,
+                     "addEveryRule(TEMPLATES)")
+
+
 class TestNoMenuOffersARefusedDefault:
     """Fix 4 (the record's §4.3). Three menus offered a *no* the validator refuses as the
     default written out (F4). Every option of every menu the card model draws is set alone
     on each template, with its rule added as the page adds it, and on chess in rounds; the
     validator must not refuse it as a default."""
 
-    def _built(self) -> dict[str, dict[str, Any]]:
-        held = {
-            t["key"]: {"spec": t["spec"], "preview": designing.check(t["spec"])["preview"]}
-            for t in designing.templates()
-        }
-        rounds = _in_rounds()
-        held["chess in rounds"] = {"spec": rounds, "preview": designing.check(rounds)["preview"]}
-        return _run_page(_kit_setup() + f"const TEMPLATES = {json.dumps(held)};" + _ADD_RULES,
-                         "addEveryRule(TEMPLATES)")
-
-    def test_no_option_is_refused_as_the_default(self) -> None:
+    @pytest.mark.parametrize("template", _TEMPLATE_KEYS)
+    def test_no_option_is_refused_as_the_default(self, template: str) -> None:
+        """One case a template (and chess in rounds): each case validates every menu's every
+        option on its own spec, which costs about a second, so the whole sweep as one test
+        ran past the duration guard (Q997). The page is run once, for every case."""
         model = cards.card_model()
         refused: list[str] = []
-        for template, rules in self._built().items():
-            for rule in model["rules"]:
-                with_rule = rules[rule["key"]]
-                for path, menu in _menus([rule]):
-                    for option in menu["options"]:
-                        trial = copy.deepcopy(with_rule)
-                        if not _set(trial["rules"], path, option["value"]):
-                            continue
-                        refused += [f"{template}: rules.{'.'.join(map(str, path))} = "
-                                    f"{option['value']!r}: {line}"
-                                    for line in _problems(trial)
-                                    if re.search(_DEFAULT_REFUSED, line)
-                                    and f".{path[-1]}" in line]
-            base = rules[model["rules"][0]["key"]]
-            for root, where in _ROOTS.items():
-                for path, menu in _menus(model[root]):
-                    for option in menu["options"]:
-                        trial = copy.deepcopy(base)
-                        if not _set(trial, (*where, *path), option["value"]):
-                            continue
-                        refused += [f"{template}: {root}.{'.'.join(map(str, path))} = "
-                                    f"{option['value']!r}: {line}"
-                                    for line in _problems(trial)
-                                    if re.search(_DEFAULT_REFUSED, line)
-                                    and f".{path[-1]}" in line]
+        rules = _built_drafts()[template]
+        for rule in model["rules"]:
+            with_rule = rules[rule["key"]]
+            for path, menu in _menus([rule]):
+                for option in menu["options"]:
+                    trial = copy.deepcopy(with_rule)
+                    if not _set(trial["rules"], path, option["value"]):
+                        continue
+                    refused += [f"{template}: rules.{'.'.join(map(str, path))} = "
+                                f"{option['value']!r}: {line}"
+                                for line in _problems(trial)
+                                if re.search(_DEFAULT_REFUSED, line)
+                                and f".{path[-1]}" in line]
+        base = rules[model["rules"][0]["key"]]
+        for root, where in _ROOTS.items():
+            for path, menu in _menus(model[root]):
+                for option in menu["options"]:
+                    trial = copy.deepcopy(base)
+                    if not _set(trial, (*where, *path), option["value"]):
+                        continue
+                    refused += [f"{template}: {root}.{'.'.join(map(str, path))} = "
+                                f"{option['value']!r}: {line}"
+                                for line in _problems(trial)
+                                if re.search(_DEFAULT_REFUSED, line)
+                                and f".{path[-1]}" in line]
         assert not refused, "\n".join(refused)
 
     @pytest.mark.parametrize("path", sorted(_true_only_paths()))

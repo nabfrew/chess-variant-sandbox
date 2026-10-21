@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 
 from chess_variant_sandbox import puzzles
-from chess_variant_sandbox.corpus import RUNS_DIR, find
+from chess_variant_sandbox.corpus import RUNS_DIR
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.tournament.play import choose_move
 from chess_variant_sandbox.tournament.record import GameRecord
@@ -353,28 +353,43 @@ def _delivered() -> list[Path]:
     return sorted((Path(RUNS_DIR) / "puzzles").glob("*.json"))
 
 
-def test_every_delivered_record_replays_to_the_positions_it_names() -> None:
+LIBRARY = {digest: spec for digest, _name, spec in puzzles.library(".")}
+
+
+@pytest.mark.parametrize("digest", sorted(LIBRARY))
+def test_every_delivered_record_replays_to_the_positions_it_names(digest: str) -> None:
     """Each position's prefix is legal in its game, unfinished, and its stored moves are
     the engine's legal moves there, in order: what the site will look up is what the
-    engine will offer. Skips where no record is on disk (the gate re-runs it there)."""
+    engine will offer. One case a game of the library, which the tree fixes, so every xdist
+    worker collects the same cases while the refresher writes records (Q997: one test over
+    the growing set ran past the duration guard). Skips where the game has no record here
+    (the gate re-runs it there)."""
+    path = puzzles.record_path(RUNS_DIR, digest)
+    if not path.is_file():
+        pytest.skip("no runs/puzzles/ record of this game here")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["format"] in puzzles.FORMATS
+    engine = Engine(LIBRARY[digest])
+    assert engine.spec.hash == data["ruleset_hash"] == path.stem
+    for position in data["positions"]:
+        state = engine.play(engine.initial_state(), position["moves"])
+        assert engine.terminal(state) is None, position["id"]
+        assert state.side_to_move == position["side"]
+        assert [m["move"] for m in position["scores"]] == engine.legal_moves(state)
+        proofs = {m["proof"] for m in position["scores"]}
+        if position["result"] == "won":
+            assert "won" in proofs
+        else:
+            assert proofs == {"lost"}
+
+
+def test_every_delivered_record_is_a_game_of_the_library() -> None:
+    """The per-game cases above only visit library games; a record of any other game is
+    one the cases would miss. Skips where no record is on disk."""
     paths = _delivered()
     if not paths:
         pytest.skip("no runs/puzzles/ record here")
-    for path in paths:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        assert data["format"] in puzzles.FORMATS
-        engine = Engine(find(data["ruleset_hash"]).spec)
-        assert engine.spec.hash == data["ruleset_hash"] == path.stem
-        for position in data["positions"]:
-            state = engine.play(engine.initial_state(), position["moves"])
-            assert engine.terminal(state) is None, position["id"]
-            assert state.side_to_move == position["side"]
-            assert [m["move"] for m in position["scores"]] == engine.legal_moves(state)
-            proofs = {m["proof"] for m in position["scores"]}
-            if position["result"] == "won":
-                assert "won" in proofs
-            else:
-                assert proofs == {"lost"}
+    assert {path.stem for path in paths} <= set(LIBRARY)
 
 
 # ------------------------------------------------------------------ too easy (Q993a)

@@ -251,6 +251,113 @@ class TestTheLadders:
             assert call not in source, call
 
 
+class TestTheProvenPositions:
+    """Q993h: the proven-positions work Q993d put in the status file, worded beside the rest.
+
+    One status file per case: none owed, owed (split by whether a record exists), a refusal
+    with its reason, a file whose proofs wait on a score or a ladder, and an old file
+    without the keys. The panel reads the keys as written and surveys nothing itself.
+    """
+
+    def test_none_owed(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        _ledger(runs, state="idle", owed_counts={}, refused_owed=0, ladders_owed=[],
+                ladder_counts={}, ladders_refused=0, proofs_owed=[],
+                proof_counts={"prove": 0, "re-prove": 0}, proofs_refused=0)
+        view = refreshing.view(runs)
+        assert view["proofs"] == "read"
+        assert view["proofsOwed"] == 0 and view["proofCounts"] == {}
+        assert view["proofsRefused"] == 0
+        assert "No game was owed proven positions at its last look." in view["said"]
+        assert not any("refused" in line for line in view["said"])
+
+    def test_owed_says_how_many_have_a_record_and_how_many_have_none(
+        self, tmp_path: Path
+    ) -> None:
+        runs = tmp_path / "runs"
+        _ledger(runs, state="working", owed_counts={}, refused_owed=0, ladders_owed=[],
+                ladder_counts={}, ladders_refused=0,
+                doing={**GAME, "needs": "prove", "started": refresher._now()},
+                proofs_owed=[{**GAME, "needs": "prove"}],
+                proof_counts={"re-prove": 2, "prove": 5}, proofs_refused=0)
+        view = refreshing.view(runs)
+        assert view["proofCounts"] == {"prove": 5, "re-prove": 2}
+        assert view["proofsOwed"] == 7
+        assert ("7 games were owed proven positions at its last look: "
+                "5 with no record yet, 2 with a record that is out of date.") in view["said"]
+        assert view["said"][0] == ("The refresher is working on alpha: proving its "
+                                   "positions, since just now.")
+        assert view["doing"]["needs"] == "proving its positions"
+        _ledger(runs, proof_counts={"prove": 0, "re-prove": 1})
+        assert ("1 game was owed proven positions at its last look: "
+                "1 with a record that is out of date.") in refreshing.view(runs)["said"]
+
+    def test_a_refused_game_says_the_work_and_why(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        ledger = refresher.Ledger(runs)
+        score = refresher.Item(hash=GAME["hash"], name="alpha", needs="replay",
+                               reason="", tier=3, measured="", stored="d1")
+        proof = refresher.Item(hash=GAME["hash"], name="alpha", needs="re-prove",
+                               reason="2 of its 9 proved positions no longer replay",
+                               tier=3, measured="", stored="proofs:abc")
+        ledger.refuse(score, refresher.Outcome(
+            hash=GAME["hash"], needs="replay", refusal=refresher.ERROR, reason="boom"))
+        ledger.refuse(proof, refresher.Outcome(
+            hash=GAME["hash"], needs="re-prove", refusal=refresher.ERROR,
+            reason="proved, and its record still owes a re-proof: 2 of its 9 positions"))
+        ledger.update(state="idle", owed_counts={}, refused_owed=1, ladders_owed=[],
+                      ladder_counts={}, ladders_refused=0, proofs_owed=[],
+                      proof_counts={"prove": 0, "re-prove": 0}, proofs_refused=1)
+        view = refreshing.view(runs)
+        assert view["proofsRefused"] == 1 and view["proofsOwed"] == 0
+        assert ("1 more game is owed proven positions and refused, so it does not try it "
+                "again (the reasons are in the table below).") in view["said"]
+        rows = {row["proof"]: row for row in view["refused"]}
+        assert set(rows) == {True, False}
+        assert rows[True]["needs"] == "proving its positions again"
+        assert rows[True]["why"] == "measuring it failed"
+        assert rows[True]["reason"].startswith("proved, and its record still owes")
+        assert rows[False]["needs"] == "playing again"
+        assert view["lastRefusal"]["proof"] is True
+        _ledger(runs, proofs_refused=3)
+        assert ("3 more games are owed proven positions and refused, so it does not try "
+                "them again (the reasons are in the table below)."
+                ) in refreshing.view(runs)["said"]
+
+    def test_proofs_wait_while_a_score_or_a_ladder_is_owed(self, tmp_path: Path) -> None:
+        """The refresher writes the keys as `None` until scores and ladders are done."""
+        runs = tmp_path / "runs"
+        _ledger(runs, state="idle", owed_counts={"rescore": 1}, refused_owed=0,
+                proofs_owed=None, proof_counts=None, proofs_refused=2)
+        view = refreshing.view(runs)
+        assert view["proofs"] == "waiting"
+        assert view["proofsOwed"] is None and view["proofCounts"] is None
+        assert view["proofsRefused"] is None
+        assert ("Proven positions: not read while a score or a ladder is owed (scores, "
+                "then ladders).") in view["said"]
+
+    def test_an_old_file_without_the_keys_says_nothing_of_proofs(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        _written(runs, 10, state="idle", owed_counts={"rescore": 2}, refused_owed=0,
+                 ladder_counts={}, ladders_refused=0)
+        view = refreshing.view(runs)
+        assert view["proofs"] == "unknown"
+        assert view["proofsOwed"] is None and view["proofCounts"] is None
+        assert not any("proven" in line for line in view["said"])
+        assert refreshing.view(tmp_path / "none")["proofs"] == "unknown"
+
+    def test_a_game_proved_last_shows_no_score(self, tmp_path: Path) -> None:
+        runs = tmp_path / "runs"
+        _ledger(runs, state="idle", owed_counts={}, proof_counts={},
+                last_done={**GAME, "needs": "prove", "index": None})
+        assert ("Last done: alpha, proving its positions."
+                in refreshing.view(runs)["said"])
+
+    def test_every_proof_kind_has_plain_words(self) -> None:
+        assert set(refreshing.PROOFS) == set(refresher.PROOF_ORDER)
+        assert set(refreshing.PROOF_COUNTED) == set(refresher.PROOF_ORDER)
+
+
 class TestWhereItIsDrawn:
     def test_the_local_application_sends_it_with_the_scores(self, tmp_path: Path) -> None:
         for name in ("rulesets", "runs", "archive"):

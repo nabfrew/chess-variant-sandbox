@@ -107,19 +107,40 @@ _PAIRINGS = (
 _SPECS = ("_spy_small", "_spy_blast", "_spy_stock", "_spy_resting")
 
 
-@pytest.mark.parametrize("name", _SPECS)
-@pytest.mark.parametrize("agents", _PAIRINGS, ids="-".join)
-def test_the_core_plays_every_phase_as_the_oracles_do(agents: tuple[str, str], name: str) -> None:
-    """Whole games, the core's loop against `play_game_python` over the oracles."""
+# Seed 0's game on two of these pairs is long, and the Python oracle's series (the evaluator's
+# capture threats, 20-30 ms a ply) is where the time goes: 118 plies of minimax:nodes=150
+# against greedy on `_spy_small` cost 3.5 s, 88 plies of greedy on `_spy_stock` 2.5 s (Q997b).
+# The fast suite plays those two pairs at a seed whose game is shorter (46 and 38 plies, 1.2 s and 1.1 s);
+# the slow tier plays seed 0's, below.
+_LONG_AT_SEED_0 = {
+    ("minimax:nodes=150", "greedy", "_spy_small"): 28,
+    ("greedy", "greedy", "_spy_stock"): 10,
+}
+
+
+def _same_game(agents: tuple[str, str], name: str, seed: int) -> None:
     engine = _engine(name)
-    native = play_game(engine, agents, 0)
-    python = play_game_python(engine, agents, 0)
+    native = play_game(engine, agents, seed)
+    python = play_game_python(engine, agents, seed)
     assert native.moves == python.moves, (name, agents)
     assert (native.winner, native.reason) == (python.winner, python.reason)
     assert native.nodes == python.nodes
     assert native.depth_sum == python.depth_sum and native.searches == python.searches
     assert native.branching == python.branching and native.captures == python.captures
     assert native.material == python.material
+
+
+@pytest.mark.parametrize("name", _SPECS)
+@pytest.mark.parametrize("agents", _PAIRINGS, ids="-".join)
+def test_the_core_plays_every_phase_as_the_oracles_do(agents: tuple[str, str], name: str) -> None:
+    """Whole games, the core's loop against `play_game_python` over the oracles."""
+    _same_game(agents, name, _LONG_AT_SEED_0.get((*agents, name), 0))
+
+
+@pytest.mark.slow  # seed 0's 118- and 88-ply games: 3.5 s and 2.5 s in the Python oracle (Q997b)
+@pytest.mark.parametrize("case", list(_LONG_AT_SEED_0), ids="-".join)
+def test_the_long_games_at_seed_zero_are_the_oracles_too(case: tuple[str, str, str]) -> None:
+    _same_game((case[0], case[1]), case[2], 0)
 
 
 @pytest.mark.slow

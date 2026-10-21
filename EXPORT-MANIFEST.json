@@ -1,5 +1,5 @@
 {
- "source_commit": "512507d754d25c0736da3388e47c1747d2332e38",
+ "source_commit": "70ca48631e9001e9d58e183c320054c9e4b61e4a",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -1236,8 +1236,8 @@
   },
   {
    "path": "chess_variant_sandbox/llm/propose.py",
-   "bytes": 49589,
-   "sha256": "aa5f04b4f05dc0199075bb92e7fd21d31a83056b962fcf09471614457c4e69d5"
+   "bytes": 49720,
+   "sha256": "0712592fc51150ba59637d65a839b1e64b7963693698570975c8bc1d3a10cc48"
   },
   {
    "path": "chess_variant_sandbox/loop/__init__.py",
@@ -1981,8 +1981,8 @@
   },
   {
    "path": "chess_variant_sandbox/spec/describe.py",
-   "bytes": 115549,
-   "sha256": "34c7b46f80f0a195cd2f565f6e432d94422fd477084e1cace0e8fa56da7216fa"
+   "bytes": 116323,
+   "sha256": "ac928d516e6fc928d5f580127ab4e5b671bee8315b94e174db62bfe678e6021b"
   },
   {
    "path": "chess_variant_sandbox/spec/distance.py",
@@ -2316,8 +2316,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/refreshing.py",
-   "bytes": 10896,
-   "sha256": "7a8ce696859edcd09bf7f24f67fb335fbe32fe858d975c68ef887d7dec33b557"
+   "bytes": 14039,
+   "sha256": "a8b5f056438d1cfc8f825bb559aa2961302ff37f76e2f6a718dba374027dedf8"
   },
   {
    "path": "chess_variant_sandbox/web/server.py",
@@ -3756,8 +3756,8 @@
   },
   {
    "path": "tests/test_backends.py",
-   "bytes": 96967,
-   "sha256": "5e3f3f1c2df87be21fc5bd921e42e752e3fa4a17e46820e4ad861c913026a77f"
+   "bytes": 97753,
+   "sha256": "9b6d4d374df477ab1d45c8acf37dbdc88bede3e6b4e6c01e397533f915a65bc1"
   },
   {
    "path": "tests/test_badges.py",
@@ -3866,8 +3866,8 @@
   },
   {
    "path": "tests/test_describe.py",
-   "bytes": 53057,
-   "sha256": "8eeda77632730dc23b3e18d1d532e1c2c6943aae4d25445a145e6159b77ef760"
+   "bytes": 55933,
+   "sha256": "7b5e3c72ad2af1107eabbd16041842f6ba0ec067fb9234b24ab5faf4ed122653"
   },
   {
    "path": "tests/test_description_claims.py",
@@ -3881,8 +3881,8 @@
   },
   {
    "path": "tests/test_designer_coverage.py",
-   "bytes": 42996,
-   "sha256": "5a57fd5ced6f9ae12bbb3f213888e85325c3f102a06c825b83d3c5844bf178c0"
+   "bytes": 43509,
+   "sha256": "6947a43c56b7fdb361b9045e1a72bdbf6c53c27e72e7902f5cdf134609bf3ff8"
   },
   {
    "path": "tests/test_designer_hexagon.py",
@@ -4056,8 +4056,8 @@
   },
   {
    "path": "tests/test_fuzz.py",
-   "bytes": 11585,
-   "sha256": "36c067cf8d6d937b13379b66e9b86ebf85dcdfc3d6528828b9dd48883d2c689e"
+   "bytes": 11850,
+   "sha256": "16df351b26ce8ee345b1f2ba3630782f0aad71e179e0424f876c4732274ae62a"
   },
   {
    "path": "tests/test_game_picture.py",
@@ -4306,8 +4306,8 @@
   },
   {
    "path": "tests/test_plain_words.py",
-   "bytes": 24523,
-   "sha256": "26376f46d7e89db43883a141a3b73baf2c2735f2bf5adb521a4ec3efb1f14bb6"
+   "bytes": 24707,
+   "sha256": "9dcb4a765870197f2e86cd8939ccb7e7e9aa30d2c14d97c9bf12da6d0ae4c67a"
   },
   {
    "path": "tests/test_play_rounds.py",
@@ -4401,8 +4401,8 @@
   },
   {
    "path": "tests/test_puzzles.py",
-   "bytes": 41442,
-   "sha256": "edbfbcb17aae64e2df6a6dfbea57490632ce0970dad00e605b078fcd091f3b1a"
+   "bytes": 42123,
+   "sha256": "ca7f9c05f50287377788d6f8270e9c2b61dcf660e09c0342a3f8fc812fc646f1"
   },
   {
    "path": "tests/test_rated_learned_player.py",
@@ -4446,8 +4446,8 @@
   },
   {
    "path": "tests/test_refreshing.py",
-   "bytes": 14955,
-   "sha256": "9d359545503a07e6bbaa33b1f847e3b40d809622d7e64b65258fb9ea8dec87cc"
+   "bytes": 21176,
+   "sha256": "7c1427fa220d6b96cd5f50b474a35bc48da9c0b3a7e39a59d065628380ca7940"
   },
   {
    "path": "tests/test_relate.py",
@@ -4466,8 +4466,8 @@
   },
   {
    "path": "tests/test_replay_chain.py",
-   "bytes": 18360,
-   "sha256": "1390cc7c4b2b9f859e968ba9e026dbee063e5d55cdb3bf3b8ce9b70cd1367625"
+   "bytes": 18815,
+   "sha256": "ba7df2d375b549ff5d20988c98403a81d107761399fba1b2d19af369c5f2156b"
   },
   {
    "path": "tests/test_rest.py",
@@ -5031,8 +5031,8 @@
   },
   {
    "path": "tests/test_spy_players.py",
-   "bytes": 17911,
-   "sha256": "175c8349d47ce1f2476d667dc054221545eb63629b01bbe58ac7c72c1e40e14b"
+   "bytes": 18920,
+   "sha256": "8de3ec918179b8b9d01541f0b3cf0de08758f213126a2bad79de71bfc1ea3194"
   },
   {
    "path": "tests/test_spy_term.py",

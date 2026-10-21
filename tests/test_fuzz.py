@@ -31,8 +31,11 @@ def test_the_generator_actually_produces_specs() -> None:
     """
     # Twelve seeds, at the proportions twenty were held to (Q749): a case is 0.02 s, but a
     # hexagon's children rotate and each is refused through two compiles
-    # (`relate._orientation_played`), and seeds 5 and 16 were 2.4 s of the test's 3.1.
-    built = [fuzz.case(seed) for seed in range(12)]
+    # (`relate._orientation_played`), and seeds 0 and 5 are hexagons, 3.3 s of the test's 3.5
+    # (Q997b). The claim -- the generator makes specs, mutated, and unlike each other --
+    # does not rest on them (hexagons have their own tests below, seeds 29 and 36), so the
+    # twelve are the grids' seeds 1-13 less 5.
+    built = [fuzz.case(seed) for seed in (1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13)]
     made = [case for case in built if case is not None]
     assert len(made) >= 11, "the generator is refusing most seeds"
     assert sum(1 for case in made if case.operators) >= 9, "most cases were not mutated"
