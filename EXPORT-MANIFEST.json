@@ -1,5 +1,5 @@
 {
- "source_commit": "4443c5d0a9e42c174a4cfb2de7374ae25e9760b3",
+ "source_commit": "276e7b4179af8efb58a006fa7ad49cd3370bee83",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -1441,8 +1441,8 @@
   },
   {
    "path": "chess_variant_sandbox/site/badges.py",
-   "bytes": 74341,
-   "sha256": "2f244e0926678f9c881c0b74072d5ed4b8dda8d7793d8732a565bf08473116a7"
+   "bytes": 83648,
+   "sha256": "5c2d8a569616216926f0d88c9b09a0838dc18d61b8d4b2851603a63900c65605"
   },
   {
    "path": "chess_variant_sandbox/site/browse.py",
@@ -1776,8 +1776,8 @@
   },
   {
    "path": "chess_variant_sandbox/site/pages.py",
-   "bytes": 97786,
-   "sha256": "a3d24ab99c9450b10838724d17a4874b0dff178c44679424dda63565992603ed"
+   "bytes": 97911,
+   "sha256": "86eeee448fb4f9333bf8ef77e1443c29a9386c14bb6d131c4ca6054292769b94"
   },
   {
    "path": "chess_variant_sandbox/site/people.py",
@@ -1796,8 +1796,8 @@
   },
   {
    "path": "chess_variant_sandbox/site/proven.py",
-   "bytes": 37732,
-   "sha256": "eee540b5738110f36b1e34cca08bf00d1424d06c8c5b78764f761198c86491f0"
+   "bytes": 38341,
+   "sha256": "43f999d8c88b19ddc990a8f7c095ba3bdd9b69c1a45e2e7f70fec89a5d36f3a8"
   },
   {
    "path": "chess_variant_sandbox/site/provisional.py",
@@ -1846,8 +1846,8 @@
   },
   {
    "path": "chess_variant_sandbox/site/server.py",
-   "bytes": 173430,
-   "sha256": "e907a6848798d8ddfc7229362cbebeb82b262d8950ac703589bae8d2ca62d30b"
+   "bytes": 174441,
+   "sha256": "83fd9937ef15edd8d02ae940517765f82d134d4413486db465b92f4dc2eb9805"
   },
   {
    "path": "chess_variant_sandbox/site/shortlist.py",
@@ -2546,8 +2546,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 135807,
-   "sha256": "509efd3ec1248d353512791eff9c4af418f21420eb76256daaeee234a5366a18"
+   "bytes": 136047,
+   "sha256": "dba3420ae6a2d20df92ab7faa000f8ebefe1ce5fe154cf7b53463d613c860c79"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -4883,6 +4883,11 @@
    "path": "tests/test_site_proven.py",
    "bytes": 64606,
    "sha256": "1643f6f7ec0a90be511ae40a602bccf2abfee5dd234b3bde9843f9ca918e3e28"
+  },
+  {
+   "path": "tests/test_site_proven_badges.py",
+   "bytes": 17226,
+   "sha256": "152eb08b144eb9eec4422c4bdb83e824dc5790e69e07ab47b4f4b8f0bab762b3"
   },
   {
    "path": "tests/test_site_proven_names.py",

@@ -18,7 +18,8 @@ that says which of them a person has now earned. The reader is pure, in
 `milestones.read_from`'s idiom -- rows and tables go in, awards come out, nothing opens a
 connection -- and `grant_for_match` and `grant_for_save` are the two functions that do
 hold a connection, so `matches._finish` and the save route can each write the badges of
-their event inside that event's own transaction.
+their event inside that event's own transaction (`grant_for_vote` and `grant_for_proof`
+are two more of those).
 
 ## What a row has to be before any badge sees it
 
@@ -113,6 +114,19 @@ owner, because `chess-variant-sandbox site load` gives every library game the ma
   `holder`; on a library game nobody is left out and the `holder` is null, because
   `chess-variant-sandbox site load` gives every library game the maintainer's account.
 
+## The two over proven positions
+
+- **Every proven position** and **Game after game** (Q993e, `docs/plan-proven.md` §4) read
+  `proven_marks` against the positions a game's record offers on the day. The first is a
+  win from every one of them, each played out against hardest (`converted`; a `found`
+  mark never counts, since the page shows the proved move to anybody who asks), once per
+  game with the person as holder. The second is a series over how many games a person
+  holds the first on, at `PROVEN_STEPS`, read off the kept rows, so a re-proof that adds
+  positions takes nothing away. The site grants both when a try ends in the person's
+  win, in that finish's transaction (`grant_for_proof`). A visitor has no marks, so earns
+  neither. These two are the only badges a practice game can earn: a try from a proven
+  position is practice by its nature, with no take-back.
+
 ## How often each is earned
 
 §2.9 fixes this for N8 and N9, *once per person*, for *Ancestor*, and for the two upper
@@ -121,7 +135,8 @@ badge about one game sits on that game -- N2 and N3 as M2 and M3 do, *Descendant
 *Family tree* on the game that was built on with its owner as `holder`, and N1 and U1 on
 the game they are about. A badge about the library or about a person's whole record is
 held once, with `game` null and what it counted in its evidence. U2, U4, N4, N7, N9, U5,
-N6, N13 and *Ancestor* are the second kind. E11 is the first kind, on the game.
+N6, N13 and *Ancestor* are the second kind. E11 is the first kind, on the game, and so is
+*Every proven position*; *Game after game* is the second.
 
 ## What is stored
 
@@ -133,10 +148,10 @@ names counted. Neither field ever holds a handle.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from chess_variant_sandbox.loop import grid
 from chess_variant_sandbox.site import awards, drafts, milestones, quota, rating
@@ -144,6 +159,9 @@ from chess_variant_sandbox.site import matches as match_rows
 from chess_variant_sandbox.spec import rules_used, schema
 from chess_variant_sandbox.web.human import RESIGNED
 from chess_variant_sandbox.web.opponents import ladder
+
+if TYPE_CHECKING:
+    from chess_variant_sandbox.site.proven import Record
 
 # ------------------------------------------------------------------ the kinds and steps
 
@@ -164,6 +182,8 @@ SPEAKS_FROM_EXPERIENCE = "speaks-from-experience"
 CROWD_PLEASER = "crowd-pleaser"
 CLANKER = "proved-the-clanker-wrong"
 BEAT_THE_MAKER = "beat-the-maker"
+EVERY_PROVEN = "every-proven-position"
+GAME_AFTER_GAME = "game-after-game"
 
 NAMED_PLAYERS: tuple[str, ...] = ("easy", "medium", "hard", "hardest")
 """The rungs U2 is a series over, weakest first.
@@ -175,6 +195,22 @@ moves in the picker moves here with it and is never written down twice.
 
 GAME_STEPS: tuple[int, ...] = (1, 5, 10, 25)
 """U2's steps, in different games. The user's answer of 2026-09-17."""
+
+PROVEN_STEPS: tuple[int, ...] = GAME_STEPS[1:]
+"""*Game after game*'s steps, in different games finished (`docs/plan-proven.md` §4,
+written before any person's marks were read): U2's ladder without its 1, which *Every
+proven position* already is on each game, so a reader learns one ladder. 5 is reachable
+with the seven games that offer positions today, 10 and 25 once the refresher has proved
+the library's (Q993d), and nothing above 25, past which the series would reward doing a
+lot (test 6)."""
+
+PROVEN_WAYS: tuple[str, ...] = ("converted",)
+"""The marks *Every proven position* reads: a try played out against hardest and won
+(`proven.CONVERTED`). *Find the move* is not one of them, because the page shows the
+proved move to anybody who asks, and a kept badge cannot rest on a mark handed out on
+request (`docs/plan-proven.md` §4). Spelled here rather than imported, so that the table
+reads no record module at import; `tests/test_site_proven_badges.py` holds it to
+`proven.CONVERTED`."""
 
 GIANT_GAP = 300.0
 """N2's gap in rating points, over which the opponent counts as far above."""
@@ -476,6 +512,33 @@ BADGES: dict[str, Badge] = {
             "earn nothing."
         ),
     ),
+    EVERY_PROVEN: Badge(
+        kind=EVERY_PROVEN,
+        name="Every proven position",
+        sentence=(
+            "Every proven position this game offered, each one played out against hardest "
+            "and won."
+        ),
+        rule=(
+            "A win from every proven position a game offers, each one played out from the "
+            "position against hardest, the strongest computer player. Finding the move "
+            "does not count toward it, because the page shows the proved move to anybody "
+            "who asks. Once per game, and positions the game offers later never take it "
+            "away."
+        ),
+        thresholds={"ways": list(PROVEN_WAYS)},
+    ),
+    GAME_AFTER_GAME: Badge(
+        kind=GAME_AFTER_GAME,
+        name="Game after game",
+        sentence="Every proven position, on {tier} different {games}.",
+        rule=(
+            "Every proven position won, on that many different games. A game counts from "
+            "the day it was finished, whatever positions it offers since."
+        ),
+        steps=PROVEN_STEPS,
+        thresholds={"steps": list(PROVEN_STEPS)},
+    ),
 }
 """Every badge, by kind. E10 adds its own here."""
 
@@ -593,6 +656,7 @@ def quoted(award: awards.Award) -> str:
         _stars_as(evidence),
         _players_as(evidence),
         _blocks_as(evidence),
+        _positions_as(evidence),
     ]
     kept = [clause for clause in said if clause]
     if len(kept) < 2:
@@ -694,6 +758,18 @@ def _blocks_as(evidence: dict[str, Any]) -> str:
     if used is None or total is None:
         return ""
     return f"{used} of {total} building blocks"
+
+
+def _positions_as(evidence: dict[str, Any]) -> str:
+    """How many proven positions the game offered when *Every proven position* was won.
+
+    The row's figure, never the record's today: a re-proof that adds positions moves the
+    game's own line (*converted n of m*), and this clause still says what was finished.
+    """
+    count = _whole(evidence.get("positions"))
+    if count is None:
+        return ""
+    return f"{count} proven position{'' if count == 1 else 's'} on the game"
 
 
 # --------------------------------------------------------------------------- the rows
@@ -1596,6 +1672,147 @@ def _scored_low(score: awards.ScoreEvidence | None) -> bool:
         return False
     ends = (score.headline, score.ci_low, score.ci_high)
     return all(end is not None and end < CLANKER_SCORE for end in ends)
+
+
+# ------------------------------------------- the two over proven positions (Q993e)
+
+
+@dataclass(frozen=True)
+class Conversion:
+    """One `converted` mark (`proven_marks`), as the proven-position badges read it.
+
+    `when` is the mark's own `marked`, and `match` the try that wrote it, null where its
+    row went. A `found` mark is never one of these: `conversions` selects only
+    `PROVEN_WAYS`.
+    """
+
+    game: str
+    position: str
+    when: datetime
+    match: str | None = None
+
+
+def proven_due_from(
+    user: int,
+    conversions: Iterable[Conversion],
+    records: Mapping[str, Record | None],
+    held: Iterable[awards.Award] = (),
+) -> tuple[awards.Award, ...]:
+    """*Every proven position* and *Game after game* for this person, earned and not held.
+
+    `conversions` is this person's `converted` marks, `records` each marked game's record
+    as the site loads it now (`proven.load`: the positions it offers, the too-easy ones
+    left out), and `held` what the store has for them.
+
+    *Every proven position* on a game is due when every position the record offers has a
+    conversion. It is dated by the last of those marks, so a game finished before this
+    badge existed is dated by the try that finished it, and the row keeps how many
+    positions the game offered, the record's proof date and the tries.
+
+    *Game after game* counts the games the person **holds** *Every proven position* on,
+    the kept rows and the ones this call adds, and never the live marks. A re-proof that
+    adds positions to a finished game cannot un-finish it, for either badge: nothing here
+    removes a row, and the count reads rows.
+    """
+    by_game: dict[str, dict[str, Conversion]] = {}
+    for each in sorted(conversions, key=lambda c: (c.when, c.game, c.position)):
+        by_game.setdefault(each.game, {}).setdefault(each.position, each)
+
+    found: list[awards.Award] = []
+    for game in sorted(by_game):
+        record = records.get(game)
+        if record is None or not record.positions:
+            continue
+        marks = by_game[game]
+        offered = [position.id for position in record.positions]
+        if any(position not in marks for position in offered):
+            continue
+        used = [marks[position] for position in offered]
+        last = max(used, key=lambda c: (c.when, c.position))
+        found.append(
+            _earned(
+                EVERY_PROVEN,
+                user,
+                last.when,
+                game=game,
+                evidence={
+                    "game": game,
+                    "positions": len(offered),
+                    "proved": record.made,
+                    "matches": [c.match for c in used if c.match],
+                },
+            )
+        )
+
+    finished: dict[str, awards.Award] = {}
+    for award in [*held, *found]:
+        if award.kind != EVERY_PROVEN or award.holder != user or not award.game:
+            continue
+        earlier = finished.get(award.game)
+        if earlier is None or _when_earned(award) < _when_earned(earlier):
+            finished[award.game] = award
+    order = sorted(finished.values(), key=lambda a: (_when_earned(a), a.game or ""))
+    for step in PROVEN_STEPS:
+        if len(order) < step:
+            break
+        reached = order[:step]
+        found.append(
+            _earned(
+                GAME_AFTER_GAME,
+                user,
+                reached[-1].earned,
+                tier=step,
+                evidence={"games": [award.game for award in reached]},
+            )
+        )
+    already = {award.key for award in held}
+    return tuple(
+        award for award in sorted(found, key=_when_earned) if award.key not in already
+    )
+
+
+def conversions(connection: Any, person: int) -> tuple[Conversion, ...]:
+    """This person's `converted` marks, oldest first. A `found` mark is not selected."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "select game, position, marked, match from proven_marks"
+            " where person = %s and way = any (%s) order by marked, game, position",
+            (int(person), list(PROVEN_WAYS)),
+        )
+        return tuple(
+            Conversion(
+                game=str(row[0]),
+                position=str(row[1]),
+                when=row[2],
+                match=None if row[3] is None else str(row[3]),
+            )
+            for row in cursor.fetchall()
+        )
+
+
+def grant_for_proof(
+    connection: Any, person: int, records: Callable[[str], Record | None]
+) -> list[awards.Award]:
+    """Write the proven-position badges this person is due, and return what landed.
+
+    What the site calls when a try from a proven position ends in the person's win, in
+    the finish's own transaction, after `proven.converted` has written the mark
+    (`server._session_action`). `records` loads a game's record as the site offers it;
+    the store has no record, so the caller that knows where they are on disk hands it
+    over. Every game the person has converted on is read, so a game finished before
+    this badge existed is granted at their next win, dated by its own last mark.
+    """
+    mine = conversions(connection, person)
+    games = sorted({each.game for each in mine})
+    return awards.grant(
+        connection,
+        proven_due_from(
+            person,
+            mine,
+            {game: records(game) for game in games},
+            awards.held(connection, holder=person),
+        ),
+    )
 
 
 # ------------------------------------------------------------------------- the writer

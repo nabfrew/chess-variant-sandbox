@@ -754,6 +754,21 @@ def converted(connection: Any, match_id: str) -> bool:
     (or a resignation or an agreed draw, which are never the person's win). A visitor's
     try has nobody to mark, and a game nobody sat at is no try.
     """
+    won = won_by(connection, match_id)
+    if won is None:
+        return False
+    person, game, puzzle = won
+    return mark(connection, person, game, puzzle, CONVERTED, match_id)
+
+
+def won_by(connection: Any, match_id: str) -> tuple[int, str, str] | None:
+    """Who won this try, on which game and position, or None where it is no person's win.
+
+    The person, the game and the position (`matches.puzzle`) where the row is a try whose
+    game the engine ended in the person's win; None for any other row or ending. What
+    `converted` marks, and what tells the site whose proven-position badges to grant
+    (`badges.grant_for_proof`).
+    """
     with connection.cursor() as cursor:
         cursor.execute(
             "select game, puzzle, seat0_user, seat1_user, seat0_agent, seat1_agent, result"
@@ -762,17 +777,17 @@ def converted(connection: Any, match_id: str) -> bool:
         )
         found = cursor.fetchone()
     if found is None or found[1] is None or found[6] is None:
-        return False
+        return None
     game, puzzle, user0, user1, agent0, agent1, result = found
     if agent0 is None and user0 is not None and agent1 is not None:
         person, score = int(user0), float(result)
     elif agent1 is None and user1 is not None and agent0 is not None:
         person, score = int(user1), 1.0 - float(result)
     else:
-        return False
+        return None
     if score != 1.0:
-        return False
-    return mark(connection, person, str(game), str(puzzle), CONVERTED, match_id)
+        return None
+    return person, str(game), str(puzzle)
 
 
 def marks_on(connection: Any, person: int, game: str) -> dict[str, set[str]]:

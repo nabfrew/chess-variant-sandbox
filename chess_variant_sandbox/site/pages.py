@@ -1578,7 +1578,9 @@ def badges() -> str:
         f'<ul class="lines">\n{rows}</ul>\n'
         "<p class=\"under\">Only rated games count &mdash; a practice game, a game "
         f"somebody resigned and a game resigned after {quota.IDLE_SAID} count for none "
-        "of these. Nothing here expires and nothing is taken back.</p>\n"
+        "of these, except the two for proven positions, which are won in the practice "
+        "game played out from each position. Nothing here expires and nothing is taken "
+        "back.</p>\n"
     )
     return _shell("The badges on Chess variant sandbox", body, kind="prose", here="/badges",
                   description=BADGES_SAYS, path="/badges")

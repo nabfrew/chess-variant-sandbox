@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-21
 
+### Badges for proven positions
+
+Win every proven position on a game against the hardest computer player and you keep a badge for it. Do that on 5, 10
+and 25 games for three more. They stay yours even when more positions are proved later.
+
 ### A page for each game's proven positions
 
 Each game's proven positions now have a page of their own: the board beside the list, ticks on the ones you have solved,

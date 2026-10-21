@@ -2414,7 +2414,10 @@ class SiteApp(App):
         with self._connection() as connection:
             found = matches.row(connection, session_id)
             if not correspondence.between_people(found):
-                return self._against_computer(connection, session_id, action, body)
+                answer = self._against_computer(connection, session_id, action, body)
+                if found.source == matches.PUZZLE:
+                    self._proof_badges(connection, session_id)
+                return answer
             answer = self._between_people(connection, found, action, body)
             if action == "move":
                 # Q572. Whether this move sends the one email, written down in the move's
@@ -2425,6 +2428,23 @@ class SiteApp(App):
                 )
         self._mail_move(due)
         return answer
+
+    def _proof_badges(self, connection: Any, match_id: str) -> None:
+        """Q993e: a try that ended in the person's win may finish a game's proven
+        positions, so its badges are granted here, in the finish's own transaction and
+        after `proven.converted` wrote the mark (`badges.grant_for_proof`). Any other
+        action, ending or person grants nothing. The records are this site's, as its
+        pages load them, so the badge counts exactly the positions the page offers."""
+        won = proven.won_by(connection, match_id)
+        if won is None:
+            return
+        known = self.known()
+
+        def record(digest: str) -> proven.Record | None:
+            game = known.get(digest)
+            return proven.load(self.runs_dir, digest, None if game is None else game.spec)
+
+        badges.grant_for_proof(connection, won[0], record)
 
     def _against_computer(
         self, connection: Any, session_id: str, action: str, body: dict[str, Any]
