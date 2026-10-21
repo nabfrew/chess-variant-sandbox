@@ -1318,7 +1318,10 @@ function wireCopyLinks() {
   document.addEventListener('click', event => {
     const button = event.target.closest && event.target.closest('[data-copy-link]');
     if (!button) return;
-    const link = gameLink(button.dataset.copyLink);
+    // G10: a proven position's control names its position too, and copies its address.
+    const position = button.dataset.copyPosition;
+    const link = position ? location.origin + provenPath(button.dataset.copyLink, position)
+      : gameLink(button.dataset.copyLink);
     const byHand = () => {
       const shown = button.nextElementSibling;
       const box = shown && shown.dataset && shown.dataset.copied === 'yes'

@@ -38,9 +38,9 @@ PREFIX = front.GAMES_PATH + "/"
 ROUTE = re.compile(r"^/game/([0-9a-f]{8,64})$")
 # Q993b: a game's proven positions have an address of their own beside the game's, with the
 # position in it where one is chosen, so a reload or a bookmark lands on the same one. The
-# server answers it with the game's page as drawn for its own address, whose canonical is
-# the game's; the router draws the positions' page over it.
-PROVEN_ROUTE = re.compile(r"^/game/([0-9a-f]{8,64})/proven(?:/[A-Za-z0-9_-]{1,64})?/?$")
+# server answers it with the positions' own page (G10, `proven_page.py`), a position's with
+# its own head and picture; the router draws the positions' page over it.
+PROVEN_ROUTE = re.compile(r"^/game/([0-9a-f]{8,64})/proven(?:/([A-Za-z0-9_-]{1,64}))?/?$")
 
 # A search result shows about this many characters of a description.
 DESCRIPTION_LIMIT = 160
@@ -75,6 +75,19 @@ def proven_digest_of(asked: str) -> str | None:
     return None if found is None else found.group(1)
 
 
+def proven_of(asked: str) -> tuple[str, str] | None:
+    """The hash and the position (empty for the list) a proven positions' address names,
+    or `None` for any other path."""
+    found = PROVEN_ROUTE.match(asked)
+    return None if found is None else (found.group(1), found.group(2) or "")
+
+
+def proven_path(digest: str, position: str = "") -> str:
+    """A game's proven positions' address, a position's where one is named (`proven.js`
+    `provenPath` writes the same)."""
+    return path(digest) + "/proven" + (f"/{position}" if position else "")
+
+
 @dataclass(frozen=True)
 class Near:
     """One game near this one, as a link: its hash and its name."""
@@ -106,6 +119,9 @@ class Drawn:
     indexable: bool
     base: str = ""
     picture: str = ""
+    proven: int = 0
+    """How many proven positions the game offers (`proven.offered`), linked from the page
+    so a crawler reaches them (G10); nought, and no link, for a game with none."""
 
 
 # ------------------------------------------------------------------------ the words
@@ -278,8 +294,16 @@ def view(drawn: Drawn) -> str:
         f'<span class="muted">{escape(SCORE_MEANS)}</span></p>\n'
         '<p>Play it here in the browser, against the computer, with no account needed.</p>\n'
         '<noscript><p class="muted">Playing needs JavaScript switched on.</p></noscript>\n'
-        f"{near_html}\n</article>"
+        + (f'<p><a href="{escape(proven_path(drawn.hash), quote=True)}">'
+           f"{escape(proven_said(drawn.proven))}</a></p>\n" if drawn.proven else "")
+        + f"{near_html}\n</article>"
     )
+
+
+def proven_said(count: int) -> str:
+    """The game page's link to its proven positions (G10)."""
+    return (f"{count} proven position{'' if count == 1 else 's'} to solve: wins the computer "
+            "proved for the side to move")
 
 
 def draw(drawn: Drawn) -> str:

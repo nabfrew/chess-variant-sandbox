@@ -59,6 +59,17 @@ PREFIX = "/picture/game/"
 ROUTE = re.compile(r"^/picture/game/([0-9a-f]{8,64})-([0-9a-f]{16})\.png$")
 """A picture's address, read back into the game's hash and the picture's key."""
 
+PROVEN_PREFIX = "/picture/proven/"
+"""Where a proven position's picture is served (G10): `position_path(digest, id, key)`."""
+
+PROVEN_ROUTE = re.compile(
+    r"^/picture/proven/([0-9a-f]{8,64})/([0-9a-f]{8,64})-([0-9a-f]{16})\.png$")
+"""A position's picture's address, read back into the game's hash, the position's name
+(`puzzles.name`, a hex digest) and the picture's key."""
+
+POSITION_NAME = re.compile(r"^[0-9a-f]{8,64}$")
+"""A position name a picture can be made for: the `puzzles.name` form `PROVEN_ROUTE` reads."""
+
 WIDTH, HEIGHT, TYPE = picture.WIDTH, picture.HEIGHT, picture.TYPE
 
 FONT_DIR = Path(__file__).with_name("fonts")
@@ -119,6 +130,13 @@ def renderer() -> str:
 def alt(name: str) -> str:
     """What a game's picture shows, for a reader who cannot see it (`og:image:alt`)."""
     return f"{name or 'An unnamed game'}: its starting position, on a wooden board"
+
+
+def position_alt(name: str, side: str) -> str:
+    """What a proven position's picture shows (G10), never its answer: the game, whose move
+    it is, and the board."""
+    return (f"A proven position from {name or 'an unnamed game'}: {side} to move and win, "
+            "on a wooden board")
 
 
 # ----------------------------------------------------------------------------- the words
@@ -337,14 +355,20 @@ def _piece(shape: Mapping[str, Any], value: int, x: float, y: float, cell: float
             f'fill="{LIGHT[ink]}">{escape(letter)}</text>')
 
 
-def board(shape: Mapping[str, Any], left: float, top: float, cell: float) -> tuple[str, str]:
+def board(shape: Mapping[str, Any], left: float, top: float, cell: float,
+          flipped: bool = False) -> tuple[str, str]:
     """The board's cells and pieces with the box's top left at (`left`, `top`), and the
-    `<defs>` its drawings need: each drawing once, used by every piece that wears it."""
+    `<defs>` its drawings need: each drawing once, used by every piece that wears it.
+
+    `flipped` turns the board a half turn, the second player at the bottom, as the page
+    draws a proven position for that player to move (`proven.js` `provenBoard`): every cell
+    is a box the half turn takes to another box of the board's extent, on squares and on
+    hexagons alike, and each piece stands upright, as the page's still board leaves it."""
     width, height = int(shape["width"]), int(shape["height"])
     hexed = shape.get("lattice") == "hex"
     absent = set(shape.get("absent") or [])
     walls = set(shape.get("obstacles") or [])
-    x0, y0, _, _ = _box(shape)
+    x0, y0, x1, y1 = _box(shape)
     cells: list[str] = []
     pieces: list[str] = []
     drawings: dict[str, str] = {}
@@ -360,6 +384,8 @@ def board(shape: Mapping[str, Any], left: float, top: float, cell: float) -> tup
             if square in absent:
                 continue
             u, v = cell_place(square, width, height, hexed)
+            if flipped:
+                u, v = x0 + x1 - 1 - u, y0 + y1 - 1 - v
             x, y = left + (u - x0) * cell, top + (v - y0) * cell
             cells.append(_cell(x, y, cell, hexed, f'fill="{shade(file, rank, hexed)}"'))
             if square in walls:
@@ -384,9 +410,14 @@ def _icon_side(cell: float) -> int:
 # --------------------------------------------------------------------------- the picture
 
 
-def svg(name: str, shape: Mapping[str, Any], words: str = "") -> str:
+def svg(name: str, shape: Mapping[str, Any], words: str | Sequence[str] = "",
+        flipped: bool = False) -> str:
     """The whole picture as SVG: the mark and the site's name, the game's name and `words`
-    (its board and pieces, `game.board_words`) on the left, the board on the right."""
+    (its board and pieces, `game.board_words`; or several lines, as a proven position's
+    picture says whose move it is and what to find, G10) on the left, the board on the
+    right, turned a half turn where `flipped`."""
+    under_lines = [words] if isinstance(words, str) else list(words)
+    under_lines = [line for line in under_lines if line]
     x0, y0, x1, y1 = _box(shape)
     span_x, span_y = x1 - x0, y1 - y0
     most_x, most_y = BOARD_MOST[0] - 2 * FRAME, BOARD_MOST[1] - 2 * FRAME
@@ -395,12 +426,13 @@ def svg(name: str, shape: Mapping[str, Any], words: str = "") -> str:
     outer_w, outer_h = inner_w + 2 * FRAME, inner_h + 2 * FRAME
     frame_x = WIDTH - 64 - outer_w
     frame_y = (HEIGHT - outer_h) / 2
-    drawn, defs = board(shape, frame_x + FRAME, frame_y + FRAME, cell)
+    drawn, defs = board(shape, frame_x + FRAME, frame_y + FRAME, cell, flipped)
 
     room = frame_x - GAP - MARGIN
     size, lines = name_lines(name, room)
     leading = size * NAME_LEADING
-    block = MARK + 40 + leading * len(lines) + (24 + LINE_SIZE * 1.3 if words else 0)
+    block = MARK + 40 + leading * len(lines) + (
+        24 + LINE_SIZE * 1.3 * len(under_lines) if under_lines else 0)
     top = (HEIGHT - block) / 2
     art = MARK / 16
     mark = (f'<g transform="translate({MARGIN} {_num(top)}) scale({_num(art)})">'
@@ -415,11 +447,12 @@ def svg(name: str, shape: Mapping[str, Any], words: str = "") -> str:
         for index, line in enumerate(lines)
     )
     under = ""
-    if words:
+    for index, line in enumerate(under_lines):
         y = first + leading * (len(lines) - 1) + size * 0.25 + 24 + LINE_SIZE
-        under = (f'<text x="{MARGIN}" y="{_num(y)}" font-family="{TEXT_FAMILY}" '
-                 f'font-weight="600" font-size="{LINE_SIZE}" fill="{LIGHT["muted"]}">'
-                 f"{escape(words)}</text>")
+        y += LINE_SIZE * 1.3 * index
+        under += (f'<text x="{MARGIN}" y="{_num(y)}" font-family="{TEXT_FAMILY}" '
+                  f'font-weight="600" font-size="{LINE_SIZE}" fill="{LIGHT["muted"]}">'
+                  f"{escape(line)}</text>")
     frame = (f'<rect x="{_num(frame_x)}" y="{_num(frame_y)}" width="{_num(outer_w)}" '
              f'height="{_num(outer_h)}" rx="8" fill="{LIGHT["frame"]}"/>')
     shadow = (f'<rect x="{_num(frame_x)}" y="{_num(frame_y + 6)}" width="{_num(outer_w)}" '
@@ -459,6 +492,17 @@ def file_name(digest: str, picture_key: str) -> str:
 def path(digest: str, picture_key: str) -> str:
     """A game's picture's address on this server."""
     return PREFIX + file_name(digest, picture_key)
+
+
+def position_file_name(digest: str, position: str, picture_key: str) -> str:
+    """A proven position's picture under the pictures' directory: a directory a game, the
+    file named by the position's name and the picture's key (G10)."""
+    return f"proven/{digest}/{position}-{picture_key}.png"
+
+
+def position_path(digest: str, position: str, picture_key: str) -> str:
+    """A proven position's picture's address on this server (G10)."""
+    return f"{PROVEN_PREFIX}{digest}/{position}-{picture_key}.png"
 
 
 _DRAWING = re.compile(

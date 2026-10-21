@@ -115,7 +115,14 @@ from chess_variant_sandbox.web import (
     refreshing,
 )
 from chess_variant_sandbox.web.page import SCRIPTS as PAGE_SCRIPTS
-from chess_variant_sandbox.web.page import front, game_picture, picture, rules_page, shell
+from chess_variant_sandbox.web.page import (
+    front,
+    game_picture,
+    picture,
+    proven_page,
+    rules_page,
+    shell,
+)
 from chess_variant_sandbox.web.page import game as game_drawing
 from chess_variant_sandbox.web.server import (
     BROWSER_PREFIX,
@@ -410,7 +417,15 @@ class SiteApp(App):
             # R9b: one proven position, drawn, and where it has one winning move its moves.
             self._playable(parts[2])
             record, game = self._proven_record(parts[2])
-            return proven.view(record, game.spec, parts[3])
+            drawn = proven.view(record, game.spec, parts[3])
+            # G10: the title the position's own address carries, which the page writes on
+            # the tab; and its picture asked for, so a link copied from a page reached
+            # without loading it names the position's picture by the time it is pasted.
+            held = record.find(parts[3])
+            if held is not None:
+                self._position_picture(parts[2], game, held, library.sides(game))
+                drawn["title"] = proven.position_title(game.name, held)
+            return drawn
         if len(parts) >= 3 and parts[:2] == ("api", "design"):
             # A killed game is no designer's starting point and has no progress page.
             self._playable(parts[-1])
@@ -1160,8 +1175,90 @@ class SiteApp(App):
             found = game_page.drawn(
                 connection, digest, self.known(), self.game, self.near_cache,
                 seo.site_base(), self._near_names, self.pictures.address,
+                lambda digest, game: proven.offered(self.runs_dir, digest, game.spec),
             )
         return None if found is None else game_drawing.draw(found)
+
+    # ------------------------------------------- the proven positions' addresses (G10)
+
+    def _position_picture(
+        self, digest: str, game: library.Game, position: proven.Position,
+        sides: tuple[str, str],
+    ) -> str | None:
+        """A position's own picture where it is made, having asked for it (a lookup)."""
+        return self.pictures.position_address(
+            digest, game, position.id, proven.picture_words(sides, position),
+            lambda: proven.drawing(game.name, game.spec, position, sides),
+        )
+
+    def proven_page(self, digest: str, position_id: str) -> tuple[int, str] | None:
+        """G10: what `/game/<hash>/proven[/<position>]` answers, its status and its page, or
+        `None` for the not-found page.
+
+        The same bytes for everybody: no cookie is read. A position offered is its own page;
+        the list is the list's. A position the record does not offer (never, or no longer:
+        a re-proof that left it out) is the list, drawn with the 404 status and `noindex`,
+        so a crawler drops the address and a person who followed an old link lands among
+        the game's positions. A game with no record, or none the library holds, a killed or
+        a deleted game, is the not-found page.
+        """
+        known = self.known()
+        with self._connection() as connection:
+            doors = game_page.proven_doors(connection, digest, known)
+        if doors is None:
+            return None
+        game, indexable = doors
+        record = proven.load(self.runs_dir, digest, game.spec)
+        if record is None:
+            return None
+        base = seo.site_base()
+        sides = library.sides(game)
+        own = self.pictures.address(digest, game) or ""
+        found = record.find(position_id) if position_id else None
+        if found is not None:
+            mine = self._position_picture(digest, game, found, sides)
+            drawn = proven.position_drawn(
+                record, found, game.name, sides, base=base, indexable=indexable,
+                picture=mine or own,
+                picture_alt=(game_picture.position_alt(
+                    game.name, proven.side_said(sides, found.side))
+                    if mine else game_picture.alt(game.name)),
+            )
+            return 200, proven_page.draw(drawn)
+        status = 404 if position_id else 200
+        drawn = proven.positions_drawn(
+            record, game.name, sides, base=base, indexable=indexable and status == 200,
+            picture=own,
+        )
+        return status, proven_page.draw(drawn)
+
+    def proven_picture(self, digest: str, position_id: str, key: str) -> bytes | None:
+        """G10: a position's picture, or `None` for the 404: a game a visitor cannot open,
+        a position its record does not offer now, or a picture this site has not made."""
+        with self._connection() as connection:
+            doors = game_page.proven_doors(connection, digest, self.known())
+        if doors is None:
+            return None
+        record = proven.load(self.runs_dir, digest, doors[0].spec)
+        if record is None or record.find(position_id) is None:
+            return None
+        return self.pictures.position_served(digest, position_id, key)
+
+    def proven_pages(self) -> tuple[tuple[str, str], ...]:
+        """The proven positions' addresses for the sitemap (G10): for each game it lists, the
+        list and every position offered, each with the day the record was proved."""
+        known = self.known()
+        rows: list[tuple[str, str]] = []
+        for one in self.listed_pages():
+            game = known.get(one.hash)
+            record = None if game is None else proven.load(self.runs_dir, one.hash, game.spec)
+            if record is None or not record.positions:
+                continue
+            day = record.made[:10] if re.match(r"^\d{4}-\d{2}-\d{2}", record.made) else ""
+            rows.append((game_drawing.proven_path(one.hash), day))
+            rows += [(game_drawing.proven_path(one.hash, found.id), day)
+                     for found in record.positions]
+        return tuple(rows)
 
     def game_picture(self, digest: str, key: str) -> bytes | None:
         """G6: a game's link-preview picture, or `None` for the 404: a game a visitor cannot
@@ -1210,7 +1307,7 @@ class SiteApp(App):
 
     def sitemap(self, base: str) -> str:
         """`sitemap.xml`, its addresses written on `base`."""
-        return seo.sitemap(base, self.listed_pages())
+        return seo.sitemap(base, self.listed_pages(), self.proven_pages())
 
     def llms(self, base: str) -> str:
         """`llms.txt` (G8), its addresses written on `base`."""
@@ -3065,15 +3162,21 @@ def site_handler_for(app: SiteApp) -> type[Any]:
             if parsed.path in pages.SCRIPTS:
                 self._script(pages.SCRIPTS[parsed.path])
                 return
-            digest = game_drawing.digest_of(parsed.path) or game_drawing.proven_digest_of(
-                parsed.path
-            )
+            digest = game_drawing.digest_of(parsed.path)
             if digest is not None:
                 self._game_page(digest)
+                return
+            positions = game_drawing.proven_of(parsed.path)
+            if positions is not None:
+                self._proven_page(*positions)
                 return
             shown = game_picture.ROUTE.match(parsed.path)
             if shown is not None:
                 self._game_picture(shown.group(1), shown.group(2))
+                return
+            shown = game_picture.PROVEN_ROUTE.match(parsed.path)
+            if shown is not None:
+                self._proven_picture(shown.group(1), shown.group(2), shown.group(3))
                 return
             if self._front(parsed.path):
                 return
@@ -3252,6 +3355,38 @@ def site_handler_for(app: SiteApp) -> type[Any]:
                 app.usage.leave()
             status = 404 if body is None else 200
             app.usage.record(game_pictures.ROUTE, "", status, "", None, timed.cpu, timed.wall)
+            if body is None:
+                self._lost()
+            else:
+                self._send(200, body, game_picture.TYPE, cache=IMMUTABLE)
+
+        def _proven_page(self, digest: str, position: str) -> None:
+            """A game's proven positions' address, or a position's (G10): drawn on the
+            server, timed and counted as `proven.PAGE_ROUTE`."""
+            timed = usage.Timing(lambda: app.proven_page(digest, position))
+            app.usage.enter()
+            try:
+                found = timed()
+            finally:
+                app.usage.leave()
+            status = 404 if found is None else found[0]
+            app.usage.record(proven.PAGE_ROUTE, "", status, "", None, timed.cpu, timed.wall)
+            if found is None:
+                self._lost()
+            else:
+                self._send(found[0], found[1].encode("utf-8"), "text/html; charset=utf-8")
+
+        def _proven_picture(self, digest: str, position: str, key: str) -> None:
+            """A position's link-preview picture (G10), for a year like a game's."""
+            timed = usage.Timing(lambda: app.proven_picture(digest, position, key))
+            app.usage.enter()
+            try:
+                body = timed()
+            finally:
+                app.usage.leave()
+            status = 404 if body is None else 200
+            app.usage.record(proven.PICTURE_ROUTE, "", status, "", None, timed.cpu,
+                             timed.wall)
             if body is None:
                 self._lost()
             else:

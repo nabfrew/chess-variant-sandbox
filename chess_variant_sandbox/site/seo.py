@@ -13,7 +13,8 @@ are let in. Three things are decided here, each in one place, so they cannot dis
 - **What is listed.** `sitemap` writes the site's fixed public pages (`PAGES`) and every
   game a search engine may index: exactly the games whose own address carries no `noindex`
   (`game_page.listed_pages`, which decides by `game_page.indexable`, the rule the game page
-  draws by).
+  draws by), and those games' proven positions, the list and each position offered (G10,
+  `SiteApp.proven_pages`).
 - **What an assistant is pointed to** (G8, `llms.txt`, after llmstxt.org's proposal): what
   the site is, the rule language as Markdown and as a page, and the games list with every
   game `sitemap` lists. Whether any assistant reads it is unknown; the plan lists it as a
@@ -116,13 +117,19 @@ def robots(base: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def sitemap(base: str, games: Sequence[front.Listed]) -> str:
+def sitemap(base: str, games: Sequence[front.Listed],
+            positions: Sequence[tuple[str, str]] = ()) -> str:
     """`sitemap.xml`: the fixed pages, then each listed game's own address with the day its
-    page last changed, when that is known (the sitemaps.org protocol, 0.9)."""
+    page last changed, when that is known (the sitemaps.org protocol, 0.9), then the proven
+    positions' addresses of those games (G10: `positions`, each a path and the day its
+    record was proved)."""
     rows = [f"<url><loc>{escape(base + path)}</loc></url>" for path in PAGES]
     for game in games:
         day = f"<lastmod>{escape(game.day)}</lastmod>" if game.day else ""
         rows.append(f"<url><loc>{escape(base + front.game_path(game.hash))}</loc>{day}</url>")
+    for path, made in positions:
+        day = f"<lastmod>{escape(made)}</lastmod>" if made else ""
+        rows.append(f"<url><loc>{escape(base + path)}</loc>{day}</url>")
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'

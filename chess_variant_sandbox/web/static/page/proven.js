@@ -58,8 +58,8 @@ async function showProven(hash, id) {
   }
   // A step along the list redraws the view from the list in hand; any other way in asks.
   const same = !!(PROVEN && PROVEN.hash === hash && document.getElementById('provenList'));
-  // The server drew the game's page into the view for a reader without script; it is not
-  // this page, so it goes before the wait rather than under it.
+  // The server drew these positions into the view for a reader without script (G10,
+  // `proven_page.py`); the page draws its own, so that goes before the wait.
   if (!same) { view.innerHTML = ''; pending('Reading the positions…'); }
   const data = same ? PROVEN.data : await provenAsk(hash);
   clearPending();
@@ -67,16 +67,20 @@ async function showProven(hash, id) {
   const at = ids.includes(id) ? id : ids[0] || '';
   PROVEN = { hash, data, id: at, playing: null };
   setTitle(`Proven positions on ${data.name || 'an unnamed game'}`);
-  if (id && at !== id) {
+  // An address naming a position the list does not offer (never, or no longer: G10, the
+  // server answered it 404 with the list) opens at the list's first, and says why.
+  const gone = !!(id && at !== id);
+  if (gone) {
     try { history.replaceState(null, '', provenPath(hash, at)); } catch (error) { /* stays */ }
   }
-  view.innerHTML = provenViewHtml(data);
+  view.innerHTML = provenViewHtml(data, gone);
   wireProvenView();
   if (at) showProvenAt(at);
 }
 
-function provenViewHtml(data) {
+function provenViewHtml(data, gone) {
   const name = esc(data.name || 'an unnamed game');
+  const words = data.words || {};
   const frame = data.positions.length
     ? `<div class="gamePlay"><div class="panel proven-frame" id="provenMount"></div></div>
        <div class="gameSide"><div class="panel proven-list" id="provenList">${provenListHtml()}</div></div>`
@@ -84,6 +88,7 @@ function provenViewHtml(data) {
   return `
     <a class="crumb" id="back" href="/game/${esc(PROVEN.hash)}">&larr; ${name}</a>
     <h2 style="margin:10px 0 0">Proven positions on ${name}${info('provenPositions')}</h2>
+    ${gone ? `<p class="muted small" id="provenGone">${esc(words.gone || '')}</p>` : ''}
     <div class="gameTop provenTop">${frame}</div>
     <details class="muted small" style="margin-top:12px">
       <summary>how these were proved</summary>
@@ -227,6 +232,8 @@ function showProvenAt(id) {
   api('/api/proven/' + PROVEN.hash + '/' + encodeURIComponent(id))
     .then(position => {
       if (!PROVEN || PROVEN.id !== id) return;
+      // G10: the tab says what the position's own address says (`proven.position_title`).
+      if (position.title) setTitle(position.title);
       mount.innerHTML = provenFrameHtml(position);
       wireProvenFrame(position);
       fitProvenStill();
@@ -269,9 +276,20 @@ function provenFrameHtml(position) {
       <button class="quiet" id="provenNext" data-title="the position after this one on the list"
         title="the position after this one on the list">${esc(words.nextShort || 'next')}</button>
       ${play}
+      ${provenCopyHtml(position)}
     </div>
     ${provenLegendHtml(preview)}
     ${find}`;
+}
+
+// G10: the position's own address, to send to somebody: the one copy control the page has
+// (`core.js` `wireCopyLinks`), naming the game and the position, so what it copies is the
+// address the server draws the position at, its canonical. No share prompt, no count.
+function provenCopyHtml(position) {
+  const words = (PROVEN && PROVEN.data.words) || {};
+  return `<button class="quiet" id="provenCopy" data-copy-link="${esc(PROVEN.hash)}"
+    data-copy-position="${esc(position.id)}" title="${esc(words.copyTitle || '')}"
+    >${esc(words.copy || 'copy link')}</button>`;
 }
 
 // The legend line under the still board (S3): every kind of mark it draws, named, as the

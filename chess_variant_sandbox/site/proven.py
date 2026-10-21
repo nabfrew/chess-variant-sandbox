@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -59,9 +60,18 @@ from typing import Any
 from chess_variant_sandbox.puzzles import FORMATS, LOST, OPEN, WON, holding, trivial
 from chess_variant_sandbox.web import card_rules, opponents
 from chess_variant_sandbox.web.library import engine_for
+from chess_variant_sandbox.web.page import game as game_drawing
+from chess_variant_sandbox.web.page import game_picture, proven_page
 
 DIRECTORY = "puzzles"
 """Where the records sit under `runs/`, as R9a writes them."""
+
+PAGE_ROUTE = "GET /game/<hash>/proven"
+"""The positions' addresses' row in `usage_hours` (G10): the list and each position, every
+read a visitor's, since the page reads no cookie."""
+
+PICTURE_ROUTE = "GET /picture/proven/<hash>"
+"""A position's picture's row in `usage_hours` (G10)."""
 
 SOURCE = "puzzle"
 """`matches.source` on a try at converting a proven position (`0037_proven_positions.sql`)."""
@@ -469,6 +479,12 @@ PAGE_WORDS = {
     "found": SOLVED_WORDS[(False, True)],
     "both": SOLVED_WORDS[(True, True)],
     "visit": FOUND_FOR_VISIT,
+    "gone": (
+        "The position that address named is not offered here any more, so the list opens "
+        "at its first."
+    ),
+    "copy": "copy link",
+    "copyTitle": "copy this position's address, to send to somebody",
 }
 """The positions' page's own words (Q993b, `docs/plan-proven.md` §2.2), the server's, so
 the guard test reads them: the view's one primary, which names its result (S6), the quiet
@@ -900,3 +916,152 @@ def seats_for(position: Position) -> list[str]:
     seats = [OPPONENT, OPPONENT]
     seats[position.side] = HUMAN
     return seats
+
+
+# ------------------------------------------------- the positions' own addresses (G10)
+#
+# `docs/plan-growth.md` §2.5: each proven position has an address a crawler can read, a
+# title, a description and a picture of its own, and a control to copy its address. The
+# words say whose move it is and what to find, and never the answer: no move is named, and
+# no count of solvers or name of one is anywhere on the page.
+
+
+def side_said(sides: Sequence[str], side: int) -> str:
+    """The side to move by the game's own name for it, capitalised, else by its place
+    (`proven.js` `provenSide` says the same)."""
+    named = sides[side] if 0 <= side < len(sides) else ""
+    said = named or ("the first player" if side == 0 else "the second player")
+    return said[:1].upper() + said[1:]
+
+
+def position_task(position: Position) -> str:
+    """What there is to do from a position, in three or four words."""
+    return "find the winning move" if position.single else "play the win out"
+
+
+def position_title(name: str, position: Position) -> str:
+    """A position's title, without the site's name (*‹game›, position 3: find the winning
+    move*): the plan's, with the position's place so no two of a game's share one."""
+    return f"{name or 'An unnamed game'}, position {position.number}: {position_task(position)}"
+
+
+def position_description(sides: Sequence[str], position: Position) -> str:
+    """A position's line for a search result and a preview: whose move it is, that the
+    computer proved a win, and what to find. Never the move."""
+    side = side_said(sides, position.side)
+    turns = _turns(position.ends_in)
+    if position.single:
+        return (f"{side} to move, and one move here wins, in {turns} with best play on both "
+                "sides, as the computer proved. Find it in the browser, with no account.")
+    return (f"{side} to move, and the computer proved a win from here in {turns} with best "
+            "play on both sides. Play it out against the strongest computer player.")
+
+
+def picture_words(sides: Sequence[str], position: Position) -> tuple[str, ...]:
+    """What a position's picture says under the game's name: whose move, and what to find."""
+    task = position_task(position)
+    return f"{side_said(sides, position.side)} to move and win", task[:1].upper() + task[1:]
+
+
+def drawing(name: str, spec: dict[str, Any], position: Position, sides: Sequence[str]) -> str:
+    """A position's picture as SVG (`game_picture.svg`): the position itself, the core's
+    replay of the record's prefix (`state_of`) put into the still board's payload
+    (`card_rules.preview`), turned for the second player as the page turns it. Rule 3: the
+    engine says where every piece stands; nothing here moves one."""
+    engine = engine_for(spec)
+    shape = card_rules.preview(engine, state_of(spec, position), spec)
+    return game_picture.svg(name, shape, picture_words(sides, position),
+                            flipped=position.side == 1)
+
+
+def positions_title(name: str) -> str:
+    """The list's title, as `proven.js` names the view."""
+    return f"Proven positions on {name or 'an unnamed game'}"
+
+
+def positions_description(name: str, record: Record) -> str:
+    """The list's line for a search result and a preview."""
+    count = len(record.positions)
+    if not count:
+        return game_drawing.first_sentence(NONE_LEFT)
+    what = ("find the winning move, or play the win out against the computer"
+            if record.singles else "play each win out against the computer")
+    return game_drawing.first_sentence(
+        f"{_plural(count, 'position')} from {name or 'an unnamed game'} that the computer "
+        f"proved won for the side to move: {what}.")
+
+
+def _row_said(sides: Sequence[str], position: Position) -> str:
+    said = f"Position {position.number}: {side_said(sides, position.side)} to move"
+    return said + (f", {SINGLE}" if position.single else "")
+
+
+def positions_drawn(
+    record: Record, name: str, sides: Sequence[str], *, base: str, indexable: bool,
+    picture: str = "", picture_alt: str = "",
+) -> proven_page.Drawn:
+    """What `/game/<hash>/proven` draws: the list, a link a position, by length of win.
+    `picture` is the game's own picture where one is made."""
+    groups: list[proven_page.Group] = []
+    for found in record.positions:
+        row = proven_page.Row(id=found.id, number=found.number,
+                              said=_row_said(sides, found))
+        heading = _heading(found.ends_in)
+        if groups and groups[-1].heading == heading:
+            groups[-1] = proven_page.Group(heading, (*groups[-1].rows, row))
+        else:
+            groups.append(proven_page.Group(heading, (row,)))
+    said = summary(record, None)
+    return proven_page.Drawn(
+        hash=record.game,
+        title=positions_title(name),
+        description=positions_description(name, record),
+        path=game_drawing.proven_path(record.game),
+        indexable=indexable and bool(record.positions),
+        heading=positions_title(name),
+        back=game_drawing.path(record.game),
+        back_said=name or "An unnamed game",
+        said=tuple(line for line in (said["said"], said["none"]) if line),
+        groups=tuple(groups),
+        basis=basis_said(record),
+        base=base,
+        picture=picture,
+        picture_alt=picture_alt or game_picture.alt(name),
+    )
+
+
+def position_drawn(
+    record: Record, position: Position, name: str, sides: Sequence[str], *, base: str,
+    indexable: bool, picture: str = "", picture_alt: str = "",
+) -> proven_page.Drawn:
+    """What `/game/<hash>/proven/<position>` draws: whose move, what to find, the proof's
+    length and basis, and the way back to the list. `picture` is the position's own where
+    one is made, else the game's (with `picture_alt` saying which), else nothing."""
+    side = side_said(sides, position.side)
+    task = (
+        "Only one move here is proved to win: find it. Then play the win out against "
+        "hardest, the strongest computer player."
+        if position.single else
+        "More than one move wins here. Play the win out against hardest, the strongest "
+        "computer player."
+    )
+    return proven_page.Drawn(
+        hash=record.game,
+        title=position_title(name, position),
+        description=position_description(sides, position),
+        path=game_drawing.proven_path(record.game, position.id),
+        indexable=indexable,
+        heading=position_title(name, position)[:1].upper() + position_title(name, position)[1:],
+        back=game_drawing.proven_path(record.game),
+        back_said=positions_title(name),
+        said=(
+            f"{side} to move. The computer proved a win from here in "
+            f"{_turns(position.ends_in)} with best play on both sides.",
+            task,
+        ),
+        basis=basis_said(record),
+        game=f"About {name or 'this game'}, and playing it from the start",
+        base=base,
+        picture=picture,
+        picture_alt=picture_alt,
+    )

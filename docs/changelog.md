@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-21
 
+### Share a proven position
+
+Every proven position has a page of its own with a picture of the position, so a link to it shows the board. A button
+copies the link. The page says whose move it is and what to find, never the move.
+
 ### The rule language on a page of its own
 
 The description of the rule language is now a readable page, with a link on every heading so you can point someone at
