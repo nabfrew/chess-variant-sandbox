@@ -450,6 +450,10 @@ FROZEN: dict[str, tuple[str, str]] = {
     # the queen and bishops immune (`docs/reference/schema-showcase-coverage.md`, *Q798*;
     # `tests/test_showcases_q798.py`). New, from `54a0a193da0f`.
     "archive/circe-mortal-diagonals.json": ("d32ef74e88c0", "273c90637bf038ff"),
+    # Q994p, 2026-10-21: the two best designs of Q994's blind trial, written by a model from
+    # RULES.md alone and joined unchanged (`docs/reference/rules-md-blind-trial.md` §6, §7). New.
+    "archive/the-golem-well.json": ("ad0750e4ec47", "a8fa59329182c00f"),
+    "archive/kraken-ford.json": ("ea249ab8fbfc", "a8451b0cdbc3b454"),
 }
 
 

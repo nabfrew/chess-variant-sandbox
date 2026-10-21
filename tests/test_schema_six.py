@@ -557,8 +557,9 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
     # none of which declared `reach`; 91 since Q962c retired gardner in rounds resting, which
     # declared none either; 94 since Q943c's three speed showcases, of which
     # `watering-hole-by-speed` does, as the watering hole does (`mirror: false`); 95 since
-    # Q798's `circe-mortal-diagonals`, which declares none.
-    assert len(paths) == 95
+    # Q798's `circe-mortal-diagonals`, which declares none; 97 since Q994p's two blind-trial
+    # designs, `the-golem-well` and `kraken-ford`, which declare none either.
+    assert len(paths) == 97
 
     with_reach: dict[str, tuple[frozenset[int], frozenset[int]]] = {}
     for path in paths:

@@ -1,0 +1,322 @@
+{
+  "schema_version": 28,
+  "name": "kraken ford",
+  "description": "A river crosses the middle of a nine-by-nine board, and the only ways over are five fords watched by a kraken that belongs to neither player. Walls stand on b5, d5, f5 and h5; the fords are the squares between them, a5, c5, e5, g5 and i5, and after every move the kraken moves on to the next ford, from i5 back round to a5. It eats any piece on the ford it moves to except a pawn, a king included, so no king may stand on the ford it comes to next. Every piece but a knight crosses only by a ford the kraken is not on, and any but a pawn that stops on a ford is safe only until the kraken comes round; knights jump the river. A pawn on the ford ahead of the kraken holds it in place, and the ford it is held on stays shut. Only the harpooner, a piece of its own, can kill it. A harpooner moves like a rook but captures only by jumping exactly one piece in its line, of either side, and taking the first piece beyond, as the cannon of Chinese chess does, so killing the kraken means lining up a screen on its file at the moment it arrives. The game turns on when to cross and whether to go hunting: a tempo spent lining up the harpooner is a tempo not spent on the other army, but with the kraken dead the river is open to both sides, and whoever killed it wins any game that reaches the move limit or goes a hundred moves without a capture or a promotion. Otherwise it is chess on the wider board, castling, the pawn's double step and en passant included, and checkmate wins.",
+  "board": {
+    "width": 9,
+    "height": 9
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "first_move": true
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    },
+    {
+      "id": "H",
+      "name": "harpooner",
+      "value": 4,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "move"
+        },
+        {
+          "kind": "hop",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    },
+    {
+      "id": "X",
+      "name": "kraken",
+      "value": 4,
+      "captures": [
+        "N",
+        "B",
+        "R",
+        "H",
+        "Q",
+        "K"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2",
+          "i2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "i1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      },
+      {
+        "piece": "H",
+        "squares": [
+          "f1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "H",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "obstacles": {
+      "squares": [
+        "b5",
+        "d5",
+        "f5",
+        "h5"
+      ]
+    },
+    "npcs": [
+      {
+        "piece": "X",
+        "route": [
+          "a5",
+          "c5",
+          "e5",
+          "g5",
+          "i5"
+        ],
+        "bounty": 1,
+        "immune": [
+          "H"
+        ]
+      }
+    ],
+    "scoring": {
+      "count": "points"
+    },
+    "max_plies": 300
+  },
+  "provenance": {
+    "added": "2026-10-21",
+    "origin": "generated",
+    "author": "claude-opus-5-5, from RULES.md alone",
+    "source": "docs/reference/rules-md-blind-trial.md, Q994: a game designed by a model holding only the public RULES.md",
+    "history": "Designed on 2026-10-20 by claude-opus-5-5 (effort high) in Q994's blind trial (first/trial-1), given the public RULES.md and a three-sentence brief asking for a viable, compelling and novel game, and nothing else; valid on its first reply and never edited by hand. Judged 5/5 by the trial's game-designer criteria on one run. Joined the library by Q994p (2026-10-21), pre-registered in the trial record's section 6 before its library runs: viable 4-0 at 0.867 [0.842, 0.888] under v12. The description is rewritten in the house style; the model's own is kept with the trial's transcript under runs/q994-blind-trial/first/trial-1/.",
+    "parents": []
+  }
+}

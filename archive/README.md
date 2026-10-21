@@ -886,6 +886,26 @@ first and are logged in the record, not kept: mortal pawns alone (the queens sti
 the mortal queen alone (the bishops did). `tests/test_showcases_q798.py` holds the rule
 without players. Owes its first `measure`.
 
+## `the-golem-well.json`, `kraken-ford.json` — a model's designs from `RULES.md` alone (Q994, Q994p)
+
+2026-10-21. The two best designs of Q994's blind trial (`docs/reference/rules-md-blind-trial.md`),
+in which `claude-opus-5-5` was given the public `RULES.md` and a three-sentence brief and nothing
+else: the first games in the library designed by a model with no example, no board and no
+computer player to try them on. Neither was edited by hand; only the name, the description
+(rewritten in the house style) and the provenance were written here, all outside the mechanics
+hash. Each joined on the library's own bar, four runs viable under `vote-tie-refuses`, pre-registered
+in the record's §6 before its library runs.
+
+- **The golem well** (`ad0750e4ec47`, trial `fixed/trial-1`): two golems walk the twelve-square
+  ring round a walled 2×2 centre, eating any piece but a king; only a king can kill one, and a
+  king left alone loses. Viable 4-0 at 0.904 [0.883, 0.930] under `v12`.
+- **Kraken ford** (`ea249ab8fbfc`, trial `first/trial-1`): a river with five fords, a kraken
+  stepping from ford to ford and eating anything but a pawn, and a harpooner that captures like
+  a cannon as the only piece that can kill it; the kraken's taker wins a game that runs out of
+  time. Viable 4-0 at 0.867 [0.842, 0.888] under `v12`.
+
+Both use `npcs[].immune`, so `tests/test_schema_ten.py` names them beside `pitchfork`.
+
 ## Out of the Baseline (Q512, 2026-10-19)
 
 Six games left `rulesets/` for here, by the review that settled which games set the scale

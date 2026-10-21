@@ -11076,8 +11076,10 @@ class TestBuildingAGameByHand:
         # `simultaneous` (schema 26, Q918a) joined it; Q918e's showcases take it out (rows 64
         # to 67).
         # `simultaneous` left the set with Q918e's four round showcases (2026-10-15).
+        # `bare_royal` left it on 2026-10-21, when Q994p's `archive/the-golem-well`, a
+        # model's design from RULES.md alone, became the first library spec to use it.
         assert _RULES_KEYS - seen == {
-            "bare_royal", "checkmate", "turn",
+            "checkmate", "turn",
         }, "the rule keys nothing in the library uses have changed"
 
     def test_the_rule_keys_nothing_in_the_library_uses_are_not_refused_either(

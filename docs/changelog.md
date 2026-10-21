@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-21
 
+### Two new games, designed by a model from the rules alone
+
+*The golem well* and *kraken ford* join the library. A model wrote each from the published rules and nothing else; both
+measured well over four runs.
+
 ### The watering hole is back
 
 The watering hole now starts its animals one row back from the hole, which gives the guards time against the stronger

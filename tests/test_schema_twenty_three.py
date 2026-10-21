@@ -465,7 +465,11 @@ class TestTheBumpMovedNothing:
     def test_only_the_showcase_uses_schema_twenty_three(self) -> None:
         assert [
             path for path in FROZEN if _schema_twenty_three_uses(load_spec(ROOT / path))
-        ] == ["archive/wolves-patrol.json", "archive/pitchfork.json"]  # Q876: its pairs
+        ] == [
+            "archive/wolves-patrol.json",
+            "archive/pitchfork.json",  # Q876: its pairs
+            "archive/the-golem-well.json",  # Q994p: two golems on one ring (also_at)
+        ]
 
 
 # Frozen from the schema 23 core, 2026-10-11 (no earlier core can play the game). Rungs

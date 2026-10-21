@@ -1,0 +1,275 @@
+{
+  "schema_version": 28,
+  "name": "the golem well",
+  "description": "Two golems that belong to neither player walk a ring around a stone well in the middle of the board, and every piece that stands in their way is eaten, whoever owns it. The four centre squares are stone: no piece may stand on them or slide through them, though a knight may jump them. The golems circle the twelve squares around the stone, starting on opposite sides of the ring, and each steps one square on after every move. A golem eats any pawn or piece on the square it steps to except a king: a king in its path holds it where it is, and the other golem waits behind. Only a king can take a golem. The ring runs along the third and sixth ranks and the c- and f-files, the very squares pieces develop to, so the middle of the board can only be crossed on a clock. A piece that stops on the ring is safe until a golem comes round, and the pawns of the four central files have to walk into it; the d- and e-pawns then meet the stone and go no further except by capturing. So the game keeps asking when to cross: dash between the golems, go round by the edge files, or march your king out to hold a golem still or kill it, which opens the centre to both armies and leaves your king in the open. Pawns step one square at a time, there is no castling, and the second army is the first turned half a turn, so each king faces the other's queen. Checkmate wins, and so does stripping the other side down to its king, which is how most games between the strongest computer players end. A game that reaches its move limit, or goes a hundred moves without a capture or a promotion, goes to the side with more material.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    },
+    {
+      "id": "G",
+      "name": "golem",
+      "value": 4,
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q"
+      ],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "orientation": "rotate",
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "bare_royal": "loss",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "obstacles": {
+      "squares": [
+        "d4",
+        "e4",
+        "d5",
+        "e5"
+      ]
+    },
+    "npcs": [
+      {
+        "piece": "G",
+        "route": [
+          "c3",
+          "d3",
+          "e3",
+          "f3",
+          "f4",
+          "f5",
+          "f6",
+          "e6",
+          "d6",
+          "c6",
+          "c5",
+          "c4"
+        ],
+        "also_at": [
+          "f6"
+        ],
+        "immune": [
+          "K"
+        ]
+      }
+    ],
+    "scoring": {
+      "count": "material"
+    },
+    "max_plies": 300,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "added": "2026-10-21",
+    "origin": "generated",
+    "author": "claude-opus-5-5, from RULES.md alone",
+    "source": "docs/reference/rules-md-blind-trial.md, Q994: a game designed by a model holding only the public RULES.md",
+    "history": "Designed on 2026-10-20 by claude-opus-5-5 (effort high) in Q994's blind trial (fixed/trial-1), given the public RULES.md and a three-sentence brief asking for a viable, compelling and novel game, and nothing else; valid on its first reply and never edited by hand. Judged 5/5 by the trial's game-designer criteria on one run. Joined the library by Q994p (2026-10-21), pre-registered in the trial record's section 6 before its library runs: viable 4-0 at 0.904 [0.883, 0.930] under v12. The description is rewritten in the house style; the model's own is kept with the trial's transcript under runs/q994-blind-trial/fixed/trial-1/.",
+    "parents": []
+  }
+}
