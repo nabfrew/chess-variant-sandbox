@@ -6549,7 +6549,11 @@ class TestWhatReachesThePage:
         # the local application's constant sentence, the list redrawn (`provenListHtml`) and
         # the frame drawn, emptied, or a constant *Drawing the position…* (`provenFrameHtml`).
         # Every name, side, move text and server sentence through `esc`; the rest numbers.
-        assert len(sites) == 143
+        # 147 since Q995c: *find a rule* redraws the menu's options (`ruleOptionsHtml`) and
+        # the line beside it (`ruleFoundHtml`) as the box is typed in, the chosen rule's
+        # sentence and count (`ruleChosenHtml`), and a save under a borrowed name asks for
+        # one (`nameAskHtml`). Every title, sentence and name through `esc`; the rest numbers.
+        assert len(sites) == 147
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")

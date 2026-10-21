@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-21
 
+### Every rule easy to find in the designer
+
+Each piece's card now says how it takes its turns: its speed, what it beats and whether it is a spy in a game played in
+rounds, and how long it rests in any game. You can find any rule by typing a word such as rounds, atomic or walls.
+
 ### Proven positions for more games, kept up to date
 
 When a game joins the library, its proven positions are now found and proved by themselves. Makruk offers its first,

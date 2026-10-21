@@ -562,3 +562,259 @@ class TestNoMenuOffersARefusedDefault:
                 found[dotted.replace(".[]", "[]")] = [o["value"] for o in menu["options"]]
         for path in cards.TRUE_ONLY:
             assert found[path] == [True], (path, found.get(path))
+
+
+# ------------------------------------------------------------------ Q995c: fixes 5, 6, 8 and 9
+
+
+def _template(key: str) -> dict[str, Any]:
+    return copy.deepcopy(next(t["spec"] for t in designing.templates() if t["key"] == key))
+
+
+def _skirmish_in_rounds() -> dict[str, Any]:
+    made = designing.take_turns(_template("skirmish"), "rounds")["draft"]
+    assert made is not None
+    return copy.deepcopy(made)
+
+
+def _draw(spec: dict[str, Any], expression: str, extra: str = "") -> Any:
+    return _run_page(_kit_setup() + f"DRAFT = {json.dumps(spec)};" + _CAPTURE_FORM + extra,
+                     expression)
+
+
+def _decode(text: str) -> str:
+    return (text.replace("&quot;", '"').replace("&lt;", "<").replace("&gt;", ">")
+            .replace("&#39;", "'").replace("&amp;", "&"))
+
+
+def _drawn_paths(html: str, root: str) -> list[str]:
+    """The top key of every control drawn for `root`, once per control: a field, or the
+    *add* button of a part that holds nothing yet."""
+    found = re.findall(r'data-croot="' + re.escape(root) + r'" data-cpath="([^"]*)"', html)
+    found += re.findall(r'data-cadd="([^"]*)" data-croot-add="' + re.escape(root) + '"', html)
+    return [json.loads(_decode(path))[0] for path in found]
+
+
+def _outside_folds(html: str) -> str:
+    """The card as it stands closed: every `<details>` taken out."""
+    return re.sub(r"<details\b.*?</details>", "", html, flags=re.S)
+
+
+def _visible(html: str) -> str:
+    return re.sub(r"\s+", " ", _decode(re.sub(r"<[^>]+>", " ", html)))
+
+
+class TestRoundsOnThePieceCard:
+    """Fix 5 (F5). Speed, *beats* and the spy were the fourth to sixth of seven fields in a
+    fold at the foot of each piece card, and drawn in games that refuse them."""
+
+    def test_in_rounds_speed_is_set_without_opening_a_fold(self) -> None:
+        card = _draw(_skirmish_in_rounds(), "pieceEditor(DRAFT.pieces[0], 0)")
+        closed = _drawn_paths(_outside_folds(card), "piece.0")
+        for key in (*cards.PIECE_ROW["rounds"], *cards.PIECE_ROW["always"]):
+            assert key in closed, (key, closed)
+        assert 'placeholder="0, the slowest"' in card
+
+    @pytest.mark.parametrize("rounds", [False, True])
+    def test_every_field_is_drawn_once(self, rounds: bool) -> None:
+        spec = _skirmish_in_rounds() if rounds else _template("skirmish")
+        card = _draw(spec, "pieceEditor(DRAFT.pieces[0], 0)")
+        drawn = _drawn_paths(card, "piece.0")
+        assert len(drawn) == len(set(drawn)), drawn
+        every = {field["key"] for field in cards.card_model()["piece"]}
+        hidden = set() if rounds else set(cards.PIECE_ROW["rounds"])
+        assert set(drawn) == every - hidden, (set(drawn), every - hidden)
+
+    def test_out_of_rounds_the_three_fold_behind_one_line(self) -> None:
+        card = _draw(_template("skirmish"), "pieceEditor(DRAFT.pieces[0], 0)")
+        drawn = _drawn_paths(card, "piece.0")
+        for key in cards.PIECE_ROW["rounds"]:
+            assert key not in drawn, key
+        assert "rest" in _drawn_paths(_outside_folds(card), "piece.0")
+        said = _visible(card)
+        assert "come with playing in rounds" in said, said
+        assert "how the players take turns" in said
+        assert "data-toturns" in card
+
+    def test_a_speed_already_written_stays_in_sight(self) -> None:
+        spec = _template("skirmish")
+        spec["pieces"][0]["speed"] = 2
+        card = _draw(spec, "pieceEditor(DRAFT.pieces[0], 0)")
+        assert "speed" in _drawn_paths(_outside_folds(card), "piece.0")
+
+    def test_a_set_speed_shows_on_the_head_and_in_the_tray(self) -> None:
+        spec = _skirmish_in_rounds()
+        spec["pieces"][0]["speed"] = 2
+        head, tray, picker = _draw(
+            spec, "[pieceEditor(DRAFT.pieces[0], 0).split('data-uploads')[0],"
+                  " paletteHtml(), pieceTrayHtml()]")
+        for drawn in (head, tray, picker):
+            assert "speed 2" in _decode(drawn), drawn
+        plain = _draw(_skirmish_in_rounds(), "paletteHtml()")
+        assert "speed" not in plain
+
+    def test_the_row_agrees_with_the_validator(self) -> None:
+        """A `rounds` key is refused in a game not in rounds and taken in one; an `always`
+        key is taken in both."""
+        values = {"speed": 1, "spy": True, "rest": 1, "beats": ["P"]}
+        for key in (*cards.PIECE_ROW["rounds"], *cards.PIECE_ROW["always"]):
+            for rounds in (False, True):
+                # Chess's first piece: two kinds of piece, so a speed of 1 is a rank above
+                # the rest, and one no promotion makes, so it may be a spy.
+                spec = _in_rounds() if rounds else copy.deepcopy(CHESS)
+                spec["pieces"][0][key] = values[key]
+                problems = _problems(spec)
+                if key in cards.PIECE_ROW["rounds"] and not rounds:
+                    assert any(key in line for line in problems), (key, problems)
+                else:
+                    assert problems == [], (key, rounds, problems)
+
+
+class TestFindARuleByTyping:
+    """Fix 6 (F6). *Add a rule* was a long menu with no search, each name cut off by its
+    library count."""
+
+    def test_every_other_name_belongs_to_a_rule(self) -> None:
+        keys = {field["key"] for field in cards.card_model()["rules"]}
+        assert set(cards.RULE_ALSO_CALLED) <= keys, set(cards.RULE_ALSO_CALLED) - keys
+
+    @pytest.mark.parametrize(("word", "key"), [
+        ("rounds", "simultaneous"), ("atomic", "explode_on_capture"),
+        ("three-check", "check_limit"), ("circe", "strike"), ("walls", "obstacles"),
+        ("crazyhouse", "drops"), ("Wild", "npcs"),
+    ])
+    def test_a_word_finds_its_rule(self, word: str, key: str) -> None:
+        found = _draw(_template("kingly"), "ruleOptionsHtml()",
+                      f"RULE_FIND = {json.dumps(word)};")
+        offered = re.findall(r'<option value="([a-z_]+)"', found)
+        assert key in offered, (word, offered)
+        every = _draw(_template("kingly"), "ruleOptionsHtml()")
+        assert len(offered) < len(re.findall(r'<option value="([a-z_]+)"', every))
+
+    def test_one_match_is_chosen(self) -> None:
+        found = _draw(_template("kingly"), "ruleOptionsHtml()", "RULE_FIND = 'atomic';")
+        assert re.search(r'<option value="explode_on_capture"[^>]*selected', found), found
+
+    def test_nothing_found_says_so(self) -> None:
+        said = _draw(_template("kingly"), "ruleFoundHtml()", "RULE_FIND = 'zzzz';")
+        assert "No rule" in _visible(said), said
+
+    def test_a_refused_match_says_where_it_is_chosen(self) -> None:
+        said = _draw(CHESS, "ruleFoundHtml()",
+                     "RULE_FIND = 'rounds'; RULE_REFUSED = { simultaneous: ['a reason.'] };")
+        words = _visible(said)
+        assert "how the players take turns" in words, words
+        assert "data-toturns" in said
+
+    def test_a_match_already_in_the_game_says_so(self) -> None:
+        said = _draw(_skirmish_in_rounds(), "ruleFoundHtml()", "RULE_FIND = 'rounds';")
+        assert "already in this game" in _visible(said), said
+
+    def test_the_library_count_moves_under_the_choice(self) -> None:
+        menu = _draw(_template("kingly"), "ruleMenuHtml()")
+        assert "in the library)" not in menu
+        assert "find one: rounds" in menu
+        chosen = _draw(_template("kingly"), "ruleChosenHtml('drops')")
+        assert "in the library" in _visible(chosen), chosen
+
+
+class TestOnlyAHopsFieldsOnAHop:
+    """Fix 8 (F8). *More about this move* offered a hop's two fields on a leap or a slide."""
+
+    def _move(self, move: dict[str, Any]) -> list[str]:
+        spec = _template("skirmish")
+        spec["pieces"][0]["moves"] = [move]
+        drawn = _draw(spec, "moveEditor(DRAFT.pieces[0].moves[0], 0, 0)")
+        return _drawn_paths(drawn, "move.0.0")
+
+    def test_a_leap_has_no_hop_fields(self) -> None:
+        drawn = self._move({"kind": "leap", "vectors": [[0, 1]]})
+        for key in cards.MOVE_KIND_ONLY:
+            assert key not in drawn, (key, drawn)
+        assert "condition" in drawn
+
+    def test_a_hop_has_them(self) -> None:
+        drawn = self._move({"kind": "hop", "vectors": [[0, 1]]})
+        for key in cards.MOVE_KIND_ONLY:
+            assert key in drawn, (key, drawn)
+
+    def test_one_already_written_stays(self) -> None:
+        drawn = self._move({"kind": "slide", "vectors": [[0, 1]], "screen": "own"})
+        assert "screen" in drawn and "screen_range" not in drawn, drawn
+
+    @pytest.mark.parametrize("key", sorted(cards.MOVE_KIND_ONLY))
+    def test_the_validator_refuses_each_on_every_other_kind(self, key: str) -> None:
+        value = {"screen": "own", "screen_range": 1}[key]
+        for kind in schema.MOVE_KINDS:
+            spec = _template("skirmish")
+            spec["pieces"][0]["moves"][0]["kind"] = kind
+            base = _problems(spec)
+            spec["pieces"][0]["moves"][0][key] = value
+            added = [line for line in _problems(spec) if line not in base]
+            if kind in cards.MOVE_KIND_ONLY[key]:
+                assert not any(key in line for line in added), (kind, added)
+            else:
+                assert any(key in line for line in added), (kind, added)
+
+
+class TestPolish:
+    """Fix 9 (F7): a bare value in a menu, and a save under a template's name."""
+
+    def test_each_bare_value_reads_as_a_choice(self) -> None:
+        menus = {"rules." + ".".join(map(str, path)): menu
+                 for path, menu in _menus(cards.card_model()["rules"])}
+        for (path, value), (label, says) in cards.OPTION_WORDS.items():
+            option = next(o for o in menus[path]["options"] if o["value"] == value)
+            assert (option["label"], option["says"]) == (label, says)
+        for bare in ("initiative", "impossible", "own", "collision", "score"):
+            labels = [o["label"] for menu in menus.values() for o in menu["options"]
+                      if o["value"] == bare]
+            assert labels and bare not in labels, (bare, labels)
+
+    def test_the_words_are_a_visitors(self) -> None:
+        import site_words
+
+        for (path, _), (label, says) in cards.OPTION_WORDS.items():
+            for text in (label, says):
+                assert not site_words.hits(text, tuple(site_words.PHRASES)), (path, text)
+                assert not re.search(r"\b[a-z]+_[a-z_]+\b", text), (path, text)
+
+    _SAVING = """
+      DESIGN_KIT.templates = TEMPLATES;
+      let ASKED = 0;
+      api = () => { ASKED += 1; return new Promise(() => {}); };
+    """
+
+    def _saving(self, name: str | None, then: str) -> Any:
+        spec = _template("skirmish")
+        if name is not None:
+            spec["name"] = name
+        setup = f"const TEMPLATES = {json.dumps(designing.templates())};" + self._SAVING
+        return _draw(spec, then, setup)
+
+    def test_a_save_under_a_templates_name_asks_for_one(self) -> None:
+        asked, saved = self._saving(None, "(saveDraft(), [ASKED, DRAFT_SAVED])")
+        assert asked == 0
+        assert "the name of the template it started from" in _visible(saved), saved
+        assert 'id="dSaveName"' in saved
+
+    def test_a_name_of_its_own_saves_at_once(self) -> None:
+        asked, _ = self._saving("a game of my own", "(saveDraft(), [ASKED, DRAFT_SAVED])")
+        assert asked == 1
+
+    def test_keeping_the_name_saves(self) -> None:
+        asked = self._saving(None, "(saveDraft(), keepNameAndSave(), ASKED)")
+        assert asked == 1
+
+    def test_a_copy_saved_under_its_games_name_asks(self) -> None:
+        """The game a copy came from is the commonest clash: a copy of chess named back
+        *chess*. Once saved under a name, the name is the draft's own."""
+        whose = self._saving(
+            "Chess", "(LIBRARY = [{ name: 'chess', hash: 'aaaa' }], DRAFT_FROM = 'aaaa',"
+                     " [borrowedName(), (NAME_KEPT = 'chess', borrowedName())])")
+        assert whose == ["game", ""]
+
+    def test_a_new_name_is_written_then_saved(self) -> None:
+        asked, name = self._saving(
+            None, "(saveDraft(), saveUnderName('river crossing'), [ASKED, DRAFT.name])")
+        assert (asked, name) == (1, "river crossing")

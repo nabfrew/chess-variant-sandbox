@@ -118,6 +118,111 @@ TRUE_ONLY = frozenset({
     "rules.contacts.links[].own",
 })
 
+# The piece card's row of turn-taking fields (Q995c, fix 5 of `designer-coverage.md`). The
+# three a game in rounds reads were the fourth to sixth of seven fields in *more about this
+# piece*, and drawn in games that refuse them (F5). The row shows them, visible, while the
+# draft is in rounds; out of rounds they fold behind one line that leads to *how the players
+# take turns*. Rest (schema 29) is a piece's in any game, so it is in the row always. The
+# page reads which is which from here, and `tests/test_designer_coverage.py` holds each to
+# the validator: every `rounds` key is refused in a game not in rounds, and `always` is not.
+PIECE_ROW: dict[str, tuple[str, ...]] = {
+    "rounds": ("speed", "beats", "spy"),
+    "always": ("rest",),
+}
+
+# Fields of a way of moving that only one kind of move reads (Q995c, fix 8, F8). The page
+# draws them on a move of that kind, and on any other only while they hold something, so a
+# value already written stays in sight beside the validator's refusal of it. Held to the
+# validator by `tests/test_designer_coverage.py`: each is refused on every other kind.
+MOVE_KIND_ONLY: dict[str, tuple[str, ...]] = {
+    "screen_range": ("hop",),
+    "screen": ("hop",),
+}
+
+# Other names a rule goes by, for *find a rule* (Q995c, fix 6, F6): the words a player
+# brings from the games that made a rule famous, which the rule's title and sentence don't
+# use. A rule's own title and sentence are searched too, so these are only what those miss.
+# They belong beside the titles in `spec/describe.RULE_WORDS`; they are here while another
+# task holds `spec/`.
+RULE_ALSO_CALLED: dict[str, tuple[str, ...]] = {
+    "simultaneous": ("rounds", "simultaneous", "same time", "secret moves"),
+    "explode_on_capture": ("atomic", "explosion", "blast"),
+    "check_limit": ("three-check", "three check", "3-check", "checks"),
+    "strike": ("circe", "rebirth", "reborn", "demote", "transform"),
+    "obstacles": ("walls", "blocked squares", "holes", "rocks"),
+    "drops": ("crazyhouse", "hand", "drop", "shogi"),
+    "wrap": ("cylinder", "torus", "wraparound", "wrap around"),
+    "reach": ("king of the hill", "race", "goal", "target square"),
+    "extinction": ("extinction", "run out"),
+    "npcs": ("wild", "neutral", "monster", "non-player"),
+    "turn": ("double move", "marseillais", "progressive", "several moves", "two moves"),
+    "castling": ("castle",),
+    "en_passant": ("en passant",),
+    "must_capture": ("antichess", "losing chess", "giveaway", "forced capture", "suicide"),
+    "territory": ("territory", "claim", "paint"),
+    "portals": ("teleport", "tunnel", "gate"),
+    "forbid_check": ("no check",),
+    "checkmate": ("losers", "misere", "selfmate"),
+    "contacts": ("merge", "combine", "meet", "join"),
+    "promote_on_entry": ("promotion zone", "drop zone"),
+    "repetition_draw": ("threefold", "repetition"),
+    "no_progress_draw": ("fifty-move", "fifty move", "50 move", "stall"),
+    "max_plies": ("move limit", "length", "turn limit"),
+    "royal_facing": ("flying general", "kings facing", "facing"),
+    "bare_royal": ("bare king",),
+    "scoring": ("points", "timeout", "score", "material"),
+}
+
+# A sentence for each value a menu showed bare (Q995c, fix 9, F7): *initiative*, *impossible*,
+# *own*, *collision* and *score* were the schema's spellings, explained only in the paragraph
+# under the menu. Each option now has a label that reads as a choice, and the sentence the
+# win menu's options carry. Keyed by the field's dotted path and the value. These belong in
+# `spec/plain.FIELD_WORDS` as per-option words; they are here while another task holds
+# `spec/`.
+OPTION_WORDS: dict[tuple[str, Any], tuple[str, str]] = {
+    ("rules.simultaneous.tie", "initiative"): (
+        "the player with the initiative",
+        "One player holds the initiative, the second player at the start. A tie goes to "
+        "that player's piece, and the initiative passes to the other.",
+    ),
+    ("rules.simultaneous.tie", "impossible"): (
+        "it can't happen here",
+        "A promise, checked with the rest of the game, that no two pieces that can meet ever "
+        "tie, because the two armies are different pieces in a ring of who beats whom.",
+    ),
+    ("rules.simultaneous.swap", "collision"): (
+        "they meet, as on one square",
+        "Two pieces that each move onto the other's square meet as if they had moved onto "
+        "the same one, and who each beats decides.",
+    ),
+    ("rules.simultaneous.both", "score"): (
+        "the scores decide it",
+        "The player ahead by the rule 'who wins when a clock runs out' wins it, and equal "
+        "scores draw.",
+    ),
+    ("rules.extinction.per_type", True): (
+        "yes",
+        "Each listed piece is counted on its own, so a player loses when any one kind runs "
+        "out, as in Extinction chess.",
+    ),
+    ("rules.extinction.per_type", False): (
+        "no",
+        "The listed pieces are counted together, the usual choice.",
+    ),
+    ("rules.extinction.per_type", "own"): (
+        "yes, for the kinds a player starts with",
+        "Each listed piece is counted on its own, but only against a player who starts with "
+        "it, for two armies made of different pieces.",
+    ),
+}
+
+# What an empty number box means, said in the box (Q995c, fix 5, F5): an empty speed box
+# could be read as 0 or as *not set*, and the two are the same thing.
+PLACEHOLDERS: dict[str, str] = {
+    "pieces[].speed": "0, the slowest",
+    "pieces[].rest": "never",
+}
+
 _SQUARES_SUFFIX = "Algebraic squares such as a1 or e4."
 _MENU_LIMIT = 40
 _PLAYER_LABELS = {"0": "first player", "1": "second player"}
@@ -144,6 +249,9 @@ def card_model(corpus: Iterable[dict[str, Any]] = ()) -> dict[str, Any]:
         "ruleCounts": {key: counts.get(key, 0) for key in order},
         "rare": [key for key in order if not counts.get(key, 0)],
         "fixed": list(rules["required"]),
+        "pieceRow": {kind: list(keys) for kind, keys in PIECE_ROW.items()},
+        "moveKindOnly": {key: list(kinds) for key, kinds in MOVE_KIND_ONLY.items()},
+        "alsoCalled": {key: list(names) for key, names in RULE_ALSO_CALLED.items()},
     }
 
 
@@ -269,7 +377,7 @@ def field_for(node: dict[str, Any], path: str, key: str, required: bool) -> dict
     if "anyOf" in node:
         options = _finite(node["anyOf"])
         if options is not None:
-            return {**base, "control": "menu", "options": options}
+            return {**base, "control": "menu", "options": _worded(path, options)}
         return {**base, "control": "either", "branches": [
             {"label": _branch_label(branch), "field": field_for(branch, path, key, True)}
             for branch in node["anyOf"]
@@ -278,7 +386,7 @@ def field_for(node: dict[str, Any], path: str, key: str, required: bool) -> dict
     kind = node.get("type")
     if "enum" in node:
         return {**base, "control": "menu",
-                "options": _options(node["enum"], node.get("description", ""))}
+                "options": _worded(path, _options(node["enum"], node.get("description", "")))}
     if "const" in node:
         return {**base, "control": "menu", "options": _options([node["const"]], "")}
     if kind == "boolean":
@@ -288,7 +396,8 @@ def field_for(node: dict[str, Any], path: str, key: str, required: bool) -> dict
         return {**base, "control": "rank"}
     if kind in ("integer", "number"):
         return {**base, "control": "int" if kind == "integer" else "number",
-                **_bounds(node)}
+                **_bounds(node),
+                **({"placeholder": PLACEHOLDERS[path]} if path in PLACEHOLDERS else {})}
     if kind == "string":
         if path in PIECE_PATHS:
             return {**base, "control": "piece"}
@@ -338,6 +447,15 @@ def option_sentences(description: str, values: list[Any]) -> dict[str, str]:
         end = marks[index + 1].start() if index + 1 < len(marks) else len(description)
         out[mark.group(1)] = description[mark.end():end].strip()
     return out
+
+
+def _worded(path: str, options: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each option `OPTION_WORDS` has words for, labelled and said in them."""
+    for option in options:
+        words = OPTION_WORDS.get((path, option["value"]))
+        if words:
+            option["label"], option["says"] = words
+    return options
 
 
 def _options(values: list[Any], description: str) -> list[dict[str, Any]]:

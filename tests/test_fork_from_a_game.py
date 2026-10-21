@@ -168,6 +168,9 @@ class TestTheSave:
         press = (
             # The harness's window draws nothing, and a save's answer asks how it is drawn.
             "window.getComputedStyle = () => ({ position: 'static' });"
+            # The default draft is the first template, still under its name, and a save
+            # under a template's name asks for one of its own first (Q995c).
+            "DRAFT.name = 'a game of my own';"
             "DRAFT_FROM = '';"
             "DRAFT.provenance = { parents: ['ffffffffffff'], author: 'me' };"
             "saveDraft();"

@@ -1406,6 +1406,31 @@ RULES = """
   .turnWay .cardSays { display: block; }
   .turnSaid { margin: 4px 0 0; }
   .turnSaid button { margin-top: 6px; }
+  /* How a piece takes its turns (Q995c, fix 5): a row on the piece card, under its moves,
+     separated by a rule rather than a border (no panel inside a panel). Each control keeps
+     its label; what each does is one fold under the row. */
+  .pieceTurns { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .pieceTurnsHead { color: var(--muted); margin-bottom: 4px; }
+  .pieceTurnsRow { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: flex-start; }
+  .pieceTurnsField { flex: 1 1 120px; min-width: 0; }
+  /* A list of pieces (who it beats) takes the row's whole width, under the boxes. */
+  .pieceTurnsField:has(.listControl) { flex-basis: 100%; order: 1; }
+  .pieceTurnsField .field { margin-bottom: 4px; }
+  .pieceTurnsSays ul { margin: 4px 0 0; padding-left: 16px; display: grid; gap: 4px; }
+  .roundsLine { margin-top: 4px; }
+  .roundsLine button.quiet, #dRuleFound button.quiet { padding: 0; min-height: 0;
+    font-size: inherit; vertical-align: baseline; }
+  .pieceSpeed { margin-top: 20px; white-space: nowrap; }
+  /* A set speed in the tray: the number in a corner of the piece's button, in ink. */
+  .palette button { position: relative; }
+  .traySpeed { position: absolute; right: 2px; bottom: 0; font-size: 10px; line-height: 1;
+               color: var(--ink); font-weight: 600; }
+  /* Find a rule by typing (fix 6): the box above the menu, and what it found under it. */
+  .ruleFind input[type="search"] { margin-bottom: 4px; }
+  #dRuleFound { display: grid; gap: 4px; margin-bottom: 4px; }
+  #dAddRuleSays .cardSays { margin-top: 0; }
+  /* A save under a borrowed name asks for one of its own (fix 9). */
+  .nameAsk { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
   @media (max-width: 720px) {
     .paletteList li { grid-template-columns: auto 1fr; }
     .paletteGames { grid-column: 2; }

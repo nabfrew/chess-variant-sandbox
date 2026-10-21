@@ -553,7 +553,8 @@ class TestARuleIsOfferedInWords:
         html = _run_page(_kit_setup() + f"DRAFT = {json.dumps(spec)};", "ruleMenuHtml()")
         for key in ("npcs", "territory", "wrap", "strike", "turn", "scoring"):
             title, says = describe.RULE_WORDS[key]
-            assert f">{_escaped(title)} (" in html, key
+            # The title alone: the library's count is said under a chosen rule (Q995c).
+            assert f">{_escaped(title)}</option>" in html, key
             assert _escaped(says) in html, key
 
     def test_every_rule_reaches_the_menu_or_a_card_by_its_title(self) -> None:

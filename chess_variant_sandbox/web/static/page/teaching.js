@@ -223,15 +223,28 @@ function paletteHtml() {
       const icon = ((preview.icons || [])[index] || [])[player];
       const on = PLACING && !PLACING.erase && PLACING.piece === index && PLACING.player === player;
       return `<button data-placing="${index}.${player}" draggable="true" class="${on ? 'on' : ''}"
-        title="${esc(piece.name || piece.id || '')}">${icon
+        title="${esc(trayTitle(piece))}">${icon
           ? `<img src="${esc(icon.href)}" alt=""${icon.rotate ? ' style="transform:rotate(180deg)"' : ''}>`
-          : esc(piece.id || '?')}</button>`;
+          : esc(piece.id || '?')}${traySpeedHtml(piece)}</button>`;
     }).join('')}
   </div>`).join('');
   return rows + `<div class="row small palette">
     <button data-placing="erase" class="${PLACING && PLACING.erase ? 'on' : ''}"
       title="click a square to lift what is standing on it; on a portal, it takes off the whole pair">take off</button>
   </div>${portalRowHtml()}${wildRowHtml()}`;
+}
+
+// A tray button's name, and its speed where one is set (Q995c, fix 5): in a game in rounds
+// the speed decides which of two moves is made first, and it showed only in a fold.
+function trayTitle(piece) {
+  const speed = pieceSpeedWords(piece);
+  return (piece.name || piece.id || '') + (speed ? `, ${speed}` : '');
+}
+
+function traySpeedHtml(piece) {
+  const speed = pieceSpeedWords(piece);
+  return speed ? `<span class="traySpeed" aria-hidden="true">${esc(String(piece.speed))}</span>`
+    : '';
 }
 
 // The same strip, for the modes that ask about one piece rather than put pieces down:
@@ -244,9 +257,9 @@ function pieceTrayHtml() {
       if (isPortalPiece(index)) return '';
       const icon = ((preview.icons || [])[index] || [])[0];
       return `<button data-pick="${index}" class="${index === DRAFT_PIECE ? 'on' : ''}"
-        title="${esc(piece.name || piece.id || '')}">${icon
+        title="${esc(trayTitle(piece))}">${icon
           ? `<img src="${esc(icon.href)}" alt=""${icon.rotate ? ' style="transform:rotate(180deg)"' : ''}>`
-          : esc(piece.id || '?')}</button>`;
+          : esc(piece.id || '?')}${traySpeedHtml(piece)}</button>`;
     }).join('')}
   </div>`;
 }

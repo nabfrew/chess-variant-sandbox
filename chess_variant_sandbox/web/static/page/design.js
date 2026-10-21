@@ -895,6 +895,8 @@ function pieceEditor(piece, index) {
       <label class="pick" style="margin-top:14px"><input type="checkbox" data-field="royal"
         data-index="${index}"${piece.royal ? ' checked' : ''}> royal${
         info('royal')}</label>
+      <span class="muted small pieceSpeed" data-speedof="${index}">${
+        esc(pieceSpeedWords(piece))}</span>
     </div>
     <div class="row small" style="margin-top:6px; gap:8px">
       <span data-uploads="${index}" style="display:contents">${uploadButtonsHtml(index)}</span>
@@ -909,7 +911,9 @@ function pieceEditor(piece, index) {
         <button data-addmove="${index}">add a way of moving</button>
         <button data-drop="${index}" title="remove this piece from the game">remove piece</button>
       </div>
-      ${extrasHtml('piece.' + index, piece, 'more about this piece')}
+      ${pieceTurnsHtml(piece, index)}
+      ${extrasHtml('piece.' + index, piece, 'more about this piece',
+                   new Set(pieceRowKeys().rounds.concat(pieceRowKeys().always)))}
     </div>
   </div>`;
 }
@@ -1212,7 +1216,8 @@ function moveEditor(move, piece, index) {
   </div>
   <div class="moveSays muted small" data-movesays="${piece}.${index}">${
     esc(moveSaid(piece, index))}</div>
-  ${extrasHtml('move.' + piece + '.' + index, move, 'more about this move')}`;
+  ${extrasHtml('move.' + piece + '.' + index, move, 'more about this move',
+               moveExtrasSkip(move))}`;
 }
 
 // What each typed row says, in the words the game's own page uses (F10: a step typed as
@@ -1498,8 +1503,13 @@ function wireDesigner() {
     const [piece, index] = node.dataset.move.split('.').map(Number);
     const field = node.dataset.mfield;
     const write = () => {
-      writeMoveField(DRAFT.pieces[piece].moves[index], field, node.value);
+      const move = DRAFT.pieces[piece].moves[index];
+      const before = [...moveExtrasSkip(move)].join();
+      writeMoveField(move, field, node.value);
       DRAFT_PIECE = piece;
+      // A new kind of move can bring or take away a hop's fields (fix 8); the menu
+      // that changed it is a select, so a redraw loses no cursor.
+      if (field === 'kind' && [...moveExtrasSkip(move)].join() !== before) drawDesigner();
       checkDraft();
       loadMoveMap();
     };
@@ -2348,6 +2358,7 @@ function drawVerdict() {
     </div>`;
 
   document.getElementById('dSave').onclick = () => saveDraft();
+  wireNameAsk(document.getElementById('dSaved'));
   document.getElementById('dPlay').onclick = () => playDraft(['human', PLAY_AGENT]);
   document.getElementById('dWatch').onclick = () =>
     playDraft([WATCH_AGENT, WATCH_AGENT]);
@@ -3162,8 +3173,94 @@ function hintHtml(claims) {
     the game is saved either way.</div>`;
 }
 
+// ------------------------------------------------ a save under a borrowed name
+//
+// Q995c (fix 9, F7). A draft built from a template keeps the template's name, and was saved
+// as *skirmish* with nothing said: the library then held a second *skirmish* that was not
+// the template. A save under a template's name, or under the name of another game the
+// library lists, asks for a name of its own first, once; keeping the name is one press.
+
+let NAME_KEPT = '';   // a name kept on purpose or already saved under, in lower case
+
+// Whose name the draft is still called by: 'template', 'game', or '' when it is its own.
+function borrowedName() {
+  const name = String(DRAFT.name || '').trim().toLowerCase();
+  if (!name || name === NAME_KEPT) return '';
+  const same = other => String(other || '').trim().toLowerCase() === name;
+  if (((DESIGN_KIT && DESIGN_KIT.templates) || []).some(t => same((t.spec || {}).name))) {
+    return 'template';
+  }
+  // The game a copy came from is the commonest clash of all: *chess*, saved as *chess*.
+  // A name the draft has been saved under is its own (`NAME_KEPT`, set by the save).
+  if (LIBRARY.some(game => game && same(game.name))) return 'game';
+  return '';
+}
+
+function nameAskHtml(whose) {
+  const name = String(DRAFT.name || '').trim();
+  return `<div class="nameAsk small" role="group" aria-label="a name of its own">
+    <div><b>This draft is still called '${esc(name)}'</b>, ${whose === 'template'
+      ? 'the name of the template it started from'
+      : 'the name of a game already in the library'}. A saved game is listed by its
+      name, so give it one of its own first.</div>
+    <label class="field" style="margin:8px 0 0"><span>what it is called</span>
+      <input id="dSaveName" placeholder="a name of its own" autocomplete="off"></label>
+    <div class="row" style="gap:8px">
+      <button id="dSaveNamed">save under this name</button>
+      <button class="quiet" id="dSaveKeep">keep '${esc(name)}' and save</button>
+    </div></div>`;
+}
+
+function wireNameAsk(box) {
+  if (!box || !box.querySelector) return;
+  const input = box.querySelector('#dSaveName');
+  const named = box.querySelector('#dSaveNamed');
+  const keep = box.querySelector('#dSaveKeep');
+  if (named && input) named.onclick = () => saveUnderName(input.value);
+  if (input) {
+    input.onkeydown = event => {
+      if (event.key === 'Enter') { event.preventDefault(); saveUnderName(input.value); }
+    };
+  }
+  if (keep) keep.onclick = () => keepNameAndSave();
+}
+
+// The question in place of the save's answer, where that answer would have gone.
+function askForAName(box, whose) {
+  DRAFT_SAVED = nameAskHtml(whose);
+  box.innerHTML = DRAFT_SAVED;
+  wireNameAsk(box);
+  showSaved(box);
+  const input = box.querySelector && box.querySelector('#dSaveName');
+  if (input && input.focus) input.focus();
+  return null;
+}
+
+function keepNameAndSave() {
+  NAME_KEPT = String(DRAFT.name || '').trim().toLowerCase();
+  return saveDraft();
+}
+
+// The name typed in the question, written as the name field would write it, then saved.
+// Nothing typed asks again rather than saving under the borrowed name.
+function saveUnderName(typed) {
+  const name = String(typed || '').trim();
+  if (!name) {
+    const input = document.getElementById('dSaveName');
+    if (input && input.focus) input.focus();
+    return null;
+  }
+  DRAFT.name = name;
+  const field = document.getElementById('dName');
+  if (field) field.value = name;
+  keepDraft();
+  return saveDraft();
+}
+
 function saveDraft() {
   const box = document.getElementById('dSaved');
+  const whose = borrowedName();
+  if (whose) return askForAName(box, whose);
   // Two handlers on the save's own promise rather than a `catch` over the whole chain:
   // what follows a save is the lineage and the rungs, and a fetch of those failing is
   // not the save being refused. It used to print one as the other.
@@ -3173,6 +3270,8 @@ function saveDraft() {
       // The library is keyed by hash and the hash covers mechanics only, so saving a
       // draft you only renamed is the game you already saved rather than a second one.
       DETAIL[kept.hash] = undefined;
+      // Saved under it, the name is this game's own from now on.
+      NAME_KEPT = String(DRAFT.name || '').trim().toLowerCase();
       DRAFT_SAVED = savedHtml(kept);
       box.innerHTML = DRAFT_SAVED;
       showSaved(box);

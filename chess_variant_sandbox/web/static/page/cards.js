@@ -498,6 +498,7 @@ function fieldHtml(field, value, path, root, out, head) {
       <input ${cattrs(root, path, field.control, field.required)}${
         numeric ? ' type="number"' + bounds : ''}${hint}
         ${field.control === 'rank' ? ' placeholder="last, or a row number (your own back row is 0)"' : ''}
+        ${field.placeholder ? ` placeholder="${esc(field.placeholder)}"` : ''}
         value="${esc(raw)}">
       ${saysHtml(field.says)}</label>`;
   }
@@ -811,21 +812,133 @@ function ruleMenuHtml() {
   if (!model) return '';
   const rules = DRAFT.rules || {};
   const byKey = Object.fromEntries(model.rules.map(f => [f.key, f]));
-  const absent = model.ruleOrder.filter(key => !(key in rules));
-  const option = key => `<option value="${esc(key)}" title="${esc(ruleSays(key))}">${
-    esc(ruleTitle(key, byKey[key].label))} (${model.ruleCounts[key]} in the library)</option>`;
-  const open = absent.filter(key => !RULE_REFUSED[key]);
-  const common = open.filter(key => !model.rare.includes(key));
-  const rare = open.filter(key => model.rare.includes(key));
-  const shut = absent.filter(key => RULE_REFUSED[key]);
-  return `<label class="field" style="margin-top:10px"><span>add a rule</span>
-      <select id="dAddRule"><option value="">choose one...</option>
-        ${common.map(option).join('')}
-        ${rare.length ? `<optgroup label="rarely used">${rare.map(option).join('')}</optgroup>` : ''}
-      </select></label>
-    <div class="muted small" id="dAddRuleSays"></div>
+  const shut = model.ruleOrder.filter(key => !(key in rules) && RULE_REFUSED[key]);
+  return `<div class="field ruleFind" style="margin-top:10px">
+      <label for="dRuleFind"><span>add a rule</span></label>
+      <input id="dRuleFind" type="search" autocomplete="off" value="${esc(RULE_FIND)}"
+        placeholder="find one: rounds, atomic, walls...">
+      <select id="dAddRule" aria-label="the rules that match">${ruleOptionsHtml()}</select>
+    </div>
+    <div class="muted small" id="dRuleFound" aria-live="polite">${ruleFoundHtml()}</div>
+    <div class="small" id="dAddRuleSays"></div>
     <button id="dAddRuleGo" style="margin-top:6px" disabled>add it</button>
     ${refusedRulesHtml(shut, byKey)}`;
+}
+
+// ------------------------------------------------------------- find a rule by typing
+//
+// Q995c (`docs/reference/designer-coverage.md` fix 6, F6). *Add a rule* was a menu of
+// sixteen to nineteen names, each cut off by *(N in the library)*, and a person who wanted
+// rounds, atomic or walls had to know the rule's title to find it. A box above the menu
+// narrows it to the rules whose title, sentence or other names hold every word typed. The
+// other names are the server's (`web/cards.RULE_ALSO_CALLED`); the count of games that use
+// a rule is a line under the choice.
+
+let RULE_FIND = '';   // what is typed in the box above *add a rule*
+
+function ruleNormal(text) {
+  return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+// Whether a rule answers what is typed: every word of it, somewhere in its words.
+function ruleFound(key) {
+  const want = ruleNormal(RULE_FIND).split(' ').filter(Boolean);
+  if (!want.length) return true;
+  const model = cardModel() || {};
+  const field = (model.rules || []).find(f => f.key === key);
+  const hay = ' ' + ruleNormal([ruleTitle(key, field ? field.label : key), ruleSays(key),
+    key].concat(((model.alsoCalled || {})[key]) || []).join(' ')) + ' ';
+  return want.every(word => hay.includes(word));
+}
+
+// The rules the menu offers: absent from the draft, not refused, and found. The one rule
+// a search leaves is chosen, so its sentence shows and *add it* is a press away.
+function ruleOptions() {
+  const model = cardModel();
+  if (!model) return [];
+  const rules = DRAFT.rules || {};
+  return model.ruleOrder.filter(key => !(key in rules) && !RULE_REFUSED[key]
+                                       && ruleFound(key));
+}
+
+function ruleOptionsHtml() {
+  const model = cardModel();
+  if (!model) return '';
+  const byKey = Object.fromEntries(model.rules.map(f => [f.key, f]));
+  const open = ruleOptions();
+  const only = RULE_FIND.trim() && open.length === 1 ? open[0] : '';
+  const option = key => `<option value="${esc(key)}" title="${esc(ruleSays(key))}"${
+    key === only ? ' selected' : ''}>${esc(ruleTitle(key, byKey[key].label))}</option>`;
+  const common = open.filter(key => !model.rare.includes(key));
+  const rare = open.filter(key => model.rare.includes(key));
+  return `<option value="">${open.length ? 'choose one...' : 'no rule to add matches'}</option>
+    ${common.map(option).join('')}
+    ${rare.length ? `<optgroup label="rarely used">${rare.map(option).join('')}</optgroup>` : ''}`;
+}
+
+// What a search found besides the menu: none at all, a rule already in the game, or one
+// that doesn't go in it yet, with where to look. A turn-taking rule points at the top.
+function ruleFoundHtml() {
+  const model = cardModel();
+  if (!model || !RULE_FIND.trim()) return '';
+  const byKey = Object.fromEntries(model.rules.map(f => [f.key, f]));
+  const rules = DRAFT.rules || {};
+  const found = model.ruleOrder.filter(ruleFound);
+  const title = key => `'${esc(ruleTitle(key, byKey[key].label))}'`;
+  const open = ruleOptions();
+  const lines = [];
+  if (!found.length) {
+    lines.push(`No rule is called that. Try another word, or clear the box to see them all.`);
+  } else if (open.length > 1) {
+    lines.push(`${open.length} rules match, in the menu.`);
+  }
+  found.filter(key => key in rules).forEach(key => {
+    lines.push(`${title(key)} is already in this game: its card is above.`);
+  });
+  found.filter(key => !(key in rules) && RULE_REFUSED[key]).forEach(key => {
+    lines.push(TURN_RULES[key]
+      ? `${title(key)} is chosen under <button class="quiet" data-toturns="${
+          key === 'simultaneous' ? 'rounds' : 'several'}">how the players take turns</button>,
+          at the top, which makes the changes it needs in one step.`
+      : `${title(key)} doesn't go in this game yet: the reasons are in the list below.`);
+  });
+  return lines.map(line => `<div>${line}</div>`).join('');
+}
+
+// Said under the menu once a rule is chosen: what it does, and how many games use it.
+function ruleChosenHtml(key) {
+  if (!key) return '';
+  const model = cardModel() || {};
+  const count = (model.ruleCounts || {})[key] || 0;
+  return `${saysHtml(ruleSays(key))}<div class="muted small">${count
+    ? `${count} game${count === 1 ? '' : 's'} in the library use${count === 1 ? 's' : ''} it.`
+    : 'No game in the library uses it yet.'}</div>`;
+}
+
+// The menu and the line under the box, redrawn as the box is typed in. The box itself is
+// left alone, so the cursor stays where it is.
+function refindRules(box) {
+  const menu = box.querySelector('#dAddRule');
+  const said = box.querySelector('#dRuleFound');
+  if (menu) menu.innerHTML = ruleOptionsHtml();
+  if (said) said.innerHTML = ruleFoundHtml();
+  if (said) wireToTurns(said);
+  if (menu && menu.onchange) menu.onchange();
+}
+
+// *How the players take turns*, from wherever a line points at it: scrolled into view
+// and the way named focused, not chosen, since choosing changes the draft.
+function wireToTurns(root) {
+  root.querySelectorAll('[data-toturns]').forEach(node => {
+    node.onclick = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const way = document.querySelector(`[data-turnway="${node.dataset.toturns}"]`);
+      const box = document.getElementById('dTurns');
+      if (box && box.scrollIntoView) box.scrollIntoView({ block: 'center' });
+      if (way && way.focus) way.focus({ preventScroll: true });
+    };
+  });
 }
 
 // The rules this draft cannot take, and every reason for each (option A9), in the
@@ -919,7 +1032,14 @@ function redrawRuleMenu() {
   // come back empty with *add it* switched off, so the first press did nothing (Q489).
   const held = box.querySelector('#dAddRule');
   const chosen = held ? held.value : '';
+  // Typing in the find box survives it too: the answer can land mid-word.
+  const typing = document.activeElement && document.activeElement.id === 'dRuleFind'
+    ? document.activeElement.selectionStart : null;
   box.innerHTML = ruleMenuHtml();
+  if (typing !== null) {
+    const find = box.querySelector('#dRuleFind');
+    if (find) { find.focus(); find.setSelectionRange(typing, typing); }
+  }
   // The box and nothing else: `wireCards` on the whole form would stack a second
   // listener on every folded extras block each time an answer came back.
   wireCards(box);
@@ -932,14 +1052,103 @@ function redrawRuleMenu() {
 
 // The generated part of one piece, one move or one placement, folded away unless it
 // already says something.
-function extrasHtml(root, target, summary) {
-  const fields = rootFields(root);
+//
+// `skip` names fields drawn somewhere else on the card, or not drawn at all because they
+// mean nothing here and hold nothing (`moveExtrasSkip`, `pieceRowKeys`). A field left out
+// that holds nothing is written as nothing, which is what it was.
+function extrasHtml(root, target, summary, skip) {
+  const fields = rootFields(root).filter(f => !(skip && skip.has(f.key)));
   if (!fields.length) return '';
   const said = fields.some(f => target && target[f.key] !== undefined
     && !(f.partial && Object.keys(target[f.key]).every(k => !f.fields.some(g => g.key === k))));
   const out = [];
+  const body = fields.map(field => fieldHtml(field, (target || {})[field.key], [field.key],
+    root, out)).join('');
   return `<details class="extras"${said ? ' open' : ''}><summary class="muted small">${
-    esc(summary)}</summary><div class="cardBody">${rootHtml(root, target, out)}</div></details>`;
+    esc(summary)}</summary><div class="cardBody">${body}</div></details>`;
+}
+
+// ------------------------------------------------- only a hop's fields on a hop
+//
+// Q995c (fix 8, F8). *More about this move* offered *how far past the piece it jumps* and
+// *whose piece it jumps* on a leap or a slide, where the validator refuses both. Which
+// fields belong to which kind of move is the server's (`web/cards.MOVE_KIND_ONLY`); one
+// already written stays in sight, beside the refusal that says why it can't stand.
+function moveExtrasSkip(move) {
+  const only = (cardModel() || {}).moveKindOnly || {};
+  return new Set(Object.keys(only).filter(key => !only[key].includes((move || {}).kind)
+    && (move || {})[key] === undefined));
+}
+
+// ------------------------------------------------- how a piece takes its turns
+//
+// Q995c (fix 5, F5). A game in rounds reads three fields of each piece -- its speed, who it
+// beats in a collision, and whether it is a spy -- and they were the fourth to sixth of
+// seven in *more about this piece*, at the foot of the card, each opening *Only when both
+// players move at once* in games that don't. Now they are a row on the card, under its
+// moves, while the draft is in rounds; out of rounds they fold behind one line that leads
+// to *how the players take turns*. A piece's rest (schema 29) is its own in any game, so it
+// is in the row always. Which field is which is the server's (`web/cards.PIECE_ROW`).
+function pieceRowKeys() {
+  const row = (cardModel() || {}).pieceRow || {};
+  return { rounds: row.rounds || [], always: row.always || [] };
+}
+
+function inRounds() {
+  const rules = DRAFT.rules || {};
+  return !!(rules.simultaneous && typeof rules.simultaneous === 'object');
+}
+
+// The row's fields drawn on this card: the rounds ones in a game in rounds, or wherever
+// one already holds something, and the always ones in every game.
+function pieceRowShown(piece) {
+  const row = pieceRowKeys();
+  const rounds = inRounds();
+  return row.rounds.filter(key => rounds || (piece || {})[key] !== undefined)
+    .concat(row.always);
+}
+
+function pieceTurnsHtml(piece, index) {
+  const root = 'piece.' + index;
+  const fields = rootFields(root);
+  const shown = pieceRowShown(piece).map(key => fields.find(f => f.key === key))
+    .filter(Boolean);
+  const folded = pieceRowKeys().rounds.map(key => fields.find(f => f.key === key))
+    .filter(f => f && !shown.includes(f));
+  if (!shown.length && !folded.length) return '';
+  const out = [];
+  // Each control with its label alone, side by side; what each does is one fold below
+  // them, so the row stays a row on a phone.
+  const controls = shown.map(field => `<div class="pieceTurnsField">${
+    fieldHtml(Object.assign({}, field, { says: '' }), (piece || {})[field.key], [field.key],
+      root, out)}</div>`).join('');
+  const says = shown.filter(field => field.says).map(field =>
+    `<li><b>${esc(field.label)}</b>: ${esc(field.says)}</li>`).join('');
+  const names = folded.map(field => field.label);
+  const line = names.length ? `<div class="muted small roundsLine">${esc(sentenceList(names))
+    } ${names.length === 1 ? 'comes' : 'come'} with playing in rounds, chosen under <button class="quiet" data-toturns="rounds"
+      >how the players take turns</button>.</div>` : '';
+  return `<div class="pieceTurns">
+    <div class="pieceTurnsHead small">how it takes its turns</div>
+    <div class="pieceTurnsRow">${controls}</div>
+    ${says ? `<details class="pieceTurnsSays"><summary class="muted small">what ${
+      shown.length === 1 ? 'this does' : 'these do'}</summary>
+      <ul class="muted small">${says}</ul></details>` : ''}
+    ${line}
+  </div>`;
+}
+
+// *'a', 'b' and 'c'*, the fields' own names, the way a sentence lists things.
+function sentenceList(words) {
+  const quoted = words.map(word => `'${word}'`);
+  if (quoted.length < 2) return quoted.join('');
+  return quoted.slice(0, -1).join(', ') + ' and ' + quoted[quoted.length - 1];
+}
+
+// A piece's speed, where one is set, for the card's head and the tray (fix 5): a number
+// typed into the row showed nowhere else.
+function pieceSpeedWords(piece) {
+  return piece && piece.speed !== undefined ? `speed ${piece.speed}` : '';
 }
 
 // ---------------------------------------------------------------- reading and wiring
@@ -967,6 +1176,10 @@ function writeRoot(root) {
   if (!form || !target) return;
   const nodes = [...form.querySelectorAll('[data-cpath]')].filter(n => n.dataset.croot === root);
   mergeGenerated(target, buildControls(nodes.map(readControl)), rootFields(root));
+  // The speed on the card's head follows the row as it is typed (fix 5).
+  const head = root.startsWith('piece.')
+    && form.querySelector(`[data-speedof="${root.split('.')[1]}"]`);
+  if (head) head.textContent = pieceSpeedWords(target);
   checkDraft();
   if (root.startsWith('move') || root.startsWith('piece')) loadMoveMap();
 }
@@ -1119,16 +1332,28 @@ function wireCards(form) {
   const add = form.querySelector('#dAddRule');
   const go = form.querySelector('#dAddRuleGo');
   const says = form.querySelector('#dAddRuleSays');
+  const find = form.querySelector('#dRuleFind');
+  if (find && add) {
+    find.oninput = () => { RULE_FIND = find.value; refindRules(form); };
+    // Enter adds the rule a search has chosen, as the button beside it would.
+    find.onkeydown = event => {
+      if (event.key === 'Enter' && add.value && go) { event.preventDefault(); go.click(); }
+    };
+  }
+  wireToTurns(form);
   if (add && go) {
     add.onchange = () => {
-      if (says) says.textContent = add.value ? ruleSays(add.value) : '';
+      if (says) says.innerHTML = ruleChosenHtml(add.value);
       go.disabled = !add.value;
     };
+    // A search that left one rule has chosen it in the markup; say it as a choice would.
+    if (add.value) add.onchange();
     go.onclick = event => {
       event.preventDefault();
       const model = cardModel();
       const field = model && model.rules.find(f => f.key === add.value);
       if (!field) return;
+      RULE_FIND = '';
       structural('rules', rules => {
         rules[field.key] = fieldDefault(field, [field.key], 'rules');
         const companion = RULE_COMPANIONS[field.key];

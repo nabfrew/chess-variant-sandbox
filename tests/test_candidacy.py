@@ -1104,6 +1104,27 @@ def _designer_views() -> list[tuple[str, str]]:
          f"[turnSaidHtml({{ way: 'rounds', changes: {json.dumps(turned['changes'])} }}),"
          f" turnSaidHtml({{ way: 'rounds', errors: {json.dumps(stuck['errors'])} }}),"
          " turnsHtml()].join(' ')")
+    # Q995c: a piece's turns on its card, in rounds and out; finding a rule by a word, and
+    # what a search says beside the menu; a save under a template's name.
+    from chess_variant_sandbox.spec import describe
+    from chess_variant_sandbox.web import cards
+
+    templates = designing.templates()
+    kit = (f"DESIGN_KIT = {json.dumps({'cards': cards.card_model([]), 'templates': templates, 'ruleWords': describe.rule_words(), 'ruleChoices': describe.rule_choices()})};")
+    rounds = json.loads(json.dumps(turned["draft"]))
+    rounds["pieces"][1]["speed"] = 1
+    view("how a piece takes its turns", kit + f"DRAFT = {json.dumps(rounds)};",
+         "[pieceEditor(DRAFT.pieces[1], 1), paletteHtml(), pieceTrayHtml()].join(' ')")
+    view("how a piece takes its turns, not in rounds", kit + f"DRAFT = {json.dumps(chess)};",
+         "pieceEditor(DRAFT.pieces[1], 1)")
+    view("finding a rule by a word", kit + f"DRAFT = {json.dumps(chess)};"
+         f" RULE_REFUSED = {json.dumps(refused['refused'])};",
+         "[ruleMenuHtml(), ruleChosenHtml('drops'), ruleChosenHtml('turn')]"
+         ".concat(['rounds', 'atomic', 'castling', 'zzzz', 'piece']"
+         ".map(word => (RULE_FIND = word, ruleFoundHtml() + ruleOptionsHtml())))"
+         ".join(' ')")
+    view("a save under a template's name", kit + f"DRAFT = {json.dumps(templates[0]['spec'])};",
+         "nameAskHtml('template') + nameAskHtml('game')")
     view("trying small changes", "TRY_OPEN = false;", "tryHtml()")
     view("measuring in the browser", "DRAFT_CHECK = { hash: 'a' };",
          "[hereOwnHtml({ result: { index: 0.5, games: 256, weights: 'v11' } }, null),"
