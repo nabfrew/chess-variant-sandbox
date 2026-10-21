@@ -25,6 +25,7 @@ import re
 from typing import Any
 
 from chess_variant_sandbox.spec.describe import RULE_WORDS
+from chess_variant_sandbox.spec.schema import is_simultaneous
 
 # Dotted from the top of the game's text, with no list indices: `pieces.moves.range` is
 # every way of moving's *how far*. A label is what the field is called on the page; the
@@ -415,7 +416,7 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
     # Schema 22 (Q843c): the second rule set.
     # Schema 26 (Q918a): simultaneous moves.
     "rules.simultaneous": (
-        "both players move at once",
+        "playing in rounds: both players move at once",
         "Each round both players choose a move without seeing the other's, and both are made "
         "together. Only two pieces moving onto the same square collide, and who each piece "
         "beats decides who stays. A piece whose target ran lands where it stood if its move "
@@ -574,6 +575,49 @@ KIND_WORDS = {
 }
 
 
+# A sentence for each value a menu showed bare (Q995c, fix 9, F7): *initiative*, *impossible*,
+# *own*, *collision* and *score* were the schema's spellings, explained only in the paragraph
+# under the menu. Each option now has a label that reads as a choice, and the sentence the
+# win menu's options carry. Keyed by the field's dotted path and the value. Built in
+# `web/cards.py` by Q995c, moved here by Q995e so the command line and the model read them too.
+OPTION_WORDS: dict[tuple[str, Any], tuple[str, str]] = {
+    ("rules.simultaneous.tie", "initiative"): (
+        "the player with the initiative",
+        "One player holds the initiative, the second player at the start. A tie goes to "
+        "that player's piece, and the initiative passes to the other.",
+    ),
+    ("rules.simultaneous.tie", "impossible"): (
+        "it can't happen here",
+        "A promise, checked with the rest of the game, that no two pieces that can meet ever "
+        "tie, because the two armies are different pieces in a ring of who beats whom.",
+    ),
+    ("rules.simultaneous.swap", "collision"): (
+        "they meet, as on one square",
+        "Two pieces that each move onto the other's square meet as if they had moved onto "
+        "the same one, and who each beats decides.",
+    ),
+    ("rules.simultaneous.both", "score"): (
+        "the scores decide it",
+        "The player ahead by the rule 'who wins when a clock runs out' wins it, and equal "
+        "scores draw.",
+    ),
+    ("rules.extinction.per_type", True): (
+        "yes",
+        "Each listed piece is counted on its own, so a player loses when any one kind runs "
+        "out, as in Extinction chess.",
+    ),
+    ("rules.extinction.per_type", False): (
+        "no",
+        "The listed pieces are counted together, the usual choice.",
+    ),
+    ("rules.extinction.per_type", "own"): (
+        "yes, for the kinds a player starts with",
+        "Each listed piece is counted on its own, but only against a player who starts with "
+        "it, for two armies made of different pieces.",
+    ),
+}
+
+
 def field_words(path: str) -> tuple[str, str | None] | None:
     """`FIELD_WORDS` for a dotted path that may carry list marks (`[]`, `[3]`)."""
     return FIELD_WORDS.get(re.sub(r"\[\d*\]", "", path))
@@ -633,6 +677,10 @@ _WORDS: tuple[tuple[str, str], ...] = (
 # The two clocks, counted in turns (§3.2: each player's move is one turn).
 _CLOCK_PATHS = frozenset({"rules.max_plies", "rules.no_progress_draw"})
 
+# In a game played in rounds the clocks still count each player's move, so a round is two
+# (Q995e; the rule's own sentence for rounds is `describe.ROUND_WORDS`).
+ROUND_CLOCK_NOTE = " (a round is two)"
+
 # Whole problems a person meets most, said the way the audit asked (D48-D50).
 _PHRASED: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^name must be a non-empty string$"), "Give the game a name."),
@@ -678,6 +726,14 @@ def _where(path: str, spec: Any) -> tuple[str, str | None]:
             rest = rest[2:]
             dotted = "pieces.moves"
         return place, _label(dotted, rest)
+    if head == "pieces" and rest and (rest[0] == "[]" or not rest[0].startswith("[")):
+        # A field of the whole army (`pieces[].speed`, `pieces.speed`): the pieces that
+        # carry it, or every piece when none does yet.
+        keys = [step for step in rest if not step.startswith("[")]
+        if len(keys) == 1:
+            carriers = _carrying(spec, keys[0])
+            place = _pieces_called(spec, carriers) if carriers else "Every piece"
+            return place, _label("pieces", rest)
     if head == "setup" and len(rest) >= 2 and rest[0] == "placements" \
             and index(rest[1]) is not None:
         row = index(rest[1])
@@ -750,8 +806,96 @@ def _place(path: str, spec: Any) -> str:
     return f"{where}, '{field}'" if field else where
 
 
+# ------------------------------------------------------------------ a field of the whole army
+
+# The validator checks some piece fields across the army at once and names them with no
+# index (`pieces[].speed`, and `pieces.speed` in a version sentence). `_where` read a path
+# into `pieces` only by its index, so these five sentences, about the newest fields, opened
+# *Where the game comes from* and named neither the piece nor the field (Q995a F3). Now the
+# pieces that carry the field are named from the draft (built in `web/designing.py` by
+# Q995b, moved here by Q995e so the command line and the model's repairs read it too).
+_ARMY_PATH = re.compile(r"\bpieces(?:\[\])?\.(?P<key>[a-z_]+)\b")
+
+# The three a newcomer meets most: a field of a game in rounds set on a game that is not
+# in one. Each says where rounds are chosen.
+_ROUNDS_ONLY = (
+    (re.compile(r"^pieces\[\]\.speed orders the two moves of a round, and this game has none"),
+     "speed", "a speed only matters in a game played in rounds", "clear {its} speed"),
+    (re.compile(r"^pieces\[\]\.spy: a spy decides when a game plays in rounds"),
+     "spy", "a spy only works in a game played in rounds", "take {its} spy away"),
+    (re.compile(r"^pieces\[\d+\]\.beats says who wins a collision, and only matters"),
+     "beats", "who a piece beats in a collision only matters in a game played in rounds",
+     "clear who {it} beats"),
+)
+_CHOOSE_ROUNDS = "Choose 'in rounds' under 'how the players take turns', or"
+
+
+def _carrying(spec: Any, key: str) -> list[int]:
+    pieces = spec.get("pieces") if isinstance(spec, dict) else None
+    if not isinstance(pieces, list):
+        return []
+    return [index for index, piece in enumerate(pieces)
+            if isinstance(piece, dict) and key in piece]
+
+
+def _pieces_called(spec: Any, indices: list[int]) -> str:
+    """*Piece 2 (knight)*, *Pieces 2 (knight) and 3 (bishop)*: the place `spec.plain`
+    gives one piece, for one or several."""
+    pieces = spec["pieces"]
+
+    def one(index: int) -> str:
+        name = pieces[index].get("name")
+        return f"{index + 1}" + (f" ({name})" if isinstance(name, str) and name.strip() else "")
+
+    named = [one(index) for index in indices]
+    if len(named) == 1:
+        return f"Piece {named[0]}"
+    return f"Pieces {', '.join(named[:-1])} and {named[-1]}"
+
+
+def _army_problem(problem: str, spec: Any) -> str | None:
+    """A problem about a field of the army, with the pieces that carry it named."""
+    beats = re.match(r"^pieces\[(\d+)\]\.beats", problem)
+    for pattern, key, says, way_out in _ROUNDS_ONLY:
+        if not pattern.match(problem):
+            continue
+        carriers = [int(beats[1])] if key == "beats" and beats else _carrying(spec, key)
+        if not carriers or not all(index < len(spec["pieces"]) for index in carriers):
+            break
+        several = len(carriers) > 1
+        out = way_out.format(its="their" if several else "its", it="they" if several else "it")
+        return f"{_pieces_called(spec, carriers)}: {says}. {_CHOOSE_ROUNDS} {out}."
+    if _ARMY_PATH.search(problem) is None:
+        return None
+    plural: list[tuple[str, str]] = []
+
+    def name(found: re.Match[str]) -> str:
+        key = found["key"]
+        words = field_words(f"pieces.{key}")
+        label = words[0] if words else key.replace("_", " ")
+        # The path the sentence is about, at its start or as what a version sentence says
+        # the draft uses, is the pieces that carry it; one inside a reason is the field.
+        subject = found.start() == 0 or problem[:found.start()].endswith("uses ")
+        carriers = _carrying(spec, key) if subject else []
+        if not carriers:
+            return f"every piece's '{label}'" if subject else f"'{label}'"
+        if len(carriers) > 1:
+            plural.append((_pieces_called(spec, carriers[:1]), _pieces_called(spec, carriers)))
+        return f"pieces[{carriers[0]}].{key}"
+
+    said = _translate(_ARMY_PATH.sub(name, problem), spec)
+    for alone, every in plural:
+        said = said.replace(alone, every).replace(alone.lower(), every.lower())
+    return said
+
+
 def plain_problem(problem: str, spec: Any = None) -> str:
     """One validator problem, in the designer's words. Never drops or adds a problem."""
+    army = _army_problem(problem, spec)
+    return army if army is not None else _translate(problem, spec)
+
+
+def _translate(problem: str, spec: Any) -> str:
     for pattern, said in _PHRASED:
         if pattern.match(problem):
             return said
@@ -841,7 +985,8 @@ def _generic(text: str, spec: Any) -> str:
     body = re.sub(r"'([a-z0-9]+(?:_[a-z0-9]+)+)'",
                   lambda m: "'" + m.group(1).replace("_", " ") + "'", body)
     if opening and opening.group(0) in _CLOCK_PATHS:
-        body = re.sub(r"\b(between \d+ and \d+)", r"\1 turns", body)
+        body = re.sub(r"\b(between \d+ and \d+)",
+                      r"\1 turns" + (ROUND_CLOCK_NOTE if is_simultaneous(spec) else ""), body)
     if place is None:
         text = body
     elif re.match(r"needs\b|stands\b", body):

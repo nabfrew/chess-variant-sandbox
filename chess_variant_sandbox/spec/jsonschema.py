@@ -260,6 +260,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
             },
             "spy": {
                 "type": "boolean",
+                "const": True,
                 "description": (
                     "Schema 27. This piece is a spy, and the game is played in three phases "
                     "by who still has one on the board. While both players have a spy, they "
@@ -736,6 +737,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                                 },
                                 "own": {
                                     "type": "boolean",
+                                    "const": True,
                                     "description": (
                                         "Set true and the link is about the mover's own "
                                         "piece: the mover may move onto a friendly 'onto' "

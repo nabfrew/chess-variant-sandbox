@@ -572,18 +572,30 @@ class TestTheRealMachine:
         assert not (repo.worktree / "runs").exists()
 
 
-def test_the_seven_delivered_records_owe_nothing() -> None:
-    """`proofs --check` clean for the seven (§6's acceptance): each record the main
-    checkout holds replays whole and is current. Skips where no record is on disk."""
-    runs = REPOSITORY / "runs"
+def _main_runs() -> Path:
+    """The main checkout's `runs/`, where the delivered records are, from any worktree."""
     common = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
                             capture_output=True, text=True, cwd=REPOSITORY, check=False)
     if common.returncode == 0:
-        runs = Path(common.stdout.strip()).parent / "runs"
-    paths = {path.stem for path in (runs / "puzzles").glob("*.json")}
-    if not paths:
-        pytest.skip("no runs/puzzles/ record here")
-    for digest, name, spec in puzzles.library(REPOSITORY):
-        if digest in paths:
-            found = puzzles.standing(digest, name, spec, runs)
-            assert not found.owed, (name, found.reason)
+        return Path(common.stdout.strip()).parent / "runs"
+    return REPOSITORY / "runs"
+
+
+MAIN_RUNS = _main_runs()
+
+
+LIBRARY = {digest: (name, spec) for digest, name, spec in puzzles.library(REPOSITORY)}
+
+
+@pytest.mark.parametrize("digest", sorted(LIBRARY))
+def test_every_delivered_record_owes_nothing(digest: str) -> None:
+    """`proofs --check` clean for every record the main checkout holds (§6's acceptance,
+    then the upkeep's backfill): each replays whole and is current. One case a game of the
+    library, which the tree fixes, so every xdist worker collects the same cases while the
+    refresher writes records (Q993i: one test over the growing set ran past the duration
+    guard). Skips where the game has no record on disk."""
+    if not puzzles.record_path(MAIN_RUNS, digest).is_file():
+        pytest.skip("no runs/puzzles/ record of this game here")
+    name, spec = LIBRARY[digest]
+    found = puzzles.standing(digest, name, spec, MAIN_RUNS)
+    assert not found.owed, (name, found.reason)

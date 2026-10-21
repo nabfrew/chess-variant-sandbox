@@ -35,6 +35,7 @@ import pytest
 
 from chess_variant_sandbox.engine import compile_spec
 from chess_variant_sandbox.spec.describe import (
+    RULE_ALSO_CALLED,
     RULE_WORDS,
     PieceProse,
     _Aim,
@@ -599,6 +600,11 @@ _OLDER_PROSE = frozenset({
     "Castling does not use the join; king and rook stay on their rank.",
 })
 
+# The words of `RULE_ALSO_CALLED` (Q995e) are what a player types to find a rule, the name
+# of a game or a piece they bring from elsewhere (*king of the hill*, *bare king*). Nothing
+# says them to anyone, so they are search words and not prose.
+_SEARCH_WORDS = frozenset(word for names in RULE_ALSO_CALLED.values() for word in names)
+
 
 def test_no_game_and_no_piece_is_named_in_the_prose() -> None:
     """Rule 5, on the module whose whole job is to talk about pieces.
@@ -607,7 +613,7 @@ def test_no_game_and_no_piece_is_named_in_the_prose() -> None:
     a different piece in the next, which is the failure the rule exists to stop.
     """
     for text in _emittable_strings(ROOT / "chess_variant_sandbox" / "spec" / "describe.py"):
-        if text in _OLDER_PROSE:
+        if text in _OLDER_PROSE or text in _SEARCH_WORDS:
             continue
         found = _NAMED.search(text.lower())
         assert found is None, f"describe.py says {found.group()!r} in {text!r}"

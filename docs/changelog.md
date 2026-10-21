@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-21
 
+### The designer counts in rounds
+
+In a game played in rounds, the designer now counts the longest a game may run and the opening choices in rounds, and the
+rule itself is called playing in rounds.
+
 ### Every rule easy to find in the designer
 
 Each piece's card now says how it takes its turns: its speed, what it beats and whether it is a spy in a game played in

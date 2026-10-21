@@ -225,6 +225,37 @@ def replays(engine: Engine, row: dict[str, Any]) -> GameState | None:
     return state if list(legal) == scores else None
 
 
+def holding(
+    engine: Engine, rows: Iterable[Any]
+) -> tuple[list[tuple[int, str, dict[str, Any]]], int]:
+    """A record's won rows that still hold, and how many rows do not (Q993i).
+
+    Each kept row is `(order, name, row)`, in the record's order: a won row that `replays`,
+    named by the state it reaches (`name`), the first to reach that name. A row the record
+    proves *lost* for the side to move is passed over and counted as neither: a true proof,
+    kept in the record, and never a position to offer. Every other row is counted as not
+    holding: a won row that no longer replays or reaches a position already named, and a
+    row that is no proof the writer writes. The site's loader offers from the kept rows and
+    says how many did not hold (`site/proven.py`), and the upkeep re-proves a record with
+    any (`owes`), so the two never disagree about a record.
+    """
+    kept: list[tuple[int, str, dict[str, Any]]] = []
+    named: set[str] = set()
+    failing = 0
+    for order, row in enumerate(rows):
+        if isinstance(row, dict) and row.get("result") == LOST:
+            continue
+        won = isinstance(row, dict) and row.get("result") == WON
+        state = replays(engine, row) if won else None
+        called = None if state is None else name(state)
+        if called is None or called in named:
+            failing += 1
+            continue
+        named.add(called)
+        kept.append((order, called, row))
+    return kept, failing
+
+
 def renames(engine: Engine, data: dict[str, Any]) -> list[tuple[str, str]]:
     """`(old, new)` for every position of a record: its `seed-game-ply` id and the name
     its replayed prefix reaches (`name`), in the record's order. A prefix that no longer
@@ -829,7 +860,9 @@ def owes(engine: Engine, data: Any) -> str | None:
     A record that is not this game's or cannot be read; one in a format older than the
     code's (`FORMAT`); one proved by an older probe (`PROOF_VERSION`; a record without the
     field is version 1); or one with a proved position the engine no longer reaches as the
-    record says (`replays`), or reaches twice. A record from newer code is not owed: this
+    record says (`replays`), or reaches twice, or a row that is no proof (`holding`, which
+    the site's loader reads: a record is owed exactly where the loader drops a row). A row
+    proved lost for the side to move holds (Q993i). A record from newer code is not owed: this
     checkout cannot tell it is wrong. The engine answers every replay; this counts.
     """
     if not isinstance(data, dict) or data.get("ruleset_hash") != engine.spec.hash:
@@ -844,16 +877,8 @@ def owes(engine: Engine, data: Any) -> str | None:
     if isinstance(version, int) and version < PROOF_VERSION:
         return f"it was proved by probe version {version}, and the code's is {PROOF_VERSION}"
     rows = [row for row in data.get("positions") or []
-            if isinstance(row, dict) and row.get("result") == WON]
-    named: set[str] = set()
-    dropped = 0
-    for row in rows:
-        state = replays(engine, row)
-        called = None if state is None else name(state)
-        if called is None or called in named:
-            dropped += 1
-        else:
-            named.add(called)
+            if not (isinstance(row, dict) and row.get("result") == LOST)]
+    _kept, dropped = holding(engine, rows)
     if dropped:
         return f"{dropped} of its {len(rows)} proved positions no longer replay"
     return None

@@ -63,6 +63,7 @@ from chess_variant_sandbox.spec.describe import (
     describe_rules,
     describe_setup,
     move_sentence,
+    opening_words,
     plain_move_sentence,
 )
 from chess_variant_sandbox.spec.plain import field_words
@@ -460,6 +461,8 @@ def check(spec: Any, parent: dict[str, Any] | None = None) -> dict[str, Any]:
         "playableReasons": reasons,
         "smokeSeconds": smoke_seconds,
         "openingMoves": len(moves),
+        # The count as the game is played: in rounds each player chooses, together (F7).
+        "openingWords": _opening_words(engine, state, moves),
         "ruleLines": describe_rules(spec),
         # How each piece moves, in the sentences its game's own page reads (Q541). The
         # rule lines above are every rule *beyond* movement, so a piece taught a slide
@@ -1387,15 +1390,21 @@ def _off_board_words(got: str) -> str:
     return f"isn't on a square of this board ({got})"
 
 
+def _opening_words(engine: Engine, state: Any, moves: list[int]) -> str:
+    """*20 opening moves*, or in a game played in rounds what each player chooses from."""
+    if not engine.simultaneous:
+        return opening_words([len(moves)], False)
+    return opening_words([len(engine.legal_moves_for(state, seat)) for seat in (0, 1)], True)
+
+
 def plain_problem(problem: str, spec: Any = None, sides: Any = None) -> str:
     """A validator problem in the designer's words: a portal's (D7) where it is one, two
-    rules that can't go together (`_beside_problem`), a field of the whole army
-    (`_army_problem`, Q995b), and `spec.plain`'s for every other."""
+    rules that can't go together (`_beside_problem`), and `spec.plain`'s for every other,
+    which names a piece field's pieces (Q995e, from Q995b)."""
     said = portal_problem(problem, spec, sides)
     if said:
         return said["says"]
-    words = (_beside_problem(problem, spec) or _army_problem(problem, spec)
-             or _spec_plain_problem(problem, spec))
+    words = _beside_problem(problem, spec) or _spec_plain_problem(problem, spec)
     # `spec.plain` names a rule where the validator wrote its path, and a path after an
     # article (*a rules.strike whose chain ...*) became *a the rule 'what a taken piece
     # becomes' whose chain*. The article goes.
@@ -1449,88 +1458,6 @@ def _beside_problem(problem: str, spec: Any) -> str | None:
     why = _spec_plain_problem(found["why"], spec)
     return (f"The rule '{title}' can't go with {_thing_words(found['what'], spec)}: "
             f"{why[:1].lower()}{why[1:]}")
-
-
-# ------------------------------------------------------------------ a field of the whole army
-
-# The validator checks some piece fields across the army at once and names them with no
-# index (`pieces[].speed`, and `pieces.speed` in a version sentence). `spec.plain` reads a
-# path into `pieces` only by its index, so these five sentences, about the newest fields,
-# opened *Where the game comes from* and named neither the piece nor the field (Q995a F3).
-# Here the pieces that carry the field are named from the draft.
-_ARMY_PATH = re.compile(r"\bpieces(?:\[\])?\.(?P<key>[a-z_]+)\b")
-
-# The three a newcomer meets most: a field of a game in rounds set on a game that is not
-# in one. Each says where rounds are chosen.
-_ROUNDS_ONLY = (
-    (re.compile(r"^pieces\[\]\.speed orders the two moves of a round, and this game has none"),
-     "speed", "a speed only matters in a game played in rounds", "clear {its} speed"),
-    (re.compile(r"^pieces\[\]\.spy: a spy decides when a game plays in rounds"),
-     "spy", "a spy only works in a game played in rounds", "take {its} spy away"),
-    (re.compile(r"^pieces\[\d+\]\.beats says who wins a collision, and only matters"),
-     "beats", "who a piece beats in a collision only matters in a game played in rounds",
-     "clear who {it} beats"),
-)
-_CHOOSE_ROUNDS = "Choose 'in rounds' under 'how the players take turns', or"
-
-
-def _carrying(spec: Any, key: str) -> list[int]:
-    pieces = spec.get("pieces") if isinstance(spec, dict) else None
-    if not isinstance(pieces, list):
-        return []
-    return [index for index, piece in enumerate(pieces)
-            if isinstance(piece, dict) and key in piece]
-
-
-def _pieces_called(spec: Any, indices: list[int]) -> str:
-    """*Piece 2 (knight)*, *Pieces 2 (knight) and 3 (bishop)*: the place `spec.plain`
-    gives one piece, for one or several."""
-    pieces = spec["pieces"]
-
-    def one(index: int) -> str:
-        name = pieces[index].get("name")
-        return f"{index + 1}" + (f" ({name})" if isinstance(name, str) and name.strip() else "")
-
-    named = [one(index) for index in indices]
-    if len(named) == 1:
-        return f"Piece {named[0]}"
-    return f"Pieces {', '.join(named[:-1])} and {named[-1]}"
-
-
-def _army_problem(problem: str, spec: Any) -> str | None:
-    """A problem about a field of the army, with the pieces that carry it named."""
-    beats = re.match(r"^pieces\[(\d+)\]\.beats", problem)
-    for pattern, key, says, way_out in _ROUNDS_ONLY:
-        if not pattern.match(problem):
-            continue
-        carriers = [int(beats[1])] if key == "beats" and beats else _carrying(spec, key)
-        if not carriers or not all(index < len(spec["pieces"]) for index in carriers):
-            break
-        several = len(carriers) > 1
-        out = way_out.format(its="their" if several else "its", it="they" if several else "it")
-        return f"{_pieces_called(spec, carriers)}: {says}. {_CHOOSE_ROUNDS} {out}."
-    if _ARMY_PATH.search(problem) is None:
-        return None
-    plural: list[tuple[str, str]] = []
-
-    def name(found: re.Match[str]) -> str:
-        key = found["key"]
-        words = field_words(f"pieces.{key}")
-        label = words[0] if words else key.replace("_", " ")
-        # The path the sentence is about, at its start or as what a version sentence says
-        # the draft uses, is the pieces that carry it; one inside a reason is the field.
-        subject = found.start() == 0 or problem[:found.start()].endswith("uses ")
-        carriers = _carrying(spec, key) if subject else []
-        if not carriers:
-            return f"every piece's '{label}'" if subject else f"'{label}'"
-        if len(carriers) > 1:
-            plural.append((_pieces_called(spec, carriers[:1]), _pieces_called(spec, carriers)))
-        return f"pieces[{carriers[0]}].{key}"
-
-    said = _spec_plain_problem(_ARMY_PATH.sub(name, problem), spec)
-    for alone, every in plural:
-        said = said.replace(alone, every).replace(alone.lower(), every.lower())
-    return said
 
 
 def plain_problems(problems: list[str], spec: Any = None, sides: Any = None) -> list[str]:

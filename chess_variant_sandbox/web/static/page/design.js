@@ -2303,7 +2303,7 @@ function drawVerdict() {
          <button id="dStuck" style="margin-top:8px">open a game that did not finish</button>
        </div>`
     : `<div class="ok">It plays and reaches an ending, with
-         ${check.openingMoves} opening moves. ${checkedHtml()}</div>`;
+         ${esc(check.openingWords || check.openingMoves + ' opening moves')}. ${checkedHtml()}</div>`;
 
   side.innerHTML = `
     <div class="panel">

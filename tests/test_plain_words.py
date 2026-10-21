@@ -431,3 +431,51 @@ PLAIN_SENTENCES = {
 def test_a_problem_is_said_in_the_designers_words(label: str) -> None:
     problem, said = PLAIN_SENTENCES[label]
     assert plain_problem(problem, _TWO_PIECES) == said
+
+
+class TestAPieceFieldNamesItsPiecesForEveryReader:
+    """Q995e. A piece field the validator names with no index (`pieces[].speed`) was named
+    where it is only in the designer (Q995b). `spec.plain` does it now, so the command line
+    and the proposing model's repairs read the same sentence."""
+
+    @staticmethod
+    def _speeding() -> dict[str, Any]:
+        spec = _spec("chess")
+        spec["pieces"][1]["speed"] = 1
+        return spec
+
+    def test_where_reads_a_field_of_the_army(self) -> None:
+        from chess_variant_sandbox.spec.plain import _where
+
+        spec = self._speeding()
+        assert _where("pieces[].speed", spec) == ("Piece 2 (knight)", "speed")
+        assert _where("pieces.speed", spec) == ("Piece 2 (knight)", "speed")
+        spec["pieces"][2]["speed"] = 1
+        assert _where("pieces[].speed", spec)[0] == "Pieces 2 (knight) and 3 (bishop)"
+        assert _where("pieces[].spy", spec)[0] == "Every piece"
+
+    def test_the_sentence_names_the_piece_and_says_where_rounds_are_chosen(self) -> None:
+        spec = self._speeding()
+        line = next(p for p in validate_spec(spec) if p.startswith("pieces[].speed"))
+        said = plain_problem(line, spec)
+        assert said.startswith("Piece 2 (knight): a speed only matters"), said
+        assert "how the players take turns" in said
+
+    def test_the_designer_says_what_spec_plain_says(self) -> None:
+        spec = self._speeding()
+        for line in validate_spec(spec):
+            assert designing.plain_problem(line, spec) == plain_problem(line, spec), line
+
+    def test_the_command_line_refusal_names_the_piece(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        import json
+
+        from chess_variant_sandbox import cli
+
+        path = tmp_path / "speedy.json"
+        path.write_text(json.dumps(self._speeding()), encoding="utf-8")
+        assert cli.main(["smoke", str(path), "--games", "10", "--workers", "1"]) == 1
+        out = capsys.readouterr().out
+        assert "Piece 2 (knight): a speed only matters in a game played in rounds" in out, out
+        assert "Where the game comes from" not in out

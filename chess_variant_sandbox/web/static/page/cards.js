@@ -54,7 +54,17 @@ function ruleTitle(key, fallback) {
 
 function ruleSays(key) {
   const words = ruleWords(key);
-  return words ? words.says : '';
+  if (!words) return '';
+  // A clock is counted in rounds when the game is played in them (Q995e, F7): its sentence
+  // for rounds, and the number the draft holds said as rounds. The words are the server's.
+  if (words.roundsSays && inRounds()) {
+    const turns = ((DRAFT.rules || {})[key]);
+    const count = typeof turns === 'number' && words.roundsCount
+      ? ' ' + words.roundsCount.replace('{turns}', String(turns)).replace('{rounds}', String(turns / 2))
+      : '';
+    return words.roundsSays + count;
+  }
+  return words.says;
 }
 
 // The sibling fields of one rule that say the same thing in different ways, keyed by the
@@ -831,7 +841,7 @@ function ruleMenuHtml() {
 // sixteen to nineteen names, each cut off by *(N in the library)*, and a person who wanted
 // rounds, atomic or walls had to know the rule's title to find it. A box above the menu
 // narrows it to the rules whose title, sentence or other names hold every word typed. The
-// other names are the server's (`web/cards.RULE_ALSO_CALLED`); the count of games that use
+// other names are the server's (`spec/describe.RULE_ALSO_CALLED`); the count of games that use
 // a rule is a line under the choice.
 
 let RULE_FIND = '';   // what is typed in the box above *add a rule*

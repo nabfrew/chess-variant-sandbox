@@ -222,20 +222,45 @@ class TestTheLoader:
         self, tmp_path: Path
     ) -> None:
         # A prefix whose second move is not legal where it is played, a position whose
-        # root moves are not the engine's, one the record says is lost (nothing to
-        # convert), one whose side to move is not the record's, and one with no moves.
+        # root moves are not the engine's, one whose side to move is not the record's, one
+        # with no moves, and one the writer never writes (an open row).
         illegal = _position("0-3-2", {TAKE: "won", STEP: "open"}, moves=[PREFIX[0], PREFIX[0]])
         other_moves = json.loads(json.dumps(ONE))
         other_moves["id"] = "0-4-2"
         other_moves["scores"] = other_moves["scores"][:1]
-        lost = _position("0-5-2", {TAKE: "lost", STEP: "lost"}, result="lost")
         wrong_side = _position("0-6-2", {TAKE: "won", STEP: "open"}, side=1)
         broken = {"id": "0-7-2", "result": "won"}
-        _write(tmp_path, _record([ONE, illegal, other_moves, lost, wrong_side, broken]))
+        unsettled = _position("0-8-2", {}, ELSEWHERE[2], result="open")
+        data = _record([ONE, illegal, other_moves, wrong_side, broken, unsettled])
+        _write(tmp_path, data)
         record = _load(tmp_path)
         assert [found.id for found in record.positions] == [ONE_ID]
         assert record.dropped == 5
         assert "5 more no longer replay" in proven.basis_said(record)
+        # The upkeep re-proves a record exactly where the loader drops a row (Q993i).
+        assert puzzles.owes(ENGINE, data) == "5 of its 6 proved positions no longer replay"
+
+    def test_a_position_proved_lost_is_passed_over_never_dropped(self, tmp_path: Path) -> None:
+        """Q993i, *queen bomb*'s record: the sample asks a position with the recorded
+        winner to move, and the proof can still find it lost, the other side having missed
+        its win later in the game played. The writer keeps that proof (`puzzles.record`
+        writes every won and lost row); the loader offers it nowhere and does not count it
+        dropped, the upkeep owes nothing for it, and the basis line accounts for it."""
+        lost = _position("1000-1-243", {TAKE: "lost", STEP: "lost"}, ELSEWHERE[4],
+                         result="lost", ends_in=2, rest="lost")
+        assert puzzles.replays(ENGINE, lost) is not None  # it replays: no defect of the row
+        data = _record([ONE, lost, BOTH])
+        data["counts"] = {**data["counts"], "candidates": 6, "lost": 1}
+        _write(tmp_path, data)
+        record = _load(tmp_path)
+        assert [found.id for found in record.positions] == [ONE_ID, BOTH_ID]
+        assert record.dropped == 0 and record.find(_named(lost)) is None
+        assert puzzles.owes(ENGINE, data) is None
+        said = proven.basis_said(record)
+        assert "1 it proved lost for the side to move" in said
+        assert "no longer replay" not in said
+        # A record proved no loss says nothing of one.
+        assert "proved lost" not in proven.basis_said(_load(_fresh(tmp_path, [ONE])))
 
     def test_a_position_is_named_by_what_it_is_not_where_it_was_found(
         self, tmp_path: Path

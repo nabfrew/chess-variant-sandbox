@@ -38,8 +38,9 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from chess_variant_sandbox.spec.describe import RULE_ALSO_CALLED
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
-from chess_variant_sandbox.spec.plain import KIND_WORDS, field_words
+from chess_variant_sandbox.spec.plain import KIND_WORDS, OPTION_WORDS, field_words
 from chess_variant_sandbox.spec.schema import SHAPES, WRAP_PAIRS, wrap_axes
 
 # Paths are dotted from the spec's top, with `[]` for "every item of".
@@ -105,19 +106,6 @@ OWNED = {
     "placement": frozenset({"piece", "player", "squares"}),
 }
 
-# Switches the validator accepts only as `true`: `false` written out is the default stated,
-# one game under two hashes, and refused (*'a spy' false is the default; leave it out*).
-# The model's schema types each as a plain boolean, so the menu offered *no* and a working
-# game turned into a refusal (Q995a F4). Each is a menu of *not said / yes* here. The
-# schema saying it itself (`{"const": true}`, which `field_for` reads too) is the fix that
-# belongs in `spec/jsonschema.py`; until then this list says it, and
-# `tests/test_designer_coverage.py` holds it to the validator both ways: each listed `false`
-# is refused, and no option any menu offers is refused as a default.
-TRUE_ONLY = frozenset({
-    "pieces[].spy",
-    "rules.contacts.links[].own",
-})
-
 # The piece card's row of turn-taking fields (Q995c, fix 5 of `designer-coverage.md`). The
 # three a game in rounds reads were the fourth to sixth of seven fields in *more about this
 # piece*, and drawn in games that refuse them (F5). The row shows them, visible, while the
@@ -137,83 +125,6 @@ PIECE_ROW: dict[str, tuple[str, ...]] = {
 MOVE_KIND_ONLY: dict[str, tuple[str, ...]] = {
     "screen_range": ("hop",),
     "screen": ("hop",),
-}
-
-# Other names a rule goes by, for *find a rule* (Q995c, fix 6, F6): the words a player
-# brings from the games that made a rule famous, which the rule's title and sentence don't
-# use. A rule's own title and sentence are searched too, so these are only what those miss.
-# They belong beside the titles in `spec/describe.RULE_WORDS`; they are here while another
-# task holds `spec/`.
-RULE_ALSO_CALLED: dict[str, tuple[str, ...]] = {
-    "simultaneous": ("rounds", "simultaneous", "same time", "secret moves"),
-    "explode_on_capture": ("atomic", "explosion", "blast"),
-    "check_limit": ("three-check", "three check", "3-check", "checks"),
-    "strike": ("circe", "rebirth", "reborn", "demote", "transform"),
-    "obstacles": ("walls", "blocked squares", "holes", "rocks"),
-    "drops": ("crazyhouse", "hand", "drop", "shogi"),
-    "wrap": ("cylinder", "torus", "wraparound", "wrap around"),
-    "reach": ("king of the hill", "race", "goal", "target square"),
-    "extinction": ("extinction", "run out"),
-    "npcs": ("wild", "neutral", "monster", "non-player"),
-    "turn": ("double move", "marseillais", "progressive", "several moves", "two moves"),
-    "castling": ("castle",),
-    "en_passant": ("en passant",),
-    "must_capture": ("antichess", "losing chess", "giveaway", "forced capture", "suicide"),
-    "territory": ("territory", "claim", "paint"),
-    "portals": ("teleport", "tunnel", "gate"),
-    "forbid_check": ("no check",),
-    "checkmate": ("losers", "misere", "selfmate"),
-    "contacts": ("merge", "combine", "meet", "join"),
-    "promote_on_entry": ("promotion zone", "drop zone"),
-    "repetition_draw": ("threefold", "repetition"),
-    "no_progress_draw": ("fifty-move", "fifty move", "50 move", "stall"),
-    "max_plies": ("move limit", "length", "turn limit"),
-    "royal_facing": ("flying general", "kings facing", "facing"),
-    "bare_royal": ("bare king",),
-    "scoring": ("points", "timeout", "score", "material"),
-}
-
-# A sentence for each value a menu showed bare (Q995c, fix 9, F7): *initiative*, *impossible*,
-# *own*, *collision* and *score* were the schema's spellings, explained only in the paragraph
-# under the menu. Each option now has a label that reads as a choice, and the sentence the
-# win menu's options carry. Keyed by the field's dotted path and the value. These belong in
-# `spec/plain.FIELD_WORDS` as per-option words; they are here while another task holds
-# `spec/`.
-OPTION_WORDS: dict[tuple[str, Any], tuple[str, str]] = {
-    ("rules.simultaneous.tie", "initiative"): (
-        "the player with the initiative",
-        "One player holds the initiative, the second player at the start. A tie goes to "
-        "that player's piece, and the initiative passes to the other.",
-    ),
-    ("rules.simultaneous.tie", "impossible"): (
-        "it can't happen here",
-        "A promise, checked with the rest of the game, that no two pieces that can meet ever "
-        "tie, because the two armies are different pieces in a ring of who beats whom.",
-    ),
-    ("rules.simultaneous.swap", "collision"): (
-        "they meet, as on one square",
-        "Two pieces that each move onto the other's square meet as if they had moved onto "
-        "the same one, and who each beats decides.",
-    ),
-    ("rules.simultaneous.both", "score"): (
-        "the scores decide it",
-        "The player ahead by the rule 'who wins when a clock runs out' wins it, and equal "
-        "scores draw.",
-    ),
-    ("rules.extinction.per_type", True): (
-        "yes",
-        "Each listed piece is counted on its own, so a player loses when any one kind runs "
-        "out, as in Extinction chess.",
-    ),
-    ("rules.extinction.per_type", False): (
-        "no",
-        "The listed pieces are counted together, the usual choice.",
-    ),
-    ("rules.extinction.per_type", "own"): (
-        "yes, for the kinds a player starts with",
-        "Each listed piece is counted on its own, but only against a player who starts with "
-        "it, for two armies made of different pieces.",
-    ),
 }
 
 # What an empty number box means, said in the box (Q995c, fix 5, F5): an empty speed box
@@ -390,8 +301,7 @@ def field_for(node: dict[str, Any], path: str, key: str, required: bool) -> dict
     if "const" in node:
         return {**base, "control": "menu", "options": _options([node["const"]], "")}
     if kind == "boolean":
-        values = [True] if path in TRUE_ONLY else [True, False]
-        return {**base, "control": "menu", "options": _options(values, "")}
+        return {**base, "control": "menu", "options": _options([True, False], "")}
     if kind == ["string", "integer"]:
         return {**base, "control": "rank"}
     if kind in ("integer", "number"):

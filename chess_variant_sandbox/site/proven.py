@@ -21,7 +21,10 @@ replays each prefix through the engine, asking at every step whether the move is
 and drops (and counts) a position whose prefix no longer replays, whose position has
 ended, whose side to move is not the record's, or whose legal moves are not the record's
 root moves -- a record proved under rules or a core that no longer hold. It never
-re-judges one. *Find the move* compares a move number with the record's numbers.
+re-judges one. A row the record proves *lost* for the side to move is passed over and not
+counted as dropped (Q993i): it is a true proof, never a position to offer, and `dropped`
+counts exactly what `puzzles.owes` re-proves a record for. *Find the move* compares a move
+number with the record's numbers.
 
 **A position's name is what it is** (Q993c, `docs/plan-proven.md` §5.3). The loader names
 each position it keeps by the state its replay reached (`puzzles.name`: the core's key and
@@ -53,7 +56,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from chess_variant_sandbox.puzzles import FORMATS, LOST, OPEN, WON, name, replays, trivial
+from chess_variant_sandbox.puzzles import FORMATS, LOST, OPEN, WON, holding, trivial
 from chess_variant_sandbox.web import card_rules, opponents
 from chess_variant_sandbox.web.library import engine_for
 
@@ -216,20 +219,14 @@ def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | N
         return None
     engine = engine_for(spec)
     kept: list[tuple[int, int, str, dict[str, Any]]] = []
-    named: set[str] = set()
-    dropped = 0
     too_easy = 0
-    for order, row in enumerate(data.get("positions") or []):
-        state = (
-            _replays(engine, row) if isinstance(row, dict) and row.get("result") == WON else None
-        )
-        # A second row reaching a position already named is the same position twice: the
-        # first is kept, as a record from the runs never holds one (`puzzles.candidates`).
-        called = None if state is None else name(state)
-        if called is None or called in named:
-            dropped += 1
-            continue
-        named.add(called)
+    # The won rows that hold, by name (`puzzles.holding`, which `puzzles.owes` reads too). A
+    # second row reaching a position already named is the same position twice: the first
+    # is kept, as a record from the runs never holds one (`puzzles.candidates`). A row the
+    # record proves lost is passed over and not dropped (Q993i): a true proof, never a
+    # position to offer, and nothing the upkeep would re-prove.
+    holds, dropped = holding(engine, data.get("positions") or [])
+    for order, called, row in holds:
         if trivial(row):
             too_easy += 1
             continue
@@ -267,12 +264,6 @@ def _read(data: dict[str, Any], digest: str, spec: dict[str, Any]) -> Record | N
     )
 
 
-def _replays(engine: Any, row: dict[str, Any]) -> Any:
-    """The position the record proved, if the engine still reaches it as the record says;
-    None where it does not (`puzzles.replays`, which the upkeep reads too, Q993d)."""
-    return replays(engine, row)
-
-
 def state_of(spec: dict[str, Any], position: Position) -> Any:
     """The position itself, reached by replaying its prefix through the engine."""
     engine = engine_for(spec)
@@ -302,6 +293,7 @@ def basis_said(record: Record) -> str:
     pieces = basis.get("max_pieces")
     asked = counts.get("candidates", 0)
     won = counts.get("won", 0)
+    lost = counts.get("lost", 0)
     unsettled = counts.get("open", 0)
     where = (
         f"Positions from the games the computer players played in this game's {runs} runs"
@@ -330,6 +322,11 @@ def basis_said(record: Record) -> str:
         forced = counts.get("forced", 0)
         said += (
             f"Of {_thousands(asked)} positions asked it proved {_thousands(won)}"
+            # The winner of the recorded game was to move, and still a proof can find them
+            # lost: the other side missed the win later (Q993i). Said, so every one asked
+            # is accounted for.
+            + (f"; {_thousands(lost)} it proved lost for the side to move, who won the game "
+               "played only because the other side then missed its win" if lost else "")
             + (f"; it could not settle {_thousands(unsettled)}" if unsettled else "")
             + (f", and {_thousands(forced)} had only one move to play" if forced else "")
             + ". "

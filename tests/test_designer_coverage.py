@@ -35,7 +35,8 @@ from page_text import DESIGN
 from test_designer import _ADD_RULES, _kit_setup, _run_page
 
 from chess_variant_sandbox.site import routes
-from chess_variant_sandbox.spec import schema, validate_spec
+from chess_variant_sandbox.spec import describe, plain, schema, validate_spec
+from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
 from chess_variant_sandbox.web import cards, designing
 
 # The designer's form, kept where a test can read it after `drawDesigner` has drawn it.
@@ -491,6 +492,26 @@ def _set(spec: dict[str, Any], path: tuple[Any, ...], value: Any) -> bool:
     return True
 
 
+def _true_only_paths() -> set[str]:
+    """Every field the model's schema pins to `true` (`{"const": true}`), by dotted path."""
+    found: set[str] = set()
+
+    def walk(node: Any, path: str) -> None:
+        if not isinstance(node, dict):
+            return
+        if node.get("const") is True:
+            found.add(path)
+        for key, sub in (node.get("properties") or {}).items():
+            walk(sub, f"{path}.{key}" if path else key)
+        if isinstance(node.get("items"), dict):
+            walk(node["items"], path + "[]")
+        for branch in node.get("anyOf") or []:
+            walk(branch, path)
+
+    walk(rule_spec_schema(strict=True), "")
+    return found
+
+
 class TestNoMenuOffersARefusedDefault:
     """Fix 4 (the record's §4.3). Three menus offered a *no* the validator refuses as the
     default written out (F4). Every option of every menu the card model draws is set alone
@@ -537,10 +558,10 @@ class TestNoMenuOffersARefusedDefault:
                                     and f".{path[-1]}" in line]
         assert not refused, "\n".join(refused)
 
-    @pytest.mark.parametrize("path", sorted(cards.TRUE_ONLY))
+    @pytest.mark.parametrize("path", sorted(_true_only_paths()))
     def test_each_true_only_switch_is_refused_as_false(self, path: str) -> None:
-        """`cards.TRUE_ONLY` says what the schema does not; it must keep agreeing with the
-        validator, or it would hide a *no* somebody may choose."""
+        """The schema's `{"const": true}` says what only `true` is; it must keep agreeing with
+        the validator, or it would hide a *no* somebody may choose."""
         spec = _in_rounds()
         spec["rules"]["contacts"] = {"position": "stay", "immune": ["K"],
                                      "links": [{"mover": "N", "onto": "P", "onto_to": "B"}]}
@@ -551,7 +572,9 @@ class TestNoMenuOffersARefusedDefault:
         assert any(re.search(_DEFAULT_REFUSED, line) and f".{key}" in line
                    for line in _problems(spec)), (path, _problems(spec))
 
-    def test_the_true_only_menus_offer_yes_alone(self) -> None:
+    def test_the_schema_names_the_true_only_switches_and_the_menus_offer_yes_alone(self) -> None:
+        paths = _true_only_paths()
+        assert paths == {"pieces[].spy", "rules.contacts.links[].own"}, paths
         model = cards.card_model()
         trees = {"rules": model["rules"], "pieces[]": model["piece"]}
         found = {}
@@ -560,7 +583,7 @@ class TestNoMenuOffersARefusedDefault:
                 dotted = prefix + "." + ".".join(
                     "[]" if isinstance(step, int) else str(step) for step in path)
                 found[dotted.replace(".[]", "[]")] = [o["value"] for o in menu["options"]]
-        for path in cards.TRUE_ONLY:
+        for path in paths:
             assert found[path] == [True], (path, found.get(path))
 
 
@@ -676,7 +699,7 @@ class TestFindARuleByTyping:
 
     def test_every_other_name_belongs_to_a_rule(self) -> None:
         keys = {field["key"] for field in cards.card_model()["rules"]}
-        assert set(cards.RULE_ALSO_CALLED) <= keys, set(cards.RULE_ALSO_CALLED) - keys
+        assert set(describe.RULE_ALSO_CALLED) <= keys, set(describe.RULE_ALSO_CALLED) - keys
 
     @pytest.mark.parametrize(("word", "key"), [
         ("rounds", "simultaneous"), ("atomic", "explode_on_capture"),
@@ -763,7 +786,7 @@ class TestPolish:
     def test_each_bare_value_reads_as_a_choice(self) -> None:
         menus = {"rules." + ".".join(map(str, path)): menu
                  for path, menu in _menus(cards.card_model()["rules"])}
-        for (path, value), (label, says) in cards.OPTION_WORDS.items():
+        for (path, value), (label, says) in plain.OPTION_WORDS.items():
             option = next(o for o in menus[path]["options"] if o["value"] == value)
             assert (option["label"], option["says"]) == (label, says)
         for bare in ("initiative", "impossible", "own", "collision", "score"):
@@ -774,7 +797,7 @@ class TestPolish:
     def test_the_words_are_a_visitors(self) -> None:
         import site_words
 
-        for (path, _), (label, says) in cards.OPTION_WORDS.items():
+        for (path, _), (label, says) in plain.OPTION_WORDS.items():
             for text in (label, says):
                 assert not site_words.hits(text, tuple(site_words.PHRASES)), (path, text)
                 assert not re.search(r"\b[a-z]+_[a-z_]+\b", text), (path, text)
@@ -818,3 +841,50 @@ class TestPolish:
         asked, name = self._saving(
             None, "(saveDraft(), saveUnderName('river crossing'), [ASKED, DRAFT.name])")
         assert (asked, name) == (1, "river crossing")
+
+
+# ------------------------------------------------------------------ Q995e: the words live in spec/
+
+
+class TestRoundsIsSaidInRounds:
+    """Q995e. The words the designer fixes were built in `web/`; `spec/` holds them now, so the
+    page, the command line and `RULES.md` say the same thing. Here: *round* in the tables, and
+    F7's two lines counted in rounds when the game is played in them."""
+
+    def test_the_rule_has_one_spelling_in_both_tables(self) -> None:
+        title = describe.RULE_WORDS["simultaneous"][0]
+        assert title == "playing in rounds: both players move at once"
+        assert plain.FIELD_WORDS["rules.simultaneous"][0] == title
+
+    def test_the_verdict_counts_opening_moves_as_the_game_is_played(self) -> None:
+        alternating = designing.check(CHESS)
+        assert alternating["openingWords"] == f"{alternating['openingMoves']} opening moves"
+        rounds = designing.check(_in_rounds())
+        assert "in the first round" in rounds["openingWords"], rounds["openingWords"]
+        assert "each player" in rounds["openingWords"] or "second" in rounds["openingWords"]
+
+    def test_the_page_draws_the_words_the_server_sent(self) -> None:
+        source = (Path(__file__).resolve().parent.parent / "chess_variant_sandbox" / "web"
+                  / "static" / "page" / "design.js").read_text(encoding="utf-8")
+        assert "check.openingWords" in source
+
+    def test_a_clock_counts_in_rounds_in_a_game_in_rounds_and_in_turns_otherwise(self) -> None:
+        spec = _in_rounds()
+        spec["rules"]["max_plies"] = 400
+        in_rounds = _draw(spec, "ruleSays('max_plies')")
+        assert "rounds" in in_rounds and "a round is two" in in_rounds, in_rounds
+        assert "400 turns is 200 rounds." in in_rounds, in_rounds
+        chess = _draw(CHESS, "ruleSays('max_plies')")
+        assert chess == describe.RULE_WORDS["max_plies"][1], chess
+
+    def test_both_clocks_have_words_for_rounds(self) -> None:
+        words = describe.rule_words()
+        for key in ("max_plies", "no_progress_draw"):
+            assert words[key]["roundsSays"] and "{turns}" in words[key]["roundsCount"], key
+        assert "roundsSays" not in words["castling"]
+
+    def test_a_clock_problem_in_a_game_in_rounds_says_a_round_is_two(self) -> None:
+        problem = "rules.max_plies must be between 2 and 10000, got -4"
+        assert plain.plain_problem(problem, _in_rounds()).endswith(
+            "10000 turns (a round is two), not -4.")
+        assert "round" not in plain.plain_problem(problem, CHESS)

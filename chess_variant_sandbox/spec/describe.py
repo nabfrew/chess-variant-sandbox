@@ -22,6 +22,7 @@ change, and ``tests/test_spec.py`` holds every committed ruleset to it.
 from __future__ import annotations
 
 import difflib
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from math import gcd
 from typing import TYPE_CHECKING, Any
@@ -1130,7 +1131,7 @@ RULE_WORDS: dict[str, tuple[str, str]] = {
         "from it, and taking one is worth its bounty.",
     ),
     "simultaneous": (
-        "both players moving at once",
+        "playing in rounds: both players move at once",
         "Both players choose a move at the same time, without seeing the other's, and both "
         "are made together. Only two pieces moving onto one square collide, and each piece "
         "says which pieces it beats when they do.",
@@ -1205,6 +1206,40 @@ RULE_WORDS: dict[str, tuple[str, str]] = {
         "A piece that runs off one edge continues from the opposite one, which makes the "
         "board a cylinder or a torus.",
     ),
+}
+
+# Other names a rule goes by, for *find a rule* (Q995c, fix 6, F6): the words a player
+# brings from the games that made a rule famous, which the rule's title and sentence don't
+# use. A rule's own title and sentence are searched too, so these are only what those miss.
+# Built in `web/cards.py` by Q995c, moved here by Q995e so the command line and the model
+# read them too.
+RULE_ALSO_CALLED: dict[str, tuple[str, ...]] = {
+    "simultaneous": ("rounds", "simultaneous", "same time", "secret moves"),
+    "explode_on_capture": ("atomic", "explosion", "blast"),
+    "check_limit": ("three-check", "three check", "3-check", "checks"),
+    "strike": ("circe", "rebirth", "reborn", "demote", "transform"),
+    "obstacles": ("walls", "blocked squares", "holes", "rocks"),
+    "drops": ("crazyhouse", "hand", "drop", "shogi"),
+    "wrap": ("cylinder", "torus", "wraparound", "wrap around"),
+    "reach": ("king of the hill", "race", "goal", "target square"),
+    "extinction": ("extinction", "run out"),
+    "npcs": ("wild", "neutral", "monster", "non-player"),
+    "turn": ("double move", "marseillais", "progressive", "several moves", "two moves"),
+    "castling": ("castle",),
+    "en_passant": ("en passant",),
+    "must_capture": ("antichess", "losing chess", "giveaway", "forced capture", "suicide"),
+    "territory": ("territory", "claim", "paint"),
+    "portals": ("teleport", "tunnel", "gate"),
+    "forbid_check": ("no check",),
+    "checkmate": ("losers", "misere", "selfmate"),
+    "contacts": ("merge", "combine", "meet", "join"),
+    "promote_on_entry": ("promotion zone", "drop zone"),
+    "repetition_draw": ("threefold", "repetition"),
+    "no_progress_draw": ("fifty-move", "fifty move", "50 move", "stall"),
+    "max_plies": ("move limit", "length", "turn limit"),
+    "royal_facing": ("flying general", "kings facing", "facing"),
+    "bare_royal": ("bare king",),
+    "scoring": ("points", "timeout", "score", "material"),
 }
 
 
@@ -1289,16 +1324,61 @@ HEXAGON_WRAP_CHOICES: tuple[dict[str, Any], ...] = tuple(
 RULE_CHOICES["rules.wrap"] = RULE_CHOICES["rules.wrap"] + HEXAGON_WRAP_CHOICES
 
 
+# What a game played in rounds counts in rounds (Q995e, F7 of `docs/reference/designer-coverage.md`).
+# Two clocks are written in turns, one for each player's move, so in a game played in rounds
+# a limit of 400 is 200 rounds. Said in rounds for the rules that are clocks: the rule's
+# sentence, and a line giving the number written as rounds (`{turns}` and `{rounds}` are
+# filled by the caller from the number in the draft).
+ROUND_WORDS: dict[str, tuple[str, str]] = {
+    "max_plies": (
+        "How many rounds the game may run before it stops. The limit is written in turns, one "
+        "for each player's move, so a round is two of them. It stops as a draw unless a "
+        "scoring rule says what to compare.",
+        "{turns} turns is {rounds} rounds.",
+    ),
+    "no_progress_draw": (
+        "How many rounds may pass with nothing irreversible -- no capture, no promotion, no "
+        "step by a piece that cannot come back, no ground claimed for good -- before the game "
+        "stops. The limit is written in turns, one for each player's move, so a round is two "
+        "of them.",
+        "{turns} turns is {rounds} rounds.",
+    ),
+}
+
+# How the opening choices are counted: one move for the player to move, or, in a game
+# played in rounds, a choice each, made together.
+OPENING_WORDS: dict[str, str] = {
+    "turns": "{first} opening moves",
+    "rounds": "each player choosing from {first} opening moves in the first round",
+    "rounds_apart": "{first} opening moves for the first player and {second} for the second, "
+                    "chosen together in the first round",
+}
+
+
+def opening_words(counts: Sequence[int], rounds: bool) -> str:
+    """The opening count as the game is played: ``counts`` holds each seat's number of
+    legal opening moves in a game played in rounds, or the one number of the player to move."""
+    if not rounds:
+        return OPENING_WORDS["turns"].format(first=counts[0])
+    if len(counts) < 2 or counts[0] == counts[1]:
+        return OPENING_WORDS["rounds"].format(first=counts[0])
+    return OPENING_WORDS["rounds_apart"].format(first=counts[0], second=counts[1])
+
+
 def rule_words() -> dict[str, dict[str, Any]]:
     """Every rule key, with its title and its opening sentence, for a caller drawing a menu.
 
     The designer's, through `GET /api/design`. Handed over as data so the page places
-    what it is given and has no vocabulary of its own.
+    what it is given and has no vocabulary of its own. A clock carries its words for a game
+    played in rounds too (`ROUND_WORDS`).
     """
-    return {
+    out: dict[str, dict[str, Any]] = {
         key: {"title": title, "says": says}
         for key, (title, says) in RULE_WORDS.items()
     }
+    for key, (says, count) in ROUND_WORDS.items():
+        out[key].update({"roundsSays": says, "roundsCount": count})
+    return out
 
 
 def rule_choices() -> dict[str, Any]:
