@@ -862,6 +862,10 @@ class App:
             # a turn), with every change that way needs, asked of the validator (Q995b).
             return designing.take_turns(body.get("spec"), str(body.get("way", "")),
                                         body.get("card"))
+        if parts == ["api", "design", "rest"]:
+            # Every piece resting the same, written out on each piece, with what the
+            # validator lets take a rest decided by the validator (Q995d).
+            return designing.rest_every_piece(body.get("spec"), body.get("rest"))
         if parts == ["api", "design", "steps"]:
             return self._draft_steps_or_one(body)
         if parts == ["api", "design", "save"]:

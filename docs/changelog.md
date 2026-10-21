@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-21
 
+### Set how long pieces rest in the designer
+
+One choice beside adding a piece sets how long every piece waits after it moves, and each piece's card can set its own.
+The designer says in words what each piece rests.
+
 ### The designer counts in rounds
 
 In a game played in rounds, the designer now counts the longest a game may run and the opening choices in rounds, and the

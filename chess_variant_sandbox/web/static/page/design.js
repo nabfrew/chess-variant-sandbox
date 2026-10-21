@@ -568,8 +568,10 @@ function drawDesigner() {
     <div class="editor">${piecesInOrder().map(index => pieceEditor(DRAFT.pieces[index], index)).join('')}</div>
     <div class="row" style="margin-top:10px">
       <button id="dAddPiece">add a piece</button>
+      <span id="dRestAllBox">${restAllHtml()}</span>
       <span class="muted small">Click a piece to see where it can go.</span>
     </div>
+    <div id="dRestSaid" aria-live="polite">${restSaidHtml()}</div>
     ${libraryPiecesHtml()}
 
     <h3>Where they start</h3>
@@ -623,6 +625,195 @@ function drawDesigner() {
 
   wireDesigner();
   wireTurns(form);
+  wireRestAll(form);
+}
+
+// ------------------------------------------------------------- every piece rests
+//
+// Q995d (`docs/reference/designer-coverage.md` fix 7). Schema 29 made a rest each piece's
+// own, in a game by turns or in rounds, and every game that rests rests every piece the
+// same: setting that was a field on each card, one card at a time. One control beside *add
+// a piece* sets every piece at once, and each card's field (*how it takes its turns*) stays
+// for the exceptions. The rule language has no rest for the whole game, so the choice is
+// written out on each piece, by the server, which asks the validator what may take one
+// (`designing.rest_every_piece`); the page never decides. The words are `spec.plain`'s
+// (`REST_WORDS`, sent in the card model). Under the control, a sentence says what every
+// piece rests, read off the draft as it stands.
+
+let REST_SAID = null,     // { key, rest, changes } after a choice; { key, rest, errors } for a refused one
+    REST_ASKING = false;  // while the server answers
+
+function restWords() {
+  return (cardModel() || {}).restWords || {};
+}
+
+// `{name}` in a word template, filled in.
+function fillWords(template, values) {
+  return String(template || '').replace(/\{(\w+)\}/g,
+    (whole, key) => (values[key] === undefined ? whole : values[key]));
+}
+
+// A piece's rest as written: absent is 0, it never rests.
+function restOf(piece) {
+  const rest = (piece || {}).rest;
+  return Number.isInteger(rest) && rest > 0 ? rest : 0;
+}
+
+// *1 turn*, *2 rounds*: in a game played in rounds a round is a turn.
+function restCount(rest) {
+  const units = (restWords().units || {})[inRounds() ? 'rounds' : 'turns'] || ['turn', 'turns'];
+  return `${rest} ${rest === 1 ? units[0] : units[1]}`;
+}
+
+// What a card's head says beside the piece's name: *rests 2 turns*, or nothing.
+function pieceRestWords(piece) {
+  const rest = restOf(piece);
+  return rest ? fillWords(restWords().head, { rest: restCount(rest) }) : '';
+}
+
+// The longest rest the menu offers, the schema's (`pieces[].rest`'s maximum).
+function restMost() {
+  const field = ((cardModel() || {}).piece || []).find(f => f.key === 'rest');
+  return field && Number.isInteger(field.maximum) ? field.maximum : 0;
+}
+
+// The rest every piece shares, 0 for none, or null while they differ.
+function restShared() {
+  const rests = new Set((DRAFT.pieces || []).map(restOf));
+  return rests.size === 1 ? [...rests][0] : (rests.size ? null : 0);
+}
+
+function restNames(names) {
+  if (names.length < 2) return names.join('');
+  return names.slice(0, -1).join(', ') + ` ${restWords().and || 'and'} ` + names[names.length - 1];
+}
+
+// What every piece rests, in one sentence: the same for all, or each group by its rest,
+// the largest group first and the pieces that never rest last.
+function restSentence() {
+  const words = restWords();
+  const pieces = DRAFT.pieces || [];
+  if (!pieces.length || !words.label) return '';
+  const shared = restShared();
+  if (shared === 0) return (words.none || {})[inRounds() ? 'rounds' : 'turns'] || '';
+  if (shared) return fillWords(words.every, { rest: restCount(shared) });
+  const groups = new Map();
+  pieces.forEach((piece, index) => {
+    const rest = restOf(piece);
+    if (!groups.has(rest)) groups.set(rest, []);
+    groups.get(rest).push((piece || {}).name || (piece || {}).id || `piece ${index + 1}`);
+  });
+  const order = [...groups.keys()].sort((a, b) => (a === 0) - (b === 0)
+    || groups.get(b).length - groups.get(a).length || a - b);
+  const parts = order.map(rest => (rest
+    ? fillWords(words.group, { rest: restCount(rest), names: restNames(groups.get(rest)) })
+    : fillWords(words.groupNever, { names: restNames(groups.get(rest)) })));
+  return fillWords(words.each, { groups: parts.join('; ') });
+}
+
+// The control: *every piece rests [1 turn] after it moves*. While the pieces differ the
+// menu reads *each its own*, which is a line, not a choice.
+function restAllHtml() {
+  const words = restWords();
+  const most = restMost();
+  if (!words.label || !most) return '';
+  const shared = restShared();
+  const options = [];
+  if (shared === null) {
+    options.push(`<option value="" selected disabled>${esc(words.differ)}</option>`);
+  }
+  options.push(`<option value="0"${shared === 0 ? ' selected' : ''}>${esc(words.never)}</option>`);
+  for (let rest = 1; rest <= most; rest++) {
+    options.push(`<option value="${rest}"${shared === rest ? ' selected' : ''}>${
+      esc(restCount(rest))}</option>`);
+  }
+  return `<label class="restAll">${esc(words.label)}
+      <select id="dRestAll" data-restall="1"${REST_ASKING ? ' disabled' : ''}>${options.join('')}</select>
+      ${esc(words.after)}</label>`;
+}
+
+// What the last choice's sentence belongs to: the draft as it stands, but for the version
+// stamp, which the check that follows a choice settles without anyone changing anything.
+function restKey() {
+  return JSON.stringify(Object.assign({}, DRAFT, { schema_version: null }));
+}
+
+// Under the control: the sentence, the old switch's offer, and what the last choice did.
+function restSaidHtml() {
+  const words = restWords();
+  if (!words.label) return '';
+  const said = REST_SAID && REST_SAID.key === restKey() ? REST_SAID : null;
+  const sentence = restSentence();
+  const out = [];
+  if (sentence) {
+    out.push(`<div class="muted small restSentence">${esc(sentence)}${
+      restShared() === null ? '' : ` ${esc(words.override)}`}</div>`);
+  }
+  if (DRAFT_CHECK && DRAFT_CHECK.retiredRest) {
+    out.push(`<div class="error small turnSaid restRetired">${esc(words.retired)}
+      <div><button id="dRestConvert" data-restconvert="1">${esc(words.convert)}</button></div></div>`);
+  }
+  if (said && said.errors && said.errors.length) {
+    const choice = `${words.label} ${said.rest ? restCount(said.rest) : words.never} ${words.after}`;
+    out.push(`<div class="error small turnSaid"><b>${esc(fillWords(words.refused, { choice }))}</b>
+      <ul>${said.errors.map(line => `<li>${esc(line)}</li>`).join('')}</ul></div>`);
+  } else if (said) {
+    const changes = said.changes || [];
+    out.push(`<div class="ok small turnSaid">${changes.length === 1 ? esc(changes[0])
+      : `<ul>${changes.map(line => `<li>${esc(line)}</li>`).join('')}</ul>`}
+      <button class="quiet" id="dRestUndo">undo this</button></div>`);
+  }
+  return out.join('');
+}
+
+// Redrawn where a card's own rest is typed, and when a check answers, without the form.
+function drawRestAll() {
+  const box = document.getElementById('dRestAllBox');
+  const said = document.getElementById('dRestSaid');
+  if (box) box.innerHTML = restAllHtml();
+  if (said) said.innerHTML = restSaidHtml();
+  wireRestAll(document);
+}
+
+function wireRestAll(root) {
+  if (!root || !root.querySelector) return;
+  const menu = root.querySelector('#dRestAll');
+  if (menu) menu.onchange = () => { if (menu.value !== '') chooseRestAll(Number(menu.value)); };
+  const convert = root.querySelector('#dRestConvert');
+  if (convert) convert.onclick = () => chooseRestAll(1);
+  const undo = root.querySelector('#dRestUndo');
+  if (undo) undo.onclick = () => stepDraft(false);
+}
+
+// One press, as *how the players take turns* makes one: the draft as the server writes it,
+// recorded at once so that undo is the step before it, and drawn with what changed.
+function chooseRestAll(rest) {
+  if (REST_ASKING) return;
+  const from = JSON.stringify(DRAFT);
+  const key = restKey();
+  REST_ASKING = true;
+  drawRestAll();
+  return api('/api/design/rest', { spec: DRAFT, rest }).then(answer => {
+    REST_ASKING = false;
+    if (JSON.stringify(DRAFT) !== from) { drawRestAll(); return; }
+    if (!answer || !answer.draft) {
+      REST_SAID = { key, rest, errors: (answer && answer.errors) || [] };
+      drawRestAll();
+      return;
+    }
+    snapshotDraft();
+    DRAFT = answer.draft;
+    snapshotDraft();
+    if (DRAFT_CHECK) DRAFT_CHECK.retiredRest = false;
+    REST_SAID = { key: restKey(), rest, changes: answer.changes || [] };
+    drawDesigner();
+    checkDraft();
+    loadMoveMap();
+  }).catch(error => {
+    REST_ASKING = false;
+    REST_SAID = { key, rest, errors: [errorWords(error)] };
+    drawRestAll();
+  });
 }
 
 // ------------------------------------------------------- how the players take turns
@@ -897,6 +1088,8 @@ function pieceEditor(piece, index) {
         info('royal')}</label>
       <span class="muted small pieceSpeed" data-speedof="${index}">${
         esc(pieceSpeedWords(piece))}</span>
+      <span class="muted small pieceSpeed" data-restof="${index}">${
+        esc(pieceRestWords(piece))}</span>
     </div>
     <div class="row small" style="margin-top:6px; gap:8px">
       <span data-uploads="${index}" style="display:contents">${uploadButtonsHtml(index)}</span>
@@ -1709,6 +1902,9 @@ function checkDraft() {
         runScreen(answer.hash);
       }
       drawVerdict();
+      // Whether the draft still has the old rest switch, whose change is offered beside
+      // *every piece rests* (Q995d).
+      if (current) drawRestAll();
       // The icons come back with the check, so a piece that just got a drawing shows it.
       const slots = document.querySelectorAll('[data-icon]');
       slots.forEach(slot => { slot.innerHTML = pieceIconHtml(Number(slot.dataset.icon)); });
@@ -1952,31 +2148,40 @@ function loadRuleFile(file) {
 function loadRuleText(text, how) {
   return api('/api/design/load', { text: String(text) }).then(answer => {
     if (!answer.valid) {
-      ruleFileSaid(how.near, answer.errors || [], how.named);
+      ruleFileSaid(how.near, answer.errors || [], how.named, answer.converted
+        ? { spec: answer.converted, says: answer.convertSays, how } : null);
       return answer;
     }
-    DRAFT = answer.spec;
-    resetPortalState();
-    FRESH_PIECE = null;
-    if (how.fresh) {
-      DRAFT_FROM = '';
-      DRAFT_PARENT = null;
-    }
-    DRAFT_PIECE = 0;
-    PICKING = null;
-    PLACING = null;
-    TEACHING = null;
-    drawDesigner();
-    checkDraft();
-    loadMoveMap();
-    ruleFileSaid(how.near, [], how.named);
+    takeLoadedSpec(answer.spec, how);
     return answer;
   }).catch(error => ruleFileSaid(how.near, [errorWords(error)], how.named));
 }
 
+// A file or a paste that was a game becomes the draft.
+function takeLoadedSpec(spec, how) {
+  DRAFT = spec;
+  resetPortalState();
+  FRESH_PIECE = null;
+  if (how.fresh) {
+    DRAFT_FROM = '';
+    DRAFT_PARENT = null;
+  }
+  DRAFT_PIECE = 0;
+  PICKING = null;
+  PLACING = null;
+  TEACHING = null;
+  drawDesigner();
+  checkDraft();
+  loadMoveMap();
+  ruleFileSaid(how.near, [], how.named);
+}
+
 // What became of it, under the control that sent it: the validator's lines as they came,
 // or that the draft is now this game, which undo takes back.
-function ruleFileSaid(near, errors, named) {
+//
+// `offer` is the same game written the way the rules are written now, when the file was
+// refused only for the old rest switch (Q995d): one press loads it instead.
+function ruleFileSaid(near, errors, named, offer) {
   const slot = document.getElementById(near);
   if (!slot) return;
   const what = named ? `<b>${esc(named)}</b>` : 'That text';
@@ -1984,9 +2189,12 @@ function ruleFileSaid(near, errors, named) {
     ? `<div class="error small" role="alert">
         <div>${what} was not loaded, and the game you were editing is as it was:</div>
         <ul class="rules">${errors.map(line => `<li><code>${esc(line)}</code></li>`).join('')}</ul>
+        ${offer ? `<button data-loadconverted="1">${esc(offer.says)}</button>` : ''}
       </div>`
     : `<div class="ok small">${what} is your draft now: <b>${esc(DRAFT.name || 'a game')}</b>.
         Undo takes it back, and nothing is kept until you save it.</div>`;
+  const take = offer && slot.querySelector('[data-loadconverted]');
+  if (take) take.onclick = () => takeLoadedSpec(offer.spec, offer.how);
 }
 
 function wireStartFrom() {

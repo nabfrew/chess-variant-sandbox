@@ -40,7 +40,7 @@ from typing import Any
 
 from chess_variant_sandbox.spec.describe import RULE_ALSO_CALLED
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
-from chess_variant_sandbox.spec.plain import KIND_WORDS, OPTION_WORDS, field_words
+from chess_variant_sandbox.spec.plain import KIND_WORDS, OPTION_WORDS, REST_WORDS, field_words
 from chess_variant_sandbox.spec.schema import SHAPES, WRAP_PAIRS, wrap_axes
 
 # Paths are dotted from the spec's top, with `[]` for "every item of".
@@ -163,6 +163,8 @@ def card_model(corpus: Iterable[dict[str, Any]] = ()) -> dict[str, Any]:
         "pieceRow": {kind: list(keys) for kind, keys in PIECE_ROW.items()},
         "moveKindOnly": {key: list(kinds) for key, kinds in MOVE_KIND_ONLY.items()},
         "alsoCalled": {key: list(names) for key, names in RULE_ALSO_CALLED.items()},
+        # *Every piece rests n* beside *add a piece*, in `spec.plain`'s words (Q995d).
+        "restWords": REST_WORDS,
     }
 
 

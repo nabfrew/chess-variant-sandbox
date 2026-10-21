@@ -66,7 +66,7 @@ from chess_variant_sandbox.spec.describe import (
     opening_words,
     plain_move_sentence,
 )
-from chess_variant_sandbox.spec.plain import field_words
+from chess_variant_sandbox.spec.plain import REST_WORDS, field_words
 from chess_variant_sandbox.spec.plain import plain_problem as _spec_plain_problem
 from chess_variant_sandbox.spec.schema import (
     HEX_SYMMETRIES,
@@ -75,6 +75,7 @@ from chess_variant_sandbox.spec.schema import (
     MAX_PORTAL_GROUPS,
     PORTAL_ENDS,
     SQUARE_SYMMETRIES,
+    has_retired_rest,
     portal_end_ids,
     portal_groups,
     portal_map_shape,
@@ -414,6 +415,9 @@ def check(spec: Any, parent: dict[str, Any] | None = None) -> dict[str, Any]:
         preview = board_preview(spec)
         sides = (preview or {}).get("sides")
         return {"valid": False, "errors": plain_problems(problems, spec, sides),
+                # The old rest switch, which the page offers to write out on every piece
+                # (Q995d, `rest_every_piece`).
+                "retiredRest": has_retired_rest(spec),
                 "offBoard": off_board(spec),
                 "preview": preview,
                 "moveLines": move_lines(spec),
@@ -1894,6 +1898,89 @@ def take_turns(spec: Any, way: str, card: Any = None) -> dict[str, Any]:
     if left:
         return {"draft": None, "changes": [], "errors": plain_problems(left, trial)}
     return {"draft": trial, "changes": changes, "errors": []}
+
+
+def rest_every_piece(spec: Any, rest: Any) -> dict[str, Any]:
+    """The draft with every piece resting ``rest`` turns after it moves, or none for 0.
+
+    Q995d (fix 7 of `docs/reference/designer-coverage.md`). Schema 29 made a rest each
+    piece's own, and every game that rests rests every piece the same, so the designer sets
+    them all from one control beside *add a piece* and keeps each card's field for the
+    exceptions. The rule language has no rest for the whole game, so the choice is written
+    out on each piece, and the validator decides what may take one: a piece it refuses a rest
+    on alone (a portal, a wild piece) is left without and said, and a choice no piece may take
+    (a turn of several moves) is not made, with every reason in plain words. Choosing replaces
+    every piece's rest, the exceptions included.
+
+    The old switch, `rules.simultaneous.rest`, is taken out on the way: the same game is
+    every piece resting 1, which is what the page offers a draft that still carries it.
+
+    The answer is ``{"draft", "changes", "errors"}``, as `take_turns`'. The draft is never
+    changed in place.
+    """
+    import copy
+
+    if not isinstance(spec, dict) or not isinstance(spec.get("pieces"), list):
+        raise DesignError("a draft with its pieces")
+    if rest is None or rest == "":
+        rest = 0
+    if isinstance(rest, bool) or not isinstance(rest, int):
+        raise DesignError("a rest, a whole number of turns (0 for none)")
+    base = copy.deepcopy(spec)
+    after: list[str] = []
+    if has_retired_rest(base):
+        base["rules"]["simultaneous"].pop("rest", None)
+        after.append(REST_WORDS["retiredGone"])
+    pieces = base["pieces"]
+    for piece in pieces:
+        if isinstance(piece, dict):
+            piece.pop("rest", None)
+    if rest == 0:
+        return {"draft": base, "changes": [REST_WORDS["cleared"], *after], "errors": []}
+
+    before = set(_worth_saying(validate_spec(settled(base))))
+
+    def resting(which: Iterable[int]) -> dict[str, Any]:
+        trial = copy.deepcopy(base)
+        for index in which:
+            trial["pieces"][index]["rest"] = rest
+        return trial
+
+    def new_problems(trial: dict[str, Any]) -> list[str]:
+        return [line for line in _worth_saying(validate_spec(settled(trial)))
+                if line not in before]
+
+    indices = [i for i, piece in enumerate(pieces) if isinstance(piece, dict)]
+    every = resting(indices)
+    refused = new_problems(every)
+    said = REST_WORDS["set"].format(rest=_rest_count(rest, base))
+    if not refused:
+        return {"draft": every, "changes": [said, *after], "errors": []}
+    takers: list[int] = []
+    left: list[str] = []
+    for index in indices:
+        alone = resting([index])
+        lines = new_problems(alone)
+        if lines:
+            reason = " ".join(dict.fromkeys(plain_problems(lines, alone)))
+            left.append(REST_WORDS["left"].format(reason=reason))
+        else:
+            takers.append(index)
+    if takers:
+        some = resting(takers)
+        if not new_problems(some):
+            some_said = REST_WORDS["setSome"].format(rest=_rest_count(rest, base))
+            return {"draft": some, "changes": [some_said, *left, *after], "errors": []}
+    return {"draft": None, "changes": [],
+            "errors": list(dict.fromkeys(plain_problems(refused, every)))}
+
+
+def _rest_count(rest: int, spec: dict[str, Any]) -> str:
+    """*1 turn*, *2 rounds*: a rest in the unit the game is played in (`REST_WORDS`)."""
+    rules = spec.get("rules")
+    rounds = isinstance(rules, dict) and isinstance(rules.get("simultaneous"), dict)
+    one, many = REST_WORDS["units"]["rounds" if rounds else "turns"]
+    return f"{rest} {one if rest == 1 else many}"
 
 
 def _errors_of(error: Exception, spec: Any = None) -> list[str]:
@@ -3784,7 +3871,15 @@ def read_rule_file(text: Any) -> dict[str, Any]:
     spec = settled(found)
     problems = _worth_saying(validate_spec(spec))
     if problems:
-        return _not_loaded(problems)
+        refused = _not_loaded(problems)
+        if has_retired_rest(spec) and isinstance(spec.get("pieces"), list):
+            # Schema 29 retired the round's own rest (Q995d): the same game, with every
+            # piece resting 1, is offered beside the refusal when it is a game itself.
+            converted = rest_every_piece(spec, 1)["draft"]
+            if converted is not None and read_rule_file(json.dumps(converted))["valid"]:
+                refused["converted"] = settled(converted)
+                refused["convertSays"] = REST_WORDS["convertFile"]
+        return refused
     try:
         engine = Engine(spec)
         engine.legal_moves(engine.initial_state())

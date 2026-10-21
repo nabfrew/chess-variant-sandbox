@@ -1190,6 +1190,13 @@ function writeRoot(root) {
   const head = root.startsWith('piece.')
     && form.querySelector(`[data-speedof="${root.split('.')[1]}"]`);
   if (head) head.textContent = pieceSpeedWords(target);
+  // And so do its rest and the sentence under *every piece rests* (Q995d).
+  const rested = root.startsWith('piece.')
+    && form.querySelector(`[data-restof="${root.split('.')[1]}"]`);
+  if (rested) {
+    rested.textContent = pieceRestWords(target);
+    drawRestAll();
+  }
   checkDraft();
   if (root.startsWith('move') || root.startsWith('piece')) loadMoveMap();
 }

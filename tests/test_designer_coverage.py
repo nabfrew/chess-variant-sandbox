@@ -901,3 +901,181 @@ class TestRoundsIsSaidInRounds:
         assert plain.plain_problem(problem, _in_rounds()).endswith(
             "10000 turns (a round is two), not -4.")
         assert "round" not in plain.plain_problem(problem, CHESS)
+
+
+# ------------------------------------------------------------------ Q995d: fix 7, every piece rests
+
+
+def _rests(spec: dict[str, Any]) -> list[Any]:
+    return [piece.get("rest") for piece in spec["pieces"]]
+
+
+def _archived(name: str) -> dict[str, Any]:
+    path = Path(__file__).resolve().parent.parent / "archive" / f"{name}.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+class TestEveryPieceRests:
+    """Fix 7 (§1.3). Schema 29 made a rest each piece's own, and setting *every piece rests 1*
+    meant typing into every card. One control beside *add a piece* sets them all, written out
+    on each piece by the server, which asks the validator; each card keeps its field for the
+    exceptions."""
+
+    @pytest.mark.parametrize("rounds", [False, True])
+    def test_setting_all_writes_it_on_every_piece(self, rounds: bool) -> None:
+        spec = _in_rounds() if rounds else copy.deepcopy(CHESS)
+        answer = designing.rest_every_piece(spec, 2)
+        assert answer["errors"] == []
+        draft = answer["draft"]
+        assert _rests(draft) == [2] * len(draft["pieces"])
+        # Exactly what the validator expects: the rest on each piece, and nothing game-wide.
+        assert _problems(draft) == []
+        assert "rest" not in (draft["rules"].get("simultaneous") or {})
+        unit = "rounds" if rounds else "turns"
+        assert answer["changes"] == [f"Every piece rests 2 {unit} now."]
+        assert _rests(spec) == [None] * len(spec["pieces"]), "the draft is never changed in place"
+        # The page says what the choice did, with undo, and what every piece now rests, and
+        # the check that settles the version stamp afterwards keeps it said.
+        said = _draw(draft, "(REST_SAID = { key: restKey(), rest: 2, changes: "
+                            f"{json.dumps(answer['changes'])} }}, DRAFT.schema_version = 99,"
+                            " restSaidHtml())")
+        words = _visible(said)
+        assert answer["changes"][0] in words and 'id="dRestUndo"' in said, words
+        assert f"Every piece rests 2 {unit} after it moves" in words, words
+
+    def test_setting_all_replaces_the_exceptions(self) -> None:
+        spec = copy.deepcopy(CHESS)
+        spec["pieces"][4]["rest"] = 3
+        assert _rests(designing.rest_every_piece(spec, 1)["draft"]) == [1] * 6
+
+    def test_overriding_one_on_its_card_is_the_validators_too(self) -> None:
+        draft = designing.rest_every_piece(CHESS, 1)["draft"]
+        draft["pieces"][4]["rest"] = 2
+        assert _problems(draft) == []
+        menu, sentence, head = _draw(
+            draft, "[restAllHtml(), restSentence(), pieceRestWords(DRAFT.pieces[4])]")
+        assert re.search(r'<option value="" selected disabled>each its own</option>', menu), menu
+        assert sentence == ("Each piece rests after it moves: 1 turn for the pawn, knight, "
+                            "bishop, rook and king; 2 turns for the queen."), sentence
+        assert head == "rests 2 turns"
+
+    def test_clearing_takes_every_rest_out(self) -> None:
+        rested = designing.rest_every_piece(_in_rounds(), 1)["draft"]
+        answer = designing.rest_every_piece(rested, 0)
+        assert answer["errors"] == [] and answer["changes"] == ["No piece rests now."]
+        assert all("rest" not in piece for piece in answer["draft"]["pieces"])
+        assert _problems(answer["draft"]) == []
+        menu, sentence = _draw(answer["draft"], "[restAllHtml(), restSentence()]")
+        assert '<option value="0" selected>never</option>' in menu, menu
+        assert sentence == "No piece rests: any piece may move in every round."
+
+    def test_a_choice_no_piece_can_take_is_refused_in_plain_words(self) -> None:
+        several = designing.take_turns(CHESS, "several")["draft"]
+        answer = designing.rest_every_piece(several, 1)
+        assert answer["draft"] is None and answer["changes"] == []
+        assert answer["errors"], answer
+        for line in answer["errors"]:
+            assert not _RAW_PATH.search(line), line
+            assert "schema" not in line, line
+        assert "more than one move a turn" in " ".join(answer["errors"])
+        said = _draw(several, "restSaidHtml()",
+                     f"REST_SAID = {{ key: restKey(), rest: 1,"
+                     f" errors: {json.dumps(answer['errors'])} }};")
+        words = _visible(said)
+        assert ("'every piece rests 1 turn after it moves' can't be chosen for this game yet, "
+                "so nothing was changed.") in words, words
+        assert answer["errors"][0] in words
+
+    @pytest.mark.parametrize(("game", "left"), [("pitchfork", "wild piece"),
+                                                 ("carousel", "portal")])
+    def test_a_piece_that_cant_rest_is_left_without_and_said(self, game: str, left: str) -> None:
+        spec = _archived(game)
+        answer = designing.rest_every_piece(spec, 1)
+        assert answer["errors"] == [] and _problems(answer["draft"]) == []
+        assert answer["changes"][0] == "Every piece that can rest now rests 1 turn."
+        said = " ".join(answer["changes"][1:])
+        assert said.startswith("Left without a rest: ") and left in said, said
+        assert _rests(answer["draft"]).count(None) == 1
+
+    def test_the_control_stands_beside_add_a_piece_and_reads_the_schema(self) -> None:
+        drawn = _draw(CHESS, "drawnForm()")
+        row = drawn[drawn.index('id="dAddPiece"'):]
+        row = row[:row.index("</div>")]
+        assert 'id="dRestAll"' in row, row
+        offered = re.findall(r'<option value="(\d+)"', row)
+        maximum = next(f for f in cards.card_model()["piece"] if f["key"] == "rest")["maximum"]
+        assert offered == [str(n) for n in range(maximum + 1)], offered
+        assert maximum == schema.REST_MAX
+        assert "every piece rests" in _visible(row) and "after it moves" in _visible(row)
+        rounds = _draw(_in_rounds(), "restAllHtml()")
+        assert ">1 round<" in rounds and ">2 rounds<" in rounds, rounds
+
+    def test_the_page_asks_the_server_and_never_decides(self) -> None:
+        assert "'/api/design/rest'" in DESIGN
+        assert routes.find("POST", "/api/design/rest") is not None
+        changed = _draw(CHESS, "(chooseRestAll(1), [REST_ASKING, ASKED])",
+                        "let ASKED = null; api = (url, body) => (ASKED = [url, body.rest],"
+                        " new Promise(() => {}));")
+        assert changed == [True, ["/api/design/rest", 1]]
+
+    def test_the_words_are_a_visitors(self) -> None:
+        import site_words
+
+        def strings(node: Any) -> list[str]:
+            if isinstance(node, str):
+                return [node]
+            values = node.values() if isinstance(node, dict) else node
+            return [text for value in values for text in strings(value)]
+
+        for text in strings(plain.REST_WORDS):
+            assert not site_words.hits(text, tuple(site_words.PHRASES)), text
+            assert not re.search(r"\b[a-z]+_[a-z_]+\b", text), text
+        assert cards.card_model()["restWords"] == plain.REST_WORDS
+
+
+class TestTheOldRestSwitch:
+    """Fix 7's second line: a draft or a file still carrying `rules.simultaneous.rest` was
+    refused in the validator's voice, naming the version and the game's text."""
+
+    def _old(self) -> dict[str, Any]:
+        spec = _in_rounds()
+        spec["rules"]["simultaneous"]["rest"] = True
+        return spec
+
+    def test_the_refusal_is_plain(self) -> None:
+        answer = designing.check(self._old())
+        assert answer["retiredRest"] is True
+        said = [line for line in answer["errors"] if "rest" in line]
+        assert said, answer["errors"]
+        for line in said:
+            assert "schema" not in line and not _RAW_PATH.search(line) and '"' not in line, line
+            assert "rests after it moves" in line and "1 round" in line, line
+        assert designing.check(_in_rounds()).get("retiredRest") is not True
+
+    def test_the_change_keeps_the_same_game(self) -> None:
+        answer = designing.rest_every_piece(self._old(), 1)
+        draft = answer["draft"]
+        assert "rest" not in draft["rules"]["simultaneous"]
+        assert _rests(draft) == [1] * len(draft["pieces"])
+        assert _problems(draft) == []
+        assert any("old rest" in line for line in answer["changes"]), answer["changes"]
+
+    def test_the_designer_offers_it(self) -> None:
+        said = _draw(self._old(), "restSaidHtml()", "DRAFT_CHECK = { retiredRest: true };")
+        assert 'id="dRestConvert"' in said
+        assert plain.REST_WORDS["convert"] in _visible(said)
+
+    def test_a_file_with_it_is_offered_the_change(self) -> None:
+        answer = designing.read_rule_file(json.dumps(self._old()))
+        assert answer["valid"] is False
+        assert answer["errors"] == [schema.RETIRED_REST]
+        assert answer["convertSays"] == plain.REST_WORDS["convertFile"]
+        assert designing.read_rule_file(json.dumps(answer["converted"]))["valid"] is True
+        assert _rests(answer["converted"]) == [1] * len(answer["converted"]["pieces"])
+        offered = _draw(CHESS, "(ruleFileSaid('dLoadSaid', ['x'], 'old.json',"
+                               " { spec: {}, says: 'load it' }), SAID)",
+                        "let SAID = ''; const _slot = { set innerHTML(v) { SAID = v; },"
+                        " querySelector: () => null };"
+                        " const _get = document.getElementById;"
+                        " document.getElementById = id => (id === 'dLoadSaid' ? _slot : _get(id));")
+        assert "data-loadconverted" in offered and "load it" in offered

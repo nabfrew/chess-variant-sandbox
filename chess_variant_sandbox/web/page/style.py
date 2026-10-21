@@ -1406,6 +1406,11 @@ RULES = """
   .turnWay .cardSays { display: block; }
   .turnSaid { margin: 4px 0 0; }
   .turnSaid button { margin-top: 6px; }
+  /* Every piece rests (Q995d, fix 7): one sentence with its menu inside, beside *add a
+     piece*, and under the row what every piece rests. */
+  .restAll { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
+  .restAll select { width: auto; min-height: var(--ctl-h-sm); padding: 3px 6px; }
+  .restSentence { margin-top: 6px; }
   /* How a piece takes its turns (Q995c, fix 5): a row on the piece card, under its moves,
      separated by a rule rather than a border (no panel inside a panel). Each control keeps
      its label; what each does is one fold under the row. */

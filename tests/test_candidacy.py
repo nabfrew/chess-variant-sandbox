@@ -1125,6 +1125,20 @@ def _designer_views() -> list[tuple[str, str]]:
          ".join(' ')")
     view("a save under a template's name", kit + f"DRAFT = {json.dumps(templates[0]['spec'])};",
          "nameAskHtml('template') + nameAskHtml('game')")
+    # Q995d: every piece rests, beside *add a piece*: the menu, the sentence while the
+    # pieces differ, what a choice changed, what refused one, and the old switch's offer.
+    rested = designing.rest_every_piece(templates[0]["spec"], 1)
+    differ = json.loads(json.dumps(rested["draft"]))
+    differ["pieces"][0]["rest"] = 2
+    several = designing.take_turns(chess, "several")["draft"]
+    refused_rest = designing.rest_every_piece(several, 1)
+    view("every piece rests", kit + f"DRAFT = {json.dumps(differ)};"
+         " DRAFT_CHECK = { retiredRest: true };",
+         f"[restAllHtml(), restSaidHtml(), pieceEditor(DRAFT.pieces[0], 0),"
+         f" (REST_SAID = {{ key: restKey(), rest: 1,"
+         f" changes: {json.dumps(rested['changes'])} }}, restSaidHtml()),"
+         f" (REST_SAID = {{ key: restKey(), rest: 1,"
+         f" errors: {json.dumps(refused_rest['errors'])} }}, restSaidHtml())].join(' ')")
     view("trying small changes", "TRY_OPEN = false;", "tryHtml()")
     view("measuring in the browser", "DRAFT_CHECK = { hash: 'a' };",
          "[hereOwnHtml({ result: { index: 0.5, games: 256, weights: 'v11' } }, null),"

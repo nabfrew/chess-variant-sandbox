@@ -164,6 +164,13 @@ ALLOWED: tuple[Route, ...] = (
     ),
     Route(
         "POST",
+        "/api/design/rest",
+        "the draft with every piece resting the same number of turns after it moves, or "
+        "none, written out on each piece; a piece the validator refuses a rest on is left "
+        "without and said (Q995d); in memory, writes nothing, a few validates",
+    ),
+    Route(
+        "POST",
         "/api/design/teach",
         "what a click on a square could mean: every way of moving the rule language has "
         "that reaches it, as sentences. A compile per candidate, capped at 64 and about "

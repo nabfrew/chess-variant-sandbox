@@ -59,11 +59,19 @@ def _weights(**terms: float) -> list[float]:
 
 
 @pytest.fixture(scope="module")
-def games(warm_library: None):
+def games(warm_library: None, tmp_path_factory: pytest.TempPathFactory):
     """The committed library, listed once first (`warm_library`): a card's `summary`
     runs the smoke gate on its game, 4 s a test over every card on a cold worker (Q749),
-    and the listing pays it once per worker for every test that reads a card."""
-    return library.discover(RULESETS, library.RUNS_DIR)
+    and the listing pays it once per worker for every test that reads a card.
+
+    **Over an empty runs directory of its own, never the tree's `runs/`** (Q995f). That
+    one holds whatever its developer saved from a served page, and `discover` lists a
+    saved draft beside the committed games under the draft's own name: a copy of torus
+    chess saved as *chess* made `{game.name: ...}["chess"]` the draft's card, and
+    `fairyTranslates` read False on chess. A test that means the tree's own `runs/`
+    discovers it itself (`test_the_stored_ladder_table_contains_no_heuristic`).
+    """
+    return library.discover(RULESETS, tmp_path_factory.mktemp("no-runs"))
 
 
 @pytest.fixture
@@ -139,6 +147,10 @@ class TestLibrary:
         names = {game.name for game in games}
         for expected in ("chess", "shogi", "xiangqi", "dull"):
             assert expected in names
+        # And nothing else, whatever the tree's `runs/` holds: a draft saved there under a
+        # committed game's name would be read as that game's card by name (Q995f).
+        assert {game.source for game in games} == {"committed"}
+        assert len(names) == len(games)
 
     def test_a_card_says_enough_to_choose_from(self, chess_game) -> None:
         card = chess_game.summary()
@@ -6553,7 +6565,10 @@ class TestWhatReachesThePage:
         # the line beside it (`ruleFoundHtml`) as the box is typed in, the chosen rule's
         # sentence and count (`ruleChosenHtml`), and a save under a borrowed name asks for
         # one (`nameAskHtml`). Every title, sentence and name through `esc`; the rest numbers.
-        assert len(sites) == 147
+        # 149 since Q995d: *every piece rests* redrawn in place (`drawRestAll`): its menu
+        # (`restAllHtml`, constant words from `spec.plain` and numbers) and the sentence
+        # under it (`restSaidHtml`), every piece name and server sentence through `esc`.
+        assert len(sites) == 149
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
@@ -9366,13 +9381,14 @@ class TestTwoRatingTablesThatMustNotMix:
     are what hold that.
     """
 
-    def test_the_stored_ladder_table_contains_no_heuristic(self, games) -> None:
+    def test_the_stored_ladder_table_contains_no_heuristic(self, warm_library) -> None:
         """Read off the tree's own `runs/`: the main checkout's has the tables, a worktree's
         none, and there it skips rather than passing on nothing (Q745). That the picker's
-        table cannot reach this one is the two tests below, which need no `runs/`."""
+        table cannot reach this one is the two tests below, which need no `runs/`.
+        Discovered here, since the module's `games` reads no `runs/` (Q995f)."""
         standings = [
             (game.name, standing)
-            for game in games
+            for game in library.discover(RULESETS, library.RUNS_DIR)
             for standing in (game.ratings or {}).get("standings", [])
         ]
         if not standings:

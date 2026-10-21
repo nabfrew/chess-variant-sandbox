@@ -25,7 +25,7 @@ import re
 from typing import Any
 
 from chess_variant_sandbox.spec.describe import RULE_WORDS
-from chess_variant_sandbox.spec.schema import is_simultaneous
+from chess_variant_sandbox.spec.schema import RETIRED_REST, is_simultaneous
 
 # Dotted from the top of the game's text, with no list indices: `pieces.moves.range` is
 # every way of moving's *how far*. A label is what the field is called on the page; the
@@ -688,7 +688,54 @@ _PHRASED: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^no royal piece appears in setup\.placements$"),
      "No royal piece is on the board at the start."),
     (re.compile(r"^spec must be a JSON object$"), "These rules couldn't be read."),
+    # Schema 29 retired the round's own rest for each piece's (Q995d, fix 7): said without
+    # the version or the game's text, and with the change that keeps the same game.
+    (re.compile("^" + re.escape(RETIRED_REST) + "$"),
+     "Playing in rounds no longer has a rest of its own: a rest is now each piece's, under "
+     "'rests after it moves' on its card. The same game is every piece resting 1 round."),
 )
+
+
+# Q995d (fix 7 of `docs/reference/designer-coverage.md`): what the designer says about rest
+# across the whole army. A rest is a piece's own (schema 29), and every game that rests
+# today rests every piece the same, so the designer sets every piece at once beside *add a
+# piece* and keeps each card's field for the exceptions. The page fills these in: `{rest}`
+# is a count in `units` (a turn, or a round in a game played in rounds), `{names}` a list of
+# pieces joined with `and`. The server's sentences about a choice are here too
+# (`designing.rest_every_piece`).
+REST_WORDS: dict[str, Any] = {
+    # The control, read as one sentence: *every piece rests [1 turn] after it moves*.
+    "label": "every piece rests",
+    "after": "after it moves",
+    "never": "never",
+    # The menu while the pieces differ: a line, not a choice.
+    "differ": "each its own",
+    "units": {"turns": ["turn", "turns"], "rounds": ["round", "rounds"]},
+    "and": "and",
+    # The card's head, beside a piece's speed.
+    "head": "rests {rest}",
+    # The army, said under the control.
+    "every": "Every piece rests {rest} after it moves: it sits that out before it moves again.",
+    "none": {
+        "turns": "No piece rests: any piece may move on each of its player's turns.",
+        "rounds": "No piece rests: any piece may move in every round.",
+    },
+    "each": "Each piece rests after it moves: {groups}.",
+    "group": "{rest} for the {names}",
+    "groupNever": "never for the {names}",
+    "override": "A piece's own rest is on its card, under 'how it takes its turns'.",
+    # What a choice did, or why it was not made (the server's).
+    "cleared": "No piece rests now.",
+    "set": "Every piece rests {rest} now.",
+    "setSome": "Every piece that can rest now rests {rest}.",
+    "left": "Left without a rest: {reason}",
+    "retiredGone": "The old rest of playing in rounds is gone; each piece's rest replaces it.",
+    "refused": "'{choice}' can't be chosen for this game yet, so nothing was changed.",
+    # The old switch, still in a draft or a file: the change that keeps the same game.
+    "retired": "This draft still has the old rest of playing in rounds, which no game takes now.",
+    "convert":"make every piece rest 1 round instead",
+    "convertFile": "load it with every piece resting 1 round instead",
+}
 
 
 def _where(path: str, spec: Any) -> tuple[str, str | None]:
@@ -891,6 +938,11 @@ def _army_problem(problem: str, spec: Any) -> str | None:
 
 def plain_problem(problem: str, spec: Any = None) -> str:
     """One validator problem, in the designer's words. Never drops or adds a problem."""
+    # A whole sentence said its own way goes first: the old rest switch's names a piece
+    # field, which the army's sentences would otherwise take (Q995d).
+    for pattern, said in _PHRASED:
+        if pattern.match(problem):
+            return said
     army = _army_problem(problem, spec)
     return army if army is not None else _translate(problem, spec)
 
