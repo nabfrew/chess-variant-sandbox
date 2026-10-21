@@ -25,6 +25,7 @@ from page_text import CORE, PAGE, view
 from chess_variant_sandbox import corpus
 from chess_variant_sandbox.metrics import scoring
 from chess_variant_sandbox.web import landing, page
+from chess_variant_sandbox.web.page import assets
 
 LANDING = view("landing")
 
@@ -371,7 +372,7 @@ class TestOnTheWire:
             answer = site.browser().get("/")
             assert answer.status == 200
             assert '<template id="landingPage">' in answer.text
-            assert "/static/page/landing.js" in answer.text
+            assert assets.name_of("/static/page/landing.js") in answer.text
             words = site_words.visible(answer.text)
             assert "The score: a best estimate, not a judgement" in words
             assert site_words.hits(words) == []

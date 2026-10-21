@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-21
 
+### Faster return visits
+
+Coming back to the site now downloads about a fifth of what it did: the page's styles and scripts are kept by your browser
+until they change.
+
 ### Follow what's new
 
 This page is now readable without scripts, and two feeds let a feed reader follow it: one for what changed, one for

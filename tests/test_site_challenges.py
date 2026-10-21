@@ -40,7 +40,7 @@ from chess_variant_sandbox.site import correspondence as c
 from chess_variant_sandbox.site import matches as m
 from chess_variant_sandbox.site.server import SignInFirst, SiteApp
 from chess_variant_sandbox.web import library
-from chess_variant_sandbox.web.page import marks
+from chess_variant_sandbox.web.page import assets, marks
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 PACKAGE = REPOSITORY / "chess_variant_sandbox"
@@ -531,7 +531,7 @@ class TestTheLinkOverHttp:
             page = visitor.get(f"/c/{link.token}")
             assert page.status == 200
             assert f'"token": "{link.token}"' in page.text
-            assert "/static/site/challenge.js" in page.text
+            assert assets.name_of("/static/site/challenge.js") in page.text
             whose = visitor.get(f"/api/challenge/link/{link.token}")
             assert whose.status == 200 and '"from": "ana"' in whose.text
             refused = visitor.post(f"/api/challenge/link/{link.token}/accept")

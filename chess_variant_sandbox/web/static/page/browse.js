@@ -73,7 +73,7 @@ async function showLibrary() {
   // and stays on top.
   view.innerHTML = `
     <div id="forYou">${forYouHtml(asked)}</div>
-    <div class="row" style="justify-content:space-between; margin-bottom:12px">
+    <div class="row u-jc-space-between u-mb-12">
       <div class="muted small">Every game here is playable in the browser. Pick one, or
         <b>build your own</b>.</div>
       <div class="row">
@@ -106,7 +106,7 @@ async function showLibrary() {
 // words it; null when none is, and then the page says nothing at all.
 function provisionalScoresHtml(found) {
   if (!found || !found.sentence) return '';
-  return `<div id="provisionalScores" class="muted small" style="margin-bottom:8px">${
+  return `<div id="provisionalScores" class="muted small u-mb-8">${
     esc(found.sentence)}</div>`;
 }
 
@@ -130,10 +130,10 @@ function provisionalScoresHtml(found) {
 function waitingHtml(asked) {
   const waiting = (asked && asked.waiting) || [];
   if (!waiting.length) return '';
-  return `<h3 style="margin-top:0">Games waiting on your move</h3>
+  return `<h3 class="u-mt-0">Games waiting on your move</h3>
     ${waiting.map(entry => {
       const held = heldWaiting(entry.id, entry.plies);
-      return `<div class="row" style="margin-top:6px">
+      return `<div class="row u-mt-6">
       <span><a href="#/play/${esc(entry.id)}">${esc(entry.name)}</a> against
         <b>${markHtml(entry.opponentMark, 18)}${esc(entry.opponent)}</b>
         <span class="muted small">&middot; ${entry.rated ? 'rated' : 'practice'} &middot; ${
@@ -152,11 +152,11 @@ function forYouHtml(asked) {
   const waiting = waitingHtml(asked);
   const challenged = (asked && asked.forYou) || [];
   if (!waiting && !challenged.length) return '';
-  return `<div class="panel" style="margin-bottom:14px">
+  return `<div class="panel u-mb-14">
     ${waiting}
-    ${challenged.length ? `<h3 style="margin-top:${waiting ? '14px' : '0'}"
+    ${challenged.length ? `<h3 class="${waiting ? 'u-mt-14' : 'u-mt-0'}"
       >A challenge for you</h3>` : ''}
-    ${challenged.map(entry => `<div class="row" style="margin-top:6px">
+    ${challenged.map(entry => `<div class="row u-mt-6">
       <span><b>${markHtml(entry.fromMark, 18)}${esc(entry.from)}</b> ${entry.rematch ? 'offers a rematch at'
         : 'challenged you to'} <a href="/game/${esc(entry.game)}">${esc(entry.name)}</a>
         <span class="muted small">&middot; ${esc(entry.seat)} &middot; ${
@@ -315,7 +315,7 @@ function tabsHtml() {
   const tabs = siteTabs();
   if (tabs.length < 2) return '';
   const now = currentTab();
-  return `<div class="row" role="tablist" style="gap:6px; margin-bottom:10px">${
+  return `<div class="row u-gap-6 u-mb-10" role="tablist">${
     tabs.map(tab => `<button role="tab" data-tab="${esc(tab.key)}"
       aria-selected="${tab === now}" class="${tab === now ? 'primary' : ''}"
       >${esc(tab.label)} (${Number(tab.count) || 0})</button>`).join('')}</div>`;
@@ -529,8 +529,8 @@ function controlsHtml() {
     <details${active ? ' open' : ''}>
       <summary class="muted small">narrow it down${active ? ` &mdash; ${active} filter${
         active === 1 ? '' : 's'} on` : ''}</summary>
-      <div style="margin-top:8px">
-        <div class="line" style="margin-bottom:6px">
+      <div class="u-mt-8">
+        <div class="line u-mb-6">
           ${ACCOUNTS ? '' : `<label class="pick">kept
             <select id="stage">
               ${option('', 'anywhere', BROWSE.stage)}
@@ -672,7 +672,7 @@ function paintResults() {
   const count = found.length === held.length
     ? `${held.length} games`
     : `${found.length} of ${held.length} games`;
-  box.innerHTML = `<div class="muted small" style="margin-bottom:6px">${count}${
+  box.innerHTML = `<div class="muted small u-mb-6">${count}${
     BROWSE.group === 'none' ? '' : ` in ${groups.length} groups`}</div>`
     + pillLegendHtml()
     + groups.map(group => (group.title ? `
@@ -699,7 +699,7 @@ function pillLegendHtml() {
        player${info('unbeaten')}, and what the checks found`
     : `what it scored out of 1${info('index')} and how far to trust it${info('trust')}, where
        it is kept${info('committed')}, and what the checks found`;
-  return `<div class="muted small" style="margin-bottom:10px">The words under a game's
+  return `<div class="muted small u-mb-10">The words under a game's
     name say ${said}. Tap or point at one for what it means.</div>`;
 }
 
@@ -723,7 +723,7 @@ function cardHtml(game) {
   const notes = unbeatenTag(game) + untriedTag(game) + unplayedTag(game) + fairyTag(game)
     + playableTag(game);
   return `
-    <div class="panel card" data-hash="${esc(game.hash)}" style="${paperSheet(game.hash)}">
+    <div class="panel card ${styleClass(paperSheet(game.hash))}" data-hash="${esc(game.hash)}">
       ${thumbHtml(game)}
       <div class="cardText">
       <h2>${esc(game.name)}</h2>
@@ -731,7 +731,7 @@ function cardHtml(game) {
         + trustTag(game.trust, game.status)}</div>
       ${notes ? `<div class="row notes">${notes}</div>` : ''}
       ${exhibitHtml(game.exhibit)}${previewHtml(game.preview)}
-      <div class="row muted small" style="gap:8px">
+      <div class="row muted small u-gap-8">
         <span>${esc(game.board)}</span><span>&middot;</span>
         <span>${game.pieceTypes} piece type${game.pieceTypes === 1 ? '' : 's'}</span>
         ${where ? `<span>&middot;</span><span>${esc(where)}</span>` : ''}
@@ -743,7 +743,7 @@ function cardHtml(game) {
       <p>${esc(game.description)}</p>
       ${game.preview ? '' : cardSplitHtml(game) + cardSeatHtml(game) + sortedByHtml(game)
         + cardBandHtml(game)}
-      ${game.descent ? `<div class="muted small" style="margin-top:6px">${
+      ${game.descent ? `<div class="muted small u-mt-6">${
         game.descent} version${game.descent === 1 ? '' : 's'} on from ${
         esc((game.family || {}).name || nameOf((game.family || {}).hash) || 'an earlier game')
       }</div>` : ''}
@@ -841,7 +841,7 @@ function peopleHtml(game) {
       people</span>`);
   }
   if (!bits.length) return '';
-  return `<div class="row muted small" style="gap:8px; margin-top:2px">${
+  return `<div class="row muted small u-gap-8 u-mt-2">${
     bits.join('<span>&middot;</span>')}</div>`;
 }
 
@@ -858,7 +858,7 @@ function peopleHtml(game) {
 function cardSplitHtml(game) {
   const said = splitSentences(game.runVerdict, game.runs);
   if (!said.length) return '';
-  return `<div class="muted small" style="margin-top:6px" title="${esc(said.join(' '))}">${
+  return `<div class="muted small u-mt-6" title="${esc(said.join(' '))}">${
     esc(said[0])}</div>`;
 }
 
@@ -872,7 +872,7 @@ function cardSeatHtml(game) {
   const short = band && band.favoured
     ? `leans to the ${band.favoured} side, ${Math.round(band.share * 100)}% of decided games`
     : 'leans toward one side';
-  return `<div class="muted small" style="margin-top:6px" title="${esc(said)}">${
+  return `<div class="muted small u-mt-6" title="${esc(said)}">${
     esc(short)}</div>`;
 }
 
@@ -915,7 +915,7 @@ function sortedByHtml(game) {
   return `<div class="metric" title="${esc(((legend && legendSays(legend)) || '')
       + (rested ? ` Taken as the ${rested}.` : ''))}">
       <span>${esc(title)}</span>
-      <span class="bar"><div style="width:${Math.round(value * 100)}%"></div></span>
+      <span class="bar"><div class="${styleClass(`width:${Math.round(value * 100)}%`)}"></div></span>
       <b>${value.toFixed(2)}</b>
     </div>`;
 }

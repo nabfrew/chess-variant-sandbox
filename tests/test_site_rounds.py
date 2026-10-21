@@ -34,6 +34,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import page_text
 import pytest
 import site_store
 from test_site_admin import DULL, Site, _running_site, _saved, _screened
@@ -796,7 +797,7 @@ class TestThePages:
         # Q537: the round's table is a block per entrant on a phone, its cells labelled by
         # their headings, and the decision cell prints the server's words.
         assert 'class="round" id="round-table"' in admin_page
-        assert "table.round thead { display: none; }" in admin_page
+        assert "table.round thead { display: none; }" in page_text.inlined(admin_page)
         assert "td.dataset.label" in admin_js and "one.decisionSays" in admin_js
         assert "one.decision +" not in admin_js
         for text in (admin_page, source):

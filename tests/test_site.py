@@ -2695,10 +2695,10 @@ def _every_page() -> dict[str, str]:
         "/profile": page_text.inlined(site_pages.profile("ada")),
         "/players": page_text.inlined(site_pages.players("ada")),
         "/admin": page_text.inlined(site_pages.admin("boss")),
-        "/credits": site_pages.credits(),
-        "/privacy": site_pages.privacy(),
-        "/terms": site_pages.terms_page(),
-        "/badges": site_pages.badges(),
+        "/credits": page_text.inlined(site_pages.credits()),
+        "/privacy": page_text.inlined(site_pages.privacy()),
+        "/terms": page_text.inlined(site_pages.terms_page()),
+        "/badges": page_text.inlined(site_pages.badges()),
         "/request-invitation": page_text.inlined(site_pages.request_invitation()),
     }
 
@@ -5997,7 +5997,7 @@ class TestTheModeMenuSaysWhatHappens:
         sideways, which is what C7 got rid of."""
         from page_text import DETAIL
 
-        assert '<select id="mode" style="max-width:100%">' in DETAIL
+        assert '<select id="mode" class="u-maxw-100p">' in DETAIL
 
 
 class TestWhatTheTwoPayloadsSayAboutAnOpenGame:

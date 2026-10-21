@@ -49,7 +49,16 @@ from typing import Any
 from chess_variant_sandbox.site import asking, quota, routes, seo, terms
 from chess_variant_sandbox.site import badges as site_badges
 from chess_variant_sandbox.viz import pieces
-from chess_variant_sandbox.web.page import front, marks, news_page, rules_page, shell
+from chess_variant_sandbox.web.page import (
+    assets,
+    front,
+    marks,
+    news_page,
+    rules_page,
+    script_tags,
+    shell,
+    stylesheet_links,
+)
 from chess_variant_sandbox.web.page.style import STYLE as APP_STYLE
 
 COOKIE = "chess_variant_sandbox_session"
@@ -247,6 +256,12 @@ _OWN = """
 """
 
 STYLE = APP_STYLE + _OWN + rules_page.STYLE
+"""What a page of the site is styled by, in order. Linked as three files (G12): the
+application's (`web.page.STYLESHEET`, which also holds the rules that were `style=`
+attributes), `SHEET` with the site's own, and the rule page's, each named by its digest and
+cached for a year, so a page after the first costs none of them."""
+
+SHEET = assets.sheet("site", _OWN)
 
 # The pages' scripts: plain files under `site/static/`, served at `SCRIPT_PREFIX` by the
 # site's handler ahead of dispatch, as the application serves its own (Q513). A page lists
@@ -266,6 +281,8 @@ SCRIPTS: dict[str, Path] = {
         "member", "ask",
     )
 }
+# Named by their digests, for a year, as the application's are (G12, `web/page/assets.py`).
+assets.serve_files(SCRIPTS)
 
 
 TAGLINE = shell.TAGLINE  # the application's header line, one spelling for both
@@ -375,7 +392,7 @@ def _shell(
     server hands them, as JSON in a tag that never runs. `<` is written `\\u003c` there,
     so no value can close the tag.
     """
-    tail = "".join(f'<script src="{SCRIPT_PREFIX}{name}.js"></script>\n' for name in scripts)
+    tail = script_tags(f"{SCRIPT_PREFIX}{name}.js" for name in scripts)
     base = seo.site_base()
     head = front.head_lines(
         title,
@@ -390,7 +407,8 @@ def _shell(
     return (
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-        f"<title>{escape(title)}</title>\n{head}{shell.head_links()}<style>{STYLE}</style>\n"
+        f"<title>{escape(title)}</title>\n{head}{shell.head_links()}"
+        f"{stylesheet_links(SHEET, rules_page.SHEET)}"
         "</head>\n"
         '<body>\n<div class="wrap">\n'
         '  <header class="top">\n'

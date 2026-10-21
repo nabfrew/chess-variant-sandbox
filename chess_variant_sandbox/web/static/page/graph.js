@@ -170,11 +170,11 @@ function mapLegendHtml() {
   return `<div class="mapLegend">
     ${mapCommunitiesHtml()}
     <div id="mapScale"${MAP_PAINT === 'ramp' ? '' : ' hidden'}>${mapScaleHtml()}</div>
-    <div class="row muted small" style="gap:4px 14px">
-      <span class="row" style="gap:6px; flex-wrap:nowrap">${mapLineSwatch('line')}<span>a line: each is
+    <div class="row muted small u-gap-4-14">
+      <span class="row u-gap-6 u-wrap-nowrap">${mapLineSwatch('line')}<span>a line: each is
         among the other's ${MAP_DATA.mutual} nearest, thicker the more alike${
         info('alike')}</span></span>
-      <span class="row" style="gap:6px; flex-wrap:nowrap"${MAP_ARROWS ? '' : ' hidden'}
+      <span class="row u-gap-6 u-wrap-nowrap"${MAP_ARROWS ? '' : ' hidden'}
         id="mapArrowsKey">${mapLineSwatch('lineage')}<span>made from <span
         class="muted">${MAP_DATA.counts.lineage}</span></span></span>
     </div>
@@ -193,7 +193,7 @@ function mapCommunitiesHtml() {
     return `<button class="chip${MAP_PICK && MAP_PICK.kind === 'community'
       && MAP_PICK.at === index ? ' on' : ''}" data-community="${index}"
       title="${esc(community.names.join(', '))}">${colour
-        ? `<span class="dot" style="background:${esc(colour)}"></span>`
+        ? `<span class="dot ${styleClass(`background:${colour}`)}"></span>`
         : mapDotSwatch('var(--panel)', 'var(--muted)')}${esc(community.name)}
       <span class="muted">${community.size}</span><span class="muted" data-folded
         hidden>&middot; folded</span></button>`;
@@ -202,7 +202,7 @@ function mapCommunitiesHtml() {
   return `<details id="mapCommunitiesBox"${window.innerWidth > 720 ? ' open' : ''}>
     <summary class="muted small">${communities.length} communities${info('community')},
       drawn together and in one colour</summary>
-    <div class="muted small" style="margin:6px 0">Each is named by what marks it out from
+    <div class="muted small u-m-6-0">Each is named by what marks it out from
       the rest of the library. Click one to light it; its panel folds it into one dot. A
       hollow dot is a game in a pair, or an unusual game in none.</div>
     <div class="chips" id="mapCommunities">${chips}</div></details>`;
@@ -220,8 +220,8 @@ function mapScaleHtml() {
     .map(at => mapDotSwatch(mapFillAt(at), 'var(--line)')).join('');
   // No separator between the four: they wrap onto two or three lines on a phone, and a
   // dot left dangling at the end of a wrapped line is the untidiest way to go on.
-  return `<div class="row muted small" style="gap:4px 14px">
-    <span class="row" style="gap:3px">how it scored${info('index')}
+  return `<div class="row muted small u-gap-4-14">
+    <span class="row u-gap-3">how it scored${info('index')}
       <span>${esc(fmt(scale.low))}</span>${steps}<span>${esc(fmt(scale.high))}</span></span>
     <span>${mapDotSwatch('var(--panel)', 'var(--muted)')}no score, or out of
       date${info('stale')}</span>
@@ -477,28 +477,28 @@ function mapNothingPanel() {
   const counts = MAP_DATA.counts;
   // The unusual games, furthest from everything first: a finding, not a leftover row.
   const unusual = (MAP_DATA.unusual || []).map(one => MAP_AT[one.hash]).filter(Boolean);
-  return `<h3 style="margin-top:0">The library, laid out</h3>
+  return `<h3 class="u-mt-0">The library, laid out</h3>
     <div class="small">${counts.nodes} games, each drawn near the games most like it. A
       line joins two games when each is among the other's ${MAP_DATA.mutual} nearest, and
       the thicker the line the more alike the two${info('alike')}. A community${
       info('community')} is a group of games more like each other than like the rest,
       drawn together in one colour and named by what marks it out.</div>
-    ${unusual.length ? `<div class="muted small" style="margin-top:10px">${unusual.length}
+    ${unusual.length ? `<div class="muted small u-mt-10">${unusual.length}
       unusual games are in no community: nothing in the library is close enough to them.
       The furthest from everything first:</div>
-    <div class="chips" style="margin-top:6px">${unusual.map(node => `<button class="chip"
+    <div class="chips u-mt-6">${unusual.map(node => `<button class="chip"
       data-node-row="${esc(node.hash)}">${esc(node.name)}</button>`).join('')}</div>`
       : ''}
-    ${MAP_DATA.scale ? `<div class="muted small" style="margin-top:10px">Coloured by
+    ${MAP_DATA.scale ? `<div class="muted small u-mt-10">Coloured by
       score, a game's dot is filled by what it scored, deeper for a higher score, and left
       hollow where there is no ${ACCOUNTS ? 'current score'
         : 'score this checkout can read'}. The ring inside a dot marks a
       game the checks ruled out.</div>` : ''}
-    <div class="muted small" style="margin-top:10px">Point at a game to light it and its
+    <div class="muted small u-mt-10">Point at a game to light it and its
       neighbours, click it for what it is and the games like it, or a line for what the
       two share and what differs. Drag to move the map, scroll or pinch to zoom, and Tab to
       walk the games from the keyboard.</div>
-    ${counts.twins ? `<div class="muted small" style="margin-top:10px">${counts.twins === 1
+    ${counts.twins ? `<div class="muted small u-mt-10">${counts.twins === 1
       ? 'Two of the games are the same rules written two ways, shown as one dot.'
       : `${counts.twins} pairs of games are the same rules written two ways, each pair
       shown as one dot.`}</div>` : ''}`;
@@ -512,18 +512,18 @@ function mapNodePanel(node) {
   const tag = scoreTag({ ...score, staleness: node.staleness });
   const split = splitSentences(score.runVerdict, score.runs);
   const home = mapCommunityOf(node);
-  return `<h2 style="margin:0 0 6px">${esc(node.name)}</h2>
+  return `<h2 class="u-m-0-0-6">${esc(node.name)}</h2>
     <div class="row pills">${tag}</div>
     ${exhibitHtml(node.exhibit)}
     ${node.names.length > 1 ? `<div class="muted small">also listed as ${
       esc(node.names.slice(1).join(', '))}: the same rules, written two ways.</div>` : ''}
-    <div class="row muted small" style="gap:8px">
+    <div class="row muted small u-gap-8">
       <span>${esc(node.board)}</span><span>&middot;</span>
       <span>${node.degree === 1 ? '1 line' : node.degree + ' lines'}</span>
     </div>
-    ${split.length ? `<div class="muted small" style="margin-top:6px">${
+    ${split.length ? `<div class="muted small u-mt-6">${
       esc(split.join(' '))}</div>` : ''}
-    <div class="row" style="margin-top:10px">
+    <div class="row u-mt-10">
       <button class="primary" data-open="${esc(node.hash)}">open this game</button>
       <button data-try="${esc(node.hash)}">and now try&hellip;</button>
       <button data-local="${MAP_DATA.nodes.indexOf(node)}" title="Hide every game that is
@@ -531,10 +531,10 @@ function mapNodePanel(node) {
         neighbours</button>
     </div>
     ${mapTryHtml(node)}
-    ${home ? `<div class="muted small" style="margin-top:10px">In the community
+    ${home ? `<div class="muted small u-mt-10">In the community
       <button class="chip" data-community="${home.index}">${
         esc(home.community.name)}</button></div>`
-      : `<div class="muted small" style="margin-top:10px">Unusual: in no community, because
+      : `<div class="muted small u-mt-10">Unusual: in no community, because
         nothing in the library is close enough to it.</div>`}
     ${mapLikeHtml(node)}`;
 }
@@ -551,10 +551,9 @@ function mapLikeHtml(node) {
   // rule: where nothing here can be read, five rows of the same apology is the loudest
   // thing in the panel.
   const scored = rows.some(({ at }) => at >= 0 && mapLines()[at].gap);
-  return `<div class="muted small" style="margin-top:12px">Games like this one, most alike
+  return `<div class="muted small u-mt-12">Games like this one, most alike
       first${info('alike')}</div>
-    ${scored || !rows.some(({ at }) => at >= 0) ? '' : `<div class="muted small"
-      style="margin-top:6px">No scores to compare yet. A line says what the difference did
+    ${scored || !rows.some(({ at }) => at >= 0) ? '' : `<div class="muted small u-mt-6">No scores to compare yet. A line says what the difference did
       to the score once both games ${ACCOUNTS ? 'have a current score'
         : 'carry a measurement this checkout can read'}.</div>`}
     <div class="links">${rows.map(({ row, at }) => {
@@ -562,7 +561,7 @@ function mapLikeHtml(node) {
       const line = at >= 0 ? mapLines()[at] : null;
       return `<button class="linkRow" ${line ? `data-line-row="${at}"`
         : `data-node-row="${esc(row.hash)}"`}>
-      <div class="row" style="gap:8px; align-items:baseline">
+      <div class="row u-gap-8 u-ai-baseline">
         <b>${esc(other.name)}</b><span class="muted small">${esc(fmt(row.likeness))} alike${
           line ? ', a line' : ''}</span>
       </div>
@@ -581,30 +580,28 @@ function mapLinePanel(line) {
   const rules = (line.differences || []).length ? `<div class="links">${
     line.differences.map(difference => `
       <div class="linkRow">
-        <span class="chip" style="cursor:default"><span class="dot"
-          style="background:${esc(mapKindColour(difference.kind))}"></span>${
+        <span class="chip u-cur-default"><span class="dot ${
+          styleClass(`background:${mapKindColour(difference.kind)}`)}"></span>${
           esc(mapKindWords(difference.kind))}</span>
-        <div class="small" style="margin-top:4px">${esc(difference.sentence)}</div>
+        <div class="small u-mt-4">${esc(difference.sentence)}</div>
       </div>`).join('')}</div>` : '';
-  return `<h3 style="margin-top:0">How alike</h3>
-    <div class="row" style="gap:8px">
-      <button class="crumb" data-node-row="${esc(line.source)}"
-        style="color:var(--ink); font-weight:600">${esc(from.name)}</button>
+  return `<h3 class="u-mt-0">How alike</h3>
+    <div class="row u-gap-8">
+      <button class="crumb u-c-ink u-fw-600" data-node-row="${esc(line.source)}">${esc(from.name)}</button>
       <span class="muted small">and</span>
-      <button class="crumb" data-node-row="${esc(line.target)}"
-        style="color:var(--ink); font-weight:600">${esc(to.name)}</button>
+      <button class="crumb u-c-ink u-fw-600" data-node-row="${esc(line.target)}">${esc(to.name)}</button>
     </div>
-    <div class="small" style="margin-top:8px">${esc(fmt(line.likeness))} alike, where 1 is
+    <div class="small u-mt-8">${esc(fmt(line.likeness))} alike, where 1 is
       the same game and 0 means they share nothing rare${info('alike')}. Each is among the
       other's ${MAP_DATA.mutual} nearest, which is why a line joins them.</div>
-    ${line.shares.length ? `<div class="small" style="margin-top:8px"><span
+    ${line.shares.length ? `<div class="small u-mt-8"><span
       class="muted">Both have:</span> ${esc(line.shares.join('; '))}</div>` : ''}
-    <div class="small" style="margin-top:8px"><span class="muted">What differs:</span>
+    <div class="small u-mt-8"><span class="muted">What differs:</span>
       ${esc(mapRulesApart(line))}${(line.differences || []).length ? ''
         : line.units ? ', too many to list one by one' : ''}.</div>
     ${rules}
     ${mapGapHtml(line, from, to)}
-    <div class="row" style="margin-top:10px">
+    <div class="row u-mt-10">
       <button data-open="${esc(line.source)}">open ${esc(from.name)}</button>
       <button data-open="${esc(line.target)}">open ${esc(to.name)}</button>
     </div>`;
@@ -621,14 +618,14 @@ function mapCommunityPanel(community) {
       few games outside do.`
     : 'No one thing marks them out; they are alike in many small ways.';
   const places = (community.parts || []).length;
-  return `<h3 style="margin-top:0">${esc(community.name)}</h3>
+  return `<h3 class="u-mt-0">${esc(community.name)}</h3>
     <div class="small">${community.size} games, each among the nearest of others here
       rather than of the rest of the library. ${why}${centre
         ? ` The one most like the rest of them is <b>${esc(centre.name)}</b>.` : ''}</div>
-    ${places > 1 ? `<div class="muted small" style="margin-top:8px">Drawn in ${places}
+    ${places > 1 ? `<div class="muted small u-mt-8">Drawn in ${places}
       places: the map keeps each game beside the games most like it, and parts of this
       community share little but what names it.</div>` : ''}
-    ${community.size >= MAP_COLOURED ? `<div class="row" style="margin-top:10px">
+    ${community.size >= MAP_COLOURED ? `<div class="row u-mt-10">
       <button data-fold-group="${esc(community.id)}">fold it into one dot</button></div>`
       : ''}
     <div class="links">${community.members.map((hash, at) => `
@@ -645,17 +642,17 @@ function mapTryHtml(node) {
   const held = MAP_TRY[node.hash];
   if (!held) return '';
   if (held.state === 'asking') {
-    return `<div class="muted small" style="margin-top:10px">Looking for the small changes
+    return `<div class="muted small u-mt-10">Looking for the small changes
       to the rules that apply here&hellip;</div>`;
   }
   if (held.state === 'failed') {
-    return `<div class="muted small" style="margin-top:10px">${esc(held.why)}</div>`;
+    return `<div class="muted small u-mt-10">${esc(held.why)}</div>`;
   }
   if (!held.steps.length) {
-    return `<div class="muted small" style="margin-top:10px">No small change to the rules
+    return `<div class="muted small u-mt-10">No small change to the rules
       makes a different game from this one.</div>`;
   }
-  return `<div class="muted small" style="margin-top:10px">${held.steps.length === 1
+  return `<div class="muted small u-mt-10">${held.steps.length === 1
       ? 'One small change to the rules makes' : held.steps.length + ` small changes to the
       rules each make`} a different game from this one. Pressing one opens it in the
       editor, which keeps nothing until you save it.${held.making
@@ -759,16 +756,16 @@ function mapOpenDraft(answer, made) {
 // different news, and so is "measured under something else".
 function mapGapHtml(line, from, to) {
   if (line.gap) {
-    return `<div class="small" style="margin-top:10px"><b>${esc(to.name)}</b> against
+    return `<div class="small u-mt-10"><b>${esc(to.name)}</b> against
       <b>${esc(from.name)}</b></div>${gapLine(line.gap)}${mapMovedHtml(line.gap)}`;
   }
   const missing = [from, to].filter(end => !end.score).map(end => end.name);
   if (!missing.length) {
-    return `<div class="muted small" style="margin-top:10px">These two were scored under
+    return `<div class="muted small u-mt-10">These two were scored under
       different versions of the scoring rules, which never share a scale, so there is no
       difference to take.</div>`;
   }
-  return `<div class="muted small" style="margin-top:10px">No score to compare &mdash;
+  return `<div class="muted small u-mt-10">No score to compare &mdash;
     ${esc(missing.join(' and '))} ${missing.length === 1 ? 'has' : 'have'} ${ACCOUNTS
       ? 'no current score' : 'no measurement this checkout can read'}.</div>`;
 }
@@ -781,11 +778,11 @@ function mapGapHtml(line, from, to) {
 function mapMovedHtml(gap) {
   const moved = (gap && gap.moved) || [];
   if (!moved.length) return '';
-  return `<div class="muted small" style="margin-top:10px">What changed most, of the
+  return `<div class="muted small u-mt-10">What changed most, of the
       eleven things measured</div>
     <div class="links">${moved.map(part => `
       <div class="linkRow">
-        <div class="row" style="gap:8px; align-items:baseline">
+        <div class="row u-gap-8 u-ai-baseline">
           <b>${esc(mapComponentWords(part.key))}</b>
           <span class="muted small">${esc(fmt(part.otherIndex))} against ${
             esc(fmt(part.index))}</span>
@@ -826,13 +823,13 @@ function mapInventedWords(arrow) {
 function mapArrowPanel(arrow) {
   const from = arrow && MAP_AT[arrow.source], to = arrow && MAP_AT[arrow.target];
   if (!from || !to) return mapNothingPanel();
-  return `<h3 style="margin-top:0">Made from</h3>
+  return `<h3 class="u-mt-0">Made from</h3>
     <div class="small"><b>${esc(to.name)}</b> was made as a new version of
       <b>${esc(from.name)}</b>, and the two are ${arrow.units === 1
         ? 'one rule' : arrow.units + ' rules'} apart. An arrow is drawn however far apart
       they are, because what came from what is a fact no comparison of two rule sets can
       find.${arrow.run ? ` ${mapInventedWords(arrow)}` : ''}</div>
-    <div class="row" style="margin-top:10px">
+    <div class="row u-mt-10">
       <button data-open="${esc(arrow.source)}">open ${esc(from.name)}</button>
       <button data-open="${esc(arrow.target)}">open ${esc(to.name)}</button>
     </div>`;
@@ -845,11 +842,11 @@ function mapGroupPanel(group) {
   const why = group.words
     ? `What marks them out: <b>${esc(group.words)}</b>.`
     : 'No one thing marks them out; they are alike in many small ways.';
-  return `<h3 style="margin-top:0">${esc(group.name)}</h3>
+  return `<h3 class="u-mt-0">${esc(group.name)}</h3>
     <div class="small">${group.size} games of one community, folded into one dot. ${why}
       Open it to put every one of them back where it was; the lines this dot carries are
       the lines its games have to the rest of the library.</div>
-    <div class="row" style="margin-top:10px">
+    <div class="row u-mt-10">
       <button data-open-group="${esc(group.id)}">open this community</button></div>
     <div class="links">${group.names.map((name, at) => `
       <button class="linkRow" data-node-row="${esc(group.members[at])}">

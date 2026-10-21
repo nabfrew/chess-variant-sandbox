@@ -27,8 +27,8 @@ from test_shell import _get
 from chess_variant_sandbox.spec import reference
 from chess_variant_sandbox.web import designing, landing
 from chess_variant_sandbox.web import server as web_server
+from chess_variant_sandbox.web.page import assets, rules_page, shell
 from chess_variant_sandbox.web.page import game as drawing
-from chess_variant_sandbox.web.page import rules_page
 
 ROOT = Path(__file__).resolve().parent.parent
 RULES = ROOT / "RULES.md"
@@ -210,7 +210,8 @@ class TestTheHead:
         assert len(rules_page.DESCRIPTION) <= drawing.DESCRIPTION_LIMIT
         assert '<meta name="robots"' not in html
         # No script of its own: the shell's alone.
-        assert re.findall(r"<script[^>]*>", html) == ['<script src="/static/shell.js">']
+        assert re.findall(r"<script[^>]*>", html) == [
+            f'<script src="{assets.name_of(shell.SHELL_SCRIPT_ROUTE)}">']
 
 
 class TestTheMarkdownFileIsUnchanged:

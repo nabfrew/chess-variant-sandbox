@@ -97,7 +97,8 @@ class TestTheSitesSheets:
 class TestWhatsNew:
     def test_each_day_is_a_sheet_with_its_date_beside_it(self) -> None:
         assert "sheet.className = 'panel newsSheet';" in PAGE_WITH_FILES
-        assert ".newsSheet {" in PAGE and "grid-template-columns: 150px minmax(0, 1fr);" in PAGE
+        assert ".newsSheet {" in PAGE_WITH_FILES
+        assert "grid-template-columns: 150px minmax(0, 1fr);" in PAGE_WITH_FILES
 
     def test_the_title_is_the_page_title_size(self) -> None:
-        assert ".news > h2 { font-size: 28px; line-height: 34px;" in PAGE
+        assert ".news > h2 { font-size: 28px; line-height: 34px;" in PAGE_WITH_FILES

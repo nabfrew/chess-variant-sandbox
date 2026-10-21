@@ -26,7 +26,7 @@ const BROWSER = [
   'AbortController', 'AbortSignal', 'URL', 'URLSearchParams', 'FormData', 'Blob', 'File',
   'FileReader', 'TextEncoder', 'TextDecoder', 'Worker', 'Event', 'CustomEvent',
   'KeyboardEvent', 'MouseEvent', 'Node', 'Element', 'HTMLElement', 'HTMLInputElement',
-  'DOMParser', 'XMLSerializer', 'MutationObserver', 'ResizeObserver',
+  'DOMParser', 'XMLSerializer', 'MutationObserver', 'ResizeObserver', 'CSSStyleSheet',
   'IntersectionObserver', 'Image', 'performance', 'crypto', 'structuredClone',
   'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'queueMicrotask',
   'requestAnimationFrame', 'cancelAnimationFrame', 'getComputedStyle', 'matchMedia',

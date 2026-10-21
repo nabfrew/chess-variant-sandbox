@@ -13,7 +13,7 @@ async function showRound(day) {
   SESSION = null;
   SHOWN = null;
   if (!ACCOUNTS) {
-    view.innerHTML = `<div class="panel"><h2 style="margin-top:0">The round</h2>
+    view.innerHTML = `<div class="panel"><h2 class="u-mt-0">The round</h2>
       <div class="muted">Rounds are held on the site, where members vote on the shortlist.
         A checkout has no members, so it has no round.</div></div>`;
     return;
@@ -33,13 +33,13 @@ function paintRound(data, said) {
     `<a href="#/round/${esc(one.round)}">${esc(one.words)}</a>`).join(' · ');
   view.innerHTML = `
     <div class="panel" id="round" data-round="${esc(data.round || '')}">
-      <h2 style="margin-top:0">${esc(title)}</h2>
+      <h2 class="u-mt-0">${esc(title)}</h2>
       <div>${esc(data.says)}</div>
-      <div class="muted small" style="margin-top:6px">${esc(data.rule)}</div>
-      ${said ? `<div class="small" id="roundSaid" style="margin-top:6px">${esc(said)}</div>` : ''}
-      <div id="roundEntrants" style="margin-top:12px">
+      <div class="muted small u-mt-6">${esc(data.rule)}</div>
+      ${said ? `<div class="small u-mt-6" id="roundSaid">${esc(said)}</div>` : ''}
+      <div id="roundEntrants" class="u-mt-12">
         ${data.entrants.map(entrantHtml).join('')}</div>
-      ${others ? `<div class="muted small" style="margin-top:12px">Other rounds: ${others}</div>` : ''}
+      ${others ? `<div class="muted small u-mt-12">Other rounds: ${others}</div>` : ''}
     </div>`;
   wireRoundVotes(data);
 }
@@ -60,7 +60,7 @@ function entrantHtml(one) {
   let vote = '';
   if (one.mayVote) {
     const mine = one.yourVote;
-    vote = `<div class="row" style="margin-top:6px">
+    vote = `<div class="row u-mt-6">
         <button class="${mine === true ? 'primary' : ''}" data-vote="yes" data-hash="${
           esc(one.hash)}">yes</button>
         <button class="${mine === false ? 'primary' : ''}" data-vote="no" data-hash="${
@@ -69,10 +69,10 @@ function entrantHtml(one) {
           ? `<span class="muted small">You voted ${mine ? 'yes' : 'no'}; you can change it
             until the close.</span>` : ''}</div>`;
   } else if (one.voting && one.why) {
-    vote = `<div class="muted small" style="margin-top:6px">${esc(one.why)}
+    vote = `<div class="muted small u-mt-6">${esc(one.why)}
       <a href="/game/${esc(one.hash)}">Play it</a>.</div>`;
   }
-  return `<div class="entrant" style="margin-bottom:12px" data-hash="${esc(one.hash)}">
+  return `<div class="entrant u-mb-12" data-hash="${esc(one.hash)}">
       <div><a href="/game/${esc(one.hash)}"><strong>${esc(one.name)}</strong></a>
         <span class="muted small">by ${personHtml(one.designer)}</span></div>
       <div class="small">${score} · ${stars} · ${esc(one.players)} ${

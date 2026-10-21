@@ -335,7 +335,7 @@ class TestTheWalkPicker:
     def test_the_note_comes_first_under_the_board_while_picking(self) -> None:
         spec = _wolves()
         said = _page(spec, _PICK_ROUTE, "benchSaysHtml('setup')")
-        assert said.startswith('<div class="small pickNote" data-picknote')
+        assert said.startswith('<div class="small pickNote u-mt-6" data-picknote')
         assert "data-palettenote" not in said
 
     def test_done_picking_ends_it(self) -> None:

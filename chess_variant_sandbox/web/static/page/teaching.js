@@ -132,7 +132,7 @@ function teachPanelHtml() {
   const called = esc(piece.name || piece.id || 'this piece');
   if (!preview) return '';
   if (!TEACHING) {
-    return `<div class="row small" style="margin-top:8px">
+    return `<div class="row small u-mt-8">
       <button id="dTeach"${DRAFT_MAP && !DRAFT_MAP.live && DRAFT_MAP.from >= 0
         ? '' : ' disabled'}>teach it a move</button>
       <span class="muted">Or click the board to stand the ${called} somewhere else.</span>
@@ -145,14 +145,14 @@ function teachPanelHtml() {
     <div class="muted small">The ${called} stands on <b>${here}</b>. Click a square it
       should be able to reach, and pick what that click means. Click a square again to
       take it back.</div>
-    <div class="row small" style="margin-top:6px">
+    <div class="row small u-mt-6">
       ${TEACH_MEANS.map(([value, label]) => `<button data-mean="${value}"
         class="${TEACHING.mean === value ? 'on' : ''}">${esc(label)}</button>`).join('')}
-      <label class="pick small" style="align-self:center"><input type="checkbox"
+      <label class="pick small u-as-center"><input type="checkbox"
         id="dTeachRank"${TEACHING.fromRank ? ' checked' : ''}> only from rank ${rank}</label>
     </div>
     ${teachOffersHtml(W)}
-    <div class="row" style="margin-top:8px">
+    <div class="row u-mt-8">
       <button class="primary" id="dTeachKeep"${teachingOffer()
         ? '' : ' disabled'}>add this to its moves</button>
       <button id="dTeachReplace"${teachingOffer()
@@ -167,16 +167,16 @@ function teachPanelHtml() {
 function teachOffersHtml(W) {
   const teaching = TEACHING;
   if (teaching.error) {
-    return `<div class="error" style="margin-top:8px">${esc(teaching.error)}</div>`;
+    return `<div class="error u-mt-8">${esc(teaching.error)}</div>`;
   }
   if (!teaching.targets.length) {
-    return `<div class="muted small" style="margin-top:8px">Nothing is clicked yet.</div>`;
+    return `<div class="muted small u-mt-8">Nothing is clicked yet.</div>`;
   }
   if (teaching.busy && !teaching.offers.length) {
-    return `<div class="muted small" style="margin-top:8px">working it out&hellip;</div>`;
+    return `<div class="muted small u-mt-8">working it out&hellip;</div>`;
   }
   if (!teaching.offers.length) {
-    return `<div class="muted small" style="margin-top:8px">No way of moving this game
+    return `<div class="muted small u-mt-8">No way of moving this game
       can say reaches ${esc(squareNames(teaching.targets, W))} from there. Try fewer
       squares, or write it in the move row under the piece &mdash; the editor can
       describe moves an empty board can't show, such as a jump over a piece.</div>`;
@@ -192,7 +192,7 @@ function teachOffersHtml(W) {
         ? ''
         : ` <span class="muted">&mdash; and ${offer.extra.length} more square${
             offer.extra.length === 1 ? '' : 's'}</span>`}</button></li>`).join('')}</ul>
-    <div class="muted small" style="margin-top:4px">${exact
+    <div class="muted small u-mt-4">${exact
       ? `The first ${exact === 1 ? 'one reaches' : exact + ' reach'} exactly what you
          clicked; the rest reach more, which is often what you meant.`
       : 'None of these reaches exactly what you clicked, so each reaches more.'}
@@ -224,7 +224,7 @@ function paletteHtml() {
       const on = PLACING && !PLACING.erase && PLACING.piece === index && PLACING.player === player;
       return `<button data-placing="${index}.${player}" draggable="true" class="${on ? 'on' : ''}"
         title="${esc(trayTitle(piece))}">${icon
-          ? `<img src="${esc(icon.href)}" alt=""${icon.rotate ? ' style="transform:rotate(180deg)"' : ''}>`
+          ? `<img src="${esc(icon.href)}" alt=""${icon.rotate ? ' class="u-tf-rot180"' : ''}>`
           : esc(piece.id || '?')}${traySpeedHtml(piece)}</button>`;
     }).join('')}
   </div>`).join('');
@@ -258,7 +258,7 @@ function pieceTrayHtml() {
       const icon = ((preview.icons || [])[index] || [])[0];
       return `<button data-pick="${index}" class="${index === DRAFT_PIECE ? 'on' : ''}"
         title="${esc(trayTitle(piece))}">${icon
-          ? `<img src="${esc(icon.href)}" alt=""${icon.rotate ? ' style="transform:rotate(180deg)"' : ''}>`
+          ? `<img src="${esc(icon.href)}" alt=""${icon.rotate ? ' class="u-tf-rot180"' : ''}>`
           : esc(piece.id || '?')}${traySpeedHtml(piece)}</button>`;
     }).join('')}
   </div>`;
@@ -286,7 +286,7 @@ function paletteNoteHtml() {
 }
 
 function paletteNoteBodyHtml() {
-  return `${freshNoteHtml(freshUnplaced())}<div class="muted small" style="margin-top:6px">${PLACING
+  return `${freshNoteHtml(freshUnplaced())}<div class="muted small u-mt-6">${PLACING
     ? 'Click or drag onto the board. Click the same square again to lift what is there.'
     : 'Pick a piece from the tray, then click squares on the board or drag it there.'}
     ${(DRAFT.setup || {}).mirror !== false
@@ -354,7 +354,7 @@ function wildTrayNoteHtml() {
   const sides = (lastPreview() || {}).sides || ['first', 'second'];
   const whose = (DRAFT.setup || {}).mirror !== false ? 'one for each player'
     : `for the ${esc(sides[PLACING.player] || 'first')} player`;
-  return `<div class="small wildNote" data-wildnote style="margin-top:6px">The
+  return `<div class="small wildNote u-mt-6" data-wildnote>The
     <b>${called}</b> is also a wild piece in this game. The tray puts down a player's ${called}, ${whose};
     a wild ${called} and its walk are on the ${wildCardLinkHtml()} card.</div>`;
 }
@@ -426,10 +426,10 @@ function wildToolHtml() {
     ? `Now click the square the wild <b>${esc(piece.name || piece.id)}</b> starts on: the
        first square of its walk.`
     : 'Pick what it is, then click the square it starts on.';
-  return `<div class="small wildTool" data-wildtool style="margin-top:6px">
+  return `<div class="small wildTool u-mt-6" data-wildtool>
     <div><b>A wild piece</b> <span class="muted">belongs to neither player and walks the
       squares you pick, round and round.</span> ${next}</div>
-    <div class="row small palette wildTypes" style="margin-top:6px">${chips}
+    <div class="row small palette wildTypes u-mt-6">${chips}
       ${library.length ? `<select data-wildlib aria-label="a piece out of the library">
         <option value="">or one from the library…</option>
         ${library.map(entry => `<option value="${esc(entry.key)}">${esc(entry.name)}</option>`).join('')}

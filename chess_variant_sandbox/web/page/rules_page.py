@@ -32,8 +32,7 @@ from functools import lru_cache
 from html import escape
 
 from chess_variant_sandbox.spec import reference
-from chess_variant_sandbox.web.page import front, shell
-from chess_variant_sandbox.web.page.style import STYLE as APP_STYLE
+from chess_variant_sandbox.web.page import assets, front, shell, stylesheet_links
 
 PATH = reference.PAGE
 """The page's address, `reference.PAGE`; `/rules.md` stays the Markdown file."""
@@ -399,6 +398,14 @@ STYLE = """
 """
 """The page's own rules, beside the application's stylesheet on both drawings."""
 
+# The two files the drawings link after the application's (G12, `assets.py`): the site's
+# shell links `SHEET` after its own rules, and the local application's drawing links
+# `LOCAL_SHEET`, the same rules and the one its own header needs.
+SHEET = assets.sheet("rules", STYLE)
+LOCAL_SHEET = assets.sheet(
+    "rules-local", STYLE + "  header h1 a { color: var(--ink); border-bottom: none; }\n"
+)
+
 
 def document() -> str:
     """The whole page as the local application answers `/rules`: the body under the
@@ -413,8 +420,7 @@ def document() -> str:
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         f"<title>{escape(TITLE)}</title>\n{front.head_lines(TITLE, DESCRIPTION)}"
-        f"{shell.head_links()}<style>{APP_STYLE}{STYLE}"
-        "  header h1 a { color: var(--ink); border-bottom: none; }\n</style>\n</head>\n"
+        f"{shell.head_links()}{stylesheet_links(LOCAL_SHEET)}</head>\n"
         '<body>\n<div class="wrap">\n  <header class="top">\n'
         f'    <h1 class="brand"><a href="/">{shell.brand()}</a></h1>\n'
         f'    <span class="muted tagline">{shell.TAGLINE}</span>\n'

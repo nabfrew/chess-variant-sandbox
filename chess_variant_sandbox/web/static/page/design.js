@@ -109,8 +109,8 @@ async function showDesigner(from) {
 
   view.innerHTML = `
     <button class="crumb" id="back">&larr; all games</button>
-    <h2 style="margin-top:10px">Build a game</h2>
-    <p class="muted small" style="max-width:70ch">
+    <h2 class="u-mt-10">Build a game</h2>
+    <p class="muted small u-maxw-70ch">
       A game here is a board, some pieces, where they start and how it ends. Anything
       you build can be played at once and saved as your draft.
       ${DRAFT_FROM ? `Started from <b>${esc(
@@ -118,7 +118,7 @@ async function showDesigner(from) {
     </p>
     ${phoneNoteHtml()}
     ${startFromHtml(kit)}
-    <div class="designer bench" style="margin-top:12px">
+    <div class="designer bench u-mt-12">
       <div id="boardSide" class="stick"></div>
       <div id="form"></div>
       <div id="verdictSide" class="stick"></div>
@@ -340,11 +340,11 @@ function drawBoardSide() {
       </div>
       <div data-saidslot></div>
       <div class="small muted benchHover" id="benchHover" aria-live="polite"></div>
-      ${stale ? `<div class="muted small" style="margin-top:6px">That is the last
+      ${stale ? `<div class="muted small u-mt-6">That is the last
         position these rules made, not this draft. Putting a piece down and picking
         squares still work on it, and it redraws as soon as the draft is a game
         again.</div>` : ''}
-      ${own ? `<div class="muted small" style="margin-top:6px">This draft's board and
+      ${own ? `<div class="muted small u-mt-6">This draft's board and
         where its pieces stand. The rules are not a game yet, so nothing moves on it until
         they are; putting a piece down and picking squares still work.</div>` : ''}
       ${benchSaysHtml(shown)}`
@@ -468,7 +468,7 @@ let BENCH_PLAY = null,   // { key, id } -- the draft a game in hand was started 
 // the board writes over this whole element and keeps it until the game ends.
 function benchPlayHtml() {
   const said = BENCH_ENDED
-    ? `<div class="ok small" style="margin:0 0 8px">${esc(BENCH_ENDED)}</div>` : '';
+    ? `<div class="ok small u-m-0-0-8">${esc(BENCH_ENDED)}</div>` : '';
   if (!DRAFT_CHECK || !DRAFT_CHECK.valid) {
     return `${said}<div class="muted small">A draft can be played as soon as these rules
       make a game. What is wrong with them is beside this.</div>`;
@@ -478,7 +478,7 @@ function benchPlayHtml() {
       Nothing is kept, nothing is rated, and the first change you make to the draft ends
       the game. There is no move list on this board: <i>${esc(PLAY_AWAY)}</i> opens the
       full board with one.</div>
-    <div class="row" style="margin-top:8px">
+    <div class="row u-mt-8">
       <button class="primary" data-seats="machine">you against the machine</button>
       <button data-seats="hand">both sides by hand</button>
       <button data-seats="watch" title="${esc(watchTitle())}">watch it play itself</button>
@@ -548,7 +548,7 @@ function drawDesigner() {
 
   form.innerHTML = `
     <div class="panel">
-      <div class="row small" style="margin-bottom:10px">
+      <div class="row small u-mb-10">
         <button id="dUndo" title="Ctrl+Z">undo</button>
         <button id="dRedo" title="Ctrl+Y">redo</button>
         <span class="muted">Every change can be taken back, with these or with Ctrl+Z and
@@ -557,7 +557,7 @@ function drawDesigner() {
       <label class="field"><span>what it is called</span>
         <input id="dName" value="${esc(DRAFT.name || '')}"></label>
       <label class="field"><span>a sentence about it, for the library</span>
-        <textarea id="dDesc" style="min-height:52px"
+        <textarea id="dDesc" class="u-minh-52"
           placeholder="What is this game? One sentence, in your own words: the library shows it under the name."
           >${esc(DRAFT.description || '')}</textarea></label>
       ${boardFormHtml(board)}
@@ -566,7 +566,7 @@ function drawDesigner() {
 
     <h3>The pieces</h3>
     <div class="editor">${piecesInOrder().map(index => pieceEditor(DRAFT.pieces[index], index)).join('')}</div>
-    <div class="row" style="margin-top:10px">
+    <div class="row u-mt-10">
       <button id="dAddPiece">add a piece</button>
       <span id="dRestAllBox">${restAllHtml()}</span>
       <span class="muted small">Click a piece to see where it can go.</span>
@@ -576,12 +576,12 @@ function drawDesigner() {
 
     <h3>Where they start</h3>
     <div class="panel">
-      <div class="muted small" style="margin:0 0 8px">
+      <div class="muted small u-m-0-0-8">
         The pieces go down on the big board: pick one from the tray beside it and click.
         These rows are the same thing written out, for reading and for typing a whole
         rank at once.
       </div>
-      <div class="muted small" style="margin:8px 0">
+      <div class="muted small u-m-8-0">
         Squares are named the way the board labels them, so <code>a1</code> is the bottom
         left. ${(DRAFT.setup || {}).mirror !== false
           ? 'The second player gets the same army, so every piece you put down is put'
@@ -589,12 +589,12 @@ function drawDesigner() {
           : 'Each player is placed separately, and each row says whose it is.'}
       </div>
       ${((DRAFT.setup || {}).placements || []).map(placementEditor).join('')}
-      <div class="row" style="margin-top:8px">
+      <div class="row u-mt-8">
         <button id="dAddPlacement">place a piece</button>
         <label class="pick"><input type="checkbox" id="dMirror"${
           (DRAFT.setup || {}).mirror !== false ? ' checked' : ''}> mirror for the other player</label>
       </div>
-      <label class="field" style="margin-top:8px"><span>the second player's side of the board is</span>
+      <label class="field u-mt-8"><span>the second player's side of the board is</span>
         <select id="dOrientation">
           ${[['mirror', 'reflected across the middle, files kept, as in chess'],
              ['rotate', 'the board turned round, files reversed, as in xiangqi']]
@@ -606,18 +606,18 @@ function drawDesigner() {
 
     <h3>The rules</h3>
     <div class="panel">
-      <div class="muted small" style="margin-bottom:8px">
+      <div class="muted small u-mb-8">
         Each rule has a card, and the sentence under each control says what it does. A
         rule with no card is not in the game.
       </div>
       ${rulesCardsHtml([])}
     </div>
 
-    <details class="panel" style="margin-top:14px">
+    <details class="panel u-mt-14">
       <summary class="muted small">${esc(pasteLabel())} (JSON), to copy out or paste in</summary>
       <textarea id="dJson" class="jsonText" spellcheck="false">${
         esc(JSON.stringify(DRAFT, null, 1))}</textarea>
-      <button id="dJsonApply" style="margin-top:6px">use this</button>
+      <button id="dJsonApply" class="u-mt-6">use this</button>
       <span class="muted small">Paste a game's text here to edit it. It is checked first,
         and a text with a mistake is not taken.</span>
       <div id="dPasteSaid" class="ruleSaid" aria-live="polite"></div>
@@ -965,10 +965,9 @@ function paletteListHtml() {
 function libraryPiecesHtml() {
   if (!((DESIGN_KIT && DESIGN_KIT.palette) || []).length) return '';
   const hexy = ((DRAFT.board || {}).lattice || 'square') === 'hex';
-  return `<details class="panel palettePanel"${PALETTE_FIND ? ' open' : ''}
-      style="margin-top:10px">
+  return `<details class="panel palettePanel u-mt-10"${PALETTE_FIND ? ' open' : ''}>
     <summary class="muted small">or take a piece out of a game in the library</summary>
-    <div class="muted small" style="margin:8px 0">Its moves come with it, word for word.
+    <div class="muted small u-m-8-0">Its moves come with it, word for word.
       What it may capture, where it may stand and what it reverts to are left behind,
       because those name pieces and squares of the game it came from.${
       hexy ? ' Only pieces written for a hex board are offered here.' : ''}</div>
@@ -1073,17 +1072,17 @@ function pieceEditor(piece, index) {
   const on = index === DRAFT_PIECE;
   if (isPortalPiece(index)) return portalPieceEditor(piece, index, on);
   return `<div class="editorPiece${on ? ' on' : ''}" data-piece="${index}">
-    <div class="row" style="gap:8px">
+    <div class="row u-gap-8">
       <div class="iconSlot" data-icon="${index}">${pieceIconHtml(index)}</div>
-      <label class="field" style="width:64px; margin:0"><span>letter</span>
+      <label class="field u-w-64 u-m-0"><span>letter</span>
         <input data-field="id" data-index="${index}" maxlength="2"
           value="${esc(piece.id || '')}"></label>
-      <label class="field" style="flex:1; min-width:110px; margin:0"><span>name</span>
+      <label class="field u-flex-1 u-minw-110 u-m-0"><span>name</span>
         <input data-field="name" data-index="${index}" value="${esc(piece.name || '')}"></label>
-      <label class="field" style="width:74px; margin:0"><span>worth</span>
+      <label class="field u-w-74 u-m-0"><span>worth</span>
         <input data-field="value" data-index="${index}" type="number" step="0.5"
           value="${esc(piece.value === undefined ? 1 : piece.value)}"></label>
-      <label class="pick" style="margin-top:14px"><input type="checkbox" data-field="royal"
+      <label class="pick u-mt-14"><input type="checkbox" data-field="royal"
         data-index="${index}"${piece.royal ? ' checked' : ''}> royal${
         info('royal')}</label>
       <span class="muted small pieceSpeed" data-speedof="${index}">${
@@ -1091,16 +1090,16 @@ function pieceEditor(piece, index) {
       <span class="muted small pieceSpeed" data-restof="${index}">${
         esc(pieceRestWords(piece))}</span>
     </div>
-    <div class="row small" style="margin-top:6px; gap:8px">
-      <span data-uploads="${index}" style="display:contents">${uploadButtonsHtml(index)}</span>
+    <div class="row small u-mt-6 u-gap-8">
+      <span data-uploads="${index}" class="u-d-contents">${uploadButtonsHtml(index)}</span>
       <input data-field="icon" data-index="${index}" placeholder="or name a library piece: knight, cannon..."
         title="one name serves both players; two names separated by a space draw one each"
-        value="${esc(iconNameOf(piece.id))}" style="flex:1; min-width:150px; font-size:12px; padding:5px 8px">
+        value="${esc(iconNameOf(piece.id))}" class="u-flex-1 u-minw-150 u-fs-12 u-p-5-8">
     </div>
     ${freshNoteHtml(index)}
-    <div style="margin-top:8px">
+    <div class="u-mt-8">
       ${(piece.moves || []).map((move, m) => moveEditor(move, index, m)).join('')}
-      <div class="row" style="margin-top:7px">
+      <div class="row u-mt-7">
         <button data-addmove="${index}">add a way of moving</button>
         <button data-drop="${index}" title="remove this piece from the game">remove piece</button>
       </div>
@@ -1116,7 +1115,7 @@ function pieceEditor(piece, index) {
 // offer only what a portal may do, with the line saying why.
 function portalPieceEditor(piece, index, on) {
   return `<div class="editorPiece portalPiece${on ? ' on' : ''}" data-piece="${index}">
-    <div class="row" style="gap:8px">
+    <div class="row u-gap-8">
       <div class="iconSlot"><svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">${
         portalGlyph({ pair: 1, end: 'orange', movedBy: [], open: [true, true] }, 0, 0, 32,
                     {})}</svg></div>
@@ -1124,11 +1123,11 @@ function portalPieceEditor(piece, index, on) {
       <span class="muted small">(used by the portals; it moves as below)</span>
     </div>
     ${portalPieceNoteHtml()}
-    <div style="margin-top:8px">
+    <div class="u-mt-8">
       ${(piece.moves || []).length ? '' : `<div class="muted small">It has no way of moving,
         which is right while nobody may move a portal.</div>`}
       ${(piece.moves || []).map((move, m) => moveEditor(move, index, m)).join('')}
-      <div class="row" style="margin-top:7px">
+      <div class="row u-mt-7">
         <button data-addmove="${index}">add a way of moving</button>
       </div>
     </div>
@@ -1176,7 +1175,7 @@ function boardFormHtml(board) {
         hexagon, and list every direction a piece moves in, because turning a direction is
         the square grid's.</div>`;
   const removed = BOARD_REMOVED
-    ? `<div class="muted small cardSays" id="dBoardRemoved" style="margin-bottom:8px">${
+    ? `<div class="muted small cardSays u-mb-8" id="dBoardRemoved">${
       esc(BOARD_REMOVED)}</div>` : '';
   return `${size}${removed}
     <label class="field"><span>the cells are</span>
@@ -1474,18 +1473,18 @@ function placementEditor(placement, index) {
   // second player's army is the first player's reflected and the schema refuses a player.
   const sides = (lastPreview() || {}).sides || ['first', 'second'];
   const whose = (DRAFT.setup || {}).mirror === false
-    ? `<select data-place="${index}" data-pfield="player" style="width:88px">
+    ? `<select data-place="${index}" data-pfield="player" class="u-w-88">
         ${[0, 1].map(player => `<option value="${player}"${(placement.player || 0) === player
           ? ' selected' : ''}>${esc(sides[player])}</option>`).join('')}
       </select>`
     : '';
-  return `<div class="row" style="gap:7px; margin-bottom:6px">
+  return `<div class="row u-gap-7 u-mb-6">
     ${whose}
-    <select data-place="${index}" data-pfield="piece" style="width:88px">
+    <select data-place="${index}" data-pfield="piece" class="u-w-88">
       ${ids.map(id => `<option value="${esc(id)}"${id === placement.piece ? ' selected' : ''}
         >${esc(id)}</option>`).join('')}
     </select>
-    <input data-place="${index}" data-pfield="squares" style="flex:1; min-width:170px"
+    <input data-place="${index}" data-pfield="squares" class="u-flex-1 u-minw-170"
       value="${esc((placement.squares || []).join(' '))}" placeholder="a1 b1 c1">
     <button data-dropplace="${index}" title="remove this row">&times;</button>
   </div>
@@ -1503,9 +1502,9 @@ function pieceIconHtml(index) {
     const piece = (DRAFT.pieces || [])[index] || {};
     return `<span class="muted">${esc(piece.id || '?')}</span>`;
   }
-  return shown.map(icon => `<img${shown.length > 1 ? ' class="half"' : ''}
+  return shown.map(icon => `<img${shown.length > 1 ? ' class="half u-tf-rot180"' : ''}
     src="${esc(icon.href)}" alt=""${icon.rotate
-    ? ' style="transform:rotate(180deg)"' : ''}>`).join('');
+    ? '' : ''}>`).join('');
 }
 
 // Whether this piece is drawn differently per player, and what to call the two seats if
@@ -2313,8 +2312,8 @@ let TRY_OPEN = false,  // whether the panel has been asked for
     TRY_SAID = null;   // {key, words, from} -- the last press, while the draft is what it made
 
 function tryPanelHtml() {
-  return `<div class="panel" style="margin-top:14px">
-    <h3 style="margin-top:0">And now try&hellip;</h3>
+  return `<div class="panel u-mt-14">
+    <h3 class="u-mt-0">And now try&hellip;</h3>
     <div id="dTry">${tryHtml()}</div>
   </div>`;
 }
@@ -2325,7 +2324,7 @@ function tryHtml() {
         tried on this draft. One press makes the change, leaves a draft you
         can play, and says what it did; undo takes it back and nothing is kept until you
         save.</div>
-      <button id="dTryAsk" style="margin-top:8px">and now try&hellip;</button>`;
+      <button id="dTryAsk" class="u-mt-8">and now try&hellip;</button>`;
   }
   const held = TRY || { state: 'asking' };
   // What the last press changed stands above whatever the panel is showing now, because
@@ -2338,7 +2337,7 @@ function tryHtml() {
   // A request that went wrong, or a press the server refused. Said under whatever the
   // panel was already showing rather than in place of it, so the list stays pressable.
   const failed = held.failed
-    ? `<div class="muted small" style="margin-top:8px">${esc(held.failed)}</div>` : '';
+    ? `<div class="muted small u-mt-8">${esc(held.failed)}</div>` : '';
   if (held.why) {
     // The draft is not a game yet. This is the validator's own sentence, and the verdict
     // beside it is showing the same one.
@@ -2365,7 +2364,7 @@ function tryHtml() {
 // the one that press made. `snapshotDraft` drops it the moment anything else moves.
 function trySaidHtml() {
   if (!TRY_SAID) return '';
-  return `<div class="ok small" style="margin-top:0; margin-bottom:8px">${
+  return `<div class="ok small u-mt-0 u-mb-8">${
     esc(TRY_SAID.words)}. Undo takes it back.</div>`;
 }
 
@@ -2505,19 +2504,19 @@ function drawVerdict() {
   const gate = check.playable === false
     ? `<div class="error">
          <b>It plays, but it does not finish.</b> ${checkedHtml()}
-         <ul style="margin:6px 0 0 18px; padding:0">${
+         <ul class="u-m-6-0-0-18 u-p-0">${
            check.playableReasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
-         <div class="muted small" style="margin-top:6px">You can still save it and play
+         <div class="muted small u-mt-6">You can still save it and play
            it yourself. This is a hundred and fifty games of random moves finding no
            winner, which usually means the ending is out of reach.</div>
-         <button id="dStuck" style="margin-top:8px">open a game that did not finish</button>
+         <button id="dStuck" class="u-mt-8">open a game that did not finish</button>
        </div>`
     : `<div class="ok">It plays and reaches an ending, with
          ${esc(check.openingWords || check.openingMoves + ' opening moves')}. ${checkedHtml()}</div>`;
 
   side.innerHTML = `
     <div class="panel">
-      <h3 style="margin-top:0">${esc(DRAFT.name || 'this game')}</h3>
+      <h3 class="u-mt-0">${esc(DRAFT.name || 'this game')}</h3>
       <div class="footbar" id="dActions">
         <div class="says">${gate}</div>
         <div class="row">
@@ -2530,7 +2529,7 @@ function drawVerdict() {
             >${awayLabel(WATCH_AWAY)}</button>
         </div>
       </div>
-      <div class="muted small" style="margin-top:6px">
+      <div class="muted small u-mt-6">
         Playing it keeps nothing. It is a game against the rules as they stand right now,
         on the board page with its move list, and closing it leaves no trace; the
         <i>play it here</i> tab plays it beside the editor instead. Watching it, both sides are played by a computer
@@ -2551,18 +2550,18 @@ function drawVerdict() {
     </div>
     ${identityHtml(check)}
     ${changesHtml(check)}
-    <div class="panel" style="margin-top:14px">
-      <h3 style="margin-top:0">The rules, in English</h3>
+    <div class="panel u-mt-14">
+      <h3 class="u-mt-0">The rules, in English</h3>
       <ul class="rules small">${
         (check.ruleLines || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
-      <details style="margin-top:8px">
+      <details class="u-mt-8">
         <summary class="muted small">how each piece moves</summary>
-        <ul class="rules muted small" style="margin-top:6px">${
+        <ul class="rules muted small u-mt-6">${
           (check.pieceLines || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
       </details>
-      <details style="margin-top:8px">
+      <details class="u-mt-8">
         <summary class="muted small">where the pieces start</summary>
-        <ul class="rules muted small" style="margin-top:6px">${
+        <ul class="rules muted small u-mt-6">${
           (check.setupLines || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
       </details>
     </div>`;
@@ -2855,33 +2854,33 @@ function ladderHtml(check) {
   // works, so a sentence saying the site nominates nothing would contradict a live button
   // drawn just above it on a game on trial.
   const withheld = measurable && !canMeasure;
-  return `${publishHtml(s, check)}<h3 style="margin-top:0">From a draft to a ${
+  return `${publishHtml(s, check)}<h3 class="u-mt-0">From a draft to a ${
       ACCOUNTS ? 'score' : 'number'}</h3>
-    <ol class="rungs small" style="margin:0; padding-left:0; list-style:none">${rungs.map(rung => {
+    <ol class="rungs small u-m-0 u-pl-0 u-ls-none">${rungs.map(rung => {
       const state = states[rung.key] || { mark: 'ahead', says: '' };
-      return `<li data-rung="${esc(rung.key)}" data-state="${state.mark}" style="margin-bottom:7px">
-        <span style="display:inline-block; width:1.4em; color:${state.mark === 'done'
-          ? 'var(--good)' : state.mark === 'failed' ? 'var(--bad)' : 'var(--muted)'}"
+      return `<li data-rung="${esc(rung.key)}" data-state="${state.mark}" class="u-mb-7">
+        <span class="u-d-inline-block u-w-1_4em ${state.mark === 'done'
+          ? 'u-c-good' : state.mark === 'failed' ? 'u-c-bad' : 'u-c-muted'}"
           >${RUNG_MARKS[state.mark]}</span><b>${esc(rung.name)}</b> &mdash;
         ${state.html ? state.says : esc(state.says)}
-        <div class="muted" style="margin-left:1.4em">${esc(rung.what)}. ${ACCOUNTS
+        <div class="muted u-ml-1_4em">${esc(rung.what)}. ${ACCOUNTS
           ? `Takes ${esc(rung.cost)}; ${esc(rung.runs)}.`
           : `Costs ${esc(rung.cost)}; runs ${esc(rung.runs)}.`}</div></li>`;
     }).join('')}</ol>
     ${s.build ? `<div class="muted small">${ACCOUNTS
       ? 'Measuring is paused while the site is updated.'
       : 'Measuring is held: ' + esc(s.build)}</div>` : ''}
-    <div class="row" style="margin-top:8px">
+    <div class="row u-mt-8">
       ${canMeasure ? `<button id="dMeasure" class="primary"
         title="queued behind any measurement already running">measure it</button>` : ''}
       ${canNominate ? `<button id="dNominate">nominate it for the yardstick</button>` : ''}
     </div>
-    ${canNominate ? `<textarea id="dNominateNote" style="margin-top:6px; min-height:44px"
+    ${canNominate ? `<textarea id="dNominateNote" class="u-mt-6 u-minh-44"
       placeholder="What does this game show that the others do not? A maintainer reads this."></textarea>` : ''}
-    ${withheld ? `<div class="muted small" style="margin-top:6px">The site does not measure
+    ${withheld ? `<div class="muted small u-mt-6">The site does not measure
       designed games itself yet; a measurement takes minutes of computer time.</div>` : ''}
     ${promotionHtml(s)}
-    <div class="muted small" style="margin-top:6px">${ACCOUNTS
+    <div class="muted small u-mt-6">${ACCOUNTS
       ? 'The editor never changes the games every score is measured against.'
       : `The editor never writes to the yardstick${info('committed')}. A nomination asks a
          maintainer, who promotes with a reason.`}</div>
@@ -2912,18 +2911,15 @@ function publishHtml(s, check) {
   const waits = !!(p && p.waitsForCheck);
   // A list of `.marks`: the mark in a column of its own, so a tick's sentence that wraps
   // stays clear of it on a phone (Q777).
-  const ticks = ((p && p.ticks) || []).map(tick => `<li style="margin-bottom:4px"><span
-      style="color:${tick.met
-        ? 'var(--good)' : 'var(--bad)'}">${tick.met ? '&#10003;' : '&#10007;'}</span>${
+  const ticks = ((p && p.ticks) || []).map(tick => `<li class="u-mb-4"><span
+      class="${tick.met ? 'u-c-good' : 'u-c-bad'}">${tick.met ? '&#10003;' : '&#10007;'}</span>${
       esc(tick.says)}</li>`).join('');
   // Q722: the terms' one sentence beside a box, the box unticked each time it is drawn.
   // The button waits for it as well as for the ticks; a press sends the version the box
   // stood for and nothing else (`site/terms.py`).
   const terms = p && p.publishable && p.terms && !waits ? p.terms : null;
-  const agree = terms ? `<label class="small" id="dTerms" style="display:flex; gap:8px;
-        align-items:flex-start; margin:6px 0 8px; max-width:34rem">
-        <input type="checkbox" id="dTermsAgree" data-version="${esc(String(terms.version))}"
-          style="margin-top:3px; flex:none">
+  const agree = terms ? `<label class="small u-d-flex u-gap-8 u-ai-flex-start u-m-6-0-8 u-maxw-34rem" id="dTerms">
+        <input type="checkbox" id="dTermsAgree" data-version="${esc(String(terms.version))}" class="u-mt-3 u-flex-none">
         <span>${esc(terms.says)} <a href="${esc(terms.href)}" target="_blank" rel="noopener"
           >the terms</a></span></label>` : '';
   const button = p && p.publishable && !waits
@@ -2934,20 +2930,20 @@ function publishHtml(s, check) {
         >publish</button></div>` : '';
   const says = p ? p.says : s.levelSays;
   const waiting = !p || !p.waiting ? ''
-    : waits ? `<div class="verdict" id="dPublishWaiting" style="margin:8px 0">
+    : waits ? `<div class="verdict u-m-8-0" id="dPublishWaiting">
         <div>Waiting for verification</div>
-        <div class="small" style="font-weight:400; margin-top:5px">${esc(p.waiting)}</div></div>`
-    : `<div class="small" id="dPublishWaiting" style="margin:4px 0 6px">${esc(p.waiting)}</div>`;
+        <div class="small u-fw-400 u-mt-5">${esc(p.waiting)}</div></div>`
+    : `<div class="small u-m-4-0-6" id="dPublishWaiting">${esc(p.waiting)}</div>`;
   // While a press waits there is nothing to measure: the control is drawn only to show a
   // measurement already in hand (its progress, its number, the site's check of it).
   const here = hereInPanel(s) && !(waits && !HERE) ? `<div id="dHere" data-in="panel">${
     hereHtml(check === undefined ? DRAFT_CHECK : check, true)}</div>` : '';
-  return `<div id="dPublish" data-level="${esc(level)}" style="margin:0 0 12px">
-      <h3 style="margin-top:0">Where this game stands: ${esc(level)}</h3>
+  return `<div id="dPublish" data-level="${esc(level)}" class="u-m-0-0-12">
+      <h3 class="u-mt-0">Where this game stands: ${esc(level)}</h3>
       ${trackHtml(s.track)}
       ${says ? `<div class="small">${esc(says)}</div>` : ''}
-      ${ticks ? `<ul class="small marks" style="margin:6px 0">${ticks}</ul>` : ''}
-      ${p && p.stopped ? `<div class="error small" id="dPublishStopped" style="margin:6px 0">${
+      ${ticks ? `<ul class="small marks u-m-6-0">${ticks}</ul>` : ''}
+      ${p && p.stopped ? `<div class="error small u-m-6-0" id="dPublishStopped">${
         esc(p.stopped)}</div>` : ''}
       ${waiting}
       ${here}
@@ -2967,9 +2963,9 @@ function promotionHtml(s) {
   const p = s.promotion;
   if (ACCOUNTS || !p || !p.says || s.stage === 'committed') return '';
   const local = offered('POST', '/api/design/measure');
-  return `<div class="muted small" style="margin-top:6px" id="dPromotion">
+  return `<div class="muted small u-mt-6" id="dPromotion">
       ${esc(p.says)}${local && p.command
-        ? `<details style="margin-top:4px"><summary>for whoever keeps this copy</summary>
+        ? `<details class="u-mt-4"><summary>for whoever keeps this copy</summary>
             From a terminal in the project, this measures it for promotion:
             <code>${esc(p.command)}</code></details>` : ''}</div>`;
 }
@@ -3049,9 +3045,9 @@ function wireLadder() {
 function nominationsHtml() {
   const listed = (DESIGN_KIT || {}).nominations || [];
   if (ACCOUNTS || !listed.length) return '';
-  return `<details style="margin-top:10px"><summary class="muted small">nominated for the
+  return `<details class="u-mt-10"><summary class="muted small">nominated for the
       yardstick (${listed.length})</summary>
-    <ul class="rules small" style="margin-top:6px">${listed.map(n => `<li>
+    <ul class="rules small u-mt-6">${listed.map(n => `<li>
       <b>${esc(n.name)}</b> <code>${esc(n.hash)}</code> &mdash; ${esc(n.stage)}${
         n.note ? `<div class="muted">${esc(n.note)}</div>` : ''}${
         n.blocker ? `<div class="muted">${esc(n.blocker)}</div>`
@@ -3065,10 +3061,10 @@ function familyHtml() {
   const standing = DRAFT_STANDING;
   if (!standing || !standing.lineage || standing.hash !== DRAFT_HASH) return '';
   const tree = standing.lineage.root;
-  return `<h3 style="margin-top:0">Its family</h3>
+  return `<h3 class="u-mt-0">Its family</h3>
     ${lineageHtml(tree)}
     ${standing.lineage.cut ? '<div class="muted small">The family is larger than is drawn here.</div>' : ''}
-    <div class="muted small" style="margin-top:6px">${ACCOUNTS
+    <div class="muted small u-mt-6">${ACCOUNTS
       ? `Each save that changes a rule is a game of its own. A score belongs to the exact
          rules it was measured on; an out-of-date score is not shown.`
       : `Each save is its own game with its own hash${info('rulesetHash')}. A number
@@ -3084,7 +3080,7 @@ function lineageHtml(node) {
       ? `<a href="/game/${esc(node.hash)}">${esc(node.name || (ACCOUNTS ? 'a game with no name' : node.hash))}</a>`
       : `<span class="muted">a game this library cannot find</span>`;
   const shown = `${node.here ? '<b>' : ''}${label}${node.here ? '</b>' : ''}`;
-  return `<ul class="lineage small" style="margin:4px 0 0; padding-left:16px">
+  return `<ul class="lineage small u-m-4-0-0 u-pl-16">
     <li data-lineage="${esc(node.hash)}"${node.here ? ' data-here="1"' : ''}>${shown}
       ${ACCOUNTS ? '' : `<code>${esc(node.hash)}</code> `}&mdash; ${lineageStateHtml(node)}${
       (node.children || []).map(lineageHtml).join('')}</li></ul>`;
@@ -3131,8 +3127,8 @@ function changesHtml(check) {
   const changes = check.changes;
   if (!DRAFT_FROM || !Array.isArray(changes)) return '';
   const parent = (DRAFT_PARENT && DRAFT_PARENT.name) || nameOf(DRAFT_FROM) || DRAFT_FROM;
-  return `<div class="panel" id="dChanges" style="margin-top:14px">
-    <h3 style="margin-top:0">What you changed from ${esc(parent)}</h3>
+  return `<div class="panel u-mt-14" id="dChanges">
+    <h3 class="u-mt-0">What you changed from ${esc(parent)}</h3>
     ${changes.length
       ? `<ul class="rules small">${changes.map(c => `<li>${esc(c)}</li>`).join('')}</ul>`
       : `<div class="muted small">Nothing yet: every rule still reads as ${esc(parent)}'s does.</div>`}
@@ -3159,13 +3155,13 @@ function identityHtml(check) {
   // rows are the names alone, and the sentence says what the hash stands for instead.
   const listed = ACCOUNTS
     ? `<div>${rows.map(([name, , note]) =>
-        `<div class="small" style="margin-bottom:3px">${name} &mdash; ${note}</div>`).join('')}</div>`
+        `<div class="small u-mb-3">${name} &mdash; ${note}</div>`).join('')}</div>`
     : `<div class="identity">${rows.map(([name, hash, note]) =>
         `<code>${esc(hash)}</code><span>${name} &mdash; ${note}</span>`).join('')}</div>`;
-  return `<div class="panel" id="dIdentity" style="margin-top:14px">
-    <h3 style="margin-top:0">Which game this is</h3>
+  return `<div class="panel u-mt-14" id="dIdentity">
+    <h3 class="u-mt-0">Which game this is</h3>
     ${listed}
-    <div class="muted small" style="margin-top:9px">
+    <div class="muted small u-mt-9">
       ${ACCOUNTS ? 'A game is its rules' : `A game is identified by a hash over its
       mechanics${info('rulesetHash')}`} &mdash; the
       board, the pieces, how they move, where they start and how it ends. A name, a
@@ -3235,7 +3231,7 @@ function measuredHtml(parent) {
 // The site never names the rule language's version (D34, §3.2).
 function schemaHtml(check) {
   if (ACCOUNTS || !check.schemaVersion) return '';
-  return `<div class="muted small" style="margin-top:8px">
+  return `<div class="muted small u-mt-8">
     It is written against <b>rule set version ${check.schemaVersion}</b>, the earliest one
     that can say everything this game says${check.settledVersion
       ? `. You sent ${check.declaredVersion === undefined || check.declaredVersion === null
@@ -3253,8 +3249,8 @@ function moveKeyHtml() {
   if (!map) return '';
   const piece = (DRAFT.pieces || [])[DRAFT_PIECE] || {};
   const called = esc(piece.name || piece.id || 'this piece');
-  const dots = `<span style="color:var(--dot)">&bull;</span> to move and
-    <span style="color:var(--bad)">&#9711;</span> to take`;
+  const dots = `<span class="u-c-dot">&bull;</span> to move and
+    <span class="u-c-bad">&#9711;</span> to take`;
   const W = map.width || 1;
   const here = map.from >= 0 ? squareName(map.from % W, Math.floor(map.from / W)) : '';
   // A wild piece's type (the wolves walk, step 12): the wild one is on the board but is
@@ -3265,24 +3261,24 @@ function moveKeyHtml() {
     ${wildCardLinkHtml()} card.` : '';
   if (map.live && map.from < 0) {
     if (wild.length) {
-      return `<div class="muted small" style="margin-top:6px" data-wildgoes>${wildSaid}
+      return `<div class="muted small u-mt-6" data-wildgoes>${wildSaid}
         No player's <b>${called}</b> stands on the board in the opening position; one put
         down under <i>set up</i> would be a player's.</div>`;
     }
-    return `<div class="muted small" style="margin-top:6px">No <b>${called}</b> stands on
+    return `<div class="muted small u-mt-6">No <b>${called}</b> stands on
       the board in the opening position, so there is nothing for it to do yet. Put one
       down under <i>set up</i>.</div>`;
   }
   if (map.live) {
-    return `<div class="muted small" style="margin-top:6px">
+    return `<div class="muted small u-mt-6">
       The marks show every move the <b>${called}</b> on ${here} may make in the opening
       position, with ${dots}. Its own army, the pieces in its way and every other rule of
       this game are in that answer${map.standing.length > 1
         ? `. Click another ${called} to ask about that one` : ''}.${ACCOUNTS
         ? '' : ' The engine answered it, not the page.'}${wildSaid
-        ? `<div data-wildgoes style="margin-top:4px">${wildSaid}</div>` : ''}</div>`;
+        ? `<div data-wildgoes class="u-mt-4">${wildSaid}</div>` : ''}</div>`;
   }
-  return `<div class="muted small" style="margin-top:6px">
+  return `<div class="muted small u-mt-6">
     The marks show where <b>${called}</b> could go from ${here} on an empty board, with
     ${dots}${map.captureOnly.length
       ? ', and it may only take on the ringed ones' : ''}.${ACCOUNTS
@@ -3339,13 +3335,13 @@ function savedWordsHtml(kept) {
 // drawn only where the save's answer carries it.
 function savedHtml(kept) {
   const rung = saveRungHtml(kept);
-  return `<div class="ok" style="margin-top:10px">
+  return `<div class="ok u-mt-10">
     ${savedWordsHtml(kept)} A change to its rules from here is a new game, and its
     family will show it.
     <a href="/game/${esc(kept.hash)}">open its page</a> ${copyLinkHtml(kept.hash)}
-    ${rung ? `<div style="margin-top:6px; color:${kept.rungPassed
-      ? 'var(--ink)' : 'var(--bad)'}">${rung}</div>` : ''}
-    ${kept.said ? `<div style="margin-top:6px; color:var(--ink)">${esc(kept.said)}</div>` : ''}
+    ${rung ? `<div class="u-mt-6 ${kept.rungPassed
+      ? 'u-c-ink' : 'u-c-bad'}">${rung}</div>` : ''}
+    ${kept.said ? `<div class="u-mt-6 u-c-ink">${esc(kept.said)}</div>` : ''}
   </div>`;
 }
 
@@ -3373,11 +3369,11 @@ function askHint(hash) {
 // The sentences as the description has them, and what the reading is: a model's, which
 // can be wrong, and which changed nothing.
 function hintHtml(claims) {
-  return `<div class="muted small" data-hint="description" style="margin-top:8px">
+  return `<div class="muted small u-mt-8" data-hint="description">
     <b>A hint about the description.</b> ${claims.length === 1
       ? 'This sentence in its saved description seems' : 'These sentences in its saved description seem'}
     not to match the rules:
-    <ul class="rules" style="margin:4px 0">${claims.map(one =>
+    <ul class="rules u-m-4-0">${claims.map(one =>
       `<li>&ldquo;${esc(one.claim)}&rdquo;</li>`).join('')}</ul>
     An automatic check by an AI model (TypeSafe's Jev), which can be wrong. It changed nothing:
     the game is saved either way.</div>`;
@@ -3413,9 +3409,9 @@ function nameAskHtml(whose) {
       ? 'the name of the template it started from'
       : 'the name of a game already in the library'}. A saved game is listed by its
       name, so give it one of its own first.</div>
-    <label class="field" style="margin:8px 0 0"><span>what it is called</span>
+    <label class="field u-m-8-0-0"><span>what it is called</span>
       <input id="dSaveName" placeholder="a name of its own" autocomplete="off"></label>
-    <div class="row" style="gap:8px">
+    <div class="row u-gap-8">
       <button id="dSaveNamed">save under this name</button>
       <button class="quiet" id="dSaveKeep">keep '${esc(name)}' and save</button>
     </div></div>`;
@@ -3640,14 +3636,14 @@ async function showBotBuilder(hash) {
 
   view.innerHTML = `
     <button class="crumb" id="back">&larr; ${esc(game.name)}</button>
-    <h2 style="margin-top:10px">Build an opponent for ${esc(game.name)}</h2>
-    <p class="muted small" style="max-width:74ch">
+    <h2 class="u-mt-10">Build an opponent for ${esc(game.name)}</h2>
+    <p class="muted small u-maxw-74ch">
       An opponent is a search, plus a list of what it is trying to achieve. All of them
       look at the same number of positions${info('thumb')}, so what you set here changes
       what it <i>wants</i> and nothing else. Push a slider up to make it chase something,
       down to make it avoid it &mdash; giving material away is a real plan in some games.
     </p>
-    <div class="designer" style="margin-top:12px">
+    <div class="designer u-mt-12">
       <div class="panel">
         <div class="pair">
           <label class="field"><span>what to call it</span>
@@ -3656,22 +3652,22 @@ async function showBotBuilder(hash) {
             <input id="botPlan" value="${esc(BOT.plan)}"
               placeholder="Win material and keep the middle."></label>
         </div>
-        <div class="sliders" style="margin-top:12px">${
+        <div class="sliders u-mt-12">${
           kit.vocabulary.map((term, index) => sliderHtml(term, index)).join('')}</div>
       </div>
       ${piecePanelHtml(kit)}
       <div>
         <div class="panel">
-          <h3 style="margin-top:0">What it will play for</h3>
+          <h3 class="u-mt-0">What it will play for</h3>
           <div id="botSummary"></div>
-          <div class="row" style="margin-top:10px">
+          <div class="row u-mt-10">
             <button class="primary" id="botSave">save it</button>
             <button id="botPlay">save and play it</button>
           </div>
           <div id="botResult"></div>
         </div>
-        <div class="panel" style="margin-top:14px">
-          <h3 style="margin-top:0">Already built</h3>
+        <div class="panel u-mt-14">
+          <h3 class="u-mt-0">Already built</h3>
           <div id="botList">${builtHtml(game)}</div>
         </div>
       </div>
@@ -3685,9 +3681,9 @@ async function showBotBuilder(hash) {
 function sliderHtml(term, index) {
   const inert = BOT.live.length && !BOT.live.includes(term.key);
   const value = BOT.weights[index] || 0;
-  return `<div class="slider" title="${esc(term.gloss)}"${inert ? ' style="opacity:.45"' : ''}>
+  return `<div class="slider u-op-0_45" title="${esc(term.gloss)}"${inert ? '' : ''}>
     <span>${esc(term.key.replace(/_/g, ' '))}${inert
-      ? `<br><span class="muted" style="font-size:11px">needs ${esc(term.needs)}</span>` : ''}</span>
+      ? `<br><span class="muted u-fs-11">needs ${esc(term.needs)}</span>` : ''}</span>
     <input type="range" data-term="${index}" min="-2" max="2" step="0.05" value="${value}"${
       inert ? ' disabled' : ''}>
     <span class="val" data-val="${index}">${value.toFixed(2)}</span>
@@ -3704,16 +3700,16 @@ function sliderHtml(term, index) {
 function piecePanelHtml(kit) {
   if (!BOT.pieces.length) return '';
   return `
-    <div class="panel" style="grid-column:1/-1;margin-top:14px">
-      <h3 style="margin-top:0">What the pieces are worth to it</h3>
-      <p class="muted small" style="max-width:74ch">
+    <div class="panel u-gcol-1-n1 u-mt-14">
+      <h3 class="u-mt-0">What the pieces are worth to it</h3>
+      <p class="muted small u-maxw-74ch">
         Each slider is a multiple of what the rules already imply, worked out from how
         much of the board the piece can reach. Moving one <i>shifts worth</i> between the
         pieces, because the total stays the same. Pushing every slider up together is the
         same opponent as leaving them all at 1&times;. Push one up and the others are
         worth less by comparison, which is the only thing "worth more" can mean.
       </p>
-      <div class="sliders" style="margin-top:12px">${
+      <div class="sliders u-mt-12">${
         BOT.pieces.map((piece, index) => pieceSliderHtml(piece, index)).join('')}</div>
     </div>`;
 }
@@ -3721,12 +3717,12 @@ function piecePanelHtml(kit) {
 function pieceSliderHtml(piece, index) {
   const multiplier = BOT.values[index] || 1;
   const icon = piece.icon
-    ? `<img src="${esc(piece.icon)}" alt="" style="width:18px;height:18px;vertical-align:-4px">`
+    ? `<img src="${esc(piece.icon)}" alt="" class="u-w-18 u-h-18 u-va-n4">`
     : '';
-  return `<div class="slider"${piece.royal ? ' style="opacity:.45"' : ''}>
+  return `<div class="slider u-op-0_45"${piece.royal ? '' : ''}>
     <span>${icon} ${esc(piece.name)}${piece.royal
-      ? `<br><span class="muted" style="font-size:11px">${esc(piece.needs)}</span>`
-      : `<br><span class="muted" style="font-size:11px">the rules say ${
+      ? `<br><span class="muted u-fs-11">${esc(piece.needs)}</span>`
+      : `<br><span class="muted u-fs-11">the rules say ${
           piece.derived.toFixed(2)}</span>`}</span>
     <input type="range" data-piece="${index}" min="-1" max="1" step="0.02"
       value="${Math.log10(multiplier)}"${piece.royal ? ' disabled' : ''}>
@@ -3776,11 +3772,11 @@ function drawBotSummary(kit) {
       random. Push at least one slider off zero.</div>`;
     return;
   }
-  box.innerHTML = `<ul class="rules small" style="margin:0">${ranked.map(entry => `
+  box.innerHTML = `<ul class="rules small u-m-0">${ranked.map(entry => `
     <li><b>${entry.weight > 0 ? 'more' : 'less'}
       ${esc(entry.term.key.replace(/_/g, ' '))}</b>
       <span class="muted">${esc(entry.term.gloss)}</span></li>`).join('')}</ul>
-    <div class="muted small" style="margin-top:8px">Only the balance between these
+    <div class="muted small u-mt-8">Only the balance between these
       matters, so doubling every slider makes the same opponent.</div>
     ${valueSummaryHtml()}`;
 }
@@ -3794,19 +3790,19 @@ function valueSummaryHtml() {
     .filter(entry => !entry.piece.royal && Math.abs(Math.log10(entry.multiplier)) > 0.02);
   if (!moved.length) {
     if (!BOT.pieces.length) return '';
-    return `<div class="muted small" style="margin-top:10px">It values the pieces exactly
+    return `<div class="muted small u-mt-10">It values the pieces exactly
       as the rules imply.</div>`;
   }
   // Everything moved by the same amount is a reallocation of nothing, and the server
   // stores no valuation at all for it. Say so here rather than let somebody discover it.
   const spread = new Set(moved.map(e => e.multiplier.toFixed(2)));
   if (moved.length === BOT.pieces.filter(p => !p.royal).length && spread.size === 1) {
-    return `<div class="muted small" style="margin-top:10px">Every piece moved by the
+    return `<div class="muted small u-mt-10">Every piece moved by the
       same amount, which changes nothing. It values them exactly as the rules imply.</div>`;
   }
   const ranked = moved.sort(
     (a, b) => Math.abs(Math.log10(b.multiplier)) - Math.abs(Math.log10(a.multiplier)));
-  return `<ul class="rules small" style="margin:10px 0 0">${ranked.map(entry => `
+  return `<ul class="rules small u-m-10-0-0">${ranked.map(entry => `
     <li><b>${esc(entry.piece.name)} ${entry.multiplier > 1 ? 'worth more' : 'worth less'}</b>
       <span class="muted">${entry.multiplier.toFixed(2)}&times; what the rules imply,
       which is ${entry.piece.derived.toFixed(2)}</span></li>`).join('')}</ul>`;
@@ -3821,7 +3817,7 @@ function builtHtml(game) {
     return `<div class="muted small">Nothing is built yet. What you build here is saved beside the
       game and shows up in the opponent list on its page.</div>`;
   }
-  return `<ul class="rules small" style="margin:0">${mine.map(o =>
+  return `<ul class="rules small u-m-0">${mine.map(o =>
     `<li><b>${esc(o.label)}</b> <span class="muted">${esc(o.plan)}</span></li>`).join('')}</ul>`;
 }
 
@@ -3837,7 +3833,7 @@ function saveBot(kit, andPlay) {
       return api('/api/session', { hash: BOT.hash, seats: ['human', built.agent] })
         .then(open_);
     }
-    box.innerHTML = `<div class="ok" style="margin-top:10px"><b>${esc(built.name)}</b> is
+    box.innerHTML = `<div class="ok u-mt-10"><b>${esc(built.name)}</b> is
       ready, and is now in the opponent list for this game.</div>`;
     detailFor(BOT.hash).then(game => {
       const list = document.getElementById('botList');

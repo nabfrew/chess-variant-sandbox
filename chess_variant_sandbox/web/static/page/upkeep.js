@@ -62,7 +62,7 @@ function scoringHtml(s) {
   // four is a fact about the corpus rather than about any one card.
   const spread = countRuns(s.games);
   const rested = spread.length
-    ? `<div class="muted small" style="margin-top:6px">Of the up-to-date ones, ${
+    ? `<div class="muted small u-mt-6">Of the up-to-date ones, ${
         spread.map(([n, of]) => `${of} rest${of === 1 ? 's' : ''} on ${
           countWord(n)} run${n === 1 ? '' : 's'}`).join(' and ')
       }. A score is the mean of its runs${info('index')}.</div>`
@@ -78,10 +78,10 @@ function scoringHtml(s) {
   // honest instruction is to stop the server, rebuild, start it again, and it is spelt
   // out here rather than left as a command with no explanation of why.
   const build = s.build
-    ? `<div class="verdict out" style="margin-top:10px">
+    ? `<div class="verdict out u-mt-10">
          <div>Measuring is held, because the game engine has changed since it was last
            compiled.</div>
-         <div class="small" style="font-weight:400; margin-top:5px">${esc(s.build)}.
+         <div class="small u-fw-400 u-mt-5">${esc(s.build)}.
            Anything measured now would describe the old build rather than this code, so
            the buttons are off until it is compiled again &mdash; stop this server, run
            that, and start it again.</div>
@@ -90,12 +90,12 @@ function scoringHtml(s) {
 
   const held = s.build ? ` disabled title="${esc(s.build)}"` : '';
   const actions = running
-    ? `<div class="row" style="margin-top:10px">
+    ? `<div class="row u-mt-10">
          <button id="stopSweep">stop after this game</button>
          <span class="muted small">It finishes the game it is on, because a tournament
          stopped half way through leaves something that looks measured and is not.</span>
        </div>`
-    : `<div class="row" style="margin-top:10px">
+    : `<div class="row u-mt-10">
         ${behind ? `<button class="primary" id="sweepStale"${held}>measure the ${behind}
           that need it</button>` : ''}
         <button id="sweepAll"${held} title="play every game again from scratch, whatever
@@ -106,12 +106,12 @@ function scoringHtml(s) {
              and you can leave it.`}</span>
       </div>`;
 
-  return `<details class="panel" style="margin-bottom:14px" ${running ? 'open' : ''}>
+  return `<details class="panel u-mb-14" ${running ? 'open' : ''}>
     <summary>
       <b>${s.current} of the ${s.games.length} kept games have an up-to-date score</b>
       ${running ? `<span class="tag stale">measuring ${sweep.done + 1} of ${sweep.total}</span>` : ''}
     </summary>
-    <p class="muted small" style="margin:10px 0 0">
+    <p class="muted small u-m-10-0-0">
       A score${info('index')} comes from a few hundred games the computer plays against
       itself. It depends on the rules, the opponents${info('roster')}, the scoring
       rules${info('weights')} and the code that ran both &mdash; so when any of those
@@ -122,14 +122,14 @@ function scoringHtml(s) {
       scoring rules ${esc(s.weights || '')}. Games nobody has kept yet${info('candidate')}
       are not counted here; measure one of those from its own page.
     </p>
-    <div style="margin-top:8px">${cost}</div>
+    <div class="u-mt-8">${cost}</div>
     ${rested}
     ${refresherHtml(s.refresher)}
     ${volatilityHtml(s.volatility)}
     ${build}
     ${actions}
     ${sweepHtml(sweep)}
-    ${behind ? `<div class="cells" style="margin-top:10px"><table>
+    ${behind ? `<div class="cells u-mt-10"><table>
       <tr><th>game</th><th>needs</th><th>why</th></tr>
       ${s.games.filter(g => g.state !== 'current').map(g => `<tr>
         <td>${esc(g.name)}</td>
@@ -146,7 +146,7 @@ function scoringHtml(s) {
 function refresherHtml(r) {
   if (!r || !r.said) return '';
   const refused = r.refused || [];
-  return `<div class="refresher small" style="margin-top:10px">
+  return `<div class="refresher small u-mt-10">
       <b>The refresher</b>
       <ul class="rules small">${r.said.map(line => `<li>${esc(line)}</li>`).join('')}</ul>
       ${refused.length ? `<div class="cells"><table>
@@ -163,7 +163,7 @@ function refresherHtml(r) {
 // No cut-off and no colour: the reader compares the two numbers; the page computes none.
 function volatilityHtml(rows) {
   if (!rows || !rows.length) return '';
-  return `<details class="small" style="margin-top:10px">
+  return `<details class="small u-mt-10">
       <summary><b>How much scores have moved</b></summary>
       <p class="muted">Across each game's last few re-measurements under the current
         scoring rules, beside the interval of the score it has now. This changes no score
@@ -198,14 +198,14 @@ function sweepHtml(sweep) {
       ? 'no score'
       : `${fmt(i.index)} <span class="muted">${esc(count)}</span>`;
   };
-  return `<div class="small" style="margin-top:10px">
+  return `<div class="small u-mt-10">
       The sweep is ${esc(state)}, with ${sweep.done} of ${sweep.total} done in
       ${Math.round(sweep.seconds || 0)}s${now}.
     </div>
-    ${done.length ? `<div class="muted small" style="margin-top:4px">${done.slice(-6).map(i =>
+    ${done.length ? `<div class="muted small u-mt-4">${done.slice(-6).map(i =>
       `${esc(i.name)} ${scoredAs(i)}${
         i.viable === false ? ' gated' : ''}`).join(' &middot; ')}</div>` : ''}
-    ${failed.length ? `<div class="error" style="margin-top:6px">${failed.map(i =>
+    ${failed.length ? `<div class="error u-mt-6">${failed.map(i =>
       `${esc(i.name)}: ${esc(i.error)}`).join('<br>')}</div>` : ''}`;
 }
 

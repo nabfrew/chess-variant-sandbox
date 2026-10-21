@@ -7,17 +7,17 @@ function showRun(run) {
   RUN = run;
   view.innerHTML = `
     <button class="crumb" id="back">&larr; all games</button>
-    <h2 style="margin-top:10px">Trying to improve ${esc(run.parent)}</h2>
+    <h2 class="u-mt-10">Trying to improve ${esc(run.parent)}</h2>
     <div class="muted small">${esc(run.theme || 'no particular angle asked for')}
       &middot; ${run.generations} round${run.generations === 1 ? '' : 's'}
       &middot; saving to ${esc(run.directory)}</div>
-    <div class="muted small" style="margin-top:6px; max-width:74ch">
+    <div class="muted small u-mt-6 u-maxw-74ch">
       Each round asks a model for variations, throws out the ones that obviously do not
       work, plays a few hundred games of each survivor and scores them. Anything it keeps
       turns up in the library as a game nobody has committed to yet. You can leave this
       page; it carries on.
     </div>
-    <div class="panel" style="margin-top:14px"><pre class="log" id="log"></pre></div>`;
+    <div class="panel u-mt-14"><pre class="log" id="log"></pre></div>`;
   document.getElementById('back').onclick = () => go('#/');
 
   const paint = data => {

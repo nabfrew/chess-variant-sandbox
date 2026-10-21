@@ -1385,7 +1385,7 @@ function choiceLineHtml(map, called) {
   for (const [portal, exits] of ways) {
     if (exits.size < 2) continue;
     const end = stillPortalAt(lastPreview(), portal);
-    return `<div class="muted small" style="margin-top:6px">From ${boardName(map.from)} the ${
+    return `<div class="muted small u-mt-6">From ${boardName(map.from)} the ${
       esc(called)} can reach portal ${end ? end.pair : ''} from both sides, so the player chooses
       where it comes out.</div>`;
   }

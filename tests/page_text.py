@@ -17,7 +17,10 @@ the `<script>` out -- and all of that reads from here:
 
 Each file is read through the table its server answers from (`web.page.SCRIPTS`,
 `site.pages.SCRIPTS`), so a tag naming a route nobody serves is a `KeyError` here, not a
-page that silently runs less.
+page that silently runs less. A page names each file by its versioned name (G12,
+`web/page/assets.py`), which is read here as the plain route it stands for, after checking
+that the version is the file's current one; and `inlined` puts each `<link rel=stylesheet>`
+back as the `<style>` it was, so `in` over `PAGE` still finds a rule.
 
 The shell's script (`web/static/shell.js`, in every page's `<head>`) is served too but is
 not part of a page's program here: it reads and writes only `<html>`'s theme, the footer's
@@ -31,7 +34,7 @@ import re
 
 from chess_variant_sandbox.site import pages as site_pages
 from chess_variant_sandbox.web import page
-from chess_variant_sandbox.web.page import shell
+from chess_variant_sandbox.web.page import assets, shell
 
 # Route -> file, for every script a server answers.
 SERVED = {
@@ -43,20 +46,45 @@ _SRC = re.compile(r'<script src="([^"]+)"></script>\n')
 _RUN = re.compile(r'(?:<script src="[^"]+"></script>\n)+')
 
 
+_SHEET = re.compile(r'<link rel="stylesheet" href="([^"]+)"[^>]*>\n')
+
+
+def plain(route: str) -> str:
+    """The plain route a page's versioned name stands for, which must be the current one:
+    a name whose version is not the file's bytes is a `KeyError`, as an unserved one is."""
+    if route != assets.plain(route) and assets.answer(route) is None:
+        raise KeyError(f"{route}: not the current version of {assets.plain(route)}")
+    return assets.plain(route)
+
+
+# A JavaScript function from markup to the same markup with each `styleClass` class (G12,
+# `viz/wrapped.js`) spelt out as the declarations its rule holds, kept in `STYLE_CLASSES`:
+# what a test under Node, where there is no sheet to read, checks a drawing's styles by.
+STYLED = ("(html => html.replace(/sc-[0-9a-z]+/g, name => "
+          "[...STYLE_CLASSES].find(([, held]) => held === name)[0]))")
+
+
 def text(route: str) -> str:
-    """One served script's text, by its route."""
-    return SERVED[route].read_text(encoding="utf-8")
+    """One served script's text, by its plain or versioned route."""
+    return SERVED[plain(route)].read_text(encoding="utf-8")
 
 
 def inlined(html: str) -> str:
-    """`html` with each run of `<script src>` tags as one `<script>` of their text."""
+    """`html` with each run of `<script src>` tags as one `<script>` of their text, and each
+    stylesheet link as the `<style>` of its text."""
     def block(run: re.Match[str]) -> str:
-        routes = [route for route in _SRC.findall(run[0]) if route != shell.SHELL_SCRIPT_ROUTE]
+        routes = [route for route in _SRC.findall(run[0])
+                  if plain(route) != shell.SHELL_SCRIPT_ROUTE]
         if not routes:
             return run[0]
         return "<script>\n" + "".join(text(route) for route in routes) + "</script>\n"
 
-    return _RUN.sub(block, html)
+    def sheet(link: re.Match[str]) -> str:
+        if assets.answer(link[1]) is None:
+            raise KeyError(f"{link[1]}: no such stylesheet")
+        return "<style>" + assets.sheet_text(link[1]) + "</style>\n"
+
+    return _SHEET.sub(sheet, _RUN.sub(block, html))
 
 
 def script_of(html: str) -> str:
@@ -67,7 +95,7 @@ def script_of(html: str) -> str:
         if "application/json" in attributes:
             continue
         found = re.search(r'src="([^"]+)"', attributes)
-        if found and found[1] == shell.SHELL_SCRIPT_ROUTE:
+        if found and plain(found[1]) == shell.SHELL_SCRIPT_ROUTE:
             continue
         parts.append(text(found[1]) if found else body)
     return "\n".join(parts)

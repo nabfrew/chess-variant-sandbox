@@ -44,6 +44,7 @@ from test_site_admin import (
 
 from chess_variant_sandbox.site import admin, asking, identity, mail, quota, routes
 from chess_variant_sandbox.site import pages as site_pages
+from chess_variant_sandbox.web.page import assets
 from chess_variant_sandbox.web.server import REQUEST_HEADER, REQUEST_VALUE
 
 ROUTE = "/api/ask-invitation"
@@ -150,7 +151,7 @@ class TestTheWayThere:
         assert asking.NOTE_HINT in page
         assert "How did you find the site?" in asking.NOTE_HINT
         assert 'id="ask-send" type="submit">send the request</button>' in page
-        assert '<script src="/static/site/ask.js"></script>' in page
+        assert f'<script src="{assets.name_of("/static/site/ask.js")}"></script>' in page
 
     def test_the_route_is_open_to_a_visitor_and_the_page_is_a_constant(self) -> None:
         route = routes.find("POST", ROUTE)

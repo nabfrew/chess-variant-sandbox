@@ -314,8 +314,8 @@ function hereHtml(check, inPanel) {
   if (!run && !offer) return '';
   const busy = !!run && (run.state === 'loading' || run.state === 'running');
   return `<div class="${inPanel ? 'hereStep' : 'ruled'}">
-      ${inPanel ? '<div style="font-weight:600">Measure it on this computer</div>'
-        : '<h3 style="margin-top:0">Measure it on this computer</h3>'}
+      ${inPanel ? '<div class="u-fw-600">Measure it on this computer</div>'
+        : '<h3 class="u-mt-0">Measure it on this computer</h3>'}
       ${run ? hereRunHtml(run) : inPanel ? `<div class="muted small">This computer plays the
         games and scores them; a game the size of chess takes a few minutes. Then the site
         checks the score.</div>` : `<div class="muted small">Your browser plays the games the
@@ -333,7 +333,7 @@ function hereOfferHtml(run) {
   const chosen = Math.min(most, HERE_CHOSEN || most);
   const options = Array.from({ length: most }, (_, i) => i + 1).map(n =>
     `<option value="${n}"${n === chosen ? ' selected' : ''}>${n}</option>`).join('');
-  return `<div class="row" style="margin-top:8px">
+  return `<div class="row u-mt-8">
       <button id="dHereGo"${run ? '' : ' class="primary"'}>${
         run ? 'measure it here again' : 'measure it here'}</button>
       <label class="muted small">use <select id="dHereWorkers">${options}</select>
@@ -354,11 +354,11 @@ function hereRunHtml(run) {
   const share = run.total ? Math.round(100 * run.done / run.total) : 0;
   return `<div class="small"><b>${esc(HERE_STEPS[run.step] || run.step)}</b>${
       run.total && run.step !== 'gathering' ? ` &mdash; ${run.done} of ${run.total}` : ''}</div>
-    <div class="bar" style="margin:6px 0"><div style="width:${share}%"></div></div>
+    <div class="bar u-m-6-0"><div class="${styleClass(`width:${share}%`)}"></div></div>
     <div class="muted small">${esc(spent)} so far, on ${esc(hereWorkers(run.workers))}${
       run.games ? ` &middot; ${run.games} games played` : ''}. You can keep editing; this
       measures ${esc(run.name)} as it stood when you pressed the button.</div>
-    <div class="row" style="margin-top:8px"><button id="dHereStop">stop</button></div>`;
+    <div class="row u-mt-8"><button id="dHereStop">stop</button></div>`;
 }
 
 // The number at the four decimals B5's acceptance compares, under the label that says
@@ -370,21 +370,21 @@ function hereResultHtml(run) {
   const check = run.check || null;
   const kept = check && check.state === 'done' && check.result ? check.result : null;
   return `${kept ? hereKeptHtml(check, kept) : hereOwnHtml(run, check)}
-    ${moved ? `<div class="muted small" style="margin-top:6px">This is ${esc(r.name)} as it
+    ${moved ? `<div class="muted small u-mt-6">This is ${esc(r.name)} as it
       stood when you pressed the button${ACCOUNTS ? '' : ` (<code>${esc(r.hash)}</code>)`}; the rules have changed
       since, so it is not a number for the draft on screen.</div>` : ''}
     ${(r.violations || []).length ? `<div class="verdict out">
         <div>It is ruled out${info('gated')}, not marked down.</div>
-        <div class="small" style="font-weight:400; margin-top:5px">${
+        <div class="small u-fw-400 u-mt-5">${
           r.violations.map(esc).join('<br>')}</div></div>` : ''}
-    ${components.length ? `<div class="muted small" style="margin-top:8px">What it is made of${
+    ${components.length ? `<div class="muted small u-mt-8">What it is made of${
       kept ? ', as your browser scored it' : ''}, each out of 1, the ones that count most
       first:</div>
-      <ul class="rules small" style="margin-top:4px">${components.map(c => `<li><b>${
+      <ul class="rules small u-mt-4">${components.map(c => `<li><b>${
         esc(c.title)}</b> ${Number(c.score).toFixed(2)} &mdash; ${esc(c.what || '')}</li>`)
         .join('')}</ul>` : ''}
-    <details style="margin-top:6px"><summary class="muted small">how long it took</summary>
-      <div class="muted small" style="margin-top:4px">${hereTimesHtml(run)}</div></details>`;
+    <details class="u-mt-6"><summary class="muted small">how long it took</summary>
+      <div class="muted small u-mt-4">${hereTimesHtml(run)}</div></details>`;
 }
 
 // The browser's own number, under the label that says where it was made and that nothing
@@ -398,47 +398,47 @@ function hereOwnHtml(run, check) {
     kept nowhere, so it ranks nothing and earns nothing.${ACCOUNTS && !VIEWER
     ? ' Sign in, and a score measured here goes to the site to be checked.'
     : ' The number a game keeps is the one the site measures once it is saved.'}`;
-  return `<div style="font-size:26px; font-weight:600; line-height:1.1">${
+  return `<div class="u-fs-26 u-fw-600 u-lh-1_1">${
       scored ? Number(r.index).toFixed(4) : '<span class="muted">no score</span>'}</div>
     <div class="muted small">measured on your computer${info('provisional')}, as one run of ${
       Number(r.games)} games${r.viable === false ? ', and ruled out' : ''} &middot; ${
       esc(rulesVersion(r.weights))}${info('weights')}</div>
     ${check ? hereCheckHtml(check)
-      : `<div class="small" style="margin-top:6px">${unsent}</div>`}`;
+      : `<div class="small u-mt-6">${unsent}</div>`}`;
 }
 
 // The site's answer while it has no number to show, in its own words.
 function hereCheckHtml(check) {
   if (check.state === 'sending') {
-    return '<div class="small" style="margin-top:6px">Sending the games to the site&hellip;</div>';
+    return '<div class="small u-mt-6">Sending the games to the site&hellip;</div>';
   }
   if (check.state === 'queued' || check.state === 'running') {
-    return `<div class="small" style="margin-top:6px">The site is ${check.state === 'queued'
+    return `<div class="small u-mt-6">The site is ${check.state === 'queued'
       ? 'about to check' : 'checking'} it: every game replayed to check it was legal, and
       scored again by the site. Nobody else sees any of it.</div>`;
   }
   const refusal = check.refusal || null;
   if (refusal && refusal.name === 'stale-build') {
-    return `<div class="error" style="margin-top:6px">The site runs a newer engine than the
+    return `<div class="error u-mt-6">The site runs a newer engine than the
       one this page loaded, so it could not take this score. The page has fetched the
       current one: measure it here again.</div>`;
   }
   if (check.state === 'done' && check.superseded === 'mismatch') {
-    return `<div class="error" style="margin-top:6px">The site replayed some of these games
+    return `<div class="error u-mt-6">The site replayed some of these games
       and one came out differently from what this computer sent, so it did not keep this
       score. Your account can't publish until the person who runs the site has looked at
       it.</div>`;
   }
   if (check.state === 'done') {
-    return `<div class="small" style="margin-top:6px">The site checked it, and its number no
+    return `<div class="small u-mt-6">The site checked it, and its number no
       longer stands: ${check.superseded === 'superseded'
       ? 'a newer score for this game replaced it'
       : 'the site has changed how it scores games since, so this score is out of date'}.
       </div>`;
   }
   const said = refusal ? refusal.sentence : check.error || 'the site did not take it';
-  return `<div class="error" style="margin-top:6px">The site did not keep it: ${esc(said)}</div>
-    <div class="row" style="margin-top:8px"><button id="dHereSend">send it again</button></div>`;
+  return `<div class="error u-mt-6">The site did not keep it: ${esc(said)}</div>
+    <div class="row u-mt-8"><button id="dHereSend">send it again</button></div>`;
 }
 
 // The server's number in place of the browser's (B10), under the state and the label the
@@ -447,12 +447,12 @@ function hereKeptHtml(check, p) {
   const words = provisionalWords(p);
   const scored = p.index !== null && p.index !== undefined;
   const took = typeof check.seconds === 'number' ? ` in ${hereSeconds(check.seconds)}` : '';
-  return `<div style="font-size:26px; font-weight:600; line-height:1.1">${
+  return `<div class="u-fs-26 u-fw-600 u-lh-1_1">${
       scored ? Number(p.index).toFixed(4) : '<span class="muted">no score</span>'}</div>
     <div class="muted small">${esc(words.label)}${info('provisional')}${
       p.viable === false ? ', and ruled out' : ''} &middot; ${esc(runsPhrase(p.seeds))}${
       p.weights ? ' &middot; ' + esc(rulesVersion(p.weights)) : ''}${info('weights')}</div>
-    <div class="small" style="margin-top:6px">Checked by the site${esc(took)}. ${
+    <div class="small u-mt-6">Checked by the site${esc(took)}. ${
       esc(words.why)}</div>${hereSpotHtml(check)}`;
 }
 
@@ -461,20 +461,20 @@ function hereSpotHtml(check) {
   const spot = check.spotCheck;
   if (!spot || (check.result && check.result.state === 'spot-checked')) return '';
   if (spot.state === 'queued' || spot.state === 'running') {
-    return `<div class="small" style="margin-top:6px">The site is now replaying a sample of
+    return `<div class="small u-mt-6">The site is now replaying a sample of
       the games exactly, to spot-check it; that takes a few minutes.${
       typeof hereInPanel === 'function' && hereInPanel(DRAFT_STANDING)
         ? ' You can press Publish already: the game goes on trial by itself once the check has passed.'
         : ''}</div>`;
   }
   if (spot.state === 'stopped') {
-    return `<div class="small" style="margin-top:6px">The site's spot check ran out of time
+    return `<div class="small u-mt-6">The site's spot check ran out of time
       on this game, so the score stays yours alone and cannot publish it yet.</div>`;
   }
   if (spot.state === 'failed') {
-    return `<div class="small" style="margin-top:6px">The site could not finish the spot
+    return `<div class="small u-mt-6">The site could not finish the spot
       check; send the score again.</div>
-      <div class="row" style="margin-top:8px"><button id="dHereSend">send it again</button></div>`;
+      <div class="row u-mt-8"><button id="dHereSend">send it again</button></div>`;
   }
   return '';
 }

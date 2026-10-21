@@ -122,21 +122,21 @@ async function showBoard(snapshot, how) {
       : proven ? '' : `<button class="crumb" id="back">&larr; ${
         rules.scratch ? 'back to the editor'
           : snapshot.puzzle ? 'proven positions on ' + esc(rules.name) : esc(rules.name)}</button>`}
-    ${!inline && rules.scratch ? `<div class="muted small" style="margin-top:8px">
+    ${!inline && rules.scratch ? `<div class="muted small u-mt-8">
       This is a trial of <b>${esc(rules.name)}</b>, and this trial isn't recorded: nothing
       about it is kept, and going back to the editor leaves no trace of it.</div>` : ''}
-    ${snapshot.demo ? `<div class="ok" style="margin-top:8px">${esc(snapshot.demo.says)}
+    ${snapshot.demo ? `<div class="ok u-mt-8">${esc(snapshot.demo.says)}
       The computer played these moves. Step forward to watch them, or move from here.</div>` : ''}
-    ${snapshot.puzzle && !proven ? `<div class="ok" id="puzzleSays" style="margin-top:8px"
+    ${snapshot.puzzle && !proven ? `<div class="ok u-mt-8" id="puzzleSays"
       aria-live="polite">${esc(puzzleSaid(snapshot))}</div>` : ''}
-    <div class="split${inline || proven ? ' alone' : ''}" style="margin-top:10px">
+    <div class="split${inline || proven ? ' alone' : ''} u-mt-10">
       <div class="play-frame">
-        ${inline ? `<div class="row small" style="margin-bottom:8px">
+        ${inline ? `<div class="row small u-mb-8">
           <div>${seatHtml(0)}</div><span class="muted">vs</span><div>${seatHtml(1)}</div>
         </div>` : ''}
         ${frameHtml(inline, snapshot.mode, watched, between, (!!snapshot.round || !!snapshot.spy) && !watched, !!snapshot.puzzle)}
-        <div class="row" id="review" style="margin-top:8px"></div>
-        ${between ? '' : `<div class="row" style="margin-top:8px">
+        <div class="row u-mt-8" id="review"></div>
+        ${between ? '' : `<div class="row u-mt-8">
           ${proven ? `<button id="provenPrev" class="quiet" title="the position before this one on the list"
             >${esc(proven.words.previous)}</button><button id="provenNext" class="quiet"
             title="the position after this one on the list">${esc(proven.words.next)}</button>` : ''}
@@ -148,17 +148,17 @@ async function showBoard(snapshot, how) {
           ${watched ? '' : `<button id="watch" title="${esc(watchTitle())}">
             watch it play itself</button>`}`}
         </div>`}
-        <div id="ground" class="muted small" style="margin-top:6px"></div>
-        ${proven ? `<div class="ok small" id="puzzleSays" style="margin-top:8px"
+        <div id="ground" class="muted small u-mt-6"></div>
+        ${proven ? `<div class="ok small u-mt-8" id="puzzleSays"
           aria-live="polite">${esc(puzzleSaid(snapshot))}</div>` : ""}
       </div>
       ${inline || proven ? '' : `<div class="panel boardSide">
         <div class="seatLines">
           <div>${seatHtml(0)}</div>
-          <div style="margin-top:6px">${seatHtml(1)}</div>
+          <div class="u-mt-6">${seatHtml(1)}</div>
           ${modeHtml(snapshot)}
         </div>
-        <div class="tabs" style="margin-top:10px">
+        <div class="tabs u-mt-10">
           ${['moves', 'rules', 'pieces'].map(tab => `<button data-tab="${tab}"${
             tab === TAB ? ' class="on"' : ''}>${tab}</button>`).join('')}
         </div>
@@ -1016,7 +1016,7 @@ function toggleLinks() {
 }
 
 function linkToggleHtml(shown) {
-  const lit = shown ? ' style="border-color:var(--act);color:var(--act)"' : '';
+  const lit = shown ? ' class="u-bc-act u-c-act"' : '';
   return `<button id="linktoggle" aria-pressed="${!!shown}"${lit}
     title="an arrow from each portal to the one a piece going in there comes out beside">portal map</button>`;
 }
@@ -1456,7 +1456,7 @@ function legendEntries(kinds, wrap, zoneMore, portals) {
       ? portals.ends.find(end => isFold(end) === (kind === 'fold')) : undefined;
     const gloss = look.gloss && typeof info === 'function' ? ' ' + info(look.gloss) : '';
     said.push(`<span class="entry" data-legend="${kind}">${markKey(kind, sample)}<b
-      style="color:${look.ink || look.colour}">${esc(look.name)}</b> ${esc(look.label)}${
+      class="${styleClass(`color:${look.ink || look.colour}`)}">${esc(look.name)}</b> ${esc(look.label)}${
       esc(more)}${gloss}</span>`);
   }
   return said;
@@ -3007,9 +3007,9 @@ function drawPane() {
   if (TAB === 'rules') {
     pane.innerHTML = `<ul class="rules">${
       (game.ruleLines || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
-      <details style="margin-top:10px">
+      <details class="u-mt-10">
         <summary class="muted small">where the pieces start</summary>
-        <ul class="rules muted small" style="margin-top:6px">${
+        <ul class="rules muted small u-mt-6">${
           (game.setupLines || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
       </details>`;
     return;
@@ -3018,7 +3018,7 @@ function drawPane() {
   pane.innerHTML = `<div class="pieces">${(game.pieces || []).map((piece, index) =>
     piecesHtml(piece, { index, selected: HIGHLIGHT === index,
                         ranks: pieceSpeeds(game.pieces) })).join('')}</div>
-    <div class="muted small" style="margin-top:8px">Click a piece to find it on the board.</div>`;
+    <div class="muted small u-mt-8">Click a piece to find it on the board.</div>`;
   pane.querySelectorAll('[data-type]').forEach(node => {
     node.onclick = () => {
       const type = Number(node.dataset.type);
@@ -3216,18 +3216,17 @@ function keepDepths(before, after) {
 function modeHtml(snapshot) {
   if (snapshot.correspondence) {
     const rated = snapshot.correspondence.rated;
-    return `<div style="margin-top:6px"><span class="tag" title="${rated
+    return `<div class="u-mt-6"><span class="tag" title="${rated
       ? 'a game between two people; both ratings on this game move at the end'
       : 'a game between two people on rules with no rated computer players; it is kept and counts for nothing'
     }">${rated ? 'rated' : 'practice'}</span></div>`;
   }
   if (snapshot.mode === 'leaderboard') {
-    return `<div style="margin-top:6px"><span class="tag" style="border-color:var(--good);
-      color:var(--good)" title="this result is rated, there is no take-back, and leaving
+    return `<div class="u-mt-6"><span class="tag u-bc-good u-c-good" title="this result is rated, there is no take-back, and leaving
       resigns the game">rated</span></div>`;
   }
   if (snapshot.mode === 'sandbox') {
-    return `<div style="margin-top:6px"><span class="tag"
+    return `<div class="u-mt-6"><span class="tag"
       title="undo and restart are on and nothing here counts towards a rating"
       >sandbox</span></div>`;
   }
@@ -3604,7 +3603,7 @@ function drawHand() {
         ${!AT && droppable.has(face) ? '' : 'disabled'}>${esc(ids[face])}${other ? ` (${esc(ids[type])})` : ''} x${count}</button>`);
     });
   });
-  hand.innerHTML = '<span class="muted" style="align-self:center">in hand:</span>' +
+  hand.innerHTML = '<span class="muted u-as-center">in hand:</span>' +
     buttons.join('');
   hand.querySelectorAll('[data-drop]').forEach(node => {
     node.onclick = () => {
@@ -4221,7 +4220,7 @@ function chooseRotation(candidates) {
   const nf = SESSION.ruleset.nFacings || 4;
   const player = SESSION.sideToMove;
   const headings = (SESSION.ruleset.facingAngles || [])[player] || [];
-  hand.innerHTML = '<span class="muted" style="align-self:center">rotate to:</span>' +
+  hand.innerHTML = '<span class="muted u-as-center">rotate to:</span>' +
     candidates.map(m => {
       const facing = m.rotation;
       // Map the facing angle to an arrow: 0°=up, 90°=right, 180°=down, 270°=left
@@ -4229,8 +4228,7 @@ function chooseRotation(candidates) {
       const arrowIdx = Math.round(angle / 90) % 4;
       const arrow = ROTATION_ARROWS[arrowIdx];
       const label = ROTATION_LABELS[arrowIdx];
-      return `<button data-move="${m.move}" title="face ${label}"
-        style="font-size:1.5em;min-width:2.5em;padding:4px 8px">${arrow}</button>`;
+      return `<button data-move="${m.move}" title="face ${label}" class="u-fs-1_5em u-minw-2_5em u-p-4-8">${arrow}</button>`;
     }).join('');
   hand.querySelectorAll('[data-move]').forEach(node => {
     node.onclick = () => send(Number(node.dataset.move));
@@ -5110,6 +5108,6 @@ function corrMovedDayHtml(index) {
 
 function corrRulesHtml() {
   const between = SESSION.correspondence;
-  return `<ul class="rules muted small" style="margin-top:10px">${
+  return `<ul class="rules muted small u-mt-10">${
     (between.rules || []).map(rule => `<li>${esc(rule)}</li>`).join('')}</ul>`;
 }

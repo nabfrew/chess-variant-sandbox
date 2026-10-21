@@ -2607,7 +2607,7 @@ class TestTheDesignersLayout:
 
         start = PAGE.index("async function showDesigner(from)")
         body = PAGE[start : PAGE.index("\nfunction ", start + 1)]
-        assert body.index("${startFromHtml(kit)}") < body.index('<div class="designer bench"')
+        assert body.index("${startFromHtml(kit)}") < body.index('<div class="designer bench')
         draw = PAGE.index("function drawDesigner()")
         assert 'id="dTemplate"' not in PAGE[draw : PAGE.index("\nfunction ", draw + 1)]
         assert PAGE.count('id="dTemplate"') == 1

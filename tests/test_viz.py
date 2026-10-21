@@ -1413,8 +1413,8 @@ class TestThePromotionZoneIsAMarkBehindAToggle:
 
     def test_the_control_is_one_button_both_surfaces_share(self) -> None:
         seen = _wrapped("[zoneToggleHtml(true), zoneToggleHtml(false)]")
-        assert 'aria-pressed="true"' in seen[0] and "var(--zone)" in seen[0]
-        assert 'aria-pressed="false"' in seen[1] and "var(--zone)" not in seen[1]
+        assert 'aria-pressed="true"' in seen[0] and "u-c-zone" in seen[0]
+        assert 'aria-pressed="false"' in seen[1] and "u-c-zone" not in seen[1]
         assert all("promotion zone" in html for html in seen)
 
 

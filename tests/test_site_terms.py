@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+import page_text
 import pytest
 import site_store
 import site_words
@@ -105,7 +106,8 @@ class TestThePage:
         page = site_pages.terms_page()
         assert "/static/site/" not in page and "page-data" not in page, "no script of its own"
         assert '<main class="prose wide">' in page
-        assert "@media (max-width: 760px) { .point { grid-template-columns: 1fr; } }" in page
+        assert "@media (max-width: 760px) { .point { grid-template-columns: 1fr; } }" in (
+            page_text.inlined(page))
 
     def test_the_footer_and_the_privacy_notice_link_it(self) -> None:
         for page in (site_pages.privacy(), site_pages.credits(), site_pages.badges(),

@@ -38,7 +38,12 @@ def _square(name: str, width: int = 5) -> int:
     return (int(name[1:]) - 1) * width + ord(name[0]) - ord("a")
 
 
-_FOLD = "({pair: %d, end: 'orange', kind: 'fold', dest: 9, type: 8, movedBy: %s, open: %s%s})"
+# A JavaScript function from markup to the declarations its `styleClass` classes stand for
+# (G12: a drawing's worked-out style is a class, and its rule is kept in `STYLE_CLASSES`).
+STYLES_OF = ("(html => (html.match(/sc-[0-9a-z]+/g) || [])"
+             ".map(name => [...STYLE_CLASSES].find(([, held]) => held === name)[0]).join('; '))")
+
+_FOLD = "({pair: %d,end: 'orange', kind: 'fold', dest: 9, type: 8, movedBy: %s, open: %s%s})"
 
 
 def _pool(movers: str = "[]", open_: str = "[true, true]", more: str = "", pair: int = 1,
@@ -56,8 +61,8 @@ class TestThePool:
         pool = _pool()
         vortex = _wrapped("portalGlyph({pair: 1, end: 'orange', movedBy: [], open: [true, true]},"
                           " 0, 0, 10, {})")
-        centre = re.search(r'<stop offset="0" style="stop-color:([^;"]+)', pool)
-        eye = re.search(r'<stop offset="0" style="stop-color:([^;"]+)', vortex)  # type: ignore[arg-type]
+        centre = re.search(r'<stop offset="0" stop-color="([^"]+)"', pool)
+        eye = re.search(r'<stop offset="0" stop-color="([^"]+)"', vortex)  # type: ignore[arg-type]
         assert centre and centre.group(1) == "var(--fold-light)"
         assert eye and eye.group(1) == "var(--portal-edge)"
         # 0.9 of a cell across.
@@ -107,16 +112,17 @@ class TestThePool:
         idle = _pool(idle="true")
         assert "pf-idle" in idle and "pf-wobble" in idle
         assert "pf-idle" not in _pool() and "pf-wobble" not in _pool()
-        delays = _wrapped("[1, 1, 2].map(p => /animation-delay:([-\\d.]+)s/.exec(foldGlyph("
+        # The delay is a rule of its own (G12, `styleClass`), read back by its class.
+        delays = _wrapped("[1, 1, 2].map(p => /animation-delay:([-\\d.]+)s/.exec(" + STYLES_OF + "(foldGlyph("
                           + _FOLD % (1, "[]", "[true, true]", "") + ".pair === p ? "
                           "Object.assign(" + _FOLD % (1, "[]", "[true, true]", "") + ", {pair: p}) : "
                           "Object.assign(" + _FOLD % (1, "[]", "[true, true]", "") + ", {pair: p}),"
-                          " 0, 0, 10, {idle: true}))[1])")
+                          " 0, 0, 10, {idle: true})))[1])")
         assert delays[0] == delays[1] != delays[2]  # type: ignore[index]
 
     def test_the_glow_is_clear_inside_the_rim(self) -> None:
         glow = _wrapped("foldGlowHtml(0, 0, 10, 2)")
-        stops = re.findall(r'<stop offset="([\d.]+)" style="stop-color:var\(--pair-2\);stop-opacity:([\d.]+)"', glow)
+        stops = re.findall(r'<stop offset="([\d.]+)" stop-color="var\(--pair-2\)" stop-opacity="([\d.]+)"', glow)
         assert stops[0][1] == "0" and float(stops[0][0]) * 6.4 >= 3.9  # nothing inside 0.39 of a cell
         assert stops[-1] == ("1", "0") and float(stops[1][1]) > 0
 

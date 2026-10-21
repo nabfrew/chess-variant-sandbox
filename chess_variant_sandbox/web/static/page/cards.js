@@ -823,7 +823,7 @@ function ruleMenuHtml() {
   const rules = DRAFT.rules || {};
   const byKey = Object.fromEntries(model.rules.map(f => [f.key, f]));
   const shut = model.ruleOrder.filter(key => !(key in rules) && RULE_REFUSED[key]);
-  return `<div class="field ruleFind" style="margin-top:10px">
+  return `<div class="field ruleFind u-mt-10">
       <label for="dRuleFind"><span>add a rule</span></label>
       <input id="dRuleFind" type="search" autocomplete="off" value="${esc(RULE_FIND)}"
         placeholder="find one: rounds, atomic, walls...">
@@ -831,7 +831,7 @@ function ruleMenuHtml() {
     </div>
     <div class="muted small" id="dRuleFound" aria-live="polite">${ruleFoundHtml()}</div>
     <div class="small" id="dAddRuleSays"></div>
-    <button id="dAddRuleGo" style="margin-top:6px" disabled>add it</button>
+    <button id="dAddRuleGo" class="u-mt-6" disabled>add it</button>
     ${refusedRulesHtml(shut, byKey)}`;
 }
 
@@ -975,7 +975,7 @@ function refusedRulesHtml(shut, byKey) {
   // Asked only of a draft that is a game, so while one is half made these are the last
   // answer rather than this draft's -- said out loud, as the dimmed board says it.
   const stale = !!(DRAFT_CHECK && !DRAFT_CHECK.valid);
-  return `<details class="panel refusedRules" style="margin-top:10px">
+  return `<details class="panel refusedRules u-mt-10">
     <summary class="muted small">${shut.length} rule${shut.length === 1 ? '' : 's'}
       ${shut.length === 1 ? 'does' : 'do'} not go in this game</summary>
     ${stale ? `<div class="muted small">This list is from the last time the draft was a
@@ -1574,7 +1574,7 @@ function pickedWalk(preview) {
 
 function pickNoteHtml() {
   if (!PICKING) return '';
-  return `<div class="small pickNote" data-picknote style="margin-top:6px"><span class="muted">You
+  return `<div class="small pickNote u-mt-6" data-picknote><span class="muted">You
     are picking squares for</span> <b>${esc(pickCalled())}</b><span class="muted">. Click squares
     on the opening board, and click one again to take it back. Squares are written for the
     first player.</span> <button class="small" data-pickdone>done picking</button></div>${

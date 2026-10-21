@@ -237,7 +237,7 @@ function startLandingBoard(named) {
     const still = entry.game.still;
     // A board taller than it is wide is narrowed, so every game fits the same square.
     const wide = Math.min(100, 100 * still.width / Math.max(1, still.height));
-    mount.innerHTML = `<div class="landingSlide" style="width:${wide}%">${
+    mount.innerHTML = `<div class="landingSlide ${styleClass(`width:${wide}%`)}">${
       thumbHtml(entry.game)}</div>`;
     if (settle) {
       mount.querySelectorAll('svg image, svg circle, svg text').forEach((piece, n) => {

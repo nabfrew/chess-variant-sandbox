@@ -48,7 +48,7 @@ from chess_variant_sandbox.web.evolving import Runs
 from chess_variant_sandbox.web.human import HUMAN, HumanGame, HumanRecord, picker_ratings
 from chess_variant_sandbox.web.keeping import Measurements
 from chess_variant_sandbox.web.opponents import Ratings
-from chess_variant_sandbox.web.page import PAGE, SCRIPTS, picture, rules_page, shell
+from chess_variant_sandbox.web.page import SCRIPTS, assets, page, picture, rules_page, shell
 from chess_variant_sandbox.web.page import game as game_page
 from chess_variant_sandbox.web.play import Session, Sessions, seed_asked
 
@@ -117,11 +117,14 @@ BROWSER_TYPES = {
     ".whl": "application/zip",
 }
 
-# The page's own scripts (`web.page.SCRIPTS`, route -> file) are answered the same way:
-# `text/javascript`, `no-store`, and only the routes that table names.
+# The page's own scripts (`web.page.SCRIPTS`, route -> file) and its stylesheets are
+# answered under versioned names, `<route stem>.<digest>.<ext>`, for a year, and only the
+# names `web/page/assets.py` holds (G12). The plain route of a script is still answered,
+# `text/javascript`, `no-store`, for a tool or a test that asks by it; no page names it.
 
-# B3's worker script, one real file inside the package. `no-store`, like every answer
-# but the two immutable kinds, because its name does not change when its bytes do.
+# B3's worker script, one real file inside the package. `no-store`, because its name does
+# not change when its bytes do: it is loaded only when a draft is measured in the browser,
+# never by a visit to a page, so no visit pays for it.
 WORKER_ROUTE = "/static/measure-worker.js"
 
 # The rule language's reference, `RULES.md`, as the code this server runs renders it (Q905):
@@ -162,14 +165,17 @@ WORKER_FILE = Path(__file__).resolve().parent / "static" / "measure-worker.js"
 # point is `script-src` without `'unsafe-inline'`: an injected `<script>` or `on...=`
 # attribute is inert text. `'wasm-unsafe-eval'` is the in-browser measurement's: Pyodide
 # compiles WebAssembly in the worker, and the worker takes its policy from its own
-# script's answer, which is this one. Inline style stays allowed, since the stylesheet is
-# still a `<style>` in each page and the page writes `style=` attributes.
+# script's answer, which is this one. `style-src 'self'` is the same rule for style (G12):
+# every stylesheet is a file (`web/page/assets.py`), no page carries a `<style>` or a
+# `style=` attribute, and a value a script works out is a rule it adds through the CSSOM
+# (`styleClass` in `viz/wrapped.js`), which the policy does not govern. An injected `<style>`
+# or `style=` is inert, as an injected `<script>` is.
 CONTENT_SECURITY_POLICY = "; ".join(
     (
         "default-src 'self'",
         "script-src 'self' 'wasm-unsafe-eval'",
         "worker-src 'self'",
-        "style-src 'self' 'unsafe-inline'",
+        "style-src 'self'",
         "img-src 'self' data:",
         "connect-src 'self'",
         "object-src 'none'",
@@ -1429,7 +1435,14 @@ def handler_for(app: App) -> type[BaseHTTPRequestHandler]:
             # A game's own address (G3) is the page too; the site draws the game into it
             # for a reader without script, and here the router draws it as it always has.
             if parsed.path in PAGE_PATHS or game_page.digest_of(parsed.path) is not None:
-                self._send(200, PAGE.encode("utf-8"), "text/html; charset=utf-8")
+                # Drawn per request: it names each script by its current bytes' digest.
+                self._send(200, page().encode("utf-8"), "text/html; charset=utf-8")
+                return
+            held = assets.answer(parsed.path)
+            if held is not None:
+                # A script or stylesheet under its versioned name (G12): a year, because
+                # the name changes whenever the bytes do.
+                self._send(200, held[0], held[1], cache=IMMUTABLE)
                 return
             if parsed.path.startswith(VENDOR_PREFIX):
                 self._vendor(parsed.path[len(VENDOR_PREFIX):])
@@ -1510,11 +1523,12 @@ def handler_for(app: App) -> type[BaseHTTPRequestHandler]:
             self._send(200, (picture.DIR / name).read_bytes(), entry["type"], cache=IMMUTABLE)
 
         def _script(self, path: Path) -> None:
-            """One of the page's own scripts, served as the worker script is.
+            """One of the page's own scripts by its plain route, served as the worker
+            script is.
 
             `SCRIPTS` is the whole of what reaches here, a lookup and never a path to
-            resolve. `no-store`, because a file's name does not change when its bytes do,
-            and the page that names it is `no-store` too.
+            resolve. `no-store`, because this name does not change when the bytes do; the
+            pages name the versioned one (`assets.answer`), which is cached for a year.
             """
             self._send(200, path.read_bytes(), "text/javascript")
 

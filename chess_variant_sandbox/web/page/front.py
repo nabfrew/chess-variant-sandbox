@@ -194,7 +194,7 @@ def games_view(listed: Sequence[Listed]) -> str:
     )
     return (
         '<noscript><section class="drawnGames">'
-        f'<h2 style="margin:10px 0 0">{escape(GAMES_HEADING)}</h2>'
+        f'<h2 class="u-m-10-0-0">{escape(GAMES_HEADING)}</h2>'
         f"<p>{escape(GAMES_DESCRIPTION)}</p>"
         + (f'<ul class="drawnList">{items}</ul>' if items else "")
         + "<p>Choosing, sorting and playing them needs JavaScript switched on.</p>"

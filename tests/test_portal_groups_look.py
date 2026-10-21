@@ -23,6 +23,7 @@ from typing import Any
 import pytest
 from test_designer_portals import _GAME, _clicks, _page, _with
 from test_designer_portals import _square as _square6
+from test_fold_look import STYLES_OF
 from test_portal_board import _game
 from test_schema_twenty_one import filtered, funnel, ring
 from test_viz import _wrapped
@@ -228,7 +229,7 @@ class TestOnThePlayBoard:
 
     def test_a_group_turns_in_step(self) -> None:
         delays = _board(ring(), "", f"""[{_square('a3', 5)}, {_square('c3', 5)}, {_square('e3', 5)}]
-          .map(sq => /animation-delay:([-\\d.]+)s/.exec(drawnAt(sq))[1])""")
+          .map(sq => /animation-delay:([-\\d.]+)s/.exec({STYLES_OF}(drawnAt(sq)))[1])""")
         assert len(set(delays)) == 1
 
     def test_the_words_name_the_filters_pieces(self) -> None:

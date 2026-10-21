@@ -537,6 +537,10 @@ MAIL_OFF = "/mail/off/"
 # - `/whats-new`, *What's new* drawn on the server (G11, `web/page/news_page.py`), and
 #   `/feeds/`, the two Atom feeds (`site/feeds.py`): the changelog's entries and the new
 #   games. Read from the changelog file and the store, never from a cookie.
+# - `/static/style/`, the pages' stylesheets, which the code writes (G12,
+#   `web/page/assets.py`). Every script above under `/static/page/`, `/static/site/` and
+#   `/static/shell.js` is answered under a versioned name too, `<stem>.<digest>.js`, which is
+#   the one the pages name: both for a year, and only a name `assets` holds.
 #
 # **Served to anybody.** They are the same bytes for every viewer and nobody's name is
 # read; all but the last (which reads the changelog and the store) touch no store. A path cannot reach out of any directory, because each
@@ -545,7 +549,7 @@ STATIC: tuple[str, ...] = (
     "/static/vendor/", "/static/page/", "/static/site/", "/static/measure-worker.js", "/browser/",
     "/static/fonts/", "/static/shell.js", "/favicon.svg", "/favicon.ico", "/apple-touch-icon.png",
     "/static/picture/", "/rules.md", "/robots.txt", "/sitemap.xml", "/llms.txt", "/rules",
-    "/whats-new", "/feeds/",
+    "/whats-new", "/feeds/", "/static/style/",
 )
 
 # The pages whose answer depends on who is asking, and so the only ones the cookie is

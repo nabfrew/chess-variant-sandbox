@@ -81,7 +81,7 @@ class TestTheStartPosition:
         from page_text import DETAIL
 
         play = DETAIL[DETAIL.index('<div class="gamePlay">'):]
-        assert play.index("${openingHtml(game)}") < play.index('<h3 style="margin-top:0">Play</h3>')
+        assert play.index("${openingHtml(game)}") < play.index('<h3 class="u-mt-0">Play</h3>')
         assert "<summary class=\"muted small\">where the pieces start</summary>" in DETAIL
 
 

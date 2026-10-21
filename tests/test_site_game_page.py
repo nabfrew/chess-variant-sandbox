@@ -373,7 +373,8 @@ class TestTheOldLinks:
         from the same server, opens the game and replaces the address with the game's own."""
         landing = _fetch(site.port, "/")
         assert landing.status == 200
-        core_route = re.search(r'<script src="(/static/page/core\.js)"></script>', landing.html)
+        core_route = re.search(r'<script src="(/static/page/core\.[0-9a-f]{12}\.js)"></script>',
+                               landing.html)
         assert core_route is not None
         core = _fetch(site.port, core_route.group(1))
         assert core.status == 200

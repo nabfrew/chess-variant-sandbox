@@ -31,22 +31,21 @@ async function showGame(hash) {
   // phone) it was some ten thousand pixels down a phone's page and read as gone (Q642).
   view.innerHTML = `
     <button class="crumb" id="back">&larr; all games</button>
-    <h2 style="margin:10px 0 0">${esc(game.name)}${
+    <h2 class="u-m-10-0-0">${esc(game.name)}${
       retired ? ' <span class="tag">retired</span>' : ''}${
       game.preview ? ' <span class="tag level preview">Preview</span>' : ''}</h2>
     ${previewHtml(game.preview)}
-    <div class="row" style="margin-top:6px">
+    <div class="row u-mt-6">
       <button id="fork" title="open a copy of these rules in the designer, under a new name; this game stays as it is"
         >make your own from this</button>
     </div>
-    <div class="row muted small" style="gap:8px; margin-top:10px">
+    <div class="row muted small u-gap-8 u-mt-10">
       <span>${esc(game.board)} board</span><span>&middot;</span>
       <span>${game.pieceTypes} piece type${game.pieceTypes === 1 ? '' : 's'}</span>
       <span>&middot;</span>
       <span>complexity ${game.ruleMass}${info('ruleMass')}</span>
       ${ACCOUNTS ? '' : `<span>&middot;</span>
-      <span title="its content hash, which names this exact set of rules"
-        style="font-family:ui-monospace, monospace">${esc(game.hash)}</span>`}
+      <span title="its content hash, which names this exact set of rules" class="u-ff-mono">${esc(game.hash)}</span>`}
     </div>
     <p class="gameAbout">${esc(game.description)}</p>
     <div class="gameTop">
@@ -54,13 +53,13 @@ async function showGame(hash) {
         ${carryOnHtml(game)}
         ${openingHtml(game)}
         <div class="panel">
-          ${retired ? retiredBody(game) : `<h3 style="margin-top:0">Play</h3>
+          ${retired ? retiredBody(game) : `<h3 class="u-mt-0">Play</h3>
           ${playableWarning(game)}
           ${firstGameHtml(game)}
           ${sidePicker(game, seats, ratingTable(game))}
           ${fairyNote(game, seats)}
           ${modePicker(game)}
-          <div class="row" style="margin-top:10px">
+          <div class="row u-mt-10">
             <button class="primary" id="start">start a game</button>
             <button id="swap" title="take the other side">swap sides</button>
             <button id="watchIt" title="${esc(watchTitle())}">watch it play itself</button>
@@ -77,9 +76,9 @@ async function showGame(hash) {
         ${votingHtml(game)}
         <div class="panel"${ACCOUNTS ? ' id="leaderboard"' : ''}>
           ${ACCOUNTS
-            ? `<h3 style="margin-top:0">Leaderboard${info('leaderboard')}</h3>
+            ? `<h3 class="u-mt-0">Leaderboard${info('leaderboard')}</h3>
               <div id="strength">${leaderboardHtml(game)}</div>`
-            : `<h3 style="margin-top:0">How hard each opponent is, here${info('elo')}</h3>
+            : `<h3 class="u-mt-0">How hard each opponent is, here${info('elo')}</h3>
               <div id="strength">${strengthHtml(game)}</div>`}
           ${opponentLineHtml(game.standing)}
         </div>
@@ -106,9 +105,9 @@ async function showGame(hash) {
             round costs a model call and a few minutes.
           </div>
           <textarea id="theme" placeholder="Write something to try, if you have one in mind. Left empty, the model works out what makes this game interesting and pushes on that."></textarea>
-          <div class="row" style="margin-top:8px">
+          <div class="row u-mt-8">
             <label class="muted small">rounds
-              <input id="generations" type="number" min="1" max="40" value="4" style="width:72px">
+              <input id="generations" type="number" min="1" max="40" value="4" class="u-w-72">
             </label>
             <button id="evolve">start</button>
           </div>
@@ -119,9 +118,9 @@ async function showGame(hash) {
           `<div class="panel pieces">${pieceBoardsHtml(game)}</div>`)}
         ${sectionHtml('rules', 'The rules', `<div class="panel">
           <ul class="rules">${(game.ruleLines || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
-          <details style="margin-top:10px">
+          <details class="u-mt-10">
             <summary class="muted small">where the pieces start</summary>
-            <ul class="rules muted small" style="margin-top:6px">${
+            <ul class="rules muted small u-mt-6">${
               (game.setupLines || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
           </details>
           ${reportHtml(game)}
@@ -131,7 +130,7 @@ async function showGame(hash) {
             <div class="axis">
               <b>${esc(a.axis)}</b>
               <div class="asks muted small">${esc(a.asks)}</div>
-              <div style="margin-top:3px"><b style="font-size:14px">${esc(a.bin)}</b></div>
+              <div class="u-mt-3"><b class="u-fs-14">${esc(a.bin)}</b></div>
               <div class="muted small">${esc(a.means)}</div>
             </div>`).join('')}</div>
         </div>`)}
@@ -263,8 +262,8 @@ function openingHtml(game) {
   // Never taller than most of a screen: a board taller than it is wide is held to the
   // width that leaves its foot in view.
   const tall = opening.height / Math.max(1, opening.width);
-  return `<figure class="opening" id="opening" style="max-width:min(100%, calc(52vh / ${
-    tall.toFixed(3)}))">
+  return `<figure class="opening ${styleClass(`max-width:min(100%, calc(52vh / ${
+    tall.toFixed(3)}))`)}" id="opening">
     <div role="img" aria-label="The start position. Where each piece starts is also listed under The rules.">${
       boardPreview(preview, null)}</div>
     <figcaption class="muted small">The start position${
@@ -315,9 +314,9 @@ function wasHtml(lines) {
     return `<li>Was ${esc(number)}${esc(runs)}${esc(when)}${esc(how)}${esc(replaced)}${
       esc(why)}.${esc(held)}</li>`;
   }).join('');
-  return `<details class="was" style="margin-top:10px">
+  return `<details class="was u-mt-10">
     <summary class="muted small">earlier scores (${lines.length})</summary>
-    <ul class="rules muted small" style="margin-top:6px">${said}</ul>
+    <ul class="rules muted small u-mt-6">${said}</ul>
   </details>`;
 }
 
@@ -349,12 +348,12 @@ function carryOnHtml(game) {
   const open = (game.standing && game.standing.yourOpen) || [];
   if (!open.length) return '';
   const one = open.length === 1;
-  return `<div class="panel" style="margin-bottom:14px">
-    <h3 style="margin-top:0">Carry on</h3>
+  return `<div class="panel u-mb-14">
+    <h3 class="u-mt-0">Carry on</h3>
     <div class="muted small">You left ${one ? 'a rated game' : open.length + ' rated games'}
       running here. Starting another rated game on this game resigns
       ${one ? 'it' : 'them'}, and so do thirty idle days.</div>
-    ${open.map(match => `<div class="row" style="margin-top:8px">
+    ${open.map(match => `<div class="row u-mt-8">
       <button class="primary" data-carry="${esc(match.id)}">carry on</button>
       <span class="muted small">${esc(carryOnLine(match))}</span>
     </div>`).join('')}
@@ -388,14 +387,14 @@ function playPersonHtml(game) {
   const people = game.standing && game.standing.people;
   if (!people) return '';
   const name = esc(game.name);
-  const head = `<div class="panel" style="margin-top:14px">
-    <h3 style="margin-top:0">Play a person</h3>`;
+  const head = `<div class="panel u-mt-14">
+    <h3 class="u-mt-0">Play a person</h3>`;
   if (people.paused) {
     return `${head}<div class="small">${esc(people.pausedSays)}</div>
       ${people.mine ? openToHtml(game, people) : ''}</div>`;
   }
   const listed = people.open.length
-    ? people.open.map(person => `<div class="row" style="margin-top:6px">
+    ? people.open.map(person => `<div class="row u-mt-6">
         <b><a href="/players/${esc(person.handle)}">${markHtml(person.mark, 20)}${
           esc(person.handle)}</a></b><span class="muted small">${esc(person.said)}</span>
         <button data-challenge="${esc(person.handle)}">challenge</button></div>`).join('')
@@ -406,9 +405,9 @@ function playPersonHtml(game) {
     <div class="muted small">By correspondence: you move whenever you like, there is no
       clock, and the game waits for you. ${countsWords(people.rated, game.name)}</div>
     ${makerHtml(people.maker)}
-    <h4 style="margin:10px 0 4px">Open to a game of ${name}</h4>
+    <h4 class="u-m-10-0-4">Open to a game of ${name}</h4>
     ${listed}
-    <h4 style="margin:12px 0 4px">Or anyone here</h4>
+    <h4 class="u-m-12-0-4">Or anyone here</h4>
     <div class="row">
       <input id="challengeWho" list="challengeMembers" placeholder="a member's handle"
         autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -416,7 +415,7 @@ function playPersonHtml(game) {
         `<option value="${esc(handle)}"></option>`).join('')}</datalist>
       <button id="challengeIt">challenge</button>
     </div>
-    <div class="row" style="margin-top:6px">
+    <div class="row u-mt-6">
       <button id="challengeLink">make a challenge link</button>
       <span class="muted small">for a member who isn't in either list; it works once</span>
     </div>
@@ -433,18 +432,18 @@ function playPersonHtml(game) {
 // ask. The words are the server's; nothing here counts.
 function inviteFriendHtml(box) {
   if (!box) return '';
-  const head = `<h4 style="margin:12px 0 4px">A friend who isn't a member yet</h4>`;
+  const head = `<h4 class="u-m-12-0-4">A friend who isn't a member yet</h4>`;
   if (!(box.left > 0)) return `${head}<div class="small" id="inviteSaid">${esc(box.said)}</div>`;
   return `${head}
     <div class="small" id="inviteSaid">${esc(box.said)} Invite your friend by email, and
       once they have joined, challenge them here by their name.</div>
-    <form class="row" id="inviteForm" style="margin-top:6px; align-items:flex-end">
-      <label class="small" style="flex:1 1 16rem">their email address<br>
+    <form class="row u-mt-6 u-ai-flex-end" id="inviteForm">
+      <label class="small u-flex-1-1-16rem">their email address<br>
         <input id="inviteEmail" type="email" required autocomplete="off"
-          autocapitalize="off" spellcheck="false" style="width:100%"></label>
+          autocapitalize="off" spellcheck="false" class="u-w-100p"></label>
       <button id="inviteSend" type="submit">send the invitation</button>
     </form>
-    ${box.under ? `<div class="muted small" style="margin-top:6px">${esc(box.under)}</div>` : ''}`;
+    ${box.under ? `<div class="muted small u-mt-6">${esc(box.under)}</div>` : ''}`;
 }
 
 function wireInviteFriend(game) {
@@ -458,7 +457,7 @@ function wireInviteFriend(game) {
       game.standing.people.invites = answer.box;
       const where = document.getElementById('inviteFriend');
       where.innerHTML = inviteFriendHtml(answer.box)
-        + `<div class="ok" style="margin-top:8px">${esc(answer.said)}</div>`;
+        + `<div class="ok u-mt-8">${esc(answer.said)}</div>`;
       wireInviteFriend(game);
     }).catch(error => { send.disabled = false; fail(error, send); });
   };
@@ -470,10 +469,10 @@ function wireInviteFriend(game) {
 function makerHtml(maker) {
   if (!maker) return '';
   if (maker.you) {
-    return `<div class="small" id="makerLine" style="margin-top:10px">${esc(maker.said)}
+    return `<div class="small u-mt-10" id="makerLine">${esc(maker.said)}
       <a href="/profile">Switch it off on your page.</a></div>`;
   }
-  return `<div id="makerLine" style="margin-top:10px">
+  return `<div id="makerLine" class="u-mt-10">
     <div class="row">
       <b><a href="/players/${esc(maker.handle)}">${markHtml(maker.mark, 20)}${
         esc(maker.handle)}</a></b><span class="small">${esc(maker.said)}</span>
@@ -490,7 +489,7 @@ function countsWords(rated, name) {
 }
 
 function openToHtml(game, people) {
-  return `<label class="small" style="display:block; margin-top:12px">
+  return `<label class="small u-d-block u-mt-12">
     <input type="checkbox" id="openTo"${people.mine ? ' checked' : ''}>
     List me as open to a game of ${esc(game.name)}.
     <span class="muted">Off unless you tick it. Members see your name here; nothing is
@@ -503,10 +502,10 @@ function challengeSheetHtml(game, who) {
   const people = game.standing.people;
   const sides = game.sides || [];
   const side = (index, fallback) => sides[index] ? esc(sides[index]) + ', ' : fallback;
-  return `<div class="panel" style="margin-top:10px">
+  return `<div class="panel u-mt-10">
     <b>${who ? `Challenge ${esc(who)} to ${esc(game.name)}`
       : `A challenge link to ${esc(game.name)}`}</b>
-    <div class="row" style="margin-top:8px">
+    <div class="row u-mt-8">
       <label class="small">You play
         <select id="challengeSeat">
           <option value="first">${side(0, '')}moving first</option>
@@ -514,8 +513,8 @@ function challengeSheetHtml(game, who) {
           <option value="either">either, drawn when it starts</option>
         </select></label>
     </div>
-    <div class="small" style="margin-top:6px">${countsWords(people.rated, game.name)}</div>
-    <ul class="rules muted small" style="margin-top:6px">${(people.rules || [])
+    <div class="small u-mt-6">${countsWords(people.rated, game.name)}</div>
+    <ul class="rules muted small u-mt-6">${(people.rules || [])
       .map(rule => `<li>${esc(rule)}</li>`).join('')}</ul>
     <div class="row">
       <button id="challengeSend">${who ? 'send the challenge' : 'make the link'}</button>
@@ -528,17 +527,17 @@ function challengeSheetHtml(game, who) {
 // a link its address to send however the person likes. The site sends nothing.
 function challengeSentHtml(sent, origin) {
   if (sent.link) {
-    return `<div class="panel" style="margin-top:10px">
+    return `<div class="panel u-mt-10">
       <b>Your challenge link</b>
-      <div class="row" style="margin-top:6px">
+      <div class="row u-mt-6">
         <input id="challengeAddress" readonly value="${esc(origin + sent.link)}">
         <button id="challengeCopy">copy</button></div>
-      <div class="muted small" style="margin-top:6px">It works once, for one member, and
+      <div class="muted small u-mt-6">It works once, for one member, and
         it waits on your page under <i>Challenges you sent</i> until it is used or you
         withdraw it. Send it however you like; the site sends nothing.</div>
     </div>`;
   }
-  return `<div class="ok" style="margin-top:10px"><b>Challenge sent.</b> It waits on your
+  return `<div class="ok u-mt-10"><b>Challenge sent.</b> It waits on your
     page, under <i>Challenges you sent</i>, until ${esc(sent.to)} accepts or declines it,
     for as long as that takes. <a href="/profile">your page</a></div>`;
 }
@@ -621,16 +620,16 @@ function linksHtml(game) {
   // same apology twelve times over.
   const scored = links.some(link => link.gap);
   const more = rest.length
-    ? `<details style="margin-top:10px">
+    ? `<details class="u-mt-10">
         <summary class="muted small">${rest.length} more, less alike</summary>
         ${rest.map(link => linkRow(link, scored)).join('')}
       </details>`
     : '';
-  const nothing = scored ? '' : `<div class="muted small" style="margin-top:10px">No
+  const nothing = scored ? '' : `<div class="muted small u-mt-10">No
     scores to compare yet. A link says what the difference did to the score once both
     games ${ACCOUNTS ? 'have a current score' : 'carry a measurement this checkout can read'}.</div>`;
   return sectionHtml('near', 'Games like this one', `<div class="panel">
-      <div class="muted small" style="margin-bottom:4px">The games most like this one,
+      <div class="muted small u-mb-4">The games most like this one,
         most alike first: two games are as alike as the rare things they share${
         info('alike')}. Each says what differs between the two, by kind${
         info('differs')}. ${where}</div>
@@ -649,10 +648,9 @@ function linkRow(link, scored) {
     : 'the same rules, written two ways';
   const kinds = (link.kinds || []).map(kind =>
     `<span class="tag">${esc(kind)}</span>`).join(' ');
-  return `<div style="margin-top:10px; padding-top:9px; border-top:1px solid var(--line)">
-    <div class="row" style="gap:8px; align-items:baseline">
-      <button class="crumb" data-link="${esc(link.hash)}"
-        style="color:var(--ink); font-weight:600">${esc(link.name)}</button>
+  return `<div class="u-mt-10 u-pt-9 u-bt-1-solid-line">
+    <div class="row u-gap-8 u-ai-baseline">
+      <button class="crumb u-c-ink u-fw-600" data-link="${esc(link.hash)}">${esc(link.name)}</button>
       <span class="muted small">${esc(fmt(link.likeness))} alike${
         link.line ? ', a line on the map' : ''}</span>
     </div>
@@ -752,16 +750,16 @@ function betweenHtml(game) {
   if (!near.words) {
     return sectionHtml('between', 'The game in between', `<div class="panel">
         <div class="muted small">${which}</div>
-        <div class="small" style="margin-top:8px">${esc(near.why)}</div>
+        <div class="small u-mt-8">${esc(near.why)}</div>
       </div>`);
   }
   const named = digest => (digest === game.hash ? game.name : near.name);
   return sectionHtml('between', 'The game in between', `<div class="panel">
       <div class="muted small">${which}</div>
-      <div class="small" style="margin-top:8px">The game in between is
+      <div class="small u-mt-8">The game in between is
         <b>${esc(named(near.from))}</b> with ${esc(near.words)} taken from
         <b>${esc(named(near.taken))}</b>.</div>
-      <div class="row" style="margin-top:8px">
+      <div class="row u-mt-8">
         <button id="between" title="open the game in between these two in the editor"
           >make the game in between</button>
       </div>
@@ -799,7 +797,7 @@ function wireBetween(game) {
 // fault in the page.
 function retiredBody(game) {
   const standing = game.standing || {};
-  return `<h3 style="margin-top:0">Retired</h3>
+  return `<h3 class="u-mt-0">Retired</h3>
     <div class="small">This game has been retired from the library; a newer version
       replaced it, so no new game can be started here. Everything else on this page still
       stands: the rules below are the rules that were played, and the games people played
@@ -811,11 +809,11 @@ function retiredBody(game) {
 // (`standing.canDelete`), and the server decides again when it is pressed -- a button
 // the page draws is never the permission.
 function deleteHtml() {
-  return `<div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+  return `<div class="u-mt-14 u-bt-1-solid-line u-pt-12">
     <div class="row">
       <button id="deleteGame" title="remove these rules for good">delete this game</button>
     </div>
-    <div class="muted small" style="margin-top:6px">The rules are removed for good and
+    <div class="muted small u-mt-6">The rules are removed for good and
       cannot be brought back. The games played on it, their results, the ratings and the
       votes all stay, and name it a deleted game.</div>
   </div>`;
@@ -854,7 +852,7 @@ function wireDeleting(game, hash) {
 function reportHtml(game) {
   const standing = game.standing;
   if (!standing || standing.signedIn !== true) return '';
-  return `<div id="reporting" class="muted small" style="margin-top:6px">${
+  return `<div id="reporting" class="muted small u-mt-6">${
     reportBody(standing)}</div>`;
 }
 
@@ -866,16 +864,16 @@ function reportBody(standing) {
   const reasons = standing.reportReasons || [];
   return `<details>
       <summary>Report this game (spam, offensive, a copy)</summary>
-      <div class="row" style="margin-top:6px; gap:8px">
+      <div class="row u-mt-6 u-gap-8">
         <label>why <select id="reportReason">${reasons.map(one =>
           `<option value="${esc(one.reason)}">${esc(one.label)}</option>`).join('')}
         </select></label>
         <input id="reportNote" type="text" maxlength="500" autocomplete="off"
           placeholder="a note, if you like (which game it copies, say)"
-          aria-label="a note for the person who runs the site, optional" style="flex:1; min-width:12em">
+          aria-label="a note for the person who runs the site, optional" class="u-flex-1 u-minw-12em">
         <button id="reportSend">send the report</button>
       </div>
-      <div style="margin-top:4px">Only the person who runs the site reads it. It takes
+      <div class="u-mt-4">Only the person who runs the site reads it. It takes
         nothing off the site by itself.</div>
     </details>`;
 }
@@ -976,7 +974,7 @@ function measuringHtml(game) {
   // built from older sources plays by the previous build's rules without failing.
   const held = game.build ? ` disabled title="${esc(game.build)}"` : '';
   return `${state}
-    <div class="row" style="margin:8px 0 10px">
+    <div class="row u-m-8-0-10">
       <button id="measureIt" title="${esc(title)}"${held}
         class="${stale || !game.score ? 'primary' : ''}">${esc(label)}</button>
       <span class="muted small">${game.build
@@ -997,13 +995,13 @@ function provisionalHtml(game) {
   const words = provisionalWords(p);
   const scored = p.index !== null && p.index !== undefined;
   const runs = runsPhrase(p.seeds);
-  return `<div style="margin-top:10px">
-      <div style="font-size:26px; font-weight:600; line-height:1.1">${
+  return `<div class="u-mt-10">
+      <div class="u-fs-26 u-fw-600 u-lh-1_1">${
         scored ? fmt(p.index) : '<span class="muted">no score</span>'}</div>
       <div class="muted small">${esc(words.label)}${info('provisional')}${
         p.viable === false ? ', and ruled out' : ''}${runs ? ' &middot; ' + esc(runs) : ''}${
         p.weights ? ' &middot; ' + esc(rulesVersion(p.weights)) + info('weights') : ''}</div>
-      <div class="small" style="margin-top:6px">${esc(words.why)}</div>
+      <div class="small u-mt-6">${esc(words.why)}</div>
     </div>`;
 }
 
@@ -1036,18 +1034,18 @@ function wireMeasuring(hash) {
 function whereHtml(game) {
   const keeps = offered('POST', '/api/promote');
   if (!game.level && !keeps) return '';
-  return `<div class="panel" style="margin-top:14px" id="where" data-level="${
+  return `<div class="panel u-mt-14" id="where" data-level="${
       esc(game.level || '')}">
-      ${game.level ? `<h3 style="margin-top:0">Where it stands: ${esc(game.level)}${
+      ${game.level ? `<h3 class="u-mt-0">Where it stands: ${esc(game.level)}${
         game.levelGloss ? info(game.levelGloss) : ''}</h3>
         ${trackHtml(game.track)}
         ${game.levelSays ? `<div class="small">${esc(game.levelSays)}</div>` : ''}` : ''}
       ${game.source === 'designed'
-        ? `<div class="row" style="margin-top:8px">${copyLinkHtml(game.hash)}</div>` : ''}
+        ? `<div class="row u-mt-8">${copyLinkHtml(game.hash)}</div>` : ''}
       ${designerMarksHtml(game.designer)}
       ${shortlistHtml(game.shortlist)}
       ${roundHtml(game.round)}
-      ${keeps ? `<div style="margin-top:12px" id="keeping">${keepingHtml(game)}</div>` : ''}
+      ${keeps ? `<div class="u-mt-12" id="keeping">${keepingHtml(game)}</div>` : ''}
     </div>`;
 }
 
@@ -1061,8 +1059,7 @@ function designerMarksHtml(marks) {
   if (!marks) return '';
   const rules = marks.rules || {};
   const lines = [];
-  const line = (said, rule, key) => lines.push(`<li data-mark="${key}"
-      style="margin-bottom:2px">${said}${rule
+  const line = (said, rule, key) => lines.push(`<li data-mark="${key}" class="u-mb-2">${said}${rule
         ? ` <span class="muted">&mdash; ${esc(rule)}</span>` : ''}</li>`);
   if (marks.passesScreen) line(`<b>Passes the playability check</b>${info('playability')}`, rules.passesScreen,
       'screen');
@@ -1075,8 +1072,7 @@ function designerMarksHtml(marks) {
     line(`Built on by <b>${by.map(handle => personHtml(handle)).join('</b>, <b>')}</b>`, rules.forkedBy, 'forked');
   }
   if (!lines.length) return '';
-  return `<ul id="designerMarks" class="small"
-      style="list-style:none; padding-left:0; margin:8px 0 4px">${lines.join('')}</ul>`;
+  return `<ul id="designerMarks" class="small u-ls-none u-pl-0 u-m-8-0-4">${lines.join('')}</ul>`;
 }
 
 // Q503f: a trial game's standing against the shortlist's bar, every count as the server
@@ -1085,18 +1081,18 @@ function designerMarksHtml(marks) {
 // server says the game may be nominated now; otherwise the line under it says why not.
 function shortlistHtml(bar) {
   if (!bar) return '';
-  const lines = (bar.checks || []).map(check => `<li style="margin-bottom:2px"
+  const lines = (bar.checks || []).map(check => `<li class="u-mb-2"
       data-met="${check.met ? 'yes' : 'no'}"><span>${
       check.met ? '&#10003;' : '&middot;'}</span>${esc(check.says)}</li>`).join('');
   const button = bar.mine
-    ? `<div class="row" style="margin-top:6px"><button id="nominateIt" class="primary"
+    ? `<div class="row u-mt-6"><button id="nominateIt" class="primary"
         ${bar.nominable ? '' : 'disabled'} title="${esc(bar.nominable
           ? "put it forward for this month's members' vote" : bar.waiting)}">nominate it</button>${info('nominate')}</div>
-      ${bar.waiting ? `<div class="muted small" style="margin-top:4px">${esc(bar.waiting)}</div>` : ''}`
+      ${bar.waiting ? `<div class="muted small u-mt-4">${esc(bar.waiting)}</div>` : ''}`
     : '';
-  return `<div id="shortlist" style="margin-top:8px">
+  return `<div id="shortlist" class="u-mt-8">
       <div class="small">${esc(bar.says)}</div>
-      <ul class="small marks" style="margin:4px 0">${lines}</ul>
+      <ul class="small marks u-m-4-0">${lines}</ul>
       ${button}</div>`;
 }
 
@@ -1107,13 +1103,13 @@ function roundHtml(round) {
   if (!round) return '';
   const mine = round.yourVote;
   const control = round.mayVote
-    ? `<div class="row" style="margin-top:6px">
+    ? `<div class="row u-mt-6">
         <button id="roundYes" class="${mine === true ? 'primary' : ''}">yes</button>
         <button id="roundNo" class="${mine === false ? 'primary' : ''}">no</button>
         ${mine === true || mine === false
           ? `<span class="muted small">You voted ${mine ? 'yes' : 'no'}.</span>` : ''}</div>`
     : `<div class="muted small">${esc(round.why)}</div>`;
-  return `<div id="roundVote" style="margin-top:8px">
+  return `<div id="roundVote" class="u-mt-8">
       <div class="small">${esc(round.says)} <a href="#/round/${esc(round.round)}">The round's
         page</a>.</div>
       <div class="muted small">${esc(round.rule)}</div>
@@ -1186,7 +1182,7 @@ function keepingHtml(game) {
   const k = game.keeping || {};
   const stage = k.stage || 'unknown';
   if (stage === 'committed') {
-    return `<h4 style="margin:0 0 4px">Kept as part of the yardstick${info('committed')}</h4>
+    return `<h4 class="u-m-0-0-4">Kept as part of the yardstick${info('committed')}</h4>
       <div class="muted small">It is one of the games the scoring is calibrated against,
       which is as far as a game goes here. Its score can still be taken again, above.</div>`;
   }
@@ -1198,13 +1194,13 @@ function keepingHtml(game) {
        ignores, so it lasts until the next clean-up unless you keep it.`;
 
   const blocked = k.blocker
-    ? `<div class="muted small" style="margin-top:6px">It is not ready for the yardstick
+    ? `<div class="muted small u-mt-6">It is not ready for the yardstick
          yet (${esc(k.blocker)}).</div>`
     : '';
 
-  return `<h4 style="margin:0 0 4px">Keeping it</h4>
+  return `<h4 class="u-m-0-0-4">Keeping it</h4>
     <div class="muted small">${where}</div>
-    <div class="row" style="margin-top:10px">
+    <div class="row u-mt-10">
       ${stage === 'candidate'
         ? `<button id="archiveIt" title="keep the file in the repository, without making it
             one of the games the scoring is calibrated against">keep it</button>`
@@ -1213,9 +1209,8 @@ function keepingHtml(game) {
         title="make it one of the games the scoring is calibrated against">add to the
         yardstick</button>
     </div>
-    <input id="keepName" placeholder="a better name, if a machine wrote this one"
-      style="margin-top:8px">
-    <textarea id="keepReason" style="margin-top:6px"
+    <input id="keepName" placeholder="a better name, if a machine wrote this one" class="u-mt-8">
+    <textarea id="keepReason" class="u-mt-6"
       placeholder="Adding it to the yardstick? Say what this game shows that none of the others do. It is saved with the rules."></textarea>
     ${blocked}
     <div id="keepResult"></div>`;
@@ -1233,7 +1228,7 @@ function wireKeeping(hash) {
       // Re-read rather than patch: the game has moved along the ladder, so the panel
       // that offered the action is no longer the right panel.
       delete DETAIL[hash];
-      say(`<div class="small" style="margin-top:8px">The file is now at
+      say(`<div class="small u-mt-8">The file is now at
         <code>${esc(kept.path)}</code>.</div>`);
       setTimeout(() => go('#/game/' + hash), 600);
     }).catch(error => say(`<div class="error">${esc(errorWords(error))}</div>`));
@@ -1255,7 +1250,7 @@ function pollTest(hash) {
     if (!box) { clearInterval(TEST_TIMER); TEST_TIMER = null; return; }
     if (state.state === 'running') {
       const last = (state.log || []).slice(-1)[0] || 'starting';
-      box.innerHTML = `<div class="muted small" style="margin-top:8px">It is measuring
+      box.innerHTML = `<div class="muted small u-mt-8">It is measuring
         against the standard opponents, at ${esc(last)} after
         ${Math.round(state.seconds || 0)}s. It runs in the background, so the page stays
         usable.</div>`;
@@ -1398,7 +1393,7 @@ function strengthHtml(game) {
     : [];
   // Rating plays a tournament, from the button below where the server offers it.
   const rates = offered('POST', '/api/rate');
-  const button = rates ? `<div class="row" style="margin-top:10px">
+  const button = rates ? `<div class="row u-mt-10">
       <button id="rate">${picker
         ? (unrated.length
             ? `work them out again (${unrated.length} not rated yet)`
@@ -1450,17 +1445,17 @@ function strengthHtml(game) {
     return `<tr>
         <td>${esc(label)}${gone}</td>
         <td class="muted small">${esc(ladderRow ? '' : group)}</td>
-        <td style="text-align:right">${number}</td>
-        <td class="muted small" style="text-align:right">${
+        <td class="u-ta-right">${number}</td>
+        <td class="muted small u-ta-right">${
           s.games === undefined || s.games === null ? '' : s.games}</td>
       </tr>`;
   }).join('');
   const missing = unrated.length && !rates
-    ? `<div class="muted small" style="margin-top:8px">${unrated.length} of the computer
+    ? `<div class="muted small u-mt-8">${unrated.length} of the computer
         players you can pick ${unrated.length === 1 ? 'has' : 'have'} no rating on this game
         yet.</div>`
     : unrated.length
-    ? `<div class="muted small" style="margin-top:8px">${
+    ? `<div class="muted small u-mt-8">${
         unrated.map(o => `<b>${esc(o.label)}</b>`).join(', ')} ${
         unrated.length === 1 ? 'is' : 'are'} not rated yet, because ${
         unrated.length === 1 ? 'it was' : 'they were'} not in the picker when this table
@@ -1471,13 +1466,13 @@ function strengthHtml(game) {
   // are rated here too" -- broke into four and pushed the numbers apart; the sentence
   // above the table says both of those things in full and the (i) says the rest.
   const column = (words, gloss) =>
-    `<th style="text-align:right">${words}${info(gloss)}</th>`;
+    `<th class="u-ta-right">${words}${info(gloss)}</th>`;
   return `<div class="muted small">${note}</div>
-    <div class="muted small" style="margin-top:6px">${scales}</div>
+    <div class="muted small u-mt-6">${scales}</div>
     <table class="ratings"><thead><tr>
       <th>opponent</th><th></th>
       ${column(LADDER_SCALE, 'ladderScale')}
-      <th style="text-align:right">games</th>
+      <th class="u-ta-right">games</th>
     </tr></thead><tbody>${rows}</tbody></table>` + missing + refused + button;
 }
 
@@ -1485,14 +1480,14 @@ function strengthHtml(game) {
 // the local application's strength table and under the site's leaderboard alike.
 function refusedHtml(game) {
   return (game.refusedStores || []).map(line =>
-    `<div class="muted small" style="margin-top:8px">${withCommands(line)}</div>`).join('');
+    `<div class="muted small u-mt-8">${withCommands(line)}</div>`).join('');
 }
 
 // A server sentence with its commands in backticks, as the page sets code: escaped
 // first, so nothing in the sentence is markup but the span this adds.
 function withCommands(line) {
   return esc(line).replace(/`([^`]+)`/g,
-    '<span style="font-family:ui-monospace, monospace">$1</span>');
+    '<span class="u-ff-mono">$1</span>');
 }
 
 // ------------------------------------------------------------------- the leaderboard
@@ -1557,7 +1552,7 @@ function leaderboardHtml(game) {
   const board = boardOf(game);
   const refused = refusedHtml(game);
   const line = (words, top) =>
-    `<div class="muted small"${top ? ` style="margin-top:${top}px"` : ''}>${words}</div>`;
+    `<div class="muted small${top ? ` ${styleClass(`margin-top:${top}px`)}` : ''}">${words}</div>`;
   if (!board.rated) {
     const waiting = board.waiting || [];
     const when = board.library ? UNRATED_WAIT : (BOX_SAYS[board.box] || '');
@@ -1587,18 +1582,18 @@ function leaderboardHtml(game) {
     return `<tr${row.you ? ' class="you"' : ''}>
         <td>${name}${marks.length
           ? ` <span class="muted small">(${marks.join(', ')})</span>` : ''}</td>
-        <td style="text-align:right; white-space:nowrap"><b>${esc(row.rating)}</b>${
+        <td class="u-ta-right u-ws-nowrap"><b>${esc(row.rating)}</b>${
           row.settling ? '<span title="still settling">?</span>'
-          : settling ? '<span aria-hidden="true" style="visibility:hidden">?</span>' : ''}</td>
-        <td class="muted small" style="text-align:right">${esc(row.games)}</td>
+          : settling ? '<span aria-hidden="true" class="u-vis-hidden">?</span>' : ''}</td>
+        <td class="muted small u-ta-right">${esc(row.games)}</td>
       </tr>`;
   }).join('');
   const unrated = unratedLine(board);
   const missing = unrated ? line(unrated, 8) : '';
   return line(said) + `<table class="ratings"><thead><tr>
       <th>player</th>
-      <th style="text-align:right; white-space:nowrap">rating${info('ratedHere')}</th>
-      <th style="text-align:right">rated games here</th>
+      <th class="u-ta-right u-ws-nowrap">rating${info('ratedHere')}</th>
+      <th class="u-ta-right">rated games here</th>
     </tr></thead><tbody>${body}</tbody></table>`
     + (board.people ? '' : line(NOBODY_YET, 8)) + missing + refused;
 }
@@ -1611,8 +1606,8 @@ function leaderboardHtml(game) {
 // a clean sweep in either direction is reported as an arrow rather than a number: the
 // results are a bound, and the only thing making the fit finite there is the prior.
 function yourRecordHtml(mine) {
-  const shell = inner => `<div class="panel" style="margin-top:14px" id="yourRecord">
-      <h3 style="margin-top:0">How you do against them</h3>${inner}</div>`;
+  const shell = inner => `<div class="panel u-mt-14" id="yourRecord">
+      <h3 class="u-mt-0">How you do against them</h3>${inner}</div>`;
   if (!mine || !mine.started) {
     return shell(`<div class="muted small">You have not played this one yet. Everything
       above is the computer grading itself &mdash; the same handful of players answering
@@ -1631,26 +1626,26 @@ function yourRecordHtml(mine) {
     const found = ROSTER.find(o => o.agent === entry.agent);
     return `<tr>
       <td>${esc((found && found.label) || entry.agent)}</td>
-      <td class="muted small" style="text-align:right">${
+      <td class="muted small u-ta-right">${
         entry.rating === null || entry.rating === undefined
           ? '' : (entry.rating > 0 ? '+' : '') + Math.round(entry.rating)}</td>
-      <td style="text-align:right"><b>${(entry.score * 100).toFixed(0)}%</b></td>
-      <td class="muted small" style="text-align:right">${entry.games}</td>
+      <td class="u-ta-right"><b>${(entry.score * 100).toFixed(0)}%</b></td>
+      <td class="muted small u-ta-right">${entry.games}</td>
     </tr>`;
   }).join('');
   const table = rows ? `<table class="ratings"><thead><tr>
-      <th>opponent</th><th style="text-align:right">its rating${info('elo')}</th>
-      <th style="text-align:right">you scored</th><th style="text-align:right">games</th>
+      <th>opponent</th><th class="u-ta-right">its rating${info('elo')}</th>
+      <th class="u-ta-right">you scored</th><th class="u-ta-right">games</th>
     </tr></thead><tbody>${rows}</tbody></table>` : '';
 
   let verdict;
   if (!anchor) {
-    verdict = `<div class="muted small" style="margin-top:8px">None of the opponents you
+    verdict = `<div class="muted small u-mt-8">None of the opponents you
       played has a rating on this game yet, so there is nothing to place you against.
       Work them out above and this fills in &mdash; your games are already kept.</div>`;
   } else if (!anchor.bounded) {
     const up = anchor.swept === 'up';
-    verdict = `<div style="margin-top:8px">You ${up ? 'won' : 'lost'} all
+    verdict = `<div class="u-mt-8">You ${up ? 'won' : 'lost'} all
       ${anchor.games} games against rated opponents. That puts you
       ${up ? 'above' : 'below'} all of them and says nothing about by how much &mdash;
       these games cannot answer that. Try one ${up ? 'harder' : 'easier'}.</div>`;
@@ -1659,17 +1654,17 @@ function yourRecordHtml(mine) {
     const sits = gap >= 0
       ? `<b>${Math.round(gap)} points above you</b>`
       : `<b>${Math.round(-gap)} points below you</b>`;
-    verdict = `<div style="margin-top:8px">You rate
+    verdict = `<div class="u-mt-8">You rate
       <b>${anchor.rating > 0 ? '+' : ''}${Math.round(anchor.rating)}</b> at this game,
       over ${anchor.games} games against rated opponents. The strongest of them
       (${esc((ROSTER.find(o => o.agent === anchor.top) || {}).label || anchor.top)})
       is ${sits} &mdash; you would expect to score
       ${(anchor.expected_against_top * 100).toFixed(0)}% against it.
-      <div class="muted small" style="margin-top:6px">Only your own rating is worked out
+      <div class="muted small u-mt-6">Only your own rating is worked out
       from these games; every opponent keeps the one it already had, and none of this
       touches the game's score.</div></div>`;
   }
-  return shell(`<div class="row small" style="gap:8px">
+  return shell(`<div class="row small u-gap-8">
       <span><b>${mine.finished}</b> finished</span>
       ${score ? '<span>&middot;</span><span>' + score + '</span>' : ''}
       ${abandoned ? '<span>&middot;</span>' + abandoned : ''}
@@ -1748,19 +1743,19 @@ function modePicker(game) {
   const visitor = standing.signedIn === false ? ` ${UNKEPT}` : '';
   // A preview (Q931) is practice whatever its computer players are: it has no leaderboard.
   if (game.preview) {
-    return `<div class="muted small" style="margin-top:8px">A preview is played as
+    return `<div class="muted small u-mt-8">A preview is played as
       practice${info('practice')}: undo and restart are on, and nothing counts towards a
       rating or Unbeaten.${visitor}</div>`;
   }
   if (!standing.rated) {
     // §2.5 of `docs/archive/plan-leaderboard.md`: the leaderboard's own sentence, said here too.
-    return `<div class="muted small" style="margin-top:8px">This game's computer players
+    return `<div class="muted small u-mt-8">This game's computer players
       have not been rated yet, so every game here is practice${info('practice')} for now
       &mdash; undo and restart are on, and nothing counts towards a rating or
       Unbeaten.${visitor}</div>`;
   }
   if (standing.signedIn === false) {
-    return `<div class="muted small" style="margin-top:8px">This is a practice
+    return `<div class="muted small u-mt-8">This is a practice
       game${info('practice')}: undo and restart are on, and it counts for nothing.
       Sign in to play a game that counts towards the ratings and Unbeaten.${visitor}</div>`;
   }
@@ -1770,12 +1765,12 @@ function modePicker(game) {
   const chosen = firstSeat(game) ? 'sandbox' : lastMode();
   const option = (value, words) => `<option value="${value}"${
     value === chosen ? ' selected' : ''}>${words}</option>`;
-  return `<label class="pick" style="margin-top:8px">does this one count
-    <select id="mode" style="max-width:100%">
+  return `<label class="pick u-mt-8">does this one count
+    <select id="mode" class="u-maxw-100p">
       ${option('sandbox', 'no &mdash; practice')}
       ${option('leaderboard', 'yes &mdash; rated')}
     </select></label>
-    <div class="muted small" id="modeSays" style="margin-top:4px">${MODE_SAYS[chosen]}</div>`;
+    <div class="muted small u-mt-4" id="modeSays">${MODE_SAYS[chosen]}</div>`;
 }
 
 // ------------------------------------------------------------------ a first game
@@ -1825,16 +1820,16 @@ function firstGameHtml(game) {
   const first = game && game.firstGame;
   if (!first || !first.gentle) return '';
   const far = first.far || [];
-  const watch = far.length ? `<div class="muted small" style="margin-top:6px">This game is far
+  const watch = far.length ? `<div class="muted small u-mt-6">This game is far
       from chess: ${esc(far.join('; '))}.</div>
-    <div class="row" style="margin-top:6px"><button id="watchFirst"
+    <div class="row u-mt-6"><button id="watchFirst"
       title="${esc(watchTitle())}">watch two computer players first</button></div>` : '';
   if (!firstSeat(game)) return watch ? `<div class="firstGame">${watch}</div>` : '';
   return `<div class="firstGame">
     <div class="small">Your first game here is against <b>${esc(first.gentle.name)}</b>, the
       gentlest computer player on this game, as practice, with the rules open beside the
       board.</div>
-    ${first.harder ? `<div class="row" style="margin-top:6px"><button id="firstHarder"
+    ${first.harder ? `<div class="row u-mt-6"><button id="firstHarder"
       >a harder one: ${esc(first.harder.name)}</button></div>` : ''}
     ${watch}
   </div>`;
@@ -1878,8 +1873,8 @@ function standingHtml(game) {
   if (!standing) return '';
   // The badges that sit on this game go in the same panel, under the lines about
   // people. `wireBadges` fills the box with text nodes after the view is in place.
-  const shell = (title, inner) => `<div class="panel" style="margin-top:14px">
-      <h3 style="margin-top:0">${title}${info('unbeaten')}</h3>${inner}
+  const shell = (title, inner) => `<div class="panel u-mt-14">
+      <h3 class="u-mt-0">${title}${info('unbeaten')}</h3>${inner}
       <div id="gameBadges"></div></div>`;
   if (!standing.rated) {
     return shell('Unbeaten', `<div class="muted small">Its computer players have no
@@ -1908,7 +1903,7 @@ function standingHtml(game) {
     : 'Its strongest computer player has no rating here yet.';
   return shell(standing.unbeaten ? 'Unbeaten' : 'First to beat the strongest',
     `${head}${where
-      ? `<div class="muted small" style="margin-top:4px">${where}</div>` : ''
+      ? `<div class="muted small u-mt-4">${where}</div>` : ''
     }${clearsHtml(standing)}${firstPlayedHtml(standing)}${highestHtml(standing)}${
       rungHtml(standing.yourRecord)}${ladderRowHtml(standing.yourLadder)}`);
 }
@@ -1941,7 +1936,7 @@ function opponentLineHtml(standing) {
 // when the server sends none.
 function ladderRowHtml(steps) {
   if (!steps || !steps.length) return '';
-  return `<div class="muted small" style="margin-top:8px" id="yourLadder">Your best result
+  return `<div class="muted small u-mt-8" id="yourLadder">Your best result
     against each computer player here, weakest first:</div>
     <ul class="ladderRow">${steps.map(step => `<li class="tag ${
       step.mark === 'won' ? 'won' : step.mark === 'drew' ? 'drew' : 'notYet'}">${
@@ -1967,9 +1962,9 @@ function ladderRowHtml(steps) {
 function clearsHtml(standing) {
   const clears = standing.clearedBy || [];
   if (clears.length < 2) return '';
-  return `<div class="muted small" style="margin-top:8px">${clears.length} people have
+  return `<div class="muted small u-mt-8">${clears.length} people have
     beaten it${info('clears')}, in the order they did.
-    <ol style="margin:4px 0 0 18px; padding:0">${clears.map(clear => `
+    <ol class="u-m-4-0-0-18 u-p-0">${clears.map(clear => `
       <li>${clear.handle ? personHtml(clear.handle) : 'somebody'}${
         clear.when ? ', ' + esc(clear.when.slice(0, 10)) : ''}, playing ${
         clear.seat === 0 ? 'first' : 'second'}</li>`).join('')}</ol></div>`;
@@ -1982,7 +1977,7 @@ function firstPlayedHtml(standing) {
   const first = standing.firstPlayed;
   const who = (first && first.handles) || [];
   if (!who.length) return '';
-  return `<div class="muted small" style="margin-top:8px">First played by
+  return `<div class="muted small u-mt-8">First played by
     <b>${who.map(handle => personHtml(handle)).join(' and ')}</b>${
     first.when ? ', ' + esc(first.when.slice(0, 10)) : ''}${info('firstPlayed')}.</div>`;
 }
@@ -1994,7 +1989,7 @@ function highestHtml(standing) {
   const who = (best && best.handles) || [];
   if (!who.length) return '';
   const many = who.length > 1;
-  return `<div class="muted small" style="margin-top:8px">The highest-rated ${
+  return `<div class="muted small u-mt-8">The highest-rated ${
     many ? 'people' : 'person'} here${info('highestPerson')} ${many ? 'are' : 'is'}
     <b>${who.map(handle => personHtml(handle)).join(' and ')}</b>${typeof best.rating === 'number'
       ? `, rated ${Math.round(best.rating)} here` : ''}.</div>`;
@@ -2054,8 +2049,8 @@ function wireBadges(game) {
 function votingHtml(game) {
   const standing = game.standing;
   if (!standing) return '';
-  return `<div class="panel" style="margin-top:14px" id="voting">
-    <h3 style="margin-top:0">What players make of it</h3>
+  return `<div class="panel u-mt-14" id="voting">
+    <h3 class="u-mt-0">What players make of it</h3>
     ${voteBody(standing)}</div>`;
 }
 
@@ -2064,17 +2059,15 @@ function votingHtml(game) {
 function voteBody(standing) {
   const mine = standing.yourVote ? standing.yourVote.stars : 0;
   const control = standing.signedIn === false ? '' : `
-    <div class="row" id="stars" style="gap:0; margin-bottom:2px">${
+    <div class="row u-gap-0 u-mb-2" id="stars">${
       [1, 2, 3, 4, 5].map(n => `<button id="star${n}" data-stars="${n}"
         title="rate it ${n} out of 5" aria-pressed="${n <= mine}"
-        aria-label="${n} star${n === 1 ? '' : 's'}"
-        style="background:none; border:0; padding:4px; min-width:40px; min-height:40px;
-               font-size:25px; line-height:1; color:var(--act)"
+        aria-label="${n} star${n === 1 ? '' : 's'}" class="u-bg-none u-bd-0 u-p-4 u-minw-40 u-minh-40 u-fs-25 u-lh-1 u-c-act"
         >${n <= mine ? '&#9733;' : '&#9734;'}</button>`).join('')}</div>`;
   // Q503f, §3.3: whether this person's stars count toward the shortlist, said beside
   // them and never a reason to refuse the vote. The server sends it on a trial game only.
   const counts = standing.voteCounts
-    ? `<div class="muted small" id="voteCounts" style="margin-top:4px">${
+    ? `<div class="muted small u-mt-4" id="voteCounts">${
         esc(standing.voteCounts)}</div>` : '';
   return `${control}<div class="muted small" id="voteSaid">${voteWords(standing)}</div>${
     counts}${voteTagsHtml(standing)}`;
@@ -2089,14 +2082,14 @@ function voteTagsHtml(standing) {
   if (!offered.length) return '';
   const counted = standing.tagCounts || [];
   const tally = counted.length
-    ? `<div class="muted small" id="tagCounts" style="margin-top:6px">Tagged: ${counted.map(entry =>
+    ? `<div class="muted small u-mt-6" id="tagCounts">Tagged: ${counted.map(entry =>
         `${esc(entry.words)} &middot; ${esc(entry.count)}`).join(', ')}</div>` : '';
   if (standing.signedIn === false || !standing.yourVote) return tally;
   const chosen = new Set(standing.yourVote.tags || []);
   const full = chosen.size >= (standing.mostTags || 3);
-  return `<div class="small" style="margin-top:8px">Tag it, if you like: up to ${
+  return `<div class="small u-mt-8">Tag it, if you like: up to ${
       esc(standing.mostTags || 3)}.</div>
-    <div class="chips" id="voteTags" style="margin-top:4px">${offered.map(entry => {
+    <div class="chips u-mt-4" id="voteTags">${offered.map(entry => {
       const on = chosen.has(entry.tag);
       return `<button class="chip${on ? ' on' : ''}" id="voteTag-${esc(entry.tag)}" data-tag="${esc(entry.tag)}"
         aria-pressed="${on}"${!on && full ? ' disabled' : ''}>${esc(entry.words)}</button>`;
@@ -2174,7 +2167,7 @@ function paintStars(value) {
 function rungHtml(mine) {
   if (!mine) return '';
   if (mine.state === 'untried') {
-    return `<div class="muted small" style="margin-top:8px">You have not played a rated
+    return `<div class="muted small u-mt-8">You have not played a rated
       game here yet.</div>`;
   }
   const rung = mine.rung;
@@ -2183,7 +2176,7 @@ function rungHtml(mine) {
         rung.rating ? ', rated ' + Math.round(rung.rating) + ' here at the time' : ''
       }, playing ${rung.seat === 0 ? 'first' : 'second'}.`
     : 'You have not beaten one of them yet.';
-  return `<div class="muted small" style="margin-top:8px">${reached}
+  return `<div class="muted small u-mt-8">${reached}
     ${mine.won} won, ${mine.drawn} drawn, ${mine.lost} lost over ${mine.played} rated
     game${mine.played === 1 ? '' : 's'}.</div>`;
 }
@@ -2193,11 +2186,11 @@ function rungHtml(mine) {
 // a paraphrase here would be a second opinion nobody asked for.
 function playableWarning(game) {
   if (game.playable !== false) return '';
-  return `<div class="error" style="margin-bottom:10px">
+  return `<div class="error u-mb-10">
     <strong>A quick check says this one cannot be won.</strong>
-    <ul style="margin:6px 0 0 18px; padding:0">${
+    <ul class="u-m-6-0-0-18 u-p-0">${
       (game.playableReasons || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>
-    <div class="muted small" style="margin-top:6px">A few hundred games of random moves
+    <div class="muted small u-mt-6">A few hundred games of random moves
       found no ending. You can still play it &mdash; this is about the rules, not
       about you.</div>
   </div>`;
@@ -2234,7 +2227,7 @@ function fairyNote(game, seats) {
     const said = game.fairyTranslates === false ? "can't play these rules."
       : check.ok === false ? "plays these rules a little differently, so it isn't offered."
       : '';
-    return said ? `<div class="muted small" style="margin-top:8px">Fairy-Stockfish${
+    return said ? `<div class="muted small u-mt-8">Fairy-Stockfish${
       info('fairy')} ${said}</div>` : '';
   }
   let body;
@@ -2246,7 +2239,7 @@ function fairyNote(game, seats) {
        and restart. Nothing is downloaded for you.`;
   } else if (check.ok === false) {
     const where = check.fen
-      ? ` At <span style="font-family:ui-monospace, monospace">${esc(check.fen)}</span>${
+      ? ` At <span class="u-ff-mono">${esc(check.fen)}</span>${
           (check.ours || []).length ? ` we have ${esc(check.ours.join(' '))}` : ''}${
           (check.ours || []).length && (check.theirs || []).length ? ' and' : ''}${
           (check.theirs || []).length ? ` they have ${esc(check.theirs.join(' '))}` : ''}.`
@@ -2259,7 +2252,7 @@ function fairyNote(game, seats) {
     body = `These rules translate and ${esc(check.engine)} is installed, but the check
        that offers it has not run.`;
   }
-  return `<div class="muted small" style="margin-top:8px">Fairy-Stockfish${
+  return `<div class="muted small u-mt-8">Fairy-Stockfish${
     info('fairy')} is not offered. ${body}</div>`;
 }
 
@@ -2269,7 +2262,7 @@ function fairyNote(game, seats) {
 function pieceArt(piece, player) {
   const icon = (piece.icons || [])[player];
   return icon
-    ? `<img src="${esc(icon.href)}" alt=""${icon.rotate ? ' style="transform:rotate(180deg)"' : ''}>`
+    ? `<img src="${esc(icon.href)}" alt=""${icon.rotate ? ' class="u-tf-rot180"' : ''}>`
     : `<span class="letter">${esc(piece.id)}</span>`;
 }
 
@@ -2337,8 +2330,8 @@ function pieceBoardsHtml(game) {
         <summary class="muted small">${said}</summary>
         <div class="pieceBoard">${boardPreview(loneBoard(Object.assign({}, game.opening,
           { hash: game.hash }), map.from, map.value), map)}</div>
-        <div class="muted small">Alone on an empty board: <span style="color:var(--dot)"
-          >&bull;</span> where it can move, <span style="color:var(--bad)">&#9711;</span>
+        <div class="muted small">Alone on an empty board: <span class="u-c-dot"
+          >&bull;</span> where it can move, <span class="u-c-bad">&#9711;</span>
           where it can take.</div>
       </details>
     </div>`;
@@ -2362,7 +2355,7 @@ function sidePicker(game, options, table) {
   const same = JSON.stringify(armies[0]) === JSON.stringify(armies[1]);
   const side = player => `
     <div class="side">
-      <div class="row" style="gap:7px">
+      <div class="row u-gap-7">
         <b>${esc(names[player])}</b>
         <span class="muted small">${game.rounds ? 'moves at the same time'
           : player === 0 ? 'moves first' : 'moves second'}</span>
@@ -2373,7 +2366,7 @@ function sidePicker(game, options, table) {
       ${same ? '' : `<div class="muted small army">${armyHtml(armies[player])}</div>`}
     </div>`;
   return `<div class="sides">${side(0)}${side(1)}</div>` + (same ? '' :
-    `<div class="muted small" style="margin-top:8px">The two sides do not start with the
+    `<div class="muted small u-mt-8">The two sides do not start with the
       same army, so which one you take is part of the game.</div>`);
 }
 
@@ -2563,17 +2556,17 @@ function planFor(agent) {
 function verdictHtml(v) {
   if (!v || !v.verdict) return '';
   const list = (label, items) => (items && items.length)
-    ? `<div style="margin-top:8px"><span class="muted small">${label}</span>
-       <ul style="margin:4px 0 0 18px; padding:0">${
+    ? `<div class="u-mt-8"><span class="muted small">${label}</span>
+       <ul class="u-m-4-0-0-18 u-p-0">${
          items.map(i => `<li>${esc(i)}</li>`).join('')}</ul></div>` : '';
   return sectionHtml('verdict', 'Whether it is worth playing', `<div class="panel">
-      <p style="margin-top:0">${esc(v.verdict)}</p>
+      <p class="u-mt-0">${esc(v.verdict)}</p>
       ${list('what works', v.strengths)}
       ${list('what does not', v.weaknesses)}
-      ${v.suspected_degeneracy ? `<div style="margin-top:8px">
+      ${v.suspected_degeneracy ? `<div class="u-mt-8">
         <span class="muted small">how it would most likely go wrong</span>
         <div>${esc(v.suspected_degeneracy)}</div></div>` : ''}
-      <div class="muted small" style="margin-top:10px">
+      <div class="muted small u-mt-10">
         A language model wrote this after reading the rules and a few games. It was
         deliberately shown none of the numbers.
         ${v.would_play_again ? 'It would play again.' : 'It would not play again.'}
@@ -2586,7 +2579,7 @@ function provenanceHtml(p, game) {
   // `html` is markup already escaped, for the one value that is a link (Q760: the
   // designer's handle, linked to their page).
   const line = (label, value, html) => value ? rows.push(
-    `<tr><td class="muted" style="width:110px">${label}</td><td>${html || esc(value)}</td></tr>`) : null;
+    `<tr><td class="muted u-w-110">${label}</td><td>${html || esc(value)}</td></tr>`) : null;
   // The values `provenance.origin` actually carries across the corpus, said in words. A
   // value not in this list is printed as it stands rather than dropped: the field is free
   // text by design and a spec may honestly say something nobody anticipated.
@@ -2648,8 +2641,7 @@ function provenanceHtml(p, game) {
       const hash = typeof entry === 'string' ? entry : entry.hash;
       const named = (typeof entry === 'string' ? '' : entry.name) || nameOf(hash);
       if (!named && ACCOUNTS) return 'an earlier game no longer listed';
-      return `<button class="crumb" data-hash="${esc(hash)}"
-        style="text-decoration:underline">${esc(named || hash)}</button>`;
+      return `<button class="crumb u-td-underline" data-hash="${esc(hash)}">${esc(named || hash)}</button>`;
     }).join(' &larr; ') + `</td></tr>`);
   }
   let html = rows.length ? `<table>${rows.join('')}</table>`
@@ -2795,7 +2787,7 @@ function runsHtml(score) {
     : '';
 
   if (ACCOUNTS) return siteRunsHtml(score, n, per, totals, meant);
-  return `<div class="muted small" style="margin-top:4px">${head}${missing}${range}</div>`;
+  return `<div class="muted small u-mt-4">${head}${missing}${range}</div>`;
 }
 
 // The same, as the site says it (G23): what the number is and what the ± is, in two short
@@ -2816,7 +2808,7 @@ function siteRunsHtml(score, n, per, totals, meant) {
     : '';
   const head = meant ? `${what}${info('run')}.${range}` : `${
     countWord(n).replace(/^./, c => c.toUpperCase())} run${n === 1 ? '' : 's'}${info('run')}.`;
-  return `<div class="muted small" style="margin-top:4px">${head}${missing}
+  return `<div class="muted small u-mt-4">${head}${missing}
     <details><summary>more</summary>${
       n === 1 ? 'One run' : `${countWord(n).replace(/^./, c => c.toUpperCase())} runs`}${
       per}: ${totals.join(', ')}.</details></div>`;
@@ -2886,12 +2878,12 @@ function repeatsHtml(score) {
     ? `Every one of its ${games} games is a different game`
     : `${repeatsPercent(r.all)} of its ${games} games are different games${
       bands.length ? ` (${bands.join(', ')})` : ''}`;
-  const line = `<div class="muted small" style="margin-top:6px">${said}${info('repeats')}.</div>`;
+  const line = `<div class="muted small u-mt-6">${said}${info('repeats')}.</div>`;
   if (!r.rests || !known(r.distinct_index)) return line;
   return `${line}
     <div class="verdict">
       <div>It rests on repeated games.</div>
-      <div class="small" style="font-weight:400; margin-top:5px">The computer players played
+      <div class="small u-fw-400 u-mt-5">The computer players played
         some of its games more than once, move for move. Counted once each, its games score
         ${fmt(r.distinct_index)} rather than ${fmt(score.total)}: the difference is at
         least twice the &plusmn;${fmt(score.sd)} the score carries.</div>
@@ -2933,7 +2925,7 @@ function scoreHtml(score, guide, band, trust) {
   const scored = score.total !== null && score.total !== undefined;
 
   return `
-    <div style="font-size:26px; font-weight:600; line-height:1.1">${
+    <div class="u-fs-26 u-fw-600 u-lh-1_1">${
       scored ? fmt(score.total) + interval : '<span class="muted">no score</span>'}</div>
     <div class="muted small">${scored ? 'out of 1' : 'it could not be scored'}${
       score.viable === false ? ', and ruled out' : ''
@@ -2946,23 +2938,23 @@ function scoreHtml(score, guide, band, trust) {
 
     ${(score.violations || []).length ? `<div class="verdict out">
         <div>It is ruled out${info('gated')}, not marked down.</div>
-        <div class="small" style="font-weight:400; margin-top:5px">${
+        <div class="small u-fw-400 u-mt-5">${
           (siteSaid(score, 'violations') || score.violations).map(esc).join('<br>')}</div></div>` : ''}
 
     ${split.length ? `<div class="verdict">
-        <div class="small" style="font-weight:400">${split.map(esc).join('<br>')}</div>
+        <div class="small u-fw-400">${split.map(esc).join('<br>')}</div>
       </div>` : ''}
 
     ${seatLeanText(score) ? `<div class="verdict">
         <div>${ACCOUNTS ? 'One side wins more often'
           : 'It leans toward one seat'}, and it is ranked anyway.</div>
-        <div class="small" style="font-weight:400; margin-top:5px">Over its games, ${
+        <div class="small u-fw-400 u-mt-5">Over its games, ${
           esc(seatLeanText(score))}.</div>
       </div>` : ''}
 
     ${repeatsHtml(score)}
 
-    <details style="margin-top:10px">
+    <details class="u-mt-10">
       <summary class="muted small">${ACCOUNTS
         ? 'how the score is worked out' : 'how this number is arrived at'}</summary>
       <div class="why">
@@ -2981,21 +2973,20 @@ function scoreHtml(score, guide, band, trust) {
     <h3>What it is good at</h3>
     ${families.map(([fam, value]) => `
       <div class="fam">
-        <span data-gloss="family" role="button" tabindex="0"
-          style="cursor:pointer; text-decoration:underline dotted"
+        <span data-gloss="family" role="button" tabindex="0" class="u-cur-pointer u-td-underline-dotted"
           data-more="${esc((g.families && g.families[fam] || {}).means || '')}"
           title="${esc((g.families && g.families[fam] || {}).means || '')}">${esc(fam)}</span>
-        <div class="bar"><div style="width:${Math.round(value * 100)}%"></div></div>
+        <div class="bar"><div class="${styleClass(`width:${Math.round(value * 100)}%`)}"></div></div>
         <span class="num">${value.toFixed(2)}</span>
       </div>`).join('')}
-    <div class="muted small" style="margin-top:6px">
+    <div class="muted small u-mt-6">
       Tap or hover a name for what it asks. They are multiplied rather than averaged, so
       being near zero on one of them pulls the whole number down instead of being made up
       for elsewhere.
     </div>
 
     <h3>The ${countWord(parts.count)} things measured</h3>
-    <div class="muted small" style="margin-bottom:6px">
+    <div class="muted small u-mb-6">
       Each is scored out of 1, and the ones that count most come first. Beside each is
       what was actually measured. Open one for what it means.
     </div>
@@ -3010,7 +3001,7 @@ function scoreHtml(score, guide, band, trust) {
             <span class="raw">${raw === undefined ? 'not measured' : trim(raw)}${
               entry.units ? ' ' + esc(entry.units) : ''}</span>
             ${rosterRhoBadge(entry)}
-            <span class="bar"><div style="width:${Math.round(value * 100)}%"></div></span>
+            <span class="bar"><div class="${styleClass(`width:${Math.round(value * 100)}%`)}"></div></span>
           </span>
         </summary>
         <div class="why">
@@ -3034,7 +3025,7 @@ function scoreHtml(score, guide, band, trust) {
 
     ${(g.gates || []).length ? `<h3>${ACCOUNTS ? 'Tests a game must pass'
         : 'What rules a game out entirely'}${info('gated')}</h3>
-      ${ACCOUNTS ? `<div class="muted small" style="margin-bottom:6px">A test on the
+      ${ACCOUNTS ? `<div class="muted small u-mb-6">A test on the
         worse half reads whichever half of the computer players, weaker or stronger, does
         worse.</div>` : ''}
       ${g.gates.map(gate => {
@@ -3049,7 +3040,7 @@ function scoreHtml(score, guide, band, trust) {
           esc(said.reason)}</div>`;
       }).join('')}` : ''}
 
-    ${(score.unreadable || []).length ? `<div class="muted small" style="margin-top:10px">
+    ${(score.unreadable || []).length ? `<div class="muted small u-mt-10">
       ${score.unreadable.map(u => esc(name(u))).join(', ')}
       ${score.unreadable.length === 1 ? 'was' : 'were'} left out, because the ${
       ACCOUNTS ? 'computer players' : 'opponents'}
@@ -3071,20 +3062,20 @@ function provenHtml(game) {
   // Q993g: a record whose every position was too easy says so, rather than listing none.
   if (!proven.count) {
     if (!proven.none) return '';
-    return `<div class="panel proven" id="proven" style="margin-top:14px">
-    <h3 style="margin-top:0">Proven positions${info('provenPositions')}</h3>
+    return `<div class="panel proven u-mt-14" id="proven">
+    <h3 class="u-mt-0">Proven positions${info('provenPositions')}</h3>
     <p class="muted small" id="provenNone">${esc(proven.none)}</p>
-    <details class="muted small" style="margin-top:8px">
+    <details class="muted small u-mt-8">
       <summary>how these were proved</summary>
       <p id="provenBasis">${esc(proven.basis)}</p>
     </details>
   </div>`;
   }
-  return `<div class="panel proven" id="proven" style="margin-top:14px">
-    <h3 style="margin-top:0">Proven positions${info('provenPositions')}</h3>
-    <p class="muted small" id="provenSaid" style="margin:0">${esc(proven.said)}</p>
+  return `<div class="panel proven u-mt-14" id="proven">
+    <h3 class="u-mt-0">Proven positions${info('provenPositions')}</h3>
+    <p class="muted small u-m-0" id="provenSaid">${esc(proven.said)}</p>
     ${proven.yours ? `<p class="small" id="provenYours">${esc(proven.yours)}</p>` : ''}
-    <div class="row" style="margin-top:8px"><a id="provenOpen" class="proven-open"
+    <div class="row u-mt-8"><a id="provenOpen" class="proven-open"
       href="${provenPath(game.hash)}">${esc(proven.open)}</a></div>
   </div>`;
 }

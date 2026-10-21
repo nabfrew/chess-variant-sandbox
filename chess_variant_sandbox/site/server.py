@@ -117,6 +117,7 @@ from chess_variant_sandbox.web import (
 )
 from chess_variant_sandbox.web.page import SCRIPTS as PAGE_SCRIPTS
 from chess_variant_sandbox.web.page import (
+    assets,
     front,
     game_picture,
     picture,
@@ -3160,6 +3161,12 @@ def site_handler_for(app: SiteApp) -> type[Any]:
         def do_GET(self) -> None:  # noqa: N802 - the stdlib's naming
             self._note_source()
             parsed = urlparse(self.path)
+            held = assets.answer(parsed.path)
+            if held is not None:
+                # G12: a script or stylesheet under its versioned name, the same bytes for
+                # everybody, for a year. No cookie is read and nothing is dispatched.
+                self._send(200, held[0], held[1], cache=IMMUTABLE)
+                return
             if parsed.path in routes.PAGES:
                 self._page(parsed.path, parsed.query)
                 return

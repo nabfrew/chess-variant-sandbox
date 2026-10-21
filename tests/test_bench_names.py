@@ -20,7 +20,7 @@ from chess_variant_sandbox.web.page import style
 
 
 def _names(drawn: str) -> list[str]:
-    return re.findall(r'<span class="co"[^>]*>([^<]*)</span>', drawn)
+    return re.findall(r'<span class="co[ "][^>]*>([^<]*)</span>', drawn)
 
 
 class TestTheBenchNamesItsSquares:

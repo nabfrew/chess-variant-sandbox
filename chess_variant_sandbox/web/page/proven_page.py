@@ -134,7 +134,7 @@ def view(drawn: Drawn) -> str:
         '<article class="drawnGame drawnProven" id="drawnProven">\n'
         f'<a class="crumb" href="{escape(drawn.back, quote=True)}">&larr; '
         f"{escape(drawn.back_said)}</a>\n"
-        f'<h2 style="margin:10px 0 0">{escape(drawn.heading)}</h2>\n'
+        f'<h2 class="u-m-10-0-0">{escape(drawn.heading)}</h2>\n'
         + said
         + (groups + "\n" if groups else "")
         + (f'<p class="muted">{escape(drawn.basis)}</p>\n' if drawn.basis else "")

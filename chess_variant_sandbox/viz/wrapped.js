@@ -14,6 +14,59 @@ const GHOST_MARGIN = 2.4;
 // coordinate here is a lap count that may be negative.
 function wrapMod(value, size) { return ((value % size) + size) % size; }
 
+// A style worked out while drawing -- a bar's width, a card's sheet of paper, a label's
+// place -- as a class (G12). The site's content policy refuses `style=` attributes
+// (`style-src 'self'`, `web/server.py`), so markup carries none; a value only the script
+// knows becomes one rule in a sheet the script made, written through the CSSOM, which the
+// policy does not govern: `setProperty` takes one value for one property, so nothing in a
+// value can open another rule. `!important`, as the attribute stood above every selector.
+// The same declarations are the same class, so a redraw adds no rule. Shared by the page
+// and the offline replay, the one file both load; where there is no document to hold a
+// sheet (a test's run under Node) the class is named and nothing is styled.
+const STYLE_CLASSES = new Map();
+let STYLE_SHEET = null;
+
+function styleDeclarations(text) {
+  const out = [];
+  let depth = 0, start = 0;
+  const take = end => {
+    const part = text.slice(start, end);
+    const colon = part.indexOf(':');
+    if (colon > 0) out.push([part.slice(0, colon).trim(), part.slice(colon + 1).trim()]);
+  };
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (c === '(') depth += 1;
+    else if (c === ')') depth = Math.max(0, depth - 1);
+    else if (c === ';' && !depth) { take(i); start = i + 1; }
+  }
+  take(text.length);
+  return out.filter(([name, value]) => name && value);
+}
+
+function styleClass(declarations) {
+  const text = String(declarations == null ? '' : declarations).trim();
+  if (!text) return '';
+  const known = STYLE_CLASSES.get(text);
+  if (known) return known;
+  const name = 'sc-' + STYLE_CLASSES.size.toString(36);
+  STYLE_CLASSES.set(text, name);
+  try {
+    if (!STYLE_SHEET && typeof CSSStyleSheet === 'function' && typeof document !== 'undefined'
+        && Array.isArray(document.adoptedStyleSheets)) {
+      STYLE_SHEET = new CSSStyleSheet();
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, STYLE_SHEET];
+    }
+    if (STYLE_SHEET) {
+      const at = STYLE_SHEET.insertRule(`.${name} {}`, STYLE_SHEET.cssRules.length);
+      const rule = STYLE_SHEET.cssRules[at];
+      styleDeclarations(text).forEach(([property, value]) =>
+        rule.style.setProperty(property, value, 'important'));
+    }
+  } catch (err) { /* no sheet to write into: the element is drawn unstyled */ }
+  return name;
+}
+
 // Which edges a player may leave by, as `[low, high]` per axis. Player `null` asks for
 // the union, which is the board's shape rather than anyone's permission -- a seam
 // either side can cross is a seam, and a wild piece owns no seat.
@@ -1389,7 +1442,7 @@ function rememberZones(shown) {
 // Tinted in the mark's own colour while it is on, which is what ties the button under
 // the board to the rings on it.
 function zoneToggleHtml(shown) {
-  const lit = shown ? ' style="border-color:var(--zone);color:var(--zone)"' : '';
+  const lit = shown ? ' class="u-bc-zone u-c-zone"' : '';
   return `<button id="zonetoggle" aria-pressed="${!!shown}"${lit}
     title="the squares a piece promotes on">promotion zone</button>`;
 }
@@ -1844,9 +1897,9 @@ function portalGlyph(end, x, y, cell, options) {
   // near-black in the eye, from 14% in (Q838f: the old well, dark out to 78%, hid a black arm
   // on violet but for its light edge, which then read as a white arm).
   const id = `pgwell${++PORTAL_WELLS}`;
-  out += `<defs><radialGradient id="${id}"><stop offset="0" style="stop-color:${edge}"/>
-    <stop offset="0.14" style="stop-color:${edge}"/><stop offset="0.45" style="stop-color:${hue}"/>
-    <stop offset="1" style="stop-color:${hue}"/></radialGradient></defs>`;
+  out += `<defs><radialGradient id="${id}"><stop offset="0" stop-color="${edge}"/>
+    <stop offset="0.14" stop-color="${edge}"/><stop offset="0.45" stop-color="${hue}"/>
+    <stop offset="1" stop-color="${hue}"/></radialGradient></defs>`;
   out += circle(well, `class="pg-well" fill="url(#${id})"`);
   // The arms: whose pieces may go in here. Both: the arm from the bottom is the bottom
   // player's. One: two of that colour. Nobody: none, and nothing turns.
@@ -1878,10 +1931,11 @@ function portalGlyph(end, x, y, cell, options) {
   });
   if (colours.length) {
     const idle = opts.idle
-      ? ` style="transform-origin:${n(cx)}px ${n(cy)}px;animation-delay:${portalPhase(end.pair).toFixed(2)}s"`
+      ? ` pg-idle ${styleClass(`transform-origin:${n(cx)}px ${n(cy)}px; animation-delay:${
+        portalPhase(end.pair).toFixed(2)}s`)}`
       : '';
-    out += `<g class="pg-arms${opts.idle ? ' pg-idle' : ''}" data-turn="in"${
-      dashed ? ' data-filtered=""' : ''}${idle}${dim}>${arms}</g>`;
+    out += `<g class="pg-arms${idle}" data-turn="in"${
+      dashed ? ' data-filtered=""' : ''}${dim}>${arms}</g>`;
   }
   if (!movers.length) {
     // Sunk: a hole cut into the board, lit from above, so the shadow of its top edge falls
@@ -1998,9 +2052,9 @@ function foldGlyph(end, x, y, cell, options) {
   const dim = opts.dim ? ` opacity="${PORTAL_DIM}"` : '';
   const aim = typeof opts.aim === 'number' && isFinite(opts.aim) && open.some(Boolean) ? opts.aim : null;
   const id = ++FOLD_POOLS;
-  let out = `<defs><radialGradient id="pfcore${id}"><stop offset="0" style="stop-color:var(--fold-light);stop-opacity:1"/>
-    <stop offset="0.36" style="stop-color:var(--fold-light);stop-opacity:0.95"/>
-    <stop offset="0.8" style="stop-color:var(--fold-light);stop-opacity:0"/></radialGradient>`;
+  let out = `<defs><radialGradient id="pfcore${id}"><stop offset="0" stop-color="var(--fold-light)" stop-opacity="1"/>
+    <stop offset="0.36" stop-color="var(--fold-light)" stop-opacity="0.95"/>
+    <stop offset="0.8" stop-color="var(--fold-light)" stop-opacity="0"/></radialGradient>`;
   // The rim's liquid edge: turbulence displacing it, scaled to the cell (`baseFrequency` is
   // in the drawing's units). A thumbnail keeps the plain rim.
   if (!opts.plain) {
@@ -2032,16 +2086,17 @@ function foldGlyph(end, x, y, cell, options) {
     bands += `<path class="pf-band"${p === null ? '' : ` data-band="${p}"`} d="${d}" ${paint}/>`;
   });
   const spin = opts.idle
-    ? ` style="transform-origin:${n(cx)}px ${n(cy)}px;animation-delay:${foldPhase(end.pair).toFixed(2)}s"` : '';
-  out += `<g class="pf-bands${opts.idle ? ' pf-idle' : ''}" data-turn="${turn}"${
-    dashed ? ' data-filtered=""' : ''}${spin}${dim}>${bands}</g>`;
+    ? ` pf-idle ${styleClass(`transform-origin:${n(cx)}px ${n(cy)}px; animation-delay:${
+      foldPhase(end.pair).toFixed(2)}s`)}` : '';
+  out += `<g class="pf-bands${spin}" data-turn="${turn}"${
+    dashed ? ' data-filtered=""' : ''}${dim}>${bands}</g>`;
   // The rim: saturated, ragged and churning, cased in a faint keyline so it holds on both
   // woods (no hue holds against both).
   const wobble = opts.idle
-    ? ` style="transform-origin:${n(cx)}px ${n(cy)}px"` : '';
+    ? `pf-wobble ${styleClass(`transform-origin:${n(cx)}px ${n(cy)}px`)}` : '';
   const lumps = `stroke-dasharray="${n(cell * 0.16)} ${n(cell * 0.09)} ${n(cell * 0.07)} ${n(cell * 0.12)}"`;
   out += `<g class="pf-rim"${opts.plain ? '' : ` filter="url(#pfwob${id})"`}><g class="${
-    opts.idle ? 'pf-wobble' : ''}"${wobble}>${
+    wobble}">${
     circle(r - cell * FOLD_RIM / 2, `fill="none" stroke="${hue}" stroke-width="${n(cell * FOLD_RIM)}"`)}${
     circle(r - cell * 0.01, `fill="none" stroke="${hue}" stroke-width="${n(cell * 0.05)}" ${lumps}`)}</g></g>`;
   out += circle(r, `fill="none" stroke="${edge}" stroke-width="${n(cell * FOLD_KEYLINE)}" opacity="0.6"`);
@@ -2098,9 +2153,9 @@ function foldGlowHtml(x, y, cell, pair) {
   const cx = x + cell / 2, cy = y + cell / 2, n = v => v.toFixed(3);
   const from = FOLD_GLOW_IN / FOLD_GLOW_OUT, peak = (FOLD_POOL + 0.04) / FOLD_GLOW_OUT;
   return `<g class="pf-glow" data-glow="${pair}" pointer-events="none"><defs><radialGradient id="pfglow${id}">
-    <stop offset="${n(from)}" style="stop-color:var(--pair-${pair});stop-opacity:0"/>
-    <stop offset="${n(peak)}" style="stop-color:var(--pair-${pair});stop-opacity:0.55"/>
-    <stop offset="1" style="stop-color:var(--pair-${pair});stop-opacity:0"/></radialGradient></defs>
+    <stop offset="${n(from)}" stop-color="var(--pair-${pair})" stop-opacity="0"/>
+    <stop offset="${n(peak)}" stop-color="var(--pair-${pair})" stop-opacity="0.55"/>
+    <stop offset="1" stop-color="var(--pair-${pair})" stop-opacity="0"/></radialGradient></defs>
     <circle cx="${n(cx)}" cy="${n(cy)}" r="${n(cell * FOLD_GLOW_OUT)}" fill="url(#pfglow${id})"/></g>`;
 }
 

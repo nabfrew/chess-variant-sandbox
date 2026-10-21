@@ -1716,7 +1716,8 @@ class TestTheExplorer:
         """
         from page_text import EXPLORER, MEASURE, PAGE
 
-        others = PAGE.count("/static/") - PAGE.count("/static/fonts/") - PAGE.count("/static/shell.js")
+        # The shell's script under its versioned name (G12, `/static/shell.<digest>.js`).
+        others = PAGE.count("/static/") - PAGE.count("/static/fonts/") - PAGE.count("/static/shell.")
         assert PAGE.count("/static/vendor/") == 1 and others == 2
         assert MEASURE.count("'/static/measure-worker.js'") == 1
         assert "const EXPLORER_VENDOR = '/static/vendor/';" in EXPLORER
@@ -5927,7 +5928,7 @@ class TestFiveStars:
 
     def test_a_star_is_big_enough_to_press_with_a_thumb(self) -> None:
         row = self._row(self._panel(self._drawn()["html"]))
-        assert "min-width:40px" in row and "min-height:40px" in row
+        assert "u-minw-40" in row and "u-minh-40" in row
 
 
 class TestTheGamePagesThreeLines:
@@ -8203,7 +8204,7 @@ class TestTheStartButtonSaysWhatItStarts:
         drawn = _in_page("", f"modePicker({json.dumps(payload)})")
         options = re.findall(r"<option[^>]*>([^<]*)</option>", drawn)
         assert options == ["no &mdash; practice", "yes &mdash; rated"]
-        assert 'style="max-width:100%"' in drawn
+        assert 'class="u-maxw-100p"' in drawn
         # The sentence is under the menu, where it can wrap; sandbox until chosen.
         assert 'id="modeSays"' in drawn
         assert "This is a practice game" in drawn
@@ -9193,7 +9194,7 @@ class TestTheOpponentsYouCanPick:
         assert panel.count("+ refused + button") == 2
         # Escaped before the command is set as code, so a sentence is never markup.
         helper = PAGE[PAGE.index("function withCommands"):]
-        assert helper.index("esc(line)") < helper.index("ui-monospace")
+        assert helper.index("esc(line)") < helper.index("u-ff-mono")
 
     def test_every_stored_objective_offered_on_a_committed_game_is_one_the_core_builds(
         self, games
@@ -12094,7 +12095,7 @@ class TestTheGamePageOnAPhone:
                 '\n        <div class="panel">') in game
         # That panel's heading is *Play* for an ordinary game and *Retired* for one whose
         # rules have left the corpus.
-        assert '<h3 style="margin-top:0">Play</h3>' in game
+        assert '<h3 class="u-mt-0">Play</h3>' in game
         board = BOARD[BOARD.index('<div class="split'):]
         # The panel opens on the two seats, one above the other since Q288 put how hard
         # each one thinks under its name; stacked, on a phone, the tabs lead it and the

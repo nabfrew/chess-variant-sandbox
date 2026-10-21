@@ -217,14 +217,14 @@ function boardPreview(preview, map, drawn, bench) {
   if (view.cut) out += outlineHtml(cell, view, preview.wrap);
   out += barrierHtml(cell, view, preview.wrap);
   const box = view.hex ? viewBox(view, cell) : `${-mx} ${-my} ${W * cell + 2 * mx} ${H * cell + 2 * my}`;
-  const svg = `<svg viewBox="${box}" style="width:100%; height:auto; display:block">${
+  const svg = `<svg viewBox="${box}" class="u-w-100p u-h-auto u-d-block">${
     wood.defs()}${out}</svg>`;
   if (!outside) {
-    return `<div class="board-frame" style="${woodFrameStyle(identity)}">${svg}</div>${
+    return `<div class="board-frame ${styleClass(woodFrameStyle(identity))}">${svg}</div>${
       handStripHtml(preview)}`;
   }
-  return `<div class="still-named"><div class="board-frame" style="${
-    woodFrameStyle(identity)}"><div class="board-box">${svg}<div class="coords${
+  return `<div class="still-named"><div class="board-frame ${
+    styleClass(woodFrameStyle(identity))}"><div class="board-box">${svg}<div class="coords${
     view.hex ? ' on-wood' : ''}" aria-hidden="true">${edgeNamesHtml(cell, view, box)}</div></div></div></div>${
     handStripHtml(preview)}`;
 }
@@ -235,10 +235,10 @@ function boardPreview(preview, map, drawn, bench) {
 // their squares alike.
 function edgeNamesHtml(cell, view, box) {
   const frame = String(box).split(/\s+/).map(Number);
-  return edgeLabels(cell, view).map(label => `<span class="co" style="left:${
-    ((label.x - frame[0]) / frame[2] * 100).toFixed(3)}%;top:${
-    ((label.y - frame[1]) / frame[3] * 100).toFixed(3)}%;--dx:${label.dx.toFixed(3)};--dy:${
-    label.dy.toFixed(3)}">${esc(label.text)}</span>`).join('');
+  return edgeLabels(cell, view).map(label => `<span class="co ${styleClass(`left:${
+    ((label.x - frame[0]) / frame[2] * 100).toFixed(3)}%; top:${
+    ((label.y - frame[1]) / frame[3] * 100).toFixed(3)}%; --dx:${label.dx.toFixed(3)}; --dy:${
+    label.dy.toFixed(3)}`)}">${esc(label.text)}</span>`).join('');
 }
 
 // One piece of a still, as the board draws it, from its board byte: its icon, turned only
@@ -545,7 +545,7 @@ function walksHtml(preview, cell, view) {
 // where there is more than one, so a refusal naming two walks can be found on the board.
 function walkLeapsHtml(preview, named) {
   const walks = (preview && preview.walks) || [];
-  const swatch = index => `<span class="walkSwatch" style="background:${walkColour(index)}"
+  const swatch = index => `<span class="walkSwatch ${styleClass(`background:${walkColour(index)}`)}"
     aria-hidden="true"></span>`;
   const names = named && walks.length > 1
     ? `<div data-walknames>${walks.map((walk, index) => `<span class="walkName">${swatch(index)}${

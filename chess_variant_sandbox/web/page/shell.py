@@ -36,6 +36,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from chess_variant_sandbox.web.page import assets
 from chess_variant_sandbox.web.page.tokens import DARK, LIGHT
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -45,6 +46,8 @@ FONT_DIR = STATIC_DIR / "fonts"
 
 SHELL_SCRIPT_ROUTE = "/static/shell.js"
 SHELL_SCRIPT_FILE = STATIC_DIR / "shell.js"
+# Named by its digest in every head, for a year (G12, `assets.py`).
+assets.serve_files({SHELL_SCRIPT_ROUTE: SHELL_SCRIPT_FILE})
 
 
 @lru_cache(maxsize=1)
@@ -225,7 +228,7 @@ def head_links() -> str:
         '<link rel="icon" href="/favicon.svg" type="image/svg+xml">\n'
         '<link rel="icon" href="/favicon.ico" sizes="16x16 32x32">\n'
         '<link rel="apple-touch-icon" href="/apple-touch-icon.png">\n'
-        f'<script src="{SHELL_SCRIPT_ROUTE}"></script>\n' + preloads()
+        f'<script src="{assets.name_of(SHELL_SCRIPT_ROUTE)}"></script>\n' + preloads()
     )
 
 

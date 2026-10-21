@@ -19,7 +19,7 @@ import pytest
 
 from chess_variant_sandbox.site import routes
 from chess_variant_sandbox.web import library, page
-from chess_variant_sandbox.web.page import shell
+from chess_variant_sandbox.web.page import assets, shell
 from chess_variant_sandbox.web.page.tokens import DARK, LIGHT
 from chess_variant_sandbox.web.server import App, Server, handler_for
 
@@ -124,7 +124,8 @@ class TestTheShell:
             assert '<link rel="icon" href="/favicon.ico"' in head, path
             assert '<link rel="apple-touch-icon" href="/apple-touch-icon.png">' in head, path
             # Before the stylesheet, so the theme is on <html> before anything is painted.
-            assert head.index(shell.SHELL_SCRIPT_ROUTE) < head.index("<style>"), path
+            shell_name = assets.name_of(shell.SHELL_SCRIPT_ROUTE)
+            assert head.index(shell_name) < head.index('<link rel="stylesheet"'), path
 
     def test_every_page_has_the_sections_the_menu_and_the_theme_switch(self) -> None:
         for path, html in _pages().items():

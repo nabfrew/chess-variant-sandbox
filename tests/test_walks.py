@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from page_text import STYLED
 from test_web import _in_page
 
 from chess_variant_sandbox.engine import Engine
@@ -202,7 +203,7 @@ class TestTheStillBoard:
             (_square("h4"), _square("a5")), (_square("h5"), _square("a4"))]
         dashed = _drawn(preview, "(boardPreview(preview, null).match(/stroke-dasharray/g) || []).length")
         assert dashed == 2 * 2, "two jumps, each a shaft on its casing"
-        said = _drawn(preview, "walkLeapsHtml(preview)")
+        said = _drawn(preview, STYLED + "(walkLeapsHtml(preview))")
         assert "steps from h4 to a5, seven files apart" in said and "var(--walk-1)" in said
 
     def test_two_wolves_on_one_walk_are_one_path_with_two_rings(self) -> None:
@@ -236,7 +237,7 @@ class TestTheStillBoard:
         second = CIRCUIT[8:] + CIRCUIT[:8]
         preview = designing.check(_with_npcs([{"piece": "W", "route": CIRCUIT},
                                               {"piece": "W", "route": second}]))["preview"]
-        named = _drawn(preview, "walkLeapsHtml(preview, true)")
+        named = _drawn(preview, STYLED + "(walkLeapsHtml(preview, true))")
         assert "data-walknames" in named
         assert named.index("var(--walk-1)") < named.index("wild pieces 1") < named.index(
             "var(--walk-2)") < named.index("wild pieces 2")

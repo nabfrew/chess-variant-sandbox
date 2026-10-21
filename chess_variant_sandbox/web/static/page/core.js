@@ -965,7 +965,7 @@ function infoNode(key, extra) {
 // low one.
 function bandHtml(band) {
   if (!band) return '';
-  return `<div class="muted small" style="margin-top:7px">Against the other ${
+  return `<div class="muted small u-mt-7">Against the other ${
     band.of} scored game${
     band.of === 1 ? '' : 's'}: clearly above ${band.clears}${info('bandClears')}, clearly
     below ${band.clearedBy}${info('bandClearedBy')}, too close to call with ${band.close}${

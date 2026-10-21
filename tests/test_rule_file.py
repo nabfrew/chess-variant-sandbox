@@ -283,7 +283,7 @@ class TestThePage:
         assert markdown is not None and markdown.group(1) == reference.PUBLISHED, html
         assert "by hand, or with your own AI" in html
         # Above the board, where *start from* is.
-        assert html.index('id="dLoadFile"') < html.index('class="designer bench"')
+        assert html.index('id="dLoadFile"') < html.index('class="designer bench')
         assert f"{reference.PASTE_CONTROL} (JSON)" in seen["every"]
 
     def test_a_valid_file_becomes_the_draft(self, answers) -> None:  # noqa: F811

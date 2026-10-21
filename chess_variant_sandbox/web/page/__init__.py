@@ -1,7 +1,7 @@
 """The single page: library, game, board, run.
 
-Vanilla everything: one HTML document, its stylesheet inline, and its JavaScript in plain
-files under ``web/static/page/``, one per view, loaded by ``<script src>`` in this order:
+Vanilla everything: one HTML document, its stylesheet a file the code writes
+(``STYLESHEET``), and its JavaScript in plain files under ``web/static/page/``, one per view, loaded by ``<script src>`` in this order:
 
 =================  ==================================================================
 ``core.js``        shared state, the router, ``api``, and the on-demand explanations
@@ -35,11 +35,14 @@ hoisting stops at a file's edge, and the few top-level lines that run while the 
 call only what their own or an earlier file declares (``tests/test_page_files.py`` loads
 them one by one to hold that).
 
-**No script is inline.** The page carries no ``<script>`` body, so a policy that refuses
-inline script (``script-src 'self'``) costs it nothing; a test holds every served page to
-that. The files are served as the measuring worker is -- ``no-store``, by an allowlist,
-``text/javascript`` -- from ``SCRIPTS`` below, which is the whole of what the route
-answers.
+**No script is inline, and no style.** The page carries no ``<script>`` body, no
+``<style>`` and no ``style=`` attribute, so a policy that refuses both inline
+(``script-src 'self'``, ``style-src 'self'``) costs it nothing; a test holds every served
+page to that. Each file is answered under a name with its digest in it, for a year
+(``assets.py``, G12): ``SCRIPTS`` below is the whole of what the route answers, and the
+page names each through ``assets.name_of``, drawn per request so it always names the
+current bytes. What used to be a ``style=`` is a ``u-`` class (``utilities.py``) or, for a
+value the script works out, ``styleClass`` (``viz/wrapped.js``).
 
 The palette and the board drawing are lifted
 from ``viz/html.py`` deliberately -- a replay of a tournament game and a game a person
@@ -76,11 +79,13 @@ of the person's did.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from html import escape
 from pathlib import Path
 
 from chess_variant_sandbox.viz.wrapped import WRAPPED_FILE
 from chess_variant_sandbox.web import landing
+from chess_variant_sandbox.web.page import assets, utilities
 from chess_variant_sandbox.web.page.shell import (
     NAME,
     TAGLINE,
@@ -103,17 +108,45 @@ _ORDER = (
     "boot",
 )
 
-# Route -> file, in load order: the whole of what `SCRIPT_PREFIX` answers.
+# Route -> file, in load order: the whole of what `SCRIPT_PREFIX` answers, each under its
+# versioned name (`assets.name_of`) for a year and under this plain one `no-store`.
 SCRIPTS: dict[str, Path] = {
     SCRIPT_PREFIX + name + ".js": WRAPPED_FILE if name == "wrapped" else SCRIPT_DIR / f"{name}.js"
     for name in _ORDER
 }
+assets.serve_files(SCRIPTS)
+
+# The page's stylesheet (G12): `style.STYLE` and the rules that were `style=` attributes,
+# one file the code writes, named by its digest. The site's pages and the rule page link it
+# first, then their own.
+STYLESHEET = assets.sheet("page", utilities.VENDOR + STYLE + utilities.CSS)
+
+# The `<link>` the page's head carries. Its id is the one Cytoscape looks for before it
+# writes a `<style>` of its own (`.__________cytoscape_container{position:relative}`),
+# which the policy would refuse: the rule is in `utilities.VENDOR`, so the element with
+# that id is the stylesheet that holds it.
+CYTOSCAPE_SHEET_ID = "__________cytoscape_stylesheet"
+
+
+def stylesheet_links(*routes: str, page_sheet_id: str = "") -> str:
+    """The head's `<link rel="stylesheet">` lines: the page's own first, then `routes`."""
+    named = f' id="{page_sheet_id}"' if page_sheet_id else ""
+    return f'<link rel="stylesheet" href="{STYLESHEET}"{named}>\n' + "".join(
+        f'<link rel="stylesheet" href="{route}">\n' for route in routes
+    )
+
+
+def script_tags(routes: Iterable[str]) -> str:
+    """One `<script src>` a route, each under its current versioned name."""
+    return "".join(f'<script src="{assets.name_of(route)}"></script>\n' for route in routes)
+
 
 def _head(title: str, head: str) -> str:
     return (
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
-        f"<title>{escape(title)}</title>\n{head}" + head_links() + "<style>"
+        f"<title>{escape(title)}</title>\n{head}" + head_links()
+        + stylesheet_links(page_sheet_id=CYTOSCAPE_SHEET_ID)
     )
 
 
@@ -121,9 +154,7 @@ def _head(title: str, head: str) -> str:
 # their one-line summary into, the sections, and the corner. The footer: the links
 # `paintIdentity` writes into `#foot`, and the theme switch, which no view rewrites. Then the
 # landing page (Q718, `web/landing.py`), inert until `landing.js` clones it into the view.
-_TOP = f"""
-</style>
-</head>
+_TOP = f"""</head>
 <body>
 <div class="wrap">
   <header class="top">
@@ -140,13 +171,7 @@ _BOTTOM = f"""</div>
   {footer()}
 </div>
 <template id="landingPage">{landing.HTML}</template>
-""" + "".join(f'<script src="{route}"></script>\n' for route in SCRIPTS) + """</body>
-</html>
 """
-
-# The parts of the page that never change, joined once: `page` puts a title, extra head
-# lines and a drawn view between them.
-_BEFORE_STYLE_END = STYLE + _TOP
 
 
 def page(title: str = NAME, head: str = "", view: str = "") -> str:
@@ -154,8 +179,10 @@ def page(title: str = NAME, head: str = "", view: str = "") -> str:
     server (G3, `docs/plan-growth.md`): a game's own address carries its name, description
     and canonical in the head and its page in `#view`, which a reader without script reads
     and the router replaces once it draws. `head` and `view` are markup the caller has
-    already escaped; with neither, this is `PAGE`."""
-    return _head(title, head) + _BEFORE_STYLE_END + view + _BOTTOM
+    already escaped; with neither, this is `PAGE`. Drawn per call, because the scripts'
+    names are their bytes' digests and a development server's files can change under it."""
+    return (_head(title, head) + _TOP + view + _BOTTOM + script_tags(SCRIPTS)
+            + "</body>\n</html>\n")
 
 
 PAGE = page()

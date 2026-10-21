@@ -51,7 +51,7 @@ async function showProven(hash, id) {
   SESSION = null;
   SHOWN = null;
   if (!ACCOUNTS) {
-    view.innerHTML = `<div class="panel"><h2 style="margin-top:0">Proven positions</h2>
+    view.innerHTML = `<div class="panel"><h2 class="u-mt-0">Proven positions</h2>
       <div class="muted">Proven positions are offered on the site, where a try is played
         against hardest. This application offers none.</div></div>`;
     return;
@@ -87,10 +87,10 @@ function provenViewHtml(data, gone) {
     : `<div class="gamePlay"><div class="panel"><p id="provenNone">${esc(data.none)}</p></div></div>`;
   return `
     <a class="crumb" id="back" href="/game/${esc(PROVEN.hash)}">&larr; ${name}</a>
-    <h2 style="margin:10px 0 0">Proven positions on ${name}${info('provenPositions')}</h2>
+    <h2 class="u-m-10-0-0">Proven positions on ${name}${info('provenPositions')}</h2>
     ${gone ? `<p class="muted small" id="provenGone">${esc(words.gone || '')}</p>` : ''}
     <div class="gameTop provenTop">${frame}</div>
-    <details class="muted small" style="margin-top:12px">
+    <details class="muted small u-mt-12">
       <summary>how these were proved</summary>
       <p id="provenBasis">${esc(data.basis)}</p>
     </details>`;
@@ -115,8 +115,8 @@ function provenListHtml() {
     PROVEN_CHIPS[chip.key] ? ' on' : ''}" data-chip="${esc(chip.key)}" aria-pressed="${
     PROVEN_CHIPS[chip.key] ? 'true' : 'false'}">${esc(chip.label)} · ${chip.count}</button>`).join('');
   return `
-    ${data.progress ? `<p class="small" id="provenProgress" style="margin-top:0">${esc(data.progress)}</p>` : ''}
-    ${data.keep ? `<p class="muted small" id="provenKeep"${data.progress ? '' : ' style="margin-top:0"'}>${esc(data.keep)}</p>` : ''}
+    ${data.progress ? `<p class="small u-mt-0" id="provenProgress">${esc(data.progress)}</p>` : ''}
+    ${data.keep ? `<p class="muted small u-mt-0" id="provenKeep"${data.progress ? '' : ''}>${esc(data.keep)}</p>` : ''}
     ${chips ? `<div class="chips" role="group" aria-label="narrow the list">${chips}</div>` : ''}
     <div id="provenGroups">${groups}</div>
     <p class="muted small" id="provenEmpty" hidden>${esc(words.empty || '')}</p>`;
@@ -254,13 +254,13 @@ function provenFrameHtml(position) {
         title="a practice game from this position against hardest; you convert it if the game ends in your win"
         >${esc(words.play)}</button>`;
   const find = position.single && position.moves.length ? `
-    <h4 style="margin:14px 0 4px">${esc(words.find)}</h4>
+    <h4 class="u-m-14-0-4">${esc(words.find)}</h4>
     <div class="muted small">${esc(words.findSaid)}</div>
-    <div class="row proven-moves" style="margin-top:6px">${position.moves.map(entry =>
+    <div class="row proven-moves u-mt-6">${position.moves.map(entry =>
       `<button class="quiet" data-proven-move="${entry.move}">${esc(entry.text)}</button>`).join('')}
     </div>
-    <div id="provenSaid" class="small" style="margin-top:6px" aria-live="polite"></div>
-    <div class="row" style="margin-top:6px">
+    <div id="provenSaid" class="small u-mt-6" aria-live="polite"></div>
+    <div class="row u-mt-6">
       <button id="provenShow" class="quiet" title="say which move the computer proved, without picking one"
         >${esc(words.show)}</button>
     </div>` : '';

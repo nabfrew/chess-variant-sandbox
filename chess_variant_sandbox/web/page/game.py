@@ -286,8 +286,8 @@ def view(drawn: Drawn) -> str:
     return (
         '<article class="drawnGame" id="drawnGame">\n'
         '<a class="crumb" href="/game">&larr; all games</a>\n'
-        f'<h2 style="margin:10px 0 0">{name}</h2>\n'
-        + (f'<div class="row muted small" style="margin-top:10px">{escape(board)}</div>\n'
+        f'<h2 class="u-m-10-0-0">{name}</h2>\n'
+        + (f'<div class="row muted small u-mt-10">{escape(board)}</div>\n'
            if board else "")
         + about
         + f'\n<p class="drawnScore">{escape(score_line(drawn.score, drawn.stale))} '

@@ -154,7 +154,7 @@ class TestTheGlyph:
             first = _glyph(_END % (pair, "orange", "[]", "[true, true]"))
             second = _glyph(_END % (pair, "blue", "[]", "[true, true]"))
             for drawn in (first, second):
-                assert f"stop-color:var(--pair-{pair})" in drawn
+                assert f'stop-color="var(--pair-{pair})"' in drawn
                 assert "--portal-a" not in drawn and "--portal-b" not in drawn
                 assert "pg-double" not in drawn and f'data-pair="{pair}"' in drawn
             # The two ends differ only by their name (and the well's own id).
@@ -253,11 +253,15 @@ class TestTheGlyph:
         inward = _glyph(_END % (1, "orange", "[]", "[true, false]"), idle="true")
         way_out = _glyph(_END % (1, "orange", "[]", "[false, false]"), idle="true")
         still = _glyph(_END % (1, "orange", "[]", "[true, false]"))
-        assert 'class="pg-arms pg-idle"' in inward and 'data-turn="in"' in inward
+        assert 'class="pg-arms pg-idle sc-' in inward and 'data-turn="in"' in inward
         assert "pg-arms" not in way_out and "pg-idle" not in way_out  # no arms, nothing turns
         assert "pg-idle" not in still and "animation-delay" not in still
-        # Its turning point is the end's own centre.
-        assert "transform-origin:5.000px 5.000px" in inward
+        # Its turning point is the end's own centre, in the rule its class names (G12).
+        from test_fold_look import STYLES_OF
+
+        styles = _wrapped(STYLES_OF + "(portalGlyph(" + _END % (1, "orange", "[]", "[true, false]")
+                          + ", 0, 0, 10, { numbered: false, label: 'x', idle: true }))")
+        assert "transform-origin:5.000px 5.000px" in styles  # type: ignore[operator]
 
     def test_the_two_ends_of_a_pair_turn_in_step_and_pairs_out_of_step(self) -> None:
         phases = _wrapped("[portalPhase(1), portalPhase(1), portalPhase(2), portalPhase(3)]")

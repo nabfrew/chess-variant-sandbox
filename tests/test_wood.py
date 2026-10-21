@@ -87,7 +87,8 @@ class TestTheOffsets:
 
 class TestTheStillBoard:
     def test_every_square_carries_its_grain_under_everything_else(self) -> None:
-        drawn = _run(f"boardPreview({json.dumps(_preview(5, 5))}, null)")
+        drawn, rules = _run(f"[boardPreview({json.dumps(_preview(5, 5))}, null), "
+                            "Object.fromEntries([...STYLE_CLASSES].map(([text, name]) => [name, text]))]")
         assert drawn.count('class="grain lt"') + drawn.count('class="grain dk"') == 25
         assert drawn.count('class="grain lt"') == 12 and drawn.count('class="grain dk"') == 13
         # Each square's own pattern, cut from one of the two base tiles at its offset.
@@ -97,7 +98,10 @@ class TestTheStillBoard:
         first = re.search(r'<g data-square="\d+"><rect [^>]*fill="var\(--(?:light|dark)\)"/><rect [^>]*'
                           r'class="grain', drawn)
         assert first
-        assert re.search(r'class="board-frame" style="--wood-x: \d+px; --wood-y: \d+px"', drawn)
+        # The frame's offset is a rule of its own (G12: `styleClass`, no `style=`).
+        frame = re.search(r'class="board-frame (sc-[0-9a-z]+)"', drawn)
+        assert frame
+        assert re.fullmatch(r"--wood-x: \d+px; --wood-y: \d+px", rules[frame[1]])
 
     def test_the_same_still_draws_the_same_wood(self) -> None:
         one, two = _run(f"[boardPreview({json.dumps(_preview(6, 6))}, null),"
@@ -192,5 +196,5 @@ class TestTheSheets:
     def test_every_library_card_carries_its_sheet(self) -> None:
         from page_text import view
 
-        assert ('<div class="panel card" data-hash="${esc(game.hash)}" style="${'
-                'paperSheet(game.hash)}">') in view("browse")
+        assert ('<div class="panel card ${styleClass(paperSheet(game.hash))}" '
+                'data-hash="${esc(game.hash)}">') in view("browse")

@@ -37,7 +37,7 @@ import pytest
 from chess_variant_sandbox.site import pages as site_pages
 from chess_variant_sandbox.site import routes
 from chess_variant_sandbox.web import library, page
-from chess_variant_sandbox.web.page import shell
+from chess_variant_sandbox.web.page import assets, shell
 from chess_variant_sandbox.web.server import CONTENT_SECURITY_POLICY, App, Server, handler_for
 
 PACKAGE = Path(page.__file__).resolve().parents[2]
@@ -74,7 +74,7 @@ class TestNoServedPageCarriesAScriptBody:
                     continue
                 source = re.fullmatch(r' src="([^"]+)"', attributes)
                 assert source is not None, f"{path}: <script{attributes}>"
-                assert source[1] in page_text.SERVED, f"{path}: {source[1]}"
+                assert page_text.plain(source[1]) in page_text.SERVED, f"{path}: {source[1]}"
                 assert body == "", f"{path}: a tag with a src and a body"
 
     def test_no_tag_carries_an_event_handler(self) -> None:
@@ -87,7 +87,7 @@ class TestNoServedPageCarriesAScriptBody:
         """The pages that ran a script still run one, a challenge link's (Q571) among
         them, and credits, privacy and the badges still run none. Every page carries the
         shell's script once, in its head (V2), which is not counted here."""
-        shell_tag = f'<script src="{shell.SHELL_SCRIPT_ROUTE}"></script>'
+        shell_tag = f'<script src="{assets.name_of(shell.SHELL_SCRIPT_ROUTE)}"></script>'
         for path, html in _served_pages().items():
             assert html.count(shell_tag) == 1, path
             assert html.index(shell_tag) < html.index("</head>"), path
@@ -113,7 +113,8 @@ class TestTheFilesAreTheWholeOfIt:
             ), directory
 
     def test_the_page_loads_the_table_in_its_order(self) -> None:
-        loaded = re.findall(r'<script src="([^"]+)"></script>', page.PAGE)
+        loaded = [page_text.plain(route)
+                  for route in re.findall(r'<script src="([^"]+)"></script>', page.PAGE)]
         assert loaded[0] == shell.SHELL_SCRIPT_ROUTE
         loaded = loaded[1:]
         assert loaded == list(page.SCRIPTS)
@@ -222,7 +223,7 @@ class TestTheFilesRunAsSeparateScripts:
         for path, html in page_names.site_pages().items():
             routes_loaded = [
                 route for route in re.findall(r'<script src="([^"]+)"></script>', html)
-                if route != shell.SHELL_SCRIPT_ROUTE
+                if page_text.plain(route) != shell.SHELL_SCRIPT_ROUTE
             ]
             if not routes_loaded:
                 continue
@@ -282,7 +283,7 @@ class TestTheApplicationServesThem:
         [(status, headers, body)] = _get(app, "/")
         assert status == 200 and headers["Cache-Control"] == "no-store"
         assert body == page.PAGE.encode("utf-8")
-        assert "<script>" not in body.decode("utf-8")
+        assert "<script>" not in body.decode("utf-8") and "<style" not in body.decode("utf-8")
 
 
 def _directives() -> dict[str, list[str]]:
@@ -313,8 +314,11 @@ class TestThePolicyRefusesInlineScript:
             assert "'unsafe-eval'" not in values
             assert not any(":" in value and value != "data:" for value in values), values
         inline = [name for name, values in policy.items() if "'unsafe-inline'" in values]
-        # The stylesheet is still a `<style>` in each page, and the page writes `style=`.
-        assert inline == ["style-src"]
+        # G12: the stylesheets are files and no markup carries `style=`, so style is the
+        # origin's files alone too.
+        assert inline == []
+        assert policy["style-src"] == ["'self'"]
+        assert not any(name.startswith(("style-src-", "script-src-")) for name in policy)
 
     def test_every_route_of_the_application_carries_it(self, tmp_path: Path) -> None:
         app = App(RULESETS, library.RUNS_DIR, browser_dir=tmp_path / "absent")

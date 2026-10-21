@@ -47,11 +47,17 @@ class TestTheTokens:
             assert radius.strip() in {"var(--r-ctl)", "var(--r-panel)", "50%", "999px", "0"}, radius
 
     def test_the_scripts_inline_styles_name_no_colour_and_no_typeface(self) -> None:
+        """What were `style=` attributes are `u-` classes since G12 (`utilities.py`), each a
+        rule the stylesheet holds: the scripts here name none that sets a face or an edge's
+        colour, and no rule of the table names a colour but by its token."""
+        from chess_variant_sandbox.web.page.utilities import UTILITIES
+
         for name, text in (("design", DESIGN), ("explorer", EXPLORER), ("graph", GRAPH)):
-            for inline in re.findall(r'style="([^"]*)"', text):
-                assert not re.search(r"#[0-9a-fA-F]{3,8}\b|rgba?\(", inline), (name, inline)
-                assert "font-family" not in inline, (name, inline)
-                assert "border-color" not in inline, (name, inline)
+            assert 'style="' not in text, name
+            for used in set(re.findall(r"(?<![\w-])u-[a-z0-9_-]*[a-z0-9_]", text)):
+                assert not used.startswith(("u-ff-", "u-bc-")), (name, used)
+        for declaration in UTILITIES.values():
+            assert not re.search(r"#[0-9a-fA-F]{3,8}\b|rgba?\(", declaration), declaration
 
     def test_the_game_as_text_is_in_the_numbers_face(self) -> None:
         assert 'id="dJson" class="jsonText"' in DESIGN
@@ -174,13 +180,13 @@ class TestMarkedLinesHangUnderTheirWords:
     def test_both_lists_are_marks_and_no_mark_is_an_inline_block(self) -> None:
         from page_text import DETAIL
 
-        assert '<ul class="small marks"' in DESIGN and '<ul class="small marks"' in DETAIL
+        assert '<ul class="small marks ' in DESIGN and '<ul class="small marks ' in DETAIL
         publish = DESIGN[DESIGN.index("function publishHtml"):]
         publish = publish[:publish.index("\n}\n")]
         shortlist = DETAIL[DETAIL.index("function shortlistHtml"):]
         shortlist = shortlist[:shortlist.index("\n}\n")]
         for body in (publish, shortlist):
-            assert "display:inline-block; width:1.4em" not in body
+            assert "u-d-inline-block u-w-1_4em" not in body
 
 
 def _body(text: str, start: str) -> str:

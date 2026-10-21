@@ -186,12 +186,12 @@ async function showExplorer() {
   // The picture the explorer opens on: the lines of likeness, and the arrows off.
   MAP_ARROWS = false;
   view.innerHTML = `
-    <div class="row" style="justify-content:space-between; margin-bottom:12px">
+    <div class="row u-jc-space-between u-mb-12">
       <div class="muted small">Every game in the library, each drawn near the games most
         like it. Drag to move, scroll or pinch to zoom, tap a game or a line.</div>
       <div class="row">
         <input type="search" id="mapFind" placeholder="find a game"
-          aria-label="find a game on the map" style="max-width:190px">
+          aria-label="find a game on the map" class="u-maxw-190">
         <label class="pick">light up
           <select id="mapShow" aria-label="which games to light up">
             <option value="">every game</option>
@@ -204,8 +204,8 @@ async function showExplorer() {
         ${viewSwitchHtml('map')}
       </div>
     </div>
-    <div id="exploreSay" class="muted small" style="margin:-6px 0 10px"></div>
-    <div id="mapLit" class="muted small" style="margin:-6px 0 10px"></div>
+    <div id="exploreSay" class="muted small u-m-n6-0-10"></div>
+    <div id="mapLit" class="muted small u-m-n6-0-10"></div>
     <div id="exploreBody"></div>`;
   wireViewSwitch();
   // The first call on a server with no map of this library reads every game and draws the
@@ -566,7 +566,7 @@ function explorerSayBlocked() {
   if (said) said.textContent = '';
   const canvas = document.getElementById('explore');
   if (!canvas) return;
-  canvas.innerHTML = `<div class="small" style="padding:18px">The map needs a drawing
+  canvas.innerHTML = `<div class="small u-p-18">The map needs a drawing
     library this site serves itself and your browser did not load it, so
     <a href="#/">the list</a> is the way to every game in it.</div>`;
 }
@@ -1584,7 +1584,7 @@ function explorerLocalSay() {
   bar.innerHTML = `<span class="small"><b>${esc(node.name)}</b> and the games ${
       steps === 1 ? 'one step' : steps + ' steps'} out along the lines drawn: ${
       games === 1 ? 'one game' : games + ' games'}.</span>
-    <span class="row" style="gap:4px">${button(1, 'one step')}${
+    <span class="row u-gap-4">${button(1, 'one step')}${
       button(EXPLORER_STEPS_OUT, 'two steps')}
       <button data-local-leave>whole map</button></span>`;
 }
