@@ -182,6 +182,21 @@ def canonical_config(
     )
 
 
+def roster_for(spec: dict[str, Any]) -> TournamentConfig:
+    """The roster a measurement of this game plays: `corpus.canonical_agents`' for it.
+
+    A game in rounds is measured on `corpus.ROUND_AGENTS` (`matrix:nodes=N` where the
+    alternating ladder has `minimax:`, which the core refuses on one), and a game with a
+    rated net on its net ladder. The basis `_page_result` stamps names the same function's
+    answer, so the games a page plays and the roster its stamp names are one roster: the
+    page's measurement of a round game used to play `CANONICAL_AGENTS` and fail on its
+    first unit (Q998).
+    """
+    from chess_variant_sandbox.corpus import canonical_agents
+
+    return canonical_config(agents=canonical_agents(spec_hash(spec), spec=spec))
+
+
 # ------------------------------------------------------------------ listing units
 
 
@@ -651,7 +666,7 @@ def _gather_step(state: dict[str, Any], replies: dict[str, Any]) -> dict[str, An
         raise SliceError(f"a measurement has no step after {step!r}")
     spec = state["spec"]
     cut = int(state["cut"])
-    roster = canonical_config()
+    roster = roster_for(spec)
 
     if step == "":
         return _deal(state, TOURNAMENT, playing_units(TOURNAMENT, roster, cut), roster)

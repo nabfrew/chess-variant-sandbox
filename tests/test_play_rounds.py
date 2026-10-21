@@ -394,6 +394,66 @@ class TestRoundsAndTheSession:
         assert snapshot["inCheck"] is False and snapshot["drawOffer"] is None
 
 
+def _mirrored(first: str, second: str, height: int) -> bool:
+    """Whether the second seat's move is the first's turned round the board's middle rank."""
+    import re
+
+    def turned(text: str) -> str:
+        return re.sub(r"([a-z])(\d+)", lambda m: m.group(1) + str(height + 1 - int(m.group(2))),
+                      text)
+
+    return turned(first) == second
+
+
+class TestTheWatch:
+    """*Watch it play itself* on a game in rounds (Q998): the user saw *"both sides make
+    identical moves"*. Two computer seats of one player each draw their round's move from
+    their own seat's stream (`PyRandom::for_seat`, CLAUDE.md *Determinism*), so where the
+    player's strategy is mixed the two sides part; where it is pure (one move plainly
+    best, from both sides of a symmetric position) they mirror, and that is the player,
+    not a shared choice. The board says so (`watchingLine`)."""
+
+    def test_two_seats_of_one_player_choose_apart_where_the_strategy_is_mixed(self) -> None:
+        """The round gardner's opening, `matrix:nodes=6400` at both seats over sixteen
+        seeds: a shared stream or a shared choice would mirror every one."""
+        height = _spec()["board"]["height"]
+        agent = "matrix:nodes=6400"
+        mirrored = []
+        for seed in range(16):
+            session = _session((agent, agent), seed=seed)
+            session.play_agent()
+            first, second = (entry["text"] for entry in session.history[:2])
+            mirrored.append(_mirrored(first, second, height))
+        assert any(mirrored) and not all(mirrored), mirrored
+
+    def test_the_watch_seats_one_round_player_at_both_seats(self) -> None:
+        """What the designer's watch sends (`WATCH_AGENT` twice) sits the round twin down
+        at both seats, so the sentence about one player at both seats is the true one."""
+        roster = opponents.for_game("rounds", spec=_spec())
+        seats = {opponents.seat_for("minimax:nodes=6400", roster) for _ in range(2)}
+        assert seats == {"matrix:nodes=102400"}
+
+    def test_the_watch_note_on_a_round_game_says_why_the_sides_can_mirror(self) -> None:
+        """Before Q998 the note counted the position's legal moves, which in a round two
+        computers play is nobody's: *This position offers 0 legal moves*."""
+        snap = _session(("greedy", "greedy")).snapshot()
+        assert snap["moves"] == [] and "round" in snap
+        same = {**snap, "watching": "Both sides are played by hard.",
+                "seats": ["matrix:nodes=102400", "matrix:nodes=102400"]}
+        apart = {**snap, "watching": "random is playing hard.",
+                 "seats": ["random", "matrix:nodes=102400"]}
+        lines = _in_page(
+            f"const SAME = {json.dumps(same)}, APART = {json.dumps(apart)};",
+            "[watchingLine(SAME), watchingLine(APART)]",
+        )
+        assert "legal moves" not in lines[0] and "legal moves" not in lines[1]
+        assert "choose at once" in lines[0] and "choose at once" in lines[1]
+        assert "mirrored" in lines[0] and "draw" in lines[0]
+        assert "strongest computer player quick enough to watch" in lines[0]
+        # Two different players: no claim about one player at both seats.
+        assert "mirrored" not in lines[1] and "strongest" not in lines[1]
+
+
 # ------------------------------------------------------------------- the page
 
 

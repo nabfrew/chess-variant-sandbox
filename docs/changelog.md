@@ -13,6 +13,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-21
 
+### Measuring a game played in rounds in the designer
+
+In the designer, measuring a game switched to rounds now finishes instead of failing at once. When you watch a round game,
+the board now explains why the two sides sometimes copy each other's moves: in an evenly balanced position the computer
+player's best choice is the same on both sides.
+
 ### Three games that show resting pieces
 
 Three new previews show how long-resting pieces change a game: Gardner where the queen and rooks tire, breather where

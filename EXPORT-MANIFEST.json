@@ -1,5 +1,5 @@
 {
- "source_commit": "eb23de6aeed2840e369fb4f243ddca18066b8fd7",
+ "source_commit": "fad6af8b1887e7d1bb13c5e6997bc963b088c966",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -2116,8 +2116,8 @@
   },
   {
    "path": "chess_variant_sandbox/tournament/slices.py",
-   "bytes": 30731,
-   "sha256": "c361b8e94155bd83ee228023992d1c06762ffc52794efedf56dd8097db315a91"
+   "bytes": 31494,
+   "sha256": "4e963e8006a0df39a6cbcc139e25675de65c33c3359c1be7a0d2753cb7049c99"
   },
   {
    "path": "chess_variant_sandbox/tournament/valuing.py",
@@ -2451,8 +2451,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/static/page/design.js",
-   "bytes": 185302,
-   "sha256": "28b9e1e797591105bb212dc22a0e1e5ea96e3b7ac81a372154fb8b58623acfa8"
+   "bytes": 187411,
+   "sha256": "c88882e6c38638ff096dfdb624735c93798853ff0f853ff9147f5a30816c226f"
   },
   {
    "path": "chess_variant_sandbox/web/static/page/detail.js",
@@ -2601,8 +2601,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 138459,
-   "sha256": "9d83a2bf7c514dea94f8e98c6fcd9dae2e1ebb6276ece10f2031f911e2774051"
+   "bytes": 138806,
+   "sha256": "45ce4fecd30c368d3e9b744b07f85d16d882f6b110566a1e5c76c3d950637eda"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -4371,8 +4371,8 @@
   },
   {
    "path": "tests/test_play_rounds.py",
-   "bytes": 32453,
-   "sha256": "b20428424fd9b55234e3fcb45d6294bf6ae7a97f0b2d45cdf0c3d5ed8352dad0"
+   "bytes": 35729,
+   "sha256": "2012dc11682319a711f82f55a1b997c0efa9928ecb84c92468a238c85efcc08c"
   },
   {
    "path": "tests/test_play_seeds.py",
@@ -5081,8 +5081,8 @@
   },
   {
    "path": "tests/test_slices.py",
-   "bytes": 36471,
-   "sha256": "a67c070c3e760f87b5934063f3e199fe7c619de078bf8a4385503481e739e1f8"
+   "bytes": 38830,
+   "sha256": "6ff6d76df9e166120c57f3f4c982b1c6c29041103ccb8067bb61ff48398393be"
   },
   {
    "path": "tests/test_spec.py",

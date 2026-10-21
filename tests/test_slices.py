@@ -473,6 +473,57 @@ class TestSlicingDoesNotChangeTheGames:
         ]
 
 
+@pytest.fixture(scope="module")
+def round_dull(dull_spec) -> dict:
+    """Dull switched to rounds by the designer's own control, as a person would (Q998)."""
+    from chess_variant_sandbox.web import designing
+
+    answer = designing.take_turns(json.loads(json.dumps(dull_spec)), "rounds", {})
+    assert answer["draft"] is not None, answer["errors"]
+    return answer["draft"]
+
+
+class TestAGameInRounds:
+    """The page's measurement of a game played in rounds (Q998).
+
+    The user switched a copy of chess to *in rounds* in the designer and pressed *measure
+    it here*: the first unit failed, because the gathering half dealt every game the
+    alternating roster, whose `minimax:` the core refuses on a round game. A round game is
+    measured on `corpus.ROUND_AGENTS`, and the page's measurement must deal the roster the
+    basis it stamps names. Dull, switched to rounds by the designer's own control, is the
+    game: small enough to play a unit of here.
+    """
+
+    def test_the_page_deals_a_round_game_the_round_roster(self, round_dull) -> None:
+        from chess_variant_sandbox.corpus import ROUND_AGENTS
+
+        first = json.loads(
+            slices.gather_request(json.dumps({"spec": round_dull, "state": None}))
+        )
+        assert first["step"] == slices.TOURNAMENT and first["units"]
+        rosters = {
+            tuple(json.loads(unit["request"])["roster"]["agents"]) for unit in first["units"]
+        }
+        assert rosters == {ROUND_AGENTS}
+
+    def test_a_dealt_unit_of_a_round_game_plays(self, round_dull) -> None:
+        """Before Q998 every unit raised the core's refusal of `minimax:` in rounds, even
+        one holding only a game between two random players, so one such game is enough."""
+        first = json.loads(
+            slices.gather_request(json.dumps({"spec": round_dull, "state": None}))
+        )
+        payload = json.loads(first["units"][0]["request"])
+        payload["unit"]["games"] = payload["unit"]["games"][:1]
+        records = slices.parse_records(slices.run_request(json.dumps(payload)))
+        assert len(records) == 1
+        assert records[0].moves
+
+    def test_an_alternating_game_is_still_dealt_the_canonical_roster(self, dull_spec) -> None:
+        from chess_variant_sandbox.corpus import CANONICAL_AGENTS
+
+        assert slices.roster_for(dull_spec).agents == CANONICAL_AGENTS
+
+
 class TestTheModuleIsDownstream:
     """What lets a new module be added without staling a single stored score.
 

@@ -481,7 +481,7 @@ function benchPlayHtml() {
     <div class="row u-mt-8">
       <button class="primary" data-seats="machine">you against the machine</button>
       <button data-seats="hand">both sides by hand</button>
-      <button data-seats="watch" title="${esc(watchTitle())}">watch it play itself</button>
+      <button data-seats="watch" title="${esc(watchTitle(watchesRounds()))}">watch it play itself</button>
     </div>`;
 }
 
@@ -2525,7 +2525,7 @@ function drawVerdict() {
           <button id="dPlay" aria-label="${esc(PLAY_AWAY)}"
             title="the full board, with the move list; nothing is saved"
             >${awayLabel(PLAY_AWAY)}</button>
-          <button id="dWatch" aria-label="${esc(WATCH_AWAY)}" title="${esc(watchTitle())}"
+          <button id="dWatch" aria-label="${esc(WATCH_AWAY)}" title="${esc(watchTitle(watchesRounds()))}"
             >${awayLabel(WATCH_AWAY)}</button>
         </div>
       </div>
@@ -2533,7 +2533,8 @@ function drawVerdict() {
         Playing it keeps nothing. It is a game against the rules as they stand right now,
         on the board page with its move list, and closing it leaves no trace; the
         <i>play it here</i> tab plays it beside the editor instead. Watching it, both sides are played by a computer
-        player that looks at ${watchNodes()} positions before each move, and you can pause
+        player ${watchesRounds() ? 'for games in rounds, the strongest quick enough to watch'
+        : `that looks at ${watchNodes()} positions before each move`}, and you can pause
         and step back through every one of them. ${ACCOUNTS
           ? 'A saved game is kept on this site as your draft.'
           : `A saved game is kept with the ones a design run invented${info('candidate')}.`}${
@@ -3539,9 +3540,21 @@ function watchNodes() {
   return Number((WATCH_AGENT.match(/nodes=([0-9]+)/) || [])[1] || 0).toLocaleString('en-US');
 }
 
-function watchTitle() {
+// `rounds`: the draft is played in rounds, where the watch seats the server's round twin of
+// `WATCH_AGENT` (`opponents.seat_for`), whose budget is not this one, so no number is said.
+function watchTitle(rounds) {
+  if (rounds) {
+    return 'two computer players for games in rounds, the strongest quick enough to watch;'
+      + ' pause and step through it';
+  }
   return `two computer players, each looking at ${watchNodes()} positions before each`
     + ' move; pause and step through it';
+}
+
+// Whether the draft's watch is a game in rounds from its first move. A spy game declares
+// rounds but starts by turns, and its watch seats `WATCH_AGENT` itself.
+function watchesRounds() {
+  return !!DRAFT && turnWay() === 'rounds' && !(DRAFT.pieces || []).some(piece => piece && piece.spy === true);
 }
 
 // Who is playing a draft nobody is sitting at, in plain words.
@@ -3551,14 +3564,35 @@ function watchTitle() {
 // was playing, so a weak rung read as a broken game (Q265). The first sentence is the
 // server's, which names the seat off the picker's own labels; the rest is the
 // designer's, because the choice of player is the designer's.
+//
+// A game in rounds (Q998) offers nobody a move while two computers play it, so the count
+// of legal moves read *0*; and the question its watch raises is a different one. Both
+// players choose at once, from one position, each blind to the other and drawing from its
+// own stream; but where the position is the same from both sides and one move is plainly
+// best, the same player finds the same move from each side, and the game goes on mirrored
+// until an ending reaches both players in one round, which is a draw (`rounds.md` §2.6).
+// The user took that for a fault (*"both sides make identical moves"*), so the board says
+// it. The watch seats the server's round twin of `WATCH_AGENT`, both seats alike.
 function watchingLine(snapshot) {
   if (!snapshot || !snapshot.watching) return '';
-  const watched = (snapshot.seats || []).every(seat => seat === WATCH_AGENT);
+  const seats = snapshot.seats || [];
+  const rounds = !!snapshot.round;
+  const watched = seats.length === 2 && seats.every(seat => seat === WATCH_AGENT)
+    || rounds && seats.length === 2 && seats[0] === seats[1];
   return snapshot.watching
     + (watched ? ' It is the strongest computer player quick enough to watch a whole game.'
       : '')
-    + ` This position offers ${(snapshot.moves || []).length} legal moves, and the more`
-    + ' moves a position offers, the less far ahead any computer player sees.';
+    + (rounds ? roundWatchWords(seats[0] === seats[1])
+      : ` This position offers ${(snapshot.moves || []).length} legal moves, and the more`
+        + ' moves a position offers, the less far ahead any computer player sees.');
+}
+
+function roundWatchWords(same) {
+  return ' Both players choose at once, from the same position, neither seeing the'
+    + ' other\'s move.' + (same ? ' Where the position looks the same from both sides and'
+    + ' one move is plainly best, the same player picks the same move for each side, so'
+    + ' the game can run mirrored until both players reach an ending in the same round,'
+    + ' which is a draw.' : '');
 }
 
 // The line, put on the board from here rather than drawn there: `page/board.js` draws a
