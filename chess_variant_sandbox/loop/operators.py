@@ -43,19 +43,24 @@ from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.relate import identity_key
 from chess_variant_sandbox.spec.schema import (
     CLOCK_BOUNDS,
+    DEFAULT_RANGE,
     FACING_NAMES,
     HEX_SYMMETRIES,
     REPETITION_NEVER,
     REST_MAX,
+    SIGHT_EFFECTS,
+    SIGHT_MAX,
     SQUARE_SYMMETRIES,
     _any_equal_speed_meeting,
     _check_extinction_coherence,
+    _sight_entry,
     absent_squares,
     beats_of,
     can_double_step,
     castling_spans,
     has_equal_speed_opponent,
     has_rests,
+    has_sights,
     has_speeds,
     is_simultaneous,
     obstacle_squares,
@@ -63,6 +68,7 @@ from chess_variant_sandbox.spec.schema import (
     parse_square,
     piece_has_stock,
     piece_rests,
+    piece_sights,
     piece_speeds,
     placed_ids,
     portal_groups,
@@ -190,6 +196,10 @@ def _gone_words(key: str) -> str:
         return f"the {key.split(':', 1)[1]}'s own collision table"
     if key.startswith("speed:"):
         return f"the {key.split(':', 1)[1]}'s speed"
+    if key.startswith("rest:"):
+        return f"the {key.split(':', 1)[1]}'s rest"
+    if key.startswith("sight:"):
+        return f"a line of sight of the {key.split(':', 1)[1]}"
     if key.startswith("carries:"):
         return f"the filter on the portal at {key.split(':', 1)[1]}"
     return _GONE_WORDS.get(key, key.replace("_", " "))
@@ -1642,6 +1652,8 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None  # nor can a blast and a hand that drops either face (schema 18e)
     if not capture_is_possible(spec):
         return None  # a blast where nothing is taken is refused (inert-rule case 4, Q110)
+    if has_sights(spec):
+        return None  # schema 30: a blast is refused beside a line of sight
     set_explosion(spec)
     settle_schema_version(spec)
     return (
@@ -1985,6 +1997,168 @@ def _tire_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
     return None
 
 
+# Schema 30 (Q999a, `docs/plan-passive.md` §4.3): lines of sight. Whose pieces each effect
+# touches when an operator casts it: an effect that restricts is cast on the enemy, a shield
+# on its own side.
+_GAZE_WHOSE = {"freeze": "enemy", "disarm": "enemy", "shield": "own"}
+
+
+def _shields(spec: dict[str, Any]) -> bool:
+    """Whether a line of sight shields (schema 30), beside which a sweep and a wild piece are
+    refused."""
+    return any(
+        sight.effect == "shield" for sights in piece_sights(spec).values() for sight in sights
+    )
+
+
+def _sight_names(spec: dict[str, Any]) -> dict[str, str]:
+    """Each piece id's name, as `describe.sight_sentence` says the types a sight touches."""
+    return {
+        piece["id"]: str(piece.get("name", piece["id"]))
+        for piece in pieces(spec) if isinstance(piece.get("id"), str)
+    }
+
+
+def _gaze_words(spec: dict[str, Any], entry: dict[str, Any]) -> str | None:
+    """One sight entry in `describe`'s words, or ``None`` for one `piece_sights` cannot read."""
+    from chess_variant_sandbox.spec.describe import sight_sentence
+
+    read = _sight_entry(entry)
+    if read is None:
+        return None
+    hexy = (spec.get("board") or {}).get("lattice") == "hex"
+    return sight_sentence(read, _sight_names(spec), hexy)
+
+
+def _gaze_of(move: dict[str, Any]) -> dict[str, Any] | None:
+    """A slide-like reading of one capture-capable move's geometry, as a sight's keys: its
+    vectors and symmetry, its range (1 for a leap or a lame leap, which is one jump per
+    vector) and its `min_range`. ``None`` for a move that may not capture."""
+    if move.get("mode", "both") == "move" and move.get("kind") != "sweep":
+        return None
+    vectors = move.get("vectors")
+    if not isinstance(vectors, list) or not vectors:
+        return None
+    kind = move.get("kind")
+    gaze: dict[str, Any] = {"vectors": copy.deepcopy(vectors)}
+    if move.get("symmetry", "none") != "none":
+        gaze["symmetry"] = move["symmetry"]
+    if kind in ("leap", "lame"):
+        gaze["range"] = 1
+    else:
+        reach = move.get("range", DEFAULT_RANGE.get(str(kind), 0))
+        if reach:
+            gaze["range"] = reach
+        if move.get("min_range", 1) != 1 and (not reach or move["min_range"] <= reach):
+            gaze["min_range"] = move["min_range"]
+    return gaze
+
+
+def _gazers(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    """The piece types a sight may be written on: a player's type, never a portal end or a
+    wild piece (`plan-passive.md` §2.3)."""
+    found = spec.get("rules")
+    rules: dict[str, Any] = found if isinstance(found, dict) else {}
+    skipped = portal_piece_ids(rules) | {
+        npc.get("piece") for npc in (rules.get("npcs") or []) if isinstance(npc, dict)
+    }
+    return [
+        piece for piece in pieces(spec)
+        if isinstance(piece.get("id"), str) and piece["id"] not in skipped
+    ]
+
+
+def _cast_a_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Give a piece type a line of sight copied from its own capture geometry (schema 30,
+    `docs/plan-passive.md` §4.3): a slide-like reading of one of its capture-capable moves,
+    a ray, with an effect drawn from the three -- `enemy` for a freeze or a disarm, `own`
+    for a shield -- touching every type. Each child must pass the validator, so a type whose
+    gaze could never bind is passed over, a shield is not drawn beside a sweep or wild
+    pieces, and nothing is drawn beside portals or an explosion, where a sight is refused."""
+    found = spec.get("rules")
+    rules: dict[str, Any] = found if isinstance(found, dict) else {}
+    if rules.get("portals") or rules.get("explode_on_capture"):
+        return None
+    effects = list(SIGHT_EFFECTS)
+    if uses_sweep(spec) or rules.get("npcs"):
+        effects.remove("shield")
+    candidates = [
+        piece for piece in _gazers(spec)
+        if len(piece.get("sight") or []) < SIGHT_MAX
+        and any(_gaze_of(move) for move in piece.get("moves") or [] if isinstance(move, dict))
+    ]
+    for piece in rng.sample(candidates, len(candidates)):
+        gazes = [
+            gaze for move in piece.get("moves") or [] if isinstance(move, dict)
+            for gaze in [_gaze_of(move)] if gaze is not None
+        ]
+        for effect in rng.sample(effects, len(effects)):
+            entry = {**rng.choice(gazes), "effect": effect, "whose": _GAZE_WHOSE[effect]}
+            # A gaze longer than a step is a ray or an aura, which sees past pieces, at even
+            # odds, so a game can enter `through` in one edit as well as by `widen-a-gaze`.
+            if entry.get("range", 0) != 1 and rng.random() < 0.5:
+                entry["through"] = True
+            if entry in (piece.get("sight") or []):
+                continue
+            trial = copy.deepcopy(spec)
+            target = next(p for p in pieces(trial) if p.get("id") == piece["id"])
+            target.setdefault("sight", []).append(entry)
+            settle_schema_version(trial)
+            if validate_spec(trial):
+                continue
+            spec.clear()
+            spec.update(trial)
+            words = _gaze_words(spec, entry)
+            return f"the {piece.get('name', piece['id'])} now {words}"
+    return None
+
+
+def _blind_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Take one line of sight away from a piece type (schema 30), and the type's `sight` with
+    its last line."""
+    seeing = [piece for piece in pieces(spec) if isinstance(piece.get("sight"), list)]
+    if not seeing:
+        return None
+    piece = rng.choice(seeing)
+    index = rng.randrange(len(piece["sight"]))
+    words = _gaze_words(spec, piece["sight"][index])
+    del piece["sight"][index]
+    if not piece["sight"]:
+        piece.pop("sight")
+    settle_schema_version(spec)
+    name = piece.get("name", piece["id"])
+    return f"the {name} no longer {words}" if words else f"the {name} sees less"
+
+
+def _widen_a_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Make one line of sight an aura that sees through pieces, or a ray that stops at the
+    first again (schema 30's `through`). Only a line longer than one step, where the two
+    differ: a one-step line has nothing between to see through."""
+    lines = [
+        (piece, entry) for piece in pieces(spec) if isinstance(piece.get("sight"), list)
+        for entry in piece["sight"]
+        if isinstance(entry, dict) and entry.get("range", 0) != 1
+    ]
+    if not lines:
+        return None
+    for piece, entry in rng.sample(lines, len(lines)):
+        trial = copy.deepcopy(spec)
+        target = next(p for p in pieces(trial) if p.get("id") == piece["id"])
+        twin = target["sight"][piece["sight"].index(entry)]
+        if twin.pop("through", None) is None:
+            twin["through"] = True
+        settle_schema_version(trial)
+        if validate_spec(trial):
+            continue
+        spec.clear()
+        spec.update(trial)
+        name = piece.get("name", piece["id"])
+        if twin.get("through"):
+            return f"the {name}'s sight now passes through pieces: it {_gaze_words(spec, twin)}"
+        return f"the {name}'s sight now stops at the first piece: it {_gaze_words(spec, twin)}"
+    return None
+
+
 def _set_a_speed(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Give a piece type a speed, change one, or take the speeds away (schema 28,
     `docs/plan-speed.md` §4.3). Only in a game played in rounds. In: a type at 0 is made
@@ -2166,6 +2340,7 @@ def _set_a_patrol(spec: dict[str, Any], rng: random.Random) -> str | None:
         or rules.get("contacts")
         or rules.get("portals")
         or uses_sweep(spec)
+        or _shields(spec)
     ):
         return None  # the validator refuses each of these beside a wild piece
 
@@ -3211,6 +3386,8 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
             f"the {piece.get('name', piece['id'])} slides again and stops at the first "
             "piece in its way"
         )
+    if _shields(spec):
+        return None  # schema 30: a sweep is refused beside a shield
     rules = spec.get("rules", {})
     if sweep_conflicts(rules):
         return None
@@ -3321,6 +3498,9 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("plant-a-spy", _plant_a_spy),
     Operator("set-a-speed", _set_a_speed),
     Operator("tire-a-piece", _tire_a_piece),
+    Operator("cast-a-gaze", _cast_a_gaze),
+    Operator("blind-a-piece", _blind_a_piece),
+    Operator("widen-a-gaze", _widen_a_gaze),
 )
 
 

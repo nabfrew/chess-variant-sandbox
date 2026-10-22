@@ -182,4 +182,15 @@ def preview(engine: Any, state: Any, spec: dict[str, Any]) -> dict[str, Any]:
         # Q852: every wild piece's walk in order, its starts and its jumps
         # (`viz.walks`), so a still draws where each goes. Absent without wild pieces.
         **({"walks": walks} if (walks := walk_payload(spec, engine.spec)) else {}),
+        # Schema 30 (Q999g): the effects a line of sight puts on the opening position, the
+        # core's answer (`Engine.effects`) as ``[[square, bits], ...]`` for the squares whose
+        # piece is under one (1 frozen, 2 disarmed, 4 shielded), so a still draws the badges
+        # the play board draws. Absent without a sight (and when none is in force).
+        **({"effects": fx} if (fx := _effect_pairs(engine, state)) else {}),
     }
+
+
+def _effect_pairs(engine: Any, state: Any) -> list[list[int]]:
+    if engine.spec.sight is None:
+        return []
+    return [[square, bits] for square, bits in enumerate(engine.effects(state).bits) if bits]

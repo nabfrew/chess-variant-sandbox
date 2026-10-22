@@ -256,6 +256,8 @@ function openingHtml(game) {
     for (const mark of marks[square]) kinds.add(mark.kind);
   }
   boardKinds(preview.obstacles, preview.portals).forEach(kind => kinds.add(kind));
+  // Schema 30 (Q999g): the effects the start position already carries.
+  for (const [, bits] of effectPairs(preview.effects)) effectKinds(bits).forEach(kind => kinds.add(kind));
   // Q852: each wild piece's walk, drawn in order on the start position.
   if (walksDrawn(preview)) kinds.add('walk');
   const said = legendEntries(kinds, preview.wrap, '', preview.portals);

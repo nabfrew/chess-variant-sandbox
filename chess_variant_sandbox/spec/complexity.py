@@ -284,6 +284,36 @@ def _speed_extras(pieces: Any) -> float:
     return _SPEED + _SPEED_PER_TYPE * declared if declared else 0.0
 
 
+# Schema 30 (Q999a, `docs/plan-passive.md` §4.3): each effect a game's sights use is one rule a
+# player is taught (what a frozen, disarmed or shielded piece may do, and how check reads it),
+# charged once for the game; each sight entry beyond the first of an effect is a fact about a
+# piece a player has to remember; an aura (`through`) is one more sentence, once for the game.
+# Read off the spelling, as the rests and the speeds are (this file is in
+# `measurement.METRICS_SOURCES`, `schema.py` and its `piece_sights` are not).
+_SIGHT_EFFECT = 1.0
+_SIGHT_PER_ENTRY = 0.25
+_SIGHT_AURA = 0.25
+
+
+def _sight_extras(pieces: Any) -> float:
+    """What a game's sights cost: each distinct effect, each further entry of an effect, and
+    an aura once."""
+    per_effect: dict[str, int] = {}
+    aura = False
+    for piece in pieces if isinstance(pieces, list) else []:
+        sight = piece.get("sight") if isinstance(piece, dict) else None
+        for entry in sight if isinstance(sight, list) else []:
+            if not isinstance(entry, dict) or not isinstance(entry.get("effect"), str):
+                continue
+            per_effect[entry["effect"]] = per_effect.get(entry["effect"], 0) + 1
+            aura |= entry.get("through") is True
+    return (
+        _SIGHT_EFFECT * len(per_effect)
+        + _SIGHT_PER_ENTRY * sum(count - 1 for count in per_effect.values())
+        + (_SIGHT_AURA if aura else 0.0)
+    )
+
+
 def _simultaneous_extras(rule: Any) -> float:
     """The part of `rules.simultaneous`' charge `_RULE_COSTS` cannot say (schema 27).
 
@@ -506,7 +536,7 @@ def measure_complexity(spec: dict[str, Any]) -> SpecComplexity:
 
     special_rules = (
         _count_special_rules(rules) + _spy_extras(pieces) + _speed_extras(pieces)
-        + _rest_extras(pieces)
+        + _rest_extras(pieces) + _sight_extras(pieces)
     )
 
     # Schema 12: a `landing` set is charged as a descriptor is, per set and per expanded

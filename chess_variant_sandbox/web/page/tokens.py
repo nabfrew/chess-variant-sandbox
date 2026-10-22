@@ -184,6 +184,12 @@ LIGHT: dict[str, str] = {
     # in a deep teal, cased in `held-halo`: apart from the held move's pine in hue and
     # weight, and from the standoffs' umber and cobalt and the clash's wine (`FLOORS`).
     "announced": "#00606e",
+    # Schema 30 (Q999c, `docs/plan-passive.md` §4.6): a piece under a line of sight's effect
+    # wears a badge on `held-halo`, and a piece's sight tints the squares it sees in the same
+    # colour. A deep ice blue for frozen (a snowflake), a rust for disarmed (a broken blade),
+    # a deep green for shielded (a shield): apart in hue and in shape, and from the rest's
+    # slate and the order's indigo; each holds 4.5 : 1 on the casing (`FLOORS`).
+    "frozen": "#0d4f80", "disarmed": "#8a3510", "shielded": "#1b6236",
     # The board dimmed behind a choice drawn over it (Q765: what a promoting piece
     # becomes), so the card is the one lit thing in the reader's eye line.
     "scrim": "rgba(30, 20, 10, .6)",
@@ -289,6 +295,7 @@ DARK: dict[str, str] = {
     "clash": "#851a56", "rest": "#40464f",
     "order": "#251f48",
     "announced": "#005a66",
+    "frozen": "#0b4774", "disarmed": "#7e300e", "shielded": "#185a31",
     "scrim": "rgba(0, 0, 0, .6)",
     "p0": "#f0ede7", "p1": "#3b3f45", "p2": "#8f6a2f", "p2-ink": "#f4f2ee",
     "portal-stone": "#9b948a",
@@ -366,6 +373,10 @@ FLOORS: tuple[tuple[str, str, float], ...] = (
     ("order", "held-halo", 4.5),
     # An announced move's arrow (Q935c), on the same casing.
     ("announced", "held-halo", 4.5),
+    # A line of sight's badges (Q999c): each glyph is the casing's colour on its disc.
+    ("held-halo", "frozen", 4.5),
+    ("held-halo", "disarmed", 4.5),
+    ("held-halo", "shielded", 4.5),
     # A wild piece's walk (Q852): each hue against the casing it is drawn on.
     *((f"walk-{n}", "walk-edge", 3.0) for n in range(1, 5)),
     # A member's mark (R3): each of its eight hues, a graphic, on the page and a panel.
@@ -407,6 +418,8 @@ PIECE_FLOOR = 4.5
 # the bare square, and more distinct than the streak itself is.
 BOARD_MARKS: tuple[tuple[str, float], ...] = (
     ("dot", 0.8), ("hl-last", 0.34), ("hl-sel", 0.55), ("alarm", 0.55), ("coming", 0.85),
+    # What a piece sees (schema 30, Q999c), each effect's tint at `SEEN_OPACITY`.
+    ("frozen", 0.3), ("disarmed", 0.3), ("shielded", 0.3),
 )
 MARK_KEPT = 0.8
 # A legal-move dot is a control's mark, not text: WCAG's 3 : 1 for a graphic.

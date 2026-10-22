@@ -1,0 +1,58 @@
+{
+  "schema_version": 30,
+  "name": "madrasi chess",
+  "description": "Chess with one rule from the world of chess problems: two pieces of the same kind that face each other paralyse each other. Whenever a piece could capture an enemy piece of its own kind, both stand frozen: bishops on one open diagonal, rooks on one open file or rank, queens on one open line of either kind, knights a knight's jump apart, and pawns standing diagonally next to each other, where either could take the other. Kings are exempt. A frozen piece cannot move at all and threatens nothing, so it gives no check and guards no square, but it still stands there, blocks lines and can be captured by any piece of another kind. The paralysis lasts only while the two face each other: a piece stepping between them frees both at once, and taking one frees the other. So like never takes like (except a pawn taking a pawn in passing), and putting your piece on the line of its twin is both an attack and a sacrifice of your own piece's freedom: it silences the enemy piece and yours with it, which helps whichever side needed its piece less. A check can be answered by bringing your own piece of the checker's kind to face it, a king may step onto the line of a frozen queen, and moving a piece out from between two twins freezes them both. The rule is the classical Madrasi condition, invented by Abdul Jabbar Karwatkar in 1979; Madrasi's extra rule for a pawn that has just made its double step is left out, so en passant works as in chess.",
+  "board": {"width": 8, "height": 8},
+  "pieces": [
+    {"id": "P", "name": "pawn", "value": 1,
+     "moves": [
+       {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+       {"kind": "slide", "vectors": [[0, 1]], "range": 2, "min_range": 2, "mode": "move", "condition": {"from_rank": 1}},
+       {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+     ],
+     "sight": [{"vectors": [[1, 1]], "symmetry": "lateral", "range": 1, "effect": "freeze", "whose": "enemy", "affects": ["P"]}]},
+    {"id": "N", "name": "knight", "value": 3,
+     "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}],
+     "sight": [{"vectors": [[1, 2]], "symmetry": "dihedral8", "range": 1, "effect": "freeze", "whose": "enemy", "affects": ["N"]}]},
+    {"id": "B", "name": "bishop", "value": 3,
+     "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}],
+     "sight": [{"vectors": [[1, 1]], "symmetry": "rotate4", "effect": "freeze", "whose": "enemy", "affects": ["B"]}]},
+    {"id": "R", "name": "rook", "value": 5,
+     "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}],
+     "sight": [{"vectors": [[1, 0]], "symmetry": "rotate4", "effect": "freeze", "whose": "enemy", "affects": ["R"]}]},
+    {"id": "Q", "name": "queen", "value": 9,
+     "moves": [{"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}],
+     "sight": [{"vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "effect": "freeze", "whose": "enemy", "affects": ["Q"]}]},
+    {"id": "K", "name": "king", "value": 0, "royal": true,
+     "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]}
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2"]},
+      {"piece": "R", "squares": ["a1", "h1"]},
+      {"piece": "N", "squares": ["b1", "g1"]},
+      {"piece": "B", "squares": ["c1", "f1"]},
+      {"piece": "Q", "squares": ["d1"]},
+      {"piece": "K", "squares": ["e1"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": "last", "to": ["Q", "R", "B", "N"]},
+    "en_passant": true,
+    "castling": {"king": "K", "rook": "R", "king_steps": 2},
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "added": "2026-10-22",
+    "preview": "A preview: a new kind of game in which pieces act on each other by line of sight, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
+    "origin": "designed",
+    "source": "docs/plan-passive.md, Q999d: the one-change showcases of schema 30's lines of sight (section 6.1, S1)",
+    "history": "S1 of docs/plan-passive.md section 6.1, pre-registered 2026-10-21 before schema 30 was built: chess (4c1922ffae26) with every type but the king given one sight equal to its capture geometry, a ray that freezes an enemy piece of its own type. The Madrasi condition of chess problems (Abdul Jabbar Karwatkar, 1979) without its en passant observation rule. Written by Q999a as a test spec (tests/_sight_madrasi.json, the same mechanics) and archived by Q999d (2026-10-22) exactly as registered; its control is chess's library measurement on the same roster (section 6.2).",
+    "parents": ["4c1922ffae26"]
+  }
+}

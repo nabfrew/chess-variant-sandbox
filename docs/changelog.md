@@ -11,6 +11,24 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-22
+
+### Lines of sight, and a game built on them
+
+A piece can now have a line of sight: pieces it sees are frozen, disarmed or shielded while they stay in view. On the board,
+affected pieces wear a small badge, and pointing at a piece tints the squares it sees; the designer has rows to give a piece
+its sight. The first game to use it is the preview *opposite colours*: every piece stays on its square colour, so the two
+colours never capture each other and meet only through what their pieces see.
+
+Three more previews each add one line of sight to chess: *madrasi chess*, where two pieces of the same kind that face each
+other both freeze; *chess with a sheltering king*, whose own pieces near the king cannot be captured; and *chess with daunting
+knights*, where an enemy piece a knight's jump from a knight cannot capture.
+
+### Measuring more kinds of game in your browser
+
+When you measure a game played in rounds, a game with a spy, or a game with lines of sight on your own computer, the site now
+checks and keeps the result. Before, the result was turned away.
+
 ## 2026-10-21
 
 ### Measuring a game played in rounds in the designer

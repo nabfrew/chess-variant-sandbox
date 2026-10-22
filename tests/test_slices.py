@@ -289,6 +289,20 @@ LIBRARY = test_index_quality.RUNS
 # the 18 that lost an accepted fit and the round games moved. Every library `canonical.json`
 # carries the tree's own reading again; the replaced measurements, with the stamp this window
 # held, are kept under each game's `runs/<hash>/previous/` (`docs/reference/replay-2026-10-20.md`).
+#
+# **Opened 2026-10-22 by Q999a** (schema 30, lines of sight): `spec/complexity.py` and the engine's
+# Python side move `metrics` and `analysis` (`FROZEN_METRICS`, `FROZEN_ANALYSIS`), and the core
+# moves the build fingerprint; no library game declares a sight, so no game is owed a new
+# measurement. The window is the stamp Q558r's replay left the library; **the next library replay
+# empties it**.
+#
+# **Emptied 2026-10-22 by R30**, that replay: the 100 library games without a sight re-played,
+# re-analysed and re-scored on core `27cf83295d37ea9d` under `metrics` "7557cf49f08b4705" and
+# `analysis` "59c2e597b2f08d51". No record, analysis or score moved (102,400 records equal outside
+# the clock; two games' respelled names and description word counts aside); every library
+# `canonical.json` carries the tree's own reading again, and the replaced measurements, with the
+# stamp this window held, are kept under each game's `runs/<hash>/previous/`
+# (`docs/reference/replay-2026-10-22.md`).
 STALE_WINDOW: dict[str, str] = {}
 
 

@@ -89,6 +89,16 @@ HAND: dict[str, str] = {
     "pieces[].moves[].min_range": "box('min_range',",
     "pieces[].moves[].mode": "pick('mode',",
     "pieces[].moves[].condition.from_rank": "box('from_rank',",
+    # A line of sight (schema 30, Q999c: `sightEditor`, `sightsHtml`).
+    "pieces[].sight": "data-addsight=",
+    "pieces[].sight[].effect": "pick('effect',",
+    "pieces[].sight[].whose": "pick('whose',",
+    "pieces[].sight[].vectors": "box('vectors',",
+    "pieces[].sight[].symmetry": "pick('symmetry', turnings(sight)",
+    "pieces[].sight[].through": "pick('through',",
+    "pieces[].sight[].range": "box('range', esc(sight.range)",
+    "pieces[].sight[].min_range": "box('min_range', esc(sight.min_range)",
+    "pieces[].sight[].affects": 'data-sfield="affects"',
 }
 
 # Keys with no control in the designer, on purpose. The game's text (the JSON box under the
@@ -178,6 +188,8 @@ def _validator_paths() -> set[str]:
     paths |= {f"pieces[].facing.{key}" for key in schema._FACING_KEYS}
     paths |= {f"pieces[].moves[].{key}" for key in schema._MOVE_KEYS}
     paths |= {f"pieces[].moves[].condition.{key}" for key in schema._CONDITION_KEYS}
+    # Schema 30 (Q999c): a line of sight's keys, the sight row's.
+    paths |= {f"pieces[].sight[].{key}" for key in schema._SIGHT_KEYS}
     paths |= {f"appearance.{key}" for key in schema._APPEARANCE_KEYS}
     paths |= {f"provenance.{key}" for key in schema._PROVENANCE_KEYS}
     paths |= {f"rules.{key}" for key in schema._RULES_KEYS}
@@ -578,6 +590,9 @@ class TestNoMenuOffersARefusedDefault:
         spec = _in_rounds()
         spec["rules"]["contacts"] = {"position": "stay", "immune": ["K"],
                                      "links": [{"mover": "N", "onto": "P", "onto_to": "B"}]}
+        # Schema 30 (Q999a): a line of sight for `through` to sit on.
+        spec["pieces"][0]["sight"] = [{"vectors": [[1, 0]], "symmetry": "rotate4", "range": 2,
+                                       "effect": "freeze", "whose": "enemy"}]
         dotted = path.replace("[]", ".0").split(".")
         steps = tuple(int(step) if step.isdigit() else step for step in dotted)
         assert _set(spec, steps, False)
@@ -587,7 +602,7 @@ class TestNoMenuOffersARefusedDefault:
 
     def test_the_schema_names_the_true_only_switches_and_the_menus_offer_yes_alone(self) -> None:
         paths = _true_only_paths()
-        assert paths == {"pieces[].spy", "rules.contacts.links[].own"}, paths
+        assert paths == {"pieces[].spy", "rules.contacts.links[].own", "pieces[].sight[].through"}, paths
         model = cards.card_model()
         trees = {"rules": model["rules"], "pieces[]": model["piece"]}
         found = {}
@@ -596,7 +611,11 @@ class TestNoMenuOffersARefusedDefault:
                 dotted = prefix + "." + ".".join(
                     "[]" if isinstance(step, int) else str(step) for step in path)
                 found[dotted.replace(".[]", "[]")] = [o["value"] for o in menu["options"]]
-        for path in paths:
+        # A line of sight's `through` is the sight row's (Q999c), not a generated menu: its
+        # menu writes `true` or leaves the key out, never `false`, which
+        # `tests/test_sight_page.py` holds of the row's writer.
+        assert "pieces[].sight[].through" in HAND
+        for path in paths - set(HAND):
             assert found[path] == [True], (path, found.get(path))
 
 

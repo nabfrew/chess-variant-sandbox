@@ -35,6 +35,8 @@ function boardPreview(preview, map, drawn, bench) {
   const cell = 100 / Math.max(W, H);
   const view = flatView(W, H, FLIPPED, preview.lattice, boardCut(preview.absent, preview.wrap));
   const walls = new Set(preview.obstacles || []);
+  // Schema 30 (Q999g): `[[square, bits], ...]` as the core reports them for this position.
+  const effects = new Map(preview.plain ? [] : effectPairs(preview.effects));
   const moves = new Set((map && map.moves) || []);
   const takes = new Set((map && map.takes) || []);
   const drewMoves = new Set((drawn && drawn.moves) || []);
@@ -156,6 +158,13 @@ function boardPreview(preview, map, drawn, bench) {
           out += stillPieceHtml(preview, value, x, y, cell);
           if (foldEnd && (groups > 1 || !!bench)) out += foldBadgeHtml(foldEnd, x, y, cell);
         }
+      }
+      // Schema 30 (Q999g): the badges of the effects a line of sight puts on the piece, the
+      // play board's own (`effectBadges`), off the core's answer for this position (the
+      // payload's `effects`). Not on a thumbnail, which has no legend to name them by.
+      if (value && effects.has(square)) {
+        const stride = preview.sideStride || preview.nTypes;
+        out += effectBadges(effects.get(square), x, y, cell, Math.floor((value - 1) / stride));
       }
       if (map && square === map.from) {
         out += cellShape(x, y, cell, view, 'fill="var(--hl-sel)" opacity="0.5"');
@@ -432,6 +441,8 @@ function loneBoard(preview, square, value) {
     // is holding anything in it, and no wild piece is walking (Q852).
     handsUsed: false,
     walks: undefined,
+    // ...and no line of sight is looking at it (the effects were the full board's).
+    effects: undefined,
   });
 }
 

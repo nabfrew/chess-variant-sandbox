@@ -53,8 +53,10 @@ from chess_variant_sandbox.spec.schema import (
     absent_squares,
     can_double_step,
     format_square,
+    has_sights,
     obstacle_squares,
     parse_square,
+    piece_sights,
     reflect_square,
     wrap_stated,
 )
@@ -306,6 +308,7 @@ def _build(spec: dict[str, Any]) -> NormalForm:
     setup = spec.get("setup") or {}
     written = str(setup.get("orientation", "mirror"))
     pieces = {str(piece["id"]): piece for piece in spec.get("pieces") or [] if "id" in piece}
+    pieces = _live_sights(spec, pieces)
     forms = {pid: _move_form(piece) for pid, piece in pieces.items()}
     cells = _setup_cells(spec, width, height, written)
     walls = _wall_form(spec, width, height, written)
@@ -357,7 +360,8 @@ def _key_of(form: NormalForm) -> str:
                 } | ({"beats": piece["beats"]} if "beats" in piece else {})
                   | ({"spy": piece["spy"]} if "spy" in piece else {})
                   | ({"speed": piece["speed"]} if "speed" in piece else {})
-                  | ({"rest": piece["rest"]} if "rest" in piece else {})),
+                  | ({"rest": piece["rest"]} if "rest" in piece else {})
+                  | ({"sight": _sight_form(piece)} if "sight" in piece else {})),
             )
             for pid, piece in form.pieces.items()
         )),
@@ -494,7 +498,11 @@ _PIECE_POSITIONS: dict[str, Any] = {
 
 # The same, for the fields on a piece that name another piece. `region` is squares
 # and `facing` is an angle, so neither is here. `beats` is schema 26's.
-_PIECE_FIELDS: dict[str, Any] = {"captures": _IDS, "promoted_from": _ID, "beats": _IDS}
+_PIECE_FIELDS: dict[str, Any] = {
+    "captures": _IDS, "promoted_from": _ID, "beats": _IDS,
+    # Schema 30 (Q999a): a line of sight names the types it touches.
+    "sight": [{"affects": _IDS}],
+}
 
 
 def _renamed(value: Any, shape: Any, ids: dict[str, str]) -> Any:
@@ -593,6 +601,58 @@ def _stated(piece: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
     with a removed piece has to compare equal to one that was never there.
     """
     return {key: piece[key] for key in keys if piece.get(key) is not None}
+
+
+def _stated_sight(piece: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
+    """`_stated`, with the piece's lines of sight (schema 30) in their folded form."""
+    stated = _stated(piece, keys)
+    if "sight" in piece:
+        stated["sight"] = _sight_form(piece)
+    return stated
+
+
+def _sight_form(piece: dict[str, Any]) -> list[dict[str, Any]]:
+    """A piece's lines of sight with their spelling folded out: the directions expanded, the
+    defaults written, `affects` kept as a list so a renaming reaches it. Read through
+    `schema.piece_sights`, the one reader of the key."""
+    out = []
+    for sight in piece_sights([piece]).get(str(piece.get("id")), ()):
+        dirs: set[tuple[int, int]] = set()
+        for vector in sight.vectors:
+            dirs |= expand_symmetry(vector, sight.symmetry)
+        entry: dict[str, Any] = {
+            "dirs": sorted(dirs),
+            "range": sight.range,
+            "min_range": sight.min_range,
+            "effect": sight.effect,
+            "whose": sight.whose,
+            # A one-step line has nothing between to see through: a ray and an aura there
+            # see the same squares and compile to the same table, so they are one game.
+            "through": sight.through and sight.range != 1,
+        }
+        if sight.affects is not None:
+            entry["affects"] = list(sight.affects)
+        out.append(entry)
+    return out
+
+
+def _live_sights(
+    spec: dict[str, Any], pieces: dict[str, dict[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    """The pieces, with a `sight` taken off wherever the compiler keeps none (schema 30,
+    `docs/plan-passive.md` §4.3): a sight the compiled game does not carry is no rule, as an
+    inert `rules` value is none (`_live_rules`). The compiler builds a type's sight entries
+    from `schema.piece_sights` and no table at all when that reads none
+    (`compile._compile_sights`), so asking the same reader is asking the compiler, without a
+    compile per normal form (`tests/test_passive_surfaces.py` holds the two together)."""
+    if not has_sights(spec):
+        return pieces
+    kept = piece_sights(spec)
+    return {
+        pid: piece if pid in kept or "sight" not in piece
+        else {key: value for key, value in piece.items() if key != "sight"}
+        for pid, piece in pieces.items()
+    }
 
 
 def _mentions(value: Any) -> bool:
@@ -950,9 +1010,10 @@ def _compare(
         # Schema 27 (Q935a): a spy is a fact about the piece that decides the turn; schema
         # 28's speed (Q943a) one that decides when its move is made in a round; schema 29's
         # rest (Q983a) one that decides when it may move again.
+        # Schema 30's sight (Q999a) one that decides what the pieces it sees may do.
         rest = ("region", "promoted_from", "beats", "spy", "speed", "rest")
-        if _folded(_stated(one, rest), _PIECE_FIELDS, ids_a) != _folded(
-            _stated(other, rest), _PIECE_FIELDS, ids_b
+        if _folded(_stated_sight(one, rest), _PIECE_FIELDS, ids_a) != _folded(
+            _stated_sight(other, rest), _PIECE_FIELDS, ids_b
         ):
             found.append(Difference("pieces", "piece.other", words.stands()))
     # Who may take whom is one rule however many pieces carry a list. `chess / wolves`
@@ -1295,6 +1356,10 @@ def rules_involved(form: NormalForm) -> frozenset[str]:
     # Schema 29 (Q983a): a rest changes which piece may make a turn's move, so it is a rule.
     if any("rest" in piece for piece in form.pieces.values()):
         involved.add("piece.rest")
+    # Schema 30 (Q999a): a line of sight changes what the pieces it sees may do, so it is a
+    # rule; held only where the compiler keeps it (`_live_sights`).
+    if any("sight" in piece for piece in form.pieces.values()):
+        involved.add("piece.sight")
     return frozenset(involved)
 
 

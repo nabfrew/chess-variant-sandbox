@@ -36,7 +36,10 @@ reads the text: Python writes it in the browser and Python reads it here.
 3. **The walk asks the core at every ply** (`CLAUDE.md` rule 3). A move after a terminal
    position, a move outside `Engine.legal_moves`, moves that stop before the game ends, and
    a stated winner or reason that differ from the core's verdict are refused, each naming
-   the game and the ply. The same walk rebuilds the series and the analysis fields.
+   the game and the ply. The same walk rebuilds the series and the analysis fields. A
+   game in rounds and a spy game are walked a step at a time, each round's two moves
+   checked against their own seat's list and resolved together by the core, and the
+   round, spy and sight tallies rebuilt as the native pass writes them (Q1000).
 4. **The analysis covers the graded games, and the trials are the sampler's.** Which games
    the pass grades and which it forces a blunder into are functions of the records, so the
    server lists both and refuses a submission that covers others.
@@ -96,11 +99,11 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from chess_variant_sandbox import corpus
 from chess_variant_sandbox.agents.evaluation import Evaluator
-from chess_variant_sandbox.engine import Engine
+from chess_variant_sandbox.engine import Engine, GameState, SpyPhase
 from chess_variant_sandbox.engine.moves import move_from
 from chess_variant_sandbox.measurement import Basis, built_fingerprint
 from chess_variant_sandbox.metrics.scoring import WeightsError
@@ -111,13 +114,24 @@ from chess_variant_sandbox.tournament.analysis import (
     BLUNDER_FRACTION,
     BLUNDER_SAMPLE,
     PLY_STRIDE,
+    SPY_COUNTS,
     BlunderTrial,
     CorpusAnalysis,
     GameAnalysis,
+    SpyStep,
+    _count_round,
+    _count_sight,
     _mover_kind,
     _moves_an_instance,
+    _round_tallies,
+    _sight_tally,
+    _spy_round_blunder,
     _starting_squares,
     _takes,
+    blunder_rng,
+    round_blunder,
+    spy_holders,
+    spy_loss,
 )
 from chess_variant_sandbox.tournament.record import GameRecord
 from chess_variant_sandbox.tournament.runner import TournamentConfig
@@ -332,7 +346,7 @@ def check(spec: dict[str, Any], sent: Upload, current: Basis) -> Checked:
 
     records = [step.record for step in walked]
     analyses = rebuilt_analyses(records, walked, analyses_sent)
-    trials = rebuilt_trials(records, walked, trials_sent, roster.seed)
+    trials = rebuilt_trials(records, walked, trials_sent, roster.seed, engine)
     return Checked(
         spec=spec,
         roster=roster,
@@ -558,6 +572,27 @@ def same_schedule(
 # ---------------------------------------------------------------------- the walk
 
 
+class Step(NamedTuple):
+    """One step of a game that is not walked a ply at a time (Q1000): a turn's one move or
+    a round's two in seat order, the position they were chosen on and each mover's legal
+    moves there, the position after, the round's events, and a spy game's phase (`None` in
+    a game in rounds, which has no phases)."""
+
+    ply: int
+    state: GameState
+    moves: tuple[int, ...]
+    lists: tuple[list[int], ...]
+    after: GameState
+    events: tuple[tuple[int, int, int], ...]
+    phase: SpyPhase | None
+
+    def as_spy_step(self) -> SpyStep:
+        assert self.phase is not None
+        return SpyStep(
+            self.ply, self.state, self.phase, self.moves, self.lists, self.after, self.events
+        )
+
+
 @dataclass
 class Walked:
     """One game walked: the server's copy of it, and what the positions said on the way."""
@@ -566,9 +601,46 @@ class Walked:
     # Every analysis field but `near_best`, as `analysis._analyse_game` reads them.
     positions: GameAnalysis
     # The side to move and the number of legal moves at the ply a blunder trial forces
-    # its move into, which is all of a trial the positions decide.
+    # its move into, which is all of an alternating game's trial the positions decide.
     blunder_side: int = 0
     blunder_choices: int = 0
+    # In a game in rounds or a spy game, the step the trial's ply falls in, or `None` when
+    # no step holds it. Whether such a trial forces anything is the probe's reading of that
+    # step (`trial_side`), which only a game the sampler draws pays for.
+    trial: Step | None = None
+    stepped: bool = False
+
+
+def trial_side(engine: Engine | None, walked: Walked, seed: int) -> int | None:
+    """The side a game's blunder trial forces its move into, or `None` where the pass's
+    trial (`analysis._one_blunder`) finds none to force.
+
+    An alternating game's is the walk's: a trial needs two legal moves at its ply. A turn of
+    a spy game reads the same. A round's is the pass's own reading of its step, every part
+    of `_one_blunder` but the playout: `analysis.round_blunder` (a move short of the best
+    against the mix, other than the one played) in a game in rounds or a blind round, and
+    `analysis._spy_round_blunder` in an announced one, where a blunder forced into the
+    announcer is answered by the record's player, asked of the core. Each draws on the
+    trial's own stream (`blunder_rng`), as the pass's does, so the same move is drawn.
+    `engine` is needed only for a game walked in steps.
+    """
+    if not walked.stepped:
+        return walked.blunder_side if walked.blunder_choices >= 2 else None
+    if engine is None:
+        raise ValueError("a game walked in steps needs its engine to draw its trial")
+    step = walked.trial
+    if step is None:
+        return None
+    if len(step.moves) == 1:
+        return step.state.side_to_move if len(step.lists[0]) >= 2 else None
+    record = walked.record
+    seat = int(record.plies * BLUNDER_FRACTION) - step.ply
+    rng = blunder_rng(seed, record)
+    if step.phase is not None:
+        pair = _spy_round_blunder(engine, record, step.as_spy_step(), seat, rng)
+        return None if pair is None else seat
+    forced = round_blunder(engine, step.state, seat, step.moves[seat], rng)
+    return None if forced is None else seat
 
 
 def walk(
@@ -592,9 +664,14 @@ def walk(
     core's own. Without it the series are empty.
 
     The analysis fields are `analysis._analyse_game`'s reading of the same positions,
-    without the probe search that only `near_best` needs.
+    without the probe search that only `near_best` needs, the sight tallies
+    (`analysis.SIGHT_SERIES`) among them where the game has a line of sight.
     `tests/test_site_legality.py` holds this copy to that one field by field.
+
+    A game in rounds and a spy game are walked a step at a time (`_walk_steps`, Q1000).
     """
+    if engine.spy or engine.simultaneous:
+        return _walk_steps(engine, evaluator, record, phase=phase, game=game, series=series)
     called = _CALLED[phase]
     n_types = engine.spec.n_types
     moves = list(record.moves)
@@ -615,6 +692,7 @@ def walk(
     material: list[float] = []
     captures: list[int] = []
     blunder = (0, 0)
+    sight = _sight_tally(engine)
 
     for ply, move in enumerate(moves):
         legal = engine.legal_moves(state)
@@ -657,6 +735,7 @@ def walk(
             # so that the two read every game alike.
             counting = False
         else:
+            _count_sight(engine, sight, state, state.side_to_move)
             if _moves_an_instance(move) and move_from(move) in starting:
                 moved.add(move_from(move))
             moves_by_type[kind] += 1
@@ -681,27 +760,7 @@ def walk(
     outcome = engine.terminal(state, legal)
     if target == len(moves):
         blunder = (state.side_to_move, len(legal))
-    if outcome is None:
-        raise Refused(
-            UNFINISHED,
-            f"game {game} of {called} (seed {record.seed}) stops after ply "
-            f"{len(moves) - 1}, and the game is not over there",
-            phase=phase,
-            game=game,
-            seed=record.seed,
-            ply=len(moves),
-        )
-    if outcome.winner != record.winner or outcome.reason != record.reason:
-        raise Refused(
-            WRONG_OUTCOME,
-            f"game {game} of {called} (seed {record.seed}) ends in "
-            f"{_ending(outcome.winner, outcome.reason)}, and the submission says "
-            f"{_ending(record.winner, record.reason)}",
-            phase=phase,
-            game=game,
-            seed=record.seed,
-            ply=len(moves),
-        )
+    _held_to_its_verdict(outcome, record, phase=phase, game=game, plies=len(moves))
 
     rebuilt = replace(
         record,
@@ -727,6 +786,7 @@ def walk(
         starting_instances=len(starting),
         moved_instances=len(moved),
         position_keys=keys,
+        sight=sight,
     )
     return Walked(
         record=rebuilt,
@@ -734,6 +794,229 @@ def walk(
         blunder_side=blunder[0],
         blunder_choices=blunder[1],
     )
+
+
+def _held_to_its_verdict(
+    outcome: Any, record: GameRecord, *, phase: str, game: int, plies: int
+) -> None:
+    """Refuse a game whose moves stop before the core's verdict, or end in another one."""
+    called = _CALLED[phase]
+    if outcome is None:
+        raise Refused(
+            UNFINISHED,
+            f"game {game} of {called} (seed {record.seed}) stops after ply "
+            f"{plies - 1}, and the game is not over there",
+            phase=phase,
+            game=game,
+            seed=record.seed,
+            ply=plies,
+        )
+    if outcome.winner != record.winner or outcome.reason != record.reason:
+        raise Refused(
+            WRONG_OUTCOME,
+            f"game {game} of {called} (seed {record.seed}) ends in "
+            f"{_ending(outcome.winner, outcome.reason)}, and the submission says "
+            f"{_ending(record.winner, record.reason)}",
+            phase=phase,
+            game=game,
+            seed=record.seed,
+            ply=plies,
+        )
+
+
+def _walk_steps(
+    engine: Engine,
+    evaluator: Evaluator,
+    record: GameRecord,
+    *,
+    phase: str,
+    game: int,
+    series: bool,
+) -> Walked:
+    """`walk` for a game in rounds (schema 26) and a spy game (schema 27), a step at a time.
+
+    A step is a round in a game in rounds; in a spy game it is what the core's phase says,
+    a turn of one move or a round of two. A round's two moves are each checked against
+    their own seat's legal list on the round's board and resolved together by the core
+    (`Engine.apply_round_with_phase`); a record cut inside a round is refused as
+    unfinished. The series are the round loop's (`play._play_rounds_python`,
+    `_play_spy_python`): once a turn, and twice a round, each seat's own branching. The
+    analysis fields are `analysis._analyse_rounds`' and `_analyse_spy`'s reading, the
+    round and spy tallies and the sights among them, through the pass's own counters
+    (`_count_round`, `_count_sight`, `spy_holders`, `spy_loss`). A step is sampled where the
+    pass samples it, and gives a sample for each seat with a choice when both have a move,
+    which is when the pass's reading of a round exists.
+    """
+    called = _CALLED[phase]
+    n_types = engine.spec.n_types
+    moves = list(record.moves)
+    target = int(len(moves) * BLUNDER_FRACTION)
+    spy = engine.spy
+
+    state = engine.initial_state()
+    starting = _starting_squares(engine, state.board)
+    moved: set[int] = set()
+    seen = {state.key}
+    keys: list[int] = []
+    revisited = 0
+    moves_by_type = [0] * n_types
+    captures_by_type = [0] * n_types
+    legal_counts: list[int] = []
+    capture_counts: list[int] = []
+    branching: list[int] = []
+    material: list[float] = []
+    captures: list[int] = []
+    rounds = _round_tallies(engine)
+    spies: dict[str, Any] | None = (
+        {key: (None if key.startswith("lost_") else 0) for key in SPY_COUNTS} if spy else None
+    )
+    sight = _sight_tally(engine)
+    trial: Step | None = None
+
+    def refuse(name: str, sentence: str, ply: int) -> Refused:
+        return Refused(
+            name,
+            f"game {game} of {called} (seed {record.seed}) {sentence}",
+            phase=phase,
+            game=game,
+            seed=record.seed,
+            ply=ply,
+        )
+
+    ply = 0
+    while True:
+        step_phase = engine.phase(state) if spy else None
+        if step_phase is None or step_phase.is_round:
+            lists: tuple[list[int], ...] = (
+                engine.legal_moves_for(state, 0),
+                engine.legal_moves_for(state, 1),
+            )
+            outcome = engine.terminal(state)
+        else:
+            lists = (engine.legal_moves(state),)
+            outcome = engine.terminal(state, lists[0])
+        if ply >= len(moves):
+            break
+        if outcome is not None:
+            raise refuse(
+                AFTER_TERMINAL,
+                f"plays on at ply {ply}, after the game ended "
+                f"({_ending(outcome.winner, outcome.reason)})",
+                ply,
+            )
+        words = tuple(moves[ply:ply + len(lists)])
+        if len(words) < len(lists):
+            raise refuse(
+                UNFINISHED,
+                f"stops after ply {len(moves) - 1}, one move into a round of two",
+                len(moves),
+            )
+        for offset, (move, legal) in enumerate(zip(words, lists, strict=True)):
+            if move not in legal:
+                whose = f" (seat {offset}'s move in a round)" if len(words) == 2 else ""
+                raise refuse(
+                    ILLEGAL_MOVE, f"plays an illegal move at ply {ply + offset}{whose}",
+                    ply + offset,
+                )
+
+        board = state.board
+        seats = (state.side_to_move,) if len(words) == 1 else (0, 1)
+        if series:
+            branching.extend(len(legal) for legal in lists)
+            value = round(evaluator.material(state, 0), 4)
+            material.extend([value] * len(words))
+        for seat in seats:
+            _count_sight(engine, sight, state, seat)
+        for move in words:
+            kind = _mover_kind(engine, board, move)
+            if kind is None:  # pragma: no cover - a legal move stands on its origin
+                continue
+            if _moves_an_instance(move) and move_from(move) in starting:
+                moved.add(move_from(move))
+            moves_by_type[kind] += 1
+            if _takes(board, move):
+                captures_by_type[kind] += 1
+
+        # The pass's sampling: a ply of the step on the stride in a spy game (a round
+        # there may start on an odd ply), the round's first ply in a game in rounds.
+        sampled = (
+            any((ply + k) % PLY_STRIDE == 0 for k in range(len(words)))
+            if spy
+            else ply % PLY_STRIDE == 0
+        )
+        if sampled and all(lists):
+            for legal in lists:
+                if len(legal) > 1:
+                    legal_counts.append(len(legal))
+                    capture_counts.append(sum(1 for m in legal if _takes(board, m)))
+
+        events: tuple[tuple[int, int, int], ...] = ()
+        if len(words) == 2:
+            after, _, events = engine.apply_round_with_phase(state, words[0], words[1])
+        else:
+            after = engine.apply(state, words[0])
+        if series:
+            captures.extend([1 if after.halfmove == 0 else 0] * len(words))
+        step = Step(ply, state, words, lists, after, events, step_phase)
+        if ply <= target < ply + len(words):
+            trial = step
+
+        if len(words) == 2:
+            _count_round(rounds, words, events)
+        if spies is not None and step_phase is not None:
+            if len(words) == 1:
+                turn = "alternating_plies" if step_phase.name == "alternating" else "reply_turns"
+                spies[turn] += 1
+            else:
+                spies[f"{step_phase.name}_rounds"] += 1
+        # One key a turn and the key after a round twice, a revisit counted on both, as
+        # every per-ply series is written.
+        keys.extend([after.key] * len(words))
+        if after.key in seen:
+            revisited += len(words)
+        else:
+            seen.add(after.key)
+        if spies is not None and step_phase is not None:
+            lost = spy_holders(step_phase, state.side_to_move) - spy_holders(
+                engine.phase(after), after.side_to_move
+            )
+            for player in sorted(lost):
+                spies[f"lost_ply_{player}"] = len(keys)
+                spies[f"lost_how_{player}"] = spy_loss(engine, step.as_spy_step(), player)
+
+        state = after
+        ply += len(words)
+
+    _held_to_its_verdict(outcome, record, phase=phase, game=game, plies=len(moves))
+    rebuilt = replace(
+        record,
+        ruleset_hash=engine.spec.hash,
+        ruleset_name=engine.spec.name,
+        agents=(str(record.agents[0]), str(record.agents[1])),
+        moves=moves,
+        plies=len(moves),
+        branching=branching,
+        material=material,
+        captures=captures,
+    )
+    positions = GameAnalysis(
+        seed=record.seed,
+        agents=rebuilt.agents,
+        near_best=[],
+        legal_counts=legal_counts,
+        moves_by_type=moves_by_type,
+        captures_by_type=captures_by_type,
+        capture_counts=capture_counts,
+        revisited_plies=revisited,
+        walked_plies=len(keys),
+        starting_instances=len(starting),
+        moved_instances=len(moved),
+        position_keys=keys,
+        rounds=rounds,
+        spy=spies,
+        sight=sight,
+    )
+    return Walked(record=rebuilt, positions=positions, trial=trial, stepped=True)
 
 
 def _ending(winner: int | None, reason: str) -> str:
@@ -798,19 +1081,25 @@ def rebuilt_trials(
     walked: Sequence[Walked],
     sent: Sequence[BlunderTrial],
     seed: int,
+    engine: Engine | None = None,
 ) -> list[BlunderTrial]:
     """The blunder trials the server stores: the sampler's games, the sent new winners.
 
     Which games get a trial is `_blunder_choices`' draw over the records, and a chosen
-    game with fewer than two legal moves at the trial's ply has none, as
-    `analysis._one_blunder` rules. The ply, the original winner and the side made to
-    blunder are the walk's. The new winner is the one field a trial's playout decides,
-    and tier two replays a sample of them.
+    game whose trial finds no move to force has none, as `analysis._one_blunder` rules
+    (`trial_side`: fewer than two legal moves at the trial's ply, or in a round no move
+    short of the best). The ply, the original winner and the side made to blunder are the
+    walk's. The new winner is the one field a trial's playout decides, and tier two
+    replays a sample of them. `engine` is needed only for a game walked in steps, whose
+    rounds the probe reads.
     """
     units = slices.blunder_units(records, 1, BLUNDER_SAMPLE, seed)
-    chosen = [
-        index for index in (units[0].games if units else ()) if walked[index].blunder_choices >= 2
-    ]
+    sides: dict[int, int] = {}
+    for index in units[0].games if units else ():
+        side = trial_side(engine, walked[index], seed)
+        if side is not None:
+            sides[index] = side
+    chosen = list(sides)
     if len(sent) != len(chosen):
         raise Refused(
             BLUNDER,
@@ -846,7 +1135,7 @@ def rebuilt_trials(
                 agents=record.agents,
                 ply=int(record.plies * BLUNDER_FRACTION),
                 original_winner=record.winner,
-                blundering_side=walked[index].blunder_side,
+                blundering_side=sides[index],
                 new_winner=trial.new_winner,
             )
         )

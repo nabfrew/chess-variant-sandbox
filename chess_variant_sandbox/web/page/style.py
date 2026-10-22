@@ -1485,6 +1485,21 @@ RULES = """
   .moveMore > summary { cursor: pointer; width: max-content; }
   .moveMoreBody { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: flex-end;
                   margin-top: 4px; }
+  /* A piece's lines of sight (schema 30, Q999c): rows built like a way of moving's, under a
+     head of their own, the widths keyed off the field each control writes. */
+  .sightRows { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 6px; }
+  .sightHead { line-height: 1.35; }
+  .sightRow [data-sfor="effect"] { width: 104px; }
+  .sightRow [data-sfor="whose"] { width: 136px; }
+  .sightRow [data-sfor="vectors"] { flex: 1 1 110px; min-width: 96px; }
+  .sightRow [data-sfor="symmetry"] { width: 118px; }
+  .sightRow [data-sfor="through"] { width: 172px; }
+  .sightRow [data-sfor="range"], .sightRow [data-sfor="min_range"] { width: 74px; }
+  .sightAffects { display: grid; gap: 2px; flex: 1 1 100%; }
+  .sightPicks { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+  .sightPick { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; }
+  .moveRow .sightPick input { width: auto; min-height: 0; padding: 0; }
+  .sightError { margin-top: 4px; }
   /* Rule cards, generated from the schema. A sub-card is indented under its parent so
      a nested clause reads as belonging to the rule it is in. They sit inside the rules'
      panel, so each is a row apart by a rule, never a box inside it (V8, §3.4). */

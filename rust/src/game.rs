@@ -29,6 +29,9 @@ pub use spy::Phase;
 #[path = "rest.rs"]
 mod rest;
 pub use rest::{rest_lists_from, RestLists, NO_REST};
+// Schema 30 (Q999a): lines of sight with passive effects, one query for movegen and attack.
+#[path = "sight.rs"]
+mod sight;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Reason {
@@ -1112,7 +1115,10 @@ impl<'t> Game<'t> {
     #[inline]
     fn threatened_as(&self, by: usize, square: usize, victim: usize) -> bool {
         (match self.t.portals.as_deref() {
-            None => self.attacks_square_as(by, square, victim),
+            None => match self.t.sight.as_deref() {
+                None => self.attacks_square_as(by, square, victim),
+                Some(sight) => self.attacks_in_sight_game(sight, by, square, Some(victim)),
+            },
             Some(portals) => self.attacks_in_portal_game(portals, by, square, Some(victim)),
         }) || (self.t.has_npcs && self.attacks_square_as(WILD, square, victim))
     }
@@ -1127,7 +1133,13 @@ impl<'t> Game<'t> {
     #[inline(always)]
     fn attacks_any(&self, player: usize, square: usize) -> bool {
         match self.t.portals.as_deref() {
-            None => self.attacks_square(player, square),
+            // Schema 30 (Q999a): a game with a sight reads attack under its effects (a frozen
+            // or disarmed piece attacks nothing, a shielded one is attacked by nothing), the
+            // third arm; portals are refused beside a sight, so the arms never meet.
+            None => match self.t.sight.as_deref() {
+                None => self.attacks_square(player, square),
+                Some(sight) => self.attacks_in_sight_game(sight, player, square, None),
+            },
             Some(portals) => self.attacks_in_portal_game(portals, player, square, None),
         }
     }
@@ -2807,7 +2819,14 @@ impl<'t> Game<'t> {
         if self.t.portals.as_deref().is_some_and(|portals| portals.folds.is_some()) {
             return self.generate_folded(out);
         }
-        self.generate_pseudo_legal_as::<false>(out)
+        // Schema 30 (Q999a, `docs/plan-passive.md` §3.4): the sight's filter binds every
+        // caller of the generator; one null test in a game without one. Portals (and so
+        // folds) are refused beside a sight, so the fold copy above never needs it.
+        let base = out.len();
+        self.generate_pseudo_legal_as::<false>(out);
+        if let Some(sight) = self.t.sight.as_deref() {
+            self.sight_filter(sight, out, base);
+        }
     }
 
     /// Schema 22: `generate_pseudo_legal` for a game with folds, out of line so the copy
@@ -4186,6 +4205,12 @@ impl<'t> Game<'t> {
                     //   touched, and a quiet move can open a landing beyond a royal.
                     // * `portals` (schema 19) move, and a move off any line through one
                     //   can open a check that comes out of the other end.
+                    //
+                    // A sight (schema 30) that bears on check widens the premise rather than
+                    // dropping it: a move can also thaw an attacker or bare the royal, but
+                    // only by touching a source of an effect that binds now, or its ray
+                    // (`effect_lines`, `docs/plan-passive.md` §3.5's second lever), so those
+                    // squares join the hop lines below.
                     if t.explosion.is_some()
                         || t.royal_facing_forbidden
                         || t.has_npcs
@@ -4205,11 +4230,16 @@ impl<'t> Game<'t> {
                     } else {
                         // Out of check: pin shortcut
                         let pinned = self.pinned_squares(1 - player, royal);
-                        let hop_lines = if t.has_hop_attacks {
+                        let mut hop_lines = if t.has_hop_attacks {
                             t.hop_line(1 - player, royal)
                         } else {
                             SquareSet::EMPTY
                         };
+                        if let Some(sight) = t.sight.as_deref() {
+                            if sight.bears_on_check {
+                                hop_lines = hop_lines.union(&self.effect_lines(sight, player, royal));
+                            }
+                        }
                         let hop_relevant = !hop_lines.is_empty();
 
                         let has_strike = t.strike.is_some();

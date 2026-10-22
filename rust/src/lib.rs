@@ -536,6 +536,28 @@ impl Core {
         Ok((phase.name(), phase.announcer()))
     }
 
+    /// Schema 30 (Q999a, `docs/plan-passive.md` §3.4): the effects on this board. Each
+    /// square's effect bits (`1` freeze, `2` disarm, `4` shield, on the piece standing there,
+    /// for its owner), how many of the side to move's moves the effects removed, by reason
+    /// (freeze, disarm, shield), and whether the side to move's royal stands under an attack
+    /// the effects suppressed. Zeros in a game without a sight. Python asks; the core answers.
+    fn effects(&self, state: StateIn) -> (Vec<u8>, (u32, u32, u32), bool) {
+        let snapshot = snapshot_from(&self.tables, &state);
+        let report = Game::from_snapshot(&self.tables, &snapshot).effects_report();
+        let [freeze, disarm, shield] = report.removed;
+        (report.bits, (freeze, disarm, shield), report.suppressed)
+    }
+
+    /// Schema 30: the squares the piece on `square` sees on this board, each with the effect
+    /// bits of the sights that see it, ascending. Empty for an empty square.
+    fn sight_of(&self, state: StateIn, square: usize) -> PyResult<Vec<(usize, u8)>> {
+        if square >= self.tables.n_squares {
+            return Err(pyo3::exceptions::PyValueError::new_err("square off the board"));
+        }
+        let snapshot = snapshot_from(&self.tables, &state);
+        Ok(Game::from_snapshot(&self.tables, &snapshot).sight_of(square))
+    }
+
     fn in_check(&self, state: StateIn, player: u8) -> bool {
         let snapshot = snapshot_from(&self.tables, &state);
         Game::from_snapshot(&self.tables, &snapshot).in_check(player as usize)

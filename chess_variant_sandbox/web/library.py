@@ -1354,7 +1354,8 @@ def pieces(game: Game) -> list[dict[str, Any]]:
     it, so a guide that showed one icon per piece would be showing half of some games'
     boards and claiming it was all of them.
     """
-    from chess_variant_sandbox.spec.describe import describe_pieces
+    from chess_variant_sandbox.spec.describe import describe_pieces, sight_sentence
+    from chess_variant_sandbox.spec.schema import piece_sights
 
     compiled = engine_for(game.spec).spec
     art = icons_for(
@@ -1366,10 +1367,24 @@ def pieces(game: Game) -> list[dict[str, Any]]:
     # compiled table's (0 where none is written); absent in a game without a speed.
     sim = compiled.simultaneous
     speeds = sim.speed if sim is not None else ()
+    # Schema 30 (Q999c, `docs/plan-passive.md` §4.6): each piece's lines of sight, one
+    # sentence each in `describe`'s words (`sight_sentence`) with the effect it carries, for
+    # the board's line under a picked piece; absent on a piece that sees nothing. The card's
+    # notes already say them, with *see the rules*.
+    sights = piece_sights(game.spec)
+    names = dict(zip(compiled.piece_ids, compiled.piece_names, strict=True))
+    hexy = (game.spec.get("board") or {}).get("lattice") == "hex"
     return [
         {
             **prose.as_dict(),
             **({"speed": speeds[index]} if speeds else {}),
+            **(
+                {"sights": [
+                    {"effect": sight.effect, "words": sight_sentence(sight, names, hexy)}
+                    for sight in sights[prose.id]
+                ]}
+                if prose.id in sights else {}
+            ),
             "icon": (art[index][0] or {}).get("href"),
             "icons": [
                 None if icon is None else {"href": icon["href"], "rotate": icon["rotate"]}

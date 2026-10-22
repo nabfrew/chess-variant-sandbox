@@ -197,3 +197,29 @@ class SpyPhase:
     def is_round(self) -> bool:
         """Whether this step is a round (both players move) rather than one move."""
         return self.name in ("announced", "blind")
+
+
+@dataclass(frozen=True, slots=True)
+class Effects:
+    """The effects of lines of sight on one board (schema 30, Q999a; `docs/plan-passive.md`
+    §3.4), as the core reports them (`Engine.effects`). Not part of a position: an effect is a
+    function of the board.
+
+    ``bits[square]`` is the effect bits on the piece standing there, for its owner
+    (``compile.SIGHT_FREEZE`` 1, ``SIGHT_DISARM`` 2, ``SIGHT_SHIELD`` 4), 0 on an empty
+    square. ``frozen``, ``disarmed`` and ``shielded`` count the side to move's moves the
+    effects removed for each reason (a move barred two ways counts once, under the first).
+    ``suppressed`` is whether the side to move's royal stands under an attack the effects
+    suppressed: a frozen or disarmed attacker, or a shielded royal.
+    """
+
+    bits: tuple[int, ...]
+    frozen: int
+    disarmed: int
+    shielded: int
+    suppressed: bool
+
+    @property
+    def binds(self) -> bool:
+        """Whether the effects removed any move of the side to move."""
+        return self.frozen + self.disarmed + self.shielded > 0

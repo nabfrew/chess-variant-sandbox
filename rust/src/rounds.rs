@@ -202,7 +202,9 @@ impl<'t> Game<'t> {
         self.put(target, 0);
         self.side = player;
         let mut moves = Vec::new();
-        self.generate_pseudo_legal(&mut moves);
+        // The movement tables alone (schema 30, `docs/plan-passive.md` §2.8): the move was
+        // already offered under the round's effects, and emptying a square can change them.
+        self.generate_movement(&mut moves);
         self.side = saved;
         self.put(target, standing);
         moves.iter().any(|&other| {

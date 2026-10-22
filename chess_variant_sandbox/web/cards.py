@@ -41,7 +41,14 @@ from typing import Any
 from chess_variant_sandbox.spec.describe import RULE_ALSO_CALLED
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
 from chess_variant_sandbox.spec.plain import KIND_WORDS, OPTION_WORDS, REST_WORDS, field_words
-from chess_variant_sandbox.spec.schema import SHAPES, WRAP_PAIRS, wrap_axes
+from chess_variant_sandbox.spec.schema import (
+    SHAPES,
+    SIGHT_EFFECTS,
+    SIGHT_MAX,
+    SIGHT_WHOSE,
+    WRAP_PAIRS,
+    wrap_axes,
+)
 
 # Paths are dotted from the spec's top, with `[]` for "every item of".
 PIECE_PATHS = frozenset({
@@ -100,7 +107,9 @@ TEXT_PATHS = frozenset({
 
 # What the hand-written form already edits. Every other key gets a generated field.
 OWNED = {
-    "piece": frozenset({"id", "name", "value", "royal", "moves"}),
+    # Schema 30 (Q999c, `docs/plan-passive.md` §4.7): a piece's lines of sight are rows of the
+    # hand-written form (`sightEditor` in `design.js`), built from the move row's pickers.
+    "piece": frozenset({"id", "name", "value", "royal", "moves", "sight"}),
     "move": frozenset({"kind", "vectors", "symmetry", "range", "min_range", "mode",
                        "condition.from_rank"}),
     "placement": frozenset({"piece", "player", "squares"}),
@@ -165,7 +174,28 @@ def card_model(corpus: Iterable[dict[str, Any]] = ()) -> dict[str, Any]:
         "alsoCalled": {key: list(names) for key, names in RULE_ALSO_CALLED.items()},
         # *Every piece rests n* beside *add a piece*, in `spec.plain`'s words (Q995d).
         "restWords": REST_WORDS,
+        # Schema 30 (Q999c): what the sight rows offer, the schema's own (`sight_kit`).
+        "sight": sight_kit(),
     }
+
+
+# The sight row's fields, by the key the row writes, each labelled and said in `spec.plain`'s
+# words (`field_words`), so the row and a refusal that names one of them say the same thing.
+SIGHT_FIELDS = ("effect", "whose", "vectors", "symmetry", "through", "range", "min_range",
+                "affects")
+
+
+def sight_kit() -> dict[str, Any]:
+    """What the designer's sight rows offer (schema 30, Q999c, `docs/plan-passive.md` §4.7):
+    how many a piece may have, the effects and whose in the schema's order, and each field's
+    label and sentence. The row's menus are held to these by a test."""
+    words: dict[str, list[str]] = {}
+    for key in ("", *SIGHT_FIELDS):
+        found = field_words("pieces.sight" + (f".{key}" if key else ""))
+        assert found is not None, key
+        words[key or "sight"] = [found[0], found[1] or ""]
+    return {"max": SIGHT_MAX, "effects": list(SIGHT_EFFECTS), "whose": list(SIGHT_WHOSE),
+            "words": words}
 
 
 def shape_keys() -> dict[str, dict[str, list[str]]]:

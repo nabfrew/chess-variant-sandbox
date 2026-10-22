@@ -1,0 +1,54 @@
+{
+  "schema_version": 30,
+  "name": "chess with daunting knights",
+  "description": "Chess, except that a knight takes the fight out of the enemy pieces it eyes. Any enemy piece standing a knight's jump from a knight cannot capture: while the knight stays, that piece may still move, block and be taken, but it takes nothing, threatens nothing and gives no check. A knight's jump is not a line, so nothing can be put in the way; the effect ends only when one of the two moves off or is taken. The king is no exception. A king a knight's jump from an enemy knight cannot take anything, so a knight's check also stops the king capturing a piece beside it, and a knight and a queen can mate a king that could have taken the queen in ordinary chess. Two knights a jump apart disarm each other, so a knight never takes a knight. The trade-off the rule forces is about defenders. A disarmed piece guards nothing, so a knight placed a jump from a defender quietly unguards everything that defender was holding, without ever capturing; the knights become the pieces that take a defence apart, and every move a defender makes to step out of a knight's eye is a move it is not defending.",
+  "board": {"width": 8, "height": 8},
+  "pieces": [
+    {"id": "P", "name": "pawn", "value": 1,
+     "moves": [
+       {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+       {"kind": "slide", "vectors": [[0, 1]], "range": 2, "min_range": 2, "mode": "move", "condition": {"from_rank": 1}},
+       {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+     ]},
+    {"id": "N", "name": "knight", "value": 3,
+     "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}],
+     "sight": [{"vectors": [[1, 2]], "symmetry": "dihedral8", "range": 1, "effect": "disarm", "whose": "enemy"}]},
+    {"id": "B", "name": "bishop", "value": 3,
+     "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}]},
+    {"id": "R", "name": "rook", "value": 5,
+     "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]},
+    {"id": "Q", "name": "queen", "value": 9,
+     "moves": [{"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]},
+    {"id": "K", "name": "king", "value": 0, "royal": true,
+     "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]}
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2"]},
+      {"piece": "R", "squares": ["a1", "h1"]},
+      {"piece": "N", "squares": ["b1", "g1"]},
+      {"piece": "B", "squares": ["c1", "f1"]},
+      {"piece": "Q", "squares": ["d1"]},
+      {"piece": "K", "squares": ["e1"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": "last", "to": ["Q", "R", "B", "N"]},
+    "en_passant": true,
+    "castling": {"king": "K", "rook": "R", "king_steps": 2},
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "added": "2026-10-22",
+    "preview": "A preview: a new kind of game in which pieces act on each other by line of sight, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
+    "origin": "designed",
+    "source": "docs/plan-passive.md, Q999d: the one-change showcases of schema 30's lines of sight (section 6.1, S3)",
+    "history": "S3 of docs/plan-passive.md section 6.1, pre-registered 2026-10-21 before schema 30 was built: chess (4c1922ffae26) with the knight given one sight, its own eight jump squares, that disarms enemy pieces of every type. The request's may not capture, and the one effect that strikes at royals without freezing them. Written by Q999a as a test spec (tests/_sight_daunting_knights.json, the same mechanics) and archived by Q999d (2026-10-22) exactly as registered; its control is chess's library measurement on the same roster (section 6.2).",
+    "parents": ["4c1922ffae26"]
+  }
+}

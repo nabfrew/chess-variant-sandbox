@@ -129,6 +129,10 @@ class GameAnalysis:
     # each, and each player's spy loss, its ply and how. ``None`` for every other game, and
     # then absent from the file, as ``rounds`` is.
     spy: dict[str, Any] | None = None
+    # Schema 30 (Q999c, `docs/plan-passive.md` §4.8): what the lines of sight did, one entry
+    # per side-turn in each of `SIGHT_SERIES`, as the core answers it (`Engine.effects`).
+    # ``None`` for a game without a sight, and then absent from the file, as ``rounds`` is.
+    sight: dict[str, list[int]] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -137,6 +141,8 @@ class GameAnalysis:
             del data["rounds"]
         if self.spy is None:
             del data["spy"]
+        if self.sight is None:
+            del data["sight"]
         return data
 
     @classmethod
@@ -316,6 +322,72 @@ def _searching(record: GameRecord) -> bool:
     return all(agent.split(":")[0] != "random" for agent in record.agents)
 
 
+# Schema 30 (Q999c, `docs/plan-passive.md` §4.8): what the pass records of a game with a line
+# of sight, one entry a side-turn (a ply of a game that alternates; each seat's choice in a
+# round), every one the core's (`Engine.effects` on the board the choice was made on):
+#
+# * ``side``: whose turn it was;
+# * ``removed_freeze``, ``removed_disarm``, ``removed_shield``: how many of that side's moves
+#   the effects removed, by reason (a move barred two ways counts once, under the first);
+# * ``binds``: 1 when the effects removed any move at all (*an effect binds*), else 0;
+# * ``frozen``, ``disarmed``, ``shielded``: how many of that side's pieces stood under each
+#   effect (a piece under two counts in both);
+# * ``suppressed``: 1 when that side's royal stood under an attack the effects suppressed (a
+#   frozen or disarmed attacker, or a shielded royal), else 0.
+#
+# A game without a sight has no ``sight`` key at all, so its `analysis.json` is the bytes it was.
+SIGHT_SERIES = (
+    "side",
+    "removed_freeze",
+    "removed_disarm",
+    "removed_shield",
+    "binds",
+    "frozen",
+    "disarmed",
+    "shielded",
+    "suppressed",
+)
+
+# The effect bits as the core reports them (`compile.SIGHT_FREEZE`, `SIGHT_DISARM`,
+# `SIGHT_SHIELD`), in the order of the three piece counts above.
+_SIGHT_BITS = (1, 2, 4)
+
+
+def _sight_tally(engine: Engine) -> dict[str, list[int]] | None:
+    """`SIGHT_SERIES` empty, for a game with a sight; ``None`` for every other game."""
+    if engine.spec.sight is None:
+        return None
+    return {key: [] for key in SIGHT_SERIES}
+
+
+def _count_sight(
+    engine: Engine, tally: dict[str, list[int]] | None, state: GameState, seat: int
+) -> None:
+    """One side-turn of `SIGHT_SERIES`: ``seat`` choosing on ``state``, as the core reports the
+    effects there. In a round the state names nobody, so it is asked as the seat sees it."""
+    if tally is None:
+        return
+    seen = state if state.side_to_move == seat else state.with_(side_to_move=seat)
+    effects = engine.effects(seen)
+    spec = engine.spec
+    under = [0, 0, 0]
+    for square, bits in enumerate(effects.bits):
+        if bits and spec.owner_of(state.board[square]) == seat:
+            for index, bit in enumerate(_SIGHT_BITS):
+                under[index] += int(bool(bits & bit))
+    row = (
+        seat,
+        effects.frozen,
+        effects.disarmed,
+        effects.shielded,
+        int(effects.binds),
+        *under,
+        int(effects.suppressed),
+    )
+    for key, value in zip(SIGHT_SERIES, row, strict=True):
+        tally[key].append(value)
+
+
 def _analyse_game(
     engine: Engine, evaluator: Evaluator, record: GameRecord, epsilon: float
 ) -> GameAnalysis:
@@ -343,6 +415,7 @@ def _analyse_game(
     position_keys: list[int] = []
     revisited = 0
     walked = 0
+    sight = _sight_tally(engine)
 
     for index, move in enumerate(record.moves):
         board = state.board
@@ -351,6 +424,7 @@ def _analyse_game(
             # The record and the spec have drifted apart. Stop counting rather than
             # inventing numbers; replay raises on the same condition with a message.
             break
+        _count_sight(engine, sight, state, state.side_to_move)
         if _moves_an_instance(move) and move_from(move) in starting_squares:
             moved_squares.add(move_from(move))
         moves_by_type[kind] += 1
@@ -391,6 +465,7 @@ def _analyse_game(
         starting_instances=len(starting_squares),
         moved_instances=len(moved_squares),
         position_keys=position_keys,
+        sight=sight,
     )
 
 
@@ -869,6 +944,7 @@ def _analyse_rounds(
     legal_counts: list[int] = []
     capture_counts: list[int] = []
     counts = _round_tallies(engine)
+    sight = _sight_tally(engine)
 
     state = engine.initial_state()
     starting_squares = _starting_squares(engine, state.board)
@@ -884,6 +960,8 @@ def _analyse_rounds(
         if pair[0] not in lists[0] or pair[1] not in lists[1]:
             # Drifted from its spec; stop counting, as the alternating walk does.
             break
+        for seat in (0, 1):
+            _count_sight(engine, sight, state, seat)
         board = state.board
         for move in pair:
             kind = _mover_kind(engine, board, move)
@@ -933,6 +1011,7 @@ def _analyse_rounds(
         moved_instances=len(moved_squares),
         position_keys=position_keys,
         rounds=counts,
+        sight=sight,
     )
 
 
@@ -1259,8 +1338,12 @@ def _analyse_spy(
     revisited = 0
     walked = 0
 
+    sight = _sight_tally(engine)
+
     for step in spy_steps(engine, record):
         state, board = step.state, step.state.board
+        for seat in step.seats:
+            _count_sight(engine, sight, state, seat)
         for move in step.moves:
             kind = _mover_kind(engine, board, move)
             if kind is None:  # pragma: no cover - a legal move stands on its origin
@@ -1318,6 +1401,7 @@ def _analyse_spy(
         position_keys=position_keys,
         rounds=rounds,
         spy=spy,
+        sight=sight,
     )
 
 

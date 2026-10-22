@@ -34,12 +34,14 @@ from chess_variant_sandbox.spec.schema import (
     REPETITION_NEVER,
     STOCK_UNLIMITED,
     WRAP_PAIRS,
+    Sight,
     SpecError,
     absent_squares,
     has_speeds,
     is_simultaneous,
     obstacle_squares,
     piece_rests,
+    piece_sights,
     piece_speeds,
     portal_groups,
     simultaneous_switch,
@@ -155,8 +157,11 @@ def describe_pieces(spec: dict[str, Any]) -> list[PieceProse]:
     """Every piece: what it is, how it moves, and what else is true of it."""
     hexy = (spec.get("board") or {}).get("lattice") == "hex"
     fates = _moveless_fates(spec)
+    sights = _sight_notes(spec, hexy)
     return [
-        _describe_piece(piece, hexy, fates.get(piece["id"], _MOVELESS["taken"]))
+        _describe_piece(
+            piece, hexy, fates.get(piece["id"], _MOVELESS["taken"]), sights.get(piece["id"], ())
+        )
         for piece in spec["pieces"]
     ]
 
@@ -196,6 +201,8 @@ def describe_rules(spec: dict[str, Any]) -> list[str]:
     lines.extend(_describe_simultaneous(spec, rules))
     # Schema 29 (Q983a): which piece may make a turn's move, read against what a turn is.
     lines.extend(_describe_rest(spec, rules))
+    # Schema 30 (Q999a): which piece may move or be taken, read with the rest.
+    lines.extend(_describe_sight(spec, rules))
 
     turn = rules.get("turn")
     if turn and int(turn.get("moves", 1)) > 1:
@@ -458,7 +465,10 @@ def _moveless_fates(spec: dict[str, Any]) -> dict[str, str]:
 
 
 def _describe_piece(
-    piece: dict[str, Any], hexy: bool = False, moveless: str = _MOVELESS["taken"]
+    piece: dict[str, Any],
+    hexy: bool = False,
+    moveless: str = _MOVELESS["taken"],
+    sights: Sequence[str] = (),
 ) -> PieceProse:
     notes: list[str] = []
     region = piece.get("region")
@@ -492,6 +502,9 @@ def _describe_piece(
             f"has speed {speed}: in a round its move is made before a slower piece's "
             "(see the rules)"
         )
+    # Schema 30 (Q999a): the rules say what an effect does; the piece says what it sees.
+    # Before the facing's note, whose "forward above" covers a sight's directions too.
+    notes.extend(sights)
     facing = piece.get("facing")
     if isinstance(facing, dict):
         # Said as a rule a player could act on rather than as a field: what the piece
@@ -1451,6 +1464,149 @@ def _describe_rest(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
     ]
     if rules.get("win", "checkmate") == "checkmate" or rules.get("check_limit"):
         lines.append("A resting piece gives check, and its check must still be answered.")
+    return lines
+
+
+# Schema 30 (Q999a, `docs/plan-passive.md` §4.3): what a sight does to what it sees, and
+# whose pieces those are, in the piece's sentence.
+_SIGHT_VERBS = {"freeze": "freezes", "disarm": "disarms", "shield": "shields"}
+_SIGHT_WHOSE_WORDS = {"enemy": "enemy", "own": "its own", "any": "either side's"}
+
+
+def _plural(name: str) -> str:
+    """A piece's name for several of them: *queens*, *bishops*, *wardens*."""
+    if name.endswith(("s", "x", "z", "ch", "sh")):
+        return name + "es"
+    if len(name) > 1 and name.endswith("y") and name[-2] not in "aeiou":
+        return name[:-1] + "ies"
+    return name + "s"
+
+
+def _sight_reach(sight: Sight, hexy: bool) -> str:
+    """Where a sight looks, in the words a slide of its geometry is said in, and whether a
+    piece in the way stops it. Falls back to the vectors where no phrase fits, as a move's
+    sentence does."""
+    move = {
+        "kind": "slide",
+        "vectors": [list(vector) for vector in sight.vectors],
+        "symmetry": sight.symmetry,
+        "range": sight.range,
+        "min_range": sight.min_range,
+    }
+    aim = _aim(move, hexy)
+    span = _span_words(move, aim) if aim is not None else None
+    if span is None and aim is not None and not aim.step and sight.range == 1:
+        span = f"at a jump of {aim.words}"
+    if span is None:
+        vectors = ", ".join(f"({x:+d},{y:+d})" for x, y in sight.vectors)
+        far = "to the edge of the board" if sight.range == 0 else (
+            f"up to {_count(sight.range)} step{'s' if sight.range > 1 else ''}"
+        )
+        span = f"along {vectors}{_SYMMETRY_TEXT[sight.symmetry]}, {far}"
+    if sight.range == 1 and sight.min_range == 1:
+        # Nothing stands between a piece and a square one step away, so a ray and an aura
+        # see the same squares and the clause would be a rule that never fires.
+        return span
+    if sight.through:
+        return f"{span}, through any piece between"
+    return f"{span}, as far as the first piece in the way"
+
+
+def sight_sentence(sight: Sight, names: dict[str, str], hexy: bool = False) -> str:
+    """One line of sight, said on its piece: *freezes enemy queens it sees any distance in
+    all eight directions, as far as the first piece in the way*. ``names`` is each piece id's
+    name. The operators that give and take a sight say it in these words too."""
+    if sight.affects is None:
+        kinds = "pieces"
+    else:
+        plural = [_plural(names.get(pid, pid)) for pid in sight.affects]
+        kinds = plural[0] if len(plural) == 1 else (
+            ", ".join(plural[:-1]) + " and " + plural[-1]
+        )
+    return (
+        f"{_SIGHT_VERBS[sight.effect]} {_SIGHT_WHOSE_WORDS[sight.whose]} {kinds} it sees "
+        f"{_sight_reach(sight, hexy)}"
+    )
+
+
+def _sight_notes(spec: dict[str, Any], hexy: bool) -> dict[str, tuple[str, ...]]:
+    """Each piece id's sights, one sentence each, in the order written."""
+    names = {
+        piece["id"]: str(piece.get("name", piece["id"]))
+        for piece in spec.get("pieces") or []
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+    }
+    return {
+        pid: tuple(f"{sight_sentence(sight, names, hexy)} (see the rules)" for sight in sights)
+        for pid, sights in piece_sights(spec).items()
+    }
+
+
+def _describe_sight(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
+    """Schema 30 (Q999a, `docs/plan-passive.md` §2, §4.3): what a sight's effect does, in one
+    paragraph, said only for the effects the game uses; and in rounds, that an effect decides
+    what is offered and never how a round resolves (§2.8)."""
+    effects = {sight.effect for sights in piece_sights(spec).values() for sight in sights}
+    if not effects:
+        return []
+    rounds = is_simultaneous(rules)
+    check = not rounds and (
+        rules.get("win", "checkmate") == "checkmate" or bool(rules.get("check_limit"))
+    )
+    said = [
+        "A piece in another's line of sight is under that sight's effect for as long as it "
+        "stands there, read from the board as it is."
+    ]
+    if "freeze" in effects and "disarm" in effects:
+        said.append(
+            "A frozen piece cannot move at all; a disarmed piece may move but cannot capture; "
+            "neither attacks anything" + (", so neither gives check." if check else ".")
+        )
+    elif "freeze" in effects:
+        said.append(
+            "A frozen piece cannot move at all (no step, capture, turn or castling), and "
+            "attacks nothing" + (", so it gives no check." if check else ".")
+        )
+    elif "disarm" in effects:
+        said.append(
+            "A disarmed piece may move but cannot capture, and attacks nothing"
+            + (", so it gives no check." if check else ".")
+        )
+    if "shield" in effects:
+        said.append(
+            "A shielded piece cannot be captured"
+            + (", and a shielded royal is never in check." if check else ".")
+        )
+    if check:
+        answers = []
+        if effects & {"freeze", "disarm"}:
+            answers.append(
+                " or ".join(
+                    word for effect, word in (("freeze", "freezing"), ("disarm", "disarming"))
+                    if effect in effects
+                ) + " the checker"
+            )
+        if "shield" in effects:
+            answers.append("shielding the royal")
+        said.append(
+            f"So a check may be answered by {' or by '.join(answers)}, and a move that leaves "
+            "the mover's own royal attacked once the effects are read again is not allowed."
+        )
+    said.append(
+        "A sight works whatever is done to its own piece, and two sights of one effect are one."
+    )
+    if "freeze" in effects:
+        said.append(
+            "A freeze is never lifted: a player it leaves with no legal move has none, and "
+            "the rule for having no legal move decides"
+            + (" (or checkmate, in check)." if check else ".")
+        )
+    lines = [" ".join(said)]
+    if rounds:
+        lines.append(
+            "An effect decides which moves are offered, never how the round resolves"
+            + (": a disarmed piece can still win a collision." if "disarm" in effects else ".")
+        )
     return lines
 
 

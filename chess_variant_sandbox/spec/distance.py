@@ -32,12 +32,14 @@ from chess_variant_sandbox.spec.complexity import expand_symmetry, measure_compl
 from chess_variant_sandbox.spec.schema import (
     REPETITION_NEVER,
     REST_MAX,
+    SIGHT_EFFECTS,
     STOCK_UNLIMITED,
     WRAP_PAIRS,
     absent_squares,
     facing_turns,
     obstacle_squares,
     piece_rests,
+    piece_sights,
     piece_speeds,
     portal_groups,
     portal_map_shape,
@@ -400,7 +402,32 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         **_portal_features(rules.get("portals")),
         **_simultaneous_features(spec),
         **_rest_features(spec),
+        **_sight_features(spec),
     }
+
+
+def _sight_features(spec: dict[str, Any]) -> dict[str, float]:
+    """Schema 30 (Q999a, `docs/plan-passive.md` §4.3): for each effect, the share of declared
+    piece types with a line of sight of it, and the share of sight entries that are auras, so
+    a spec differing only by a sight, its effect or its blocking is not at distance zero by
+    its features, beside the special rules `complexity` charges for it."""
+    declared = [
+        piece for piece in spec.get("pieces") or []
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+    ]
+    sights = piece_sights(spec)
+    entries = [sight for read in sights.values() for sight in read]
+    out = {
+        f"sight_{effect}_share": (
+            sum(1 for read in sights.values() if any(s.effect == effect for s in read))
+            / len(declared) if declared else 0.0
+        )
+        for effect in SIGHT_EFFECTS
+    }
+    out["sight_aura_share"] = (
+        sum(1 for sight in entries if sight.through) / len(entries) if entries else 0.0
+    )
+    return out
 
 
 def _rest_features(spec: dict[str, Any]) -> dict[str, float]:

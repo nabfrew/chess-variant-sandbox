@@ -804,6 +804,62 @@ pub struct SpyTables {
     pub deal: bool,
 }
 
+/// Schema 30 (Q999a, `docs/plan-passive.md` §3.2): one way a piece can be under an effect,
+/// inverted out of the forward lines by the compiler (`compile.SightSource`) and filed under
+/// the affected player, type and square. It binds when the source's piece stands on `origin`
+/// and every square of its path is empty.
+#[derive(Clone, Copy)]
+pub struct SightSource {
+    pub origin: u16,
+    pub piece_value: u8,
+    /// `SIGHT_FREEZE`, `SIGHT_DISARM` or `SIGHT_SHIELD`.
+    pub effect: u8,
+    pub path_start: u32,
+    pub path_len: u32,
+}
+
+pub const SIGHT_FREEZE: u8 = 1;
+pub const SIGHT_DISARM: u8 = 2;
+pub const SIGHT_SHIELD: u8 = 4;
+
+/// Schema 30: lines of sight, as the compiler resolved them (`compile.SightRule`). Boxed,
+/// as the rounds and the rest are, so a game without a sight pays one pointer, and `None` is
+/// the one flag every sight branch in the core tests.
+pub struct SightTables {
+    /// `[(player * n_types + type) * n_squares + square]` .. `[+ 1]`: the sources that could
+    /// bind that player's piece of that type on that square, in `sources`.
+    index: Vec<u32>,
+    sources: Vec<SightSource>,
+    paths: Vec<u16>,
+    /// Whether any sight shields: only then is a landing asked about its victim.
+    pub has_shield: bool,
+    /// Whether any sight can change a check (a freeze, a disarm, or a shield that can cover a
+    /// royal other than its own source): the pin shortcut is off then.
+    pub bears_on_check: bool,
+    /// Whether any sight freezes or disarms: only then is a mover or an attacker asked.
+    pub has_restraint: bool,
+    /// `n_types * n_squares`, the stride of a player's block in `index`.
+    block: usize,
+    n_squares: usize,
+}
+
+impl SightTables {
+    /// The sources that could put an effect on `player`'s piece of `piece_type` standing on
+    /// `square`.
+    #[inline(always)]
+    pub fn sources_of(&self, player: usize, piece_type: usize, square: usize) -> &[SightSource] {
+        let slot = player * self.block + piece_type * self.n_squares + square;
+        let lo = self.index[slot] as usize;
+        let hi = self.index[slot + 1] as usize;
+        &self.sources[lo..hi]
+    }
+
+    #[inline(always)]
+    pub fn path(&self, source: &SightSource) -> &[u16] {
+        let lo = source.path_start as usize;
+        &self.paths[lo..lo + source.path_len as usize]
+    }
+}
 
 pub struct Tables {
     pub width: usize,
@@ -1055,6 +1111,8 @@ pub struct Tables {
     /// Schema 29 (Q983a): the rest, `None` for every game in which no type rests, alternating
     /// or in rounds.
     pub rest: Option<Box<RestTables>>,
+    /// Schema 30 (Q999a): lines of sight, `None` for every game in which no type sees.
+    pub sight: Option<Box<SightTables>>,
 
     /// Schema 9's second key, `rules.promote_on_entry`: what a piece that *enters play*
     /// on a square becomes, as `[player][piece_type][square]` flattened in that order,
@@ -2222,6 +2280,7 @@ impl Tables {
             simultaneous: None,
             spy: None,
             rest: None,
+            sight: None,
             entry_promotion,
             piece_values,
             must_capture,
@@ -2387,6 +2446,54 @@ impl Tables {
         } else if !zobrist_rest.is_empty() {
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "rest keys without a rest",
+            ));
+        }
+
+        // Schema 30 (Q999a): lines of sight, all four empty unless a type sees.
+        let sight_index: Vec<u32> = field(source, keys::SIGHT_INDEX)?;
+        let sight_srcs: Vec<u32> = field(source, keys::SIGHT_SRCS)?;
+        let sight_paths: Vec<u16> = field(source, keys::SIGHT_PATHS)?;
+        let sight_flags: Vec<u8> = field(source, keys::SIGHT_FLAGS)?;
+        if !sight_flags.is_empty() {
+            let sources: Vec<SightSource> = sight_srcs
+                .chunks_exact(5)
+                .map(|chunk| SightSource {
+                    origin: chunk[0] as u16,
+                    piece_value: chunk[1] as u8,
+                    effect: chunk[2] as u8,
+                    path_start: chunk[3],
+                    path_len: chunk[4],
+                })
+                .collect();
+            let fits = sight_flags.len() == 3
+                && sight_srcs.len().is_multiple_of(5)
+                && sight_index.len() == 2 * tables.n_types * tables.n_squares + 1
+                && sight_index.last().copied() == Some(sources.len() as u32)
+                && sources.iter().all(|s| {
+                    (s.origin as usize) < tables.n_squares
+                        && (s.path_start + s.path_len) as usize <= sight_paths.len()
+                        && matches!(s.effect, SIGHT_FREEZE | SIGHT_DISARM | SIGHT_SHIELD)
+                })
+                && sight_paths.iter().all(|square| (*square as usize) < tables.n_squares)
+                && tables.portals.is_none();
+            if !fits {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "the sight tables do not fit this ruleset's squares (or sit beside portals)",
+                ));
+            }
+            tables.sight = Some(Box::new(SightTables {
+                index: sight_index,
+                sources,
+                paths: sight_paths,
+                has_shield: sight_flags[0] != 0,
+                bears_on_check: sight_flags[1] != 0,
+                has_restraint: sight_flags[2] != 0,
+                block: tables.n_types * tables.n_squares,
+                n_squares: tables.n_squares,
+            }));
+        } else if !sight_index.is_empty() || !sight_srcs.is_empty() || !sight_paths.is_empty() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "sight sources without the sight's flags",
             ));
         }
 
@@ -2851,6 +2958,10 @@ pub mod keys {
         SIM_COLLISION => "sim_collision",
         SIM_RULE => "sim_rule",
         SIM_SPEED => "sim_speed",
+        SIGHT_FLAGS => "sight_flags",
+        SIGHT_INDEX => "sight_index",
+        SIGHT_PATHS => "sight_paths",
+        SIGHT_SRCS => "sight_srcs",
         SPY_DEAL => "spy_deal",
         SPY_TYPES => "spy_types",
         ZOBRIST_REST => "zobrist_rest",

@@ -33,7 +33,7 @@ from chess_variant_sandbox.spec.reachability import (
 if TYPE_CHECKING:
     from chess_variant_sandbox.engine.compile import StrikeRule
 
-SCHEMA_VERSION = 29
+SCHEMA_VERSION = 30
 
 # Every version is accepted, and the number a spec declares is a claim about which
 # feature set it uses rather than a date stamp. That is what keeps a bump cheap:
@@ -44,7 +44,7 @@ SCHEMA_VERSION = 29
 # the rules need.
 SUPPORTED_SCHEMA_VERSIONS = (
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-    25, 26, 27, 28, 29,
+    25, 26, 27, 28, 29, 30,
 )
 
 # The movement primitive table. Extending the design space means adding a row here,
@@ -779,7 +779,7 @@ _MOVE_KEYS = {
 _CONDITION_KEYS = {"from_rank", "first_move", "region"}
 _PIECE_KEYS = {
     "id", "name", "royal", "value", "moves", "region", "promoted_from", "captures",
-    "facing", "beats", "spy", "speed", "rest",
+    "facing", "beats", "spy", "speed", "rest", "sight",
 }
 # ``appearance`` and ``provenance`` are deliberately *outside* the mechanics.
 # ``canonical.MECHANIC_KEYS`` is what the content hash covers, so anything added inside
@@ -1181,6 +1181,13 @@ def validate_spec(spec: Any, *, new: bool = True) -> list[str]:
             errors.append(
                 f"the spec uses {', '.join(sorted(used))}, added in schema 29; declare "
                 '"schema_version": 29 to use it'
+            )
+    if version < 30:
+        used = _schema_thirty_uses(spec)
+        if used:
+            errors.append(
+                f"the spec uses {', '.join(sorted(used))}, added in schema 30; declare "
+                '"schema_version": 30 to use it'
             )
     # Schema 29 (Q983a, `docs/plan-rest.md` §4.4): the old rest is refused at every version,
     # by admission and by the loader alike, since a loader that still compiled it would be
@@ -1868,6 +1875,330 @@ def _check_rest_coherence(
             "pieces[].rest beside a turn longer than one move (rules.turn moves or ramp): "
             "inside a turn of several moves a rest would need a second rule, for a piece that "
             "moved earlier in the same turn; use one move per turn, or leave the rest out"
+        )
+
+
+def _schema_thirty_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that schema 30 added, by name (Q999a, `docs/plan-passive.md`).
+
+    * ``pieces.sight.freeze`` -- a line of sight whose pieces may not move and attack nothing.
+    * ``pieces.sight.disarm`` -- a line of sight whose pieces may not capture and attack nothing.
+    * ``pieces.sight.shield`` -- a line of sight whose pieces may not be captured (a shielded
+      royal is never in check).
+    * ``pieces.sight.through`` -- a sight that sees past pieces (an aura) rather than stopping
+      at the first one (a ray).
+
+    ``whose`` and ``affects`` are values of a sight's keys, as ``mode`` is of a move's, and
+    have no names of their own (§4.1). Collected whatever else the entry says.
+    """
+    used: set[str] = set()
+    for piece in _listed(spec.get("pieces")):
+        if not isinstance(piece, dict) or "sight" not in piece:
+            continue
+        for entry in _listed(piece["sight"]):
+            if not isinstance(entry, dict):
+                continue
+            effect = entry.get("effect")
+            if isinstance(effect, str) and effect in SIGHT_EFFECTS:
+                used.add(f"pieces.sight.{effect}")
+            if "through" in entry:
+                used.add("pieces.sight.through")
+    return used
+
+
+# Schema 30 (Q999a, `docs/plan-passive.md` §2): lines of sight. A type declares at most
+# ``SIGHT_MAX`` of them (§2.2); the cap bounds the core's reverse table and is raised by a
+# showcase that needs more.
+SIGHT_MAX = 4
+SIGHT_EFFECTS = ("freeze", "disarm", "shield")
+SIGHT_WHOSE = ("enemy", "own", "any")
+_SIGHT_KEYS = {
+    "vectors", "symmetry", "range", "min_range", "effect", "whose", "affects", "through",
+}
+
+
+class Sight(NamedTuple):
+    """One line of sight as `piece_sights` reads it: a slide's geometry, its effect, whose
+    pieces it touches, the types it touches (``None`` for every type) and whether it sees
+    through pieces (an aura) or stops at the first (a ray)."""
+
+    vectors: tuple[tuple[int, int], ...]
+    symmetry: str
+    range: int
+    min_range: int
+    effect: str
+    whose: str
+    affects: tuple[str, ...] | None
+    through: bool
+
+
+def has_sights(spec_or_pieces: Any) -> bool:
+    """Whether any piece type writes a ``sight`` (schema 30), whatever its value."""
+    pieces = spec_or_pieces.get("pieces") if isinstance(spec_or_pieces, dict) else spec_or_pieces
+    return any(isinstance(piece, dict) and "sight" in piece for piece in _listed(pieces))
+
+
+def _sight_entry(entry: Any) -> Sight | None:
+    """One well-formed sight entry, or ``None`` for anything the validator refuses."""
+    if not isinstance(entry, dict):
+        return None
+    vectors = entry.get("vectors")
+    if not isinstance(vectors, list) or not vectors or not all(
+        isinstance(v, list) and len(v) == 2
+        and all(isinstance(c, int) and not isinstance(c, bool) for c in v)
+        and v != [0, 0]
+        for v in vectors
+    ):
+        return None
+    symmetry = entry.get("symmetry", "none")
+    rng = entry.get("range", 0)
+    low = entry.get("min_range", 1)
+    effect = entry.get("effect")
+    whose = entry.get("whose")
+    affects = entry.get("affects")
+    through = entry.get("through", False)
+    if (
+        symmetry not in SYMMETRIES
+        or isinstance(rng, bool) or not isinstance(rng, int) or rng < 0
+        or isinstance(low, bool) or not isinstance(low, int) or low < 1
+        or (rng > 0 and low > rng)
+        or effect not in SIGHT_EFFECTS or whose not in SIGHT_WHOSE
+        or through is not True and "through" in entry
+        or (affects is not None and (
+            not isinstance(affects, list) or not affects
+            or not all(isinstance(pid, str) for pid in affects)
+        ))
+    ):
+        return None
+    return Sight(
+        vectors=tuple((v[0], v[1]) for v in vectors),
+        symmetry=symmetry,
+        range=rng,
+        min_range=low,
+        effect=effect,
+        whose=whose,
+        affects=tuple(affects) if affects is not None else None,
+        through=through is True,
+    )
+
+
+def piece_sights(spec_or_pieces: Any) -> dict[str, tuple[Sight, ...]]:
+    """Each declared piece id's lines of sight (schema 30, `docs/plan-passive.md` §2.1), in the
+    order written, for every id that writes at least one well-formed entry; an id with none is
+    absent. The one reader of the key, shared by the validator, the compiler and every
+    surface."""
+    pieces = spec_or_pieces.get("pieces") if isinstance(spec_or_pieces, dict) else spec_or_pieces
+    sights: dict[str, tuple[Sight, ...]] = {}
+    for piece in _listed(pieces):
+        if not isinstance(piece, dict) or not isinstance(piece.get("id"), str):
+            continue
+        read = tuple(
+            sight for sight in (_sight_entry(entry) for entry in _listed(piece.get("sight")))
+            if sight is not None
+        )
+        if read:
+            sights[piece["id"]] = read
+    return sights
+
+
+def sight_affected_ids(sight: Sight, declared: Iterable[str], rules: Any) -> list[str]:
+    """The ids a sight's effect can touch: its ``affects``, or every declared type that is
+    neither wild nor a portal end (§2.3)."""
+    blank = _never_moved(rules)
+    if sight.affects is not None:
+        return [pid for pid in sight.affects if pid not in blank]
+    return [pid for pid in declared if pid not in blank]
+
+
+def _piece_can_capture(piece: dict[str, Any], declared: set[str]) -> bool:
+    """Whether a piece type has any capture: a move that may land on a piece (or a sweep),
+    and a capture matrix that lets it take something."""
+    return _capture_is_possible([piece], declared)
+
+
+def _piece_can_be_captured(pid: str, pieces: list[Any]) -> bool:
+    """Whether any type has a capture that may land on a ``pid``."""
+    for attacker in pieces:
+        if not isinstance(attacker, dict):
+            return True
+        moves = _listed(attacker.get("moves"))
+        if all(
+            not isinstance(move, dict)
+            or (move.get("mode", "both") == "move" and move.get("kind") != "sweep")
+            for move in moves
+        ):
+            continue
+        allowed = attacker.get("captures")
+        if not isinstance(allowed, list) or pid in allowed:
+            return True
+    return False
+
+
+def sight_can_bind(spec: dict[str, Any], source: str, sight: Sight) -> str | None:
+    """``None`` when this sight of ``source``'s can ever touch a piece its effect means
+    something to, else why not, in words (§2.1, *a sight that can never bind*). The reading is
+    per side: the types each player can ever hold (`simultaneous_holdings`, with promotion,
+    hands, strikes and contacts), so a sight on one army's type that touches only the other
+    army's own types is seen to touch nothing."""
+    pieces = [piece for piece in _listed(spec.get("pieces")) if isinstance(piece, dict)]
+    by_id = {piece["id"]: piece for piece in pieces if isinstance(piece.get("id"), str)}
+    declared = set(by_id)
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    held = simultaneous_holdings(spec)
+    affected = set(sight_affected_ids(sight, list(by_id), rules))
+    reachable: set[str] = set()
+    for owner in (0, 1):
+        if source not in held[owner]:
+            continue
+        sides = {"enemy": (1 - owner,), "own": (owner,), "any": (0, 1)}[sight.whose]
+        for side in sides:
+            reachable |= affected & held[side]
+    if not reachable:
+        return "no type it affects is ever held by the side it affects"
+    if sight.effect == "freeze" and not any(_listed(by_id[pid].get("moves")) for pid in reachable):
+        return "a freeze on types that have no move"
+    if sight.effect == "disarm" and not any(
+        _piece_can_capture(by_id[pid], declared) for pid in reachable
+    ):
+        return "a disarm on types that can capture nothing"
+    if sight.effect == "shield" and not any(
+        _piece_can_be_captured(pid, pieces) for pid in reachable
+    ):
+        return "a shield on types that nothing can capture"
+    return None
+
+
+def _check_sight_geometry(
+    entry: dict[str, Any], loc: str, errors: list[str], hex_lattice: bool
+) -> None:
+    """A sight's geometry keys, by the rules and in the words of a slide's (§2.1)."""
+    symmetry = entry.get("symmetry", "none")
+    if symmetry not in SYMMETRIES:
+        errors.append(f"{loc}.symmetry must be one of {SYMMETRIES}, got {symmetry!r}")
+    else:
+        errors.extend(
+            _symmetry_refusals(symmetry, entry.get("vectors"), f"{loc}.symmetry", hex_lattice)
+        )
+    rng = entry.get("range", 0)
+    if isinstance(rng, bool) or not isinstance(rng, int) or rng < 0:
+        errors.append(f"{loc}.range must be a non-negative integer")
+    elif rng > MAX_BOARD_DIM:
+        errors.append(f"{loc}.range may not exceed {MAX_BOARD_DIM}")
+    min_range = entry.get("min_range", 1)
+    if isinstance(min_range, bool) or not isinstance(min_range, int) or min_range < 1:
+        errors.append(f"{loc}.min_range must be a positive integer")
+    elif isinstance(rng, int) and rng > 0 and min_range > rng:
+        errors.append(f"{loc}.min_range ({min_range}) may not exceed range ({rng})")
+    _validate_vectors(entry.get("vectors"), loc, errors)
+
+
+def _check_sight_coherence(
+    spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
+) -> None:
+    """Schema 30 (Q999a): ``pieces[].sight`` and every refusal of `docs/plan-passive.md` §2.1
+    and §2.8, in words."""
+    written = [
+        (index, piece) for index, piece in enumerate(pieces)
+        if isinstance(piece, dict) and "sight" in piece
+    ]
+    if not written:
+        return
+    declared = [
+        piece["id"] for piece in pieces
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
+    ]
+    board = spec.get("board")
+    hex_lattice = isinstance(board, dict) and board.get("lattice") == "hex"
+    portals = portal_piece_ids(rules)
+    wild = _never_moved(rules) - portals
+    shields = False
+    for index, piece in written:
+        where = f"pieces[{index}].sight"
+        sight = piece["sight"]
+        if not isinstance(sight, list):
+            errors.append(f"{where} must be an array of 1 to {SIGHT_MAX} lines of sight")
+            continue
+        if not sight:
+            errors.append(f"{where} is empty, which sees nothing; leave it out")
+        elif len(sight) > SIGHT_MAX:
+            errors.append(
+                f"{where} holds {len(sight)} lines of sight; a type may have at most {SIGHT_MAX}"
+            )
+        pid = piece.get("id")
+        if pid in portals:
+            errors.append(f"{where} is on a portal, which carries no sight; leave it out")
+        elif pid in wild:
+            errors.append(
+                f"{where} is on a wild piece (rules.npcs), which is nobody's and carries no "
+                "sight; leave it out"
+            )
+        for number, entry in enumerate(sight):
+            loc = f"{where}[{number}]"
+            if not isinstance(entry, dict):
+                errors.append(f"{loc} must be an object")
+                continue
+            _check_keys(entry, _SIGHT_KEYS, loc, errors, required={"vectors", "effect", "whose"})
+            _check_sight_geometry(entry, loc, errors, hex_lattice)
+            effect = entry.get("effect")
+            if "effect" in entry and effect not in SIGHT_EFFECTS:
+                errors.append(f"{loc}.effect must be one of {SIGHT_EFFECTS}, got {effect!r}")
+            shields |= effect == "shield"
+            whose = entry.get("whose")
+            if "whose" in entry and whose not in SIGHT_WHOSE:
+                errors.append(f"{loc}.whose must be one of {SIGHT_WHOSE}, got {whose!r}")
+            if "through" in entry and entry["through"] is not True:
+                errors.append(
+                    f"{loc}.through is true or absent: absent is a ray, stopped by the first "
+                    "piece it meets, so false is the default; leave it out"
+                )
+            if "affects" in entry:
+                affects = entry["affects"]
+                if not isinstance(affects, list):
+                    errors.append(f"{loc}.affects must be an array of piece ids")
+                elif not affects:
+                    errors.append(f"{loc}.affects is empty, which affects nothing; leave it out")
+                else:
+                    for named in affects:
+                        if not isinstance(named, str) or named not in declared:
+                            errors.append(f"{loc}.affects entry {named!r} is not a declared piece")
+                        elif named in portals:
+                            errors.append(
+                                f"{loc}.affects names {named!r}, a portal, which nothing affects"
+                            )
+                        elif named in wild:
+                            errors.append(
+                                f"{loc}.affects names {named!r}, a wild piece (rules.npcs), which "
+                                "nothing affects"
+                            )
+                    if len(set(map(str, affects))) != len(affects):
+                        errors.append(f"{loc}.affects repeats a piece id")
+            read = _sight_entry(entry)
+            if read is not None and isinstance(pid, str) and pid not in portals | wild:
+                why = sight_can_bind(spec, pid, read)
+                if why is not None:
+                    errors.append(f"{loc} affects nothing that could be there: {why}")
+    if rules.get("portals"):
+        errors.append(
+            "pieces[].sight beside rules.portals: an attack through a portal would need the "
+            "sight's reading of attack too, and a sight through a portal a rule of its own; "
+            "leave one out"
+        )
+    if rules.get("explode_on_capture"):
+        errors.append(
+            "pieces[].sight beside rules.explode_on_capture: what a blast does to a shielded "
+            "piece, and how its legality reads a frozen attacker, are rules of their own; leave "
+            "one out"
+        )
+    if shields and uses_sweep(spec):
+        errors.append(
+            "a shield (pieces[].sight effect 'shield') beside a sweep move: whether a sweep "
+            "passing over a shielded piece removes it or is stopped by it would be a second "
+            "rule; leave one out"
+        )
+    if shields and rules.get("npcs"):
+        errors.append(
+            "a shield (pieces[].sight effect 'shield') beside rules.npcs: whether a wild "
+            "piece's step takes a shielded piece would be a second rule; leave one out"
         )
 
 
@@ -3627,6 +3958,7 @@ def _validate_coherence(spec: dict[str, Any], errors: list[str]) -> None:
     _check_spy_coherence(spec, pieces, rules, errors)
     _check_speed_coherence(spec, pieces, rules, errors)
     _check_rest_coherence(spec, pieces, rules, errors)
+    _check_sight_coherence(spec, pieces, rules, errors)
 
     if isinstance(rules.get("castling"), dict):
         castling = rules["castling"]

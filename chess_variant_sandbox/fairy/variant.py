@@ -497,6 +497,18 @@ def _check_unsupported_rules(
             "pieces[].rest: a piece that may not move for its player's next turns after it "
             "moves has no counterpart; Fairy-Stockfish has no per-piece wait"
         )
+    if compiled.sight is not None:
+        # Schema 30 (Q999a, `docs/plan-passive.md` §4.5). Fairy-Stockfish has no piece whose
+        # line of sight freezes, disarms or shields another (Q999a read the installed build:
+        # pyffish 0.0.90's 121 built-in variants hold none of Madrasi's shape, so a
+        # translation of S1 is not a task). Read off the compiled rule,
+        # `None` without a sight. The effects only filter the generator and the attack test,
+        # so the generator itself is still checked through the twin with every sight
+        # removed; the effects are the sight oracle's (`tests/sight_oracle.py`).
+        reasons.append(
+            "pieces[].sight: a piece whose line of sight freezes, disarms or shields the pieces "
+            "it sees has no counterpart; Fairy-Stockfish has no passive effect"
+        )
     if compiled.simultaneous is not None:
         # Schema 26 (Q918a). Fairy-Stockfish has a side to move and no round in which both
         # players move at once (`docs/archive/plan-simultaneous.md` §6.5). The per-side generator is
@@ -715,6 +727,14 @@ _KEYS_BELOW_RULES: dict[str, dict[str, tuple[str, str]]] = {
             "schema 29: a piece that waits its player's next turns after it moves, read off "
             "the compiled table (compiled.rest); Fairy-Stockfish has no per-piece wait, and "
             "the generator is checked through the twin with every rest removed",
+        ),
+        "sight": (
+            _REFUSED,
+            "schema 30: lines of sight and their effects, read off the compiled rule "
+            "(compiled.sight); Fairy-Stockfish has no passive effect, and the generator is "
+            "checked through the twin with every sight removed. A sight entry's own keys are "
+            "a level below the piece and are never translated, since the piece-level refusal "
+            "already names the whole sight",
         ),
     },
     "move": {

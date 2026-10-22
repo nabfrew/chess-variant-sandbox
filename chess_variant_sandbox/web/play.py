@@ -203,6 +203,38 @@ def _coming(engine: Any, state: GameState) -> dict[str, list[dict[str, Any]]]:
     }
 
 
+def effects_payload(engine: Any, state: GameState) -> dict[str, Any]:
+    """Schema 30 (Q999c, `docs/plan-passive.md` §4.6): the effects on a position a game has
+    passed through, for a step back to draw its marks, as ``{"effects": [[square, bits], ...]}``
+    with only the squares whose piece is under an effect (1 frozen, 2 disarmed, 4 shielded);
+    the core's answer (`Engine.effects`). Empty in a game without a sight, so a history entry
+    of every other game is what it was."""
+    if engine.spec.sight is None:
+        return {}
+    bits = engine.effects(state).bits
+    return {"effects": [[square, value] for square, value in enumerate(bits) if value]}
+
+
+def sights_payload(engine: Any, state: GameState) -> list[dict[str, Any]]:
+    """Schema 30 (Q999c, §4.6): what each piece with a line of sight sees on this board, for
+    the board's hover, as ``[{"square", "seen": [[square, bits], ...]}]``, square order: the
+    core's answer for each (`Engine.sight_of`), a ray's stopping piece included and nothing
+    past it. The page computes no square of it. Only the pieces whose type declares a sight
+    are asked, and a piece that sees nothing on this board is left out."""
+    spec = engine.spec
+    if spec.sight is None:
+        return []
+    carriers = {kind for kind, entries in enumerate(spec.sight.entries) if entries}
+    out = []
+    for square, value in enumerate(state.board):
+        if not value or spec.owner_of(value) > 1 or spec.type_of(value) not in carriers:
+            continue
+        seen = engine.sight_of(state, square)
+        if seen:
+            out.append({"square": square, "seen": [[target, bits] for target, bits in seen]})
+    return out
+
+
 def drop_faces_payload(drops: Any) -> list[int] | None:
     """Each hand slot's other face under ``drops.either_face`` (schema 18e, Q785), or ``None``.
 
@@ -456,6 +488,17 @@ class Session:
                 {"player": player, "square": square, "left": left}
                 for player in (0, 1) for square, left in self.state.rest[player]
             ],
+            # Schema 30 (Q999a, `docs/plan-passive.md` §4.6): the effect bits on each square
+            # (1 frozen, 2 disarmed, 4 shielded, on the piece standing there), as the core
+            # answers them (`Engine.effects`), for the page's marks. Absent in every game
+            # without a sight, whose block is what it always was.
+            # And (Q999c) what each piece with a sight sees on this board, for the board's
+            # hover (`sights_payload`); absent in every game without a sight.
+            **(
+                {"effects": list(engine.effects(self.state).bits),
+                 "sights": sights_payload(engine, self.state)}
+                if engine.spec.sight is not None else {}
+            ),
             "ply": self.state.ply,
             # A game in rounds has no check (§2.5): a royal under attack may simply move.
             "inCheck": (
@@ -815,6 +858,9 @@ class Session:
                 # (`engine.coming.coming_phases`), so a position stepped back to shows what
                 # was coming *then*. Empty for every ruleset without `rules.npcs`.
                 **_coming(engine, state),
+                # Schema 30 (Q999c): the effects on the position this ply left, so a step
+                # back draws its marks (`effects_payload`); absent without a sight.
+                **effects_payload(engine, state),
             }
         )
         self.state = state
@@ -1062,6 +1108,7 @@ class Session:
             if seat == 1:
                 entry["reveal"] = reveal
                 entry.update(_coming(engine, after))
+                entry.update(effects_payload(engine, after))
                 if folds := fold_payload(engine, after):
                     entry["folds"] = folds
             self.states.append(before)

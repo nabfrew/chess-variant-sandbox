@@ -956,6 +956,17 @@ class TestTheModelContractMatchesTheValidator:
         assert set(pieces) == set(schema_module._PIECE_KEYS)
         assert set(pieces["moves"]["items"]["properties"]) == set(schema_module._MOVE_KEYS)
 
+    def test_every_sight_key_can_be_proposed(self) -> None:
+        """Schema 30 (Q999a): a sight entry's keys are a level below the piece, which the
+        test above does not reach; the required three are the validator's."""
+        pieces = rule_spec_schema()["properties"]["pieces"]["items"]["properties"]
+        sight = pieces["sight"]
+        assert set(sight["items"]["properties"]) == set(schema_module._SIGHT_KEYS)
+        assert set(sight["items"]["required"]) == {"vectors", "effect", "whose"}
+        assert sight["items"]["properties"]["effect"]["enum"] == list(schema_module.SIGHT_EFFECTS)
+        assert sight["items"]["properties"]["whose"]["enum"] == list(schema_module.SIGHT_WHOSE)
+        assert sight["maxItems"] == schema_module.SIGHT_MAX
+
     def test_every_board_and_promotion_key_can_be_proposed(self) -> None:
         """Schema 14 added `board.lattice` and `promotion.squares`, which neither test above
         reaches."""
@@ -1047,6 +1058,12 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     # Schema 28 (Q943a): a speed is a rank of at least 1; 0 is the default left out.
     f"{_PIECE}/speed": {"minimum": 1},
     f"{_PIECE}/rest": {"minimum": 1, "maximum": 4},
+    # Schema 30 (Q999a): 1 to 4 lines of sight, each with a slide's geometry bounds.
+    f"{_PIECE}/sight": {"minItems": 1, "maxItems": 4},
+    **_vector_bounds(f"{_PIECE}/sight/items{_P}/vectors", _AT_LEAST_ONE),
+    f"{_PIECE}/sight/items{_P}/range": {"minimum": 0, "maximum": 16},
+    f"{_PIECE}/sight/items{_P}/min_range": {"minimum": 1, "maximum": 16},
+    f"{_PIECE}/sight/items{_P}/affects": _AT_LEAST_ONE,
     # Q925: no minItems (a drop-stock piece or an unmoved portal type has no moves) and no
     # cap on vectors (the validator has none; `archive/hex-glinski-hexagon.json` lists 12).
     f"{_PIECE}/moves": {"maxItems": 12},

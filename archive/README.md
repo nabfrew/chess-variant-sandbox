@@ -897,6 +897,48 @@ breather's 0.582 inside its interval, the chase share 0.029; chess with a weary 
 [0.898, 0.937], viable 4 of 4**, beside chess's 0.909, the queen making 6.7% of moves against
 chess's 16.0%. All three stay previews until Q983e grades `plan-rest.md` §6.3.
 
+## `opposite-colours.json` — schema 30, two armies on one board that meet only by sight (Q999b)
+
+2026-10-22, a preview (`690631b0e4eb`). The user's colour-bound showcase for schema 30's lines
+of sight (`docs/plan-passive.md` §5, §6.5): chess's array on 8x8 with every piece bound to its
+square colour (pawns step diagonally forward, a camel jumping three and one, an elephant jumping
+two any way, the bishop, and a guard and king that step diagonally or jump two straight), so
+under chess's mirrored setup the kings stand on opposite colours and each army splits into a
+side that can only defend its king and a side that can only attack the other. No capture ever
+crosses the colours; every sight looks only across them: the pawn freezes the enemy piece
+straight ahead, the camel disarms at a knight's jump, the elephant shields its own pieces beside
+it (not its king or another elephant), the guard freezes enemies beside it. Designed with skill
+`game-designer` through seven scratch drafts (the log is in §6.5: a two-kings version, a queen
+and a skip-rook dropped, a ferz whose shield was decoration). In small play tests most mates
+were not mate without the sights, often a pawn freezing the king from the other colour.
+`tests/test_showcase_opposite_colours.py` holds the mechanism; its bars (C1 to C5) were
+registered before any measured game. Owes its first `measure`.
+
+## `madrasi.json`, `chess-with-a-sheltering-king.json`, `chess-with-daunting-knights.json` — schema 30, one line of sight on chess (Q999d)
+
+2026-10-22, three previews. The one-change showcases of `pieces[].sight` (`docs/plan-passive.md`
+§6.1, pre-registered 2026-10-21 before the rule was built): each is chess (`4c1922ffae26`) with
+one key added, written exactly as registered (Q999a wrote them first as test specs,
+`tests/_sight_*.json`, the same mechanics), and between them they show all four of schema 30's
+names. `tests/test_showcases_q999.py` holds V1, the rule without players; chess's library
+measurement is each one's control.
+
+- **`madrasi`** (`59a118c8ee38`, S1): every type but the king freezes an enemy piece of its own
+  type that it could capture, a ray, so like pieces facing each other paralyse each other. The
+  Madrasi condition of chess problems without its en passant rule; the hardest test of the
+  attack reading (a frozen piece gives no check, a check answered by freezing the checker).
+- **`chess-with-a-sheltering-king`** (`1aa8c4705681`, S2): the king shields its own pieces on its
+  eight lines to two squares, an aura (`through`), so a piece behind another is covered too. The
+  shield, and the only showcase of `through`.
+- **`chess-with-daunting-knights`** (`c2b124298181`, S3): a knight disarms every enemy piece a
+  knight's jump away, the king included, so knights never take knights and a king a jump from a
+  knight takes nothing.
+
+In a short unscored look (2026-10-22, `greedy` and `minimax` at 400, 1600 and 6400, two games an
+ordered pairing, 24 games each; `plan-passive.md` *§6.1 as built*) all three played like chess
+and finished, an effect removing a move at 0.85 (S1), 0.68 (S2) and 0.15 (S3) of side-turns.
+Owe their first `measure` (Q999e, the commands in §6.1 *as built*).
+
 ## `circe-mortal-diagonals.json` — schema 6, a strike that spares a piece other than the king (Q798)
 
 2026-10-19, a preview, unmeasured (`d32ef74e88c0`). The showcase of `rules.strike.immune` naming

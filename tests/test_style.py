@@ -293,15 +293,17 @@ class TestContrast:
     def test_each_mark_kind_paints_its_own_token(self) -> None:
         """Q940: the look check knows a mark kind by the token it paints in, so no two of
         `MARK_KINDS`' rows share one, but for the wild piece's two coming steps (one arrow
-        drawn fainter), and none paints in a token the board draws something that is not a
-        kind in (the held move's `--held`)."""
+        drawn fainter) and a piece's sight (schema 30, Q999c), which tints what it sees in the
+        colour of the effect it would put there, so its row's key shares the freeze's token;
+        and none paints in a token the board draws something that is not a kind in (the held
+        move's `--held`)."""
         from page_text import WRAPPED
 
         table = WRAPPED[WRAPPED.index("const MARK_KINDS = {"):]
         table = table[:table.index("\n};\n")]
         rows = dict(re.findall(r"^  (\w+): \{ colour: 'var\((--[\w-]+)\)'", table, re.M))
         assert {"voidRun", "barred", "check", "goal", "coming"} <= rows.keys()
-        shared = {"coming", "comingThen"}
+        shared = {"coming", "comingThen", "seen"}
         seen: dict[str, str] = {}
         for kind, token in rows.items():
             assert token not in ("--held", "--held-halo"), kind

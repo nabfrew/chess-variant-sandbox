@@ -6571,7 +6571,10 @@ class TestWhatReachesThePage:
         # 149 since Q995d: *every piece rests* redrawn in place (`drawRestAll`): its menu
         # (`restAllHtml`, constant words from `spec.plain` and numbers) and the sentence
         # under it (`restSaidHtml`), every piece name and server sentence through `esc`.
-        assert len(sites) == 149
+        # 151 since Q999c: what a piece sees laid over the board (`paintSight`, `sightHtml`:
+        # numbers, squares and constant tokens), and the designer's refusals under a piece's
+        # lines of sight (`sightProblemsHtml`, each server sentence through `esc`).
+        assert len(sites) == 151
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")

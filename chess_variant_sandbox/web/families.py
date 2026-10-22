@@ -521,6 +521,8 @@ def rule_words(key: str) -> str:
         return "pieces of different speeds, the faster moving first in a round"
     if key == "piece.rest":
         return "pieces that rest for some turns after they move"
+    if key == "piece.sight":
+        return "pieces that freeze, disarm or shield what they see"
     if key.startswith("board.lattice."):
         return f"a {key.removeprefix('board.lattice.')} board"
     return RULE_WORDS.get(key) or f"the {key.replace('_', ' ').replace('.', ' ')} rule"

@@ -938,7 +938,112 @@ const MARK_KINDS = {
   announced: { colour: 'var(--announced)', shape: 'announce', name: 'solid arrow',
                ink: 'var(--ink)',
                label: 'the move announced this round: it is made, whatever the other player answers' },
+  // Schema 30 (Q999c, `docs/plan-passive.md` §4.6): a piece under a line of sight's effect,
+  // off the core's effect bits on the position on screen (`Engine.effects`): a small badge
+  // on the square's left corners, clear of the rested piece's sign and the order disc. A
+  // frozen piece's snowflake and a disarmed piece's broken blade share the top corner (a
+  // frozen piece cannot capture either, so its snowflake says both); a shielded piece's
+  // shield is on the bottom one. Each a shape and a colour of its own, on `held-halo`.
+  frozen: { colour: 'var(--frozen)', shape: 'frozen', name: 'snowflake', ink: 'var(--ink)',
+            label: 'frozen: it cannot move, and gives no check' },
+  disarmed: { colour: 'var(--disarmed)', shape: 'disarmed', name: 'broken blade',
+              ink: 'var(--ink)', label: 'disarmed: it may move but cannot capture' },
+  shielded: { colour: 'var(--shielded)', shape: 'shielded', name: 'shield', ink: 'var(--ink)',
+              label: 'shielded: it cannot be captured' },
+  // What a piece sees (schema 30), tinted over the squares while the pointer is on it or it
+  // was tapped (`sightHtml`), off the core's `sight_of`; the row is the legend's, named in
+  // every game with a line of sight.
+  seen: { colour: 'var(--frozen)', shape: 'seen', name: 'tinted squares', ink: 'var(--ink)',
+          label: 'what a piece sees: point at it, or tap it, and what stands there is under its effect' },
 };
+
+// Schema 30 (Q999c): the effect bits the core reports for a piece (`Engine.effects`), and
+// the mark kind each draws. Freeze contains disarm, so a piece both frozen and disarmed
+// wears the snowflake alone.
+const SIGHT_FREEZE = 1, SIGHT_DISARM = 2, SIGHT_SHIELD = 4;
+
+function effectKinds(bits) {
+  const kinds = [];
+  if (bits & SIGHT_FREEZE) kinds.push('frozen');
+  else if (bits & SIGHT_DISARM) kinds.push('disarmed');
+  if (bits & SIGHT_SHIELD) kinds.push('shielded');
+  return kinds;
+}
+
+// The one effect a seen square is tinted by, where a piece's sights put more than one on it:
+// freeze first, then disarm, then shield, as the badges read.
+function effectTint(bits) {
+  return bits & SIGHT_FREEZE ? 'frozen' : bits & SIGHT_DISARM ? 'disarmed' : 'shielded';
+}
+
+// A frozen piece's badge on the top-left corner of the square at `(x, y)`: a disc in
+// `--frozen` cased in `--held-halo`, with a six-armed snowflake in the casing's colour.
+function frozenBadge(x, y, cell, player) {
+  const f = n => n.toFixed(3);
+  const cx = x + cell * 0.2, cy = y + cell * 0.2, r = cell * 0.15, arm = cell * 0.105;
+  let arms = '';
+  for (let k = 0; k < 3; k++) {
+    const a = Math.PI * k / 3 + Math.PI / 2;
+    const dx = arm * Math.cos(a), dy = arm * Math.sin(a);
+    arms += `<line x1="${f(cx - dx)}" y1="${f(cy - dy)}" x2="${f(cx + dx)}" y2="${f(cy + dy)}"/>`;
+  }
+  return `<g data-mark="frozen"${player === undefined ? '' : ` data-player="${player}"`}
+      pointer-events="none"><circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" fill="var(--frozen)"
+      stroke="var(--held-halo)" stroke-width="${f(cell * 0.03)}"/><g stroke="var(--held-halo)"
+      stroke-width="${f(cell * 0.03)}" stroke-linecap="round">${arms}</g></g>`;
+}
+
+// A disarmed piece's badge, on the same corner: a disc in `--disarmed` cased in `--held-halo`,
+// with a blade broken across its middle (two strokes either side of a gap) in the casing's
+// colour.
+function disarmedBadge(x, y, cell, player) {
+  const f = n => n.toFixed(3);
+  const cx = x + cell * 0.2, cy = y + cell * 0.2, r = cell * 0.15;
+  const a = cell * 0.095, gap = cell * 0.025, off = cell * 0.025;
+  // Along the diagonal from bottom left to top right, the top half nudged off the line.
+  const half = (s, shift) => `<line x1="${f(cx + s * gap + shift)}" y1="${f(cy - s * gap + shift)}"
+      x2="${f(cx + s * a + shift)}" y2="${f(cy - s * a + shift)}"/>`;
+  return `<g data-mark="disarmed"${player === undefined ? '' : ` data-player="${player}"`}
+      pointer-events="none"><circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" fill="var(--disarmed)"
+      stroke="var(--held-halo)" stroke-width="${f(cell * 0.03)}"/><g stroke="var(--held-halo)"
+      stroke-width="${f(cell * 0.035)}" stroke-linecap="round">${half(-1, 0)}${half(1, -off)}</g></g>`;
+}
+
+// A shielded piece's badge on the bottom-left corner: a shield's outline (flat top, pointed
+// foot) filled `--shielded` and cased in `--held-halo`.
+function shieldedBadge(x, y, cell, player) {
+  const f = n => n.toFixed(3);
+  const cx = x + cell * 0.2, top = y + cell * 0.66, w = cell * 0.13, h = cell * 0.27;
+  const d = `M${f(cx - w)} ${f(top)}L${f(cx + w)} ${f(top)}L${f(cx + w)} ${f(top + h * 0.45)}Q${
+    f(cx + w)} ${f(top + h * 0.8)} ${f(cx)} ${f(top + h)}Q${f(cx - w)} ${f(top + h * 0.8)} ${
+    f(cx - w)} ${f(top + h * 0.45)}Z`;
+  return `<g data-mark="shielded"${player === undefined ? '' : ` data-player="${player}"`}
+      pointer-events="none"><path d="${d}" fill="var(--shielded)" stroke="var(--held-halo)"
+      stroke-width="${f(cell * 0.03)}" stroke-linejoin="round"/></g>`;
+}
+
+// The badges of one piece's effects (`effectKinds`), on its square at `(x, y)`.
+function effectBadges(bits, x, y, cell, player) {
+  const draw = { frozen: frozenBadge, disarmed: disarmedBadge, shielded: shieldedBadge };
+  return effectKinds(bits).map(kind => draw[kind](x, y, cell, player)).join('');
+}
+
+// One square a piece sees (schema 30), tinted in its effect's colour with an inset edge, for
+// the hover; `source` rings the seeing piece's own square instead.
+function seenSquare(x, y, cell, bits, view, source) {
+  const kind = MARK_KINDS[effectTint(bits)];
+  if (source) {
+    return cellShape(x, y, cell, view, `fill="none" stroke="${kind.colour}"
+        stroke-width="${(cell * 0.06).toFixed(3)}" data-mark="seen" data-source="1"
+        pointer-events="none"`, 0.06);
+  }
+  return cellShape(x, y, cell, view, `fill="${kind.colour}" fill-opacity="${SEEN_OPACITY}"
+      stroke="${kind.colour}" stroke-width="${(cell * 0.04).toFixed(3)}" stroke-opacity="0.85"
+      data-mark="seen" data-effect="${effectTint(bits)}" pointer-events="none"`, 0.02);
+}
+
+// How strongly a seen square is tinted (`tokens.BOARD_MARKS` reads it at this opacity).
+const SEEN_OPACITY = 0.3;
 
 // An announced move's arrow (schema 27, Q935c), from `(x1, y1)` to its tip at `(x2, y2)`: a
 // solid shaft and a filled head in `--announced`, cased in `--held-halo` as the held move's
@@ -1344,6 +1449,21 @@ function squareBadge(x, y, cell, marks, view, tag) {
     }
     if (kind.shape === 'rest') {
       out += restBadge(x - cell * 0.3, y + cell * 0.3, cell * 1.0);
+      continue;
+    }
+    // A piece under an effect (schema 30): only the legend comes here, the badge drawn
+    // larger and centred so the key reads; on a board it sits on its piece's corner.
+    if (kind.shape === 'frozen' || kind.shape === 'disarmed') {
+      const draw = kind.shape === 'frozen' ? frozenBadge : disarmedBadge;
+      out += draw(x + cell * 0.1, y + cell * 0.1, cell * 2.0);
+      continue;
+    }
+    if (kind.shape === 'shielded') {
+      out += shieldedBadge(x + cell * 0.1, y - cell * 1.1, cell * 2.0);
+      continue;
+    }
+    if (kind.shape === 'seen') {
+      out += seenSquare(x, y, cell, SIGHT_FREEZE, view, false);
       continue;
     }
     if (kind.shape === 'order') {

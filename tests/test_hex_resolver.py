@@ -300,6 +300,7 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "spy_types",  # Q935a
     "speed_ranks", "speed_royal", "speed_by_value", "speed_by_reach",  # Q943a
     "rest_mean", "rest_max",  # Q983a
+    "sight_freeze_share", "sight_disarm_share", "sight_shield_share", "sight_aura_share",  # Q999a
 })
 _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/almost": "9035530ccf64d8cd",
@@ -414,6 +415,10 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "archive/gardner-with-weary-heavies": "b7bba61ec683778a",  # Q983d, schema 29
     "archive/breather-by-weight": "95ab3bf4fa8a527d",  # Q983d, schema 29
     "archive/chess-with-a-weary-queen": "cca02b4d69cf1272",  # Q983d, schema 29
+    "archive/opposite-colours": "a0e70d8f14e2936a",  # Q999b, schema 30
+    "archive/madrasi": "b6e19675623090e2",  # Q999d, schema 30
+    "archive/chess-with-a-sheltering-king": "e7321c09e075fea8",  # Q999d, schema 30
+    "archive/chess-with-daunting-knights": "cca02b4d69cf1272",  # Q999d, schema 30
     "archive/wolves": "ad7a6f1e406f28f3",
 }
 

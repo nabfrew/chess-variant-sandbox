@@ -18,6 +18,7 @@ from chess_variant_sandbox.engine.moves import (
 )
 from chess_variant_sandbox.engine.state import (
     DRAW,
+    Effects,
     GameState,
     Outcome,
     PhaseStep,
@@ -27,6 +28,7 @@ from chess_variant_sandbox.engine.state import (
 __all__ = [
     "DRAW",
     "CompiledSpec",
+    "Effects",
     "Engine",
     "GameState",
     "Outcome",

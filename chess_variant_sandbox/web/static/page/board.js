@@ -765,6 +765,8 @@ function applySnapshot(snapshot, animate = true) {
   SELECTED = null;
   DROP = null;
   NOTE = '';
+  // A piece tapped to see what it sees (schema 30) belongs to the position it was tapped on.
+  if (moved) SIGHT_TAP = null;
   // A take-back is not a ply, so it leaves no trail: the marks that say where a wild
   // piece walked belong to a move that was made, and the position being restored is one
   // from before it.
@@ -1002,6 +1004,93 @@ function portalRefuses(end) {
 let INSPECT = null;
 let HOVER_END = null;
 let LIT = null;
+
+// Schema 30 (Q999c, `docs/plan-passive.md` §4.6): lines of sight. `SIGHT_HOVER` is the piece
+// under the pointer whose sight is drawn; `SIGHT_TAP` the one tapped, `{square, ply}`, which
+// holds until another tap or the next position. Both are of the live position only: the
+// squares a piece sees are the core's (`sights`, `Engine.sight_of`), sent for the position in
+// play, and a step back draws the effects' badges (`effects`) but no sight.
+let SIGHT_HOVER = null;
+let SIGHT_TAP = null;
+
+// What the piece on `square` sees in the position in play, `[[square, bits], ...]`, or null:
+// the snapshot's `sights`, the core's answer. Nothing while a step back is on screen.
+function sightOf(square) {
+  if (!SESSION || AT || square === null || square === undefined) return null;
+  const found = (SESSION.sights || []).find(entry => entry.square === square);
+  return found && found.seen.length ? found.seen : null;
+}
+
+// The tapped piece's square while it is of the position in play, else null.
+function sightTapped() {
+  return SIGHT_TAP && SESSION && SIGHT_TAP.ply === SESSION.ply && !AT ? SIGHT_TAP.square : null;
+}
+
+// The effects on the position on screen, `[[square, bits], ...]` for each piece under one:
+// the live snapshot's `effects` (a value per square, Q999a), or the step back's (pairs, the
+// history entry's or the replayed position's). Empty in a game without a sight.
+function effectsShown() {
+  return effectPairs(AT ? AT.effects : SESSION.effects);
+}
+
+function effectPairs(effects) {
+  if (!effects || !effects.length) return [];
+  if (Array.isArray(effects[0])) return effects.filter(pair => pair[1]);
+  return effects.map((bits, square) => [square, bits]).filter(pair => pair[1]);
+}
+
+// Each affected piece's badges (`effectBadges`), on its square's corners.
+function effectsHtml(affected, cell) {
+  return affected.map(([square, bits]) => {
+    if (cellAbsent(square, FRAME)) return '';
+    const at = squareXY(square, cell, FRAME);
+    const piece = pieceAt(square);
+    return effectBadges(bits, at[0], at[1], cell, piece ? piece.player : undefined);
+  }).join('');
+}
+
+// The legend's kinds for the effects on screen, and (schema 30) the sight's tint in every
+// game that has one.
+function effectLegendKinds(affected) {
+  const kinds = new Set();
+  for (const [, bits] of affected) for (const kind of effectKinds(bits)) kinds.add(kind);
+  if (SESSION && SESSION.sights) kinds.add('seen');
+  return [...kinds];
+}
+
+// What the piece under the pointer, else the one tapped, sees: each square tinted by the
+// effect it would put on a piece there, and the piece's own square ringed. Laid over the
+// drawing, as the pair links are, so a hover never redraws the board.
+function paintSight() {
+  const svg = document.getElementById('board');
+  if (!svg || !SESSION || !FRAME || typeof svg.querySelector !== 'function') return;
+  const old = svg.querySelector('[data-sightlayer]');
+  if (old) old.remove();
+  const square = SIGHT_HOVER !== null ? SIGHT_HOVER : sightTapped();
+  const seen = sightOf(square);
+  if (!seen) return;
+  const group = document.createElementNS(SVGNS, 'g');
+  group.setAttribute('data-sightlayer', String(square));
+  group.setAttribute('pointer-events', 'none');
+  group.innerHTML = sightHtml(square, seen, 100 / Math.max(SESSION.ruleset.width,
+                                                           SESSION.ruleset.height));
+  svg.appendChild(group);
+}
+
+// The drawing `paintSight` lays: every seen square tinted (`seenSquare`), then the seeing
+// piece's square ringed in the colour of what it does.
+function sightHtml(square, seen, cell) {
+  let out = '';
+  let union = 0;
+  for (const [target, bits] of seen) {
+    union |= bits;
+    if (cellAbsent(target, FRAME)) continue;
+    const at = squareXY(target, cell, FRAME);
+    out += seenSquare(at[0], at[1], cell, bits, FRAME, false);
+  }
+  const at = squareXY(square, cell, FRAME);
+  return out + seenSquare(at[0], at[1], cell, union, FRAME, true);
+}
 const LINKS_KEY = 'chess_variant_sandbox.portalLinks';
 let LINKS = linksShown();
 
@@ -1791,6 +1880,10 @@ function drawBoard(previous) {
   out += clashHtml(clashed, cell);
   const resting = SESSION.outcome || AT ? [] : positionRests(SESSION.resting);
   out += restsHtml(resting, cell);
+  // Schema 30 (Q999c, `docs/plan-passive.md` §4.6): each piece under a line of sight's
+  // effect wears its badge, off the core's effect bits for the position on screen.
+  const affected = effectsShown();
+  out += effectsHtml(affected, cell);
   // Schema 28 (Q943b): which of the last round's two moves was made first, between speeds.
   const ordered = roundOrder(last);
   out += ordersHtml(ordered, cell);
@@ -1816,8 +1909,14 @@ function drawBoard(previous) {
     const square = node ? Number(node.dataset.square) : null;
     const hover = portalOn(square) || foldOn(square) ? square : null;
     if (hover !== HOVER_END) { HOVER_END = hover; paintLinks(); }
+    // Schema 30: a piece with a line of sight, under the pointer, shows what it sees.
+    const looking = square !== null && sightOf(square) ? square : null;
+    if (looking !== SIGHT_HOVER) { SIGHT_HOVER = looking; paintSight(); }
   };
-  svg.onpointerleave = () => { if (HOVER_END !== null) { HOVER_END = null; paintLinks(); } };
+  svg.onpointerleave = () => {
+    if (HOVER_END !== null) { HOVER_END = null; paintLinks(); }
+    if (SIGHT_HOVER !== null) { SIGHT_HOVER = null; paintSight(); }
+  };
   // A board inside the designer takes the keyboard (D9); the board's own page does not.
   if (BOARD_INLINE && typeof svg.setAttribute === 'function') {
     svg.setAttribute('tabindex', '0');
@@ -1860,14 +1959,17 @@ function drawBoard(previous) {
     ...standoffKinds(standing),
     ...(clashed ? ['clash'] : []),
     ...(resting.length ? ['rested'] : []),
+    ...effectLegendKinds(affected),
     ...(ordered.length ? ['order'] : []),
     ...(announced ? ['announced'] : []),
   ]);
   drawCoords(cell, outside);
   fitBoard();
   fitPortals(svg);
-  // The pair link and a lit exit live over the drawing, so they are laid again on it.
+  // The pair link and a lit exit live over the drawing, so they are laid again on it, and
+  // so does what a piece sees (schema 30).
   paintLinks();
+  paintSight();
   lightExit(LIT);
   paintBoardFocus();
   // The choice of what a piece becomes belongs to the position it was asked on: a step
@@ -3391,12 +3493,17 @@ function drawPieceSays() {
     return;
   }
   const game = DETAIL[SESSION.ruleset.hash];
-  const piece = SELECTED !== null && !AT ? pieceAt(SELECTED) : null;
+  // The piece picked, else (schema 30) a piece tapped to see what it sees, either side's.
+  const tapped = sightTapped();
+  const chosen = SELECTED !== null && !AT ? SELECTED : tapped;
+  const piece = chosen !== null ? pieceAt(chosen) : null;
   const about = piece && game && (game.pieces || [])[piece.type];
-  const moves = about ? (about.moves || []) : [];
-  line.hidden = !moves.length;
-  line.innerHTML = moves.length
-    ? `<b>${esc(about.name || about.id)}</b>: ${moves.map(esc).join('; ')}` : '';
+  // Its ways of moving, then what its lines of sight do (`describe`'s sentences, Q999c).
+  const said = about
+    ? (about.moves || []).concat((about.sights || []).map(sight => sight.words)) : [];
+  line.hidden = !said.length;
+  line.innerHTML = said.length
+    ? `<b>${esc(about.name || about.id)}</b>: ${said.map(esc).join('; ')}` : '';
   sayMore(line);
 }
 
@@ -3625,6 +3732,15 @@ function clickSquare(square) {
     drawPieceSays();
     paintLinks();
     fitBoard();
+  }
+  // Schema 30 (Q999c): a tap on a piece with a line of sight shows what it sees, and says
+  // it under the board, whoever's piece it is; a tap anywhere else puts it away. A touch
+  // screen has no pointer to rest on a piece, so this is the hover there.
+  const tapped = !AT && !PROMO && sightOf(square) ? { square, ply: SESSION.ply } : null;
+  if (JSON.stringify(tapped) !== JSON.stringify(SIGHT_TAP)) {
+    SIGHT_TAP = tapped;
+    paintSight();
+    drawPieceSays();
   }
   // The board is showing a position the game has left; there is nothing to move in it.
   if (AT || PROMO) return;
@@ -4333,6 +4449,9 @@ function beatEntry(kind, board, steps, snapshot, plies, walkers, coming) {
     // Schema 22 (Q843d): where the folds stood once this ply was made (the move's own
     // `folds`), else the snapshot's: a fold is no board byte, so a step back draws them here.
     folds: ((move && move.folds) || snapshot.folds || []).slice(),
+    // Schema 30 (Q999c): the effects on the position the ply left (the move's own
+    // `effects`), else the snapshot's: a step back draws the badges of its own position.
+    effects: effectPairs((move && move.effects) || snapshot.effects),
   };
 }
 

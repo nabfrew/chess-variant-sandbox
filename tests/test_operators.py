@@ -87,7 +87,7 @@ _NUMBER_WORDS = {
     15: "fifteen", 16: "sixteen", 17: "seventeen", 18: "eighteen", 19: "nineteen",
     20: "twenty", 21: "twenty_one", 22: "twenty_two", 23: "twenty_three", 24: "twenty_four",
     25: "twenty_five", 26: "twenty_six", 27: "twenty_seven", 28: "twenty_eight",
-    29: "twenty_nine",
+    29: "twenty_nine", 30: "thirty",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(SCHEMA_VERSION, SCHEMA_VERSION)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(schema, _COLLECTOR, None)
@@ -352,6 +352,9 @@ class TestMutation:
         # Schema 26's `set-a-collision` and `break-the-tie` work on a game played in rounds,
         # and none is committed until Q918e: the Gardner test spec stands in.
         parents.append(load_spec(ROOT / "tests" / "_simultaneous_gardner.json"))
+        # Schema 30's `blind-a-piece` and `widen-a-gaze` take away or widen a sight a game
+        # already has, and none is archived until Q999d: S2's test spec stands in.
+        parents.append(load_spec(ROOT / "tests" / "_sight_sheltering_king.json"))
 
         def fires(operator) -> bool:
             return any(
@@ -1991,7 +1994,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `SCHEMA_VERSION`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 29
+_FEATURES_ARE_FOR_SCHEMA = 30
 
 
 @dataclass(frozen=True)
@@ -2339,6 +2342,39 @@ def _parent_rest() -> dict:
     return gardner
 
 
+def _parent_sight(piece_id: str, sight: dict) -> dict:
+    """Chess with one line of sight on one type (schema 30, `plan-passive.md` §6.1): the
+    smallest edit on the calibration baseline, as each of S1 to S3 is."""
+    chess = _chess()
+    chess["schema_version"] = 30
+    next(p for p in chess["pieces"] if p["id"] == piece_id)["sight"] = [sight]
+    return chess
+
+
+def _parent_freeze() -> dict:
+    """S1's queen alone: it freezes an enemy queen on any of its eight open lines."""
+    return _parent_sight("Q", {
+        "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4",
+        "effect": "freeze", "whose": "enemy", "affects": ["Q"],
+    })
+
+
+def _parent_shield() -> dict:
+    """S2: the king shields its own pieces within two squares, through any piece between."""
+    return _parent_sight("K", {
+        "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 2, "through": True,
+        "effect": "shield", "whose": "own",
+    })
+
+
+def _parent_disarm() -> dict:
+    """S3: a knight disarms every enemy piece a knight's jump away."""
+    return _parent_sight("N", {
+        "vectors": [[1, 2]], "symmetry": "dihedral8", "range": 1,
+        "effect": "disarm", "whose": "enemy",
+    })
+
+
 def _parent_beats() -> dict:
     """Rounds where a pawn beats nothing in a collision (§6.8's second showcase idea)."""
     rounds = _parent_rounds()
@@ -2403,15 +2439,29 @@ def _armies_differ(spec: dict) -> bool:
     return len(set(first) & set(second)) < 2 and len(set(first) | set(second)) >= 2
 
 
-# Schema 29's inventory (`plan-rest.md` §5.1): Q983a's one name, `pieces.rest`, a piece
-# property riding on no rule (alternating or rounds); `tire-a-piece` enters it (a type made
-# to rest) and leaves it (the last rest lowered to none), and in a game in rounds
-# `curb-the-chase` turns every piece's rest on and off. Schema 28's row (Q943a, `pieces.speed`)
-# retired with the bump; `set-a-speed` still crosses it.
+# Schema 30's inventory (`plan-passive.md` §4.1): Q999a's four names, each a piece property
+# riding on no rule. `cast-a-gaze` enters the three effects (a type given a sight copied from
+# its capture geometry) and `through` (one gaze in four longer than a step is an aura), and
+# `widen-a-gaze` toggles `through` on a standing sight; `blind-a-piece` leaves each (one line
+# taken away). Schema 29's row (Q983a, `pieces.rest`) retired with the bump; `tire-a-piece`
+# still crosses it.
 _FEATURES: dict[str, _Feature] = {
-    "Q983a rest": _Feature(
-        None, frozenset({"pieces.rest"}), True, "gardner+rest", _parent_rest,
-        likely=lambda spec: True,
+    "Q999a freeze": _Feature(
+        None, frozenset({"pieces.sight.freeze"}), True, "chess+freezing-queen", _parent_freeze,
+    ),
+    "Q999a disarm": _Feature(
+        None, frozenset({"pieces.sight.disarm"}), True, "chess+daunting-knight", _parent_disarm,
+    ),
+    "Q999a shield": _Feature(
+        None, frozenset({"pieces.sight.shield"}), True, "chess+sheltering-king", _parent_shield,
+    ),
+    "Q999a through": _Feature(
+        None, frozenset({"pieces.sight.through"}), True, "chess+sheltering-king", _parent_shield,
+        # An aura is cast only on a gaze longer than a step, so a game with a slider first.
+        likely=lambda spec: any(
+            move.get("kind") == "slide" and move.get("range", 0) != 1
+            for piece in spec.get("pieces", []) for move in piece.get("moves", [])
+        ),
     ),
 }
 
@@ -2423,6 +2473,10 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
+    # Schema 30's `through` went on 2026-10-22, when Q999d archived S2
+    # (`archive/chess-with-a-sheltering-king`, `plan-passive.md` §6.1) beside S1 and S3
+    # (`archive/madrasi`, `-with-daunting-knights`); freeze, disarm and shield had gone the
+    # same day, when Q999b archived `archive/opposite-colours` (§6.5). Empty again at schema 30.
     # Q943a's speed went on 2026-10-19, when Q943c archived its three showcases
     # (`archive/gardner-in-rounds-with-a-swift-king`, `-with-swift-knights`,
     # `archive/watering-hole-by-speed`; `plan-speed.md` §6.1, coverage row 73).
@@ -2500,6 +2554,10 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     28: frozenset({"pieces.speed"}),
     # Schema 27's `rules.simultaneous.rest` left 27's set when schema 29 retired it for this.
     29: frozenset({"pieces.rest"}),
+    30: frozenset({
+        "pieces.sight.freeze", "pieces.sight.disarm", "pieces.sight.shield",
+        "pieces.sight.through",
+    }),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -2508,6 +2566,9 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Schema 30's four names went on 2026-10-22: freeze, disarm and shield when Q999b
+    # archived `archive/opposite-colours` (`plan-passive.md` §6.5), `through` when Q999d
+    # archived S2, `archive/chess-with-a-sheltering-king` (§6.1; coverage rows 75 to 78).
     # Schema 28's `pieces.speed` went on 2026-10-19, when Q943c archived its showcases
     # (`plan-speed.md` §6.1; coverage row 73).
     # Schema 27's `rules.extinction.per_type.own` went on 2026-10-17, when Q936s archived

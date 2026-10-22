@@ -261,6 +261,22 @@ def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
             piece["captures"] = [p for p in captures if p != piece_id]
         if piece.get("promoted_from") == piece_id:
             piece.pop("promoted_from", None)
+        # Schema 30 (Q999a): a line of sight that touched only the gone type goes with it
+        # (an `affects` emptied would read as *every type*), and the key with its last line.
+        sight = piece.get("sight")
+        if isinstance(sight, list):
+            kept_sight = []
+            for entry in sight:
+                affects = entry.get("affects") if isinstance(entry, dict) else None
+                if isinstance(affects, list) and piece_id in affects:
+                    entry["affects"] = [p for p in affects if p != piece_id]
+                    if not entry["affects"]:
+                        continue
+                kept_sight.append(entry)
+            if kept_sight:
+                piece["sight"] = kept_sight
+            else:
+                piece.pop("sight")
 
     icons = spec.get("appearance", {}).get("icons")
     if isinstance(icons, dict):
@@ -998,6 +1014,49 @@ def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) 
                 dropped.append(f"beats:{piece.get('id')}")
     dropped.extend(_settle_speeds(spec, listed, rules))
     dropped.extend(_settle_rests(listed, rules))
+    dropped.extend(_settle_sights(spec, listed, rules))
+    return dropped
+
+
+def _settle_sights(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) -> list[str]:
+    """Schema 30 (Q999a, `docs/plan-passive.md` §3.2): a line of sight an edit has made inert
+    -- one `schema.sight_can_bind` refuses, as the validator does, because nothing it affects
+    can be there or its effect would mean nothing to what can -- goes, and the piece's `sight`
+    with its last line; and so does every sight on a type an edit made a portal end or a wild
+    piece. Asked only of an entry `schema.piece_sights` reads, so a malformed one is left
+    for the validator to refuse by name."""
+    from chess_variant_sandbox.spec.schema import (
+        _sight_entry,
+        has_sights,
+        portal_piece_ids,
+        sight_can_bind,
+    )
+
+    if not has_sights(listed):
+        return []
+    dropped: list[str] = []
+    blank = portal_piece_ids(rules) | {
+        npc.get("piece") for npc in rules.get("npcs") or [] if isinstance(npc, dict)
+    }
+    for piece in listed:
+        if not isinstance(piece, dict) or not isinstance(piece.get("sight"), list):
+            continue
+        pid = piece.get("id")
+        if pid in blank:
+            piece.pop("sight")
+            dropped.append(f"sight:{pid}")
+            continue
+        kept = []
+        for entry in piece["sight"]:
+            read = _sight_entry(entry)
+            if read is not None and isinstance(pid, str) and sight_can_bind(spec, pid, read):
+                dropped.append(f"sight:{pid}")
+                continue
+            kept.append(entry)
+        if kept:
+            piece["sight"] = kept
+        else:
+            piece.pop("sight")
     return dropped
 
 

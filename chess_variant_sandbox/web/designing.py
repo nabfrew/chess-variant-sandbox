@@ -65,6 +65,7 @@ from chess_variant_sandbox.spec.describe import (
     move_sentence,
     opening_words,
     plain_move_sentence,
+    sight_sentence,
 )
 from chess_variant_sandbox.spec.plain import REST_WORDS, field_words
 from chess_variant_sandbox.spec.plain import plain_problem as _spec_plain_problem
@@ -76,6 +77,7 @@ from chess_variant_sandbox.spec.schema import (
     PORTAL_ENDS,
     SQUARE_SYMMETRIES,
     has_retired_rest,
+    piece_sights,
     portal_end_ids,
     portal_groups,
     portal_map_shape,
@@ -421,6 +423,10 @@ def check(spec: Any, parent: dict[str, Any] | None = None) -> dict[str, Any]:
                 "offBoard": off_board(spec),
                 "preview": preview,
                 "moveLines": move_lines(spec),
+                # Schema 30 (Q999c): each line of sight read back, and the refusals that
+                # are about a piece's lines of sight, under its sight rows.
+                "sightLines": sight_lines(spec),
+                "sightProblems": sight_problems(problems, spec, sides),
                 "portals": _portals_answer(spec, problems, preview)}
 
     # A spec the schema accepts can still fail to compile -- the compiler enforces things
@@ -434,6 +440,7 @@ def check(spec: Any, parent: dict[str, Any] | None = None) -> dict[str, Any]:
         preview = board_preview(spec)
         return {"valid": False, "errors": _errors_of(error, spec),
                 "preview": preview, "moveLines": move_lines(spec),
+                "sightLines": sight_lines(spec),
                 "portals": _portals_answer(spec, [], preview)}
 
     import time
@@ -474,6 +481,7 @@ def check(spec: Any, parent: dict[str, Any] | None = None) -> dict[str, Any]:
         "pieceLines": [_piece_line(piece) for piece in describe_pieces(spec)],
         "setupLines": describe_setup(spec),
         "moveLines": move_lines(spec),
+        "sightLines": sight_lines(spec),
         "changes": _changes_from(parent, spec),
         # Enough for the editor to draw the opening position with the board component the
         # rest of the page already has.
@@ -510,6 +518,64 @@ def move_lines(spec: Any) -> list[list[str]]:
                 said.append("")
         lines.append(said)
     return lines
+
+
+def sight_lines(spec: Any) -> list[list[str]]:
+    """Each line of sight read back in words, piece by piece, row by row (schema 30, Q999c,
+    `docs/plan-passive.md` §4.7): the sentence a game's own page says of it
+    (`describe.sight_sentence`), one per sight row in the designer's order, as `move_lines`
+    is for the ways of moving. A row no sentence can be made of yet (no direction, a
+    number being typed, an effect not chosen) reads as an empty string."""
+    if not isinstance(spec, dict):
+        return []
+    hexy = (spec.get("board") or {}).get("lattice") == "hex"
+    pieces = [piece for piece in spec.get("pieces") or [] if isinstance(piece, dict)]
+    names = {
+        str(piece.get("id")): str(piece.get("name") or piece.get("id")) for piece in pieces
+    }
+    lines: list[list[str]] = []
+    for piece in spec.get("pieces") or []:
+        sights = piece.get("sight") if isinstance(piece, dict) else None
+        said: list[str] = []
+        for entry in sights if isinstance(sights, list) else []:
+            # The one reader of a sight's spelling (`piece_sights`), asked of the row alone.
+            read = piece_sights([{"id": "row", "sight": [entry]}]).get("row", ())
+            try:
+                said.append(sight_sentence(read[0], names, hexy) if read else "")
+            except Exception:  # noqa: BLE001 - a half-written row reads as nothing yet
+                said.append("")
+        lines.append(said)
+    return lines
+
+
+# A validator problem about one piece's lines of sight, by the path it opens with
+# (`schema._check_sight_coherence`), and one about every line of sight in the game.
+_SIGHT_PROBLEM = re.compile(r"^pieces\[(?P<piece>\d+)\]\.sight\b")
+_SIGHTS_PROBLEM = re.compile(r"^(?:pieces\[\]\.sight\b|a shield \(pieces\[\]\.sight\b)")
+
+
+def sight_problems(problems: list[str], spec: Any, sides: Any = None) -> list[list[str]]:
+    """The draft's refusals that are about lines of sight, piece by piece, in the designer's
+    words (`plain_problem`), for each piece's sight rows (schema 30, Q999c, §4.7): those that
+    name the piece's own sights, and those about every sight in the game (one beside portals,
+    a blast, a sweep or wild pieces), which go under every piece that has a line of sight.
+    The verdict lists them all as well; this is where they are said beside the rows."""
+    pieces = spec.get("pieces") if isinstance(spec, dict) else None
+    if not isinstance(pieces, list):
+        return []
+    out: list[list[str]] = [[] for _ in pieces]
+    carriers = [
+        index for index, piece in enumerate(pieces) if isinstance(piece, dict) and "sight" in piece
+    ]
+    for problem in problems:
+        found = _SIGHT_PROBLEM.match(problem)
+        if found is not None and int(found["piece"]) < len(out):
+            out[int(found["piece"])].append(plain_problem(problem, spec, sides))
+        elif _SIGHTS_PROBLEM.match(problem):
+            said = plain_problem(problem, spec, sides)
+            for index in carriers:
+                out[index].append(said)
+    return out
 
 
 def _piece_line(piece: Any) -> str:
@@ -1650,6 +1716,17 @@ def onto_hex(spec: Any) -> dict[str, Any]:
             moved.append(str(piece.get("name") or piece.get("id") or "a piece"))
     if moved:
         said.append(f"the moves of the {', '.join(moved)} now go the hexagons' six ways")
+    # Schema 30 (Q999c): a line of sight is written as a slide is, so it takes the same twin.
+    seeing = []
+    for piece in draft.get("pieces") or []:
+        if not isinstance(piece, dict) or not isinstance(piece.get("sight"), list):
+            continue
+        if sum([rewrite(sight) for sight in piece["sight"]]):
+            seeing.append(str(piece.get("name") or piece.get("id") or "a piece"))
+    if seeing:
+        said.append(
+            f"the lines of sight of the {', '.join(seeing)} now go the hexagons' six ways"
+        )
     setup = draft.get("setup")
     if isinstance(setup, dict) and setup.get("orientation") != "rotate":
         setup["orientation"] = "rotate"
@@ -2916,6 +2993,8 @@ def timeline(session: Any) -> list[dict[str, Any]]:
     The board seeds its beat-stepped timeline from this, because a session that arrives
     already many plies in has no earlier snapshots to record.
     """
+    from chess_variant_sandbox.web.play import effects_payload
+
     states = [*session.states, session.state]
     comings = [coming_phases(session.engine, state) for state in states]
     return [
@@ -2928,6 +3007,8 @@ def timeline(session: Any) -> list[dict[str, Any]]:
             # (Q660, Q764), so the opening beat of a replayed game draws it as a live one does.
             "coming": [step.as_dict() for step in first],
             "comingThen": [step.as_dict() for step in then],
+            # Schema 30 (Q999c): the effects on it, for its marks; absent without a sight.
+            **effects_payload(session.engine, state),
         }
         for state, (first, then) in zip(states, comings, strict=True)
     ]

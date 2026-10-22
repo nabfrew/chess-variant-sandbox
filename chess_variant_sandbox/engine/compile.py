@@ -44,6 +44,7 @@ from chess_variant_sandbox.spec.schema import (
     obstacle_squares,
     parse_square,
     piece_rests,
+    piece_sights,
     piece_speeds,
     portal_bars_that_can_bind,
     portal_end_ids,
@@ -54,6 +55,7 @@ from chess_variant_sandbox.spec.schema import (
     promotion_targets,
     reach_reflection,
     reflect_square,
+    sight_affected_ids,
     simultaneous_switch,
     spy_ids,
     strike_is_live,
@@ -978,6 +980,181 @@ def _compile_rests(
     return tuple(rest) if any(rest) else ()
 
 
+# Schema 30 (Q999a, `docs/plan-passive.md` §3.2): one bit per effect, as the core reads them.
+SIGHT_FREEZE = 1
+SIGHT_DISARM = 2
+SIGHT_SHIELD = 4
+SIGHT_BITS = {"freeze": SIGHT_FREEZE, "disarm": SIGHT_DISARM, "shield": SIGHT_SHIELD}
+
+# One way a piece can be under an effect, inverted out of the forward lines:
+# ``(origin, piece_value, effect bit, path)``, filed under the affected player, the affected
+# type and the square seen. The source's piece stands on ``origin`` (the byte equal to
+# ``piece_value``) and every square of ``path`` is empty: then the effect binds. A ray's path
+# is the squares between the source and the seen square, those nearer than ``min_range``
+# included; an aura's is empty.
+SightSource = tuple[int, int, int, tuple[int, ...]]
+# One forward line: ``(entry number, squares, seen)``, ``seen[i]`` false for a square nearer
+# than ``min_range`` (not seen, but it still stops a ray).
+SightLine = tuple[int, tuple[int, ...], tuple[bool, ...]]
+
+
+@dataclass(frozen=True)
+class SightEntry:
+    """One compiled line of sight of a type: its effect's bit, ``whose`` as written, the
+    affected types as a mask over declared types, and whether it is an aura."""
+
+    effect: int
+    whose: str
+    affects: int
+    through: bool
+
+
+@dataclass(frozen=True)
+class SightRule:
+    """Lines of sight (schema 30, Q999a; `docs/plan-passive.md` §2, §3.2).
+
+    * ``entries[type]`` -- each type's sights, in the order written; empty for a type that
+      sees nothing.
+    * ``lines[frame][type][square]`` -- the forward lines, read off the slide tables
+      `_compile_square_full` builds for each sight's geometry in that frame: what the type
+      sees from that square on an empty board, before blocking. The page's hover and the
+      oracle read these; the core never does.
+    * ``sources[player][piece_type][square]`` -- the reverse table the core walks
+      (`Game::effects_at`): every source whose effect could bind ``player``'s piece of
+      ``piece_type`` standing on ``square``. Filed by the affected type, so a walk reads only
+      the sources that affect what stands there (Q999a's benches: Madrasi's sights each affect
+      one type).
+    * ``has_shield`` -- whether any sight shields.
+    * ``has_restraint`` -- whether any sight freezes or disarms.
+    * ``bears_on_check`` -- whether any sight can change a check: a freeze or a disarm, or a
+      shield that can cover a royal other than its own source (a royal never sees itself, so
+      a king's shield bears on check only where a side can hold two royals). The core's pin
+      shortcut is off when it is set.
+    """
+
+    entries: tuple[tuple[SightEntry, ...], ...]
+    lines: tuple[tuple[tuple[tuple[SightLine, ...], ...], ...], ...]
+    sources: tuple[tuple[tuple[tuple[SightSource, ...], ...], ...], ...]
+    has_shield: bool
+    has_restraint: bool
+    bears_on_check: bool
+
+
+def _compile_sights(
+    spec: dict[str, Any],
+    pieces: list[dict[str, Any]],
+    index_of: dict[str, int],
+    n_types: int,
+    n_facings: int,
+    facing_axes: tuple[int, ...],
+    n_squares: int,
+    width: int,
+    height: int,
+    orientation: str,
+    wrap: WrapRule | None,
+    obstacles: frozenset[int],
+    blocks_leaps: bool,
+    radius: int,
+    royal_types: tuple[int, ...],
+    multi_royal: bool,
+) -> SightRule | None:
+    """`SightRule` for a spec whose types declare a sight, ``None`` otherwise (§3.1's inert
+    default: no table, and the core never enters a sight branch).
+
+    A sight's squares are those a slide of its geometry lands on (§2.2), so each entry is
+    compiled as a one-descriptor slide by `_compile_square_full`, which decides every step
+    (walls, the edge, absent cells, wrap and the hex lattice); a wrapped line stops on a square
+    already visited, so a piece never sees itself."""
+    sights = piece_sights(spec)
+    if not sights:
+        return None
+    rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
+    declared = [piece["id"] for piece in spec["pieces"]]
+    entries: list[tuple[SightEntry, ...]] = []
+    for piece in pieces:
+        row: list[SightEntry] = []
+        for sight in sights.get(piece["id"], ()):
+            mask = 0
+            for pid in sight_affected_ids(sight, declared, rules):
+                mask |= 1 << index_of[pid]
+            row.append(SightEntry(SIGHT_BITS[sight.effect], sight.whose, mask, sight.through))
+        entries.append(tuple(row))
+
+    n_frames = 2 * n_facings
+    lines: list[list[list[tuple[SightLine, ...]]]] = []
+    sources: list[list[list[list[SightSource]]]] = [
+        [[[] for _ in range(n_squares)] for _ in range(n_types)] for _ in range(2)
+    ]
+    for frame in range(n_frames):
+        player, facing = divmod(frame, n_facings)
+        frame_lines: list[list[tuple[SightLine, ...]]] = []
+        for piece_type, piece in enumerate(pieces):
+            written = sights.get(piece["id"], ())
+            if not written:
+                frame_lines.append([() for _ in range(n_squares)])
+                continue
+            stands = not (facing and facing % (n_facings // facing_axes[piece_type]))
+            piece_value = (player * n_facings + facing) * n_types + piece_type + 1
+            type_lines: list[tuple[SightLine, ...]] = []
+            for origin in range(n_squares):
+                found: list[SightLine] = []
+                for number, sight in enumerate(written):
+                    slide = {
+                        "kind": "slide", "vectors": [list(v) for v in sight.vectors],
+                        "symmetry": sight.symmetry, "range": sight.range,
+                        "min_range": sight.min_range,
+                    }
+                    built = _compile_square(
+                        {"moves": [slide]}, player, origin, width, height, orientation, wrap,
+                        obstacles, blocks_leaps, facing_quarter_turns(facing, n_facings), radius,
+                    )
+                    for ray, modes, _ in built[1]:
+                        found.append((number, tuple(ray), tuple(mode != 0 for mode in modes)))
+                type_lines.append(tuple(found))
+                if not stands:
+                    continue  # a facing this type can never be in: no source, as for attacks
+                for number, ray, seen in found:
+                    entry = entries[piece_type][number]
+                    affected = {
+                        "enemy": (1 - player,), "own": (player,), "any": (0, 1),
+                    }[entry.whose]
+                    for index, square in enumerate(ray):
+                        if not seen[index]:
+                            continue
+                        path = () if entry.through else ray[:index]
+                        for side in affected:
+                            for victim in range(n_types):
+                                if entry.affects >> victim & 1:
+                                    sources[side][victim][square].append(
+                                        (origin, piece_value, entry.effect, path)
+                                    )
+            frame_lines.append(type_lines)
+        lines.append(frame_lines)
+
+    royal_mask = 0
+    for royal in royal_types:
+        royal_mask |= 1 << royal
+    restraint = any(entry.effect != SIGHT_SHIELD for row in entries for entry in row)
+    # A shield bears on check where it can cover a royal: one of another type, or, where a
+    # side can hold two royals, one of its own source's type (a piece never sees itself).
+    royal_shield = any(
+        entry.effect == SIGHT_SHIELD
+        and entry.affects & royal_mask & ~(0 if multi_royal else 1 << source)
+        for source, row in enumerate(entries) for entry in row
+    )
+    return SightRule(
+        entries=tuple(entries),
+        lines=tuple(tuple(tuple(row) for row in frame) for frame in lines),
+        sources=tuple(
+            tuple(tuple(tuple(found) for found in by_type) for by_type in side)
+            for side in sources
+        ),
+        has_shield=any(entry.effect == SIGHT_SHIELD for row in entries for entry in row),
+        has_restraint=restraint,
+        bears_on_check=restraint or royal_shield,
+    )
+
+
 @dataclass(frozen=True)
 class SpyRule:
     """The spy (schema 27, Q935a; `docs/plan-spy.md` §1, §2.4).
@@ -1276,6 +1453,10 @@ class CompiledSpec:
     # last of all and only under the rule (`_build_zobrist`). For a game whose largest rest
     # is 1 this is schema 27's layout, ``player * n_squares + square``. Empty otherwise.
     zobrist_rest: tuple[int, ...] = ()
+    # Schema 30 (Q999a, `docs/plan-passive.md` §3.2): lines of sight, or ``None`` -- every
+    # game in which no type sees, whose boundary keys for the rule all cross empty. An effect
+    # is a function of the board, so the rule adds no state and no key.
+    sight: SightRule | None = None
 
     @property
     def rest_max(self) -> int:
@@ -1784,6 +1965,9 @@ def _compile(
             admitted |= masks[0] | masks[1]
         one_way_types = frozenset(t for t in one_way_types if not admitted >> t & 1)
 
+    multi_royal = _royalty_can_multiply(
+        royal_types, board, n_types, n_facings, promotions, strike, drops, demotions, win
+    )
     compiled = CompiledSpec(
         name=spec["name"],
         hash=digest,
@@ -1884,9 +2068,7 @@ def _compile(
         forbid_check=bool(rules.get("forbid_check", False)),
         checkmate=rules.get("checkmate", "loss"),
         orientation=orientation,
-        multi_royal=_royalty_can_multiply(
-            royal_types, board, n_types, n_facings, promotions, strike, drops, demotions, win
-        ),
+        multi_royal=multi_royal,
         ep_passes=_ep_passes(
             bool(rules.get("en_passant", False)),
             promotions,
@@ -1917,6 +2099,10 @@ def _compile(
         spy=_compile_spy(list(spec["pieces"]), index_of, board, n_types, n_facings),
         rest=_compile_rests(list(spec["pieces"]), index_of, n_types),
         zobrist_rest=zob_rest,
+        sight=_compile_sights(
+            spec, pieces, index_of, n_types, n_facings, facing_axes, n_squares, width, height,
+            orientation, wrap, obstacles, blocks_leaps, radius, royal_types, multi_royal,
+        ),
     )
     if obstacles:
         _reject_walled_in(compiled)

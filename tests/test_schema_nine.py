@@ -462,6 +462,15 @@ FROZEN: dict[str, tuple[str, str]] = {
     "archive/gardner-with-weary-heavies.json": ("1d1d3c79ce19", "443c11ae88baf8a5"),
     "archive/breather-by-weight.json": ("7ea0357fa8de", "abaae18d917e8aab"),
     "archive/chess-with-a-weary-queen.json": ("fee1ab560013", "e0e507662bfb777a"),
+    # Q999b, 2026-10-22: the user's colour-bound showcase of schema 30's lines of sight
+    # (`docs/plan-passive.md` §6.5; `tests/test_showcase_opposite_colours.py`): chess's array
+    # with every piece bound to its colour, the colours meeting only by sight. New.
+    "archive/opposite-colours.json": ("690631b0e4eb", "b0f117a66632385c"),
+    # Q999d, 2026-10-22: schema 30's three one-change showcases on chess (`docs/plan-passive.md`
+    # §6.1; `tests/test_showcases_q999.py`), Q999a's test specs archived as registered. New.
+    "archive/madrasi.json": ("59a118c8ee38", "94492725c59178b8"),
+    "archive/chess-with-a-sheltering-king.json": ("1aa8c4705681", "64883471fd520e34"),
+    "archive/chess-with-daunting-knights.json": ("c2b124298181", "39d7f80d78350661"),
 }
 
 

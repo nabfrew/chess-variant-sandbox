@@ -1,0 +1,54 @@
+{
+  "schema_version": 30,
+  "name": "chess with a sheltering king",
+  "description": "Chess, except that the king protects the pieces around it. None of its own pieces standing one or two squares from the king, along any of the eight lines out from it (straight or diagonal), can be captured, not even in passing, and the shelter reaches past whatever stands in between: the pawn two squares in front of the king is covered even with another pawn in the way. The squares a knight's jump from the king are not on those lines and are not covered. The king shelters only its own side's pieces and never itself, so it is checked and mated exactly as in chess. A sheltered piece can still be attacked; it simply cannot be taken while it stands there, and it may move and capture freely. The rule turns the old instinct of keeping pieces near the king into a real trade-off. A castled king's pawn wall and the pieces beside it cannot be broken by captures, only by checks and by going around them, so the king is safest when its guards stand close. But every piece kept in the shelter is a piece not attacking, and a king crowded by its own pieces has no squares to flee to when a check does arrive. Late in the game the king becomes a fighter of a new kind: walked up beside a passed pawn, it makes the pawn impossible to take.",
+  "board": {"width": 8, "height": 8},
+  "pieces": [
+    {"id": "P", "name": "pawn", "value": 1,
+     "moves": [
+       {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+       {"kind": "slide", "vectors": [[0, 1]], "range": 2, "min_range": 2, "mode": "move", "condition": {"from_rank": 1}},
+       {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+     ]},
+    {"id": "N", "name": "knight", "value": 3,
+     "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}]},
+    {"id": "B", "name": "bishop", "value": 3,
+     "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}]},
+    {"id": "R", "name": "rook", "value": 5,
+     "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]},
+    {"id": "Q", "name": "queen", "value": 9,
+     "moves": [{"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}]},
+    {"id": "K", "name": "king", "value": 0, "royal": true,
+     "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}],
+     "sight": [{"vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 2, "through": true, "effect": "shield", "whose": "own"}]}
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2"]},
+      {"piece": "R", "squares": ["a1", "h1"]},
+      {"piece": "N", "squares": ["b1", "g1"]},
+      {"piece": "B", "squares": ["c1", "f1"]},
+      {"piece": "Q", "squares": ["d1"]},
+      {"piece": "K", "squares": ["e1"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": "last", "to": ["Q", "R", "B", "N"]},
+    "en_passant": true,
+    "castling": {"king": "K", "rook": "R", "king_steps": 2},
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "added": "2026-10-22",
+    "preview": "A preview: a new kind of game in which pieces act on each other by line of sight, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
+    "origin": "designed",
+    "source": "docs/plan-passive.md, Q999d: the one-change showcases of schema 30's lines of sight (section 6.1, S2)",
+    "history": "S2 of docs/plan-passive.md section 6.1, pre-registered 2026-10-21 before schema 30 was built: chess (4c1922ffae26) with the king given one sight, an aura (through) along its eight lines to range 2 that shields its own pieces of every type. The shield as an aura, so that seeing past pieces changes play next to a castled king, where the near squares are full. Written by Q999a as a test spec (tests/_sight_sheltering_king.json, the same mechanics) and archived by Q999d (2026-10-22) exactly as registered; its control is chess's library measurement on the same roster (section 6.2).",
+    "parents": ["4c1922ffae26"]
+  }
+}

@@ -58,12 +58,21 @@ ARCHIVED_PREVIEWS = {
     "gardner-with-weary-heavies.json": "1d1d3c79ce19",
     "breather-by-weight.json": "7ea0357fa8de",
     "chess-with-a-weary-queen.json": "fee1ab560013",
+    # Q999b's colour-bound showcase of schema 30's lines of sight (`plan-passive.md` §6.5),
+    # played by turns; a preview until its measurement is graded.
+    "opposite-colours.json": "690631b0e4eb",
+    # Q999d's three one-change showcases of schema 30 on chess (`plan-passive.md` §6.1), played
+    # by turns; previews until Q999e grades §6.3.
+    "madrasi.json": "59a118c8ee38",
+    "chess-with-a-sheltering-king.json": "1aa8c4705681",
+    "chess-with-daunting-knights.json": "c2b124298181",
 }
 """The previews in `archive/`, by file and by the mechanics hash each was or will be measured
 under: the round and spy games less the four that joined the library (`JOINED`), the six that
 Q962b retired and the one Q962c retired (`docs/reference/previews-2026-10-18.md`; their files
 are `tests/_retired_*.json`), Q943c's three speed showcases (T3, the watering hole by speed,
-back from the library since Q996), and Q983d's three rest showcases, two of them played by turns."""
+back from the library since Q996), Q983d's three rest showcases, two of them played by turns, Q999b's colour-bound showcase of
+schema 30's lines of sight, played by turns, and Q999d's three one-change showcases of it on chess, played by turns."""
 
 ROUND_PREVIEW = "0c7c0191c850"
 ROUND_PREVIEW_FILE = "gardner-in-rounds-resting.json"
@@ -97,9 +106,12 @@ SPY_PREVIEWS = frozenset({"gardner-with-spies-resting.json"})
 """The preview that starts by turns (`library` `rounds` is false for a spy game, Q935c) and
 offer the spy ladder, which has no round player (`opponents.SPY_RUNGS`)."""
 
-TURN_PREVIEWS = frozenset({"gardner-with-weary-heavies.json", "chess-with-a-weary-queen.json"})
+TURN_PREVIEWS = frozenset({
+    "gardner-with-weary-heavies.json", "chess-with-a-weary-queen.json", "opposite-colours.json",
+    "madrasi.json", "chess-with-a-sheltering-king.json", "chess-with-daunting-knights.json",
+})
 """The previews played by turns from the first move to the last (Q983d's U1 and U3, schema 29's
-rest in alternating play): offered the alternating ladder (`opponents.RUNGS`), as any game by
+rest in alternating play; Q999b's opposite colours and Q999d's three, schema 30's lines of sight): offered the alternating ladder (`opponents.RUNGS`), as any game by
 turns is."""
 
 PLAIN = "kyoto.json"

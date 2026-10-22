@@ -2069,3 +2069,23 @@ def test_an_alternating_rest_game_is_played_the_same_way_on_both_sides(name: str
             bound += len(engine.legal_moves(state)) < len(free)
         state = engine.apply(state, move)
     assert bound > 0, "the rest never removed a move in the game played"
+
+
+# Schema 30 (Q999a, `docs/plan-passive.md` §3.4): lines of sight, which no committed ruleset
+# reaches. Both sides of the boundary drive the same core, whose generator filters what the
+# effects forbid and whose attack test reads them, so a search reads one game; the arm plays it
+# through both loops, and checks an effect really binds in the game played.
+SIGHT_ARMS = ["_sight_madrasi", "_sight_daunting_knights", "_sight_wardens"]
+
+
+@pytest.mark.parametrize("name", SIGHT_ARMS)
+def test_a_sight_game_is_played_the_same_way_on_both_sides(name: str) -> None:
+    engine = Engine(load_spec(Path(__file__).parent / f"{name}.json"))
+    _assert_same_played(engine, ("minimax:nodes=150", "greedy"))
+    played = play_game(engine, ("minimax:nodes=150", "greedy"), seed=5)
+    state = engine.initial_state()
+    bound = 0
+    for move in played.moves:
+        bound += engine.effects(state).binds
+        state = engine.apply(state, move)
+    assert bound > 0, "no effect removed a move in the game played"

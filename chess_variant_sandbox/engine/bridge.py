@@ -194,6 +194,32 @@ def _flatten_dirs(
     ]
 
 
+def _sight_tables(spec: CompiledSpec) -> dict[str, list[int]]:
+    """Schema 30: `SightRule.sources` flattened for the core (`tables.rs::SightTables`), or
+    four empty lists without a sight."""
+    sight = spec.sight
+    if sight is None:
+        return {"sight_index": [], "sight_srcs": [], "sight_paths": [], "sight_flags": []}
+    index = [0]
+    srcs: list[int] = []
+    paths: list[int] = []
+    for side in sight.sources:
+        for by_type in side:
+            for found in by_type:
+                for origin, piece_value, effect, path in found:
+                    srcs.extend((origin, piece_value, effect, len(paths), len(path)))
+                    paths.extend(path)
+                index.append(len(srcs) // 5)
+    return {
+        "sight_index": index,
+        "sight_srcs": srcs,
+        "sight_paths": paths,
+        "sight_flags": [
+            int(sight.has_shield), int(sight.bears_on_check), int(sight.has_restraint),
+        ],
+    }
+
+
 def build_tables(spec: CompiledSpec) -> dict[str, Any]:
     """Everything the core needs, keyed by name."""
     n_types = spec.n_types
@@ -815,6 +841,12 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         # in rounds, so no other game's fingerprint moves.
         "piece_rest": list(spec.rest),
         "zobrist_rest": list(spec.zobrist_rest),
+        # Schema 30 (Q999a, `docs/plan-passive.md` §3.3): the sight's reverse table, shaped
+        # as the attack sources -- an index per (player, affected type, square), five words
+        # per source (origin, piece value, effect bit, path start, path length) and the flat
+        # paths -- and its three flags, `[has_shield, bears_on_check, has_restraint]`. All four
+        # empty unless a type declares a sight, so no other game's fingerprint moves.
+        **_sight_tables(spec),
         # Schema 28 (Q943a): each type's speed, `[type]`; empty unless a piece declares one,
         # so the core never orders a round and no earlier fingerprint moves.
         "sim_speed": (
@@ -994,6 +1026,11 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "zobrist_rest": [],
     # Schema 28 (Q943a). Empty unless a piece declares a speed.
     "sim_speed": [],
+    # Schema 30 (Q999a). Empty unless a piece declares a sight.
+    "sight_index": [],
+    "sight_srcs": [],
+    "sight_paths": [],
+    "sight_flags": [],
 }
 
 # Keys that are part of what every game means, whatever rules it declares: the board's

@@ -388,7 +388,18 @@ class TestTheFingerprintsPointAtSomething:
 # unmerged; merged, the metrics sources are Q558's and Q983a's and Q986b's at once, which is
 # neither branch's value. No number moves for Q558's part; Q983a's and Q986b's are as above.
 # The library replay Q558r re-scores under it, paying all three moves once.
-FROZEN_METRICS = "c57c854e32129d3a"
+#
+# **Moved 2026-10-22 by Q999a (schema 30, lines of sight)**: `spec/complexity.py` charges
+# `pieces[].sight` (`_sight_extras`), and `engine/engine.py`, `engine/state.py` and
+# `engine/__init__.py` carry the `Effects` record and `Engine.effects`/`sight_of`. No library game
+# declares a sight, so no number should move. It was "c57c854e32129d3a" after Q558r's replay; the
+# next library replay re-scores under it.
+#
+# **Moved 2026-10-22 by Q999c**: `tournament/analysis.py` records the sight tallies
+# (`SIGHT_SERIES`, `docs/plan-passive.md` §4.8), only for a game with a line of sight; no library
+# game has one, so no number moves. It was "4888feeaf7240d65" after Q999a; the replay R30 owed
+# for Q999a re-scores under it.
+FROZEN_METRICS = "7557cf49f08b4705"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -631,7 +642,15 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # **Moved 2026-10-20 by Q986b**: `agents/evaluation.py` (the probe's ruler; the rested royal is
 # now `RESTED_ROYAL_PIECES` mean pieces, see `FROZEN_METRICS`). It was "6aaf204a1094d816" after
 # Q983a; the replay batched after Q986b (Q558r) is the re-analysis.
-FROZEN_ANALYSIS = "a0aa597a07b63b94"
+#
+# **Moved 2026-10-22 by Q999a**: `engine/engine.py`, `engine/state.py` and `engine/__init__.py`
+# (see `FROZEN_METRICS`); a game without a sight is analysed byte for byte as before. It was
+# "a0aa597a07b63b94" after Q558r's replay; the next library replay is the re-analysis.
+#
+# **Moved 2026-10-22 by Q999c**: `tournament/analysis.py`'s sight tallies (see `FROZEN_METRICS`);
+# a game without a sight is analysed byte for byte as before. It was "2e9d152d5ca7f07b" after
+# Q999a; the replay R30 owed for Q999a is the re-analysis.
+FROZEN_ANALYSIS = "59c2e597b2f08d51"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

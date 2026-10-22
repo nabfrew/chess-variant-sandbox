@@ -47,6 +47,9 @@ from chess_variant_sandbox.spec.schema import (
     SCORING_COUNTS,
     SCREEN_OWNERS,
     SHAPES,
+    SIGHT_EFFECTS,
+    SIGHT_MAX,
+    SIGHT_WHOSE,
     STALEMATE_RESULTS,
     STOCK_UNLIMITED,
     STRIKE_EFFECTS,
@@ -197,6 +200,93 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
         strict=strict,
     )
 
+    # Schema 30 (Q999a, `docs/plan-passive.md` §2): one line of sight, written with a slide's
+    # geometry keys (the same vector, symmetries and bounds as a move's) and its effect.
+    sight_line = _object(
+        {
+            "vectors": {
+                "type": "array",
+                "items": vector,
+                "minItems": 1,
+                "description": (
+                    "The directions it looks in, as a slide's vectors, from the piece's own "
+                    "view (turned for the second player, and with the piece's facing)."
+                ),
+            },
+            "symmetry": {
+                "type": "string",
+                "enum": list(SYMMETRIES),
+                "description": (
+                    "How the vectors are expanded, exactly as on a move: [[1, 0], [1, 1]] by "
+                    "rotate4 is the eight lines of a queen, [[1, 2]] by dihedral8 with range 1 "
+                    "the knight's eight squares."
+                ),
+            },
+            "range": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": MAX_BOARD_DIM,
+                "description": (
+                    "How many steps along each line it sees, as a slide's range: 0 is to the "
+                    "edge of the board, 1 the adjacent squares."
+                ),
+            },
+            "min_range": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAX_BOARD_DIM,
+                "description": (
+                    "The nearest step it sees, as a slide's min_range. Nearer squares are "
+                    "not seen, but a piece on one still stops a ray."
+                ),
+            },
+            "effect": {
+                "type": "string",
+                "enum": list(SIGHT_EFFECTS),
+                "description": (
+                    "What happens to a piece in this sight, for as long as it stands there. "
+                    "freeze: it may make no move of any kind (no step, capture, turn, castling, "
+                    "strike or promotion), and it attacks nothing, so it gives no check. "
+                    "disarm: it may move but may not capture (no capture, en passant, strike, "
+                    "contact, or sweep over a piece), and it attacks nothing, so it gives no "
+                    "check. shield: nothing may capture it or take it in passing, and a "
+                    "shielded royal is never in check. A frozen or shielded piece still "
+                    "stands, blocks and counts."
+                ),
+            },
+            "whose": {
+                "type": "string",
+                "enum": list(SIGHT_WHOSE),
+                "description": (
+                    "Whose pieces it touches, counted from this piece's owner: 'enemy', the "
+                    "other player's; 'own', its own player's; 'any', both. There is no "
+                    "default, because the natural one differs by effect."
+                ),
+            },
+            "affects": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+                "description": (
+                    "The piece ids it touches; omit it for every type. It may name this "
+                    "piece's own type (Madrasi: a queen freezes the enemy queen). Never an "
+                    "empty list, a wild piece or a portal."
+                ),
+            },
+            "through": {
+                "type": "boolean",
+                "const": True,
+                "description": (
+                    "true makes it an aura that sees past every piece, up to range; omit it "
+                    "for a ray, which sees the first piece on each line and stops there. A "
+                    "wall or the board's edge ends both. Never write false."
+                ),
+            },
+        },
+        required=["vectors", "effect", "whose"],
+        strict=strict,
+    )
+
     piece = _object(
         {
             "id": {"type": "string", "minLength": 1, "maxLength": 2},
@@ -318,6 +408,35 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "portal or a wild piece, and not beside a turn of more than one move "
                     "(rules.turn moves or ramp). Replaces schema 27's rules.simultaneous.rest, "
                     "which is \"rest\": 1 on every piece of a game in rounds."
+                ),
+            },
+            "sight": {
+                "type": "array",
+                "items": sight_line,
+                "minItems": 1,
+                "maxItems": SIGHT_MAX,
+                "description": (
+                    f"Schema 30. This piece's lines of sight, 1 to {SIGHT_MAX}; omit it for a "
+                    "piece that sees nothing, and never write an empty list. Each line is "
+                    "written like a slide (vectors, symmetry, range, min_range) and puts the "
+                    "pieces it sees under an effect for as long as they stand there, read "
+                    "from the board as it is, with no memory. A ray (no through) sees each "
+                    "line up to and including its first piece; an aura (through: true) sees "
+                    "past pieces. Attack reads the effects: a frozen or disarmed piece attacks "
+                    "nothing and gives no check, a shielded piece is attacked by nothing and a "
+                    "shielded royal is never in check, so a check may be answered by freezing "
+                    "or disarming the checker or shielding the royal, and a move that frees an "
+                    "attacker of its own royal is illegal. A sight works whatever is done to "
+                    "its own piece (two pieces may freeze each other), and two sights of one "
+                    "effect are one. There is no lift: a player whom a freeze leaves with no "
+                    "legal move is checkmated if in check, and otherwise rules.stalemate "
+                    "decides. In rounds the effects decide what is offered, never how a "
+                    "collision resolves. Never on a portal or a wild piece; refused beside "
+                    "rules.portals and rules.explode_on_capture, a shield is refused beside a "
+                    "sweep move and beside rules.npcs, and a sight that can never bind (no "
+                    "type it affects is ever held by the side it affects, a freeze on types "
+                    "with no move, a disarm on types that capture nothing, a shield on types "
+                    "nothing can capture) is refused."
                 ),
             },
             "facing": _object(

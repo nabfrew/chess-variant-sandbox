@@ -38,6 +38,7 @@ parameters are the word set itself.
 
 from __future__ import annotations
 
+import functools
 import math
 from collections import Counter
 from collections.abc import Iterable, Sequence
@@ -100,6 +101,24 @@ def words_of(spec: dict[str, Any]) -> frozenset[str]:
     return words(normal_form(spec))
 
 
+def _named_within(value: Any, shape: Any, named: Any) -> Any:
+    """A piece field's value with every id at its shape's positions read by ``named``: a list
+    shape applies its one item shape to each item, a mapping shape its keys' shapes, and an
+    id list is read as a sorted tuple, as `_identities` reads a flat one (Q999c: a sight's
+    `affects`, which crashed every game with a line of sight here)."""
+    if shape is _IDS:
+        return tuple(sorted(named(other) for other in value)) if isinstance(value, list) else value
+    if shape is _ID:
+        return named(value)
+    if isinstance(shape, list):
+        items = value if isinstance(value, list) else [value]
+        return tuple(_named_within(item, shape[0], named) for item in items)
+    if isinstance(shape, dict) and isinstance(value, dict):
+        return {key: _named_within(inner, shape[key], named) if key in shape else inner
+                for key, inner in value.items()}
+    return value
+
+
 def _identities(form: NormalForm) -> dict[str, tuple[Any, ...]]:
     """Each piece's identity, with the pieces it names read as what they are.
 
@@ -123,7 +142,11 @@ def _identities(form: NormalForm) -> dict[str, tuple[Any, ...]]:
             # Absent, null and a written `false` say the same: the piece does not do it.
             if key in _READ_ELSEWHERE or value is None or value is False:
                 continue
-            if key in _PIECE_FIELDS:
+            if key in _PIECE_FIELDS and _PIECE_FIELDS[key] not in (_ID, _IDS):
+                # A field whose ids sit deeper (schema 30's `sight`: a list of lines, each
+                # naming the types it touches under `affects`), read by its shape.
+                value = _named_within(value, _PIECE_FIELDS[key], functools.partial(named, pid))
+            elif key in _PIECE_FIELDS:
                 if isinstance(value, list):
                     value = tuple(sorted(named(pid, other) for other in value))
                 else:

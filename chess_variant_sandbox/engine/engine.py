@@ -56,7 +56,14 @@ from chess_variant_sandbox.engine.moves import (
     move_landing,
     move_portal,
 )
-from chess_variant_sandbox.engine.state import NO_SQUARE, GameState, Outcome, PhaseStep, SpyPhase
+from chess_variant_sandbox.engine.state import (
+    NO_SQUARE,
+    Effects,
+    GameState,
+    Outcome,
+    PhaseStep,
+    SpyPhase,
+)
 
 if TYPE_CHECKING:
     # A stub-only alias: the compiled module exports no such name at runtime.
@@ -348,6 +355,22 @@ class Engine:
         """Whether ``player`` (default: the side to move) has a royal under attack."""
         player = state.side_to_move if player is None else player
         return self.core.in_check(_pack(state), player)
+
+    # --------------------------------------------------------------------- sight
+
+    def effects(self, state: GameState) -> Effects:
+        """The effects on this board (schema 30, `docs/plan-passive.md` §3.4), as the core
+        answers them: each square's effect bits (``SIGHT_FREEZE``, ``SIGHT_DISARM``,
+        ``SIGHT_SHIELD`` on the piece there, for its owner), the side to move's moves the
+        effects removed by reason, and whether its royal stands under a suppressed attack.
+        All zeros in a game without a sight."""
+        bits, (freeze, disarm, shield), suppressed = self.core.effects(_pack(state))
+        return Effects(tuple(bits), freeze, disarm, shield, suppressed)
+
+    def sight_of(self, state: GameState, square: int) -> list[tuple[int, int]]:
+        """The squares the piece on ``square`` sees on this board, each with the effect bits
+        of the sights that see it (schema 30), ascending; empty for an empty square."""
+        return [(target, bits) for target, bits in self.core.sight_of(_pack(state), square)]
 
     # ------------------------------------------------------------------- players
 

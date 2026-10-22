@@ -25,7 +25,12 @@ import re
 from typing import Any
 
 from chess_variant_sandbox.spec.describe import RULE_WORDS
-from chess_variant_sandbox.spec.schema import RETIRED_REST, is_simultaneous
+from chess_variant_sandbox.spec.schema import (
+    RETIRED_REST,
+    SIGHT_EFFECTS,
+    is_simultaneous,
+    piece_sights,
+)
 
 # Dotted from the top of the game's text, with no list indices: `pieces.moves.range` is
 # every way of moving's *how far*. A label is what the field is called on the page; the
@@ -466,6 +471,55 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "move, unless nothing else can. In a game in rounds a round is a turn. Leave it empty "
         "and the piece never rests.",
     ),
+    # Schema 30 (Q999a, `docs/plan-passive.md` §4.3): lines of sight, a piece's own card.
+    "pieces.sight": (
+        "what it sees",
+        "Lines along which this piece puts what it sees under an effect, for as long as it "
+        "stands there: up to four, each drawn like a way of moving. Leave it empty and the "
+        "piece sees nothing.",
+    ),
+    "pieces.sight.vectors": (
+        "direction",
+        "The directions it looks in, from the piece's own side, as a way of moving's are.",
+    ),
+    "pieces.sight.symmetry": (
+        "turned",
+        "How each direction is turned into more, as on a way of moving: all four turns of "
+        "one step straight ahead and one diagonal are the eight lines a queen moves along.",
+    ),
+    "pieces.sight.range": (
+        "how far",
+        "How many squares along each line it sees; 0 is as far as the board goes.",
+    ),
+    "pieces.sight.min_range": (
+        "no nearer than",
+        "The nearest square it sees. A piece on a nearer square is not seen, but still stops "
+        "the line.",
+    ),
+    "pieces.sight.effect": (
+        "what it does",
+        "Freeze: the piece cannot move, and threatens nothing, so it gives no check. Disarm: "
+        "it may move but cannot capture, and threatens nothing. Shield: nothing may capture "
+        "it, and a shielded royal is never in check.",
+    ),
+    "pieces.sight.whose": (
+        "to whose pieces",
+        "The other player's, its own player's, or both, counted from this piece's owner.",
+    ),
+    "pieces.sight.affects": (
+        "only these pieces",
+        "The only kinds of piece it touches. Leave it empty for every kind.",
+    ),
+    "pieces.sight.through": (
+        "sees through pieces",
+        "Yes: it sees past every piece on its lines. Left empty, each line stops at the "
+        "first piece, which is seen.",
+    ),
+    # The bump's other three names, as a version sentence says what a draft uses (the fourth,
+    # `pieces.sight.through`, is the field above, by the same words).
+    "pieces.sight.freeze": ("freezes what it sees", None),
+    "pieces.sight.disarm": ("disarms what it sees", None),
+    "pieces.sight.shield": ("shields what it sees", None),
     # Schema 28 (Q943a): speed.
     "pieces.speed": (
         "speed",
@@ -772,6 +826,15 @@ def _where(path: str, spec: Any) -> tuple[str, str | None]:
             place += f", way of moving {moved + 1}"
             rest = rest[2:]
             dotted = "pieces.moves"
+        elif len(rest) >= 2 and rest[0] == "sight" and index(rest[1]) is not None:
+            # Schema 30 (Q999a): one line of sight, numbered as a way of moving is.
+            seen = index(rest[1])
+            assert seen is not None
+            place += f", line of sight {seen + 1}"
+            rest = rest[2:]
+            dotted = "pieces.sight"
+            if not rest:
+                return place, None
         return place, _label(dotted, rest)
     if head == "pieces" and rest and (rest[0] == "[]" or not rest[0].startswith("[")):
         # A field of the whole army (`pieces[].speed`, `pieces.speed`): the pieces that
@@ -861,7 +924,12 @@ def _place(path: str, spec: Any) -> str:
 # *Where the game comes from* and named neither the piece nor the field (Q995a F3). Now the
 # pieces that carry the field are named from the draft (built in `web/designing.py` by
 # Q995b, moved here by Q995e so the command line and the model's repairs read it too).
-_ARMY_PATH = re.compile(r"\bpieces(?:\[\])?\.(?P<key>[a-z_]+)\b")
+_ARMY_PATH = re.compile(
+    r"\bpieces(?:\[\])?\.(?P<key>[a-z_]+)\b"
+    # Schema 30 (Q999a): a sight's name carries its effect, or `through`, one step down.
+    r"(?:\.(?P<sub>" + "|".join((*SIGHT_EFFECTS, "through")) + r")\b)?"
+)
+_STAMP_OPENING = re.compile(r"^(?:the spec|rules|a piece) uses ")
 
 # The three a newcomer meets most: a field of a game in rounds set on a game that is not
 # in one. Each says where rounds are chosen.
@@ -877,12 +945,24 @@ _ROUNDS_ONLY = (
 _CHOOSE_ROUNDS = "Choose 'in rounds' under 'how the players take turns', or"
 
 
-def _carrying(spec: Any, key: str) -> list[int]:
+def _carrying(spec: Any, key: str, sub: str | None = None) -> list[int]:
+    """The pieces that carry a field; for a sight's name (``sub``, schema 30), only those with
+    a line of sight of that effect, or one that sees through pieces."""
     pieces = spec.get("pieces") if isinstance(spec, dict) else None
     if not isinstance(pieces, list):
         return []
-    return [index for index, piece in enumerate(pieces)
-            if isinstance(piece, dict) and key in piece]
+    carrying = [index for index, piece in enumerate(pieces)
+                if isinstance(piece, dict) and key in piece]
+    if sub is None:
+        return carrying
+    sights = piece_sights(spec)
+    return [
+        index for index in carrying
+        if any(
+            (sight.through if sub == "through" else sight.effect == sub)
+            for sight in sights.get(pieces[index].get("id"), ())
+        )
+    ]
 
 
 def _pieces_called(spec: Any, indices: list[int]) -> str:
@@ -917,18 +997,23 @@ def _army_problem(problem: str, spec: Any) -> str | None:
     plural: list[tuple[str, str]] = []
 
     def name(found: re.Match[str]) -> str:
-        key = found["key"]
-        words = field_words(f"pieces.{key}")
+        key, sub = found["key"], found["sub"]
+        field = f"{key}.{sub}" if sub else key
+        words = field_words(f"pieces.{field}")
         label = words[0] if words else key.replace("_", " ")
         # The path the sentence is about, at its start or as what a version sentence says
-        # the draft uses, is the pieces that carry it; one inside a reason is the field.
-        subject = found.start() == 0 or problem[:found.start()].endswith("uses ")
-        carriers = _carrying(spec, key) if subject else []
+        # the draft uses (any of the names it lists), is the pieces that carry it; one
+        # inside a reason is the field.
+        before = problem[:found.start()]
+        subject = found.start() == 0 or before.endswith("uses ") or (
+            before.endswith(", ") and _STAMP_OPENING.match(problem) is not None
+        )
+        carriers = _carrying(spec, key, sub) if subject else []
         if not carriers:
             return f"every piece's '{label}'" if subject else f"'{label}'"
         if len(carriers) > 1:
             plural.append((_pieces_called(spec, carriers[:1]), _pieces_called(spec, carriers)))
-        return f"pieces[{carriers[0]}].{key}"
+        return f"pieces[{carriers[0]}].{field}"
 
     said = _translate(_ARMY_PATH.sub(name, problem), spec)
     for alone, every in plural:

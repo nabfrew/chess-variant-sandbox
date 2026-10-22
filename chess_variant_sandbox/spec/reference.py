@@ -176,6 +176,11 @@ DEFAULTS: dict[str, str] = {
     "pieces[].moves[].screen_range": "`0`",
     "pieces[].moves[].condition.first_move": "`false`",
     "pieces[].facing.initial": "`\"forward\"`",
+    "pieces[].sight[].symmetry": "`\"none\"`",
+    "pieces[].sight[].range": "`0`, to the edge of the board",
+    "pieces[].sight[].min_range": "`1`",
+    "pieces[].sight[].affects": "every type `whose` names",
+    "pieces[].sight[].through": "absent, a ray stopped by the first piece it sees",
     "pieces[].facing.turns": "`true`",
     "setup.mirror": "`true`",
     "setup.orientation": "`\"mirror\"`",
@@ -360,6 +365,15 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "for some of their player's turns after they move, by turns or in rounds.",
         ("rules.turn", "rules.simultaneous", "pieces[].beats", "pieces[].speed",
          "pieces[].spy", "pieces[].rest"),
+    ),
+    (
+        "What pieces do to each other without moving",
+        "A piece can have lines of sight, written like its moves, that put the pieces they see "
+        "under an effect while they stand there: frozen in place, unable to capture, or "
+        "impossible to take. A sight can be stopped by the first piece in its way or see past "
+        "them all, and can touch the enemy's pieces, its own side's, or both, of every kind or "
+        "only some. Check reads the effects, so freezing a checker answers its check.",
+        ("pieces[].sight",),
     ),
     (
         "Pieces nobody owns",

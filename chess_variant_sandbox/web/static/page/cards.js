@@ -1410,11 +1410,18 @@ function renamePiece(from, to) {
     ((DRAFT.setup || {}).placements || []).forEach(row =>
       renameInFields(model.placement, row, from, to));
   }
-  // The two the hand-written form owns, which the tree therefore does not mark: the
-  // placement row's piece, and the drawing filed under the piece's own letter.
+  // The ones the hand-written form owns, which the tree therefore does not mark: the
+  // placement row's piece, the pieces a line of sight touches (schema 30, Q999c, its row's),
+  // and the drawing filed under the piece's own letter.
   ((DRAFT.setup || {}).placements || []).forEach(row => {
     if (row.piece === from) row.piece = to;
   });
+  (DRAFT.pieces || []).forEach(piece => (Array.isArray(piece.sight) ? piece.sight : [])
+    .forEach(sight => {
+      if (sight && Array.isArray(sight.affects)) {
+        sight.affects = sight.affects.map(id => (id === from ? to : id));
+      }
+    }));
   const icons = (DRAFT.appearance || {}).icons;
   if (icons && from in icons) DRAFT.appearance.icons = renamedKey(icons, from, to);
 }

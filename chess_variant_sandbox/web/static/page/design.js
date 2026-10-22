@@ -1099,8 +1099,10 @@ function pieceEditor(piece, index) {
     ${freshNoteHtml(index)}
     <div class="u-mt-8">
       ${(piece.moves || []).map((move, m) => moveEditor(move, index, m)).join('')}
+      ${sightsHtml(piece, index)}
       <div class="row u-mt-7">
         <button data-addmove="${index}">add a way of moving</button>
+        ${sightAddHtml(piece, index)}
         <button data-drop="${index}" title="remove this piece from the game">remove piece</button>
       </div>
       ${pieceTurnsHtml(piece, index)}
@@ -1467,6 +1469,232 @@ function writeMoveField(move, field, value) {
   }
 }
 
+// ------------------------------------------------- lines of sight (schema 30, Q999c)
+//
+// A piece's lines of sight (`docs/plan-passive.md` §4.7): one row each under its ways of
+// moving, built from the move row's own pickers (direction, turned, how far, no nearer
+// than) and four of its own: what it does, to whose pieces, whether it sees through pieces
+// (an aura) or stops at the first (a ray), and which kinds of piece it touches. Every label
+// and its sentence are `spec.plain`'s (`cards.sight_kit`), so a refusal that names a field
+// names it as the row does; the refusals are the validator's, said under the rows
+// (`sightProblems`), and each row is read back in the words a game's page says it in
+// (`sightLines`). The menus offer the schema's values (`kit.effects`, `kit.whose`), and a
+// value already written stays on its menu, so the row shows what the draft says beside the
+// refusal of it.
+const SIGHT_EFFECT_WORDS = { freeze: 'freezes it', disarm: 'disarms it', shield: 'shields it' };
+const SIGHT_WHOSE_WORDS = { enemy: "the other player's", own: "its own side's",
+                            any: "both sides'" };
+const SIGHT_LINE_WORDS = [['ray', 'no: stops at the first piece'], ['aura', 'yes']];
+// The line of sight a piece is given: Ultima's immobiliser, freezing every enemy piece on
+// the eight squares around it, which is the plan's own first example.
+const NEW_SIGHT = { vectors: [[1, 0], [1, 1]], symmetry: 'rotate4', range: 1,
+                    effect: 'freeze', whose: 'enemy' };
+
+function sightKit() {
+  return (cardModel() || {}).sight || { max: 4, effects: [], whose: [], words: {} };
+}
+
+function sightWords(key) {
+  return sightKit().words[key] || [key.replace(/_/g, ' '), ''];
+}
+
+// A menu's options, with the value the draft holds kept on it when it is none of them.
+function withHeld(options, held) {
+  return held === undefined || options.some(([value]) => value === held)
+    ? options : options.concat([[held, String(held)]]);
+}
+
+// The pieces a sight may name in *only these pieces*: every piece of the draft but the
+// portals and the wild pieces, which nothing affects, and any it already names.
+function sightTargets(sight) {
+  const wild = new Set(((DRAFT.rules || {}).npcs || []).map(npc => npc && npc.piece));
+  const named = Array.isArray(sight.affects) ? sight.affects : [];
+  return (DRAFT.pieces || [])
+    .filter((piece, index) => piece && piece.id && (named.includes(piece.id)
+      || (!isPortalPiece(index) && !wild.has(piece.id))))
+    .map(piece => [piece.id, piece.name || piece.id]);
+}
+
+function sightEditor(sight, piece, index) {
+  const tag = `data-sight="${piece}.${index}"`;
+  const field = (key, control) => `<label class="moveField" data-sfor="${key}"
+    title="${esc(sightWords(key)[1])}"><span>${esc(sightWords(key)[0])}</span>${control}</label>`;
+  const pick = (key, options, chosen) => `
+    <select ${tag} data-sfield="${key}">
+      ${options.map(([value, label]) => `<option value="${esc(value)}"${
+        value === chosen ? ' selected' : ''}>${esc(label)}</option>`).join('')}
+    </select>`;
+  const box = (key, value, placeholder, attrs) => `<input ${tag} data-sfield="${key}"
+    value="${value}" placeholder="${esc(placeholder)}" ${attrs || ''}>`;
+  const kit = sightKit();
+  const effects = withHeld(kit.effects.map(value => [value, SIGHT_EFFECT_WORDS[value] || value]),
+                           sight.effect);
+  const whose = withHeld(kit.whose.map(value => [value, SIGHT_WHOSE_WORDS[value] || value]),
+                         sight.whose);
+  const lines = sight.through === undefined ? 'ray'
+    : sight.through === true ? 'aura' : String(sight.through);
+  const named = Array.isArray(sight.affects) ? sight.affects : [];
+  const more = sight.range !== undefined || sight.min_range !== undefined
+    || sight.affects !== undefined;
+  const affects = sightTargets(sight).map(([id, name]) => `<label class="pick sightPick">
+      <input type="checkbox" ${tag} data-sfield="affects" data-pid="${esc(id)}"${
+      named.includes(id) ? ' checked' : ''}> ${esc(name)}</label>`).join('');
+  return `<div class="moveRow sightRow">
+    ${field('effect', pick('effect', effects, sight.effect))}
+    ${field('whose', pick('whose', whose, sight.whose))}
+    ${field('vectors', box('vectors',
+      esc((Array.isArray(sight.vectors) ? sight.vectors : [])
+        .map(v => (Array.isArray(v) ? v : [v]).join(',')).join(' ')), '1,0 1,1'))}
+    ${field('symmetry', pick('symmetry', turnings(sight), sight.symmetry || 'none'))}
+    ${field('through', pick('through', withHeld(SIGHT_LINE_WORDS, lines), lines))}
+    <button data-dropsight="${piece}.${index}" title="remove this line of sight">&times;</button>
+    <details class="moveMore"${more ? ' open' : ''}>
+      <summary class="muted small" title="how far, how near, and which pieces">more</summary>
+      <div class="moveMoreBody">
+    ${field('range', box('range', esc(sight.range), 'to the edge',
+      'type="number" min="0" max="16"'))}
+    ${field('min_range', box('min_range', esc(sight.min_range), '1',
+      'type="number" min="1" max="16"'))}
+    <div class="sightAffects" title="${esc(sightWords('affects')[1])}"><span
+      class="muted small">${esc(sightWords('affects')[0])} (none ticked: every kind)</span>
+      <span class="sightPicks">${affects}</span></div>
+      </div>
+    </details>
+  </div>
+  <div class="moveSays muted small" data-sightsays="${piece}.${index}">${
+    esc(sightSaid(piece, index))}</div>`;
+}
+
+// A piece's lines of sight under its ways of moving, headed in `spec.plain`'s words, with
+// the refusals that are about them; nothing for a piece that sees nothing.
+function sightsHtml(piece, index) {
+  if (!('sight' in piece)) return '';
+  const rows = Array.isArray(piece.sight) ? piece.sight : [];
+  return `<div class="sightRows" data-sights="${index}">
+    <div class="sightHead small"><b>${esc(sightWords('sight')[0])}</b> <span class="muted">${
+      esc(sightWords('sight')[1])}</span></div>
+    ${rows.map((sight, k) => sightEditor(sight && typeof sight === 'object' ? sight : {},
+                                         index, k)).join('')}
+    <div class="sightProblems" data-sightproblems="${index}">${sightProblemsHtml(index)}</div>
+  </div>`;
+}
+
+// *Add a line of sight*, beside *add a way of moving*, while the piece has room for one.
+function sightAddHtml(piece, index) {
+  const rows = Array.isArray(piece.sight) ? piece.sight.length : 0;
+  const full = rows >= sightKit().max;
+  return `<button data-addsight="${index}"${full ? ' disabled' : ''} title="${full
+    ? `a piece sees along ${sightKit().max} lines at most`
+    : 'what it sees: pieces on its lines are frozen, disarmed or shielded while they stand there'}"
+    >add a line of sight</button>`;
+}
+
+// The check's sentences for each row, and its refusals for each piece, held with the draft
+// they are of, as the move rows' are (`MOVE_SAID`).
+let SIGHT_SAID = null;   // { key, lines, problems }
+
+function sightSaid(piece, index) {
+  if (!SIGHT_SAID || SIGHT_SAID.key !== JSON.stringify(DRAFT)) return '';
+  const said = ((SIGHT_SAID.lines || [])[piece] || [])[index] || '';
+  return said ? 'That reads: ' + said + '.' : '';
+}
+
+function sightProblemsHtml(piece) {
+  if (!SIGHT_SAID || SIGHT_SAID.key !== JSON.stringify(DRAFT)) return '';
+  return ((SIGHT_SAID.problems || [])[piece] || [])
+    .map(line => `<div class="error small sightError">${esc(line)}</div>`).join('');
+}
+
+function drawSightSays() {
+  if (!SIGHT_SAID || SIGHT_SAID.key !== JSON.stringify(DRAFT)) return;
+  document.querySelectorAll('[data-sightsays]').forEach(node => {
+    const [piece, index] = node.dataset.sightsays.split('.').map(Number);
+    node.textContent = sightSaid(piece, index);
+  });
+  document.querySelectorAll('[data-sightproblems]').forEach(node => {
+    node.innerHTML = sightProblemsHtml(Number(node.dataset.sightproblems));
+  });
+}
+
+// One sight-row control written into its entry, as `writeMoveField` writes a move's: a value
+// the entry already means is left as written, so a line of sight read in from a file and
+// back out through the row is the file. `affects` takes the ids ticked, in the row's order.
+function writeSightField(sight, field, value) {
+  if (field === 'vectors') {
+    const vectors = String(value).trim().split(/\s+/).filter(Boolean)
+      .map(pair => pair.split(',').map(Number))
+      .filter(pair => pair.length === 2 && pair.every(n => Number.isFinite(n)));
+    if (JSON.stringify(vectors) !== JSON.stringify(sight.vectors)) sight.vectors = vectors;
+  } else if (field === 'symmetry') {
+    if (value === (sight.symmetry || 'none')) return;
+    if (value === 'none') delete sight.symmetry; else sight.symmetry = value;
+  } else if (field === 'range') {
+    const range = value === '' ? undefined : Number(value);
+    if (range === sight.range || (range === undefined && sight.range === undefined)) return;
+    if (range === undefined) delete sight.range; else sight.range = range;
+  } else if (field === 'min_range') {
+    const near = Number(value) > 1 ? Number(value) : 1;
+    if (near === (sight.min_range || 1)) return;
+    if (near > 1) sight.min_range = near; else delete sight.min_range;
+  } else if (field === 'through') {
+    // A ray is the absent key; an aura is `true`, the one spelling the schema takes.
+    if (value === 'aura') sight.through = true;
+    else if (value === 'ray') delete sight.through;
+  } else if (field === 'affects') {
+    const ticked = Array.isArray(value) ? value : [];
+    const held = Array.isArray(sight.affects) ? sight.affects : [];
+    const same = ticked.length === held.length && ticked.every(id => held.includes(id));
+    if (same && sight.affects !== undefined) return;
+    if (ticked.length) sight.affects = ticked.slice(); else delete sight.affects;
+  } else if (value !== sight[field]) {
+    sight[field] = value;
+  }
+}
+
+// The sight rows' controls, wired as the move rows' are; a change is checked, and a row
+// added or taken away redraws the form.
+function wireSights(form, changed) {
+  form.querySelectorAll('[data-sight]').forEach(node => {
+    const [piece, index] = node.dataset.sight.split('.').map(Number);
+    const field = node.dataset.sfield;
+    const write = () => {
+      const sight = DRAFT.pieces[piece].sight[index];
+      const value = field !== 'affects' ? node.value
+        : [...form.querySelectorAll(`[data-sight="${piece}.${index}"][data-sfield="affects"]`)]
+          .filter(box => box.checked).map(box => box.dataset.pid);
+      writeSightField(sight, field, value);
+      DRAFT_PIECE = piece;
+      checkDraft();
+    };
+    node.onchange = write;
+    if (node.tagName === 'INPUT' && node.type !== 'checkbox') node.oninput = write;
+  });
+  form.querySelectorAll('[data-addsight]').forEach(node => {
+    node.onclick = event => {
+      event.stopPropagation();
+      const piece = DRAFT.pieces[Number(node.dataset.addsight)];
+      piece.sight = Array.isArray(piece.sight) ? piece.sight : [];
+      piece.sight.push(JSON.parse(JSON.stringify(NEW_SIGHT)));
+      DRAFT_PIECE = Number(node.dataset.addsight);
+      // On hexagons it looks the hexagons' six ways, as a new way of moving goes (Q640).
+      if ((DRAFT.board || {}).lattice === 'hex') return ontoHex();
+      changed(true);
+    };
+  });
+  form.querySelectorAll('[data-dropsight]').forEach(node => {
+    node.onclick = event => {
+      event.stopPropagation();
+      const [piece, index] = node.dataset.dropsight.split('.').map(Number);
+      const held = DRAFT.pieces[piece];
+      held.sight.splice(index, 1);
+      // The last one taken away takes the key with it: `"sight": []` sees nothing and is
+      // refused, so an empty list is never left behind.
+      if (!held.sight.length) delete held.sight;
+      changed(true);
+    };
+  });
+}
+
 function placementEditor(placement, index) {
   const ids = (DRAFT.pieces || []).map(p => p.id);
   // Whose row this is, which only means something without a mirror: under one, the
@@ -1709,6 +1937,9 @@ function wireDesigner() {
     if (node.tagName === 'INPUT') node.oninput = write;
   });
 
+  // Schema 30 (Q999c): each piece's lines of sight.
+  wireSights(form, changed);
+
   wirePlacements(form);
 
   // A mirror derives the second army, and the schema refuses a `player` beside one, so
@@ -1891,6 +2122,9 @@ function checkDraft() {
       if (current) {
         MOVE_SAID = { key: JSON.stringify(DRAFT), lines: answer.moveLines || [] };
         drawMoveSays();
+        SIGHT_SAID = { key: JSON.stringify(DRAFT), lines: answer.sightLines || [],
+                       problems: answer.sightProblems || [] };
+        drawSightSays();
       }
       if (answer.valid && answer.hash !== DRAFT_HASH) {
         DRAFT_HASH = answer.hash;
