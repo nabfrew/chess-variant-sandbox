@@ -24,6 +24,12 @@ Three more previews each add one line of sight to chess: *madrasi chess*, where 
 other both freeze; *chess with a sheltering king*, whose own pieces near the king cannot be captured; and *chess with daunting
 knights*, where an enemy piece a knight's jump from a knight cannot capture.
 
+### Three games measured by players trained on them
+
+*Marchfield*, *rps annihilation* and *demotion chess* are now measured with a computer player trained on each game itself,
+instead of only the built-in players. Their scores moved: marchfield from 0.821 to
+0.734, demotion chess from 0.850 to 0.875, and rps annihilation from 0.391 to 0.351, which now counts as a working game.
+
 ### Measuring more kinds of game in your browser
 
 When you measure a game played in rounds, a game with a spy, or a game with lines of sight on your own computer, the site now

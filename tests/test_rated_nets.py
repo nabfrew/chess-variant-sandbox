@@ -52,6 +52,10 @@ ROLLED_OUT = {
     "66b001f1b790": "1851f0c2e373",  # racingkings: generation 1, kept (pilot-plan §6.7)
     "975dde173f01": "ae241123e674",  # gardner: 3c's guard child, accepted and confirmed (§9.20)
     "71912ea8ba7f": "db5ef1bc938e",  # kingofthehill: generation 0, accepted and confirmed
+    # L1's batch 1 (plan-teacher §10.8, 2026-10-22): generation 0, accepted and confirmed.
+    "0be72e61ef24": "db5ef1bc938e",  # marchfield
+    "2261f8203948": "db5ef1bc938e",  # rps annihilation (rps-v1)
+    "3c639d277808": "db5ef1bc938e",  # demotion chess (hierarchy-fall)
 }
 
 
