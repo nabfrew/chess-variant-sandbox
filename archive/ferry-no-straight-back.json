@@ -1,5 +1,5 @@
 {
-  "schema_version": 20,
+  "schema_version": 31,
   "name": "steady ferry",
   "description": "Doors that either player may move, and one ban that stops them becoming a way to stall. Two pairs of portals cross the middle of a six-by-six board, b3 joined to e4 and e3 to b4: a piece that ends its move on one end comes out one step beyond the other end of its pair, in the direction it was travelling, capturing there as usual, and either player may instead move any portal a step. The ban: a portal just moved may not go straight back on the very next move, which is always the opponent's, so you can never simply undo your opponent's door move but must answer it some other way. Without the ban about two games in five were drawn by the players undoing each other's portal moves; with it fewer than one in ten end in repetition, portals move more, and most games are won. The armies are Los Alamos chess's: six-by-six chess without bishops, castling or a pawn's double step.",
   "board": {
@@ -116,28 +116,6 @@
           "mode": "both"
         }
       ]
-    },
-    {
-      "id": "O",
-      "name": "portal",
-      "value": 0,
-      "moves": [
-        {
-          "kind": "leap",
-          "vectors": [
-            [
-              1,
-              0
-            ],
-            [
-              1,
-              1
-            ]
-          ],
-          "symmetry": "rotate4",
-          "mode": "move"
-        }
-      ]
     }
   ],
   "setup": {
@@ -199,7 +177,22 @@
     "no_progress_draw": 100,
     "portals": [
       {
-        "piece": "O",
+        "moves": [
+          {
+            "kind": "leap",
+            "vectors": [
+              [
+                1,
+                0
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "symmetry": "rotate4"
+          }
+        ],
         "orange": "b3",
         "blue": "e4",
         "moved_by": {
@@ -215,7 +208,22 @@
         "no_straight_back": true
       },
       {
-        "piece": "O",
+        "moves": [
+          {
+            "kind": "leap",
+            "vectors": [
+              [
+                1,
+                0
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "symmetry": "rotate4"
+          }
+        ],
         "orange": "e3",
         "blue": "b4",
         "moved_by": {

@@ -39,7 +39,6 @@ import pytest
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.moves import move_from, move_to
 from chess_variant_sandbox.spec import load_spec
-from chess_variant_sandbox.spec.schema import validate_spec
 
 RULESETS = Path(__file__).resolve().parents[1] / "rulesets"
 CORPUS = (
@@ -82,23 +81,6 @@ def perft_cases() -> list[pytest.ParameterSet]:
 def test_opening_perft_is_frozen(name: str, depth: int, expected: int) -> None:
     engine = engine_for(name)
     assert engine.perft(engine.initial_state(), depth, stop_at_terminal=True) == expected
-
-
-@pytest.mark.parametrize("name", CORPUS)
-def test_every_ruleset_is_valid_and_declares_the_version_it_needs(name: str) -> None:
-    """The declared version is a claim about which features the rules use, and the
-    validator enforces it in both directions -- so this only has to check the claim is
-    the *smallest* one that works."""
-    spec = load_spec(RULESETS / f"{name}.json")
-    assert validate_spec(spec) == []
-    assert any("captures" in piece for piece in spec["pieces"]), "all six use the matrix"
-
-    needs_territory = "territory" in spec["rules"]
-    assert spec["schema_version"] == (4 if needs_territory else 3)
-
-    # ...and one lower is refused, by name.
-    lowered = dict(spec, schema_version=spec["schema_version"] - 1)
-    assert any("schema" in error for error in validate_spec(lowered))
 
 
 class TestTheCaptureCycle:

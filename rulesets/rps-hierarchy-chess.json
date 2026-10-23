@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 31,
   "name": "hierarchy chess",
   "description": "The idea the designer of intransitive started from, before the five rock-paper-scissors games (the rps games here) that led to it, recorded as he first stated it. Chess board, chess army, chess setup -- but every piece moves as a rook, and a piece may capture only pieces below it in the usual value order. Nothing outranks the king, so the king can never be captured, so the game has no ending. It is unwinnable on purpose, kept to check that the site's basic tests of a working game find that out.",
   "board": {

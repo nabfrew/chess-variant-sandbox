@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 31,
   "name": "three-check",
   "description": "Chess, but delivering check three times wins. Checks that achieve nothing positionally are suddenly worth playing, which inverts most of the received wisdom about attacking.",
   "board": {

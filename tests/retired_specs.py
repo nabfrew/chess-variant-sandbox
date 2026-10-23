@@ -185,6 +185,25 @@ RETIRED_PREVIEWS = {
     "gardner-in-rounds-where-swaps-collide": "7985900696d7",
     "gardner-in-rounds-scored": "a90a8db7e2dd",
     "gardner-with-spies": "f4c62a33798d",
+    # Q1005 (2026-10-23, `docs/reference/preview-call-2026-10.md`): the user asked for a call on
+    # every preview. Six left the same way; the showcase, player and net tests still read them.
+    "gardner-with-weary-heavies": "1d1d3c79ce19",
+    "breather-by-weight": "7ea0357fa8de",
+    "gardner-in-rounds-with-a-swift-king": "d8bb879440ce",
+    "gardner-in-rounds-with-swift-knights": "bf230a962d10",
+    "watering-hole-by-speed": "423a29997264",
+    "gardner-with-spies-resting": "8ce37482d0de",
+    # Q1007e (2026-10-24, `docs/plan-schema-31.md` §6.1): Q999b's colour-bound game, a library
+    # game since Q1005, replaced under its name by R1 (riders as rook and queen) by the user's
+    # rule; the showcase and lame-rider tests still read it.
+    "opposite-colours": "690631b0e4eb",
+    # Q1007f (2026-10-24, `docs/plan-schema-31.md` §6.3): the command showcases K1 and K2, built,
+    # measured and retired before they ever joined: each missed V2 (the effect is offered too
+    # rarely), and the call registered before their first measured game retires a miss. Never
+    # previews; kept here because the V1 mechanism tests read them
+    # (`tests/test_showcases_q1007.py`).
+    "chess-with-commanding-knights": "adc1a91b0a83",
+    "chess-with-a-spellbinding-king": "6a8120390853",
 }
 
 # Retired previews kept byte for byte though the validator now refuses them, so a test can hold

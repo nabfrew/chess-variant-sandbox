@@ -396,10 +396,44 @@ class TestTheFingerprintsPointAtSomething:
 # next library replay re-scores under it.
 #
 # **Moved 2026-10-22 by Q999c**: `tournament/analysis.py` records the sight tallies
-# (`SIGHT_SERIES`, `docs/plan-passive.md` §4.8), only for a game with a line of sight; no library
+# (`SIGHT_SERIES`, `docs/archive/plan-passive.md` §4.8), only for a game with a line of sight; no library
 # game has one, so no number moves. It was "4888feeaf7240d65" after Q999a; the replay R30 owed
 # for Q999a re-scores under it.
-FROZEN_METRICS = "7557cf49f08b4705"
+#
+# **Moved 2026-10-22 by Q983b (rest in the players, the tallies and the page)**:
+# `tournament/analysis.py` records the rest tallies (`REST_SERIES`, `docs/plan-rest.md` §5.4,
+# §7), only for a game whose pieces rest, and `engine/engine.py`, `engine/state.py` and
+# `engine/__init__.py` carry `Engine.rest_turn` and its `RestTurn` record. The library's rest
+# game is breather (and the previews that rest); its components read the same games, so no
+# number should move. It was "7557cf49f08b4705" after Q999c; the library's re-score owed after
+# Q983b re-scores under it.
+#
+# **Moved 2026-10-23 by Q1007c (the command effect)**: `spec/complexity.py` charges half a rule
+# for a command's `captures_own` (`_SIGHT_TURNCOAT`), and `engine/engine.py`, `moves.py` and
+# `state.py` carry `MOVE_COMMANDED`, the `~` of `describe_move` and `Effects.commanded`. No
+# library game declares a command, so no number should move. It was "a4f5513c93f74731" after
+# Q983b; R31's replay re-scores under it.
+#
+# **Moved 2026-10-23 by Q1007b (spelling 31, portal moves on the group)**: `spec/complexity.py`
+# counts each distinct `rules.portals[].moves` list as a piece type with its moves
+# (`_portal_movement`), the stand-in piece every portal game declared before the re-spelling,
+# so every portal game's counts and rule mass are what they were (`docs/plan-schema-31.md`
+# §4.3). No number should move. It was "6a665ced2b90fe0a" after Q1007c; R31's replay
+# re-scores under it.
+#
+# **Moved 2026-10-23 by Q1008d**: `metrics/mutants.py`'s `idle_wanderer` no longer raises
+# `schema_version`, which no gate and no name reads since Q1008c
+# (`docs/reference/schema-reboot-assessment.md` §10). Every library file is stamped 31, so the
+# line wrote nothing anywhere, and no number can move. It was "f9bd681ef9fbd903" after Q1007b;
+# R31's replay re-scores under it (`measure --check` reads the same 104 replays as before).
+#
+# **Moved 2026-10-23 by Q1007d (command in the tallies)**: `tournament/analysis.py` records
+# `COMMAND_SERIES` beside `SIGHT_SERIES`, only for a game whose sight commands, and
+# `_SIGHT_BITS` knows the command bits 8 and 16 (`docs/plan-schema-31.md` §3.9). No library
+# game declares a command, and a sight game without one writes the keys it did, so no number
+# should move. It was "8e8d8c6ea96b7471" after Q1008d; the library replay after the detached
+# training campaign re-scores under it.
+FROZEN_METRICS = "0d041f41fc5bfba1"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -650,7 +684,21 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # **Moved 2026-10-22 by Q999c**: `tournament/analysis.py`'s sight tallies (see `FROZEN_METRICS`);
 # a game without a sight is analysed byte for byte as before. It was "2e9d152d5ca7f07b" after
 # Q999a; the replay R30 owed for Q999a is the re-analysis.
-FROZEN_ANALYSIS = "59c2e597b2f08d51"
+#
+# **Moved 2026-10-22 by Q983b**: `tournament/analysis.py`'s rest tallies and `Engine.rest_turn`
+# (see `FROZEN_METRICS`); a game without a rest is analysed byte for byte as before
+# (`tests/test_rest_players.py`). It was "59c2e597b2f08d51" after Q999c; the library's
+# `reanalyse` owed after Q983b is the re-analysis.
+#
+# **Moved 2026-10-23 by Q1007c**: `engine/engine.py`, `moves.py` and `state.py`'s command (see
+# `FROZEN_METRICS`); a game without a command is analysed byte for byte as before. It was
+# "d375f16fdb8ee837" after Q983b; R31's replay is the re-analysis.
+#
+# **Moved 2026-10-23 by Q1007d**: `tournament/analysis.py`'s command tallies (`COMMAND_SERIES`,
+# see `FROZEN_METRICS`); a game without a command is analysed byte for byte as before
+# (`tests/test_command_page.py`, `tests/test_sight_page.py`). It was "e54e6675c520c48c" after
+# Q1007c; the library replay after the detached training campaign is the re-analysis.
+FROZEN_ANALYSIS = "c7d6042d1d057fc2"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:
@@ -1112,15 +1160,27 @@ class TestTheCodeReading:
         assert not _reads_alike(tmp_path, source, source.replace(b"a comment", b"other"))
 
     def test_every_fingerprinted_source_is_read_as_code(self) -> None:
-        """No real source falls back to bytes, or prose edits there would still stale."""
+        """No real source falls back to bytes, or prose edits there would still stale.
+
+        Each body is read once (Q1009): the three kinds share most of their files, and
+        reading every one afresh for each kind and each question cost 2.3 s. The reading
+        is a function of the body, so a body seen before gets the answer it got.
+        """
+        readings: dict[bytes, bytes] = {}
+
+        def reading(body: bytes) -> bytes:
+            if body not in readings:
+                readings[body] = measurement._code_reading(body)
+            return readings[body]
+
         for kind in ("engine", "metrics", "analysis"):
             paths = measurement.fingerprinted(kind)
             assert paths, kind
             for path in paths:
                 body = measurement._fold_crlf(path.read_bytes())
-                assert measurement._code_reading(body) != body, path.name
+                assert reading(body) != body, path.name
             assert measurement.source_fingerprint(kind) == measurement._hash_files(
-                paths, measurement._code_reading
+                paths, reading
             )
 
     @staticmethod
@@ -1636,15 +1696,11 @@ class TestTheTablesAreWhatAGameRestsOn:
     def test_a_spelled_out_default_compiles_to_the_game_that_was_already_there(self) -> None:
         """`{"effect": "capture"}` compiles to `None`, and the tables say so.
 
-        Everything except the Zobrist draw is identical, and the exception is not a
-        wrinkle -- it is the reason the fingerprint can be trusted to be per-*game*.
-        The draw is seeded from the spec's mechanics hash, so two specs that hash
-        differently get different tables however alike they play, and the fingerprint
-        can never quietly report one game as another.
-
-        Which is also why this cannot be spelled `tables_fingerprint(a) ==
-        tables_fingerprint(b)`: the claim being made is about what the compiler *did*
-        with the rule, one layer under the seed.
+        The Zobrist draw is seeded from the game's identity, which since Q1008a is the
+        hash of its normal form (or the name it already had): the spelled-out default is
+        dropped there, so the two spellings are one game with one name, and their tables
+        are identical down to the draw. The claim is checked one layer under the seed
+        first -- what the compiler *did* with the rule -- and then whole.
         """
         from chess_variant_sandbox.engine.bridge import canonical_tables
         from chess_variant_sandbox.engine.compile import compile_spec
@@ -1653,7 +1709,7 @@ class TestTheTablesAreWhatAGameRestsOn:
         chess = self._spec("chess")
         spelled = {**chess, "schema_version": 6,
                    "rules": {**chess["rules"], "strike": {"effect": "capture"}}}
-        assert spec_hash(spelled) != spec_hash(chess)
+        assert spec_hash(spelled) == spec_hash(chess)
         assert compile_spec(spelled).strike is None
 
         def without_the_draw(spec: dict) -> dict:
@@ -1661,7 +1717,8 @@ class TestTheTablesAreWhatAGameRestsOn:
                     if not k.startswith("zobrist_")}
 
         assert without_the_draw(spelled) == without_the_draw(chess)
-        assert measurement.tables_fingerprint(spelled) != measurement.tables_fingerprint(chess)
+        assert canonical_tables(compile_spec(spelled)) == canonical_tables(compile_spec(chess))
+        assert measurement.tables_fingerprint(spelled) == measurement.tables_fingerprint(chess)
 
     def test_it_is_the_same_answer_twice(self) -> None:
         """Determinism, which a dict of arrays does not get for free.

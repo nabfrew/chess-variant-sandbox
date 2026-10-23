@@ -44,10 +44,10 @@ from chess_variant_sandbox.spec.schema import (
     MAX_LANDING_CANDIDATES,
     PLAYED_AS_CAPTURE,
     SCHEMA_VERSION,
-    _schema_twelve_uses,
     strike_changes_anything,
     strike_survives_anything,
 )
+from tests.feature_inventory import _schema_twelve_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -121,13 +121,6 @@ class TestTheVersionIsBumped:
             "rules.contacts.position=choose",
             "rules.contacts.landing",
         }
-
-    def test_an_older_stamp_is_refused_by_name(self, throw: dict[str, Any]) -> None:
-        spec = copy.deepcopy(throw)
-        spec["schema_version"] = 11
-        errors = validate_spec(spec)
-        assert any("position=choose" in e and "schema 12" in e for e in errors), errors
-
 
 class TestTheValidator:
     def test_the_showcase_validates(self, throw: dict[str, Any]) -> None:

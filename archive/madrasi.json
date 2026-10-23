@@ -1,5 +1,5 @@
 {
-  "schema_version": 30,
+  "schema_version": 31,
   "name": "madrasi chess",
   "description": "Chess with one rule from the world of chess problems: two pieces of the same kind that face each other paralyse each other. Whenever a piece could capture an enemy piece of its own kind, both stand frozen: bishops on one open diagonal, rooks on one open file or rank, queens on one open line of either kind, knights a knight's jump apart, and pawns standing diagonally next to each other, where either could take the other. Kings are exempt. A frozen piece cannot move at all and threatens nothing, so it gives no check and guards no square, but it still stands there, blocks lines and can be captured by any piece of another kind. The paralysis lasts only while the two face each other: a piece stepping between them frees both at once, and taking one frees the other. So like never takes like (except a pawn taking a pawn in passing), and putting your piece on the line of its twin is both an attack and a sacrifice of your own piece's freedom: it silences the enemy piece and yours with it, which helps whichever side needed its piece less. A check can be answered by bringing your own piece of the checker's kind to face it, a king may step onto the line of a frozen queen, and moving a piece out from between two twins freezes them both. The rule is the classical Madrasi condition, invented by Abdul Jabbar Karwatkar in 1979; Madrasi's extra rule for a pawn that has just made its double step is left out, so en passant works as in chess.",
   "board": {"width": 8, "height": 8},
@@ -49,10 +49,9 @@
   },
   "provenance": {
     "added": "2026-10-22",
-    "preview": "A preview: a new kind of game in which pieces act on each other by line of sight, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
     "origin": "designed",
-    "source": "docs/plan-passive.md, Q999d: the one-change showcases of schema 30's lines of sight (section 6.1, S1)",
-    "history": "S1 of docs/plan-passive.md section 6.1, pre-registered 2026-10-21 before schema 30 was built: chess (4c1922ffae26) with every type but the king given one sight equal to its capture geometry, a ray that freezes an enemy piece of its own type. The Madrasi condition of chess problems (Abdul Jabbar Karwatkar, 1979) without its en passant observation rule. Written by Q999a as a test spec (tests/_sight_madrasi.json, the same mechanics) and archived by Q999d (2026-10-22) exactly as registered; its control is chess's library measurement on the same roster (section 6.2).",
+    "source": "docs/archive/plan-passive.md, Q999d: the one-change showcases of schema 30's lines of sight (section 6.1, S1)",
+    "history": "S1 of docs/archive/plan-passive.md section 6.1, pre-registered 2026-10-21 before schema 30 was built: chess (4c1922ffae26) with every type but the king given one sight equal to its capture geometry, a ray that freezes an enemy piece of its own type. The Madrasi condition of chess problems (Abdul Jabbar Karwatkar, 1979) without its en passant observation rule. Written by Q999a as a test spec (tests/_sight_madrasi.json, the same mechanics) and archived by Q999d (2026-10-22) exactly as registered; its control is chess's library measurement on the same roster (section 6.2). Joined the library from preview by Q1005 (2026-10-23, docs/reference/preview-call-2026-10.md): the library's only game in which like pieces paralyse each other, a classical condition of chess problems, viable in 4 of 4 runs at 0.773 with the seat level and nearly every strong game decided. It scores below chess on depth (its registered index bar, chess's interval less 0.05, was missed), which may be the players' blindness to a frozen piece rather than the game.",
     "parents": ["4c1922ffae26"]
   }
 }

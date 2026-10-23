@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 31,
   "name": "dobutsu",
   "description": "Let's Catch the Lion: shogi on a three by four board with four pieces a side, designed for children and solved as a win for the second player. The chick promotes to a hen, captured pieces change sides, and getting your lion to the far rank wins -- provided it survives there.",
   "board": {
@@ -147,16 +147,14 @@
   "rules": {
     "win": "royal_capture",
     "stalemate": "draw",
-    "promotion": [
-      {
-        "piece": "C",
-        "rank": "last",
-        "to": [
-          "H"
-        ],
-        "mandatory": true
-      }
-    ],
+    "promotion": {
+      "piece": "C",
+      "rank": "last",
+      "to": [
+        "H"
+      ],
+      "mandatory": true
+    },
     "drops": {
       "from_captures": true
     },

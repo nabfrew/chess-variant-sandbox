@@ -27,7 +27,7 @@ from chess_variant_sandbox.engine.bridge import canonical_tables
 from chess_variant_sandbox.engine.compile import WILD, compile_spec
 from chess_variant_sandbox.engine.moves import MOVE_DROP, move_from, move_to, move_type
 from chess_variant_sandbox.spec import load_spec, validate_spec
-from chess_variant_sandbox.spec.schema import _schema_ten_uses
+from tests.feature_inventory import _schema_ten_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 GAMES = 6  # seeds 0 to 5, as pre-registered

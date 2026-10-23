@@ -151,12 +151,20 @@ def test_the_run_reaches_combinations_the_corpus_does_not_have() -> None:
     assert "rules never active in any case" in report
 
 
-def test_an_oracle_failure_names_the_seed_that_reproduces_it() -> None:
+def test_an_oracle_failure_names_the_seed_that_reproduces_it(tmp_path) -> None:
     """What a failure has to carry to be worth anything.
 
     The message is the interface: it is what a person reads at 400 cases in, and it has
     to say which seed to hand back to `fuzz.case`.
+
+    Over a corpus of one small spec (Q1009): over the whole corpus the draw's mutations
+    compiled large parents (some twice, to read a rotation) and built the case twice, 2.4 s
+    of a loaded machine for a question about a message. The seed must rebuild the very
+    case the message names, not merely some case.
     """
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "gardner.json").write_bytes((fuzz.CORPUS / "gardner.json").read_bytes())
     def always_fails(engine: object, state: object) -> None:
         raise fuzz.OracleFailure("a deliberately broken oracle")
 
@@ -165,7 +173,7 @@ def test_an_oracle_failure_names_the_seed_that_reproduces_it() -> None:
         fuzz.RULE_OBEDIENCE = (always_fails,)  # type: ignore[assignment]
         fuzz.ORACLES = fuzz.SELF_CONSISTENCY + fuzz.RULE_OBEDIENCE  # type: ignore[assignment]
         with pytest.raises(fuzz.OracleFailure) as caught:
-            fuzz.run(range(3), plies=2)
+            fuzz.run(range(3), plies=2, corpus=corpus)
     finally:
         fuzz.RULE_OBEDIENCE = original  # type: ignore[assignment]
         fuzz.ORACLES = fuzz.SELF_CONSISTENCY + original  # type: ignore[assignment]
@@ -174,7 +182,9 @@ def test_an_oracle_failure_names_the_seed_that_reproduces_it() -> None:
     assert "seed" in message
     assert "a deliberately broken oracle" in message
     seed = int(message.split("seed ")[1].split(":")[0])
-    assert fuzz.case(seed) is not None, "the seed in the message has to rebuild the case"
+    rebuilt = fuzz.case(seed, corpus)
+    assert rebuilt is not None, "the seed in the message has to rebuild the case"
+    assert rebuilt.describe() in message, "the seed rebuilt a different case"
 
 
 def test_a_piece_may_not_be_dropped_onto_a_wall() -> None:

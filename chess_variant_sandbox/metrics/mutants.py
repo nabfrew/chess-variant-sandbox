@@ -164,7 +164,6 @@ def idle_wanderer(spec: dict[str, Any]) -> dict[str, Any]:
         "moves": [{"kind": "leap", "vectors": [[0, 1], [0, -1]], "mode": "move"}],
     })
     spec["setup"]["placements"].append({"piece": WANDERER_ID, "squares": ["a1"]})
-    spec["schema_version"] = max(int(spec.get("schema_version", 1)), 2)
     return spec
 
 

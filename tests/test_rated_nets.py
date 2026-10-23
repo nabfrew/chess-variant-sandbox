@@ -47,7 +47,7 @@ BUDGETS = (100, 200, 400, 800, 1600, 6400)
 # The committed stores this task put in the roster, game by game (2026-10-14; Q969g's
 # generation 3c moved intransitive's and gardner's on 2026-10-20).
 ROLLED_OUT = {
-    "29d5213b02b2": "b14f1d190426",  # intransitive: generation 3c, kept (plan-teacher §9.20)
+    "29d5213b02b2": "b14f1d190426",  # intransitive: generation 3c, kept (archive/plan-teacher §9.20)
     "82a4788c02f0": "c30820cdf2de",  # rps-v2: generation 1, kept (pilot-plan §6.6)
     "66b001f1b790": "1851f0c2e373",  # racingkings: generation 1, kept (pilot-plan §6.7)
     "975dde173f01": "ae241123e674",  # gardner: 3c's guard child, accepted and confirmed (§9.20)

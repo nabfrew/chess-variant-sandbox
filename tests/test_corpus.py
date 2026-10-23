@@ -1247,3 +1247,26 @@ def _stamp_at(runs: Path, digest: str, name: str, basis: dict[str, Any]) -> None
                   "violations": [], "unreadable": [], "origin": "played"}],
         "basis": basis,
     }), encoding="utf-8")
+
+
+def test_a_game_written_into_the_library_is_in_the_current_spelling(tmp_path: Path) -> None:
+    """Q1008c: `corpus._write` writes `spelling.current_spelling`, so a game promoted from an
+    older spelling passes `tests/test_spelling.py`'s guard, and keeps its name."""
+    from chess_variant_sandbox.corpus import Candidate, _write
+    from chess_variant_sandbox.spec import load_spec, spec_hash
+    from chess_variant_sandbox.spec.spelling import current_spelling, is_current
+
+    chess = load_spec(Path(__file__).resolve().parents[1] / "rulesets" / "chess.json")
+    old = json.loads(json.dumps(chess))
+    old["schema_version"] = 1
+    old["rules"]["promotion"] = [old["rules"]["promotion"]]
+    old["rules"]["must_capture"] = False
+    assert not is_current(old)
+    candidate = Candidate(
+        hash=spec_hash(old), name="old chess", spec=old, path=tmp_path / "x.json",
+        stage="candidate",
+    )
+    written = load_spec(_write(candidate, tmp_path / "out", "a note", "archived", tmp_path))
+    assert is_current({k: v for k, v in written.items() if k != "provenance"})
+    assert spec_hash(written) == spec_hash(chess)
+    assert written["rules"] == current_spelling(chess)["rules"]

@@ -44,8 +44,8 @@ from chess_variant_sandbox.spec.complexity import measure_complexity
 from chess_variant_sandbox.spec.describe import describe_spec
 from chess_variant_sandbox.spec.distance import distance, features
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
-from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, _schema_fifteen_uses
-from chess_variant_sandbox.spec.transform import settle_schema_version
+from chess_variant_sandbox.spec.schema import SCHEMA_VERSION
+from tests.feature_inventory import _schema_fifteen_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 EVERY = frozenset({"P", "L", "N", "S", "B", "R"})
@@ -144,23 +144,13 @@ class TestTheVersionIsBumped:
             "rules.promotion.on_leaving"
         }
 
-    def test_an_older_stamp_is_refused_by_name(self, shogi: dict[str, Any]) -> None:
-        spec = _flagged(shogi)
-        assert validate_spec(spec) == []
-        spec["schema_version"] = 14
-        errors = validate_spec(spec)
-        assert any(
-            "rules.promotion.on_leaving" in e and "schema 15" in e for e in errors
-        ), errors
-
-    def test_false_written_out_is_a_schema_15_key_and_a_different_hash(
+    def test_false_written_out_is_a_schema_15_key_and_the_same_game(
         self, shogi: dict[str, Any]
     ) -> None:
+        """A spelling, so one name since Q1008a (`spec/normal.py`), as it compiles."""
         spelled = _flagged(shogi, value=False)
         assert validate_spec(spelled) == []
-        spelled["schema_version"] = 14
-        assert any("schema 15" in e for e in validate_spec(spelled))
-        assert spec_hash(_flagged(shogi, value=False)) != spec_hash(shogi)
+        assert spec_hash(_flagged(shogi, value=False)) == spec_hash(shogi)
 
     def test_the_flag_must_be_a_boolean(self, shogi: dict[str, Any]) -> None:
         spec = _flagged(shogi)
@@ -168,17 +158,6 @@ class TestTheVersionIsBumped:
         assert any(
             "rules.promotion[3].on_leaving must be a boolean" in e for e in validate_spec(spec)
         ), validate_spec(spec)
-
-    def test_the_settled_stamp_follows_the_flag(self, shogi: dict[str, Any]) -> None:
-        spec = _flagged(shogi, LEAVING)
-        spec["schema_version"] = 2
-        settle_schema_version(spec)
-        assert spec["schema_version"] == 15
-        for entry in spec["rules"]["promotion"]:
-            entry.pop("on_leaving", None)
-        settle_schema_version(spec)
-        assert spec["schema_version"] < 15
-
 
 # ------------------------------------------------------------------------ the compiler
 

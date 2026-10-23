@@ -255,7 +255,7 @@ def test_a_round_line_is_whole_rounds_and_a_spy_game_has_none() -> None:
     moves, _ = _round_line(engine, seed=7)
     with pytest.raises(ValueError, match="odd count"):
         engine.core.net_line(_pack(engine.initial_state()), blob, moves[:3])
-    spy = _engine("archive/gardner-with-spies-resting.json")
+    spy = _engine("tests/_retired_gardner_with_spies_resting.json")
     with pytest.raises(ValueError, match="spy game"):
         spy.core.net_line(
             _pack(spy.initial_state()), random_net(spy.core.net_inputs(), seed=1), []
@@ -327,7 +327,7 @@ def test_a_round_game_with_a_net_is_the_python_loops(registered: None) -> None:
 
 
 def test_a_spy_game_and_a_heuristic_still_refuse_a_round_net(registered: None) -> None:
-    spy = _engine("archive/gardner-with-spies-resting.json")
+    spy = _engine("tests/_retired_gardner_with_spies_resting.json")
     _register(spy, seed=1)
     with pytest.raises(ValueError, match="no net plays a spy game"):
         build_agent(f"greedy:net={PROCEDURE}", spy)

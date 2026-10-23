@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 31,
   "name": "capablanca",
   "description": "Jose Raul Capablanca's ten by eight chess, proposed in the 1920s because he believed master chess was drifting towards drawn theory. His answer was more power rather than new rules: the board is two files wider, and two compound pieces join each army, the archbishop, which moves as a bishop or a knight, and the chancellor, which moves as a rook or a knight. Each side now has three pieces that combine long-range moves with something more, and the knight's jump grafted onto a slider makes double attacks easier to find and harder to see coming, so the game is meant to stay sharp for longer than chess. Pawns may promote to either new piece, and the king castles three squares instead of two to reach shelter on the wider board.",
   "board": {"width": 10, "height": 8},

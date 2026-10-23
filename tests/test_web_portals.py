@@ -132,7 +132,7 @@ class TestTheRouteChooser:
 def _movable_session() -> Session:
     from test_schema_nineteen import STEP, _with_portals
 
-    spec = _with_portals("gardner", [{"piece": "O", "orange": "b3", "blue": "d3",
+    spec = _with_portals("gardner", [{"orange": "b3", "blue": "d3",
                                       "moved_by": {"orange": [0, 1], "blue": [0, 1]}}], [STEP])
     engine = engine_for(spec)
     state = engine.make_state({

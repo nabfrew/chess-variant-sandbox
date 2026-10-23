@@ -461,11 +461,6 @@ class TestWhatTheValidatorRefuses:
         errors = validate_spec(spec)
         assert any("no facing" in error for error in errors), errors
 
-    def test_a_facing_declares_schema_eight(self) -> None:
-        spec = _lancer_spec(schema_version=7)
-        errors = validate_spec(spec)
-        assert any("schema 8" in error for error in errors), errors
-
 
 class TestPlacementFacing:
     def test_a_placement_decides_which_way_those_pieces_start(self) -> None:
@@ -735,8 +730,11 @@ class TestAWildOwnerOrAPortalIsAThirdOwner:
             (32, {}, True),                   # 256 (the piece count is refused apart)
             (21, {"npcs": [{}]}, False),      # 3 * 4 * 21 = 252
             (22, {"npcs": [{}]}, True),       # 264
-            (20, {"portals": [{}]}, True),    # two internal types a pair: 3 * 4 * 22 = 264
-            (19, {"portals": [{}]}, False),   # 3 * 4 * 21 = 252
+            # Three internal types a pair: its two ends and the one way its group moves
+            # (`schema.portal_movement_types`, which every portal game declared as a piece
+            # before spelling 31). 3 * 4 * 22 = 264, and 3 * 4 * 21 = 252.
+            (19, {"portals": [{}]}, True),
+            (18, {"portals": [{}]}, False),
             (22, {"portals": []}, False),     # an empty list is no portals
         ],
         ids=str,

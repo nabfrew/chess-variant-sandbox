@@ -1,5 +1,5 @@
 {
-  "schema_version": 19,
+  "schema_version": 31,
   "name": "ferry",
   "description": "Doors that belong to nobody, which either player may move. Two pairs of portals cross the middle of a six-by-six board, b3 joined to e4 and e3 to b4: a piece that ends its move on one end comes out one step beyond the other end of its pair, in the direction it was travelling, capturing there as usual. Instead of moving a piece, a player may move any portal a step. So every turn asks whether to move the army or the road, and a door set up for your attack can be turned on you, or carried off, on the very next move. The armies are Los Alamos chess's: six-by-six chess without bishops, castling or a pawn's double step. Left free, the players often move one portal back and forth until the position repeats, and about two games in five end drawn that way; a version that forbids the straight-back move is kept beside this one.",
   "board": {
@@ -116,28 +116,6 @@
           "mode": "both"
         }
       ]
-    },
-    {
-      "id": "O",
-      "name": "portal",
-      "value": 0,
-      "moves": [
-        {
-          "kind": "leap",
-          "vectors": [
-            [
-              1,
-              0
-            ],
-            [
-              1,
-              1
-            ]
-          ],
-          "symmetry": "rotate4",
-          "mode": "move"
-        }
-      ]
     }
   ],
   "setup": {
@@ -199,7 +177,22 @@
     "no_progress_draw": 100,
     "portals": [
       {
-        "piece": "O",
+        "moves": [
+          {
+            "kind": "leap",
+            "vectors": [
+              [
+                1,
+                0
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "symmetry": "rotate4"
+          }
+        ],
         "orange": "b3",
         "blue": "e4",
         "moved_by": {
@@ -214,7 +207,22 @@
         }
       },
       {
-        "piece": "O",
+        "moves": [
+          {
+            "kind": "leap",
+            "vectors": [
+              [
+                1,
+                0
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "symmetry": "rotate4"
+          }
+        ],
         "orange": "e3",
         "blue": "b4",
         "moved_by": {

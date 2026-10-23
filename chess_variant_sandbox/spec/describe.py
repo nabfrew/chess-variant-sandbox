@@ -44,6 +44,7 @@ from chess_variant_sandbox.spec.schema import (
     piece_sights,
     piece_speeds,
     portal_groups,
+    portal_stand_in_shape,
     simultaneous_switch,
     spy_ids,
     wrap_stated,
@@ -154,15 +155,21 @@ def _board_words(spec: dict[str, Any]) -> str:
 
 
 def describe_pieces(spec: dict[str, Any]) -> list[PieceProse]:
-    """Every piece: what it is, how it moves, and what else is true of it."""
+    """Every piece: what it is, how it moves, and what else is true of it.
+
+    A portal group's moves are said as the piece every portal game listed before spelling
+    31 (`schema.portal_stand_in_shape`): ``O - portal``, after the declared pieces, so the
+    rules text of a portal game reads as it did.
+    """
     hexy = (spec.get("board") or {}).get("lattice") == "hex"
-    fates = _moveless_fates(spec)
+    listed = portal_stand_in_shape(spec)["pieces"]
+    fates = _moveless_fates(spec, listed)
     sights = _sight_notes(spec, hexy)
     return [
         _describe_piece(
             piece, hexy, fates.get(piece["id"], _MOVELESS["taken"]), sights.get(piece["id"], ())
         )
-        for piece in spec["pieces"]
+        for piece in listed
     ]
 
 
@@ -429,7 +436,7 @@ _MOVELESS = {
 }
 
 
-def _moveless_fates(spec: dict[str, Any]) -> dict[str, str]:
+def _moveless_fates(spec: dict[str, Any], listed: list[dict[str, Any]]) -> dict[str, str]:
     """For each piece with no moves, the ``_MOVELESS`` sentence that is true of it.
 
     Keyed by piece id, and empty when every piece moves, which is every spec but a
@@ -438,7 +445,7 @@ def _moveless_fates(spec: dict[str, Any]) -> dict[str, str]:
     can reach it. A spec that does not compile keeps the first sentence, which is what
     every moveless piece was told before the other two existed.
     """
-    moveless = [piece["id"] for piece in spec["pieces"] if not piece.get("moves")]
+    moveless = [piece["id"] for piece in listed if not piece.get("moves")]
     if not moveless:
         return {}
     from chess_variant_sandbox.engine import compile_spec
@@ -565,12 +572,34 @@ def _move_descriptor(move: dict[str, Any]) -> str:
 
     max_range = move.get("range", 0 if kind in ("slide", "hop", "sweep") else 1)
     min_range = move.get("min_range", 1)
+    # Q1007a: a slide over a vector longer than one square is a rider (the nightrider), which
+    # nothing stops but a piece where it would land; "until blocked" read as the lame rider.
+    long_vector = any(max(abs(int(v[0])), abs(int(v[1]))) > 1 for v in move["vectors"])
     if kind == "leap":
         reach = "jumping directly, ignoring anything in between"
+    elif kind == "lame" and max_range != 1:
+        # Q1007a: the lame rider, jump after jump, each stoppable at its leg.
+        jumps = (
+            "any number of jumps" if max_range == 0
+            else f"up to {max_range} jumps"
+        ) + (f", stopping no nearer than jump {min_range}" if min_range > 1 else "")
+        reach = (
+            f"leaping again and again ({jumps}), each jump stopped by a piece standing on "
+            "the square it passes, and the ride by a piece where it lands"
+        )
     elif kind == "lame":
         # Not "path must be clear": the leap has exactly one square that can stop it,
         # and which square that is (the leg, the eye) is the rule people actually state.
         reach = "leaping, but stopped by a piece standing on the square it passes"
+    elif kind == "slide" and long_vector and max_range != 1:
+        jumps = "any number of jumps" if max_range == 0 else (
+            f"exactly {max_range} jumps" if min_range == max_range
+            else f"up to {max_range} jumps"
+        )
+        reach = (
+            f"leaping again and again ({jumps}), stopped only by a piece on a square it "
+            "would land on"
+        )
     elif kind == "sweep":
         if max_range == 0:
             span = "any distance"
@@ -995,7 +1024,43 @@ def _oblique_span_words(move: dict[str, Any], aim: _Aim) -> str | None:
     return f"up to {_count(far)} steps of {aim.words}"
 
 
+def _rider_count(move: dict[str, Any], aim: _Aim) -> str | None:
+    """How many jumps a rider makes, with the jump on the end: *any number of jumps of two
+    squares forward, back, left and right* (Q1007a, `docs/plan-schema-31.md` §2.5).
+
+    For a jump longer than one square and repeated: a slide over it (the nightrider, option
+    1) or a lame move with a ``range`` other than 1 (option 2). The distance is counted in
+    jumps, which is what the engine counts both in, so the words never say *squares* of it.
+    ``None`` for anything else, which keeps its own phrase.
+    """
+    if aim.step and aim.scale > 1:
+        jump = f"two squares {aim.words}" if aim.scale == 2 else (
+            f"{_count(aim.scale)} squares {aim.words}"
+        )
+    elif not aim.step and aim.unit:
+        jump = aim.words
+    else:
+        return None
+    far = int(move.get("range", DEFAULT_RANGE[move["kind"]]))
+    near = int(move.get("min_range", 1))
+    if far == 1:
+        return None
+    if far == 0:
+        count = "any number of jumps" if near <= 1 else f"{_count(near)} jumps or more"
+    elif near == far:
+        count = f"exactly {_count(far)} jumps"
+    elif near > 1:
+        count = f"{_count(near)} to {_count(far)} jumps"
+    else:
+        count = f"up to {_count(far)} jumps"
+    return f"{count} of {jump}"
+
+
 def _slide_words(move: dict[str, Any], aim: _Aim) -> str | None:
+    rider = _rider_count(move, aim)
+    if rider is not None:
+        # Option 1: nothing between two landings is looked at.
+        return f"{rider}, stopped only by a piece on a square it would land on"
     span = _span_words(move, aim)
     if span is None:
         return None
@@ -1005,13 +1070,20 @@ def _slide_words(move: dict[str, Any], aim: _Aim) -> str | None:
     return span + (", stopped by anything in the way" if blocked else "")
 
 
-def _leap_words(move: dict[str, Any], aim: _Aim) -> str:
+def _leap_words(move: dict[str, Any], aim: _Aim) -> str | None:
     over = aim.scale > 1 or not aim.step
     if aim.step:
         words = f"{_count(aim.scale)} square{'' if aim.scale == 1 else 's'} {aim.words}"
     else:
         words = f"leaps {aim.words}"
     if move["kind"] == "lame":
+        rider = _rider_count(move, aim)
+        if rider is not None:
+            # Option 2, the lame rider: each jump stoppable at its leg as well.
+            return (f"{rider}, stopped by a piece on a square it would land on or on the "
+                    "square any jump passes")
+        if int(move.get("range", DEFAULT_RANGE["lame"])) != 1:
+            return None  # a ride this vocabulary cannot say: the vectors, not a wrong leap
         # Not "the path must be clear": exactly one square can stop it, and which square
         # that is -- the leg, the eye -- is the rule people state.
         return words + (
@@ -1467,9 +1539,11 @@ def _describe_rest(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
     return lines
 
 
-# Schema 30 (Q999a, `docs/plan-passive.md` §4.3): what a sight does to what it sees, and
+# Schema 30 (Q999a, `docs/archive/plan-passive.md` §4.3): what a sight does to what it sees, and
 # whose pieces those are, in the piece's sentence.
-_SIGHT_VERBS = {"freeze": "freezes", "disarm": "disarms", "shield": "shields"}
+_SIGHT_VERBS = {
+    "freeze": "freezes", "disarm": "disarms", "shield": "shields", "command": "commands",
+}
 _SIGHT_WHOSE_WORDS = {"enemy": "enemy", "own": "its own", "any": "either side's"}
 
 
@@ -1517,16 +1591,23 @@ def sight_sentence(sight: Sight, names: dict[str, str], hexy: bool = False) -> s
     all eight directions, as far as the first piece in the way*. ``names`` is each piece id's
     name. The operators that give and take a sight say it in these words too."""
     if sight.affects is None:
-        kinds = "pieces"
+        # Q1007c: a command never touches a royal (`docs/plan-schema-31.md` §3.4).
+        kinds = "non-royal pieces" if sight.effect == "command" else "pieces"
     else:
         plural = [_plural(names.get(pid, pid)) for pid in sight.affects]
         kinds = plural[0] if len(plural) == 1 else (
             ", ".join(plural[:-1]) + " and " + plural[-1]
         )
-    return (
+    said = (
         f"{_SIGHT_VERBS[sight.effect]} {_SIGHT_WHOSE_WORDS[sight.whose]} {kinds} it sees "
         f"{_sight_reach(sight, hexy)}"
     )
+    if sight.effect == "command":
+        said += (
+            ": their opponent may move them too, but never to take the mover's own pieces"
+            + (", and may make them take a piece of their own side" if sight.captures_own else "")
+        )
+    return said
 
 
 def _sight_notes(spec: dict[str, Any], hexy: bool) -> dict[str, tuple[str, ...]]:
@@ -1543,7 +1624,7 @@ def _sight_notes(spec: dict[str, Any], hexy: bool) -> dict[str, tuple[str, ...]]
 
 
 def _describe_sight(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
-    """Schema 30 (Q999a, `docs/plan-passive.md` §2, §4.3): what a sight's effect does, in one
+    """Schema 30 (Q999a, `docs/archive/plan-passive.md` §2, §4.3): what a sight's effect does, in one
     paragraph, said only for the effects the game uses; and in rounds, that an effect decides
     what is offered and never how a round resolves (§2.8)."""
     effects = {sight.effect for sights in piece_sights(spec).values() for sight in sights}
@@ -1577,6 +1658,17 @@ def _describe_sight(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
             "A shielded piece cannot be captured"
             + (", and a shielded royal is never in check." if check else ".")
         )
+    if "command" in effects:
+        # Q1007c (`docs/plan-schema-31.md` §3.2-§3.5).
+        said.append(
+            "A commanded piece still belongs to its owner, and its owner's opponent may also "
+            "move it, as that player's move and as its owner would move it: onto an empty "
+            "square, or (where the sight says so) onto a piece of its own side it may capture, "
+            "never a royal and never a shielded piece. A commanded piece never castles, takes "
+            "or opens en passant, or promotes, so a move that would have to promote is not "
+            "offered; it counts as having moved. A royal is never commanded, a frozen piece is "
+            "moved by nobody, and a disarmed one may not be made to capture."
+        )
     if check:
         answers = []
         if effects & {"freeze", "disarm"}:
@@ -1588,6 +1680,8 @@ def _describe_sight(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
             )
         if "shield" in effects:
             answers.append("shielding the royal")
+        if "command" in effects:
+            answers.append("commanding the checker away or another piece into the way")
         said.append(
             f"So a check may be answered by {' or by '.join(answers)}, and a move that leaves "
             "the mover's own royal attacked once the effects are read again is not allowed."

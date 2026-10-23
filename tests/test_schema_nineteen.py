@@ -43,14 +43,12 @@ from chess_variant_sandbox.engine.state import NO_SQUARE
 from chess_variant_sandbox.fairy.variant import Untranslatable, translate
 from chess_variant_sandbox.measurement import tables_fingerprint
 from chess_variant_sandbox.spec import load_spec, spec_hash, validate_spec
-from chess_variant_sandbox.spec.schema import (
-    SCHEMA_VERSION,
-    _schema_nineteen_uses,
-)
-from chess_variant_sandbox.spec.transform import settle_schema_version
+from chess_variant_sandbox.spec.schema import SCHEMA_VERSION
+from tests.feature_inventory import _schema_nineteen_uses
 
 ROOT = Path(__file__).resolve().parents[1]
-STEP = {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "move"}
+# A portal's king step, as a group's ``moves`` writes it (spelling 31: ``mode`` left out).
+STEP = {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}
 
 
 def _ruleset(name: str) -> dict[str, Any]:
@@ -62,19 +60,15 @@ def _with_portals(
     **rules: Any,
 ) -> dict[str, Any]:
     spec = _ruleset(parent)
-    spec["schema_version"] = 19
     spec["name"] = f"{parent}+portals"
-    spec["pieces"].append(
-        {"id": "O", "name": "portal", "value": 0, "moves": [] if moves is None else moves}
-    )
-    spec["rules"]["portals"] = pairs
+    spec["rules"]["portals"] = [{**({"moves": moves} if moves else {}), **pair} for pair in pairs]
     spec["rules"].update(rules)
     return spec
 
 
 def wormhole() -> dict[str, Any]:
     """§6's Wormhole: Gardner with one fixed two-way pair on b3 and d3."""
-    return _with_portals("gardner", [{"piece": "O", "orange": "b3", "blue": "d3"}])
+    return _with_portals("gardner", [{"orange": "b3", "blue": "d3"}])
 
 
 def ferry() -> dict[str, Any]:
@@ -83,8 +77,8 @@ def ferry() -> dict[str, Any]:
     return _with_portals(
         "losalamos",
         [
-            {"piece": "O", "orange": "b3", "blue": "e4", "moved_by": both},
-            {"piece": "O", "orange": "e3", "blue": "b4", "moved_by": both},
+            {"orange": "b3", "blue": "e4", "moved_by": both},
+            {"orange": "e3", "blue": "b4", "moved_by": both},
         ],
         [STEP],
     )
@@ -95,9 +89,9 @@ def carousel() -> dict[str, Any]:
     spec = _with_portals(
         "losalamos",
         [
-            {"piece": "O", "orange": "b3", "blue": "c5",
+            {"orange": "b3", "blue": "c5",
              "passage": {"0": "orange_to_blue", "1": "closed"}},
-            {"piece": "O", "orange": "b6", "blue": "c4",
+            {"orange": "b6", "blue": "c4",
              "passage": {"0": "closed", "1": "orange_to_blue"}},
         ],
         wrap={"files": "both"},
@@ -110,7 +104,7 @@ def keepers() -> dict[str, Any]:
     """§6's Keepers on chess: each end moved by one player, one way per player."""
     return _with_portals(
         "chess",
-        [{"piece": "O", "orange": "a4", "blue": "h5",
+        [{"orange": "a4", "blue": "h5",
           "moved_by": {"orange": [0], "blue": [1]},
           "passage": {"0": "orange_to_blue", "1": "blue_to_orange"}}],
         [STEP],
@@ -212,19 +206,6 @@ class TestTheVersionIsBumped:
         assert _schema_nineteen_uses(ferry()) == {"rules.portals", "rules.portals.moved_by"}
         assert _schema_nineteen_uses(carousel()) == {"rules.portals", "rules.portals.passage"}
 
-    @pytest.mark.parametrize("name", sorted(GAMES))
-    def test_an_older_stamp_is_refused_by_name(self, name: str) -> None:
-        spec = GAMES[name]()
-        assert validate_spec(spec) == [], validate_spec(spec)
-        spec["schema_version"] = 18
-        assert any("added in schema 19" in error for error in validate_spec(spec))
-
-    def test_a_portal_game_settles_to_nineteen(self) -> None:
-        spec = wormhole()
-        spec["schema_version"] = 1
-        assert settle_schema_version(spec)["schema_version"] == 19
-
-
 def _refusal(spec: dict[str, Any], fragment: str) -> None:
     errors = validate_spec(spec)
     assert any(fragment in error for error in errors), errors
@@ -233,31 +214,26 @@ def _refusal(spec: dict[str, Any], fragment: str) -> None:
 class TestWhatTheValidatorRefuses:
     def test_a_portal_may_not_capture(self) -> None:
         spec = ferry()
-        spec["pieces"][-1]["moves"] = [{**STEP, "mode": "both"}]
-        _refusal(spec, 'must say mode "move"')
+        spec["rules"]["portals"][0]["moves"] = [{**STEP, "mode": "both"}]
+        _refusal(spec, 'moves[0].mode must be "move" or left out')
 
     def test_a_portal_moves_alike_for_both_players(self) -> None:
         spec = ferry()
-        spec["pieces"][-1]["moves"] = [
-            {"kind": "leap", "vectors": [[0, 1]], "mode": "move"}
-        ]
+        spec["rules"]["portals"][0]["moves"] = [{"kind": "leap", "vectors": [[0, 1]]}]
         _refusal(spec, "reads differently for the two players")
 
     def test_a_portal_nobody_moves_may_have_no_moves_but_a_moved_one_may_not(self) -> None:
         assert validate_spec(wormhole()) == []
         spec = ferry()
-        spec["pieces"][-1]["moves"] = []
-        _refusal(spec, "has no moves, but rules.portals lets a player move")
+        del spec["rules"]["portals"][0]["moves"]
+        _refusal(spec, "lets a player move an end but gives it no moves")
 
-    def test_a_portal_is_worth_nothing_and_never_royal(self) -> None:
-        spec = wormhole()
-        spec["pieces"][-1]["value"] = 1
-        _refusal(spec, "must have value 0")
-
-    def test_a_portal_is_not_placed_by_the_setup(self) -> None:
-        spec = wormhole()
-        spec["setup"]["placements"].append({"piece": "O", "squares": ["c3"]})
-        _refusal(spec, "may not be placed by setup.placements")
+    def test_mode_move_written_out_is_the_same_portal(self) -> None:
+        spec = ferry()
+        for group in spec["rules"]["portals"]:
+            group["moves"] = [{**STEP, "mode": "move"}]
+        assert validate_spec(spec) == []
+        assert spec_hash(spec) == spec_hash(ferry())
 
     def test_an_end_on_an_occupied_square_is_refused(self) -> None:
         spec = wormhole()
@@ -266,7 +242,7 @@ class TestWhatTheValidatorRefuses:
 
     def test_two_ends_on_one_square_are_refused(self) -> None:
         spec = wormhole()
-        spec["rules"]["portals"].append({"piece": "O", "orange": "b3", "blue": "c3"})
+        spec["rules"]["portals"].append({"orange": "b3", "blue": "c3"})
         _refusal(spec, "two portals on one square")
 
     @pytest.mark.parametrize("rule, value", [
@@ -439,8 +415,8 @@ class TestTheLandingRules:
 
     def test_an_exit_onto_another_portal_is_blocked(self) -> None:
         spec = _with_portals("gardner", [
-            {"piece": "O", "orange": "b3", "blue": "d3"},
-            {"piece": "O", "orange": "e3", "blue": "c3"},
+            {"orange": "b3", "blue": "d3"},
+            {"orange": "e3", "blue": "c3"},
         ])
         engine, state = _placed(spec, {
             "b3": ("1o", WILD), "d3": ("1b", WILD), "e3": ("2o", WILD), "c3": ("2b", WILD),
@@ -475,7 +451,7 @@ class TestTheLandingRules:
         assert _position(engine, after)[_sq(engine, "b3")] == ("1o", "portal")
 
     def test_a_pawn_promotes_where_it_comes_out(self) -> None:
-        spec = _sparse(_with_portals("gardner", [{"piece": "O", "orange": "c4", "blue": "b4"}]))
+        spec = _sparse(_with_portals("gardner", [{"orange": "c4", "blue": "b4"}]))
         engine, state = _placed(spec, {
             "c4": ("1o", WILD), "b4": ("1b", WILD), "e1": ("K", 0), "e3": ("K", 1),
             "c3": ("P", 0),
@@ -491,7 +467,7 @@ class TestTheLandingRules:
         assert not [t for t in _texts(engine, state) if t.startswith("Pb2-b3>")]
 
     def test_a_transit_opens_no_en_passant_window(self) -> None:
-        spec = _with_portals("chess", [{"piece": "O", "orange": "e3", "blue": "c5"}])
+        spec = _with_portals("chess", [{"orange": "e3", "blue": "c5"}])
         engine, state = _placed(spec, {
             "e3": ("1o", WILD), "c5": ("1b", WILD), "e1": ("K", 0), "e8": ("K", 1),
             "e2": ("P", 0), "d7": ("P", 1),

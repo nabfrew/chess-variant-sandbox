@@ -1,5 +1,5 @@
 {
-  "schema_version": 23,
+  "schema_version": 31,
   "name": "wolf circuit",
   "description": "Chess with two wolves that belong to neither player, walking one long circuit through the middle of the board: along the fourth rank from a4 to h4, up to h5, back along the fifth rank to a5, and round again. One starts on a4 and the other on h5, half a lap apart, so while both live every square of the two centre ranks gets a wolf every eight moves, four by each player. After every move either player makes, each wolf steps on and eats whatever piece it lands on. Only a knight can take one, there is no prize for doing it, and no king may stand where a wolf will step next. The circuit runs straight through the squares where the armies meet, so the centre is held on a timetable: a pawn pushed to the fourth rank or a knight posted on e5 must be timed against the next wolf, and on average the walk eats more than six pieces a game.",
   "board": {

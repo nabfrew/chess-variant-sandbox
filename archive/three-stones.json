@@ -1,5 +1,5 @@
 {
-  "schema_version": 10,
+  "schema_version": 31,
   "name": "three stones",
   "description": "Chess in which either player has three stones and may, instead of moving a piece, place one on any empty square. A stone never moves, is never captured and never leaves, so a placed stone is a square taken out of the game for good, a wall that blocks lines for both sides -- and there are only three of them, so the question is not whether to place one but when and where. A stone can plug the diagonal a bishop is aiming at a king, take a landing square from a knight or seal a file, but each one costs a move, and a stone placed early in anticipation may stand uselessly for the rest of the game. Players nearly always spend all three. The limit is what makes the idea work: if each player could place as many as they liked, the board would fill until nobody could move, while three a side leave a game that plays like chess with three well-timed walls in it.",
   "board": {

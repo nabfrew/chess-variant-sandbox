@@ -55,7 +55,8 @@ GAMES = sorted({game for game, _ in TABLE})
 
 def test_the_migration_is_the_next_number_and_its_table_is_whole() -> None:
     names = {migration.number: migration.name for migration in migrate.available()}
-    assert names[NUMBER] == MIGRATION and max(names) == NUMBER
+    # The next number when it was written; `0041_one_spelling.sql` came after it.
+    assert names[NUMBER] == MIGRATION and NUMBER - 1 in names
     assert len(TABLE) == 810 and len(GAMES) == 7
     for game in GAMES:
         news = [new for (held, _), new in TABLE.items() if held == game]
@@ -164,7 +165,7 @@ def test_the_migration_renames_every_mark_and_try_and_loses_none(tmp_path: Path)
 
         report = migrate.run(store)
         store.commit()
-        assert report.applied == (MIGRATION,), report.summary()
+        assert report.applied[0] == MIGRATION, report.summary()
 
         with store.cursor() as cursor:
             cursor.execute("select person, game, position, way, match, marked from proven_marks")

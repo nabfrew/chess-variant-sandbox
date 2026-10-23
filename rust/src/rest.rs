@@ -138,6 +138,59 @@ impl<'t> Game<'t> {
         key
     }
 
+    /// What the rest does to `player`'s choice on this board (Q983b, `docs/plan-rest.md` §5.4,
+    /// §5.6, §7): `(binds, lifted)`. `binds` when `player`'s legal moves differ from those
+    /// on the same board with nothing resting, so the rest took away at least one move;
+    /// `lifted` when they do not, yet a resting piece's move (never a drop's, never a fold's
+    /// own) is among them, which the rule allows only when the rest would leave no move
+    /// (§3.7). Never both. The list is the one the game offers here: a round's for `player`
+    /// in a game in rounds or a spy game's round, the side to move's otherwise (asked for
+    /// `player`, as `player` would see it). Both false in a game without a rest. For the
+    /// analysis pass's tallies and the page's sentence: Python asks, the core answers.
+    pub fn rest_turn(&mut self, player: usize) -> (bool, bool) {
+        let Some(slots) = self.t.rest.as_deref().map(|rest| rest.slots) else {
+            return (false, false);
+        };
+        let round = if self.t.spy.is_some() {
+            self.phase().is_round()
+        } else {
+            self.t.simultaneous.is_some()
+        };
+        let side = self.side;
+        if !round {
+            self.side = player;
+        }
+        let mut held = self.rest_turn_list(player, round);
+        let resting = self.resting;
+        self.resting = NO_REST;
+        let mut free = self.rest_turn_list(player, round);
+        self.resting = resting;
+        self.side = side;
+        held.sort_unstable();
+        free.sort_unstable();
+        if held != free {
+            return (true, false);
+        }
+        let entries = &self.resting[player][..slots];
+        let lifted = free.iter().any(|&m| {
+            let kind = move_kind(m);
+            kind != MOVE_DROP
+                && kind != MOVE_FOLD
+                && entries.iter().any(|e| e.live() && e.square as usize == move_from(m))
+        });
+        (false, lifted)
+    }
+
+    fn rest_turn_list(&mut self, player: usize, round: bool) -> Vec<u32> {
+        let mut moves = Vec::new();
+        if round {
+            self.generate_legal_for(player, &mut moves);
+        } else {
+            self.generate_legal(&mut moves);
+        }
+        moves
+    }
+
     /// `player`'s resting pieces as `(square, turns left)`, by square: the boundary's shape.
     pub fn resting_of(&self, player: usize) -> Vec<(i16, u8)> {
         let mut out: Vec<(i16, u8)> = self.resting[player]

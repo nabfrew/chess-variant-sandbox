@@ -25,11 +25,12 @@ from chess_variant_sandbox.engine.bridge import build_tables, canonical_tables, 
 from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.engine.moves import move_from, move_to
 from chess_variant_sandbox.fairy.variant import Untranslatable, translate
-from chess_variant_sandbox.spec import validate_spec
+from chess_variant_sandbox.spec import spec_hash, validate_spec
 from chess_variant_sandbox.spec.describe import _describe_contacts
 from chess_variant_sandbox.spec.distance import _SCALES, distance, features
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
-from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, _schema_eleven_uses
+from chess_variant_sandbox.spec.schema import SCHEMA_VERSION
+from tests.feature_inventory import _schema_eleven_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -96,20 +97,18 @@ class TestTheVersionIsBumped:
         assert _schema_eleven_uses(enemy) == set()
         assert _schema_eleven_uses(merger) == {"rules.contacts.links[].own"}
 
-    def test_an_older_stamp_is_refused_by_name(self, merger: dict[str, Any]) -> None:
-        spec = copy.deepcopy(merger)
-        spec["schema_version"] = 10
-        errors = validate_spec(spec)
-        assert any("links[].own" in e and "schema 11" in e for e in errors), errors
-
-
 class TestTheValidator:
     def test_the_showcase_validates(self, merger: dict[str, Any]) -> None:
         assert validate_spec(merger) == []
 
     def test_false_is_a_second_spelling_of_absent(self, chess: dict[str, Any]) -> None:
-        errors = validate_spec(_contacts(chess, [dict(MERGE, own=False)]))
-        assert any("own must be true" in e for e in errors), errors
+        """Q1008c: the off value is accepted and names the link without it."""
+        written = _contacts(chess, [dict(MERGE, own=False)])
+        absent = _contacts(chess, [{k: v for k, v in MERGE.items() if k != "own"}])
+        assert validate_spec(written) == validate_spec(absent)
+        assert spec_hash(written) == spec_hash(absent)
+        errors = validate_spec(_contacts(chess, [dict(MERGE, own="yes")]))
+        assert any("own must be true or false" in e for e in errors), errors
 
     def test_an_own_link_onto_an_immune_piece_is_refused(self, chess: dict[str, Any]) -> None:
         """Every royal must be immune, so this is also what keeps a king off the target."""

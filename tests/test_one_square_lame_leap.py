@@ -1,9 +1,9 @@
-"""A one-square `lame` leap is refused on admission (Q884).
+"""A one-square `lame` leap is refused (Q884).
 
 A lame leap is stopped by a piece on the square it passes over; a one-square step passes
 over none, so the compiler drops it and a spec that wrote one got a piece silently lacking
-the move. The refusal runs where a spec is admitted (`validate_spec`'s ``new``), so a stored
-spec still builds its engine, as with Q434's and Q879's.
+the move. Until Q1008d a stored spec carrying one still built its engine; no spec the site
+stores, git held or `runs/` holds carries one, so it is refused at the load too.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import pytest
 
 from chess_variant_sandbox.spec import load_spec, spec_hash, validate_spec
 from chess_variant_sandbox.spec.plain import plain_problem
+from chess_variant_sandbox.spec.schema import stored_spec_errors
 from chess_variant_sandbox.web import designing
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,8 +39,8 @@ def test_a_one_square_lame_leap_is_refused_with_a_plain_sentence(vector: list[in
     assert f"{vector} is a one-square 'lame' leap, which has no square to be blocked on" in (
         errors[0])
     assert "use an ordinary 'leap' or a 'slide' of range 1 instead" in errors[0]
-    # A stored spec carrying one still builds its engine: it was dropped, never played.
-    assert validate_spec(spec, new=False) == []
+    # Refused at the load too (Q1008d): no stored spec carries one.
+    assert stored_spec_errors(spec) == errors
 
 
 def test_a_one_square_vector_among_longer_ones_is_named_by_its_place() -> None:

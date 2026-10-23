@@ -107,7 +107,8 @@ function rootTarget(root) {
   const [kind, a, b] = root.split('.');
   if (kind === 'rules') return (DRAFT.rules = DRAFT.rules || {});
   if (kind === 'piece') return DRAFT.pieces[Number(a)];
-  if (kind === 'move') return DRAFT.pieces[Number(a)].moves[Number(b)];
+  // A portal group's way of moving is addressed `move.p<n>.<m>` (spelling 31, Q1007b).
+  if (kind === 'move') return (movesOwner(a).moves || [])[Number(b)];
   if (kind === 'place') return DRAFT.setup.placements[Number(a)];
   return null;
 }

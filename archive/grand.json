@@ -1,5 +1,5 @@
 {
-  "schema_version": 18,
+  "schema_version": 31,
   "name": "grand",
   "description": "Grand chess, Christian Freeling's ten-by-ten game, adds two compound pieces to chess's army: the archbishop, which moves as a bishop or a knight, and the chancellor, which moves as a rook or a knight. The idea that sets it apart is in promotion. A pawn may promote on its eighth or ninth rank and must on its tenth, but only into a piece its own side has already lost, so while nothing has been lost a pawn has nothing to become, and a pawn that could not promote may not step onto the last rank at all. Promotion is tied to exchanges: trading off a rook or the queen also opens a place a pawn can fill, and a player pushing a passed pawn has to ask what has come off the board, not only how far the pawn has to go. Giving up a piece can be an investment, and declining to capture can leave an enemy pawn on its ninth rank with nothing to become and nowhere to go. There is no castling.",
   "board": {

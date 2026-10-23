@@ -28,7 +28,8 @@
 // **The rest** (schema 29, `pieces[].rest`; schema 27's round rest before it). A resting
 // piece wears a badge (`positionRests`, `restBadge`) from the position's `resting`, in any
 // game: it may not move this turn, so the board offers none of its moves, unless it is all
-// that player has.
+// that player has. Where the game's longest rest is over 1 the badge carries the turns left
+// (`restNumbered`, Q983b); a step back badges its own position, from the move's `resting`.
 //
 // Nothing here works out a move, an outcome or a choice. Who won a collision, which move
 // was void and what is barred are the core's; the page draws them.
@@ -65,6 +66,13 @@ function roundClash(last) {
 // alternating or in rounds; empty under any game without a rest.
 function positionRests(resting) {
   return (resting || []).filter(rest => rest.square !== null && rest.square !== undefined);
+}
+
+// Schema 29 (Q983b, `docs/plan-rest.md` §5.6): whether the pause signs carry the turns left,
+// which they do where some piece rests more than one turn (the compiled `ruleset.rest`, each
+// type's); with every rest at 1 the sign alone says it.
+function restNumbered(rests) {
+  return (rests || []).some(turns => turns > 1);
 }
 
 // What a revealed round shows, as motions: each seat's move as the core reported it, and
@@ -563,11 +571,12 @@ function clashHtml(clash, cell) {
   return clashMark(a[0] + cell / 2, a[1] + cell / 2, b[0] + cell / 2, b[1] + cell / 2, cell);
 }
 
-// Each rested piece's badge (`restBadge`), on its square's corner.
-function restsHtml(rests, cell) {
+// Each rested piece's badge (`restBadge`), on its square's corner, with its turns left where
+// `numbered` (`restNumbered`).
+function restsHtml(rests, cell, numbered) {
   return rests.map(rest => {
     const at = squareXY(rest.square, cell, FRAME);
-    return restBadge(at[0], at[1], cell, rest.player);
+    return restBadge(at[0], at[1], cell, rest.player, numbered ? rest.left : undefined);
   }).join('');
 }
 

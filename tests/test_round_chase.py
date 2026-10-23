@@ -25,7 +25,8 @@ from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.engine.moves import decode_move
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.spec.canonical import load_spec
-from chess_variant_sandbox.spec.schema import _schema_twenty_seven_uses, validate_spec
+from chess_variant_sandbox.spec.schema import validate_spec
+from tests.feature_inventory import _schema_twenty_seven_uses
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent
@@ -99,40 +100,40 @@ LOCK = {
 # ------------------------------------------------------------------ the keys
 
 
-def test_the_collector_names_each_switch_whatever_its_value() -> None:
-    for key, value in (("swap", "collision"), ("both", "score"), ("swap", "chase")):
+def test_the_collector_names_each_switch_unless_it_is_off() -> None:
+    for key, value in (("swap", "collision"), ("both", "score")):
         spec = gardner(**{key: value})
         assert f"rules.simultaneous.{key}" in _schema_twenty_seven_uses(spec)
     assert not {
         name for name in _schema_twenty_seven_uses(GARDNER) if "simultaneous" in name
     }
-    # Schema 29 retired the rest's switch: no collector names it, and it is refused.
-    assert not _schema_twenty_seven_uses(gardner(rest=True)) & {"rules.simultaneous.rest"}
-
-
-def test_a_switch_at_schema_twenty_six_is_refused() -> None:
-    spec = gardner(swap="collision")
-    spec["schema_version"] = 26
-    errors = validate_spec(spec)
-    assert any("rules.simultaneous.swap" in error and "schema 27" in error for error in errors)
 
 
 @pytest.mark.parametrize(
     ("simultaneous", "words"),
     [
-        ({"rest": True}, "rest was retired in schema 29"),
-        ({"rest": False}, "rest was retired in schema 29"),
-        ({"rest": "yes"}, "rest was retired in schema 29"),
-        ({"swap": "chase"}, 'swap "chase" is the default'),
-        ({"swap": "always"}, 'swap must be "collision"'),
-        ({"both": "draw"}, 'both "draw" is the default'),
-        ({"both": "win"}, 'both must be "score"'),
+        ({"rest": True}, "rest"),
+        ({"rest": False}, "rest"),
+        ({"swap": "always"}, 'swap must be "collision" or "chase"'),
+        ({"both": "win"}, 'both must be "score" or "draw"'),
     ],
 )
-def test_the_off_spellings_and_unknown_values_are_refused(
+def test_unknown_values_and_the_retired_rest_are_refused(
     simultaneous: dict[str, Any], words: str
 ) -> None:
     assert any(words in error for error in validate_spec(gardner(**simultaneous)))
+
+
+@pytest.mark.parametrize("simultaneous", [{"swap": "chase"}, {"both": "draw"}, {"tie": "both"}])
+def test_an_off_value_is_the_game_without_it(simultaneous: dict[str, Any]) -> None:
+    """Q1008c: the off value written out is accepted and names the game without it."""
+    from chess_variant_sandbox.spec import spec_hash
+    from chess_variant_sandbox.spec.spelling import current_spelling
+
+    written = gardner(**simultaneous)
+    assert validate_spec(written) == []
+    assert spec_hash(written) == spec_hash(gardner())
+    assert current_spelling(written)["rules"]["simultaneous"] == {}
 
 
 def test_both_without_scoring_is_refused() -> None:

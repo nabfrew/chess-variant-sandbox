@@ -31,7 +31,7 @@ TOURNAMENTS = {
 ROUND_TOURNAMENTS = {
     "archive/breather.json": ("greedy", "matrix:nodes=200"),
     "archive/watering-hole.json": ("greedy", "matrix:nodes=200"),
-    "archive/gardner-with-spies-resting.json": ("greedy", "minimax:nodes=200"),
+    "tests/_retired_gardner_with_spies_resting.json": ("greedy", "minimax:nodes=200"),
     "tests/_simultaneous_scored.json": ("greedy", "matrix:nodes=200"),
 }
 

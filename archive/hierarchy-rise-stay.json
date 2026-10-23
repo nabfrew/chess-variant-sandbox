@@ -1,5 +1,5 @@
 {
-  "schema_version": 6,
+  "schema_version": 31,
   "name": "gift from afar",
   "description": "Chess in which a capture strengthens the piece it strikes and moves nothing. Taking a pawn turns it into a knight, a knight into a bishop, a bishop into a rook and a rook into a queen, each where it stands, while the attacker keeps the square it struck from; only a queen is actually removed. A capture therefore neither wins ground nor, short of a queen, wins material: it hands the opponent a better piece, and since the attacker never enters the square there is nothing to recapture. To get rid of anything you must push it up the ladder to a queen and strike once more, arming the opponent at every step, and striking a piece that gives check only promotes it where it stands, unless it is a queen. Very little resolves: games run long, and nearly two thirds of them are drawn.",
   "board": {

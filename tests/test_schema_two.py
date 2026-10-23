@@ -465,10 +465,6 @@ def test_probe_perft_matches_the_reference_implementation(
 
 
 class TestMultipleRoyalty:
-    def test_a_second_royal_needs_the_version_that_supports_it(self) -> None:
-        under_one = dict(COREGAL, schema_version=1)
-        assert any("schema_version" in error for error in validate_spec(under_one))
-        assert validate_spec(COREGAL) == []
 
     def test_both_royals_are_guarded(self) -> None:
         """The bug schema 1 could not have: a royal the check filter never looked at."""
@@ -890,24 +886,6 @@ def test_a_screen_it_may_not_jump_is_not_giving_check(owner: str) -> None:
     assert in_check is (owner == "own"), f"{owner}: in_check={in_check}"
 
 
-def test_a_schema_two_spec_may_not_reach_for_schema_three() -> None:
-    """The version stays an honest description of what the rules need.
-
-    ``schema_version`` is part of the mechanics hash, so two specs whose rules differ
-    only in a feature one of them was not entitled to use must not be able to collide.
-    """
-    spec = _friendly_screen_spec("own")
-    spec["schema_version"] = 2
-    errors = validate_spec(spec)
-    assert any("schema 3" in error for error in errors), errors
-
-    matrix = _friendly_screen_spec("any")
-    matrix["schema_version"] = 2
-    matrix["pieces"][1]["captures"] = ["K"]
-    errors = validate_spec(matrix)
-    assert any("captures" in error and "schema 3" in error for error in errors), errors
-
-
 # ------------------------------------------- schema 3, the score-comparison ending ---
 #
 # `max_plies` and `no_progress_draw` were always a draw, which means a game with a real
@@ -1082,11 +1060,6 @@ class TestTheClockCanDecideInsteadOfDrawing:
             "needs rules.scoring.region" in error
             for error in validate_spec(_scored_spec("region"))
         )
-
-    def test_a_schema_two_spec_may_not_reach_for_a_scoring_rule(self) -> None:
-        spec = _scored_spec("material")
-        spec["schema_version"] = 2
-        assert any("schema 3" in error for error in validate_spec(spec))
 
 
 # ------------------------------------------- schema 4, more than one move per turn ----
@@ -1399,55 +1372,3 @@ class TestCastlingIsNotACapture:
 
 # ------------------------------------------------ Q922: what schema 1 may not use, per piece
 
-
-class TestASchemaOnePieceMayNotUseSchemaTwo:
-    """`_validate_version_one_stays_within_version_one`, over inline pieces.
-
-    It reads only the pieces' own keys, so each case is a list of pieces and the one
-    sentence it must produce (or nothing). The junk entries are what `validate_spec`
-    feeds it while it is still collecting errors about them.
-    """
-
-    TAIL = ", added in schema 2; declare \"schema_version\": 2 to use it"
-    LEAP = {"kind": "leap", "vectors": [[1, 0]]}
-
-    CASES = {
-        "a plain piece": ([{"id": "P", "moves": [LEAP]}], []),
-        "a piece confined to a region": (
-            [{"id": "P", "region": "x", "moves": [LEAP]}], ["a piece uses region"]),
-        "a move with a screen range": (
-            [{"id": "P", "moves": [{**LEAP, "screen_range": 2}]}], ["a piece uses screen_range"]),
-        "a lame move": (
-            [{"id": "P", "moves": [{"kind": "lame", "vectors": [[1, 2]]}]}],
-            ["a piece uses the 'lame' move kind"]),
-        "a condition with a region": (
-            [{"id": "P", "moves": [{**LEAP, "condition": {"region": "x"}}]}],
-            ["a piece uses region"]),
-        "a condition that is not a dict": (
-            [{"id": "P", "moves": [{**LEAP, "condition": "region"}]}], []),
-        "the second move of the second piece": (
-            [{"id": "A", "moves": [LEAP]},
-             {"id": "B", "moves": [LEAP, {**LEAP, "screen_range": 1}]}],
-            ["a piece uses screen_range"]),
-        "several uses are one sentence, sorted": (
-            [{"id": "P", "region": "x", "moves": [{"kind": "lame", "vectors": [[1, 2]]},
-                                                  {**LEAP, "screen_range": 1}]}],
-            ["a piece uses region, screen_range, the 'lame' move kind"]),
-        "junk pieces and junk moves are skipped": (
-            ["junk", None, {"id": "P", "moves": ["junk", None, {**LEAP, "screen_range": 1}]}],
-            ["a piece uses screen_range"]),
-        "a region on a piece whose moves are not a list is not read": (
-            [{"id": "P", "region": "x", "moves": "x"}], []),
-        "a region on a piece with no moves is not read": ([{"id": "P", "region": "x"}], []),
-    }
-
-    @pytest.mark.parametrize("label", sorted(CASES))
-    def test_what_is_reported(self, label: str) -> None:
-        from chess_variant_sandbox.spec.schema import (
-            _validate_version_one_stays_within_version_one,
-        )
-
-        pieces, wanted = self.CASES[label]
-        errors: list[str] = []
-        _validate_version_one_stays_within_version_one({"pieces": pieces}, errors)
-        assert errors == [w + self.TAIL for w in wanted]

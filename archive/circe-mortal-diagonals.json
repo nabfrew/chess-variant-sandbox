@@ -1,5 +1,5 @@
 {
-  "schema_version": 17,
+  "schema_version": 31,
   "name": "circe mortal diagonals",
   "description": "Circe chess, invented by Pierre Monreal in 1967, sends a captured piece home instead of off the board: it reappears at once on its starting square, and is lost for good only if that square is occupied. Played as it stands, the rule has a flaw. A queen or bishop taken on a square its own starting square can see goes home and takes straight back, the enemy piece goes home and takes back in turn, and two queens facing each other down an open file can take and retake on the same square for the rest of the game. This version cures it by keeping the rebirth for the knights, rooks and pawns and taking it away from the queen and the bishops: a queen or bishop that is taken is gone, as in ordinary chess. That makes every capture a question of whose loss is the lasting one. A knight, rook or pawn can be thrown at almost anything, since while its home square is free it costs only the time to walk back out, so a knight that takes a bishop and is taken in turn has won a piece for two moves. The queen and bishops are the only pieces that can be won for keeps short of filling a home square, and so the ones each side has to guard and to hunt. As in circe, a reborn piece stands as if it had never moved, so a rook that comes home may castle again.",
   "board": {

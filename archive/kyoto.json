@@ -1,5 +1,5 @@
 {
-  "schema_version": 18,
+  "schema_version": 31,
   "name": "kyoto",
   "description": "Kyoto shogi is a modern Japanese miniature of shogi, Japanese chess, with five pieces a side on a five-by-five board, and its idea is that nothing stays what it is. Every piece but the king turns over after each move it makes, like a two-sided tile: a pawn that moves becomes a rook and a rook that moves becomes a pawn again, and likewise silver and bishop, knight and gold, lance and tokin. A move is chosen for the piece it leaves behind as much as for where it goes: using the strong face spends it, and a weak face's move earns it back. As in shogi, a captured piece changes sides: it goes to the captor's hand as its plain face (a pawn, silver, knight or lance), and instead of moving a player may drop it onto any empty square as their own, here as either face. Checkmate wins, and a player with no legal move loses.",
   "board": {

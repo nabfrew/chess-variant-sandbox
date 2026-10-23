@@ -43,6 +43,7 @@ from chess_variant_sandbox.engine.compile import (
 )
 from chess_variant_sandbox.engine.moves import (
     MOVE_CASTLE,
+    MOVE_COMMANDED,
     MOVE_DROP,
     MOVE_EN_PASSANT,
     MOVE_FOLD,
@@ -62,6 +63,7 @@ from chess_variant_sandbox.engine.state import (
     GameState,
     Outcome,
     PhaseStep,
+    RestTurn,
     SpyPhase,
 )
 
@@ -359,13 +361,23 @@ class Engine:
     # --------------------------------------------------------------------- sight
 
     def effects(self, state: GameState) -> Effects:
-        """The effects on this board (schema 30, `docs/plan-passive.md` §3.4), as the core
+        """The effects on this board (schema 30, `docs/archive/plan-passive.md` §3.4), as the core
         answers them: each square's effect bits (``SIGHT_FREEZE``, ``SIGHT_DISARM``,
         ``SIGHT_SHIELD`` on the piece there, for its owner), the side to move's moves the
         effects removed by reason, and whether its royal stands under a suppressed attack.
-        All zeros in a game without a sight."""
-        bits, (freeze, disarm, shield), suppressed = self.core.effects(_pack(state))
-        return Effects(tuple(bits), freeze, disarm, shield, suppressed)
+        All zeros in a game without a sight. Q1007c: ``commanded`` counts the side to move's
+        legal commanded moves (`docs/plan-schema-31.md` §3.7)."""
+        bits, (freeze, disarm, shield), suppressed, commanded = self.core.effects(_pack(state))
+        return Effects(tuple(bits), freeze, disarm, shield, suppressed, commanded)
+
+    def rest_turn(self, state: GameState, player: int) -> RestTurn:
+        """What the rest does to ``player``'s choice on this board (schema 29, Q983b,
+        `docs/plan-rest.md` §5.6, §7), as the core answers it: whether it took away a legal
+        move (``binds``), and whether it was lifted because it would have left none
+        (``lifted``). The list asked of is the one the game offers here: ``player``'s in a
+        round, else the turn's, as ``player`` would see it. Both false without a rest."""
+        binds, lifted = self.core.rest_turn(_pack(state), player)
+        return RestTurn(binds, lifted)
 
     def sight_of(self, state: GameState, square: int) -> list[tuple[int, int]]:
         """The squares the piece on ``square`` sees on this board, each with the effect bits
@@ -493,6 +505,11 @@ class Engine:
 
     def describe_move(self, state: GameState, move: int) -> str:
         """Human-readable move text, used by records and the visualiser."""
+        if move & MOVE_COMMANDED:
+            # Q1007c (`docs/plan-schema-31.md` §3.7): a commanded move is the same move
+            # written with a ``~`` before the piece, which is the opponent's (``~Nb8-c6``);
+            # the origin names the piece, so the text stays unique.
+            return "~" + self.describe_move(state, move & ~MOVE_COMMANDED)
         spec = self.spec
         origin, target, kind, promoted = decode_move(move)
         if kind == MOVE_DROP:

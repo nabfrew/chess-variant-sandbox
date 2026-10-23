@@ -26,7 +26,6 @@ from typing import Any
 
 from chess_variant_sandbox.spec.describe import RULE_WORDS
 from chess_variant_sandbox.spec.schema import (
-    RETIRED_REST,
     SIGHT_EFFECTS,
     is_simultaneous,
     piece_sights,
@@ -333,12 +332,11 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "piece, a piece it may not take, another portal or the square it started from, "
         "there is no such move. A portal is never captured.",
     ),
-    "rules.portals.piece": (
-        "moves like",
-        "The piece whose moves a portal of this pair makes when a player moves it: one "
-        "worth nothing, not royal, not on the starting board and named by no other rule. "
-        "Every move it has goes only onto an empty square and is the same seen from either "
-        "side. It may have no moves when nobody moves the pair.",
+    "rules.portals.moves": (
+        "moves",
+        "How a portal of this group moves when a player moves it, written as a piece's "
+        "moves are. Every one goes only onto an empty square and is the same seen from "
+        "either side. Leave them out when nobody moves the group.",
     ),
     # Q838c: a pair's two ends are its *first* and *second*, never a colour. The file's keys
     # and its one-way passage values keep their names, since renaming them would rehash
@@ -471,7 +469,7 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "move, unless nothing else can. In a game in rounds a round is a turn. Leave it empty "
         "and the piece never rests.",
     ),
-    # Schema 30 (Q999a, `docs/plan-passive.md` §4.3): lines of sight, a piece's own card.
+    # Schema 30 (Q999a, `docs/archive/plan-passive.md` §4.3): lines of sight, a piece's own card.
     "pieces.sight": (
         "what it sees",
         "Lines along which this piece puts what it sees under an effect, for as long as it "
@@ -500,7 +498,9 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "what it does",
         "Freeze: the piece cannot move, and threatens nothing, so it gives no check. Disarm: "
         "it may move but cannot capture, and threatens nothing. Shield: nothing may capture "
-        "it, and a shielded royal is never in check.",
+        "it, and a shielded royal is never in check. Command: the other player may also move "
+        "it, as its owner would, onto an empty square; a royal is never commanded, and a frozen "
+        "piece is moved by nobody.",
     ),
     "pieces.sight.whose": (
         "to whose pieces",
@@ -515,11 +515,20 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "Yes: it sees past every piece on its lines. Left empty, each line stops at the "
         "first piece, which is seen.",
     ),
-    # The bump's other three names, as a version sentence says what a draft uses (the fourth,
-    # `pieces.sight.through`, is the field above, by the same words).
+    # Generation 31 (Q1007c, `docs/plan-schema-31.md` §3): a command's turncoat capture, a box
+    # beside *what it does* shown only while the effect is a command (Q1007d; worded by Q1013).
+    "pieces.sight.captures_own": (
+        "may make them take their own side",
+        "Only beside a command. Yes: the other player may also make a commanded piece take a "
+        "piece of its own side that it may capture, never a royal or a shielded one, and not "
+        "while it is disarmed. Left empty, a commanded piece moves only onto empty squares.",
+    ),
+    # The four effects' names (the fifth name a sight carries, `pieces.sight.through`, is
+    # the field above, by the same words).
     "pieces.sight.freeze": ("freezes what it sees", None),
     "pieces.sight.disarm": ("disarms what it sees", None),
     "pieces.sight.shield": ("shields what it sees", None),
+    "pieces.sight.command": ("commands what it sees", None),
     # Schema 28 (Q943a): speed.
     "pieces.speed": (
         "speed",
@@ -726,6 +735,10 @@ _WORDS: tuple[tuple[str, str], ...] = (
     (r"\bmust be 0 or 1\b", "must be the first player (0) or the second (1)"),
     (r"\bare not cells of this board\b", "aren't cells of this board"),
     (r", got\b", ", not"),
+    # Q1013: the one sight field the validator names bare, outside a path (a turncoat capture
+    # beside a capture hand, or one nothing could make), by its box's label; the validator's
+    # gloss of the key beside it says the label again, so it goes.
+    (r"\bcaptures_own\b(?: \([^()]*\))?", "a command's 'may make them take their own side'"),
 )
 
 # The two clocks, counted in turns (§3.2: each player's move is one turn).
@@ -742,11 +755,6 @@ _PHRASED: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^no royal piece appears in setup\.placements$"),
      "No royal piece is on the board at the start."),
     (re.compile(r"^spec must be a JSON object$"), "These rules couldn't be read."),
-    # Schema 29 retired the round's own rest for each piece's (Q995d, fix 7): said without
-    # the version or the game's text, and with the change that keeps the same game.
-    (re.compile("^" + re.escape(RETIRED_REST) + "$"),
-     "Playing in rounds no longer has a rest of its own: a rest is now each piece's, under "
-     "'rests after it moves' on its card. The same game is every piece resting 1 round."),
 )
 
 
@@ -783,12 +791,7 @@ REST_WORDS: dict[str, Any] = {
     "set": "Every piece rests {rest} now.",
     "setSome": "Every piece that can rest now rests {rest}.",
     "left": "Left without a rest: {reason}",
-    "retiredGone": "The old rest of playing in rounds is gone; each piece's rest replaces it.",
     "refused": "'{choice}' can't be chosen for this game yet, so nothing was changed.",
-    # The old switch, still in a draft or a file: the change that keeps the same game.
-    "retired": "This draft still has the old rest of playing in rounds, which no game takes now.",
-    "convert":"make every piece rest 1 round instead",
-    "convertFile": "load it with every piece resting 1 round instead",
 }
 
 
@@ -899,18 +902,6 @@ def _label(dotted: str, rest: list[str]) -> str | None:
     return words[0] if words else " ".join(key.replace("_", " ") for key in keys)
 
 
-def _used(name: str, spec: Any) -> str:
-    """One thing a version sentence says the draft uses: a rule key or a path."""
-    if name in RULE_WORDS:
-        return f"the rule '{RULE_WORDS[name][0]}'"
-    if _PATH.fullmatch(name):
-        where, field = _where(name, spec)
-        where = f"{where[0].lower()}{where[1:]}"
-        return f"{where}, '{field}'" if field else where
-    words = FIELD_WORDS.get(f"pieces.{name}") or FIELD_WORDS.get(f"pieces.moves.{name}")
-    return f"'{words[0]}'" if words else f"'{name.replace('_', ' ')}'"
-
-
 def _place(path: str, spec: Any) -> str:
     where, field = _where(path, spec)
     return f"{where}, '{field}'" if field else where
@@ -919,7 +910,7 @@ def _place(path: str, spec: Any) -> str:
 # ------------------------------------------------------------------ a field of the whole army
 
 # The validator checks some piece fields across the army at once and names them with no
-# index (`pieces[].speed`, and `pieces.speed` in a version sentence). `_where` read a path
+# index (`pieces[].speed`). `_where` read a path
 # into `pieces` only by its index, so these five sentences, about the newest fields, opened
 # *Where the game comes from* and named neither the piece nor the field (Q995a F3). Now the
 # pieces that carry the field are named from the draft (built in `web/designing.py` by
@@ -929,7 +920,6 @@ _ARMY_PATH = re.compile(
     # Schema 30 (Q999a): a sight's name carries its effect, or `through`, one step down.
     r"(?:\.(?P<sub>" + "|".join((*SIGHT_EFFECTS, "through")) + r")\b)?"
 )
-_STAMP_OPENING = re.compile(r"^(?:the spec|rules|a piece) uses ")
 
 # The three a newcomer meets most: a field of a game in rounds set on a game that is not
 # in one. Each says where rounds are chosen.
@@ -1001,13 +991,9 @@ def _army_problem(problem: str, spec: Any) -> str | None:
         field = f"{key}.{sub}" if sub else key
         words = field_words(f"pieces.{field}")
         label = words[0] if words else key.replace("_", " ")
-        # The path the sentence is about, at its start or as what a version sentence says
-        # the draft uses (any of the names it lists), is the pieces that carry it; one
+        # The path the sentence is about, at its start, is the pieces that carry it; one
         # inside a reason is the field.
-        before = problem[:found.start()]
-        subject = found.start() == 0 or before.endswith("uses ") or (
-            before.endswith(", ") and _STAMP_OPENING.match(problem) is not None
-        )
+        subject = found.start() == 0
         carriers = _carrying(spec, key, sub) if subject else []
         if not carriers:
             return f"every piece's '{label}'" if subject else f"'{label}'"
@@ -1045,14 +1031,14 @@ def _translate(problem: str, spec: Any) -> str:
                  if re.fullmatch(r"setup\.placements\[\d+\]\.squares", square.group(1))
                  else _place(square.group(1), spec))
         return f"{place}: {square.group(2)} isn't a square on this board."
-    leap = re.match(r"^(\S+)\.(range|min_range) means nothing on a (leap|lame), "
-                    r"which is one jump per vector; to reach further, list more vectors$", text)
+    leap = re.match(r"^(\S+)\.(range|min_range) means nothing on a leap, "
+                    r"which is one jump per vector; to reach further, list more vectors, or "
+                    r"ride it with a 'slide' over the vector or a 'lame' with a range$", text)
     if leap:
         where, _ = _where(leap.group(1), spec)
         label = FIELD_WORDS[f"pieces.moves.{leap.group(2)}"][0]
-        kind = "leap" if leap.group(3) == "leap" else "blockable leap"
-        return (f"{where}: '{label}' does nothing on a {kind}. "
-                "To reach further, add more directions.")
+        return (f"{where}: '{label}' does nothing on a leap. "
+                "To reach further, add more directions, or let it jump again.")
     lame_step = re.match(
         r"^(\S+)\.vectors\[\d+\] \[-?\d+, -?\d+\] is a one-square 'lame' leap, "
         r"which has no square to be blocked on; use an ordinary 'leap' or a 'slide' of "
@@ -1072,13 +1058,6 @@ def _translate(problem: str, spec: Any) -> str:
                  if re.fullmatch(r"setup\.placements\[\d+\]\.piece", stranger.group(1))
                  else _place(stranger.group(1), spec))
         return f"{place}: '{stranger.group(2)}' isn't one of the game's pieces."
-    # A version stamp the draft could not settle at: the settling waits for the rest of the
-    # draft to be a game (`designing._worth_saying`), and the site never names the version.
-    stamp = re.match(r'^(?:the spec|rules|a piece) uses (.+), added in schema \d+; '
-                     r'declare "schema_version": \d+ to use it$', text)
-    if stamp:
-        used = [_used(one, spec) for one in stamp.group(1).split(", ")]
-        return f"Using {' and '.join(used)} needs the rest of the draft to be a game first."
     missing = re.match(r"^(\S+) is missing required key '([^']*)'$", text)
     if missing:
         where, _ = _where(missing.group(1), spec)

@@ -21,10 +21,10 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import pytest
+from retired_specs import retired_preview_path
 from simultaneous_oracle import offered, resolve_round
 from simultaneous_showcase_tally import RoundTally
 from test_speed import (
@@ -45,7 +45,6 @@ from chess_variant_sandbox.engine.moves import MOVE_DROP, decode_move
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.spec import load_spec
 
-ARCHIVE = Path(__file__).resolve().parent.parent / "archive"
 SHOWCASES = {
     "T1": "gardner-in-rounds-with-a-swift-king",
     "T2": "gardner-in-rounds-with-swift-knights",
@@ -55,7 +54,9 @@ GAMES, MAX_ROUNDS = 20, 100
 
 
 def spec(label: str) -> dict[str, Any]:
-    return load_spec(ARCHIVE / f"{SHOWCASES[label]}.json")
+    """The showcase `label`. All three left the previews for `tests/_retired_*.json` (Q1005,
+    `docs/reference/preview-call-2026-10.md`); W1 holds the rule on the files as they stood."""
+    return load_spec(retired_preview_path(SHOWCASES[label]))
 
 
 def owner(engine: Engine, state: GameState, name: str) -> int | None:

@@ -1,5 +1,5 @@
 {
-  "schema_version": 6,
+  "schema_version": 31,
   "name": "demotion chess",
   "description": "Chess in which taking a piece demotes it instead of removing it, and the attacker stays where it is. A struck queen becomes a rook, a rook a bishop, a bishop a knight and a knight a pawn, each on the square it stood on, and only a pawn is taken outright, so a queen must be struck five times before it leaves the board. Because the attacker never enters the square it hits, nothing can recapture there: a capture is a blow struck rather than a square won, it costs the striker nothing, and a piece cannot be defended by guarding it. That makes attack cheap, and the choice each move is where to spend the blows, wearing a strong piece down rank by rank or striking at whatever stands between you and the king. Games are decided nearly every time, and early aggression is rewarded heavily.",
   "board": {

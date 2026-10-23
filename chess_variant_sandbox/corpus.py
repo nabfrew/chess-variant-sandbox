@@ -59,6 +59,7 @@ from chess_variant_sandbox.metrics.seeds import (
 )
 from chess_variant_sandbox.spec.canonical import load_spec, spec_hash
 from chess_variant_sandbox.spec.schema import validate_spec
+from chess_variant_sandbox.spec.spelling import current_spelling
 from chess_variant_sandbox.tournament import TournamentConfig
 from chess_variant_sandbox.tournament.analysis import CorpusAnalysis, analyse_corpus
 
@@ -1758,7 +1759,9 @@ def _write(
                 "rename this one first"
             )
 
-    spec = dict(candidate.spec)
+    # In the current spelling (Q1008c), so a game promoted from an older one is written the
+    # way the library is and passes `tests/test_spelling.py`'s guard; its name stays.
+    spec = current_spelling(candidate.spec)
     spec["name"] = title
     spec["provenance"] = _provenance(candidate, note, stage, runs_dir, credit)
     path.write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8")

@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 31,
   "name": "bastion",
   "description": "A siege game on a small board. Cannons move freely along ranks and files but can only capture by leaping a screening piece, so every piece you develop is a weapon your opponent can fire over. The tension is that a crowded board is dangerous and an empty one is toothless.",
   "board": {

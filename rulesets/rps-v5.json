@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 31,
   "name": "rps both endings",
   "description": "Rock-paper-scissors with two ways to win at once. On a nine by nine board each side has eight pieces, rocks, papers and scissors that all move one square in any direction like a chess king and take only the kind they beat: rock takes scissors, scissors takes paper, paper takes rock. Every square a piece moves onto is claimed for good, and a player wins by taking every enemy piece or, if the game runs out its clock first, by having claimed more ground than the opponent. It is the last of five such games that webgoatguy, the designer of intransitive, built and rejected on YouTube on the way to his finished game, and the only one he rejected on aesthetics alone. He was explicit that there were no major gameplay problems and that the complaint was not a count of rules: 'in chess, the rules mesh well with each other, whereas this game feels like someone took rules from five different games and combined them arbitrarily.'",
   "board": {

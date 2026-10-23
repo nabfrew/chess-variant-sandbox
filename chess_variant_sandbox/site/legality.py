@@ -39,7 +39,8 @@ reads the text: Python writes it in the browser and Python reads it here.
    the game and the ply. The same walk rebuilds the series and the analysis fields. A
    game in rounds and a spy game are walked a step at a time, each round's two moves
    checked against their own seat's list and resolved together by the core, and the
-   round, spy and sight tallies rebuilt as the native pass writes them (Q1000).
+   round, spy, sight and rest tallies rebuilt as the native pass writes them (Q1000; the
+   rest's, `analysis.REST_SERIES`, since Q983b).
 4. **The analysis covers the graded games, and the trials are the sampler's.** Which games
    the pass grades and which it forces a blunder into are functions of the records, so the
    server lists both and refuses a submission that covers others.
@@ -119,10 +120,12 @@ from chess_variant_sandbox.tournament.analysis import (
     CorpusAnalysis,
     GameAnalysis,
     SpyStep,
+    _count_rest,
     _count_round,
     _count_sight,
     _mover_kind,
     _moves_an_instance,
+    _rest_tally,
     _round_tallies,
     _sight_tally,
     _spy_round_blunder,
@@ -693,6 +696,7 @@ def walk(
     captures: list[int] = []
     blunder = (0, 0)
     sight = _sight_tally(engine)
+    rest = _rest_tally(engine)
 
     for ply, move in enumerate(moves):
         legal = engine.legal_moves(state)
@@ -736,6 +740,7 @@ def walk(
             counting = False
         else:
             _count_sight(engine, sight, state, state.side_to_move)
+            _count_rest(engine, rest, state, state.side_to_move)
             if _moves_an_instance(move) and move_from(move) in starting:
                 moved.add(move_from(move))
             moves_by_type[kind] += 1
@@ -787,6 +792,7 @@ def walk(
         moved_instances=len(moved),
         position_keys=keys,
         sight=sight,
+        rest=rest,
     )
     return Walked(
         record=rebuilt,
@@ -871,6 +877,7 @@ def _walk_steps(
         {key: (None if key.startswith("lost_") else 0) for key in SPY_COUNTS} if spy else None
     )
     sight = _sight_tally(engine)
+    rest = _rest_tally(engine)
     trial: Step | None = None
 
     def refuse(name: str, sentence: str, ply: int) -> Refused:
@@ -927,6 +934,7 @@ def _walk_steps(
             material.extend([value] * len(words))
         for seat in seats:
             _count_sight(engine, sight, state, seat)
+            _count_rest(engine, rest, state, seat)
         for move in words:
             kind = _mover_kind(engine, board, move)
             if kind is None:  # pragma: no cover - a legal move stands on its origin
@@ -1015,6 +1023,7 @@ def _walk_steps(
         rounds=rounds,
         spy=spies,
         sight=sight,
+        rest=rest,
     )
     return Walked(record=rebuilt, positions=positions, trial=trial, stepped=True)
 

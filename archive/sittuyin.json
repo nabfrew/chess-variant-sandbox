@@ -1,5 +1,5 @@
 {
-  "schema_version": 18,
+  "schema_version": 31,
   "name": "sittuyin",
   "description": "Sittuyin is the traditional chess of Burma, and it opens with a deployment instead of a fixed setup. Only the pawns start on the board, staggered across the third and fourth ranks; each player then places the king and the rest of the army one piece a move on empty squares of their own three back ranks, the two chariots (yahhta, moving as rooks) on the back rank only. Nothing on the board moves until both sides have placed everything, so the opening is a duel of arrangement: a piece placed early claims its square but shows the plan, and one held back can answer what the other side has built. The pieces are the old, slow ones: beside the chariots and the horses (myin, moving as knights), the general (sit) steps one square diagonally and the elephant (hsin) one square diagonally or straight forward. A pawn may promote, but only to a general, only once its side's general has been lost, and only on reaching one of the squares of the long diagonals in the enemy half. Checkmate wins, and a player left with no legal move loses.",
   "board": {

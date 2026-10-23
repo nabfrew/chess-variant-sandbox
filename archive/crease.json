@@ -1,5 +1,5 @@
 {
-  "schema_version": 24,
+  "schema_version": 31,
   "name": "crease",
   "description": "A wide board creased twice so that its wings touch, and the creases are what the players fight over. Two pairs of folds cross it, b4 with i5 and i4 with b5. A fold is a place, not a piece: a piece that ends its move on an empty fold may stay there or go through to the other fold of its pair, capturing there as on any square, so b2-b4 may put the pawn on i5. A piece standing in a fold shuts it. Either player may spend a turn moving any fold a step, onto a piece or not, though not straight back on the very next move. So each fold is a contested door: move the far end under an enemy piece and every capture you have onto the near end threatens it; stand a piece in your end to close it. About a third of all moves shift a fold, far more than go through one. The armies are Capablanca chess's: ten files, with an archbishop (bishop or knight) and a chancellor (rook or knight).",
   "board": {
@@ -207,28 +207,6 @@
           "mode": "both"
         }
       ]
-    },
-    {
-      "id": "O",
-      "name": "portal",
-      "value": 0,
-      "moves": [
-        {
-          "kind": "leap",
-          "vectors": [
-            [
-              1,
-              0
-            ],
-            [
-              1,
-              1
-            ]
-          ],
-          "symmetry": "rotate4",
-          "mode": "move"
-        }
-      ]
     }
   ],
   "setup": {
@@ -322,7 +300,22 @@
     "no_progress_draw": 100,
     "portals": [
       {
-        "piece": "O",
+        "moves": [
+          {
+            "kind": "leap",
+            "vectors": [
+              [
+                1,
+                0
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "symmetry": "rotate4"
+          }
+        ],
         "kind": "fold",
         "orange": "b4",
         "blue": "i5",
@@ -339,7 +332,22 @@
         "no_straight_back": true
       },
       {
-        "piece": "O",
+        "moves": [
+          {
+            "kind": "leap",
+            "vectors": [
+              [
+                1,
+                0
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "symmetry": "rotate4"
+          }
+        ],
         "kind": "fold",
         "orange": "i4",
         "blue": "b5",

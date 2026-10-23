@@ -107,10 +107,11 @@ class TestTheProblemsTheAuditNamed:
 
     def test_how_far_on_a_leap_names_the_piece_and_the_way_of_moving(self) -> None:
         problem = ("pieces[1].moves[0].range means nothing on a leap, which is one jump per "
-                   "vector; to reach further, list more vectors")
+                   "vector; to reach further, list more vectors, or ride it with a 'slide' "
+                   "over the vector or a 'lame' with a range")
         assert plain_problem(problem) == (
             "Piece 2, way of moving 1: 'how far' does nothing on a leap. "
-            "To reach further, add more directions.")
+            "To reach further, add more directions, or let it jump again.")
         spec = {"pieces": [{"id": "P", "name": "pawn"}, {"id": "N", "name": "knight"}]}
         assert plain_problem(problem, spec).startswith("Piece 2 (knight), way of moving 1:")
 
@@ -313,52 +314,6 @@ class TestTheScreensReasonsAreAVisitors:
             assert "budget" not in reason, reason
 
 
-class TestAVersionStampIsSaidInTheFeaturesWords:
-    """A draft that uses a feature its declared version predates draws the validator's
-    *uses X, added in schema N* (`schema.validate_spec`). The site never names the version
-    (`designing._worth_saying` settles it once the rest is a game), so `plain_problem` says
-    what is used in the words the form draws it by: a rule by its card's title, a piece's
-    field by its label, a path by its place. Each of the three ways `_used` names a thing is
-    one case here (Q751, archive/plan-tests F9: none of them had run)."""
-
-    @staticmethod
-    def _stamp(change: Any) -> tuple[str, str]:
-        spec = load_spec(ROOT / "rulesets" / "chess.json")
-        assert spec["schema_version"] < 4
-        change(spec)
-        stamps = [p for p in validate_spec(spec) if ", added in schema " in p]
-        assert len(stamps) == 1, stamps
-        return stamps[0], plain_problem(stamps[0], spec)
-
-    def test_two_rules_are_named_by_their_cards_titles(self) -> None:
-        raw, said = self._stamp(lambda s: s["rules"].update(territory={}, turn={}))
-        assert raw.startswith("rules uses territory, turn, added in schema 4")
-        assert said == ("Using the rule 'claiming ground' and the rule 'more than one move "
-                        "a turn' needs the rest of the draft to be a game first.")
-
-    def test_a_pieces_field_is_named_by_its_label(self) -> None:
-        raw, said = self._stamp(lambda s: s.update(schema_version=7)
-                                or s["pieces"][0].update(facing={}))
-        assert raw.startswith("a piece uses facing, added in schema 8")
-        assert said == "Using 'points a way' needs the rest of the draft to be a game first."
-
-    def test_a_path_is_named_by_its_place(self) -> None:
-        raw, said = self._stamp(lambda s: s.update(schema_version=7)
-                                or s["setup"]["placements"][0].update(facing=0))
-        assert raw.startswith("a piece uses setup.placements[].facing, added in schema 8")
-        assert said == ("Using where they start, 'pointing' needs the rest of the draft to be "
-                        "a game first.")
-
-    @pytest.mark.parametrize("change", [
-        lambda s: s["rules"].update(territory={}, turn={}),
-        lambda s: s.update(schema_version=7) or s["pieces"][0].update(facing={}),
-    ])
-    def test_the_words_never_name_the_version_or_a_key(self, change: Any) -> None:
-        _, said = self._stamp(change)
-        assert "schema" not in said and "_version" not in said
-        assert not _hits(said), _hits(said)
-
-
 # ------------------------------------------------ Q922: the survivors of the mutation report
 
 _TWO_PIECES: dict[str, Any] = {
@@ -481,3 +436,104 @@ class TestAPieceFieldNamesItsPiecesForEveryReader:
         out = capsys.readouterr().out
         assert "Piece 2 (knight): a speed only matters in a game played in rounds" in out, out
         assert "Where the game comes from" not in out
+
+
+# ------------------------------------------------ Q1013: a command's words, one source of them
+
+
+class TestACommandsWords:
+    """Q1013 (`docs/plan-schema-31.md` §3): `spec.plain` words the fourth sight effect and its
+    `captures_own` as it words freeze, disarm and shield, and the designer's sight rows read
+    those words and no stand-in of their own (Q1007d's, gone). Pinned on a game whose knights
+    command (K1, no turncoat capture) and one whose king commands with `captures_own` (K2)."""
+
+    def test_the_effect_and_its_box_are_worded_beside_the_other_three(self) -> None:
+        assert FIELD_WORDS["pieces.sight.command"] == ("commands what it sees", None)
+        assert FIELD_WORDS["pieces.sight.captures_own"] == (
+            "may make them take their own side",
+            "Only beside a command. Yes: the other player may also make a commanded piece take "
+            "a piece of its own side that it may capture, never a royal or a shielded one, and "
+            "not while it is disarmed. Left empty, a commanded piece moves only onto empty "
+            "squares.")
+        said = FIELD_WORDS["pieces.sight.effect"][1]
+        assert said is not None
+        assert said.endswith(
+            "Shield: nothing may capture it, and a shielded royal is never in check. Command: "
+            "the other player may also move it, as its owner would, onto an empty square; a "
+            "royal is never commanded, and a frozen piece is moved by nobody.")
+        for words in (FIELD_WORDS["pieces.sight.command"], FIELD_WORDS["pieces.sight.captures_own"],
+                      FIELD_WORDS["pieces.sight.effect"]):
+            for text in words:
+                assert text is None or not (_MACHINE.search(text.replace("'", " '"))
+                                            or _hits(text)), text
+
+    def test_the_sight_rows_read_spec_plain_alone(self) -> None:
+        assert not hasattr(cards, "SIGHT_WORDS_PENDING") and not hasattr(cards, "COMMAND_SENTENCE")
+        words = cards.card_model()["sight"]["words"]
+        for key in cards.SIGHT_FIELDS:
+            label, says = FIELD_WORDS[f"pieces.sight.{key}"]
+            assert words[key] == [label, says or ""], key
+
+    def test_a_command_game_and_a_turncoat_one_are_accepted(self) -> None:
+        from test_command import k1, k2
+
+        for spec in (k1(), k2()):
+            assert plain_problems(validate_spec(spec), spec) == []
+
+    def test_each_refusal_of_a_command_is_said_in_the_designers_words(self) -> None:
+        from test_command import KING_COMMAND, KNIGHT_COMMAND, chess, k1, k2, with_sight
+
+        reach = k1()
+        reach["rules"]["reach"] = {"squares": ["e4"]}
+        hand = k2()
+        hand["rules"]["drops"] = {}
+        no_turncoat = with_sight(chess(), "N", {**KNIGHT_COMMAND, "affects": ["B"],
+                                                "captures_own": True})
+        next(p for p in no_turncoat["pieces"] if p["id"] == "B")["captures"] = ["K"]
+        cases = {
+            "beside a reach": (reach, (
+                "A command ('what it sees' effect 'command') beside the rule 'winning by "
+                "arriving': whether a commanded arrival wins for the mover or the owner would be "
+                "a second rule; leave one out.")),
+            "a turncoat beside a capture hand": (hand, (
+                "A command's 'may make them take their own side' beside the rule 'pieces played "
+                "back onto the board', 'captured pieces': whose hand a turncoat capture fills "
+                "would be a second rule; leave one out.")),
+            "a turncoat beside a freeze": (
+                with_sight(chess(), "N", {**KNIGHT_COMMAND, "effect": "freeze",
+                                          "captures_own": True}),
+                "Piece 2 (knight), line of sight 1: 'may make them take their own side' means "
+                "something only beside effect 'command' (a commanded piece made to take its own "
+                "side); leave it out."),
+            "a turncoat written wrongly": (
+                with_sight(chess(), "K", {**KING_COMMAND, "captures_own": "yes"}),
+                "Piece 6 (king), line of sight 1: 'may make them take their own side' must be "
+                "true or false."),
+            "a turncoat nothing could make": (no_turncoat, (
+                "Piece 2 (knight), line of sight 1: affects nothing that could be there: a "
+                "command's 'may make them take their own side' where no type it commands may "
+                "take a piece of its own side.")),
+        }
+        for name, (spec, sentence) in cases.items():
+            said = plain_problems(validate_spec(spec), spec)
+            assert sentence in said, (name, said)
+            for line in said:
+                assert line[0].isupper() and line.endswith("."), (name, line)
+                assert "_" not in line.replace("'", ""), (name, line)
+                assert not _hits(line), (name, line)
+
+    def test_no_step_sentence_on_a_command_game_holds_a_key(self) -> None:
+        from test_command import k1, k2
+
+        said: set[str] = set()
+        for spec in (k1(), k2()):
+            for operator in OPERATORS:
+                for seed in range(6):
+                    child = copy.deepcopy(spec)
+                    line = operator.apply(child, random.Random(seed))
+                    if line:
+                        said.add(line)
+        assert any("command" in line for line in said), said
+        trouble = [(line, _hits(line)) for line in said
+                   if _hits(line) or re.search(r"\b[a-z]+_[a-z_]+\b", line)]
+        assert not trouble, trouble

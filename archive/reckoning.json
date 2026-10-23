@@ -118,7 +118,7 @@
     "stalemate": "loss",
     "win": "checkmate"
   },
-  "schema_version": 4,
+  "schema_version": 31,
   "setup": {
     "mirror": true,
     "orientation": "rotate",

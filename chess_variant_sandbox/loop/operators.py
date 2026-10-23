@@ -73,7 +73,6 @@ from chess_variant_sandbox.spec.schema import (
     placed_ids,
     portal_groups,
     portal_open_ends,
-    portal_piece_ids,
     promoting_piece_ids,
     reach_reflection,
     reflect_square,
@@ -102,7 +101,6 @@ from chess_variant_sandbox.spec.transform import (
     set_wrap,
     settle_en_passant,
     settle_inert_rules,
-    settle_schema_version,
     split_piece,
     strip_rule,
 )
@@ -228,16 +226,13 @@ def _non_royal(spec: dict[str, Any]) -> list[dict[str, Any]]:
 def _movers(spec: dict[str, Any], kind: str | None = None) -> list[tuple[dict, dict]]:
     """Every (piece, move) pair, optionally of one movement kind.
 
-    A portal type's moves are left out (schema 19): they must stay `move` mode and read the
-    same for both players, which a direction or a symmetry drawn for an army's piece
-    breaks (Q772a found `add-a-direction` and `change-symmetry` refused on every portal
-    showcase). `open-a-portal` is the operator that edits portals.
+    A portal's moves are its group's (spelling 31), not a piece's, so they are never drawn
+    here: they must stay move-only and read the same for both players, which a direction or
+    a symmetry drawn for an army's piece breaks (Q772a). `open-a-portal` edits portals.
     """
-    portal_types = portal_piece_ids(spec.get("rules"))
     return [
         (piece, move)
         for piece in pieces(spec)
-        if piece.get("id") not in portal_types
         for move in piece.get("moves", [])
         if kind is None or move.get("kind") == kind
     ]
@@ -348,6 +343,31 @@ def _slide_becomes_leap(spec: dict[str, Any], rng: random.Random) -> str | None:
     return f"turned the {piece.get('name', piece['id'])}'s slide into a leap"
 
 
+def _ride_a_leap(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Q1007a (`docs/plan-schema-31.md` §2.5): a lame leap rides, or a lame rider stops.
+
+    A single lame leap gains a ``range`` (0, 2 or 3 jumps, and now and then a ``min_range``
+    of 2): jump after jump, each blocked on its leg. A lame rider loses both and is the
+    single leap again, so the axis crosses both ways. Option 1, a leap ridden as a slide
+    over its vector (the nightrider), is `leap-becomes-slide`'s and `slide-becomes-leap`'s.
+    A lame move keeps reaching a second square either way, so en passant is untouched
+    (`schema.can_double_step`).
+    """
+    movers = _movers(spec, "lame")
+    if not movers:
+        return None
+    piece, move = rng.choice(movers)
+    name = piece.get("name", piece["id"])
+    if move.get("range", 1) != 1:
+        move.pop("range", None)
+        move.pop("min_range", None)
+        return f"made the {name}'s blockable leap a single jump again"
+    move["range"] = rng.choice((0, 2, 3))
+    if rng.random() < 0.25:
+        move["min_range"] = 2
+    return f"let the {name} leap again and again, each jump blockable on its way"
+
+
 def _no_leg_for(move: dict[str, Any], vector: list[int]) -> bool:
     """Whether ``vector`` is a one-square step on a ``lame`` move, which the validator
     refuses on admission (Q884): a lame leap's blockable square is the one it passes over,
@@ -384,16 +404,9 @@ def _lattice_symmetries(spec: dict[str, Any]) -> tuple[str, ...]:
 
 
 def _set_symmetry(spec: dict[str, Any], move: dict[str, Any], rng: random.Random) -> str:
-    """Give ``move`` another of its lattice's symmetries, and stamp the version it needs.
-
-    The hexagon's two are schema 18's, so a hex child is settled, both ways: turned, it
-    needs 18, and written back under ``none`` it is the game its parent's stamp named. A
-    square child is left as it was, since the square's three are as old as the schema.
-    """
+    """Give ``move`` another of its lattice's symmetries: the hexagon's on a hex board."""
     current = move.get("symmetry", "none")
     move["symmetry"] = rng.choice([s for s in _lattice_symmetries(spec) if s != current])
-    if _lattice_symmetries(spec) is HEX_SYMMETRIES:
-        settle_schema_version(spec)
     return str(current)
 
 
@@ -437,7 +450,6 @@ def _turn_a_hex_move(
     piece, move, symmetry = rng.choice(choices)
     current = move.get("symmetry", "none")
     move["symmetry"] = symmetry
-    settle_schema_version(spec)
     return f"changed how the {piece.get('name', piece['id'])}'s moves reflect ({current} to {symmetry})"
 
 
@@ -518,9 +530,7 @@ def _restrict_a_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
     One type at a time, in both directions, because a step that could only tighten would
     walk every candidate to a game where nothing captures anything.
     """
-    # Schema 19: a portal neither captures nor is captured, so it is no party to this.
-    portal = portal_piece_ids(spec.get("rules"))
-    candidates = [p for p in pieces(spec) if p.get("id") and p.get("id") not in portal]
+    candidates = [p for p in pieces(spec) if p.get("id")]
     if len(candidates) < 2:
         return None  # a dominance relation needs something to dominate
     piece = rng.choice(candidates)
@@ -665,11 +675,9 @@ def _limit_the_game(spec: dict[str, Any], rng: random.Random) -> str | None:
     if key == "repetition_draw":
         if current == REPETITION_NEVER:
             rules[key] = rng.choice((2, 3, 4, 5))
-            settle_schema_version(spec)
             return f"gave the game a draw by repetition again, after {rules[key]}"
         if isinstance(current, int) and not isinstance(current, bool) and rng.random() < 0.5:
             rules[key] = REPETITION_NEVER
-            settle_schema_version(spec)
             return "removed the draw by repetition"
     if not isinstance(current, int) or isinstance(current, bool):
         return None
@@ -691,12 +699,7 @@ def _reprice_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
     without changing what it can do. Kept because that nudge is sometimes exactly the
     difference between a piece being traded off and being played.
     """
-    # A portal type is nobody's material and must be worth 0 (schema 19).
-    portal_types = portal_piece_ids(spec.get("rules"))
-    candidates = [
-        p for p in _non_royal(spec)
-        if isinstance(p.get("value"), (int, float)) and p.get("id") not in portal_types
-    ]
+    candidates = [p for p in _non_royal(spec) if isinstance(p.get("value"), (int, float))]
     if not candidates:
         return None
     piece = rng.choice(candidates)
@@ -777,6 +780,8 @@ def _hand_the_pieces_back(spec: dict[str, Any], rng: random.Random) -> str | Non
     and the operator was a silent no-op. 108 of its 318 children in the sweep, 78 to the
     stamp and 30 to the `strike` clash below.
     """
+    if _turncoats(spec):
+        return None  # Q1007c: a capture hand is refused beside captures_own (§3.6)
     rules = spec.setdefault("rules", {})
     if rules.get("drops"):
         if any(
@@ -794,7 +799,6 @@ def _hand_the_pieces_back(spec: dict[str, Any], rng: random.Random) -> str | Non
             # the board first.
             return None
         rules.pop("drops", None)
-        settle_schema_version(spec)
         return "captured pieces are gone for good again"
     if rules.get("strike") or rules.get("contacts") or uses_sweep(spec):
         return None  # a hand is refused beside a rule that takes several pieces at once
@@ -822,7 +826,6 @@ def _hand_the_pieces_back(spec: dict[str, Any], rng: random.Random) -> str | Non
         # refused as declaring nothing (inert-rule case 5) on every draw (Q110).
         return None
     rules["drops"] = {"from_captures": True}
-    settle_schema_version(spec)
     return "captured pieces now change sides and may be dropped back onto any empty square"
 
 
@@ -838,17 +841,17 @@ def _win_by_arrival(spec: dict[str, Any], rng: random.Random) -> str | None:
     not settle the stamp, so twelve schema-1 parents lost every child to `rules uses
     reach, added in schema 2`. 72 of 282 in the sweep.
     """
+    if _commands(spec):
+        return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
     rules = spec.setdefault("rules", {})
     if rules.get("reach"):
         rules.pop("reach", None)
-        settle_schema_version(spec)
         return "arriving somewhere no longer wins the game"
 
     reach = _centre_reach(spec)
     if reach is None:
         return None
     rules["reach"] = reach
-    settle_schema_version(spec)
     return f"the game is now also won by walking the {reach['piece']} to the centre"
 
 
@@ -992,7 +995,6 @@ def _score_the_clock(spec: dict[str, Any], rng: random.Random) -> str | None:
     rules = spec.setdefault("rules", {})
     if rules.get("scoring"):
         strip_rule(spec, "scoring")
-        settle_schema_version(spec)
         return "a game that runs out of clock is a draw again"
     set_scoring(spec)
     count = rules["scoring"]["count"]
@@ -1014,6 +1016,8 @@ def _claim_the_ground(spec: dict[str, Any], rng: random.Random) -> str | None:
     with nothing to count is a spec the validator rejects by name -- and an operator
     that produced one would spend a draw on a candidate that could never be played.
     """
+    if _commands(spec):
+        return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     rules = spec.setdefault("rules", {})
@@ -1021,7 +1025,6 @@ def _claim_the_ground(spec: dict[str, Any], rng: random.Random) -> str | None:
         strip_rule(spec, "territory")
         if (rules.get("scoring") or {}).get("count") == "territory":
             strip_rule(spec, "scoring")
-        settle_schema_version(spec)
         return "squares no longer remember who stood on them"
     mode = rng.choice(("permanent", "repaint"))
     set_territory(spec, mode=mode)
@@ -1042,7 +1045,6 @@ def _lengthen_the_turn(spec: dict[str, Any], rng: random.Random) -> str | None:
     rules = spec.setdefault("rules", {})
     if rules.get("turn"):
         strip_rule(spec, "turn")
-        settle_schema_version(spec)
         return "a turn is one move again"
     if rules.get("npcs"):
         # The other half of `_set_a_patrol`'s guard, which has always refused a patrol
@@ -1081,7 +1083,6 @@ def _join_the_edges(spec: dict[str, Any], rng: random.Random) -> str | None:
     rules = spec.setdefault("rules", {})
     if rules.get("wrap"):
         strip_rule(spec, "wrap")
-        settle_schema_version(spec)
         return "the board has edges again"
     if uses_sweep(spec):
         return None  # round a seam a sweep could reach one square by two paths
@@ -1166,7 +1167,6 @@ def _wall_off_a_square(spec: dict[str, Any], rng: random.Random) -> str | None:
     rules = spec.setdefault("rules", {})
     if rules.get("obstacles"):
         strip_rule(spec, "obstacles")
-        settle_schema_version(spec)
         return "the walls are gone; every square is a square again"
 
     board = spec.get("board", {})
@@ -1246,6 +1246,8 @@ def _soften_the_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
     no legal move at all -- every position has exactly the moves it had before, and only
     what they do is different.
     """
+    if _commands(spec):
+        return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     rules = spec.setdefault("rules", {})
@@ -1254,7 +1256,6 @@ def _soften_the_capture(spec: dict[str, Any], rng: random.Random) -> str | None:
         if placed is not None:
             return placed
         strip_rule(spec, "strike")
-        settle_schema_version(spec)
         return "a captured piece is simply removed again"
     if (
         rules.get("explode_on_capture")
@@ -1304,6 +1305,8 @@ def _become_what_you_take(spec: dict[str, Any], rng: random.Random) -> str | Non
     left to the validator, on the module's own rule: what is checked here is what would
     otherwise make *every* draw a rejection.
     """
+    if _commands(spec):
+        return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     from chess_variant_sandbox.spec.transform import set_contacts
@@ -1317,7 +1320,6 @@ def _become_what_you_take(spec: dict[str, Any], rng: random.Random) -> str | Non
         if placed is not None:
             return placed
         strip_rule(spec, "contacts")
-        settle_schema_version(spec)
         return "taking a piece leaves the taker as it was again"
     if (
         rules.get("strike") or rules.get("explode_on_capture") or rules.get("drops")
@@ -1366,7 +1368,6 @@ def _keep_the_mover(spec: dict[str, Any], rng: random.Random) -> str | None:
         if len(keeping) == len(links):
             return None  # the table would go with them; the strip arm says that
         contacts["links"] = [link for link in links if not is_keeping_link(link)]
-        settle_schema_version(spec)
         movers = sorted({names.get(str(link.get("mover")), "?") for link in keeping})
         return f"a {' or '.join(movers)} that takes is promoted as its promotion says again"
     royal = {
@@ -1393,7 +1394,6 @@ def _keep_the_mover(spec: dict[str, Any], rng: random.Random) -> str | None:
     added = [{"mover": mover, "onto": onto, "mover_to": mover} for onto in choices[mover]]
     assert all(keeping_link_holds(link, promoting) for link in added)
     links.extend(added)
-    settle_schema_version(spec)
     name = names[mover]
     return (
         f"a {name} that takes stays a {name}, whatever its promotion would have made it "
@@ -1421,12 +1421,10 @@ def _place_the_survivor(spec: dict[str, Any], key: str, rng: random.Random) -> s
         return None
     if rule.get("position") == "choose":
         clear_landing(spec, key, "stay")
-        settle_schema_version(spec)
         return "a struck piece that survives stays where it stood again"
     if rule.get("position") not in ("stay", "swap") or not keeps_a_survivor(spec, key):
         return None
     set_landing(spec, key)
-    settle_schema_version(spec)
     where = (
         "any empty cell next to where it stood"
         if spec.get("board", {}).get("lattice") == "hex"
@@ -1451,6 +1449,8 @@ def _merge_your_own(spec: dict[str, Any], rng: random.Random) -> str | None:
     an entry, and takes the table with its last link. A deletion can remove the only link
     that kept a target alive, so it settles `choose` as `transform.settle_landing` does.
     """
+    if _commands(spec):
+        return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     from chess_variant_sandbox.spec.transform import merge_links, set_own_link, settle_landing
@@ -1474,13 +1474,11 @@ def _merge_your_own(spec: dict[str, Any], rng: random.Random) -> str | None:
         }
         if rng.random() < 0.5 and pair not in enemy:
             link.pop("own")
-            settle_schema_version(spec)
             return f"the {pair[0]} no longer merges with its own {pair[1]}; it meets an enemy one instead"
         links.pop(index)
         if not links:
             strip_rule(spec, "contacts")
         settle_landing(spec)
-        settle_schema_version(spec)
         return f"the {pair[0]} can no longer move onto its own {pair[1]}"
 
     if spy_ids(spec):
@@ -1499,7 +1497,6 @@ def _merge_your_own(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None
     link = rng.choice(candidates)
     set_own_link(spec, link)
-    settle_schema_version(spec)
     names = {str(piece.get("id")): piece.get("name", piece.get("id")) for piece in pieces(spec)}
     return (
         f"a {names[link['mover']]} may move onto its own {names[link['onto']]}, and the two "
@@ -1574,7 +1571,6 @@ def _place_a_stone(spec: dict[str, Any], rng: random.Random) -> str | None:
         # `drop_piece` takes the stock entry with the piece, and the hand with the last
         # stock when nothing else fills it -- so this is one call and not three.
         drop_piece(spec, str(stone["id"]))
-        settle_schema_version(spec)
         return f"the {stone.get('name', stone['id'])} is gone; every move is a move again"
 
     if rules.get("strike") or rules.get("contacts") or uses_sweep(spec):
@@ -1590,7 +1586,6 @@ def _place_a_stone(spec: dict[str, Any], rng: random.Random) -> str | None:
     if not spare:
         return None
     set_stone(spec, spare[0])
-    settle_schema_version(spec)
     return (
         "each player may place a stone on any empty square instead of moving, as often "
         "as they like; a stone never moves again and blocks what stands beside it"
@@ -1629,7 +1624,6 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
         if narrowed and rng.random() < 0.5:
             for key in narrowed:
                 explosion.pop(key)
-            settle_schema_version(spec)
             return "every capture explodes again, whoever makes it and whatever it takes"
         if not narrowed and rng.random() < 0.5:
             candidates = _non_royal(spec)
@@ -1638,11 +1632,9 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
             key = rng.choice(("by", "of"))
             piece = rng.choice(candidates)
             explosion[key] = [str(piece["id"])]
-            settle_schema_version(spec)
             side = "made by" if key == "by" else "of"
             return f"only a capture {side} the {piece.get('name', piece['id'])} explodes"
         strip_rule(spec, "explode_on_capture")
-        settle_schema_version(spec)
         return "a capture no longer takes its neighbours with it"
 
     if rules.get("strike") or rules.get("contacts") or rules.get("npcs") or uses_sweep(spec):
@@ -1655,7 +1647,6 @@ def _set_the_blast(spec: dict[str, Any], rng: random.Random) -> str | None:
     if has_sights(spec):
         return None  # schema 30: a blast is refused beside a line of sight
     set_explosion(spec)
-    settle_schema_version(spec)
     return (
         "a capture now destroys everything standing next to the square it happened on, "
         "so trades take the neighbourhood with them"
@@ -1681,7 +1672,6 @@ def _turn_to_face(spec: dict[str, Any], rng: random.Random) -> str | None:
     facing = [p for p in pieces if isinstance(p.get("facing"), dict)]
     if facing:
         clear_facing(spec, rng.choice(facing)["id"])
-        settle_schema_version(spec)
         return "the piece that could turn no longer has a direction to turn"
 
     def directions(piece: dict[str, Any]) -> frozenset[tuple[int, int]]:
@@ -1740,7 +1730,6 @@ def _fix_a_facing(spec: dict[str, Any], rng: random.Random) -> str | None:
     if fixed:
         piece = rng.choice(fixed)
         piece["facing"].pop("turns")
-        settle_schema_version(spec)
         return f"{piece['id']} may now spend a move turning to face another way"
     placements = [
         p for p in (spec.get("setup") or {}).get("placements", []) if isinstance(p, dict)
@@ -1775,7 +1764,6 @@ def _fix_a_facing(spec: dict[str, Any], rng: random.Random) -> str | None:
             placement["facing"] = turned
         pointed = f"; those on {', '.join(moved)} now point {turned}"
     piece["facing"]["turns"] = False
-    settle_schema_version(spec)
     return f"{piece['id']} no longer turns: each one points the way it was placed{pointed}"
 
 
@@ -1793,6 +1781,8 @@ def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
     rules a round has no use for are dropped. Out: the rule, every `beats` and the tie go,
     and the royal capture win stays, which an alternating game plays as it is.
     """
+    if _commands(spec):
+        return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
     rules = spec.setdefault("rules", {})
     if is_simultaneous(rules):
         del rules["simultaneous"]
@@ -1803,7 +1793,6 @@ def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
                 # 28's speed orders a round's moves, so it goes too.
                 piece.pop("spy", None)
                 piece.pop("speed", None)
-        settle_schema_version(spec)
         return "the players take turns again"
     del rng
     trial = copy.deepcopy(spec)
@@ -1818,7 +1807,6 @@ def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
     if isinstance(drops, dict):
         drops.pop("no_mate", None)
     trial_rules["simultaneous"] = {}
-    settle_schema_version(trial)
     # The rest of §4's refusals (a sweep, a moved portal, a strike that stays or chooses,
     # a long turn, a royal in a placement stock) are designs of their own: not applied.
     if any(error.startswith("rules.simultaneous beside") for error in validate_spec(trial)):
@@ -1836,8 +1824,7 @@ def _set_a_collision(spec: dict[str, Any], rng: random.Random) -> str | None:
     (`schema.has_equal_speed_opponent`), so the two cannot disagree."""
     if not is_simultaneous(spec):
         return None
-    portals = portal_piece_ids(spec.get("rules"))
-    pieces = [p for p in spec.get("pieces", []) if isinstance(p, dict) and p.get("id") not in portals]
+    pieces = [p for p in spec.get("pieces", []) if isinstance(p, dict)]
     if not pieces:
         return None
     ids = [p["id"] for p in pieces]
@@ -1852,7 +1839,6 @@ def _set_a_collision(spec: dict[str, Any], rng: random.Random) -> str | None:
     if stated and (not pieces or rng.random() < 0.5):
         piece = rng.choice(stated)
         piece.pop("beats")
-        settle_schema_version(spec)
         return f"{piece['id']} beats in a collision what it may capture again"
     piece = rng.choice(pieces)
     default = beats_of({key: value for key, value in piece.items() if key != "beats"}, ids)
@@ -1863,7 +1849,6 @@ def _set_a_collision(spec: dict[str, Any], rng: random.Random) -> str | None:
     if not choices:
         return None
     piece["beats"] = rng.choice(choices)
-    settle_schema_version(spec)
     beaten = ", ".join(piece["beats"]) or "nothing"
     return f"in a collision {piece['id']} now beats {beaten}"
 
@@ -1880,7 +1865,6 @@ def _break_the_tie(spec: dict[str, Any], rng: random.Random) -> str | None:
     rule = spec["rules"]["simultaneous"]
     if "tie" in rule:
         del rule["tie"]
-        settle_schema_version(spec)
         return "a tied collision eliminates both pieces again"
     if has_speeds(spec) and not _any_equal_speed_meeting(spec):
         return None
@@ -1929,7 +1913,6 @@ def _curb_the_chase(spec: dict[str, Any], rng: random.Random) -> str | None:
                 piece.pop("rest", None)
         else:
             del rule[key]
-        settle_schema_version(spec)
         return _CHASE_WORDS[key][1]
     for key in rng.sample(absent, len(absent)):
         trial = copy.deepcopy(spec)
@@ -1940,7 +1923,6 @@ def _curb_the_chase(spec: dict[str, Any], rng: random.Random) -> str | None:
             trial["rules"]["simultaneous"][key] = _CHASE_SWITCHES[key]
         if key == "both" and not isinstance(trial["rules"].get("scoring"), dict):
             trial["rules"]["scoring"] = {"count": "material"}
-        settle_schema_version(trial)
         if validate_spec(trial):
             continue
         spec.clear()
@@ -1951,10 +1933,10 @@ def _curb_the_chase(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 def _restable(spec: dict[str, Any]) -> list[dict[str, Any]]:
     """The piece types a rest may be written on (schema 29, `docs/plan-rest.md` §3.1): a type
-    a player moves, so never a portal end or a wild piece, and one with a move or a stock."""
+    a player moves, so never a wild piece, and one with a move or a stock."""
     found = spec.get("rules")
     rules: dict[str, Any] = found if isinstance(found, dict) else {}
-    skipped = portal_piece_ids(rules) | {
+    skipped = {
         npc.get("piece") for npc in (rules.get("npcs") or []) if isinstance(npc, dict)
     }
     return [
@@ -1984,7 +1966,6 @@ def _tire_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
             target.pop("rest", None)
         else:
             target["rest"] = new
-        settle_schema_version(trial)
         if validate_spec(trial):
             continue
         spec.clear()
@@ -1997,10 +1978,10 @@ def _tire_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
     return None
 
 
-# Schema 30 (Q999a, `docs/plan-passive.md` §4.3): lines of sight. Whose pieces each effect
+# Schema 30 (Q999a, `docs/archive/plan-passive.md` §4.3): lines of sight. Whose pieces each effect
 # touches when an operator casts it: an effect that restricts is cast on the enemy, a shield
-# on its own side.
-_GAZE_WHOSE = {"freeze": "enemy", "disarm": "enemy", "shield": "own"}
+# on its own side. Q1007c (`docs/plan-schema-31.md` §3.8): a command on the enemy.
+_GAZE_WHOSE = {"freeze": "enemy", "disarm": "enemy", "shield": "own", "command": "enemy"}
 
 
 def _shields(spec: dict[str, Any]) -> bool:
@@ -2009,6 +1990,20 @@ def _shields(spec: dict[str, Any]) -> bool:
     return any(
         sight.effect == "shield" for sights in piece_sights(spec).values() for sight in sights
     )
+
+
+def _commands(spec: dict[str, Any]) -> bool:
+    """Whether a line of sight commands (Q1007c), beside which rounds, a reach, a territory, a
+    strike, a contact, a rest and a sweep are refused (`plan-schema-31.md` §3.6)."""
+    return any(
+        sight.effect == "command" for sights in piece_sights(spec).values() for sight in sights
+    )
+
+
+def _turncoats(spec: dict[str, Any]) -> bool:
+    """Whether a command may make its pieces take their own side (Q1007c's `captures_own`),
+    beside which a hand filled from captures is refused."""
+    return any(sight.captures_own for sights in piece_sights(spec).values() for sight in sights)
 
 
 def _sight_names(spec: dict[str, Any]) -> dict[str, str]:
@@ -2055,11 +2050,11 @@ def _gaze_of(move: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _gazers(spec: dict[str, Any]) -> list[dict[str, Any]]:
-    """The piece types a sight may be written on: a player's type, never a portal end or a
-    wild piece (`plan-passive.md` §2.3)."""
+    """The piece types a sight may be written on: a player's type, never a wild piece
+    (`docs/archive/plan-passive.md` §2.3)."""
     found = spec.get("rules")
     rules: dict[str, Any] = found if isinstance(found, dict) else {}
-    skipped = portal_piece_ids(rules) | {
+    skipped = {
         npc.get("piece") for npc in (rules.get("npcs") or []) if isinstance(npc, dict)
     }
     return [
@@ -2070,9 +2065,9 @@ def _gazers(spec: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _cast_a_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Give a piece type a line of sight copied from its own capture geometry (schema 30,
-    `docs/plan-passive.md` §4.3): a slide-like reading of one of its capture-capable moves,
-    a ray, with an effect drawn from the three -- `enemy` for a freeze or a disarm, `own`
-    for a shield -- touching every type. Each child must pass the validator, so a type whose
+    `docs/archive/plan-passive.md` §4.3): a slide-like reading of one of its capture-capable moves,
+    a ray, with an effect drawn from the four -- `enemy` for a freeze, a disarm or a command
+    (Q1007c), `own` for a shield -- touching every type but, for a command, the royals. Each child must pass the validator, so a type whose
     gaze could never bind is passed over, a shield is not drawn beside a sweep or wild
     pieces, and nothing is drawn beside portals or an explosion, where a sight is refused."""
     found = spec.get("rules")
@@ -2098,12 +2093,15 @@ def _cast_a_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
             # odds, so a game can enter `through` in one edit as well as by `widen-a-gaze`.
             if entry.get("range", 0) != 1 and rng.random() < 0.5:
                 entry["through"] = True
+            # Q1007c: a command lets its pieces be made to take their own side at even odds,
+            # so a game can enter `captures_own` in one edit as well as by `turn-the-gaze`.
+            if effect == "command" and rng.random() < 0.5:
+                entry["captures_own"] = True
             if entry in (piece.get("sight") or []):
                 continue
             trial = copy.deepcopy(spec)
             target = next(p for p in pieces(trial) if p.get("id") == piece["id"])
             target.setdefault("sight", []).append(entry)
-            settle_schema_version(trial)
             if validate_spec(trial):
                 continue
             spec.clear()
@@ -2125,7 +2123,6 @@ def _blind_a_piece(spec: dict[str, Any], rng: random.Random) -> str | None:
     del piece["sight"][index]
     if not piece["sight"]:
         piece.pop("sight")
-    settle_schema_version(spec)
     name = piece.get("name", piece["id"])
     return f"the {name} no longer {words}" if words else f"the {name} sees less"
 
@@ -2147,7 +2144,6 @@ def _widen_a_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
         twin = target["sight"][piece["sight"].index(entry)]
         if twin.pop("through", None) is None:
             twin["through"] = True
-        settle_schema_version(trial)
         if validate_spec(trial):
             continue
         spec.clear()
@@ -2156,6 +2152,31 @@ def _widen_a_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
         if twin.get("through"):
             return f"the {name}'s sight now passes through pieces: it {_gaze_words(spec, twin)}"
         return f"the {name}'s sight now stops at the first piece: it {_gaze_words(spec, twin)}"
+    return None
+
+
+def _turn_the_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Let one command make its pieces take their own side, or stop it doing so again (Q1007c's
+    `captures_own`, `docs/plan-schema-31.md` §3.3, §3.8). Only a command sight; each child must
+    pass the validator, so a turncoat capture nothing could make, or one beside a capture hand,
+    is not drawn."""
+    lines = [
+        (piece, entry) for piece in pieces(spec) if isinstance(piece.get("sight"), list)
+        for entry in piece["sight"]
+        if isinstance(entry, dict) and entry.get("effect") == "command"
+    ]
+    for piece, entry in rng.sample(lines, len(lines)):
+        trial = copy.deepcopy(spec)
+        target = next(p for p in pieces(trial) if p.get("id") == piece["id"])
+        twin = target["sight"][piece["sight"].index(entry)]
+        if twin.pop("captures_own", None) is not True:
+            twin["captures_own"] = True
+        if validate_spec(trial):
+            continue
+        spec.clear()
+        spec.update(trial)
+        name = piece.get("name", piece["id"])
+        return f"the {name} now {_gaze_words(spec, twin)}"
     return None
 
 
@@ -2172,9 +2193,8 @@ def _set_a_speed(spec: dict[str, Any], rng: random.Random) -> str | None:
     if has_speeds(pieces) and rng.random() < 0.3:
         for piece in pieces:
             piece.pop("speed", None)
-        settle_schema_version(spec)
         return "every piece moves at one speed again"
-    skipped = portal_piece_ids(spec.get("rules")) | {
+    skipped = {
         npc.get("piece") for npc in (spec.get("rules", {}).get("npcs") or []) if isinstance(npc, dict)
     }
     movers = [p for p in pieces if p["id"] not in skipped]
@@ -2190,7 +2210,6 @@ def _set_a_speed(spec: dict[str, Any], rng: random.Random) -> str | None:
         else:
             target["speed"] = new
         _close_up_speeds(trial, skipped)
-        settle_schema_version(trial)
         if validate_spec(trial):
             continue
         spec.clear()
@@ -2231,7 +2250,6 @@ def _plant_a_spy(spec: dict[str, Any], rng: random.Random) -> str | None:
     if spy_ids(spec):
         for piece in pieces(spec):
             piece.pop("spy", None)
-        settle_schema_version(spec)
         return "there is no spy any more: both players choose every move in secret"
     base = copy.deepcopy(spec)
     if not is_simultaneous(base) and _play_at_once(base, rng) is None:
@@ -2246,7 +2264,6 @@ def _plant_a_spy(spec: dict[str, Any], rng: random.Random) -> str | None:
         for piece in trial["pieces"]:
             if piece.get("id") == pid:
                 piece["spy"] = True
-        settle_schema_version(trial)
         if validate_spec(trial):
             continue
         spec.clear()
@@ -2289,7 +2306,6 @@ def _hunt_the_wild(spec: dict[str, Any], rng: random.Random) -> str | None:
     if any("immune" in npc for npc in family):
         for npc in family:
             npc.pop("immune", None)
-        settle_schema_version(spec)
         return f"anything may take a wild {kind} again, not only the one type that could"
     if spec.get("rules", {}).get("drops"):
         return None  # an immune type that can reach a hand is refused by name
@@ -2299,7 +2315,6 @@ def _hunt_the_wild(spec: dict[str, Any], rng: random.Random) -> str | None:
     hunter = str(rng.choice(hunters)["id"])
     for npc in family:
         npc["immune"] = [hunter]
-    settle_schema_version(spec)
     return f"only {hunter} may take a wild {kind} now; to anything else it is a hazard"
 
 
@@ -2331,7 +2346,6 @@ def _set_a_patrol(spec: dict[str, Any], rng: random.Random) -> str | None:
         if hunted is not None:
             return hunted
         clear_npcs(spec)
-        settle_schema_version(spec)
         return "the wild pieces are gone; every piece on the board belongs to somebody"
     if (
         rules.get("strike")
@@ -2447,7 +2461,6 @@ def _promote_what_arrives(spec: dict[str, Any], rng: random.Random) -> str | Non
     rules = spec.setdefault("rules", {})
     if rules.get("promote_on_entry"):
         strip_rule(spec, "promote_on_entry")
-        settle_schema_version(spec)
         return "a piece that arrives in its promotion zone now stands there unpromoted"
     if not rules.get("promotion"):
         return None
@@ -2499,7 +2512,6 @@ def _promote_on_leaving(spec: dict[str, Any], rng: random.Random) -> str | None:
     if flagged:
         entry = rng.choice(flagged)
         entry.pop("on_leaving")
-        settle_schema_version(spec)
         return f"the {names.get(entry.get('piece'))} promotes only on a move into its zone again"
     if not entries:
         return None
@@ -2508,7 +2520,6 @@ def _promote_on_leaving(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None  # no promoting piece here can move out of its zone
     piece = rng.choice(live)
     next(entry for entry in entries if entry.get("piece") == piece)["on_leaving"] = True
-    settle_schema_version(spec)
     return (
         f"the {names.get(piece)} may also promote on a move out of its promotion zone, "
         "as in shogi"
@@ -2537,7 +2548,6 @@ def _count_each_kind(spec: dict[str, Any], rng: random.Random) -> str | None:
     if isinstance(extinction, dict) and extinction.get("per_type") in (True, "own"):
         trial = copy.deepcopy(spec)
         trial["rules"]["extinction"].pop("per_type")
-        settle_schema_version(trial)
         if validate_spec(trial):
             return None
         spec.clear()
@@ -2551,7 +2561,6 @@ def _count_each_kind(spec: dict[str, Any], rng: random.Random) -> str | None:
         for reading in (True, "own"):
             trial = copy.deepcopy(spec)
             trial["rules"]["extinction"]["per_type"] = reading
-            settle_schema_version(trial)
             if not validate_spec(trial):
                 spec.clear()
                 spec.update(trial)
@@ -2576,7 +2585,6 @@ def _count_each_kind(spec: dict[str, Any], rng: random.Random) -> str | None:
             return None
         trial = copy.deepcopy(spec)
         trial["rules"]["extinction"] = {"pieces": either, "per_type": "own"}
-        settle_schema_version(trial)
         if validate_spec(trial):
             return None
         spec.clear()
@@ -2585,7 +2593,6 @@ def _count_each_kind(spec: dict[str, Any], rng: random.Random) -> str | None:
     chosen = sorted(rng.sample(kinds, rng.randint(2, len(kinds))))
     trial = copy.deepcopy(spec)
     trial["rules"]["extinction"] = {"pieces": chosen, "per_type": True}
-    settle_schema_version(trial)
     if validate_spec(trial):
         return None
     spec.clear()
@@ -2611,7 +2618,6 @@ def _promote_only_lost(spec: dict[str, Any], rng: random.Random) -> str | None:
     if flagged:
         entry = rng.choice(flagged)
         entry.pop("only_lost")
-        settle_schema_version(spec)
         return f"the {names.get(entry.get('piece'))} may promote into any of its targets again"
     for index in rng.sample(range(len(entries)), len(entries)):
         trial = copy.deepcopy(spec)
@@ -2622,7 +2628,6 @@ def _promote_only_lost(spec: dict[str, Any], rng: random.Random) -> str | None:
             if isinstance(entry, dict)
         ]
         trial_entries[index]["only_lost"] = True
-        settle_schema_version(trial)
         if validate_spec(trial):
             continue
         spec.clear()
@@ -2655,7 +2660,6 @@ def _place_the_army(spec: dict[str, Any], rng: random.Random) -> str | None:
             return None
         trial = copy.deepcopy(spec)
         trial["rules"]["drops"]["placement"] = True
-        settle_schema_version(trial)
         if validate_spec(trial):
             return None
         spec.clear()
@@ -2712,7 +2716,6 @@ def _place_the_army(spec: dict[str, Any], rng: random.Random) -> str | None:
         "stock": stock,
         "region": {piece: list(region) for piece in stocked},
     }
-    settle_schema_version(trial)
     if validate_spec(trial):
         return None
     spec.clear()
@@ -2747,7 +2750,6 @@ def _either_face(spec: dict[str, Any], rng: random.Random) -> str | None:
             "a piece in hand may come back as either face: itself, or the piece that "
             "reverts to it when captured"
         )
-    settle_schema_version(trial)
     if validate_spec(trial):
         return None
     spec.clear()
@@ -2788,7 +2790,6 @@ def _win_by_leaving(spec: dict[str, Any], rng: random.Random) -> str | None:
             "the game is now decided by moving off the goal square, so a piece has to get "
             "there and then step away"
         )
-    settle_schema_version(trial)
     if validate_spec(trial):
         return None
     spec.clear()
@@ -2796,10 +2797,9 @@ def _win_by_leaving(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
-_PORTAL_STEP = {
-    "kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "move",
-}
-_PORTAL_IDS = ("O", "Y", "Z", "J", "U", "V")
+# A group's move when somebody first may move its ends: one step any way, onto an empty
+# square (a group's move omits ``mode``, which means ``"move"`` there; spelling 31).
+_PORTAL_STEP = {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}
 
 
 def _has_movers(group: dict[str, Any]) -> bool:
@@ -2833,12 +2833,12 @@ def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
     Schema 19 (Q771, `docs/archive/plan-portals.md`), all three of its names both ways, and schema
     20's ``no_straight_back`` (Q807) both ways. On a game with no portals a pair goes on two
     empty squares that are each other's image under the setup's mirror, so neither side
-    starts with the better door; the portal is a new piece worth nothing that steps one
-    square and that nobody moves yet. On a game with portals one draw lets either player
+    starts with the better door; its group steps one square (`moves`), and nobody moves it
+    yet. On a game with portals one draw lets either player
     move a pair's two ends (or stops it, and with it any bar on going straight back), one
     makes a pair one way for each player (or two way again), one bars a moved portal from
     going straight back (letting either player move it, if nobody could) or lifts the bar,
-    and one takes every portal away with the piece they moved like. Every branch is checked against the validator and drawn again rather
+    and one takes every portal away. Every branch is checked against the validator and drawn again rather
     than handed back refused: what portals are refused beside is the validator's list.
     """
     rules = spec.get("rules") or {}
@@ -2856,8 +2856,7 @@ def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
                 said = f"nobody may move portal pair {number} any more"
             else:
                 _give_movers(pair)
-                portal = next(p for p in pieces(trial) if p.get("id") == pair["piece"])
-                portal["moves"] = portal.get("moves") or [copy.deepcopy(_PORTAL_STEP)]
+                pair["moves"] = pair.get("moves") or [copy.deepcopy(_PORTAL_STEP)]
                 said = (
                     f"either player may now spend a turn moving a portal of pair {number} "
                     "one step onto an empty square"
@@ -2887,25 +2886,18 @@ def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
                 )
                 if not _has_movers(pair):
                     _give_movers(pair)
-                    portal = next(p for p in pieces(trial) if p.get("id") == pair["piece"])
-                    portal["moves"] = portal.get("moves") or [copy.deepcopy(_PORTAL_STEP)]
+                    pair["moves"] = pair.get("moves") or [copy.deepcopy(_PORTAL_STEP)]
                     said = (
                         f"either player may now spend a turn moving a portal of pair "
                         f"{number} one step onto an empty square, but not straight back on "
                         "the very next move"
                     )
         else:
-            named = portal_piece_ids(trial_rules)
             del trial_rules["portals"]
-            trial["pieces"] = [p for p in pieces(trial) if p.get("id") not in named]
-            said = "the portals are gone, and the piece they moved like with them"
+            said = "the portals are gone"
     else:
         board = trial.get("board", {})
         if board.get("lattice") == "hex" or any("region" in p for p in pieces(trial)):
-            return None
-        used_ids = {str(p.get("id")) for p in pieces(trial)}
-        portal_id = next((pid for pid in _PORTAL_IDS if pid not in used_ids), None)
-        if portal_id is None:
             return None
         width, height = int(board.get("width", 8)), int(board.get("height", 8))
         setup = trial.get("setup", {})
@@ -2934,12 +2926,10 @@ def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
         def name_of(square: int) -> str:
             return f"{chr(ord('a') + square % width)}{square // width + 1}"
 
-        trial["pieces"] = [
-            *pieces(trial),
-            {"id": portal_id, "name": "portal", "value": 0,
-             "moves": [copy.deepcopy(_PORTAL_STEP)]},
-        ]
-        pair = {"piece": portal_id, "orange": name_of(orange), "blue": name_of(blue)}
+        pair = {
+            "moves": [copy.deepcopy(_PORTAL_STEP)],
+            "orange": name_of(orange), "blue": name_of(blue),
+        }
         said = (
             f"a pair of portals stands on {name_of(orange)} and {name_of(blue)}: a piece "
             "whose move ends on one comes out one step beyond the other, the way it was going"
@@ -2957,7 +2947,6 @@ def _open_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
                 f"second player's only at {name_of(blue)}"
             )
         trial_rules["portals"] = [pair]
-    settle_schema_version(trial)
     if validate_spec(trial):
         return None
     spec.clear()
@@ -3022,7 +3011,9 @@ def _as_pair(group: dict[str, Any]) -> dict[str, Any]:
     """A map's first two ends written as a pair: each leads to the other, who goes in by
     each is kept as a passage, and the rest of the map goes."""
     first, second = group["ends"][0], group["ends"][1]
-    pair: dict[str, Any] = {"piece": group["piece"], "orange": first["at"], "blue": second["at"]}
+    pair: dict[str, Any] = {"orange": first["at"], "blue": second["at"]}
+    if group.get("moves"):
+        pair["moves"] = group["moves"]
     moved_by = {key: list(end["moved_by"]) for key, end in (("orange", first), ("blue", second))
                 if end.get("moved_by")}
     if moved_by:
@@ -3093,7 +3084,9 @@ def _reshape_portals(spec: dict[str, Any], rng: random.Random, shape: str) -> st
             ends.append({"at": square})
             said = (f"portal pair {index + 1} is a funnel now: {ends[0]['at']} and "
                     f"{ends[1]['at']} both lead out beside {square}, which nobody goes in by")
-        group: dict[str, Any] = {"piece": pair["piece"], "ends": ends}
+        group: dict[str, Any] = {"ends": ends}
+        if pair.get("moves"):
+            group = {"moves": pair["moves"], **group}
         if pair.get("no_straight_back"):
             group["no_straight_back"] = True
         if pair.get("kind") == "fold":
@@ -3101,7 +3094,6 @@ def _reshape_portals(spec: dict[str, Any], rng: random.Random, shape: str) -> st
         held[index] = group
     else:
         return None
-    settle_schema_version(trial)
     if validate_spec(trial):
         return None
     spec.clear()
@@ -3131,10 +3123,7 @@ def _filter_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None
     trial = copy.deepcopy(spec)
     held = trial["rules"]["portals"]
-    portal_ids = portal_piece_ids(trial["rules"])
-    movers = sorted(
-        str(p["id"]) for p in pieces(trial) if p.get("moves") and p.get("id") not in portal_ids
-    )
+    movers = sorted(str(p["id"]) for p in pieces(trial) if p.get("moves"))
     index = rng.randrange(len(held))
     group = held[index]
     number = index + 1
@@ -3172,7 +3161,6 @@ def _filter_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
             group.setdefault("carries", {})[key] = [rng.choice(movers)]
             said = (f"only {group['carries'][key][0]} may go in by the portal on "
                     f"{group[key]} of pair {number}")
-    settle_schema_version(trial)
     if validate_spec(trial):
         return None
     spec.clear()
@@ -3205,7 +3193,6 @@ def _fold_a_portal(spec: dict[str, Any], rng: random.Random) -> str | None:
         group["kind"] = "fold"
         said = (f"portal {shape} {index + 1} is fold portals now: a move that ends on one "
                 "may stay there or come out of the other")
-    settle_schema_version(trial)
     if validate_spec(trial):
         return None
     spec.clear()
@@ -3221,7 +3208,6 @@ def _unplace_the_army(spec: dict[str, Any]) -> str | None:
     stock = drops.get("stock") if isinstance(drops.get("stock"), dict) else {}
     if not royal & set(stock):
         drops.pop("placement")
-        settle_schema_version(spec)
         return "a player holding a piece may wait to place it again"
     setup = spec.get("setup")
     board = spec.get("board") or {}
@@ -3266,7 +3252,6 @@ def _unplace_the_army(spec: dict[str, Any]) -> str | None:
     else:
         for key in ("stock", "placement", "region"):
             trial["rules"]["drops"].pop(key, None)
-    settle_schema_version(trial)
     if validate_spec(trial):
         return None
     spec.clear()
@@ -3289,6 +3274,8 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
     Every royal is immune and never switches, which the validator requires; the switching
     pieces are every non-royal one, Andernach's reading.
     """
+    if _commands(spec):
+        return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     rules = spec.setdefault("rules", {})
@@ -3296,13 +3283,11 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
     explosion = rules.get("explode_on_capture")
     if isinstance(explosion, dict) and explosion.get("radius") == 0:
         explosion["radius"] = 1
-        settle_schema_version(spec)
         return "a capture takes its neighbours with it again, not only the two pieces"
     if isinstance(strike, dict) and "switches_sides" in strike:
         strike.pop("switches_sides")
         if not strike_is_live(strike):
             strip_rule(spec, "strike")
-        settle_schema_version(spec)
         return "a piece that captures stays on its own side again"
     if (
         isinstance(strike, dict)
@@ -3310,13 +3295,11 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
         and strike.get("position") in ("stay", "home")
     ):
         strip_rule(spec, "strike")
-        settle_schema_version(spec)
         return "a capture is an ordinary capture again: the taker moves in, the taken is gone"
 
     if isinstance(explosion, dict) and explosion:
         explosion["radius"] = 0
         explosion.pop("immune", None)
-        settle_schema_version(spec)
         return "a capture destroys the taker with what it took, and nothing beside them"
     if spy_ids(spec):
         return None  # schema 27: a strike may switch a spy to the other side, which a spy game refuses
@@ -3330,7 +3313,6 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
         if not strike_is_live(strike) or not switching:
             return None
         strike["switches_sides"] = switching
-        settle_schema_version(spec)
         return "a piece that captures also changes sides on the square it took"
     if not capture_is_possible(spec):
         return None
@@ -3360,7 +3342,6 @@ def _leave_something_behind(spec: dict[str, Any], rng: random.Random) -> str | N
             else "a taken piece is reborn on its home square, or is gone if that is occupied"
         )
     rules["strike"] = rule
-    settle_schema_version(spec)
     return said
 
 
@@ -3373,6 +3354,8 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     is a spec holding a rule the validator refuses beside a sweep: both would make every
     draw a rejection.
     """
+    if _commands(spec):
+        return None  # Q1007c: refused beside a command (plan-schema-31.md §3.6)
     if _has_portals(spec):
         return None  # refused beside portals (schema 19)
     if is_simultaneous(spec) and not _movers(spec, "sweep"):
@@ -3381,7 +3364,6 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
     if sweeps:
         piece, move = rng.choice(sweeps)
         move["kind"] = "slide"
-        settle_schema_version(spec)
         return (
             f"the {piece.get('name', piece['id'])} slides again and stops at the first "
             "piece in its way"
@@ -3397,7 +3379,6 @@ def _sweep_a_slider(spec: dict[str, Any], rng: random.Random) -> str | None:
         return None
     piece, move = rng.choice(movers)
     move["kind"] = "sweep"
-    settle_schema_version(spec)
     return (
         f"the {piece.get('name', piece['id'])} sweeps: it jumps to any square on its lines "
         "and removes every piece it passes over, its own included"
@@ -3435,7 +3416,6 @@ def _share_a_walk(spec: dict[str, Any], rng: random.Random) -> str | None:
         npc["also_at"] = [start]
         said = (f"a second wild {kind} starts on {start} and walks the same route as the one "
                 f"on {npc['route'][0]}, half a lap behind it")
-    settle_schema_version(trial)
     if validate_spec(trial):
         return None
     spec.clear()
@@ -3471,6 +3451,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("free-a-slider", _free_a_slider),
     Operator("leap-becomes-slide", _leap_becomes_slide),
     Operator("slide-becomes-leap", _slide_becomes_leap),
+    Operator("ride-a-leap", _ride_a_leap),
     Operator("add-a-direction", _add_a_direction),
     Operator("remove-a-direction", _remove_a_direction),
     Operator("change-symmetry", _change_symmetry),
@@ -3501,6 +3482,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("cast-a-gaze", _cast_a_gaze),
     Operator("blind-a-piece", _blind_a_piece),
     Operator("widen-a-gaze", _widen_a_gaze),
+    Operator("turn-the-gaze", _turn_the_gaze),
 )
 
 

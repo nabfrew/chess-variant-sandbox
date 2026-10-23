@@ -922,10 +922,12 @@ const MARK_KINDS = {
   // the last round; the row is the legend's.
   clash: { colour: 'var(--clash)', shape: 'clash', name: 'burst', ink: 'var(--ink)',
            label: 'two pieces that swapped squares and met half-way, as the rules make a swap a meeting' },
-  // Schema 27 (§3 R1, `rest`): the piece each player moved last round, which rests this one.
-  // A pause sign on the square's top corner (`restBadge`), off the core's rested squares.
+  // Schema 29 (`pieces[].rest`; schema 27's round rest before it): a piece that made its
+  // side's move and rests, in any game. A pause sign on the square's top corner
+  // (`restBadge`), off the core's resting list; in a game whose longest rest is over 1 the
+  // sign carries the turns left (Q983b, `docs/plan-rest.md` §5.6).
   rested: { colour: 'var(--rest)', shape: 'rest', name: 'pause sign', ink: 'var(--ink)',
-            label: 'the piece moved last round: it rests and may not move this round, unless it is all its side can move' },
+            label: "a piece that moved: it rests for its side's next turns (the number in the sign, where there is one, says how many are left) and may not move, unless resting pieces are all its side can move" },
   // Schema 28 (Q943b, `docs/plan-speed.md` §4.5): the order the last round's two moves were
   // made in, where the two pieces differed in speed: a numbered disc on the bottom corner of
   // each move's square (`orderBadge`), off the core's events (`roundOrder`).
@@ -938,7 +940,7 @@ const MARK_KINDS = {
   announced: { colour: 'var(--announced)', shape: 'announce', name: 'solid arrow',
                ink: 'var(--ink)',
                label: 'the move announced this round: it is made, whatever the other player answers' },
-  // Schema 30 (Q999c, `docs/plan-passive.md` §4.6): a piece under a line of sight's effect,
+  // Schema 30 (Q999c, `docs/archive/plan-passive.md` §4.6): a piece under a line of sight's effect,
   // off the core's effect bits on the position on screen (`Engine.effects`): a small badge
   // on the square's left corners, clear of the rested piece's sign and the order disc. A
   // frozen piece's snowflake and a disarmed piece's broken blade share the top corner (a
@@ -950,6 +952,13 @@ const MARK_KINDS = {
               ink: 'var(--ink)', label: 'disarmed: it may move but cannot capture' },
   shielded: { colour: 'var(--shielded)', shape: 'shielded', name: 'shield', ink: 'var(--ink)',
               label: 'shielded: it cannot be captured' },
+  // Q1007d (`docs/plan-schema-31.md` §3.9): a piece under a command, which the other player may
+  // also move. A marionette's control (a cross with three strings hanging from it) on a disc
+  // in `--commanded`, on the square's top right corner: the rest's sign is there in a game
+  // with a rest, which a command is refused beside. One badge whether or not the command
+  // `captures_own`; the piece's card and the rules say which.
+  commanded: { colour: 'var(--commanded)', shape: 'commanded', name: 'cross and strings',
+               ink: 'var(--ink)', label: 'commanded: the other player may move it too' },
   // What a piece sees (schema 30), tinted over the squares while the pointer is on it or it
   // was tapped (`sightHtml`), off the core's `sight_of`; the row is the legend's, named in
   // every game with a line of sight.
@@ -960,20 +969,25 @@ const MARK_KINDS = {
 // Schema 30 (Q999c): the effect bits the core reports for a piece (`Engine.effects`), and
 // the mark kind each draws. Freeze contains disarm, so a piece both frozen and disarmed
 // wears the snowflake alone.
-const SIGHT_FREEZE = 1, SIGHT_DISARM = 2, SIGHT_SHIELD = 4;
+// Q1007c's command adds two: 8, the piece's opponent may also move it, and 16, and make it take
+// its own side (`captures_own`), never without 8. A frozen piece is moved by nobody, so a
+// piece both frozen and commanded wears the snowflake alone.
+const SIGHT_FREEZE = 1, SIGHT_DISARM = 2, SIGHT_SHIELD = 4, SIGHT_COMMAND = 8;
 
 function effectKinds(bits) {
   const kinds = [];
   if (bits & SIGHT_FREEZE) kinds.push('frozen');
   else if (bits & SIGHT_DISARM) kinds.push('disarmed');
   if (bits & SIGHT_SHIELD) kinds.push('shielded');
+  if (bits & SIGHT_COMMAND && !(bits & SIGHT_FREEZE)) kinds.push('commanded');
   return kinds;
 }
 
 // The one effect a seen square is tinted by, where a piece's sights put more than one on it:
-// freeze first, then disarm, then shield, as the badges read.
+// freeze first, then disarm, then shield, then command, as the badges read.
 function effectTint(bits) {
-  return bits & SIGHT_FREEZE ? 'frozen' : bits & SIGHT_DISARM ? 'disarmed' : 'shielded';
+  return bits & SIGHT_FREEZE ? 'frozen' : bits & SIGHT_DISARM ? 'disarmed'
+    : bits & SIGHT_SHIELD ? 'shielded' : bits & SIGHT_COMMAND ? 'commanded' : 'shielded';
 }
 
 // A frozen piece's badge on the top-left corner of the square at `(x, y)`: a disc in
@@ -1022,9 +1036,29 @@ function shieldedBadge(x, y, cell, player) {
       stroke-width="${f(cell * 0.03)}" stroke-linejoin="round"/></g>`;
 }
 
+// A commanded piece's badge (Q1007d) on the top-right corner: a disc in `--commanded` cased in
+// `--held-halo`, with a marionette's control in the casing's colour -- a bar across, a shorter
+// upright through it, and a string hanging from each end of the bar and from the upright's foot.
+function commandedBadge(x, y, cell, player) {
+  const f = n => n.toFixed(3);
+  const cx = x + cell * 0.8, cy = y + cell * 0.2, r = cell * 0.15;
+  const bar = cell * 0.09, top = cy - cell * 0.07, foot = cy + cell * 0.01, end = cy + cell * 0.1;
+  const line = (x1, y1, x2, y2, w) => `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}"
+      y2="${f(y2)}" stroke-width="${f(cell * w)}"/>`;
+  return `<g data-mark="commanded"${player === undefined ? '' : ` data-player="${player}"`}
+      pointer-events="none"><circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" fill="var(--commanded)"
+      stroke="var(--held-halo)" stroke-width="${f(cell * 0.03)}"/><g stroke="var(--held-halo)"
+      stroke-linecap="round">${line(cx - bar, top + cell * 0.03, cx + bar, top + cell * 0.03, 0.03)}${
+      line(cx, top - cell * 0.02, cx, foot, 0.03)}${
+      line(cx - bar, top + cell * 0.03, cx - bar, end, 0.014)}${
+      line(cx + bar, top + cell * 0.03, cx + bar, end, 0.014)}${
+      line(cx, foot, cx, end + cell * 0.02, 0.014)}</g></g>`;
+}
+
 // The badges of one piece's effects (`effectKinds`), on its square at `(x, y)`.
 function effectBadges(bits, x, y, cell, player) {
-  const draw = { frozen: frozenBadge, disarmed: disarmedBadge, shielded: shieldedBadge };
+  const draw = { frozen: frozenBadge, disarmed: disarmedBadge, shielded: shieldedBadge,
+                 commanded: commandedBadge };
   return effectKinds(bits).map(kind => draw[kind](x, y, cell, player)).join('');
 }
 
@@ -1093,17 +1127,24 @@ function clashMark(x1, y1, x2, y2, cell) {
 
 // A rested piece's pause sign (schema 27) on the top corner of the square at `(x, y)`, clear
 // of the piece's head: a disc in `--rest` cased in `--held-halo`, two bars in the casing's
-// colour. `player` is whose piece rests, for a reader of the drawing.
-function restBadge(x, y, cell, player) {
+// colour. `player` is whose piece rests, for a reader of the drawing. With `left` (schema 29,
+// Q983b: a game whose longest rest is over 1) the disc, a little larger, carries the turns
+// left as a numeral in the casing's colour in place of the bars.
+function restBadge(x, y, cell, player, left) {
   const f = n => n.toFixed(3);
-  const cx = x + cell * 0.8, cy = y + cell * 0.2, r = cell * 0.15;
+  const numbered = left !== undefined && left !== null;
+  const cx = x + cell * 0.8, cy = y + cell * 0.2, r = cell * (numbered ? 0.17 : 0.15);
   const w = cell * 0.045, h = cell * 0.13;
   const bar = dx => `<rect x="${f(cx + dx - w / 2)}" y="${f(cy - h / 2)}" width="${f(w)}"
       height="${f(h)}" rx="${f(w / 3)}" fill="var(--held-halo)"/>`;
-  return `<g data-mark="rested"${player === undefined ? '' : ` data-player="${player}"`}
+  const inside = numbered
+    ? `<text x="${f(cx)}" y="${f(cy)}" fill="var(--held-halo)" font-size="${f(cell * 0.24)}"
+      font-weight="700" text-anchor="middle" dominant-baseline="central">${Number(left)}</text>`
+    : `${bar(-cell * 0.04)}${bar(cell * 0.04)}`;
+  return `<g data-mark="rested"${player === undefined ? '' : ` data-player="${player}"`}${
+      numbered ? ` data-left="${Number(left)}"` : ''}
       pointer-events="none"><circle cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}" fill="var(--rest)"
-      stroke="var(--held-halo)" stroke-width="${f(cell * 0.03)}"/>${bar(-cell * 0.04)}${
-      bar(cell * 0.04)}</g>`;
+      stroke="var(--held-halo)" stroke-width="${f(cell * 0.03)}"/>${inside}</g>`;
 }
 
 // A move's place in an ordered round (schema 28, Q943b), `n` 1 or 2, on the bottom corner of
@@ -1460,6 +1501,10 @@ function squareBadge(x, y, cell, marks, view, tag) {
     }
     if (kind.shape === 'shielded') {
       out += shieldedBadge(x + cell * 0.1, y - cell * 1.1, cell * 2.0);
+      continue;
+    }
+    if (kind.shape === 'commanded') {
+      out += commandedBadge(x - cell * 1.1, y + cell * 0.1, cell * 2.0);
       continue;
     }
     if (kind.shape === 'seen') {

@@ -1703,19 +1703,13 @@ class TestAPromotionOrADropTheirOptionsCannotSayIsRefused:
         spec writing it was refused as an unknown key. B1 added it to
         `schema._PROMOTION_KEYS`, and `test_every_key_of_a_rule_that_crosses_is_in_the_table`
         made it join `variant._RULE_OBJECT_KEYS` in the same change. What the flag means
-        is read off `PromotionRule.on_leaving`, never the JSON: an older stamp is still
-        refused by the validator, and a flag written ``false`` is the game without it.
+        is read off `PromotionRule.on_leaving`, never the JSON: a flag written ``false`` is
+        the game without it.
         """
-        from chess_variant_sandbox.spec.schema import SpecError
-
         assert "on_leaving" in variant._RULE_OBJECT_KEYS["promotion"]
         spec = _on_leaving(_spec("shogi"), {"P", "L", "N", "S", "B", "R"})
         translate(spec)
-        spec["schema_version"] = 14
-        with pytest.raises(SpecError, match="added in schema 15"):
-            translate(spec)
         declined = _spec("shogi")
-        declined["schema_version"] = 15
         for rule in declined["rules"]["promotion"]:
             rule["on_leaving"] = False
         with pytest.raises(Untranslatable) as caught:

@@ -176,6 +176,8 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::royal_in_hand": "asks `royal_stocked` first (Q784), which needs a royal in "
         "the stock; the refusals need no stock, so it answers false",
         "game.rs::generate_drops": "walks the hand, which is empty for the life of the game",
+        "sight.rs::push_commanded": "schema 18's placement gate (Q1007c's commanded moves wait "
+        "on it as the own moves do), which fires only on a non-empty hand",
         "rounds.rs::resolve_step": "schema 26's drop branch and fill, as `make`'s: the fill "
         "is behind a capture and `from_captures`",
         "game.rs::restrict": "the drop-mate filter; it filters drops, and there are none",
@@ -314,6 +316,8 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::push_portal_moves": "asked of each piece before its transits (schema 19)",
         "game.rs::push_through": "asked of the moving piece going through a fold (schema 24)",
         "features.rs::promotion_occupancy": "asked of a piece on the board",
+        "sight.rs::push_commanded": "asked of a commanded piece (Q1007c), which is a moving "
+        "piece: a phantom promotion's piece never stands, so it is never commanded",
     },
     "promotes_on()": {
         "game.rs::generate_pseudo_legal_as": "asked of a moving piece's origin",
@@ -321,13 +325,17 @@ READERS: dict[str, dict[str, str]] = {
         "game.rs::push_transits": "asked of a moving piece's exit (schema 19)",
         "game.rs::push_portal_moves": "asked of a moving piece's origin (schema 19)",
         "features.rs::promotion_occupancy": "asked of a piece on the board",
+        "sight.rs::push_commanded": "asked of a commanded piece's origin and targets (Q1007c), "
+        "behind `is_promoting`, as the moving piece's are",
     },
     "promotes_on_leaving()": {
         "game.rs::generate_pseudo_legal_as": "asked of the moving piece",
         "game.rs::push_portal_moves": "asked of each piece before its transits (schema 19)",
+        "sight.rs::push_commanded": "asked of a commanded piece (Q1007c), behind `is_promoting`",
     },
     "promotion_optional()": {
         "game.rs::generate_pseudo_legal_as": "asked of the moving piece",
+        "sight.rs::push_commanded": "asked of a commanded piece (Q1007c), behind `is_promoting`",
         "game.rs::push_transits": "asked of the moving piece (schema 19)",
         "game.rs::push_through": "asked of the moving piece going through a fold (schema 24)",
     },

@@ -218,33 +218,6 @@ class TestWhatTheValidatorRefuses:
         spec["rules"]["promote_on_entry"] = False
         assert validate_spec(spec) == []
 
-    def test_it_is_a_schema_nine_word(self, fall: dict[str, Any]) -> None:
-        fall["schema_version"] = 6  # what hierarchy-fall itself declares
-        errors = validate_spec(fall)
-        assert len(errors) == 1, errors
-        assert "schema 9" in errors[0] and "rules.promote_on_entry" in errors[0]
-
-    def test_both_schema_nine_keys_are_named_in_one_sentence(
-        self, chess_spec: dict[str, Any]
-    ) -> None:
-        """A spec reaching for the whole of schema 9 under an older stamp is told once."""
-        spec = copy.deepcopy(chess_spec)
-        spec["pieces"].append(
-            {"id": "W", "name": "boar", "value": 3,
-             "moves": [{"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8"}]}
-        )
-        spec["rules"]["npcs"] = [
-            {"piece": "W", "route": ["c3", "c4", "d4", "d3"], "bounty": 3, "mirror": True}
-        ]
-        spec["rules"]["drops"] = {"from_captures": True}  # the pawn's way in
-        spec["rules"]["promote_on_entry"] = True
-        spec["schema_version"] = 9
-        assert validate_spec(spec) == []
-        spec["schema_version"] = 8
-        errors = validate_spec(spec)
-        assert len(errors) == 1, errors
-        assert "rules.npcs" in errors[0] and "rules.promote_on_entry" in errors[0]
-
 
 # ------------------------------------------------------------------- what the compiler builds
 
@@ -429,11 +402,12 @@ class TestTheSurfaces:
 
         assert "promote-what-arrives" in {operator.name for operator in OPERATORS}
         spec = load_spec(ROOT / "archive/hierarchy-fall.json")
+        spec["schema_version"] = 6  # its stamp before Q1008b re-spelt it at the current one
         before, declared = spec_hash(spec), spec["schema_version"]
         summary = _promote_what_arrives(spec, random.Random(1))
         assert summary and "promotes at once" in summary
         assert spec["rules"]["promote_on_entry"] is True
-        assert spec["schema_version"] == 9
+        assert spec["schema_version"] == declared, "an edit writes no stamp (Q1008c)"
         assert validate_spec(spec) == [], validate_spec(spec)
         assert _promote_what_arrives(spec, random.Random(1))
         assert "promote_on_entry" not in spec["rules"]

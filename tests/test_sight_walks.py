@@ -1,6 +1,6 @@
 """Schema 30 (Q999a): the core held to the declared sight oracle over random games.
 
-`docs/plan-passive.md` §3.6: the core and `tests/sight_oracle.py` agree move list by move list
+`docs/archive/plan-passive.md` §3.6: the core and `tests/sight_oracle.py` agree move list by move list
 over seeded random games of S1 to S3 (`tests/_sight_madrasi.json`, `_sight_sheltering_king`,
 `_sight_daunting_knights`, the showcases of §6.1 as test specs; Q999d archives them), an
 alternating spec with checkmate, castling, en passant and a shield on the royal

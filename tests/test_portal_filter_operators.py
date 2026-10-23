@@ -37,8 +37,6 @@ MOVERS = ["P", "N", "R", "Q", "K"]
 
 def _losalamos(portals: list[dict[str, Any]]) -> dict[str, Any]:
     spec = json.loads((ROOT / "rulesets" / "losalamos.json").read_text(encoding="utf-8"))
-    spec["schema_version"] = 21
-    spec["pieces"].append({"id": "O", "name": "portal", "value": 0, "moves": []})
     spec["rules"]["portals"] = portals
     return spec
 
@@ -46,7 +44,7 @@ def _losalamos(portals: list[dict[str, Any]]) -> dict[str, Any]:
 def pair(orange: list[str] | None = None, blue: list[str] | None = None) -> dict[str, Any]:
     """A fixed pair on b3 and e4, each end filtered as given (``None``: no filter)."""
     carries = {end: ids for end, ids in (("orange", orange), ("blue", blue)) if ids}
-    group: dict[str, Any] = {"piece": "O", "orange": "b3", "blue": "e4"}
+    group: dict[str, Any] = {"orange": "b3", "blue": "e4"}
     if carries:
         group["carries"] = carries
     return _losalamos([group])
@@ -60,7 +58,7 @@ def ring(*filters: list[str] | None) -> dict[str, Any]:
     for end, ids in zip(ends, filters, strict=False):
         if ids:
             end["carries"] = ids
-    return _losalamos([{"piece": "O", "ends": ends}])
+    return _losalamos([{"ends": ends}])
 
 
 class _Pick(random.Random):
@@ -153,12 +151,12 @@ class TestAFilterLeftNamingNobodyIsRefused:
         assert validate_spec(spec) == []
 
     def test_a_refusal_when_nothing_else_can_go(self) -> None:
-        """Every non-royal type is some end's only piece, and the portal's own type (whose
-        removal takes the filters with it) is not on offer: the operator does nothing."""
+        """Every non-royal type is some end's only piece (a portal is no piece since
+        spelling 31, so nothing else is on offer): the operator does nothing."""
         spec = _losalamos([
-            {"piece": "O", "orange": "b3", "blue": "e4",
+            {"orange": "b3", "blue": "e4",
              "carries": {"orange": ["N"], "blue": ["R"]}},
-            {"piece": "O", "orange": "e3", "blue": "b4",
+            {"orange": "e3", "blue": "b4",
              "carries": {"orange": ["Q"], "blue": ["P"]}},
         ])
         assert validate_spec(spec) == []
@@ -166,9 +164,7 @@ class TestAFilterLeftNamingNobodyIsRefused:
         assert offered == []
         before = copy.deepcopy(spec)
         trial = copy.deepcopy(spec)
-        trial["pieces"][-1]["royal"] = True  # hide the portal type from the draw only
         assert REMOVE.apply(trial, random.Random(1)) is None
-        trial["pieces"][-1].pop("royal")
         assert trial == before
 
     def test_drop_piece_still_hands_back_a_valid_spec(self) -> None:

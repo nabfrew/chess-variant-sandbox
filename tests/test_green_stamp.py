@@ -134,18 +134,21 @@ class TestTheGate:
         result.assert_outcomes(passed=2, skipped=1, deselected=1)
         result.stdout.fnmatch_lines(["green stamp: no stamp for tree *; ran the whole fast suite*"])
 
-    def test_a_different_collection_runs_everything(
+    def test_a_stamp_from_before_files_vouches_only_for_its_own_collection(
         self, pytester: pytest.Pytester, suite: Path
     ) -> None:
-        """Same tree, other tests: what a suite parametrised over a checkout's files does."""
+        """Until 2026-10-22 a stamp had one digest for the whole collection."""
         pytester.runpytest(*FAST)
         written = stamp(suite)
         assert written is not None
+        del written["files"]
         written["collection"] = "elsewhere"
         green_stamp.write_stamp(suite / green_stamp.STORE, written)
         result = pytester.runpytest(*GATE)
         result.assert_outcomes(passed=1, skipped=1, deselected=1)
-        result.stdout.fnmatch_lines(["*collects a different set of tests*"])
+        result.stdout.fnmatch_lines(
+            ["green stamp: no stamp for tree * vouches for any of its tests; ran the whole fast suite*"]
+        )
 
 
 class TestWhatIsNotStamped:
@@ -292,15 +295,239 @@ class TestMarkdownDrift:
              " reads (docs/notes.md); * re-ran only the 1 tests that run skipped"]
         )
 
-    def test_a_committed_edit_to_markdown_code_reads_runs_in_full(
+    def test_a_committed_edit_to_markdown_code_reads_is_a_change_not_drift(
         self, pytester: pytest.Pytester, exposed: Path
     ) -> None:
+        """`app.py` reads the changelog, so the stamp is not the same code's: it vouches only
+        where the change can't reach, and the run that leans on it owes debt. No test here
+        imports `app.py`, so that is every test that passed."""
         pytester.runpytest(*FAST)
         (exposed / "docs" / "changelog.md").write_text("# Changes\n- one\n", encoding="utf-8")
         git(exposed, "commit", "-qam", "the changelog, which app.py reads")
         result = pytester.runpytest(*GATE)
-        result.assert_outcomes(passed=2, skipped=1)
-        result.stdout.fnmatch_lines(["green stamp: no stamp for tree *; ran the whole fast suite*"])
+        result.assert_outcomes(skipped=1, deselected=2)
+        result.stdout.fnmatch_lines(["green stamp: tree *: 2 tests vouched for, *; debt 1 of 5;*"])
+        written = stamp(exposed)
+        assert written is not None
+        assert written["debt"] == 1
+
+
+GRAPH = {
+    "tests/alpha.py": "VALUE = 1\n",
+    "tests/beta.py": "VALUE = 1\n",
+    "tests/reader.py": 'CHANGELOG = "docs/changelog.md"\n',
+    "tests/test_alpha.py": "import alpha\n\ndef test_alpha():\n    assert alpha.VALUE == 1\n",
+    "tests/test_beta.py": "import beta\n\ndef test_beta():\n    assert beta.VALUE == 1\n",
+    "tests/test_reader.py": "import reader\n\ndef test_reader():\n    assert reader.CHANGELOG\n",
+    "docs/changelog.md": "# Changes\n",
+}
+
+
+@pytest.fixture(scope="module")
+def graph_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Three test files, each reached by one module of its own."""
+    return repository(tmp_path_factory.mktemp("graph"), GRAPH)
+
+
+@pytest.fixture
+def graph(pytester: pytest.Pytester, graph_template: Path) -> Path:
+    return copied(graph_template, pytester.path)
+
+
+def commit(root: Path, path: str, text: str) -> str:
+    """Commit `text` as `path`; the tree it makes."""
+    (root / path).write_text(text, encoding="utf-8", newline="\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", f"edit {path}")
+    return git(root, "rev-parse", "HEAD^{tree}")
+
+
+class TestLeaningOnAnotherTree:
+    """A stamp vouches for what the change from its tree cannot reach (2026-10-22)."""
+
+    def test_a_change_reruns_only_the_tests_it_reaches(
+        self, pytester: pytest.Pytester, graph: Path
+    ) -> None:
+        pytester.runpytest(*FAST).assert_outcomes(passed=3)
+        before = git(graph, "rev-parse", "HEAD^{tree}")
+        commit(graph, "tests/alpha.py", "VALUE = 1\nOTHER = 2\n")
+        result = pytester.runpytest(*GATE)
+        result.assert_outcomes(passed=1, deselected=2)
+        result.stdout.fnmatch_lines(
+            [f"green stamp: tree *: 2 tests vouched for, 2 by tree {before[:10]} (*; 1 paths"
+             " apart, reaching 1 test files); ran the other 1; debt 1 of 5; stamped tree * green"]
+        )
+        written = stamp(graph)
+        assert written is not None
+        assert written["debt"] == 1
+        assert written["vouched_by"] == {before: 2}
+        assert written["passed"] == 3
+        assert written["full_run"]["tree"] == before
+
+    def test_what_the_change_breaks_is_run_and_found(
+        self, pytester: pytest.Pytester, graph: Path
+    ) -> None:
+        pytester.runpytest(*FAST).assert_outcomes(passed=3)
+        commit(graph, "tests/alpha.py", "VALUE = 2\n")
+        result = pytester.runpytest(*GATE)
+        result.assert_outcomes(failed=1, deselected=2)
+        written = stamp(graph)
+        assert written is not None
+        assert written["verdict"] == "red"
+        assert written["failed"] == ["tests/test_alpha.py::test_alpha"]
+
+    def test_markdown_code_reads_reaches_its_readers(
+        self, pytester: pytest.Pytester, graph: Path
+    ) -> None:
+        pytester.runpytest(*FAST).assert_outcomes(passed=3)
+        commit(graph, "docs/changelog.md", "# Changes\n- one\n")
+        result = pytester.runpytest(*GATE)
+        result.assert_outcomes(passed=1, deselected=2)
+        assert "test_reader.py" in result.stdout.str().split("green stamp:")[0]
+
+    def test_a_merge_reruns_only_what_both_sides_reach(
+        self, pytester: pytest.Pytester, graph: Path
+    ) -> None:
+        """Each side's stamp covers what the other side changed, so neither change alone
+        sends a test back; only a test both reach would run."""
+        main = git(graph, "branch", "--show-current")
+        git(graph, "checkout", "-qb", "side")
+        side = commit(graph, "tests/alpha.py", "VALUE = 1\nOTHER = 2\n")
+        pytester.runpytest(*FAST).assert_outcomes(passed=3)
+        git(graph, "checkout", "-q", main)
+        ours = commit(graph, "tests/beta.py", "VALUE = 1\nOTHER = 3\n")
+        pytester.runpytest(*FAST).assert_outcomes(passed=3)
+        git(graph, "merge", "-q", "--no-edit", "side")
+
+        result = pytester.runpytest(*GATE)
+        result.assert_outcomes(deselected=3)
+        assert result.ret == pytest.ExitCode.OK
+        written = stamp(graph)
+        assert written is not None
+        assert set(written["vouched_by"]) == {side, ours}
+        assert written["debt"] == 1
+
+    def test_a_test_that_failed_on_a_stamp_leaned_on_is_run(
+        self, pytester: pytest.Pytester, graph: Path
+    ) -> None:
+        pytester.runpytest(*FAST).assert_outcomes(passed=3)
+        written = stamp(graph)
+        assert written is not None
+        written.update(verdict="red", failed=["tests/test_beta.py::test_beta"])
+        green_stamp.write_stamp(graph / green_stamp.STORE, written)
+        commit(graph, "tests/alpha.py", "VALUE = 1\nOTHER = 2\n")
+        result = pytester.runpytest(*GATE)
+        result.assert_outcomes(passed=2, deselected=1)
+
+    def test_a_test_a_worker_skipped_runs_whatever_an_older_stamp_says(
+        self, pytester: pytest.Pytester, graph: Path
+    ) -> None:
+        """A worker skips what reads the main checkout's `runs/`; an older main stamp that
+        passed it must not vouch for it on the worker's tree."""
+        pytester.runpytest(*FAST).assert_outcomes(passed=3)  # main, earlier: all passed
+        commit(graph, "tests/alpha.py", "VALUE = 1\nOTHER = 2\n")
+        pytester.runpytest(*FAST).assert_outcomes(passed=3)  # the worker's run...
+        written = stamp(graph)
+        assert written is not None
+        written["skipped"] = ["tests/test_beta.py::test_beta"]  # ...which had no `runs/`
+        green_stamp.write_stamp(graph / green_stamp.STORE, written)
+        result = pytester.runpytest(*GATE)
+        result.assert_outcomes(passed=1, deselected=2)
+        assert "test_beta.py" in result.stdout.str().split("green stamp:")[0]
+
+    def test_a_test_that_skipped_on_a_recent_stamp_runs_on_other_code(
+        self, pytester: pytest.Pytester, graph: Path
+    ) -> None:
+        """A worktree skips what reads the main checkout's `runs/`, so a skip anywhere lately
+        marks a test no change between trees can speak for (a delivered record, 2026-10-20)."""
+        main = git(graph, "branch", "--show-current")
+        pytester.runpytest(*FAST).assert_outcomes(passed=3)  # main: all passed
+        git(graph, "checkout", "-qb", "worktree")
+        commit(graph, "tests/conftest.py", "")  # a change that reaches everything: no base
+        pytester.runpytest(*FAST).assert_outcomes(passed=3)
+        written = stamp(graph)
+        assert written is not None
+        written["skipped"] = ["tests/test_beta.py::test_beta"]  # it had no `runs/`
+        green_stamp.write_stamp(graph / green_stamp.STORE, written)
+        git(graph, "checkout", "-q", main)
+        commit(graph, "tests/reader.py", 'CHANGELOG = "docs/changelog.md"\nMORE = 1\n')
+        result = pytester.runpytest(*GATE)
+        result.assert_outcomes(passed=2, deselected=1)
+        assert "test_beta.py" in result.stdout.str().split("green stamp:")[0]
+
+    def test_a_file_that_collects_differently_runs_whole(
+        self, pytester: pytest.Pytester, graph: Path
+    ) -> None:
+        """Same tree, other ids in one file: what `runs/puzzles/` does to `test_site_proven.py`
+        between a worktree and the main checkout."""
+        pytester.runpytest(*FAST).assert_outcomes(passed=3)
+        written = stamp(graph)
+        assert written is not None
+        written["files"]["tests/test_beta.py"] = "elsewhere"
+        green_stamp.write_stamp(graph / green_stamp.STORE, written)
+        result = pytester.runpytest(*GATE)
+        result.assert_outcomes(passed=1, deselected=2)
+        result.stdout.fnmatch_lines(
+            ["green stamp: tree * re-ran only the 1 tests that run skipped (and 1 whose file"
+             " collects differently here)"]
+        )
+
+    def test_at_the_debt_limit_a_stamp_vouches_only_for_its_own_tree(
+        self, pytester: pytest.Pytester, graph: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(green_stamp, "DEBT_LIMIT", 1)
+        pytester.runpytest(*FAST).assert_outcomes(passed=3)
+        first = git(graph, "rev-parse", "HEAD^{tree}")
+        leaning = commit(graph, "tests/alpha.py", "VALUE = 1\nOTHER = 2\n")
+        pytester.runpytest(*GATE).assert_outcomes(passed=1, deselected=2)
+        (graph / green_stamp.STORE / f"{first}.json").unlink()  # the full run it leaned on
+        # the same code: debt is no reason to run it again
+        pytester.runpytest(*GATE).assert_outcomes(deselected=3)
+        assert git(graph, "rev-parse", "HEAD^{tree}") == leaning
+
+        commit(graph, "tests/beta.py", "VALUE = 1\nOTHER = 3\n")
+        result = pytester.runpytest(*GATE)
+        result.assert_outcomes(passed=3)
+        result.stdout.fnmatch_lines([f"green stamp: no stamp for tree *; ran the whole fast suite (tree {leaning[:10]} is at debt 1, the limit)*"])
+        written = stamp(graph)
+        assert written is not None
+        assert written["debt"] == 0
+
+    def test_a_full_run_too_old_vouches_only_for_its_own_tree(
+        self, pytester: pytest.Pytester, graph: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(green_stamp, "FULL_EVERY_HOURS", 0)
+        pytester.runpytest(*FAST).assert_outcomes(passed=3)
+        pytester.runpytest(*GATE).assert_outcomes(deselected=3)
+        commit(graph, "tests/alpha.py", "VALUE = 1\nOTHER = 2\n")
+        result = pytester.runpytest(*GATE)
+        result.assert_outcomes(passed=3)
+        result.stdout.fnmatch_lines(["green stamp: no stamp for tree *; ran the whole fast suite (*over 0 h ago)*"])
+
+    def test_a_red_full_run_names_where_to_look(
+        self, pytester: pytest.Pytester, graph: Path
+    ) -> None:
+        pytester.runpytest(*FAST).assert_outcomes(passed=3)
+        green = git(graph, "rev-parse", "HEAD")
+        commit(graph, "tests/alpha.py", "VALUE = 2\n")
+        result = pytester.runpytest(*FAST)
+        result.assert_outcomes(passed=2, failed=1)
+        result.stdout.fnmatch_lines(
+            [f"green stamp: stamped tree * red (1 failed); the last full green run on this line"
+             f" was {green[:10]} (*): look in git log {green[:10]}..HEAD"]
+        )
+
+    def test_the_plan_says_what_the_gate_would_run(
+        self, pytester: pytest.Pytester, graph: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        pytester.runpytest(*FAST).assert_outcomes(passed=3)
+        commit(graph, "tests/alpha.py", "VALUE = 1\nOTHER = 2\n")
+        capsys.readouterr()
+        assert green_stamp.show_plan(graph) == 0
+        said = capsys.readouterr().out
+        assert "would re-run 1 of 3 test files" in said
+        assert "tests/test_alpha.py" in said
+        assert "debt after: 1 of 5" in said
 
 
 class TestATravellingStamp:

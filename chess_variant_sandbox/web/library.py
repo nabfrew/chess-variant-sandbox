@@ -1367,7 +1367,11 @@ def pieces(game: Game) -> list[dict[str, Any]]:
     # compiled table's (0 where none is written); absent in a game without a speed.
     sim = compiled.simultaneous
     speeds = sim.speed if sim is not None else ()
-    # Schema 30 (Q999c, `docs/plan-passive.md` §4.6): each piece's lines of sight, one
+    # Schema 29 (Q983b, `docs/plan-rest.md` §5.6): each piece's rest on its card, the compiled
+    # table's (0 where none is written), for the card's pill and the board's line under a
+    # picked piece; absent in a game without a rest.
+    rests = compiled.rest
+    # Schema 30 (Q999c, `docs/archive/plan-passive.md` §4.6): each piece's lines of sight, one
     # sentence each in `describe`'s words (`sight_sentence`) with the effect it carries, for
     # the board's line under a picked piece; absent on a piece that sees nothing. The card's
     # notes already say them, with *see the rules*.
@@ -1378,6 +1382,7 @@ def pieces(game: Game) -> list[dict[str, Any]]:
         {
             **prose.as_dict(),
             **({"speed": speeds[index]} if speeds else {}),
+            **({"rest": rests[index]} if rests else {}),
             **(
                 {"sights": [
                     {"effect": sight.effect, "words": sight_sentence(sight, names, hexy)}

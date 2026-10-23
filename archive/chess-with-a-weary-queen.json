@@ -1,5 +1,5 @@
 {
-  "schema_version": 29,
+  "schema_version": 31,
   "name": "chess with a weary queen",
   "description": "Chess exactly as it is played, except that the queen tires: after the queen moves, it must rest for its side's next turn. It still stands where it landed, attacking, defending, blocking and giving check, and its check must be answered, but it cannot move again until a turn of its side has passed. The rule takes one glance to read and changes the queen's whole character. It can no longer chase: a queen that gives check cannot follow it up on the next move, and a queen that grabs a pawn cannot step back out of danger at once, so every queen move has to be good for two turns rather than one. An early queen raid is riskier, since a resting queen that is attacked can be defended but not moved away, and the other pieces carry more of the game. A pawn promoted to a queen rests too, as the new queen. When the queen's moves are the only legal moves a side has, as when only the queen can answer a check, the rest is lifted for that turn.",
   "board": {
@@ -228,10 +228,9 @@
   },
   "provenance": {
     "added": "2026-10-21",
-    "preview": "A preview: a new kind of game in which a piece that moves must rest for some of its side's turns, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
     "origin": "designed",
     "source": "docs/plan-rest.md, Q983d: the showcases of schema 29's rest (section 6.1)",
-    "history": "U3 of docs/plan-rest.md section 6.1, pre-registered 2026-10-19 before schema 29 was built: chess (4c1922ffae26) with the queen at rest 1 and every other type at 0. One piece resting on the calibration baseline, the smallest legible rest. Built by Q983d (2026-10-21) exactly as registered; its control is chess played on this game's roster (section 6.2 as run).",
+    "history": "U3 of docs/plan-rest.md section 6.1, pre-registered 2026-10-19 before schema 29 was built: chess (4c1922ffae26) with the queen at rest 1 and every other type at 0. One piece resting on the calibration baseline, the smallest legible rest. Built by Q983d (2026-10-21) exactly as registered; its control is chess played on this game's roster (section 6.2 as run). Joined the library from preview by Q1005 (2026-10-23, docs/reference/preview-call-2026-10.md): the library's only game in which a piece rests after moving in ordinary alternating play, on chess, where the change reads at a glance. Viable in 4 of 4 runs at 0.917 with the seat level, the queen making 6.7% of moves against chess's 16%.",
     "parents": [
       "4c1922ffae26"
     ]

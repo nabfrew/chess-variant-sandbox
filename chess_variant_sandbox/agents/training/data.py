@@ -553,7 +553,7 @@ def _replay_link_games(spec: dict[str, Any], replay: Replay, workers: int) -> li
 
 
 def replay_games(spec: dict[str, Any], procedure: Procedure, workers: int = 0) -> list[Any]:
-    """The replay set's games (plan-teacher §9.13.3): the parent's own training schedule
+    """The replay set's games (archive/plan-teacher §9.13.3): the parent's own training schedule
     played again by the core on this ruleset, without its built-in-only block, in schedule
     order. The replay roster's net must be the bytes its name carries (``replay_bytes``).
     A chained set (E3b, §9.17.4) is each link's games in turn, nearest first.
@@ -575,7 +575,7 @@ def replay_games(spec: dict[str, Any], procedure: Procedure, workers: int = 0) -
 def link_games(
     spec: dict[str, Any], procedure: Procedure, link: int, workers: int = 0
 ) -> list[Any]:
-    """One part of ``self_play``'s records alone (E3b, plan-teacher §9.17.4): ``link`` 0 is
+    """One part of ``self_play``'s records alone (E3b, archive/plan-teacher §9.17.4): ``link`` 0 is
     the new games, 1 the replay set one generation back, 2 two back, and so on. Harvested
     under a procedure's teacher and joined in link order with their games renumbered
     (``joined``), the parts are the whole harvest of ``self_play``, array for array."""
@@ -989,7 +989,7 @@ def harvest_arms(
     workers: int = 1,
     report: Report | None = None,
 ) -> list[Dataset]:
-    """One self-play, harvested once per procedure (plan-teacher §9.1: the child, C and K).
+    """One self-play, harvested once per procedure (archive/plan-teacher §9.1: the child, C and K).
 
     The procedures must agree on everything that decides the games and the samples
     (``procedure.SELF_PLAY_FIELDS``); they differ in the label. The games are played once,

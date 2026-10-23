@@ -27,7 +27,8 @@ from rest_equivalence import FIXTURE, GAMES, MAX_PLIES, PERFT_DEPTHS, ROOT, rest
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.spec.canonical import spec_hash
-from chess_variant_sandbox.spec.schema import RETIRED_REST, validate_spec
+from chess_variant_sandbox.spec.schema import validate_spec
+from chess_variant_sandbox.spec.spelling import current_spelling
 
 FAST_WALKS = 4
 
@@ -84,7 +85,7 @@ def replay(engine: Engine, walk: dict[str, Any], keys: KeyPartition) -> None:
 def test_the_rewritten_file_is_a_new_hash_and_valid(old_hash: str) -> None:
     spec = json.loads((ROOT / GAMES[old_hash]).read_text(encoding="utf-8"))
     assert spec_hash(spec) != old_hash
-    assert spec["schema_version"] == 29
+    assert spec["schema_version"] >= 29  # 29 for the rest; Q1008b re-spelt it at the current
     assert validate_spec(spec) == []
     assert all(piece.get("rest") == 1 for piece in spec["pieces"])
 
@@ -116,7 +117,7 @@ def test_every_walk_and_the_deep_perft_replay(old_hash: str) -> None:
 
 def test_the_retired_preview_is_kept_as_the_refusal_fixture_and_rewrites_to_the_test_spec() -> None:
     """`_retired_gardner_in_rounds_resting.json` stays byte for byte (§4.5): refused by
-    admission and by the loader with the retirement's message, and its rewrite is
+    admission and by the loader, and its rewrite -- this file's and the converter's -- is
     `_simultaneous_resting.json`'s game."""
     from chess_variant_sandbox.spec.schema import SpecError
 
@@ -124,8 +125,9 @@ def test_the_retired_preview_is_kept_as_the_refusal_fixture_and_rewrites_to_the_
         (ROOT / "tests" / "_retired_gardner_in_rounds_resting.json").read_text(encoding="utf-8")
     )
     assert spec_hash(retired) == "4da669bb3d50"
-    assert RETIRED_REST in validate_spec(retired)
-    with pytest.raises(SpecError, match="retired in schema 29"):
+    assert validate_spec(retired)
+    with pytest.raises(SpecError):
         Engine(retired)
     resting = json.loads((ROOT / GAMES["4da669bb3d50"]).read_text(encoding="utf-8"))
     assert spec_hash(rewrite(retired)) == spec_hash(resting)
+    assert spec_hash(current_spelling(retired)) == spec_hash(resting)

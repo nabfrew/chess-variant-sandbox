@@ -68,7 +68,7 @@ LABEL_SEARCHES = ("probe", "player", "parent")
 # cell squashed first, an ending 1, ½ or 0, and the value used as the label as it is.
 ROUND_PAYOFFS = ("units", "score")
 
-# A generation (plan-teacher §9.1): the self-play budget of both seats, the games per
+# A generation (archive/plan-teacher §9.1): the self-play budget of both seats, the games per
 # ordered pairing of the two-player roster (four pairings, 20,000 games, half the seats
 # the net's) and the parent's label budget, the strength it was accepted at.
 GENERATION_SELF_PLAY_NODES = 1_600
@@ -110,7 +110,7 @@ def net_option(agent: str) -> str | None:
 
 @dataclass(frozen=True)
 class Replay:
-    """E1's replay set (plan-teacher §9.13.3): the parent's own training games, played again.
+    """E1's replay set (archive/plan-teacher §9.13.3): the parent's own training games, played again.
 
     A generation's new games narrowed to its parent's own play and to routs of the built-in
     (archive/plan-teacher §9.13.1), so the child also trains on the games its parent learned
@@ -134,7 +134,7 @@ class Replay:
     ``Replay.of(parent_recipe)`` is the one way E1 builds it: the parent's *new* games, never
     its own replay set, so the data stay about twice a generation's (§9.13.3).
 
-    **The chain** (E3b, plan-teacher §9.17.4): ``prior`` is the replay set behind this one,
+    **The chain** (E3b, archive/plan-teacher §9.17.4): ``prior`` is the replay set behind this one,
     the parent's own replay set, so a game's earliest generations' games never leave the
     union. ``links`` walks it: one generation back, then two back, and so on. Each link is a
     ``Replay`` of its own, so each roster may name only its own net. ``prior`` enters the
@@ -173,7 +173,7 @@ class Replay:
         if parent_recipe.parent is None:
             raise ValueError(
                 "the parent's recipe has no parent of its own, so its games name no net; a "
-                "replay set is a generation's games (plan-teacher §9.13.3)"
+                "replay set is a generation's games (archive/plan-teacher §9.13.3)"
             )
         return cls(
             agents=tuple(parent_recipe.agents),
@@ -258,7 +258,7 @@ class Procedure:
     # arm of Q637's recipe (`db5ef1bc938e`) was the first net accepted, on Intransitive
     # (D2 0.748 ± 0.019, confirmed on fresh seeds 0.741 ± 0.020; §8.15-§8.16).
     td_lambda: float = 0.7
-    # Q665 (plan-teacher §8.2, T2v): which search labels a position. "probe" is the
+    # Q665 (archive/plan-teacher §8.2, T2v): which search labels a position. "probe" is the
     # analysis probe (`Engine.root_scores`, full width, at `label_nodes` and
     # `label_depth`), every recipe before it. "player" is the playing search's own root
     # value: `minimax:nodes=<label_nodes>` (alpha-beta, ordering, quiescence), the exact
@@ -284,13 +284,13 @@ class Procedure:
     batch: int = 1_024
     learning_rate: float = 0.001
     init_seed: int = 0
-    # Q677 (plan-teacher §9.1): a generation's parent, the net it learns from. Set, the
+    # Q677 (archive/plan-teacher §9.1): a generation's parent, the net it learns from. Set, the
     # roster may name exactly this net (`net=<parent.procedure>`, no other) and
     # `label_search="parent"` labels with its player. Left out of the digest when unset,
     # so no existing name moves; set, the digest carries the parent's procedure and its
     # weights' SHA-256.
     parent: Parent | None = None
-    # Q712 (plan-teacher §9.13.3, E1): a generation's replay set, the parent's own training
+    # Q712 (archive/plan-teacher §9.13.3, E1): a generation's replay set, the parent's own training
     # games played again beside the new ones and labelled by this procedure's teacher
     # (`Replay`). Left out of the digest when unset, so no existing name moves; set, the
     # digest carries the replay schedule and its net's weights' SHA-256. E3b (§9.17.4): it
@@ -508,7 +508,7 @@ Q502F2 = Procedure(opening_plies=0, result_weight=0.5, td_lambda=0.0)
 
 
 def generation(parent: Parent, base: Procedure = DEFAULT) -> Procedure:
-    """Generation k + 1 of ``parent`` (plan-teacher §9.1): ``base``'s recipe with the parent
+    """Generation k + 1 of ``parent`` (archive/plan-teacher §9.1): ``base``'s recipe with the parent
     net put where the built-in evaluator was.
 
     The roster is the parent's player and the built-in one, both at
@@ -550,7 +550,7 @@ def builtin_player_arm(child: Procedure) -> Procedure:
 
 
 def replayed(child: Procedure, parent_recipe: Procedure) -> Procedure:
-    """E1's child (plan-teacher §9.13.3, generation 2R): ``child`` with its parent's own
+    """E1's child (archive/plan-teacher §9.13.3, generation 2R): ``child`` with its parent's own
     training games as a replay set (``Replay.of(parent_recipe)``).
 
     ``parent_recipe`` is the recipe the parent was trained by (its store's ``recipe``), and
@@ -568,7 +568,7 @@ def replayed(child: Procedure, parent_recipe: Procedure) -> Procedure:
 
 
 def replayed_deep(child: Procedure, parent_recipe: Procedure) -> Procedure:
-    """E3b's chained child (plan-teacher §9.17.4): ``child`` with the parent's new games as
+    """E3b's chained child (archive/plan-teacher §9.17.4): ``child`` with the parent's new games as
     its replay set and, behind them, the parent's own replay set, whole (so recursively
     every link the parent carried).
 

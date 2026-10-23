@@ -28,7 +28,6 @@ import pytest
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.spec import load_spec
-from chess_variant_sandbox.spec.schema import validate_spec
 
 RULESETS = Path(__file__).resolve().parents[1] / "rulesets"
 
@@ -273,51 +272,6 @@ class TestVersionOneHoldsItsLine:
     the declared version is part of the mechanics hash, so a spec must not be able to
     use a feature it did not claim.
     """
-
-    def test_a_second_royal_piece_needs_the_version_that_supports_it(self) -> None:
-        spec = _chess_like(
-            "coregal",
-            [
-                {"id": "N", "value": 3, "moves": [KNIGHT]},
-                {"id": "B", "value": 3, "moves": [BISHOP]},
-                {"id": "R", "value": 5, "moves": [ROOK]},
-                {"id": "Q", "value": 9, "royal": True, "moves": [QUEEN]},
-            ],
-            STANDARD_BACK,
-            ["R", "B", "N"],
-        )
-        assert any("schema_version" in error for error in validate_spec(spec))
-        assert validate_spec(dict(spec, schema_version=2)) == []
-
-    def test_promotion_may_not_manufacture_a_second_royal(self) -> None:
-        spec = _chess_like(
-            "promote-to-king",
-            [
-                {"id": "N", "value": 3, "moves": [KNIGHT]},
-                {"id": "B", "value": 3, "moves": [BISHOP]},
-                {"id": "R", "value": 5, "moves": [ROOK]},
-                {"id": "Q", "value": 9, "moves": [QUEEN]},
-            ],
-            STANDARD_BACK,
-            ["Q", "R", "B", "N", "K"],
-        )
-        assert any("schema_version" in error for error in validate_spec(spec))
-
-    def test_a_schema_two_rule_in_a_schema_one_spec_is_named_and_refused(self) -> None:
-        spec = _chess_like(
-            "sneaky",
-            [
-                {"id": "N", "value": 3, "moves": [KNIGHT]},
-                {"id": "B", "value": 3, "moves": [BISHOP]},
-                {"id": "R", "value": 5, "moves": [ROOK]},
-                {"id": "Q", "value": 9, "moves": [QUEEN]},
-            ],
-            STANDARD_BACK,
-            ["Q", "R", "B", "N"],
-        )
-        spec["rules"]["must_capture"] = True
-        errors = validate_spec(spec)
-        assert any("must_capture" in error and "schema 2" in error for error in errors)
 
 
 def test_a_promoting_double_step_opens_no_en_passant_window() -> None:

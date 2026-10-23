@@ -1,5 +1,5 @@
 {
-  "schema_version": 17,
+  "schema_version": 31,
   "name": "kamikaze",
   "description": "In kamikaze chess, a rule from the fairy-chess problem tradition, whatever captures dies with what it took: both pieces leave the board, and nothing around them is touched. Every capture is an exchange of one piece for one, chosen by the side that makes it, and that quietly abolishes defence. Guarding a piece no longer protects it, because a capturer that has already destroyed itself does not need to be taken back; the only thing that deters a capture is its price. So the threats that matter are cheap pieces aimed at dear ones, and a pawn attacking a queen will trade itself for her however well she is guarded. The king can never capture, since taking anything would destroy it, so a checking piece standing right beside the king has to be removed by another piece or walked away from. Armies thin out fast, piece for piece.",
   "board": {

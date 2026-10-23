@@ -29,10 +29,11 @@ from chess_variant_sandbox.spec.distance import distance, features
 from chess_variant_sandbox.spec.schema import (
     CLOCK_BOUNDS,
     REPETITION_NEVER,
-    SCHEMA_VERSION,
     SCORING_COUNTS,
     opening_counts,
 )
+from tests import feature_inventory
+from tests.feature_inventory import LAST_BUMP
 
 ROOT = Path(__file__).resolve().parents[1]
 RULESETS = ROOT / "rulesets"
@@ -87,10 +88,10 @@ _NUMBER_WORDS = {
     15: "fifteen", 16: "sixteen", 17: "seventeen", 18: "eighteen", 19: "nineteen",
     20: "twenty", 21: "twenty_one", 22: "twenty_two", 23: "twenty_three", 24: "twenty_four",
     25: "twenty_five", 26: "twenty_six", 27: "twenty_seven", 28: "twenty_eight",
-    29: "twenty_nine", 30: "thirty",
+    29: "twenty_nine", 30: "thirty", 31: "thirty_one", 32: "thirty_two",
 }
-_COLLECTOR = f"_schema_{_NUMBER_WORDS.get(SCHEMA_VERSION, SCHEMA_VERSION)}_uses"
-_uses: Callable[[dict], set[str]] | None = getattr(schema, _COLLECTOR, None)
+_COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
+_uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
 
 
 def _inventory(spec: dict) -> set[str]:
@@ -173,13 +174,14 @@ def _refusal_without_the_compile(parent: dict, child: dict) -> list[str]:
 def _sweep_over(
     parents: dict[str, dict],
     refuse: Callable[[dict, dict], list[str]] = refusal,
+    operators: tuple[Any, ...] = OPERATORS,
 ) -> list[_Child]:
-    """Every operator against every one of ``parents``, at the fixed seeds."""
+    """Every one of ``operators`` against every one of ``parents``, at the fixed seeds."""
     children: list[_Child] = []
     for name, parent in parents.items():
         before = _inventory(parent)
         army = {piece.get("id") for piece in parent.get("pieces", [])}
-        for operator in OPERATORS:
+        for operator in operators:
             for seed in _SWEEP_SEEDS:
                 child = copy.deepcopy(parent)
                 try:
@@ -226,6 +228,17 @@ def _sweep_over(
 # loads no spec.
 _SPEC_PATHS = {path.stem: path for path in ALL_SPECS}
 
+# And each spec's operators in four shares, dealt in turn (`OPERATORS[share::4]`), each its
+# own test (Q1009). Every question the per-spec test asks is about one child or about one
+# operator on one spec, and a share holds every seed of each of its operators, so four
+# shares ask exactly what one test did. One test a spec had grown to 3.1 s on shogi's
+# family (57 operators by then, against Q746's "none over 1 s"), and over the duration
+# guard's 4 s at -n 4 beside a ten-core campaign. Dealt rather than cut in runs because
+# `plant-a-spy` and `promote-only-lost` are half of shogi's cost and sit apart in the list:
+# dealt in fours, the dearest share on shogi-drop-promoted is 1.2 s.
+_SHARES = 4
+_SWEEP_CASES = [(name, share) for name in sorted(_SPEC_PATHS) for share in range(_SHARES)]
+
 
 @functools.cache
 def _cheap_first() -> list[tuple[str, dict]]:
@@ -239,15 +252,17 @@ def _cheap_first() -> list[tuple[str, dict]]:
     return sorted(loaded, key=lambda pair: (_rotates(pair[1]), pair[0]))
 
 
-def _children_of(name: str, parent: dict, exact: bool = True) -> list[_Child]:
-    """Every operator against one parent at the fixed seeds, refused as `mutate` would.
+def _children_of(
+    name: str, parent: dict, exact: bool = True, operators: tuple[Any, ...] = OPERATORS
+) -> list[_Child]:
+    """Every one of ``operators`` against one parent at the fixed seeds, refused as `mutate` would.
 
     ``exact=False`` refuses a rotating parent's children without `identity_key`'s compile
     (`_refusal_without_the_compile`); any other parent is refused exactly either way, since
     only a rotating spec pays for that half.
     """
     refuse = refusal if exact or not _rotates(parent) else _refusal_without_the_compile
-    return _sweep_over({name: parent}, refuse)
+    return _sweep_over({name: parent}, refuse, operators)
 
 
 def _first_child(
@@ -355,6 +370,12 @@ class TestMutation:
         # Schema 30's `blind-a-piece` and `widen-a-gaze` take away or widen a sight a game
         # already has, and none is archived until Q999d: S2's test spec stands in.
         parents.append(load_spec(ROOT / "tests" / "_sight_sheltering_king.json"))
+        # Q1007c's `turn-the-gaze` toggles `captures_own` on a command a game already has,
+        # and none is archived until Q1007f: K1's test spec stands in.
+        parents.append(load_spec(ROOT / "tests" / "_command_k1.json"))
+        # Q1007a's `ride-a-leap` rides a lame leap a game already has: xiangqi's horse and
+        # elephant.
+        parents.append(specs["xiangqi"])
 
         def fires(operator) -> bool:
             return any(
@@ -603,7 +624,6 @@ class TestMutation:
         _claim_the_ground(spec, random.Random(2))
         assert "scoring" not in spec["rules"]
         assert validate_spec(spec) == []
-
 
     def test_the_board_axis_is_reachable_from_a_board_that_is_not_near_an_edge(
         self, specs
@@ -1085,21 +1105,31 @@ class TestEveryOperatorOverTheWholeCorpus:
         cls._refused_only_as_documented(children)
         cls._hands_back_only_as_documented(children)
 
-    @pytest.mark.parametrize("name", sorted(_SPEC_PATHS))
-    def test_every_operator_on_each_committed_spec(self, name: str) -> None:
+    @pytest.mark.parametrize(
+        "name, share",
+        _SWEEP_CASES,
+        ids=[f"{name}-{share + 1}of{_SHARES}" for name, share in _SWEEP_CASES],
+    )
+    def test_every_operator_on_each_committed_spec(self, name: str, share: int) -> None:
         """Every operator at six seeds on one committed spec, and the four questions.
 
         No operator raises, none is a total loss on the spec, and only the documented
         operators are refused by the validator or hand back the parent's game. Each is a
         question about one spec, so each spec is its own test and xdist deals them across
-        its workers (Q746; one module fixture of every spec ran 220 s in one worker).
+        its workers (Q746; one module fixture of every spec ran 220 s in one worker); each
+        spec's operators are then dealt into `_SHARES` tests, which together ask what one
+        test did (Q1009).
 
         A rotating parent's children are refused here without `identity_key`'s compile
         (`_rotates`, `_refusal_without_the_compile`): every verdict but *the parent under
         another spelling* is the same, and that one is
         `test_the_rotating_specs_under_the_whole_refusal`'s, in the slow tier.
         """
-        self._assert_clean(_children_of(name, load_spec(_SPEC_PATHS[name]), exact=False))
+        operators = OPERATORS[share::_SHARES]
+        assert operators, f"share {share + 1} of {_SHARES} holds no operator"
+        self._assert_clean(
+            _children_of(name, load_spec(_SPEC_PATHS[name]), exact=False, operators=operators)
+        )
 
     @pytest.mark.slow
     def test_the_rotating_specs_under_the_whole_refusal(self) -> None:
@@ -1204,9 +1234,8 @@ def _piece(spec: dict, pid: str) -> dict:
 
 
 def _stamped(spec: dict) -> dict:
-    from chess_variant_sandbox.spec.transform import settle_schema_version
-
-    return settle_schema_version(spec)
+    """The spec as it stands: until Q1008c this settled its version stamp."""
+    return spec
 
 
 def _takes_only(spec: dict, allowed: dict[str, list[str]]) -> dict:
@@ -1993,8 +2022,8 @@ class TestTheLastStructuralRefusals:
 # enumeration of the bump -- the same list `describe.py` and
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
-# `SCHEMA_VERSION`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 30
+# `LAST_BUMP`, and the author is holding the list at exactly that moment.
+_FEATURES_ARE_FOR_SCHEMA = 32
 
 
 @dataclass(frozen=True)
@@ -2257,12 +2286,10 @@ def _portal_parent(version: int = 19, **pair: object) -> dict:
     plus whatever ``pair`` sets: schema 19's smallest edit (20's with ``version``)."""
     gardner = load_spec(RULESETS / "gardner.json")
     gardner["schema_version"] = version
-    gardner["pieces"].append({
-        "id": "O", "name": "portal", "value": 0,
-        "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4",
-                   "mode": "move"}],
-    })
-    gardner["rules"]["portals"] = [{"piece": "O", "orange": "b3", "blue": "d3", **pair}]
+    gardner["rules"]["portals"] = [{
+        "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}],
+        "orange": "b3", "blue": "d3", **pair,
+    }]
     return gardner
 
 
@@ -2271,7 +2298,7 @@ def _ring_parent(**first: object) -> dict:
     (`docs/archive/plan-portals-2.md` §2.1), plus whatever ``first`` sets on the first end: schema 21's
     smallest edit."""
     gardner = _portal_parent(21)
-    gardner["rules"]["portals"] = [{"piece": "O", "ends": [
+    gardner["rules"]["portals"] = [{"ends": [
         {"at": "a3", "to": 1, **first}, {"at": "c3", "to": 2}, {"at": "e3", "to": 0},
     ]}]
     return gardner
@@ -2343,7 +2370,7 @@ def _parent_rest() -> dict:
 
 
 def _parent_sight(piece_id: str, sight: dict) -> dict:
-    """Chess with one line of sight on one type (schema 30, `plan-passive.md` §6.1): the
+    """Chess with one line of sight on one type (schema 30, `docs/archive/plan-passive.md` §6.1): the
     smallest edit on the calibration baseline, as each of S1 to S3 is."""
     chess = _chess()
     chess["schema_version"] = 30
@@ -2351,28 +2378,23 @@ def _parent_sight(piece_id: str, sight: dict) -> dict:
     return chess
 
 
-def _parent_freeze() -> dict:
-    """S1's queen alone: it freezes an enemy queen on any of its eight open lines."""
-    return _parent_sight("Q", {
-        "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4",
-        "effect": "freeze", "whose": "enemy", "affects": ["Q"],
-    })
-
-
-def _parent_shield() -> dict:
-    """S2: the king shields its own pieces within two squares, through any piece between."""
+def _parent_command() -> dict:
+    """K2 (`plan-schema-31.md` §6.3): the king commands every enemy piece beside it, and may
+    make it take its own side."""
     return _parent_sight("K", {
-        "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 2, "through": True,
-        "effect": "shield", "whose": "own",
+        "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1,
+        "effect": "command", "whose": "enemy", "captures_own": True,
     })
 
 
-def _parent_disarm() -> dict:
-    """S3: a knight disarms every enemy piece a knight's jump away."""
-    return _parent_sight("N", {
-        "vectors": [[1, 2]], "symmetry": "dihedral8", "range": 1,
-        "effect": "disarm", "whose": "enemy",
-    })
+def _parent_lame_rider() -> dict:
+    """Chess with lame riding knights (Q1007a, `plan-schema-31.md` §2.2): each `[1, 2]` jump
+    blocked on its leg, two jumps or more, the nearest landing passed over."""
+    chess = _chess()
+    next(p for p in chess["pieces"] if p["id"] == "N")["moves"] = [
+        {"kind": "lame", "vectors": [[1, 2]], "symmetry": "dihedral8", "range": 0,
+         "min_range": 2}]
+    return chess
 
 
 def _parent_beats() -> dict:
@@ -2439,27 +2461,25 @@ def _armies_differ(spec: dict) -> bool:
     return len(set(first) & set(second)) < 2 and len(set(first) | set(second)) >= 2
 
 
-# Schema 30's inventory (`plan-passive.md` §4.1): Q999a's four names, each a piece property
-# riding on no rule. `cast-a-gaze` enters the three effects (a type given a sight copied from
-# its capture geometry) and `through` (one gaze in four longer than a step is an aura), and
-# `widen-a-gaze` toggles `through` on a standing sight; `blind-a-piece` leaves each (one line
-# taken away). Schema 29's row (Q983a, `pieces.rest`) retired with the bump; `tire-a-piece`
-# still crosses it.
+# Generation 32's inventory (Q1007a, `plan-schema-31.md` §2.5): two names, each a move property
+# riding on no rule. `ride-a-leap` enters both (a lame leap given a `range`, now and then a
+# `min_range` of 2) and leaves both (the rider made a single jump again). Generation 31's two
+# rows (Q1007c) retired with the generation; `cast-a-gaze`, `turn-the-gaze` and
+# `blind-a-piece` still cross them.
 _FEATURES: dict[str, _Feature] = {
-    "Q999a freeze": _Feature(
-        None, frozenset({"pieces.sight.freeze"}), True, "chess+freezing-queen", _parent_freeze,
-    ),
-    "Q999a disarm": _Feature(
-        None, frozenset({"pieces.sight.disarm"}), True, "chess+daunting-knight", _parent_disarm,
-    ),
-    "Q999a shield": _Feature(
-        None, frozenset({"pieces.sight.shield"}), True, "chess+sheltering-king", _parent_shield,
-    ),
-    "Q999a through": _Feature(
-        None, frozenset({"pieces.sight.through"}), True, "chess+sheltering-king", _parent_shield,
-        # An aura is cast only on a gaze longer than a step, so a game with a slider first.
+    "Q1007a lame range": _Feature(
+        None, frozenset({"pieces.moves.lame.range"}), True, "chess+lame-riders",
+        _parent_lame_rider,
         likely=lambda spec: any(
-            move.get("kind") == "slide" and move.get("range", 0) != 1
+            move.get("kind") == "lame"
+            for piece in spec.get("pieces", []) for move in piece.get("moves", [])
+        ),
+    ),
+    "Q1007a lame min_range": _Feature(
+        None, frozenset({"pieces.moves.lame.min_range"}), True, "chess+lame-riders",
+        _parent_lame_rider,
+        likely=lambda spec: any(
+            move.get("kind") == "lame"
             for piece in spec.get("pieces", []) for move in piece.get("moves", [])
         ),
     ),
@@ -2473,8 +2493,18 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
+    # Q1007a's two names. R1 (`plan-schema-31.md` §6.1) was to carry the lame rider; the user
+    # made its rook the slide reading (2026-10-23), and of its three drafts Q1007e kept R1b, a
+    # slide, over R1c, the lame one (2026-10-24, §6.1 *The drafts*). Neither R1 nor R3 can carry
+    # it without changing a fixed move rule, so both rows stay owed.
+    "Q1007a lame range": (
+        "owed: R1c, the lame draft of plan-schema-31.md §6.1, was not kept; no showcase uses it"
+    ),
+    "Q1007a lame min_range": (
+        "owed: no showcase registered in plan-schema-31.md §6 uses min_range on a lame rider"
+    ),
     # Schema 30's `through` went on 2026-10-22, when Q999d archived S2
-    # (`archive/chess-with-a-sheltering-king`, `plan-passive.md` §6.1) beside S1 and S3
+    # (`archive/chess-with-a-sheltering-king`, `docs/archive/plan-passive.md` §6.1) beside S1 and S3
     # (`archive/madrasi`, `-with-daunting-knights`); freeze, disarm and shield had gone the
     # same day, when Q999b archived `archive/opposite-colours` (§6.5). Empty again at schema 30.
     # Q943a's speed went on 2026-10-19, when Q943c archived its three showcases
@@ -2558,6 +2588,8 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
         "pieces.sight.freeze", "pieces.sight.disarm", "pieces.sight.shield",
         "pieces.sight.through",
     }),
+    31: frozenset({"pieces.sight.command", "pieces.sight.captures_own"}),
+    32: frozenset({"pieces.moves.lame.range", "pieces.moves.lame.min_range"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -2566,8 +2598,22 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Generation 31's two names (Q1007c). Q1007f built and measured their showcases K1 and K2
+    # (`plan-schema-31.md` §6.3, 2026-10-24): both viable and fair, both missed V2 (a commanded
+    # move offered too rarely), so both retired by the call registered before their first
+    # measured game (`tests/_retired_chess_with_commanding_knights.json`,
+    # `_retired_chess_with_a_spellbinding_king.json`). A game that closes these rows is one in
+    # which the effect binds as §6.3's V2 asks.
+    "schema 31: pieces.sight.command": (
+        "Q1007f: K1 retired, a commanded move offered at 0.076 of graded side-turns, bar 0.15"
+        " (plan-schema-31.md §6.3)"
+    ),
+    "schema 31: pieces.sight.captures_own": (
+        "Q1007f: K2 retired, a commanded move offered at 0.028 of graded side-turns, bar 0.05"
+        " (plan-schema-31.md §6.3)"
+    ),
     # Schema 30's four names went on 2026-10-22: freeze, disarm and shield when Q999b
-    # archived `archive/opposite-colours` (`plan-passive.md` §6.5), `through` when Q999d
+    # archived `archive/opposite-colours` (`docs/archive/plan-passive.md` §6.5), `through` when Q999d
     # archived S2, `archive/chess-with-a-sheltering-king` (§6.1; coverage rows 75 to 78).
     # Schema 28's `pieces.speed` went on 2026-10-19, when Q943c archived its showcases
     # (`plan-speed.md` §6.1; coverage row 73).
@@ -2602,6 +2648,24 @@ _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
         "of its games and leaned 71-29 to the token's first holder; it left the previews "
         "(Q962b). A game designed around the token, where a tie is common and worth taking, "
         "is owed, and this entry goes the day it lands"
+    ),
+    # Q1005, 2026-10-23 (`docs/reference/preview-call-2026-10.md`): the user asked for a call
+    # on every preview, into the library or out of it. The two names below lost their last
+    # showcases to that call. The rules are still held on the retired files
+    # (`tests/test_showcases_q935f.py`, `tests/test_showcases_q943.py`).
+    "schema 27: pieces.spy": (
+        "coverage row 71: its last showcase, gardner with spies resting, was refused on the "
+        "seat (the first seat won 56 of the 61 decided games between the two strongest "
+        "players), a lean inherited from Gardner's minichess under royal capture, which a "
+        "spy-free, round-free twin shows too; it left the previews (Q1005). A spy game on a "
+        "base whose seat holds is owed, and this entry goes the day it lands"
+    ),
+    "schema 28: pieces.speed": (
+        "coverage row 73: its three showcases left the previews (Q1005). The two on Gardner in "
+        "rounds were mostly drawn between competent players, and the watering hole by speed "
+        "was over in a few rounds because a guard beside a faster hunter cannot run (five "
+        "starting layouts failed to fix it, Q996). A speed game in which the slower side can "
+        "still defend is owed, and this entry goes the day it lands"
     ),
 }
 
@@ -2721,7 +2785,7 @@ class TestEveryFeatureOfThisSchemaIsReachable:
     `grid.AXES`, and none of schema 10's five features moves one, so it answered a
     different question truthfully. This class asks the question the surface meant: the
     bump's own inventory (the collector resolved at the top of this file) against the
-    operator set, in both directions, for whatever `SCHEMA_VERSION` currently is.
+    operator set, in both directions, for whatever `LAST_BUMP` currently is.
 
     Two directions, because half an axis is a design run that can only ever drift one way
     -- the defect `_limit_the_game` had for `repetition_draw` before Q86, and the reason
@@ -2775,7 +2839,7 @@ class TestEveryFeatureOfThisSchemaIsReachable:
     half and stays here; that is the record, and the two say the same thing.
 
     **This is a ship-time gate, not a standing one, and Q117 decided that deliberately.**
-    The sweep reads `SCHEMA_VERSION`'s inventory and nothing else, so it fires on the commit
+    The sweep reads `LAST_BUMP`'s inventory and nothing else, so it fires on the commit
     that raises the version -- when the author is holding the whole list -- and goes quiet
     one bump later. What it therefore cannot catch is a feature of an *older* schema whose
     last operator is afterwards removed or narrowed: strip `set-the-blast`'s narrowing half
@@ -2830,7 +2894,7 @@ class TestEveryFeatureOfThisSchemaIsReachable:
         only works while the name follows the convention.
         """
         assert _uses is not None, (
-            f"SCHEMA_VERSION is {SCHEMA_VERSION} and `chess_variant_sandbox/spec/schema.py` has no "
+            f"LAST_BUMP is {LAST_BUMP} and `tests/feature_inventory.py` has no "
             f"`{_COLLECTOR}`. `new-move-primitive` gates a bump with a collector "
             "returning the *names* of everything the bump added -- see `_schema_ten_uses` "
             "-- and this file looks it up by version. Name it to the convention, or teach "
@@ -2843,16 +2907,16 @@ class TestEveryFeatureOfThisSchemaIsReachable:
         Nothing can derive an inventory from a collector -- it answers *what does this
         spec use*, not *what could I ever say* -- so `_FEATURES` is hand-written and this
         is what stops it being hand-*forgotten*. It fails on the commit that raises
-        `SCHEMA_VERSION`, which is the one moment the author has the whole list in front
+        `LAST_BUMP`, which is the one moment the author has the whole list in front
         of them, and the failure asks for the two things a row needs that judgement cannot
         supply: which rule the feature rides on, and a parent that already has it.
 
         Four bumps answered surface 8 by inspection and were wrong four times. This is the
         same question with the answer computed instead.
         """
-        assert _FEATURES_ARE_FOR_SCHEMA == SCHEMA_VERSION, (
+        assert _FEATURES_ARE_FOR_SCHEMA == LAST_BUMP, (
             f"`_FEATURES` was written for schema {_FEATURES_ARE_FOR_SCHEMA} and "
-            f"SCHEMA_VERSION is now {SCHEMA_VERSION}. Surface 8 of `new-move-primitive`: "
+            f"LAST_BUMP is now {LAST_BUMP}. Surface 8 of `new-move-primitive`: "
             f"every name `{_COLLECTOR}` can return needs a row here -- a host rule, "
             "whether a crossing must keep the army, and a parent that already uses it -- "
             "and the sweep then says whether an operator can enter and leave it. A "
@@ -2886,7 +2950,7 @@ class TestEveryFeatureOfThisSchemaIsReachable:
         }
         unshown = {label for label, games in shown.items() if not games}
         assert unshown == set(_SHOWCASE_OWED), (
-            f"a feature of schema {SCHEMA_VERSION} has no committed or archived ruleset "
+            f"a feature of schema {LAST_BUMP} has no committed or archived ruleset "
             "that uses it, so nothing has ever played it and the leave arm tests it only on "
             f"a parent this file built: {shown}. `_SHOWCASE_OWED` names "
             f"{sorted(_SHOWCASE_OWED)}; a showcase that has landed deletes its row there"
@@ -2907,7 +2971,7 @@ class TestEveryFeatureOfThisSchemaIsReachable:
         for version, listed in _EVERY_SCHEMA_FEATURES.items():
             collector = (
                 _schema_6_uses if version == 6
-                else getattr(schema, f"_schema_{_NUMBER_WORDS[version]}_uses")
+                else getattr(feature_inventory, f"_schema_{_NUMBER_WORDS[version]}_uses")
             )
             seen = set().union(*(collector(spec) for spec in specs))
             unshown |= {f"schema {version}: {name}" for name in listed - seen}
@@ -2919,7 +2983,11 @@ class TestEveryFeatureOfThisSchemaIsReachable:
         assert not unlisted, (
             f"a collector returns names `_EVERY_SCHEMA_FEATURES` does not list: {unlisted}"
         )
-        exempt = set(_NO_SHOWCASE_ON_PURPOSE)
+        # The current schema's owed showcases (`_SHOWCASE_OWED`) are a named task's, not a gap.
+        owed = {
+            f"schema {LAST_BUMP}: {name}" for row in _SHOWCASE_OWED for name in _FEATURES[row].names
+        }
+        exempt = set(_NO_SHOWCASE_ON_PURPOSE) | owed
         assert unshown == exempt, (
             "a rule feature is used by no committed or archived ruleset, so nothing has "
             f"ever played it: {sorted(unshown - exempt)}. Write a showcase "
@@ -2929,12 +2997,12 @@ class TestEveryFeatureOfThisSchemaIsReachable:
 
     def test_the_every_schema_table_agrees_with_the_current_features(self) -> None:
         """The table above is hand-written, so the bump that adds a schema must add its row."""
-        assert max(_EVERY_SCHEMA_FEATURES) == SCHEMA_VERSION, (
+        assert max(_EVERY_SCHEMA_FEATURES) == LAST_BUMP, (
             f"`_EVERY_SCHEMA_FEATURES` stops at schema {max(_EVERY_SCHEMA_FEATURES)} and "
-            f"SCHEMA_VERSION is {SCHEMA_VERSION}: add the new bump's names"
+            f"LAST_BUMP is {LAST_BUMP}: add the new bump's names"
         )
         current = frozenset().union(*(f.names for f in _FEATURES.values()))
-        assert _EVERY_SCHEMA_FEATURES[SCHEMA_VERSION] == current
+        assert _EVERY_SCHEMA_FEATURES[LAST_BUMP] == current
 
     def test_the_constructed_parents_are_valid_and_use_the_feature(self) -> None:
         """A leave arm built on an invalid parent measures nothing, and an operator's
@@ -2979,7 +3047,7 @@ class TestEveryFeatureOfThisSchemaIsReachable:
         applied = [child for child in feature_sweep if child.summary is not None]
         refused = {child.operator for child in applied if child.invalid}
         assert refused <= {"resize-the-board"}, (
-            f"operators refused on a spec that uses schema {SCHEMA_VERSION}: "
+            f"operators refused on a spec that uses schema {LAST_BUMP}: "
             f"{sorted(refused - {'resize-the-board'})}. Every schema-10 feature refuses "
             "some other rule beside it, and a guard written in one direction only is an "
             "operator that is dead on the games the bump was for."
@@ -3000,11 +3068,7 @@ class TestEveryFeatureOfThisSchemaIsReachable:
         """Added and taken away again is the game that was there, hash for hash.
 
         `test_the_new_endings_undo_cleanly`'s property for the three operators Q108 adds,
-        and the one each of them could get wrong is a different one. `become-what-you-take`
-        and `set-the-blast` have to put the *stamp* back -- both raise it to 10 and
-        `schema_version` is in the mechanics hash, so a child that came home under a
-        different number would be a new game with an identical rulebook, which is the
-        waste `settle_schema_version` exists to prevent. `place-a-stone` has to undo a
+        and the one each of them could get wrong is a different one. `place-a-stone` has to undo a
         *piece*, a stock and, where it made one, the hand itself: a `drops` left holding
         `from_captures: false` and no stock is refused by name.
         """
@@ -3116,7 +3180,7 @@ class TestTheOwnLinkIsReachable:
 
     @staticmethod
     def _uses_own(spec: dict) -> bool:
-        return TestTheOwnLinkIsReachable._NAME in schema._schema_eleven_uses(spec)
+        return TestTheOwnLinkIsReachable._NAME in feature_inventory._schema_eleven_uses(spec)
 
     @staticmethod
     def _own_parents() -> dict[str, dict]:
@@ -3378,13 +3442,8 @@ class TestTheClocks:
         """Schema 10 gave `repetition_draw` a value that is not a size, and the clamp must
         not mistake a word for a number to be squeezed into 2..10."""
         from chess_variant_sandbox.loop.operators import _limit_the_game
-        from chess_variant_sandbox.spec.transform import settle_schema_version
-
         spec = copy.deepcopy(specs["chess"])
         spec["rules"]["repetition_draw"] = REPETITION_NEVER
-        # `"never"` is schema 10, and a parent whose stamp does not say so is invalid
-        # before any operator touches it -- which is a badly built test, not a defect.
-        settle_schema_version(spec)
         assert not validate_spec(spec)
         reached = set()
         for seed in range(40):
@@ -3723,15 +3782,14 @@ class TestDistance:
             assert all(value == value for value in values.values())  # no NaN
 
 
-
 # ---------------------------------------------------------------------------------------
 # Q735: what `distance` and `features` compute, pinned to the number (Q734m, `spec/`).
 # ---------------------------------------------------------------------------------------
 
 # Each feature's scale, written out here on purpose: the test pins what the code says, so
-# a changed scale fails it and the change is made here on purpose. A feature missing from
-# the table is not asserted (a new feature adds its row; `test_the_pinned_table_names_only_
-# features_distance_reads` holds the other direction).
+# a changed scale fails it and the change is made here on purpose. The table is all of
+# `_SCALES` (a new feature adds its row here and there; `test_every_feature_has_a_scale`
+# holds `features` to `_SCALES`).
 _PINNED_SCALES: dict[str, float] = {
     "area": 100.0, "aspect": 1.0, "piece_types": 8.0, "army": 40.0, "rule_mass": 90.0,
     "special_rules": 6.0, "vectors_per_piece": 8.0, "slide_share": 1.0, "leap_share": 1.0,
@@ -3756,7 +3814,14 @@ _PINNED_SCALES: dict[str, float] = {
     "wins_by_leaving": 1.0, "portal_pairs": 1.0, "portals_move": 1.0, "portals_one_way": 1.0,
     "portals_no_back": 1.0, "portals_ring": 1.0, "portals_funnel": 1.0,
     "portals_other_map": 1.0, "portals_filtered": 1.0, "portals_fold": 1.0,
-    "npcs_share_a_walk": 1.0,
+    "npcs_share_a_walk": 1.0, "lame_rider_share": 1.0,
+    # Q1011: the nineteen features of schema 26 onward that `distance` had never read.
+    "simultaneous": 1.0, "simultaneous_initiative": 1.0, "simultaneous_impossible": 1.0,
+    "beats_share": 1.0, "simultaneous_swap_collides": 1.0, "simultaneous_both_score": 1.0,
+    "spy_types": 2.0, "speed_ranks": 2.0, "speed_royal": 1.0, "speed_by_value": 1.0,
+    "speed_by_reach": 1.0, "rest_mean": 1.0, "rest_max": 1.0, "sight_freeze_share": 1.0,
+    "sight_disarm_share": 1.0, "sight_shield_share": 1.0, "sight_command_share": 1.0,
+    "sight_aura_share": 1.0, "sight_turncoat_share": 1.0,
 }
 
 
@@ -3776,6 +3841,22 @@ class TestDistanceIsPinnedToTheNumber:
         from chess_variant_sandbox.spec.distance import _SCALES
 
         assert set(_PINNED_SCALES) <= set(_SCALES)
+
+    def test_every_feature_has_a_scale(self, specs) -> None:
+        """Q1011: a feature `features` computes and `_SCALES` lacks is dropped by `distance`
+        (nineteen were, from schema 26 on: a freezing queen and a disarming one measured 0.0
+        apart). The two lists are the same set, over every committed ruleset, so the next
+        feature added to one and forgotten in the other fails here."""
+        from chess_variant_sandbox.spec.distance import _SCALES
+
+        for name in CORPUS:
+            assert set(features(specs[name])) == set(_SCALES), name
+
+    def test_the_pinned_table_names_every_scale(self) -> None:
+        """The pinned table is the whole of `_SCALES`, so a scale cannot be changed unpinned."""
+        from chess_variant_sandbox.spec.distance import _SCALES
+
+        assert _PINNED_SCALES == _SCALES
 
     @pytest.mark.parametrize("name", sorted(_PINNED_SCALES))
     def test_a_feature_half_its_scale_apart_contributes_half_a_share(
@@ -3800,14 +3881,15 @@ class TestDistanceIsPinnedToTheNumber:
 
     def test_the_distance_is_rounded_to_four_places(self) -> None:
         """Chess against its bare-royal twin differs in the flag (1/1), the rule mass (52
-        to 58, over 90) and the special rules (3 to 4, over 6): the mean over the 80
-        features is 0.015417, which rounds to 0.0154 and not to 0.015 or 0.01542."""
+        to 58, over 90) and the special rules (3 to 4, over 6): the mean over the 100
+        features (Q1011 brought it to 100: Q1007a's `lame_rider_share` was the 81st) is 0.012333,
+        which rounds to 0.0123 and not to 0.012 or 0.01233."""
         chess = _chess()
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"
         twin = _stamped(twin)
         assert validate_spec(twin) == []
-        assert distance(chess, twin) == 0.0154
+        assert distance(chess, twin) == 0.0123
 
 
 def _one_leap_beside_a_stone() -> dict:
@@ -3877,9 +3959,8 @@ class TestFeaturesReadTheSpecExactly:
 
 # ---------------------------------------------------------------------------------------
 # Q735: the edits in `spec/transform.py` that no test called directly (Q734m, `spec/`).
-# Every operator re-stamps its child with `settle_schema_version`, so an edit's own version
-# stamp, the defaults it writes and its guards against a malformed spec only show when the
-# function is called by itself on a spec that declares schema 1.
+# The defaults an edit writes and its guards against a malformed spec only show when the
+# function is called by itself.
 # ---------------------------------------------------------------------------------------
 
 
@@ -3889,9 +3970,9 @@ def _schema_one_chess() -> dict:
     return spec
 
 
-class TestAnEditStampsTheVersionItNeeds:
-    """The version an edit writes is a claim about the features the spec now uses: one too
-    low is refused by the validator, one too high overstates (and rehashes) the spec."""
+class TestAnEditLeavesTheStampAlone:
+    """Until Q1008c an edit raised the stamp to the version its rule needed. The stamp is the
+    spelling's now and nothing reads it to decide what a spec may use, so no edit writes it."""
 
     @pytest.mark.parametrize(
         ("edit", "stamp"),
@@ -3923,12 +4004,8 @@ class TestAnEditStampsTheVersionItNeeds:
         ],
     )
     def test_the_stamp_on_schema_one_chess(self, edit: Callable[[dict], dict], stamp: int) -> None:
-        assert edit(_schema_one_chess())["schema_version"] == stamp
-
-    def test_an_edit_never_lowers_a_higher_stamp(self) -> None:
-        spec = _schema_one_chess()
-        spec["schema_version"] = 12
-        assert transform.set_territory(spec)["schema_version"] == 12
+        del stamp  # the version the edit used to write
+        assert edit(_schema_one_chess())["schema_version"] == 1
 
 
 class TestTheDefaultsAnEditWrites:
@@ -4294,7 +4371,7 @@ class TestTheRoundOperators:
             child = parent()
             if apply.apply(child, random.Random(seed)) is None:
                 continue
-            if name in schema._schema_twenty_six_uses(child) and not refusal(parent(), child):
+            if name in feature_inventory._schema_twenty_six_uses(child) and not refusal(parent(), child):
                 return
         raise AssertionError(f"{operator} never entered {name}")
 
@@ -4302,10 +4379,10 @@ class TestTheRoundOperators:
     def test_neither_applies_where_no_two_opposing_pieces_share_a_speed(self, operator: str) -> None:
         """Schema 28 (Q943e, `plan-speed.md` §4.1): pieces of different speeds never collide,
         so where no type of one player shares a speed with a type of the other (T3,
-        `archive/watering-hole-by-speed`) a tie rule and a `beats` are inert and the
-        validator refuses both. The operator declines rather than spending a draw on a
-        refused child, asking the validator's own predicate."""
-        parent = load_spec(ROOT / "archive" / "watering-hole-by-speed.json")
+        `archive/watering-hole-by-speed`, retired by Q1005 to `tests/_retired_*.json`) a tie
+        rule and a `beats` are inert and the validator refuses both. The operator declines
+        rather than spending a draw on a refused child, asking the validator's own predicate."""
+        parent = load_spec(ROOT / "tests" / "_retired_watering_hole_by_speed.json")
         assert not schema._any_equal_speed_meeting(parent)
         apply = next(op for op in OPERATORS if op.name == operator)
         for seed in _SWEEP_SEEDS:

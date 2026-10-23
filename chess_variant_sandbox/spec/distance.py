@@ -43,6 +43,7 @@ from chess_variant_sandbox.spec.schema import (
     piece_speeds,
     portal_groups,
     portal_map_shape,
+    portal_stand_in_shape,
     promotion_squares,
     simultaneous_switch,
     spy_ids,
@@ -69,6 +70,10 @@ _SCALES: dict[str, float] = {
     # Schema 13 (Q21). A line that removes what it crosses is a different piece from one
     # that stops at it, so a slide turned sweep must not measure zero from its parent.
     "sweep_share": 1.0,
+    # Q1007a (`docs/plan-schema-31.md` §2.5). A lame move with a `range` other than 1 rides,
+    # jump after jump; without this a lame rider and the single lame leap it was written from
+    # read as one game (every other count is equal), and the loop would skip the tournament.
+    "lame_rider_share": 1.0,
     "royal_types": 2.0,
     "royal_step": 2.0,
     "royal_slides": 1.0,
@@ -270,11 +275,49 @@ _SCALES: dict[str, float] = {
     # tables are the one-piece route's, so without it a patrol and its twin with a second
     # wolf read as one game and the loop would skip the tournament.
     "npcs_share_a_walk": 1.0,
+    # Q1011: the nineteen features added from schema 26 on, computed in `features` and left
+    # out of this table, so `distance` never read them: a queen that freezes and one that
+    # disarms measured 0.0 apart. `test_every_feature_has_a_scale` holds the two lists
+    # together. Schema 26 (Q918a) and 27 (Q942a): the round, how its tie resolves, the
+    # collision table's share, the two chase switches. Every one a flag or a share.
+    "simultaneous": 1.0,
+    "simultaneous_initiative": 1.0,
+    "simultaneous_impossible": 1.0,
+    "beats_share": 1.0,
+    "simultaneous_swap_collides": 1.0,
+    "simultaneous_both_score": 1.0,
+    # Schema 27 (Q935a): a count of spy types, on the scale of the other small counts
+    # (`royal_types`): one spy and two read half a scale apart, none and two a whole one.
+    "spy_types": 2.0,
+    # Schema 28 (Q943a): the number of ranks of speed is a count (the same small scale; a
+    # three-rank game against none is past it and capped), the three readings of each type's
+    # speed over the top rank are shares of 1.
+    "speed_ranks": 2.0,
+    "speed_royal": 1.0,
+    "speed_by_value": 1.0,
+    "speed_by_reach": 1.0,
+    # Schema 29 (Q983a): the rests are already divided by `REST_MAX`.
+    "rest_mean": 1.0,
+    "rest_max": 1.0,
+    # Schema 30 (Q999a) and generation 31 (Q1007c): the share of types with a sight of each
+    # effect, the share of sights that are auras and the turncoat share (half weight, so
+    # already within 0-0.5).
+    "sight_freeze_share": 1.0,
+    "sight_disarm_share": 1.0,
+    "sight_shield_share": 1.0,
+    "sight_command_share": 1.0,
+    "sight_aura_share": 1.0,
+    "sight_turncoat_share": 1.0,
 }
 
 
 def features(spec: dict[str, Any]) -> dict[str, float]:
-    """The measured description of one ruleset, as a flat vector."""
+    """The measured description of one ruleset, as a flat vector.
+
+    A portal game is read with its group moves as the stand-in piece it declared before
+    spelling 31 (`schema.portal_stand_in_shape`), so no feature moves with the re-spelling.
+    """
+    spec = portal_stand_in_shape(spec)
     board = spec.get("board", {})
     width = float(board.get("width", 8))
     height = float(board.get("height", 8))
@@ -343,6 +386,10 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
         "leap_share": kinds["leap"] / total_moves,
         "hop_share": kinds["hop"] / total_moves,
         "sweep_share": kinds["sweep"] / total_moves,
+        "lame_rider_share": sum(
+            1 for piece in pieces for move in piece.get("moves", []) or []
+            if move.get("kind") == "lame" and move.get("range", 1) != 1
+        ) / total_moves,
         "royal_types": float(sum(1 for piece in pieces if piece.get("royal"))),
         "royal_step": royal_step,
         "royal_slides": royal_slides,
@@ -407,7 +454,7 @@ def features(spec: dict[str, Any]) -> dict[str, float]:
 
 
 def _sight_features(spec: dict[str, Any]) -> dict[str, float]:
-    """Schema 30 (Q999a, `docs/plan-passive.md` §4.3): for each effect, the share of declared
+    """Schema 30 (Q999a, `docs/archive/plan-passive.md` §4.3): for each effect, the share of declared
     piece types with a line of sight of it, and the share of sight entries that are auras, so
     a spec differing only by a sight, its effect or its blocking is not at distance zero by
     its features, beside the special rules `complexity` charges for it."""
@@ -426,6 +473,12 @@ def _sight_features(spec: dict[str, Any]) -> dict[str, float]:
     }
     out["sight_aura_share"] = (
         sum(1 for sight in entries if sight.through) / len(entries) if entries else 0.0
+    )
+    # Q1007c (`docs/plan-schema-31.md` §3.8): a command's `captures_own` at half the weight of
+    # an effect (`sight_command_share` above), so a turncoat command is near its plain twin.
+    out["sight_turncoat_share"] = (
+        0.5 * sum(1 for read in sights.values() if any(s.captures_own for s in read))
+        / len(declared) if declared else 0.0
     )
     return out
 

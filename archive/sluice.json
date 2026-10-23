@@ -1,5 +1,5 @@
 {
-  "schema_version": 21,
+  "schema_version": 31,
   "name": "sluice",
   "description": "Chess in which each side has a sluice into the enemy's half, and the enemy steers where it comes out. A White piece that ends its move on one of White's doors, a3 or h3, comes out one step beyond White's gate, which starts on e5, in the direction it was travelling, capturing there as usual: a2-a3 puts the pawn on e6. Black's doors, a6 and h6, lead the same way to Black's gate on e4, and only the owner may use a door. The doors never move, but each gate is moved by the side it threatens: Black may spend a turn moving White's gate a step, and White moves Black's. So the attacker picks the door and the moment, the defender where the raid lands. Placing a gate cuts both ways: it is a block nobody passes or takes, so wherever it is parked it closes a line or shields a king, and every raider arrives beside it.",
   "board": {
@@ -149,28 +149,6 @@
           "mode": "both"
         }
       ]
-    },
-    {
-      "id": "O",
-      "name": "portal",
-      "value": 0,
-      "moves": [
-        {
-          "kind": "leap",
-          "vectors": [
-            [
-              1,
-              0
-            ],
-            [
-              1,
-              1
-            ]
-          ],
-          "symmetry": "rotate4",
-          "mode": "move"
-        }
-      ]
     }
   ],
   "setup": {
@@ -248,7 +226,22 @@
     "no_progress_draw": 100,
     "portals": [
       {
-        "piece": "O",
+        "moves": [
+          {
+            "kind": "leap",
+            "vectors": [
+              [
+                1,
+                0
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "symmetry": "rotate4"
+          }
+        ],
         "ends": [
           {
             "at": "a3",
@@ -273,7 +266,22 @@
         ]
       },
       {
-        "piece": "O",
+        "moves": [
+          {
+            "kind": "leap",
+            "vectors": [
+              [
+                1,
+                0
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "symmetry": "rotate4"
+          }
+        ],
         "ends": [
           {
             "at": "a6",

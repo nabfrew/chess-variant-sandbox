@@ -270,7 +270,7 @@ _INERT = {
     "archive/breather.json": "23a6c532fd0bb32f7512deed4207e43f6ceca0dea62df516b2e0a9184d3e79f5",
     "archive/watering-hole.json":
         "6fb8f7183f79c92fdae6835de1ba6597f2a4976e5b7670944b387c89aec2d56c",
-    "archive/gardner-with-spies-resting.json":
+    "tests/_retired_gardner_with_spies_resting.json":
         "0d8f72477bc1214062de25855bdfc8a6b6998338f27467c7183cb49fe7fb1447",
     "tests/_simultaneous_scored.json":
         "1c848d867d424531619d50ac937f56f0e5851ab46fbca6345e8fe00a0c7a04d3",
@@ -352,15 +352,17 @@ def test_a_speed_games_analysis_holds_the_four_tallies() -> None:
 # A speedless round game and an alternating one, analysed: the files' digests, taken with
 # main's `tournament/analysis.py` before Q943b and with this one, and equal. Q986b re-pinned
 # the round game's on purpose: its records are a new round player's (`ROUND_WIN_PIECES`); the
-# analysis pass is unchanged. It was 099aacbe... .
+# analysis pass is unchanged. It was 099aacbe... . Q1008a re-pinned both: each is its file with
+# `max_plies` cut to 40, a game no one stored, so its name is its normal form's now and its
+# position keys moved with it; the pass is unchanged. They were 9bccaa30... and 4b5c1c10... .
 ANALYSED = {
     "tests/_simultaneous_gardner.json": ("greedy", "matrix:nodes=200"),
     "rulesets/gardner.json": ("greedy", "minimax:nodes=200"),
 }
 _ANALYSIS_DIGESTS = {
     "tests/_simultaneous_gardner.json":
-        "9bccaa3093a2b7791fe8146700ab8e4ba79acbf582a63dc279c90d46d1f5c598",
-    "rulesets/gardner.json": "4b5c1c106b4487cff31c41e4ee8f912e33ba68f1cde785e9bc93e7aefdb07603",
+        "a8b854b2ecda2ca0acbf7760e8d75a055ae2963e463f430a918f1a5c5b3ae398",
+    "rulesets/gardner.json": "fa20bd9930c1921451bd40862227ecde66ef06273c5ce137568fb45c81aa30e7",
 }
 
 

@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 31,
   "name": "one-way torus chess",
   "description": "Chess on its own board with both pairs of edges joined, a board with no edges at all, made playable by letting each player cross each join in one direction only. Joined both ways, an eight by eight board like this cannot be played: the two kings would start next to each other through the join between the first and eighth ranks. Here White leaves by the a-file and comes back on the h-file, and leaves by the eighth rank and comes back on the first; Black does the reverse of both. That makes the rank join a road home rather than a road in: a piece can use it only after fighting its way to the enemy's back rank, and it arrives on its own first rank, where it can defend, while a pawn promotes before it could cross. The file join gives each side a way round its own left-hand side, White's queen's side and Black's king's side, so the two armies play under different geometry on the same board, and each king keeps one side edge it cannot cross.",
   "board": {

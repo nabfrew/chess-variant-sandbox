@@ -43,6 +43,7 @@ from chess_variant_sandbox.agents.evaluation import WIN_SCORE, Evaluator
 from chess_variant_sandbox.engine import Engine, GameState, SpyPhase
 from chess_variant_sandbox.engine.moves import (
     MOVE_CASTLE,
+    MOVE_COMMANDED,
     MOVE_DROP,
     MOVE_FOLD,
     MOVE_PROMOTION,
@@ -129,10 +130,15 @@ class GameAnalysis:
     # each, and each player's spy loss, its ply and how. ``None`` for every other game, and
     # then absent from the file, as ``rounds`` is.
     spy: dict[str, Any] | None = None
-    # Schema 30 (Q999c, `docs/plan-passive.md` §4.8): what the lines of sight did, one entry
-    # per side-turn in each of `SIGHT_SERIES`, as the core answers it (`Engine.effects`).
+    # Schema 30 (Q999c, `docs/archive/plan-passive.md` §4.8): what the lines of sight did, one entry
+    # per side-turn in each of `SIGHT_SERIES`, as the core answers it (`Engine.effects`), and
+    # (Q1007d) in each of `COMMAND_SERIES` too where a sight commands.
     # ``None`` for a game without a sight, and then absent from the file, as ``rounds`` is.
     sight: dict[str, list[int]] | None = None
+    # Schema 29 (Q983b, `docs/plan-rest.md` §5.4, §7): what the rest did, one entry per
+    # side-turn in each of `REST_SERIES`, as the core answers it (`Engine.rest_turn`).
+    # ``None`` for a game without a rest, and then absent from the file, as ``rounds`` is.
+    rest: dict[str, list[int]] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -143,6 +149,8 @@ class GameAnalysis:
             del data["spy"]
         if self.sight is None:
             del data["sight"]
+        if self.rest is None:
+            del data["rest"]
         return data
 
     @classmethod
@@ -322,7 +330,7 @@ def _searching(record: GameRecord) -> bool:
     return all(agent.split(":")[0] != "random" for agent in record.agents)
 
 
-# Schema 30 (Q999c, `docs/plan-passive.md` §4.8): what the pass records of a game with a line
+# Schema 30 (Q999c, `docs/archive/plan-passive.md` §4.8): what the pass records of a game with a line
 # of sight, one entry a side-turn (a ply of a game that alternates; each seat's choice in a
 # round), every one the core's (`Engine.effects` on the board the choice was made on):
 #
@@ -348,43 +356,123 @@ SIGHT_SERIES = (
     "suppressed",
 )
 
+# Q1007d (`docs/plan-schema-31.md` §3.9): what the pass adds for a game whose sight commands,
+# one entry a side-turn beside `SIGHT_SERIES`'s (a command is refused beside rounds, so every
+# side-turn is a ply), each the core's answer or the record's move:
+#
+# * ``commanded``, ``commanded_own``: how many of that side's pieces stood under a command
+#   (the opponent may move them) and under a command that ``captures_own`` (and may make them
+#   take their own side), read as the three piece counts above are;
+# * ``command_offered``: how many legal commanded moves that side was offered
+#   (`Effects.commanded`);
+# * ``command_made``: 1 when the move made was a commanded one (the record's move carries
+#   ``MOVE_COMMANDED``), else 0;
+# * ``turncoat``: 1 when it was a commanded capture, a piece made to take its own side, else 0.
+#
+# A game without a command has none of these keys, so its `analysis.json` is the bytes it was:
+# a sight game without a command writes `SIGHT_SERIES` alone, as before.
+COMMAND_SERIES = (
+    "commanded",
+    "commanded_own",
+    "command_offered",
+    "command_made",
+    "turncoat",
+)
+
 # The effect bits as the core reports them (`compile.SIGHT_FREEZE`, `SIGHT_DISARM`,
-# `SIGHT_SHIELD`), in the order of the three piece counts above.
-_SIGHT_BITS = (1, 2, 4)
+# `SIGHT_SHIELD`, and Q1007c's `SIGHT_COMMAND` and `SIGHT_COMMAND_OWN`), in the order of the
+# piece counts: the first three are `SIGHT_SERIES`', the last two `COMMAND_SERIES`'.
+_SIGHT_BITS = (1, 2, 4, 8, 16)
+
+
+def _commands(engine: Engine) -> bool:
+    """Whether any line of sight of this game commands (the compiled flag, Q1007c)."""
+    return engine.spec.sight is not None and engine.spec.sight.has_command
 
 
 def _sight_tally(engine: Engine) -> dict[str, list[int]] | None:
-    """`SIGHT_SERIES` empty, for a game with a sight; ``None`` for every other game."""
+    """`SIGHT_SERIES` empty, for a game with a sight, and `COMMAND_SERIES` beside it for one
+    whose sight commands; ``None`` for every other game."""
     if engine.spec.sight is None:
         return None
-    return {key: [] for key in SIGHT_SERIES}
+    keys = SIGHT_SERIES + (COMMAND_SERIES if _commands(engine) else ())
+    return {key: [] for key in keys}
 
 
 def _count_sight(
-    engine: Engine, tally: dict[str, list[int]] | None, state: GameState, seat: int
+    engine: Engine,
+    tally: dict[str, list[int]] | None,
+    state: GameState,
+    seat: int,
+    move: int | None = None,
 ) -> None:
     """One side-turn of `SIGHT_SERIES`: ``seat`` choosing on ``state``, as the core reports the
-    effects there. In a round the state names nobody, so it is asked as the seat sees it."""
+    effects there. In a round the state names nobody, so it is asked as the seat sees it.
+    In a game whose sight commands, `COMMAND_SERIES` too, ``move`` being the move made."""
     if tally is None:
         return
     seen = state if state.side_to_move == seat else state.with_(side_to_move=seat)
     effects = engine.effects(seen)
     spec = engine.spec
-    under = [0, 0, 0]
+    commands = "commanded" in tally
+    under = [0] * (len(_SIGHT_BITS) if commands else 3)
     for square, bits in enumerate(effects.bits):
         if bits and spec.owner_of(state.board[square]) == seat:
-            for index, bit in enumerate(_SIGHT_BITS):
+            for index, bit in enumerate(_SIGHT_BITS[: len(under)]):
                 under[index] += int(bool(bits & bit))
-    row = (
+    row: tuple[int, ...] = (
         seat,
         effects.frozen,
         effects.disarmed,
         effects.shielded,
         int(effects.binds),
-        *under,
+        *under[:3],
         int(effects.suppressed),
     )
-    for key, value in zip(SIGHT_SERIES, row, strict=True):
+    if commands:
+        made = move is not None and bool(move & MOVE_COMMANDED)
+        row += (
+            *under[3:],
+            effects.commanded,
+            int(made),
+            int(made and move is not None and _takes(state.board, move)),
+        )
+    for key, value in zip(tally, row, strict=True):
+        tally[key].append(value)
+
+
+# Schema 29 (Q983b, `docs/plan-rest.md` §5.4, §7): what the pass records of a game whose pieces
+# rest, one entry a side-turn (a ply of a game that alternates; each seat's choice in a round),
+# every one the core's (`Engine.rest_turn` on the board the choice was made on):
+#
+# * ``side``: whose turn it was;
+# * ``binds``: 1 when the rest took away at least one of that side's legal moves (*the rest
+#   binds*), else 0;
+# * ``lifted``: 1 when the rest was lifted, because it would have left that side no move (a
+#   resting piece's move offered), else 0; never 1 beside ``binds``;
+# * ``resting``: how many of that side's pieces rested as it chose (its entries in
+#   ``GameState.rest``).
+#
+# A game without a rest has no ``rest`` key at all, so its `analysis.json` is the bytes it was.
+REST_SERIES = ("side", "binds", "lifted", "resting")
+
+
+def _rest_tally(engine: Engine) -> dict[str, list[int]] | None:
+    """`REST_SERIES` empty, for a game whose pieces rest; ``None`` for every other game."""
+    if not engine.spec.rest:
+        return None
+    return {key: [] for key in REST_SERIES}
+
+
+def _count_rest(
+    engine: Engine, tally: dict[str, list[int]] | None, state: GameState, seat: int
+) -> None:
+    """One side-turn of `REST_SERIES`: ``seat`` choosing on ``state``, as the core answers it."""
+    if tally is None:
+        return
+    turn = engine.rest_turn(state, seat)
+    row = (seat, int(turn.binds), int(turn.lifted), len(state.rest[seat]))
+    for key, value in zip(REST_SERIES, row, strict=True):
         tally[key].append(value)
 
 
@@ -416,6 +504,7 @@ def _analyse_game(
     revisited = 0
     walked = 0
     sight = _sight_tally(engine)
+    rest = _rest_tally(engine)
 
     for index, move in enumerate(record.moves):
         board = state.board
@@ -424,7 +513,8 @@ def _analyse_game(
             # The record and the spec have drifted apart. Stop counting rather than
             # inventing numbers; replay raises on the same condition with a message.
             break
-        _count_sight(engine, sight, state, state.side_to_move)
+        _count_sight(engine, sight, state, state.side_to_move, move)
+        _count_rest(engine, rest, state, state.side_to_move)
         if _moves_an_instance(move) and move_from(move) in starting_squares:
             moved_squares.add(move_from(move))
         moves_by_type[kind] += 1
@@ -466,6 +556,7 @@ def _analyse_game(
         moved_instances=len(moved_squares),
         position_keys=position_keys,
         sight=sight,
+        rest=rest,
     )
 
 
@@ -945,6 +1036,7 @@ def _analyse_rounds(
     capture_counts: list[int] = []
     counts = _round_tallies(engine)
     sight = _sight_tally(engine)
+    rest = _rest_tally(engine)
 
     state = engine.initial_state()
     starting_squares = _starting_squares(engine, state.board)
@@ -962,6 +1054,7 @@ def _analyse_rounds(
             break
         for seat in (0, 1):
             _count_sight(engine, sight, state, seat)
+            _count_rest(engine, rest, state, seat)
         board = state.board
         for move in pair:
             kind = _mover_kind(engine, board, move)
@@ -1012,6 +1105,7 @@ def _analyse_rounds(
         position_keys=position_keys,
         rounds=counts,
         sight=sight,
+        rest=rest,
     )
 
 
@@ -1339,11 +1433,13 @@ def _analyse_spy(
     walked = 0
 
     sight = _sight_tally(engine)
+    rest = _rest_tally(engine)
 
     for step in spy_steps(engine, record):
         state, board = step.state, step.state.board
         for seat in step.seats:
             _count_sight(engine, sight, state, seat)
+            _count_rest(engine, rest, state, seat)
         for move in step.moves:
             kind = _mover_kind(engine, board, move)
             if kind is None:  # pragma: no cover - a legal move stands on its origin
@@ -1402,6 +1498,7 @@ def _analyse_spy(
         rounds=rounds,
         spy=spy,
         sight=sight,
+        rest=rest,
     )
 
 

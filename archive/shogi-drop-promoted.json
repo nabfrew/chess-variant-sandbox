@@ -1,5 +1,5 @@
 {
-  "schema_version": 15,
+  "schema_version": 31,
   "name": "promoted drop shogi",
   "description": "Shogi, Japanese chess, played on nine by nine, differs from chess in two ways: a captured piece changes sides, and its captor may later, instead of moving, drop it onto an empty square as their own; and most pieces may promote into a stronger piece on a move into, within or out of the far three ranks. In shogi a dropped piece always arrives unpromoted, even deep in the enemy camp, and must move again before it can turn over. This game removes that delay: a piece that can promote and is dropped into the far three ranks arrives promoted, a pawn as a tokin (stepping one square any way but diagonally back), a rook as a dragon (a rook that can also step one square diagonally). A drop into the enemy camp lands at full strength, so captured pieces weigh more on the enemy king, and a pawn may even be dropped on the last rank, which shogi forbids because a pawn there could never move. Until the first capture the game is shogi move for move.",
   "board": {

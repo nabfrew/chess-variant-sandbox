@@ -1,7 +1,7 @@
 {
   "schema_version": 30,
   "name": "Madrasi chess (sight test spec S1)",
-  "description": "Test spec for schema 30: every piece but the king freezes an enemy piece of its own type that it could capture (plan-passive.md section 6.1, S1).",
+  "description": "Test spec for schema 30: every piece but the king freezes an enemy piece of its own type that it could capture (docs/archive/plan-passive.md section 6.1, S1).",
   "board": {
     "width": 8,
     "height": 8

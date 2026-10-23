@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 31,
   "name": "shatranj",
   "description": "The Persian-Arabic ancestor of chess, played from roughly the 7th century. Same board and army as chess, but the queen is a ferz that steps one square diagonally and the bishop is an alfil that jumps exactly two. Pawns never double-step and promote only to ferz; there is no castling and no en passant. Stalemating the opponent wins. People played it for eight centuries and then abandoned it as too slow.",
   "board": {"width": 8, "height": 8},

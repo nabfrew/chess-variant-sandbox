@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 31,
   "name": "one-way cylinder chess",
   "description": "Chess on a board whose side edges are joined, but each player may cross the join in one direction only. White's pieces may run off the a-file and reappear on the h-file, never the reverse; Black's may run off the h-file onto the a-file. Each player crosses off their own left-hand side, which is White's queen's side and Black's king's side, so the two armies play under different geometry on the same board: a White rook on the a-file reaches round to the h-file, while a Black rook there meets an edge. Where a board joined both ways leaves no side edge to trap a king against, here each king keeps one edge it cannot cross, and every attack has to be planned around which way the join lets each piece through. Castling never uses the join.",
   "board": {

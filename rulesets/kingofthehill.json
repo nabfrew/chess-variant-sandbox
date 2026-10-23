@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 31,
   "name": "king of the hill",
   "description": "Ordinary chess with one extra way to win: walk your king to one of the four central squares. The king stops being a liability to be hidden and becomes a piece with somewhere to go.",
   "board": {

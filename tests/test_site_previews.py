@@ -41,38 +41,23 @@ from chess_variant_sandbox.web.server import App
 ARCHIVE = Path(__file__).resolve().parent.parent / "archive"
 RULESETS = Path(__file__).resolve().parent.parent / "rulesets"
 
-ARCHIVED_PREVIEWS = {
+ARCHIVED_PREVIEWS: dict[str, str] = {}
+"""The previews in `archive/`: none since Q1005 (2026-10-23,
+`docs/reference/preview-call-2026-10.md`), which made a call on each of the eleven the user
+asked about. Five joined the library (`JOINED_TURNS`, four since Q1007e retired one) and six left for `tests/_retired_*.json`,
+as Q962b's six and Q962c's one had (`docs/reference/previews-2026-10-18.md`). The next
+showcase archived as a preview is listed here."""
+
+RETIRED_PREVIEW_FILES = {
     # Q935f's SP2 (`plan-spy.md` §5): a spy game starts by turns and ends in rounds once a
-    # spy falls.
-    "gardner-with-spies-resting.json": "8ce37482d0de",  # rewritten by Q983a, was 1d798bedbf66
-    # Q943c's two Gardner speed showcases (`plan-speed.md` §6.1), played in rounds: not
-    # viable as Q943d measured them (§6.5), so they stay previews.
-    "gardner-in-rounds-with-a-swift-king.json": "d8bb879440ce",
-    "gardner-in-rounds-with-swift-knights.json": "bf230a962d10",
-    # Q943c's T3 joined the library (Q943f) and came back (Q996, 2026-10-21): not viable 0-4
-    # under the round player that sees a finished round's value
-    # (`docs/reference/library-repair-2026-10-21.md` §2.2).
-    "watering-hole-by-speed.json": "423a29997264",
-    # Q983d's three showcases of schema 29's rest (`plan-rest.md` §6.1): two by turns (U1
-    # Gardner, U3 chess) and one in rounds (U2 breather); previews until Q983e grades them.
+    # spy falls. Rewritten by Q983a (was 1d798bedbf66); retired by Q1005 on the seat.
+    "gardner-with-spies-resting.json": "8ce37482d0de",
+    # Q983d's U1 (`plan-rest.md` §6.1), schema 29's rest by turns; retired by Q1005.
     "gardner-with-weary-heavies.json": "1d1d3c79ce19",
-    "breather-by-weight.json": "7ea0357fa8de",
-    "chess-with-a-weary-queen.json": "fee1ab560013",
-    # Q999b's colour-bound showcase of schema 30's lines of sight (`plan-passive.md` §6.5),
-    # played by turns; a preview until its measurement is graded.
-    "opposite-colours.json": "690631b0e4eb",
-    # Q999d's three one-change showcases of schema 30 on chess (`plan-passive.md` §6.1), played
-    # by turns; previews until Q999e grades §6.3.
-    "madrasi.json": "59a118c8ee38",
-    "chess-with-a-sheltering-king.json": "1aa8c4705681",
-    "chess-with-daunting-knights.json": "c2b124298181",
 }
-"""The previews in `archive/`, by file and by the mechanics hash each was or will be measured
-under: the round and spy games less the four that joined the library (`JOINED`), the six that
-Q962b retired and the one Q962c retired (`docs/reference/previews-2026-10-18.md`; their files
-are `tests/_retired_*.json`), Q943c's three speed showcases (T3, the watering hole by speed,
-back from the library since Q996), Q983d's three rest showcases, two of them played by turns, Q999b's colour-bound showcase of
-schema 30's lines of sight, played by turns, and Q999d's three one-change showcases of it on chess, played by turns."""
+"""Retired previews the test checkout takes, each still carrying its preview sentence (moved
+unchanged), because the site's handling of a spy preview and of a preview by turns is still code
+that has to hold while `archive/` holds neither."""
 
 ROUND_PREVIEW = "0c7c0191c850"
 ROUND_PREVIEW_FILE = "gardner-in-rounds-resting.json"
@@ -83,7 +68,7 @@ of a round preview is still code that has to hold. Since schema 29 (Q983a) the r
 the old rest's refusal fixture, so the checkout takes its rewrite (`"rest": 1` on every piece,
 `tests/rest_equivalence.py::rewrite`), the same game under the hash `0c7c0191c850`."""
 
-PREVIEWS = {**ARCHIVED_PREVIEWS, ROUND_PREVIEW_FILE: ROUND_PREVIEW}
+PREVIEWS = {**ARCHIVED_PREVIEWS, **RETIRED_PREVIEW_FILES, ROUND_PREVIEW_FILE: ROUND_PREVIEW}
 """The previews of the test checkout (`_root`)."""
 
 JOINED_ROUNDS = {
@@ -94,11 +79,22 @@ JOINED_ROUNDS = {
 }
 """Two round games that were previews and joined the library by taking the mark off (Q934,
 `docs/archive/plan-library-audit.md`): Library games played in rounds, on every scored surface.
-The third, Q943f's watering hole by speed, went back to the previews (Q996)."""
+The third, Q943f's watering hole by speed, went back to the previews (Q996) and was retired
+(Q1005)."""
 
-JOINED_TURNS = {"riders-and-leapers.json": "26636602fae0"}
-"""A game played by turns that was a preview (Q936s: `"per_type": "own"`) and joined the same
-way (Q936t): a Library game offered the alternating ladder (`opponents.RUNGS`)."""
+JOINED_TURNS = {
+    # Q936s's `"per_type": "own"`, joined by Q936t.
+    "riders-and-leapers.json": "26636602fae0",
+    # Q1005 (2026-10-23): Q983d's U3 (schema 29's rest) and Q999d's S1 to S3 (schema 30's lines
+    # of sight). Q999b's colour-bound game (`690631b0e4eb`) joined then too; Q1007e retired it
+    # (2026-10-24) when R1 replaced it under its name, a game that was never a preview.
+    "chess-with-a-weary-queen.json": "fee1ab560013",
+    "madrasi.json": "59a118c8ee38",
+    "chess-with-a-sheltering-king.json": "1aa8c4705681",
+    "chess-with-daunting-knights.json": "c2b124298181",
+}
+"""Games played by turns that were previews and joined the same way (Q936t, Q1005): Library
+games offered the alternating ladder (`opponents.RUNGS`)."""
 
 JOINED = {**JOINED_ROUNDS, **JOINED_TURNS}
 
@@ -106,13 +102,9 @@ SPY_PREVIEWS = frozenset({"gardner-with-spies-resting.json"})
 """The preview that starts by turns (`library` `rounds` is false for a spy game, Q935c) and
 offer the spy ladder, which has no round player (`opponents.SPY_RUNGS`)."""
 
-TURN_PREVIEWS = frozenset({
-    "gardner-with-weary-heavies.json", "chess-with-a-weary-queen.json", "opposite-colours.json",
-    "madrasi.json", "chess-with-a-sheltering-king.json", "chess-with-daunting-knights.json",
-})
-"""The previews played by turns from the first move to the last (Q983d's U1 and U3, schema 29's
-rest in alternating play; Q999b's opposite colours and Q999d's three, schema 30's lines of sight): offered the alternating ladder (`opponents.RUNGS`), as any game by
-turns is."""
+TURN_PREVIEWS = frozenset({"gardner-with-weary-heavies.json"})
+"""The preview played by turns from the first move to the last (Q983d's U1, schema 29's rest in
+alternating play): offered the alternating ladder (`opponents.RUNGS`), as any game by turns is."""
 
 PLAIN = "kyoto.json"
 """An archived game that is no preview, for the library's side of every comparison."""
@@ -121,8 +113,8 @@ ROUND_AGENT = "matrix:nodes=6400"
 
 
 def _root(tmp_path: Path) -> Path:
-    """A checkout of the dull Baseline game, five Library games (three of them played in
-    rounds) and the four previews."""
+    """A checkout of the dull Baseline game, the Library games that were previews, one plain
+    Library game and the three previews."""
     (tmp_path / "rulesets").mkdir()
     (tmp_path / "archive").mkdir()
     (tmp_path / "runs").mkdir()
@@ -135,12 +127,14 @@ def _root(tmp_path: Path) -> Path:
 
 
 def _source(name: str) -> dict[str, Any]:
-    """The test checkout's file `name`: from `archive/`, or the retired round preview's
-    schema-29 rewrite."""
+    """The test checkout's file `name`: from `archive/`, a retired preview's file, or the
+    retired round preview's schema-29 rewrite."""
     if name == ROUND_PREVIEW_FILE:
         from rest_equivalence import rewrite
 
         return rewrite(load_spec(retired_preview_path("gardner-in-rounds-resting")))
+    if name in RETIRED_PREVIEW_FILES:
+        return load_spec(retired_preview_path(name.removesuffix(".json")))
     return load_spec(ARCHIVE / name)
 
 
@@ -148,7 +142,7 @@ def _source(name: str) -> dict[str, Any]:
 
 
 class TestTheFiles:
-    def test_the_four_say_they_are_previews_and_keep_their_hashes(self) -> None:
+    def test_the_previews_say_so_and_keep_their_hashes(self) -> None:
         for name, digest in PREVIEWS.items():
             spec = _source(name)
             assert spec_hash(spec) == digest, "the mark is outside the mechanics hash"
@@ -157,7 +151,7 @@ class TestTheFiles:
             assert said is not None and "preview" in said.lower()
             assert "not yet trusted" in said
 
-    def test_no_baseline_game_is_a_preview_and_only_the_round_games_are(self) -> None:
+    def test_no_baseline_game_is_a_preview_and_archive_holds_the_listed_ones(self) -> None:
         for path in sorted(RULESETS.glob("*.json")):
             assert library.preview_sentence(load_spec(path)) is None, path.name
         marked = {
@@ -166,7 +160,7 @@ class TestTheFiles:
         }
         assert marked == set(ARCHIVED_PREVIEWS)
 
-    def test_the_four_that_joined_say_nothing_and_keep_their_hashes(self) -> None:
+    def test_the_games_that_joined_say_nothing_and_keep_their_hashes(self) -> None:
         for name, digest in JOINED.items():
             spec = load_spec(ARCHIVE / name)
             assert spec_hash(spec) == digest, "taking the mark off moved no game"
@@ -192,7 +186,7 @@ def app(tmp_path_factory: pytest.TempPathFactory) -> App:
 
 
 class TestTheListing:
-    def test_games_is_the_library_and_previews_holds_the_four(self, app: App) -> None:
+    def test_games_is_the_library_and_previews_holds_the_previews(self, app: App) -> None:
         listing = app.get("/api/library")
         assert {card["hash"] for card in listing["games"]} == {
             spec_hash(DULL), spec_hash(load_spec(ARCHIVE / PLAIN)), *JOINED.values()
@@ -204,7 +198,7 @@ class TestTheListing:
             assert card["level"] == stages.PREVIEW
             assert card["preview"] and card["band"] is None and card["trust"] is None
             # The quick check plays a game in rounds as it plays any game (Q932), so the
-            # card carries its verdict: all four play to a finish under random play.
+            # card carries its verdict: every one plays to a finish under random play.
             assert card["playable"] is True and card["playableReasons"] == []
         assert all(card["preview"] is None for card in listing["games"])
 
@@ -258,7 +252,7 @@ class TestNoBand:
         self, app: App, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Every game given the same current score: the library's six are banded against
-        each other, and the four previews neither have a band nor move the others'."""
+        each other, and the previews neither have a band nor move the others'."""
         score = {"weights_version": library.DEFAULT_WEIGHTS, "combined": 0.5,
                  "interval": {"ci_low": 0.4, "ci_high": 0.6, "deterministic_pairings": 1}}
         monkeypatch.setattr(library, "current_only", lambda _score: score)
@@ -307,7 +301,7 @@ def _origins(site: Site) -> dict[str, str]:
 
 
 class TestTheLoad:
-    def test_the_four_load_as_previews_and_nothing_scores_them(
+    def test_the_previews_load_as_previews_and_nothing_scores_them(
         self, tmp_path: Path
     ) -> None:
         root = _root(tmp_path)

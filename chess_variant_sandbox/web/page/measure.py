@@ -19,8 +19,20 @@ replays a sample of the games exactly, and a spot-checked score is what opens *P
 so when the check ends the designer's *Where this game stands* is asked again (Q503e). A
 mismatch is said as such: the score is not kept and the account cannot publish. A refusal named
 `stale-build` means the page loaded a wheel the server no longer runs: the page fetches
-the manifest again, and the next measurement loads the current one. Off the site, and
-for a visitor, nothing is sent.
+the manifest again, and the next measurement loads the current one. Off the site nothing
+is sent.
+
+**On the site it measures only what the site could keep (Q1004).** The site keeps a score
+from a browser for a game its designer has saved and for nothing else
+(`provisional.check_owner`), and the user found it measuring a game nobody had saved, for
+minutes, and then refusing the score. So the page reads the draft's standing first
+(`hereKeeping`): for a visitor, for rules the library holds and for rules somebody else
+saved, *measure it here* is drawn off with the sentence saying how to turn it on (sign in;
+change a rule to make a game of your own). For rules nobody has saved it measures, holds the
+finished upload on the page instead of sending it, and offers *save it and keep the score*,
+the editor's own save; the next standing that says the game is this person's sends the
+upload as it came (`hereStood`), so nothing is measured again and the site walks and scores
+every game as it does any other.
 
 **Two halves, and neither answers a question in JavaScript.** `CLAUDE.md` rule 3 holds in
 the browser: what plays is the package's own core under Pyodide, and what cuts and joins

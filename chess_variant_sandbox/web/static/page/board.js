@@ -1005,7 +1005,7 @@ let INSPECT = null;
 let HOVER_END = null;
 let LIT = null;
 
-// Schema 30 (Q999c, `docs/plan-passive.md` §4.6): lines of sight. `SIGHT_HOVER` is the piece
+// Schema 30 (Q999c, `docs/archive/plan-passive.md` §4.6): lines of sight. `SIGHT_HOVER` is the piece
 // under the pointer whose sight is drawn; `SIGHT_TAP` the one tapped, `{square, ply}`, which
 // holds until another tap or the next position. Both are of the live position only: the
 // squares a piece sees are the core's (`sights`, `Engine.sight_of`), sent for the position in
@@ -1874,13 +1874,14 @@ function drawBoard(previous) {
   const standing = AT ? null : SESSION.round;
   out += standoffHtml(standing, cell);
   // Schema 27 (Q942b): a swap that met, between its two squares, while it is the last
-  // round on screen; and (schema 29) each resting piece's badge, on the position still to
-  // be played, in any game.
+  // round on screen; and (schema 29) each resting piece's badge, in any game, on the position
+  // on screen (a step back's from its move, Q983b), numbered with its turns left where some
+  // piece rests longer than one (`restNumbered`). Nothing rests once the game is over.
   const clashed = roundClash(last);
   out += clashHtml(clashed, cell);
-  const resting = SESSION.outcome || AT ? [] : positionRests(SESSION.resting);
-  out += restsHtml(resting, cell);
-  // Schema 30 (Q999c, `docs/plan-passive.md` §4.6): each piece under a line of sight's
+  const resting = SESSION.outcome && !AT ? [] : positionRests(AT ? AT.resting : SESSION.resting);
+  out += restsHtml(resting, cell, restNumbered(rules.rest));
+  // Schema 30 (Q999c, `docs/archive/plan-passive.md` §4.6): each piece under a line of sight's
   // effect wears its badge, off the core's effect bits for the position on screen.
   const affected = effectsShown();
   out += effectsHtml(affected, cell);
@@ -3159,7 +3160,8 @@ function moveRows() {
     const stripe = i % 2 === 0;
     rows.push({ plies: i + 1, kind: 'move', stripe: stripe, html: `${
       stripe ? `${Math.floor(i / 2) + 1}.` : '&nbsp;&nbsp;&hellip;'} ${esc(m.text)}${
-      signHtml(m, i === last ? outcome : null)}${lookedHtml(m)}${corrMovedDayHtml(i)}` });
+      signHtml(m, i === last ? outcome : null)}${liftedHtml(m)}${lookedHtml(m)}${
+      corrMovedDayHtml(i)}` });
     if (!(m.phase || []).length) return;
     const beat = split.get(i + 1);
     rows.push({ plies: i + 1, kind: 'phase', stripe: stripe,
@@ -3261,6 +3263,16 @@ function seatHtml(player) {
   return `<b>${esc(sideName(player))}</b>
     <span class="muted">${label}</span>${initiativeHtml(player)}${
     strength ? `<div class="muted small">${esc(strength)}</div>` : ''}`;
+}
+
+// Schema 29 (Q983b, `docs/plan-rest.md` §5.6): a move chosen under a lift, beside the move,
+// from its entry's `lifted` (the core's answer, `web/play.py::rest_entry`). A round says it in
+// its sentences instead (`round_reveal`'s words), so only a turn's row carries the mark.
+function liftedHtml(move) {
+  if (!move || !move.lifted || move.round !== undefined) return '';
+  return ` <span class="muted small" data-lifted title="${esc(
+    "every move this side had was a resting piece's, so the rest was lifted for this turn")}">${
+    esc('rest lifted')}</span>`;
 }
 
 // How far the machine looked before it played a move, beside the move, as the core
@@ -3498,13 +3510,30 @@ function drawPieceSays() {
   const chosen = SELECTED !== null && !AT ? SELECTED : tapped;
   const piece = chosen !== null ? pieceAt(chosen) : null;
   const about = piece && game && (game.pieces || [])[piece.type];
-  // Its ways of moving, then what its lines of sight do (`describe`'s sentences, Q999c).
+  // Its ways of moving, then what its lines of sight do (`describe`'s sentences, Q999c), then
+  // (schema 29, Q983b) its rest and, resting now, the turns it has left.
   const said = about
-    ? (about.moves || []).concat((about.sights || []).map(sight => sight.words)) : [];
+    ? (about.moves || []).concat((about.sights || []).map(sight => sight.words),
+                                 pieceRestLine(about, chosen)) : [];
   line.hidden = !said.length;
   line.innerHTML = said.length
     ? `<b>${esc(about.name || about.id)}</b>: ${said.map(esc).join('; ')}` : '';
   sayMore(line);
+}
+
+// Schema 29 (Q983b, `docs/plan-rest.md` §5.6): a piece's rest in words for the line under a
+// picked piece, from its card's `rest` (the compiled table's) and the position's `resting`
+// (the core's): *rests 2 turns after it moves*, and *resting: 1 more turn* while it rests.
+function pieceRestLine(about, square) {
+  const turns = about && about.rest;
+  if (!turns) return [];
+  const said = [`rests ${turns} turn${turns === 1 ? '' : 's'} after it moves`];
+  const resting = positionRests(AT ? AT.resting : SESSION.resting)
+    .find(rest => rest.square === square);
+  if (resting && !SESSION.outcome) {
+    said.push(`resting: ${resting.left} more turn${resting.left === 1 ? '' : 's'}`);
+  }
+  return said;
 }
 
 // Q809: the sentences are held to the one line `fitBoard` keeps for them (the style's
@@ -4452,6 +4481,9 @@ function beatEntry(kind, board, steps, snapshot, plies, walkers, coming) {
     // Schema 30 (Q999c): the effects on the position the ply left (the move's own
     // `effects`), else the snapshot's: a step back draws the badges of its own position.
     effects: effectPairs((move && move.effects) || snapshot.effects),
+    // Schema 29 (Q983b): the pieces resting on the position the ply left (the move's own
+    // `resting`); nothing rests before the first move.
+    resting: ((move && move.resting) || []).slice(),
   };
 }
 

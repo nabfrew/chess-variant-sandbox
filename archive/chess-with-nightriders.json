@@ -1,0 +1,96 @@
+{
+  "schema_version": 31,
+  "name": "chess with nightriders",
+  "description": "The knight here is a nightrider, a classic piece of fairy chess introduced by T. R. Dawson in 1925: it makes a knight's jump and may then keep jumping the same way, jump after jump in a straight line, stopped only by a piece on a square it would land on, which it takes if it is an enemy's. The squares it jumps over never block it. That turns chess's short-range piece into a long-range one whose lines run at angles no other piece uses: a nightrider can fork two pieces from across the board, pin a piece against its king along a line the eye does not scan, and give check from a distance. The knight's quiet manoeuvres become threats at range, so a player has to watch the odd lines as well as the files and diagonals, and a knight-shaped gap in a pawn wall is an open line. Everything else is chess.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {"kind": "slide", "vectors": [[0, 1]], "range": 1, "mode": "move"},
+        {
+          "kind": "slide",
+          "vectors": [[0, 1]],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {"from_rank": 1}
+        },
+        {"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "capture"}
+      ]
+    },
+    {
+      "id": "N",
+      "name": "nightrider",
+      "value": 4.5,
+      "moves": [{"kind": "slide", "vectors": [[1, 2]], "symmetry": "dihedral8", "mode": "both"}]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [{"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {"kind": "slide", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "both"}
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [[1, 0], [1, 1]],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2"]},
+      {"piece": "R", "squares": ["a1", "h1"]},
+      {"piece": "N", "squares": ["b1", "g1"]},
+      {"piece": "B", "squares": ["c1", "f1"]},
+      {"piece": "Q", "squares": ["d1"]},
+      {"piece": "K", "squares": ["e1"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": "last", "to": ["Q", "R", "B", "N"]},
+    "en_passant": true,
+    "castling": {"king": "K", "rook": "R", "king_steps": 2},
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "provenance": {
+    "added": "2026-10-24",
+    "origin": "designed",
+    "source": "docs/plan-schema-31.md, Q1007e: R3, the showcase for schema 31's riders written as a slide over a jump (section 6.2)",
+    "history": "R3 of docs/plan-schema-31.md section 6.2, pre-registered 2026-10-23: chess (4c1922ffae26) with the knight's move written as a slide over [1, 2] by dihedral8, the nightrider, one change on the calibration baseline so a visitor sees what a ridden leap is. Built by Q1007e (2026-10-24); the piece renamed nightrider and valued 4.5 (the registered file kept the knight's name and value 3), a design choice made before any measured game.",
+    "parents": ["4c1922ffae26"]
+  }
+}

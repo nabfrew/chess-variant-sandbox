@@ -16,6 +16,7 @@ Raw counts only. Normalisation against the calibration rulesets happens in
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -284,7 +285,7 @@ def _speed_extras(pieces: Any) -> float:
     return _SPEED + _SPEED_PER_TYPE * declared if declared else 0.0
 
 
-# Schema 30 (Q999a, `docs/plan-passive.md` §4.3): each effect a game's sights use is one rule a
+# Schema 30 (Q999a, `docs/archive/plan-passive.md` §4.3): each effect a game's sights use is one rule a
 # player is taught (what a frozen, disarmed or shielded piece may do, and how check reads it),
 # charged once for the game; each sight entry beyond the first of an effect is a fact about a
 # piece a player has to remember; an aura (`through`) is one more sentence, once for the game.
@@ -293,13 +294,17 @@ def _speed_extras(pieces: Any) -> float:
 _SIGHT_EFFECT = 1.0
 _SIGHT_PER_ENTRY = 0.25
 _SIGHT_AURA = 0.25
+# Q1007c (`docs/plan-schema-31.md` §3.8): a command is one more effect (1.0, above); a command
+# that may make its pieces take their own side (`captures_own`) is half a rule more, once.
+_SIGHT_TURNCOAT = 0.5
 
 
 def _sight_extras(pieces: Any) -> float:
-    """What a game's sights cost: each distinct effect, each further entry of an effect, and
-    an aura once."""
+    """What a game's sights cost: each distinct effect, each further entry of an effect, an
+    aura once, and a turncoat capture once."""
     per_effect: dict[str, int] = {}
     aura = False
+    turncoat = False
     for piece in pieces if isinstance(pieces, list) else []:
         sight = piece.get("sight") if isinstance(piece, dict) else None
         for entry in sight if isinstance(sight, list) else []:
@@ -307,10 +312,12 @@ def _sight_extras(pieces: Any) -> float:
                 continue
             per_effect[entry["effect"]] = per_effect.get(entry["effect"], 0) + 1
             aura |= entry.get("through") is True
+            turncoat |= entry.get("captures_own") is True
     return (
         _SIGHT_EFFECT * len(per_effect)
         + _SIGHT_PER_ENTRY * sum(count - 1 for count in per_effect.values())
         + (_SIGHT_AURA if aura else 0.0)
+        + (_SIGHT_TURNCOAT if turncoat else 0.0)
     )
 
 
@@ -489,10 +496,44 @@ def _count_special_rules(rules: dict[str, Any]) -> float:
     return total
 
 
+def _portal_movement(rules: Any) -> list[dict[str, Any]]:
+    """Spelling 31: one piece per distinct ``rules.portals[].moves`` list, each move's
+    ``mode`` read as ``"move"`` where it is left out, as `schema.portal_movement_types`
+    builds them (read off the spelling here, since this file is in
+    `measurement.METRICS_SOURCES` and `schema.py` is not).
+
+    Every portal game declared such a piece before spelling 31 (its stand-in), and counted it
+    as a piece type with its moves; counting it here keeps every portal game's counts, and
+    so its rule mass, where they were. Empty without portals, and for a spec still in the
+    old spelling, whose stand-in is among its pieces already.
+    """
+    portals = rules.get("portals") if isinstance(rules, dict) else None
+    if not isinstance(portals, list) or any(
+        isinstance(group, dict) and "piece" in group for group in portals
+    ):
+        return []
+    seen: list[str] = []
+    found: list[dict[str, Any]] = []
+    for group in portals:
+        if not isinstance(group, dict):
+            continue
+        listed = group.get("moves")
+        moves = listed if isinstance(listed, list) else []
+        written = [
+            {**move, "mode": move.get("mode", "move")} if isinstance(move, dict) else move
+            for move in moves
+        ]
+        key = json.dumps(written, sort_keys=True)
+        if key not in seen:
+            seen.append(key)
+            found.append({"moves": written})
+    return found
+
+
 def measure_complexity(spec: dict[str, Any]) -> SpecComplexity:
     """Count the structural features of a validated spec."""
-    pieces = spec.get("pieces", [])
     rules = spec.get("rules", {})
+    pieces = [*spec.get("pieces", []), *_portal_movement(rules)]
 
     move_descriptors = 0
     conditional_moves = 0

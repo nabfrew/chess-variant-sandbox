@@ -25,7 +25,7 @@ from chess_variant_sandbox.engine.engine import _square_name
 from chess_variant_sandbox.engine.moves import move_from, move_to
 from chess_variant_sandbox.spec import load_spec, validate_spec
 from chess_variant_sandbox.spec.complexity import expand_symmetry
-from chess_variant_sandbox.spec.schema import _schema_eighteen_uses
+from tests.feature_inventory import _schema_eighteen_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 GAMES = 6  # seeds 0 to 5, as pre-registered

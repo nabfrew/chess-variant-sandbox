@@ -1787,9 +1787,10 @@ def serve(
     open_browser: bool = False,
     heuristics_dir: Path | str = "heuristics",
     archive_dir: Path | str = corpus.ARCHIVE_DIR,
+    browser_dir: Path | str = BROWSER_DIR,
 ) -> None:
     """Run the application until interrupted."""
-    app = App(ruleset_dir, runs_dir, heuristics_dir, archive_dir)
+    app = App(ruleset_dir, runs_dir, heuristics_dir, archive_dir, browser_dir)
     server = listen(app, host, port)
     url = f"http://{host}:{server.server_port}{GAMES_PATH}"
     print(f"Chess variant sandbox is playable at {url}")

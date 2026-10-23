@@ -31,8 +31,8 @@ from chess_variant_sandbox.fairy.variant import Untranslatable, translate
 from chess_variant_sandbox.spec import load_spec, spec_hash, validate_spec
 from chess_variant_sandbox.spec.describe import describe_spec
 from chess_variant_sandbox.spec.distance import distance
-from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, _schema_twenty_five_uses
-from chess_variant_sandbox.spec.transform import settle_schema_version
+from chess_variant_sandbox.spec.schema import SCHEMA_VERSION
+from tests.feature_inventory import _schema_twenty_five_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 REAR_GUARD = ROOT / "archive" / "torus-less-extended.json"
@@ -109,12 +109,6 @@ class TestTheValidator:
         spec = _gardner_pawns(turns="no")
         assert any("facing.turns must be a boolean" in e for e in validate_spec(spec))
 
-    def test_an_older_version_may_not_say_it(self) -> None:
-        spec = _gardner_pawns(turns=False)
-        spec["schema_version"] = 24
-        errors = validate_spec(spec)
-        assert any("pieces[].facing.turns, added in schema 25" in e for e in errors), errors
-
     def test_the_collector_names_it_whatever_its_value(self) -> None:
         for value in (True, False):
             assert _schema_twenty_five_uses(_gardner_pawns(turns=value)) == {
@@ -137,13 +131,6 @@ class TestTheValidator:
     def test_a_fixed_facing_held_two_ways_is_admitted(self) -> None:
         assert validate_spec(_gardner_pawns(turns=False)) == []
         assert validate_spec(_rear_guard()) == []
-
-    def test_the_settled_version_is_twenty_five(self) -> None:
-        spec = _gardner_pawns(turns=False)
-        spec["schema_version"] = 1
-        settle_schema_version(spec)
-        assert spec["schema_version"] == 25
-
 
 class TestTheCompiler:
     def test_a_turning_facing_compiles_as_before(self) -> None:
@@ -169,7 +156,6 @@ class TestTheCompiler:
         spec["setup"]["placements"].append({"piece": "R", "squares": ["c3"], "facing": "backward"})
         with pytest.raises(Exception, match="its facing changes nothing"):
             compile_spec(spec)
-
 
     @pytest.mark.parametrize(
         "path", ["archive/torus-less-extended.json", "archive/chess-oriented-pawns.json"]

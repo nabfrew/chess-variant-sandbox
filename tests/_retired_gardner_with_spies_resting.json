@@ -1,7 +1,7 @@
 {
-  "schema_version": 28,
-  "name": "gardner in rounds with swift knights",
-  "description": "Win by taking the other side's king in Martin Gardner's minichess (chess on a 5x5 board, each side a rook, knight, bishop, queen and king behind five pawns), played in rounds: each round both players choose a move in secret, both are revealed, and there is no check, so a king is simply taken. In this version the knights are the fastest pieces. When one side moves a knight and the other moves anything else, the knight's move is made first, as an ordinary move, and the other move is made afterwards only if it still can be. That makes the knight the one attacker a king cannot run from: a knight that can take the king this round takes it where it stands, before the king's flight starts, and nothing is fast enough to remove the knight first (even the other knight, being only as fast, strikes at a square the knight has already left). A king within a knight's jump is as good as lost, so the game is fought over the squares from which a knight attacks a king: keeping the enemy knight off them, and getting your own onto them. Speed has a price. A knight lands first and then stands there, so a slower piece that was aiming at its landing square takes it; and in the round a knight jumps within reach of a king, that king still moves after it and may step out of reach, if its player saw the threat coming. Between pieces of equal speed nothing changes: two pieces moving onto one square collide and both are removed, two pieces trying to take each other trade places, and two kings falling in the same round, as when both knights strike at once, is a draw.",
+  "schema_version": 31,
+  "name": "gardner with spies resting",
+  "description": "Win by taking the other side's king in Martin Gardner's minichess (chess on a 5x5 board, each side a rook, knight, bishop, queen and king behind a row of pawns), with the middle pawn replaced by a spy: a piece that steps one square straight, never captures, and is worth what it lets its owner see. While both spies stand, play alternates as in chess, with kings taken rather than mated. Once a spy falls (after its owner's one reply, so its taker can be taken back), the game moves in rounds: the side without a spy announces its move first, and the side with one answers with that move in view; once both spies are gone, both choose in secret. Seeing first would be crushing if an attacked piece could always step away, so the piece that made a side's move rests through that side's next move, in the turns as in the rounds, unless it is the only piece that can move. A piece that has just captured or dodged must stand, so an announced recapture still lands, and no piece moves twice running at any point of the game. Each spy is a target as well as an eye.",
   "board": {
     "width": 5,
     "height": 5
@@ -34,13 +34,13 @@
           "symmetry": "lateral",
           "mode": "capture"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "N",
       "name": "knight",
       "value": 3,
-      "speed": 1,
       "moves": [
         {
           "kind": "leap",
@@ -53,7 +53,8 @@
           "symmetry": "dihedral8",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "B",
@@ -71,7 +72,8 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "R",
@@ -89,7 +91,8 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "Q",
@@ -111,7 +114,8 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
     },
     {
       "id": "K",
@@ -134,7 +138,29 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
-      ]
+      ],
+      "rest": 1
+    },
+    {
+      "id": "S",
+      "name": "spy",
+      "value": 2,
+      "spy": true,
+      "captures": [],
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "move"
+        }
+      ],
+      "rest": 1
     }
   ],
   "setup": {
@@ -145,7 +171,6 @@
         "squares": [
           "a2",
           "b2",
-          "c2",
           "d2",
           "e2"
         ]
@@ -179,6 +204,12 @@
         "squares": [
           "e1"
         ]
+      },
+      {
+        "piece": "S",
+        "squares": [
+          "c2"
+        ]
       }
     ]
   },
@@ -201,11 +232,11 @@
     "simultaneous": {}
   },
   "provenance": {
-    "added": "2026-10-19",
-    "preview": "A preview: a new kind of game played in rounds in which faster pieces move first, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
+    "added": "2026-10-17",
+    "preview": "A preview: a new kind of game in which a lost spy turns the game into rounds, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
     "origin": "designed",
-    "source": "docs/plan-speed.md, Q943c: the showcases of schema 28's speed (section 6.1)",
-    "history": "T2 of docs/plan-speed.md section 6.1, pre-registered 2026-10-16 before it was built: Gardner in rounds (e043fce6968e; retired from the previews by Q962b for its draws, file tests/_retired_gardner_in_rounds.json) with the knight at speed 1 and every other piece at 0, so each king is slower than both enemy knights: the other half of section 3.2, whether a faster attacker ends the chase, and at what price in quick kills. Built by Q943c (2026-10-19); measured and graded against section 6.3 by Q943d.",
+    "source": "docs/plan-spy.md, Q935f: the spy's showcases and design study (section 5)",
+    "history": "SP2, the design study's arm with rules.simultaneous.rest: Gardner with spies (SP1) with the rest, which plan-spy.md section 1.6 predicts restores the recapture that announced rounds take away. Pre-registered in docs/plan-spy.md section 5 before any graded game; the study and its grades are there. Rewritten for schema 29 by Q983a (2026-10-20): the old switch rules.simultaneous.rest as \"rest\": 1 on every piece (docs/plan-rest.md section 4.5).",
     "parents": [
       "e043fce6968e"
     ]

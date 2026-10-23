@@ -432,7 +432,8 @@ FROZEN: dict[str, tuple[str, str]] = {
     # Q983a, 2026-10-20: rewritten for schema 29, `"rest": 1` on every piece, which now rests the
     # alternating phase too (`docs/plan-rest.md` §3.10, §4.5): the nearest new game; it was
     # `1d798bedbf66`/`8a309ac4ab581f8e`, whose runs stay.
-    "archive/gardner-with-spies-resting.json": ("8ce37482d0de", "695d1804a70fbd97"),
+    # Q1005, 2026-10-23: `archive/gardner-with-spies-resting.json` (`8ce37482d0de`/`695d1804a70fbd97`) retired from the previews
+    # (`docs/reference/preview-call-2026-10.md`), its file kept as `tests/_retired_*.json`; its runs stay.
     # Q936s, 2026-10-17: the showcase of `"per_type": "own"`, two armies of different kinds
     # (`docs/reference/extinction-any-kind.md` §5; `tests/test_showcases_q936s.py`). New;
     # measured first as `30c055a056ec` (tables `d53eb61a71b4745e`), re-frozen the same day when
@@ -443,9 +444,12 @@ FROZEN: dict[str, tuple[str, str]] = {
     # `tests/test_showcases_q943.py`): T1 Gardner in rounds with a swift king, T2 with swift
     # knights (both from `e043fce6968e`), T3 the watering hole by speed (from
     # `5c0b017473f5`, `tie` removed). New.
-    "archive/gardner-in-rounds-with-a-swift-king.json": ("d8bb879440ce", "8fa64f1ddc578b39"),
-    "archive/gardner-in-rounds-with-swift-knights.json": ("bf230a962d10", "dea52f83bc92f1ef"),
-    "archive/watering-hole-by-speed.json": ("423a29997264", "fad275be85810dff"),
+    # Q1005, 2026-10-23: `archive/gardner-in-rounds-with-a-swift-king.json` (`d8bb879440ce`/`8fa64f1ddc578b39`) retired from the previews
+    # (`docs/reference/preview-call-2026-10.md`), its file kept as `tests/_retired_*.json`; its runs stay.
+    # Q1005, 2026-10-23: `archive/gardner-in-rounds-with-swift-knights.json` (`bf230a962d10`/`dea52f83bc92f1ef`) retired from the previews
+    # (`docs/reference/preview-call-2026-10.md`), its file kept as `tests/_retired_*.json`; its runs stay.
+    # Q1005, 2026-10-23: `archive/watering-hole-by-speed.json` (`423a29997264`/`fad275be85810dff`) retired from the previews
+    # (`docs/reference/preview-call-2026-10.md`), its file kept as `tests/_retired_*.json`; its runs stay.
     # Q798, 2026-10-19: the showcase of `strike.immune` naming a non-royal piece, circe with
     # the queen and bishops immune (`docs/reference/schema-showcase-coverage.md`, *Q798*;
     # `tests/test_showcases_q798.py`). New, from `54a0a193da0f`.
@@ -459,18 +463,26 @@ FROZEN: dict[str, tuple[str, str]] = {
     # the queen resting 2 and the rooks 1 (from `975dde173f01`), U2 breather with the rests
     # by weight (from `b8687024cfc6`), U3 chess with the queen resting 1 (from
     # `4c1922ffae26`). New.
-    "archive/gardner-with-weary-heavies.json": ("1d1d3c79ce19", "443c11ae88baf8a5"),
-    "archive/breather-by-weight.json": ("7ea0357fa8de", "abaae18d917e8aab"),
+    # Q1005, 2026-10-23: `archive/gardner-with-weary-heavies.json` (`1d1d3c79ce19`/`443c11ae88baf8a5`) retired from the previews
+    # (`docs/reference/preview-call-2026-10.md`), its file kept as `tests/_retired_*.json`; its runs stay.
+    # Q1005, 2026-10-23: `archive/breather-by-weight.json` (`7ea0357fa8de`/`abaae18d917e8aab`) retired from the previews
+    # (`docs/reference/preview-call-2026-10.md`), its file kept as `tests/_retired_*.json`; its runs stay.
     "archive/chess-with-a-weary-queen.json": ("fee1ab560013", "e0e507662bfb777a"),
     # Q999b, 2026-10-22: the user's colour-bound showcase of schema 30's lines of sight
-    # (`docs/plan-passive.md` §6.5; `tests/test_showcase_opposite_colours.py`): chess's array
+    # (`docs/archive/plan-passive.md` §6.5; `tests/test_showcase_opposite_colours.py`): chess's array
     # with every piece bound to its colour, the colours meeting only by sight. New.
-    "archive/opposite-colours.json": ("690631b0e4eb", "b0f117a66632385c"),
-    # Q999d, 2026-10-22: schema 30's three one-change showcases on chess (`docs/plan-passive.md`
+    # Q1007e, 2026-10-24: replaced under its name by R1 (`docs/plan-schema-31.md` §6.1;
+    # `tests/test_showcases_q1007e.py`), rook and queen made two-square riders on a board two ranks
+    # longer; was `690631b0e4eb`/`b0f117a66632385c`, kept as `tests/_retired_opposite_colours.json`.
+    "archive/opposite-colours.json": ("ce406100becc", "2b08f4f685f2a455"),
+    # Q999d, 2026-10-22: schema 30's three one-change showcases on chess (`docs/archive/plan-passive.md`
     # §6.1; `tests/test_showcases_q999.py`), Q999a's test specs archived as registered. New.
     "archive/madrasi.json": ("59a118c8ee38", "94492725c59178b8"),
     "archive/chess-with-a-sheltering-king.json": ("1aa8c4705681", "64883471fd520e34"),
     "archive/chess-with-daunting-knights.json": ("c2b124298181", "39d7f80d78350661"),
+    # Q1007e, 2026-10-24: R3, chess with the knight made a nightrider, schema 31's ridden leap
+    # (`docs/plan-schema-31.md` §6.2; `tests/test_showcases_q1007e.py`), from `4c1922ffae26`. New.
+    "archive/chess-with-nightriders.json": ("cc5e28e9ed0f", "1c16ddb9f0bfe37b"),
 }
 
 
@@ -665,19 +677,6 @@ class TestWhatTheValidatorRefuses:
         spec = _boar(chess_spec)
         spec["rules"]["npcs"] = []
         assert any("non-empty" in error for error in validate_spec(spec))
-
-    def test_wild_pieces_declare_schema_nine(self, chess_spec: dict[str, Any]) -> None:
-        """Both schema-9 features, in one sentence, so a spec is told everything at once."""
-        spec = _boar(chess_spec)
-        spec["schema_version"] = 8
-        errors = validate_spec(spec)
-        assert len(errors) == 1, errors
-        assert "schema 9" in errors[0] and "rules.npcs" in errors[0] and "points" in errors[0]
-        # And `points` alone, with no wild piece, is still a schema-9 word.
-        plain = copy.deepcopy(chess_spec)
-        plain["schema_version"] = 8
-        plain["rules"]["scoring"] = {"count": "points"}
-        assert any("schema 9" in error for error in validate_spec(plain))
 
     def test_three_owners_share_the_one_byte(self, chess_spec: dict[str, Any]) -> None:
         """Three owners at four facings is 21 piece types, not 24."""
@@ -930,7 +929,7 @@ class TestTheSurfaces:
         assert validate_spec(spec) == [], validate_spec(spec)
         npcs = spec["rules"]["npcs"]
         assert len(npcs) == 1 and npcs[0]["mirror"] is True and len(npcs[0]["route"]) == 4
-        assert spec["schema_version"] == 9
+        assert spec["schema_version"] >= 9  # chess carries the current stamp since Q1008b
         assert _set_a_patrol(spec, random.Random(3))
         assert validate_spec(spec) == []
         assert spec_hash(spec) == before, "set-a-patrol does not undo itself"

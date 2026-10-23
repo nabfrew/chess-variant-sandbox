@@ -28,7 +28,9 @@ from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.engine.engine import _square_name
 from chess_variant_sandbox.engine.moves import MOVE_DROP, MOVE_ROTATE, decode_move
 from chess_variant_sandbox.engine.state import GameState
-from chess_variant_sandbox.spec.schema import _schema_twenty_eight_uses, validate_spec
+from chess_variant_sandbox.spec.canonical import spec_hash
+from chess_variant_sandbox.spec.schema import validate_spec
+from tests.feature_inventory import _schema_twenty_eight_uses
 
 HERE = Path(__file__).parent
 
@@ -174,16 +176,16 @@ KINGS = {"e1": ("K", 0), "e5": ("K", 1)}
 # ------------------------------------------------------------------- the key
 
 
-def test_the_collector_names_speed_whatever_its_value() -> None:
+def test_the_collector_names_speed_unless_it_is_off() -> None:
     assert _schema_twenty_eight_uses(gardner({"R": 1})) == {"pieces.speed"}
-    assert _schema_twenty_eight_uses(gardner({"R": 0})) == {"pieces.speed"}
+    assert _schema_twenty_eight_uses(gardner({"R": 0})) == set()
     assert _schema_twenty_eight_uses(gardner(None)) == set()
 
 
-def test_speed_at_schema_twenty_seven_is_refused() -> None:
-    spec = gardner({"R": 1})
-    spec["schema_version"] = 27
-    assert any("pieces.speed" in e and "schema 28" in e for e in validate_spec(spec))
+def test_a_speed_of_0_is_the_game_without_it() -> None:
+    """Q1008c: 0 is the off value, accepted and named as the speed left out."""
+    assert validate_spec(gardner({"R": 0})) == validate_spec(gardner(None))
+    assert spec_hash(gardner({"R": 0})) == spec_hash(gardner(None))
 
 
 def test_speed_without_rounds_is_refused() -> None:
@@ -195,7 +197,6 @@ def test_speed_without_rounds_is_refused() -> None:
 @pytest.mark.parametrize(
     ("value", "words"),
     [
-        (0, "speed 0 is the default"),
         (-1, "at least 1"),
         (1.5, "at least 1"),
         (True, "at least 1"),
@@ -215,13 +216,6 @@ def test_speeds_must_be_ranks_with_none_skipped() -> None:
     every = gardner({pid: 1 for pid in "PNBRQK"})
     assert any("speeds are ranks" in e for e in validate_spec(every))
     assert validate_spec(gardner({"N": 2, "B": 1})) == []
-
-
-def test_speed_on_a_portal_is_refused() -> None:
-    spec = with_speeds(load("_simultaneous_portals"), {"N": 1})
-    portal = next(p for p in spec["pieces"] if p["id"] == "O")
-    portal["speed"] = 1
-    assert any("on a portal" in e for e in validate_spec(spec))
 
 
 def test_speed_on_a_wild_piece_is_refused() -> None:

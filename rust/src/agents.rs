@@ -553,7 +553,7 @@ impl Player {
         self.deepen::<SPY>(game, moves, rng).0
     }
 
-    /// Q665 (plan-teacher §8.2, T2v): the player's own search, asked for its value.
+    /// Q665 (archive/plan-teacher §8.2, T2v): the player's own search, asked for its value.
     ///
     /// `(value, move, depth)`: the root value of the last iteration of deepening this
     /// player completed, for the side to move, in its objective's units, with the move
@@ -1389,6 +1389,22 @@ mod tests {
         assert_eq!(spell(REPAIRS).unwrap().repairs, REPAIRS);
         let error = spell(REPAIRS + 1).unwrap_err();
         assert!(error.contains("outside"), "{error}");
+    }
+
+    /// F10b (Q752b): the transposition table's hasher folds bytes in as FNV-1a does, so a
+    /// key that is not a `u64` still hashes, and well: from FNV's offset basis, the
+    /// published 64-bit FNV-1a values of "a" and "foobar".
+    #[test]
+    fn the_zobrist_hasher_reads_bytes_as_fnv_1a() {
+        use std::hash::Hasher;
+        let fnv = |bytes: &[u8]| {
+            let mut hasher = ZobristHasher(0xcbf2_9ce4_8422_2325);
+            hasher.write(bytes);
+            hasher.finish()
+        };
+        assert_eq!(fnv(b""), 0xcbf2_9ce4_8422_2325);
+        assert_eq!(fnv(b"a"), 0xaf63_dc4c_8601_ec8c);
+        assert_eq!(fnv(b"foobar"), 0x8594_4171_f739_67e8);
     }
 
     #[test]

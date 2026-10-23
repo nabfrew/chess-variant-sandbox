@@ -807,7 +807,6 @@ class TestTheSeatGateOnTheStoredCorpus:
         assert [v.split("=")[0] for v in violations] == [TOP_THREE_SEAT_DECIDED_CHANCE]
 
 
-
 # --------------------------------------------------------------------------
 # The mutant transforms, pinned to what they do (Q740, from the Q734m survivors in
 # `spec/transform.py`). Each runs on chess because chess is the one small spec whose
@@ -836,7 +835,6 @@ def _tiny(pieces: list[dict], placements: list[tuple[str, list[str]]]) -> dict:
         "pieces": pieces,
         "setup": {"placements": [{"piece": p, "squares": s} for p, s in placements]},
     }
-
 
 
 class TestADistinctSeatCannotRefuseAForcedLine:
@@ -1111,11 +1109,12 @@ class TestPromoteEarly:
 
 
 class TestStampsAndConfinement:
-    def test_captures_come_back_stamps_schema_two_and_a_capture_hand(self) -> None:
+    def test_captures_come_back_leaves_the_stamp_and_writes_a_capture_hand(self) -> None:
         from chess_variant_sandbox.spec.transform import captures_come_back
 
-        spec = captures_come_back(_chess())
-        assert spec["schema_version"] == 2
+        # An edit writes no stamp since Q1008c: nothing reads it to decide what a spec may use.
+        spec = captures_come_back(dict(_chess(), schema_version=1))
+        assert spec["schema_version"] == 1
         assert spec["rules"]["drops"] == {"from_captures": True}
 
     def test_captures_come_back_never_lowers_a_higher_version(self) -> None:
@@ -1128,9 +1127,9 @@ class TestStampsAndConfinement:
     def test_the_idle_army_confines_exactly_the_pieces_not_named(self) -> None:
         from chess_variant_sandbox.spec.transform import confine_all_but
 
-        original = _chess()
+        original = dict(_chess(), schema_version=1)  # chess's stamp before Q1008b
         spec = confine_all_but(copy.deepcopy(original), "P", "K", "Q")
-        assert spec["schema_version"] == 2
+        assert spec["schema_version"] == 1
         regions = {p["id"]: p.get("region") for p in spec["pieces"]}
         assert regions == {
             "P": None, "K": None, "Q": None,

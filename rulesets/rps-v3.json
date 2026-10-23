@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 31,
   "name": "rps race",
   "description": "A rock-paper-scissors race to the far side. On a nine by nine board each side has eight pieces, rocks, papers and scissors that all move one square in any direction like a chess king and take only the kind they beat: rock takes scissors, scissors takes paper, paper takes rock. The first player to get any one piece onto the far rank wins (taking every enemy piece wins too), so a single piece that slips through the opposing line is decisive unless the one kind that can take it catches it in time. It is the third of five such games that webgoatguy, the designer of intransitive, built and rejected on YouTube on the way to his finished game. He found almost nothing wrong with it except the one thing that matters, calling it 'a ball balanced on an extremely sharp point: if you make one small mistake, you will immediately lose'.",
   "board": {

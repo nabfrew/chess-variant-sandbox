@@ -1,5 +1,5 @@
 {
-  "schema_version": 15,
+  "schema_version": 31,
   "name": "backward drop shogi",
   "description": "Shogi, Japanese chess, played on nine by nine, differs from chess in two ways: a captured piece changes sides, and its captor may later, instead of moving, drop it onto an empty square as their own; and most pieces may promote into a stronger piece on a move into, within or out of the far three ranks. This game changes one thing, the pawn. Here a pawn faces a direction, steps and captures one square the way it faces, and may spend a move making a half turn. Every pawn on the board at the start faces the enemy, but a pawn dropped from hand arrives facing its own side, guarding the square behind it, and must turn before it can advance. Shogi's cheapest and most common drop becomes a defender first: a pawn dropped to block or protect works at once, one dropped to attack costs a move. Shogi's two pawn-drop limits stay: no pawn may be dropped on a file that already holds one of its owner's unpromoted pawns, and no pawn drop may give checkmate.",
   "board": {

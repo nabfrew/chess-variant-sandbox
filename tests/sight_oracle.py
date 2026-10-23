@@ -1,4 +1,4 @@
-"""The declared Python oracle for lines of sight (schema 30, Q999a, `docs/plan-passive.md` §2, §3.6).
+"""The declared Python oracle for lines of sight (schema 30, Q999a, `docs/archive/plan-passive.md` §2, §3.6).
 
 `pieces[].sight`: every player's piece standing in another piece's line of sight is under its
 effect -- **freeze** (it may not move, and attacks nothing), **disarm** (it may not capture, and
@@ -24,6 +24,27 @@ it here, under the effects.
 checkmate) the moves that leave the mover's royal attacked on the board they make, and (under a
 rest) less the resting pieces' moves unless that leaves none. The engine is asked only for the
 twin's pseudo-legal lists and for the board a move makes; it is never asked what an effect does.
+
+**Command** (Q1007c, `docs/plan-schema-31.md` §3.2, §3.3, §3.7): the side to move may also move
+each opponent's piece a command binds and no freeze does. Its quiet moves are the owner's own
+pseudo-legal moves of that piece, asked of the twin with the owner to move (no window, no hand),
+that land on an empty square or turn in place: never a castling, an en passant, a drop or a
+promotion (a move that must promote is a promotion word only, so it falls out). Its turncoat
+captures (`captures_own`, not disarmed) are read with each of the owner's non-royal pieces in
+turn recoloured to the commander's, so that the twin lists the capture of it; a shielded victim
+is barred as every capture's is. Each candidate is legal when the board it makes leaves the
+commander's royal unattacked. The core's commanded moves follow its own; their order among
+themselves is the core's walk, so `normalise` sorts that segment before a comparison.
+
+**Sweep** (schema 13, `RULES.md`'s `sweep`): a sweep that passes over a piece (the twin lists it
+as `MOVE_SWEEP`; one over an empty path is a plain landing) takes every piece it passes,
+friendly included, and so is a capture wherever the sight asks whether a move captures: a
+disarmed sweeper may not make it, and under `must_capture` it counts. It attacks, for the
+attack test, the square it lands on *and* any square it passes over (a sweep over the enemy
+royal is check), from a piece the effects leave free. A shield and a command are refused beside
+a sweep, so only freeze and disarm meet one. The board a sweep makes is the engine's, as for
+every move; a sweep over the mover's only royal (friendly pieces are swept too) leaves it
+without one, and under checkmate that move is refused rather than played.
 """
 
 from __future__ import annotations
@@ -33,19 +54,34 @@ import dataclasses
 from typing import Any
 
 from chess_variant_sandbox.engine import Engine
-from chess_variant_sandbox.engine.compile import SIGHT_DISARM, SIGHT_FREEZE, SIGHT_SHIELD
+from chess_variant_sandbox.engine.compile import (
+    SIGHT_COMMAND,
+    SIGHT_COMMAND_OWN,
+    SIGHT_DISARM,
+    SIGHT_FREEZE,
+    SIGHT_SHIELD,
+)
 from chess_variant_sandbox.engine.moves import (
     MOVE_CASTLE,
+    MOVE_COMMANDED,
     MOVE_DROP,
     MOVE_EN_PASSANT,
     MOVE_NORMAL,
     MOVE_PROMOTION,
     MOVE_ROTATE,
+    MOVE_SWEEP,
     decode_move,
 )
 from chess_variant_sandbox.engine.state import GameState
 
 NO_SQUARE = -1
+
+
+def normalise(moves: list[int]) -> list[int]:
+    """A legal list with its commanded moves (Q1007c) sorted at the end, the rest in order."""
+    return [m for m in moves if not m & MOVE_COMMANDED] + sorted(
+        m for m in moves if m & MOVE_COMMANDED
+    )
 
 
 def twin_spec(spec: dict[str, Any]) -> dict[str, Any]:
@@ -121,17 +157,27 @@ class SightOracle:
         if not occupant:
             stand_in = victim_type if victim_type is not None else 0
             probe[square] = spec.encode_piece(1 - by, stand_in)
+        probe_board = bytes(probe)
         asked = dataclasses.replace(
-            state, board=bytes(probe), side_to_move=by, ep_target=NO_SQUARE,
+            state, board=probe_board, side_to_move=by, ep_target=NO_SQUARE,
             ep_victim=NO_SQUARE,
         )
         for move in self.twin.pseudo_legal_moves(asked):
             origin, target, kind, _ = decode_move(move)
-            if target != square or kind not in (MOVE_NORMAL, MOVE_PROMOTION):
-                continue
-            if not effects[origin] & (SIGHT_FREEZE | SIGHT_DISARM):
+            if kind == MOVE_SWEEP:
+                reached = target == square or square in spec.sweep_path(probe_board, origin, target)
+            else:
+                reached = target == square and kind in (MOVE_NORMAL, MOVE_PROMOTION)
+            if reached and not effects[origin] & (SIGHT_FREEZE | SIGHT_DISARM):
                 return True
         return False
+
+    def _royals(self, state: GameState, player: int) -> list[int]:
+        spec = self.compiled
+        return [
+            square for square, value in enumerate(state.board)
+            if value and spec.owner_of(value) == player and spec.type_of(value) in spec.royal_types
+        ]
 
     def royal_attacked(self, state: GameState, player: int) -> bool:
         """Whether any of ``player``'s royals stands attacked under the effects."""
@@ -160,6 +206,9 @@ class SightOracle:
         if kind == MOVE_CASTLE:
             rook = self._castling_rook(state, origin, target)
             return rook is not None and bool(effects[rook] & SIGHT_FREEZE)
+        if kind == MOVE_SWEEP:
+            # It takes what it passes; no shield exists beside a sweep, so the disarm decides.
+            return bool(effects[origin] & SIGHT_DISARM)
         if kind == MOVE_EN_PASSANT:
             victim = state.ep_victim
         elif board[target]:
@@ -216,6 +265,7 @@ class SightOracle:
             move for move in self.twin.pseudo_legal_moves(state)
             if not self.barred(state, move, effects)
         ]
+        moves += self.commanded(state, effects)
         if self.checkmate:
             player = state.side_to_move
             kept = []
@@ -223,10 +273,65 @@ class SightOracle:
                 if decode_move(move)[2] == MOVE_CASTLE and not self._castling_safe(state, move):
                     continue
                 after = self.twin.apply(state, move)
+                if self._royals(state, player) and not self._royals(after, player):
+                    continue  # a sweep over its own last royal loses it: refused, not played
                 if not self.royal_attacked(after, player):
                     kept.append(move)
             moves = kept
         return self._must_capture(state, self._rest(state, state.side_to_move, moves))
+
+    def commanded(self, state: GameState, effects: list[int]) -> list[int]:
+        """The side to move's commanded moves before royal safety (§3.2, §3.3), sorted."""
+        spec = self.compiled
+        sight = spec.sight
+        assert sight is not None
+        if not sight.has_command:
+            return []
+        player = state.side_to_move
+        owner = 1 - player
+        drops = spec.drops
+        if drops is not None and drops.placement and any(state.hands[player]):
+            return []
+        board = state.board
+        bound = [
+            square for square, value in enumerate(board)
+            if value and spec.owner_of(value) == owner
+            and effects[square] & SIGHT_COMMAND and not effects[square] & SIGHT_FREEZE
+        ]
+        if not bound:
+            return []
+        hands = tuple(
+            tuple(0 for _ in hand) if side == owner else hand
+            for side, hand in enumerate(state.hands)
+        )
+        asked = dataclasses.replace(
+            state, side_to_move=owner, ep_target=NO_SQUARE, ep_victim=NO_SQUARE, hands=hands,
+        )
+        found: set[int] = set()
+        for move in self.twin.pseudo_legal_moves(asked):
+            origin, target, kind, _ = decode_move(move)
+            if origin in bound and (
+                kind == MOVE_ROTATE or (kind == MOVE_NORMAL and not board[target])
+            ):
+                found.add(move | MOVE_COMMANDED)
+        stride = spec.n_facings * spec.n_types
+        for origin in bound:
+            if not effects[origin] & SIGHT_COMMAND_OWN or effects[origin] & SIGHT_DISARM:
+                continue
+            for victim, value in enumerate(board):
+                if (
+                    victim == origin or not value or spec.owner_of(value) != owner
+                    or spec.type_of(value) in spec.royal_types
+                    or effects[victim] & SIGHT_SHIELD
+                ):
+                    continue
+                probe = bytearray(board)
+                probe[victim] = value + (player - owner) * stride
+                recoloured = dataclasses.replace(asked, board=bytes(probe))
+                for move in self.twin.pseudo_legal_moves(recoloured):
+                    if decode_move(move)[:3] == (origin, victim, MOVE_NORMAL):
+                        found.add(move | MOVE_COMMANDED)
+        return sorted(found)
 
     def _must_capture(self, state: GameState, moves: list[int]) -> list[int]:
         """``must_capture`` after the effects: a capture is forced only among those left."""
@@ -234,7 +339,7 @@ class SightOracle:
             return moves
         captures = [
             move for move in moves
-            if decode_move(move)[2] == MOVE_EN_PASSANT
+            if decode_move(move)[2] in (MOVE_EN_PASSANT, MOVE_SWEEP)
             or (decode_move(move)[2] in (MOVE_NORMAL, MOVE_PROMOTION)
                 and state.board[decode_move(move)[1]])
         ]

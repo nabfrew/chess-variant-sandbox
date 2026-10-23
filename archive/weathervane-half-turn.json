@@ -1,5 +1,5 @@
 {
-  "schema_version": 10,
+  "schema_version": 31,
   "name": "about face",
   "description": "A board packed full from the start, with half the pawns facing the wrong way. All 64 squares hold a piece, each side's 24 pawns and full set of pieces scattered across the board, kings included, so nothing can move until a capture opens a square. Every pawn points either forward or backward, steps and captures the way it points, and may spend a whole move turning round instead of moving. The twist is where they start: 25 of the 48 pawns face their own side, so much of each army guards only the squares behind it and threatens nothing ahead. Turning one round costs a whole move while every capture is opening lines for both sides, and leaving it costs a pawn that is no help in the fight ahead. With that many pawns pointing the wrong way, games are short and often over in the opening. Otherwise it is chess without castling, from a position checked only so that neither king is in check and neither side has a mate in one, not picked for how it plays.",
   "board": {

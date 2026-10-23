@@ -1,4 +1,4 @@
-"""E3b's chained replay (plan-teacher §9.17.4): every generation's games kept in the union.
+"""E3b's chained replay (archive/plan-teacher §9.17.4): every generation's games kept in the union.
 
 What is held here:
 

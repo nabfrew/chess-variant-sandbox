@@ -1,5 +1,5 @@
 {
-  "schema_version": 10,
+  "schema_version": 31,
   "name": "weathervane",
   "description": "A board packed full from the start, with pawns that can turn. All 64 squares hold a piece, each side's 24 pawns and full set of pieces scattered at random, kings included, so nothing can move until a capture opens a square. Every pawn was dealt a heading of its own, steps and captures the way it points, and instead of moving may spend a whole move turning to face any other way, so 'forward' is a fact about the piece rather than the side. In a jammed position turning is the only alternative to capturing, and a real choice: a pawn swung round threatens new squares without opening any lines, but it spends a move the opponent may use to capture first. Next to the same packed board with ordinary pawns there are about twice as many moves to choose from, and games are shorter and sharper. Otherwise it is chess without castling, from a position rolled until neither king was in check, neither side had a mate in one, and the site's computer players found it even and playable to a finish.",
   "board": {

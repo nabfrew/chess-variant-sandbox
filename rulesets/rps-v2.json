@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 31,
   "name": "rps territory",
   "description": "A rock-paper-scissors race for ground. On a nine by nine board each side has eight pieces, rocks, papers and scissors that all move one square in any direction like a chess king and take only the kind they beat: rock takes scissors, scissors takes paper, paper takes rock. Moving onto a square claims it for good, and the first player to claim 41 of the 81 squares wins; taking every enemy piece wins too. It is the second of five such games that webgoatguy, the designer of intransitive, built and rejected on YouTube on the way to his finished game, and he rejected it for three stated reasons -- the two players stop interacting, because chasing your opponent lets them claim ground while you do it; the rear pieces are dead weight; and the capture cycle stops mattering, so 'if you were playing the game with identical chess kings instead of rock paper and scissors, the gameplay and strategies would not be that much different'.",
   "board": {

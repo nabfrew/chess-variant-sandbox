@@ -1,5 +1,5 @@
 {
-  "schema_version": 13,
+  "schema_version": 31,
   "name": "sweeping bishop chess",
   "description": "Chess with one change: the bishop sweeps. Instead of stopping at the first piece on its diagonal, it may land on any square along it, and every piece it passes over is removed, its own included. The idea is a bishop that opens its own lines, at the price of whatever of its own army stands in the way. Since pieces in between no longer stop it, a bishop that could reach the enemy king through them is giving check, and that check cannot be blocked, only escaped or answered by taking the bishop. It proves too much. In the opening position a king has nowhere to step, and White mates on the first move: the f1 bishop sweeps its own e2 pawn to land on b5, where it attacks the black king through the pawn on d7, and nothing Black has can reach b5. The game is kept to show how changing a single piece can break chess outright.",
   "board": {

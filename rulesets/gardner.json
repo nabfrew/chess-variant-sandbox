@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 31,
   "name": "gardner",
   "description": "Martin Gardner's 5x5 minichess, published in Scientific American in 1969 and weakly solved as a draw in 2013. The full chess army minus one bishop-pair partner and the second rook file, packed onto twenty-five squares. Pawns never double-step, there is no castling and no en passant, so the game is chess with every rule that needs room removed.",
   "board": {"width": 5, "height": 5},

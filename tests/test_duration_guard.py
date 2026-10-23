@@ -93,6 +93,26 @@ def test_a_slow_test_and_a_shared_fixture_are_not_charged(guarded: pytest.Pytest
     assert "shared fixture test_inner.py::shared, set up for test_inner.py::test_reads" in said
 
 
+def test_a_run_the_green_stamp_narrowed_names_and_does_not_judge(guarded: pytest.Pytester) -> None:
+    """A gate that ran only what a change reached is mostly corpus sweeps paying warm-up a
+    whole run shares (2026-10-22); the next whole run judges."""
+    guarded.makeconftest(
+        "class Narrowed:\n"
+        "    def narrowed(self):\n"
+        "        return True\n\n"
+        "def pytest_configure(config):\n"
+        "    config.pluginmanager.register(Narrowed(), 'green-stamp')\n"
+    )
+    guarded.makepyfile(test_inner=INNER)
+    result = guarded.runpytest("-p", "duration_guard")
+    said = _summary(result)
+    assert result.ret == pytest.ExitCode.OK
+    burns = next(line for line in said.splitlines() if "::test_burns " in line + " ")
+    assert "FAILS" not in burns
+    assert "in a narrowed run" in burns
+    assert "--skip-if-green narrowed: named, not judged" in said
+
+
 def test_a_run_with_nothing_over_says_nothing(guarded: pytest.Pytester) -> None:
     guarded.makepyfile(test_inner="def test_quick():\n    pass\n")
     result = guarded.runpytest("-p", "duration_guard")

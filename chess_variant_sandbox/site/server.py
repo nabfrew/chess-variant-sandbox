@@ -127,6 +127,7 @@ from chess_variant_sandbox.web.page import (
 )
 from chess_variant_sandbox.web.page import game as game_drawing
 from chess_variant_sandbox.web.server import (
+    BROWSER_DIR,
     BROWSER_PREFIX,
     IMMUTABLE,
     PAGE_PATHS,
@@ -249,8 +250,9 @@ class SiteApp(App):
         archive_dir: Path | str = corpus.ARCHIVE_DIR,
         connect: Any = None,
         send: mail.Sender | None = None,
+        browser_dir: Path | str = BROWSER_DIR,
     ) -> None:
-        super().__init__(ruleset_dir, runs_dir, heuristics_dir, archive_dir)
+        super().__init__(ruleset_dir, runs_dir, heuristics_dir, archive_dir, browser_dir)
         self.connect = connect or db.connect
         # What an invitation from `/admin` is mailed through. Tests pass a recorder.
         self.send: mail.Sender = mail.send if send is None else send
@@ -3591,6 +3593,7 @@ def serve(
     runs_dir: Path = library.RUNS_DIR,
     heuristics_dir: Path | str = "heuristics",
     archive_dir: Path | str = corpus.ARCHIVE_DIR,
+    browser_dir: Path | str = BROWSER_DIR,
 ) -> None:
     """Run the site until interrupted.
 
@@ -3614,7 +3617,7 @@ def serve(
     # before the bind, so no attempt pays a second scrypt for it (Q379).
     maintenance, refused = admin.account_setting()
     admin.account_hash()
-    app = SiteApp(ruleset_dir, runs_dir, heuristics_dir, archive_dir)
+    app = SiteApp(ruleset_dir, runs_dir, heuristics_dir, archive_dir, browser_dir=browser_dir)
     server = listen(app, host, port)
     # The site's handler in place of the local application's. The same dispatch, plus the
     # cookie and the site's own pages. `listen` owns the busy-port refusal, so the

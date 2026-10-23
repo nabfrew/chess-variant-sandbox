@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pytest
 from rest_oracle import NO_REST, after_turn, as_rest, end_of_move, legal, lists_of
+from retired_specs import RETIRED_PREVIEWS, retired_preview_path
 from simultaneous_oracle import legal_for, resolve_round
 from test_rest import froms, move, place, play, sq
 
@@ -54,7 +55,14 @@ GAMES, MAX_PLIES = 20, 200
 
 @cache
 def engine(label: str) -> Engine:
-    return Engine(load_spec(ARCHIVE / f"{SHOWCASES[label]}.json"))
+    return Engine(load_spec(showcase_path(label)))
+
+
+def showcase_path(label: str) -> Path:
+    """Where the showcase `label` is kept: U3 joined the library, U1 and U2 left the previews
+    for `tests/_retired_*.json` (Q1005, `docs/reference/preview-call-2026-10.md`)."""
+    name = SHOWCASES[label]
+    return retired_preview_path(name) if name in RETIRED_PREVIEWS else ARCHIVE / f"{name}.json"
 
 
 def resting_squares(state: GameState, player: int) -> set[int]:
@@ -72,10 +80,11 @@ def rests(move_word: int, squares: set[int]) -> bool:
 
 @pytest.mark.parametrize("label", sorted(SHOWCASES))
 def test_each_showcase_is_its_parent_with_the_registered_rests_and_nothing_else(label: str) -> None:
-    spec = load_spec(ARCHIVE / f"{SHOWCASES[label]}.json")
+    spec = load_spec(showcase_path(label))
     assert {p["id"]: p.get("rest", 0) for p in spec["pieces"]} == REGISTERED[label]
     assert spec["provenance"]["parents"] == [PARENTS[label]]
-    assert spec["provenance"]["preview"]
+    # U3 joined the library (Q1005); U1 and U2 were retired, their files moved unchanged.
+    assert ("preview" in spec["provenance"]) == (SHOWCASES[label] in RETIRED_PREVIEWS)
     parent_path = {
         "U1": ARCHIVE.parent / "rulesets" / "gardner.json",
         "U2": ARCHIVE / "breather.json",

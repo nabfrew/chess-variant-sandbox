@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 31,
   "name": "courier",
   "description": "The medieval German enlargement of shatranj on a 12x8 board, attested from 1202 and still played in Stroebeck into the nineteenth century. It is the first game known to give a piece the unlimited diagonal slide that later became the bishop. Beside it stand the older weak pieces: an alfil that jumps two diagonally, a fers that steps one, a wazir that steps one orthogonally, and a non-royal man that moves like a king. No castling, no double step, and pawns promote only to fers.",
   "board": {"width": 12, "height": 8},

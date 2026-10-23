@@ -34,8 +34,8 @@ from chess_variant_sandbox.fairy.variant import Untranslatable, translate
 from chess_variant_sandbox.spec import load_spec, spec_hash, validate_spec
 from chess_variant_sandbox.spec.describe import describe_rules
 from chess_variant_sandbox.spec.distance import distance
-from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, _schema_twenty_three_uses
-from chess_variant_sandbox.spec.transform import settle_schema_version
+from chess_variant_sandbox.spec.schema import SCHEMA_VERSION
+from tests.feature_inventory import _schema_twenty_three_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 PATROL = ROOT / "archive" / "wolves-patrol.json"
@@ -90,22 +90,12 @@ class TestTheVersionIsBumped:
     def test_the_schema_version_is_twenty_three_or_later(self) -> None:
         assert SCHEMA_VERSION >= 23
 
-    def test_the_collector_names_also_at_and_an_older_stamp_is_refused(self) -> None:
-        spec = _patrol()
-        assert _schema_twenty_three_uses(spec) == {"rules.npcs.also_at"}
-        spec["schema_version"] = 22
-        assert any("added in schema 23" in problem for problem in validate_spec(spec))
-
-    def test_the_showcase_validates_and_settles_to_twenty_three(self) -> None:
-        spec = _patrol()
-        assert validate_spec(spec) == []
-        spec["schema_version"] = SCHEMA_VERSION
-        settle_schema_version(spec)
-        assert spec["schema_version"] == 23
-
     def test_without_also_at_the_collector_is_empty(self) -> None:
         spec = _with_npcs({"piece": "W", "route": CIRCUIT})
         assert _schema_twenty_three_uses(spec) == set()
+
+    def test_the_collector_names_also_at(self) -> None:
+        assert _schema_twenty_three_uses(_patrol()) == {"rules.npcs.also_at"}
 
 
 # -- the validator, one test per rule -----------------------------------------------------

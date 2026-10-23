@@ -1,7 +1,7 @@
 """Q913: the site's learned player joins its game's one leaderboard where its net is rated.
 
 `docs/archive/plan-leaderboard.md` §2.1 (one table per game, computer players and people together)
-and `docs/plan-teacher.md` §9.7 (*the picker ladders*). Q502h put each game's rated net
+and `docs/archive/plan-teacher.md` §9.7 (*the picker ladders*). Q502h put each game's rated net
 (`nets.rated_net`: kept, or accepted and confirmed on fresh seeds) in its measuring roster;
 here the same net is the learned player the picker offers, and it is rated:
 

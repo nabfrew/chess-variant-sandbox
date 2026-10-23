@@ -1,4 +1,4 @@
-"""E1's replay-buffer field (Q712, plan-teacher §9.13.3): the parent's own training games.
+"""E1's replay-buffer field (Q712, archive/plan-teacher §9.13.3): the parent's own training games.
 
 What is held here, on gardner (a small board, not chess), random nets standing in for the
 parent and its parent, and tiny budgets; nothing trains at scale and no store is written
@@ -61,7 +61,7 @@ from chess_variant_sandbox.tournament.runner import schedule  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 GARDNER = ROOT / "rulesets" / "gardner.json"
 INTRANSITIVE = "29d5213b02b2"
-# E1's names (plan-teacher §9.13.3, written there before the run): the child, generation
+# E1's names (archive/plan-teacher §9.13.3, written there before the run): the child, generation
 # 2R, and its control C, both over generation 1's union. Computed from the stores alone.
 E1_CHILD = "0eaad64c4586"
 E1_C = "91c0316f9a09"
@@ -71,11 +71,11 @@ E1_GARDNER_CHILD = "5fe1cb87d4c9"
 # E1's chess guard child (archive/plan-teacher §9.13.11-12, Q716): the same field over chess's
 # refused generation 1; refused itself, its JSON under nets/.
 E1_CHESS_CHILD = "2f81b3ec2c36"
-# Generation 3 (plan-teacher §9.14-9.15, Q724): the same field from 2R on Intransitive and
+# Generation 3 (archive/plan-teacher §9.14-9.15, Q724): the same field from 2R on Intransitive and
 # from E1's gardner child on gardner; both stored whole as accepted, not kept.
 G3_CHILD = "56026eae103c"
 G3_GARDNER_CHILD = "7444909265ed"
-# Generation 3c (plan-teacher §9.19-9.20, Q969b, Q969g): the chained replay from 2R, from E1's
+# Generation 3c (archive/plan-teacher §9.19-9.20, Q969b, Q969g): the chained replay from 2R, from E1's
 # gardner child and from E1's chess child; the first two stored whole, chess's JSON refused.
 G3C_CHILDREN = ("b14f1d190426", "ae241123e674", "0bbc0c08b1ee")
 

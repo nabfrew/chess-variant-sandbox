@@ -12,7 +12,7 @@ The read used to consult the spec a second time and knew the dict form of ``prom
 only, so a promotion *list* ending on a king and a strike chain ending on a king both
 compiled ``False`` (``docs/game-ideas.md``, costing table row 2 and its note 2). It reads
 the compiled rules now -- one interpretation, the one the core is handed. The specs below
-are that row's spellings, recreated so that ``spec_hash`` gives the hashes the note names,
+are that row's spellings, recreated so that ``spelling_hash`` gives the hashes the note names,
 plus the route the compiled read finds that the note did not: a hand a royal can reach.
 """
 
@@ -26,7 +26,8 @@ import pytest
 
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.compile import CompiledSpec, compile_spec
-from chess_variant_sandbox.spec import load_spec, spec_hash, validate_spec
+from chess_variant_sandbox.spec import load_spec, validate_spec
+from chess_variant_sandbox.spec.canonical import spelling_hash
 from chess_variant_sandbox.spec.schema import royalty_can_multiply
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,6 +55,8 @@ def queen_promotes_by_rank(win: str) -> dict[str, Any]:
 def queen_promotes_by_strike() -> dict[str, Any]:
     """Row 2's strike spelling: the archived ``hierarchy-rise`` chain, one link longer."""
     spec = load_spec(ROOT / "archive" / "hierarchy-rise.json")
+    # The file's stamp when the note costed it; Q1008b re-spelt the file at the current one.
+    spec["schema_version"] = 6
     spec["rules"]["win"] = "royal_capture"
     spec["rules"]["strike"]["chain"].append({"from": "Q", "to": "K"})
     return spec
@@ -80,7 +83,9 @@ class TestRowTwoSpellings:
         self, build: Callable[[], dict[str, Any]], digest: str
     ) -> None:
         spec = build()
-        assert spec_hash(spec) == digest, "not the spec the costing table names"
+        # The note named each spelling by the hash of the time, the spelling hash; since
+        # Q1008a a game's name is its normal form's, and these were never stored games.
+        assert spelling_hash(spec) == digest, "not the spec the costing table names"
         assert compiled(spec).multi_royal
 
     def test_under_checkmate_the_second_king_is_guarded(self) -> None:
@@ -220,37 +225,6 @@ class TestTheValidatorReadsTheSameRoutes:
     def test_the_two_readings_agree(self, build: Callable[[], dict[str, Any]]) -> None:
         spec = build()
         assert royalty_can_multiply(spec) is compiled(spec).multi_royal
-
-    def test_a_promotion_list_to_the_king_is_refused_under_schema_one(self) -> None:
-        """The one route a schema-1 spec could actually take, and the only behaviour
-        this change alters.
-
-        ``rules.promotion`` as a *list* carries no version key of its own, so before the
-        validator learned the route this spec was accepted as schema 1 and compiled as a
-        two-royal game. Nothing else about it is a schema-2 feature, which is why the
-        message below is the whole error list.
-        """
-        spec = queen_promotes_by_rank("checkmate")
-        spec["schema_version"] = 1
-        assert validate_spec(spec) == [
-            "more than one royal piece under 'checkmate' requires \"schema_version\": 2"
-        ]
-        spec["schema_version"] = 2
-        assert compile_spec(spec).multi_royal, "and these are the rules the core reads as two"
-
-    def test_the_other_routes_carry_a_version_key_of_their_own(self) -> None:
-        """Why the missed routes were harmless in effect: a schema-1 spec cannot spell
-        ``strike`` or ``drops`` at all, so it is refused by name before the count of its
-        royals is ever the reason."""
-        strike = queen_promotes_by_strike()
-        strike["schema_version"] = 1
-        assert royalty_can_multiply(strike)
-        assert any("schema 6" in error for error in validate_spec(strike))
-
-        hand = queen_returns_from_the_hand_as_a_king()
-        hand["schema_version"] = 1
-        assert royalty_can_multiply(hand)
-        assert any("schema 2" in error for error in validate_spec(hand))
 
 
 # ------------------------------------------------ Q922: every branch of the spelling-level read

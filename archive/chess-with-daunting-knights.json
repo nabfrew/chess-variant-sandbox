@@ -1,5 +1,5 @@
 {
-  "schema_version": 30,
+  "schema_version": 31,
   "name": "chess with daunting knights",
   "description": "Chess, except that a knight takes the fight out of the enemy pieces it eyes. Any enemy piece standing a knight's jump from a knight cannot capture: while the knight stays, that piece may still move, block and be taken, but it takes nothing, threatens nothing and gives no check. A knight's jump is not a line, so nothing can be put in the way; the effect ends only when one of the two moves off or is taken. The king is no exception. A king a knight's jump from an enemy knight cannot take anything, so a knight's check also stops the king capturing a piece beside it, and a knight and a queen can mate a king that could have taken the queen in ordinary chess. Two knights a jump apart disarm each other, so a knight never takes a knight. The trade-off the rule forces is about defenders. A disarmed piece guards nothing, so a knight placed a jump from a defender quietly unguards everything that defender was holding, without ever capturing; the knights become the pieces that take a defence apart, and every move a defender makes to step out of a knight's eye is a move it is not defending.",
   "board": {"width": 8, "height": 8},
@@ -45,10 +45,9 @@
   },
   "provenance": {
     "added": "2026-10-22",
-    "preview": "A preview: a new kind of game in which pieces act on each other by line of sight, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
     "origin": "designed",
-    "source": "docs/plan-passive.md, Q999d: the one-change showcases of schema 30's lines of sight (section 6.1, S3)",
-    "history": "S3 of docs/plan-passive.md section 6.1, pre-registered 2026-10-21 before schema 30 was built: chess (4c1922ffae26) with the knight given one sight, its own eight jump squares, that disarms enemy pieces of every type. The request's may not capture, and the one effect that strikes at royals without freezing them. Written by Q999a as a test spec (tests/_sight_daunting_knights.json, the same mechanics) and archived by Q999d (2026-10-22) exactly as registered; its control is chess's library measurement on the same roster (section 6.2).",
+    "source": "docs/archive/plan-passive.md, Q999d: the one-change showcases of schema 30's lines of sight (section 6.1, S3)",
+    "history": "S3 of docs/archive/plan-passive.md section 6.1, pre-registered 2026-10-21 before schema 30 was built: chess (4c1922ffae26) with the knight given one sight, its own eight jump squares, that disarms enemy pieces of every type. The request's may not capture, and the one effect that strikes at royals without freezing them. Written by Q999a as a test spec (tests/_sight_daunting_knights.json, the same mechanics) and archived by Q999d (2026-10-22) exactly as registered; its control is chess's library measurement on the same roster (section 6.2). Joined the library from preview by Q1005 (2026-10-23, docs/reference/preview-call-2026-10.md): the library's only game in which a piece takes away the enemy's power to capture without freezing it, the king's included. It met every registered bar, viable in 4 of 4 runs at 0.903, the disarm binding at about one side-turn in nine and answering a check at one in-check turn in twelve.",
     "parents": ["4c1922ffae26"]
   }
 }

@@ -512,7 +512,7 @@ class TestASquareGameMadeHexagonsIsAGame:
         from page_text import PAGE
 
         handler = PAGE[PAGE.index("form.querySelectorAll('[data-bfield]')"):]
-        handler = handler[:handler.index("form.querySelectorAll('[data-move]')")]
+        handler = handler[:handler.index("wireMoveRows(form)")]
         assert "if (reshaped && DRAFT.board.lattice === 'hex') return ontoHex();" in handler
 
 

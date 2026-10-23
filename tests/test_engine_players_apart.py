@@ -328,10 +328,10 @@ def _portal_spec(
     width: int = 5,
     height: int = 5,
 ) -> dict[str, Any]:
-    """Two kings and a rook-like ``R`` beside a portal piece ``O`` that has no moves."""
+    """Two kings and a rook-like ``R`` beside portals nobody moves."""
     declared = pieces if pieces is not None else [KING, _piece("R", 5)]
     spec = _spec(
-        [*declared, {"id": "O", "name": "portal", "value": 0, "moves": []}],
+        declared,
         [
             {"piece": "K", "player": 0, "squares": ["a1"]},
             {"piece": "K", "player": 1, "squares": ["e5"]},
@@ -368,12 +368,13 @@ def _core_transits(engine: Engine, state: Any) -> set[tuple[int, int, int, str |
 
 
 class TestAPortalEndIsNamedForItsPlace:
-    """`_portal_end_pieces`: ``<portal piece name> <group number> <end's key or letter>``."""
+    """`_portal_end_pieces`: ``portal <group number> <end's key or letter>``, after the
+    declared pieces and the portals' movement type (`schema.portal_movement_types`)."""
 
     def test_a_pair_names_its_ends_by_colour_and_a_map_by_letter(self) -> None:
         spec = _portal_spec([
-            {"piece": "O", "orange": "b3", "blue": "d3"},
-            {"piece": "O", "ends": [{"at": "a4", "to": 1}, {"at": "c4", "to": 2},
+            {"orange": "b3", "blue": "d3"},
+            {"ends": [{"at": "a4", "to": 1}, {"at": "c4", "to": 2},
                                     {"at": "e4", "to": 0}]},
         ])
         assert compile_spec(spec).piece_names[3:] == (
@@ -387,7 +388,7 @@ class TestEachPlayersExitFromAPortalIsThatPlayersOwnWrap:
     WRAP = {"files_by_player": {"0": "both", "1": "none"}}
 
     def _spec(self) -> dict[str, Any]:
-        return _portal_spec([{"piece": "O", "orange": "a3", "blue": "c3"}], self.WRAP)
+        return _portal_spec([{"orange": "a3", "blue": "c3"}], self.WRAP)
 
     def test_the_table_wraps_for_the_first_player_and_stops_the_second_at_the_edge(self) -> None:
         portals = compile_spec(self._spec()).portals
@@ -424,7 +425,7 @@ class TestALameLeapIsNotAMoveThroughItsLegEnd:
         lame = {"id": "N", "name": "lame", "value": 3, "moves": [
             {"kind": "lame", "vectors": [[1, 2]], "symmetry": "dihedral8"}]}
         spec = _portal_spec(
-            [{"piece": "O", "orange": "b2", "blue": "c3"}], pieces=[KING, lame])
+            [{"orange": "b2", "blue": "c3"}], pieces=[KING, lame])
         engine = Engine(spec)
         oracle = PortalOracle(spec)
         placement = {"a1": ("K", 0), "e4": ("K", 1), "b1": ("N", 0),

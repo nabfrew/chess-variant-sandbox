@@ -2089,7 +2089,11 @@ impl<'t> Game<'t> {
             // and a piece value that carries a facing has its own Zobrist row -- so two
             // positions that differ only in which way a piece points are different
             // positions, and the repetition test can see that they are.
-            self.write(origin, t.piece_value(player, move_promotion(m) as usize, piece_type));
+            // Q1007c: the turning piece's owner, which a commanded turn is not the mover.
+            self.write(
+                origin,
+                t.piece_value(t.owner_of(moving), move_promotion(m) as usize, piece_type),
+            );
         } else if kind == MOVE_CASTLE {
             // Both pieces leave before either arrives, which is the order
             // `play_move_for_filter` already plays a castling in. Under file-based
@@ -2216,7 +2220,8 @@ impl<'t> Game<'t> {
             && kind != MOVE_PORTAL
             // Schema 22: a move that went through a fold opens no window (rule 9). Bits
             // 25-31 are zero on every other move that gets here: a strike's landing index
-            // rides only on a capture.
+            // rides only on a capture. Q1007c: a commanded move carries bit 30
+            // (`MOVE_COMMANDED`), so it opens none either (`docs/plan-schema-31.md` §3.2).
             && move_landing(m) == 0
         {
             // The square stepped over is a table fact, not arithmetic on the delta:
@@ -2819,12 +2824,17 @@ impl<'t> Game<'t> {
         if self.t.portals.as_deref().is_some_and(|portals| portals.folds.is_some()) {
             return self.generate_folded(out);
         }
-        // Schema 30 (Q999a, `docs/plan-passive.md` §3.4): the sight's filter binds every
+        // Schema 30 (Q999a, `docs/archive/plan-passive.md` §3.4): the sight's filter binds every
         // caller of the generator; one null test in a game without one. Portals (and so
         // folds) are refused beside a sight, so the fold copy above never needs it.
         let base = out.len();
         self.generate_pseudo_legal_as::<false>(out);
         if let Some(sight) = self.t.sight.as_deref() {
+            // Q1007c (`docs/plan-schema-31.md` §3.7): the opponent's commanded pieces are a
+            // second source of moves, filtered with the rest.
+            if sight.has_command {
+                self.push_commanded(sight, out);
+            }
             self.sight_filter(sight, out, base);
         }
     }
@@ -3899,8 +3909,10 @@ impl<'t> Game<'t> {
             // when the two squares are the same.
             let turning = self.board[origin];
             saved.push((origin, turning));
-            self.board[origin] =
-                t.piece_value(player, move_promotion(m) as usize, t.type_of(turning));
+            // Q1007c: the turning piece's owner (a commanded turn turns the opponent's).
+            self.board[origin] = t.piece_value(
+                t.owner_of(turning), move_promotion(m) as usize, t.type_of(turning),
+            );
             return None;
         }
         if kind == MOVE_CASTLE {
@@ -4209,7 +4221,7 @@ impl<'t> Game<'t> {
                     // A sight (schema 30) that bears on check widens the premise rather than
                     // dropping it: a move can also thaw an attacker or bare the royal, but
                     // only by touching a source of an effect that binds now, or its ray
-                    // (`effect_lines`, `docs/plan-passive.md` §3.5's second lever), so those
+                    // (`effect_lines`, `docs/archive/plan-passive.md` §3.5's second lever), so those
                     // squares join the hop lines below.
                     if t.explosion.is_some()
                         || t.royal_facing_forbidden
@@ -4238,6 +4250,13 @@ impl<'t> Game<'t> {
                         if let Some(sight) = t.sight.as_deref() {
                             if sight.bears_on_check {
                                 hop_lines = hop_lines.union(&self.effect_lines(sight, player, royal));
+                            }
+                            // Q1007c (`docs/plan-schema-31.md` §3.4): a commanded move starts on
+                            // one of the opponent's squares, so every move from or onto one is
+                            // asked, and every commanded move is verified. Read here, outside the
+                            // loop, so a game without a command pays nothing per move.
+                            if sight.has_command {
+                                hop_lines = hop_lines.union(&self.occupied()[1 - player]);
                             }
                         }
                         let hop_relevant = !hop_lines.is_empty();
@@ -4374,9 +4393,10 @@ impl<'t> Game<'t> {
                         move_promotion(m) as usize - 1,
                         t.frame_of_value(t.entering_value(player, move_promotion(m) as usize - 1)),
                     ),
+                    // Q1007c: the owner's frame, which a commanded turn's mover is not.
                     MOVE_ROTATE => (
                         t.type_of(moving),
-                        player * t.n_facings + move_promotion(m) as usize,
+                        t.owner_of(moving) * t.n_facings + move_promotion(m) as usize,
                     ),
                     _ => (t.type_of(moving), t.frame_of_value(moving)),
                 };

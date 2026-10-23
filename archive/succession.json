@@ -1,5 +1,5 @@
 {
-  "schema_version": 10,
+  "schema_version": 31,
   "name": "succession",
   "description": "Chess in which you become what you take, but only one step up. A pawn that takes a knight becomes a knight, a knight that takes a bishop becomes a bishop, a bishop that takes a rook becomes a rook, and a rook that takes a queen becomes a queen; the piece taken leaves the board and the taker moves onto its square as usual. Every other capture is ordinary, and no capture ever changes a king. So each kind of piece has one target worth more than its material: a pawn that wins a knight now stands there as a knight, and a rook that wins a queen keeps a queen for its own side. Defence gains a question, which of your pieces stands one step above an enemy that can reach it. The rule fires on fewer than one capture in ten, so most of the game is chess, with a sharper edge to a few exchanges.",
   "board": {

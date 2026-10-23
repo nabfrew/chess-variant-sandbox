@@ -1,4 +1,9 @@
-"""The mechanism test of `archive/opposite-colours` (Q999b, `docs/plan-passive.md` §6.5).
+"""The mechanism test of the first *opposite colours* (Q999b, `docs/archive/plan-passive.md` §6.5).
+
+Retired by Q1007e (2026-10-24, `docs/plan-schema-31.md` §6.1) when R1, the same game with
+two-square riders as rook and queen, replaced it under its name; the file is kept whole as
+`tests/_retired_opposite_colours.json`, and its mechanism still holds. The game in
+`archive/opposite-colours.json` now is R1's (`tests/test_showcases_q1007e.py`).
 
 The user's colour-bound showcase for schema 30's lines of sight: every piece's moves keep its
 square colour, both armies have pieces on both colours, so captures happen only between pieces
@@ -33,7 +38,7 @@ from chess_variant_sandbox.engine.moves import decode_move
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.spec import load_spec, spec_hash
 
-FILE = Path(__file__).resolve().parent.parent / "archive" / "opposite-colours.json"
+FILE = Path(__file__).resolve().parent / "_retired_opposite_colours.json"
 HASH = "690631b0e4eb"
 GAMES, MAX_PLIES, FAST_GAMES = 20, 200, 3
 BINDING_GAMES = 15  # of the 20: §6.5's bar for an effect binding in random play
@@ -56,10 +61,10 @@ def colour(square: int) -> int:
 # ------------------------------------------------------------------ the file, as registered
 
 
-def test_the_file_is_the_registered_preview() -> None:
+def test_the_file_is_the_registered_game() -> None:
     spec = load_spec(FILE)
     assert spec_hash(spec) == HASH
-    assert spec["provenance"]["preview"]
+    assert "preview" not in spec["provenance"], "joined the library from preview (Q1005)"
     assert "parents" not in spec["provenance"]
     assert spec["setup"].get("orientation", "mirror") == "mirror"
     assert spec["rules"]["win"] == "checkmate"

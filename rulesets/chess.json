@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 31,
   "name": "chess",
   "description": "Standard international chess. The game everything here is compared with: its scores set the scale.",
   "board": {

@@ -732,13 +732,12 @@ function restAllHtml() {
       ${esc(words.after)}</label>`;
 }
 
-// What the last choice's sentence belongs to: the draft as it stands, but for the version
-// stamp, which the check that follows a choice settles without anyone changing anything.
+// What the last choice's sentence belongs to: the draft as it stands.
 function restKey() {
-  return JSON.stringify(Object.assign({}, DRAFT, { schema_version: null }));
+  return JSON.stringify(DRAFT);
 }
 
-// Under the control: the sentence, the old switch's offer, and what the last choice did.
+// Under the control: the sentence, and what the last choice did.
 function restSaidHtml() {
   const words = restWords();
   if (!words.label) return '';
@@ -748,10 +747,6 @@ function restSaidHtml() {
   if (sentence) {
     out.push(`<div class="muted small restSentence">${esc(sentence)}${
       restShared() === null ? '' : ` ${esc(words.override)}`}</div>`);
-  }
-  if (DRAFT_CHECK && DRAFT_CHECK.retiredRest) {
-    out.push(`<div class="error small turnSaid restRetired">${esc(words.retired)}
-      <div><button id="dRestConvert" data-restconvert="1">${esc(words.convert)}</button></div></div>`);
   }
   if (said && said.errors && said.errors.length) {
     const choice = `${words.label} ${said.rest ? restCount(said.rest) : words.never} ${words.after}`;
@@ -779,8 +774,6 @@ function wireRestAll(root) {
   if (!root || !root.querySelector) return;
   const menu = root.querySelector('#dRestAll');
   if (menu) menu.onchange = () => { if (menu.value !== '') chooseRestAll(Number(menu.value)); };
-  const convert = root.querySelector('#dRestConvert');
-  if (convert) convert.onclick = () => chooseRestAll(1);
   const undo = root.querySelector('#dRestUndo');
   if (undo) undo.onclick = () => stepDraft(false);
 }
@@ -804,7 +797,6 @@ function chooseRestAll(rest) {
     snapshotDraft();
     DRAFT = answer.draft;
     snapshotDraft();
-    if (DRAFT_CHECK) DRAFT_CHECK.retiredRest = false;
     REST_SAID = { key: restKey(), rest, changes: answer.changes || [] };
     drawDesigner();
     checkDraft();
@@ -1061,16 +1053,14 @@ function wirePalettePieces(form) {
   });
 }
 
-// The pieces in the order the list shows them: the portal piece last (D1), since it is the
-// portals' and not one anybody plays.
+// The pieces in the order the list shows them: the draft's (a portal's moves are its
+// group's since spelling 31, on its card among the rules, so no piece here is a portal).
 function piecesInOrder() {
-  const all = (DRAFT.pieces || []).map((_, index) => index);
-  return all.filter(index => !isPortalPiece(index)).concat(all.filter(isPortalPiece));
+  return (DRAFT.pieces || []).map((_, index) => index);
 }
 
 function pieceEditor(piece, index) {
   const on = index === DRAFT_PIECE;
-  if (isPortalPiece(index)) return portalPieceEditor(piece, index, on);
   return `<div class="editorPiece${on ? ' on' : ''}" data-piece="${index}">
     <div class="row u-gap-8">
       <div class="iconSlot" data-icon="${index}">${pieceIconHtml(index)}</div>
@@ -1108,30 +1098,6 @@ function pieceEditor(piece, index) {
       ${pieceTurnsHtml(piece, index)}
       ${extrasHtml('piece.' + index, piece, 'more about this piece',
                    new Set(pieceRowKeys().rounds.concat(pieceRowKeys().always)))}
-    </div>
-  </div>`;
-}
-
-// The portal piece's card (D1): its name says what it is for, it has no worth, royalty or
-// drawing of its own and no *remove* (taking the last pair off takes it), and its move rows
-// offer only what a portal may do, with the line saying why.
-function portalPieceEditor(piece, index, on) {
-  return `<div class="editorPiece portalPiece${on ? ' on' : ''}" data-piece="${index}">
-    <div class="row u-gap-8">
-      <div class="iconSlot"><svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">${
-        portalGlyph({ pair: 1, end: 'orange', movedBy: [], open: [true, true] }, 0, 0, 32,
-                    {})}</svg></div>
-      <b>${esc(piece.name || 'portal')}</b>
-      <span class="muted small">(used by the portals; it moves as below)</span>
-    </div>
-    ${portalPieceNoteHtml()}
-    <div class="u-mt-8">
-      ${(piece.moves || []).length ? '' : `<div class="muted small">It has no way of moving,
-        which is right while nobody may move a portal.</div>`}
-      ${(piece.moves || []).map((move, m) => moveEditor(move, index, m)).join('')}
-      <div class="row u-mt-7">
-        <button data-addmove="${index}">add a way of moving</button>
-      </div>
     </div>
   </div>`;
 }
@@ -1348,6 +1314,46 @@ function turnings(move) {
   return TURNINGS.filter(([value]) => own.includes(value) || value === move.symmetry);
 }
 
+// Q1007a (`docs/plan-schema-31.md` §2.5): a jump longer than one square may be ridden, jump
+// after jump in its direction. Offered on a leap, a slide or a blockable leap whose every
+// direction is longer than one square, as one menu read off the descriptor: once (a leap, or
+// a blockable leap of one jump), again and stopped only where it lands (a slide over the jump,
+// the nightrider), or again and also stopped on the square each jump passes (a blockable leap
+// with a range, the lame rider). Writing the reading it already has changes nothing.
+const RIDES = [['once', 'no, one jump'], ['lands', 'yes, stopped only where it lands'],
+               ['passes', 'yes, also stopped on the square each jump passes']];
+
+function ridable(move) {
+  const vectors = move.vectors || [];
+  return ['leap', 'slide', 'lame'].includes(move.kind || 'slide') && vectors.length > 0
+    && vectors.every(v => Math.max(Math.abs(v[0]), Math.abs(v[1])) > 1);
+}
+
+function rideOf(move) {
+  const kind = move.kind || 'slide';
+  if (kind === 'slide') return move.range === 1 ? 'once' : 'lands';
+  if (kind === 'lame') return (move.range === undefined ? 1 : move.range) === 1 ? 'once' : 'passes';
+  return 'once';
+}
+
+function writeRide(move, value) {
+  if (value === rideOf(move)) return;
+  const kind = move.kind || 'slide';
+  if (value === 'once') {
+    if (kind === 'slide') move.kind = 'leap';
+    delete move.range;
+    delete move.min_range;
+  } else if (value === 'lands') {
+    move.kind = 'slide';
+    if (kind !== 'lame' || move.range === 0) delete move.range;
+    if (kind === 'leap') delete move.min_range;
+  } else if (value === 'passes') {
+    move.kind = 'lame';
+    if (kind !== 'slide' || move.range === undefined || move.range === 1) move.range = 0;
+    if (kind === 'leap') delete move.min_range;
+  }
+}
+
 function moveEditor(move, piece, index) {
   const field = (label, control, hint) => `<label class="moveField"
     title="${esc(hint || '')}"><span>${esc(label)}</span>${control}</label>`;
@@ -1364,15 +1370,17 @@ function moveEditor(move, piece, index) {
   const condition = move.condition || {};
   const more = move.range !== undefined || move.min_range !== undefined
     || condition.from_rank !== undefined;
-  // The portal piece's rows offer only what a portal may do (D1): no sweep, *move only*,
-  // and the turns that read the same for both players. A value already written stays on
-  // its menu, so the row shows what the draft says beside the refusal of it.
-  const portal = isPortalPiece(piece);
+  // A portal group's rows (owner `p<n>`, spelling 31) offer only what a portal may do (D1):
+  // no sweep, *move only* (what a group's move means with no mode written), the turns that
+  // read the same for both players, and no rank to move from. A value already written stays
+  // on its menu, so the row shows what the draft says beside the refusal of it.
+  const portal = isPortalKey(piece);
   const kinds = [['slide', 'slides'], ['leap', 'leaps'], ['hop', 'hops over'],
                  ['lame', 'blockable leap'], ['sweep', 'sweeps']]
     .filter(([value]) => !portal || value !== 'sweep' || move.kind === 'sweep');
+  const mode = move.mode || (portal ? 'move' : 'both');
   const modes = [['both', 'move or take'], ['move', 'move only'], ['capture', 'take only']]
-    .filter(([value]) => !portal || value === 'move' || value === (move.mode || 'both'));
+    .filter(([value]) => !portal || value === 'move' || value === mode);
   const turns = turnings(move).filter(([value]) => !portal || ['rotate4', 'dihedral8']
     .includes(value) || value === (move.symmetry || 'none'));
   return `<div class="moveRow">
@@ -1380,6 +1388,10 @@ function moveEditor(move, piece, index) {
       'slides run until something stops them; leaps jump; hops need a piece to jump'
       + ' over; sweeps jump along the line and take everything they pass, their own'
       + ' pieces too')}
+    ${ridable(move) && !portal ? field('jumps again', pick('ride', RIDES, rideOf(move)),
+      'whether it may jump again and again in the same direction, as a nightrider does; a'
+      + ' rider is stopped by a piece where it would land, and may also be stopped by one on'
+      + ' the square each jump passes, as a xiangqi horse is') : ''}
     ${field('turned', pick('symmetry', turns, move.symmetry || 'none'),
       onHexagons() ? 'which of the hexagon\'s turns the direction also gets: six ways, or'
         + ' six ways and their mirrors'
@@ -1388,7 +1400,7 @@ function moveEditor(move, piece, index) {
       box('vectors', esc((move.vectors || []).map(v => v.join(',')).join(' ')), '0,1 1,2'),
       'one step as sideways,forward -- 0,1 is one square forward and 1,0 is one to the'
       + ' right; several separated by spaces')}
-    ${field('and it may', pick('mode', modes, move.mode || 'both'),
+    ${field('and it may', pick('mode', modes, mode),
       'a pawn moves one way and takes another, which is two rows')}
     <button data-dropmove="${piece}.${index}" title="remove this move">&times;</button>
     <details class="moveMore"${more ? ' open' : ''}>
@@ -1396,11 +1408,12 @@ function moveEditor(move, piece, index) {
       <div class="moveMoreBody">
     ${field('how far',
       box('range', esc(move.range), 'to the edge', 'type="number" min="0" max="16"'),
-      'how many squares; blank runs to the edge')}
+      'how many squares (jumps, for one that jumps again); blank runs to the edge, or is one'
+      + ' jump for a blockable leap')}
     ${field('no nearer than',
       box('min_range', esc(move.min_range), '1', 'type="number" min="1" max="16"'),
       "the nearest square it may stop on; 2 is a pawn's double step, which must go two")}
-    ${field('only from rank',
+    ${portal && condition.from_rank === undefined ? '' : field('only from rank',
       box('from_rank', condition.from_rank === undefined
             ? '' : esc(Number(condition.from_rank) + 1),
           'any', 'type="number" min="1" max="16"'),
@@ -1423,15 +1436,17 @@ let MOVE_SAID = null;   // { key, lines } -- the check's sentences and the draft
 
 function moveSaid(piece, index) {
   if (!MOVE_SAID || MOVE_SAID.key !== JSON.stringify(DRAFT)) return '';
-  const said = ((MOVE_SAID.lines || [])[piece] || [])[index] || '';
+  const lines = isPortalKey(piece) ? (MOVE_SAID.portalLines || [])[Number(String(piece).slice(1))]
+    : (MOVE_SAID.lines || [])[piece];
+  const said = (lines || [])[index] || '';
   return said ? 'That reads: ' + said + '.' : '';
 }
 
 function drawMoveSays() {
   if (!MOVE_SAID || MOVE_SAID.key !== JSON.stringify(DRAFT)) return;
   document.querySelectorAll('[data-movesays]').forEach(node => {
-    const [piece, index] = node.dataset.movesays.split('.').map(Number);
-    node.textContent = moveSaid(piece, index);
+    const [piece, index] = node.dataset.movesays.split('.');
+    node.textContent = moveSaid(isPortalKey(piece) ? piece : Number(piece), Number(index));
   });
 }
 
@@ -1459,6 +1474,8 @@ function writeMoveField(move, field, value) {
     const condition = Object.assign({}, move.condition);
     if (rank === undefined) delete condition.from_rank; else condition.from_rank = rank;
     if (Object.keys(condition).length) move.condition = condition; else delete move.condition;
+  } else if (field === 'ride') {
+    writeRide(move, value);
   } else if (field === 'symmetry') {
     if (value === (move.symmetry || 'none')) return;
     if (value === 'none') delete move.symmetry; else move.symmetry = value;
@@ -1471,7 +1488,7 @@ function writeMoveField(move, field, value) {
 
 // ------------------------------------------------- lines of sight (schema 30, Q999c)
 //
-// A piece's lines of sight (`docs/plan-passive.md` §4.7): one row each under its ways of
+// A piece's lines of sight (`docs/archive/plan-passive.md` §4.7): one row each under its ways of
 // moving, built from the move row's own pickers (direction, turned, how far, no nearer
 // than) and four of its own: what it does, to whose pieces, whether it sees through pieces
 // (an aura) or stops at the first (a ray), and which kinds of piece it touches. Every label
@@ -1481,7 +1498,8 @@ function writeMoveField(move, field, value) {
 // (`sightLines`). The menus offer the schema's values (`kit.effects`, `kit.whose`), and a
 // value already written stays on its menu, so the row shows what the draft says beside the
 // refusal of it.
-const SIGHT_EFFECT_WORDS = { freeze: 'freezes it', disarm: 'disarms it', shield: 'shields it' };
+const SIGHT_EFFECT_WORDS = { freeze: 'freezes it', disarm: 'disarms it', shield: 'shields it',
+                             command: 'commands it' };
 const SIGHT_WHOSE_WORDS = { enemy: "the other player's", own: "its own side's",
                             any: "both sides'" };
 const SIGHT_LINE_WORDS = [['ray', 'no: stops at the first piece'], ['aura', 'yes']];
@@ -1504,14 +1522,17 @@ function withHeld(options, held) {
     ? options : options.concat([[held, String(held)]]);
 }
 
-// The pieces a sight may name in *only these pieces*: every piece of the draft but the
-// portals and the wild pieces, which nothing affects, and any it already names.
+// The pieces a sight may name in *only these pieces*: every piece of the draft but the wild
+// pieces, which nothing affects, and any it already names.
 function sightTargets(sight) {
   const wild = new Set(((DRAFT.rules || {}).npcs || []).map(npc => npc && npc.piece));
   const named = Array.isArray(sight.affects) ? sight.affects : [];
+  // Q1007d: a royal is never commanded (the validator refuses one named), so a command's row
+  // offers none, unless the draft already names one, which stays beside its refusal.
+  const command = sight.effect === 'command';
   return (DRAFT.pieces || [])
     .filter((piece, index) => piece && piece.id && (named.includes(piece.id)
-      || (!isPortalPiece(index) && !wild.has(piece.id))))
+      || (!wild.has(piece.id) && !(command && piece.royal === true))))
     .map(piece => [piece.id, piece.name || piece.id]);
 }
 
@@ -1539,8 +1560,16 @@ function sightEditor(sight, piece, index) {
   const affects = sightTargets(sight).map(([id, name]) => `<label class="pick sightPick">
       <input type="checkbox" ${tag} data-sfield="affects" data-pid="${esc(id)}"${
       named.includes(id) ? ' checked' : ''}> ${esc(name)}</label>`).join('');
+  // Q1007d (`docs/plan-schema-31.md` §3.9): a command may make its pieces take their own side
+  // (`captures_own`), a box beside the effect shown only while the effect is a command; ticked
+  // writes `true`, unticked no key (`false` is the off value the schema takes as no key).
+  const turncoat = sight.effect !== 'command' ? '' : `<label class="pick sightPick sightOwn"
+      data-sfor="captures_own" title="${esc(sightWords('captures_own')[1])}"><input
+      type="checkbox" ${tag} data-sfield="captures_own"${sight.captures_own === true
+      ? ' checked' : ''}> ${esc(sightWords('captures_own')[0])}</label>`;
   return `<div class="moveRow sightRow">
     ${field('effect', pick('effect', effects, sight.effect))}
+    ${turncoat}
     ${field('whose', pick('whose', whose, sight.whose))}
     ${field('vectors', box('vectors',
       esc((Array.isArray(sight.vectors) ? sight.vectors : [])
@@ -1585,7 +1614,7 @@ function sightAddHtml(piece, index) {
   const full = rows >= sightKit().max;
   return `<button data-addsight="${index}"${full ? ' disabled' : ''} title="${full
     ? `a piece sees along ${sightKit().max} lines at most`
-    : 'what it sees: pieces on its lines are frozen, disarmed or shielded while they stand there'}"
+    : 'what it sees: pieces on its lines are frozen, disarmed, shielded or commanded while they stand there'}"
     >add a line of sight</button>`;
 }
 
@@ -1640,6 +1669,15 @@ function writeSightField(sight, field, value) {
     // A ray is the absent key; an aura is `true`, the one spelling the schema takes.
     if (value === 'aura') sight.through = true;
     else if (value === 'ray') delete sight.through;
+  } else if (field === 'captures_own') {
+    // Q1007d: ticked is `true`, unticked no key; a file's `false` (the off value) unticked is
+    // left as written, so it round-trips.
+    if (value === true) sight.captures_own = true;
+    else if (value === false && sight.captures_own === true) delete sight.captures_own;
+  } else if (field === 'effect') {
+    // A `captures_own` means something only beside a command, so it goes with it.
+    if (value !== sight.effect) sight.effect = value;
+    if (value !== 'command') delete sight.captures_own;
   } else if (field === 'affects') {
     const ticked = Array.isArray(value) ? value : [];
     const held = Array.isArray(sight.affects) ? sight.affects : [];
@@ -1659,11 +1697,14 @@ function wireSights(form, changed) {
     const field = node.dataset.sfield;
     const write = () => {
       const sight = DRAFT.pieces[piece].sight[index];
-      const value = field !== 'affects' ? node.value
+      const value = field === 'captures_own' ? node.checked : field !== 'affects' ? node.value
         : [...form.querySelectorAll(`[data-sight="${piece}.${index}"][data-sfield="affects"]`)]
           .filter(box => box.checked).map(box => box.dataset.pid);
+      const commanded = sight.effect === 'command';
       writeSightField(sight, field, value);
       DRAFT_PIECE = piece;
+      // A change to or from a command shows or hides its `captures_own` box: the form redraws.
+      if (field === 'effect' && commanded !== (sight.effect === 'command')) return changed(true);
       checkDraft();
     };
     node.onchange = write;
@@ -1823,6 +1864,67 @@ function refreshPieceMenus() {
   wirePlacements(form);
 }
 
+// A way of moving's rows, wherever they are drawn: a piece's card, or a portal group's
+// (owner `p<n>`, spelling 31, Q1007b), which the portal cards draw again on their own.
+function wireMoveRows(root) {
+  if (!root || !root.querySelectorAll) return;
+  const changed = structural => {
+    if (structural) drawDesigner();
+    checkDraft();
+  };
+  root.querySelectorAll('[data-move]').forEach(node => {
+    const [owner, at] = node.dataset.move.split('.');
+    const index = Number(at);
+    const field = node.dataset.mfield;
+    const write = settled => {
+      const move = movesOwner(owner).moves[index];
+      const before = [...moveExtrasSkip(move)].join();
+      writeMoveField(move, field, node.value);
+      if (!isPortalKey(owner)) DRAFT_PIECE = Number(owner);
+      // A new kind of move can bring or take away a hop's fields (fix 8); the menu
+      // that changed it is a select, so a redraw loses no cursor.
+      if (field === 'kind' && [...moveExtrasSkip(move)].join() !== before) drawDesigner();
+      // Q1007a: riding changes the kind and the range, which other controls show, and a new
+      // kind, or directions typed and left (a change, not an input, so no cursor is lost),
+      // may bring or take away the menu.
+      else if (field === 'ride' || ((field === 'kind' || (field === 'vectors' && settled))
+        && ridable(move)
+        !== !!node.closest('.moveRow').querySelector('[data-mfield="ride"]'))) drawDesigner();
+      checkDraft();
+      loadMoveMap();
+    };
+    node.onchange = () => write(true);
+    if (node.tagName === 'INPUT') node.oninput = () => write(false);
+  });
+  root.querySelectorAll('[data-addmove]').forEach(node => {
+    node.onclick = event => {
+      event.stopPropagation();
+      const owner = movesOwner(node.dataset.addmove);
+      if (!owner) return;
+      owner.moves = owner.moves || [];
+      // A portal's new way of moving is the one step a portal may take (D1).
+      owner.moves.push(isPortalKey(node.dataset.addmove) ? JSON.parse(JSON.stringify(PORTAL_STEP))
+        : { kind: 'slide', vectors: [[0, 1]], symmetry: 'rotate4' });
+      // On hexagons the slide it arrives with goes the hexagons' six ways (Q640).
+      if ((DRAFT.board || {}).lattice === 'hex') return ontoHex();
+      changed(true);
+      loadMoveMap();
+    };
+  });
+  root.querySelectorAll('[data-dropmove]').forEach(node => {
+    node.onclick = event => {
+      event.stopPropagation();
+      const [owner, index] = node.dataset.dropmove.split('.');
+      const held = movesOwner(owner);
+      held.moves.splice(Number(index), 1);
+      // A group whose last way of moving goes writes none (spelling 31's one spelling).
+      if (isPortalKey(owner) && !held.moves.length) delete held.moves;
+      changed(true);
+      loadMoveMap();
+    };
+  });
+}
+
 // The placement rows' own controls. Wired apart from the rest of the form because a
 // changed letter redraws the piece menus without redrawing the form around them.
 function wirePlacements(form) {
@@ -1919,23 +2021,7 @@ function wireDesigner() {
     };
   });
 
-  form.querySelectorAll('[data-move]').forEach(node => {
-    const [piece, index] = node.dataset.move.split('.').map(Number);
-    const field = node.dataset.mfield;
-    const write = () => {
-      const move = DRAFT.pieces[piece].moves[index];
-      const before = [...moveExtrasSkip(move)].join();
-      writeMoveField(move, field, node.value);
-      DRAFT_PIECE = piece;
-      // A new kind of move can bring or take away a hop's fields (fix 8); the menu
-      // that changed it is a select, so a redraw loses no cursor.
-      if (field === 'kind' && [...moveExtrasSkip(move)].join() !== before) drawDesigner();
-      checkDraft();
-      loadMoveMap();
-    };
-    node.onchange = write;
-    if (node.tagName === 'INPUT') node.oninput = write;
-  });
+  wireMoveRows(form);
 
   // Schema 30 (Q999c): each piece's lines of sight.
   wireSights(form, changed);
@@ -2001,30 +2087,6 @@ function wireDesigner() {
         DRAFT.setup.placements = DRAFT.setup.placements.filter(p => p.piece !== id);
       }
       DRAFT_PIECE = Math.min(DRAFT_PIECE, Math.max(0, DRAFT.pieces.length - 1));
-      changed(true);
-      loadMoveMap();
-    };
-  });
-  form.querySelectorAll('[data-addmove]').forEach(node => {
-    node.onclick = event => {
-      event.stopPropagation();
-      const index = Number(node.dataset.addmove);
-      const piece = DRAFT.pieces[index];
-      piece.moves = piece.moves || [];
-      // A portal's new way of moving is the one step a portal may take (D1).
-      piece.moves.push(isPortalPiece(index) ? JSON.parse(JSON.stringify(PORTAL_STEP))
-        : { kind: 'slide', vectors: [[0, 1]], symmetry: 'rotate4' });
-      // On hexagons the slide it arrives with goes the hexagons' six ways (Q640).
-      if ((DRAFT.board || {}).lattice === 'hex') return ontoHex();
-      changed(true);
-      loadMoveMap();
-    };
-  });
-  form.querySelectorAll('[data-dropmove]').forEach(node => {
-    node.onclick = event => {
-      event.stopPropagation();
-      const [piece, index] = node.dataset.dropmove.split('.').map(Number);
-      DRAFT.pieces[piece].moves.splice(index, 1);
       changed(true);
       loadMoveMap();
     };
@@ -2110,17 +2172,13 @@ function checkDraft() {
       DRAFT_CHECK = answer;
       if (fitAfterReshape(answer)) return;
       if (answer.preview) DRAFT_PREVIEW = answer.preview;
-      // The server settles `schema_version` to the lowest one the draft validates
-      // under, and that number is *inside* the content hash -- so the draft on this
-      // page has to carry the same one, or the JSON you export and the game you save
-      // would be two different games.
-      if (answer.valid && answer.schemaVersion) DRAFT.schema_version = answer.schemaVersion;
       // When the answer came, said on the verdict so a re-check is seen to have happened
       // even when its count did not move (F10: *11 opening moves* before and after two
       // knights went down, and nothing showed the second check had run).
       DRAFT_CHECKED = new Date();
       if (current) {
-        MOVE_SAID = { key: JSON.stringify(DRAFT), lines: answer.moveLines || [] };
+        MOVE_SAID = { key: JSON.stringify(DRAFT), lines: answer.moveLines || [],
+                      portalLines: answer.portalMoveLines || [] };
         drawMoveSays();
         SIGHT_SAID = { key: JSON.stringify(DRAFT), lines: answer.sightLines || [],
                        problems: answer.sightProblems || [] };
@@ -2383,8 +2441,7 @@ function loadRuleFile(file) {
 function loadRuleText(text, how) {
   return api('/api/design/load', { text: String(text) }).then(answer => {
     if (!answer.valid) {
-      ruleFileSaid(how.near, answer.errors || [], how.named, answer.converted
-        ? { spec: answer.converted, says: answer.convertSays, how } : null);
+      ruleFileSaid(how.near, answer.errors || [], how.named);
       return answer;
     }
     takeLoadedSpec(answer.spec, how);
@@ -2412,11 +2469,9 @@ function takeLoadedSpec(spec, how) {
 }
 
 // What became of it, under the control that sent it: the validator's lines as they came,
-// or that the draft is now this game, which undo takes back.
-//
-// `offer` is the same game written the way the rules are written now, when the file was
-// refused only for the old rest switch (Q995d): one press loads it instead.
-function ruleFileSaid(near, errors, named, offer) {
+// or that the draft is now this game, which undo takes back. A file in an older spelling
+// is read in the current one by the server (`spelling.current_spelling`), so it loads.
+function ruleFileSaid(near, errors, named) {
   const slot = document.getElementById(near);
   if (!slot) return;
   const what = named ? `<b>${esc(named)}</b>` : 'That text';
@@ -2424,12 +2479,9 @@ function ruleFileSaid(near, errors, named, offer) {
     ? `<div class="error small" role="alert">
         <div>${what} was not loaded, and the game you were editing is as it was:</div>
         <ul class="rules">${errors.map(line => `<li><code>${esc(line)}</code></li>`).join('')}</ul>
-        ${offer ? `<button data-loadconverted="1">${esc(offer.says)}</button>` : ''}
       </div>`
     : `<div class="ok small">${what} is your draft now: <b>${esc(DRAFT.name || 'a game')}</b>.
         Undo takes it back, and nothing is kept until you save it.</div>`;
-  const take = offer && slot.querySelector('[data-loadconverted]');
-  if (take) take.onclick = () => takeLoadedSpec(offer.spec, offer.how);
 }
 
 function wireStartFrom() {
@@ -2893,6 +2945,8 @@ function loadStanding(hash) {
     const was = !!(before && before.measuring && before.measuring.state === 'running');
     DRAFT_STANDING = standing;
     redrawLadder();
+    // A score measured on this computer and held until the game was saved goes now (Q1004).
+    hereStood(standing);
     const run = standing.measuring;
     const running = !!(run && run.state === 'running');
     if (running) pollStanding(hash);
@@ -3414,7 +3468,6 @@ function identityHtml(check) {
              taken on ${esc(parent.hash)} is not a number about this.`
           : `Nothing has measured it, so it has no number rather than a zero.`}
     </div>
-    ${schemaHtml(check)}
   </div>`;
 }
 
@@ -3458,22 +3511,6 @@ function measuredHtml(parent) {
   }
   if (stale) return 'measured, <span class="muted">no score</span>';
   return '<span class="muted">never measured</span>';
-}
-
-// The version stamp, which is inside the hash above and is therefore not cosmetic. The
-// editor settles it rather than asking for it: a rule pasted into the JSON box used to
-// be refused with a good sentence about a number nobody should have to type.
-// The site never names the rule language's version (D34, §3.2).
-function schemaHtml(check) {
-  if (ACCOUNTS || !check.schemaVersion) return '';
-  return `<div class="muted small u-mt-8">
-    It is written against <b>rule set version ${check.schemaVersion}</b>, the earliest one
-    that can say everything this game says${check.settledVersion
-      ? `. You sent ${check.declaredVersion === undefined || check.declaredVersion === null
-          ? 'none'
-          : 'version ' + esc(String(check.declaredVersion))}; it was settled for you, so
-         two people who build this game the same way get one game and not two`
-      : ''}.</div>`;
 }
 
 // What the marks on the board mean, and which of the two questions the engine was

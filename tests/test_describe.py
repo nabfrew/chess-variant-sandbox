@@ -353,9 +353,10 @@ class TestTheFallback:
     """A descriptor no phrase fits gets the vectors, and the reader is told the rule."""
 
     def test_a_descriptor_no_phrase_fits_falls_back(self) -> None:
-        # A line stepping two squares at a time: sayable in English, and not by these
-        # rules, so the descriptor stands rather than a sentence that rounds it off.
-        move = {"kind": "slide", "vectors": [[2, 2]], "symmetry": "rotate4"}
+        # Lines of one square and of two at once: sayable in English, and not by these
+        # rules, so the descriptor stands rather than a sentence that rounds it off. (A line
+        # stepping two squares at a time alone is a rider since Q1007a, and is said.)
+        move = {"kind": "slide", "vectors": [[1, 0], [2, 2]], "symmetry": "rotate4"}
         assert _move_sentence(move) is None
         piece = {"id": "x", "name": "x", "moves": [move]}
         prose = describe_pieces({"board": {"width": 8, "height": 8}, "pieces": [piece]})[0]
@@ -399,16 +400,17 @@ class TestALineAlongAnObliqueStep:
     def test_an_unbounded_line_counts_steps(self) -> None:
         move = {"kind": "slide", "vectors": [[1, 2]], "symmetry": "dihedral8"}
         said = _move_sentence(move)
-        assert said == ("any number of steps of two and one, in all eight directions, "
-                        "stopped by anything in the way")
+        # Q1007a: a rider, counted in jumps, and stopped only where it would land.
+        assert said == ("any number of jumps of two and one, in all eight directions, "
+                        "stopped only by a piece on a square it would land on")
 
     @pytest.mark.parametrize(
         ("extra", "opening"),
         [
-            ({"range": 2}, "up to two steps of"),
-            ({"range": 3, "min_range": 2}, "two to three steps of"),
-            ({"range": 2, "min_range": 2}, "exactly two steps of"),
-            ({"range": 0, "min_range": 3}, "three steps or more of"),
+            ({"range": 2}, "up to two jumps of"),
+            ({"range": 3, "min_range": 2}, "two to three jumps of"),
+            ({"range": 2, "min_range": 2}, "exactly two jumps of"),
+            ({"range": 0, "min_range": 3}, "three jumps or more of"),
         ],
     )
     def test_the_reach_is_counted_in_steps(self, extra: dict, opening: str) -> None:
@@ -1040,8 +1042,8 @@ class TestWhereTheVectorsAreTheBetterAnswer:
             "leaps two and one, in all eight directions, jumping over whatever is in between")
         move["range"] = 2
         assert move_sentence(move) == (
-            "up to two steps of two and one, in all eight directions, stopped by "
-            "anything in the way")
+            "up to two jumps of two and one, in all eight directions, stopped only by a piece o"
+            "n a square it would land on")
 
     def test_a_one_step_slide_with_a_longer_aim_keeps_its_vector_reading(self) -> None:
         move = _move("slide", [[0, 2]], range=1)
@@ -1057,12 +1059,12 @@ class TestWhereTheVectorsAreTheBetterAnswer:
     def test_an_unlimited_oblique_line_with_a_minimum_says_so(self) -> None:
         move = _move("slide", [[1, 2]], symmetry="dihedral8", min_range=2)
         assert move_sentence(move) == (
-            "two steps or more of two and one, in all eight directions, stopped by "
-            "anything in the way")
+            "two jumps or more of two and one, in all eight directions, stopped only by a piece o"
+            "n a square it would land on")
         del move["min_range"]
         assert move_sentence(move) == (
-            "any number of steps of two and one, in all eight directions, stopped by "
-            "anything in the way")
+            "any number of jumps of two and one, in all eight directions, stopped only by a piece o"
+            "n a square it would land on")
 
 
 class TestTurnsPromotionsAndWildPieces:

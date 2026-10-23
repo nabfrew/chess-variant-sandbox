@@ -1,5 +1,5 @@
 {
-  "schema_version": 25,
+  "schema_version": 31,
   "name": "rear guard torus chess",
   "description": "Chess on a board with no edges, made playable by a rear guard. On a seven by fourteen board with both pairs of opposite edges joined, a piece leaving any edge reappears on the opposite one, and an army has no safe back: whatever lies behind it leads through the join to the enemy. So behind each army's pieces stands a second rank of pawns, placed facing backwards towards the join and never turned round: ordinary pawns that step, double-step on their first move and capture the way they face. Each army is a sandwich rather than a front, deciding how far to push forward while its rear guard holds the way round the back. A White pawn promotes on the thirteenth or fourteenth rank, whichever it comes to first, and Black's on the mirror ranks: a front pawn after crossing the board, a rear pawn just three steps back, across the join. With empty ranks there instead, the back ranks lie open to each other through the join and the opening is a scramble of captures; the rear guard closes that route and halves the moves on offer at the start, so the game opens like chess.",
   "board": {

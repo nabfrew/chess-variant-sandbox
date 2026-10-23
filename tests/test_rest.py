@@ -32,11 +32,9 @@ from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.engine.moves import MOVE_CASTLE, decode_move
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.spec import spec_hash, validate_spec
-from chess_variant_sandbox.spec.schema import (
-    RETIRED_REST,
-    _schema_twenty_nine_uses,
-    piece_rests,
-)
+from chess_variant_sandbox.spec.schema import piece_rests
+from chess_variant_sandbox.spec.spelling import current_spelling
+from tests.feature_inventory import _schema_twenty_nine_uses
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent
@@ -122,19 +120,23 @@ def play(eng: Engine, state: GameState, word: int) -> GameState:
 # ------------------------------------------------------------------ the key and its refusals
 
 
-def test_the_collector_names_the_key_whatever_its_value() -> None:
+def test_the_collector_names_the_key_unless_it_is_off() -> None:
     assert _schema_twenty_nine_uses(resting(GARDNER, {"Q": 2})) == {"pieces.rest"}
-    assert _schema_twenty_nine_uses(resting(GARDNER, {"Q": 0})) == {"pieces.rest"}
+    assert _schema_twenty_nine_uses(resting(GARDNER, {"Q": 0})) == set()
     assert _schema_twenty_nine_uses(GARDNER) == set()
-    older = resting(GARDNER, {"Q": 1})
-    older["schema_version"] = 28
-    assert any("pieces.rest" in error and "schema 29" in error for error in validate_spec(older))
+
+
+def test_a_rest_of_0_is_the_game_without_it() -> None:
+    """Q1008c: 0 is the off value, so it is accepted, named and tidied as its absence."""
+    off = resting(GARDNER, {"Q": 0})
+    assert validate_spec(off) == []
+    assert spec_hash(off) == spec_hash(GARDNER)
+    assert "rest" not in next(p for p in current_spelling(off)["pieces"] if p["id"] == "Q")
 
 
 @pytest.mark.parametrize(
     ("value", "words"),
     [
-        (0, "rest 0 is the default"),
         (5, "from 1 to 4"),
         (True, "from 1 to 4"),
         (-1, "from 1 to 4"),
@@ -159,24 +161,20 @@ def test_a_rest_on_a_wild_piece_or_beside_a_long_turn_is_refused() -> None:
     assert any("turn longer than one move" in error for error in validate_spec(ramp))
 
 
-def test_a_rest_on_a_portal_is_refused() -> None:
-    portals = json.loads((ROOT / "archive" / "divide.json").read_text(encoding="utf-8"))
-    groups = portals["rules"]["portals"]
-    portal = groups[0]["piece"]
-    assert any("portal" in error for error in validate_spec(resting(portals, {portal: 1})))
-
-
-def test_the_old_switch_is_refused_at_every_version_by_admission_and_by_the_loader() -> None:
+def test_the_old_switch_is_read_only_through_the_converter() -> None:
+    """Schema 29 retired `rules.simultaneous.rest`; since Q1008c the validator knows no such
+    key, and the converter writes it as `"rest": 1` on every piece a player moves."""
     from chess_variant_sandbox.spec.schema import SpecError
 
-    for version in (27, 28, 29):
-        old = copy.deepcopy(load("_simultaneous_gardner"))
-        old["schema_version"] = version
-        old["rules"]["simultaneous"]["rest"] = True
-        assert RETIRED_REST in validate_spec(old)
-        assert RETIRED_REST in validate_spec(old, new=False)
-        with pytest.raises(SpecError, match="pieces\\[\\]\\.rest"):
-            Engine(old)
+    old = copy.deepcopy(load("_simultaneous_gardner"))
+    old["rules"]["simultaneous"]["rest"] = True
+    assert any("rest" in error for error in validate_spec(old))
+    with pytest.raises(SpecError):
+        Engine(old)
+    converted = current_spelling(old)
+    assert "rest" not in converted["rules"]["simultaneous"]
+    assert all(piece.get("rest") == 1 for piece in converted["pieces"] if piece.get("moves"))
+    assert validate_spec(converted) == []
 
 
 def test_without_a_rest_nothing_crosses_and_chess_is_chess() -> None:

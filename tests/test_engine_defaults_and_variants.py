@@ -21,6 +21,7 @@ from typing import Any
 import pytest
 
 from chess_variant_sandbox.engine import Engine
+from chess_variant_sandbox.engine import compile as compile_module
 from chess_variant_sandbox.engine.bridge import _first_disagreement, _where, rust_supports
 from chess_variant_sandbox.engine.compile import UNREACHABLE, compile_spec
 from chess_variant_sandbox.spec import validate_spec
@@ -186,8 +187,11 @@ class TestWalls:
             target = square(3 + 3 * dx, 3 + 3 * dy)
             assert (target in _targets(engine, state, "L", "d4")) is (not stops), (wall, target)
 
-    def test_a_one_square_lame_leap_of_a_stored_spec_gives_the_piece_no_such_move(self) -> None:
-        # Admission refuses it (Q884); a stored spec still compiles, and the step is no move.
+    def test_a_one_square_lame_leap_is_refused_and_the_compiler_makes_it_no_move(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Refused at admission and at the load alike (Q884, Q1008d); built past the gate, the
+        # compiler still drops the step, so the piece has no such move.
         piece = {"id": "H", "name": "horse", "value": 1,
                  "moves": [{"kind": "lame", "vectors": [[1, 2], [1, 0]],
                             "symmetry": "dihedral8"}]}
@@ -196,6 +200,9 @@ class TestWalls:
             {"piece": "K", "player": 1, "squares": ["e5"]},
             {"piece": "H", "player": 0, "squares": ["c3"]},
         ], validate=False)
+        with pytest.raises(SpecError, match="one-square 'lame' leap"):
+            compile_spec(spec)
+        monkeypatch.setattr(compile_module, "validate_or_raise", lambda spec: spec)
         engine = Engine(spec)
         state = engine.make_state({"a1": ("K", 0), "e5": ("K", 1), "c3": ("H", 0)})
         assert _targets(engine, state, "H", "c3") == TestWalls.ALL
@@ -418,11 +425,10 @@ def _gardner_with_ring(enter: list[int] | None) -> dict[str, Any]:
     spec["schema_version"] = 26
     # The pawn declared after the other pieces, so its type index is above zero.
     spec["pieces"].sort(key=lambda piece: piece["id"] == "P")
-    spec["pieces"].append({"id": "O", "name": "portal", "value": 0, "moves": []})
     ends = [{"at": "a3", "to": 1}, {"at": "c3", "to": 2}, {"at": "e3", "to": 0}]
     if enter is not None:
         ends = [{**end, "enter": enter} for end in ends]
-    spec["rules"]["portals"] = [{"piece": "O", "ends": ends}]
+    spec["rules"]["portals"] = [{"ends": ends}]
     assert validate_spec(spec) == [], validate_spec(spec)
     return spec
 

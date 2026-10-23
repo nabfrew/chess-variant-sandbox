@@ -177,12 +177,86 @@ async function hereMeasure(spec, count) {
       redrawHere();
     }
   }
-  if (run.state === 'done' && run.upload && hereSends()) await hereSubmit(run);
+  if (run.state === 'done' && run.upload && hereSends()) await hereSettle(run);
 }
 
 // Only the site has people, and only a signed-in designer's own game can be sent.
 function hereSends() {
   return ACCOUNTS && !!VIEWER;
+}
+
+// Q1004, the user: a measurement the site could not keep was measured all the same, and
+// refused only once it was sent. The site keeps a score from this computer for a game its
+// designer has saved, and for nothing else (`provisional.check_owner`), so the page asks
+// the draft's standing first. What it answers, for the game the standing is of:
+//
+//   'local'    the local application, which sends nothing and says so up front;
+//   'signin'   a visitor, who saves nothing; measuring here is off until they sign in;
+//   'unknown'  no standing yet, which the end of a measurement asks again;
+//   'send'     this person's saved game: the score goes to the site when it ends;
+//   'save'     rules nobody has saved: measuring is on, and the finished score is held
+//              on the page, with a button that saves the game and then sends it;
+//   'library'  rules the library already holds, which the site measures itself;
+//   'theirs'   rules somebody else saved first, whose score only they can send.
+//
+// The last two cannot be made this person's by saving, so measuring here is off for them,
+// with the sentence saying how to make a game of their own (`HERE_OFF`). The page decides
+// nothing about the score: a held one is the same upload, sent as it came once the game is
+// saved, and the site walks and scores every game of it as it does any other (B10).
+function hereKeeping(s) {
+  if (!ACCOUNTS) return 'local';
+  if (!VIEWER) return 'signin';
+  if (!s) return 'unknown';
+  const p = s.publish;
+  if (p) return p.mine ? 'send' : 'theirs';
+  return s.saved ? 'library' : 'save';
+}
+
+// Why measuring here is off, and how to turn it on, for each answer that turns it off.
+const HERE_OFF = {
+  signin: 'Measuring on your computer is for signed-in designers: the site keeps a score'
+    + ' only for a game you have saved. Sign in and save this game, and you can measure'
+    + ' it here.',
+  library: 'These rules are already a library game, which the site measures itself, so a'
+    + ' score from your computer could not be kept. Change a rule to make a game of your'
+    + ' own, save it, and you can measure that here.',
+  theirs: 'Somebody else saved these rules first, and only the person who saved a game can'
+    + ' send it a score, so one from your computer could not be kept. Change a rule to make'
+    + ' a game of your own, save it, and you can measure that here.',
+};
+
+// The standing of the game a measurement was of: the designer's own when it is still the
+// draft on screen, else asked for, since the rules may have changed while it ran.
+async function hereStanding(hash) {
+  if (typeof DRAFT_STANDING !== 'undefined' && DRAFT_STANDING
+      && DRAFT_STANDING.hash === hash) return DRAFT_STANDING;
+  try {
+    return await api('/api/design/standing/' + hash);
+  } catch (error) {
+    return null;
+  }
+}
+
+// A finished measurement on the site: sent when its game is this person's saved game, held
+// on the page while the game is unsaved, and kept back with the reason when it never can be
+// this person's. With no standing to read, it is sent, and the site says what it says.
+async function hereSettle(run) {
+  const keeping = hereKeeping(await hereStanding(run.result.hash));
+  if (keeping === 'save') run.check = { state: 'unsaved' };
+  else if (HERE_OFF[keeping]) run.check = { state: 'unkept', why: HERE_OFF[keeping] };
+  else return hereSubmit(run);
+  if (HERE === run) redrawHere();
+}
+
+// The draft's standing has just been asked again (`loadStanding`): a score held for want of
+// a save goes to the site once the standing says the game is this person's saved game,
+// whichever button saved it.
+function hereStood(s) {
+  const run = HERE;
+  if (!run || run.state !== 'done' || !run.upload || !run.check
+      || run.check.state !== 'unsaved') return null;
+  if (!s || s.hash !== run.result.hash || hereKeeping(s) !== 'send') return null;
+  return hereSubmit(run);
 }
 
 // The finished measurement to the site, and the job followed until the server has walked
@@ -313,6 +387,8 @@ function hereHtml(check, inPanel) {
   const offer = !!HERE_MANIFEST && !!check && check.valid && check.playable !== false;
   if (!run && !offer) return '';
   const busy = !!run && (run.state === 'loading' || run.state === 'running');
+  const keeping = hereKeeping(check && typeof standingFor === 'function'
+    ? standingFor(check) : null);
   return `<div class="${inPanel ? 'hereStep' : 'ruled'}">
       ${inPanel ? '<div class="u-fw-600">Measure it on this computer</div>'
         : '<h3 class="u-mt-0">Measure it on this computer</h3>'}
@@ -321,11 +397,23 @@ function hereHtml(check, inPanel) {
         checks the score.</div>` : `<div class="muted small">Your browser plays the games the
         server would, with the same engine, and scores them the same way, on ${
         hereCores(hereWorkerCap())}. A game the size of chess takes a few minutes. ${
-        hereSends() ? `When it finishes, the games go to the site, which checks every one
-        and scores them itself; the number you keep is the site's.`
+        HERE_OFF[keeping] ? '' : hereSends() ? `When it finishes, the games go to the site,
+        which checks every one and scores them itself; the number you keep is the site's.${
+        keeping === 'save' ? ` This game is not saved yet: when the measurement ends, save
+        it and the score is kept.` : ''}`
         : 'Nothing is sent anywhere and nothing is kept: leave this page and it is gone.'}</div>`}
-      ${offer && !busy ? hereOfferHtml(run) : ''}
+      ${offer && !busy ? HERE_OFF[keeping] ? hereOffHtml(run, keeping) : hereOfferHtml(run) : ''}
     </div>`;
+}
+
+// The button, drawn and not working, with what turns it on (Q1004): measuring here is off
+// wherever the site could not keep what it measured.
+function hereOffHtml(run, keeping) {
+  return `<div class="row u-mt-8">
+      <button id="dHereGo" disabled title="${esc(HERE_OFF[keeping])}">${
+        run ? 'measure it here again' : 'measure it here'}</button>
+    </div>
+    <div class="muted small u-mt-6" id="dHereOff">${esc(HERE_OFF[keeping])}</div>`;
 }
 
 function hereOfferHtml(run) {
@@ -403,12 +491,36 @@ function hereOwnHtml(run, check) {
     <div class="muted small">measured on your computer${info('provisional')}, as one run of ${
       Number(r.games)} games${r.viable === false ? ', and ruled out' : ''} &middot; ${
       esc(rulesVersion(r.weights))}${info('weights')}</div>
-    ${check ? hereCheckHtml(check)
+    ${check ? hereCheckHtml(check, run)
       : `<div class="small u-mt-6">${unsent}</div>`}`;
 }
 
+// A score held on the page because its game is not saved (Q1004). While the draft on screen
+// is still the game it measured, one press saves the game the way *save it* does, and the
+// score goes to the site once the save lands (`hereStood`). Once the rules have changed,
+// saving would save another game, so it says how to get back to one it can keep.
+function hereUnsavedHtml(run) {
+  const here = typeof DRAFT_HASH === 'string' && DRAFT_HASH === run.result.hash;
+  if (!here) {
+    return `<div class="small u-mt-6" id="dHereUnsaved">The site keeps a score only for a
+      saved game, and these rules were never saved. They have changed since you pressed
+      the button, so this score cannot be kept as things stand: put the rules back as they
+      were and save them, or measure the draft on screen.</div>`;
+  }
+  return `<div class="small u-mt-6" id="dHereUnsaved">The site keeps a score only for a saved
+      game, and this one is not saved yet. Save it, and these games go to the site to be
+      checked, as they would have if it had been saved first; nothing is measured again.
+      Leave this page without saving and the score is gone.</div>
+    <div class="row u-mt-8"><button id="dHereSave" class="primary"
+      >save it and keep the score</button></div>`;
+}
+
 // The site's answer while it has no number to show, in its own words.
-function hereCheckHtml(check) {
+function hereCheckHtml(check, run) {
+  if (check.state === 'unsaved') return hereUnsavedHtml(run);
+  if (check.state === 'unkept') {
+    return `<div class="small u-mt-6" id="dHereUnkept">It was not sent: ${esc(check.why)}</div>`;
+  }
   if (check.state === 'sending') {
     return '<div class="small u-mt-6">Sending the games to the site&hellip;</div>';
   }
@@ -504,4 +616,14 @@ function wireHere() {
   if (stop) stop.onclick = () => hereStop();
   const send = document.getElementById('dHereSend');
   if (send && HERE && HERE.upload) send.onclick = () => hereSubmit(HERE);
+  // The editor's own save, name question and all; what the save says lands where *save it*
+  // puts it, and the standing it asks for afterwards sends the score (`hereStood`).
+  const save = document.getElementById('dHereSave');
+  if (save && HERE && HERE.upload) save.onclick = () => {
+    save.disabled = true;
+    const saving = saveDraft();
+    const again = () => { if (save.isConnected !== false) save.disabled = false; };
+    if (saving && typeof saving.then === 'function') saving.then(again, again);
+    else again();
+  };
 }

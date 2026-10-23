@@ -48,7 +48,6 @@ from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.moves import decode_move, move_from, move_to
 from chess_variant_sandbox.engine.state import GameState
 from chess_variant_sandbox.spec import spec_hash, validate_spec
-from chess_variant_sandbox.spec.schema import RETIRED_REST
 
 ROOT = Path(__file__).parent.parent
 SEEDS = range(20)
@@ -60,7 +59,7 @@ def load(name: str) -> dict[str, Any]:
 
 
 SP1 = retired_preview("gardner-with-spies")
-SP2 = load("gardner-with-spies-resting")
+SP2 = retired_preview("gardner-with-spies-resting")  # retired by Q1005
 PARENT = retired_preview("gardner-in-rounds")
 
 
@@ -137,7 +136,6 @@ def owner(engine: Engine, state: GameState, at: int) -> int | None:
 def test_the_study_files_are_section_five_one() -> None:
     for spec in (SP1, SP2):
         assert not validate_spec(spec)
-        assert spec["schema_version"] == (27 if spec is SP1 else 29)
         spies = [p for p in spec["pieces"] if p.get("spy")]
         assert len(spies) == 1
         spy = spies[0]
@@ -162,8 +160,8 @@ def test_the_study_files_are_section_five_one() -> None:
         "V5 SP1": valued(SP1, 5), "V5 SP2": valued(SP2_STUDY, 5),
     }
     for name, spec in built.items():
-        errors = validate_spec(spec)
-        assert errors == ([RETIRED_REST] if "SP2" in name else []), name
+        # The study's SP2 wrote the retired round rest, which only the converter reads now.
+        assert bool(validate_spec(spec)) == ("SP2" in name), name
         assert spec_hash(spec) == STUDY_HASHES[name], name
 
 

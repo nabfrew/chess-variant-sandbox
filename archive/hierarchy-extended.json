@@ -1,5 +1,5 @@
 {
-  "schema_version": 6,
+  "schema_version": 31,
   "name": "amazon ladder",
   "description": "Chess in which taking a piece promotes it, up a ladder that runs three steps past the queen. A struck pawn becomes a knight, then a bishop, a rook and a queen; a struck queen becomes an amazon, a piece that moves as both a queen and a knight; a struck amazon becomes the diagonal leaper, which slides like a rook and leaps like a knight but jumps over anything in the way along its diagonals; and that becomes the full leaper, which jumps along its straight lines as well. Only the full leaper is removed when taken. The two pieces exchange squares, so the upgraded piece lands where its attacker came from, and a pawn on the far rank promotes no higher than a queen, so the top three steps are reached only by being struck. The longer ladder breaks the game: a queen offered in the enemy camp comes back as an amazon behind their lines, a queen that walks up to the enemy king is hard to answer because striking it from close range puts an amazon close to the striker's own king, and the average game is over in fewer than ten moves a side.",
   "board": {"width": 8, "height": 8},

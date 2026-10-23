@@ -24,11 +24,8 @@ from chess_variant_sandbox.engine.bridge import build_tables
 from chess_variant_sandbox.engine.compile import _side_types, compile_spec
 from chess_variant_sandbox.engine.state import GameState, Outcome
 from chess_variant_sandbox.spec import load_spec, validate_spec
-from chess_variant_sandbox.spec.schema import (
-    SCHEMA_VERSION,
-    _schema_twenty_seven_uses,
-    opening_counts,
-)
+from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, opening_counts
+from tests.feature_inventory import _schema_twenty_seven_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 STORED = sorted((ROOT / "rulesets").glob("*.json")) + sorted((ROOT / "archive").glob("*.json"))
@@ -82,12 +79,6 @@ class TestTheGate:
             spec = gap({"pieces": ["A", "B", "C", "E"], "per_type": spelling})
             assert OWN not in _schema_twenty_seven_uses(spec)
         assert _schema_twenty_seven_uses(gap({"pieces": ["A", "B", "C", "E"]})) == set()
-
-    def test_a_schema_twenty_six_spec_may_not_say_own(self) -> None:
-        spec = gap()
-        spec["schema_version"] = 26
-        errors = validate_spec(spec)
-        assert any("added in schema 27" in e and OWN in e for e in errors), errors
 
     def test_only_the_showcase_says_own(self) -> None:
         """Inert when it landed: nothing committed or archived had used a value that did not

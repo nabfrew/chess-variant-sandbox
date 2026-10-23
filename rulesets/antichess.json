@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 31,
   "name": "antichess",
   "description": "The object is to lose everything. Captures are compulsory, so handing the opponent a capture takes their choice away, and running out of pieces or of legal moves wins. Nothing on the board is royal.",
   "board": {

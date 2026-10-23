@@ -1,5 +1,5 @@
 {
-  "schema_version": 21,
+  "schema_version": 31,
   "name": "pawnproof wormhole",
   "description": "A door across the middle of a tiny board that pieces may use and pawns may not. The board is Gardner's minichess: five by five, a king, queen, rook, bishop, knight and five pawns a side, no pawn double step. The door is a fixed pair of portals on b3 and d3: a piece other than a pawn that ends its move on one end comes out one step beyond the other, in the direction it was travelling, capturing there as usual; to a pawn both ends are blocks. Let in, a pawn stepping diagonally into an end would come out capturing, one step from promotion, on the first move: a race the first player always wins. Kept out, the door becomes a way for the bigger pieces, mostly kings and queens, to switch wings, and in the strongest computer games each side wins as often as the other.",
   "board": {
@@ -134,28 +134,6 @@
           "mode": "both"
         }
       ]
-    },
-    {
-      "id": "O",
-      "name": "portal",
-      "value": 0,
-      "moves": [
-        {
-          "kind": "leap",
-          "vectors": [
-            [
-              1,
-              0
-            ],
-            [
-              1,
-              1
-            ]
-          ],
-          "symmetry": "rotate4",
-          "mode": "move"
-        }
-      ]
     }
   ],
   "setup": {
@@ -221,7 +199,22 @@
     "no_progress_draw": 100,
     "portals": [
       {
-        "piece": "O",
+        "moves": [
+          {
+            "kind": "leap",
+            "vectors": [
+              [
+                1,
+                0
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "symmetry": "rotate4"
+          }
+        ],
         "orange": "b3",
         "blue": "d3",
         "carries": {

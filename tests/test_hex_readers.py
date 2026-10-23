@@ -278,18 +278,19 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-scored` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was 21bb31cf3d019bd6.
     "archive/breather": "eb90d68ca5c203ad",  # Q983a (2026-10-20): schema 29's rest, said as a piece property (was 7614206d2a5d6bfb); Q942c, schema 27; Q962: its file, name and description (was archive/gardner-in-rounds-against-the-chase, e6b51ce8b7b2e11b); 2026-10-18: its description, written as the game's idea (was 77bebee4de9a7bd8); Q981 (2026-10-19): its description, the objective first (was e8fa3ceebdd3d5a3)
     # Q962b, 2026-10-18: `archive/gardner-with-spies` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was d42324fc3f1bb1be.
-    "archive/gardner-with-spies-resting": "15577257179d7bbb",  # Q983a (2026-10-20): schema 29's rest in every phase, and its description (was cfa66ba4e72a1cb4); Q935f, schema 27; 2026-10-18: its description, written as the game's idea (was 6ef889f11a8119cc); Q981 (2026-10-19): its description, the objective first (was 816d0aff92f03381)
+    # Q1005, 2026-10-23: `archive/gardner-with-spies-resting` retired from the previews (`docs/reference/preview-call-2026-10.md`); the row was 15577257179d7bbb.
     "archive/riders-and-leapers": "358b832b1209f1d3",  # Q936s, schema 27
-    "archive/gardner-in-rounds-with-a-swift-king": "33aebb098bad52cf",  # Q943c, schema 28; Q981 (2026-10-19): its description, the objective first (was 10d26a1f6ccbb0b7)
-    "archive/gardner-in-rounds-with-swift-knights": "838056e4e0605922",  # Q943c, schema 28; Q981 (2026-10-19): its description, the objective first (was 0c130d20a3e50438)
-    "archive/watering-hole-by-speed": "669784117af5b5df",  # Q943c, schema 28; Q981 (2026-10-19): its description, the objective first (was 6a4b3d3c15788a29)
+    # Q1005, 2026-10-23: `archive/gardner-in-rounds-with-a-swift-king` retired from the previews (`docs/reference/preview-call-2026-10.md`); the row was 33aebb098bad52cf.
+    # Q1005, 2026-10-23: `archive/gardner-in-rounds-with-swift-knights` retired from the previews (`docs/reference/preview-call-2026-10.md`); the row was 838056e4e0605922.
+    # Q1005, 2026-10-23: `archive/watering-hole-by-speed` retired from the previews (`docs/reference/preview-call-2026-10.md`); the row was 669784117af5b5df.
     "archive/circe-mortal-diagonals": "53fb92c560611d5e",  # Q798, schema 17
     "archive/the-golem-well": "017c7863f3d0b68f",  # Q994p, schema 28, a model's design (Q994's blind trial)
     "archive/kraken-ford": "023bb71386d444bd",  # Q994p, schema 28, a model's design (Q994's blind trial)
-    "archive/gardner-with-weary-heavies": "a4a0f238451bc857",  # Q983d, schema 29
-    "archive/breather-by-weight": "051424e49532e422",  # Q983d, schema 29
+    # Q1005, 2026-10-23: `archive/gardner-with-weary-heavies` retired from the previews (`docs/reference/preview-call-2026-10.md`); the row was a4a0f238451bc857.
+    # Q1005, 2026-10-23: `archive/breather-by-weight` retired from the previews (`docs/reference/preview-call-2026-10.md`); the row was 051424e49532e422.
     "archive/chess-with-a-weary-queen": "d441c25522408073",  # Q983d, schema 29
-    "archive/opposite-colours": "4ff00bc55e702f5c",  # Q999b, schema 30
+    "archive/opposite-colours": "1e2dfc55b0d9af8c",  # Q999b, schema 30; Q1007e, 2026-10-24: replaced under its name by R1, riders as rook and queen (was 4ff00bc55e702f5c)
+    "archive/chess-with-nightriders": "8c0fea2fdf92394b",  # Q1007e, schema 31
     "archive/madrasi": "b11e935637736813",  # Q999d, schema 30
     "archive/chess-with-a-sheltering-king": "84030d503bb17bc8",  # Q999d, schema 30
     "archive/chess-with-daunting-knights": "78cfd35394c8d7db",  # Q999d, schema 30

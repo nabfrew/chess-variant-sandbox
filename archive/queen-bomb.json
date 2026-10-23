@@ -1,5 +1,5 @@
 {
-  "schema_version": 10,
+  "schema_version": 31,
   "name": "queen bomb",
   "description": "Chess in which the queen is a bomb: when she captures, she blows up together with her victim and every piece but a pawn on the eight squares around it, and a king caught in the blast is lost, and with it the game. It is the explosion of atomic chess, a popular online variant in which every capture explodes, given to one piece alone: every other capture is ordinary, and a queen can be taken like any other piece. So the queen becomes a one-shot weapon. She cannot take anything without dying, but a capture she can make beside the enemy king wins on the spot. Holding her back keeps that threat over every piece the enemy king stands near, which turns the defenders crowding a king into a liability; firing her spends the strongest piece on the board. With the explosive confined to one piece, games run more than twice as long as atomic chess's.",
   "board": {

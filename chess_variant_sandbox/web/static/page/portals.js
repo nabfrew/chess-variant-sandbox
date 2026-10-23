@@ -73,9 +73,10 @@ function groupHead(index) {
 // Who may move an end (D4): the card's choice, and what it writes as `moved_by`.
 const PORTAL_MOVERS = [['nobody', []], ['first', [0]], ['second', [1]], ['either', [0, 1]]];
 
-// The move a portal piece is given the first time somebody may move an end: one step in
-// any direction, onto an empty square (D4; `designing.PORTAL_STEP`).
-const PORTAL_STEP = { kind: 'leap', vectors: [[1, 0], [1, 1]], symmetry: 'rotate4', mode: 'move' };
+// The move a group is given the first time somebody may move an end: one step in any
+// direction, onto an empty square (D4; `designing.PORTAL_STEP`). A group's move leaves
+// `mode` out, which means *move only* there (spelling 31, Q1007b).
+const PORTAL_STEP = { kind: 'leap', vectors: [[1, 0], [1, 1]], symmetry: 'rotate4' };
 
 // ------------------------------------------------------------------ the draft's portals
 
@@ -84,15 +85,15 @@ function draftPortals() {
   return Array.isArray(rules.portals) ? rules.portals : [];
 }
 
-function portalPieceIds() {
-  return new Set(draftPortals().map(pair => pair && pair.piece).filter(Boolean));
+// A move row's owner (`moveEditor`): a piece's index, or `p<n>` for portal group n, whose
+// own `moves` are how its ends move (spelling 31, Q1007b; there is no portal piece).
+function isPortalKey(owner) {
+  return String(owner).charAt(0) === 'p';
 }
 
-// Whether the piece at this index of the draft is the portal piece, which the tray does
-// not offer and the piece list shows last (D1).
-function isPortalPiece(index) {
-  const piece = ((DRAFT && DRAFT.pieces) || [])[index];
-  return !!piece && portalPieceIds().has(piece.id);
+function movesOwner(owner) {
+  return isPortalKey(owner) ? draftPortals()[Number(String(owner).slice(1))]
+    : (DRAFT.pieces || [])[Number(owner)];
 }
 
 // The keys a group's ends are addressed by: a pair's `orange` and `blue` (the file's keys),
@@ -152,10 +153,11 @@ function groupEnds(group) {
 // A group written back from its ends: the pair spelling for two (any group of two ends is a
 // pair: who goes in at which end is its `passage`, per player), `ends` for three or more,
 // every default left out so the draft hashes as the game it is. Keeps the group's own keys
-// (its piece, its kind, its bar on going straight back while somebody moves an end). A
+// (its moves, its kind, its bar on going straight back while somebody moves an end). A
 // filter is kept only on an end somebody goes in by, since one elsewhere says nothing.
 function writeGroup(group, ends) {
-  const out = { piece: group.piece };
+  const out = {};
+  if (Array.isArray(group.moves) && group.moves.length) out.moves = group.moves;
   if (ends.length === 2) {
     out.orange = ends[0].at;
     out.blue = ends[1].at;
@@ -559,25 +561,12 @@ function liftEnd(end) {
 
 // ------------------------------------------------------------------ changing the groups
 
-// The portal piece, made unseen on the first group (D1): named *portal*, worth nothing, and
-// with no move while nobody may move an end. Its letter is one the draft has free and no
-// portal end is called. The groups already there share theirs.
-function ensurePortalPiece() {
-  const held = draftPortals().find(pair => pair && pair.piece);
-  if (held) return held.piece;
-  const used = new Set((DRAFT.pieces || []).map(piece => piece.id));
-  const id = 'OVWXYZJLMTU'.split('').find(letter => !used.has(letter)) || 'Q';
-  DRAFT.pieces = DRAFT.pieces || [];
-  DRAFT.pieces.push({ id, name: 'portal', value: 0, moves: [] });
-  return id;
-}
-
 // A new group on these squares, in the order clicked: two ends as a pair, more as a ring.
+// It has no moves while nobody may move an end (spelling 31: a group carries its own).
 function addGroup(names) {
   DRAFT.rules = DRAFT.rules || {};
-  const piece = ensurePortalPiece();
-  const group = names.length === 2 ? { piece, orange: names[0], blue: names[1] }
-    : { piece, ends: names.map((at, place) => ({ at, to: (place + 1) % names.length })) };
+  const group = names.length === 2 ? { orange: names[0], blue: names[1] }
+    : { ends: names.map((at, place) => ({ at, to: (place + 1) % names.length })) };
   DRAFT.rules.portals = draftPortals().concat([group]);
   const number = DRAFT.rules.portals.length;
   PORTAL_TOOL = null;
@@ -599,7 +588,7 @@ function addGroup(names) {
 function addPair(orange, blue) { addGroup([orange, blue]); }
 
 // The whole group, every end (D2: one end alone is not a portal); the groups after it move
-// up a number, and with the last group the portal piece goes too.
+// up a number, and with the last group the rule goes.
 function removePair(index) {
   const groups = draftPortals().slice();
   if (index < 0 || index >= groups.length) return;
@@ -620,12 +609,9 @@ function removePair(index) {
   drawBoardSide();
 }
 
-// No groups left: the rule goes, and the portal piece no rule names any more.
+// No groups left: the rule goes.
 function dropPortals() {
-  const unseen = portalPieceIds();
   delete DRAFT.rules.portals;
-  DRAFT.pieces = (DRAFT.pieces || []).filter(piece => !unseen.has(piece.id));
-  DRAFT_PIECE = Math.min(DRAFT_PIECE, Math.max(0, DRAFT.pieces.length - 1));
 }
 
 // A group's number is its place in the list (D2), so renumbering is moving it there. Its
@@ -727,10 +713,9 @@ function toggleCarried(index, place, id) {
   });
 }
 
-// The pieces a filter may name: the draft's pieces but the portal piece, in its order.
+// The pieces a filter may name: the draft's pieces, in its order.
 function portalFilterPieces() {
-  const unseen = portalPieceIds();
-  return (DRAFT.pieces || []).filter(piece => piece && piece.id && !unseen.has(piece.id));
+  return (DRAFT.pieces || []).filter(piece => piece && piece.id);
 }
 
 // Which way pieces go through a pair, for one player or (`player` null) for both.
@@ -753,9 +738,9 @@ function setPassage(index, player, word) {
   checkDraft();
 }
 
-// Who may move one end. Anybody at all, the first time, gives the portal piece the one
-// step it moves by until somebody teaches it another (D4). `end` is a pair's `orange` or
-// `blue`, or a map end's place.
+// Who may move one end. Anybody at all, the first time, gives the group the one step it
+// moves by until somebody teaches it another (D4). `end` is a pair's `orange` or `blue`, or
+// a map end's place.
 function setMovers(index, end, players) {
   const group = draftPortals()[index];
   if (!group) return;
@@ -773,15 +758,12 @@ function setMovers(index, end, players) {
   }
   PORTAL_SAYS_STALE = true;
   let taught = false;
-  if (players.length) {
-    const piece = (DRAFT.pieces || []).find(one => one.id === group.piece);
-    if (piece && !(piece.moves || []).length) {
-      piece.moves = [JSON.parse(JSON.stringify(PORTAL_STEP))];
-      taught = true;
-    }
+  if (players.length && !(group.moves || []).length) {
+    group.moves = [JSON.parse(JSON.stringify(PORTAL_STEP))];
+    taught = true;
   }
-  // The piece list shows the step the portal piece was just given; otherwise only the
-  // cards change, and the control the keyboard is on keeps its focus.
+  // The card's move rows show the step the group was just given, wired with the rest of
+  // the form; otherwise only the cards change, and the keyboard's control keeps its focus.
   if (taught) drawDesigner(); else drawPortalCards();
   checkDraft();
 }
@@ -1161,11 +1143,32 @@ function pairCardHtml(group, index, count) {
         moved can't be moved back where it came from on the very next move</label>` : ''}
       <div data-pmoves="${index}">${pairMovesSaysHtml(index)}</div>
     </div>
+  </div>${groupMovesHtml(group, index, moved)}`;
+}
+
+// How the group's portals move when somebody moves one (spelling 31, Q1007b): the group's
+// own ways of moving, as a piece card's rows, offering only what a portal may do (D1). Shown
+// while somebody may move an end, or while the group still holds a way of moving. A card of
+// its own right under the group's card, as the stand-in piece's card was one of its own
+// before: the rows are a piece card's and grow with every way added, and inside the group's
+// card they pushed it past a 1400 x 900 screen (Q1014), where a picked group's card is to be
+// shown whole (the look check's `D1 card`).
+function groupMovesHtml(group, index, moved) {
+  const moves = Array.isArray(group.moves) ? group.moves : [];
+  if (!moved && !moves.length) return '';
+  const owner = `p${index}`;
+  const word = Array.isArray(group.ends) ? 'group' : 'pair';
+  return `<div class="pairMoves" data-pmoverows="${index}" data-count="${moves.length}">
+    <div class="pairMovesHead">${pairIconHtml(index, 20)}<b class="small">How a portal of ${word} ${index + 1} moves</b></div>
+    ${portalMovesNoteHtml()}
+    ${moves.length ? '' : `<div class="muted small">It has no way of moving yet.</div>`}
+    ${moves.map((move, m) => moveEditor(move, owner, m)).join('')}
+    <div class="row u-mt-7"><button data-addmove="${owner}">add a way of moving</button></div>
   </div>`;
 }
 
 // The portals' section of the rules column: a card per group, and the refusals about the
-// portal piece that no one group is at fault for. Records the rule for the form's round
+// portals that no one group is at fault for. Records the rule for the form's round
 // trip as one held value (`kept`), so an edit to any other rule card writes it back as it
 // is rather than dropping it.
 function portalCardsHtml(out) {
@@ -1196,9 +1199,14 @@ function drawPortalCards() {
     : null;
   const again = held ? { attr: held, value: active.getAttribute(held), tag: active.tagName,
                          choice: active.type === 'radio' ? active.value : null } : null;
+  // A group's move rows are the form's own controls: while one is being typed in, the cards
+  // wait for the next redraw, so the cursor stays where it is.
+  if (active && typeof active.closest === 'function' && active.closest('[data-pmoverows]')) return;
   const pairs = draftPortals();
   box.innerHTML = pairs.map((pair, index) => pairCardHtml(pair, index, pairs.length)).join('');
   wirePortalCards(box);
+  if (typeof wireMoveRows === 'function') wireMoveRows(box);
+  if (typeof wireCards === 'function') wireCards(box);
   if (!again) return;
   const found = [...box.querySelectorAll(`[${again.attr}="${again.value}"]`)].find(node =>
     node.tagName === again.tag && (again.choice === null || node.value === again.choice));
@@ -1328,16 +1336,13 @@ function drawPortalSays() {
   refreshPortalRow();
 }
 
-// ------------------------------------------------------------------ the portal piece (D1)
+// ------------------------------------------------------------------ a group's moves (D1)
 
-// What the portal piece's card says in place of its letter, worth and royal flag: what it
-// is for, and why its moves are limited.
-function portalPieceNoteHtml() {
-  return `<div class="muted small cardSays">Used by the portals: it is never put on the board
-    and belongs to neither player. Its ways of moving are how a portal moves when somebody
-    may move one, so each is <i>move only</i> (a portal never takes anything, and never
-    goes onto another portal) and the same both ways up (a portal has no forward of its
-    own).</div>`;
+// What a group's move rows say above them: why its moves are limited.
+function portalMovesNoteHtml() {
+  return `<div class="muted small cardSays">Each way is <i>move only</i> (a portal never takes
+    anything, and never goes onto another portal) and the same both ways up (a portal has no
+    forward of its own).</div>`;
 }
 
 // ------------------------------------------------------------------ the exit preview (D5)

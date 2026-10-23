@@ -97,10 +97,16 @@ pub struct Layout {
     /// alternating layout -- and every store and digest written for one -- is unchanged.
     /// `initiative`: two inputs, who holds the token, under `tie: "initiative"`.
     pub initiative: usize,
-    /// `rest`: `2 * n_squares`, each player's resting squares, in a round game under a rest
-    /// (schema 29's `pieces[].rest`; schema 27's round rest was the same plane). Q983b widens
-    /// it to `2 * n_squares * R` and every game that rests (`docs/plan-rest.md` §5.4).
+    /// `rest`: `2 * n_squares * R`, one-hot per (turns left, player, square), index
+    /// `((left - 1) * 2 + player) * n_squares + square` (the key's own order), `R` the
+    /// longest rest: in **every game that rests**, alternating or in rounds (schema 29's
+    /// `pieces[].rest`, Q983b, `docs/plan-rest.md` §5.4). For `R = 1` in a round game it is
+    /// schema 27's plane, `player * n_squares + square`, so a round net's layout is
+    /// unchanged; in an alternating game it follows `turn` (no round segment sits between),
+    /// a game that rests having no store before it. Every game without a rest is unchanged.
     pub rest: usize,
+    /// `R`, the longest rest (`RestTables::slots`), 0 without a rest.
+    pub rest_turns: usize,
     /// `void`: `2 * n_squares`, the void run's two squares (player 0's, then player 1's).
     pub void: usize,
     /// `bars`: `2 * n_squares`, every barred pair's squares, player 0's then player 1's.
@@ -133,10 +139,12 @@ impl Layout {
         let sim = t.simultaneous.as_deref();
         let rounds = sim.is_some();
         let has_initiative = sim.is_some_and(|sim| sim.tie == 1);
-        let has_rest = rounds && t.rest.is_some();
+        // Q983b: the rest plane in every game that rests, its width the longest rest's.
+        let rest_turns = t.rest.as_deref().map_or(0, |rest| rest.slots);
+        let has_rest = rest_turns > 0;
         let initiative = turn + TURN_CAP;
         let rest = initiative + if has_initiative { 2 } else { 0 };
-        let void = rest + if has_rest { 2 * n_squares } else { 0 };
+        let void = rest + 2 * n_squares * rest_turns;
         let bars = void + if rounds { 2 * n_squares } else { 0 };
         let n_inputs = bars + if rounds { 2 * n_squares } else { 0 };
         Self {
@@ -155,6 +163,7 @@ impl Layout {
             turn,
             initiative,
             rest,
+            rest_turns,
             void,
             bars,
             has_initiative,
@@ -217,20 +226,24 @@ impl Layout {
         for k in 0..extra {
             out.push((self.turn + k) as u32);
         }
-        if !self.rounds {
-            return;
-        }
         if self.has_initiative && (game.initiative == 0 || game.initiative == 1) {
             out.push((self.initiative + game.initiative as usize) as u32);
         }
         if self.has_rest {
+            // At most `REST_MAX` a player; each input on once, ascending.
+            let start = out.len();
             for player in 0..2 {
-                for (square, _) in game.resting_of(player) {
-                    if square >= 0 && (square as usize) < s {
-                        out.push((self.rest + player * s + square as usize) as u32);
+                for (square, left) in game.resting_of(player) {
+                    let left = left as usize;
+                    if square >= 0 && (square as usize) < s && left >= 1 && left <= self.rest_turns {
+                        out.push((self.rest + ((left - 1) * 2 + player) * s + square as usize) as u32);
                     }
                 }
             }
+            out[start..].sort_unstable();
+        }
+        if !self.rounds {
+            return;
         }
         for player in 0..2 {
             let square = game.void_run[player];

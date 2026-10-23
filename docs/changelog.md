@@ -11,7 +11,59 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-24
+
+### A new *opposite colours*, and chess with nightriders
+
+*Opposite colours* has a new version. Its rook and queen are now colour-bound versions of chess's: the rook rides any number
+of two-square hops along ranks and files, jumping over whatever lies between, and the queen adds that move to a bishop's.
+The board is two ranks longer, with the pawns a step further forward, so both stay behind their pawns at the start as in
+chess. It scored higher than the version it replaces, which steps back with its page and its games kept.
+
+*Chess with nightriders* joins the library: the knights keep jumping in a straight line for as long as each landing square
+is free.
+
+## 2026-10-23
+
+### Five previews join the library, six step back
+
+Every game that was on show as a preview now has a decision. *Opposite colours*, *madrasi chess*, *chess with a sheltering
+king*, *chess with daunting knights* and *chess with a weary queen* become library games. The six others (the two quick-king
+Gardner games, *the watering hole by speed*, *gardner with weary heavies*, *breather by weight* and *gardner with spies
+resting*) leave the listing: their pages and the games already played on them stay, but no new match can start.
+
+### The designer stops asking about rule versions
+
+The designer no longer shows a rule-set version or refuses a game for having an old one: a game file written in any earlier
+style loads as it is, and keeps its name and its scores. A rule set to its "off" value, such as a rest of zero turns, is now
+quietly tidied away instead of being refused.
+
+### Pieces that jump again
+
+A piece whose move is a jump of more than one square can now be told to keep jumping in the same direction, like the
+nightrider of fairy chess: in the designer, a move's new "jumps again" choice says whether it stops after one jump, rides on
+until something stands where it would land, or is also stopped by a piece on the square each jump passes.
+
+### Portals move like pieces
+
+In the designer, how a portal moves is now set on the portal's own card, with the same choices as a piece's moves, and the
+stand-in "portal" piece that used to sit in the piece list is gone. Every existing portal game plays exactly as before.
+
+### Pieces your opponent can move
+
+A piece can now command what it sees: while an enemy piece is in its sight, the commanding side may move that enemy piece as
+if it were its own, onto an empty square, or, if the game allows it, onto one of that piece's own side. Kings are never
+commanded. On the board a commanded piece wears a small violet badge, and the designer has "commands it" among a piece's
+sights.
+
 ## 2026-10-22
+
+### Measuring a game you designed no longer throws the result away
+
+Measuring a game in your own browser takes a while, and on a game you had not saved yet the score used to be refused at the
+end. Now the finished score waits on the page with an offer to save the game and keep it, so nothing is measured twice. Where
+a score could not be kept at all (when you are not signed in, or on a game that is not yours), the button is greyed out from
+the start, with a sentence saying how to turn it on.
 
 ### Lines of sight, and a game built on them
 

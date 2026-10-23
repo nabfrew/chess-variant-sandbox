@@ -1,7 +1,7 @@
 {
   "schema_version": 30,
   "name": "Chess with a sheltering king (sight test spec S2)",
-  "description": "Test spec for schema 30: the king shields its own pieces within two squares, through anything between (plan-passive.md section 6.1, S2).",
+  "description": "Test spec for schema 30: the king shields its own pieces within two squares, through anything between (docs/archive/plan-passive.md section 6.1, S2).",
   "board": {
     "width": 8,
     "height": 8

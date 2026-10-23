@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 31,
   "name": "rps repaint",
   "description": "A rock-paper-scissors fight for ground where no claim is safe. On a nine by nine board each side has eight pieces, rocks, papers and scissors that all move one square in any direction like a chess king and take only the kind they beat: rock takes scissors, scissors takes paper, paper takes rock. Moving onto a square claims it for you, moving onto a square the opponent has claimed takes it back, and the first player to hold 41 of the 81 squares wins; taking every enemy piece wins too. It is the fourth of five such games that webgoatguy, the designer of intransitive, built and rejected on YouTube on the way to his finished game, and the reason he gave is about incentives rather than rules: taking an opponent's square swings the count by two while claiming a blank one swings it by one, so 'you never want to color in a blank square unless you're forced to', the blank count stops falling and the game never gets closer to finishing. The move that brings the end nearer is always there; the arithmetic tells everyone not to make it.",
   "board": {

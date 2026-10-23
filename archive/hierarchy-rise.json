@@ -1,5 +1,5 @@
 {
-  "schema_version": 6,
+  "schema_version": 31,
   "name": "gift chess",
   "description": "Chess in which taking a piece promotes it instead of removing it: a struck pawn becomes a knight, a knight a bishop, a bishop a rook, a rook a queen, and only a queen is taken outright. The two pieces exchange squares, so the attacker takes the square and the defender comes back, upgraded, on the square the attacker came from, often inside the attacker's own position. So a capture is a gift, and the question every exchange asks is who it is a gift to: whether to strike at all, and whether to put your own pieces where the other side must take them and so upgrade them. Turning a capture into a gift turns the game round with it. In a version where a capture demotes the piece it strikes instead, games are decided nearly every time; here about half of them are drawn.",
   "board": {

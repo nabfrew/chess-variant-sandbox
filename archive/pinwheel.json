@@ -1,5 +1,5 @@
 {
-  "schema_version": 23,
+  "schema_version": 31,
   "name": "pinwheel",
   "description": "Hexagonal chess in which everything turns one way, on a hexagon of 61 cells, five to a side, with Władysław Gliński's hexagonal chess army scaled down to seven pawns. The knight is one-handed: of the twelve cells a hexagonal knight jumps to, it reaches only every other one, the six that all turn the same way round, so its jumps wheel about it like the sails of a pinwheel, and since the second army is the first turned half a turn, both players' knights turn the same way. The two sides of the board that no army starts on are joined, and each player may cross the join one way only: the first player leaves by the lower-right side and comes back in by the upper-left, the second the reverse, so both armies circle the board the same way round. An attack can come through the crowded middle or round the flank across the join, and the join is crossed in nearly every game. A pawn promotes on reaching the far edge, and stalemate is a draw.",
   "board": {

@@ -32,6 +32,11 @@ that grows to a minute (as `test_operators.py`'s sweep did) is still named.
 
 Not judged when the run is traced (coverage, a profiler), which multiplies both clocks; the
 names are still printed. A test the run deselects or marks `slow` is not timed.
+
+Not judged either when `--skip-if-green` narrowed the run to what a change reached
+(`green_stamp`, 2026-10-22): that is mostly corpus sweeps, each paying warm-up a whole run
+spreads over thousands of tests, and one at 3.3 s alone took 6.4 s by both clocks there. The
+names are printed, and the next whole run, at most a few gates away, judges.
 """
 
 from __future__ import annotations
@@ -82,6 +87,7 @@ class DurationGuard:
         self.fixtures: dict[str, tuple[str, float]] = {}
         self.judged = True
         self.failed: list[str] = []
+        self.narrowed: list[str] = []  # what would fail a whole run, in a run that is not one
 
     # The process that runs the tests.
 
@@ -153,8 +159,16 @@ class DurationGuard:
         yield
         if self.worker:
             return  # an xdist worker: its reports reach the controller, which decides
+        over = sorted(n for n in self.own if self.charge(n) > FAIL_S)
+        stamp = session.config.pluginmanager.get_plugin("green-stamp")
+        if stamp is not None and stamp.narrowed():
+            # A run `--skip-if-green` narrowed is mostly the corpus sweeps a change reached,
+            # each paying warm-up a whole run spreads over thousands of tests: a sweep at 3.3 s
+            # alone took 6.4 s by both clocks there (2026-10-22). The next whole run judges.
+            self.narrowed = over
+            return
         if self.judged:
-            self.failed = sorted(n for n in self.own if self.charge(n) > FAIL_S)
+            self.failed = over
         session.testsfailed += len(self.failed)
 
     def pytest_terminal_summary(self, terminalreporter: Any) -> None:
@@ -167,7 +181,7 @@ class DurationGuard:
             (nodeid for nodeid in self.wall if own_wall(nodeid) > LIMIT_S),
             key=lambda nodeid: -own_wall(nodeid),
         )
-        over += [nodeid for nodeid in self.failed if nodeid not in over]
+        over += [nodeid for nodeid in self.failed + self.narrowed if nodeid not in over]
         if not over and not self.fixtures:
             return
         write = terminalreporter.write_line
@@ -179,7 +193,9 @@ class DurationGuard:
                 mine = f" (its own: {wall:.1f} s wall, {cpu:.1f} s processor)"
             verdict = (
                 f"  FAILS, over {FAIL_S:g} s by both clocks: speed it or mark it slow"
-                if nodeid in self.failed else ""
+                if nodeid in self.failed
+                else f"  over {FAIL_S:g} s by both clocks, in a narrowed run"
+                if nodeid in self.narrowed else ""
             )
             write(f"{self.wall.get(nodeid, 0.0):6.1f} s{mine}  {nodeid}{verdict}")
         for key, (nodeid, spent) in sorted(self.fixtures.items(), key=lambda kv: -kv[1][1]):
@@ -188,6 +204,11 @@ class DurationGuard:
             write(
                 f"{len(self.failed)} fast test(s) cost over {FAIL_S:g} s by both clocks:"
                 " the run fails (tests/duration_guard.py)"
+            )
+        elif self.narrowed:
+            write(
+                f"{len(self.narrowed)} fast test(s) cost over {FAIL_S:g} s by both clocks in a run"
+                " --skip-if-green narrowed: named, not judged; the next whole run judges"
             )
         elif not self.judged:
             write("a traced run: named, not judged")

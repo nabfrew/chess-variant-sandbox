@@ -71,14 +71,14 @@ class TestTheCommittedFile:
         assert first == f"# The rule language, schema version {SCHEMA_VERSION}"
         assert RULES.read_text(encoding="utf-8").splitlines()[0] == first
 
-    def test_it_says_once_what_a_game_declares_and_that_later_versions_accept_it(
+    def test_it_says_once_what_a_game_declares_and_that_an_older_file_is_converted(
         self,
     ) -> None:
         text = render_reference()
         said = f'should declare\n`"schema_version": {SCHEMA_VERSION}`.'
         assert text.count(said) == 1
-        assert "running a later version still\naccepts it" in text
-        # True only while every version stays accepted, which is what lets it say so.
+        assert "python -m chess_variant_sandbox.spec.spelling FILE" in text
+        # Every earlier stamp is accepted, which is what lets it say the number limits nothing.
         assert tuple(range(1, SCHEMA_VERSION + 1)) == SUPPORTED_SCHEMA_VERSIONS
 
     def test_its_examples_validate_and_build_a_game(self) -> None:

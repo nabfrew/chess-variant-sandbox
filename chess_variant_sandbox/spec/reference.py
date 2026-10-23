@@ -71,9 +71,9 @@ for the same reason as `LOAD_CONTROL`."""
 # every value of a map keyed by piece id: `pieces[].moves[].range`.
 NOTES: dict[str, str] = {
     "schema_version": (
-        "Which version of this language the file is written in. A file may declare any "
-        "version from 1 up, but may use only what that version had; declaring the version "
-        "this reference describes makes every key below available."
+        "Which spelling of this language the file is written in. Any version from 1 up is "
+        "accepted and none limits what the file may use; the converter writes the current "
+        "one."
     ),
     "name": "The game's name, shown wherever the game is listed. It must not be blank.",
     "board": "The size and shape of the board.",
@@ -99,6 +99,13 @@ NOTES: dict[str, str] = {
     ),
     "pieces[].moves[].condition": (
         "Restrictions on when this move is available. Every condition stated must hold."
+    ),
+    "rules.portals[].moves[].vectors": (
+        "The steps this move is made of, each `[dx, dy]`, as on a piece's move."
+    ),
+    "rules.portals[].moves[].condition": (
+        "Restrictions on when this move is available: only `first_move` (a portal has no "
+        "side, so no rank or region), and not on a fold."
     ),
     "setup": "Where every piece stands when the game begins.",
     "setup.placements": "The starting squares, one entry per piece kind and player.",
@@ -146,8 +153,8 @@ NOTES: dict[str, str] = {
     "rules.contacts.landing.vectors": "The landing steps, each `[dx, dy]`.",
     "rules.strike.landing.vectors": "The landing steps, each `[dx, dy]`.",
     "rules.portals[].moved_by": (
-        "Who may spend a turn moving each end of the pair, with the moves of the pair's "
-        "`piece`. Leave it out and the portals never move."
+        "Who may spend a turn moving each end of the pair, with the pair's `moves`. Leave "
+        "it out and the portals never move."
     ),
     "rules.portals[].passage": (
         "Which end each player's pieces may go in by. Leave it out and both ends work "
@@ -175,6 +182,9 @@ DEFAULTS: dict[str, str] = {
     "pieces[].moves[].screen": "`\"any\"`",
     "pieces[].moves[].screen_range": "`0`",
     "pieces[].moves[].condition.first_move": "`false`",
+    "rules.portals[].moves[].symmetry": "`\"none\"`",
+    "rules.portals[].moves[].mode": "`\"move\"`, the only mode a portal's move may have",
+    "rules.portals[].moves[].condition.first_move": "`false`",
     "pieces[].facing.initial": "`\"forward\"`",
     "pieces[].sight[].symmetry": "`\"none\"`",
     "pieces[].sight[].range": "`0`, to the edge of the board",
@@ -238,7 +248,7 @@ DEFAULTS: dict[str, str] = {
 }
 
 # Where the reference's type is wider than the schema's: the schema handed to a model offers
-# only the current version, and the validator accepts every version ever cut.
+# only the current version, and the validator accepts every earlier stamp as well.
 _TYPES: dict[str, str] = {
     "schema_version": (
         f"integer from {min(SUPPORTED_SCHEMA_VERSIONS)} to {max(SUPPORTED_SCHEMA_VERSIONS)}"
@@ -265,10 +275,11 @@ where they start, and how the game is won; nothing about a game lives anywhere e
 person can write one by hand, or give this file to an AI and ask it for one.
 
 **Which version.** A game written from this reference should declare
-`"schema_version": {SCHEMA_VERSION}`. A site or checkout running a later version still
-accepts it, because every version ever cut stays accepted, and a file may use only what
-the version it declares had. The site serves the reference for the version it runs at
-`{PUBLISHED}`; when that copy names a later version than this one, write from that copy.
+`"schema_version": {SCHEMA_VERSION}`. The number names the file's spelling, not what it may
+use: a new rule does not change it, and a file in an older spelling is read through the
+converter (`python -m chess_variant_sandbox.spec.spelling FILE`). The site serves the
+reference it runs at `{PUBLISHED}`; when that copy names a later version than this one,
+write from that copy.
 
 <!-- Generated from the schema by `{COMMAND}`. Do not edit by hand. -->
 
@@ -335,8 +346,11 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "How pieces move",
         "Besides chess's slides and leaps: a hop vaults one screening piece, as the xiangqi "
         "cannon captures or a grasshopper lands; a lame leap can be blocked on its way; a "
-        "sweep clears every piece along its line. A piece can be kept to one part of the "
-        "board, or point one way and spend a move turning.",
+        "sweep clears every piece along its line. A leap can be ridden, jump after jump in "
+        "one direction: as a slide over the jump it is stopped only where it would land "
+        "(the nightrider), and as a lame move with a range each jump is also stopped by a "
+        "piece on the one square it passes, the square a lame leap is blocked on. A piece "
+        "can be kept to one part of the board, or point one way and spend a move turning.",
         ("slide", "leap", "hop", "lame", "sweep", "pieces[].region", "pieces[].facing"),
     ),
     (
@@ -369,10 +383,12 @@ FAMILIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "What pieces do to each other without moving",
         "A piece can have lines of sight, written like its moves, that put the pieces they see "
-        "under an effect while they stand there: frozen in place, unable to capture, or "
-        "impossible to take. A sight can be stopped by the first piece in its way or see past "
-        "them all, and can touch the enemy's pieces, its own side's, or both, of every kind or "
-        "only some. Check reads the effects, so freezing a checker answers its check.",
+        "under an effect while they stand there: frozen in place, unable to capture, "
+        "impossible to take, or open to the opponent too, who may move them as their own "
+        "(and, if the sight says so, make them take their own side). A sight can be stopped "
+        "by the first piece in its way or see past them all, and can touch the enemy's "
+        "pieces, its own side's, or both, of every kind or only some. Check reads the effects, "
+        "so freezing a checker, or moving it away by command, answers its check.",
         ("pieces[].sight",),
     ),
     (
@@ -454,8 +470,8 @@ outside their list or range, missing required keys. The second is whether the pa
 agree: every piece id named anywhere is a declared piece, every square is on the board,
 every move can be made on this board, a rule that needs another has it (en passant needs
 promotion), two rules that cannot be played together are not, and a rule that could never
-fire is refused rather than kept. A file that uses a key newer than the `schema_version`
-it declares is refused with the version to declare.
+fire is refused rather than kept. A rule written at the value that means no rule (`"rest":
+0`, `"tie": "both"`) is not refused: it is the game without it.
 
 Each line below is what `validate` prints for one mistake made to the first worked
 example.
@@ -555,15 +571,9 @@ _PORTALS.update({
         "to an empty square, but not straight back on the very next move."
     ),
 })
-_PORTALS["pieces"].append({
-    "id": "O", "name": "portal", "value": 0,
-    "moves": [
-        {"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "mode": "move"},
-    ],
-})
 _PORTALS["rules"]["portals"] = [
     {
-        "piece": "O",
+        "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4"}],
         "orange": "b3",
         "blue": "d3",
         "moved_by": {"orange": [0, 1], "blue": [0, 1]},
@@ -572,12 +582,13 @@ _PORTALS["rules"]["portals"] = [
 ]
 
 _PORTALS_NOTES = """\
-- The portal pair is a rule, `rules.portals`, and its ends are not pieces in the setup.
-  `O` is declared only to say how an end moves when a player moves it: one king's step,
-  onto an empty square (`"mode": "move"` is required of a portal's moves), worth 0 and not
-  royal.
+- The portal pair is a rule, `rules.portals`, and its ends are not pieces: nothing in
+  `pieces` or the setup is a portal.
+- The pair's `moves` say how an end moves when a player moves it, written as a piece's
+  moves are: here one king's step. A portal only steps onto an empty square, so each move
+  leaves `mode` out (it means `"move"` on a portal).
 - `moved_by` lets both players (`[0, 1]`) move both ends; leave it out for portals that
-  never move, and `O` may then have no moves at all.
+  never move, and then leave `moves` out too.
 - `no_straight_back` stops two players moving the same portal back and forth for ever.
 - With no `passage`, both ends work both ways for both players. A pawn pushed from `b2`
   onto `b3` comes out on `d4`; a rook sliding up the d-file onto `d3` comes out on `b4`.
@@ -597,11 +608,6 @@ def _mistakes() -> list[tuple[str, dict[str, Any]]]:
         edit(spec)
         return spec
 
-    def older(spec: dict[str, Any]) -> None:
-        spec["schema_version"] = 18
-        spec["rules"]["portals"] = copy.deepcopy(_PORTALS["rules"]["portals"])
-        spec["pieces"].append(copy.deepcopy(_PORTALS["pieces"][-1]))
-
     return [
         ("A key the language does not have, on the knight: `\"stamina\": 2`.",
          changed(lambda s: s["pieces"][1].update(stamina=2))),
@@ -613,8 +619,6 @@ def _mistakes() -> list[tuple[str, dict[str, Any]]]:
          changed(lambda s: s["rules"]["promotion"].update(to=["Q", "A"]))),
         ("En passant, with the promotion rule it needs taken away.",
          changed(lambda s: (s["rules"].pop("promotion"), s["rules"].update(en_passant=True)))),
-        ("The portals of the second example under `\"schema_version\": 18`.",
-         changed(older)),
     ]
 
 

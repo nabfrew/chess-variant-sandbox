@@ -22,6 +22,7 @@ from chess_variant_sandbox.engine.bridge import build_tables, canonical_tables
 from chess_variant_sandbox.engine.compile import VOID_RUN, compile_spec
 from chess_variant_sandbox.engine.moves import MOVE_DROP, MOVE_PORTAL, MOVE_PROMOTION, decode_move
 from chess_variant_sandbox.engine.state import GameState
+from chess_variant_sandbox.spec.canonical import spec_hash
 from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, validate_spec
 from chess_variant_sandbox.tournament.play import play_game
 
@@ -140,22 +141,16 @@ class TestTheKeys:
             assert validate_spec(json.loads(path.read_text(encoding="utf-8"))) == [], path
         assert validate_spec(VOID) == []
 
-    def test_an_older_version_may_not_use_them(self) -> None:
-        spec = with_piece(GARDNER, "P", beats=["P"])
-        spec["schema_version"] = 25
-        errors = validate_spec(spec)
-        assert any(
-            "pieces[].beats, rules.simultaneous" in error and "schema 26" in error
-            for error in errors
-        ), errors
+    def test_a_tie_spelled_otherwise_is_refused(self) -> None:
+        errors = validate_spec(with_rules(GARDNER, simultaneous={"tie": "first"}))
+        assert any("must be one of" in error for error in errors), errors
 
-    @pytest.mark.parametrize(
-        ("tie", "words"),
-        [("both", "leave it out"), ("first", "must be one of")],
-    )
-    def test_a_tie_spelled_otherwise_is_refused(self, tie: str, words: str) -> None:
-        errors = validate_spec(with_rules(GARDNER, simultaneous={"tie": tie}))
-        assert any(words in error for error in errors), errors
+    def test_the_default_tie_written_out_is_the_game_without_it(self) -> None:
+        """Q1008c: ``"both"`` is the off value, accepted and named as the tie left out."""
+        written = with_rules(GARDNER, simultaneous={"tie": "both"})
+        plain = with_rules(GARDNER, simultaneous={})
+        assert validate_spec(written) == validate_spec(plain)
+        assert spec_hash(written) == spec_hash(plain)
 
     def test_an_unknown_key_is_refused(self) -> None:
         assert validate_spec(with_rules(GARDNER, simultaneous={"ties": "initiative"}))
@@ -178,10 +173,6 @@ class TestTheKeys:
     def test_beats_names_declared_pieces(self) -> None:
         errors = validate_spec(with_piece(GARDNER, "P", beats=["Z"]))
         assert any("beats entry 'Z' is not a declared piece" in error for error in errors), errors
-
-    def test_beats_on_a_portal_is_refused(self) -> None:
-        errors = validate_spec(with_piece(load("portals"), "O", beats=[]))
-        assert any("a portal never collides" in error for error in errors), errors
 
     def test_impossible_is_refused_where_a_type_can_tie(self) -> None:
         errors = validate_spec(with_rules(GARDNER, simultaneous={"tie": "impossible"}))

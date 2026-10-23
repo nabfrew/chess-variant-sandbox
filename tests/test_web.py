@@ -3946,7 +3946,7 @@ class TestServer:
             server.shutdown()
             server.server_close()
 
-    def test_a_game_carries_the_engines_verdict_beside_its_roster(self, chess_game) -> None:
+    def test_a_game_carries_the_engines_verdict_beside_its_roster(self, chess_game, warm_map) -> None:
         """`fairyCheck` is what decided whether the picker offers Fairy-Stockfish.
 
         Same call, same memo, so the sentence under the picker cannot contradict the
@@ -4335,6 +4335,63 @@ class TestTheBrowserBuildIsServed:
         assert App(RULESETS, library.RUNS_DIR).browser_dir == Path("build") / "browser"
         script = (repository / "deploy" / "pyodide" / "build.sh").read_text(encoding="utf-8")
         assert 'ARTEFACT="$REPO/build/browser"' in script
+
+    @staticmethod
+    def _started(
+        monkeypatch: pytest.MonkeyPatch, *argv: str, site: bool = False
+    ) -> App:
+        """The app a `serve` or `site serve` command line builds, caught at the bind.
+
+        `listen` is the first thing either command does with the app, so replacing it with
+        a recorder that stops the command gets the real app, built from the real options,
+        without a socket, a warm-up or (for the site) a database connection.
+        """
+        from chess_variant_sandbox import cli
+        from chess_variant_sandbox.site import server as site_module
+
+        caught: list[App] = []
+
+        class Stop(Exception):
+            pass
+
+        def listen(app: App, host: str, port: int) -> None:
+            caught.append(app)
+            raise Stop
+
+        monkeypatch.setattr(server_module, "listen", listen)
+        monkeypatch.setattr(site_module, "listen", listen)
+        monkeypatch.setenv("CHESS_VARIANT_SANDBOX_DATABASE_URL", "postgresql:///unused")
+        for name in ("ADMIN_PASSWORD", "ADMIN_HANDLE"):
+            monkeypatch.delenv(name, raising=False)
+        args = cli._build_parser().parse_args(["site", "serve", *argv] if site else ["serve", *argv])
+        with pytest.raises(Stop):
+            args.handler(args)
+        return caught[0]
+
+    @pytest.mark.parametrize("site", [False, True], ids=["serve", "site serve"])
+    def test_the_commands_serve_the_build_from_browser_or_by_default_build_browser(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, site: bool
+    ) -> None:
+        """G12e. `--browser DIR` is where `/browser/*` is answered from, on `serve` and on
+        `site serve`; without it the build is `build/browser/` under the working directory,
+        as it was before the option, so a scratch site started from a worktree could be
+        given the main checkout's build instead of a junction to it."""
+        from chess_variant_sandbox import cli
+
+        assert cli.BROWSER_DIR == server_module.BROWSER_DIR
+
+        default = self._started(monkeypatch, site=site)
+        assert default.browser_dir == Path("build") / "browser"
+
+        root = build_artefact(tmp_path / "elsewhere" / "browser")
+        app = self._started(monkeypatch, "--browser", str(root), site=site)
+        assert app.browser_dir == root
+        [(status, _, body)] = self._get(app, "/browser/manifest.json")
+        assert status == 200
+        assert body == (root / "manifest.json").read_bytes()
+        # The default directory is not consulted once the option names another.
+        missing = self._started(monkeypatch, "--browser", str(tmp_path / "absent"), site=site)
+        assert self._get(missing, "/browser/manifest.json")[0][0] == 204
 
     def test_the_worker_script_is_served_from_the_package(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -10950,39 +11007,6 @@ class TestBuildingAGameByHand:
         assert "chess" in said
         assert not (tmp_path / "runs" / "designed").exists(), "it was written anyway"
 
-    def test_the_refusal_reads_the_parents_settled_hash_and_not_its_file(
-        self, tmp_path
-    ) -> None:
-        """Three committed rulesets declare schema 4 and validate under 3.
-
-        The editor settles a draft's stamp to the lowest version it validates under, so a
-        fork of one of those settles to a hash the parent's *file* does not have. Compared
-        raw, the refusal would miss exactly the game it exists for: a fork that changed no
-        rule, saved as a second copy under a second hash.
-        """
-        from chess_variant_sandbox.spec.transform import settle_schema_version
-
-        loose = None
-        for path in sorted(
-            list(Path(RULESETS).glob("*.json"))
-            + list(Path(library.ARCHIVE_DIR).glob("*.json"))
-        ):
-            spec = load_spec(path)
-            settled = settle_schema_version(json.loads(json.dumps(spec)))
-            if settled["schema_version"] != spec.get("schema_version"):
-                loose = (spec, spec_hash(spec), spec_hash(settled))
-                break
-        if loose is None:
-            pytest.skip("no ruleset in the library declares more than it needs any more")
-        spec, filed, settled_hash = loose
-        assert filed != settled_hash, "the premise of this test"
-
-        app = App(RULESETS, tmp_path / "runs", tmp_path / "heur", library.ARCHIVE_DIR)
-        fork = json.loads(json.dumps(spec))
-        fork["name"] = spec["name"] + " variant"
-        with pytest.raises(ValueError, match="Nothing you changed is a rule"):
-            app.post("/api/design/save", {"spec": fork, "parent": filed})
-
     def test_a_changed_rule_makes_a_different_game_that_saves(self, tmp_path) -> None:
         """The other side of the refusal: it must not stand in the way of a real fork."""
         app = App(RULESETS, tmp_path / "runs", tmp_path / "heur", library.ARCHIVE_DIR)
@@ -11027,15 +11051,13 @@ class TestBuildingAGameByHand:
         from chess_variant_sandbox.web import designing
 
         draft = json.loads(json.dumps(designing.templates()[0]["spec"]))
-        assert draft["schema_version"] == 2
-        draft["rules"]["obstacles"] = {"squares": ["c3", "d4"]}  # schema 6
+        draft["schema_version"] = 2
+        draft["rules"]["obstacles"] = {"squares": ["c3", "d4"]}  # schema 6's rule
 
         report = designing.check(draft)
         assert report["valid"] is True, report["errors"]
-        assert report["schemaVersion"] == 6
-        assert report["declaredVersion"] == 2
-        assert report["settledVersion"] is True
-        # Inside the hash, so what the check reports has to be the settled spec's.
+        # Since Q1008c no stamp is read and none is reported: the name ignores it.
+        assert "schemaVersion" not in report
         assert report["hash"] == spec_hash({**draft, "schema_version": 6})
         assert any("walls" in line for line in report["ruleLines"])
 
@@ -12721,18 +12743,6 @@ class TestWhatTheDesignerDrawsAndSays:
         assert "out of date" in said and "replay" in said
         assert "0." not in said.split("A game is identified")[0], "a stale number shown"
 
-    def test_the_settled_stamp_is_said_back_only_when_it_moved(self) -> None:
-        pair = [_said(html) for html in _in_page(
-            _DRAFT_FIXTURE + "DRAFT_PARENT = null;",
-            "[identityHtml({ hash: 'ffffffffffff', schemaVersion: 6,"
-            "   declaredVersion: 1, settledVersion: true }),"
-            " identityHtml({ hash: 'ffffffffffff', schemaVersion: 6,"
-            "   declaredVersion: 6, settledVersion: false })]",
-        )]
-        assert "version 6" in pair[0] and "settled for you" in pair[0]
-        assert "version 6" in pair[1] and "settled for you" not in pair[1]
-
-
 def _kit() -> str:
     """The rungs the designer already holds, as the page holds them.
 
@@ -12864,7 +12874,6 @@ class TestWhatASaveSaysWhereTheClickWas:
         plain = _said(_in_page(_kit(), "savedHtml(" + _save_answer(
             created=False, restated=[], unchanged=[], keptAsIs=drafts.AS_PUBLISHED) + ")"))
         assert drafts.AS_PUBLISHED not in plain
-
 
     def test_the_publish_panel_is_off_and_says_publishing_opens_soon(self) -> None:
         """Q503a. The designer draws `drafts.standing`'s panel as it comes: the check
@@ -14172,7 +14181,7 @@ globalThis.api = async (path, body) => {
     if (next instanceof Error) throw next;
     return next;
 };
-vm.runInThisContext("let DRAFT_HASH = 'abc', DRAFT_CHECK = null, DRAFT = null;\n"
+vm.runInThisContext("let DRAFT_HASH = 'abc', DRAFT_CHECK = null, DRAFT = null, DRAFT_STANDING = null;\n"
     + "let ACCOUNTS = false, VIEWER = null;\n"
     + readFileSync(measure, "utf8"));
 vm.runInThisContext(`HERE_BASE = ${JSON.stringify(pathToFileURL(artefact).href + "/")};`);
@@ -14201,7 +14210,8 @@ for (const [label, spec, count, served] of [
 
 // On the site, signed in (B10): the finished measurement is sent and followed.
 wheel = "wheel-0123456789ab/x.whl";
-vm.runInThisContext("ACCOUNTS = true; VIEWER = 'ada'; HERE_POLL = 0;");
+vm.runInThisContext("ACCOUNTS = true; VIEWER = 'ada'; HERE_POLL = 0;"
+    + " DRAFT_STANDING = { hash: 'abc', saved: true, publish: { mine: true } };");
 const kept = { index: 0.81094, viable: true, state: "legal", sample: null, yours: true,
                seeds: [0], weights: "v11" };
 for (const [label, script] of [
@@ -14224,6 +14234,39 @@ for (const [label, script] of [
     out[label] = { state: run.state, error: run.error, check: run.check, asked, fetched: fetched - before,
                    upload: run.upload };
 }
+
+// Q1004: the standing says whether the site could keep it. Unsaved rules: the score is
+// held and nothing is sent. Rules the person can never make theirs: nothing is sent. Rules
+// changed while it ran: the standing of the game it measured is asked for.
+for (const [label, standing, script] of [
+        ["held", { hash: "abc", saved: false, publish: null }, []],
+        ["library", { hash: "abc", saved: true, publish: null }, []],
+        ["theirs", { hash: "abc", saved: true, publish: { mine: false } }, []],
+        ["moved", { hash: "def", saved: true, publish: { mine: true } },
+         [{ hash: "abc", saved: false, publish: null }]]]) {
+    asked = [];
+    answers = script;
+    vm.runInThisContext(`DRAFT_STANDING = ${JSON.stringify(standing)};`);
+    await vm.runInThisContext(`hereMeasure({ name: "a draft" }, 1)`);
+    const run = vm.runInThisContext("HERE");
+    out[label] = { state: run.state, check: run.check, asked };
+}
+// The held score once a save makes the game this person's: a standing of another game, or
+// of the game still unsaved, sends nothing; the saved one sends the upload as it came, once.
+vm.runInThisContext(`DRAFT_STANDING = { hash: "abc", saved: false, publish: null };`);
+await vm.runInThisContext(`hereMeasure({ name: "a draft" }, 1)`);
+asked = [];
+answers = [{ job: 8, game: "abc", state: "done", seconds: 3, result: kept }];
+const stood = [];
+for (const standing of [{ hash: "def", saved: true, publish: { mine: true } },
+                        { hash: "abc", saved: false, publish: null },
+                        { hash: "abc", saved: true, publish: { mine: true } },
+                        { hash: "abc", saved: true, publish: { mine: true } }]) {
+    const sent = vm.runInThisContext(`hereStood(${JSON.stringify(standing)})`);
+    stood.push(sent === null ? null : "sent");
+    if (sent) await sent;
+}
+out.saved = { stood, asked, check: vm.runInThisContext("HERE.check") };
 process.stdout.write(JSON.stringify(out));
 """
 
@@ -14288,6 +14331,9 @@ class TestMeasuringOnThisComputer:
         from page_text import DESIGN, MEASURE, PAGE
 
         assert MEASURE in DESIGN and PAGE.count(MEASURE) == 1
+        # Q1004: every fresh standing is offered to a score held for want of a save.
+        start = PAGE.index("function loadStanding(hash)")
+        assert "hereStood(standing);" in PAGE[start:PAGE.index("function runScreen(", start)]
         assert PAGE.count('<div id="dHere">${hereHtml(check)}</div>') == 1
         start = PAGE.index("async function showDesigner(from)")
         assert "hereLookup();" in PAGE[start:PAGE.index("function benchMode(", start)]
@@ -14303,7 +14349,9 @@ class TestMeasuringOnThisComputer:
         (§3)."""
         from page_text import MEASURE
 
-        assert MEASURE.count("api(") == 2
+        assert MEASURE.count("api(") == 3
+        # Q1004: and, before sending, asks whether the game it measured is saved.
+        assert "await api('/api/design/standing/' + hash)" in MEASURE
         assert "api('/api/provisional', { game: run.result.hash, upload: run.upload })" in MEASURE
         assert "api('/api/provisional/' + answer.job)" in MEASURE
         assert "run.upload = typeof answer.upload === 'string' ? answer.upload : '';" in MEASURE
@@ -14509,6 +14557,95 @@ class TestMeasuringOnThisComputer:
         assert "a newer score for this game replaced it" in said["gone"]
         assert "sent nowhere" in said["local"] and "Sign in" not in said["local"]
 
+    def test_an_unsaved_game_holds_its_score_and_a_save_sends_it(self, here_page: dict) -> None:
+        """Q1004, the user: a measurement of a game nobody saved was sent, refused, and
+        lost. Now nothing is sent while the game is unsaved; the score is held on the page,
+        and once a save's standing says the game is this person's, the upload goes as it
+        came -- nothing measured again -- and only once."""
+        held = here_page["held"]
+        assert held["state"] == "done" and held["asked"] == []
+        assert held["check"] == {"state": "unsaved"}
+        saved = here_page["saved"]
+        assert saved["stood"] == [None, None, "sent", None]
+        assert saved["asked"] == [["/api/provisional", {"game": "abc", "upload": _HERE_UPLOAD}]]
+        assert saved["check"]["state"] == "done" and saved["check"]["result"]["index"] == 0.81094
+
+    def test_a_game_no_save_can_make_yours_sends_nothing(self, here_page: dict) -> None:
+        for label, words in (("library", "already a library game"),
+                             ("theirs", "Somebody else saved these rules first")):
+            out = here_page[label]
+            assert out["asked"] == [], label
+            assert out["check"]["state"] == "unkept" and words in out["check"]["why"], label
+
+    def test_rules_changed_while_it_ran_are_asked_about_by_their_own_hash(self, here_page: dict) -> None:
+        moved = here_page["moved"]
+        assert moved["asked"] == [["/api/design/standing/abc", None]]
+        assert moved["check"] == {"state": "unsaved"}
+
+    def test_measuring_here_is_off_up_front_where_nothing_could_be_kept(self) -> None:
+        """Q1004: the button is drawn and does not work, with what turns it on, for a
+        visitor and for rules no save of this person's can make theirs; it works for their
+        own saved game and for rules nobody saved, which say the save keeps the score."""
+        setup = """
+          HERE_MANIFEST = { schema: 1, runtime: 'pyodide-0', wheel: 'wheel-0/x.whl' };
+          const check = { hash: 'abc', valid: true, playable: true };
+          const said = {};
+          ACCOUNTS = true; VIEWER = null; DRAFT_STANDING = null;
+          said.visitor = hereHtml(check);
+          VIEWER = 'ada';
+          for (const [label, standing] of Object.entries({
+              unknown: null,
+              unsaved: { hash: 'abc', saved: false, publish: null },
+              mine: { hash: 'abc', saved: true, publish: { mine: true } },
+              library: { hash: 'abc', saved: true, publish: null },
+              theirs: { hash: 'abc', saved: true, publish: { mine: false } } })) {
+            DRAFT_STANDING = standing;
+            said[label] = hereHtml(check);
+          }
+          ACCOUNTS = false; VIEWER = null; DRAFT_STANDING = null;
+          said.local = hereHtml(check);
+        """
+        said = json.loads(_in_the_page(setup, "JSON.stringify(said)"))
+        off = {"visitor": "Sign in and save this game",
+               "library": "already a library game", "theirs": "Somebody else saved"}
+        for label, words in off.items():
+            drawn = " ".join(said[label].split())
+            assert '<button id="dHereGo" disabled' in drawn, label
+            assert 'id="dHereOff"' in drawn and words in drawn, label
+            assert "you can measure" in drawn, label
+            assert 'id="dHereWorkers"' not in drawn, label
+        for label in ("unknown", "unsaved", "mine", "local"):
+            drawn = " ".join(said[label].split())
+            assert 'id="dHereGo" class="primary">' in drawn and "disabled" not in drawn, label
+            assert 'id="dHereOff"' not in drawn, label
+        assert "This game is not saved yet: when the measurement ends, save it" in " ".join(
+            said["unsaved"].split())
+        assert "not saved yet" not in said["mine"] and "not saved yet" not in said["local"]
+
+    def test_a_held_score_offers_the_save_while_the_rules_are_the_ones_it_measured(self) -> None:
+        setup = """
+          ACCOUNTS = true; VIEWER = 'ada';
+          DRAFT_HASH = 'abc'; DRAFT_CHECK = { hash: 'abc', valid: true };
+          HERE = { state: 'done', workers: 1, seconds: 60, heaps: [], times: [], upload: 'u',
+            check: { state: 'unsaved' },
+            result: { hash: 'abc', name: 'a draft', index: 0.75, viable: true,
+                      violations: [], weights: 'v11', games: 256, components: [] } };
+          const said = { here: hereHtml(DRAFT_CHECK) };
+          DRAFT_HASH = 'def'; DRAFT_CHECK = { hash: 'def', valid: true };
+          said.moved = hereHtml(DRAFT_CHECK);
+          HERE.check = { state: 'unkept', why: HERE_OFF.theirs };
+          said.unkept = hereHtml(DRAFT_CHECK);
+        """
+        said = {k: " ".join(v.split()) for k, v in
+                json.loads(_in_the_page(setup, "JSON.stringify(said)")).items()}
+        here, moved, unkept = said["here"], said["moved"], said["unkept"]
+        assert ">0.7500</div>" in here and "measured on your computer" in here
+        assert 'id="dHereSave"' in here and "save it and keep the score" in here
+        assert "nothing is measured again" in here
+        assert 'id="dHereSave"' not in moved and "put the rules back as they were" in moved
+        assert 'id="dHereSave"' not in unkept and "It was not sent: Somebody else" in unkept
+        assert 'id="dHereSend"' not in here + moved + unkept
+
     def test_a_unit_that_fails_ends_the_measurement_with_its_reason(self, here_page: dict) -> None:
         """The run keeps the worker's own message for whoever maintains the site; the
         visitor reads a plain clause instead (Q728)."""
@@ -14582,8 +14719,9 @@ class TestTheGatheringHalf:
         from chess_variant_sandbox.web.designing import settled
 
         draft = json.loads(json.dumps(dull))
-        draft["schema_version"] = SCHEMA_VERSION
-        assert dull["schema_version"] != SCHEMA_VERSION
+        draft["schema_version"] = 1
+        # Tidied into the current spelling, which writes the current stamp (Q1008c).
+        assert settled(json.loads(json.dumps(draft)))["schema_version"] == SCHEMA_VERSION
         answer = self._first(draft)
         dealt = json.loads(answer["units"][0]["request"])["spec"]
         assert dealt["schema_version"] == settled(draft)["schema_version"]

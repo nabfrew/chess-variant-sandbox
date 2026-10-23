@@ -201,7 +201,7 @@ class SpyPhase:
 
 @dataclass(frozen=True, slots=True)
 class Effects:
-    """The effects of lines of sight on one board (schema 30, Q999a; `docs/plan-passive.md`
+    """The effects of lines of sight on one board (schema 30, Q999a; `docs/archive/plan-passive.md`
     §3.4), as the core reports them (`Engine.effects`). Not part of a position: an effect is a
     function of the board.
 
@@ -210,7 +210,10 @@ class Effects:
     square. ``frozen``, ``disarmed`` and ``shielded`` count the side to move's moves the
     effects removed for each reason (a move barred two ways counts once, under the first).
     ``suppressed`` is whether the side to move's royal stands under an attack the effects
-    suppressed: a frozen or disarmed attacker, or a shielded royal.
+    suppressed: a frozen or disarmed attacker, or a shielded royal. Q1007c
+    (`docs/plan-schema-31.md` §3.7): ``bits`` also carry ``SIGHT_COMMAND`` 8 (the piece's
+    opponent may move it) and ``SIGHT_COMMAND_OWN`` 16 (and make it take its own side), and
+    ``commanded`` counts the side to move's legal commanded moves, 0 without a command.
     """
 
     bits: tuple[int, ...]
@@ -218,8 +221,25 @@ class Effects:
     disarmed: int
     shielded: int
     suppressed: bool
+    commanded: int = 0
 
     @property
     def binds(self) -> bool:
         """Whether the effects removed any move of the side to move."""
         return self.frozen + self.disarmed + self.shielded > 0
+
+
+@dataclass(frozen=True, slots=True)
+class RestTurn:
+    """What the rest does to one player's choice on one board (schema 29, Q983b;
+    `docs/plan-rest.md` §5.6, §7), as the core reports it (`Engine.rest_turn`). Not part of a
+    position: it is a question about one.
+
+    ``binds``: the player's legal moves differ from those on the same board with nothing
+    resting, so the rest took away at least one move. ``lifted``: they do not, yet a resting
+    piece's move is among them, which the rule allows only when the rest would have left no
+    move at all (§3.7). Never both; both false in a game without a rest.
+    """
+
+    binds: bool
+    lifted: bool

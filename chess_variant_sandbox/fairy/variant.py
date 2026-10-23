@@ -498,16 +498,20 @@ def _check_unsupported_rules(
             "moves has no counterpart; Fairy-Stockfish has no per-piece wait"
         )
     if compiled.sight is not None:
-        # Schema 30 (Q999a, `docs/plan-passive.md` §4.5). Fairy-Stockfish has no piece whose
+        # Schema 30 (Q999a, `docs/archive/plan-passive.md` §4.5). Fairy-Stockfish has no piece whose
         # line of sight freezes, disarms or shields another (Q999a read the installed build:
         # pyffish 0.0.90's 121 built-in variants hold none of Madrasi's shape, so a
         # translation of S1 is not a task). Read off the compiled rule,
         # `None` without a sight. The effects only filter the generator and the attack test,
         # so the generator itself is still checked through the twin with every sight
-        # removed; the effects are the sight oracle's (`tests/sight_oracle.py`).
+        # removed; the effects are the sight oracle's (`tests/sight_oracle.py`). Q1007c's
+        # `command` (`docs/plan-schema-31.md` §3.8) is a sight too, refused here with the rest:
+        # Fairy-Stockfish has no move of the opponent's pieces, and the commanded moves (the
+        # one part of a command the twin does not see) are the sight oracle's as well.
         reasons.append(
-            "pieces[].sight: a piece whose line of sight freezes, disarms or shields the pieces "
-            "it sees has no counterpart; Fairy-Stockfish has no passive effect"
+            "pieces[].sight: a piece whose line of sight freezes, disarms, shields or commands "
+            "the pieces it sees has no counterpart; Fairy-Stockfish has no passive effect and "
+            "no move of the opponent's pieces"
         )
     if compiled.simultaneous is not None:
         # Schema 26 (Q918a). Fairy-Stockfish has a side to move and no round in which both
@@ -1576,7 +1580,18 @@ def _descriptor_term(
             directions, distance=0, mode=mode, hop="g" if screen_range == 1 else "p"
         )
     elif kind == "lame":
-        term = betza.term(directions, distance=1, mode=mode, lame=True)
+        # Q1007a: the range is passed, not assumed. A lame rider (`range` other than 1) was
+        # exported as the lame *leaper*, a different game, silently, while the key was
+        # refused; `betza._atom_text` refuses any lame distance but 1, and the reason says
+        # why. Fairy-Stockfish has no lame rider whose leg is ours to rely on (`docs/
+        # reference/engine-and-spec-record.md` *Generation 32*).
+        if rng != 1:
+            reasons.append(
+                f"{where}: a lame rider (a lame move with range {rng}) is blocked on every "
+                "jump's leg, and Fairy-Stockfish has no rider of that kind we can rely on"
+            )
+            return None
+        term = betza.term(directions, distance=rng, mode=mode, lame=True)
     elif kind == "leap":
         term = betza.term(directions, distance=rng, mode=mode, initial=initial)
     elif kind == "slide":

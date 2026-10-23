@@ -13,6 +13,7 @@ dropping it would produce a game nobody asked for.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterable, Sequence
 from collections.abc import Set as AbstractSet
 from math import gcd
@@ -33,23 +34,17 @@ from chess_variant_sandbox.spec.reachability import (
 if TYPE_CHECKING:
     from chess_variant_sandbox.engine.compile import StrikeRule
 
-SCHEMA_VERSION = 30
-
-# Every version is accepted, and the number a spec declares is a claim about which
-# feature set it uses rather than a date stamp. That is what keeps a bump cheap:
-# ``schema_version`` is part of the mechanics hash, so rewriting the committed rulesets
-# to say 3 would rehash every one of them and orphan the calibration runs under
-# ``runs/``. A spec that declares 1 may not use anything added in 2 or 3, and the
-# validator enforces that by name, so the version stays an honest description of what
-# the rules need.
-SUPPORTED_SCHEMA_VERSIONS = (
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-    25, 26, 27, 28, 29, 30,
-)
+# The version of the *spelling*: the one `spelling.current_spelling` writes (Q1008c,
+# `docs/reference/schema-reboot-assessment.md` §9). A new rule does not move it; it moves
+# only when the spelling does, when the converter learns a rewrite an older file needs.
+# The stamp is not in a game's name (`normal.normal_form` drops it) and nothing reads it
+# to decide what a spec may use, so every earlier stamp is accepted as it stands.
+SCHEMA_VERSION = 31
+SUPPORTED_SCHEMA_VERSIONS = tuple(range(1, SCHEMA_VERSION + 1))
 
 # The movement primitive table. Extending the design space means adding a row here,
-# giving it its meaning in engine/compile.py, walking its tables in rust/src/game.rs, and
-# bumping SCHEMA_VERSION. Skill `new-move-primitive` lists every other surface it owes.
+# giving it its meaning in engine/compile.py and walking its tables in rust/src/game.rs.
+# Skill `new-move-primitive` lists every other surface it owes.
 # "lame" is schema 2: a leap that can be blocked. The xiangqi horse and elephant are
 # the reason -- they reach like leapers but a piece on the way stops them, which is
 # what makes them weak enough to be interesting.
@@ -107,46 +102,6 @@ ENDING_RESULTS = ("win", "loss", "draw")
 # `tests/test_schema_two.py` holds each text to this phrase and the phrase to the core.
 BARE_ROYAL_HOLDER = "the player reduced to royalty alone"
 
-# Everything added in schema 2. A spec declaring version 1 that uses any of these is
-# rejected by name rather than silently ignored, so the declared version never
-# overstates what the engine was asked to do.
-V2_RULE_KEYS = frozenset(
-    {
-        "bare_royal",
-        "check_limit",
-        "reach",
-        "extinction",
-        "must_capture",
-        "checkmate",
-        "forbid_check",
-        "royal_facing",
-        "drops",
-        "explode_on_capture",
-        "forbid_immobility",
-    }
-)
-V2_PROMOTION_KEYS = frozenset({"ranks", "mandatory", "to_by_player"})
-V2_CASTLING_KEYS = frozenset({"king_file", "rook_file"})
-V2_SETUP_KEYS = frozenset({"orientation"})
-V2_MOVE_KEYS = frozenset({"screen_range"})
-V2_CONDITION_KEYS = frozenset({"region"})
-V2_PIECE_KEYS = frozenset({"region", "promoted_from"})
-
-# Everything added in schema 3, which is one idea in two places: *what* a piece may
-# capture, rather than only where it may move.
-#
-# ``captures`` is the capture matrix -- a per-piece list of the ids it is allowed to
-# take. Absent means "everything", which is what makes the whole feature inert on every
-# spec written before it existed. Per piece rather than a top-level matrix so that a
-# mutation operator can edit one piece and so the permission sits beside the movement
-# that produces the threat.
-#
-# ``screen`` says whose piece a hop may jump. The xiangqi cannon does not care; a game
-# where pieces vault their own army does, and that is a design nobody could state.
-V3_PIECE_KEYS = frozenset({"captures"})
-V3_MOVE_KEYS = frozenset({"screen"})
-V3_RULE_KEYS = frozenset({"scoring"})
-
 # What a scoring rule counts when the clock runs out.
 #
 # All three are already on the state, which is the point: material value, a headcount,
@@ -180,50 +135,6 @@ CLOCK_BOUNDS: dict[str, tuple[int, int]] = {
 # Whose piece may serve as a hop's screen.
 SCREEN_OWNERS = ("any", "own", "enemy")
 
-# Schema 4: the board itself keeps a record of who has been where.
-#
-# One key, and it is a rule rather than a piece property, because it changes what the
-# *board* is: squares stop being interchangeable and start being worth something. That
-# is a different kind of game -- the designer who invented the sequence in
-# `docs/reference/rps-versions.md` reached for it the moment his capture game turned
-# repetitive, and it is what "an irreversible process" looks like in a chess-shaped game.
-V4_RULE_KEYS = frozenset({"territory", "turn"})
-
-# Schema 5: a board with no edges.
-#
-# One key, and it belongs in ``rules`` rather than in ``board`` for the same reason
-# ``territory`` does: ``complexity._RULE_COSTS`` is defined as what a player has to be
-# *taught*, and "a piece that leaves the left edge comes back on the right" is a taught
-# exception rather than a dimension. Putting it here also means the four surfaces a rule
-# already has to reach -- the prose the judge reads, the JSON schema the model writes
-# against, the exhaustive cost table, and a mechanical operator -- guard it for free.
-V5_RULE_KEYS = frozenset({"wrap"})
-
-# Schema 6: two rules that share a theme -- *a capture is not the only thing that can
-# happen when two pieces meet, and not every square is a place two pieces can meet*.
-#
-# ``obstacles`` is a set of squares nothing may occupy. It is entirely static, so every
-# question it raises is decidable at compile time and it dissolves into the per-square
-# tables the way schema 5's seam did: a ray that meets one ends there, a leap whose
-# target is one is never emitted. Nothing about it crosses the boundary at all.
-#
-# ``strike`` is what happens *instead of* removal when a piece is taken -- it may be
-# demoted, promoted, left standing, or swapped with its attacker. Movegen does not
-# change: a strike is generated as a capture, blocked like a capture, and permitted by
-# the same ``captures`` matrix. Only ``make`` differs, which is why a strike ruleset's
-# perft is exactly its capture ruleset's perft, at every depth.
-V6_RULE_KEYS = frozenset({"obstacles", "strike"})
-
-# Schema 8: a piece that has an orientation, and may spend its move turning.
-#
-# ``facing`` is a *piece* property rather than a rule, because it is a fact about one
-# piece the way ``captures`` and ``region`` are: a spec can give it to a pawn and to
-# nothing else, and the sentence a player has to be told is per piece. It reads the
-# piece's own move vectors rotated, so it is a different reading of the same
-# descriptors rather than a new descriptor -- which is why it costs the movement tables
-# another *frame* and not another dimension.
-V8_PIECE_KEYS = frozenset({"facing"})
-
 # How many orientations a facing piece has. Two is forward and backward; four is the
 # quarter turns. Three is not offered because the board is square-gridded and a third
 # of a turn does not land on a vector.
@@ -237,35 +148,8 @@ FACING_NAMES = ("forward", "right", "backward", "left")
 # ``turns`` is schema 25 (Q869, the rear pawn): ``false`` is a facing no move turns. The
 # piece still reads its vectors through its orientation and a placement still sets it,
 # but the core generates no rotation for it, so a pawn stood facing backward stays a
-# pawn going backward. See ``_schema_twenty_five_uses`` and ``_check_fixed_facings``.
+# pawn going backward. See ``_check_fixed_facings``.
 _FACING_KEYS = {"axes", "initial", "turns"}
-
-# Schema 9: a piece that neither player owns.
-#
-# ``npcs`` is a list of *wild pieces*. Each is a piece of a declared type standing on the
-# board from ply zero, owned by nobody, which after every player move steps to the next
-# square of its ``route`` and eats whatever stands there that its type may capture --
-# schema 3's matrix, not a second flag. Taking one is worth its ``bounty``, which
-# ``scoring.count: "points"`` reads at the clocks. A wild piece does not move as its type
-# moves: its ``moves`` are what it does in a player's hands, which under ``drops`` is a
-# real case. Routes are cycles of distinct squares and no square is on two routes, so
-# which square is *next* is a fact about the square alone and dissolves into one table.
-#
-# ``promote_on_entry`` is schema 9's second key (queue task Q13), and it is the user's
-# answer to the first entry ``docs/bugs.md`` carried (now in
-# ``docs/archive/bugs-resolved.md``): a piece that *enters play* inside
-# its own promotion zone -- dropped there, or left standing there by a strike that turned
-# it into a promoting type -- promotes at once, to the first piece its promotion rule
-# lists, whether or not that rule is ``mandatory``. Off, which is every game before it, a
-# pawn that arrives on the far rank without moving there simply stands, and a chess pawn
-# on the far rank is a piece that can never move again. It rides one flag because the
-# three ways in are one event: a piece appearing on a square without a move of its own to
-# choose a promotion in. A piece that gets there *by moving* is the promotion rule's own
-# business and is unchanged.
-#
-# One set for the whole version, so that the two keys share one version check.
-# `_schema_nine_uses` is the one collector.
-V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
 # ``immune`` is schema 10 (Q78) and is documented at ``REPETITION_NEVER`` below.
 _NPC_KEYS = {"piece", "route", "bounty", "mirror", "immune", "also_at"}
 
@@ -294,12 +178,28 @@ _NPC_KEYS = {"piece", "route", "bounty", "mirror", "immune", "also_at"}
 # is not a piece (a piece of either side may stand in it, and is taken there as anywhere),
 # and a move that ends on an empty fold may stay there or go through, ending on the square
 # of the end it leads to and taking an enemy piece there as any landing does; a move that
-# passes over a fold is not changed. Written only as ``"fold"``: the default spelled out is
-# one game under two hashes, so the validator refuses it (`_check_inert_rules`' argument).
+# passes over a fold is not changed. ``"momentum"`` written out states nothing, and the
+# normal form drops it (Q1008c).
+#
+# Spelling 31 (Q1007b, `docs/plan-schema-31.md` §4): a group's own ``moves``, a list in
+# exactly ``pieces[].moves``' shape, is how its ends move when somebody may move one. Until
+# then a group named a stand-in piece (``"piece": "O"``) declared in ``pieces`` for its
+# moves alone; that spelling is gone, `spelling.current_spelling` converts it, and the
+# validator refuses it with the converter's command. A portal's move may only step onto an
+# empty square, so a group's move omits ``mode`` (it means ``"move"`` here) or says
+# ``"move"``.
 _PORTAL_KEYS = {
-    "piece", "orange", "blue", "moved_by", "passage", "carries", "no_straight_back", "kind",
+    "moves", "orange", "blue", "moved_by", "passage", "carries", "no_straight_back", "kind",
 }
-_PORTAL_ENDS_KEYS = {"piece", "ends", "no_straight_back", "kind"}
+_PORTAL_ENDS_KEYS = {"moves", "ends", "no_straight_back", "kind"}
+# The key spelling 30 named a group's stand-in piece by; refused with the converter's command.
+PORTAL_OLD_PIECE_KEY = "piece"
+# What a portal's movement type is called, and the ids it takes, first free first:
+# `portal_movement_types`. ``O`` (every portal game git ever held), then the order the
+# designer's page gave its stand-in (`portals.js`, before spelling 31), then the rest, so a
+# game can always take one (at most 24 types).
+PORTAL_MOVER_NAME = "portal"
+PORTAL_MOVER_IDS = "OVWXYZJLMTUQPRSABCDEFGHIKN0123456789"
 PORTAL_KINDS = ("momentum", "fold")
 _PORTAL_END_KEYS = {"at", "to", "enter", "moved_by", "carries"}
 PORTAL_ENDS = ("orange", "blue")
@@ -362,8 +262,10 @@ def portal_groups(rules: Any) -> list[dict[str, Any]]:
 
     The one reader of the spelling, shared by the validator, the compiler and every reader
     after them, so a group means one thing to all of them (`docs/archive/plan-portals-2.md` §2.2).
-    Each group is ``{"number", "index", "piece", "no_straight_back", "kind", "spelling",
-    "passage", "ends"}``; each end ``{"at", "to", "enter", "moved_by", "carries", "letter",
+    Each group is ``{"number", "index", "moves", "no_straight_back", "kind", "spelling",
+    "passage", "ends"}``; ``moves`` is the group's list as written (spelling 31; empty when
+    absent or malformed), each move's ``mode`` read as ``"move"`` where it is left out
+    (`portal_moves`). Each end is ``{"at", "to", "enter", "moved_by", "carries", "letter",
     "key"}``:
 
     * ``at`` -- its square's name, as written (the readers parse it against their board);
@@ -398,7 +300,7 @@ def portal_groups(rules: Any) -> list[dict[str, Any]]:
         groups.append({
             "number": len(groups) + 1,
             "index": index,
-            "piece": group.get("piece"),
+            "moves": portal_moves(group.get("moves")),
             "no_straight_back": group.get("no_straight_back") is True,
             "kind": "fold" if group.get("kind") == "fold" else "momentum",
             "spelling": spelling,
@@ -458,29 +360,121 @@ def _listed(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
-def portal_piece_ids(rules: Any) -> set[str]:
-    """The declared piece ids ``rules.portals`` names as a group's ``piece``."""
+def portal_moves(moves: Any) -> list[Any]:
+    """A group's ``moves`` as a portal makes them: each move's ``mode`` read as ``"move"``
+    where it is left out (spelling 31), since a portal only ever steps onto an empty square.
+
+    Empty when the group states none, or states something that is not a list (refused by
+    name elsewhere). A move that is not an object is kept as it is, for the validator.
+    """
+    if not isinstance(moves, list):
+        return []
+    return [
+        {**move, "mode": move.get("mode", "move")} if isinstance(move, dict) else move
+        for move in moves
+    ]
+
+
+def _portal_move_lists(rules: Any) -> tuple[list[list[Any]], list[int]]:
+    """The distinct move lists of ``rules.portals``' groups, in group order, and the index
+    of each group's list among them (`portal_movement_types`)."""
+    distinct: list[list[Any]] = []
+    keys: list[str] = []
+    of_group: list[int] = []
+    for group in portal_groups(rules):
+        key = json.dumps(group["moves"], sort_keys=True)
+        if key not in keys:
+            keys.append(key)
+            distinct.append(group["moves"])
+        of_group.append(keys.index(key))
+    return distinct, of_group
+
+
+def portal_movement_types(spec: Any) -> list[dict[str, Any]]:
+    """The piece types a portal game's groups move as (spelling 31, `docs/plan-schema-31.md`
+    §4.3): one per distinct ``moves`` list, in group order, each ``{"id", "name": "portal",
+    "value": 0, "moves"}`` with every move's ``mode`` written (`portal_moves`). Its id is the
+    first of `PORTAL_MOVER_IDS` (``O``, then ``V``, ``W``, ...) that no declared piece has.
+    Empty without portals.
+
+    This is the stand-in piece every portal game declared before spelling 31, byte for byte:
+    each of the 59 portal specs git ever held declared exactly one, ``{"id": "O", "name":
+    "portal", "value": 0, "moves": ...}``, last in ``pieces``, named by every group. Two
+    readers append these after the declared pieces, so no name and no table moves: the
+    normal form (`normal.normal_form`, the hashing shape) and the compiler (a movement type's
+    row, which no piece ever stands as, keeps the type count, the order and the Zobrist rows
+    every portal game had). Nothing else reads them as pieces.
+    """
+    if not isinstance(spec, dict):
+        return []
+    lists, _ = _portal_move_lists(spec.get("rules"))
+    if not lists:
+        return []
+    pieces = spec.get("pieces")
+    taken = {
+        piece.get("id") for piece in (pieces if isinstance(pieces, list) else ())
+        if isinstance(piece, dict)
+    }
+    free = (pid for pid in PORTAL_MOVER_IDS if pid not in taken)
+    return [
+        {"id": next(free), "name": PORTAL_MOVER_NAME, "value": 0, "moves": moves}
+        for moves in lists
+    ]
+
+
+def portal_movement_of_groups(spec: Any) -> list[str]:
+    """Per group of ``rules.portals``, in `portal_groups` order, the id of the movement type
+    (`portal_movement_types`) it moves as."""
+    types = portal_movement_types(spec)
+    _, of_group = _portal_move_lists(spec.get("rules") if isinstance(spec, dict) else None)
+    return [types[index]["id"] for index in of_group]
+
+
+def portal_stand_in_shape(spec: Any) -> Any:
+    """``spec`` with its groups' ``moves`` written as spelling 30's stand-in piece: each
+    movement type (`portal_movement_types`) appended to ``pieces``, and each group naming
+    its type as ``piece`` in place of ``moves``. A new dict; ``spec`` is not changed.
+
+    The shape every portal game was named and measured in, so the readers that must say and
+    count a portal game exactly as before spelling 31 read it (`docs/plan-schema-31.md`
+    §4.3): the normal form (`normal.normal_form`), the relations (`relate.normal_form`), the
+    rules text's piece list (`describe.describe_pieces`) and the distance features. Never
+    validated or compiled: the validator refuses it, and the compiler reads the movement
+    types itself. A spec with no portals, one whose groups already name a ``piece`` (the
+    old spelling, as a stored spec may still be) and a malformed one come back as they are.
+    """
+    if not isinstance(spec, dict):
+        return spec
+    rules = spec.get("rules")
+    pieces = spec.get("pieces")
+    if not isinstance(rules, dict) or not isinstance(pieces, list):
+        return spec
+    groups = rules.get("portals")
+    if not isinstance(groups, list) or not groups or any(
+        isinstance(group, dict) and PORTAL_OLD_PIECE_KEY in group for group in groups
+    ):
+        return spec
+    named = iter(portal_movement_of_groups(spec))
+    written = [
+        {
+            **{key: value for key, value in group.items() if key != "moves"},
+            PORTAL_OLD_PIECE_KEY: next(named),
+        }
+        if isinstance(group, dict) else group
+        for group in groups
+    ]
     return {
-        group["piece"] for group in portal_groups(rules) if isinstance(group["piece"], str)
+        **spec,
+        "pieces": [*pieces, *portal_movement_types(spec)],
+        "rules": {**rules, "portals": written},
     }
 
 
-def portal_type_needs_no_moves(rules: Any, piece_id: Any) -> bool:
-    """Whether ``piece_id`` is a portal type that no player may ever move (schema 19).
-
-    The second exception to ``pieces[].moves must be a non-empty array`` (the first is
-    ``piece_has_stock``): a portal nobody moves is placed by the rule and stands where it
-    was put, so it needs no move of its own.
-    """
-    named = [group for group in portal_groups(rules) if group["piece"] == piece_id]
-    return bool(named) and not any(
-        end["moved_by"] for group in named for end in group["ends"]
-    )
-
-
 def portal_extra_types(rules: Any) -> int:
-    """How many internal piece types the compiler adds for portals: one per end."""
-    return sum(len(group["ends"]) for group in portal_groups(rules))
+    """How many internal piece types the compiler adds for portals: one movement type per
+    distinct group ``moves`` (`portal_movement_types`) and one per end."""
+    lists, _ = _portal_move_lists(rules)
+    return len(lists) + sum(len(group["ends"]) for group in portal_groups(rules))
 
 
 def portal_map_shape(group: dict[str, Any]) -> str:
@@ -505,9 +499,8 @@ def portal_map_shape(group: dict[str, Any]) -> str:
     return "other"
 
 
-# Schema 10. Five features, one version, and only one of them is a top-level key -- which
-# is why the gate is `_schema_ten_uses` and not a `V10_RULE_KEYS` frozenset. Q84's costing
-# sorted them: a new *value* (`repetition_draw: "never"`), nested keys
+# Schema 10. Five features, one version, and only one of them is a top-level key. Q84's
+# costing sorted them: a new *value* (`repetition_draw: "never"`), nested keys
 # (`npcs[].immune`, `explode_on_capture.by`/`.of`, `drops.stock`), a *relaxation*
 # (a piece with no moves, once a stock puts it in a hand) and one new rule key.
 #
@@ -859,7 +852,7 @@ _WRAP_KEYS = {
 }
 # ``on_leaving`` is schema 15 (Q452, traditional shogi's B1): the entry also promotes its
 # piece on a move that *starts* in the zone, as Fairy-Stockfish and real shogi do. See
-# ``_schema_fifteen_uses`` and ``compile.PromotionRule.on_leaving``. ``only_lost`` is
+# ``compile.PromotionRule.on_leaving``. ``only_lost`` is
 # schema 18 (Q783, Grand chess): a target is offered only while its side has fewer of it
 # than it started with. See ``_check_only_lost_coherence`` and
 # ``compile.PromotionRule.only_lost``.
@@ -921,19 +914,13 @@ class SpecError(Exception):
         super().__init__("; ".join(errors))
 
 
-def validate_spec(spec: Any, *, new: bool = True) -> list[str]:
+def validate_spec(spec: Any) -> list[str]:
     """Return a list of problems with ``spec``. An empty list means it is valid.
 
-    ``new`` says the spec is being admitted: a draft, a proposal, an operator's child, a
-    file under ``validate``, a game promoted into the library. Every gate keeps the
-    default. ``validate_or_raise``, the check ``compile_spec`` opens with, passes
-    ``new=False``, because building an engine is also how a *stored* spec is loaded: a
-    retired game's page and its match replays on the site, and a calibration corpus's
-    entry re-scored. What that skips is three refusals, each of a rule that never fires,
-    added after such a spec could have been played: ``_refuse_a_promotion_rank_past_the_board``
-    (Q434), ``_refuse_a_portal_bar_no_move_meets`` (Q879) and ``_refuse_a_one_square_lame_leap``
-    (Q884). The engine plays that spec exactly as it always did; the refusal is about not
-    admitting another one.
+    Every gate that admits a spec asks this: a draft, a proposal, an operator's child, a
+    file under ``validate``, a game promoted into the library. Loading a stored spec to
+    build its engine asks `stored_spec_errors`, which is this with one game's one refusal
+    forgiven (`RANK_PAST_THE_BOARD_KEPT`).
     """
     errors: list[str] = []
 
@@ -943,12 +930,11 @@ def validate_spec(spec: Any, *, new: bool = True) -> list[str]:
     _check_keys(spec, _SPEC_KEYS, "spec", errors, required={"name", "board", "pieces", "setup"})
 
     version = spec.get("schema_version", SCHEMA_VERSION)
-    if version not in SUPPORTED_SCHEMA_VERSIONS:
+    if isinstance(version, bool) or version not in SUPPORTED_SCHEMA_VERSIONS:
         errors.append(
-            f"schema_version {version!r} is not supported (expected one of "
-            f"{', '.join(str(v) for v in SUPPORTED_SCHEMA_VERSIONS)})"
+            f"schema_version {version!r} is not supported (expected a whole number from "
+            f"{SUPPORTED_SCHEMA_VERSIONS[0]} to {SCHEMA_VERSION})"
         )
-        version = SCHEMA_VERSION
 
     if not isinstance(spec.get("name"), str) or not spec.get("name", "").strip():
         errors.append("name must be a non-empty string")
@@ -965,818 +951,14 @@ def validate_spec(spec: Any, *, new: bool = True) -> list[str]:
         spec.get("rules", {}), piece_ids, width, height, errors, hex_lattice,
         board_shape(spec),
     )
-    if new:
-        _refuse_a_promotion_rank_past_the_board(spec.get("rules"), height, errors)
-        _refuse_a_portal_bar_no_move_meets(spec, errors)
-        _refuse_a_one_square_lame_leap(spec, errors)
+    errors.extend(_promotion_ranks_past_the_board(spec.get("rules"), height))
+    _refuse_a_portal_bar_no_move_meets(spec, errors)
+    _refuse_a_one_square_lame_leap(spec, errors)
     _validate_appearance(spec.get("appearance"), piece_ids, errors)
     _validate_provenance(spec.get("provenance"), errors)
     _validate_coherence(spec, errors)
-    if version < 2:
-        _validate_version_one_stays_within_version_one(spec, errors)
-    if version < 3:
-        _validate_version_two_stays_within_version_two(spec, errors)
-    if version < 4:
-        rules = spec.get("rules")
-        used = V4_RULE_KEYS.intersection(rules) if isinstance(rules, dict) else set()
-        if used:
-            errors.append(
-                f"rules uses {', '.join(sorted(used))}, added in schema 4; declare "
-                '"schema_version": 4 to use it'
-            )
-    if version < 5:
-        rules = spec.get("rules")
-        used = V5_RULE_KEYS.intersection(rules) if isinstance(rules, dict) else set()
-        if used:
-            errors.append(
-                f"rules uses {', '.join(sorted(used))}, added in schema 5; declare "
-                '"schema_version": 5 to use it'
-            )
-    if version < 6:
-        rules = spec.get("rules")
-        used = V6_RULE_KEYS.intersection(rules) if isinstance(rules, dict) else set()
-        if used:
-            errors.append(
-                f"rules uses {', '.join(sorted(used))}, added in schema 6; declare "
-                '"schema_version": 6 to use it'
-            )
-    if version < 7:
-        rules = spec.get("rules")
-        if isinstance(rules, dict):
-            reach = rules.get("reach")
-            if isinstance(reach, dict) and reach.get("mirror") == "rotate":
-                errors.append(
-                    'rules.reach.mirror "rotate" was added in schema 7; declare '
-                    '"schema_version": 7 to use it'
-                )
-    if version < 8:
-        pieces = spec.get("pieces")
-        used = (
-            {key for piece in pieces if isinstance(piece, dict)
-             for key in V8_PIECE_KEYS.intersection(piece)}
-            if isinstance(pieces, list) else set()
-        )
-        setup = spec.get("setup")
-        placements = setup.get("placements") if isinstance(setup, dict) else None
-        if isinstance(placements, list) and any(
-            isinstance(placement, dict) and "facing" in placement
-            for placement in placements
-        ):
-            used.add("setup.placements[].facing")
-        if used:
-            errors.append(
-                f"a piece uses {', '.join(sorted(used))}, added in schema 8; declare "
-                '"schema_version": 8 to use it'
-            )
-    if version < 9:
-        used = _schema_nine_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 9; declare "
-                '"schema_version": 9 to use it'
-            )
-    if version < 10:
-        used = _schema_ten_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 10; declare "
-                '"schema_version": 10 to use it'
-            )
-    if version < 11:
-        used = _schema_eleven_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 11; declare "
-                '"schema_version": 11 to use it'
-            )
-    if version < 12:
-        used = _schema_twelve_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 12; declare "
-                '"schema_version": 12 to use it'
-            )
-    if version < 13:
-        used = _schema_thirteen_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 13; declare "
-                '"schema_version": 13 to use it'
-            )
-    if version < 14:
-        used = _schema_fourteen_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 14; declare "
-                '"schema_version": 14 to use it'
-            )
-    if version < 15:
-        used = _schema_fifteen_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 15; declare "
-                '"schema_version": 15 to use it'
-            )
-    if version < 16:
-        used = _schema_sixteen_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 16; declare "
-                '"schema_version": 16 to use it'
-            )
-    if version < 17:
-        used = _schema_seventeen_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 17; declare "
-                '"schema_version": 17 to use it'
-            )
-    if version < 18:
-        used = _schema_eighteen_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 18; declare "
-                '"schema_version": 18 to use it'
-            )
-    if version < 19:
-        used = _schema_nineteen_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 19; declare "
-                '"schema_version": 19 to use it'
-            )
-    if version < 20:
-        used = _schema_twenty_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 20; declare "
-                '"schema_version": 20 to use it'
-            )
-    if version < 21:
-        used = _schema_twenty_one_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 21; declare "
-                '"schema_version": 21 to use it'
-            )
-    if version < 22:
-        used = _schema_twenty_two_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 22; declare "
-                '"schema_version": 22 to use it'
-            )
-    if version < 23:
-        used = _schema_twenty_three_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 23; declare "
-                '"schema_version": 23 to use it'
-            )
-    if version < 24:
-        used = _schema_twenty_four_uses(spec)
-        if used and version >= 22:
-            # Folds were schema 22's until their rules changed (the user, 2026-10-12);
-            # the first rules are gone, so a fold under 22 or 23 names no game.
-            errors.append(
-                "folds changed at schema 24 (the user, 2026-10-12): a piece that lands on a "
-                'fold stays or goes through; declare "schema_version": 24'
-            )
-        elif used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 24; declare "
-                '"schema_version": 24 to use it'
-            )
-    if version < 25:
-        used = _schema_twenty_five_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 25; declare "
-                '"schema_version": 25 to use it'
-            )
-    if version < 26:
-        used = _schema_twenty_six_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 26; declare "
-                '"schema_version": 26 to use it'
-            )
-    if version < 27:
-        used = _schema_twenty_seven_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 27; declare "
-                '"schema_version": 27 to use it'
-            )
-    if version < 28:
-        used = _schema_twenty_eight_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 28; declare "
-                '"schema_version": 28 to use it'
-            )
-    if version < 29:
-        used = _schema_twenty_nine_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 29; declare "
-                '"schema_version": 29 to use it'
-            )
-    if version < 30:
-        used = _schema_thirty_uses(spec)
-        if used:
-            errors.append(
-                f"the spec uses {', '.join(sorted(used))}, added in schema 30; declare "
-                '"schema_version": 30 to use it'
-            )
-    # Schema 29 (Q983a, `docs/plan-rest.md` §4.4): the old rest is refused at every version,
-    # by admission and by the loader alike, since a loader that still compiled it would be
-    # a second rest beside `pieces[].rest`.
-    _refuse_the_retired_rest(spec, errors)
 
     return errors
-
-
-def _schema_nine_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 9 added, by name.
-
-    One collector rather than one ``if`` per feature, so that the second key schema 9
-    carries (queue task Q13) joins here and the message stays one sentence: a spec that
-    reaches for two schema-9 features under an older stamp is told both at once.
-    """
-    used: set[str] = set()
-    rules = spec.get("rules")
-    if not isinstance(rules, dict):
-        return used
-    used |= {f"rules.{key}" for key in V9_RULE_KEYS.intersection(rules)}
-    scoring = rules.get("scoring")
-    if isinstance(scoring, dict) and scoring.get("count") == "points":
-        used.add('rules.scoring.count "points"')
-    return used
-
-
-def _schema_ten_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 10 added, by name.
-
-    The same collector shape as ``_schema_nine_uses`` and for a stronger reason: schema 10
-    carries five features and exactly *one* of them is a top-level key under ``rules``, so
-    a ``V10_RULE_KEYS`` frozenset written the schema-4-to-6 way would gate one fifth of the
-    bump and wave the rest through under any stamp. Q84 sorted them -- a new value on an
-    existing key, three nested keys, one relaxation and one rule key -- and only the last
-    is indexable.
-
-    **The set of names this returns is the bump's inventory.** ``describe.py`` has to be
-    able to say each of them, ``docs/reference/schema-showcase-coverage.md`` audits against
-    them, and each owes a demonstrating ruleset. Everything is spelled as its own ``if`` so
-    that a spec reaching for two of them under an older stamp is told about both at once.
-    """
-    used: set[str] = set()
-    rules = spec.get("rules")
-    if not isinstance(rules, dict):
-        return used
-    if rules.get("repetition_draw") == REPETITION_NEVER:
-        used.add('rules.repetition_draw "never"')
-    npcs = rules.get("npcs")
-    if isinstance(npcs, list) and any(
-        isinstance(npc, dict) and "immune" in npc for npc in npcs
-    ):
-        used.add("rules.npcs[].immune")
-    explosion = rules.get("explode_on_capture")
-    if isinstance(explosion, dict):
-        used |= {
-            f"rules.explode_on_capture.{key}"
-            for key in ("by", "of")
-            if key in explosion
-        }
-    drops = rules.get("drops")
-    if isinstance(drops, dict) and "stock" in drops:
-        used.add("rules.drops.stock")
-    # The bump's one indexable feature, and the only one a `V10_RULE_KEYS` frozenset
-    # could have caught -- which is why the collector exists rather than the frozenset.
-    if "contacts" in rules:
-        used.add("rules.contacts")
-    # The relaxation, named separately from the key that gates it. A moveless piece and a
-    # stock arrive together in a valid spec, but they are two of the bump's five features
-    # and the collector's set *is* the inventory -- `describe.py` owes a sentence for each
-    # and the showcase audit reads this list, so folding one into the other would hide it.
-    pieces = spec.get("pieces")
-    if isinstance(pieces, list) and any(
-        isinstance(piece, dict) and piece.get("moves") == [] for piece in pieces
-    ):
-        used.add("a piece with no moves of its own")
-    return used
-
-
-def _schema_eleven_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 11 added, by name.
-
-    One feature: a contact link about the mover's *own* piece (Q19b). It is a nested key,
-    so no key set could gate it. It has a version to itself because it moves perft.
-    """
-    used: set[str] = set()
-    rules = spec.get("rules")
-    if not isinstance(rules, dict):
-        return used
-    contacts = rules.get("contacts")
-    links = contacts.get("links") if isinstance(contacts, dict) else None
-    if isinstance(links, list) and any(
-        isinstance(link, dict) and "own" in link for link in links
-    ):
-        used.add("rules.contacts.links[].own")
-    return used
-
-
-def _schema_twelve_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 12 added, by name.
-
-    One feature on two spellings: ``position: "choose"`` and its ``landing`` set (Q20),
-    on ``strike`` and on ``contacts``. A new value and a nested key, so no key set could
-    gate either.
-    """
-    used: set[str] = set()
-    rules = spec.get("rules")
-    if not isinstance(rules, dict):
-        return used
-    for key in ("strike", "contacts"):
-        rule = rules.get(key)
-        if not isinstance(rule, dict):
-            continue
-        if rule.get("position") == "choose":
-            used.add(f"rules.{key}.position=choose")
-        if "landing" in rule:
-            used.add(f"rules.{key}.landing")
-    return used
-
-
-def _schema_thirteen_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 13 added, by name.
-
-    One feature: the ``sweep`` move kind (Q21). A new value on a move descriptor, gated the
-    way ``lame`` is.
-    """
-    return {"the 'sweep' move kind"} if uses_sweep(spec) else set()
-
-
-def _schema_fourteen_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 14 added, by name.
-
-    Two features (Q229): the ``board.lattice`` declaration and a promotion zone stated as
-    ``squares``. Nested keys both, so no key set could gate either. The key is schema 14's
-    whatever its value, so ``"square"`` written out is named too; it compiles to the board
-    it always was and owes no showcase.
-    """
-    used: set[str] = set()
-    board = spec.get("board")
-    if isinstance(board, dict) and "lattice" in board:
-        used.add(f"board.lattice={board['lattice']}")
-    rules = spec.get("rules")
-    if isinstance(rules, dict) and any(
-        isinstance(entry, dict) and "squares" in entry for entry in _promotion_entries(rules)
-    ):
-        used.add("rules.promotion.squares")
-    return used
-
-
-def _schema_fifteen_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 15 added, by name.
-
-    One feature (Q452, traditional shogi's B1): ``promotion.on_leaving``, a promotion
-    entry that also promotes its piece on a move *out of* its zone. A nested key, so no
-    key set could gate it. The key is schema 15's whatever its value, as
-    ``board.lattice`` is schema 14's, so ``false`` written out is named too; it compiles
-    to the game that was already there and owes no showcase.
-    """
-    rules = spec.get("rules")
-    if not isinstance(rules, dict):
-        return set()
-    used: set[str] = set()
-    for entry in _promotion_entries(rules):
-        if isinstance(entry, dict) and "on_leaving" in entry:
-            used.add(
-                "rules.promotion.on_leaving"
-                if entry["on_leaving"] is True
-                else "rules.promotion.on_leaving=false"
-            )
-    return used
-
-
-def _schema_sixteen_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 16 added, by name.
-
-    Two features (Q281): ``board.shape`` and a hexagon's three pairs of sides under
-    ``rules.wrap``. Nested keys both, so no key set could gate either. The shape is
-    named with its value, as ``board.lattice`` is, so ``"grid"`` written out is named
-    too; it compiles to the board it always was and owes no showcase. A pair key is
-    named whatever its value, because a schema-15 spec may not write even an inert one.
-    """
-    used: set[str] = set()
-    board = spec.get("board")
-    if isinstance(board, dict) and "shape" in board:
-        used.add(f"board.shape={board['shape']}")
-    rules = spec.get("rules")
-    wrap = rules.get("wrap") if isinstance(rules, dict) else None
-    if isinstance(wrap, dict) and any(
-        key in wrap or f"{key}_by_player" in wrap for key in WRAP_PAIRS
-    ):
-        used.add("rules.wrap.hexagon")
-    return used
-
-
-def _schema_seventeen_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 17 added, by name.
-
-    Four features (Q540, *what a capture leaves behind*), all new values or nested keys,
-    so no key set could gate any of them:
-
-    * ``rules.strike.position=stay(capture)`` -- rifle: a capture that leaves the
-      attacker where it stood. Schema 6 to 16 refused the spelling as stating nothing
-      (Q538); the value is old, the combination is the feature.
-    * ``rules.strike.position=home`` -- circe: a struck piece reborn on its home square.
-    * ``rules.strike.switches_sides`` -- Andernach: the attacker changes sides. Named
-      whatever its value, as ``board.lattice`` is, because an older spec may not write
-      even an empty one.
-    * ``rules.explode_on_capture.radius=0`` -- kamikaze: the blast takes the capturer and
-      its victim and nothing around them.
-    """
-    used: set[str] = set()
-    rules = spec.get("rules")
-    if not isinstance(rules, dict):
-        return used
-    strike = rules.get("strike")
-    if isinstance(strike, dict):
-        position = strike.get("position", "advance")
-        if position == "stay" and strike.get("effect", "capture") == "capture":
-            used.add("rules.strike.position=stay(capture)")
-        if position == "home":
-            used.add("rules.strike.position=home")
-        if "switches_sides" in strike:
-            used.add("rules.strike.switches_sides")
-    explosion = rules.get("explode_on_capture")
-    if isinstance(explosion, dict) and explosion.get("radius") == 0 and not isinstance(
-        explosion.get("radius"), bool
-    ):
-        used.add("rules.explode_on_capture.radius=0")
-    return used
-
-
-def _schema_eighteen_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 18 added, by name.
-
-    Schema 18 is built in several tasks (`docs/archive/plan-schema-17-18.md` §9.3, 18a to
-    18f), one version for all of them: each later task adds its names here, and until it lands its
-    feature is refused by name at every version, so nothing accepted earlier is read
-    differently afterwards. 18a (Q781) opens it with two lifted restrictions, so both
-    are predicates over the spec rather than keys:
-
-    * ``rules.contacts.mover_to=mover(promotion)`` -- Einstein's keeping link: a contact
-      link whose ``mover_to`` is the mover itself, accepted where the mover has a
-      promotion of its own (``keeping_link_holds``). The contact overrides the promotion
-      (Q539), so a queen that captures stays a queen where its promotion would demote
-      it. Schema 10 to 17 refused the spelling as changing nothing, which it still does
-      where no promotion could fire.
-    * ``rules.castling(walled rank)`` -- Omega's castling: a wall or an absent cell on a
-      rank castling starts from, but on no square any castling crosses or lands on
-      (``castling_rank_walled_beyond_its_spans``). A walled span stays refused.
-
-    18c (Q783) adds two nested keys, each named whatever its value, as schema 15's
-    ``on_leaving`` is, because an older spec may not write even an inert one; ``false``
-    is named with its value and compiles to the game that was already there:
-
-    * ``rules.extinction.per_type`` -- Extinction chess: each listed type is counted on
-      its own, so a side loses when any one of them runs out, not when all of them
-      together do.
-    * ``rules.promotion.only_lost`` -- Grand chess: a promotion target is offered only
-      while the mover's side has fewer of that type than it started with
-      (``_check_only_lost_coherence``).
-
-    18d (Q784) adds one nested key, named whatever its value as 18c's are:
-
-    * ``rules.drops.placement`` -- Placement chess and Sittuyin: while a side holds
-      anything in hand its only legal moves are drops, so a stock is played out before
-      a piece on the board moves. A royal may start in the stock
-      (``royal_starts_in_hand``, ``_check_placement_coherence``).
-
-    18e (Q785) adds one nested key, named whatever its value as 18d's is:
-
-    * ``rules.drops.either_face`` -- Kyoto shogi: a piece in hand may be dropped as
-      itself or as its other face, the piece whose ``promoted_from`` it is, so a captured
-      dragon (held as a rook) may come back as either (``_check_either_face_coherence``).
-
-    18f (Q786) adds one new value and its key, named whatever its value as 18c's are:
-
-    * ``rules.reach.on=leave`` -- Jeson Mor: the game is decided by the move that takes
-      the named piece off a goal square, not by a piece standing on one. The core keeps
-      one position field for it, the side that has just left (``Game::goal_left_by``).
-      ``rules.reach.on=arrive`` is the rule written out, and compiles to the game that was
-      already there.
-
-    18b (Q782) adds two new values on an existing key, each named wherever it is written,
-    on a piece's move or on a strike's or contact table's landing:
-
-    * ``symmetry=rotate6`` and ``symmetry=dihedral12`` -- the hexagon's turns, so a hex
-      step is written once and turned six ways (or six ways and mirrored). A spelling and
-      not a rule: `complexity.expand_symmetry` turns them, the compiler reads its answer,
-      and a spec written with them compiles to the tables of its twin that lists every
-      vector under ``none``. Accepted only on a hex lattice (`_symmetry_refusals`).
-    """
-    used: set[str] = set()
-    used |= _hex_symmetries_used(spec)
-    rules = spec.get("rules")
-    if not isinstance(rules, dict):
-        return used
-    extinction = rules.get("extinction")
-    if isinstance(extinction, dict) and "per_type" in extinction:
-        used.add(
-            "rules.extinction.per_type"
-            if extinction["per_type"] is not False
-            else "rules.extinction.per_type=false"
-        )
-    for entry in _promotion_entries(rules):
-        if isinstance(entry, dict) and "only_lost" in entry:
-            used.add(
-                "rules.promotion.only_lost"
-                if entry["only_lost"] is True
-                else "rules.promotion.only_lost=false"
-            )
-    drops = rules.get("drops")
-    if isinstance(drops, dict) and "placement" in drops:
-        used.add(
-            "rules.drops.placement"
-            if drops["placement"] is True
-            else "rules.drops.placement=false"
-        )
-    if isinstance(drops, dict) and "either_face" in drops:
-        used.add(
-            "rules.drops.either_face"
-            if drops["either_face"] is True
-            else "rules.drops.either_face=false"
-        )
-    contacts = rules.get("contacts")
-    links = contacts.get("links") if isinstance(contacts, dict) else None
-    promoting = promoting_piece_ids(rules)
-    if isinstance(links, list) and any(
-        keeping_link_holds(link, promoting) for link in links
-    ):
-        used.add("rules.contacts.mover_to=mover(promotion)")
-    if castling_rank_walled_beyond_its_spans(spec):
-        used.add("rules.castling(walled rank)")
-    reach = rules.get("reach")
-    if isinstance(reach, dict) and "on" in reach:
-        used.add(f"rules.reach.on={reach['on']}")
-    return used
-
-
-def _schema_nineteen_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 19 added, by name (Q771, portals).
-
-    One new top-level rule and its two nested keys, each named whatever its value, as
-    schema 15's ``on_leaving`` is, because an older spec may not write even an inert one:
-
-    * ``rules.portals`` -- pairs of portals: a piece whose move ends on an open end comes
-      out one king's step beyond the other end, in the direction it travelled
-      (`docs/archive/plan-portals.md` §§1-2).
-    * ``rules.portals.moved_by`` -- which players may move each end (the free agent, §3).
-    * ``rules.portals.passage`` -- per player, which end that player's pieces may go in
-      by: both, one way, or neither, when the pair is an obstacle to them.
-    """
-    used: set[str] = set()
-    rules = spec.get("rules")
-    if not isinstance(rules, dict) or "portals" not in rules:
-        return used
-    used.add("rules.portals")
-    portals = rules.get("portals")
-    for pair in portals if isinstance(portals, list) else ():
-        if isinstance(pair, dict):
-            if "moved_by" in pair:
-                used.add("rules.portals.moved_by")
-            if "passage" in pair:
-                used.add("rules.portals.passage")
-    return used
-
-
-def _schema_twenty_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 20 added, by name (Q807, no straight back).
-
-    * ``rules.portals.no_straight_back`` -- an end of the pair, once moved, may not be moved
-      straight back onto the square it left on the very next move: a portal's ko, the answer
-      to Ferry's repetition by shuffling (`docs/archive/plan-portals.md` *Ferry's shuffle*). Named
-      whatever its value, as schema 19's names are, because an older spec may not write even
-      the inert ``false``.
-    """
-    rules = spec.get("rules")
-    portals = rules.get("portals") if isinstance(rules, dict) else None
-    for pair in portals if isinstance(portals, list) else ():
-        if isinstance(pair, dict) and "no_straight_back" in pair:
-            return {"rules.portals.no_straight_back"}
-    return set()
-
-
-def _schema_twenty_one_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 21 added, by name (Q843a, portal maps and filters).
-
-    `docs/archive/plan-portals-2.md` §2. Each named whatever its value, as schema 19's names are,
-    because an older spec may not write even an inert one:
-
-    * ``rules.portals.ends`` -- a group written as a list of ends rather than a pair: a
-      ring, a funnel or any other map of three to eight ends.
-    * ``rules.portals.ends.to`` -- the end a piece that goes in by this one comes out of.
-    * ``rules.portals.ends.enter`` -- whose pieces may go in by this end.
-    * ``rules.portals.carries`` -- which pieces may go in by an end, in either spelling.
-    """
-    used: set[str] = set()
-    rules = spec.get("rules")
-    portals = rules.get("portals") if isinstance(rules, dict) else None
-    for group in portals if isinstance(portals, list) else ():
-        if not isinstance(group, dict):
-            continue
-        if "carries" in group:
-            used.add("rules.portals.carries")
-        if "ends" not in group:
-            continue
-        used.add("rules.portals.ends")
-        for end in _listed(group["ends"]):
-            if not isinstance(end, dict):
-                continue
-            if "to" in end:
-                used.add("rules.portals.ends.to")
-            if "enter" in end:
-                used.add("rules.portals.ends.enter")
-            if "carries" in end:
-                used.add("rules.portals.carries")
-    return used
-
-
-def _schema_twenty_two_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 22 added, by name: nothing any more.
-
-    Schema 22 (Q843c) added fold portals, ``rules.portals.kind``. Their rules changed at
-    schema 24 (Q867b, `docs/archive/plan-portals-2.md` §3R.6), and the first rules were deleted, not
-    kept behind the old number (one implementation), so ``kind`` is
-    `_schema_twenty_four_uses`' and schema 22 keeps no rule of its own. A version with
-    nothing behind it is harmless: `settle_schema_version` stamps the lowest version a spec
-    validates under, so no new spec is ever stamped 22.
-    """
-    del spec
-    return set()
-
-
-def _schema_twenty_three_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 23 added, by name (Q850, several wild pieces on
-    one walk).
-
-    `docs/reference/designer-case-study-wolves.md` §2.2. Named whatever its value, because
-    an older spec may not write even an empty one:
-
-    * ``rules.npcs.also_at`` -- squares of the entry's own route where a further wild piece
-      of the same kind stands at ply zero, every one of them walking the route in step with
-      the piece on the route's first square.
-    """
-    rules = spec.get("rules")
-    npcs = rules.get("npcs") if isinstance(rules, dict) else None
-    for npc in npcs if isinstance(npcs, list) else ():
-        if isinstance(npc, dict) and "also_at" in npc:
-            return {"rules.npcs.also_at"}
-    return set()
-
-
-def _schema_twenty_four_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 24 added, by name (Q867b, folds revised).
-
-    `docs/archive/plan-portals-2.md` §3R. Named whatever its value, as schema 19's names are,
-    because an older spec may not write even the default:
-
-    * ``rules.portals.kind`` -- a group's rule set: ``"fold"``, a portal a piece of either
-      side may stand in, where a move that ends on it empty may stay or go through and end
-      on the end it leads to, taking an enemy piece there as any landing does (absent:
-      today's momentum portal). Schema 22's first fold rules are gone with their version.
-    """
-    rules = spec.get("rules")
-    portals = rules.get("portals") if isinstance(rules, dict) else None
-    for group in portals if isinstance(portals, list) else ():
-        if isinstance(group, dict) and "kind" in group:
-            return {"rules.portals.kind"}
-    return set()
-
-
-def _schema_twenty_five_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 25 added, by name (Q869, a fixed facing).
-
-    `docs/archive/plan-library-audit.md` *The rear pawn: a fixed facing*. Named whatever its value,
-    because an older spec may not write even the default:
-
-    * ``pieces[].facing.turns`` -- whether a move may turn the piece (absent: it may, as
-      every facing piece could from schema 8). ``false`` keeps each piece pointing the way
-      it was placed, for the whole game.
-    """
-    pieces = spec.get("pieces")
-    for piece in pieces if isinstance(pieces, list) else ():
-        facing = piece.get("facing") if isinstance(piece, dict) else None
-        if isinstance(facing, dict) and "turns" in facing:
-            return {"pieces[].facing.turns"}
-    return set()
-
-
-def _schema_twenty_six_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 26 added, by name (Q918a, simultaneous moves).
-
-    `docs/reference/rounds.md` §5. Named whatever its value, because an older spec may not
-    write even the default:
-
-    * ``rules.simultaneous`` -- the game is played in rounds: both players choose a move on
-      the same board, in secret, and both are revealed and resolved together;
-    * ``rules.simultaneous.tie`` -- what decides a collision both pieces win or both lose
-      (absent: both are eliminated), with its value;
-    * ``pieces[].beats`` -- the pieces this one eliminates when the two collide.
-    """
-    used: set[str] = set()
-    rules = spec.get("rules")
-    if isinstance(rules, dict) and "simultaneous" in rules:
-        used.add("rules.simultaneous")
-        rule = rules["simultaneous"]
-        if isinstance(rule, dict) and "tie" in rule:
-            used.add(f"rules.simultaneous.tie {rule['tie']!r}")
-    pieces = spec.get("pieces")
-    for piece in pieces if isinstance(pieces, list) else ():
-        if isinstance(piece, dict) and "beats" in piece:
-            used.add("pieces[].beats")
-            break
-    return used
-
-
-def _schema_twenty_seven_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 27 added, by name.
-
-    One version, three tasks (`docs/plan-spy.md` §2.2), each adding its names here as it
-    lands, as schema 18's six did:
-
-    * ``rules.extinction.per_type.own`` -- Q936, `docs/reference/extinction-any-kind.md`
-      §2: each listed kind counted on its own, and only against a side that starts with
-      at least one, so two armies of different kinds can each lose by running out of any
-      one of their own.
-
-    * ``rules.simultaneous.rest`` -- Q942a, `docs/archive/plan-round-chase.md` §3 R1, the piece
-      that made a player's move resting the next round -- was here until schema 29 retired it
-      for ``pieces[].rest`` (Q983a, `docs/plan-rest.md` §4.4); it is refused at every version
-      now, so this collector no longer names it;
-    * ``rules.simultaneous.swap`` -- Q942a, R2: two moves that each end on the other's
-      origin meet as a collision (``beats`` and the tie decide) instead of passing;
-    * ``rules.simultaneous.both`` -- Q942a, X1: an ending that fires for both players in
-      one round is settled by ``rules.scoring`` instead of drawn.
-
-    * ``pieces.spy`` -- Q935a, `docs/plan-spy.md` §1, §2: a piece type that decides how the
-      game is played: alternating while both players have one, announced rounds (the
-      player without one moves first, in the open) once one is lost, blind rounds once
-      both are.
-
-    Each name is collected whatever its value, since an older spec may not write even a
-    refused one.
-    """
-    used: set[str] = set()
-    pieces = spec.get("pieces")
-    if any(isinstance(piece, dict) and "spy" in piece for piece in _listed(pieces)):
-        used.add("pieces.spy")
-    rules = spec.get("rules")
-    if not isinstance(rules, dict):
-        return used
-    extinction = rules.get("extinction")
-    if isinstance(extinction, dict) and extinction.get("per_type") == EXTINCTION_PER_TYPE_OWN:
-        used.add("rules.extinction.per_type.own")
-    simultaneous = rules.get("simultaneous")
-    if isinstance(simultaneous, dict):
-        for key in SIMULTANEOUS_CHASE_KEYS:
-            if key in simultaneous:
-                used.add(f"rules.simultaneous.{key}")
-    return used
-
-
-def _schema_twenty_eight_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 28 added, by name (Q943a, `docs/plan-speed.md`).
-
-    * ``pieces.speed`` -- a piece type's speed, a rank (absent: 0, the slowest). When the
-      two pieces moving in a round differ in speed, the faster move is made first, as a move
-      of an alternating game, and the slower is then made only if its piece still stands
-      and the move can still be made on that board (§2.4, §2.5).
-
-    Collected whatever its value, since an older spec may not write even a refused one.
-    """
-    if has_speeds(spec):
-        return {"pieces.speed"}
-    return set()
-
-
-def _schema_twenty_nine_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 29 added, by name (Q983a, `docs/plan-rest.md`).
-
-    * ``pieces.rest`` -- a piece type's rest, 1 to ``REST_MAX`` (absent: 0, it never rests).
-      A piece that makes its player's move may not make that player's move during that
-      player's next *rest* turns (an alternating turn or a round), unless the rest would
-      leave the player no legal move, when it is lifted for that turn (§3).
-
-    Collected whatever its value, since an older spec may not write even a refused one.
-    """
-    if has_rests(spec):
-        return {"pieces.rest"}
-    return set()
 
 
 # Schema 29 (Q983a, `docs/plan-rest.md` §3.1): the longest rest a type may declare. At 4 a
@@ -1785,35 +967,36 @@ def _schema_twenty_nine_uses(spec: dict[str, Any]) -> set[str]:
 # more raises it here and in the core (`rust/src/tables.rs::REST_MAX`).
 REST_MAX = 4
 
-# The one message the old switch is refused with, at every version (§4.4).
-RETIRED_REST = (
-    'rules.simultaneous.rest was retired in schema 29: write "rest": 1 on each piece type '
-    "instead (pieces[].rest), which is the same rest for a game in rounds"
-)
+# Values that state no rule: each is its key's absence written out (Q1008c). The validator
+# accepts them, and `normal.normal_form` and `spelling.current_spelling` drop them, so a spec
+# that writes one is the game without it, named and tidied as that game. Per place: a piece
+# type, a line of sight, `rules.simultaneous`, a portal group and a contact link.
+PIECE_OFF_VALUES: dict[str, Any] = {"rest": 0, "speed": 0, "spy": False, "sight": []}
+SIGHT_OFF_VALUES: dict[str, Any] = {"through": False, "captures_own": False}
+SIMULTANEOUS_OFF_VALUES: dict[str, Any] = {"tie": "both", "swap": "chase", "both": "draw"}
+PORTAL_OFF_VALUES: dict[str, Any] = {"kind": "momentum"}
+CONTACT_LINK_OFF_VALUES: dict[str, Any] = {"own": False}
 
 
-def has_retired_rest(spec_or_rules: Any) -> bool:
-    """Whether a spec (or its ``rules``) writes schema 27's ``rules.simultaneous.rest``, which
-    schema 29 retired (`docs/plan-rest.md` §4.4), whatever its value."""
-    rules = spec_or_rules
-    if isinstance(spec_or_rules, dict) and "pieces" in spec_or_rules:
-        rules = spec_or_rules.get("rules")
-    return (
-        isinstance(rules, dict)
-        and isinstance(rules.get("simultaneous"), dict)
-        and "rest" in rules["simultaneous"]
-    )
+def stated_off(where: Any, key: str, off_values: dict[str, Any]) -> bool:
+    """Whether ``where`` writes ``key`` at the value that states no rule (``off_values``).
+
+    Equal and of one JSON type, so ``0`` is not ``false``."""
+    if not isinstance(where, dict) or key not in where or key not in off_values:
+        return False
+    value, off = where[key], off_values[key]
+    return type(value) is type(off) and value == off
 
 
-def _refuse_the_retired_rest(spec: dict[str, Any], errors: list[str]) -> None:
-    if has_retired_rest(spec):
-        errors.append(RETIRED_REST)
+def _stated_on(piece: Any, key: str) -> bool:
+    """Whether a piece type writes ``key`` at anything but its off value."""
+    return isinstance(piece, dict) and key in piece and not stated_off(piece, key, PIECE_OFF_VALUES)
 
 
 def has_rests(spec_or_pieces: Any) -> bool:
-    """Whether any piece type writes a ``rest`` (schema 29), whatever its value."""
+    """Whether any piece type writes a ``rest`` (schema 29) other than the off value 0."""
     pieces = spec_or_pieces.get("pieces") if isinstance(spec_or_pieces, dict) else spec_or_pieces
-    return any(isinstance(piece, dict) and "rest" in piece for piece in _listed(pieces))
+    return any(_stated_on(piece, "rest") for piece in _listed(pieces))
 
 
 def piece_rests(spec_or_pieces: Any) -> dict[str, int]:
@@ -1835,21 +1018,17 @@ def _check_rest_coherence(
     spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
 ) -> None:
     """Schema 29 (Q983a): ``pieces[].rest`` and every refusal of `docs/plan-rest.md` §3.1, in
-    words. The value is a count of turns, 1 to ``REST_MAX``; the default (0) is never written;
+    words. The value is a count of turns, 1 to ``REST_MAX`` (0, the default, states nothing);
     a type no player moves never rests; and a turn of several moves is refused beside it."""
     written = [
-        (index, piece) for index, piece in enumerate(pieces)
-        if isinstance(piece, dict) and "rest" in piece
+        (index, piece) for index, piece in enumerate(pieces) if _stated_on(piece, "rest")
     ]
     if not written:
         return
-    portals = portal_piece_ids(rules)
-    wild = _never_moved(rules) - portals
+    wild = _never_moved(rules)
     for index, piece in written:
         value = piece["rest"]
-        if value == 0 and not isinstance(value, bool):
-            errors.append(f"pieces[{index}].rest 0 is the default (it never rests); leave it out")
-        elif (
+        if (
             isinstance(value, bool) or not isinstance(value, int) or value < 0
             or value > REST_MAX
         ):
@@ -1858,9 +1037,7 @@ def _check_rest_coherence(
                 f"got {value!r}"
             )
         pid = piece.get("id")
-        if pid in portals:
-            errors.append(f"pieces[{index}].rest is on a portal, which nobody moves; leave it out")
-        elif pid in wild:
+        if pid in wild:
             errors.append(
                 f"pieces[{index}].rest is on a wild piece (rules.npcs), which moves in its own "
                 "phase, never as a player's move; leave it out"
@@ -1878,42 +1055,17 @@ def _check_rest_coherence(
         )
 
 
-def _schema_thirty_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 30 added, by name (Q999a, `docs/plan-passive.md`).
-
-    * ``pieces.sight.freeze`` -- a line of sight whose pieces may not move and attack nothing.
-    * ``pieces.sight.disarm`` -- a line of sight whose pieces may not capture and attack nothing.
-    * ``pieces.sight.shield`` -- a line of sight whose pieces may not be captured (a shielded
-      royal is never in check).
-    * ``pieces.sight.through`` -- a sight that sees past pieces (an aura) rather than stopping
-      at the first one (a ray).
-
-    ``whose`` and ``affects`` are values of a sight's keys, as ``mode`` is of a move's, and
-    have no names of their own (§4.1). Collected whatever else the entry says.
-    """
-    used: set[str] = set()
-    for piece in _listed(spec.get("pieces")):
-        if not isinstance(piece, dict) or "sight" not in piece:
-            continue
-        for entry in _listed(piece["sight"]):
-            if not isinstance(entry, dict):
-                continue
-            effect = entry.get("effect")
-            if isinstance(effect, str) and effect in SIGHT_EFFECTS:
-                used.add(f"pieces.sight.{effect}")
-            if "through" in entry:
-                used.add("pieces.sight.through")
-    return used
-
-
-# Schema 30 (Q999a, `docs/plan-passive.md` §2): lines of sight. A type declares at most
+# Schema 30 (Q999a, `docs/archive/plan-passive.md` §2): lines of sight. A type declares at most
 # ``SIGHT_MAX`` of them (§2.2); the cap bounds the core's reverse table and is raised by a
 # showcase that needs more.
 SIGHT_MAX = 4
-SIGHT_EFFECTS = ("freeze", "disarm", "shield")
+# Q1007c (`docs/plan-schema-31.md` §3): ``command``, the affected piece's opponent may also move
+# it; ``captures_own`` (only beside it) lets a commanded piece take its own side's pieces.
+SIGHT_EFFECTS = ("freeze", "disarm", "shield", "command")
 SIGHT_WHOSE = ("enemy", "own", "any")
 _SIGHT_KEYS = {
     "vectors", "symmetry", "range", "min_range", "effect", "whose", "affects", "through",
+    "captures_own",
 }
 
 
@@ -1930,12 +1082,13 @@ class Sight(NamedTuple):
     whose: str
     affects: tuple[str, ...] | None
     through: bool
+    captures_own: bool = False
 
 
 def has_sights(spec_or_pieces: Any) -> bool:
-    """Whether any piece type writes a ``sight`` (schema 30), whatever its value."""
+    """Whether any piece type writes a ``sight`` (schema 30) other than the off value ``[]``."""
     pieces = spec_or_pieces.get("pieces") if isinstance(spec_or_pieces, dict) else spec_or_pieces
-    return any(isinstance(piece, dict) and "sight" in piece for piece in _listed(pieces))
+    return any(_stated_on(piece, "sight") for piece in _listed(pieces))
 
 
 def _sight_entry(entry: Any) -> Sight | None:
@@ -1957,13 +1110,16 @@ def _sight_entry(entry: Any) -> Sight | None:
     whose = entry.get("whose")
     affects = entry.get("affects")
     through = entry.get("through", False)
+    captures_own = entry.get("captures_own", False)
     if (
         symmetry not in SYMMETRIES
         or isinstance(rng, bool) or not isinstance(rng, int) or rng < 0
         or isinstance(low, bool) or not isinstance(low, int) or low < 1
         or (rng > 0 and low > rng)
         or effect not in SIGHT_EFFECTS or whose not in SIGHT_WHOSE
-        or through is not True and "through" in entry
+        or not isinstance(through, bool)
+        or not isinstance(captures_own, bool)
+        or (captures_own and effect != "command")
         or (affects is not None and (
             not isinstance(affects, list) or not affects
             or not all(isinstance(pid, str) for pid in affects)
@@ -1979,11 +1135,12 @@ def _sight_entry(entry: Any) -> Sight | None:
         whose=whose,
         affects=tuple(affects) if affects is not None else None,
         through=through is True,
+        captures_own=captures_own is True,
     )
 
 
 def piece_sights(spec_or_pieces: Any) -> dict[str, tuple[Sight, ...]]:
-    """Each declared piece id's lines of sight (schema 30, `docs/plan-passive.md` §2.1), in the
+    """Each declared piece id's lines of sight (schema 30, `docs/archive/plan-passive.md` §2.1), in the
     order written, for every id that writes at least one well-formed entry; an id with none is
     absent. The one reader of the key, shared by the validator, the compiler and every
     surface."""
@@ -2001,10 +1158,15 @@ def piece_sights(spec_or_pieces: Any) -> dict[str, tuple[Sight, ...]]:
     return sights
 
 
-def sight_affected_ids(sight: Sight, declared: Iterable[str], rules: Any) -> list[str]:
+def sight_affected_ids(
+    sight: Sight, declared: Iterable[str], rules: Any, royal: AbstractSet[str] = frozenset()
+) -> list[str]:
     """The ids a sight's effect can touch: its ``affects``, or every declared type that is
-    neither wild nor a portal end (§2.3)."""
+    neither wild nor a portal end (§2.3). A command never touches a royal (Q1007c,
+    `docs/plan-schema-31.md` §3.4), so ``royal`` (the royal ids) is left out of a command's."""
     blank = _never_moved(rules)
+    if sight.effect == "command":
+        blank = blank | set(royal)
     if sight.affects is not None:
         return [pid for pid in sight.affects if pid not in blank]
     return [pid for pid in declared if pid not in blank]
@@ -2045,7 +1207,8 @@ def sight_can_bind(spec: dict[str, Any], source: str, sight: Sight) -> str | Non
     declared = set(by_id)
     rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
     held = simultaneous_holdings(spec)
-    affected = set(sight_affected_ids(sight, list(by_id), rules))
+    royal = {pid for pid, piece in by_id.items() if piece.get("royal") is True}
+    affected = set(sight_affected_ids(sight, list(by_id), rules, royal))
     reachable: set[str] = set()
     for owner in (0, 1):
         if source not in held[owner]:
@@ -2065,6 +1228,27 @@ def sight_can_bind(spec: dict[str, Any], source: str, sight: Sight) -> str | Non
         _piece_can_be_captured(pid, pieces) for pid in reachable
     ):
         return "a shield on types that nothing can capture"
+    if sight.effect == "command" and not any(
+        _listed(by_id[pid].get("moves")) for pid in reachable
+    ):
+        return "a command on types that have no move"
+    if sight.effect == "command" and sight.captures_own:
+        # Q1007c §3.6: a turncoat capture needs a commanded type that may take a non-royal
+        # type its own side can hold.
+        turncoat = False
+        for owner in (0, 1):
+            if source not in held[owner]:
+                continue
+            sides = {"enemy": (1 - owner,), "own": (owner,), "any": (0, 1)}[sight.whose]
+            for side in sides:
+                victims = (held[side] & declared) - royal
+                for pid in affected & held[side]:
+                    allowed = by_id[pid].get("captures")
+                    takes = victims if not isinstance(allowed, list) else victims & set(allowed)
+                    if takes and _piece_can_capture(by_id[pid], declared):
+                        turncoat = True
+        if not turncoat:
+            return "captures_own where no type it commands may take a piece of its own side"
     return None
 
 
@@ -2095,11 +1279,10 @@ def _check_sight_geometry(
 def _check_sight_coherence(
     spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
 ) -> None:
-    """Schema 30 (Q999a): ``pieces[].sight`` and every refusal of `docs/plan-passive.md` §2.1
+    """Schema 30 (Q999a): ``pieces[].sight`` and every refusal of `docs/archive/plan-passive.md` §2.1
     and §2.8, in words."""
     written = [
-        (index, piece) for index, piece in enumerate(pieces)
-        if isinstance(piece, dict) and "sight" in piece
+        (index, piece) for index, piece in enumerate(pieces) if _stated_on(piece, "sight")
     ]
     if not written:
         return
@@ -2109,25 +1292,26 @@ def _check_sight_coherence(
     ]
     board = spec.get("board")
     hex_lattice = isinstance(board, dict) and board.get("lattice") == "hex"
-    portals = portal_piece_ids(rules)
-    wild = _never_moved(rules) - portals
+    wild = _never_moved(rules)
+    royal = {
+        piece["id"] for piece in pieces
+        if isinstance(piece, dict) and isinstance(piece.get("id"), str) and piece.get("royal") is True
+    }
     shields = False
+    commands = False
+    turncoats = False
     for index, piece in written:
         where = f"pieces[{index}].sight"
         sight = piece["sight"]
         if not isinstance(sight, list):
             errors.append(f"{where} must be an array of 1 to {SIGHT_MAX} lines of sight")
             continue
-        if not sight:
-            errors.append(f"{where} is empty, which sees nothing; leave it out")
-        elif len(sight) > SIGHT_MAX:
+        if len(sight) > SIGHT_MAX:
             errors.append(
                 f"{where} holds {len(sight)} lines of sight; a type may have at most {SIGHT_MAX}"
             )
         pid = piece.get("id")
-        if pid in portals:
-            errors.append(f"{where} is on a portal, which carries no sight; leave it out")
-        elif pid in wild:
+        if pid in wild:
             errors.append(
                 f"{where} is on a wild piece (rules.npcs), which is nobody's and carries no "
                 "sight; leave it out"
@@ -2143,14 +1327,22 @@ def _check_sight_coherence(
             if "effect" in entry and effect not in SIGHT_EFFECTS:
                 errors.append(f"{loc}.effect must be one of {SIGHT_EFFECTS}, got {effect!r}")
             shields |= effect == "shield"
+            commands |= effect == "command"
+            if "captures_own" in entry:
+                if not isinstance(entry["captures_own"], bool):
+                    errors.append(f"{loc}.captures_own must be true or false")
+                elif entry["captures_own"] and effect != "command":
+                    errors.append(
+                        f"{loc}.captures_own means something only beside effect 'command' (a "
+                        "commanded piece made to take its own side); leave it out"
+                    )
+                else:
+                    turncoats |= entry["captures_own"]
             whose = entry.get("whose")
             if "whose" in entry and whose not in SIGHT_WHOSE:
                 errors.append(f"{loc}.whose must be one of {SIGHT_WHOSE}, got {whose!r}")
-            if "through" in entry and entry["through"] is not True:
-                errors.append(
-                    f"{loc}.through is true or absent: absent is a ray, stopped by the first "
-                    "piece it meets, so false is the default; leave it out"
-                )
+            if "through" in entry and not isinstance(entry["through"], bool):
+                errors.append(f"{loc}.through must be true or false")
             if "affects" in entry:
                 affects = entry["affects"]
                 if not isinstance(affects, list):
@@ -2161,19 +1353,20 @@ def _check_sight_coherence(
                     for named in affects:
                         if not isinstance(named, str) or named not in declared:
                             errors.append(f"{loc}.affects entry {named!r} is not a declared piece")
-                        elif named in portals:
-                            errors.append(
-                                f"{loc}.affects names {named!r}, a portal, which nothing affects"
-                            )
                         elif named in wild:
                             errors.append(
                                 f"{loc}.affects names {named!r}, a wild piece (rules.npcs), which "
                                 "nothing affects"
                             )
+                        elif named in royal and effect == "command":
+                            errors.append(
+                                f"{loc}.affects names {named!r}, a royal: a royal cannot be "
+                                "commanded (the opponent could walk it into capture); leave it out"
+                            )
                     if len(set(map(str, affects))) != len(affects):
                         errors.append(f"{loc}.affects repeats a piece id")
             read = _sight_entry(entry)
-            if read is not None and isinstance(pid, str) and pid not in portals | wild:
+            if read is not None and isinstance(pid, str) and pid not in wild:
                 why = sight_can_bind(spec, pid, read)
                 if why is not None:
                     errors.append(f"{loc} affects nothing that could be there: {why}")
@@ -2200,12 +1393,59 @@ def _check_sight_coherence(
             "a shield (pieces[].sight effect 'shield') beside rules.npcs: whether a wild "
             "piece's step takes a shielded piece would be a second rule; leave one out"
         )
+    if commands:
+        _check_command_beside(spec, pieces, rules, turncoats, errors)
+
+
+# Q1007c (`docs/plan-schema-31.md` §3.6): each rule refused beside a command, with the second
+# rule it would need.
+_COMMAND_REFUSED_RULES = {
+    "simultaneous": "two players could move one piece in one round",
+    "reach": "whether a commanded arrival wins for the mover or the owner would be a second rule",
+    "territory": "whether a commanded arrival paints for the mover or the owner would be a "
+    "second rule",
+    "strike": "what a commanded capture leaves behind would be a second rule",
+    "contacts": "what a commanded capture leaves behind would be a second rule",
+}
+
+
+def _check_command_beside(
+    spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], turncoats: bool,
+    errors: list[str],
+) -> None:
+    """The rules a command sight is refused beside (Q1007c, `docs/plan-schema-31.md` §3.6)."""
+    for key, why in _COMMAND_REFUSED_RULES.items():
+        # Stated at all (`simultaneous: {}` is a whole rule); a strike written at plain
+        # capture states no rule, and refuses nothing.
+        value = rules.get(key)
+        if value is not None and value is not False and (key != "strike" or strike_is_live(value)):
+            errors.append(
+                f"a command (pieces[].sight effect 'command') beside rules.{key}: {why}; "
+                "leave one out"
+            )
+    if has_rests(pieces):
+        errors.append(
+            "a command (pieces[].sight effect 'command') beside pieces[].rest: whose turns a "
+            "commanded piece's rest counts would be a second rule; leave one out"
+        )
+    if uses_sweep(spec):
+        errors.append(
+            "a command (pieces[].sight effect 'command') beside a sweep move: what a commanded "
+            "sweep clears would be a second rule; leave one out"
+        )
+    drops = rules.get("drops")
+    if turncoats and isinstance(drops, dict) and drops.get("from_captures", True) is not False:
+        errors.append(
+            "captures_own (a commanded piece taking its own side) beside "
+            "rules.drops.from_captures: whose hand a turncoat capture fills would be a second "
+            "rule; leave one out"
+        )
 
 
 def has_speeds(spec_or_pieces: Any) -> bool:
-    """Whether any piece type writes a ``speed`` (schema 28), whatever its value."""
+    """Whether any piece type writes a ``speed`` (schema 28) other than the off value 0."""
     pieces = spec_or_pieces.get("pieces") if isinstance(spec_or_pieces, dict) else spec_or_pieces
-    return any(isinstance(piece, dict) and "speed" in piece for piece in _listed(pieces))
+    return any(_stated_on(piece, "speed") for piece in _listed(pieces))
 
 
 def piece_speeds(spec_or_pieces: Any) -> dict[str, int]:
@@ -2225,10 +1465,11 @@ def piece_speeds(spec_or_pieces: Any) -> dict[str, int]:
 
 
 def _never_moved(rules: Any) -> set[str]:
-    """The declared types no player ever moves: portal ends and wild pieces."""
+    """The declared types no player ever moves: the wild pieces (a portal is no declared
+    type since spelling 31)."""
     listed = rules.get("npcs") if isinstance(rules, dict) else None
     wild = {npc.get("piece") for npc in _listed(listed) if isinstance(npc, dict)}
-    return portal_piece_ids(rules) | {pid for pid in wild if isinstance(pid, str)}
+    return {pid for pid in wild if isinstance(pid, str)}
 
 
 def speed_ranks_in_use(spec: dict[str, Any]) -> list[int]:
@@ -2280,8 +1521,7 @@ def _check_speed_coherence(
     in words. A speed orders the two moves of a round, so it needs the round rule; speeds
     are ranks, so one game has one spelling; and they must be able to order some round."""
     written = [
-        (index, piece) for index, piece in enumerate(pieces)
-        if isinstance(piece, dict) and "speed" in piece
+        (index, piece) for index, piece in enumerate(pieces) if _stated_on(piece, "speed")
     ]
     if not written:
         return
@@ -2292,20 +1532,14 @@ def _check_speed_coherence(
         )
         return
     malformed = False
-    portals = portal_piece_ids(rules)
-    wild = _never_moved(rules) - portals
+    wild = _never_moved(rules)
     for index, piece in written:
         value = piece["speed"]
-        if value == 0 and not isinstance(value, bool):
-            errors.append(f"pieces[{index}].speed 0 is the default (the slowest); leave it out")
-            malformed = True
-        elif isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             errors.append(
                 f"pieces[{index}].speed must be a whole number of at least 1, got {value!r}"
             )
             malformed = True
-        if piece.get("id") in portals:
-            errors.append(f"pieces[{index}].speed is on a portal, which never moves; leave it out")
         if piece.get("id") in wild:
             errors.append(
                 f"pieces[{index}].speed is on a wild piece (rules.npcs), which steps after both "
@@ -2336,19 +1570,18 @@ EXTINCTION_PER_TYPE_OWN = "own"
 
 
 # Schema 26 (Q918a): the values ``rules.simultaneous.tie`` may take. Absent is the user's
-# table, both pieces eliminated, and writing it out as ``"both"`` is refused so that one game
-# has one spelling (`docs/reference/rounds.md` §5.1).
+# table, both pieces eliminated; ``"both"`` written out states nothing and the normal form
+# drops it (`docs/reference/rounds.md` §5.1, Q1008c).
 SIMULTANEOUS_TIES = ("initiative", "impossible")
 # Schema 27 (Q942a, `docs/archive/plan-round-chase.md` §3, §4): the three switches against the royal
 # chase, each off when absent and each with exactly one value that turns it on. Writing the
-# off value out (``false``, or ``"chase"``/``"draw"``) is refused, one game one spelling.
-# Schema 29 (Q983a) retired ``rest`` for ``pieces[].rest``: it is still a key the shape check
-# lets through, so that the one message a spec carrying it gets is the retirement's
-# (`RETIRED_REST`), never an unknown key beside it.
+# off value out (``"chase"``/``"draw"``) states nothing, and the normal form drops it (Q1008c).
+# Schema 29 (Q983a) retired a third, ``rest``, for ``pieces[].rest``; an old file that
+# carries it goes through the converter (`spelling.current_spelling`).
 SIMULTANEOUS_CHASE_KEYS = ("swap", "both")
 SIMULTANEOUS_SWAP_COLLISION = "collision"
 SIMULTANEOUS_BOTH_SCORE = "score"
-_SIMULTANEOUS_KEYS = {"tie", "rest", *SIMULTANEOUS_CHASE_KEYS}
+_SIMULTANEOUS_KEYS = {"tie", *SIMULTANEOUS_CHASE_KEYS}
 
 
 def simultaneous_switch(rules: Any, key: str) -> bool:
@@ -2624,9 +1857,9 @@ def _check_spy_coherence(
             continue
         value = piece["spy"]
         if value is False:
-            errors.append(f"pieces[{index}].spy false is the default (not a spy); leave it out")
-        elif value is not True:
-            errors.append(f"pieces[{index}].spy must be true, got {value!r}")
+            continue
+        if value is not True:
+            errors.append(f"pieces[{index}].spy must be true or false, got {value!r}")
         else:
             flagged.append((index, piece))
     if not flagged:
@@ -2644,13 +1877,10 @@ def _check_spy_coherence(
                 f"pieces[{index}].spy on a royal piece: losing a royal ends the game, so its "
                 "loss could never start a round"
             )
-    portals = portal_piece_ids(rules)
     wild = {
         npc.get("piece") for npc in _listed(rules.get("npcs")) if isinstance(npc, dict)
     }
     for index, piece in flagged:
-        if piece.get("id") in portals:
-            errors.append(f"pieces[{index}].spy on a portal, which is nobody's piece; leave it out")
         if piece.get("id") in wild:
             errors.append(
                 f"pieces[{index}].spy on a wild piece (rules.npcs), which is nobody's piece; "
@@ -2692,18 +1922,16 @@ def _check_chase_switches(
 ) -> None:
     """Schema 27 (Q942a): the chase switches' spellings and refusals
     (`docs/archive/plan-round-chase.md` §3 R2, X1). R1's ``rest`` was retired by schema 29
-    (`RETIRED_REST`, refused in `validate_spec` at every version)."""
+    for ``pieces[].rest``; the converter writes an old file's that way."""
     rule = rules["simultaneous"]
     if "swap" in rule:
         swap = rule["swap"]
-        if swap == "chase":
-            errors.append(
-                'rules.simultaneous.swap "chase" is the default (two pieces swapping squares '
-                "pass each other); leave it out"
-            )
+        if stated_off(rule, "swap", SIMULTANEOUS_OFF_VALUES):
+            pass
         elif swap != SIMULTANEOUS_SWAP_COLLISION:
             errors.append(
-                f'rules.simultaneous.swap must be "{SIMULTANEOUS_SWAP_COLLISION}", got {swap!r}'
+                f'rules.simultaneous.swap must be "{SIMULTANEOUS_SWAP_COLLISION}" or "chase", '
+                f"got {swap!r}"
             )
         elif simultaneous_swap_pair({**spec, "rules": rules, "pieces": pieces}) is None:
             speed = " and has its speed (pieces[].speed)" if has_speeds(pieces) else ""
@@ -2714,14 +1942,12 @@ def _check_chase_switches(
             )
     if "both" in rule:
         both = rule["both"]
-        if both == "draw":
-            errors.append(
-                'rules.simultaneous.both "draw" is the default (an ending both players reach '
-                "in one round is a draw); leave it out"
-            )
+        if stated_off(rule, "both", SIMULTANEOUS_OFF_VALUES):
+            pass
         elif both != SIMULTANEOUS_BOTH_SCORE:
             errors.append(
-                f'rules.simultaneous.both must be "{SIMULTANEOUS_BOTH_SCORE}", got {both!r}'
+                f'rules.simultaneous.both must be "{SIMULTANEOUS_BOTH_SCORE}" or "draw", '
+                f"got {both!r}"
             )
         elif not isinstance(rules.get("scoring"), dict):
             errors.append(
@@ -2751,25 +1977,17 @@ def _check_simultaneous_coherence(
     rule = rules["simultaneous"]
     _check_keys(rule, _SIMULTANEOUS_KEYS, "rules.simultaneous", errors)
     tie = rule.get("tie")
-    if "tie" in rule:
-        if tie == "both":
-            errors.append(
-                'rules.simultaneous.tie "both" is the default (both pieces are eliminated); '
-                "leave it out"
-            )
-        elif tie not in SIMULTANEOUS_TIES:
-            errors.append(
-                f"rules.simultaneous.tie must be one of {SIMULTANEOUS_TIES}, got {tie!r}"
-            )
+    if (
+        "tie" in rule and not stated_off(rule, "tie", SIMULTANEOUS_OFF_VALUES)
+        and tie not in SIMULTANEOUS_TIES
+    ):
+        errors.append(
+            f"rules.simultaneous.tie must be one of {('both', *SIMULTANEOUS_TIES)}, got {tie!r}"
+        )
     _check_chase_switches(spec, pieces, rules, errors)
-    portal_ids = portal_piece_ids(rules)
     for index, piece in enumerate(pieces):
         if not isinstance(piece, dict) or not isinstance(piece.get("beats"), list):
             continue
-        if piece.get("id") in portal_ids:
-            errors.append(
-                f"pieces[{index}].beats is on a portal, and a portal never collides; leave it out"
-            )
         named = frozenset(entry for entry in piece["beats"] if isinstance(entry, str))
         captures = piece.get("captures")
         default = (
@@ -2910,24 +2128,6 @@ def facing_turns(piece: Any) -> bool:
 def portal_has_folds(rules: Any) -> bool:
     """Whether any portal group is a fold (schema 22)."""
     return any(group["kind"] == "fold" for group in portal_groups(rules))
-
-
-def _hex_symmetries_used(spec: dict[str, Any]) -> set[str]:
-    """Schema 18b's names for the hexagon's turns, wherever a descriptor writes one."""
-    written: list[Any] = []
-    pieces = spec.get("pieces")
-    for piece in pieces if isinstance(pieces, list) else ():
-        moves = piece.get("moves") if isinstance(piece, dict) else None
-        for move in moves if isinstance(moves, list) else ():
-            if isinstance(move, dict):
-                written.append(move.get("symmetry"))
-    rules = spec.get("rules")
-    for key in ("strike", "contacts"):
-        rule = rules.get(key) if isinstance(rules, dict) else None
-        landing = rule.get("landing") if isinstance(rule, dict) else None
-        if isinstance(landing, dict):
-            written.append(landing.get("symmetry"))
-    return {f"symmetry={name}" for name in ("rotate6", "dihedral12") if name in written}
 
 
 def is_keeping_link(link: Any) -> bool:
@@ -3499,114 +2699,11 @@ def _check_sweep_coherence(
         )
 
 
-def _validate_version_two_stays_within_version_two(
-    spec: dict[str, Any], errors: list[str]
-) -> None:
-    """Reject a spec that declares schema 1 or 2 and then uses schema 3.
-
-    Same reasoning as the version-1 check below, and the same consequence if it were
-    skipped: the declared version is part of the mechanics hash, so two specs whose
-    rules differ only in a feature one of them was not entitled to use must not be able
-    to collide.
-    """
-    pieces = spec.get("pieces")
-    if not isinstance(pieces, list):
-        return
-    rules = spec.get("rules")
-    used: set[str] = set()
-    if isinstance(rules, dict):
-        used |= V3_RULE_KEYS.intersection(rules)
-    for piece in pieces:
-        if not isinstance(piece, dict):
-            continue
-        used |= V3_PIECE_KEYS.intersection(piece)
-        moves = piece.get("moves")
-        if not isinstance(moves, list):
-            continue
-        for move in moves:
-            if isinstance(move, dict):
-                used |= V3_MOVE_KEYS.intersection(move)
-    if used:
-        errors.append(
-            f"this spec uses {', '.join(sorted(used))}, added in schema 3; "
-            'declare "schema_version": 3 to use it'
-        )
-
-
-def _validate_version_one_stays_within_version_one(
-    spec: dict[str, Any], errors: list[str]
-) -> None:
-    """Reject a spec that declares schema 1 and then uses schema 2.
-
-    Accepting it silently would make the declared version meaningless, and the version
-    is part of the mechanics hash: two specs whose rules differ only in a feature one
-    of them was not entitled to use must not be able to collide.
-    """
-    def report(where: str, used: AbstractSet[str]) -> None:
-        if used:
-            errors.append(
-                f"{where} uses {', '.join(sorted(used))}, added in schema 2; "
-                "declare \"schema_version\": 2 to use it"
-            )
-
-    rules = spec.get("rules")
-    if isinstance(rules, dict):
-        report("rules", V2_RULE_KEYS.intersection(rules))
-        promotion = rules.get("promotion")
-        if isinstance(promotion, dict):
-            report("rules.promotion", V2_PROMOTION_KEYS.intersection(promotion))
-        castling = rules.get("castling")
-        if isinstance(castling, dict):
-            report("rules.castling", V2_CASTLING_KEYS.intersection(castling))
-
-    setup = spec.get("setup")
-    if isinstance(setup, dict):
-        report("setup", V2_SETUP_KEYS.intersection(setup))
-
-    if isinstance(rules, dict) and rules.get("win") == "none":
-        errors.append(
-            "rules.win 'none' was added in schema 2; declare \"schema_version\": 2 to use it"
-        )
-
-    pieces = spec.get("pieces")
-    if isinstance(pieces, list):
-        used: set[str] = set()
-        for piece in pieces:
-            if not isinstance(piece, dict) or not isinstance(piece.get("moves"), list):
-                continue
-            if "region" in piece:
-                used.add("region")
-            for move in piece["moves"]:
-                if not isinstance(move, dict):
-                    continue
-                used |= V2_MOVE_KEYS.intersection(move)
-                if move.get("kind") == "lame":
-                    used.add("the 'lame' move kind")
-                condition = move.get("condition")
-                if isinstance(condition, dict):
-                    used |= V2_CONDITION_KEYS.intersection(condition)
-        report("a piece", used)
-
-    # Multiple royals is the one schema-2 feature with no key of its own: it is the
-    # removal of a restriction rather than the addition of a field. Under schema 1 the
-    # check filter guarded a single royal square, so every route to a second one stays
-    # closed there. What those routes are is `royalty_can_multiply`, stated once below.
-    if (
-        isinstance(rules, dict)
-        and rules.get("win", "checkmate") == "checkmate"
-        and royalty_can_multiply(spec)
-    ):
-        errors.append(
-            "more than one royal piece under 'checkmate' requires \"schema_version\": 2"
-        )
-
-
 def royalty_can_multiply(spec: dict[str, Any]) -> bool:
     """Whether either player might ever hold two royal pieces at the same time.
 
     The validator's reading of the question ``engine.compile._royalty_can_multiply``
-    answers for the core. The two must find the same routes: the schema-2 gate above
-    refuses under schema 1 exactly the games the core would have to be told about, and a
+    answers for the core. The two must find the same routes: a
     route only one of them knows is a spec accepted as single-royal and then compiled as
     something else, or the reverse.
 
@@ -4300,7 +3397,7 @@ def _check_named_squares(
             )
 
     # Since schema 18 (Q781) the span, not the rank: see `castling_spans`. A wall beyond
-    # every rook is Omega's walled rank, which `_schema_eighteen_uses` names.
+    # every rook is Omega's walled rank.
     crossed: dict[int, set[int]] = {}
     for rank, files in castling_spans(rules, setup, width, height, orientation):
         crossed.setdefault(rank, set()).update(
@@ -5108,9 +4205,7 @@ def _check_inert_rules(
       is play.
 
     ``false`` and the empty object are the absence of a rule and are never refused, on
-    the grounds ``"en_passant": false`` is not. Nothing here is gated on
-    ``schema_version``: a gate exists to stop an old stamp reaching a new feature, and a
-    refusal points the other way.
+    the grounds ``"en_passant": false`` is not.
     """
     declared = {
         piece["id"]
@@ -5513,13 +4608,47 @@ def validate_or_raise(spec: Any) -> dict[str, Any]:
     """Validate and return the spec, raising :class:`SpecError` if it is invalid.
 
     The check ``compile_spec`` opens with, and its only caller. It loads rather than
-    admits, so it asks ``validate_spec`` with ``new=False``: a stored spec still builds
-    its engine. A gate that admits a spec asks ``validate_spec`` itself.
+    admits, so it asks `stored_spec_errors`: the one stored game a new spec's refusal
+    turns away still builds its engine. A gate that admits a spec asks ``validate_spec``.
     """
-    errors = validate_spec(spec, new=False)
+    errors = stored_spec_errors(spec)
     if errors:
         raise SpecError(errors)
     return spec
+
+
+# The games kept with a promotion ``rank`` past the board, by identity: *tunnel-horizontal*
+# alone (Q102 found it, Q434 retired it). Its ``rank: 9`` on an 8-high board never fires, but
+# its en passant is defined against the promoting piece, so the validator refuses en passant
+# without it and dropping both would change a game whose matches the site replays
+# (`docs/reference/schema-reboot-assessment.md` §9). Its file, site row and corpus copies are
+# that spec. Q1008d read every spec the site stores, every spec git ever held and every spec in
+# the main checkout's `runs/`: this is the only game a new spec's refusals turn away (§10).
+RANK_PAST_THE_BOARD_KEPT = frozenset({"195564f716ec"})
+
+
+def stored_spec_errors(spec: Any) -> list[str]:
+    """What stops a *stored* spec building its engine: ``validate_spec``'s answer, except
+    that a game in `RANK_PAST_THE_BOARD_KEPT` whose only problem is its promotion rank past
+    the board is admitted.
+
+    The escape is that one refusal for that one game, named by identity, so a re-spelling
+    of it loads and any other game, or that one changed, is refused as a new spec is. It
+    loads; it does not admit: ``validate_spec`` still refuses the game as a draft.
+    """
+    errors = validate_spec(spec)
+    if not errors or not isinstance(spec, dict):
+        return errors
+    board = spec.get("board")
+    height = board.get("height") if isinstance(board, dict) else None
+    if not isinstance(height, int) or isinstance(height, bool):
+        return errors
+    if set(errors) != set(_promotion_ranks_past_the_board(spec.get("rules"), height)):
+        return errors
+    # Deferred: `canonical` -> `normal` reads this module.
+    from chess_variant_sandbox.spec.canonical import spec_hash
+
+    return [] if spec_hash(spec) in RANK_PAST_THE_BOARD_KEPT else errors
 
 
 # --------------------------------------------------------------------------- board
@@ -5594,8 +4723,9 @@ def _validate_pieces(
         errors.append(f"at most {MAX_PIECE_TYPES} piece types, got {len(pieces)}")
     elif len(pieces) + portal_extra_types(rules) > MAX_PIECE_TYPES:
         errors.append(
-            f"at most {MAX_PIECE_TYPES} piece types, and rules.portals adds one per end: "
-            f"{len(pieces)} declared and {portal_extra_types(rules)} portal ends"
+            f"at most {MAX_PIECE_TYPES} piece types, and rules.portals adds one per end and "
+            f"one per way its groups move: {len(pieces)} declared and "
+            f"{portal_extra_types(rules)} for the portals"
         )
 
     ids: list[str] = []
@@ -5633,8 +4763,7 @@ def _validate_pieces(
             width,
             height,
             errors,
-            stocked=piece_has_stock(rules, piece.get("id"))
-            or portal_type_needs_no_moves(rules, piece.get("id")),
+            stocked=piece_has_stock(rules, piece.get("id")),
             hex_lattice=hex_lattice,
         )
         _validate_facing(piece, where, errors, hex_lattice)
@@ -5827,17 +4956,20 @@ def _validate_moves(
             elif kind != "hop":
                 errors.append(f"{loc}.screen only means something on a hop, not a {kind}")
 
-        # A leap is one jump per vector and a lame leap is one blockable jump, so a
-        # distance means nothing on either. The compiler read `range` off a leap and
-        # never used it, and `fairy/` read the same key and translated it as a
-        # limited rider -- two readings of one spec, which is the thing this project
-        # refuses to have. Reach further by listing more vectors: `[[1,1]]..[[7,7]]`
-        # is a diagonal leaper on a board up to nine wide.
+        # A leap is one jump per vector, so a distance means nothing on it. The compiler
+        # read `range` off a leap and never used it, and `fairy/` read the same key and
+        # translated it as a limited rider -- two readings of one spec, which is the thing
+        # this project refuses to have. Reach further by listing more vectors
+        # (`[[1,1]]..[[7,7]]` is a diagonal leaper on a board up to nine wide), or ride
+        # the leap: a `slide` over it (blocked only where it lands) or a `lame` with a
+        # `range` (Q1007a: jump after jump, each blocked on its leg too), which counts
+        # jumps, 1 by default.
         for distance_key in ("range", "min_range"):
-            if distance_key in move and kind in ("leap", "lame"):
+            if distance_key in move and kind == "leap":
                 errors.append(
-                    f"{loc}.{distance_key} means nothing on a {kind}, which is one jump "
-                    "per vector; to reach further, list more vectors"
+                    f"{loc}.{distance_key} means nothing on a leap, which is one jump "
+                    "per vector; to reach further, list more vectors, or ride it with a "
+                    "'slide' over the vector or a 'lame' with a range"
                 )
 
         rng = move.get("range", DEFAULT_RANGE.get(str(kind), 1))
@@ -6180,7 +5312,7 @@ def _validate_rules(
     _validate_strike(rules.get("strike"), piece_ids, errors)
     _validate_contacts(rules.get("contacts"), piece_ids, errors, promoting_piece_ids(rules))
     _validate_npcs(rules.get("npcs"), piece_ids, width, height, errors, rules)
-    _validate_portals(rules.get("portals"), piece_ids, width, height, errors)
+    _validate_portals(rules.get("portals"), width, height, errors)
     _validate_territory(rules.get("territory"), width, height, errors)
     _validate_scoring(
         rules.get("scoring"), width, height, errors, bool(rules.get("territory"))
@@ -6648,8 +5780,7 @@ def piece_has_stock(rules: Any, piece_id: Any) -> bool:
     **The predicate the moveless relaxation is gated on**, and it is gated for the reason
     Q29's is: a relaxation has no key and no value, so it cannot be indexed, and removing
     the restriction outright would let *every* spec ever written declare a piece that can
-    never move -- schema 1 included, since a version gate only stops an old stamp reaching
-    a new *feature*. Multiple royals took exactly this shape in schema 2
+    never move. Multiple royals took exactly this shape in schema 2
     (``royalty_can_multiply``), and this is that shape again with the restriction being
     ``pieces[].moves must be a non-empty array``.
 
@@ -6891,7 +6022,6 @@ def _validate_npcs(
 
 def _validate_portals(
     portals: Any,
-    piece_ids: list[str],
     width: int,
     height: int,
     errors: list[str],
@@ -6923,26 +6053,64 @@ def _validate_portals(
         loc = f"rules.portals[{index}]"
         if not isinstance(group, dict):
             errors.append(
-                f"{loc} must be an object with 'piece' and either 'orange' and 'blue' or 'ends'"
+                f"{loc} must be an object with either 'orange' and 'blue' or 'ends'"
             )
             continue
-        piece = group.get("piece")
-        if piece not in piece_ids:
-            errors.append(f"{loc}.piece {piece!r} is not a declared piece")
+        if PORTAL_OLD_PIECE_KEY in group:
+            errors.append(
+                f"{loc}.piece names a stand-in piece for the portals' moves, the spelling "
+                "before schema_version 31: write those moves on the group as "
+                f"{loc}.moves and leave the stand-in out of pieces. "
+                "`python -m chess_variant_sandbox.spec.spelling FILE` converts a file"
+            )
+        _validate_portal_moves(group, loc, width, height, errors)
         if "no_straight_back" in group and not isinstance(group["no_straight_back"], bool):
             errors.append(f"{loc}.no_straight_back must be true or false")
-        if "kind" in group:
-            if group["kind"] not in PORTAL_KINDS:
-                errors.append(f"{loc}.kind must be \"fold\", got {group['kind']!r}")
-            elif group["kind"] == "momentum":
-                errors.append(
-                    f"{loc}.kind \"momentum\" is the default: drop it, so the group has one "
-                    "spelling and the game one hash"
-                )
+        if "kind" in group and group["kind"] not in PORTAL_KINDS:
+            errors.append(f"{loc}.kind must be one of {PORTAL_KINDS}, got {group['kind']!r}")
         if "ends" in group:
             _validate_portal_ends(group, loc, width, height, errors)
         else:
             _validate_portal_pair(group, loc, width, height, errors)
+
+
+def _validate_portal_moves(
+    group: dict[str, Any], loc: str, width: int, height: int, errors: list[str],
+) -> None:
+    """A group's ``moves`` (spelling 31): a piece's move list, read as `portal_moves` reads
+    it (``mode`` left out is ``"move"``), and only what a portal may do with it.
+
+    A portal steps onto empty squares only (``mode`` ``"move"``, which also keeps it off
+    another portal), never sweeps, and has no side, so no move of it may read a player's
+    rank or region. Whether its moves read the same for both players, and whether a group
+    somebody moves has any, are `_check_portal_coherence`'s, which knows the setup.
+    """
+    if "moves" not in group:
+        return
+    moves = group["moves"]
+    if not isinstance(moves, list):
+        errors.append(f"{loc}.moves must be an array of moves, as a piece's are")
+        return
+    if not moves:
+        return
+    _validate_moves(portal_moves(moves), loc, width, height, errors, stocked=True)
+    for index, move in enumerate(moves):
+        if not isinstance(move, dict):
+            continue
+        where = f"{loc}.moves[{index}]"
+        if move.get("mode", "move") != "move":
+            errors.append(
+                f"{where}.mode must be \"move\" or left out: a portal moves only onto an empty "
+                "square, so never onto a piece or another portal"
+            )
+        if move.get("kind") == "sweep":
+            errors.append(f"{where} may not sweep")
+        condition = move.get("condition")
+        if isinstance(condition, dict) and ({"from_rank", "region"} & set(condition)):
+            errors.append(
+                f"{where} may not have a from_rank or region condition: those are read from "
+                "a player's side, and a portal belongs to neither"
+            )
 
 
 def _players_problem(players: Any) -> bool:
@@ -6976,7 +6144,7 @@ def _validate_portal_pair(
     A missing end is said as a square that is not on the board, as a blank one is, so a
     pair half written reads the same however it is half written.
     """
-    _check_keys(pair, _PORTAL_KEYS, loc, errors, required={"piece"})
+    _check_keys(pair, _PORTAL_KEYS | {PORTAL_OLD_PIECE_KEY}, loc, errors)
     for end in PORTAL_ENDS:
         name = pair.get(end)
         if not isinstance(name, str) or parse_square(name, width, height) is None:
@@ -7048,7 +6216,7 @@ def _validate_portal_ends(
     two that lead to each other, or one way, which a pair's ``passage`` says -- so a pair
     has one spelling and one hash.
     """
-    _check_keys(group, _PORTAL_ENDS_KEYS, loc, errors, required={"piece", "ends"})
+    _check_keys(group, _PORTAL_ENDS_KEYS | {PORTAL_OLD_PIECE_KEY}, loc, errors, required={"ends"})
     ends = group.get("ends")
     if not isinstance(ends, list) or not all(isinstance(end, dict) for end in ends):
         errors.append(f"{loc}.ends must be a list of ends, each an object with 'at'")
@@ -7125,13 +6293,11 @@ def _check_portal_coherence(
 ) -> None:
     """What may stand beside ``rules.portals``, and where the portals may stand (schema 19).
 
-    `docs/archive/plan-portals.md` §1. A portal type is placed by the rule and by nothing else,
-    is nobody's material, never captures and never turns: so it may not be placed by the
-    setup, promote or be promoted into, be held, be a goal's piece or a counted one, be
-    named by a capture list, be royal, or be worth anything. Its moves are a player's
-    *steps onto empty squares* (`mode: "move"`, which also keeps a portal off another
-    portal) and read the same for both players, because an end either player may move has
-    no forward of its own.
+    `docs/archive/plan-portals.md` §1. A portal is placed by the rule and by nothing else,
+    and is no declared piece (spelling 31: its group carries its moves). Its moves are a
+    player's *steps onto empty squares* (`_validate_portal_moves`) and read the same for both
+    players, because an end either player may move has no forward of its own; a group an
+    end of which somebody may move must have some.
 
     The rules refused beside it in the first build are each a reading nobody has asked for:
     a hex lattice (a sign does not name one of six neighbours), wild pieces (a route is a
@@ -7189,11 +6355,9 @@ def _check_portal_coherence(
             "beside rules.portals; choose another id"
         )
 
-    portal_ids = portal_piece_ids(rules)
-    for pid in sorted(portal_ids & set(declared)):
-        _check_portal_piece(pid, declared[pid], rules, orientation, errors)
-        _check_portal_type_used_nowhere_else(spec, pid, pieces, rules, errors)
-    _check_fold_pieces(groups, declared, errors)
+    for group in groups:
+        _check_portal_moves(group, orientation, errors)
+    _check_fold_moves(groups, errors)
 
     # The squares: on the board, not a wall or an absent cell, empty in the setup, and no
     # two ends on one square.
@@ -7239,9 +6403,9 @@ def _refuse_a_one_square_lame_leap(spec: dict[str, Any], errors: list[str]) -> N
     silently lacking it. The xiangqi horse's ``[1, 2]`` and elephant's ``[2, 2]`` have a leg
     and are untouched.
 
-    It runs only on a new spec (``validate_spec``'s ``new``), like
-    ``_refuse_a_portal_bar_no_move_meets``: the move was never played, so a stored spec that
-    carries one plays exactly as it always did and still builds its engine.
+    Refused always, stored specs included, since Q1008d found no spec the site stores, git
+    ever held or the main checkout's `runs/` holds that carries one
+    (`docs/reference/schema-reboot-assessment.md` §10).
     """
     pieces = spec.get("pieces")
     for p_index, piece in enumerate(pieces if isinstance(pieces, list) else ()):
@@ -7267,28 +6431,13 @@ def _refuse_a_portal_bar_no_move_meets(spec: dict[str, Any], errors: list[str]) 
     """Q879: every ``no_straight_back`` some end of its group is moved by, asked whether a
     move can ever meet it (`_check_portal_bar_can_bind`).
 
-    It runs only on a new spec (``validate_spec``'s ``new``), as
-    ``_refuse_a_promotion_rank_past_the_board`` does and for its reason: the bar never
-    removes a move, so a spec that already carries one plays as it always did, and a game
-    stored before the refusal -- a visitor's published page, its match replays, a corpus
-    entry -- still builds its engine. A group nobody moves is `_check_portal_coherence`'s,
-    refused always, as it was from schema 20.
+    Refused always, stored specs included, since Q1008d found no spec the site stores, git
+    ever held or the main checkout's `runs/` holds that carries one
+    (`docs/reference/schema-reboot-assessment.md` §10). A group nobody moves is
+    `_check_portal_coherence`'s, refused always, as it was from schema 20.
     """
     for refusals in _portal_bar_refusals(spec):
         errors.extend(refusals or ())
-
-
-def portal_bars_that_can_bind(spec: dict[str, Any]) -> tuple[bool, ...]:
-    """Per portal group, in `portal_groups` order: whether its ``no_straight_back`` can ever
-    bar a move -- false for a group without one, and for one `_check_portal_bar_can_bind`
-    finds no move can meet.
-
-    Q883: the compiler's reading of the bar (`engine.compile._compile_portals`), so a bar
-    the core keeps and keys is exactly one this refusal admits. A stored spec built with
-    ``new=False`` may carry an inert one; it compiles to no bar at all, so two positions
-    alike in everything that affects play get one key.
-    """
-    return tuple(bool(refusals == []) for refusals in _portal_bar_refusals(spec))
 
 
 def _portal_bar_refusals(spec: dict[str, Any]) -> list[list[str] | None]:
@@ -7298,19 +6447,13 @@ def _portal_bar_refusals(spec: dict[str, Any]) -> list[list[str] | None]:
     if not isinstance(rules, dict) or not isinstance(rules.get("portals"), list):
         return []
     groups = portal_groups(rules)
-    pieces = spec.get("pieces")
-    declared = {
-        piece["id"]: piece
-        for piece in (pieces if isinstance(pieces, list) else ())
-        if isinstance(piece, dict) and isinstance(piece.get("id"), str)
-    }
     setup = spec.get("setup")
     orientation = str(setup.get("orientation", "mirror")) if isinstance(setup, dict) else "mirror"
     out: list[list[str] | None] = []
     for group in groups:
         if group["no_straight_back"] and any(end["moved_by"] for end in group["ends"]):
             refusals: list[str] = []
-            _check_portal_bar_can_bind(group, groups, declared, rules, orientation, refusals)
+            _check_portal_bar_can_bind(group, groups, rules, orientation, refusals)
             out.append(refusals)
         else:
             out.append(None)
@@ -7318,8 +6461,8 @@ def _portal_bar_refusals(spec: dict[str, Any]) -> list[list[str] | None]:
 
 
 def _check_portal_bar_can_bind(
-    group: dict[str, Any], groups: list[dict[str, Any]], declared: dict[str, Any],
-    rules: dict[str, Any], orientation: str, errors: list[str],
+    group: dict[str, Any], groups: list[dict[str, Any]], rules: dict[str, Any],
+    orientation: str, errors: list[str],
 ) -> None:
     """A ``no_straight_back`` some end of its group is moved by, but no move can meet.
 
@@ -7328,16 +6471,16 @@ def _check_portal_bar_can_bind(
     where (a) whoever moves next may move the same end -- the other player, unless a turn
     is longer than one move -- and (b) the end's own moves can undo one another. Both are
     read off the spec: (a) from each end's ``moved_by`` and ``rules.turn``, (b) from the
-    group piece's directions. Each move a portal makes goes a whole number of its vector's
+    directions of the group's moves. Each move a portal makes goes a whole number of its vector's
     steps (a leap, a slide, a hop or a lame leap alike), so on a board with no wrap a move
     back needs a direction and its opposite; that clause is not asked round a wrap (where
     two steps one way can come back) or beside a fold (a move through one leaves the line).
 
     Without the bar the game is the same game: the bar never removes a move. Before Q883 the
     core still keyed the position by the bar it set, so a draw by repetition could read one
-    position as two; the compiler now reads this same check (`portal_bars_that_can_bind`)
-    and hands such a bar to the core as none, and the core keeps a bar only when the
-    player to move next may move that end. Sluice's draft
+    position as two; the core now keeps a bar only when the player to move next may move
+    that end, and this refusal (stored specs too, Q1008d) keeps an inert one out of
+    every compiled spec. Sluice's draft
     (Q844, `docs/reference/portal-showcase-ideas.md`) carried one: each gate moved by the
     player it threatens alone.
     """
@@ -7355,10 +6498,8 @@ def _check_portal_bar_can_bind(
         return
     if _wrap_joins_an_edge(rules.get("wrap")) or any(g["kind"] == "fold" for g in groups):
         return
-    piece = declared.get(group["piece"]) if isinstance(group["piece"], str) else None
-    moves = piece.get("moves") if isinstance(piece, dict) else None
     directions: set[tuple[int, int]] = set()
-    for move in moves if isinstance(moves, list) else ():
+    for move in group["moves"]:
         vectors = move.get("vectors") if isinstance(move, dict) else None
         symmetry = move.get("symmetry", "none") if isinstance(move, dict) else None
         if not isinstance(vectors, list) or symmetry not in SQUARE_SYMMETRIES:
@@ -7378,32 +6519,29 @@ def _check_portal_bar_can_bind(
                 directions.add((flipped[0] // step, flipped[1] // step))
     if directions and not any((-dx, -dy) in directions for dx, dy in directions):
         errors.append(
-            f"{loc} it could never bar a move: piece {group['piece']!r} has no move in the "
-            "opposite direction to another, so an end it moves can never go straight back "
-            "onto the square it left; drop it, or give the piece a move back"
+            f"{loc} it could never bar a move: the group's moves have none in the opposite "
+            "direction to another, so an end can never go straight back onto the square it "
+            "left; drop it, or give the group a move back"
         )
 
 
-def _check_fold_pieces(
-    groups: list[dict[str, Any]], declared: dict[str, Any], errors: list[str],
-) -> None:
-    """Schema 22: what a fold's own piece may not say (`docs/archive/plan-portals-2.md` §3.2).
+def _check_fold_moves(groups: list[dict[str, Any]], errors: list[str]) -> None:
+    """Schema 22: what a fold's moves may not say (`docs/archive/plan-portals-2.md` §3.2).
 
     A fold stands on no square of the board byte, so it has no unmoved state of its own:
     the square's ``unmoved`` bit belongs to whatever piece stands in it. A ``first_move``
     condition on a fold's moves would read the wrong thing, so it is refused.
     """
     for group in groups:
-        if group["kind"] != "fold" or not _in(group["piece"], declared):
+        if group["kind"] != "fold":
             continue
-        moves = declared[group["piece"]].get("moves")
-        for index, move in enumerate(moves if isinstance(moves, list) else ()):
+        for index, move in enumerate(group["moves"]):
             condition = move.get("condition") if isinstance(move, dict) else None
             if isinstance(condition, dict) and "first_move" in condition:
                 errors.append(
-                    f"piece {group['piece']!r} moves[{index}] may not have a first_move "
-                    f"condition: rules.portals[{group['index']}] is a fold, which stands on "
-                    "no square of its own and so has no first move"
+                    f"rules.portals[{group['index']}].moves[{index}] may not have a first_move "
+                    "condition: the group is a fold, which stands on no square of its own and "
+                    "so has no first move"
                 )
 
 
@@ -7417,8 +6555,7 @@ def _check_portal_carries(
     lets in what no filter would). A promoted piece is filtered by what it is now, which is
     the compiler's reading and needs nothing here.
     """
-    portal_ids = _str_set(group["piece"] for group in groups)
-    movers = {pid for pid, piece in declared.items() if piece.get("moves")} - portal_ids
+    movers = {pid for pid, piece in declared.items() if piece.get("moves")}
     for group in groups:
         for end in group["ends"]:
             carries = end["carries"]
@@ -7432,8 +6569,6 @@ def _check_portal_carries(
             for pid in sorted(carries):
                 if pid not in declared:
                     errors.append(f"{loc} names {pid!r}, which is not a declared piece")
-                elif pid in portal_ids:
-                    errors.append(f"{loc} names {pid!r}, a portal; a portal never goes in")
             if not end["enter"]:
                 errors.append(
                     f"{loc} says which pieces may go in, but nobody may go in by this end; "
@@ -7446,40 +6581,13 @@ def _check_portal_carries(
                 )
 
 
-def _check_portal_piece(
-    pid: str, piece: dict[str, Any], rules: dict[str, Any], orientation: str,
-    errors: list[str],
-) -> None:
-    """One portal type's own declaration: worth nothing, never royal, symmetric steps."""
-    where = f"piece {pid!r} (a portal, rules.portals)"
-    if piece.get("royal"):
-        errors.append(f"{where} may not be royal")
-    value = piece.get("value", 1)
-    if value != 0:
-        errors.append(f"{where} must have value 0: a portal is nobody's material")
-    for key in ("facing", "captures", "promoted_from"):
-        if key in piece:
-            errors.append(f"{where} may not declare {key}")
-    moves = piece.get("moves")
-    if not isinstance(moves, list):
-        return
-    for index, move in enumerate(moves):
+def _check_portal_moves(group: dict[str, Any], orientation: str, errors: list[str]) -> None:
+    """One group's moves (spelling 31): the same seen from either player, and some where
+    anybody may move an end. The shape of each move is `_validate_portal_moves`'."""
+    loc = f"rules.portals[{group['index']}]"
+    for index, move in enumerate(group["moves"]):
         if not isinstance(move, dict):
             continue
-        loc = f"{where} moves[{index}]"
-        if move.get("mode", "both") != "move":
-            errors.append(
-                f"{loc} must say mode \"move\": a portal moves only onto an empty square, "
-                "so never onto a piece or another portal"
-            )
-        if move.get("kind") == "sweep":
-            errors.append(f"{loc} may not sweep")
-        condition = move.get("condition")
-        if isinstance(condition, dict) and ({"from_rank", "region"} & set(condition)):
-            errors.append(
-                f"{loc} may not have a from_rank or region condition: those are read from "
-                "a player's side, and a portal belongs to neither"
-            )
         vectors = move.get("vectors")
         symmetry = move.get("symmetry", "none")
         if not isinstance(vectors, list) or symmetry not in SQUARE_SYMMETRIES:
@@ -7496,61 +6604,15 @@ def _check_portal_piece(
         }
         if flipped != directions:
             errors.append(
-                f"{loc} reads differently for the two players: a portal has no forward of "
-                "its own, so its moves must be the same seen from either side (use a "
-                "symmetry that covers both, such as rotate4 or dihedral8)"
+                f"{loc}.moves[{index}] reads differently for the two players: a portal has no "
+                "forward of its own, so its moves must be the same seen from either side (use "
+                "a symmetry that covers both, such as rotate4 or dihedral8)"
             )
-    if not moves and not portal_type_needs_no_moves(rules, pid):
+    if not group["moves"] and any(end["moved_by"] for end in group["ends"]):
         errors.append(
-            f"{where} has no moves, but rules.portals lets a player move one of its ends"
+            f"{loc} lets a player move an end but gives it no moves: write them as "
+            f"{loc}.moves, as a piece's are"
         )
-
-
-def _check_portal_type_used_nowhere_else(
-    spec: dict[str, Any], pid: str, pieces: list[Any], rules: dict[str, Any],
-    errors: list[str],
-) -> None:
-    """A portal type is placed by ``rules.portals`` and named by no other rule."""
-    where = f"piece {pid!r} is a portal (rules.portals)"
-    setup = spec.get("setup")
-    placements = setup.get("placements") if isinstance(setup, dict) else None
-    if isinstance(placements, list) and any(
-        isinstance(p, dict) and p.get("piece") == pid for p in placements
-    ):
-        errors.append(f"{where} and may not be placed by setup.placements")
-    for entry in _promotion_entries(rules):
-        if not isinstance(entry, dict):
-            continue
-        if entry.get("piece") == pid or pid in _promotion_target_ids(entry):
-            errors.append(f"{where} and may not promote or be promoted into")
-    drops = rules.get("drops")
-    if isinstance(drops, dict):
-        named = {
-            key: drops.get(key) for key in ("stock", "region", "no_doubled", "no_mate")
-        }
-        if any(
-            (isinstance(value, (dict, list)) and pid in value) for value in named.values()
-        ):
-            errors.append(f"{where} and may not be named by rules.drops: it is never held")
-    reach = rules.get("reach")
-    if isinstance(reach, dict) and reach.get("piece") == pid:
-        errors.append(f"{where} and may not be rules.reach's piece")
-    extinction = rules.get("extinction")
-    if isinstance(extinction, dict) and pid in (extinction.get("pieces") or []):
-        errors.append(f"{where} and may not be counted by rules.extinction")
-    castling = rules.get("castling")
-    if isinstance(castling, dict) and pid in (castling.get("king"), castling.get("rook")):
-        errors.append(f"{where} and may not castle")
-    for piece in pieces:
-        if not isinstance(piece, dict):
-            continue
-        if isinstance(piece.get("captures"), list) and pid in piece["captures"]:
-            errors.append(
-                f"piece {piece.get('id')!r} lists {pid!r} in captures, but a portal is "
-                "never captured"
-            )
-        if piece.get("promoted_from") == pid:
-            errors.append(f"piece {piece.get('id')!r} is promoted_from {pid!r}, a portal")
 
 
 def _check_one_immunity_per_type(npcs: list[Any], errors: list[str]) -> None:
@@ -8043,9 +7105,9 @@ def _validate_contacts_shape(
             continue
         _check_keys(link, _CONTACT_LINK_KEYS, loc, errors, required={"mover", "onto"})
         mover, onto = link.get("mover"), link.get("onto")
-        # Absence already says "an enemy target", so `false` would be a second spelling.
-        if "own" in link and link["own"] is not True:
-            errors.append(f"{loc}.own must be true; leave it out for an enemy target")
+        # Absence and `false` say "an enemy target"; the normal form drops `false`.
+        if "own" in link and not isinstance(link["own"], bool):
+            errors.append(f"{loc}.own must be true or false")
         own = link.get("own") is True
         if own and isinstance(immune, list) and onto in immune:
             errors.append(
@@ -8286,8 +7348,8 @@ def _validate_promotion(
     rank = promotion.get("rank", "last")
     if rank != "last" and (isinstance(rank, bool) or not isinstance(rank, int) or rank < 0):
         errors.append(f"{where}.rank must be 'last' or a non-negative integer")
-    # A lone rank past the board is refused too, but only for a new spec:
-    # `_refuse_a_promotion_rank_past_the_board`, below `validate_spec`.
+    # A lone rank past the board is refused too, by `_promotion_ranks_past_the_board`, which
+    # `stored_spec_errors` forgives for the one game kept with one.
 
     # A promotion *region* rather than a single rank: grand chess promotes anywhere in
     # the last three, and whether promotion is compulsory is what makes that meaningful.
@@ -8363,32 +7425,31 @@ def _validate_promotion(
                 )
 
 
-def _refuse_a_promotion_rank_past_the_board(
-    rules: Any, height: int, errors: list[str]
-) -> None:
-    """A lone promotion ``rank`` is bounded by the board, as a ``ranks`` band's entries are.
+def _promotion_ranks_past_the_board(rules: Any, height: int) -> list[str]:
+    """Q434: a lone promotion ``rank`` is bounded by the board, as a ``ranks`` band's
+    entries are; the refusal of each one that is not.
 
     ``promotion_squares`` skips a rank off the board, so the zone is empty and the rule
     can never fire, and the words are the band's so the two spellings read alike. It is
-    apart from ``_validate_promotion`` for one reason: it runs only on a new spec
-    (``validate_spec``'s ``new``). `tunnel-horizontal` said ``rank: 9`` on an 8-high
-    board and was played and kept as that spec (Q102 found it; Q434 retired it), so the
-    site still draws its page and replays its matches from those rules, and the
-    calibration corpora under ``runs/`` still hold it. A malformed rank or board is
-    ``_validate_promotion``'s and ``_validate_board``'s to report, and is skipped here.
+    apart from ``_validate_promotion`` for one reason: `stored_spec_errors` forgives exactly
+    these sentences for exactly the game kept with one (`RANK_PAST_THE_BOARD_KEPT`). A
+    malformed rank or board is ``_validate_promotion``'s and ``_validate_board``'s to
+    report, and is skipped here.
     """
     if not isinstance(rules, dict) or height <= 0:
-        return
+        return []
     promotion = rules.get("promotion")
     stated = (
         [(f"rules.promotion[{index}]", entry) for index, entry in enumerate(promotion)]
         if isinstance(promotion, list)
         else [("rules.promotion", promotion)]
     )
+    refusals = []
     for where, entry in stated:
         rank = entry.get("rank") if isinstance(entry, dict) else None
         if isinstance(rank, int) and not isinstance(rank, bool) and rank >= height:
-            errors.append(f"{where}.rank {rank!r} is not a rank on this board")
+            refusals.append(f"{where}.rank {rank!r} is not a rank on this board")
+    return refusals
 
 
 def _validate_promotion_targets(

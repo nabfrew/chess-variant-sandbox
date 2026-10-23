@@ -46,11 +46,11 @@ from chess_variant_sandbox.spec.schema import (
     piece_rests,
     piece_sights,
     piece_speeds,
-    portal_bars_that_can_bind,
     portal_end_ids,
     portal_groups,
     portal_has_folds,
-    portal_piece_ids,
+    portal_movement_of_groups,
+    portal_movement_types,
     promotion_squares,
     promotion_targets,
     reach_reflection,
@@ -676,7 +676,7 @@ class PortalRule:
 
     **Each end is its own internal piece type**, appended after the declared pieces in
     ``rules.portals`` order, group then end (pair 1 orange, pair 1 blue, group 2's ends a,
-    b, c, ...), with its declared portal piece's moves and the id ``portal_end_ids`` gives
+    b, c, ...), with its group's moves and the id ``portal_end_ids`` gives
     it (``1o``, ``1b``, ``2a``, ...). It stands on the board as a byte of the third owner, the block a wild piece uses
     -- nobody's -- which the validator keeps free by refusing ``npcs`` beside portals. So
     every reader that already leaves a wild piece out of the two armies leaves a portal out
@@ -703,11 +703,10 @@ class PortalRule:
 
     Schema 20 (Q807): ``no_back[type]``, true on every end of a group that sets
     ``no_straight_back`` -- once moved, the end may not be moved straight back onto the
-    square it left on the very next move. Q883: only where a move can meet the bar
-    (`schema.portal_bars_that_can_bind`, the reading Q879's refusal makes), so an inert
-    bar a stored spec carries compiles to none; the core keeps a bar it sets only when the
-    player to move next is one of the end's ``movers``. The core holds the last such move as
-    ``Game::portal_bar`` and keys it with ``zobrist_bar`` (``[square]`` for the square the end
+    square it left on the very next move. The validator refuses a bar no move can meet
+    (Q879; stored specs too, since Q1008d), so none compiles inert; the core keeps a bar it
+    sets only when the player to move next is one of the end's ``movers`` (Q883). The core
+    holds the last such move as ``Game::portal_bar`` and keys it with ``zobrist_bar`` (``[square]`` for the square the end
     left, ``[n_squares + square]`` for the one it stands on), drawn after every other key and
     only when some pair sets the flag, so no other key moves. Both empty otherwise.
     """
@@ -980,11 +979,19 @@ def _compile_rests(
     return tuple(rest) if any(rest) else ()
 
 
-# Schema 30 (Q999a, `docs/plan-passive.md` §3.2): one bit per effect, as the core reads them.
+# Schema 30 (Q999a, `docs/archive/plan-passive.md` §3.2): one bit per effect, as the core reads them.
 SIGHT_FREEZE = 1
 SIGHT_DISARM = 2
 SIGHT_SHIELD = 4
-SIGHT_BITS = {"freeze": SIGHT_FREEZE, "disarm": SIGHT_DISARM, "shield": SIGHT_SHIELD}
+# Q1007c (`docs/plan-schema-31.md` §3.7): the piece's opponent may also move it, and with
+# ``captures_own`` make it take its own side's (non-royal) pieces. One command source carries
+# ``SIGHT_COMMAND`` alone or with ``SIGHT_COMMAND_OWN``.
+SIGHT_COMMAND = 8
+SIGHT_COMMAND_OWN = 16
+SIGHT_BITS = {
+    "freeze": SIGHT_FREEZE, "disarm": SIGHT_DISARM, "shield": SIGHT_SHIELD,
+    "command": SIGHT_COMMAND,
+}
 
 # One way a piece can be under an effect, inverted out of the forward lines:
 # ``(origin, piece_value, effect bit, path)``, filed under the affected player, the affected
@@ -1011,7 +1018,7 @@ class SightEntry:
 
 @dataclass(frozen=True)
 class SightRule:
-    """Lines of sight (schema 30, Q999a; `docs/plan-passive.md` §2, §3.2).
+    """Lines of sight (schema 30, Q999a; `docs/archive/plan-passive.md` §2, §3.2).
 
     * ``entries[type]`` -- each type's sights, in the order written; empty for a type that
       sees nothing.
@@ -1026,6 +1033,9 @@ class SightRule:
       one type).
     * ``has_shield`` -- whether any sight shields.
     * ``has_restraint`` -- whether any sight freezes or disarms.
+    * ``has_command`` -- whether any sight commands (Q1007c): the core then walks the
+      opponent's commanded pieces for a second source of moves. A command never touches a
+      royal type, so no command source is filed under one.
     * ``bears_on_check`` -- whether any sight can change a check: a freeze or a disarm, or a
       shield that can cover a royal other than its own source (a royal never sees itself, so
       a king's shield bears on check only where a side can hold two royals). The core's pin
@@ -1038,6 +1048,7 @@ class SightRule:
     has_shield: bool
     has_restraint: bool
     bears_on_check: bool
+    has_command: bool = False
 
 
 def _compile_sights(
@@ -1070,14 +1081,18 @@ def _compile_sights(
         return None
     rules = spec.get("rules") if isinstance(spec.get("rules"), dict) else {}
     declared = [piece["id"] for piece in spec["pieces"]]
+    royal_ids = {pieces[royal]["id"] for royal in royal_types}
     entries: list[tuple[SightEntry, ...]] = []
     for piece in pieces:
         row: list[SightEntry] = []
         for sight in sights.get(piece["id"], ()):
             mask = 0
-            for pid in sight_affected_ids(sight, declared, rules):
+            for pid in sight_affected_ids(sight, declared, rules, royal_ids):
                 mask |= 1 << index_of[pid]
-            row.append(SightEntry(SIGHT_BITS[sight.effect], sight.whose, mask, sight.through))
+            effect = SIGHT_BITS[sight.effect]
+            if sight.captures_own:
+                effect |= SIGHT_COMMAND_OWN
+            row.append(SightEntry(effect, sight.whose, mask, sight.through))
         entries.append(tuple(row))
 
     n_frames = 2 * n_facings
@@ -1134,7 +1149,9 @@ def _compile_sights(
     royal_mask = 0
     for royal in royal_types:
         royal_mask |= 1 << royal
-    restraint = any(entry.effect != SIGHT_SHIELD for row in entries for entry in row)
+    restraint = any(
+        entry.effect & (SIGHT_FREEZE | SIGHT_DISARM) for row in entries for entry in row
+    )
     # A shield bears on check where it can cover a royal: one of another type, or, where a
     # side can hold two royals, one of its own source's type (a piece never sees itself).
     royal_shield = any(
@@ -1152,6 +1169,7 @@ def _compile_sights(
         has_shield=any(entry.effect == SIGHT_SHIELD for row in entries for entry in row),
         has_restraint=restraint,
         bears_on_check=restraint or royal_shield,
+        has_command=any(entry.effect & SIGHT_COMMAND for row in entries for entry in row),
     )
 
 
@@ -1453,7 +1471,7 @@ class CompiledSpec:
     # last of all and only under the rule (`_build_zobrist`). For a game whose largest rest
     # is 1 this is schema 27's layout, ``player * n_squares + square``. Empty otherwise.
     zobrist_rest: tuple[int, ...] = ()
-    # Schema 30 (Q999a, `docs/plan-passive.md` §3.2): lines of sight, or ``None`` -- every
+    # Schema 30 (Q999a, `docs/archive/plan-passive.md` §3.2): lines of sight, or ``None`` -- every
     # game in which no type sees, whose boundary keys for the rule all cross empty. An effect
     # is a function of the board, so the rule adds no state and no key.
     sight: SightRule | None = None
@@ -1805,9 +1823,14 @@ def _compile(
     n_squares = width * height
     rules = spec.get("rules", {})
     # Schema 19: each portal end is an internal piece type after the declared ones, so
-    # every table below is built for it exactly as for a declared piece.
-    declared_types = len(spec["pieces"])
-    pieces = list(spec["pieces"]) + _portal_end_pieces(spec)
+    # every table below is built for it exactly as for a declared piece. Spelling 31: the
+    # portals' movement types (`schema.portal_movement_types`) come first, among the
+    # declared, where every portal game before it declared its stand-in piece: no piece ever
+    # stands as one, and its row keeps every portal game's type count, order and tables.
+    movement = portal_movement_types(spec)
+    declared_pieces = list(spec["pieces"]) + movement
+    declared_types = len(declared_pieces)
+    pieces = declared_pieces + _portal_end_pieces(spec)
     n_types = len(pieces)
     has_portals = n_types > declared_types
 
@@ -1858,7 +1881,7 @@ def _compile(
             _build_capture_matrix(pieces, index_of), rules, piece_ids, index_of
         ),
         declared_types,
-        {index_of[pid] for pid in portal_piece_ids(rules) if pid in index_of},
+        {index_of[piece["id"]] for piece in movement},
     )
     npcs = _compile_npcs(rules, pieces, index_of, width, height, orientation)
     # A third owner's block for wild pieces (schema 9) or for portals (schema 19), which
@@ -1949,7 +1972,8 @@ def _compile(
         portals = _compile_portals(
             rules, declared_types, n_types, width, height, wrap, obstacles,
             (leap_dirs, slide_dirs, hop_dirs), attack_dirs or [], zob_bar,
-            piece_ids[:declared_types], portal_bars_that_can_bind(spec),
+            piece_ids[:declared_types],
+            tuple(piece["id"] for piece in movement),
         )
         if has_folds:
             portals = replace(portals, folds=FoldRule(
@@ -2095,9 +2119,9 @@ def _compile(
         zobrist_colour=zob_colour,
         zobrist_turn=zob_turn,
         portals=portals,
-        simultaneous=_compile_simultaneous(rules, list(spec["pieces"]), index_of, n_types, zob_sim),
-        spy=_compile_spy(list(spec["pieces"]), index_of, board, n_types, n_facings),
-        rest=_compile_rests(list(spec["pieces"]), index_of, n_types),
+        simultaneous=_compile_simultaneous(rules, declared_pieces, index_of, n_types, zob_sim),
+        spy=_compile_spy(declared_pieces, index_of, board, n_types, n_facings),
+        rest=_compile_rests(declared_pieces, index_of, n_types),
         zobrist_rest=zob_rest,
         sight=_compile_sights(
             spec, pieces, index_of, n_types, n_facings, facing_axes, n_squares, width, height,
@@ -2248,6 +2272,70 @@ def _lame_path(dx: int, dy: int) -> tuple[int, int]:
     if abs(dx) > abs(dy):
         return (1 if dx > 0 else -1), 0
     return 0, (1 if dy > 0 else -1)
+
+
+def _lame_ride(
+    landing: Callable[[int, int], int | None],
+    file: int,
+    rank: int,
+    square: int,
+    step_x: int,
+    step_y: int,
+    width: int,
+    mode: int,
+    min_range: int,
+    jumps: int,
+    confine: frozenset[int] | None,
+    obstacles: frozenset[int],
+) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+    """One direction of a ``lame`` descriptor: the ray ``(leg, landing, leg, landing, ...)``.
+
+    Jump after jump along the step, each one blocked at its leg (``_lame_path``, the
+    language's one notion of "the way past") and each landing ending the ride when
+    occupied, captured if it may be (Q1007a, `docs/plan-schema-31.md` §2.2). Expressed as a
+    slide whose legs carry no mode: the generator already walks off a ray the moment it
+    meets an occupied square it cannot use, which is exactly what being blocked means, and
+    the attack inversion gives each landing every square before it, legs included.
+
+    ``jumps`` is the descriptor's ``range`` (1, today's single lame leap, unless it says
+    otherwise; an unlimited one arrives as the slide's cap). A landing nearer than
+    ``min_range`` or outside ``confine`` carries mode 0, so it still blocks and the ride
+    goes on past it, as a slide's does; trailing landings with no mode are left off, so a
+    ride with no landing it may use is ``None``. ``range: 1`` builds the two-square ray the
+    single lame leap always had, and drops it in exactly the cases it was dropped:
+
+    * a landing off the board, back on a square the ride has already been on (a wrapped
+      board; the origin included, so a wrapped leap onto its own square), or on a wall
+      ends the ride;
+    * so does a leg on a wall (blocked for ever: a lame leap is *defined* by being stoppable
+      at its leg, whatever ``blocks_leaps`` says), off the board (the landing wrapped and
+      the leg did not reach the seam, a leap nobody can make), on the landing or on a
+      square already ridden (a one-square step has no leg: ``_lame_path`` puts it on the
+      target, or on the jump's own start for a diagonal one; the validator refuses it).
+    """
+    block_x, block_y = _lame_path(step_x, step_y)
+    path: list[int] = []
+    modes: list[int] = []
+    visited = {square}
+    at_file, at_rank = file, rank
+    for jump in range(1, jumps + 1):
+        target = landing(at_file + step_x, at_rank + step_y)
+        if target is None or target in visited or target in obstacles:
+            break
+        block = landing(at_file + block_x, at_rank + block_y)
+        if block is None or block in obstacles or block == target or block in visited:
+            break
+        visited.update((block, target))
+        path.extend((block, target))
+        usable = jump >= min_range and (confine is None or target in confine)
+        modes.extend((0, mode if usable else 0))
+        at_file, at_rank = target % width, target // width
+    while modes and not modes[-1]:
+        modes.pop()
+        path.pop()
+    if not modes:
+        return None
+    return tuple(path), tuple(modes)
 
 
 def _halved_toward_zero(value: int) -> int:
@@ -2474,34 +2562,20 @@ def _compile_square_full(
                 continue
 
             if kind == "lame":
-                target = landing(file + step_x, rank + step_y)
-                if target is None or target == square:
-                    continue
-                if confine is not None and target not in confine:
-                    continue
-                if target in obstacles:
-                    continue
-                block_x, block_y = _lame_path(step_x, step_y)
-                block = landing(file + block_x, rank + block_y)
-                # A leg standing on a wall is blocked for ever, so the move is not a
-                # move. This one holds whatever ``blocks_leaps`` says: a lame leap is
-                # *defined* by being stoppable at its leg, and a wall is the one thing
-                # that can never move out of the way.
-                if block is not None and block in obstacles:
-                    continue
-                # The leg is a shorter step in the same direction, so it can only be off
-                # the board where the target was too -- unless the target wrapped and the
-                # leg did not reach the seam, which is a leap nobody can make. A one-square
-                # step has no leg at all (``_lame_path`` puts it on the target, or on the
-                # piece's own square for a diagonal one), and is dropped on every side
-                # alike, as the orthogonal one always was.
-                if block is None or block in (target, square):
-                    continue
-                # Expressed as a slide whose first square carries no mode: the generator
-                # already walks off a ray the moment it meets an occupied square it
-                # cannot use, which is exactly what being blocked means.
-                lame_entries.append(((block, target), (0, mode), requires_unmoved))
-                lame_momentum.append((0, momentum_bits(step_x, step_y, mode)))
+                ride = _lame_ride(
+                    landing, file, rank, square, step_x, step_y, width, mode, min_range,
+                    max_range if max_range > 0 else (
+                        width * height if wrap and wrap.active_for(player)
+                        else max(width, height)
+                    ),
+                    confine, obstacles,
+                )
+                if ride is not None:
+                    path, path_modes = ride
+                    lame_entries.append((path, path_modes, requires_unmoved))
+                    lame_momentum.append(
+                        tuple(momentum_bits(step_x, step_y, m) if m else 0 for m in path_modes)
+                    )
                 continue
 
             key = (
@@ -4251,20 +4325,20 @@ def _compile_contacts(
 def _portal_end_pieces(spec: dict[str, Any]) -> list[dict[str, Any]]:
     """The internal piece types schema 19 adds, one per portal end, in group order.
 
-    Each is its group's declared portal piece under the end's own id (``1o``, ``1b``,
-    ``2a``, ...), so every table is built for it as for a declared piece: its moves are the
-    declared type's. Empty without ``rules.portals``, which is what keeps every other game's
-    tables the size they were.
+    Each is its group's movement type (`schema.portal_movement_types`) under the end's own
+    id (``1o``, ``1b``, ``2a``, ...), so every table is built for it as for a declared piece:
+    its moves are the group's. Empty without ``rules.portals``, which is what keeps every
+    other game's tables the size they were.
     """
     rules = spec.get("rules") or {}
     groups = portal_groups(rules)
     if not groups:
         return []
-    declared = {piece["id"]: piece for piece in spec["pieces"]}
+    movers = {piece["id"]: piece for piece in portal_movement_types(spec)}
     ids = iter(portal_end_ids(groups))
     ends: list[dict[str, Any]] = []
-    for group in groups:
-        portal = declared[group["piece"]]
+    for group, mover in zip(groups, portal_movement_of_groups(spec), strict=True):
+        portal = movers[mover]
         for end in group["ends"]:
             called = end["key"] if group["spelling"] == "pair" else end["letter"]
             ends.append(
@@ -4319,8 +4393,9 @@ def _apply_portal_immunity(
     So an end is an uncapturable piece to every ordinary move: a slide stops at it and a
     leap does not land on it. Going *in* is a transit, which the core generates on its own
     walk (`Game::push_transits`); an end closed to the mover is then just the obstacle
-    point 11 asks for. The declared portal piece goes too: it never stands on the board,
-    and the prose then says of it what is true of its ends (`describe._moveless_fates`).
+    point 11 asks for. A portal's movement type goes too (`schema.portal_movement_types`):
+    it never stands on the board, and the prose then says of it what is true of its ends
+    (`describe._moveless_fates`).
     Unchanged where nothing was added.
     """
     if len(matrix) == declared_types:
@@ -4374,7 +4449,7 @@ def _compile_portals(
     attack_dirs: list[list[list[int]]],
     zobrist_bar: tuple[int, ...] = (),
     declared_ids: tuple[str, ...] = (),
-    bar_binds: tuple[bool, ...] = (),
+    movement_ids: tuple[str, ...] = (),
 ) -> PortalRule:
     """``rules.portals`` resolved into the tables `PortalRule` describes.
 
@@ -4385,10 +4460,10 @@ def _compile_portals(
     """
     groups = portal_groups(rules)
     index_of = {pid: index for index, pid in enumerate(declared_ids)}
-    # Every declared piece but the portal pieces, which never stand on the board.
+    # Every declared piece but the portals' movement types, which never stand on the board.
+    movement = set(movement_ids)
     every = sum(
-        1 << index for index, pid in enumerate(declared_ids)
-        if pid not in {group["piece"] for group in groups}
+        1 << index for index, pid in enumerate(declared_ids) if pid not in movement
     )
     dest = [-1] * n_types
     no_back = [False] * n_types
@@ -4414,10 +4489,9 @@ def _compile_portals(
                 mask if 0 in end["enter"] else 0, mask if 1 in end["enter"] else 0,
             )
             movers[piece_type] = end["moved_by"]
-            # Q883: only a bar a move can meet (`schema.portal_bars_that_can_bind`, Q879's
-            # refusal read as a flag), so a stored spec's inert bar compiles to none and
-            # stays out of the key.
-            no_back[piece_type] = index < len(bar_binds) and bar_binds[index]
+            # A bar the validator admits is one a move can meet (Q879, refused for stored
+            # specs too since Q1008d), so the flag is the spec's own.
+            no_back[piece_type] = bool(group["no_straight_back"])
             end_types.append(piece_type)
             kinds.append(group["kind"])
             coords = parse_square(end["at"], width, height)

@@ -26,7 +26,6 @@ from typing import Any
 from chess_variant_sandbox.spec.schema import (
     STOCK_UNLIMITED,
     drop_face_pairs,
-    portal_piece_ids,
     strike_is_live,
     strike_states_nothing,
     strike_survives_anything,
@@ -196,11 +195,10 @@ def settle_carries(spec: dict[str, Any]) -> list[str]:
     listed = spec.get("pieces")
     if not isinstance(rules, dict) or not isinstance(listed, list):
         return []
-    portal_ids = portal_piece_ids(rules)
     movers = {
         piece["id"] for piece in listed
         if isinstance(piece, dict) and piece.get("moves") and isinstance(piece.get("id"), str)
-    } - portal_ids
+    }
     if not movers:
         return []
     gone: list[str] = []
@@ -342,19 +340,10 @@ def _forget_piece(spec: dict[str, Any], piece_id: str) -> None:
             if isinstance(rules.get("scoring"), dict) and rules["scoring"].get("count") == "points":
                 rules.pop("scoring", None)
 
-    # Schema 19: a pair whose ends moved like the dropped piece goes with it, and the rule
-    # with its last pair. Later pairs renumber, since a pair's number is its place.
-    portals = rules.get("portals")
-    if isinstance(portals, list):
-        kept_pairs = [
-            pair for pair in portals
-            if not (isinstance(pair, dict) and pair.get("piece") == piece_id)
-        ]
-        if kept_pairs:
-            rules["portals"] = kept_pairs
-            _forget_carried(rules, piece_id)
-        else:
-            rules.pop("portals", None)
+    # Schema 21: an end's filter forgets the dropped piece (a portal's own moves are its
+    # group's since spelling 31, so no group goes with a piece).
+    if isinstance(rules.get("portals"), list):
+        _forget_carried(rules, piece_id)
 
     strike = rules.get("strike")
     if isinstance(strike, dict):
@@ -615,7 +604,6 @@ def restrict_captures(
     for piece in pieces(spec):
         if piece.get("id") == piece_id:
             piece["captures"] = list(allowed)
-            spec["schema_version"] = max(int(spec.get("schema_version", 1)), 3)
             return spec
     return spec
 
@@ -1019,23 +1007,21 @@ def _drop_inert(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) 
 
 
 def _settle_sights(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) -> list[str]:
-    """Schema 30 (Q999a, `docs/plan-passive.md` §3.2): a line of sight an edit has made inert
+    """Schema 30 (Q999a, `docs/archive/plan-passive.md` §3.2): a line of sight an edit has made inert
     -- one `schema.sight_can_bind` refuses, as the validator does, because nothing it affects
     can be there or its effect would mean nothing to what can -- goes, and the piece's `sight`
-    with its last line; and so does every sight on a type an edit made a portal end or a wild
-    piece. Asked only of an entry `schema.piece_sights` reads, so a malformed one is left
+    with its last line; and so does every sight on a type an edit made a wild piece. Asked only of an entry `schema.piece_sights` reads, so a malformed one is left
     for the validator to refuse by name."""
     from chess_variant_sandbox.spec.schema import (
         _sight_entry,
         has_sights,
-        portal_piece_ids,
         sight_can_bind,
     )
 
     if not has_sights(listed):
         return []
     dropped: list[str] = []
-    blank = portal_piece_ids(rules) | {
+    blank = {
         npc.get("piece") for npc in rules.get("npcs") or [] if isinstance(npc, dict)
     }
     for piece in listed:
@@ -1062,10 +1048,10 @@ def _settle_sights(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any
 
 def _settle_rests(listed: list[Any], rules: dict[str, Any]) -> list[str]:
     """Schema 29 (Q983a, `docs/plan-rest.md` §3.1, §5.1): what an edit can leave of the rests
-    that the validator refuses. A rest on a type no player moves (a portal end, a wild
+    that the validator refuses. A rest on a type no player moves (a wild
     piece) or on one that lost its last move and has no stock goes; and every rest goes
     beside a turn of more than one move."""
-    from chess_variant_sandbox.spec.schema import piece_has_stock, portal_piece_ids, turn_is_long
+    from chess_variant_sandbox.spec.schema import piece_has_stock, turn_is_long
 
     written = [piece for piece in listed if isinstance(piece, dict) and "rest" in piece]
     if not written:
@@ -1075,7 +1061,7 @@ def _settle_rests(listed: list[Any], rules: dict[str, Any]) -> list[str]:
         for piece in written:
             piece.pop("rest")
         return ["rest"]
-    skipped = portal_piece_ids(rules) | {
+    skipped = {
         npc.get("piece") for npc in rules.get("npcs") or [] if isinstance(npc, dict)
     }
     for piece in written:
@@ -1098,7 +1084,6 @@ def _settle_speeds(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any
         has_speeds,
         is_simultaneous,
         piece_speeds,
-        portal_piece_ids,
         speed_ranks_in_use,
         speeds_order_a_round,
     )
@@ -1125,7 +1110,7 @@ def _settle_speeds(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any
     if not is_simultaneous(rules):
         drop_speeds()
         return dropped
-    skipped = portal_piece_ids(rules) | {
+    skipped = {
         npc.get("piece") for npc in rules.get("npcs") or [] if isinstance(npc, dict)
     }
     for piece in listed:
@@ -1257,7 +1242,6 @@ def captures_come_back(spec: dict[str, Any]) -> dict[str, Any]:
     advantage can be banked and the game runs to its clock.
     """
     spec.setdefault("rules", {})["drops"] = {"from_captures": True}
-    spec["schema_version"] = max(int(spec.get("schema_version", 1)), 2)
     return spec
 
 
@@ -1282,7 +1266,6 @@ def confine_all_but(spec: dict[str, Any], *mobile: str | None) -> dict[str, Any]
         if pid in keep or pid not in placements:
             continue
         piece["region"] = sorted(set(placements[pid]))
-    spec["schema_version"] = max(int(spec.get("schema_version", 1)), 2)
     return spec
 
 
@@ -1356,44 +1339,6 @@ def reverse_backrank(spec: dict[str, Any]) -> dict[str, Any]:
 # stand-in for that person has to be something statable.
 
 
-def settle_schema_version(spec: dict[str, Any]) -> dict[str, Any]:
-    """Stamp the spec with the lowest version it actually validates under, either way.
-
-    An edit that adds a schema-4 rule raises the stamp, and removing the rule again used
-    to leave it raised -- so the two halves of an add-or-remove operator could not return
-    a candidate to its parent. `schema_version` is part of the mechanics hash, so what
-    came back was a *new* hash for an identical game: a tournament spent re-measuring
-    something the archive already held, which is precisely the waste
-    `test_a_known_game_is_not_rediscovered` exists to prevent.
-
-    **Raising is the other half of the same argument**, and it was missing until the
-    designer needed it. The stamp is a claim about which features a spec uses, so a spec
-    that declares 1 and uses a schema-6 rule is not a spec with a low version: it is a
-    spec whose stamp is wrong, and refusing it tells a person to hand-edit a number they
-    should never have had to type. The lowest version a spec validates under is a
-    *function of the spec*, so applying it always is what makes two people who built the
-    same game get one hash rather than two.
-
-    Asked of the validator rather than answered from a list of features. A hand-kept
-    "which rules need which version" table here would be a second copy of the one thing
-    `spec/schema.py` is for, and it would go stale on the next bump without failing.
-
-    A spec that validates under no version at all is left exactly as it was: it is
-    invalid for some reason that is not the stamp, and moving the number would only
-    change which complaint the validator makes.
-
-    An edit to *one* piece cannot lower the version on its own (the spec may carry other
-    pieces that need it); this can, because it asks about the whole spec.
-    """
-    from chess_variant_sandbox.spec.schema import SUPPORTED_SCHEMA_VERSIONS, validate_spec
-
-    for version in SUPPORTED_SCHEMA_VERSIONS:
-        if not validate_spec({**spec, "schema_version": version}):
-            spec["schema_version"] = version
-            return spec
-    return spec
-
-
 def set_scoring(spec: dict[str, Any], count: str | None = None) -> dict[str, Any]:
     """Decide the game on a count when the clock runs out, instead of drawing.
 
@@ -1424,9 +1369,6 @@ def set_scoring(spec: dict[str, Any], count: str | None = None) -> dict[str, Any
             }
             count = "pieces" if len(values) <= 1 else "material"
     rules["scoring"] = {"count": count}
-    spec["schema_version"] = max(
-        int(spec.get("schema_version", 1)), 9 if count == "points" else 3
-    )
     return spec
 
 
@@ -1456,7 +1398,6 @@ def set_territory(
         win_at = max(3, min(squares // 2 + 1, squares))
     rules = spec.setdefault("rules", {})
     rules["territory"] = {"mode": mode, "win_at": win_at}
-    spec["schema_version"] = max(int(spec.get("schema_version", 1)), 4)
     return spec
 
 
@@ -1481,7 +1422,6 @@ def set_turn(spec: dict[str, Any], moves: int = 2) -> dict[str, Any]:
     """
     rules = spec.setdefault("rules", {})
     rules["turn"] = {"moves": moves, "ramp": [1]}
-    spec["schema_version"] = max(int(spec.get("schema_version", 1)), 4)
     return settle_en_passant(spec)
 
 
@@ -1512,7 +1452,6 @@ def set_wrap(spec: dict[str, Any], axis: str = "files") -> dict[str, Any]:
         )
     rules = spec.setdefault("rules", {})
     rules["wrap"] = {axis: "both"}
-    spec["schema_version"] = max(int(spec.get("schema_version", 1)), 5)
     return spec
 
 
@@ -1531,12 +1470,6 @@ def set_obstacle(spec: dict[str, Any], square: str) -> dict[str, Any]:
     obstacles = rules.setdefault("obstacles", {"squares": [], "mirror": True})
     if square not in obstacles["squares"]:
         obstacles["squares"].append(square)
-    spec["schema_version"] = max(int(spec.get("schema_version", 1)), 6)
-    # A wall on castling's rank beyond every rook is schema 18's walled rank (Q781).
-    from chess_variant_sandbox.spec.schema import castling_rank_walled_beyond_its_spans
-
-    if castling_rank_walled_beyond_its_spans(spec):
-        spec["schema_version"] = max(int(spec["schema_version"]), 18)
     return spec
 
 
@@ -1554,7 +1487,6 @@ def set_facing(
     for piece in spec.get("pieces", []):
         if isinstance(piece, dict) and piece.get("id") == piece_id:
             piece["facing"] = {"axes": axes}
-            spec["schema_version"] = max(int(spec.get("schema_version", 1)), 8)
             break
     return spec
 
@@ -1611,9 +1543,6 @@ def set_npc(
     if immune is not None:
         entry["immune"] = list(immune)
     rules.setdefault("npcs", []).append(entry)
-    spec["schema_version"] = max(
-        int(spec.get("schema_version", 1)), 10 if immune is not None else 9
-    )
     return spec
 
 
@@ -1642,7 +1571,6 @@ def set_promote_on_entry(spec: dict[str, Any]) -> dict[str, Any]:
     by name, not this function's to check.
     """
     spec.setdefault("rules", {})["promote_on_entry"] = True
-    spec["schema_version"] = max(int(spec.get("schema_version", 1)), 9)
     return spec
 
 
@@ -1688,7 +1616,6 @@ def set_strike(
             if isinstance(piece, dict) and piece.get("royal")
         ],
     }
-    spec["schema_version"] = max(int(spec.get("schema_version", 1)), 6)
     return spec
 
 
@@ -1718,7 +1645,6 @@ def set_stone(spec: dict[str, Any], piece_id: str, name: str = "stone") -> dict[
         "drops", {"from_captures": False}
     )
     drops.setdefault("stock", {})[piece_id] = STOCK_UNLIMITED
-    spec["schema_version"] = max(int(spec.get("schema_version", 1)), 10)
     return spec
 
 
@@ -1745,11 +1671,6 @@ def set_explosion(
     if of is not None:
         explosion["of"] = list(of)
     rules["explode_on_capture"] = explosion
-    # An *empty* `by` is still schema 10 -- it is a rule that never fires, which the
-    # complexity table charges nothing for and the compiler drops -- so the stamp asks
-    # whether the key was passed, not whether it named anything.
-    narrowed = by is not None or of is not None
-    spec["schema_version"] = max(int(spec.get("schema_version", 1)), 10 if narrowed else 2)
     return spec
 
 
@@ -1816,7 +1737,6 @@ def set_contacts(
             if isinstance(piece, dict) and piece.get("royal")
         ],
     }
-    spec["schema_version"] = max(int(spec.get("schema_version", 1)), 10)
     return spec
 
 
@@ -1882,7 +1802,6 @@ def set_landing(spec: dict[str, Any], key: str) -> dict[str, Any]:
         return spec
     rule["position"] = "choose"
     rule["landing"] = step_landing(spec)
-    spec["schema_version"] = max(int(spec.get("schema_version", 1)), 12)
     return spec
 
 
@@ -1966,7 +1885,6 @@ def set_own_link(spec: dict[str, Any], link: dict[str, Any]) -> dict[str, Any]:
             "links": [dict(link)],
             "immune": [piece["id"] for piece in pieces(spec) if piece.get("royal")],
         }
-    spec["schema_version"] = max(int(spec.get("schema_version", 1)), 11)
     return spec
 
 

@@ -1466,7 +1466,9 @@ def rested_royal_falls(
     (no other on the board, none in hand) and one whose loss ends the game; ``lists[side]``
     has no move off that square (the rest was not lifted); and ``lists[1 - side]``, whose
     resting pieces' moves are already gone, has a move that lands on it and takes. With every
-    type resting 1 at most one piece rests a player, and this is schema 27's term."""
+    type resting 1 at most one piece rests a player, and this is schema 27's term; with longer
+    rests any entry may be the royal, whatever its turns left (`docs/plan-rest.md` §5.4,
+    Q983b)."""
     return any(
         _royal_resting_falls(spec, state, side, square, lists) for square, _ in state.rest[side]
     )

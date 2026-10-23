@@ -162,7 +162,6 @@ def random_games(
 def test_each_showcase_is_its_parent_with_its_switches_and_nothing_else() -> None:
     for name, spec in SHOWCASES.items():
         assert validate_spec(spec) == [], name
-        assert spec["schema_version"] == (29 if name in RESTING else 27)
         assert spec["rules"]["simultaneous"] == SWITCHES[name]
         rebuilt = json.loads(json.dumps(PARENT))
         rebuilt["schema_version"] = 27

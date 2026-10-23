@@ -1,5 +1,5 @@
 {
-  "schema_version": 18,
+  "schema_version": 31,
   "name": "jeson mor",
   "description": "Jeson Mor, the Mongolian knights game, on a nine-by-nine board: nine knights a side on the first and last ranks. A knight that moves off the centre square e5 wins, so a knight has to get to e5 and survive there a move before it can win by stepping away; standing on e5 decides nothing. Since a knight attacks exactly the knights that attack it, a knight on e5 survives only if no enemy knight stands a knight's move from the centre, and those eight squares are the real battleground. Rushing a knight in invites a capture that simply puts the enemy's knight on e5 instead, with the same threat, while holding back lets the opponent build up first, so every exchange around the centre turns on who makes the last capture. Taking every enemy knight also wins, and a player with no legal move loses.",
   "board": {

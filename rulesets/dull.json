@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 31,
   "name": "dull",
   "description": "A deliberately shallow control. Small board, one piece type, only forward movement, no royalty. Games are short, repetitive, and largely settled by the opening exchange. It is here as the dull end of the scale: a score that could not tell this game from chess would not be worth reading.",
   "board": {

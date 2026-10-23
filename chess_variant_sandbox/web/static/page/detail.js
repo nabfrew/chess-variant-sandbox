@@ -2289,7 +2289,7 @@ function piecesHtml(piece, options) {
     <div>
       <h4>${esc(piece.name)} <span class="muted small">${esc(piece.id)}</span>${
         piece.royal ? `<span class="royal" title="the piece the game is about losing, like a king">royal</span>` : ''}${
-        speedPillHtml(piece, ranks)}</h4>
+        speedPillHtml(piece, ranks)}${restPillHtml(piece)}</h4>
       <ul>${moves.concat(notes).join('')}</ul>
     </div>
   </div>`;
@@ -2308,6 +2308,18 @@ function speedPillHtml(piece, ranks) {
   if (piece.speed === undefined || piece.speed === null || !ranks || ranks.length < 2) return '';
   return `<span class="speed" data-speed="${esc(piece.speed)}" title="${
     esc(speedLine(piece.speed, ranks))}">speed ${esc(piece.speed)}</span>`;
+}
+
+// Schema 29 (Q983b, `docs/plan-rest.md` §5.6): a piece's rest on its card, its hover line
+// saying what the number means, or nothing for a piece that never rests (the card's `rest`,
+// the compiled table's; absent in a game without a rest).
+function restPillHtml(piece) {
+  const turns = piece && piece.rest;
+  if (!turns) return '';
+  const words = `rests ${turns} turn${turns === 1 ? '' : 's'} after it moves: it may not make `
+    + `its side's next move${turns === 1 ? '' : 's'}, unless resting pieces are all its side can move`;
+  return `<span class="speed" data-rest="${esc(turns)}" title="${esc(words)}">rests ${
+    esc(turns)}</span>`;
 }
 
 // K2 (`docs/archive/plan-understanding.md` §4.2 step 2): each piece with a small board of its

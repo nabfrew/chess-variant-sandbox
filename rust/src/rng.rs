@@ -232,4 +232,16 @@ mod tests {
         let drawn: Vec<u64> = (0..4).map(|_| rng.randbelow(1000)).collect();
         assert_eq!(drawn, vec![317, 357, 117, 3]);
     }
+
+    /// F10b (Q752b): `getrandbits(0)` is CPython's 0 and draws no word; `randbelow(0)`,
+    /// which no caller asks (a `choice` from nothing is never made) and on which CPython
+    /// would loop, answers 0 and draws none either. The stream after both is the fresh one.
+    #[test]
+    fn zero_bits_and_a_zero_bound_draw_nothing() {
+        let mut drawn = PyRandom::new(3);
+        let mut fresh = PyRandom::new(3);
+        assert_eq!(drawn.getrandbits(0), 0);
+        assert_eq!(drawn.randbelow(0), 0);
+        assert_eq!(drawn.random(), fresh.random());
+    }
 }

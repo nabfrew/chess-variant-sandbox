@@ -41,7 +41,6 @@ next phase's units, or the result. So the page sends a worker text and never Pyt
 
 from __future__ import annotations
 
-import copy
 import json
 import tempfile
 from collections.abc import Sequence
@@ -54,7 +53,7 @@ from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.measurement import Basis
 from chess_variant_sandbox.metrics import DEFAULT_WEIGHTS, glossary, load_weights, score_ruleset
 from chess_variant_sandbox.spec.canonical import spec_hash
-from chess_variant_sandbox.spec.transform import settle_schema_version
+from chess_variant_sandbox.spec.spelling import current_spelling
 from chess_variant_sandbox.tournament import analysis as analysis_pass
 from chess_variant_sandbox.tournament import runner
 from chess_variant_sandbox.tournament.analysis import (
@@ -647,12 +646,12 @@ def gather_request(payload: str, cut: int = CUT) -> str:
     remember goes out in ``state``, which the page hands back unread, so a step is a
     function of its text and nothing else.
 
-    The spec is settled first (`settle_schema_version`, what `designing.settled` calls), so
-    the number is for the game the designer's check hashed.
+    The spec is tidied first (`spelling.current_spelling`, what `designing.settled` calls),
+    so the number is for the game the designer's check hashed.
     """
     data = json.loads(payload)
     if data.get("state") is None:
-        spec = settle_schema_version(copy.deepcopy(data["spec"]))
+        spec = current_spelling(data["spec"])
         state: dict[str, Any] = {"spec": spec, "cut": cut, "step": "", "dealt": {}}
     else:
         state = json.loads(data["state"])

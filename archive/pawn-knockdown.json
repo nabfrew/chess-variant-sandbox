@@ -1,5 +1,5 @@
 {
-  "schema_version": 12,
+  "schema_version": 31,
   "name": "pawn knockdown",
   "description": "Chess in which a pawn cannot take a piece outright, only knock it down. When a pawn captures a queen, rook, bishop or knight, the piece is not removed but drops a rank (queen to rook, rook to bishop, bishop to knight, knight to pawn) and is thrown onto an empty square a king's step from where it stood, the pawn's player choosing which, while the pawn takes the square. A pawn taking a pawn, and every capture by any other piece, is ordinary, and a king is never knocked down. So chess's cheapest attacker loses its sharpest threat: a pawn fork or a pawn winning a piece now only weakens it. What the pawn gains is the throw, which lets it put the weakened piece where it is worst placed, or where another piece can finish it off, so a pawn capture becomes the first half of a combination rather than the whole of one.",
   "board": {

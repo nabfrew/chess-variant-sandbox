@@ -1,5 +1,5 @@
 """Lines of sight on the page, in the designer and in the analysis pass (schema 30, Q999c,
-`docs/plan-passive.md` §4.6 to §4.8).
+`docs/archive/plan-passive.md` §4.6 to §4.8).
 
 What is held here, by behaviour:
 
@@ -254,7 +254,10 @@ function readRow(html) {
   const ticked = [];
   for (const [, tag] of html.matchAll(/<input([^>]*)>/g)) {
     if (/type="checkbox"/.test(tag)) {
-      if (/\\schecked\\b/.test(tag)) ticked.push(decode(named(tag, 'data-pid')));
+      // A box of its own (Q1007d's `captures_own`) is its field's value; the rest are ticks.
+      if (named(tag, 'data-sfield') !== 'affects') {
+        out.push([named(tag, 'data-sfield'), /\\schecked\\b/.test(tag)]);
+      } else if (/\\schecked\\b/.test(tag)) ticked.push(decode(named(tag, 'data-pid')));
       continue;
     }
     out.push([named(tag, 'data-sfield'), decode((/\\svalue="([^"]*)"/.exec(tag) || [])[1] || '')]);
@@ -309,9 +312,10 @@ class TestTheDesigner:
         assert values["effect"] == list(SIGHT_EFFECTS)
         assert values["whose"] == list(SIGHT_WHOSE)
         assert values["through"] == ["ray", "aura"]
-        # Every field is labelled in `spec.plain`'s words.
+        # Every field is labelled in `spec.plain`'s words; a command's `captures_own` only
+        # beside a command (Q1007d, `tests/test_command_page.py`).
         for key in cards.SIGHT_FIELDS:
-            assert f'data-sfor="{key}"' in html or key == "affects", key
+            assert f'data-sfor="{key}"' in html or key in ("affects", "captures_own"), key
         assert "only these pieces" in html and "what it does" in html
         # The generated stand-in is gone: the piece's generated fields hold no sight.
         assert "sight" not in {field["key"] for field in cards.card_model()["piece"]}

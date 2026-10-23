@@ -1,5 +1,5 @@
 {
-  "schema_version": 19,
+  "schema_version": 31,
   "name": "divide",
   "description": "A board cut in two by a wall across its middle row that nothing may stand on, slide through or jump over, with one door between the halves whose ends the two players steer. White moves the end on e3, Black the end on e9, a step at a time as a turn. White's pieces go in at White's end and come out one step beyond Black's, in the direction they were travelling, capturing there as usual; Black's go the other way. So the end you steer is your way out and also where the enemy's raiders land, while where yours land is your opponent's choice; a piece that crosses never comes back, and a pawn promotes only by going through. The armies are Capablanca chess's (ten files, with an archbishop, moving as bishop or knight, and a chancellor, as rook or knight), on eleven rows. The strongest computer players trade pawns through the door at once and then wait, and their games mostly end drawn for lack of progress.",
   "board": {
@@ -207,28 +207,6 @@
           "mode": "both"
         }
       ]
-    },
-    {
-      "id": "O",
-      "name": "portal",
-      "value": 0,
-      "moves": [
-        {
-          "kind": "leap",
-          "vectors": [
-            [
-              1,
-              0
-            ],
-            [
-              1,
-              1
-            ]
-          ],
-          "symmetry": "rotate4",
-          "mode": "move"
-        }
-      ]
     }
   ],
   "setup": {
@@ -337,7 +315,22 @@
     },
     "portals": [
       {
-        "piece": "O",
+        "moves": [
+          {
+            "kind": "leap",
+            "vectors": [
+              [
+                1,
+                0
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "symmetry": "rotate4"
+          }
+        ],
         "orange": "e3",
         "blue": "e9",
         "moved_by": {

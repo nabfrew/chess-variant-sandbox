@@ -49,12 +49,8 @@ from chess_variant_sandbox.engine.state import NO_SQUARE, GameState
 from chess_variant_sandbox.fairy.variant import Untranslatable, translate
 from chess_variant_sandbox.spec import load_spec, spec_hash, validate_spec
 from chess_variant_sandbox.spec.describe import describe_rules
-from chess_variant_sandbox.spec.schema import (
-    SCHEMA_VERSION,
-    _schema_twenty_four_uses,
-    _schema_twenty_two_uses,
-)
-from chess_variant_sandbox.spec.transform import settle_schema_version
+from chess_variant_sandbox.spec.schema import SCHEMA_VERSION
+from tests.feature_inventory import _schema_twenty_four_uses, _schema_twenty_two_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 FAST_BUDGET_NODES = 150_000
@@ -71,7 +67,7 @@ def fold_pair() -> dict[str, Any]:
     the end on b3 a step, onto a piece or not."""
     return _schema(_with_groups(
         "gardner",
-        [{"piece": "O", "orange": "b3", "blue": "d3", "kind": "fold",
+        [{"orange": "b3", "blue": "d3", "kind": "fold",
           "moved_by": {"orange": [0, 1]}}],
         [STEP],
     ))
@@ -83,7 +79,7 @@ def fold_ring() -> dict[str, Any]:
     player may move the end on c5."""
     return _schema(_with_groups(
         "chess",
-        [{"piece": "O", "kind": "fold", "ends": [
+        [{"kind": "fold", "ends": [
             {"at": "e2", "to": 1},
             {"at": "c5", "to": 2, "moved_by": [0, 1]},
             {"at": "f4", "to": 0},
@@ -99,8 +95,8 @@ def fold_beside_momentum() -> dict[str, Any]:
     return _schema(_with_groups(
         "losalamos",
         [
-            {"piece": "O", "orange": "b3", "blue": "e4", "moved_by": both},
-            {"piece": "O", "orange": "c4", "blue": "d3", "kind": "fold", "moved_by": both},
+            {"orange": "b3", "blue": "e4", "moved_by": both},
+            {"orange": "c4", "blue": "d3", "kind": "fold", "moved_by": both},
         ],
         [STEP],
     ))
@@ -110,7 +106,7 @@ def fold_pawns() -> dict[str, Any]:
     """Chess with a fixed fold pair on d3 and d6: a pawn's push onto d3 may come out on d6,
     and a pawn's diagonal onto the empty d3 comes out taking whatever stands on d6."""
     return _schema(_with_groups(
-        "chess", [{"piece": "O", "orange": "d3", "blue": "d6", "kind": "fold"}],
+        "chess", [{"orange": "d3", "blue": "d6", "kind": "fold"}],
     ))
 
 
@@ -119,7 +115,7 @@ def fold_funnel() -> dict[str, Any]:
     Each side's queen's knight lands on its own way in from the start."""
     return _schema(_with_groups(
         "chess",
-        [{"piece": "O", "kind": "fold", "ends": [
+        [{"kind": "fold", "ends": [
             {"at": "c3", "to": 2}, {"at": "f6", "to": 2}, {"at": "e5"},
         ]}],
     ))
@@ -219,7 +215,7 @@ def _agrees(engine: Engine, oracle: FoldOracle, state: GameState,
     )
     assert {
         (origin, target) for origin, target in _core_portal_moves(engine, state)
-    } == oracle.momentum_moves(position, folds, player)
+    } == oracle.momentum_moves(position, folds, player, unmoved=unmoved)
     legal = set(engine.legal_moves(state))
     for move in engine.pseudo_legal_moves(state):
         after = engine.apply(state, move)
@@ -277,28 +273,6 @@ class TestTheVersionIsBumped:
         spec = GAMES[name]()
         assert _schema_twenty_four_uses(spec) == {"rules.portals.kind"}
         assert _schema_twenty_two_uses(spec) == set()
-
-    @pytest.mark.parametrize("version", [22, 23])
-    def test_a_fold_at_twenty_two_or_twenty_three_is_refused_in_words(self, version: int) -> None:
-        spec = fold_pair()
-        spec["schema_version"] = version
-        assert any(
-            problem.startswith("folds changed at schema 24 (the user, 2026-10-12)")
-            for problem in validate_spec(spec)
-        )
-
-    def test_an_older_stamp_is_refused_by_name(self) -> None:
-        spec = fold_pair()
-        spec["schema_version"] = 21
-        assert any("added in schema 24" in problem for problem in validate_spec(spec))
-
-    @pytest.mark.parametrize("name", sorted(GAMES))
-    def test_each_test_game_validates_and_settles_to_twenty_four(self, name: str) -> None:
-        spec = GAMES[name]()
-        assert validate_spec(spec) == []
-        spec["schema_version"] = SCHEMA_VERSION
-        settle_schema_version(spec)
-        assert spec["schema_version"] == 24
 
 
 # -- the oracle over random walks -------------------------------------------------------
@@ -361,7 +335,7 @@ def _sparse(spec: dict[str, Any]) -> dict[str, Any]:
 def _gardner_folds(**pair: Any) -> dict[str, Any]:
     """Gardner, a king and a pawn a side, and a fold pair on b3 and d3 (plus ``pair``)."""
     return _sparse(_schema(_with_groups(
-        "gardner", [{"piece": "O", "orange": "b3", "blue": "d3", "kind": "fold", **pair}],
+        "gardner", [{"orange": "b3", "blue": "d3", "kind": "fold", **pair}],
         [STEP],
     )))
 
@@ -370,7 +344,7 @@ def _chess_folds(*groups: dict[str, Any], **rules: Any) -> dict[str, Any]:
     """Chess, a king, a rook and a pawn a side (so castling can still happen), and the fold
     groups given."""
     spec = _sparse(_schema(_with_groups(
-        "chess", [{"piece": "O", "kind": "fold", **group} for group in groups], [STEP], **rules,
+        "chess", [{"kind": "fold", **group} for group in groups], [STEP], **rules,
     )))
     spec["setup"]["placements"].append({"piece": "R", "squares": ["h1"]})
     return spec
@@ -564,8 +538,8 @@ class TestTheRevisedFoldRules:
 
     def test_7_a_slide_crosses_a_fold_to_a_momentum_end_beyond(self) -> None:
         spec = _sparse(_schema(_with_groups("losalamos", [
-            {"piece": "O", "orange": "c5", "blue": "e3"},
-            {"piece": "O", "orange": "c3", "blue": "a4", "kind": "fold"},
+            {"orange": "c5", "blue": "e3"},
+            {"orange": "c3", "blue": "a4", "kind": "fold"},
         ], [STEP])))
         spec["setup"]["placements"][0]["squares"] = ["d1"]
         placement = {"c5": ("1o", WILD), "e3": ("1b", WILD), "d1": ("K", 0), "f6": ("K", 1),
@@ -575,8 +549,8 @@ class TestTheRevisedFoldRules:
 
     def test_7_a_momentum_exit_onto_a_fold_stays(self) -> None:
         out = _sparse(_schema(_with_groups("losalamos", [
-            {"piece": "O", "orange": "b3", "blue": "e4"},
-            {"piece": "O", "orange": "e5", "blue": "a6", "kind": "fold"},
+            {"orange": "b3", "blue": "e4"},
+            {"orange": "e5", "blue": "a6", "kind": "fold"},
         ], [STEP])))
         out["setup"]["placements"][0]["squares"] = ["d1"]
         engine, state, texts = _at(out, {"b3": ("1o", WILD), "e4": ("1b", WILD),
@@ -629,7 +603,7 @@ class TestTheRevisedFoldRules:
 
     def test_9_a_drop_may_land_on_a_fold_and_stays(self) -> None:
         spec = _schema(_with_groups(
-            "crazyhouse", [{"piece": "O", "orange": "c3", "blue": "f6", "kind": "fold"}], [STEP],
+            "crazyhouse", [{"orange": "c3", "blue": "f6", "kind": "fold"}], [STEP],
         ))
         engine = Engine(spec)
         state = engine.make_state({"e1": ("K", 0), "e8": ("K", 1)})
@@ -674,21 +648,25 @@ class TestTheRevisedFoldRules:
 
 
 class TestWhatTheValidatorRefuses:
-    def test_kind_momentum_spelled_out(self) -> None:
+    def test_kind_momentum_spelled_out_is_the_group_without_it(self) -> None:
+        """Q1008c: the off value is accepted and names the momentum group."""
         spec = fold_pair()
-        spec["rules"]["portals"][0]["kind"] = "momentum"
-        assert any("is the default: drop it" in p for p in validate_spec(spec))
+        del spec["rules"]["portals"][0]["kind"]
+        written = copy.deepcopy(spec)
+        written["rules"]["portals"][0]["kind"] = "momentum"
+        assert validate_spec(written) == validate_spec(spec)
+        assert spec_hash(written) == spec_hash(spec)
 
     def test_an_unknown_kind(self) -> None:
         spec = fold_pair()
         spec["rules"]["portals"][0]["kind"] = "warp"
-        assert any('kind must be "fold"' in p for p in validate_spec(spec))
+        assert any("kind must be one of" in p for p in validate_spec(spec))
 
     def test_a_first_move_condition_on_a_folds_piece(self) -> None:
         spec = fold_pair()
-        portal = next(piece for piece in spec["pieces"] if piece["id"] == "O")
-        # A copy: `_with_portals` hands every spec the one shared `STEP`.
-        portal["moves"] = [dict(portal["moves"][0], condition={"first_move": True})]
+        group = spec["rules"]["portals"][0]
+        # A copy: `_with_portals` hands every group the one shared `STEP`.
+        group["moves"] = [dict(group["moves"][0], condition={"first_move": True})]
         assert any("may not have a first_move condition" in p for p in validate_spec(spec))
 
     def test_a_momentum_end_on_a_folds_square(self) -> None:
@@ -740,7 +718,7 @@ class TestTheSurfaces:
         assert "may stay there, or go through" in said
         assert "Fold pair 1 joins b3 and d3" in said
         momentum = " ".join(describe_rules(_with_groups(
-            "gardner", [{"piece": "O", "orange": "b3", "blue": "d3"}],
+            "gardner", [{"orange": "b3", "blue": "d3"}],
         )))
         assert "fold" not in momentum.lower()
 

@@ -194,12 +194,16 @@ def _flatten_dirs(
     ]
 
 
-def _sight_tables(spec: CompiledSpec) -> dict[str, list[int]]:
+def _sight_tables(spec: CompiledSpec) -> dict[str, Any]:
     """Schema 30: `SightRule.sources` flattened for the core (`tables.rs::SightTables`), or
-    four empty lists without a sight."""
+    four empty lists without a sight. Q1007c's ``sight_command`` is false unless a sight
+    commands (`_INERT_DEFAULTS`, so no other sight game's fingerprint moves)."""
     sight = spec.sight
     if sight is None:
-        return {"sight_index": [], "sight_srcs": [], "sight_paths": [], "sight_flags": []}
+        return {
+            "sight_index": [], "sight_srcs": [], "sight_paths": [], "sight_flags": [],
+            "sight_command": False,
+        }
     index = [0]
     srcs: list[int] = []
     paths: list[int] = []
@@ -217,6 +221,7 @@ def _sight_tables(spec: CompiledSpec) -> dict[str, list[int]]:
         "sight_flags": [
             int(sight.has_shield), int(sight.bears_on_check), int(sight.has_restraint),
         ],
+        "sight_command": sight.has_command,
     }
 
 
@@ -841,7 +846,7 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         # in rounds, so no other game's fingerprint moves.
         "piece_rest": list(spec.rest),
         "zobrist_rest": list(spec.zobrist_rest),
-        # Schema 30 (Q999a, `docs/plan-passive.md` §3.3): the sight's reverse table, shaped
+        # Schema 30 (Q999a, `docs/archive/plan-passive.md` §3.3): the sight's reverse table, shaped
         # as the attack sources -- an index per (player, affected type, square), five words
         # per source (origin, piece value, effect bit, path start, path length) and the flat
         # paths -- and its three flags, `[has_shield, bears_on_check, has_restraint]`. All four
@@ -1031,6 +1036,8 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "sight_srcs": [],
     "sight_paths": [],
     "sight_flags": [],
+    # Q1007c (`docs/plan-schema-31.md` §3.7). False unless a sight commands.
+    "sight_command": False,
 }
 
 # Keys that are part of what every game means, whatever rules it declares: the board's

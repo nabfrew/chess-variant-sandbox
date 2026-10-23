@@ -254,7 +254,7 @@ class TestTheDesignerWritesGroups:
     def test_three_clicks_and_done_make_a_ring_that_validates(self) -> None:
         draft = _drafted("startPortalTool();" + _clicks("b2", "e2", "c6") + "finishPortalTool();")
         (group,) = draft["rules"]["portals"]
-        assert group == {"piece": "O", "ends": [{"at": "b2", "to": 1}, {"at": "e2", "to": 2},
+        assert group == {"ends": [{"at": "b2", "to": 1}, {"at": "e2", "to": 2},
                                                  {"at": "c6", "to": 0}]}
         _valid(draft)
 
@@ -269,14 +269,14 @@ class TestTheDesignerWritesGroups:
         """A pair is the one spelling of a group of two (Q843a's *one game, one hash*): made a
         funnel, it is a pair whose way is one way for both sides."""
         pair = _drafted("startPortalTool();" + _clicks("b2", "e6") + "finishPortalTool();")
-        assert pair["rules"]["portals"] == [{"piece": "O", "orange": "b2", "blue": "e6"}]
+        assert pair["rules"]["portals"] == [{"orange": "b2", "blue": "e6"}]
         _valid(pair)
         one_way = _drafted("setShape(0, 'funnel');", _with({"orange": "b2", "blue": "e6"}))
-        assert one_way["rules"]["portals"] == [{"piece": "O", "orange": "b2", "blue": "e6", "passage": {
+        assert one_way["rules"]["portals"] == [{"orange": "b2", "blue": "e6", "passage": {
             "0": "orange_to_blue", "1": "orange_to_blue"}}]
         _valid(one_way)
         back = _drafted("setShape(0, 'funnel'); setShape(0, 'pair');", _with({"orange": "b2", "blue": "e6"}))
-        assert back["rules"]["portals"] == [{"piece": "O", "orange": "b2", "blue": "e6"}]
+        assert back["rules"]["portals"] == [{"orange": "b2", "blue": "e6"}]
 
     def test_a_row_changed_makes_your_own_map(self) -> None:
         spec = _with({"ends": [{"at": "b2", "to": 1}, {"at": "e2", "to": 2}, {"at": "c6", "to": 0}]})
@@ -352,7 +352,7 @@ class TestTheKeyboardPutsAGroupDown:
         draft, html = _page(copy.deepcopy(_GAME), walk + " const made = JSON.parse(JSON.stringify(DRAFT));"
                             " setShape(0, 'funnel');",
                             "[made, portalCardsHtml([])]")
-        assert draft["rules"]["portals"] == [{"piece": "O", "ends": [
+        assert draft["rules"]["portals"] == [{"ends": [
             {"at": "b2", "to": 1}, {"at": "b6", "to": 2}, {"at": "d6", "to": 0}]}]
         assert re.search(r'<button data-pshape="0.funnel" class="wayChoice shapeChoice on"', html)
 

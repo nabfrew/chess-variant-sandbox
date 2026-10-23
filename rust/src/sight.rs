@@ -1,7 +1,7 @@
 //! Lines of sight with passive effects (schema 30, Q999a): the one effect query in the core,
 //! read by the generator's filter and by the attack test.
 //!
-//! `docs/plan-passive.md` is the rule (§2) and its build (§3). A piece type may declare up to
+//! `docs/archive/plan-passive.md` is the rule (§2) and its build (§3). A piece type may declare up to
 //! four sights; every player's piece standing in one is under its effect, read from the board
 //! as it stands, with no memory. Three effects: **freeze** (the piece may not move, and
 //! attacks nothing), **disarm** (it may not capture, and attacks nothing), **shield** (nothing
@@ -17,6 +17,10 @@
 //! * `attacks_in_sight_game`, the attack test's third arm (`attacks_any`, `threatened_as`):
 //!   a shielded victim is attacked by nothing, and a frozen or disarmed attacker attacks
 //!   nothing. `attacks_square` itself, the hottest query, is the one it always was.
+//!
+//! * `push_commanded` (Q1007c, `docs/plan-schema-31.md` §3): a fourth effect, **command**
+//!   (the piece's opponent may also move it), is a second source of moves: the side to move's
+//!   moves with the opponent's commanded pieces, walked before the filter.
 //!
 //! Every game without a sight has `Tables::sight` `None` and pays one test at each call site.
 //! `tests/sight_oracle.py` is the declared oracle.
@@ -37,6 +41,8 @@ pub struct EffectsReport {
     pub bits: Vec<u8>,
     pub removed: [u32; 3],
     pub suppressed: bool,
+    /// Q1007c: how many of the side to move's legal moves are commanded ones.
+    pub commanded: u32,
 }
 
 impl<'t> Game<'t> {
@@ -52,7 +58,9 @@ impl<'t> Game<'t> {
         }
         let mut bits = 0u8;
         for source in sight.sources_of(player, t.type_of(occupant), square) {
-            if bits & source.effect != 0 || self.board[source.origin as usize] != source.piece_value
+            // Skip a source whose bits are all set already. One bit per source but a
+            // command that `captures_own` (Q1007c), whose two bits are a union too.
+            if source.effect & !bits == 0 || self.board[source.origin as usize] != source.piece_value
             {
                 continue;
             }
@@ -162,7 +170,7 @@ impl<'t> Game<'t> {
             for square in self.occupied()[enemy].iter() {
                 let piece_type = t.type_of(self.board[square]);
                 for source in sight.sources_of(enemy, piece_type, square) {
-                    if source.effect != SIGHT_SHIELD {
+                    if source.effect & (SIGHT_FREEZE | SIGHT_DISARM) != 0 {
                         note(source, &mut lines);
                     }
                 }
@@ -191,12 +199,13 @@ impl<'t> Game<'t> {
     /// `Core.effects` (§3.4): every square's effect bits, the moves the filter removed for the
     /// side to move by reason, and whether its royal stands under a suppressed attack. Zeros
     /// and false in a game without a sight.
-    pub fn effects_report(&self) -> EffectsReport {
+    pub fn effects_report(&mut self) -> EffectsReport {
         let t = self.t;
         let mut report = EffectsReport {
             bits: vec![0; t.n_squares],
             removed: [0; 3],
             suppressed: false,
+            commanded: 0,
         };
         let Some(sight) = t.sight.as_deref() else {
             return report;
@@ -226,7 +235,172 @@ impl<'t> Game<'t> {
             self.attacks_square(1 - player, royal)
                 && !self.attacks_in_sight_game(sight, 1 - player, royal, None)
         });
+        if sight.has_command {
+            report.commanded = self
+                .legal_moves()
+                .iter()
+                .filter(|&&m| m & MOVE_COMMANDED != 0)
+                .count() as u32;
+        }
         report
+    }
+
+    /// Q1007c (`docs/plan-schema-31.md` §3.2, §3.3, §3.7): the second move source. Every move
+    /// the side to move may make with one of the opponent's pieces that a command binds and
+    /// no freeze does, as its owner would make it (the owner's frame, first-move rights and
+    /// screens), appended to `out` with `MOVE_COMMANDED` set:
+    ///
+    /// * a leap, slide or hop onto an empty square, and a turn in place;
+    /// * under `SIGHT_COMMAND_OWN` without `SIGHT_DISARM`, a capture of one of the owner's
+    ///   own non-royal pieces its capture list allows (a turncoat capture), on the lines its
+    ///   captures travel; a piece of the commander's blocks and is never taken;
+    /// * never a castling, an en passant, a drop or a promotion: an arrival that would have
+    ///   to promote is not offered, and under optional promotion the piece arrives as it is.
+    ///
+    /// Royals are never commanded (the compiler files no command source under a royal type).
+    /// Sweeps, portals, folds and strikes are refused beside a command, so the walk has the
+    /// three arms. Out of line: a game without a command never calls it. The shield on a
+    /// victim is `sight_filter`'s, which runs over these moves as over every other, and every
+    /// one of them is verified for the commander's royal (`generate_checked`).
+    #[cold]
+    #[inline(never)]
+    pub(super) fn push_commanded(&self, sight: &SightTables, out: &mut Vec<u32>) {
+        let t = self.t;
+        let player = self.side;
+        // The placement phase: a drop is the only move (as in `generate_pseudo_legal_as`).
+        if let Some(rule) = t.drops.as_ref() {
+            if rule.placement && self.hands[player].iter().any(|held| *held > 0) {
+                return;
+            }
+        }
+        let owner = 1 - player;
+        let low = t.value_low(owner);
+        let high = low + t.side_stride as u16;
+        for origin in self.occupied()[owner].iter() {
+            let raw = self.board[origin];
+            let (piece_type, frame) = t.decode_owned(raw, low, owner);
+            let bits = self.effects_at(sight, owner, origin);
+            if bits & SIGHT_COMMAND == 0 || bits & SIGHT_FREEZE != 0 {
+                continue;
+            }
+            debug_assert!(!t.is_royal(piece_type), "a royal under a command");
+            let turncoat = bits & SIGHT_COMMAND_OWN != 0 && bits & SIGHT_DISARM == 0;
+            let origin_unmoved = self.unmoved.get(origin);
+            let promoting = t.is_promoting(piece_type);
+            let leaving = promoting
+                && t.promotes_on_leaving(piece_type)
+                && t.promotes_on(owner, piece_type, origin);
+            let must_promote = |target: usize| {
+                promoting
+                    && !t.promotion_optional(piece_type)
+                    && (leaving || t.promotes_on(owner, piece_type, target))
+            };
+            // A turncoat capture: the owner's own non-royal piece, on a capture line, of a
+            // type the piece may take.
+            let takes_own = |occupant: u16, mode: u8| {
+                turncoat
+                    && mode & 2 != 0
+                    && low <= occupant
+                    && occupant < high
+                    && !t.is_royal(t.type_of(occupant as u8))
+                    && may_take(t, piece_type, occupant)
+            };
+            let word = |target: usize| encode_move(origin, target, MOVE_NORMAL, 0) | MOVE_COMMANDED;
+            let slot = t.slot(frame, piece_type, origin);
+            let segment_start = out.len();
+
+            for entry in t.leaps.entries(slot) {
+                if entry.requires_unmoved && !origin_unmoved {
+                    continue;
+                }
+                let squares = t.leaps.squares(entry);
+                let modes = t.leaps.modes(entry);
+                for index in 0..squares.len() {
+                    let target = squares[index] as usize;
+                    let occupant = self.board[target] as u16;
+                    let mode = modes[index];
+                    let lands = if occupant == 0 { mode & 1 != 0 } else { takes_own(occupant, mode) };
+                    if lands && !must_promote(target) {
+                        out.push(word(target));
+                    }
+                }
+            }
+
+            for entry in t.slides.entries(slot) {
+                if entry.requires_unmoved && !origin_unmoved {
+                    continue;
+                }
+                let squares = t.slides.squares(entry);
+                let modes = t.slides.modes(entry);
+                for index in 0..squares.len() {
+                    let target = squares[index] as usize;
+                    let occupant = self.board[target] as u16;
+                    let mode = modes[index];
+                    let lands = if occupant == 0 { mode & 1 != 0 } else { takes_own(occupant, mode) };
+                    if lands && !must_promote(target) {
+                        out.push(word(target));
+                    }
+                    if occupant != 0 {
+                        break;
+                    }
+                }
+            }
+
+            for entry in t.hops.entries(slot) {
+                if entry.requires_unmoved && !origin_unmoved {
+                    continue;
+                }
+                let squares = t.hops.squares(entry);
+                let modes = t.hops.modes(entry);
+                let length = squares.len();
+                let mut index = 0;
+                while index < length && self.board[squares[index] as usize] == 0 {
+                    index += 1;
+                }
+                // The screen is judged as the owner would judge it.
+                if index >= length
+                    || !screen_matches(
+                        entry.screen_owner, self.board[squares[index] as usize] as u16, low, high,
+                    )
+                {
+                    continue;
+                }
+                index += 1;
+                let stop = if entry.screen_range == 0 {
+                    length
+                } else {
+                    length.min(index + entry.screen_range as usize)
+                };
+                while index < stop {
+                    let target = squares[index] as usize;
+                    let occupant = self.board[target] as u16;
+                    let mode = modes[index];
+                    let lands = if occupant == 0 { mode & 1 != 0 } else { takes_own(occupant, mode) };
+                    if lands && !must_promote(target) {
+                        out.push(word(target));
+                    }
+                    if occupant != 0 {
+                        break;
+                    }
+                    index += 1;
+                }
+            }
+
+            if t.dedup[slot] {
+                dedup_segment(out, segment_start);
+            }
+
+            // A turn in place, as the owner may turn it (`generate_pseudo_legal_as`).
+            let axes = if t.has_facing { t.turns_of(piece_type) } else { 1 };
+            if axes > 1 {
+                let step = t.n_facings / axes;
+                let facing = frame % t.n_facings;
+                for turn in 1..axes {
+                    let to = (facing + turn * step) % t.n_facings;
+                    out.push(encode_move(origin, origin, MOVE_ROTATE, to as u32) | MOVE_COMMANDED);
+                }
+            }
+        }
     }
 
     /// `Core.sight_of` (§3.4): the squares the piece on `square` sees now, each with the

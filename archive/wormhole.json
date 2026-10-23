@@ -1,5 +1,5 @@
 {
-  "schema_version": 19,
+  "schema_version": 31,
   "name": "wormhole",
   "description": "A door through the middle of Gardner's minichess, the five-by-five chess with a king, queen, rook, bishop, knight and five pawns a side and no pawn double step. A fixed pair of portals sits on b3 and d3, open to both sides: a piece that ends its move on one end comes out one step beyond the other, in the direction it was travelling, capturing there as usual. With one empty row between the armies, every move into the door strikes the enemy camp, so the game is a race to strike first, and too clear a race: a pawn stepping diagonally into an end comes out capturing an enemy pawn one step from promotion, and in the strongest computer games the first player wins every decided game. It is kept as the plainest form of the idea, and the problem that shutting the door to one player, or to pawns, answers.",
   "board": {
@@ -134,28 +134,6 @@
           "mode": "both"
         }
       ]
-    },
-    {
-      "id": "O",
-      "name": "portal",
-      "value": 0,
-      "moves": [
-        {
-          "kind": "leap",
-          "vectors": [
-            [
-              1,
-              0
-            ],
-            [
-              1,
-              1
-            ]
-          ],
-          "symmetry": "rotate4",
-          "mode": "move"
-        }
-      ]
     }
   ],
   "setup": {
@@ -221,7 +199,22 @@
     "no_progress_draw": 100,
     "portals": [
       {
-        "piece": "O",
+        "moves": [
+          {
+            "kind": "leap",
+            "vectors": [
+              [
+                1,
+                0
+              ],
+              [
+                1,
+                1
+              ]
+            ],
+            "symmetry": "rotate4"
+          }
+        ],
         "orange": "b3",
         "blue": "d3"
       }

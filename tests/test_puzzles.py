@@ -164,11 +164,17 @@ def _reach(engine: Engine, *texts: str) -> Any:
 # position. If this fails, the build changed the core's key (`compile.py` seeds it from the
 # rules' hash) or `puzzles.content`: that change owes a store migration like
 # `0040_proven_names.sql`, never an edit of these numbers alone.
+#
+# Q1008a re-pinned them, and owes no migration: `SPEC` is this file's probe and names no
+# stored game, so its identity became its normal-form hash and its keys moved, while every
+# game that had a name keeps it and its keys (`tests/test_schema_nine.py::FROZEN` pins each
+# one's tables, position keys included). Were 10f4889a84a0fb52, 847c52d5ef54fab8,
+# c501fb2704dd67af and 85a192d09e9e57d3.
 FROZEN_NAMES = {
-    (): "10f4889a84a0fb52",
-    ("Sb1-b2",): "847c52d5ef54fab8",
-    ("Sb1-b2", "Sd5-d4"): "c501fb2704dd67af",
-    ("Sb1-b2", "Sd5-d4", "Tc1-d2"): "85a192d09e9e57d3",
+    (): "b4c9547e94ae83c2",
+    ("Sb1-b2",): "a0f740c3fc140de2",
+    ("Sb1-b2", "Sd5-d4"): "fd279e98d66437e9",
+    ("Sb1-b2", "Sd5-d4", "Tc1-d2"): "43bf4bf284a172c4",
 }
 
 

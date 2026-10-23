@@ -1,4 +1,4 @@
-"""The player-value teacher (Q665, plan-teacher §8.2 T2v): a label from the playing search.
+"""The player-value teacher (Q665, archive/plan-teacher §8.2 T2v): a label from the playing search.
 
 What is held here, on gardner (a small board, not chess) and tiny budgets:
 
@@ -58,7 +58,7 @@ DEFAULT_DIGEST = "db5ef1bc938e"
 Q637_DIGEST = "1d160257b8e5"
 Q502F2_DIGEST = "1c193cc56c76"
 # T2v's recipe: Q637's (the default then) with the player's value at 51,200 nodes
-# (plan-teacher §8.2).
+# (archive/plan-teacher §8.2).
 T2V = Q637.with_(label_search="player", label_nodes=51_200)
 T2V_DIGEST = "bfca30cf2c4a"
 

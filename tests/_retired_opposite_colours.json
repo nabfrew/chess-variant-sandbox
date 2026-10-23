@@ -1,0 +1,51 @@
+{
+  "schema_version": 31,
+  "name": "opposite colours",
+  "description": "In chess the two kings start on opposite colours, White's on a dark square and Black's on a light one. Here every piece is bound to its colour, as a bishop is, and that splits each army in two: the pieces on your king's colour can only ever fight the enemy pieces that come for it, and the pieces on the other colour can only ever fight the enemy king and its defenders. No capture crosses between the colours. Sight does. A pawn freezes the enemy piece straight ahead of it, where a chess pawn would have pushed; the camel, jumping three and one, disarms enemy pieces a knight's jump away, where a chess knight would have landed; the elephant, jumping two squares in any direction, makes its own pieces on the four squares beside it impossible to take, other elephants and the king excepted; and the guard, which moves as the king does, freezes enemy pieces beside it. A frozen piece cannot move, a disarmed one cannot capture, and neither gives check. So most mates need the colour the king does not stand on: often a pawn from the enemy's defending colour walks up in front of the king and freezes it, and then any check is mate. Your own pawns' gaze in front of your king is the defence against that walk, and the only pieces that can take the walker are the ones you sent away to attack, so every move weighs the attack on one colour against the defence on the other.",
+  "board": {"width": 8, "height": 8},
+  "pieces": [
+    {"id": "P", "name": "pawn", "value": 1,
+     "moves": [{"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "both"}],
+     "sight": [{"vectors": [[0, 1]], "range": 1, "effect": "freeze", "whose": "enemy"}]},
+    {"id": "C", "name": "camel", "value": 2.5,
+     "moves": [{"kind": "leap", "vectors": [[3, 1]], "symmetry": "dihedral8"}],
+     "sight": [{"vectors": [[1, 2]], "symmetry": "dihedral8", "range": 1, "effect": "disarm", "whose": "enemy"}]},
+    {"id": "E", "name": "elephant", "value": 2.5,
+     "moves": [{"kind": "leap", "vectors": [[2, 2], [2, 0]], "symmetry": "rotate4"}],
+     "sight": [{"vectors": [[1, 0]], "symmetry": "rotate4", "range": 1, "effect": "shield", "whose": "own",
+                "affects": ["P", "C", "B", "G"]}]},
+    {"id": "B", "name": "bishop", "value": 4,
+     "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4"}]},
+    {"id": "G", "name": "guard", "value": 4.5,
+     "moves": [{"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate4"},
+               {"kind": "leap", "vectors": [[2, 0]], "symmetry": "rotate4"}],
+     "sight": [{"vectors": [[1, 0]], "symmetry": "rotate4", "range": 1, "effect": "freeze", "whose": "enemy"}]},
+    {"id": "K", "name": "king", "value": 0, "royal": true,
+     "moves": [{"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate4"},
+               {"kind": "leap", "vectors": [[2, 0]], "symmetry": "rotate4"}]}
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {"piece": "E", "squares": ["a1", "h1"]},
+      {"piece": "C", "squares": ["b1", "g1"]},
+      {"piece": "B", "squares": ["c1", "f1"]},
+      {"piece": "G", "squares": ["d1"]},
+      {"piece": "K", "squares": ["e1"]},
+      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2"]}
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {"piece": "P", "rank": "last", "to": ["B", "E", "C", "G"]},
+    "max_plies": 300
+  },
+  "appearance": {"icons": {"G": "commoner"}},
+  "provenance": {
+    "added": "2026-10-22",
+    "origin": "designed",
+    "source": "docs/archive/plan-passive.md, Q999b: the user's colour-bound showcase for schema 30's lines of sight (sections 5 and 6.5)",
+    "history": "The user's request (2026-10-21): every piece's movement keeps its square colour, both armies are symmetrical with pieces on both colours, so captures happen only between pieces on one colour and the colours touch only through lines of sight. Designed by Q999b (2026-10-22) with skill game-designer from chess's array, every piece made colour-bound; the design log (seven scratch drafts, what each changed and why) is in docs/archive/plan-passive.md section 6.5. Joined the library from preview by Q1005 (2026-10-23, docs/reference/preview-call-2026-10.md): the library's only game whose two armies never capture across the board's two colours and meet only by lines of sight, and the only one using freeze, disarm and shield together. It met all five of its bars, registered before any measured game (C1 to C5), viable in 4 of 4 runs at 0.824 with the seat level."
+  }
+}

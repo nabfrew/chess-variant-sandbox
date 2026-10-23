@@ -107,12 +107,19 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "type": "string",
                 "enum": list(MOVE_KINDS),
                 "description": (
-                    "slide: step repeatedly, blocked by pieces. "
+                    "slide: step repeatedly, blocked by pieces. Over a vector longer than "
+                    "one square it is a rider, repeating that jump and stopped only by a "
+                    "piece on a square it would land on (a slide over [1, 2] by dihedral8 is "
+                    "the nightrider). "
                     "leap: jump straight to the target, ignoring anything between. "
                     "hop: jump exactly one screening piece, then continue. "
                     "lame: like leap, but blocked by a piece on the way, as the "
-                    "xiangqi horse is. A one-square vector has no square to be blocked on "
-                    "and is refused: use a leap or a range-1 slide. "
+                    "xiangqi horse is: the square a jump passes is one step along its "
+                    "longer axis, or the midpoint of an equal diagonal ([1, 2] passes "
+                    "[0, 1], [2, 0] passes [1, 0], [2, 2] passes [1, 1]). With a range it "
+                    "is a lame rider, jump after jump, each blocked on that square too. A "
+                    "one-square vector has no square to be blocked on and is refused: use a "
+                    "leap or a range-1 slide. "
                     "sweep: jump to any square along the line, removing every piece "
                     "passed over, friendly included; a piece it may not capture blocks, "
                     "and a sweep that could pass over the enemy royal is check."
@@ -137,9 +144,10 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "minimum": 0,
                 "maximum": MAX_BOARD_DIM,
                 "description": (
-                    "Maximum distance of a slide or a hop; 0 means unlimited. Not for a "
-                    "leap or a lame leap, which are one jump per vector and refuse it. "
-                    "To reach further, list more vectors."
+                    "Maximum distance of a slide or a hop; 0 means unlimited. On a lame "
+                    "move, how many jumps it may make (default 1, a single lame leap; 0 "
+                    "unlimited, a lame rider). Not for a leap, which is one jump per vector "
+                    "and refuses it: to reach further, list more vectors, or ride it."
                 ),
             },
             "min_range": {
@@ -147,9 +155,10 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "minimum": 1,
                 "maximum": MAX_BOARD_DIM,
                 "description": (
-                    "Minimum distance of a slide or a hop. Set it equal to range for a "
-                    "move that must travel exactly that far, such as a pawn's opening "
-                    "double step. Refused on a leap or a lame leap, like range."
+                    "Minimum distance of a slide or a hop, or the nearest jump a lame "
+                    "rider may stop on (nearer landings still block). Set it equal to range "
+                    "for a move that must travel exactly that far, such as a pawn's opening "
+                    "double step. Refused on a leap, like range."
                 ),
             },
             "mode": {
@@ -200,7 +209,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
         strict=strict,
     )
 
-    # Schema 30 (Q999a, `docs/plan-passive.md` §2): one line of sight, written with a slide's
+    # Schema 30 (Q999a, `docs/archive/plan-passive.md` §2): one line of sight, written with a slide's
     # geometry keys (the same vector, symmetries and bounds as a move's) and its effect.
     sight_line = _object(
         {
@@ -250,8 +259,11 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "disarm: it may move but may not capture (no capture, en passant, strike, "
                     "contact, or sweep over a piece), and it attacks nothing, so it gives no "
                     "check. shield: nothing may capture it or take it in passing, and a "
-                    "shielded royal is never in check. A frozen or shielded piece still "
-                    "stands, blocks and counts."
+                    "shielded royal is never in check. command: its opponent may also move it, "
+                    "as that player's move and as its owner would move it, onto an empty "
+                    "square only (never taking the mover's own pieces); it never castles, "
+                    "takes or opens en passant, or promotes, and a royal is never commanded. "
+                    "A frozen or shielded piece still stands, blocks and counts."
                 ),
             },
             "whose": {
@@ -270,7 +282,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "description": (
                     "The piece ids it touches; omit it for every type. It may name this "
                     "piece's own type (Madrasi: a queen freezes the enemy queen). Never an "
-                    "empty list, a wild piece or a portal."
+                    "empty list or a wild piece."
                 ),
             },
             "through": {
@@ -279,7 +291,18 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "description": (
                     "true makes it an aura that sees past every piece, up to range; omit it "
                     "for a ray, which sees the first piece on each line and stops there. A "
-                    "wall or the board's edge ends both. Never write false."
+                    "wall or the board's edge ends both."
+                ),
+            },
+            "captures_own": {
+                "type": "boolean",
+                "const": True,
+                "description": (
+                    "Only beside effect 'command': true lets a commanded piece also be made to "
+                    "take a piece of its own side that its captures list allows (never a "
+                    "royal or a shielded piece, and not while it is disarmed); omit it for a "
+                    "command that moves its pieces onto empty squares only. Refused beside "
+                    "drops that fill a hand from captures."
                 ),
             },
         },
@@ -297,9 +320,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
             },
             "value": {"type": "number", "minimum": 0, "maximum": 100},
             # No minItems (Q925): the validator admits `moves: []` for a piece
-            # `rules.drops.stock` puts in a hand and for a portal type nobody moves
-            # (`schema.piece_has_stock`, `portal_type_needs_no_moves`), and a cross-reference
-            # is not something a JSON Schema bound can say, so the condition is in words.
+            # `rules.drops.stock` puts in a hand (`schema.piece_has_stock`), and a
+            # cross-reference is not something a JSON Schema bound can say, so the condition
+            # is in words.
             "moves": {
                 "type": "array",
                 "items": move,
@@ -307,8 +330,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "description": (
                     "The ways this piece may move, each one a separate entry; the piece "
                     "may make any one of them on its turn. A piece may have none only when "
-                    "it starts in a player's hand (rules.drops.stock) or is a portal "
-                    "nobody moves."
+                    "it starts in a player's hand (rules.drops.stock)."
                 ),
             },
             "region": _squares(
@@ -338,21 +360,21 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "type": "array",
                 "items": {"type": "string"},
                 "description": (
-                    "Schema 26. Only in a simultaneous game (rules.simultaneous): the piece "
+                    "Only in a simultaneous game (rules.simultaneous): the piece "
                     "ids this one eliminates when the two collide, both moving onto the same "
                     "square in one round. Omit it and it is the piece's captures, or every "
-                    "piece where captures is omitted too; never write that list out. If "
+                    "piece where captures is omitted too. If "
                     "exactly one of the two beats the other, that one stands on the square "
                     "and the other is eliminated; if both do or neither does, it is a tie "
                     "(rules.simultaneous.tie). An empty list loses every collision it does "
-                    "not tie. Never on a portal."
+                    "not tie."
                 ),
             },
             "spy": {
                 "type": "boolean",
                 "const": True,
                 "description": (
-                    "Schema 27. This piece is a spy, and the game is played in three phases "
+                    "This piece is a spy, and the game is played in three phases "
                     "by who still has one on the board. While both players have a spy, they "
                     "take turns as usual. When one player loses their last spy, they first "
                     "play one ordinary reply move if it is their turn; then the game is played "
@@ -363,15 +385,15 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "bring one back (no promotion to it, no stock or hand holding it, no "
                     "drops.from_captures, no strike.switches_sides), it may not be royal, and "
                     "something of the other player's must be able to remove it. Leave it out "
-                    "for an ordinary piece; never write false."
+                    "for an ordinary piece."
                 ),
             },
             "speed": {
                 "type": "integer",
                 "minimum": 1,
                 "description": (
-                    "Schema 28. Only in a game played in rounds (rules.simultaneous): this "
-                    "piece's speed, a rank; omit it for 0, the slowest, and never write 0. A "
+                    "Only in a game played in rounds (rules.simultaneous): this "
+                    "piece's speed, a rank; omit it for 0, the slowest. A "
                     "higher speed moves first. When the two pieces moving in a round have the "
                     "same speed the round is resolved as always (collisions, beats, the tie). "
                     "When they differ, the faster move is made first, exactly as chosen, as a "
@@ -384,8 +406,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "faster strike, and unequal speeds never collide or swap. Only the order "
                     "is a rule: the speeds in use, 0 counted for every piece that names none, "
                     "must be 0, 1, 2, ... with none skipped, and some piece of one player "
-                    "must differ in speed from some piece of the other. Never on a portal or "
-                    "a wild piece."
+                    "must differ in speed from some piece of the other. Never on a wild "
+                    "piece."
                 ),
             },
             "rest": {
@@ -393,9 +415,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "minimum": 1,
                 "maximum": REST_MAX,
                 "description": (
-                    "Schema 29. How many of its player's turns this piece rests after it "
-                    "makes its player's move, 1 to 4; omit it for 0 (it never rests), and "
-                    "never write 0. In any game, played by turns or in rounds (a round is a "
+                    "How many of its player's turns this piece rests after it "
+                    "makes its player's move, 1 to 4; omit it for 0 (it never rests). "
+                    "In any game, played by turns or in rounds (a round is a "
                     "turn of both players): a piece that moved, turned in place, was dropped, "
                     "or struck without leaving its square may not make its player's move "
                     "during that player's next rest turns, counted on the owner's own turns "
@@ -405,9 +427,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "its square or changed by the other player, it rests no more. When every "
                     "move a player has is a resting piece's, the rest is lifted for that "
                     "turn, so the rest never leaves a player without a move. Never on a "
-                    "portal or a wild piece, and not beside a turn of more than one move "
-                    "(rules.turn moves or ramp). Replaces schema 27's rules.simultaneous.rest, "
-                    "which is \"rest\": 1 on every piece of a game in rounds."
+                    "wild piece, and not beside a turn of more than one move "
+                    "(rules.turn moves or ramp)."
                 ),
             },
             "sight": {
@@ -416,8 +437,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "minItems": 1,
                 "maxItems": SIGHT_MAX,
                 "description": (
-                    f"Schema 30. This piece's lines of sight, 1 to {SIGHT_MAX}; omit it for a "
-                    "piece that sees nothing, and never write an empty list. Each line is "
+                    f"This piece's lines of sight, 1 to {SIGHT_MAX}; omit it for a "
+                    "piece that sees nothing. Each line is "
                     "written like a slide (vectors, symmetry, range, min_range) and puts the "
                     "pieces it sees under an effect for as long as they stand there, read "
                     "from the board as it is, with no memory. A ray (no through) sees each "
@@ -431,12 +452,15 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "effect are one. There is no lift: a player whom a freeze leaves with no "
                     "legal move is checkmated if in check, and otherwise rules.stalemate "
                     "decides. In rounds the effects decide what is offered, never how a "
-                    "collision resolves. Never on a portal or a wild piece; refused beside "
+                    "collision resolves. Never on a wild piece; refused beside "
                     "rules.portals and rules.explode_on_capture, a shield is refused beside a "
                     "sweep move and beside rules.npcs, and a sight that can never bind (no "
                     "type it affects is ever held by the side it affects, a freeze on types "
                     "with no move, a disarm on types that capture nothing, a shield on types "
-                    "nothing can capture) is refused."
+                    "nothing can capture, a command on types with no move) is refused. A "
+                    "command never touches a royal (an affects naming one is refused) and is "
+                    "refused beside rules.simultaneous, rules.reach, rules.territory, "
+                    "rules.strike, rules.contacts, pieces[].rest and a sweep move."
                 ),
             },
             "facing": _object(
@@ -1020,15 +1044,20 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 "type": "array",
                 "items": _object(
                     {
-                        "piece": {
-                            "type": "string",
+                        "moves": {
+                            "type": "array",
+                            "items": move,
+                            "maxItems": MAX_MOVE_DESCRIPTORS,
                             "description": (
-                                "A declared piece id whose moves the group's ends use when "
-                                "a player moves one. It must be worth 0, not royal, not "
-                                "placed by setup.placements and named by no other rule; "
-                                "every move it has must say mode 'move' and read the same "
-                                "for both players. It may have no moves when nobody moves "
-                                "the group."
+                                "How an end of this group moves when a player moves it "
+                                "(moved_by), written exactly as a piece's moves are. A "
+                                "portal only ever steps onto an empty square, so each move "
+                                "leaves mode out (it means 'move' here) or says 'move'; "
+                                "none sweeps, none has a from_rank or region condition, and "
+                                "each reads the same for both players (a king's step is "
+                                "kind 'leap', vectors [[1, 0], [1, 1]], symmetry "
+                                "'rotate4'). Required when anybody may move an end; omit "
+                                "it when nobody does."
                             ),
                         },
                         "orange": {
@@ -1083,11 +1112,10 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                                     "type": "array",
                                     "items": {"type": "string"},
                                     "description": (
-                                        f"Schema 21. The piece ids that may go in by the "
+                                        f"The piece ids that may go in by the "
                                         f"pair's {which} end; every other piece meets it as "
                                         "an uncapturable obstacle. Absent: every piece. "
-                                        "Never empty, never every piece that can move, "
-                                        "never a portal."
+                                        "Never empty, never every piece that can move."
                                     ),
                                 }
                                 for end, which in (("orange", "first"), ("blue", "second"))
@@ -1095,7 +1123,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             required=[],
                             strict=strict,
                             description=(
-                                "Schema 21. Which pieces may go in by each end of a pair, "
+                                "Which pieces may go in by each end of a pair, "
                                 "keyed by the end; an end not listed lets every piece in."
                             ),
                         ),
@@ -1153,7 +1181,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                                 strict=strict,
                             ),
                             "description": (
-                                "Schema 21. Three to eight ends, each leading to another "
+                                "Three to eight ends, each leading to another "
                                 "of the group or nowhere: a ring (each to the next), a "
                                 "funnel (several to one way out), or any other map. Every "
                                 "end must lead somewhere or be led to. Two ends are a "
@@ -1165,8 +1193,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "type": "string",
                             "enum": ["fold"],
                             "description": (
-                                "Schema 24. 'fold' makes the group fold portals; absent, they "
-                                "are momentum portals (the default, never written). A fold is "
+                                "'fold' makes the group fold portals; absent, they "
+                                "are momentum portals (the default). A fold is "
                                 "not a piece: its square may hold a piece of either side, "
                                 "which is captured there as anywhere, and may start under a "
                                 "piece. A move that ends on an empty fold that lets the piece "
@@ -1186,12 +1214,12 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             ),
                         },
                     },
-                    required=["piece"],
+                    required=[],
                     strict=strict,
                     description=(
                         "One group: a pair, written with orange and blue (and moved_by, "
                         "passage and carries keyed by them), or a map, written with ends "
-                        "alone. Never both."
+                        "alone. Never both. Its moves are how its ends move."
                     ),
                 ),
                 "minItems": 1,
@@ -1222,8 +1250,8 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                         "description": (
                             "What decides a collision that is a tie, the two pieces each "
                             "beating the other or neither beating the other. Leave it out "
-                            "and both are eliminated, leaving the square empty; never write "
-                            "that out. 'initiative': one player holds the initiative, the "
+                            "and both are eliminated, leaving the square empty. "
+                            "'initiative': one player holds the initiative, the "
                             "second player at the start; a tie goes to the holder's piece, "
                             "and the initiative then passes to the other player. "
                             "'impossible': a promise, checked, that no tie can ever occur, "
@@ -1236,7 +1264,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                         "type": "string",
                         "enum": ["collision"],
                         "description": (
-                            "Schema 27. 'collision': two moves that each end on the "
+                            "'collision': two moves that each end on the "
                             "other's starting square meet as a collision, decided by "
                             "pieces.beats and the tie rule, instead of the two pieces "
                             "passing each other; a winner ends on its destination and a "
@@ -1249,7 +1277,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                         "type": "string",
                         "enum": ["score"],
                         "description": (
-                            "Schema 27. 'score': an ending both players reach in the same "
+                            "'score': an ending both players reach in the same "
                             "round (both royals taken, both armies gone, both on a goal) "
                             "goes to the player ahead under rules.scoring, and is a draw "
                             "only when the scores are equal. Leave it out and such a round "
@@ -1260,7 +1288,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                 required=[],
                 strict=strict,
                 description=(
-                    "Schema 26. Both players move at once. Each round, each player chooses "
+                    "Both players move at once. Each round, each player chooses "
                     "one of their own legal moves on the same board without seeing the "
                     "other's; both are revealed and made together. Only two pieces moving "
                     "onto the same square collide, and pieces.beats decides who survives. "
@@ -1274,10 +1302,9 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "counts as two moves on the clocks. Not usable beside castling, en "
                     "passant, a sweep, check rules, a turn of more than one move, a "
                     "portal a player moves, a strike or contact position 'choose', a "
-                    "strike position 'stay', or drops.no_mate. Schema 27 adds two "
-                    "switches against a royal chased round after round, swap and both; "
-                    "schema 29's pieces[].rest (\"rest\": 1 on every piece) is the rest "
-                    "that was the third."
+                    "strike position 'stay', or drops.no_mate. Two switches work "
+                    "against a royal chased round after round, swap and both; "
+                    "pieces[].rest (\"rest\": 1 on every piece) is a third remedy."
                 ),
             ),
             "promote_on_entry": {
@@ -1341,7 +1368,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                         "type": "string",
                         "enum": list(REACH_ON),
                         "description": (
-                            "Schema 18. 'arrive' (the default): a piece standing on a "
+                            "'arrive' (the default): a piece standing on a "
                             "goal square decides the game. 'leave': the move that takes "
                             "the piece off a goal square decides it (Jeson Mor), and "
                             "standing there decides nothing. Not with safe."
@@ -1376,7 +1403,7 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                         "description": (
                             "True counts each listed type on its own, so a side loses when "
                             "any one of them falls below min_count, as in Extinction chess. "
-                            "'own' (schema 27) counts each listed type on its own too, but "
+                            "'own' counts each listed type on its own too, but "
                             "only against a player who starts with it, so two armies of "
                             "different kinds each lose by running out of any one of their "
                             "own; list both armies' kinds. False, the default, counts the "
@@ -1628,11 +1655,11 @@ def _squares(description: str) -> dict[str, Any]:
 _NO_STRAIGHT_BACK: dict[str, Any] = {
     "type": "boolean",
     "description": (
-        "Schema 20. When true, a portal of this group that has just been moved may not be "
+        "When true, a portal of this group that has just been moved may not be "
         "moved straight back onto the square it came from on the very next move; it may go "
         "anywhere else, and back on the move after. Stops two players undoing each other's "
         "portal moves for ever. Needs an end that whoever moves next may move too (in "
-        "moved_by for both players, or a turn longer than one move), and a portal piece "
+        "moved_by for both players, or a turn longer than one move), and group moves "
         "with a move back; a bar no move can meet is refused. Default false."
     ),
 }

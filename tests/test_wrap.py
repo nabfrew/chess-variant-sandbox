@@ -724,10 +724,11 @@ class TestTheOtherSurfaces:
 
         joiner = tuple(op for op in OPERATORS if op.name == "join-the-edges")
         assert joiner, "the mechanical operator went missing"
-        child = mutate(copy.deepcopy(_load("chess")), random.Random(7), operators=joiner)
+        parent = dict(_load("chess"), schema_version=1)  # its stamp before Q1008b re-spelt it
+        child = mutate(copy.deepcopy(parent), random.Random(7), operators=joiner)
         assert child is not None
         assert (child.spec["rules"].get("wrap") or {}) != {}
-        assert child.spec["schema_version"] == 5
+        assert child.spec["schema_version"] == 1, "an edit writes no stamp (Q1008c)"
 
 
 class TestValidation:
@@ -750,9 +751,3 @@ class TestValidation:
         spec["rules"]["wrap"] = wrap
         errors = validate_spec(spec)
         assert any(message in error for error in errors), errors
-
-    def test_a_spec_declaring_four_may_not_use_it(self) -> None:
-        spec = _load("chess")
-        spec["schema_version"] = 4
-        spec["rules"]["wrap"] = {"files": "both"}
-        assert any("schema 5" in error for error in validate_spec(spec))

@@ -804,7 +804,7 @@ pub struct SpyTables {
     pub deal: bool,
 }
 
-/// Schema 30 (Q999a, `docs/plan-passive.md` §3.2): one way a piece can be under an effect,
+/// Schema 30 (Q999a, `docs/archive/plan-passive.md` §3.2): one way a piece can be under an effect,
 /// inverted out of the forward lines by the compiler (`compile.SightSource`) and filed under
 /// the affected player, type and square. It binds when the source's piece stands on `origin`
 /// and every square of its path is empty.
@@ -812,7 +812,8 @@ pub struct SpyTables {
 pub struct SightSource {
     pub origin: u16,
     pub piece_value: u8,
-    /// `SIGHT_FREEZE`, `SIGHT_DISARM` or `SIGHT_SHIELD`.
+    /// `SIGHT_FREEZE`, `SIGHT_DISARM`, `SIGHT_SHIELD`, or `SIGHT_COMMAND` alone or with
+    /// `SIGHT_COMMAND_OWN` (one source of a command sight that says `captures_own`).
     pub effect: u8,
     pub path_start: u32,
     pub path_len: u32,
@@ -821,6 +822,17 @@ pub struct SightSource {
 pub const SIGHT_FREEZE: u8 = 1;
 pub const SIGHT_DISARM: u8 = 2;
 pub const SIGHT_SHIELD: u8 = 4;
+/// Q1007c (`docs/plan-schema-31.md` §3): the piece's opponent may also move it.
+pub const SIGHT_COMMAND: u8 = 8;
+/// Q1007c: a commanded move may also take the piece's own side's non-royal pieces
+/// (`captures_own`); never set without `SIGHT_COMMAND` on the same source.
+pub const SIGHT_COMMAND_OWN: u8 = 16;
+/// Q1007c: bit 30 of a move word marks a commanded move -- the side to move moving one of
+/// the opponent's pieces. Bits 25 to 31 are otherwise a strike's landing, a portal end or a
+/// fold, each refused beside a sight, so in a command game this bit is the only one set
+/// there. It also keeps a commanded move from opening an en passant window (`make` opens
+/// one only where those bits are zero).
+pub const MOVE_COMMANDED: u32 = 1 << 30;
 
 /// Schema 30: lines of sight, as the compiler resolved them (`compile.SightRule`). Boxed,
 /// as the rounds and the rest are, so a game without a sight pays one pointer, and `None` is
@@ -838,6 +850,9 @@ pub struct SightTables {
     pub bears_on_check: bool,
     /// Whether any sight freezes or disarms: only then is a mover or an attacker asked.
     pub has_restraint: bool,
+    /// Q1007c: whether any sight commands. Only then does the generator walk the opponent's
+    /// pieces for commanded moves (`Game::push_commanded`).
+    pub has_command: bool,
     /// `n_types * n_squares`, the stride of a player's block in `index`.
     block: usize,
     n_squares: usize,
@@ -2454,6 +2469,7 @@ impl Tables {
         let sight_srcs: Vec<u32> = field(source, keys::SIGHT_SRCS)?;
         let sight_paths: Vec<u16> = field(source, keys::SIGHT_PATHS)?;
         let sight_flags: Vec<u8> = field(source, keys::SIGHT_FLAGS)?;
+        let sight_command: bool = field(source, keys::SIGHT_COMMAND)?;
         if !sight_flags.is_empty() {
             let sources: Vec<SightSource> = sight_srcs
                 .chunks_exact(5)
@@ -2472,7 +2488,10 @@ impl Tables {
                 && sources.iter().all(|s| {
                     (s.origin as usize) < tables.n_squares
                         && (s.path_start + s.path_len) as usize <= sight_paths.len()
-                        && matches!(s.effect, SIGHT_FREEZE | SIGHT_DISARM | SIGHT_SHIELD)
+                        && (matches!(s.effect, SIGHT_FREEZE | SIGHT_DISARM | SIGHT_SHIELD)
+                            || (sight_command
+                                && (s.effect == SIGHT_COMMAND
+                                    || s.effect == SIGHT_COMMAND | SIGHT_COMMAND_OWN)))
                 })
                 && sight_paths.iter().all(|square| (*square as usize) < tables.n_squares)
                 && tables.portals.is_none();
@@ -2488,10 +2507,15 @@ impl Tables {
                 has_shield: sight_flags[0] != 0,
                 bears_on_check: sight_flags[1] != 0,
                 has_restraint: sight_flags[2] != 0,
+                has_command: sight_command,
                 block: tables.n_types * tables.n_squares,
                 n_squares: tables.n_squares,
             }));
-        } else if !sight_index.is_empty() || !sight_srcs.is_empty() || !sight_paths.is_empty() {
+        } else if !sight_index.is_empty()
+            || !sight_srcs.is_empty()
+            || !sight_paths.is_empty()
+            || sight_command
+        {
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "sight sources without the sight's flags",
             ));
@@ -2958,6 +2982,7 @@ pub mod keys {
         SIM_COLLISION => "sim_collision",
         SIM_RULE => "sim_rule",
         SIM_SPEED => "sim_speed",
+        SIGHT_COMMAND => "sight_command",
         SIGHT_FLAGS => "sight_flags",
         SIGHT_INDEX => "sight_index",
         SIGHT_PATHS => "sight_paths",

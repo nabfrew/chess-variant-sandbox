@@ -343,11 +343,12 @@ class TestServe:
         monkeypatch.setattr(web, "serve", lambda **kwargs: seen.append(kwargs))
         assert cli.main([
             "serve", "--port", "9", "--host", "0.0.0.0", "--rulesets", "r", "--runs", "u",
-            "--archive", "a", "--heuristics", "h", "--open",
+            "--archive", "a", "--heuristics", "h", "--browser", "b", "--open",
         ]) == 0
         assert seen == [{
             "host": "0.0.0.0", "port": 9, "ruleset_dir": Path("r"), "runs_dir": Path("u"),
             "archive_dir": Path("a"), "open_browser": True, "heuristics_dir": Path("h"),
+            "browser_dir": Path("b"),
         }]
 
     def test_by_default_it_is_localhost_and_does_not_open_a_window(
@@ -372,7 +373,7 @@ class TestServe:
         assert seen == [{
             "host": "127.0.0.1", "port": 7, "ruleset_dir": Path("rulesets"),
             "runs_dir": Path("u"), "archive_dir": corpus.ARCHIVE_DIR,
-            "heuristics_dir": Path("heuristics"),
+            "heuristics_dir": Path("heuristics"), "browser_dir": Path("build") / "browser",
         }]
         assert cli.main(["site", "serve"]) == 0
         assert seen[1]["port"] == 8766

@@ -1,5 +1,5 @@
 {
-  "schema_version": 27,
+  "schema_version": 31,
   "name": "riders and leapers",
   "description": "Two different armies on a 6x6 board, and no king: a side loses the moment any one of its own three kinds of officer is gone. The riders have two rooks, two bishops and two guards, a guard stepping one square in any direction. The leapers have two champions, which jump one or two squares straight or two diagonally, two knights, and two elephants, which jump one or two squares diagonally. Pawns step one square forward, take one square diagonally forward, and on the last rank promote to one of their own side's officers, so a pawn that gets through can bring back a kind that is about to run out. There is no check and no checkmate, and a player with no legal move draws. Every trade is a question of which kind it leaves short: once a side is down to its last piece of a kind, that piece is worth the game to it, and the other side's plan becomes to hunt it. The armies are short in different places: bishops and elephants each keep to one colour, but a bishop is stopped by whatever stands in its way and an elephant jumps; a rook reaches across the board and a champion only two squares; a guard is slow and a knight cannot be blocked.",
   "board": {"width": 6, "height": 6},

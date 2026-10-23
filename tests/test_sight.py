@@ -1,6 +1,6 @@
 """Schema 30 (Q999a): lines of sight with passive effects, one test per decision.
 
-`docs/plan-passive.md` §2 is the rule and §3 its build; this file is the Q999a box's acceptance:
+`docs/archive/plan-passive.md` §2 is the rule and §3 its build; this file is the Q999a box's acceptance:
 the key and each refusal of §2.1 and §2.8 in words; a ray stopped and an aura not; `min_range`
 blocking; a facing sight turning; mutual freezing; the union of sources; a frozen checker no
 check and the royal stepping into its line; a check answered by freezing, by a drop and by a
@@ -34,12 +34,9 @@ from chess_variant_sandbox.engine.compile import (
 )
 from chess_variant_sandbox.engine.moves import MOVE_CASTLE, MOVE_DROP, MOVE_EN_PASSANT, decode_move
 from chess_variant_sandbox.engine.state import GameState
-from chess_variant_sandbox.spec import validate_spec
-from chess_variant_sandbox.spec.schema import (
-    SIGHT_MAX,
-    _schema_thirty_uses,
-    piece_sights,
-)
+from chess_variant_sandbox.spec import spec_hash, validate_spec
+from chess_variant_sandbox.spec.schema import SIGHT_MAX, piece_sights
+from tests.feature_inventory import _schema_thirty_uses
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent
@@ -157,12 +154,6 @@ def test_the_collector_names_each_effect_and_the_aura() -> None:
     assert _schema_thirty_uses(CHESS) == set()
 
 
-def test_an_older_version_may_not_write_a_sight() -> None:
-    older = copy.deepcopy(S1)
-    older["schema_version"] = 29
-    assert any("schema 30" in error for error in validate_spec(older))
-
-
 def test_the_three_showcases_are_valid_and_read() -> None:
     for spec in (S1, S2, S3):
         assert validate_spec(spec) == []
@@ -188,13 +179,12 @@ QUEEN_FREEZE = {"vectors": [[1, 0]], "symmetry": "rotate4", "effect": "freeze", 
 
 
 def test_each_spelling_refusal_is_said_in_words() -> None:
-    refused(with_sight(), "is empty, which sees nothing")
     refused(with_sight(*[QUEEN_FREEZE] * (SIGHT_MAX + 1)), f"at most {SIGHT_MAX}")
     refused(with_sight(dict(QUEEN_FREEZE, colour="dark")), "colour")
     refused(with_sight({k: v for k, v in QUEEN_FREEZE.items() if k != "whose"}), "whose")
     refused(with_sight(dict(QUEEN_FREEZE, effect="petrify")), "effect must be one of")
     refused(with_sight(dict(QUEEN_FREEZE, whose="both")), "whose must be one of")
-    refused(with_sight(dict(QUEEN_FREEZE, through=False)), "leave it out")
+    refused(with_sight(dict(QUEEN_FREEZE, through="yes")), "through must be true or false")
     refused(with_sight(dict(QUEEN_FREEZE, affects=[])), "affects nothing; leave it out")
     refused(with_sight(dict(QUEEN_FREEZE, affects=["Z"])), "is not a declared piece")
     refused(with_sight(dict(QUEEN_FREEZE, range=-1)), "range must be a non-negative integer")
@@ -202,6 +192,17 @@ def test_each_spelling_refusal_is_said_in_words() -> None:
     refused(with_sight(dict(QUEEN_FREEZE, vectors=[[0, 0]])), "null vector")
     refused(with_sight(dict(QUEEN_FREEZE, symmetry="rotate6")), "60-degree")
     refused(with_sight([1, 0]), "must be an object")
+
+
+def test_an_off_value_is_the_sight_left_out() -> None:
+    """Q1008c: ``"sight": []`` and ``"through": false`` state nothing, so they are accepted and
+    name the game without them."""
+    plain = chess_with()
+    assert validate_spec(with_sight()) == []
+    assert spec_hash(with_sight()) == spec_hash(plain)
+    ray = with_sight(QUEEN_FREEZE)
+    assert spec_hash(with_sight(dict(QUEEN_FREEZE, through=False))) == spec_hash(ray)
+    assert validate_spec(with_sight(dict(QUEEN_FREEZE, through=False))) == validate_spec(ray)
 
 
 def test_a_sight_is_refused_beside_portals_and_explosions() -> None:

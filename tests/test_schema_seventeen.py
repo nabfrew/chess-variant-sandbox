@@ -36,11 +36,8 @@ from chess_variant_sandbox.spec.complexity import measure_complexity
 from chess_variant_sandbox.spec.describe import describe_spec
 from chess_variant_sandbox.spec.distance import distance
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
-from chess_variant_sandbox.spec.schema import (
-    PLAYED_AS_CAPTURE,
-    SCHEMA_VERSION,
-    _schema_seventeen_uses,
-)
+from chess_variant_sandbox.spec.schema import PLAYED_AS_CAPTURE, SCHEMA_VERSION
+from tests.feature_inventory import _schema_seventeen_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 SHOWCASES = ("rifle", "circe", "andernach", "kamikaze")
@@ -106,15 +103,6 @@ class TestTheVersionIsBumped:
         assert _schema_seventeen_uses(games["circe"]) == {"rules.strike.position=home"}
         assert _schema_seventeen_uses(games["andernach"]) == {"rules.strike.switches_sides"}
         assert _schema_seventeen_uses(games["kamikaze"]) == {"rules.explode_on_capture.radius=0"}
-
-    @pytest.mark.parametrize("name", SHOWCASES)
-    def test_an_older_stamp_is_refused_by_name(
-        self, games: dict[str, dict[str, Any]], name: str
-    ) -> None:
-        spec = copy.deepcopy(games[name])
-        spec["schema_version"] = 16
-        errors = validate_spec(spec)
-        assert any("schema 17" in e for e in errors), errors
 
     def test_a_stay_strike_under_a_chain_is_schema_six_still(self) -> None:
         stay_chain = {

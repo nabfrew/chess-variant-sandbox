@@ -701,7 +701,7 @@ class _Learned:
     score: float
     games: int
     nodes: int
-    # The plan's verdict on this generation (`plan-teacher.md` §9.6's R5-1, Q706): True
+    # The plan's verdict on this generation (`archive/plan-teacher.md` §9.6's R5-1, Q706): True
     # for a kept one, False for one the plan read and did not keep (an accepted child
     # that failed G-P, G-N, G-C or a guard), None where no verdict was written -- a net
     # outside any generation line, such as a guard game's strongest net. The trainer
@@ -760,9 +760,9 @@ def _learned_record(path: Path, ruleset_hash: str) -> _Learned | None:
 def _kept(found: list[_Learned]) -> _Learned | None:
     """The net the picker offers: the newest *kept* generation, not the newest accepted.
 
-    By `plan-teacher.md` R5-6 a child that passes the acceptance duels is stored as
-    accepted whatever the rest of the gates read, and only *kept* makes it a parent and
-    the line's player (Q706: T5-g2's generation 2 was accepted and not kept). So:
+    By `archive/plan-teacher.md` §9.6's R5-6 a child that passes the acceptance duels is
+    stored as accepted whatever the rest of the gates read, and only *kept* makes it a
+    parent and the line's player (Q706: T5-g2's generation 2 was accepted and not kept). So:
 
     - a net the plan did not keep (``kept: false``) is never offered;
     - where any net here is kept, the offer is among the kept ones only, so an accepted

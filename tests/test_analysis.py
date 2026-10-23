@@ -35,7 +35,6 @@ from chess_variant_sandbox.metrics.components import (
 )
 from chess_variant_sandbox.spec import load_spec
 from chess_variant_sandbox.spec.reachability import pieces_a_player_can_hold
-from chess_variant_sandbox.spec.transform import settle_schema_version
 from chess_variant_sandbox.tournament.analysis import (
     BLUNDER_FRACTION,
     BLUNDER_SAMPLE,
@@ -546,7 +545,7 @@ def _turning_gardner() -> dict:
     spec = copy.deepcopy(load_spec(RULESETS / "gardner.json"))
     spec["name"] = "gardner with turning pawns"
     spec["pieces"][0]["facing"] = {"axes": 4}
-    return settle_schema_version(spec)
+    return spec
 
 
 @pytest.fixture(scope="module")
@@ -628,10 +627,12 @@ class TestAPortalIsNotPartOfTheArmy:
         n_types = engine.spec.n_types
         held = pieces_a_player_can_hold(spec)
         declared = [i for i, piece in enumerate(spec["pieces"]) if piece["id"] in held]
-        portal_pieces = {group["piece"] for group in spec["rules"]["portals"]}
+        # The portals' movement types (spelling 31's stand-ins) follow the declared pieces.
+        movers = {pid for pid in engine.spec.piece_ids[len(spec["pieces"]):portals.declared_types]}
+        assert movers == {"O"}
         assert held_type_indices(spec, n_types) == declared
         assert not set(declared) & set(portals.end_types)
-        assert not {spec["pieces"][i]["id"] for i in declared} & portal_pieces
+        assert not {spec["pieces"][i]["id"] for i in declared} & movers
 
         counts = list(range(1, n_types + 1))
         game = GameAnalysis(seed=0, agents=("a", "b"), moves_by_type=counts)

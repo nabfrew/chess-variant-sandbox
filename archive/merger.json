@@ -1,5 +1,5 @@
 {
-  "schema_version": 11,
+  "schema_version": 31,
   "name": "merger",
   "description": "Chess with one extra move: a pawn may step diagonally forward onto a square held by its own rook, as though capturing it, and the two merge into a queen there. By the usual count that is a bargain, a rook and a pawn for a queen, and it skips the pawn's long march to the far rank. The price is in the setting up. The rook has to stand a diagonal step in front of one of its own pawns, which means lifting it off the back rank and parking it where the opponent can see the merge coming and attack the square, and afterwards two pieces doing two jobs have become one. Each side keeps weighing a fast extra queen against that loss of numbers, and a game can turn on a queen that appears in the middle of the board in a single move. Every other capture is ordinary.",
   "board": {"width": 8, "height": 8},

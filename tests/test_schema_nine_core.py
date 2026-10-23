@@ -283,8 +283,11 @@ class TestWhatTheBoundaryReports:
 
         assert len(keys) == 80, "the game runs the whole way, or the pinning is of a stub"
         assert steps == 85, "and the phase did something in most of those plies"
-        assert sum(keys) % (1 << 64) == 0xF28BDCA625FD4BD3
-        assert state.key == 0x25E6A0C27298763E
+        # Re-pinned by Q1008a: this inline variant names no stored game, so its identity is
+        # its normal-form hash now and its keys are drawn from that; the board below, the
+        # same game move for move, did not move. Was 0xF28BDCA625FD4BD3 / 0x25E6A0C27298763E.
+        assert sum(keys) % (1 << 64) == 0x27D2F28D4A103CF0
+        assert state.key == 0x31F22A6465C02E99
         assert bytes(state.board).hex() == (
             "0000000605000400000000040000000000000008000001010100010000080000"
             "000c000000000b0800011500000000000800000009000000000b000d00000003"

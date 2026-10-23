@@ -1,5 +1,5 @@
 {
-  "schema_version": 30,
+  "schema_version": 31,
   "name": "chess with a sheltering king",
   "description": "Chess, except that the king protects the pieces around it. None of its own pieces standing one or two squares from the king, along any of the eight lines out from it (straight or diagonal), can be captured, not even in passing, and the shelter reaches past whatever stands in between: the pawn two squares in front of the king is covered even with another pawn in the way. The squares a knight's jump from the king are not on those lines and are not covered. The king shelters only its own side's pieces and never itself, so it is checked and mated exactly as in chess. A sheltered piece can still be attacked; it simply cannot be taken while it stands there, and it may move and capture freely. The rule turns the old instinct of keeping pieces near the king into a real trade-off. A castled king's pawn wall and the pieces beside it cannot be broken by captures, only by checks and by going around them, so the king is safest when its guards stand close. But every piece kept in the shelter is a piece not attacking, and a king crowded by its own pieces has no squares to flee to when a check does arrive. Late in the game the king becomes a fighter of a new kind: walked up beside a passed pawn, it makes the pawn impossible to take.",
   "board": {"width": 8, "height": 8},
@@ -45,10 +45,9 @@
   },
   "provenance": {
     "added": "2026-10-22",
-    "preview": "A preview: a new kind of game in which pieces act on each other by line of sight, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
     "origin": "designed",
-    "source": "docs/plan-passive.md, Q999d: the one-change showcases of schema 30's lines of sight (section 6.1, S2)",
-    "history": "S2 of docs/plan-passive.md section 6.1, pre-registered 2026-10-21 before schema 30 was built: chess (4c1922ffae26) with the king given one sight, an aura (through) along its eight lines to range 2 that shields its own pieces of every type. The shield as an aura, so that seeing past pieces changes play next to a castled king, where the near squares are full. Written by Q999a as a test spec (tests/_sight_sheltering_king.json, the same mechanics) and archived by Q999d (2026-10-22) exactly as registered; its control is chess's library measurement on the same roster (section 6.2).",
+    "source": "docs/archive/plan-passive.md, Q999d: the one-change showcases of schema 30's lines of sight (section 6.1, S2)",
+    "history": "S2 of docs/archive/plan-passive.md section 6.1, pre-registered 2026-10-21 before schema 30 was built: chess (4c1922ffae26) with the king given one sight, an aura (through) along its eight lines to range 2 that shields its own pieces of every type. The shield as an aura, so that seeing past pieces changes play next to a castled king, where the near squares are full. Written by Q999a as a test spec (tests/_sight_sheltering_king.json, the same mechanics) and archived by Q999d (2026-10-22) exactly as registered; its control is chess's library measurement on the same roster (section 6.2). Joined the library from preview by Q1005 (2026-10-23, docs/reference/preview-call-2026-10.md): the library's only game in which a piece makes its own side's pieces impossible to capture, and the only sight that reaches through pieces. It met every registered bar, viable in 4 of 4 runs at 0.897 with the seat level, the shelter binding at three side-turns in five.",
     "parents": ["4c1922ffae26"]
   }
 }

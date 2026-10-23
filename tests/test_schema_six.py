@@ -200,6 +200,25 @@ def test_the_default_spelling_of_each_rule_is_the_game_that_was_already_there() 
 # --------------------------------------------------------------------- obstacles
 
 
+@pytest.mark.parametrize(
+    "strike",
+    [
+        {"effect": "capture", "position": "stay"},
+        {"effect": "capture", "position": "stay", "immune": ["K"]},
+        {"position": "stay", "immune": ["K"]},
+    ],
+)
+def test_rifle_is_a_rule(strike: dict[str, Any]) -> None:
+    """Q538's find, `rifle-b`, became a rule in Q540: `stay` under `"capture"` removes the
+    victim and leaves the attacker where it stood. It validates once every royal is immune."""
+    from chess_variant_sandbox.spec.schema import strike_changes_anything
+
+    spec = with_rules(strike=strike)
+    assert strike_changes_anything(strike, "strike", [p["id"] for p in spec["pieces"]])
+    errors = validate_spec(spec)
+    assert errors == [] if "immune" in strike else any("not in rules.strike.immune" in e for e in errors)
+
+
 def test_a_ray_ends_at_a_wall_rather_than_passing_through_it() -> None:
     """The edit most likely to be made backwards, and the one perft would not catch.
 
@@ -560,8 +579,11 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
     # Q798's `circe-mortal-diagonals`, which declares none; 97 since Q994p's two blind-trial
     # designs, `the-golem-well` and `kraken-ford`, which declare none either; 100 since Q983d's
     # three rest showcases, which declare none either; 101 since Q999b's opposite colours,
-    # which declares none; 104 since Q999d's three sight showcases, which declare none.
-    assert len(paths) == 104
+    # which declares none; 104 since Q999d's three sight showcases, which declare none; 98
+    # since Q1005 retired six previews (`docs/reference/preview-call-2026-10.md`), of which
+    # `watering-hole-by-speed` declared one; 99 since Q1007e's chess with nightriders, which
+    # declares none (its opposite colours replaced the first under the same file).
+    assert len(paths) == 99
 
     with_reach: dict[str, tuple[frozenset[int], frozenset[int]]] = {}
     for path in paths:
@@ -585,7 +607,7 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
 
     assert sorted(with_reach) == [
         "dobutsu", "intransitive", "jeson-mor", "kingofthehill", "racingkings", "rps-v3",
-        "watering-hole", "watering-hole-by-speed",
+        "watering-hole",
     ]
     differ = sorted(name for name, (built, other) in with_reach.items() if built != other)
     assert differ == ["intransitive"]
@@ -1002,28 +1024,6 @@ def test_a_strike_the_core_plays_as_plain_capture_is_refused(
 @pytest.mark.parametrize(
     "strike",
     [
-        {"effect": "capture", "position": "stay"},
-        {"effect": "capture", "position": "stay", "immune": ["K"]},
-        {"position": "stay", "immune": ["K"]},
-    ],
-)
-def test_rifle_is_schema_seventeens(strike: dict[str, Any]) -> None:
-    """Q538's find, `rifle-b`, became a rule in Q540: `stay` under `"capture"` removes the
-    victim and leaves the attacker where it stood. Under schema 6 it is refused by name as
-    schema 17's; under 17 it validates once every royal is immune."""
-    from chess_variant_sandbox.spec.schema import strike_changes_anything
-
-    spec = with_rules(strike=strike)
-    assert strike_changes_anything(strike, "strike", [p["id"] for p in spec["pieces"]])
-    assert any("added in schema 17" in error for error in validate_spec(spec))
-    spec["schema_version"] = 17
-    errors = validate_spec(spec)
-    assert errors == [] if "immune" in strike else any("not in rules.strike.immune" in e for e in errors)
-
-
-@pytest.mark.parametrize(
-    "strike",
-    [
         {"effect": "capture"},
         {"effect": "capture", "position": "advance"},
         {"effect": "capture", "immune": []},
@@ -1095,13 +1095,6 @@ def test_two_rules_may_not_both_say_what_happens_to_a_taken_piece(other: str) ->
 
 
 # ------------------------------------------------------------- the other surfaces
-
-
-def test_a_schema_five_spec_may_not_reach_for_schema_six() -> None:
-    spec = with_rules(obstacles={"squares": ["d4"]})
-    spec["schema_version"] = 5
-    errors = validate_spec(spec)
-    assert any("added in schema 6" in error for error in errors), errors
 
 
 def test_the_prose_says_what_each_rule_does() -> None:
@@ -1217,7 +1210,7 @@ def test_the_operators_can_reach_both_rules_without_a_model_call() -> None:
     # draws the removal half; the other half places the survivor (schema 12).
     note = soften.apply(spec, random.Random(0))
     assert note and "strike" not in spec["rules"]
-    assert spec["schema_version"] < 6, "the version settles when the rule goes"
+    assert spec_hash(spec) == spec_hash(chess()), "the game comes back when the rule goes"
 
 
 def test_the_move_text_says_what_a_strike_actually_did() -> None:

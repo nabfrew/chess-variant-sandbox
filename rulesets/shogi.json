@@ -1,5 +1,5 @@
 {
-  "schema_version": 15,
+  "schema_version": 31,
   "name": "shogi",
   "description": "Japanese chess, by the traditional rules but one. Every captured piece changes sides and may be dropped back onto the board, so material is never removed from the game, only borrowed. Six of the eight pieces may promote on any move that starts or ends in the far three ranks, and may decline -- except where declining would strand them somewhere they could never move from again. A pawn may not be dropped to give checkmate. The one deviation: perpetual check is a draw here, like any fourfold repetition, where traditional shogi makes it a loss for the side giving check.",
   "board": {

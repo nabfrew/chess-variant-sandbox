@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 31,
   "name": "crazyhouse",
   "description": "Chess in which captured pieces change sides and may be dropped back onto any empty square. Attacks are never really beaten off, only postponed, and a material advantage is an attacking resource rather than an endgame plan.",
   "board": {

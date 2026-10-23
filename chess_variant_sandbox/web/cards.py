@@ -78,7 +78,7 @@ PIECE_PATHS = frozenset({
     "rules.contacts.immune",
     "rules.npcs[].piece",
     "rules.npcs[].immune",
-    "rules.portals[].piece",
+
     # Schema 21: which pieces may go in by an end.
     "rules.portals[].carries.orange",
     "rules.portals[].carries.blue",
@@ -107,7 +107,7 @@ TEXT_PATHS = frozenset({
 
 # What the hand-written form already edits. Every other key gets a generated field.
 OWNED = {
-    # Schema 30 (Q999c, `docs/plan-passive.md` §4.7): a piece's lines of sight are rows of the
+    # Schema 30 (Q999c, `docs/archive/plan-passive.md` §4.7): a piece's lines of sight are rows of the
     # hand-written form (`sightEditor` in `design.js`), built from the move row's pickers.
     "piece": frozenset({"id", "name", "value", "royal", "moves", "sight"}),
     "move": frozenset({"kind", "vectors", "symmetry", "range", "min_range", "mode",
@@ -158,6 +158,7 @@ def card_model(corpus: Iterable[dict[str, Any]] = ()) -> dict[str, Any]:
     counts = rule_counts(corpus)
     order = sorted(rules["properties"], key=lambda key: (-counts.get(key, 0), key))
     rule_fields = fields(rules, "rules", owned=frozenset(), required_all=True)
+    _hand_drawn_group_moves(rule_fields)
     _word_the_sides(rule_fields)
     return {
         "rules": rule_fields,
@@ -182,11 +183,11 @@ def card_model(corpus: Iterable[dict[str, Any]] = ()) -> dict[str, Any]:
 # The sight row's fields, by the key the row writes, each labelled and said in `spec.plain`'s
 # words (`field_words`), so the row and a refusal that names one of them say the same thing.
 SIGHT_FIELDS = ("effect", "whose", "vectors", "symmetry", "through", "range", "min_range",
-                "affects")
+                "affects", "captures_own")
 
 
 def sight_kit() -> dict[str, Any]:
-    """What the designer's sight rows offer (schema 30, Q999c, `docs/plan-passive.md` §4.7):
+    """What the designer's sight rows offer (schema 30, Q999c, `docs/archive/plan-passive.md` §4.7):
     how many a piece may have, the effects and whose in the schema's order, and each field's
     label and sentence. The row's menus are held to these by a test."""
     words: dict[str, list[str]] = {}
@@ -277,6 +278,18 @@ def corpus_specs(*dirs: Path) -> list[dict[str, Any]]:
             if isinstance(spec, dict):
                 found.append(spec)
     return found
+
+
+def _hand_drawn_group_moves(rule_fields: list[dict[str, Any]]) -> None:
+    """A portal group's ``moves`` (spelling 31, Q1007b) are the move rows of its card, drawn
+    by hand as a piece's are (`portals.js`'s `groupMovesHtml`, `design.js`'s `moveEditor`),
+    so the generated tree leaves them out, as `OWNED` leaves a piece's moves out."""
+    for field in rule_fields:
+        if field["key"] != "portals" or field.get("control") != "list":
+            continue
+        item = field.get("item") or {}
+        if item.get("control") == "card":
+            item["fields"] = [one for one in item["fields"] if one["key"] != "moves"]
 
 
 def fields(

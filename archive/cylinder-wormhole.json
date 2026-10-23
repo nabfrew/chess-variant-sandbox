@@ -1,5 +1,5 @@
 {
-  "schema_version": 19,
+  "schema_version": 31,
   "name": "cylinder wormhole",
   "description": "A door in the very centre of a board with no side edges. This is chess on a cylinder, the a- and h-files joined so a piece leaving one side comes in on the other, with a fixed pair of portals on d4 and d5. A piece that ends its move on one end comes out one step beyond the other, in the direction it was travelling, capturing there as usual: a pawn pushed two squares to d4 arrives on d6. Nothing stands on a portal or slides past one, so two central squares are gone for good and the fight for the centre becomes a fight over who reaches the door, and what waits beyond it. The joined edges add a choice: a rook or queen on a clear fourth or fifth rank can reach an end from either side, once the long way round, and its player picks which side of the other end it comes out on.",
   "board": {
@@ -149,12 +149,6 @@
           "mode": "both"
         }
       ]
-    },
-    {
-      "id": "O",
-      "name": "portal",
-      "value": 0,
-      "moves": []
     }
   ],
   "setup": {
@@ -235,7 +229,6 @@
     },
     "portals": [
       {
-        "piece": "O",
         "orange": "d4",
         "blue": "d5"
       }

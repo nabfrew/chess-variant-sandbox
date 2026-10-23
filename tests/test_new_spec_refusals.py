@@ -1,4 +1,4 @@
-"""A refusal for new specs only: a lone promotion rank past the board (Q434).
+"""A lone promotion rank past the board (Q434), and the one game kept with one.
 
 The rule it refuses can never fire, and one library game carried it for months:
 `tunnel-horizontal` (`195564f716ec`) said `rank: 9` on an 8-high board (Q102). Q434
@@ -6,11 +6,13 @@ retired the game, and two of the user's decisions hold at once: the game is reti
 (2026-09-25), and a retired game keeps its page, match replays included (2026-09-18).
 
 So the refusal runs where a spec is *admitted* -- `validate_spec`, which the designer, the
-proposer, the operators and `validate` on a file all ask -- and not where a spec is
-*loaded* to build an engine, which is `compile_spec`'s `validate_or_raise`. The site draws
-a retired game's page and replays its matches from its stored rules through that load, and
-the calibration corpora under `runs/v9`, `runs/v11` and `runs/stage26` hold the game as
-`ref-tunnel-horizontal`, which a re-score or `anchor --refresh-noise` compiles.
+proposer, the operators and `validate` on a file all ask -- and where a spec is *loaded* to
+build an engine (`compile_spec`'s `validate_or_raise`, through `stored_spec_errors`) it is
+forgiven for that one game alone, named by identity (Q1008d). The site draws a retired
+game's page and replays its matches from its stored rules through that load, and the
+calibration corpora under `runs/v9`, `runs/v11` and `runs/stage26` hold the game as
+`ref-tunnel-horizontal`, which a re-score or `anchor --refresh-noise` compiles. Any other
+game with the rank, or that game changed, is refused at the load too.
 
 `_retired_tunnel_horizontal.json` beside this file is the spec byte for byte as it stood
 in `rulesets/` before Q434.
@@ -26,10 +28,12 @@ import pytest
 
 from chess_variant_sandbox.cli import main
 from chess_variant_sandbox.engine import Engine
+from chess_variant_sandbox.engine.compile import compile_spec
 from chess_variant_sandbox.measurement import tables_fingerprint
 from chess_variant_sandbox.metrics.components import spec_facts
 from chess_variant_sandbox.site import kept
-from chess_variant_sandbox.spec import load_spec, spec_hash, validate_spec
+from chess_variant_sandbox.spec import SpecError, load_spec, spec_hash, validate_spec
+from chess_variant_sandbox.spec.schema import RANK_PAST_THE_BOARD_KEPT, stored_spec_errors
 from chess_variant_sandbox.web import designing, library
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -78,7 +82,33 @@ def test_the_fixture_is_the_retired_game_and_only_admission_refuses_it() -> None
     spec = _retired()
     assert spec_hash(spec) == RETIRED_HASH
     assert validate_spec(spec) == [REFUSAL]
-    assert validate_spec(spec, new=False) == []
+    assert stored_spec_errors(spec) == []
+    assert {RETIRED_HASH} == RANK_PAST_THE_BOARD_KEPT
+
+
+def test_the_escape_is_that_game_s_alone() -> None:
+    """Another game with a rank past the board is refused at the load as at admission."""
+    with pytest.raises(SpecError, match="rules.promotion.rank 8 is not a rank on this board"):
+        compile_spec(_chess_promoting_on(8))
+
+
+def test_the_escape_is_that_game_unchanged() -> None:
+    """The retired game with any change of mechanics is a new game, refused at the load."""
+    spec = _retired()
+    spec["pieces"][0]["value"] = spec["pieces"][0]["value"] + 1
+    assert spec_hash(spec) != RETIRED_HASH
+    assert stored_spec_errors(spec) == [REFUSAL]
+    # A re-spelling or a new name is the same game, and loads.
+    renamed = dict(_retired(), name="tunnel, renamed")
+    assert stored_spec_errors(renamed) == []
+
+
+def test_the_escape_is_that_one_refusal() -> None:
+    """The retired game with a second problem reports both."""
+    spec = _retired()
+    spec["name"] = ""
+    assert stored_spec_errors(spec) == validate_spec(spec)
+    assert REFUSAL in stored_spec_errors(spec) and len(stored_spec_errors(spec)) == 2
 
 
 @pytest.mark.parametrize("path", LIBRARY, ids=lambda path: f"{path.parent.name}/{path.stem}")
@@ -116,8 +146,13 @@ def test_the_engine_loads_the_stored_game_as_it_always_was() -> None:
     assert [engine.perft(state, depth) for depth in (1, 2)] == [18, 324]
 
 
-def test_a_retired_game_s_page_still_draws(tmp_path: Path) -> None:
-    """The site's fallback for a hash the tree no longer holds (`site/kept.py`)."""
+def test_a_retired_game_s_page_still_draws(tmp_path: Path, warm_map: None) -> None:
+    """The site's fallback for a hash the tree no longer holds (`site/kept.py`).
+
+    `warm_map` pays the twin check's compile of every committed spec once per worker, in
+    setup (`graphing._TWINS`, keyed by mechanics hash); the draw over the committed games
+    in this test's own directory and the retired game's ranking against it are still its own.
+    """
     spec = _retired()
     game = kept.game_from(RETIRED_HASH, str(spec["name"]), spec, tmp_path)
     # The committed games only (Q749): the games like it are ranked against every game

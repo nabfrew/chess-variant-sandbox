@@ -86,10 +86,13 @@ class TestTheStoredGame:
 
     def test_with_the_portals_out_of_whites_hands_it_is_checkmate(self) -> None:
         # The same position in a spec where only Black may move a portal end: White has no
-        # move, and the core calls it what `rules.win` says, a loss, not a stalemate.
+        # move, and the core calls it what `rules.win` says, a loss, not a stalemate. Without
+        # `no_straight_back`, which no move could meet with one player moving every end
+        # (refused, Q879); it bars nothing in this position either way.
         spec = copy.deepcopy(_spec())
         for pair in spec["rules"]["portals"]:
             pair["moved_by"] = {"orange": [1], "blue": [1]}
+            pair.pop("no_straight_back", None)
         engine = engine_for(spec)
         state = engine.make_state(SCREENSHOT)
         assert engine.legal_moves(state) == []

@@ -60,8 +60,7 @@ BASE: dict[str, Any] = {
 
 # BASE with one fixed pair of portals on the empty middle rank (schema 19).
 PORTALS: dict[str, Any] = copy.deepcopy(BASE)
-PORTALS["pieces"].append({"id": "O", "value": 0, "moves": []})
-PORTALS["rules"]["portals"] = [{"piece": "O", "orange": "b3", "blue": "d3"}]
+PORTALS["rules"]["portals"] = [{"orange": "b3", "blue": "d3"}]
 
 DROP = object()  # a patch value that removes the key
 
@@ -656,11 +655,9 @@ def test_a_rule_that_does_not_fit_is_refused_in_words(
     assert refusal in errors, errors
 
 
-ONE_PORTAL = "piece 'O' (a portal, rules.portals)"
-PORTAL_TYPE = "piece 'O' is a portal (rules.portals)"
-LEAVE = {"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "move"}
+LEAVE = {"kind": "leap", "vectors": [[1, 0]], "symmetry": "rotate4"}
 
-# Schema 19: the shape of a pair, and what a portal type may not be.
+# Schema 19: the shape of a pair, and what a group's moves may not say (spelling 31).
 PORTAL = [
     pytest.param(
         {"rules.portals": []}, "rules.portals must be a non-empty array of portal groups",
@@ -668,12 +665,16 @@ PORTAL = [
     ),
     pytest.param(
         {"rules.portals.1": "b4"},
-        "rules.portals[1] must be an object with 'piece' and either 'orange' and 'blue' or 'ends'",
+        "rules.portals[1] must be an object with either 'orange' and 'blue' or 'ends'",
         id="pair-type",
     ),
     pytest.param(
-        {"rules.portals.0.piece": "Z"}, "rules.portals[0].piece 'Z' is not a declared piece",
-        id="pair-piece",
+        {"rules.portals.0.piece": "R"},
+        "rules.portals[0].piece names a stand-in piece for the portals' moves, the spelling "
+        "before schema_version 31: write those moves on the group as rules.portals[0].moves "
+        "and leave the stand-in out of pieces. `python -m chess_variant_sandbox.spec.spelling "
+        "FILE` converts a file",
+        id="the-old-spelling",
     ),
     pytest.param(
         {"rules.portals.0.blue": "b3"},
@@ -713,42 +714,40 @@ PORTAL = [
         "put the piece outside it",
         id="region-beside-portals",
     ),
-    pytest.param({"pieces.2.royal": True}, f"{ONE_PORTAL} may not be royal", id="portal-royal"),
     pytest.param(
-        {"pieces.2.captures": []}, f"{ONE_PORTAL} may not declare captures", id="portal-captures"
+        {"rules.portals.0.moves": "step"},
+        "rules.portals[0].moves must be an array of moves, as a piece's are",
+        id="portal-moves-type",
     ),
     pytest.param(
-        {"pieces.2.moves": [{**LEAVE, "kind": "sweep"}]}, f"{ONE_PORTAL} moves[0] may not sweep",
+        {"rules.portals.0.moves": [{**LEAVE, "mode": "both"}]},
+        'rules.portals[0].moves[0].mode must be "move" or left out: a portal moves only onto '
+        "an empty square, so never onto a piece or another portal",
+        id="portal-takes",
+    ),
+    pytest.param(
+        {"rules.portals.0.moves": [{**LEAVE, "kind": "sweep"}]},
+        "rules.portals[0].moves[0] may not sweep",
         id="portal-sweeps",
     ),
     pytest.param(
-        {"pieces.2.moves": [{**LEAVE, "condition": {"from_rank": 0}}]},
-        f"{ONE_PORTAL} moves[0] may not have a from_rank or region condition: those are read "
-        "from a player's side, and a portal belongs to neither",
+        {"rules.portals.0.moves": [{**LEAVE, "condition": {"from_rank": 0}}]},
+        "rules.portals[0].moves[0] may not have a from_rank or region condition: those are "
+        "read from a player's side, and a portal belongs to neither",
         id="portal-condition",
     ),
     pytest.param(
-        {"rules.drops": {"no_mate": ["O"]}},
-        f"{PORTAL_TYPE} and may not be named by rules.drops: it is never held",
-        id="portal-dropped",
+        {"rules.portals.0.moves": [{"kind": "leap", "vectors": [[0, 1]]}]},
+        "rules.portals[0].moves[0] reads differently for the two players: a portal has no "
+        "forward of its own, so its moves must be the same seen from either side (use a "
+        "symmetry that covers both, such as rotate4 or dihedral8)",
+        id="portal-one-sided",
     ),
     pytest.param(
-        {"rules.extinction": {"pieces": ["O"]}},
-        f"{PORTAL_TYPE} and may not be counted by rules.extinction",
-        id="portal-extinction",
-    ),
-    pytest.param(
-        {"rules.castling": {"king": "K", "rook": "O"}}, f"{PORTAL_TYPE} and may not castle",
-        id="portal-castles",
-    ),
-    pytest.param(
-        {"pieces.1.captures": ["K", "O"]},
-        "piece 'R' lists 'O' in captures, but a portal is never captured",
-        id="portal-captured",
-    ),
-    pytest.param(
-        {"pieces.1.promoted_from": "O"}, "piece 'R' is promoted_from 'O', a portal",
-        id="promoted-from-portal",
+        {"rules.portals.0.moved_by": {"orange": [0]}},
+        "rules.portals[0] lets a player move an end but gives it no moves: write them as "
+        "rules.portals[0].moves, as a piece's are",
+        id="portal-moved-without-moves",
     ),
 ]
 
@@ -805,17 +804,6 @@ WITH_PAWN = {"pieces.2": PAWN, "setup.placements.2": {"piece": "P", "squares": [
 # Refusals whose branch is a route through a helper rather than a value's shape.
 ROUTES = [
     pytest.param(
-        {"schema_version": 1, "setup.placements.0.squares": ["c1", "e1"]},
-        "more than one royal piece under 'checkmate' requires \"schema_version\": 2",
-        id="two-royals-placed-under-schema-1",
-    ),
-    pytest.param(
-        {"schema_version": 1,
-         "rules.contacts": {"links": [{"mover": "R", "onto": "R", "onto_to": "K"}]}},
-        "more than one royal piece under 'checkmate' requires \"schema_version\": 2",
-        id="contact-makes-a-royal-under-schema-1",
-    ),
-    pytest.param(
         {"rules.promotion": [{"piece": "R", "to": ["K"]}, {"piece": "R", "to": ["K"]}]},
         "rules.promotion has two rules for 'R'; a piece promotes one way",
         id="promotion-two-rules-for-a-piece",
@@ -858,12 +846,14 @@ def test_a_refusal_reached_through_a_route_is_said_in_words(
 
 
 def test_portal_ends_count_against_the_piece_type_limit() -> None:
-    declared = MAX_PIECE_TYPES - 1  # one under the limit, and one pair adds two types
+    # Two under the limit: one pair adds two ends and its one way of moving (the type every
+    # portal game declared as a stand-in before spelling 31, `schema.portal_movement_types`).
+    declared = MAX_PIECE_TYPES - 2
     extra = [{"id": f"X{i}", "moves": [STEP]} for i in range(declared - len(PORTALS["pieces"]))]
     spec = _patched(PORTALS, {"pieces": PORTALS["pieces"] + extra})
     assert (
-        f"at most {MAX_PIECE_TYPES} piece types, and rules.portals adds one per end: "
-        f"{declared} declared and 2 portal ends"
+        f"at most {MAX_PIECE_TYPES} piece types, and rules.portals adds one per end and one "
+        f"per way its groups move: {declared} declared and 3 for the portals"
     ) in validate_spec(spec)
 
 
@@ -881,13 +871,7 @@ CONSEQUENCES = [
     pytest.param(
         BASE, {"schema_version": 1, "pieces.1.moves.0": "x"},
         ["pieces[1].moves[0] must be an object"],
-        id="schema-1-gate-skips-a-move-that-is-not-an-object",
-    ),
-    pytest.param(
-        BASE, {"schema_version": 1, "pieces.2": "x", "rules.drops": {}},
-        ["pieces[2] must be an object",
-         'rules uses drops, added in schema 2; declare "schema_version": 2 to use it'],
-        id="schema-1-gate-skips-a-piece-that-is-not-an-object",
+        id="a-move-that-is-not-an-object",
     ),
     pytest.param(
         BASE, {"setup.placements": "x", "rules.castling": {"king": "K", "rook": "R"},

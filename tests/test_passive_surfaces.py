@@ -1,5 +1,5 @@
 """Schema 30's lines of sight on the surfaces that read a spec without playing it (Q999a,
-`docs/plan-passive.md` §4.2, §4.3): the words a piece and the rules are said in, the designer's
+`docs/archive/plan-passive.md` §4.2, §4.3): the words a piece and the rules are said in, the designer's
 words, the complexity charge, the distance features, the relation between two games, the
 settle that keeps an edit from leaving a sight that can never bind, and the three operators.
 
@@ -23,12 +23,9 @@ from chess_variant_sandbox.spec.describe import describe_pieces, describe_rules,
 from chess_variant_sandbox.spec.distance import distance, features
 from chess_variant_sandbox.spec.plain import plain_problem
 from chess_variant_sandbox.spec.relate import identity_key, normal_form, rules_involved
-from chess_variant_sandbox.spec.schema import (
-    SCHEMA_VERSION,
-    _schema_thirty_uses,
-    piece_sights,
-)
+from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, piece_sights
 from chess_variant_sandbox.spec.transform import drop_piece, settle_inert_rules
+from tests.feature_inventory import _schema_thirty_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 SIGHT_SPECS = sorted((ROOT / "tests").glob("_sight_*.json"))
@@ -122,18 +119,6 @@ def test_a_sight_taken_away_changes_the_description(path: Path) -> None:
 # ---------------------------------------------------------------------------- plain.py
 
 
-def test_a_version_stamp_names_each_sight_by_its_piece_and_its_words() -> None:
-    spec = _chess(Q=[FREEZE_QUEEN], K=[SHIELDING_KING])
-    spec["schema_version"] = SCHEMA_VERSION - 1
-    stamps = [problem for problem in validate_spec(spec) if "added in schema" in problem]
-    assert len(stamps) == 1, stamps
-    assert plain_problem(stamps[0], spec) == (
-        "Using piece 5 (queen), 'freezes what it sees' and piece 6 (king), 'shields what it "
-        "sees' and piece 6 (king), 'sees through pieces' needs the rest of the draft to be a "
-        "game first."
-    )
-
-
 def test_a_problem_inside_a_line_of_sight_names_the_line() -> None:
     spec = _chess(Q=[FREEZE_QUEEN])
     spec["pieces"][4]["sight"][0]["effect"] = "melt"
@@ -175,8 +160,19 @@ def test_a_spec_differing_only_by_a_sight_is_not_at_distance_zero() -> None:
     assert shielded["sight_freeze_share"] == shielded["sight_disarm_share"] == 0.0
     assert {key: value for key, value in features(chess).items() if key.startswith("sight_")} == {
         "sight_freeze_share": 0.0, "sight_disarm_share": 0.0, "sight_shield_share": 0.0,
-        "sight_aura_share": 0.0,
+        "sight_command_share": 0.0, "sight_aura_share": 0.0, "sight_turncoat_share": 0.0,
     }
+
+
+def test_a_freezing_queen_and_a_disarming_queen_measure_apart() -> None:
+    """Q1011: `_SCALES` lacked the sight features, so `distance` never read them and two
+    games differing only in the effect of one queen's sight measured 0.0 from each other."""
+    freezing = _chess(Q=[FREEZE_QUEEN])
+    disarming = _chess(Q=[dict(FREEZE_QUEEN, effect="disarm")])
+    assert distance(freezing, disarming) > 0
+    assert distance(freezing, disarming) == distance(disarming, freezing)
+    # one share each way: the freeze share and the disarm share, of the 100 features
+    assert distance(freezing, disarming) == pytest.approx(2 * (1 / 6) / 100, abs=1e-4)
 
 
 # --------------------------------------------------------------------------- relate.py
@@ -269,7 +265,8 @@ def test_cast_a_gaze_gives_a_type_its_own_capture_geometry() -> None:
             and sight.range == (1 if m["kind"] == "leap" else m.get("range", 0))
             for m in captures
         ), (pid, sight)
-    assert effects == {"freeze", "disarm", "shield"}
+    # Q1007c added the fourth effect, `command`, cast on the enemy as freeze and disarm are.
+    assert effects == {"freeze", "disarm", "shield", "command"}
 
 
 def test_cast_a_gaze_casts_nothing_beside_portals_or_an_explosion() -> None:

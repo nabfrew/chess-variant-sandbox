@@ -39,11 +39,11 @@ from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
 from chess_variant_sandbox.spec.schema import (
     LATTICES,
     SCHEMA_VERSION,
-    _schema_fourteen_uses,
     obstacle_squares,
     reflect_square,
 )
 from chess_variant_sandbox.viz.wrapped import zone_payload
+from tests.feature_inventory import _schema_fourteen_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 SIZE = 11
@@ -129,21 +129,14 @@ class TestTheVersionIsBumped:
         assert _schema_fourteen_uses(chess) == set()
         assert _schema_fourteen_uses(showcase) == {"board.lattice=hex", "rules.promotion.squares"}
 
-    def test_an_older_stamp_is_refused_by_name(self, showcase: dict[str, Any]) -> None:
-        errors = _errors(_with(showcase, schema_version=13))
-        assert any(
-            "board.lattice=hex" in e and "rules.promotion.squares" in e and "schema 14" in e
-            for e in errors
-        ), errors
-
-    def test_square_written_out_is_a_schema_14_key_and_a_different_hash(
+    def test_square_written_out_is_a_schema_14_key_and_the_same_game(
         self, chess: dict[str, Any]
     ) -> None:
-        spelled = _with(chess, board__lattice="square")
-        assert any("schema 14" in e for e in _errors(spelled))
-        spelled["schema_version"] = 14
+        """A spelling, so one name since Q1008a (`spec/normal.py`)."""
+        # chess's stamp before Q1008b re-spelt it at the current one
+        spelled = _with(dict(chess, schema_version=1), board__lattice="square")
         assert _errors(spelled) == []
-        assert spec_hash(spelled) != spec_hash(chess)
+        assert spec_hash(spelled) == spec_hash(chess)
 
     def test_a_lattice_outside_the_table_is_refused(self, showcase: dict[str, Any]) -> None:
         assert LATTICES == ("square", "hex")

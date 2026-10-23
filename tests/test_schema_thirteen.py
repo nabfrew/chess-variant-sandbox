@@ -40,7 +40,7 @@ from chess_variant_sandbox.spec import validate_spec
 from chess_variant_sandbox.spec.describe import describe_spec
 from chess_variant_sandbox.spec.distance import _SCALES, distance, features
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
-from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, _schema_thirteen_uses
+from chess_variant_sandbox.spec.schema import SCHEMA_VERSION
 from chess_variant_sandbox.spec.transform import (
     set_contacts,
     set_explosion,
@@ -48,6 +48,7 @@ from chess_variant_sandbox.spec.transform import (
     set_strike,
     set_wrap,
 )
+from tests.feature_inventory import _schema_thirteen_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -111,13 +112,6 @@ class TestTheVersionIsBumped:
     ) -> None:
         assert _schema_thirteen_uses(chess) == set()
         assert _schema_thirteen_uses(sweeping) == {"the 'sweep' move kind"}
-
-    def test_an_older_stamp_is_refused_by_name(self, sweeping: dict[str, Any]) -> None:
-        spec = copy.deepcopy(sweeping)
-        spec["schema_version"] = 12
-        errors = validate_spec(spec)
-        assert any("'sweep' move kind" in e and "schema 13" in e for e in errors), errors
-
 
 class TestTheValidator:
     def test_the_showcase_validates(self, sweeping: dict[str, Any]) -> None:

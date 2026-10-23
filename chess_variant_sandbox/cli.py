@@ -36,6 +36,9 @@ from chess_variant_sandbox.tournament.analysis import BLUNDER_SAMPLE
 
 DEFAULT_AGENTS = ("random", "greedy", "minimax:nodes=800", "minimax:nodes=3200")
 RUNS_DIR = Path("runs")
+# `web.server.BROWSER_DIR`, spelt again because the CLI imports the servers only when asked;
+# `tests/test_web.py` holds the two together.
+BROWSER_DIR = Path("build") / "browser"
 # Where `chess-variant-sandbox tournament` writes when it is given no `--out`: beside the library, never
 # in it. A library game's runs are `runs/<hash>-<seed>` and its measurement `runs/<hash>`,
 # and the old default was the first of those -- so a one-off at seed 0 on another roster
@@ -392,6 +395,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default=corpus.ARCHIVE_DIR,
         help="games kept out of the corpus; playable, and not calibrated against",
     )
+    serve.add_argument(
+        "--browser",
+        type=Path,
+        default=BROWSER_DIR,
+        help="the in-browser measuring build the page's measure control loads "
+             "(default: build/browser under the working directory)",
+    )
     serve.add_argument("--open", action="store_true", help="open a browser window")
     serve.set_defaults(handler=_cmd_serve)
 
@@ -412,6 +422,13 @@ def _build_parser() -> argparse.ArgumentParser:
     site_serve.add_argument("--runs", type=Path, default=RUNS_DIR)
     site_serve.add_argument("--heuristics", type=Path, default=Path("heuristics"))
     site_serve.add_argument("--archive", type=Path, default=corpus.ARCHIVE_DIR)
+    site_serve.add_argument(
+        "--browser",
+        type=Path,
+        default=BROWSER_DIR,
+        help="the in-browser measuring build the page's measure control loads "
+             "(default: build/browser under the working directory)",
+    )
     site_serve.set_defaults(handler=_cmd_site_serve)
 
     site_migrate = site_sub.add_parser(
@@ -1231,6 +1248,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         archive_dir=args.archive,
         open_browser=args.open,
         heuristics_dir=args.heuristics,
+        browser_dir=args.browser,
     )
     return 0
 
@@ -1251,6 +1269,7 @@ def _cmd_site_serve(args: argparse.Namespace) -> int:
         runs_dir=args.runs,
         archive_dir=args.archive,
         heuristics_dir=args.heuristics,
+        browser_dir=args.browser,
     )
     return 0
 
@@ -2347,12 +2366,12 @@ def _add_train(sub: Any) -> None:
     )
     train.add_argument(
         "--parent", default=None,
-        help="a generation (plan-teacher §9.1): the parent net's <ruleset-hash>-<procedure>.net "
+        help="a generation (archive/plan-teacher §9.1): the parent net's <ruleset-hash>-<procedure>.net "
         "(or its .json); the recipe becomes the generation's, the flags still apply",
     )
     train.add_argument(
         "--replay", default=None, metavar="PARENT_JSON",
-        help="with --parent: also train on the parent's own training games (plan-teacher "
+        help="with --parent: also train on the parent's own training games (archive/plan-teacher "
         "§9.13.3, E1's replay set), read from the parent's store JSON's recipe; the replay "
         "roster's net must resolve on this ruleset (an accepted store under nets/, or --replay-net)",
     )
@@ -2364,7 +2383,7 @@ def _add_train(sub: Any) -> None:
     )
     train.add_argument(
         "--chain", action="store_true",
-        help="with --replay: chain the replay set (plan-teacher §9.17.4, E3b): the parent's "
+        help="with --replay: chain the replay set (archive/plan-teacher §9.17.4, E3b): the parent's "
         "new games, then the parent's own replay set behind them, link by link",
     )
     train.add_argument(
@@ -2605,7 +2624,7 @@ def _duel_only(
 
     The net is the store's weights under `--store`, registered as accepted in this process
     only (a refused or research net duels as itself); the opponent is `--duel-against`,
-    by default the built-in at equal nodes (D2). plan-teacher §9.1's P, A25, re-duels and
+    by default the built-in at equal nodes (D2). archive/plan-teacher §9.1's P, A25, re-duels and
     confirmations are this command.
     """
     import hashlib

@@ -1495,7 +1495,7 @@ def test_the_prompt_states_the_portal_bar_as_the_validator_enforces_it() -> None
     assert "only on a pair somebody moves" not in SCHEMA_PREAMBLE
     assert "either both players must be able to move an end" in SCHEMA_PREAMBLE
     assert "a turn must be two moves" in SCHEMA_PREAMBLE
-    assert "the portal piece must have a move back" in SCHEMA_PREAMBLE
+    assert "the group's moves must include a move back" in SCHEMA_PREAMBLE
     # The sentence is pinned to the validator's words for each refusal.
     from test_schema_twenty import _sluice_draft
 

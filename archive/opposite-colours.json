@@ -1,8 +1,8 @@
 {
-  "schema_version": 30,
+  "schema_version": 31,
   "name": "opposite colours",
-  "description": "In chess the two kings start on opposite colours, White's on a dark square and Black's on a light one. Here every piece is bound to its colour, as a bishop is, and that splits each army in two: the pieces on your king's colour can only ever fight the enemy pieces that come for it, and the pieces on the other colour can only ever fight the enemy king and its defenders. No capture crosses between the colours. Sight does. A pawn freezes the enemy piece straight ahead of it, where a chess pawn would have pushed; the camel, jumping three and one, disarms enemy pieces a knight's jump away, where a chess knight would have landed; the elephant, jumping two squares in any direction, makes its own pieces on the four squares beside it impossible to take, other elephants and the king excepted; and the guard, which moves as the king does, freezes enemy pieces beside it. A frozen piece cannot move, a disarmed one cannot capture, and neither gives check. So most mates need the colour the king does not stand on: often a pawn from the enemy's defending colour walks up in front of the king and freezes it, and then any check is mate. Your own pawns' gaze in front of your king is the defence against that walk, and the only pieces that can take the walker are the ones you sent away to attack, so every move weighs the attack on one colour against the defence on the other.",
-  "board": {"width": 8, "height": 8},
+  "description": "In chess the two kings start on opposite colours, White's on a dark square and Black's on a light one. Here every piece is bound to its colour, as a bishop is, and that splits each army in two: the pieces on your king's colour can only ever fight the enemy pieces that come for it, and the pieces on the other colour can only ever fight the enemy king and its defenders. No capture crosses between the colours. Sight does. The rook and the queen are the colour-bound cousins of chess's: the rook rides along files and ranks in jumps of two squares, as many as the line allows, leaping the square between each landing and stopped only by a piece on a square it would land on, and the queen adds that ride to a bishop's diagonals. To keep these long-range pieces behind their pawns at the start, as in chess, the pawns stand a rank further forward, and the board is two ranks longer, so the armies still begin with four empty ranks between them. A pawn, which moves and captures one step diagonally forward, freezes the enemy piece straight ahead of it; the camel, jumping three and one, disarms enemy pieces a knight's jump away; the rook makes its own pieces on the four squares beside it impossible to take, other rooks and the king excepted; and the queen freezes enemy pieces beside it. A frozen piece cannot move, a disarmed one cannot capture, and neither gives check. So most mates need the colour the king does not stand on, and every move weighs the attack on one colour against the defence on the other, now with open files and ranks to fight over on both.",
+  "board": {"width": 8, "height": 10},
   "pieces": [
     {"id": "P", "name": "pawn", "value": 1,
      "moves": [{"kind": "leap", "vectors": [[1, 1]], "symmetry": "lateral", "mode": "both"}],
@@ -10,15 +10,15 @@
     {"id": "C", "name": "camel", "value": 2.5,
      "moves": [{"kind": "leap", "vectors": [[3, 1]], "symmetry": "dihedral8"}],
      "sight": [{"vectors": [[1, 2]], "symmetry": "dihedral8", "range": 1, "effect": "disarm", "whose": "enemy"}]},
-    {"id": "E", "name": "elephant", "value": 2.5,
-     "moves": [{"kind": "leap", "vectors": [[2, 2], [2, 0]], "symmetry": "rotate4"}],
+    {"id": "R", "name": "rook", "value": 3.5,
+     "moves": [{"kind": "slide", "vectors": [[2, 0]], "symmetry": "rotate4"}],
      "sight": [{"vectors": [[1, 0]], "symmetry": "rotate4", "range": 1, "effect": "shield", "whose": "own",
-                "affects": ["P", "C", "B", "G"]}]},
+                "affects": ["P", "C", "B", "Q"]}]},
     {"id": "B", "name": "bishop", "value": 4,
      "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4"}]},
-    {"id": "G", "name": "guard", "value": 4.5,
-     "moves": [{"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate4"},
-               {"kind": "leap", "vectors": [[2, 0]], "symmetry": "rotate4"}],
+    {"id": "Q", "name": "queen", "value": 7,
+     "moves": [{"kind": "slide", "vectors": [[1, 1]], "symmetry": "rotate4"},
+               {"kind": "slide", "vectors": [[2, 0]], "symmetry": "rotate4"}],
      "sight": [{"vectors": [[1, 0]], "symmetry": "rotate4", "range": 1, "effect": "freeze", "whose": "enemy"}]},
     {"id": "K", "name": "king", "value": 0, "royal": true,
      "moves": [{"kind": "leap", "vectors": [[1, 1]], "symmetry": "rotate4"},
@@ -27,26 +27,25 @@
   "setup": {
     "mirror": true,
     "placements": [
-      {"piece": "E", "squares": ["a1", "h1"]},
+      {"piece": "R", "squares": ["a1", "h1"]},
       {"piece": "C", "squares": ["b1", "g1"]},
       {"piece": "B", "squares": ["c1", "f1"]},
-      {"piece": "G", "squares": ["d1"]},
+      {"piece": "Q", "squares": ["d1"]},
       {"piece": "K", "squares": ["e1"]},
-      {"piece": "P", "squares": ["a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2"]}
+      {"piece": "P", "squares": ["a3", "b3", "c3", "d3", "e3", "f3", "g3", "h3"]}
     ]
   },
   "rules": {
     "win": "checkmate",
     "stalemate": "draw",
-    "promotion": {"piece": "P", "rank": "last", "to": ["B", "E", "C", "G"]},
+    "promotion": {"piece": "P", "rank": "last", "to": ["Q", "R", "B", "C"]},
     "max_plies": 300
   },
-  "appearance": {"icons": {"G": "commoner"}},
   "provenance": {
-    "added": "2026-10-22",
-    "preview": "A preview: a new kind of game in which pieces act on each other by line of sight, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
+    "added": "2026-10-24",
     "origin": "designed",
-    "source": "docs/plan-passive.md, Q999b: the user's colour-bound showcase for schema 30's lines of sight (sections 5 and 6.5)",
-    "history": "The user's request (2026-10-21): every piece's movement keeps its square colour, both armies are symmetrical with pieces on both colours, so captures happen only between pieces on one colour and the colours touch only through lines of sight. Designed by Q999b (2026-10-22) with skill game-designer from chess's array, every piece made colour-bound; the design log (seven scratch drafts, what each changed and why) is in docs/plan-passive.md section 6.5."
+    "source": "docs/plan-schema-31.md, Q1007e: R1, the user's showcase for schema 31's riders (section 6.1)",
+    "history": "The user's request (2026-10-22, corrected 2026-10-23): opposite colours with closer colour-locked analogies of chess's rook and queen, riding any number of two-square hops along files and ranks, stopped by the first piece on a landing square and never by one they jump over. Built by Q1007e (2026-10-24) with skill game-designer from opposite colours (690631b0e4eb): its elephants made rooks carrying the elephant's shield, its guard a queen (the bishop's diagonals plus the rook's ride) carrying the guard's freeze. Of three drafted setups (R1a, the pawns a rank forward on 8 x 8; R1b, the same on a board two ranks longer; R1c, the parent's layout with the riders also blocked on the square they pass), this is R1b, kept as the one with the most promising play; the drafts and the reason are in docs/plan-schema-31.md section 6.1. It replaced the first opposite colours (690631b0e4eb, the elephants and the guard; retired to tests/_retired_opposite_colours.json with its page and matches kept) under the user's rule of 2026-10-23, having met every bar registered before its first measured game, viable in 4 of 4 runs at 0.889 [0.867, 0.913] against the first game's 0.824 [0.798, 0.845] on the same build, with the seat level.",
+    "parents": ["690631b0e4eb"]
   }
 }

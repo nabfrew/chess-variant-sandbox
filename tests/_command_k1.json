@@ -1,10 +1,10 @@
 {
-  "schema_version": 29,
-  "name": "gardner with weary heavies",
-  "description": "Martin Gardner's minichess (chess on a 5x5 board, each side a rook, knight, bishop, queen and king behind five pawns, won by checkmate), in which the heavy pieces tire. A queen that moves must rest for its side's next two turns, and a rook for its side's next one; pawns, knights, bishops and kings never rest. A resting piece still stands guard: it attacks, defends, blocks and gives check, and its check must be answered, but it cannot move to follow up. So every queen move is a commitment of three turns. Strike now, and for two turns the queen is a fixed gun the other side can manoeuvre around and attack; hold it back, and it stays free to answer whatever comes. On a board this small that turns the middlegame into a question of timing: the light pieces and the king do most of the moving, and the heavies move when one move of theirs is worth the turns it costs. A pawn that promotes arrives tired, resting as the piece it became. When every legal move a side has belongs to a resting piece, as when only a resting rook can answer a check, the rest is lifted for that turn, so a side never runs out of moves for want of a rested piece.",
+  "schema_version": 30,
+  "name": "Chess with commanding knights (command test spec)",
+  "description": "Test spec for Q1007c: chess, and every enemy piece a knight could jump to (kings excepted) may also be moved by the knight's owner, to empty squares only.",
   "board": {
-    "width": 5,
-    "height": 5
+    "width": 8,
+    "height": 8
   },
   "pieces": [
     {
@@ -22,6 +22,21 @@
           ],
           "range": 1,
           "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
         },
         {
           "kind": "leap",
@@ -52,6 +67,20 @@
           "symmetry": "dihedral8",
           "mode": "both"
         }
+      ],
+      "sight": [
+        {
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "range": 1,
+          "effect": "command",
+          "whose": "enemy"
+        }
       ]
     },
     {
@@ -76,7 +105,6 @@
       "id": "R",
       "name": "rook",
       "value": 5,
-      "rest": 1,
       "moves": [
         {
           "kind": "slide",
@@ -95,7 +123,6 @@
       "id": "Q",
       "name": "queen",
       "value": 9,
-      "rest": 2,
       "moves": [
         {
           "kind": "slide",
@@ -148,25 +175,31 @@
           "b2",
           "c2",
           "d2",
-          "e2"
+          "e2",
+          "f2",
+          "g2",
+          "h2"
         ]
       },
       {
         "piece": "R",
         "squares": [
-          "a1"
+          "a1",
+          "h1"
         ]
       },
       {
         "piece": "N",
         "squares": [
-          "b1"
+          "b1",
+          "g1"
         ]
       },
       {
         "piece": "B",
         "squares": [
-          "c1"
+          "c1",
+          "f1"
         ]
       },
       {
@@ -196,18 +229,14 @@
         "N"
       ]
     },
-    "max_plies": 200,
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
     "repetition_draw": 3,
     "no_progress_draw": 100
-  },
-  "provenance": {
-    "added": "2026-10-21",
-    "preview": "A preview: a new kind of game in which a piece that moves must rest for some of its side's turns, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
-    "origin": "designed",
-    "source": "docs/plan-rest.md, Q983d: the showcases of schema 29's rest (section 6.1)",
-    "history": "U1 of docs/plan-rest.md section 6.1, pre-registered 2026-10-19 before schema 29 was built: Gardner (975dde173f01) with the queen at rest 2, the rooks at rest 1 and every other type at 0. Per-type rest in alternating play under checkmate: the heavies rest longer, a resting queen's check must be answered, and a pawn (rest 0) promoted to a queen rests 2 as the queen. Built by Q983d (2026-10-21) exactly as registered; its control is Gardner played on this game's roster (section 6.2 as run).",
-    "parents": [
-      "975dde173f01"
-    ]
   }
 }

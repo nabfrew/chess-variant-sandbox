@@ -56,6 +56,7 @@ from chess_variant_sandbox.site import (
     mail,
     matches,
     migrate,
+    provisional,
     quota,
     routes,
     screening,
@@ -1695,6 +1696,58 @@ def _user_id(site: Site, handle: str) -> int:
     with site.store.cursor() as cursor:
         cursor.execute("select id from users where handle = %s", (handle,))
         return int(cursor.fetchone()[0])
+
+
+class TestWhatMeasuringHereReads:
+    """Q1004. The designer's *measure it here* (`measure.js` `hereKeeping`) reads the
+    draft's standing before anything is measured, to know whether the site could keep the
+    score: a `publish` that is `mine` is this person's saved game (sent when it ends); no
+    `publish` and not `saved` is rules nobody saved (measured, held, and sent once a save
+    makes them this person's); a saved game with no `publish` (the library's) or somebody
+    else's `publish` is one no save of theirs can make theirs (measuring is off). Held here
+    over HTTP: those are the fields the route sends, and the owner check the site makes on
+    a sent score (`provisional.check_owner`) agrees with each, before and after the save
+    -- so a held upload goes in as it came, and nothing is measured again."""
+
+    def test_unsaved_rules_read_unsaved_and_a_save_lets_the_held_score_in(
+        self, drafting: Site, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _screened(monkeypatch, passed=True)
+        ada = drafting.signed_in("ada")
+        spec = _template(name="measured before it was saved")
+        digest = spec_hash(designing.settled(spec))
+
+        before = ada.get(f"/api/design/standing/{digest}").payload
+        assert (before["saved"], before["publish"]) == (False, None)
+        with pytest.raises(provisional.ProvisionalError, match="isn't on the site"):
+            provisional.check_owner(drafting.store, digest, _user_id(drafting, "ada"))
+
+        assert _saved(ada, spec).payload["hash"] == digest
+        after = ada.get(f"/api/design/standing/{digest}").payload
+        assert after["publish"]["mine"] is True
+        provisional.check_owner(drafting.store, digest, _user_id(drafting, "ada"))
+
+    def test_somebody_elses_game_and_a_library_game_read_as_never_keepable(
+        self, drafting: Site, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _screened(monkeypatch, passed=True)
+        ada = drafting.signed_in("ada")
+        digest = _saved(ada, _template()).payload["hash"]
+        bob = drafting.signed_in("bob")
+
+        theirs = bob.get(f"/api/design/standing/{digest}").payload["publish"]
+        assert theirs["mine"] is False
+        with pytest.raises(provisional.ProvisionalError, match="only the person who made"):
+            provisional.check_owner(drafting.store, digest, _user_id(drafting, "bob"))
+
+        library_game = bob.get(f"/api/design/standing/{DULL_HASH}").payload
+        assert (library_game["saved"], library_game["publish"]) == (True, None)
+        # This harness's library is files the store never loaded (on the box `load` puts
+        # it in, ownerless); either way the site keeps no score of it from a browser.
+        with pytest.raises(
+            provisional.ProvisionalError, match="kept in the library|isn't on the site"
+        ):
+            provisional.check_owner(drafting.store, DULL_HASH, _user_id(drafting, "bob"))
 
 
 class TestPublishing:

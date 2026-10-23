@@ -23,6 +23,8 @@ import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 FORMER = re.compile(r"(?<![A-Za-z])(newgame|NEWGAME)(?![a-z])")
+# The pattern's two spellings, as bytes: a file holding neither cannot match it.
+SPELLINGS = tuple(word.encode("ascii") for word in FORMER.pattern.split("(")[2].split(")")[0].split("|"))
 
 
 class Allowed(NamedTuple):
@@ -85,9 +87,19 @@ def occurrences() -> list[tuple[str, int, str]]:
     ).stdout.decode("utf-8")
     found = []
     for path in sorted(p for p in listed.split("\0") if p):
+        # Only a file holding one of the pattern's two spellings can match, so the bytes
+        # are asked that first, and only those files are decoded and read line by line:
+        # decoding and splitting all 96 MB of the tree cost 2.5 s (Q1009). A file that does
+        # not decode is skipped either way.
         try:
-            text = (REPO / path).read_text(encoding="utf-8")
-        except (UnicodeDecodeError, FileNotFoundError, IsADirectoryError):
+            data = (REPO / path).read_bytes()
+        except (FileNotFoundError, IsADirectoryError):
+            continue
+        if not any(spelling in data for spelling in SPELLINGS):
+            continue
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
             continue
         for number, line in enumerate(text.splitlines(), 1):
             found.extend((path, number, line) for _ in FORMER.finditer(line))

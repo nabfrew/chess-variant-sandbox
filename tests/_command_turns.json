@@ -1,7 +1,7 @@
 {
-  "schema_version": 28,
-  "name": "gardner in rounds with a swift king",
-  "description": "Win by taking the other side's king in Martin Gardner's minichess (chess on a 5x5 board, each side a rook, knight, bishop, queen and king behind five pawns), played in rounds: each round both players choose a move in secret, both are revealed, and there is no check, so a king is simply taken. In this version the king is the fastest piece on the board. When one side moves its king and the other moves anything else, the king's move is made first, as an ordinary move, and the other move is made afterwards only if it still can be. So a king that runs is never caught where it stood, because it has already gone; and a piece the king goes for can neither slip away nor strike back first, because it is taken before it moves. What a running king cannot outrun is a piece aimed at the square it runs to: that piece arrives second and takes it there. The attacker's question each round is therefore not where the king is but where it will go, and the defender's is whether to run at all. Between pieces of equal speed nothing changes: two pieces moving onto one square collide and both are removed, two pieces trying to take each other trade places, and the two kings, being equally fast, can still fall in the same round, which is a draw.",
+  "schema_version": 30,
+  "name": "Gardner with commands in long turns (command test spec)",
+  "description": "Test spec for Q1007c: two moves a turn and a pawn in hand for each side; knights command the enemy pieces a knight's jump away, bishops command along their diagonals and may make them take their own side, and rooks freeze enemy knights, bishops and queens two squares along their lines.",
   "board": {
     "width": 5,
     "height": 5
@@ -52,6 +52,20 @@
           "symmetry": "dihedral8",
           "mode": "both"
         }
+      ],
+      "sight": [
+        {
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "range": 1,
+          "effect": "command",
+          "whose": "enemy"
+        }
       ]
     },
     {
@@ -70,6 +84,20 @@
           "symmetry": "rotate4",
           "mode": "both"
         }
+      ],
+      "sight": [
+        {
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "effect": "command",
+          "whose": "enemy",
+          "captures_own": true
+        }
       ]
     },
     {
@@ -87,6 +115,25 @@
           ],
           "symmetry": "rotate4",
           "mode": "both"
+        }
+      ],
+      "sight": [
+        {
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "range": 2,
+          "effect": "freeze",
+          "whose": "enemy",
+          "affects": [
+            "N",
+            "B",
+            "Q"
+          ]
         }
       ]
     },
@@ -117,7 +164,6 @@
       "name": "king",
       "value": 0,
       "royal": true,
-      "speed": 1,
       "moves": [
         {
           "kind": "leap",
@@ -183,7 +229,7 @@
     ]
   },
   "rules": {
-    "win": "royal_capture",
+    "win": "checkmate",
     "stalemate": "draw",
     "promotion": {
       "piece": "P",
@@ -198,16 +244,14 @@
     "max_plies": 200,
     "repetition_draw": 3,
     "no_progress_draw": 100,
-    "simultaneous": {}
-  },
-  "provenance": {
-    "added": "2026-10-19",
-    "preview": "A preview: a new kind of game played in rounds in which faster pieces move first, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
-    "origin": "designed",
-    "source": "docs/plan-speed.md, Q943c: the showcases of schema 28's speed (section 6.1)",
-    "history": "T1 of docs/plan-speed.md section 6.1, pre-registered 2026-10-16 before it was built: Gardner in rounds (e043fce6968e; retired from the previews by Q962b for its draws, file tests/_retired_gardner_in_rounds.json) with the king at speed 1 and every other piece at 0, the showcase of a fast royal: whether a king that always moves first ends its chase by other pieces (section 3.2), the chase between the two kings being left as it was. Built by Q943c (2026-10-19); measured and graded against section 6.3 by Q943d.",
-    "parents": [
-      "e043fce6968e"
-    ]
+    "turn": {
+      "moves": 2
+    },
+    "drops": {
+      "from_captures": false,
+      "stock": {
+        "P": 1
+      }
+    }
   }
 }

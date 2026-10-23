@@ -92,7 +92,7 @@ pub fn run_tournament(
     pool(threads).install(|| tasks.par_iter().map(play).collect())
 }
 
-/// Q665 (plan-teacher §8.2, T2v): the player's own root value on each position.
+/// Q665 (archive/plan-teacher §8.2, T2v): the player's own root value on each position.
 ///
 /// One fresh `Player` per position, its stream `PyRandom::for_seat(seeds[i], 0)` as
 /// `Core.select_move`'s is, so a position's answer is a pure function of the position,

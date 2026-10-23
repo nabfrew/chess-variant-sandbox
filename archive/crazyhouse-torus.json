@@ -1,5 +1,5 @@
 {
-  "schema_version": 25,
+  "schema_version": 31,
   "name": "torus crazyhouse",
   "description": "A board with no edges, where every capture comes back. On a seven by fourteen board with both pairs of opposite edges joined, a piece leaving one edge reappears on the opposite one and there is no corner to trap a king in. Each army is a sandwich: its pieces stand between a front line of pawns facing the enemy and a rear guard of pawns facing backwards, towards the join behind them, which nothing ever turns round. On top sits the rule of crazyhouse, a popular chess variant: a captured piece changes sides into its captor's hand and may later be put back on the board as a move. A pawn comes back facing forward, and only onto the six middle ranks between the front lines, so a fallen rear guard is never rebuilt. Every capture has to be weighed against the piece it hands the opponent to drop. With no corner to mate in, the hand goes too far: there are more than twice as many moves to choose from as without it, the lead changes hands often, and the game is sharp but hard to read.",
   "board": {

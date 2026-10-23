@@ -1,5 +1,5 @@
 {
-  "schema_version": 18,
+  "schema_version": 31,
   "name": "placement chess",
   "description": "Placement chess keeps chess's pawns where they are and hands each player the other eight pieces, king included. Before anything moves, the players take turns placing them, one a move, on empty squares of their own back rank, and once both back ranks are full the game goes on as chess without castling. So the opening is a contest of arrangement rather than of memory. A piece placed early claims the square it wants but tells the opponent what is coming; a piece held back can answer the other side's arrangement, but the last one goes on whatever square is left. Where to put the king, whether to set the rooks together or apart, and which pieces to aim at the opponent's weak points all become choices made in view of the other side's half-built army, and nothing obliges the two bishops to stand on squares of different colours.",
   "board": {

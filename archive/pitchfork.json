@@ -1,5 +1,5 @@
 {
-  "schema_version": 25,
+  "schema_version": 31,
   "name": "pitchfork",
   "description": "Chess with eight wolves in the centre that belong to neither player, and only the humblest piece can kill one: a pawn, taking diagonally forward as usual. The wolves walk in pairs, nose to tail, round four five-square rings, two on each wing, one nearer each player (White's are b4 c5 d4 c3 b3 and g4 f5 e4 f3 g3); after every move either player makes, each wolf steps on and eats whatever piece stands there, and no king may stand where a wolf will step next. The rings cover the squares the knights and bishops want to come out to, so the opening is a hunt only pawns can carry out. And the hunt has a price: a pawn that takes the leading wolf of a pair stands exactly where the one behind steps next, and is eaten at once. Which wolf to strike, and when, is the opening's question. Otherwise it is ordinary chess, won by checkmate.",
   "board": {

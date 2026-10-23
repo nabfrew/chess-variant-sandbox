@@ -127,6 +127,26 @@ def _assert_same_played(engine: Engine, agents: tuple[str, str], seed: int = 5) 
 @pytest.mark.parametrize("name", CORPUS)
 @pytest.mark.parametrize("agents", FAST_ROSTER, ids=lambda pair: f"{pair[0]}-vs-{pair[1]}")
 def test_a_played_game_is_identical_move_for_move(name: str, agents: tuple[str, str]) -> None:
+    _assert_same_played(_engine(name), agents, seed=_FAST_SEED.get((name, agents), 5))
+
+
+# The arms whose game at the shared seed is too long for the fast suite, and the seed each
+# plays there instead. Makruk's minimax arm at seed 5 is a 381-ply mate (of a 400-ply
+# limit), 2.4-2.7 s of the Python side alone, and over the duration guard's 4 s on a loaded
+# machine (Q1009, 2026-10-22); every other arm is under 0.5 s. Seed 2 is a 125-ply mate,
+# 0.8 s, and the seed-5 game moves to the slow tier whole
+# (`test_makruks_long_minimax_game_agrees_move_for_move`), so no game is dropped.
+_FAST_SEED: dict[tuple[str, tuple[str, str]], int] = {
+    ("makruk", ("minimax:nodes=150", "greedy")): 2,
+}
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("name, agents", sorted(_FAST_SEED))
+def test_makruks_long_minimax_game_agrees_move_for_move(
+    name: str, agents: tuple[str, str]
+) -> None:
+    """The game at the shared seed that `_FAST_SEED` moves out of the fast suite."""
     _assert_same_game(name, agents)
 
 
@@ -2071,7 +2091,7 @@ def test_an_alternating_rest_game_is_played_the_same_way_on_both_sides(name: str
     assert bound > 0, "the rest never removed a move in the game played"
 
 
-# Schema 30 (Q999a, `docs/plan-passive.md` §3.4): lines of sight, which no committed ruleset
+# Schema 30 (Q999a, `docs/archive/plan-passive.md` §3.4): lines of sight, which no committed ruleset
 # reaches. Both sides of the boundary drive the same core, whose generator filters what the
 # effects forbid and whose attack test reads them, so a search reads one game; the arm plays it
 # through both loops, and checks an effect really binds in the game played.

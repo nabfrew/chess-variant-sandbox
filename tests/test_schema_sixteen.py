@@ -50,14 +50,8 @@ from chess_variant_sandbox.spec.describe import describe_spec
 from chess_variant_sandbox.spec.distance import distance, features
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
 from chess_variant_sandbox.spec.relate import identity_key
-from chess_variant_sandbox.spec.schema import (
-    SCHEMA_VERSION,
-    SHAPES,
-    WRAP_PAIRS,
-    _schema_sixteen_uses,
-    absent_squares,
-)
-from chess_variant_sandbox.spec.transform import settle_schema_version
+from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, SHAPES, WRAP_PAIRS, absent_squares
+from tests.feature_inventory import _schema_sixteen_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE = ROOT / "archive"
@@ -249,39 +243,6 @@ class TestTheVersionIsBumped:
         inert["rules"]["wrap"] = {"n_s_by_player": {"0": "none", "1": "none"}}
         assert "rules.wrap.hexagon" in _schema_sixteen_uses(inert)
 
-    def test_an_older_stamp_is_refused_by_name(self, flanks) -> None:
-        flanks["schema_version"] = 15
-        (error,) = _errors(flanks, "added in schema 16")
-        assert "board.shape=hexagon" in error and "rules.wrap.hexagon" in error
-
-    def test_grid_written_out_is_a_schema_16_key_and_a_different_hash(self) -> None:
-        chess = json.loads((ROOT / "rulesets" / "chess.json").read_text(encoding="utf-8"))
-        grid = copy.deepcopy(chess)
-        grid["board"]["shape"] = "grid"
-        assert _schema_sixteen_uses(grid) == {"board.shape=grid"}
-        assert _errors(grid, "added in schema 16")
-        grid["schema_version"] = 16
-        assert validate_spec(grid) == []
-        assert spec_hash(grid) != spec_hash(chess)
-        assert canonical_tables(compile_spec(grid)).keys() == canonical_tables(
-            compile_spec(chess)
-        ).keys()
-
-    def test_the_settled_stamp_follows_the_keys(self, twin, flanks) -> None:
-        for spec in (twin, flanks):
-            spec["schema_version"] = 14
-            settle_schema_version(spec)
-            assert spec["schema_version"] == 16
-        parent = _load("hex-glinski-promoting")
-        settled = settle_schema_version(copy.deepcopy(parent))
-        assert settled["schema_version"] <= 14
-
-    def test_the_showcases_are_stamped_16_and_valid(self) -> None:
-        for name in ("hex-glinski-hexagon", "hex-glinski-flanks", "hex-glinski-flanks-one-way"):
-            spec = _load(name)
-            assert spec["schema_version"] == 16
-            assert validate_spec(spec) == [], (name, validate_spec(spec))
-
     def test_the_preamble_teaches_it(self) -> None:
         """Q281a5: the model is told the shape and all three pairs, with their sides."""
         from chess_variant_sandbox.llm.propose import SCHEMA_PREAMBLE
@@ -352,11 +313,8 @@ class TestTheNineRefusals:
     def test_4_castling_off_the_middle_rank(self, twin) -> None:
         """Schema 18 (Q781) reads castling's span, not its rank. A hexagon's row is one
         run of cells, so a castling between a king and a rook on it never leaves them: it
-        is the walled rank, refused only under an older stamp. A destination off the
-        hexagon is refused at every version."""
+        is the walled rank. A destination off the hexagon is refused."""
         twin["rules"]["castling"] = {"king": "K", "rook": "R", "king_steps": 2}
-        assert _errors(twin, "rules.castling(walled rank), added in schema 18")
-        twin["schema_version"] = 18
         assert validate_spec(twin) == []
         for placement in twin["setup"]["placements"]:
             if placement["piece"] == "R":

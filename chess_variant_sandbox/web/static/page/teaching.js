@@ -218,8 +218,6 @@ function paletteHtml() {
     ${players.length > 1
       ? `<span class="muted trayWho">${esc(sides[player])}</span>` : ''}
     ${(DRAFT.pieces || []).map((piece, index) => {
-      // The portal piece is put down by the portals' row, never from here (D1).
-      if (isPortalPiece(index)) return '';
       const icon = ((preview.icons || [])[index] || [])[player];
       const on = PLACING && !PLACING.erase && PLACING.piece === index && PLACING.player === player;
       return `<button data-placing="${index}.${player}" draggable="true" class="${on ? 'on' : ''}"
@@ -254,7 +252,6 @@ function pieceTrayHtml() {
   const preview = lastPreview() || {};
   return `<div class="row small palette">
     ${(DRAFT.pieces || []).map((piece, index) => {
-      if (isPortalPiece(index)) return '';
       const icon = ((preview.icons || [])[index] || [])[0];
       return `<button data-pick="${index}" class="${index === DRAFT_PIECE ? 'on' : ''}"
         title="${esc(trayTitle(piece))}">${icon
@@ -383,11 +380,10 @@ function wireWildLinks(root) {
 
 let WILD_TOOL = null;   // { piece: id or '' }: a wild piece being started
 
-// The draft's pieces a wild piece can be: not royal (the validator's rule), and not the
-// portals' piece.
+// The draft's pieces a wild piece can be: not royal (the validator's rule).
 function wildCandidates() {
   return (DRAFT.pieces || []).map((piece, index) => ({ piece, index }))
-    .filter(({ piece, index }) => piece && !piece.royal && !isPortalPiece(index));
+    .filter(({ piece }) => piece && !piece.royal);
 }
 
 // Why *+ wild piece* cannot start one here, or '' when it can.

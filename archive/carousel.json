@@ -1,5 +1,5 @@
 {
-  "schema_version": 19,
+  "schema_version": 31,
   "name": "carousel",
   "description": "Each side owns a private one-way lift into the enemy's half. A White piece that ends its move on b3, in front of White's pawns, comes out one step beyond c5, in the direction it was travelling, capturing there as usual; Black's lift mirrors it, in at b6 and out beside c4. To the other side a lift is solid, and nobody moves one. The lifts interlock: each mouth sits beside the other's exit, so where your raiders leave is next to where the enemy's arrive, and a pawn can ride its lift on the first move into the enemy's third row. The armies are Los Alamos chess's (chess without bishops, castling or a pawn's double step, the first chess a computer played, in 1956), on a board six wide and eight tall whose side edges are joined, so a piece may reach a lift from either side and choose which side of the exit it comes out on.",
   "board": {
@@ -116,12 +116,6 @@
           "mode": "both"
         }
       ]
-    },
-    {
-      "id": "O",
-      "name": "portal",
-      "value": 0,
-      "moves": []
     }
   ],
   "setup": {
@@ -186,7 +180,6 @@
     },
     "portals": [
       {
-        "piece": "O",
         "orange": "b3",
         "blue": "c5",
         "passage": {
@@ -195,7 +188,6 @@
         }
       },
       {
-        "piece": "O",
         "orange": "b6",
         "blue": "c4",
         "passage": {

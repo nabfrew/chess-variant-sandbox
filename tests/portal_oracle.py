@@ -93,11 +93,14 @@ class PortalOracle:
         }
         promotion = rules.get("promotion")
         entries = promotion if isinstance(promotion, list) else ([promotion] if promotion else [])
-        self.promotion: dict[str, tuple[Any, Any]] = {}
+        self.promotion: dict[str, tuple[Any, Any, bool]] = {}
         for entry in entries:
             zones = promotion_squares(entry, self.width, self.height, self.orientation)
             targets = entry.get("to", [])
-            self.promotion[entry["piece"]] = (zones, (targets, bool(entry.get("mandatory", True))))
+            self.promotion[entry["piece"]] = (
+                zones, (targets, bool(entry.get("mandatory", True))),
+                bool(entry.get("on_leaving", False)),
+            )
 
     # -- geometry -------------------------------------------------------------------
 
@@ -239,6 +242,28 @@ class PortalOracle:
                 hit(ray[index], index + 1)
                 return
 
+    def _past_screen(self, position: Position, origin: int, dx: int, dy: int, player: int,
+                     limit: int, move: dict[str, Any]) -> list[int]:
+        """The squares a hop may land on past its screen, up to and including the first
+        piece there or its ``screen_range``; empty when the ray has no screen ``move``'s
+        ``screen`` allows (read as ``player``'s: a portal end is an enemy screen)."""
+        ray = self._ray(origin, dx, dy, player, limit)
+        screen = next((i for i, square in enumerate(ray) if square in position), None)
+        if screen is None:
+            return []
+        owner = position[ray[screen]][1]
+        wanted = move.get("screen", "any")
+        if (wanted == "own" and owner != player) or (wanted == "enemy" and owner == player):
+            return []
+        reach = move.get("screen_range", 0)
+        last = len(ray) if reach == 0 else min(len(ray), screen + 1 + reach)
+        landed: list[int] = []
+        for index in range(screen + 1, last):
+            landed.append(ray[index])
+            if ray[index] in position:
+                break
+        return landed
+
     # -- coming out -------------------------------------------------------------------
 
     def _partner_square(self, position: Position, entry: int) -> int | None:
@@ -276,13 +301,21 @@ class PortalOracle:
                         or not self._may_take(pid, occupant[0])
                     ):
                         continue
-                    for promoted in self._promotions(pid, player, exit_square):
+                    for promoted in self._promotions(pid, player, exit_square, origin):
                         found.add((origin, entry, exit_square, promoted))
         return found
 
-    def _promotions(self, pid: str, player: int, square: int) -> list[str | None]:
+    def _promotions(
+        self, pid: str, player: int, square: int, origin: int | None = None,
+    ) -> list[str | None]:
+        """What a move of ``pid`` from ``origin`` ending on ``square`` may promote to: the
+        arrival square's zone, or (``on_leaving``, schema 15) the origin's."""
         rule = self.promotion.get(pid)
-        if rule is None or square not in rule[0][player]:
+        if rule is None:
+            return [None]
+        zone = rule[0][player]
+        leaving = rule[2] and origin is not None and origin in zone
+        if square not in zone and not leaving:
             return [None]
         targets, mandatory = rule[1]
         return list(targets) + ([] if mandatory else [None])
@@ -311,8 +344,13 @@ class PortalOracle:
 
     def portal_moves(
         self, position: Position, player: int, last: tuple[int, int] | None = None,
+        unmoved: set[int] | None = None,
     ) -> set[tuple[int, int]]:
-        """``(origin, target)`` for every move of a portal end ``player`` may move.
+        """``(origin, target)`` for every move of a portal end ``player`` may move: a leap
+        onto an empty square, a slide up to the first piece, a hop over the first piece (the
+        screen its ``screen`` allows, read as ``player``'s) onto each empty square past it up
+        to the next piece or its ``screen_range``. A ``first_move`` move needs the end's
+        square in ``unmoved`` (F10b, Q752b; asked only of a game that has one).
 
         ``last`` is the move just played, as ``(origin, target)``, or ``None``. Schema 20
         (Q807): when it carried an end of a pair that sets ``no_straight_back``, that end
@@ -326,7 +364,11 @@ class PortalOracle:
             group, end = self.where[pid]
             if player not in end["moved_by"]:
                 continue
-            for move in self.pieces[group["piece"]]["moves"]:
+            for move in group["moves"]:
+                if (move.get("condition") or {}).get("first_move"):
+                    assert unmoved is not None, "a first-move portal move needs `unmoved`"
+                    if origin not in unmoved:
+                        continue
                 limit = move.get("range", 1 if move["kind"] == "leap" else 0)
                 for dx, dy in self._directions(move, player):
                     if move["kind"] == "leap":
@@ -338,6 +380,13 @@ class PortalOracle:
                             if square in position:
                                 break
                             moved.add((origin, square))
+                    elif move["kind"] == "hop":
+                        moved |= {
+                            (origin, square)
+                            for square in self._past_screen(position, origin, dx, dy, player,
+                                                            limit, move)
+                            if square not in position
+                        }
         if last is not None and position.get(last[1], ("", None))[1] == "portal":
             pid = position[last[1]][0]
             if self.where[pid][0]["no_straight_back"]:

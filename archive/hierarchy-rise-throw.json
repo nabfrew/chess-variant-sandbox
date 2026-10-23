@@ -1,5 +1,5 @@
 {
-  "schema_version": 12,
+  "schema_version": 31,
   "name": "thrown gifts",
   "description": "Chess in which taking a piece promotes it, and the taker decides where it goes. A struck pawn becomes a knight, a knight a bishop, a bishop a rook, a rook a queen, and only a queen is removed; the attacker moves onto the square as usual and throws the upgraded piece onto any empty square a king's step from where it stood, the square the attacker just left included when that is next to it. Every capture still hands the opponent a better piece, but the thrower chooses where it lands, so the gift can be dropped where it is pinned, boxed in, out of play or in the way of its own side, and the promotion can cost the receiver more than it gives. A piece hemmed in on every side can be taken only by a neighbour, which throws it onto the square it vacated. Against a version where the two pieces simply exchange squares, games here are shorter and won far more often.",
   "board": {

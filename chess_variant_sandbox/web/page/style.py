@@ -1182,6 +1182,11 @@ RULES = """
              text-decoration: underline; cursor: pointer; font: inherit; }
   .pairCard { border: 1px solid var(--line); border-radius: var(--r-ctl); padding: 8px 10px; margin-top: 8px; }
   .pairCard.on { border-color: var(--act); box-shadow: 0 0 0 1px var(--act); }
+  /* A group's ways of moving: a card of its own right under the group's, named by its icon
+     and number, so the group's card still fits a screen (Q1014). */
+  .pairMoves { border: 1px solid var(--line); border-radius: var(--r-ctl); padding: 8px 10px; margin-top: 4px; }
+  .pairMovesHead { display: flex; align-items: center; gap: 6px; }
+  .pairMovesHead svg { flex: none; display: block; }
   .pairHead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .pairHead .grow { flex: 1 1 0; }
   .pairPick { padding: 0; border: 0; background: none; min-height: 0; line-height: 0; }
@@ -1499,6 +1504,8 @@ RULES = """
   .sightPicks { display: flex; flex-wrap: wrap; gap: 2px 12px; }
   .sightPick { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; }
   .moveRow .sightPick input { width: auto; min-height: 0; padding: 0; }
+  /* A command's `captures_own` box (Q1007d), beside *what it does*, level with the menus. */
+  .sightRow .sightOwn { align-self: flex-end; min-height: var(--ctl-h-sm); max-width: 190px; }
   .sightError { margin-top: 4px; }
   /* Rule cards, generated from the schema. A sub-card is indented under its parent so
      a nested clause reads as belonging to the rule it is in. They sit inside the rules'

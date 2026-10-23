@@ -274,6 +274,11 @@ def test_the_replay_launcher_resumes_inside_a_game(
     found.loader.exec_module(module)
     assert not Path(module.HERE).is_absolute(), "the script must work in its own checkout"
     monkeypatch.setattr(module, "_library", lambda: [DIGEST])
+    # Since replay-2026-10-23 (R31) a slice first stages each game's measurement from the
+    # main checkout's `runs/` (`_stage`, an absolute path): outside this test's checkout,
+    # and holding nothing for its one game. Staging is not what is under test here.
+    if hasattr(module, "_stage"):
+        monkeypatch.setattr(module, "_stage", lambda digest: None)
     analyse = corpus.analyse_corpus
     monkeypatch.setattr(corpus, "analyse_corpus",
                         lambda spec, records, seed=0, workers=0: analyse(spec, records,

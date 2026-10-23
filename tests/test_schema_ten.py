@@ -69,12 +69,12 @@ from chess_variant_sandbox.spec.schema import (
     REPETITION_NEVER,
     SCHEMA_VERSION,
     STOCK_UNLIMITED,
-    _schema_ten_uses,
     piece_has_stock,
     portal_end_ids,
     portal_groups,
-    portal_piece_ids,
+    portal_movement_types,
 )
+from tests.feature_inventory import _schema_ten_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -154,26 +154,6 @@ class TestTheVersionIsBumped:
         assert _schema_ten_uses(_never(chess)) == {'rules.repetition_draw "never"'}
         assert _schema_ten_uses(_hunted(_wolves())) == {"rules.npcs[].immune"}
 
-    def test_two_features_under_an_old_stamp_are_both_named_at_once(
-        self, chess: dict[str, Any]
-    ) -> None:
-        """One collector rather than one `if` per feature, which is what it buys.
-
-        A proposal told about one schema-10 feature at a time fixes that one and
-        reintroduces the other -- the reason `SpecError` carries every problem.
-        """
-        spec = _hunted(_wolves())
-        spec["rules"]["repetition_draw"] = REPETITION_NEVER
-        assert _schema_ten_uses(spec) == {
-            'rules.repetition_draw "never"',
-            "rules.npcs[].immune",
-        }
-        spec["schema_version"] = 9
-        errors = [e for e in validate_spec(spec) if "schema 10" in e]
-        assert len(errors) == 1
-        assert 'rules.repetition_draw "never"' in errors[0]
-        assert "rules.npcs[].immune" in errors[0]
-
 
 # ------------------------------------------------------- Q38: the clock that says never
 
@@ -181,14 +161,6 @@ class TestTheVersionIsBumped:
 class TestRepetitionDrawMayBeNever:
     def test_the_validator_accepts_it_under_ten(self, chess: dict[str, Any]) -> None:
         assert validate_spec(_never(chess)) == []
-
-    def test_an_older_stamp_is_refused_by_name(self, chess: dict[str, Any]) -> None:
-        spec = _never(chess)
-        spec["schema_version"] = 9
-        errors = validate_spec(spec)
-        assert len(errors) == 1
-        assert 'rules.repetition_draw "never"' in errors[0]
-        assert "schema 10" in errors[0]
 
     def test_only_that_word_and_only_that_clock(self, chess: dict[str, Any]) -> None:
         """The sentinel is one word on one key, and everything else stays refused.
@@ -343,31 +315,6 @@ class TestRepetitionDrawMayBeNever:
         assert reachable(chess, REPETITION_NEVER)
         assert reachable(_never(chess), 3) or reachable(_never(chess), 2)
 
-    def test_the_stamp_settles_itself_on_both_crossings(self, chess: dict[str, Any]) -> None:
-        """`settle_schema_version` raises the stamp on the way in and lowers it on the way out.
-
-        Without it the operator would produce a spec using a schema-10 value under the
-        parent's older stamp, which the validator refuses -- so the axis would exist and
-        no mutation could cross it.
-        """
-        limit = next(op for op in OPERATORS if op.name == "limit-the-game")
-        for seed in range(80):
-            child = copy.deepcopy(chess)
-            if limit.apply(child, random.Random(seed)) is None:
-                continue
-            if child["rules"]["repetition_draw"] == REPETITION_NEVER:
-                assert child["schema_version"] == 10
-                back = copy.deepcopy(child)
-                for inner in range(80):
-                    candidate = copy.deepcopy(back)
-                    if limit.apply(candidate, random.Random(inner)) is None:
-                        continue
-                    if candidate["rules"]["repetition_draw"] != REPETITION_NEVER:
-                        assert candidate["schema_version"] < 10
-                        return
-                pytest.fail("no mutation came back from 'never'")
-        pytest.fail("no mutation reached 'never'")
-
     def test_a_mutated_child_is_a_different_game_and_a_valid_one(
         self, chess: dict[str, Any]
     ) -> None:
@@ -444,13 +391,6 @@ class TestNpcsMayBeImmune:
         compiled = compile_spec(_hunted(_wolves()))
         wolf = compiled.piece_ids.index("W")
         assert compiled.capture_allowed[wolf][wolf]
-
-    def test_an_older_stamp_is_refused_by_name(self) -> None:
-        spec = _hunted(_wolves())
-        spec["schema_version"] = 9
-        errors = validate_spec(spec)
-        assert len(errors) == 1
-        assert "rules.npcs[].immune" in errors[0]
 
     def test_a_list_that_protects_nothing_is_refused(self) -> None:
         """Q57's rule one level down: a declaration that does nothing is not free.
@@ -588,12 +528,13 @@ class TestNpcsMayBeImmune:
         patrol = next(op for op in OPERATORS if op.name == "set-a-patrol")
         for seed in range(120):
             child = copy.deepcopy(chess)
+            child["schema_version"] = 1  # chess's stamp before Q1008b re-spelt it
             if patrol.apply(child, random.Random(seed)) is None:
                 continue
             npcs = child["rules"].get("npcs") or []
             if npcs and "immune" in npcs[0]:
                 assert validate_spec(child) == []
-                assert child["schema_version"] == 10
+                assert child["schema_version"] == 1, "an edit writes no stamp (Q1008c)"
                 assert features(child)["npcs_are_hard_to_kill"] == 1.0
                 return
         pytest.fail("no seed in range gave a wild piece an immunity")
@@ -634,14 +575,6 @@ class TestOnlySomeCapturesExplode:
         assert validate_spec(_selective(by=["Q"])) == []
         assert validate_spec(_selective(of=["P"])) == []
         assert validate_spec(_selective(by=["Q"], of=["P"])) == []
-
-    def test_an_older_stamp_is_refused_by_name(self) -> None:
-        for key in ("by", "of"):
-            spec = _selective(**{key: ["Q"]})
-            spec["schema_version"] = 9
-            errors = validate_spec(spec)
-            assert len(errors) == 1, errors
-            assert f"rules.explode_on_capture.{key}" in errors[0]
 
     def test_an_undeclared_id_is_refused(self) -> None:
         for key in ("by", "of"):
@@ -867,7 +800,6 @@ class TestOnlySomeCapturesExplode:
         ]
         assert {"by", "of"} <= set(explosion["properties"])
 
-
     def test_a_short_game_keeps_its_incremental_hash(self) -> None:
         """The walk `new-move-primitive` asks for, on an inline spec.
 
@@ -894,7 +826,6 @@ class TestOnlySomeCapturesExplode:
                 assert state.key == engine._compute_hash(state), "hash drifted"
 
 
-
 # ------------------------------------------------- Q51: a hand that starts with something
 
 
@@ -917,14 +848,6 @@ class TestAHandMayStartWithSomethingInIt:
     def test_the_validator_accepts_a_stone(self) -> None:
         assert validate_spec(_stone()) == []
         assert validate_spec(_stone(3)) == []
-
-    def test_an_older_stamp_is_refused_by_name(self) -> None:
-        spec = _stone()
-        spec["schema_version"] = 9
-        errors = [error for error in validate_spec(spec) if "schema 10" in error]
-        assert len(errors) == 1
-        assert "rules.drops.stock" in errors[0]
-        assert "a piece with no moves of its own" in errors[0]
 
     def test_the_bound_and_the_word_are_the_only_two_spellings(self) -> None:
         for held in ("Unlimited", "endless", 0, -1, MAX_STOCK + 1, True, 1.5):
@@ -1264,10 +1187,12 @@ class TestASupplyThatNeverRunsOutIsNotMaterial:
         values = Evaluator.for_spec(spec).values
         free = {i for i, v in enumerate(values) if v == 0.0}
         free -= set(spec.royal_types)
-        # A portal (schema 19) is nobody's material by rule, not by supply: its declared
+        # A portal (schema 19) is nobody's material by rule, not by supply: its movement
         # type and its ends are left out, as the royals are (Q772a's showcases).
         rules = raw.get("rules", {})
-        portals = portal_piece_ids(rules) | set(portal_end_ids(portal_groups(rules)))
+        portals = {piece["id"] for piece in portal_movement_types(raw)} | set(
+            portal_end_ids(portal_groups(rules))
+        )
         free -= {i for i, pid in enumerate(spec.piece_ids) if pid in portals}
         assert free == inexhaustible_types(spec), path.name
 
@@ -1313,7 +1238,7 @@ class TestTheGoalWeightIsStatedInPiecesThatAreMaterial:
         assert diluted * GOAL_PIECES == pytest.approx(plain_eval.goal_weight * 5 / 6)
 
     def test_the_corpus_is_the_one_the_count_below_reads(self) -> None:
-        assert len(CORPUS_PATHS) == 104, "the corpus moved out from under this test"  # 104 since Q999d's three sight showcases; 101 since Q999b's opposite colours; 100 since Q983d's three rest showcases; 97 since Q994p's two blind-trial designs; 98 since Q936s; 92 since Q962b retired six previews; 91 since Q962c retired one more; 94 since Q943c's three speed showcases; 95 since Q798's circe-mortal-diagonals
+        assert len(CORPUS_PATHS) == 99, "the corpus moved out from under this test"  # 99 since Q1007e's chess with nightriders; 98 since Q1005 retired six previews; 104 since Q999d's three sight showcases; 101 since Q999b's opposite colours; 100 since Q983d's three rest showcases; 97 since Q994p's two blind-trial designs; 98 since Q936s; 92 since Q962b retired six previews; 91 since Q962c retired one more; 94 since Q943c's three speed showcases; 95 since Q798's circe-mortal-diagonals
 
     # One test per spec (Q749): the walk was one test of 2.9 s in the gate. `stones` is
     # the only spec with an inexhaustible type, asked of each spec by name.
@@ -1585,10 +1510,10 @@ class TestACaptureThatChangesSidesIsCountedAtBothEnds:
     )
 
     def test_the_three_kinds_are_counted_on_the_whole_corpus(self) -> None:
-        assert len(CORPUS_PATHS) == 104, "the corpus moved out from under this test"  # 104 since Q999d's three sight showcases; 101 since Q999b's opposite colours; 100 since Q983d's three rest showcases; 97 since Q994p's two blind-trial designs; 98 since Q936s; 92 since Q962b retired six previews; 91 since Q962c retired one more; 94 since Q943c's three speed showcases; 95 since Q798's circe-mortal-diagonals
+        assert len(CORPUS_PATHS) == 99, "the corpus moved out from under this test"  # 99 since Q1007e's chess with nightriders; 98 since Q1005 retired six previews; 104 since Q999d's three sight showcases; 101 since Q999b's opposite colours; 100 since Q983d's three rest showcases; 97 since Q994p's two blind-trial designs; 98 since Q936s; 92 since Q962b retired six previews; 91 since Q962c retired one more; 94 since Q943c's three speed showcases; 95 since Q798's circe-mortal-diagonals
         stems = {path.stem for path in CORPUS_PATHS}
         assert set(self.INERT) | set(self.MOVED) <= stems
-        assert len(stems) - len(self.INERT) - len(self.MOVED) == 93  # 90 until Q999d's three sight showcases, which hold no hand; 89 until Q999b's opposite colours, which holds no hand; 86 until Q983d's three rest showcases, which hold no hand; 84 until Q994p's the golem well and kraken ford, which hold no hand; 83 until Q798's circe-mortal-diagonals, which holds no hand; 80 until Q943c's three speed showcases, which hold no hand; 81 until Q962c retired gardner in rounds resting, which held no hand; 87 until Q962b retired six previews, which held no hand; 73 until Q844b's three portal showcases; 76 until Q918e's four round showcases, which hold no hand; 80 until Q942c's four, which hold none either; 84 until Q935f's two spy showcases, which hold none; 86 until Q936s's riders and leapers, which holds none
+        assert len(stems) - len(self.INERT) - len(self.MOVED) == 88  # 87 until Q1007e's chess with nightriders, which holds no hand; 93 until Q1005 retired six previews, which held no hand; 90 until Q999d's three sight showcases, which hold no hand; 89 until Q999b's opposite colours, which holds no hand; 86 until Q983d's three rest showcases, which hold no hand; 84 until Q994p's the golem well and kraken ford, which hold no hand; 83 until Q798's circe-mortal-diagonals, which holds no hand; 80 until Q943c's three speed showcases, which hold no hand; 81 until Q962c retired gardner in rounds resting, which held no hand; 87 until Q962b retired six previews, which held no hand; 73 until Q844b's three portal showcases; 76 until Q918e's four round showcases, which hold no hand; 80 until Q942c's four, which hold none either; 84 until Q935f's two spy showcases, which hold none; 86 until Q936s's riders and leapers, which holds none
 
     # One test per spec (Q749): the walk was one test, 4.4 s in the gate once the two
     # walks above stopped compiling the corpus first in the same worker.
@@ -1778,12 +1703,6 @@ class TestTheContactTable:
         assert len(pair["contact_onto_to"]) == n * n
         assert len(pair["contact_mover_to"]) == n * n
 
-    def test_an_older_stamp_is_refused_by_name(self, chess: dict[str, Any]) -> None:
-        spec = _contacts(chess, [{"mover": "P", "onto": "R", "mover_to": "N"}])
-        spec["schema_version"] = 9
-        errors = validate_spec(spec)
-        assert any("rules.contacts" in error and "schema 10" in error for error in errors)
-
     def test_the_two_spellings_are_refused_together(self, chess: dict[str, Any]) -> None:
         spec = _contacts(chess, [{"mover": "P", "onto": "R", "mover_to": "N"}])
         spec["rules"]["strike"] = {
@@ -1857,15 +1776,6 @@ class TestTheContactTable:
     def test_an_undeclared_id_is_refused(self, chess: dict[str, Any]) -> None:
         errors = validate_spec(_contacts(chess, [{"mover": "P", "onto": "R", "mover_to": "Z"}]))
         assert any("'Z' is not a declared piece" in error for error in errors), errors
-
-    def test_own_is_refused_by_name_under_this_stamp(self, chess: dict[str, Any]) -> None:
-        """Q19b's half took schema 11, because a friendly target moves perft.
-
-        `tests/test_schema_eleven.py` holds the feature; this holds the stamp.
-        """
-        spec = _contacts(chess, [{"mover": "P", "onto": "R", "own": True, "mover_to": "Q"}])
-        errors = validate_spec(spec)
-        assert any("schema 11" in error for error in errors), errors
 
     def test_a_contact_makes_a_second_royal_the_compiler_can_see(
         self, chess: dict[str, Any]
@@ -2196,10 +2106,9 @@ class TestTheBumpIsInertOnEveryRulesetThatDoesNotUseIt:
             # may take (a king, a harpooner): a model's designs, not showcases.
             "the-golem-well": ["rules.npcs[].immune"],
             "kraken-ford": ["rules.npcs[].immune"],
-            # Q772a's two showcases whose portals nobody moves declare the portal type with
-            # no moves, schema 19's second exception to schema 10's rule.
-            "carousel": ["a piece with no moves of its own"],
-            "cylinder-wormhole": ["a piece with no moves of its own"],
+            # Q772a's two showcases whose portals nobody moves declared the portal type with
+            # no moves until spelling 31 (Q1007b), which writes a portal's moves on its group
+            # and declares no portal piece: they name nothing of this bump now.
         }
 
 

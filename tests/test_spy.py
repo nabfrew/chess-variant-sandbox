@@ -20,6 +20,7 @@ import pytest
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.moves import decode_move
 from chess_variant_sandbox.engine.state import GameState
+from chess_variant_sandbox.spec.canonical import spec_hash
 from chess_variant_sandbox.spec.schema import validate_spec
 from tests import spy_oracle as oracle
 
@@ -322,15 +323,19 @@ class TestTheRefusals:
         for name in SPECS:
             assert validate_spec(_load(name)) == []
 
-    def test_false_written_out(self) -> None:
+    def test_false_written_out_is_the_flag_left_out(self) -> None:
+        """Q1008c: ``false`` is the off value, accepted and named as the flag left out."""
         spec = _load("_spy_small")
-        spec["pieces"][2]["spy"] = False
-        _refused(spec, "pieces[2].spy false is the default")
+        written = _load("_spy_small")
+        plain = next(i for i, piece in enumerate(written["pieces"]) if "spy" not in piece)
+        written["pieces"][plain]["spy"] = False
+        assert validate_spec(written) == validate_spec(spec) == []
+        assert spec_hash(written) == spec_hash(spec)
 
     def test_a_value_that_is_not_true(self) -> None:
         spec = _load("_spy_small")
         spec["pieces"][4]["spy"] = "yes"
-        _refused(spec, "pieces[4].spy must be true")
+        _refused(spec, "pieces[4].spy must be true or false")
 
     def test_without_rounds(self) -> None:
         spec = _load("_spy_small")
@@ -404,17 +409,11 @@ class TestTheRefusals:
         spec["rules"]["npcs"] = [{"piece": "S", "route": ["a3", "b3", "c3", "d3", "e3"]}]
         assert any("wild piece" in error for error in validate_spec(spec))
 
-    def test_an_older_version_may_not_say_spy(self) -> None:
-        spec = _load("_spy_small")
-        spec["schema_version"] = 26
-        _refused(spec, "the spec uses pieces.spy, added in schema 27")
-
-
 # ---------------------------------------------------------- compiled, crossed, inert
 
 
 def test_the_collector_names_the_spy() -> None:
-    from chess_variant_sandbox.spec.schema import _schema_twenty_seven_uses
+    from tests.feature_inventory import _schema_twenty_seven_uses
 
     assert "pieces.spy" in _schema_twenty_seven_uses(_load("_spy_small"))
     assert "pieces.spy" not in _schema_twenty_seven_uses(_load("_simultaneous_resting"))

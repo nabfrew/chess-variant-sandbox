@@ -303,6 +303,22 @@ LIBRARY = test_index_quality.RUNS
 # `canonical.json` carries the tree's own reading again, and the replaced measurements, with the
 # stamp this window held, are kept under each game's `runs/<hash>/previous/`
 # (`docs/reference/replay-2026-10-22.md`).
+#
+# **Opened 2026-10-22 by Q983b** (rest in the players, the tallies and the page,
+# `docs/plan-rest.md` §5.4, §5.6): `tournament/analysis.py` and the engine's Python side move
+# `metrics` and `analysis` (`FROZEN_METRICS`, `FROZEN_ANALYSIS`), and the core moves the build
+# fingerprint (`Core.rest_turn`, the rest plane). No game's records should move: no library game
+# plays a net where a piece rests, and the tallies are written only where one does. The window is
+# the stamp R30's replay left the library; **the library's re-certification, re-analysis and
+# re-score owed after Q983b empty it**.
+#
+# **Emptied 2026-10-24 by R31**, that re-certification: the 98 library games re-certified from a
+# sample of 128 of each run's 1,024 games on core `4dc6bfc1c77dcfd9` (the 96 outside rest under a
+# certificate; *breather* and *chess with a weary queen* replayed whole, their stored analyses
+# lacking the rest tallies), then re-analysed and re-scored under `metrics` "0d041f41fc5bfba1" and
+# `analysis` "c7d6042d1d057fc2". No record, score, interval or verdict moved (100,352 records equal
+# outside the clock); the replaced measurements, with the stamp this window held, are kept under
+# each game's `runs/<hash>/previous/` (`docs/reference/replay-2026-10-23.md`).
 STALE_WINDOW: dict[str, str] = {}
 
 

@@ -26,7 +26,6 @@ from test_site_links import _scratch_store
 from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.site import matches, migrate
 from chess_variant_sandbox.spec import spec_hash, validate_spec
-from chess_variant_sandbox.spec.schema import RETIRED_REST
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent
@@ -64,11 +63,11 @@ def _wild_resting() -> dict[str, Any]:
 # Old-form specs as the store holds them, each with the hash its row carries, and the file
 # whose game its rewrite must be (None: checked against `rewrite` alone).
 BREATHER = _unwritten(_load(ROOT / "archive" / "breather.json"))
-SPIES = _unwritten(_load(ROOT / "archive" / "gardner-with-spies-resting.json"))
+SPIES = _unwritten(_load(ROOT / "tests" / "_retired_gardner_with_spies_resting.json"))
 RESTING = _load(HERE / "_retired_gardner_in_rounds_resting.json")
 OLD_FORM = {
     "632c199e4589": (BREATHER, ROOT / "archive" / "breather.json"),
-    "1d798bedbf66": (SPIES, ROOT / "archive" / "gardner-with-spies-resting.json"),
+    "1d798bedbf66": (SPIES, ROOT / "tests" / "_retired_gardner_with_spies_resting.json"),
     "4da669bb3d50": (RESTING, HERE / "_simultaneous_resting.json"),
     spec_hash(_wild_resting()): (_wild_resting(), None),
 }
@@ -98,18 +97,22 @@ def _knight_twice() -> list[int]:
 
 def test_the_old_forms_are_the_old_games() -> None:
     """The specs this test stores are the games the live rows hold: the old hashes, refused
-    now by the retirement's one message."""
+    now (the validator knows no `rules.simultaneous.rest`)."""
     for digest, (spec, _) in OLD_FORM.items():
         assert spec_hash(spec) == digest
-        assert validate_spec(spec) == [RETIRED_REST], digest
+        assert any("rest" in error for error in validate_spec(spec)), digest
 
 
 def test_the_migration_rewrites_every_stored_old_rest_and_nothing_else(tmp_path: Path) -> None:
     older = tmp_path / "migrations-before-0039"
     older.mkdir()
+    through = tmp_path / "migrations-through-0039"  # later ones (`0041`) re-spell again
+    through.mkdir()
     for migration in migrate.available():
         if migration.number < 39:
             (older / migration.name).write_text(migration.sql, encoding="utf-8")
+        if migration.number <= 39:
+            (through / migration.name).write_text(migration.sql, encoding="utf-8")
 
     with _scratch_store() as store:
         migrate.run(store, older)
@@ -128,9 +131,9 @@ def test_the_migration_rewrites_every_stored_old_rest_and_nothing_else(tmp_path:
             )
         store.commit()
 
-        report = migrate.run(store)
+        report = migrate.run(store, through)
         store.commit()
-        assert report.applied[0] == MIGRATION, report.summary()
+        assert report.applied == (MIGRATION,), report.summary()
 
         with store.cursor() as cursor:
             cursor.execute("select hash, spec from games")

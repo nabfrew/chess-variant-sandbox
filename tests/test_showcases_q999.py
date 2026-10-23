@@ -1,6 +1,6 @@
 """V1, the mechanism of schema 30's three one-change showcases, without players (Q999d).
 
-`docs/plan-passive.md` §6.1 registered three games, each chess (`rulesets/chess.json`,
+`docs/archive/plan-passive.md` §6.1 registered three games, each chess (`rulesets/chess.json`,
 `4c1922ffae26`) with one key added, and §6.3 fixed this test before any of them was built:
 
 - **S1** `archive/madrasi.json`: every type but the king freezes an enemy piece of its own type
@@ -112,7 +112,7 @@ def test_the_file_is_chess_with_the_one_registered_sight(label: str) -> None:
     assert spec_hash(spec) == digest
     assert spec_hash(load_spec(ROOT / "tests" / f"{test_spec}.json")) == digest
     assert spec_hash(load_spec(CHESS)) == CHESS_HASH
-    assert spec["provenance"]["preview"]
+    assert "preview" not in spec["provenance"], "joined the library from preview (Q1005)"
     assert spec["provenance"]["parents"] == [CHESS_HASH]
 
 

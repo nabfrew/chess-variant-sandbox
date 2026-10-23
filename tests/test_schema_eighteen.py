@@ -84,12 +84,9 @@ from chess_variant_sandbox.spec.complexity import expand_symmetry, measure_compl
 from chess_variant_sandbox.spec.describe import describe_pieces, describe_spec
 from chess_variant_sandbox.spec.distance import distance
 from chess_variant_sandbox.spec.relate import identity_key
-from chess_variant_sandbox.spec.schema import (
-    SCHEMA_VERSION,
-    _schema_eighteen_uses,
-    castling_spans,
-)
-from chess_variant_sandbox.spec.transform import set_obstacle, settle_schema_version
+from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, castling_spans
+from chess_variant_sandbox.spec.transform import set_obstacle
+from tests.feature_inventory import _schema_eighteen_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 SHOWCASES = (
@@ -163,7 +160,6 @@ def _without_keeping(einstein: dict[str, Any]) -> dict[str, Any]:
     spec = copy.deepcopy(einstein)
     links = spec["rules"]["contacts"]["links"]
     spec["rules"]["contacts"]["links"] = [link for link in links if link["mover"] != "Q"]
-    settle_schema_version(spec)
     return spec
 
 
@@ -205,27 +201,6 @@ class TestTheVersionIsBumped:
         assert _schema_eighteen_uses(games["chess"]) == set()
         for name, feature in FEATURE.items():
             assert _schema_eighteen_uses(games[name]) == feature, name
-
-    @pytest.mark.parametrize("name", sorted(FEATURE))
-    def test_an_older_stamp_is_refused_by_name(
-        self, games: dict[str, dict[str, Any]], name: str
-    ) -> None:
-        spec = copy.deepcopy(games[name])
-        spec["schema_version"] = 17
-        errors = validate_spec(spec)
-        assert (
-            f'the spec uses {", ".join(sorted(FEATURE[name]))}, added in schema 18; declare '
-            '"schema_version": 18 to use it'
-        ) in errors, errors
-
-    @pytest.mark.parametrize("name", SHOWCASES)
-    def test_the_showcase_settles_to_eighteen(
-        self, games: dict[str, dict[str, Any]], name: str
-    ) -> None:
-        spec = copy.deepcopy(games[name])
-        spec["schema_version"] = 1
-        assert settle_schema_version(spec)["schema_version"] == 18
-
 
 class TestTheBumpMovedNothing:
     """Every committed and archived spec hashes and compiles as `FROZEN` pinned it.
@@ -447,16 +422,18 @@ class TestTheOtherSurfaces:
             translate(compile_spec(games[name]))
         assert any(key in reason for reason in refusal.value.reasons)
 
-    def test_a_wall_beyond_the_rooks_stamps_eighteen(
+    def test_a_wall_beyond_the_rooks_is_the_walled_rank(
         self, games: dict[str, dict[str, Any]]
     ) -> None:
-        """`transform.set_obstacle`, which `wall-off-a-square` calls, raises the stamp."""
+        """`transform.set_obstacle`, which `wall-off-a-square` calls, writes Omega's walled
+        rank, and the spec stays valid whatever its stamp (Q1008c)."""
         spec = copy.deepcopy(games["omega"])
         spec["rules"].pop("obstacles")
         spec["schema_version"] = 6
         assert validate_spec(spec) == [], validate_spec(spec)
         set_obstacle(spec, "a2")
-        assert spec["schema_version"] == 18
+        assert spec["schema_version"] == 6
+        assert validate_spec(spec) == [], validate_spec(spec)
         assert _schema_eighteen_uses(spec) == {WALLED}
 
 
@@ -475,7 +452,6 @@ def _summed(spec: dict[str, Any]) -> dict[str, Any]:
     """The same game with the listed types counted together again."""
     spec = copy.deepcopy(spec)
     spec["rules"]["extinction"].pop("per_type")
-    settle_schema_version(spec)
     return spec
 
 
@@ -521,7 +497,6 @@ class TestExtinctionPerType:
     ) -> None:
         spec = _summed(games["extinction-chess"])
         spec["rules"]["extinction"]["per_type"] = False
-        settle_schema_version(spec)
         assert _schema_eighteen_uses(spec) == {"rules.extinction.per_type=false"}
         # The hashes differ (the key is written), so the Zobrist draws do; nothing else.
         def without_draws(game: dict[str, Any]) -> dict[str, Any]:
@@ -594,7 +569,6 @@ def _grand_position(grand: dict[str, Any], **promotion: Any) -> dict[str, Any]:
         {"piece": "Q", "player": 1, "squares": ["j10"]},
         {"piece": "R", "player": 1, "squares": ["i10"]},
     ]}
-    settle_schema_version(spec)
     assert validate_spec(spec) == [], validate_spec(spec)
     return spec
 
@@ -838,7 +812,6 @@ class TestThePlacementPhase:
         held = _hand_only(games["chess"])
         waiting = copy.deepcopy(held)
         waiting["rules"]["drops"].pop("placement")
-        settle_schema_version(waiting)
         assert _schema_eighteen_uses(waiting) == set()
         on, off = Engine(held), Engine(waiting)
         moves_on = on.legal_moves(on.initial_state())
@@ -852,10 +825,8 @@ class TestThePlacementPhase:
     ) -> None:
         waiting = _hand_only(games["chess"])
         waiting["rules"]["drops"].pop("placement")
-        settle_schema_version(waiting)
         written = copy.deepcopy(waiting)
         written["rules"]["drops"]["placement"] = False
-        settle_schema_version(written)
         assert _schema_eighteen_uses(written) == {"rules.drops.placement=false"}
 
         def without_draws(game: dict[str, Any]) -> dict[str, Any]:
@@ -867,7 +838,6 @@ class TestThePlacementPhase:
     def test_a_royal_in_hand_needs_the_phase(self, games: dict[str, dict[str, Any]]) -> None:
         spec = copy.deepcopy(games["placement-chess"])
         spec["rules"]["drops"].pop("placement")
-        settle_schema_version(spec)
         errors = validate_spec(spec)
         assert any("holds the royal 'K' outside the placement phase" in e for e in errors)
         assert "no royal piece appears in setup.placements" in errors
@@ -974,7 +944,6 @@ def _one_face(spec: dict[str, Any]) -> dict[str, Any]:
     """The same game with the flag taken off: a held piece comes back as itself only."""
     spec = copy.deepcopy(spec)
     spec["rules"]["drops"].pop("either_face")
-    settle_schema_version(spec)
     return spec
 
 
@@ -1063,7 +1032,6 @@ class TestDropEitherFace:
         without = _one_face(games["kyoto"])
         written = copy.deepcopy(without)
         written["rules"]["drops"]["either_face"] = False
-        settle_schema_version(written)
         assert _schema_eighteen_uses(written) == {"rules.drops.either_face=false"}
 
         def without_draws(game: dict[str, Any]) -> dict[str, Any]:
@@ -1187,7 +1155,6 @@ class TestDropEitherFaceElsewhere:
         for piece in audit["pieces"]:
             piece.pop("promoted_from", None)
         audit["rules"]["drops"].pop("either_face")
-        settle_schema_version(audit)
         config = translate(compile_spec(audit)).config
         assert "pieceDemotion" not in config and "dropPromoted" not in config
         assert "promotedPieceType = P:R R:P S:B B:S G:N N:G T:L L:T" in config
@@ -1217,7 +1184,6 @@ def _arriving(spec: dict[str, Any]) -> dict[str, Any]:
     """Q533's audit spelling: the same game won on arrival (``on`` left out)."""
     twin = copy.deepcopy(spec)
     twin["rules"]["reach"].pop("on")
-    settle_schema_version(twin)
     return twin
 
 
@@ -1321,7 +1287,6 @@ class TestWinByLeaving:
         without = _arriving(games["jeson-mor"])
         written = copy.deepcopy(without)
         written["rules"]["reach"]["on"] = "arrive"
-        settle_schema_version(written)
         assert _schema_eighteen_uses(written) == {"rules.reach.on=arrive"}
 
         def without_draws(game: dict[str, Any]) -> dict[str, Any]:
@@ -1547,14 +1512,6 @@ class TestHexSymmetries:
     def test_a_square_turn_is_still_refused_on_a_hex_board(self, symmetry: str) -> None:
         errors = validate_spec(_with_rook_move(symmetry, [[1, 0]]))
         assert any(f"symmetry {symmetry!r} expands vectors by the square's" in e for e in errors)
-
-    def test_an_older_stamp_names_the_turn(self) -> None:
-        spec = _with_rook_move("rotate6", [[1, 0]])
-        assert validate_spec(spec) == []
-        spec["schema_version"] = 17
-        assert any(
-            "the spec uses symmetry=rotate6, added in schema 18" in e for e in validate_spec(spec)
-        )
 
     def test_a_turn_past_the_component_bound_is_refused(self) -> None:
         """`[4, 4]` turned once is `[-4, 8]`, inside the bound; `[5, 5]` is `[-5, 10]`, which

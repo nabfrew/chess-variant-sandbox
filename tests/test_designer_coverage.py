@@ -36,7 +36,7 @@ from page_text import DESIGN
 from test_designer import _ADD_RULES, _kit_setup, _run_page
 
 from chess_variant_sandbox.site import routes
-from chess_variant_sandbox.spec import describe, plain, schema, validate_spec
+from chess_variant_sandbox.spec import describe, plain, schema, spec_hash, validate_spec
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
 from chess_variant_sandbox.web import cards, designing
 
@@ -99,6 +99,8 @@ HAND: dict[str, str] = {
     "pieces[].sight[].range": "box('range', esc(sight.range)",
     "pieces[].sight[].min_range": "box('min_range', esc(sight.min_range)",
     "pieces[].sight[].affects": 'data-sfield="affects"',
+    # Q1007d: a command's turncoat box, shown only beside the effect `command`.
+    "pieces[].sight[].captures_own": 'data-sfield="captures_own"',
 }
 
 # Keys with no control in the designer, on purpose. The game's text (the JSON box under the
@@ -141,8 +143,10 @@ RULE_KEY_SETS: dict[tuple[str, ...], set[str]] = {
     ("contacts", "landing"): schema._LANDING_KEYS,
     ("wrap",): schema._WRAP_KEYS,
     ("npcs",): schema._NPC_KEYS,
-    # A portal group is a pair or a map, and one card offers both spellings.
-    ("portals",): schema._PORTAL_KEYS | schema._PORTAL_ENDS_KEYS,
+    # A portal group is a pair or a map, and one card offers both spellings. Its `moves`
+    # (spelling 31, Q1007b) are the card's hand-drawn move rows, as a piece's are, not a
+    # generated field (`cards._hand_drawn_group_moves`; `test_designer_portals` holds them).
+    ("portals",): (schema._PORTAL_KEYS | schema._PORTAL_ENDS_KEYS) - {"moves"},
     ("portals", "ends"): schema._PORTAL_END_KEYS,
     # `rest` is schema 29's retired switch (`pieces[].rest` replaced it): the shape check lets it
     # through only so that its one refusal is the retirement's, and no designer draws it.
@@ -454,16 +458,6 @@ class TestAPieceFieldIsNamedWhereItIs:
         said = designing.plain_problem(line, spec)
         assert said.startswith("Pieces 2 (knight) and 3 (bishop)"), said
 
-    def test_a_version_sentence_names_the_field(self) -> None:
-        spec = copy.deepcopy(CHESS)
-        spec["pieces"][1]["speed"] = 1
-        said = designing.plain_problem(
-            'the spec uses pieces.speed, added in schema 28; declare "schema_version": 28 '
-            "to use it", spec)
-        assert "where the game comes from" not in said.lower(), said
-        assert "speed" in said and "knight" in said, said
-
-
 # A refused default, as the validator words one.
 _DEFAULT_REFUSED = r"\b(?:false|0|\"[a-z_]+\"|'[a-z_]+') is the default\b|\bmust be true\b"
 
@@ -584,9 +578,10 @@ class TestNoMenuOffersARefusedDefault:
         assert not refused, "\n".join(refused)
 
     @pytest.mark.parametrize("path", sorted(_true_only_paths()))
-    def test_each_true_only_switch_is_refused_as_false(self, path: str) -> None:
-        """The schema's `{"const": true}` says what only `true` is; it must keep agreeing with
-        the validator, or it would hide a *no* somebody may choose."""
+    def test_each_true_only_switch_written_false_is_the_switch_left_out(self, path: str) -> None:
+        """The schema's `{"const": true}` says what only `true` is. Since Q1008c the validator
+        takes ``false`` as the switch left out (an off value, `normal.drop_off_values`), so a
+        *no* somebody writes is the same game, not a refusal the menus would have to hide."""
         spec = _in_rounds()
         spec["rules"]["contacts"] = {"position": "stay", "immune": ["K"],
                                      "links": [{"mover": "N", "onto": "P", "onto_to": "B"}]}
@@ -595,14 +590,18 @@ class TestNoMenuOffersARefusedDefault:
                                        "effect": "freeze", "whose": "enemy"}]
         dotted = path.replace("[]", ".0").split(".")
         steps = tuple(int(step) if step.isdigit() else step for step in dotted)
+        without = copy.deepcopy(spec)
         assert _set(spec, steps, False)
         key = steps[-1]
-        assert any(re.search(_DEFAULT_REFUSED, line) and f".{key}" in line
-                   for line in _problems(spec)), (path, _problems(spec))
+        assert not any(f".{key}" in line for line in _problems(spec)), (path, _problems(spec))
+        assert spec_hash(spec) == spec_hash(without)
 
     def test_the_schema_names_the_true_only_switches_and_the_menus_offer_yes_alone(self) -> None:
         paths = _true_only_paths()
-        assert paths == {"pieces[].spy", "rules.contacts.links[].own", "pieces[].sight[].through"}, paths
+        assert paths == {
+            "pieces[].spy", "rules.contacts.links[].own", "pieces[].sight[].through",
+            "pieces[].sight[].captures_own",
+        }, paths
         model = cards.card_model()
         trees = {"rules": model["rules"], "pieces[]": model["piece"]}
         found = {}
@@ -615,7 +614,7 @@ class TestNoMenuOffersARefusedDefault:
         # menu writes `true` or leaves the key out, never `false`, which
         # `tests/test_sight_page.py` holds of the row's writer.
         assert "pieces[].sight[].through" in HAND
-        for path in paths - set(HAND):
+        for path in paths - set(HAND) - set(NOT_IN_DESIGNER):
             assert found[path] == [True], (path, found.get(path))
 
 
@@ -953,10 +952,9 @@ class TestEveryPieceRests:
         unit = "rounds" if rounds else "turns"
         assert answer["changes"] == [f"Every piece rests 2 {unit} now."]
         assert _rests(spec) == [None] * len(spec["pieces"]), "the draft is never changed in place"
-        # The page says what the choice did, with undo, and what every piece now rests, and
-        # the check that settles the version stamp afterwards keeps it said.
+        # The page says what the choice did, with undo, and what every piece now rests.
         said = _draw(draft, "(REST_SAID = { key: restKey(), rest: 2, changes: "
-                            f"{json.dumps(answer['changes'])} }}, DRAFT.schema_version = 99,"
+                            f"{json.dumps(answer['changes'])} }},"
                             " restSaidHtml())")
         words = _visible(said)
         assert answer["changes"][0] in words and 'id="dRestUndo"' in said, words
@@ -1005,8 +1003,9 @@ class TestEveryPieceRests:
                 "so nothing was changed.") in words, words
         assert answer["errors"][0] in words
 
-    @pytest.mark.parametrize(("game", "left"), [("pitchfork", "wild piece"),
-                                                 ("carousel", "portal")])
+    # Carousel's portal piece was the second case until spelling 31 (Q1007b), which writes a
+    # portal's moves on its group: a portal game declares no piece that cannot rest.
+    @pytest.mark.parametrize(("game", "left"), [("pitchfork", "wild piece")])
     def test_a_piece_that_cant_rest_is_left_without_and_said(self, game: str, left: str) -> None:
         spec = _archived(game)
         answer = designing.rest_every_piece(spec, 1)
@@ -1054,47 +1053,22 @@ class TestEveryPieceRests:
 
 class TestTheOldRestSwitch:
     """Fix 7's second line: a draft or a file still carrying `rules.simultaneous.rest` was
-    refused in the validator's voice, naming the version and the game's text."""
+    refused in the validator's voice. Since Q1008c the designer reads it in the current
+    spelling (`designing.settled`), which writes the old switch as every piece resting 1."""
 
     def _old(self) -> dict[str, Any]:
         spec = _in_rounds()
         spec["rules"]["simultaneous"]["rest"] = True
         return spec
 
-    def test_the_refusal_is_plain(self) -> None:
+    def test_a_draft_with_it_is_the_game_with_every_piece_resting(self) -> None:
         answer = designing.check(self._old())
-        assert answer["retiredRest"] is True
-        said = [line for line in answer["errors"] if "rest" in line]
-        assert said, answer["errors"]
-        for line in said:
-            assert "schema" not in line and not _RAW_PATH.search(line) and '"' not in line, line
-            assert "rests after it moves" in line and "1 round" in line, line
-        assert designing.check(_in_rounds()).get("retiredRest") is not True
+        assert answer["valid"] is True, answer["errors"]
+        tidied = designing.settled(self._old())
+        assert "rest" not in tidied["rules"]["simultaneous"]
+        assert _rests(tidied) == [1] * len(tidied["pieces"])
 
-    def test_the_change_keeps_the_same_game(self) -> None:
-        answer = designing.rest_every_piece(self._old(), 1)
-        draft = answer["draft"]
-        assert "rest" not in draft["rules"]["simultaneous"]
-        assert _rests(draft) == [1] * len(draft["pieces"])
-        assert _problems(draft) == []
-        assert any("old rest" in line for line in answer["changes"]), answer["changes"]
-
-    def test_the_designer_offers_it(self) -> None:
-        said = _draw(self._old(), "restSaidHtml()", "DRAFT_CHECK = { retiredRest: true };")
-        assert 'id="dRestConvert"' in said
-        assert plain.REST_WORDS["convert"] in _visible(said)
-
-    def test_a_file_with_it_is_offered_the_change(self) -> None:
+    def test_a_file_with_it_loads(self) -> None:
         answer = designing.read_rule_file(json.dumps(self._old()))
-        assert answer["valid"] is False
-        assert answer["errors"] == [schema.RETIRED_REST]
-        assert answer["convertSays"] == plain.REST_WORDS["convertFile"]
-        assert designing.read_rule_file(json.dumps(answer["converted"]))["valid"] is True
-        assert _rests(answer["converted"]) == [1] * len(answer["converted"]["pieces"])
-        offered = _draw(CHESS, "(ruleFileSaid('dLoadSaid', ['x'], 'old.json',"
-                               " { spec: {}, says: 'load it' }), SAID)",
-                        "let SAID = ''; const _slot = { set innerHTML(v) { SAID = v; },"
-                        " querySelector: () => null };"
-                        " const _get = document.getElementById;"
-                        " document.getElementById = id => (id === 'dLoadSaid' ? _slot : _get(id));")
-        assert "data-loadconverted" in offered and "load it" in offered
+        assert answer["valid"] is True, answer["errors"]
+        assert _rests(answer["spec"]) == [1] * len(answer["spec"]["pieces"])

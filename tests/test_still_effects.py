@@ -1,6 +1,6 @@
 """Q999g: the still board draws the effects a line of sight puts on its position.
 
-`docs/plan-passive.md` Q999c's *as built* note left the still boards (the game page's start
+`docs/archive/plan-passive.md` Q999c's *as built* note left the still boards (the game page's start
 position, `page/stillboard.js`) without the frozen / disarmed / shielded badges the play
 board draws. The core answers which pieces are under an effect (`Engine.effects`); the
 preview payload carries that answer as ``effects: [[square, bits], ...]`` (`card_rules.preview`),

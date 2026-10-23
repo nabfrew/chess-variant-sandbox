@@ -50,9 +50,9 @@ _GAME: dict[str, Any] = {
 
 
 def _with(*pairs: dict[str, Any], moves: list[Any] | None = None) -> dict[str, Any]:
+    """``_GAME`` with these groups, each moving by ``moves`` (spelling 31: a group's own)."""
     spec = copy.deepcopy(_GAME)
-    spec["pieces"].append({"id": "O", "name": "portal", "value": 0, "moves": moves or []})
-    spec["rules"]["portals"] = [{"piece": "O", **pair} for pair in pairs]
+    spec["rules"]["portals"] = [{**({"moves": moves} if moves else {}), **pair} for pair in pairs]
     return spec
 
 
@@ -93,7 +93,10 @@ class TestTheCardInSentences:
         assert card["moves"].startswith("Either player may spend a turn moving the end on b2. "
                                         "Nobody moves the end on e6. A portal moves one square in "
                                         "all eight directions, always onto an empty square.")
-        assert "open the portal on the piece list" in card["moves"]
+        assert "Change how they move in the rows below." in card["moves"]
+        # The card's move rows read back as a piece's do (spelling 31).
+        assert designing.check(spec)["portalMoveLines"] == [
+            ["one square in all eight directions, not to take"]]
 
     def test_the_bar_on_going_straight_back_is_said_with_who_moves_it(self) -> None:
         """Schema 20 (Q807): the card says the bar where it says who may move the pair."""
@@ -152,21 +155,16 @@ class TestTheWarnings:
 
 # Each refusal of D7's table: a draft that earns it, and the sentence the designer shows.
 _REFUSALS = [
-    ("the portal piece on the board",
-     lambda s: s["setup"]["placements"].append({"piece": "O", "squares": ["f1"]}),
-     "The portal piece is only for portals: it can't start on the board, be promoted to, or "
-     "be taken. Remove it from where they start."),
     ("a portal move that captures",
-     lambda s: s["pieces"][-1].update(moves=[{"kind": "leap", "vectors": [[1, 0]],
-                                              "symmetry": "rotate4"}]),
+     lambda s: s["rules"]["portals"][0].update(moves=[{"kind": "leap", "vectors": [[1, 0]],
+                                                       "symmetry": "rotate4", "mode": "both"}]),
      'Portals can\'t take anything, so every way a portal moves must be "move only".'),
     ("a portal move that differs for the two players",
-     lambda s: s["pieces"][-1].update(moves=[{"kind": "leap", "vectors": [[0, 1]],
-                                              "mode": "move"}]),
+     lambda s: s["rules"]["portals"][0].update(moves=[{"kind": "leap", "vectors": [[0, 1]]}]),
      "Anyone may move a portal, so its moves must be the same both ways up."),
-    ("an end somebody may move, and the portal piece has no move",
+    ("an end somebody may move, and the group has no move",
      lambda s: s["rules"]["portals"][0].update(moved_by={"orange": [0]}),
-     "Pair 1's end on b2 may be moved by White, but the portal piece has no way to move. "
+     "Pair 1's end on b2 may be moved by White, but the pair has no way to move. "
      'Give it a move, or set the end to "nobody".'),
     ("an end on a wall",
      lambda s: s["rules"]["portals"][0].update(blue="c4"),
@@ -176,7 +174,7 @@ _REFUSALS = [
      "Pair 1 has an end on a1, where a piece starts. A portal needs an empty square: "
      "move it, or take the piece off first."),
     ("two ends on one square",
-     lambda s: s["rules"]["portals"].append({"piece": "O", "orange": "b2", "blue": "d6"}),
+     lambda s: s["rules"]["portals"].append({"orange": "b2", "blue": "d6"}),
      "Pair 2 has an end on b2, where pair 1 has one too. Two portals can't share a square."),
     ("both ends on one square",
      lambda s: s["rules"]["portals"][0].update(blue="b2"),
@@ -198,16 +196,16 @@ _REFUSALS = [
      "Pair 1 says a portal can't be moved straight back, but each end is moved by one player "
      "only, so the next move is always the other player's and the rule never applies. Let "
      "both players move an end, or untick 'not straight back'."),
-    ("a bar the portal piece has no move back for",
+    ("a bar the group has no move back for",
      lambda s: (s.update(schema_version=20), s["rules"]["portals"][0].update(
-         no_straight_back=True, moved_by={"orange": [0, 1]}), s["pieces"][-1].update(
-         moves=[{"kind": "leap", "vectors": [[1, 0]], "symmetry": "none", "mode": "move"}])),
-     "Pair 1 says a portal can't be moved straight back, but the portal piece has no move "
-     "back, so it could never go straight back anyway. Give the portal piece a move in the "
-     "opposite direction, or untick 'not straight back'."),
+         no_straight_back=True, moved_by={"orange": [0, 1]},
+         moves=[{"kind": "leap", "vectors": [[1, 0]], "symmetry": "none"}])),
+     "Pair 1 says a portal can't be moved straight back, but its portals have no move back, "
+     "so they could never go straight back anyway. Give them a move in the opposite "
+     "direction, or untick 'not straight back'."),
     ("more than four pairs",
      lambda s: s["rules"]["portals"].extend(
-         {"piece": "O", "orange": o, "blue": b}
+         {"orange": o, "blue": b}
          for o, b in (("a2", "a6"), ("c2", "c6"), ("d2", "d6"), ("f2", "f5"))),
      "A game can have at most four groups of portals."),
 ]
@@ -227,6 +225,29 @@ class TestTheRefusalsInWords:
         for line in answer["errors"]:
             assert "rules.portals" not in line and "moved_by" not in line, line
             assert not re.search(r"(?i)orange|blue", line), line
+
+    def test_a_draft_in_the_old_spelling_is_read_through_the_converter(self) -> None:
+        """Spelling 31 (Q1007b): a draft that still names a portal piece is checked as the
+        converter writes it, the piece's moves on the group, and is the same game."""
+        old = _with({"orange": "b2", "blue": "e6", "moved_by": {"orange": [0, 1]}})
+        old["pieces"].append({"id": "O", "name": "portal", "value": 0,
+                              "moves": [{**designing.PORTAL_STEP, "mode": "move"}]})
+        old["rules"]["portals"][0]["piece"] = "O"
+        settled = designing.settled(old)
+        assert [piece["id"] for piece in settled["pieces"]] == ["K", "R"]
+        assert settled["rules"]["portals"][0]["moves"] == [designing.PORTAL_STEP]
+        answer = designing.check(old)
+        assert answer["valid"], answer["errors"]
+        new = _with({"orange": "b2", "blue": "e6", "moved_by": {"orange": [0, 1]}},
+                    moves=[designing.PORTAL_STEP])
+        assert answer["hash"] == designing.check(new)["hash"]
+        # The validator's refusal of the old spelling, were it ever met, in the card's words.
+        said = designing.portal_problem(
+            "rules.portals[0].piece names a stand-in piece for the portals' moves, the spelling "
+            "before schema_version 31: write those moves on the group", old)
+        assert said == {"pair": 1, "says": "This draft names a portal piece, the old way of "
+                        "saying how portals move. Its ways of moving belong on the group's "
+                        "card now: load the file again and it is converted."}
 
     def test_a_refusal_about_an_end_names_its_pair_for_the_card(self) -> None:
         spec = _with({"orange": "b2", "blue": "c4"})
@@ -317,15 +338,26 @@ def _page(spec: dict[str, Any], steps: str, expression: str, check: dict | None 
     return _run_page(setup, expression)
 
 
+def _element(html: str, attribute: str) -> str:
+    """The whole `<div>` whose opening tag carries `attribute`, by counting divs."""
+    start = html.rindex("<div", 0, html.index(attribute))
+    depth = 0
+    for tag in re.finditer(r"<div\b|</div>", html[start:]):
+        depth += 1 if tag.group() == "<div" else -1
+        if not depth:
+            return html[start:start + tag.end()]
+    raise AssertionError(f"the div with {attribute} is not closed")
+
+
 def _clicks(*names: str) -> str:
     return "".join(f"portalClick({_square(name)});" for name in names)
 
 
 class TestTheTraysRow:
-    def test_the_row_offers_a_pair_and_hides_the_portal_piece(self) -> None:
+    def test_the_row_offers_a_pair_beside_the_pieces(self) -> None:
         html = _page(_with({"orange": "b2", "blue": "e6"}), "", "paletteHtml()")
         assert "+ portals" in html and 'data-portalchip="0"' in html
-        assert 'data-placing="2.0"' not in html  # the portal piece is never put down by hand
+        assert 'data-placing="2.0"' not in html  # there is no third piece: no portal piece
         assert 'data-placing="0.0"' in html and 'data-placing="1.0"' in html
 
     def test_at_four_pairs_the_button_is_off_and_says_why(self) -> None:
@@ -344,13 +376,14 @@ class TestTheTraysRow:
 
 
 class TestPuttingAPairDown:
-    def test_two_clicks_make_a_pair_and_the_unseen_portal_piece(self) -> None:
+    def test_two_clicks_make_a_pair_and_no_piece(self) -> None:
         said, pieces, pairs = _page(copy.deepcopy(_GAME),
                                     "startPortalTool();" + _clicks("b2", "e6")
                                     + "finishPortalTool();",
                                     "[BENCH_SAID, DRAFT.pieces, DRAFT.rules.portals]")
-        assert pairs == [{"piece": "O", "orange": "b2", "blue": "e6"}]
-        assert pieces[-1] == {"id": "O", "name": "portal", "value": 0, "moves": []}
+        # Spelling 31 (Q1007b): a pair moves by its own `moves`, none while nobody moves it.
+        assert pairs == [{"orange": "b2", "blue": "e6"}]
+        assert pieces == _GAME["pieces"]
         assert said.startswith("Pair 1 is on b2 and e6, and picked")
         assert "among the rules" in said and "beside the board" not in said
         # The draft the page wrote is a game, with the pair where it was put.
@@ -436,11 +469,11 @@ class TestMovingRemovingAndRenumbering:
         spec = _with({"orange": "b2", "blue": "e6"}, {"orange": "c2", "blue": "d6"})
         pairs, said = _page(spec, "PLACING = { erase: true };" + _clicks("e6"),
                             "[DRAFT.rules.portals, BENCH_SAID]")
-        assert pairs == [{"piece": "O", "orange": "c2", "blue": "d6"}]
+        assert pairs == [{"orange": "c2", "blue": "d6"}]
         assert said == "Took off pair 1, both ends. Undo brings it back. The pair that was 2 " \
                        "is now 1."
 
-    def test_the_last_pair_taken_off_takes_the_portal_piece_too(self) -> None:
+    def test_the_last_pair_taken_off_takes_the_rule_and_no_piece(self) -> None:
         rules, pieces = _page(_with({"orange": "b2", "blue": "e6"}), "removePair(0);",
                               "[DRAFT.rules, DRAFT.pieces.map(p => p.id)]")
         assert "portals" not in rules and pieces == ["K", "R"]
@@ -471,12 +504,11 @@ class TestTheCardsChoices:
         assert both["passage"] == {"0": "orange_to_blue", "1": "orange_to_blue"}
         assert one["passage"] == {"0": "orange_to_blue"}
 
-    def test_somebody_moving_an_end_gives_the_portal_piece_its_step(self) -> None:
-        pair, piece = _page(_with({"orange": "b2", "blue": "e6"}),
-                            "setMovers(0, 'orange', [0, 1]);",
-                            "[DRAFT.rules.portals[0], DRAFT.pieces[2]]")
+    def test_somebody_moving_an_end_gives_the_pair_its_step(self) -> None:
+        pair = _page(_with({"orange": "b2", "blue": "e6"}),
+                     "setMovers(0, 'orange', [0, 1]);", "DRAFT.rules.portals[0]")
         assert pair["moved_by"] == {"orange": [0, 1]}
-        assert piece["moves"] == [designing.PORTAL_STEP]
+        assert pair["moves"] == [designing.PORTAL_STEP]
         # Back to nobody: the key goes, and the step stays for the designer to keep or drop.
         pair = _page(_with({"orange": "b2", "blue": "e6", "moved_by": {"orange": [0]}}),
                      "setMovers(0, 'orange', []);", "DRAFT.rules.portals[0]")
@@ -616,12 +648,46 @@ class TestNoColourWordInTheDesigner:
                       "buildControls(out)")
         assert built["portals"] == spec["rules"]["portals"]
 
-    def test_the_portal_piece_s_move_menus_offer_only_what_a_portal_may_do(self) -> None:
+    def test_the_group_s_move_menus_offer_only_what_a_portal_may_do(self) -> None:
         html = _page(_with({"orange": "b2", "blue": "e6", "moved_by": {"orange": [0]}},
                            moves=[designing.PORTAL_STEP]), "",
-                     "moveEditor(DRAFT.pieces[2].moves[0], 2, 0)")
+                     "moveEditor(DRAFT.rules.portals[0].moves[0], 'p0', 0)")
         assert "move only" in html and "move or take" not in html and "take only" not in html
         assert 'value="sweep"' not in html and 'value="none"' not in html and "four ways" in html
+        assert 'data-move="p0.0"' in html and "only from rank" not in html
+
+    def test_the_card_draws_the_group_s_move_rows_while_somebody_moves_it(self) -> None:
+        moved = _with({"orange": "b2", "blue": "e6", "moved_by": {"orange": [0]}},
+                      moves=[designing.PORTAL_STEP])
+        html = _page(moved, "", "pairCardHtml(DRAFT.rules.portals[0], 0, 1)")
+        assert 'data-pmoverows="0"' in html and 'data-move="p0.0"' in html
+        assert 'data-addmove="p0"' in html and "How a portal of pair 1 moves" in html
+        still = _page(_with({"orange": "b2", "blue": "e6"}), "",
+                      "pairCardHtml(DRAFT.rules.portals[0], 0, 1)")
+        assert "data-pmoverows" not in still
+
+    def test_the_move_rows_are_a_card_of_their_own_after_the_group_s(self) -> None:
+        """Q1014: the rows grow with every way added, and inside the group's card they pushed
+        a picked group's card past a 1400 x 900 screen (the look check's `D1 card`, on
+        *divide*, *gardner*'s ring and *los alamos*'s funnel). They follow the card instead."""
+        moved = _with({"orange": "b2", "blue": "e6", "moved_by": {"orange": [0]}},
+                      moves=[designing.PORTAL_STEP])
+        html = _page(moved, "", "pairCardHtml(DRAFT.rules.portals[0], 0, 1)")
+        card = _element(html, 'data-paircard="0"')
+        assert "data-pmoverows" not in card and "data-move=" not in card
+        assert "data-pmoves=" in card  # the card still says who moves its ends, and how
+        after = html[html.index(card) + len(card):]
+        assert after.lstrip().startswith('<div class="pairMoves" data-pmoverows="0"')
+
+    def test_a_way_of_moving_is_added_to_and_taken_from_the_group(self) -> None:
+        moved = _with({"orange": "b2", "blue": "e6", "moved_by": {"orange": [0]}},
+                      moves=[designing.PORTAL_STEP])
+        added = _page(moved, "document.querySelector = () => null;"
+                      "movesOwner('p0').moves.push(JSON.parse(JSON.stringify(PORTAL_STEP)));",
+                      "DRAFT.rules.portals[0].moves.length")
+        assert added == 2
+        assert _page(moved, "", "movesOwner('p0') === DRAFT.rules.portals[0]")
+        assert _page(moved, "", "movesOwner(1) === DRAFT.pieces[1]")
 
 
 class TestTheKeyboard:
@@ -641,7 +707,7 @@ class TestTheKeyboard:
                 # Q843b: two ends down, Enter is *done* (a group may have more than two).
                 " benchKey('Enter');")
         pairs = _page(copy.deepcopy(_GAME), walk, "DRAFT.rules.portals")
-        assert pairs == [{"piece": "O", "orange": "b2", "blue": "e6"}]
+        assert pairs == [{"orange": "b2", "blue": "e6"}]
         assert start != mid
 
     def test_the_keys_lift_move_and_take_off_a_pair(self) -> None:

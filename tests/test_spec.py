@@ -13,7 +13,13 @@ from pathlib import Path
 
 import pytest
 
-from chess_variant_sandbox.spec import SpecError, measure_complexity, spec_hash, validate_spec
+from chess_variant_sandbox.spec import (
+    SpecError,
+    load_spec,
+    measure_complexity,
+    spec_hash,
+    validate_spec,
+)
 from chess_variant_sandbox.spec import schema as schema_module
 from chess_variant_sandbox.spec.complexity import expand_symmetry
 from chess_variant_sandbox.spec.jsonschema import rule_spec_schema
@@ -159,7 +165,7 @@ class TestCoherence:
 
     @pytest.mark.parametrize(
         ("kind", "key"),
-        [("leap", "range"), ("leap", "min_range"), ("lame", "range"), ("lame", "min_range")],
+        [("leap", "range"), ("leap", "min_range")],
     )
     def test_a_distance_on_a_leap_is_refused(self, kind: str, key: str) -> None:
         """A leap is one jump per vector, so a distance on one is a spec that means two things.
@@ -177,6 +183,16 @@ class TestCoherence:
         assert any(f"{key} means nothing on a {kind}" in e for e in errors), errors
         # The same descriptor without the distance is a leaper, and is fine.
         del spec["pieces"][0]["moves"][0][key]
+        assert validate_spec(spec) == []
+
+    @pytest.mark.parametrize("key", ["range", "min_range"])
+    def test_a_distance_on_a_lame_move_is_a_rider(self, key: str) -> None:
+        """Q1007a (`docs/plan-schema-31.md` §2.2): `lame` counts jumps, so a distance on one
+        is a lame rider and is accepted; it was refused while a lame was one jump."""
+        spec = copy.deepcopy(MINIMAL)
+        spec["pieces"][0]["moves"][0] = {"kind": "lame", "vectors": [[1, 2]], key: 2}
+        if key == "min_range":
+            spec["pieces"][0]["moves"][0]["range"] = 0
         assert validate_spec(spec) == []
 
 
@@ -590,76 +606,6 @@ class TestHashing:
         assert spec_hash(reordered) == spec_hash(MINIMAL)
 
 
-class TestSettlingTheVersionStamp:
-    """`schema_version` is a claim about which features a spec uses, and it is inside the
-    mechanics hash -- so the stamp is not a preference, it is part of the game's identity.
-    `settle_schema_version` decides it from the validator rather than from a table, in
-    both directions, which is what makes two people who wrote the same game get one hash.
-    """
-
-    def test_a_stamp_higher_than_the_spec_needs_comes_down(self) -> None:
-        """The half that already existed: an add-and-remove pair of operators has to be
-        able to return a candidate to its parent, and it could not while the stamp stayed
-        where the add left it."""
-        from chess_variant_sandbox.spec.transform import settle_schema_version
-
-        raised = copy.deepcopy(MINIMAL)
-        raised["schema_version"] = 9
-        assert settle_schema_version(raised)["schema_version"] == 1
-        assert spec_hash(raised) == spec_hash(MINIMAL)
-
-    def test_a_stamp_lower_than_the_spec_needs_goes_up(self) -> None:
-        """The half that was missing. A spec declaring 1 and using a schema-6 rule is not
-        a version-1 spec: it is a spec whose stamp is wrong, and refusing it asks a person
-        to hand-edit a number the validator can work out."""
-        from chess_variant_sandbox.spec.transform import settle_schema_version
-
-        walled = copy.deepcopy(MINIMAL)
-        walled["rules"]["obstacles"] = {"squares": ["c3"]}
-        assert validate_spec(walled), "a schema-1 stamp on a schema-6 rule should refuse"
-        assert settle_schema_version(walled)["schema_version"] == 6
-        assert validate_spec(walled) == []
-
-    def test_it_is_the_lowest_version_that_validates_and_not_the_newest(self) -> None:
-        """The stamp says what the spec *uses*, so settling must not simply reach for
-        `SCHEMA_VERSION`: that would put every hand-built game on a different hash from
-        the identical one somebody else wrote against an older schema."""
-        from chess_variant_sandbox.spec.transform import settle_schema_version
-
-        for start in (None, 1, 4, 9):
-            spec = copy.deepcopy(MINIMAL)
-            spec["rules"]["obstacles"] = {"squares": ["c3"]}
-            if start is None:
-                spec.pop("schema_version")
-            else:
-                spec["schema_version"] = start
-            assert settle_schema_version(spec)["schema_version"] == 6, start
-
-    def test_a_spec_no_version_can_save_is_left_alone(self) -> None:
-        """Invalid for a reason that is not the stamp. Moving the number would only change
-        which complaint the validator makes, and the caller's spec is not the place to
-        record a guess."""
-        from chess_variant_sandbox.spec.transform import settle_schema_version
-
-        broken = copy.deepcopy(MINIMAL)
-        broken["schema_version"] = 4
-        broken["pieces"] = []
-        assert settle_schema_version(broken)["schema_version"] == 4
-
-    def test_two_versions_of_one_game_settle_to_one_hash(self) -> None:
-        """The whole point, and the waste `test_a_known_game_is_not_rediscovered` exists
-        to prevent: the same mechanics written by two people who guessed differently about
-        the stamp are one game, not two."""
-        from chess_variant_sandbox.spec.transform import settle_schema_version
-
-        one = copy.deepcopy(MINIMAL)
-        one["schema_version"] = 2
-        two = copy.deepcopy(MINIMAL)
-        two["schema_version"] = 7
-        assert spec_hash(one) != spec_hash(two)
-        assert spec_hash(settle_schema_version(one)) == spec_hash(settle_schema_version(two))
-
-
 class TestSymmetryExpansion:
     @pytest.mark.parametrize(
         ("vector", "symmetry", "count"),
@@ -1047,6 +993,20 @@ def _vector_bounds(at: str, many: dict[str, int]) -> dict[str, dict[str, int]]:
 
 _AT_LEAST_ONE = {"minItems": 1}
 
+
+def _move_bounds(at: str) -> dict[str, dict[str, int]]:
+    """A move list's bounds at ``at``, as a piece's ``moves`` states them below."""
+    move = f"{at}/items{_P}"
+    return {
+        at: {"maxItems": 12},
+        **_vector_bounds(f"{move}/vectors", _AT_LEAST_ONE),
+        f"{move}/range": {"minimum": 0, "maximum": 16},
+        f"{move}/min_range": {"minimum": 1, "maximum": 16},
+        f"{move}/screen_range": {"minimum": 0, "maximum": 16},
+        f"{move}/condition{_P}/from_rank": {"minimum": 0},
+        f"{move}/condition{_P}/region": _AT_LEAST_ONE,
+    }
+
 #: The whole table of bounds, as the validator states them. Kept literal on purpose.
 FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_P}/name": {"minLength": 1},
@@ -1064,8 +1024,8 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_PIECE}/sight/items{_P}/range": {"minimum": 0, "maximum": 16},
     f"{_PIECE}/sight/items{_P}/min_range": {"minimum": 1, "maximum": 16},
     f"{_PIECE}/sight/items{_P}/affects": _AT_LEAST_ONE,
-    # Q925: no minItems (a drop-stock piece or an unmoved portal type has no moves) and no
-    # cap on vectors (the validator has none; `archive/hex-glinski-hexagon.json` lists 12).
+    # Q925: no minItems (a drop-stock piece has no moves) and no cap on vectors (the
+    # validator has none; `archive/hex-glinski-hexagon.json` lists 12).
     f"{_PIECE}/moves": {"maxItems": 12},
     **_vector_bounds(f"{_MOVE}/vectors", _AT_LEAST_ONE),
     f"{_MOVE}/range": {"minimum": 0, "maximum": 16},
@@ -1108,6 +1068,8 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_RULES}/portals": {"minItems": 1, "maxItems": 4},
     f"{_RULES}/portals/items{_P}/ends": {"minItems": 3, "maxItems": 8},
     f"{_RULES}/portals/items{_P}/ends/items{_P}/to": {"minimum": 0, "maximum": 7},
+    # Spelling 31 (Q1007b): a group's moves are a piece's move list, bounds and all.
+    **_move_bounds(f"{_RULES}/portals/items{_P}/moves"),
     f"{_RULES}/scoring{_P}/region": _AT_LEAST_ONE,
     f"{_RULES}/reach{_P}/squares": _AT_LEAST_ONE,
     f"{_RULES}/extinction{_P}/pieces/anyOf[1]": _AT_LEAST_ONE,
@@ -1734,18 +1696,6 @@ class TestTheReachMirrorDefault:
         assert reach_reflection({"squares": ["a8"], "mirror": False}) is None
         assert reach_reflection("not a reach") is None
 
-    def test_the_rotate_spelling_was_added_in_schema_seven(self) -> None:
-        spec = copy.deepcopy(MINIMAL)
-        spec["rules"] = {
-            "win": "reach",
-            "reach": {"piece": "K", "squares": ["d4"], "mirror": "rotate"},
-        }
-        spec["schema_version"] = 6
-        assert any("was added in schema 7" in e for e in validate_spec(spec))
-        spec["schema_version"] = 7
-        assert not any("was added in schema 7" in e for e in validate_spec(spec))
-
-
 class TestAppearanceAndProvenanceAreChecked:
     @pytest.mark.parametrize(
         ("appearance", "fragment"),
@@ -1992,3 +1942,21 @@ class TestRoutesAreReadFromMalformedEntries:
         spec["schema_version"] = SCHEMA_VERSION
         spec.update(copy.deepcopy(change))
         assert validate_spec(spec)
+
+
+class TestTheStampLimitsNothing:
+    """Since Q1008c `schema_version` is the spelling's version and no gate reads it: every
+    earlier stamp is accepted whatever the spec uses, and it is in no game's name."""
+
+    def test_any_earlier_stamp_takes_a_spec_that_uses_the_newest_rules(self) -> None:
+        spec = load_spec(Path(__file__).resolve().parents[1] / "archive" / "madrasi.json")
+        for version in (1, 9, SCHEMA_VERSION):
+            stamped = dict(spec, schema_version=version)
+            assert validate_spec(stamped) == [], (version, validate_spec(stamped))
+            assert spec_hash(stamped) == spec_hash(spec)
+
+    @pytest.mark.parametrize("stamp", [0, SCHEMA_VERSION + 1, True, "30"])
+    def test_a_stamp_outside_the_range_is_refused(self, stamp: object) -> None:
+        spec = load_spec(Path(__file__).resolve().parents[1] / "rulesets" / "chess.json")
+        spec["schema_version"] = stamp
+        assert any("schema_version" in error for error in validate_spec(spec))

@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 31,
   "name": "atomic",
   "description": "A capture destroys the capturing piece and everything standing beside it, pawns excepted. Kings cannot capture without destroying themselves, so they may stand next to each other, and the game is usually won by blowing up the enemy king rather than by mating it.",
   "board": {

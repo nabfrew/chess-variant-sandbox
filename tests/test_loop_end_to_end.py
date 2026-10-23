@@ -402,6 +402,13 @@ class TestMechanicalOperator:
                 explore_rate=0.0,
                 judge=False,
                 mechanical_rate=1.0,
+                # Two children a generation, not the default eight: what this asks is
+                # that a run of local edits needs no model, not how a batch is gated
+                # (`TestBatchedGenerations`). Eight cost 3.3 s and went over the duration
+                # guard's 4 s on a loaded machine; two cost 1.3 s and still evaluate the
+                # seed and a child in each generation, with a rejected child in each
+                # (Q1009, 2026-10-22).
+                batch=2,
                 seeds=(spec_path,),
             ),
             # No proposer, and none may be constructed: a run of local edits that

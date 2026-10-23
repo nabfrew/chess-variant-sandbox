@@ -81,6 +81,24 @@ def _imports(name: str, path: Path, known: dict[str, Path]) -> set[str]:
     return found
 
 
+class _Graph(dict[str, set[str]]):
+    """The import graph, each module parsed the first time a walk reaches it.
+
+    Only the modules a guarded one reaches are ever read: 88 of 205 at Q1009, which halved
+    `test_no_computer_player_reaches_peoples_games` (1.9 s of parsing to 1.0 s) and took it
+    off the duration guard's line on a loaded machine. A walk asks the same edges either
+    way, so it finds the same reach.
+    """
+
+    def __init__(self, modules: dict[str, Path]) -> None:
+        super().__init__()
+        self.modules = modules
+
+    def __missing__(self, name: str) -> set[str]:
+        found = self[name] = _imports(name, self.modules[name], self.modules)
+        return found
+
+
 def _reach(start: str, graph: dict[str, set[str]]) -> dict[str, str | None]:
     """Every module reachable from `start`, each with the module that first imported it."""
     seen: dict[str, str | None] = {start: None}
@@ -128,7 +146,7 @@ def test_no_computer_player_reaches_peoples_games() -> None:
     """Rule 5c (`docs/reference/human-data.md` §3, task H5): nothing under `agents/`, the net
     procedure or `tournament/` imports the site's store or `web.human`, at any depth."""
     modules = _modules()
-    graph = {name: _imports(name, path, modules) for name, path in modules.items()}
+    graph = _Graph(modules)
     breaches = []
     for start in _guarded(modules):
         seen = _reach(start, graph)

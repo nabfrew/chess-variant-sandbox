@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 31,
   "name": "knightmate",
   "description": "Bruce Zimov's 1972 inversion: the royal piece moves like a knight, and the pieces that stand where knights normally stand move like kings but are not royal. Nothing else changes. The royal knight castles with a rook under the usual conditions, and a pawn may promote to a commoner but never to a second royal.",
   "board": {"width": 8, "height": 8},

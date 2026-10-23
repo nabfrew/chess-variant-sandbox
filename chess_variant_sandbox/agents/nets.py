@@ -88,12 +88,16 @@ class Layout:
     no_progress: int
     max_plies: int
     # Q918g: a round game's own state after ``turn`` (``net.rs::Layout``), each segment only
-    # where its rule is on, so every alternating layout is unchanged: who holds the
-    # initiative (2, under ``tie: "initiative"``), each player's resting squares (2 x S, under
-    # a rest: schema 29's ``pieces[].rest``, Q983b widens it), the void run's two squares and the barred pairs' squares (2 x S each, in
-    # every round game).
+    # where its rule is on, so every layout without it is unchanged: who holds the
+    # initiative (2, under ``tie: "initiative"``), the void run's two squares and the barred
+    # pairs' squares (2 x S each, in every round game). And (Q983b, `docs/plan-rest.md` §5.4)
+    # the resting pieces, in every game that rests, alternating or in rounds: 2 x S x R
+    # one-hot per (turns left, player, square), ``((left - 1) * 2 + player) * S + square``,
+    # ``R`` the longest rest (``rest_turns``); for ``R = 1`` a round game's plane is schema
+    # 27's, so its layout is unchanged.
     initiative: int = 0
     rest: int = 0
+    rest_turns: int = 0
     void: int = 0
     bars: int = 0
     has_initiative: bool = False
@@ -116,10 +120,11 @@ class Layout:
         sim = getattr(spec, "simultaneous", None)
         rounds = sim is not None
         has_initiative = sim is not None and sim.tie == TIE_INITIATIVE
-        has_rest = sim is not None and bool(spec.rest)
+        rest_turns = max(spec.rest) if spec.rest else 0
+        has_rest = rest_turns > 0
         initiative = turn + TURN_CAP
         rest = initiative + (2 if has_initiative else 0)
-        void = rest + (2 * s if has_rest else 0)
+        void = rest + 2 * s * rest_turns
         bars = void + (2 * s if rounds else 0)
         return cls(
             n_squares=s,
@@ -139,6 +144,7 @@ class Layout:
             max_plies=int(spec.max_plies),
             initiative=initiative,
             rest=rest,
+            rest_turns=rest_turns,
             void=void,
             bars=bars,
             has_initiative=has_initiative,
@@ -175,15 +181,17 @@ class Layout:
         out.extend(_clock(self.ply, state.ply, self.max_plies))
         extra = min(max(state.remaining - 1, 0), TURN_CAP)
         out.extend(self.turn + k for k in range(extra))
-        if not self.rounds:
-            return out
         if self.has_initiative and state.initiative in (0, 1):
             out.append(self.initiative + state.initiative)
         if self.has_rest:
-            for player in range(2):
-                for square, _ in state.rest[player]:
-                    if 0 <= square < s:
-                        out.append(self.rest + player * s + square)
+            out.extend(sorted(
+                self.rest + ((left - 1) * 2 + player) * s + square
+                for player in range(2)
+                for square, left in state.rest[player]
+                if 0 <= square < s and 1 <= left <= self.rest_turns
+            ))
+        if not self.rounds:
+            return out
         for player in range(2):
             if 0 <= state.void_run[player] < s:
                 out.append(self.void + player * s + state.void_run[player])
@@ -540,7 +548,7 @@ def require_net(options: dict[str, Any], ruleset_hash: str) -> bytes:
 def _confirmed(data: dict[str, Any]) -> bool:
     """Whether a store's JSON records a passed acceptance duel and a passed G-A2 on fresh seeds.
 
-    A kept generation passed both by R5-1's definition (`plan-teacher.md` §9.6), so the
+    A kept generation passed both by R5-1's definition (`archive/plan-teacher.md` §9.6), so the
     ``kept`` field stands for them where the second duel was recorded under another hash
     (*Intransitive*'s generations carried over by Q696)."""
     if data.get("kept") is True:
@@ -559,7 +567,7 @@ def rated_net(ruleset_hash: str, root: str | Path = STORE_DIR) -> str:
 
     - only an **accepted** store whose weights load and hash to their record plays;
     - it must be **kept** (R5-1) or, where no generation line runs, **accepted and
-      confirmed** (its G-A2 duel on fresh seeds passed too, `plan-teacher.md` §8.3); a
+      confirmed** (its G-A2 duel on fresh seeds passed too, `archive/plan-teacher.md` §8.3); a
       store the plan read and did not keep (``kept: false``) never plays;
     - where any eligible store is kept, the choice is among the kept ones, so an accepted
       child stored beside its kept parent does not replace it;

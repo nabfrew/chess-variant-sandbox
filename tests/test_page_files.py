@@ -334,3 +334,19 @@ class TestThePolicyRefusesInlineScript:
         for path, (status, headers, _) in zip(asked, _get(app, *asked), strict=True):
             assert status in (200, 204, 404), path
             assert headers["Content-Security-Policy"] == CONTENT_SECURITY_POLICY, path
+
+
+def test_no_two_page_scripts_define_one_function() -> None:
+    """The page's scripts are classic scripts sharing one global scope, so a function a later
+    file defines again silently replaces the earlier one everywhere: Q983b's board line for a
+    resting piece once took the designer's `restWords` and blanked its sentences. Each
+    top-level name is defined once across `web.page.SCRIPTS`."""
+    seen: dict[str, str] = {}
+    twice = []
+    for route, path in page.SCRIPTS.items():
+        text = Path(path).read_text(encoding="utf-8")
+        for name in re.findall(r"^(?:async\s+)?function\s+([A-Za-z0-9_$]+)", text, re.M):
+            if name in seen:
+                twice.append((name, seen[name], route))
+            seen.setdefault(name, route)
+    assert not twice, twice

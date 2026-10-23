@@ -53,7 +53,7 @@ AGENT = f"minimax:net={PROCEDURE},nodes=6400"
 # Generation 2R (E1, `archive/plan-teacher.md` §9.13.8), generation 1's child: kept by R5-1 once
 # both guards held (Q716, §9.13.12). It stays kept, and is generation 3c's parent.
 KEPT_2R = "0eaad64c4586"
-# Generation 3c (the chained replay, `plan-teacher.md` §9.19), 2R's child: kept by R5-1 once
+# Generation 3c (the chained replay, `archive/plan-teacher.md` §9.19), 2R's child: kept by R5-1 once
 # both guards held (Q969g, §9.20), so since then it is the net the picker offers.
 OFFERED = "b14f1d190426"
 OFFERED_AGENT = f"minimax:net={OFFERED},nodes=6400"
@@ -339,7 +339,7 @@ class TestGenerationTwosStore:
         assert data["weights_sha256"].startswith("f82ee574")
 
     def test_generation_3c_is_kept_after_its_guards_and_offered(self) -> None:
-        """Q969g (plan-teacher §9.20): generation 3c, `b14f1d190426`, 2R's chained-replay child,
+        """Q969g (archive/plan-teacher §9.20): generation 3c, `b14f1d190426`, 2R's chained-replay child,
         passed every target gate and G-G held on gardner and on chess (R5-1), so it is kept
         and, as the kept line's newest, what the picker offers."""
         data = json.loads((ROOT / STORE_DIR / f"{INTRANSITIVE}-{OFFERED}.json").read_text("utf-8"))

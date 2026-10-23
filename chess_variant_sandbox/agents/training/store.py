@@ -200,7 +200,7 @@ def read_parent(path: str | Path, ruleset_hash: str) -> tuple[Parent, bytes]:
     The file's name gives the procedure and the ruleset, which must be ``ruleset_hash``;
     the bytes must parse as a net, and where a JSON lies beside them its
     ``weights_sha256`` must be theirs. The verdict is not read: a generation may learn
-    from a refused net (plan-teacher §9.3, gardner's parent), which plays only in the
+    from a refused net (archive/plan-teacher §9.3, gardner's parent), which plays only in the
     process that registers it (``register_parent``).
     """
     weights = Path(path).with_suffix(".net")
@@ -293,7 +293,7 @@ def accept(
     """The net against the built-in objective at equal nodes, on paired seeds.
 
     ``reference`` (Q677) puts another player in the built-in's seat on the same schedule:
-    the parent net for plan-teacher §9.1's P, ``minimax:nodes=25600`` for A25. The
+    the parent net for archive/plan-teacher §9.1's P, ``minimax:nodes=25600`` for A25. The
     verdict's bar is the same; only the duel against the built-in at equal nodes is an
     acceptance (``train_ruleset`` never passes one).
 

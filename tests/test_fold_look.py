@@ -430,9 +430,9 @@ class TestHowItWorks:
 
         spec = _with({"orange": "b2", "blue": "e6"})
         folded = _page(spec, "setKind(0, 'fold');", "DRAFT.rules.portals")
-        assert folded == [{"piece": "O", "orange": "b2", "blue": "e6", "kind": "fold"}]
+        assert folded == [{"orange": "b2", "blue": "e6", "kind": "fold"}]
         back = _page(spec, "setKind(0, 'fold'); setKind(0, 'momentum');", "DRAFT.rules.portals")
-        assert back == [{"piece": "O", "orange": "b2", "blue": "e6"}]
+        assert back == [{"orange": "b2", "blue": "e6"}]
         draft = _page(spec, "setKind(0, 'fold');", "DRAFT")
         answer = designing.check(draft)
         assert answer["valid"], answer["errors"]

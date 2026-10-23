@@ -17,7 +17,10 @@ access. The layout is fixed here so the Rust core can reproduce it exactly.
                 piece went in by, and bits 20-24 then hold the promoted type plus one;
                 under MOVE_FOLD (schema 22) the fold end that moves (its index among
                 the portal ends), and on an ordinary move in a fold game the fold end
-                it went through plus one (``move_fold``), zero for a direct move
+                it went through plus one (``move_fold``), zero for a direct move;
+                bit 30 (``MOVE_COMMANDED``, Q1007c) marks a commanded move, the side to
+                move moving one of the opponent's pieces (every other use of these
+                bits is refused beside a sight)
 
 Square indices are ``rank * width + file``, so the layout supports boards up to
 16x16 (256 squares), matching ``spec.schema.MAX_BOARD_DIM``.
@@ -56,6 +59,12 @@ MOVE_PORTAL = 7
 # board byte changes, since a fold stands on no square of it (``GameState.folds``); bits
 # 25-31 hold the end (its index among the portal ends, ``move_fold``).
 MOVE_FOLD = 8
+
+# Q1007c (`docs/plan-schema-31.md` §3.7): a flag, not a kind. A commanded move is a
+# ``MOVE_NORMAL`` (or ``MOVE_ROTATE``) made by the side to move with a piece of the
+# opponent's that a ``command`` sight binds; the core sets the bit, and ``describe_move``
+# writes the move with a ``~`` before the piece.
+MOVE_COMMANDED = 1 << 30
 
 MOVE_TYPE_NAMES = {
     MOVE_NORMAL: "normal",
@@ -116,3 +125,9 @@ def move_fold(move: int) -> int:
 def decode_move(move: int) -> tuple[int, int, int, int]:
     """Unpack a move into ``(origin, target, move_type, promotion)``."""
     return (move & 0xFF, (move >> 8) & 0xFF, (move >> 16) & 0xF, (move >> 20) & 0x1F)
+
+
+def move_commanded(move: int) -> bool:
+    """Q1007c: whether ``move`` is a commanded move (the side to move moving an opponent's
+    piece)."""
+    return bool(move & MOVE_COMMANDED)

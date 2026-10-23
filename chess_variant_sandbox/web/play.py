@@ -204,7 +204,7 @@ def _coming(engine: Any, state: GameState) -> dict[str, list[dict[str, Any]]]:
 
 
 def effects_payload(engine: Any, state: GameState) -> dict[str, Any]:
-    """Schema 30 (Q999c, `docs/plan-passive.md` §4.6): the effects on a position a game has
+    """Schema 30 (Q999c, `docs/archive/plan-passive.md` §4.6): the effects on a position a game has
     passed through, for a step back to draw its marks, as ``{"effects": [[square, bits], ...]}``
     with only the squares whose piece is under an effect (1 frozen, 2 disarmed, 4 shielded);
     the core's answer (`Engine.effects`). Empty in a game without a sight, so a history entry
@@ -213,6 +213,36 @@ def effects_payload(engine: Any, state: GameState) -> dict[str, Any]:
         return {}
     bits = engine.effects(state).bits
     return {"effects": [[square, value] for square, value in enumerate(bits) if value]}
+
+
+def resting_payload(state: GameState) -> list[dict[str, int]]:
+    """Schema 29 (`pieces[].rest`): every resting piece of a position, ``{player, square,
+    left}``, player 0's first: a piece that made its player's move and may not make it for
+    that player's next ``left`` turns unless it is all that player can move. The core's state
+    (``GameState.rest``), read and never worked out; ``[]`` without a rest."""
+    return [
+        {"player": player, "square": square, "left": left}
+        for player in (0, 1) for square, left in state.rest[player]
+    ]
+
+
+def rest_entry(engine: Any, before: GameState, after: GameState, seat: int) -> dict[str, Any]:
+    """Schema 29 (Q983b, `docs/plan-rest.md` §5.6): what a history entry says of the rest, in a
+    game whose pieces rest: the resting pieces of the position it left (``resting``), so a step
+    back badges its own position, and ``lifted`` where the move was chosen under a lift (every
+    move ``seat`` had was a resting piece's), the core's answer (`Engine.rest_turn`). Empty in
+    every other game, so a history entry of every other game is what it was."""
+    if not engine.spec.rest:
+        return {}
+    out: dict[str, Any] = {"resting": resting_payload(after)}
+    if engine.rest_turn(before, seat).lifted:
+        out["lifted"] = True
+    return out
+
+
+# Schema 29 (Q983b, `docs/plan-rest.md` §5.6): a round chosen under a lift, in the round's
+# sentences; `{side}` is what the board calls the player.
+LIFTED_WORDS = "every move {side} had was a resting piece's, so the rest was lifted for {side} this round"
 
 
 def sights_payload(engine: Any, state: GameState) -> list[dict[str, Any]]:
@@ -443,6 +473,10 @@ class Session:
                 # without a speed, which draws no line.
                 "speed": list(engine.spec.simultaneous.speed)
                 if engine.spec.simultaneous is not None else [],
+                # Schema 29 (Q983b, `docs/plan-rest.md` §5.6): each type's rest, compiled
+                # (`CompiledSpec.rest`), so a game whose longest rest is over 1 numbers its
+                # pause signs with the turns left; empty in every game without a rest.
+                "rest": list(engine.spec.rest),
             },
             "seats": list(self.seats),
             # How hard each seat thinks, in plain words off the budget it plays at, for
@@ -484,11 +518,8 @@ class Session:
             # left}`, player 0's first: a piece that made its player's move and may not make
             # it for that player's next `left` turns unless it is all that player can move.
             # The core's state, in every game, alternating or in rounds; `[]` without a rest.
-            "resting": [
-                {"player": player, "square": square, "left": left}
-                for player in (0, 1) for square, left in self.state.rest[player]
-            ],
-            # Schema 30 (Q999a, `docs/plan-passive.md` §4.6): the effect bits on each square
+            "resting": resting_payload(self.state),
+            # Schema 30 (Q999a, `docs/archive/plan-passive.md` §4.6): the effect bits on each square
             # (1 frozen, 2 disarmed, 4 shielded, on the piece standing there), as the core
             # answers them (`Engine.effects`), for the page's marks. Absent in every game
             # without a sight, whose block is what it always was.
@@ -861,6 +892,9 @@ class Session:
                 # Schema 30 (Q999c): the effects on the position this ply left, so a step
                 # back draws its marks (`effects_payload`); absent without a sight.
                 **effects_payload(engine, state),
+                # Schema 29 (Q983b): the resting pieces this ply left, and whether it was
+                # chosen under a lift (`rest_entry`); absent without a rest.
+                **rest_entry(engine, self.state, state, self.state.side_to_move),
             }
         )
         self.state = state
@@ -1081,7 +1115,15 @@ class Session:
             engine.spec.piece_ids,
             (self.game.spec.get("appearance") or {}).get("icons"),
         )
-        reveal = round_reveal(engine, before, after, (first, second), events, side_names(art))
+        sides = side_names(art)
+        reveal = round_reveal(engine, before, after, (first, second), events, sides)
+        # Schema 29 (Q983b, `docs/plan-rest.md` §5.6): a seat whose every move was a resting
+        # piece's chose under a lift, which the round's sentences say (the core's answer).
+        rests = [rest_entry(engine, before, after, seat) for seat in (0, 1)]
+        for seat in (0, 1):
+            if rests[seat].get("lifted"):
+                line = LIFTED_WORDS.format(side=sides[seat]) + "."
+                reveal["words"].append(line[:1].upper() + line[1:])
         if announcer is not None:
             # Schema 27 (Q935c): who announced, so the move list marks the announced move.
             reveal["announcer"] = announcer
@@ -1104,6 +1146,7 @@ class Session:
                 # What this move came to: `void`, `won` or `lost` a collision, `both lost`.
                 "result": reveal["results"][seat],
                 "round": number,
+                **rests[seat],
             }
             if seat == 1:
                 entry["reveal"] = reveal

@@ -40,14 +40,9 @@ from chess_variant_sandbox.engine import Engine
 from chess_variant_sandbox.engine.bridge import canonical_tables
 from chess_variant_sandbox.engine.compile import WILD, compile_spec
 from chess_variant_sandbox.spec import load_spec, spec_hash, validate_spec
-from chess_variant_sandbox.spec.schema import (
-    SCHEMA_VERSION,
-    _schema_twenty_one_uses,
-    portal_groups,
-    portal_map_shape,
-)
-from chess_variant_sandbox.spec.transform import settle_schema_version
+from chess_variant_sandbox.spec.schema import SCHEMA_VERSION, portal_groups, portal_map_shape
 from chess_variant_sandbox.viz.wrapped import portal_payload
+from tests.feature_inventory import _schema_twenty_one_uses
 
 ROOT = Path(__file__).resolve().parents[1]
 FAST_BUDGET_NODES = 150_000
@@ -86,7 +81,7 @@ def ring() -> dict[str, Any]:
     player may move the end on c3 a step, so the ring's shape changes as it is played."""
     return _schema(_with_portals(
         "gardner",
-        [{"piece": "O", "ends": [
+        [{"ends": [
             {"at": "a3", "to": 1},
             {"at": "c3", "to": 2, "moved_by": [0, 1]},
             {"at": "e3", "to": 0},
@@ -100,7 +95,7 @@ def funnel() -> dict[str, Any]:
     e4 is White's alone to go in by. Black may move the way out a step."""
     return _schema(_with_portals(
         "losalamos",
-        [{"piece": "O", "ends": [
+        [{"ends": [
             {"at": "b3", "to": 2},
             {"at": "e4", "to": 2, "enter": [0]},
             {"at": "c4", "moved_by": [1]},
@@ -114,7 +109,7 @@ def filtered() -> dict[str, Any]:
     and only rooks and pawns at e4."""
     return _schema(_with_portals(
         "losalamos",
-        [{"piece": "O", "orange": "b3", "blue": "e4",
+        [{"orange": "b3", "blue": "e4",
           "carries": {"orange": ["N"], "blue": ["R", "P"]}}],
     ))
 
@@ -175,21 +170,6 @@ class TestTheVersionIsBumped:
         }
         assert _schema_twenty_one_uses(filtered()) == {"rules.portals.carries"}
 
-    @pytest.mark.parametrize("name", sorted(GAMES))
-    def test_an_older_stamp_is_refused_by_name(self, name: str) -> None:
-        spec = GAMES[name]()
-        spec["schema_version"] = 20
-        assert any("added in schema 21" in problem for problem in validate_spec(spec))
-
-    @pytest.mark.parametrize("name", sorted(GAMES))
-    def test_each_test_game_validates_and_settles_to_twenty_one(self, name: str) -> None:
-        spec = GAMES[name]()
-        assert validate_spec(spec) == []
-        spec["schema_version"] = SCHEMA_VERSION
-        settle_schema_version(spec)
-        assert spec["schema_version"] == 21
-
-
 def _refused(spec: dict[str, Any], fragment: str) -> None:
     problems = validate_spec(spec)
     assert any(fragment in problem for problem in problems), problems
@@ -232,9 +212,9 @@ class TestWhatTheValidatorRefuses:
 
     def test_more_than_eight_ends(self) -> None:
         spec = _with_portals("chess", [
-            {"piece": "O", "ends": [{"at": f"{f}4", "to": (i + 1) % 5}
+            {"ends": [{"at": f"{f}4", "to": (i + 1) % 5}
                                     for i, f in enumerate("abcde")]},
-            {"piece": "O", "ends": [{"at": f"{f}5", "to": (i + 1) % 4}
+            {"ends": [{"at": f"{f}5", "to": (i + 1) % 4}
                                     for i, f in enumerate("abcd")]},
         ])
         _schema(spec)
@@ -242,7 +222,7 @@ class TestWhatTheValidatorRefuses:
 
     def test_more_than_four_groups(self) -> None:
         spec = _schema(_with_portals("chess", [
-            {"piece": "O", "orange": f"{f}4", "blue": f"{f}5"} for f in "abcde"
+            {"orange": f"{f}4", "blue": f"{f}5"} for f in "abcde"
         ]))
         _refused(spec, "holds 5 groups; at most 4")
 
@@ -276,7 +256,6 @@ class TestWhatTheValidatorRefuses:
         ([], "is empty, so no piece may go in"),
         (["N", "N"], "names a piece twice"),
         (["Z"], "which is not a declared piece"),
-        (["O"], "a portal; a portal never goes in"),
         (["P", "N", "B", "R", "Q", "K"], "names every piece that can move"),
     ])
     def test_a_filter_that_says_nothing_or_names_the_wrong_thing(
@@ -478,7 +457,6 @@ class TestTheMapAndTheFilterInPlay:
         # Into e4 by a rook (admitted there) comes out beside b3, which carries only knights.
         engine, state = self._filtered({"a1": ("K", 0), "f6": ("K", 1), "e1": ("R", 0)})
         assert "Re1-e4>b4" in engine.move_texts(state)
-
 
 
 class TestTheWordsSayWhereEachEndLeads:

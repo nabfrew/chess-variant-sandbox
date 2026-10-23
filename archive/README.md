@@ -764,7 +764,7 @@ viable** (3 of 4 runs accept, one unreadable), 0.853 of graded games decided; wh
 (refuse 4-0)**, 0.587 drawn by repetition; breather (then against the chase) **0.514 [0.451, 0.563], viable (accept
 4-0)**, 0.971 decided, the seat 0.523, the chase 0.009 of rounds.
 
-## `gardner-with-spies.json`, `gardner-with-spies-resting.json` — schema 27, the spy (Q935f)
+## `gardner-with-spies.json`, `gardner-with-spies-resting.json` — schema 27, the spy (Q935f; both retired)
 
 2026-10-17. The showcases of `docs/plan-spy.md` §5, the user's spy game taken literally: Gardner's
 minichess with each c-pawn replaced by a spy, a wazir that captures nothing. While both spies
@@ -789,6 +789,11 @@ Pre-registered in §5 and §5.7 before any graded game, graded in §5.8;
   alternating turn rests the piece that made it too (`docs/plan-rest.md` §3.10, `plan-spy.md` E11
   superseded), so no piece moves twice running in any phase. The nearest new game, measured anew
   by Q983c; the old runs stay under `1d798bedbf66`.
+  **Retired by Q1005 (2026-10-23)**, the last of the spy games (`docs/reference/preview-call-2026-10.md`): the new
+  hash read 0.600, not viable, refused on the seat (the first seat won 56 of the 61 decided games
+  between the two strongest players), the lean Gardner under royal capture gives its spy-free twin.
+  The file moved unchanged to `tests/_retired_gardner_with_spies_resting.json`; `pieces.spy` is a
+  gap on purpose until a spy game on a base whose seat holds.
 
 Measured 2026-10-17 (v12, four runs each, `corpus.SPY_AGENTS`), and re-measured the same day under
 the evaluator's spy term (Q935h) by Q954's library replay (`docs/reference/replay-2026-10-17b.md`):
@@ -827,7 +832,7 @@ sixth of its games drawn. Short, tactical games; the riders lose by their bishop
 three. Joined the library by Q936t as the only game where each side loses when any one of its own
 kinds is gone, and the only one with two different armies of paired kinds.
 
-## `gardner-in-rounds-with-a-swift-king.json`, `gardner-in-rounds-with-swift-knights.json`, `watering-hole-by-speed.json` — schema 28, speed (Q943c)
+## `gardner-in-rounds-with-a-swift-king.json`, `gardner-in-rounds-with-swift-knights.json`, `watering-hole-by-speed.json` — schema 28, speed (Q943c; all three retired)
 
 2026-10-19, three previews (the third in the library from Q943f, 2026-10-19, until Q996, 2026-10-21). The showcases of `pieces[].speed` (`docs/plan-speed.md` §6.1, pre-registered
 2026-10-16 before the rule was built): each piece type has a speed, a rank; when the two pieces
@@ -870,6 +875,13 @@ and both stay previews; the watering hole by speed is **viable in 3 of 4 runs, 0
 [0.500, 0.616]**, every graded game decided at the hole in about 18 plies with the seat level
 (0.520 first seat), below its parent's 0.608 with the intervals overlapping.
 
+**All three retired by Q1005 (2026-10-23)** (`docs/reference/preview-call-2026-10.md`), the files moved unchanged to
+`tests/_retired_<stem>.json`: the swift king (0.328, not viable 0-4) and the swift knights (0.420,
+not viable 1-3) are mostly drawn between competent players, as their retired parent was; the
+watering hole by speed (0.395, not viable 0-4) is over in a few rounds, the fault Q996 found and
+could not repair. `pieces.speed` is a gap on purpose until a speed game in which the slower side
+can still defend.
+
 ## `gardner-with-weary-heavies.json`, `breather-by-weight.json`, `chess-with-a-weary-queen.json` — schema 29, rest per piece type (Q983d)
 
 2026-10-21, three previews. The showcases of `pieces[].rest` (`docs/plan-rest.md` §6.1,
@@ -895,12 +907,35 @@ Gardner itself is on this plain roster (0.708, the first seat winning every deci
 the two strongest players); breather by weight **0.536 [0.468, 0.584], viable 4 of 4**, below
 breather's 0.582 inside its interval, the chase share 0.029; chess with a weary queen **0.917
 [0.898, 0.937], viable 4 of 4**, beside chess's 0.909, the queen making 6.7% of moves against
-chess's 16.0%. All three stay previews until Q983e grades `plan-rest.md` §6.3.
+chess's 16.0%. They stayed previews until Q1005 (2026-10-23, `docs/reference/preview-call-2026-10.md`):
+**chess with a weary queen joined the library**, the only game in which a piece rests in
+ordinary alternating play; **the weary heavies and breather by weight were retired** to
+`tests/_retired_<stem>.json`, the first refused on the seat and shown better by the weary queen,
+the second a near copy of `breather` (the same board, army and switches, won the same way).
+Q983e still grades §6.3 on all three, reading the retired two from their new paths.
 
-## `opposite-colours.json` — schema 30, two armies on one board that meet only by sight (Q999b)
+## `opposite-colours.json` — schemas 30 and 31, two armies that meet only by sight, with riders as rook and queen (Q1007e, replacing Q999b's)
 
-2026-10-22, a preview (`690631b0e4eb`). The user's colour-bound showcase for schema 30's lines
-of sight (`docs/plan-passive.md` §5, §6.5): chess's array on 8x8 with every piece bound to its
+2026-10-24, **in the library** (`ce406100becc`), replacing the game below under its name. The
+user's correction of R1 (`docs/plan-schema-31.md` §6.1, 2026-10-23): the colour-bound game with
+closer analogues of chess's rook and queen. The rook rides any number of two-square jumps along
+files and ranks (a slide over `[2, 0]`), stopped only by a piece on a square it would land on,
+never by one it jumps; the queen adds that ride to the bishop's diagonals. The rook carries the
+elephant's shield and the queen the guard's freeze; bishops, camels, pawns and king are the first
+game's. Of three drafted setups (pawns a rank forward on 8x8; the same on 8x10; the first game's
+layout with the lame reading, blocked on the jumped square too), the 8x10 one was kept: the
+riders wait behind their pawns as in chess, four empty ranks separate the armies, and no enemy
+starts on a rook's quarter of the board, so the first game's move-one capture cannot happen.
+The drafts and the reason are in §6.1. Measured 2026-10-24: **0.889 [0.867, 0.913], viable
+4-0**, every registered bar met (the sights take a move at 0.639 of graded side-turns, 0.581 of
+mates are not mate without them, the first seat 0.500 of decided graded games, 97.7 graded
+plies, 0.584 of rider moves ride two jumps or more). By the user's rule (equal or better on the
+same build) it took the name. `tests/test_showcases_q1007e.py` holds the mechanism.
+
+### The first `opposite colours` (Q999b; retired by Q1007e, now `tests/_retired_opposite_colours.json`)
+
+2026-10-22, in the library from Q1005 (2026-10-23) to Q1007e (2026-10-24) (`690631b0e4eb`). The user's colour-bound showcase for schema 30's lines
+of sight (`docs/archive/plan-passive.md` §5, §6.5): chess's array on 8x8 with every piece bound to its
 square colour (pawns step diagonally forward, a camel jumping three and one, an elephant jumping
 two any way, the bishop, and a guard and king that step diagonally or jump two straight), so
 under chess's mirrored setup the kings stand on opposite colours and each army splits into a
@@ -912,11 +947,15 @@ it (not its king or another elephant), the guard freezes enemies beside it. Desi
 and a skip-rook dropped, a ferz whose shield was decoration). In small play tests most mates
 were not mate without the sights, often a pawn freezing the king from the other colour.
 `tests/test_showcase_opposite_colours.py` holds the mechanism; its bars (C1 to C5) were
-registered before any measured game. Owes its first `measure`.
+registered before any measured game. Measured and graded the same day (`docs/archive/plan-passive.md`
+§6.5): **0.824 [0.798, 0.845], viable 4-0**, all five bars met, the first seat 0.517 of decided
+graded games. Joined the library from preview by Q1005 (`docs/reference/preview-call-2026-10.md`).
+Retired by Q1007e when the game above, 0.889 on the same build, replaced it; the file moved
+unchanged, its runs stay in `runs/`, and its site page and matches are kept.
 
 ## `madrasi.json`, `chess-with-a-sheltering-king.json`, `chess-with-daunting-knights.json` — schema 30, one line of sight on chess (Q999d)
 
-2026-10-22, three previews. The one-change showcases of `pieces[].sight` (`docs/plan-passive.md`
+2026-10-22, three previews, **all three in the library since Q1005 (2026-10-23)**. The one-change showcases of `pieces[].sight` (`docs/archive/plan-passive.md`
 §6.1, pre-registered 2026-10-21 before the rule was built): each is chess (`4c1922ffae26`) with
 one key added, written exactly as registered (Q999a wrote them first as test specs,
 `tests/_sight_*.json`, the same mechanics), and between them they show all four of schema 30's
@@ -935,13 +974,53 @@ measurement is each one's control.
   knight takes nothing.
 
 In a short unscored look (2026-10-22, `greedy` and `minimax` at 400, 1600 and 6400, two games an
-ordered pairing, 24 games each; `plan-passive.md` *§6.1 as built*) all three played like chess
+ordered pairing, 24 games each; `docs/archive/plan-passive.md` *§6.1 as built*) all three played like chess
 and finished, an effect removing a move at 0.85 (S1), 0.68 (S2) and 0.15 (S3) of side-turns.
-Owe their first `measure` (Q999e, the commands in §6.1 *as built*).
+Measured and graded by Q999e (2026-10-22, `v12`, four runs; `docs/archive/plan-passive.md` §6.6): madrasi
+**0.773 [0.748, 0.809]**, sheltering king **0.897 [0.874, 0.918]**, daunting knights **0.903
+[0.883, 0.927]**, each viable 4-0 with the seat level; S2 and S3 met every bar, S1 missed its
+index bar (chess's interval less 0.05) on depth alone. Joined the library from preview by Q1005
+(`docs/reference/preview-call-2026-10.md`).
+
+## `chess-with-nightriders.json` — schema 31, a ridden leap on chess (Q1007e)
+
+2026-10-24, **in the library** (`cc5e28e9ed0f`). R3 of `docs/plan-schema-31.md` §6.2: chess with
+the knight's move written as a slide over `[1, 2]` by `dihedral8`, the nightrider (T. R. Dawson,
+1925), named so and valued 4.5. One change on the calibration baseline, so a visitor sees what a
+ridden leap is. Fairy-Stockfish plays it as `NN`, and `verify` agrees with the core against both
+`pyffish` and the binary. Measured 2026-10-24: **0.900 [0.882, 0.921], viable 4-0**, every
+registered bar met (0.431 of nightrider moves ride two jumps or more, graded games 75.2 plies
+against chess's 87.9, the top three's games 0.917 decided). Known fault: between the two
+strongest players the second seat took 40 of 59 decided games, a lean just over the two-thirds
+the seat check tolerates though not refused; over every graded game the seat is level (0.499).
+`tests/test_showcases_q1007e.py` holds the mechanism.
+
+## `chess-with-commanding-knights.json`, `chess-with-a-spellbinding-king.json` — schema 31, pieces the opponent may move (Q1007f; both retired)
+
+2026-10-24, built, measured and **retired without joining**, by the call registered before their
+first measured game (`docs/plan-schema-31.md` §6.3): a showcase that misses any of V2 to V4
+retires. The showcases of the `command` sight effect, each one key on chess, pre-registered
+2026-10-23 before the effect was built; their files are `tests/_retired_*.json` and
+`tests/test_showcases_q1007.py` holds V1, the mechanism, on them. Their runs are kept.
+
+- **`chess-with-commanding-knights`** (`adc1a91b0a83`, K1): every enemy piece a knight's jump
+  from one of your knights (kings excepted) may also be moved by you, to empty squares only.
+  **0.926 [0.905, 0.945], viable 4-0**, seat level (0.511), games as long as chess's (85.3
+  plies); but a commanded move was offered at only **0.076** of graded side-turns (bar 0.15)
+  and played at 0.0024 of graded moves (bar 0.01): about one commanded move in five games. A
+  commanded piece is a piece the knight attacks, and the players do not leave pieces there; in
+  play it is chess with an occasional extra option.
+- **`chess-with-a-spellbinding-king`** (`6a8120390853`, K2): an enemy piece next to your king
+  may be moved by you, and made to take its own side. **0.897 [0.873, 0.919], viable 4-0**,
+  seat level (0.510), and the effect changes how games end: only 14 of 677 graded checkmates
+  had the checker beside the king (chess: 325 of 694), games ran 13% longer than chess's, and
+  128 turncoat captures were played. But a commanded move was offered at only **0.028** of
+  graded side-turns (bar 0.05): its force is as a deterrent, which V2 did not measure.
 
 ## `circe-mortal-diagonals.json` — schema 6, a strike that spares a piece other than the king (Q798)
 
-2026-10-19, a preview, unmeasured (`d32ef74e88c0`). The showcase of `rules.strike.immune` naming
+2026-10-19, a library game from the start (`d32ef74e88c0`; it never carried a preview mark, and
+Q1005 found the word here a slip). The showcase of `rules.strike.immune` naming
 a non-royal piece (`docs/reference/schema-showcase-coverage.md`, row 11 and *Q798*): circe
 (`54a0a193da0f`) with the queen and bishops added to `immune`, so a queen or bishop that is
 taken is gone, while a taken knight, rook or pawn goes home as in circe. Under a chain the key
@@ -953,7 +1032,7 @@ short look six of six games between `minimax:nodes=400` and `1600` ended in chec
 against circe's two, with 5 queen-or-bishop sacrifices against circe's 649. Two versions came
 first and are logged in the record, not kept: mortal pawns alone (the queens still looped) and
 the mortal queen alone (the bishops did). `tests/test_showcases_q798.py` holds the rule
-without players. Owes its first `measure`.
+without players. Measured 2026-10-20 by Q798m (`v12`, four runs): 0.884 [0.863, 0.908], viable 4-0.
 
 ## `the-golem-well.json`, `kraken-ford.json` — a model's designs from `RULES.md` alone (Q994, Q994p)
 
@@ -1043,4 +1122,18 @@ recorded as gaps on purpose (`schema-showcase-coverage.md` rows 65 and 67).
 `tests/_retired_gardner_in_rounds_resting.json`: it played well, but as a near copy of `breather`,
 the same board, army and rest without the swap collision and the material score, won the same way
 and different in play only where those two switches fire (*Q962c* in the previews record). One
-preview is left, `gardner-with-spies-resting`.
+preview was left, `gardner-with-spies-resting`, until Q1005 retired it too (below).
+
+## Previews called (Q1005, 2026-10-23)
+
+The user asked for a call on every preview: worth adding to the library, or out of it
+(`docs/reference/preview-call-2026-10.md`, which has the reason for each). Five joined the library by taking the
+preview mark off, with a sentence of purpose added to `provenance.history` (the route of Q934,
+Q936t and Q943f): `opposite-colours`, `madrasi`, `chess-with-a-sheltering-king`,
+`chess-with-daunting-knights` and `chess-with-a-weary-queen`. Six were retired the way Q962b
+retired its six, the files moved unchanged to `tests/_retired_<stem>.json` and named in
+`tests/retired_specs.py::RETIRED_PREVIEWS`: `gardner-with-weary-heavies`, `breather-by-weight`,
+`gardner-in-rounds-with-a-swift-king`, `gardner-in-rounds-with-swift-knights`,
+`watering-hole-by-speed` and `gardner-with-spies-resting`. No hash moved, no file was deleted, their
+runs stay in `runs/`, and on the site each is *retired* at the next deploy, its page, matches and
+ratings kept. `archive/` holds no preview now.

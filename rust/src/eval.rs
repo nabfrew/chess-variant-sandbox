@@ -77,8 +77,11 @@ pub const SPY_PIECES: f64 = 1.0;
 /// one whose loss ends the game; `side` has no move from that square in `lists[side]` (so the
 /// rest was not lifted); and the other side has a move onto it in `lists[1 - side]` (whose
 /// resting pieces' moves are already gone). With every type resting 1, at most one piece
-/// rests a player and this is schema 27's term to the bit; `docs/plan-rest.md` §5.4 (Q983b)
-/// generalises it. `agents/evaluation.py::rested_royal_falls` is the same test.
+/// rests a player and this is schema 27's term to the bit; with longer rests any of the
+/// side's entries may be its royal, whatever its turns left (`docs/plan-rest.md` §5.4, held by
+/// Q983b's `tests/test_rest_players.py`). An alternating game has no such term: its search sees
+/// the next turn's moves, which the core filters. `agents/evaluation.py::rested_royal_falls`
+/// is the same test.
 pub fn rested_royal_falls(game: &Game<'_>, side: usize, lists: [&[u32]; 2]) -> bool {
     game.resting_of(side)
         .iter()

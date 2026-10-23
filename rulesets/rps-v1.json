@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 31,
   "name": "rps annihilation",
   "description": "The first of five rock-paper-scissors games that the designer of intransitive built and rejected on the way to it. Three pieces a side on a 9x9 board, all moving as chess kings, with captures that go round in a circle: rock takes scissors, scissors takes paper, paper takes rock. You win by taking everything. Its designer rejected it for two stated reasons -- the play is 'just going back and forth and back and forth', and a player who wants a draw can usually force one, because a position reduced to a rock each is dead by construction.",
   "board": {

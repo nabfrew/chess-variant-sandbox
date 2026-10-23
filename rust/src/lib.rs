@@ -536,16 +536,30 @@ impl Core {
         Ok((phase.name(), phase.announcer()))
     }
 
-    /// Schema 30 (Q999a, `docs/plan-passive.md` §3.4): the effects on this board. Each
+    /// Schema 30 (Q999a, `docs/archive/plan-passive.md` §3.4): the effects on this board. Each
     /// square's effect bits (`1` freeze, `2` disarm, `4` shield, on the piece standing there,
     /// for its owner), how many of the side to move's moves the effects removed, by reason
     /// (freeze, disarm, shield), and whether the side to move's royal stands under an attack
     /// the effects suppressed. Zeros in a game without a sight. Python asks; the core answers.
-    fn effects(&self, state: StateIn) -> (Vec<u8>, (u32, u32, u32), bool) {
+    /// Q1007c: the bits carry `8` command and `16` its `captures_own`, and the fourth element
+    /// counts the side to move's legal commanded moves (0 without a command).
+    fn effects(&self, state: StateIn) -> (Vec<u8>, (u32, u32, u32), bool, u32) {
         let snapshot = snapshot_from(&self.tables, &state);
         let report = Game::from_snapshot(&self.tables, &snapshot).effects_report();
         let [freeze, disarm, shield] = report.removed;
-        (report.bits, (freeze, disarm, shield), report.suppressed)
+        (report.bits, (freeze, disarm, shield), report.suppressed, report.commanded)
+    }
+
+    /// Schema 29 (Q983b, `docs/plan-rest.md` §5.6, §7): what the rest does to `player`'s
+    /// choice on this board, `(binds, lifted)` (`Game::rest_turn`): whether it took away a
+    /// legal move, and whether it was lifted because it would have left none. Both false in a
+    /// game without a rest. Python asks; the core answers.
+    fn rest_turn(&self, state: StateIn, player: u8) -> PyResult<(bool, bool)> {
+        if player > 1 {
+            return Err(pyo3::exceptions::PyValueError::new_err("a player is 0 or 1"));
+        }
+        let snapshot = snapshot_from(&self.tables, &state);
+        Ok(Game::from_snapshot(&self.tables, &snapshot).rest_turn(player as usize))
     }
 
     /// Schema 30: the squares the piece on `square` sees on this board, each with the effect
@@ -855,7 +869,7 @@ impl Core {
         })
     }
 
-    /// Q665 (plan-teacher §8.2, T2v): the playing search's own value of each position.
+    /// Q665 (archive/plan-teacher §8.2, T2v): the playing search's own value of each position.
     ///
     /// One `(value, move, depth)` per state, in order: the root value of the last
     /// iteration of deepening `agent` completed there, for the side to move, in its

@@ -57,9 +57,11 @@ from chess_variant_sandbox.spec.schema import (
     obstacle_squares,
     parse_square,
     piece_sights,
+    portal_stand_in_shape,
     reflect_square,
     wrap_stated,
 )
+from chess_variant_sandbox.spec.spelling import current_spelling
 
 # Bumped when a change here would move a stored count or sentence. A cached link carries
 # it, so a reader that cannot match it recomputes instead of showing an older reading.
@@ -303,6 +305,12 @@ def identity_key(spec: dict[str, Any]) -> str:
 
 
 def _build(spec: dict[str, Any]) -> NormalForm:
+    # Read in the one current spelling (Q1008b): a promotion written as one object or as a
+    # list, a lone numbered rank or `ranks`, are one rule and must not read as a difference.
+    spec = current_spelling(spec)
+    # A portal group's moves read as the stand-in piece every portal game had before
+    # spelling 31 (`schema.portal_stand_in_shape`), so no relation moves with the re-spelling.
+    spec = portal_stand_in_shape(spec)
     board = spec.get("board") or {}
     width, height = _int(board.get("width"), 8), _int(board.get("height"), 8)
     setup = spec.get("setup") or {}
@@ -632,6 +640,8 @@ def _sight_form(piece: dict[str, Any]) -> list[dict[str, Any]]:
         }
         if sight.affects is not None:
             entry["affects"] = list(sight.affects)
+        if sight.captures_own:
+            entry["captures_own"] = True  # Q1007c; written only when on, so no form moves
         out.append(entry)
     return out
 
@@ -640,7 +650,7 @@ def _live_sights(
     spec: dict[str, Any], pieces: dict[str, dict[str, Any]]
 ) -> dict[str, dict[str, Any]]:
     """The pieces, with a `sight` taken off wherever the compiler keeps none (schema 30,
-    `docs/plan-passive.md` §4.3): a sight the compiled game does not carry is no rule, as an
+    `docs/archive/plan-passive.md` §4.3): a sight the compiled game does not carry is no rule, as an
     inert `rules` value is none (`_live_rules`). The compiler builds a type's sight entries
     from `schema.piece_sights` and no table at all when that reads none
     (`compile._compile_sights`), so asking the same reader is asking the compiler, without a

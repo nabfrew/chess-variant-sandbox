@@ -41,7 +41,7 @@ from test_web import _in_page
 
 from chess_variant_sandbox.engine.engine import Engine
 from chess_variant_sandbox.engine.moves import move_from, move_to
-from chess_variant_sandbox.spec import validate_spec
+from chess_variant_sandbox.spec import SCHEMA_VERSION, validate_spec
 from chess_variant_sandbox.web import cards, designing, opponents
 from chess_variant_sandbox.web.library import Game
 from chess_variant_sandbox.web.play import HUMAN, Session, Sessions
@@ -576,7 +576,7 @@ class TestTheDesigner:
         )
         assert drafted["rules"]["simultaneous"] == {} and drafted["rules"]["win"] == "royal_capture"
         settled = designing.settled(drafted)
-        assert validate_spec(settled) == [] and settled["schema_version"] == 26
+        assert validate_spec(settled) == [] and settled["schema_version"] == SCHEMA_VERSION
         session = _session((HUMAN, HUMAN), spec=settled)
         _placed(session, {**KINGS, "b1": ("N", 0), "c4": ("P", 1)})
         snapshot = _round(session, ("b1", "c3"), ("c4", "c3"))

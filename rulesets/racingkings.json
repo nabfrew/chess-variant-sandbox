@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 31,
   "name": "racing kings",
   "description": "Both kings start on the same two ranks and race for the eighth. No move may give check at all, so the whole game is a traffic problem rather than a fight.",
   "board": {

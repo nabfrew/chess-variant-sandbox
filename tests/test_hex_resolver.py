@@ -265,11 +265,6 @@ class TestTheValidatorStillRefusesIt:
     def _glinski() -> dict[str, Any]:
         return hex_glinski_promoting()
 
-    def test_board_shape(self) -> None:
-        spec = self._glinski()
-        spec["board"]["shape"] = "hexagon"
-        assert any("shape" in error for error in validate_spec(spec))
-
     @pytest.mark.parametrize("key", ["n_s", "ne_sw", "nw_se", "n_s_by_player"])
     def test_a_pair_key(self, key: str) -> None:
         spec = self._glinski()
@@ -301,6 +296,8 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "speed_ranks", "speed_royal", "speed_by_value", "speed_by_reach",  # Q943a
     "rest_mean", "rest_max",  # Q983a
     "sight_freeze_share", "sight_disarm_share", "sight_shield_share", "sight_aura_share",  # Q999a
+    "sight_command_share", "sight_turncoat_share",  # Q1007c
+    "lame_rider_share",  # Q1007a
 })
 _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/almost": "9035530ccf64d8cd",
@@ -404,18 +401,19 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     # Q962b, 2026-10-18: `archive/gardner-in-rounds-scored` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was 7ecccaf8caa59060.
     "archive/breather": "cdf0efe85ea762c5",  # Q942c, schema 27; Q962: renamed from gardner-in-rounds-against-the-chase
     # Q962b, 2026-10-18: `archive/gardner-with-spies` retired from the previews (`docs/reference/previews-2026-10-18.md`); the row was d488370eab00cfbd.
-    "archive/gardner-with-spies-resting": "a12a32ec9aa7c11a",  # Q935f, schema 27
+    # Q1005, 2026-10-23: `archive/gardner-with-spies-resting` retired from the previews (`docs/reference/preview-call-2026-10.md`); the row was a12a32ec9aa7c11a.
     "archive/riders-and-leapers": "6917cf0a1e6e5bbd",  # Q936s, schema 27
-    "archive/gardner-in-rounds-with-a-swift-king": "6fdc011869f7824a",  # Q943c, schema 28
-    "archive/gardner-in-rounds-with-swift-knights": "6fdc011869f7824a",  # Q943c, schema 28
-    "archive/watering-hole-by-speed": "b0e8b91febef654d",  # Q943c, schema 28
+    # Q1005, 2026-10-23: `archive/gardner-in-rounds-with-a-swift-king` retired from the previews (`docs/reference/preview-call-2026-10.md`); the row was 6fdc011869f7824a.
+    # Q1005, 2026-10-23: `archive/gardner-in-rounds-with-swift-knights` retired from the previews (`docs/reference/preview-call-2026-10.md`); the row was 6fdc011869f7824a.
+    # Q1005, 2026-10-23: `archive/watering-hole-by-speed` retired from the previews (`docs/reference/preview-call-2026-10.md`); the row was b0e8b91febef654d.
     "archive/circe-mortal-diagonals": "352d33d9f6b29010",  # Q798, schema 17; circe's features: none reads `immune`
     "archive/the-golem-well": "6d8fd9917d699345",  # Q994p, schema 28, a model's design (Q994's blind trial)
     "archive/kraken-ford": "a9cd50a19f198066",  # Q994p, schema 28, a model's design (Q994's blind trial)
-    "archive/gardner-with-weary-heavies": "b7bba61ec683778a",  # Q983d, schema 29
-    "archive/breather-by-weight": "95ab3bf4fa8a527d",  # Q983d, schema 29
+    # Q1005, 2026-10-23: `archive/gardner-with-weary-heavies` retired from the previews (`docs/reference/preview-call-2026-10.md`); the row was b7bba61ec683778a.
+    # Q1005, 2026-10-23: `archive/breather-by-weight` retired from the previews (`docs/reference/preview-call-2026-10.md`); the row was 95ab3bf4fa8a527d.
     "archive/chess-with-a-weary-queen": "cca02b4d69cf1272",  # Q983d, schema 29
-    "archive/opposite-colours": "a0e70d8f14e2936a",  # Q999b, schema 30
+    "archive/opposite-colours": "d36bc9991015602c",  # Q999b, schema 30; Q1007e, 2026-10-24: replaced under its name by R1, riders as rook and queen (was a0e70d8f14e2936a)
+    "archive/chess-with-nightriders": "57d71a18e3db3ea9",  # Q1007e, schema 31
     "archive/madrasi": "b6e19675623090e2",  # Q999d, schema 30
     "archive/chess-with-a-sheltering-king": "e7321c09e075fea8",  # Q999d, schema 30
     "archive/chess-with-daunting-knights": "cca02b4d69cf1272",  # Q999d, schema 30

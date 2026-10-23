@@ -299,17 +299,18 @@ class TestTheSentenceSaysWhatWasTaught:
         """
         oblique = {"kind": "slide", "vectors": [[1, 2]], "symmetry": "dihedral8"}
         assert describe.plain_move_sentence(oblique) == (
-            "any number of steps of two and one, in all eight directions,"
-            " stopped by anything in the way")
+            "any number of jumps of two and one, in all eight directions,"
+            " stopped only by a piece on a square it would land on")
         assert [
             offer for offer in _offers(_BASE, 0, "d4", ["e6"])
             if offer["move"] == oblique
         ]
 
     def test_a_descriptor_with_no_phrase_is_not_said_at_all(self) -> None:
-        """A line stepping two squares at a time. The designer would rather offer one
-        reading fewer than one nobody can read, so this one is never an offer."""
-        stretched = {"kind": "slide", "vectors": [[2, 2]], "symmetry": "rotate4"}
+        """Lines of one square and of two at once. The designer would rather offer one
+        reading fewer than one nobody can read, so this one is never an offer. (A line
+        stepping two squares at a time alone is a rider since Q1007a, and is said.)"""
+        stretched = {"kind": "slide", "vectors": [[1, 0], [2, 2]], "symmetry": "rotate4"}
         assert describe.plain_move_sentence(stretched) is None
         assert describe.move_sentence(stretched).startswith("moves and captures along")
         assert not [
@@ -1325,7 +1326,6 @@ class TestTheFormOffersWhatTheSchemaAccepts:
         assert hex_turns == set(HEX_SYMMETRIES)
         assert menus["symmetry"] | hex_turns == set(SYMMETRIES)
 
-
     def test_a_hex_draft_is_offered_no_square_turn(self) -> None:
         """Q681: the square's turns are refused on hexagons. A hex draft's *turned* menu
         offers *as written* and the hexagon's two (schema 18b), plus a move's own turn
@@ -1436,26 +1436,6 @@ class TestTheCheckSaysWhatToDo:
     def _skirmish(self) -> dict:
         template = next(t for t in designing.templates() if t["key"] == "skirmish")
         return json.loads(json.dumps(template["spec"]))
-
-    def test_the_version_sentence_goes_while_another_error_stands(self) -> None:
-        """1.2's third error: a capture list naming a piece that no longer exists, told
-        alongside *declare "schema_version": 3*. The form has no version control."""
-        draft = self._skirmish()
-        draft["schema_version"] = 1
-        draft["pieces"][0]["captures"] = ["A"]
-        raw = validate_spec(designing.settled(draft))
-        assert any('"schema_version":' in problem for problem in raw)
-        errors = designing.check(draft)["errors"]
-        assert errors
-        assert not any('"schema_version":' in error for error in errors)
-        assert "Piece 1 (soldier), 'may take only': 'A' isn't one of the game's pieces." in errors
-
-    def test_a_stamp_the_draft_cannot_settle_still_stands(self) -> None:
-        """Alone it is the refusal itself, so it is dropped rather than suppressed."""
-        only_version = ["the spec uses captures, added in schema 3; declare "
-                        '"schema_version": 3 to use it']
-        assert designing._worth_saying(only_version) == only_version
-        assert designing._worth_saying([*only_version, "a real one"]) == ["a real one"]
 
     def test_run_out_of_clock_names_the_counter_that_fired(self) -> None:
         """Walk 1.3 raised the move limit twice before finding it was the other one."""
@@ -1755,7 +1735,10 @@ class TestTheDesignStepsOnADraft:
             assert lands_back(made, designing.draft_steps(made, [spec])["steps"]) == [], (
                 step["operator"]
             )
-            if walked == 3:
+            # Two toggles, not three (Q1009): each costs a third of the test, and the
+            # first already fails when `away_from` is not honoured; the third took the
+            # test to 3.4 s beside a ten-core campaign, near the duration guard's 4 s.
+            if walked == 2:
                 break
         assert walked, "no step on this spec toggles, so the test proves nothing"
 
@@ -2431,7 +2414,7 @@ class TestAnObliqueLineIsReadBack:
         if reach == 1:
             assert "leaps" in line, line
         else:
-            assert "steps of" in line and "stopped by anything in the way" in line, line
+            assert "jumps of" in line and "stopped only by a piece on a square it would land on" in line, line
 
     def test_the_panel_draws_the_piece_lines(self) -> None:
         from page_text import PAGE
@@ -2627,3 +2610,58 @@ class TestTheDesignersLayout:
             " keepEditInView(), scrolled)",
         )
         assert moved == [28]
+
+
+class TestAJumpMayBeRiddenAgain:
+    """Q1007a (`docs/plan-schema-31.md` §2.5): a move whose every direction is longer than one
+    square offers *jumps again*: once (a leap, or a blockable leap of one jump), again and
+    stopped only where it lands (a slide over the jump, the nightrider), or again and also
+    stopped on the square each jump passes (a blockable leap with a range, the lame rider)."""
+
+    _DRAFT = "DRAFT = {pieces: [{id: 'N', moves: []}], rules: {}, board: {width: 8, height: 8}};"
+
+    def _ride(self, move: dict, value: str) -> dict:
+        return _run_page(
+            _kit_setup() + self._DRAFT + f"const MOVE = {json.dumps(move)};",
+            f"(writeMoveField(MOVE, 'ride', {json.dumps(value)}), MOVE)",
+        )
+
+    def test_the_menu_is_offered_only_on_a_jump(self) -> None:
+        def offered(move: dict) -> bool:
+            html = _run_page(_kit_setup() + self._DRAFT,
+                             f"moveEditor({json.dumps(move)}, 0, 0)")
+            return 'data-mfield="ride"' in html
+
+        assert offered({"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8"})
+        assert offered({"kind": "slide", "vectors": [[2, 0]], "symmetry": "rotate4"})
+        assert offered({"kind": "lame", "vectors": [[2, 2]], "range": 0})
+        assert not offered({"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4"})
+        assert not offered({"kind": "leap", "vectors": [[1, 0], [2, 0]]})
+        assert not offered({"kind": "hop", "vectors": [[2, 0]]})
+
+    def test_each_reading_is_written_as_the_rule_says_it(self) -> None:
+        knight = {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8"}
+        night = {"kind": "slide", "vectors": [[1, 2]], "symmetry": "dihedral8"}
+        lame_night = {**night, "kind": "lame", "range": 0}
+        assert self._ride(knight, "lands") == night
+        assert self._ride(knight, "passes") == lame_night
+        assert self._ride(night, "passes") == lame_night
+        assert self._ride(lame_night, "lands") == night
+        assert self._ride(night, "once") == knight
+        horse = {"kind": "lame", "vectors": [[1, 2]], "symmetry": "dihedral8"}
+        assert self._ride(lame_night, "once") == horse
+        # A rider of three jumps keeps its count across the two readings.
+        three = {"kind": "slide", "vectors": [[2, 0]], "symmetry": "rotate4", "range": 3}
+        assert self._ride(three, "passes") == {**three, "kind": "lame"}
+        assert self._ride({**three, "kind": "lame"}, "lands") == three
+
+    def test_writing_the_reading_it_has_changes_nothing(self) -> None:
+        for move in (
+            {"kind": "leap", "vectors": [[1, 2]], "symmetry": "dihedral8"},
+            {"kind": "slide", "vectors": [[1, 2]], "range": 1},
+            {"kind": "slide", "vectors": [[2, 0]], "symmetry": "rotate4"},
+            {"kind": "lame", "vectors": [[2, 0]], "range": 0, "min_range": 2},
+            {"kind": "lame", "vectors": [[1, 2]]},
+        ):
+            reading = _run_page(_kit_setup() + self._DRAFT, f"rideOf({json.dumps(move)})")
+            assert self._ride(move, reading) == move, move

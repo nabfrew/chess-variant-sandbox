@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 31,
   "name": "berolina",
   "description": "Chess with the pawn turned inside out: it moves one square diagonally forward and captures one square straight ahead, and from its home rank it may move two squares diagonally. Everything else is standard chess, but the pawn is the piece that sets the shape of a chess game, and this one behaves very differently. It can no longer be blocked head-on: an enemy standing in front of it is a target rather than a wall, so two pawns that meet face to face do not lock into a chain; whoever moves first may take. And because it advances diagonally, it can step round a blocker and change files without capturing, so pawn structures stay fluid and a passed pawn is harder to stop. The double step can still be taken en passant, by an enemy pawn that could have captured it on the square it crossed. Berolina takes its name from the Latin for Berlin.",
   "board": {"width": 8, "height": 8},

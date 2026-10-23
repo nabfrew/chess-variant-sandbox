@@ -195,7 +195,7 @@ class FoldOracle(PortalOracle):
                 ):
                     best[target] = name
             for target, name in best.items():
-                for promoted in self._promotions(pid, player, target):
+                for promoted in self._promotions(pid, player, target, origin):
                     found.add((origin, target, promoted, name))
         return found
 
@@ -205,7 +205,7 @@ class FoldOracle(PortalOracle):
     ) -> set[tuple[str, int, int]]:
         """``(end, origin, target)`` for every move of a fold ``player`` may move: onto an
         empty square or a piece of either side, never onto another portal end of either
-        kind; a slide stops at the first piece. ``last`` is the fold move just played, for
+        kind; a slide stops at the first piece, a hop at the first past its screen. ``last`` is the fold move just played, for
         ``no_straight_back``."""
         taken = set(folds.values())
         moved: set[tuple[str, int, int]] = set()
@@ -218,7 +218,7 @@ class FoldOracle(PortalOracle):
             def lands(square: int) -> bool:
                 return square not in taken and position.get(square, ("", None))[1] != "portal"
 
-            for move in self.pieces[group["piece"]]["moves"]:
+            for move in group["moves"]:
                 limit = move.get("range", 1 if move["kind"] == "leap" else 0)
                 for dx, dy in self._directions(move, player):
                     if move["kind"] == "leap":
@@ -231,6 +231,13 @@ class FoldOracle(PortalOracle):
                                 moved.add((name, origin, square))
                             if square in position:
                                 break
+                    elif move["kind"] == "hop":
+                        moved |= {
+                            (name, origin, square)
+                            for square in self._past_screen(position, origin, dx, dy, player,
+                                                            limit, move)
+                            if lands(square)
+                        }
         if last is not None and self.where[last[0]][0]["no_straight_back"]:
             moved.discard((last[0], last[2], last[1]))
         return moved
@@ -247,11 +254,12 @@ class FoldOracle(PortalOracle):
 
     def momentum_moves(
         self, position: Position, folds: Folds, player: int,
-        last: tuple[int, int] | None = None,
+        last: tuple[int, int] | None = None, unmoved: set[int] | None = None,
     ) -> set[tuple[int, int]]:
         """A momentum end's own moves: never onto a fold (rule 6)."""
         return {
-            (origin, target) for origin, target in self.portal_moves(position, player, last)
+            (origin, target)
+            for origin, target in self.portal_moves(position, player, last, unmoved)
             if target not in folds.values()
         }
 
