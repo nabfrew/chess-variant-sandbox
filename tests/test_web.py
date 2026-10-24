@@ -462,7 +462,7 @@ def _runs(games: list[library.Game]) -> Path:
 
 
 class TestAGamesNeighbours:
-    """M5 of `docs/plan-map.md`: a game's page lists the games most like it, by the map.
+    """M5 of `docs/archive/plan-map.md`: a game's page lists the games most like it, by the map.
 
     `library.neighbours` asks `graphing.near` which games and in what order -- the map's
     own games, ranked by the map's likeness -- and adds the reading of each pair: what both
@@ -707,7 +707,7 @@ def _alike(index: float, words: str) -> dict:
 
 
 class TestTheSimilarityReadingOnThePage:
-    """`docs/archive/plan-game-graph.md` §9.5's T3, after M5 of `docs/plan-map.md`.
+    """`docs/archive/plan-game-graph.md` §9.5's T3, after M5 of `docs/archive/plan-map.md`.
 
     The similarity index once ordered a game's neighbours among games as many rules away.
     Near now has one meaning, the map's likeness (`TestAGamesNeighbours`), and the index's
@@ -1103,7 +1103,7 @@ class TestTheMap:
 
 
 class TestTheMapDrawsLikeness:
-    """`docs/plan-map.md` M4 (after `docs/archive/plan-graph-map.md` S3 and S4).
+    """`docs/archive/plan-map.md` M4 (after `docs/archive/plan-graph-map.md` S3 and S4).
 
     The payload's `neighbours` are the map's lines -- two games each among the other's
     nearest -- every one drawn, as wide as their `likeness`, in their community's colour.

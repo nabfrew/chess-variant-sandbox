@@ -1,7 +1,7 @@
 """Schema 28 (Q943b): the round players' term for a royal under a faster attacker, and the
 pass's speed tallies.
 
-`docs/plan-speed.md` §4.4 and §5's Q943b row. Between unequal speeds the faster move is made
+`docs/archive/plan-speed.md` §4.4 and §5's Q943b row. Between unequal speeds the faster move is made
 first, so a royal that a strictly faster enemy piece reaches can neither run nor strike back
 first (§2.5 A, §3.2): it falls next round unless its side takes the attacker with a piece
 faster still. A depth-one round player saw nothing of that past its own matrix. Both sides of

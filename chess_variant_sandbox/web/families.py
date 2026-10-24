@@ -1,6 +1,6 @@
 """The map's families: who is near whom, which games form a family, and what each shares.
 
-`docs/plan-map.md` §4, M2. The relation is `spec/likeness.py`'s and nothing here
+`docs/archive/plan-map.md` §4, M2. The relation is `spec/likeness.py`'s and nothing here
 re-weighs it; this module turns it into the three things the map shows besides its
 picture.
 

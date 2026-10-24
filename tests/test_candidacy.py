@@ -1267,7 +1267,7 @@ class TestTheLibraryAndTheMapSpeakToAVisitor:
         assert "replay 1 of 4 runs" in local and "A mean needs three" in local
 
     def test_the_map_says_alike_communities_and_small_changes(self) -> None:
-        """M4 of `docs/plan-map.md`: the slider and the rule-step lines left the map, and
+        """M4 of `docs/archive/plan-map.md`: the slider and the rule-step lines left the map, and
         so did their words; a line now says how alike two games are and what they share."""
         views = self._views()
         said = " ".join(text for where, text in views.items() if where.startswith("the map"))

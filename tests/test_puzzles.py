@@ -159,7 +159,7 @@ def _reach(engine: Engine, *texts: str) -> Any:
     return state
 
 
-# Frozen across rebuilds (`plan-proven.md` §5.3): the site keys people's marks and tries by
+# Frozen across rebuilds (`docs/archive/plan-proven.md` §5.3): the site keys people's marks and tries by
 # these names, so a core or compiler change that moves one moves every stored mark off its
 # position. If this fails, the build changed the core's key (`compile.py` seeds it from the
 # rules' hash) or `puzzles.content`: that change owes a store migration like
@@ -400,7 +400,7 @@ def test_every_delivered_record_is_a_game_of_the_library() -> None:
 
 # ------------------------------------------------------------------ too easy (Q993a)
 #
-# `docs/plan-proven.md` §3.1, pre-registered: T1 and T2 read the record's proofs, T3 asks
+# `docs/archive/plan-proven.md` §3.1, pre-registered: T1 and T2 read the record's proofs, T3 asks
 # the core what every reply to the shortest winning move leaves. The rows below are
 # hand-made: what is tested is how the test reads them.
 
@@ -626,7 +626,7 @@ def test_a_format_three_record_keeps_t3_and_t4_and_names_their_basis(
 
 # ------------------------------------------------------- seen at a glance (Q993g)
 #
-# `docs/plan-proven.md` §3.7, pre-registered: T5 asks the core's two quick players, from
+# `docs/archive/plan-proven.md` §3.7, pre-registered: T5 asks the core's two quick players, from
 # eight fixed seeds, what they play, and reads each choice against the record's proofs,
 # asking the core again of the position an `open` choice leaves.
 
@@ -754,7 +754,7 @@ SHAPES = Path(__file__).with_name("_proven_shapes.json")
 to T5 read (`defence`, `hasten` and `shallow` null where T3, T4 and T5 were not asked), so
 the count holds without the records."""
 
-# `plan-proven.md` §3.2, by game: positions, T1, T2, T1 or T2, left, left with one key.
+# `docs/archive/plan-proven.md` §3.2, by game: positions, T1, T2, T1 or T2, left, left with one key.
 COUNT_32 = {
     "intransitive": (112, 35, 58, 59, 53, 16),
     "los alamos": (148, 38, 91, 93, 55, 12),
@@ -848,7 +848,7 @@ def test_the_t4_count_of_proven_positions_62_holds_over_the_fixture() -> None:
 
 
 # `proven-positions.md` §6.3, by game: T5 asked, `found` (left out), `missed`, offered, and
-# of those offered how many have one winning move. `plan-proven.md` §3.7 predicted the
+# of those offered how many have one winning move. `docs/archive/plan-proven.md` §3.7 predicted the
 # offered column before it was counted; the grade is in the record.
 COUNT_T5 = {
     "intransitive": (16, 13, 3, 3, 3),

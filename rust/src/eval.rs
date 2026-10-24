@@ -127,7 +127,7 @@ fn royal_resting_falls(game: &Game<'_>, side: usize, square: usize, lists: [&[u3
 }
 
 /// Whether `side`'s royal stands where a strictly faster enemy piece takes it next round
-/// (schema 28, Q943b, `docs/plan-speed.md` §3.2, §4.4): `speed` is the compiled `[type]`
+/// (schema 28, Q943b, `docs/archive/plan-speed.md` §3.2, §4.4): `speed` is the compiled `[type]`
 /// table (non-empty). The royal is `side`'s only one (none other on the board, none in
 /// hand) and one whose loss ends the game; an enemy move in `lists[1 - side]` lands on it
 /// and takes from a piece of a strictly greater speed, so the royal cannot run (the

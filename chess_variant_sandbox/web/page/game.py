@@ -46,7 +46,7 @@ PROVEN_ROUTE = re.compile(r"^/game/([0-9a-f]{8,64})/proven(?:/([A-Za-z0-9_-]{1,6
 DESCRIPTION_LIMIT = 160
 
 # How many near games the page names: the most alike first, in the order the game's page
-# and the map list them (`library.neighbours`, M5 of `docs/plan-map.md`).
+# and the map list them (`library.neighbours`, M5 of `docs/archive/plan-map.md`).
 NEAR_SHOWN = 12
 
 _MONTHS = (

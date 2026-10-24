@@ -861,7 +861,7 @@ ROUND_COUNTS = (
     "swaps",
 )
 
-# Schema 28 (Q943b, `docs/plan-speed.md` §4.4): what speed did to the rounds, from the core's
+# Schema 28 (Q943b, `docs/archive/plan-speed.md` §4.4): what speed did to the rounds, from the core's
 # events 5 to 7 (an ordered round, a slower move lost with its piece, a slower move never
 # played because the faster ended the game) and a void move in an ordered round, which is
 # the slower one's. Counted only where a piece declares a speed, so a game without one has
@@ -1548,7 +1548,7 @@ def _count_round(
     counts["rounds"] += 1
     ordered = any(event == _ORDER for event, _square, _player in events)
     # Two pieces trading squares in an ordered round did not swap: the faster took the
-    # slower where it stood (`plan-speed.md` §2.5 B).
+    # slower where it stood (`docs/archive/plan-speed.md` §2.5 B).
     counts["swaps"] += int(not ordered and _is_swap(pair[0], pair[1]))
     for event, _square, player in events:
         if event == _COLLISION:

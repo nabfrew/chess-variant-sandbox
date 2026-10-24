@@ -1,4 +1,4 @@
-"""The play page for a game with speeds (schema 28, Q943b, `docs/plan-speed.md` §4.5).
+"""The play page for a game with speeds (schema 28, Q943b, `docs/archive/plan-speed.md` §4.5).
 
 A person must see who moved first and why the second move did what it did. The server
 half: each piece's speed crosses to its card and the ranks to the legend, and a round's

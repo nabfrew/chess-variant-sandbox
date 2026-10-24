@@ -468,7 +468,7 @@ class Session:
                 # Schema 19: each portal end's pair, colour, movers and doors, compiled
                 # (`viz.wrapped.portal_payload`); `None` without portals.
                 "portals": portal_payload(engine.spec),
-                # Schema 28 (Q943b, `docs/plan-speed.md` §4.5): each type's speed, compiled
+                # Schema 28 (Q943b, `docs/archive/plan-speed.md` §4.5): each type's speed, compiled
                 # (`SimRule.speed`), for the legend's line of ranks; empty in every game
                 # without a speed, which draws no line.
                 "speed": list(engine.spec.simultaneous.speed)
@@ -1170,7 +1170,7 @@ _EVENT_COLLISION, _EVENT_VOID, _EVENT_INITIATIVE, _EVENT_BARRED = 0, 1, 2, 3
 # Schema 27 (Q942a, `swap: "collision"`): two pieces that swapped squares met; the square is
 # the first player's destination. Q942b draws the clash between the two squares.
 _EVENT_SWAP = 4
-# Schema 28 (Q943a, `docs/plan-speed.md` §4.2): an ordered round -- the faster player (5,
+# Schema 28 (Q943a, `docs/archive/plan-speed.md` §4.2): an ordered round -- the faster player (5,
 # the square its move ended on), a slower move lost with its piece (6, its origin) or never
 # played because the faster move ended the game (7). Q943b draws the two beats.
 _EVENT_ORDER, _EVENT_LOST, _EVENT_UNPLAYED = 5, 6, 7
@@ -1328,7 +1328,7 @@ def round_reveal(
                 f"it passes to {sides[1 - player]}."
             )
         elif kind == _EVENT_ORDER:
-            # Schema 28 (Q943b, `docs/plan-speed.md` §4.5): the round's sentence leads with
+            # Schema 28 (Q943b, `docs/archive/plan-speed.md` §4.5): the round's sentence leads with
             # the order, and the faster move as it was sealed.
             words.append(f"{piece(player)} was faster: {said(player)}.")
         elif kind == _EVENT_LOST:

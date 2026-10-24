@@ -267,7 +267,7 @@ def _spy_extras(pieces: Any) -> float:
     return _SPY if flagged else 0.0
 
 
-# Schema 28 (Q943a, `docs/plan-speed.md` §4.3): speed is one more rule a player is taught
+# Schema 28 (Q943a, `docs/archive/plan-speed.md` §4.3): speed is one more rule a player is taught
 # about the round -- unequal speeds move in order, the slower re-read -- charged once for the
 # game, plus a little for each type that declares a speed, since each is a fact about a piece
 # a player has to remember (the hierarchy is the design). Read off the spelling, as the spy is.

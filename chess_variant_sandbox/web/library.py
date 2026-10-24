@@ -1041,7 +1041,7 @@ def neighbours(
 ) -> dict[str, Any]:
     """The games most like this one on the map, most alike first, and what each pair is.
 
-    **One meaning of near** (M5 of `docs/plan-map.md`). Which games and in what order is
+    **One meaning of near** (M5 of `docs/archive/plan-map.md`). Which games and in what order is
     `graphing.near`'s, which reads the map built over `mapped` -- the same games, the same
     `spec/likeness.py` relation and its order -- so this page, the map's panel and the
     site's page for a game's own address name the same games in the same order, and the
@@ -1363,7 +1363,7 @@ def pieces(game: Game) -> list[dict[str, Any]]:
         compiled.piece_ids,
         (game.spec.get("appearance") or {}).get("icons"),
     )
-    # Schema 28 (Q943b, `docs/plan-speed.md` §4.5): each piece's speed on its card, the
+    # Schema 28 (Q943b, `docs/archive/plan-speed.md` §4.5): each piece's speed on its card, the
     # compiled table's (0 where none is written); absent in a game without a speed.
     sim = compiled.simultaneous
     speeds = sim.speed if sim is not None else ()

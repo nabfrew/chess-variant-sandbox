@@ -265,7 +265,7 @@ class TestTheLoader:
     def test_a_position_is_named_by_what_it_is_not_where_it_was_found(
         self, tmp_path: Path
     ) -> None:
-        """Q993c (`plan-proven.md` §5.3): the name is the replayed state's (`puzzles.name`),
+        """Q993c (`docs/archive/plan-proven.md` §5.3): the name is the replayed state's (`puzzles.name`),
         never the record's `seed-game-ply`. Two prefixes reaching one position give one
         name, so a record holding it twice offers it once and drops the other."""
         here = _position("3-0-4", 1, ELSEWHERE[1], ends_in=3)
@@ -331,7 +331,7 @@ class TestTheLoader:
         assert record.shallow == (data["format"] >= 4)
 
     def test_too_easy_positions_are_left_out_counted_and_named(self, tmp_path: Path) -> None:
-        """The pre-registered test (`plan-proven.md` §3.1) at load: T1, T2 and T3's `none`
+        """The pre-registered test (`docs/archive/plan-proven.md` §3.1) at load: T1, T2 and T3's `none`
         are left out and counted; T3's `some` and `unsettled` are kept, since a reply the
         probe could not settle counts as a say. Every part is read off the record. Here
         the record is a `FORMAT` 2 one, with no T4 (`test_t4_...` reads a `FORMAT` 3)."""
@@ -370,7 +370,7 @@ class TestTheLoader:
         assert "too easy" not in proven.basis_said(_load(_fresh(tmp_path, [ONE, both])))
 
     def test_t4_leaves_out_a_defence_that_can_only_hasten_it(self, tmp_path: Path) -> None:
-        """`plan-proven.md` §3.6 at load, in a `FORMAT` 3 record: T4's `none` is left out
+        """`docs/archive/plan-proven.md` §3.6 at load, in a `FORMAT` 3 record: T4's `none` is left out
         whatever T3 answered, T4's `some` and `unsettled` are kept, and the basis line
         names T4's reason in plain words. The answers are read off the record."""
         hastens = _position("1-0-2", 2, ELSEWHERE[0], ends_in=3, defence="some", hasten="none")
@@ -403,7 +403,7 @@ class TestTheLoader:
         assert not loaded.hasten and loaded.tests == "T3"
 
     def test_t5_leaves_out_a_move_seen_at_a_glance(self, tmp_path: Path) -> None:
-        """`plan-proven.md` §3.7 at load, in a `FORMAT` 4 record: T5's `found` is left out,
+        """`docs/archive/plan-proven.md` §3.7 at load, in a `FORMAT` 4 record: T5's `found` is left out,
         its `missed` and a position it was not asked of are kept, and the basis line names
         T5's reason in plain words, the quick players by their names on the site."""
         seen = _position("1-0-2", 1, ELSEWHERE[0], ends_in=3, shallow="found")
@@ -609,7 +609,7 @@ class TestTheWords:
     def test_the_overall_share_counts_every_game_with_positions(
         self, runs: Path, tmp_path: Path
     ) -> None:
-        """The user's decision (`plan-proven.md` §4): the share of every proven position on
+        """The user's decision (`docs/archive/plan-proven.md` §4): the share of every proven position on
         the site, across every game, counted against what each offers now."""
         record = _load(runs)
         other = proven.Record(game="b" * 12, made="", basis={}, counts={}, positions=(
@@ -997,7 +997,7 @@ def _proven_view(signed_in: bool = True) -> str:
 
 
 class TestThePositionsPageDraws:
-    """Q993b (`docs/plan-proven.md` §2): the game page's panel, the positions' own page, its
+    """Q993b (`docs/archive/plan-proven.md` §2): the game page's panel, the positions' own page, its
     list, *previous* and *next*, a try's end and the router, as the page's script runs
     them."""
 

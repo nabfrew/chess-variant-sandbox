@@ -1,4 +1,4 @@
-"""Schema 28 (Q943a): speed in rounds, `docs/plan-speed.md`.
+"""Schema 28 (Q943a): speed in rounds, `docs/archive/plan-speed.md`.
 
 §5's Q943a acceptance, as tests: the key and every refusal of §4.1 in words; the compiled
 table and its inert default; each case of §2.5 (A to H) on its position as written there,

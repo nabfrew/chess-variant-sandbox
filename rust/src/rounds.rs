@@ -78,7 +78,7 @@ pub const EVENT_BARRED: u8 = 3; // the barred pair's player-0 square, -1
 /// Schema 27 (Q942a, `swap: "collision"`): two pieces that swapped squares met. The square
 /// is player 0's destination (the other's origin), the player the winner or -1 for none.
 pub const EVENT_SWAP: u8 = 4;
-/// Schema 28 (Q943a, `docs/plan-speed.md` §4.2): the two movers' speeds differed and the
+/// Schema 28 (Q943a, `docs/archive/plan-speed.md` §4.2): the two movers' speeds differed and the
 /// round was two moves in order. The square is the faster move's destination, the player
 /// the one who moved first.
 pub const EVENT_ORDER: u8 = 5;
@@ -286,7 +286,7 @@ impl<'t> Game<'t> {
     /// Play one round: `moves[0]` by player 0 and `moves[1]` by player 1, each legal for
     /// its player on this board (`generate_legal_for`), resolved together (§2, §4).
     ///
-    /// Schema 28 (Q943a, `docs/plan-speed.md` §2.4): when the two movers' speeds differ, the
+    /// Schema 28 (Q943a, `docs/archive/plan-speed.md` §2.4): when the two movers' speeds differ, the
     /// round is two moves in order instead. The faster is resolved alone, with every piece
     /// of the slower player standing; the endings are read; then the slower is resolved
     /// alone on the board the faster left, if its piece still stands unchanged on its origin
@@ -475,6 +475,20 @@ impl<'t> Game<'t> {
             self.window = self.history.len() - 1;
         }
         self.check_memo.set([-1, -1]);
+    }
+
+    /// Q1020: `player`'s move `m` resolved alone on this board, every piece of the other
+    /// player standing (§4 steps 2 to 7, as an ordered round's faster step is): what one
+    /// move of a round does by itself, rebirth included, for a caller that has to say so in
+    /// words (`Engine.describe_move`). A board to read, not a position to play on: the key,
+    /// the clocks and the round's tail (wild pieces, rests, bars) are left as they were.
+    pub fn resolve_alone(&mut self, player: usize, m: u32) {
+        let plan = self.plan(player, m);
+        let mut active = [false; 2];
+        active[player] = true;
+        let mut facts = StepFacts::new();
+        // The other seat's plan is never read: every use of it is behind `active`.
+        self.resolve_step(&[plan, plan], active, &mut facts);
     }
 
     /// Who left a goal this round (`reach.on: "leave"`): a move that arrived from a goal

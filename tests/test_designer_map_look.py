@@ -86,7 +86,7 @@ class TestFlattened:
 
     def test_the_maps_kinds_are_no_longer_a_panel_in_the_controls(self) -> None:
         """The fold of which rule a colour means left with the rule-step lines (M4 of
-        `docs/plan-map.md`); no panel of its own came back in its place."""
+        `docs/archive/plan-map.md`); no panel of its own came back in its place."""
         assert 'id="mapLegend"' not in GRAPH
         assert "mapKinds" not in GRAPH
 

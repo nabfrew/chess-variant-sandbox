@@ -522,7 +522,7 @@ def _simultaneous_features(spec: dict[str, Any]) -> dict[str, float]:
 
 
 def _speed_features(pieces: list[dict[str, Any]]) -> dict[str, float]:
-    """Schema 28 (Q943a, `docs/plan-speed.md` §4.3): how many ranks of speed, and each type's
+    """Schema 28 (Q943a, `docs/archive/plan-speed.md` §4.3): how many ranks of speed, and each type's
     speed over the top rank read three ways that need no piece id -- by the royal types, by
     declared value and by how many directions a type moves in -- so a game whose king is the
     fast piece and one whose knight is read apart, as do two games with different ranks."""

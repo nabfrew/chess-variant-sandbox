@@ -2,7 +2,7 @@
 
 `relate.py` says *what differs* between two games, one rule at a time. This says *how
 alike* every pair of a set of games is, as one number between 0 and 1, and it is the DSL's
-one meaning of "alike" for the map (`docs/plan-map.md` §4): nothing downstream recomputes
+one meaning of "alike" for the map (`docs/archive/plan-map.md` §4): nothing downstream recomputes
 it, and it reads only the specs -- no runs, no engine.
 
 **A game is a set of words** read from its normal form (`relate.normal_form`):
@@ -68,7 +68,7 @@ PIECE = "<piece>"
 SELF = "<self>"
 
 # The prefixes a word carries, which say what kind of thing it is. A reader that names a
-# family by its rarest shared word (`docs/plan-map.md` §4, M2) reads the kind from these.
+# family by its rarest shared word (`docs/archive/plan-map.md` §4, M2) reads the kind from these.
 RULE, SETTING, MECHANISM, IDENTITY = "rule:", "set:", "mechanism:", "piece:"
 LATTICE, SIZE, WRAP, ARMY = "lattice:", "size:", "wrap:", "army:"
 

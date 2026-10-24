@@ -3,7 +3,7 @@
 `tests/test_relate.py` holds what two specs differ in, `tests/test_likeness.py` how alike
 two are, `tests/test_families.py` the mutual graph and the communities, and
 `tests/test_mapping.py` the picture. This holds what the map's payload makes of them
-(`docs/plan-map.md` M4): one node per game however many files spell it, a line between
+(`docs/archive/plan-map.md` M4): one node per game however many files spell it, a line between
 two games each among the other's nearest, saying what both have and what differs, each
 game's nearest, the communities with where they are drawn, the picture in layout units,
 and the memory a server keeps of it.
@@ -20,7 +20,7 @@ the communities they formed, and the layout by community with its far row
 (`TestWhichLinksAreDrawn`, `TestTheOperatorSentence`, `TestTheNearestRelative`,
 `TestTheGroupsAreTheCommunities`, `TestTheGameInBetweenAGap`, `TestTheCacheFiller`,
 `TestTheSimilarityIndex`, `TestTheSimilarityLines`, `TestTheLayoutByCommunity` and their
-corpus pins) held code that no longer exists; `docs/plan-map.md` §1 and §4 say why each
+corpus pins) held code that no longer exists; `docs/archive/plan-map.md` §1 and §4 say why each
 layer went. What each held that still holds -- twins, lineage, the scores on a line, the
 scale, the sizes, the pair cache's versions, the bounds -- is held below, on the new
 lines.
@@ -301,7 +301,7 @@ def drawn(tmp_path_factory: pytest.TempPathFactory) -> graphing.Graph:
 
 
 class TestTheLines:
-    """M4 of `docs/plan-map.md`: a line is two games each among the other's nearest.
+    """M4 of `docs/archive/plan-map.md`: a line is two games each among the other's nearest.
 
     The rule-step lines, the gaps and the faint nearest-relative lines this class's
     predecessors held (`TestWhichLinksAreDrawn`, `TestTheNearestRelative`,
@@ -1293,7 +1293,7 @@ class TestTheCommittedCorpus:
     is the twin merge and the lineage. The one-rule links, gaps, nearest relatives,
     operator sentences, the default cut's lines and the communities they formed were the
     rule-step and similarity layers' numbers and left with them; M4's own reading of the
-    library (N1 to N9) is recorded in `docs/plan-map.md` rather than pinned here, because
+    library (N1 to N9) is recorded in `docs/archive/plan-map.md` rather than pinned here, because
     it is a reading of the library of the day.
     """
 

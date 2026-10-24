@@ -3,7 +3,7 @@
 The G7 row of `docs/archive/plan-game-graph.md` put every pair of the store's games in a
 `links` table, ranked by `spec/relate.py`'s count of rules and narrowed per person, because
 a draft could be a neighbour and an unlisted draft's existence is its owner's business.
-M5 of `docs/plan-map.md` gave *near* one meaning everywhere: the map's likeness, over the
+M5 of `docs/archive/plan-map.md` gave *near* one meaning everywhere: the map's likeness, over the
 map's own games (`web/graphing.near`), which are the same for everybody. So a game's page
 names the map's games most like it, a draft's page ranks the map's games against it, no
 draft is named on anybody's page, and `0038_links_retired.sql` dropped the table.

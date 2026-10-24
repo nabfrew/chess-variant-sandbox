@@ -153,7 +153,7 @@ PULLED = {
 
 
 class TestSettling:
-    """Communities settled from a partition already held (`docs/plan-map.md` §4, M2b)."""
+    """Communities settled from a partition already held (`docs/archive/plan-map.md` §4, M2b)."""
 
     def test_a_start_that_is_already_best_does_not_move(self) -> None:
         best = communities.partition(BARBELL)

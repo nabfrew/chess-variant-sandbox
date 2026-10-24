@@ -285,6 +285,13 @@ class Engine:
         revealed and resolved together (`docs/reference/rounds.md` §2, §4)."""
         return _unpack(self.core.apply_round(_pack(state), first, second)[0])
 
+    def board_alone(self, state: GameState, player: int, move: int) -> bytes:
+        """Q1020: the board after ``player``'s round move ``move`` resolved alone, every piece
+        of the other player standing (`docs/reference/rounds.md` §4 steps 2-7, as an ordered
+        round's faster step), as the core answers it. What one move of a round does by
+        itself, for move text; a board, not a position to play on."""
+        return bytes(self.core.board_alone(_pack(state), player, move))
+
     def apply_round_with_phase(
         self, state: GameState, first: int, second: int
     ) -> tuple[GameState, tuple[PhaseStep, ...], tuple[tuple[int, int, int], ...]]:
@@ -763,16 +770,25 @@ class Engine:
         The home square is the compiled table's; whether the piece stands on it is read
         off the position the core leaves, so this says what happened rather than working
         it out a second time.
+
+        Q1020: in a round (schema 26) one move is not a position, so the core resolves the
+        move alone, every piece of the other player standing (``board_alone``), and the text
+        says what the move does by itself; what the other move of its round changed is the
+        round's to show, not the move's.
         """
         spec = self.spec
         strike = spec.strike
         assert strike is not None
-        _, target, kind, _ = decode_move(move)
+        origin, target, kind, _ = decode_move(move)
         struck = state.ep_victim if kind == MOVE_EN_PASSANT else target
         owner = spec.owner_of(state.board[struck])
         home = strike.rebirth[(owner * spec.n_types + becomes) * spec.n_squares + struck]
         if home >= 0:
-            value = self.apply(state, move).board[home]
+            if self.is_round(state):
+                mover = spec.owner_of(state.board[origin])
+                value = self.board_alone(state, mover, move)[home]
+            else:
+                value = self.apply(state, move).board[home]
             if value and spec.owner_of(value) == owner and spec.type_of(value) == becomes:
                 return f" (reborn {_square_name(home, spec.width)})"
         return " (removed: no free home)"

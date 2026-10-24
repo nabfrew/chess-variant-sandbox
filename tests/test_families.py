@@ -3,7 +3,7 @@
 Every library is made in this file from one small game and a few pieces nothing else
 has, so which games are kin is known before anything runs. What is under test is the
 method -- the mutual graph, settling from a previous map, the names, the memory -- not
-where any real game lands; `docs/plan-map.md` (M2) holds the readings on the library.
+where any real game lands; `docs/archive/plan-map.md` (M2) holds the readings on the library.
 """
 
 from __future__ import annotations

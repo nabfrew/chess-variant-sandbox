@@ -1,7 +1,7 @@
 """F10b group 2 (Q752b): the round's corners no test reached, held to the declared oracle.
 
 `docs/plan-tests.md` F10b: lines of `rust/src/rounds.rs` no test spec made a round reach. The
-endings read between an ordered round's two moves (schema 28, `docs/plan-speed.md` §2.6) for
+endings read between an ordered round's two moves (schema 28, `docs/archive/plan-speed.md` §2.6) for
 each goal rule a round may carry -- a goal left, the extinction of any piece or of named ones,
 a bare royal, a territory count -- and stalemate as a win, each on Gardner in rounds with
 speeds (`tests/_simultaneous_speed_gardner.json`) and that one rule added. Every round of

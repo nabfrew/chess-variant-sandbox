@@ -1,4 +1,4 @@
-"""Proven positions keep themselves up to date (Q993d, `docs/plan-proven.md` §5, §6).
+"""Proven positions keep themselves up to date (Q993d, `docs/archive/plan-proven.md` §5, §6).
 
 The refresher's third tier: once no score and no ladder is owed, it reads which Library and
 Baseline games are owed a proven-positions record (`puzzles.survey`), and proves one game a

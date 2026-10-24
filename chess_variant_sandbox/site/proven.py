@@ -26,14 +26,14 @@ counted as dropped (Q993i): it is a true proof, never a position to offer, and `
 counts exactly what `puzzles.owes` re-proves a record for. *Find the move* compares a move
 number with the record's numbers.
 
-**A position's name is what it is** (Q993c, `docs/plan-proven.md` §5.3). The loader names
+**A position's name is what it is** (Q993c, `docs/archive/plan-proven.md` §5.3). The loader names
 each position it keeps by the state its replay reached (`puzzles.name`: the core's key and
 what the key leaves out), not by the record's `seed-game-ply`, and a second row reaching a
 position already named is dropped and counted. The page, the API, a try (`matches.puzzle`)
 and a mark (`proven_marks.position`) all use that name; `0040_proven_names.sql` moved the
 marks and tries stored before it.
 
-**Too easy** (Q993a, Q993f, Q993g, `docs/plan-proven.md` §3). The loader also leaves out,
+**Too easy** (Q993a, Q993f, Q993g, `docs/archive/plan-proven.md` §3). The loader also leaves out,
 and counts, a position the test calls trivial (`puzzles.trivial`): a win in one with more
 than one winning move (T1), half the moves or more proved to win (T2), in a `FORMAT` 2 to 4
 record T3's stored answer that nothing the defender does changes the win (`none`), in a
@@ -486,7 +486,7 @@ PAGE_WORDS = {
     "copy": "copy link",
     "copyTitle": "copy this position's address, to send to somebody",
 }
-"""The positions' page's own words (Q993b, `docs/plan-proven.md` §2.2), the server's, so
+"""The positions' page's own words (Q993b, `docs/archive/plan-proven.md` §2.2), the server's, so
 the guard test reads them: the view's one primary, which names its result (S6), the quiet
 *previous* and *next*, the ended banner's *next position* and *try it again*, the line a
 visitor reads above the list, a row's state, and the confirmation a try in progress asks
@@ -502,7 +502,7 @@ nothing (every position, or none, has one winning move) is not sent."""
 
 
 def share_said(solved: int, of: int) -> str:
-    """A share solved as a percentage (the user, 2026-10-20, `plan-proven.md` §4: *"each
+    """A share solved as a percentage (the user, 2026-10-20, `docs/archive/plan-proven.md` §4: *"each
     game's %"*). Rounded down, so *100%* is said only when every position is solved, and
     *under 1%* rather than *0%* for a share that is not nought."""
     if of <= 0:
@@ -566,7 +566,7 @@ def page(
     marks: dict[str, set[str]] | None,
     visit: set[str] | None = None,
 ) -> dict[str, Any]:
-    """`GET /api/proven/<hash>`: the positions' own page (Q993b, `plan-proven.md` §2).
+    """`GET /api/proven/<hash>`: the positions' own page (Q993b, `docs/archive/plan-proven.md` §2).
 
     The list in the loader's order (shortest proved win first), grouped by turns to the
     win, each row with the reader's state in words; the chips' counts; the progress line;
@@ -875,7 +875,7 @@ def overall(
     marked: dict[str, dict[str, set[str]]], records: dict[str, Record | None]
 ) -> dict[str, Any] | None:
     """The share of every proven position on the site the person has solved, across every
-    game that offers some (the user, 2026-10-20, `plan-proven.md` §4: *"aggregate milestone
+    game that offers some (the user, 2026-10-20, `docs/archive/plan-proven.md` §4: *"aggregate milestone
     tracking % of proved positions of all games solved"*). Live: counted against what each
     game offers now, so a re-proof that adds positions moves it down and takes nothing kept
     away. None where nothing is offered or nothing is solved (*absent is not nought*)."""

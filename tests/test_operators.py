@@ -2352,7 +2352,7 @@ def _parent_spy() -> dict:
 
 
 def _parent_speed() -> dict:
-    """Gardner in rounds with a swift king (`plan-speed.md` §6.1's T1, Q943a): the king at
+    """Gardner in rounds with a swift king (`docs/archive/plan-speed.md` §6.1's T1, Q943a): the king at
     speed 1, every other type at 0."""
     rounds = _parent_rounds()
     rounds["schema_version"] = 28
@@ -2509,7 +2509,7 @@ _SHOWCASE_OWED: dict[str, str] = {
     # same day, when Q999b archived `archive/opposite-colours` (§6.5). Empty again at schema 30.
     # Q943a's speed went on 2026-10-19, when Q943c archived its three showcases
     # (`archive/gardner-in-rounds-with-a-swift-king`, `-with-swift-knights`,
-    # `archive/watering-hole-by-speed`; `plan-speed.md` §6.1, coverage row 73).
+    # `archive/watering-hole-by-speed`; `docs/archive/plan-speed.md` §6.1, coverage row 73).
     # Q936's `"own"` went on 2026-10-17, when Q936s archived its showcase, two armies of
     # different kinds (`archive/riders-and-leapers`; `extinction-any-kind.md` §5, coverage
     # row 72). Empty again at schema 27.
@@ -2616,7 +2616,7 @@ _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
     # archived `archive/opposite-colours` (`docs/archive/plan-passive.md` §6.5), `through` when Q999d
     # archived S2, `archive/chess-with-a-sheltering-king` (§6.1; coverage rows 75 to 78).
     # Schema 28's `pieces.speed` went on 2026-10-19, when Q943c archived its showcases
-    # (`plan-speed.md` §6.1; coverage row 73).
+    # (`docs/archive/plan-speed.md` §6.1; coverage row 73).
     # Schema 27's `rules.extinction.per_type.own` went on 2026-10-17, when Q936s archived
     # its showcase (`extinction-any-kind.md` §5; coverage row 72).
     # Schema 27's `pieces.spy` went on 2026-10-17, when Q935f archived its showcases
@@ -4377,7 +4377,7 @@ class TestTheRoundOperators:
 
     @pytest.mark.parametrize("operator", ["break-the-tie", "set-a-collision"])
     def test_neither_applies_where_no_two_opposing_pieces_share_a_speed(self, operator: str) -> None:
-        """Schema 28 (Q943e, `plan-speed.md` §4.1): pieces of different speeds never collide,
+        """Schema 28 (Q943e, `docs/archive/plan-speed.md` §4.1): pieces of different speeds never collide,
         so where no type of one player shares a speed with a type of the other (T3,
         `archive/watering-hole-by-speed`, retired by Q1005 to `tests/_retired_*.json`) a tie
         rule and a `beats` are inert and the validator refuses both. The operator declines

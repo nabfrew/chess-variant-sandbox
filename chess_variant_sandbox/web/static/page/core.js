@@ -620,7 +620,7 @@ const GLOSS = {
   // What differs between two games, by kind: `spec/relate.py`'s similarity counts. The
   // weighing said here is that module's two constants, `SIMILARITY_RATIO` and
   // `SETTING_WEIGHT`, and `tests/test_web.py` holds the two sentences to them. It orders
-  // nothing: which games are near is the map's likeness (`alike`, M5 of `docs/plan-map.md`).
+  // nothing: which games are near is the map's likeness (`alike`, M5 of `docs/archive/plan-map.md`).
   differs: ['What differs, by kind',
     "The count of rules apart is a count of edits, and every edit counts one: the board,"
     + " the setup, one piece's moves, or one rule of the game. The words marked by kind"
@@ -758,7 +758,7 @@ const GLOSS = {
     "Put it forward for this month's members' vote."],
   community: ['A community',
     "Games more like each other than like the rest."],
-  // The map's likeness (`spec/likeness.py`, `docs/plan-map.md` M4), said without its
+  // The map's likeness (`spec/likeness.py`, `docs/archive/plan-map.md` M4), said without its
   // arithmetic: what is rare weighs most, and the number runs from 0 to 1.
   alike: ['How alike two games are',
     "Each game is what it is made of: its rules, its ways of moving, its pieces, its"
@@ -1403,7 +1403,7 @@ function pathGame() {
   return found ? found[1] : null;
 }
 
-// Q993b (`docs/plan-proven.md` §2.1): a game's proven positions, `/game/<hash>/proven` and
+// Q993b (`docs/archive/plan-proven.md` §2.1): a game's proven positions, `/game/<hash>/proven` and
 // `/game/<hash>/proven/<id>` with the position chosen, so a reload or a bookmark lands on the
 // same one. `#/proven/<hash>[/<id>]` names the same view and is handed over to the address.
 const PROVEN_PATH = /^\/game\/([0-9a-f]{8,64})\/proven(?:\/([^/?#]+))?\/?$/;

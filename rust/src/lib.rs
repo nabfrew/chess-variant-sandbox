@@ -443,6 +443,37 @@ impl Core {
         Ok((state_out(py, &game), phase, events))
     }
 
+    /// Q1020: the board after `player`'s move `m` of a round resolved alone, every piece of
+    /// the other player standing (`Game::resolve_alone`): what that one move does by itself,
+    /// rebirth included, for move text. A board, not a position.
+    fn board_alone<'py>(
+        &self,
+        py: Python<'py>,
+        state: StateIn,
+        player: u8,
+        m: u32,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        if self.tables.simultaneous.is_none() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "board_alone is for a simultaneous game; this one alternates",
+            ));
+        }
+        if player > 1 {
+            return Err(pyo3::exceptions::PyValueError::new_err("a player is 0 or 1"));
+        }
+        let snapshot = snapshot_from(&self.tables, &state);
+        let mut game = Game::from_snapshot(&self.tables, &snapshot);
+        let mut moves = Vec::new();
+        game.generate_legal_for(player as usize, &mut moves);
+        if !moves.contains(&m) {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "move {m} is not one player {player} may choose in a round here"
+            )));
+        }
+        game.resolve_alone(player as usize, m);
+        Ok(PyBytes::new(py, &game.board[..self.tables.n_squares]))
+    }
+
     /// What the next `count` wild-piece phases would do on the board as it stands (Q660,
     /// Q764), each in `apply`'s phase shape and each played on the board the one before
     /// it left: where each wild piece is going next and after that, for the board to

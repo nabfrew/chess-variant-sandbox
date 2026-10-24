@@ -204,8 +204,8 @@
     "added": "2026-10-19",
     "preview": "A preview: a new kind of game played in rounds in which faster pieces move first, still being tested. Play it against the computer for practice; it is on no leaderboard yet, and its score is a first reading, not yet trusted.",
     "origin": "designed",
-    "source": "docs/plan-speed.md, Q943c: the showcases of schema 28's speed (section 6.1)",
-    "history": "T2 of docs/plan-speed.md section 6.1, pre-registered 2026-10-16 before it was built: Gardner in rounds (e043fce6968e; retired from the previews by Q962b for its draws, file tests/_retired_gardner_in_rounds.json) with the knight at speed 1 and every other piece at 0, so each king is slower than both enemy knights: the other half of section 3.2, whether a faster attacker ends the chase, and at what price in quick kills. Built by Q943c (2026-10-19); measured and graded against section 6.3 by Q943d.",
+    "source": "docs/archive/plan-speed.md, Q943c: the showcases of schema 28's speed (section 6.1)",
+    "history": "T2 of docs/archive/plan-speed.md section 6.1, pre-registered 2026-10-16 before it was built: Gardner in rounds (e043fce6968e; retired from the previews by Q962b for its draws, file tests/_retired_gardner_in_rounds.json) with the knight at speed 1 and every other piece at 0, so each king is slower than both enemy knights: the other half of section 3.2, whether a faster attacker ends the chase, and at what price in quick kills. Built by Q943c (2026-10-19); measured and graded against section 6.3 by Q943d.",
     "parents": [
       "e043fce6968e"
     ]

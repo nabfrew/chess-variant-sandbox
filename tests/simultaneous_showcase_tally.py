@@ -36,7 +36,7 @@ from chess_variant_sandbox.engine.state import GameState
 
 COLLISION, VOID, INITIATIVE, BARRED = 0, 1, 2, 3
 # Schema 28 (Q943a): an ordered round (the faster player), a slower move lost with its piece,
-# a slower move unplayed because the faster ended the game (`docs/plan-speed.md` §4.2).
+# a slower move unplayed because the faster ended the game (`docs/archive/plan-speed.md` §4.2).
 ORDER, LOST, UNPLAYED = 5, 6, 7
 BOTH_LOST = -1
 
@@ -79,7 +79,7 @@ class RoundTally:
     swaps: int = 0
     voids: int = 0
     initiative_ties: int = 0
-    # Schema 28 (Q943c, `docs/plan-speed.md` §6.2): Q943b's four tallies, as
+    # Schema 28 (Q943c, `docs/archive/plan-speed.md` §6.2): Q943b's four tallies, as
     # `analysis.SPEED_COUNTS` counts them, and the games an ordered round ended.
     ordered: int = 0
     slower_void: int = 0
@@ -103,7 +103,7 @@ class RoundTally:
         after, _phase, events = engine.apply_round_with_phase(state, first, second)
         ordered = any(event == ORDER for event, _square, _player in events)
         # Two words onto each other's origins in an ordered round are no swap: the faster
-        # took the slower where it stood (`plan-speed.md` §2.5 B).
+        # took the slower where it stood (`docs/archive/plan-speed.md` §2.5 B).
         self.swaps += not ordered and is_swap(first, second)
         for event, _square, player in events:
             if event == ORDER:

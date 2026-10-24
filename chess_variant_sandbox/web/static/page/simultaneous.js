@@ -136,7 +136,7 @@ function roundStory(before, after, reveal) {
   return { moves: moves, taken: taken, meeting: meeting, clash: clash };
 }
 
-// Schema 28 (Q943b, `docs/plan-speed.md` §4.5): a round between pieces of different speeds,
+// Schema 28 (Q943b, `docs/archive/plan-speed.md` §4.5): a round between pieces of different speeds,
 // as motions in two beats. The core's events say who moved first (`order`) and what came of
 // the slower move (`lost`, `unplayed`, `void`, or nothing: it was made); the two boards say
 // what was taken. Each move is `roundStory`'s `{player, from, to, kind}` with its `phase`, 1
@@ -753,7 +753,7 @@ function animateRound(svg, before, after, reveal, cell, W, H, view) {
   return { busy: busy, landed: landed, doomed: new Map() };
 }
 
-// Schema 28 (Q943b, `docs/plan-speed.md` §4.5; the user: *"they should move in the sequence
+// Schema 28 (Q943b, `docs/archive/plan-speed.md` §4.5; the user: *"they should move in the sequence
 // the mechanics dictate"*): an ordered round in two beats, from `orderedStory`. The faster
 // move completes first, with what it takes; then, `PACE.beat` after it lands, the slower:
 // made, or its void step-and-return. A slower move lost with its piece is an arrow from that

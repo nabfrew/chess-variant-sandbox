@@ -479,7 +479,7 @@ def _check_unsupported_rules(
             "counterpart; Fairy-Stockfish always has a side to move"
         )
     if compiled.simultaneous is not None and compiled.simultaneous.speed:
-        # Schema 28 (Q943a, `docs/plan-speed.md` §4.6). Speed orders a round's two moves, so
+        # Schema 28 (Q943a, `docs/archive/plan-speed.md` §4.6). Speed orders a round's two moves, so
         # it lives only beside the rounds refused just below; named apart so the reason says
         # which rule asked for them. Read off the compiled table, empty without a speed.
         # Speed changes no legal move at a round's start, so the twin check still holds.

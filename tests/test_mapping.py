@@ -3,7 +3,7 @@
 The libraries are `test_families.py`'s: families of games sharing a piece or a rule that
 nothing else has, and one game kin to nobody, so which games belong together is known
 before anything runs. What is under test is the method -- a deterministic t-SNE, settled
-from the last picture -- not where any real game lands; `docs/plan-map.md` (M3) holds the
+from the last picture -- not where any real game lands; `docs/archive/plan-map.md` (M3) holds the
 readings on the library.
 """
 

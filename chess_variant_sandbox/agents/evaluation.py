@@ -747,7 +747,7 @@ class Evaluator:
         analysis probe's ruler) has them asked of the engine, and only when a piece rests
         or a speed is declared.
 
-        Under speeds (schema 28, Q943b, `docs/plan-speed.md` §4.4) the same price, once, for
+        Under speeds (schema 28, Q943b, `docs/archive/plan-speed.md` §4.4) the same price, once, for
         a royal that a strictly faster enemy piece takes next round unanswered
         (``caught_royal_falls``): a side whose royal falls either way is one near-loss."""
         score = self._score(state, player, counts[player] - counts[1 - player])
@@ -1518,7 +1518,7 @@ def caught_royal_falls(
     speed: tuple[int, ...],
 ) -> bool:
     """Whether ``side``'s royal stands where a strictly faster enemy piece takes it next
-    round (schema 28, Q943b, `docs/plan-speed.md` §3.2, §4.4; ``eval.rs::caught_royal_falls``
+    round (schema 28, Q943b, `docs/archive/plan-speed.md` §3.2, §4.4; ``eval.rs::caught_royal_falls``
     is the same test). ``speed`` is the compiled ``[type]`` table.
 
     The royal is ``side``'s only one (none other on the board, none in hand) and one whose

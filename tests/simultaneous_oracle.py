@@ -5,7 +5,7 @@ one round from the compiled tables and the two move words, in the plan's order (
 and returns the position the core's `make_round` must reach -- board, hands, colouring,
 tally, rights, clocks, the initiative, the void run, the bars and the resting pieces (schema
 29's `pieces[].rest`, by `tests/rest_oracle.py`, the rest's own oracle); schema 27's swap
-meeting is resolved here too, and `legal_for` filters a player's moves by the rest. Schema 28 (Q943a, `docs/plan-speed.md` §2.4, §4.2): a round
+meeting is resolved here too, and `legal_for` filters a player's moves by the rest. Schema 28 (Q943a, `docs/archive/plan-speed.md` §2.4, §4.2): a round
 between unequal speeds is two moves in order, each through the same step, the faster first,
 the endings read between them, and the slower made, void or lost. CLAUDE.md rule 3 allows
 it: it is a declared test oracle. It asks the engine only questions the engine's own tests
@@ -108,7 +108,7 @@ def legal_for(engine: Engine, state: GameState, player: int) -> list[int]:
 
 
 def offered(engine: Engine, state: GameState, player: int, move: int) -> bool:
-    """Schema 28 (`docs/plan-speed.md` §2.5): the word ``move`` is among the moves
+    """Schema 28 (`docs/archive/plan-speed.md` §2.5): the word ``move`` is among the moves
     ``player``'s generator offers on this position, without the list-level filters."""
     return move in engine.pseudo_legal_moves(state.with_(side_to_move=player))
 
@@ -116,7 +116,7 @@ def offered(engine: Engine, state: GameState, player: int, move: int) -> bool:
 def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> GameState:
     """The position after one round, resolved by the plan's rule (§2, §4).
 
-    Schema 28 (Q943a, `docs/plan-speed.md` §2.4): when the two movers' speeds differ, the
+    Schema 28 (Q943a, `docs/archive/plan-speed.md` §2.4): when the two movers' speeds differ, the
     faster move is resolved alone, the endings are read, and the slower is resolved alone on
     what is left if its piece still stands unchanged and its word is still offered."""
     spec = engine.spec

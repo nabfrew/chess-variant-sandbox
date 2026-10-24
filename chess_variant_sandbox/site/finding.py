@@ -9,7 +9,7 @@ and of a draft's own page before it offers one (`App._nearest`), so a person can
 the game between their own draft and a library game and nobody can build one out of
 somebody else's unlisted draft.
 
-Until M5 of `docs/plan-map.md` this module also kept the store's `links` table -- every
+Until M5 of `docs/archive/plan-map.md` this module also kept the store's `links` table -- every
 pair of the store's games with `spec/relate.py`'s count of rules and similarity index --
 because a game's neighbour list was ranked by them and narrowed per person. Near now has
 one meaning, the map's (`web/graphing.near`), over the map's own games, which are the same

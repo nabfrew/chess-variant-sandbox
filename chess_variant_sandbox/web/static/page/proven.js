@@ -1,4 +1,4 @@
-// A game's proven positions, on a page of their own (Q993b, `docs/plan-proven.md` §2):
+// A game's proven positions, on a page of their own (Q993b, `docs/archive/plan-proven.md` §2):
 // `/game/<hash>/proven`, and `/game/<hash>/proven/<id>` with the position chosen, which the
 // router also reads as `#/proven/<hash>[/<id>]`. The user, 2026-10-20: *"Better UX for
 // seeing progress, choosing challenges, seeing which are done. work through them without

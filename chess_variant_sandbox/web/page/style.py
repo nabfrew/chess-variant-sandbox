@@ -535,7 +535,7 @@ RULES = """
   @media (max-width: 860px) {
     .gameTop, .gameRest { grid-template-columns: minmax(0, 1fr); }
   }
-  /* Q993b: a game's proven positions on a page of their own (plan-proven.md §2.2): the
+  /* Q993b: a game's proven positions on a page of their own (docs/archive/plan-proven.md §2.2): the
      frame and the list side by side, as the game page draws its play column and its side,
      the frame first on a phone. A row is a link: its number is the one loud thing (S5),
      the side and *one winning move* its muted lines, and the reader's state a word with an

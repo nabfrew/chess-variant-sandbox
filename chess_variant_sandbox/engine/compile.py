@@ -889,7 +889,7 @@ class SimRule:
       the initiative, the token is dealt to the announcer when the first announced round
       begins, so the answerer cannot win at will every tie it chooses to enter. False in
       every other game.
-    * ``speed`` -- schema 28 (Q943a, `docs/plan-speed.md` §4.2): ``[type]``, each type's
+    * ``speed`` -- schema 28 (Q943a, `docs/archive/plan-speed.md` §4.2): ``[type]``, each type's
       speed (``pieces[].speed``, 0 where none is written, and 0 for a portal end), over every
       type. **Empty when no piece declares one**, so no earlier game's tables move and the
       core never enters its ordered round.

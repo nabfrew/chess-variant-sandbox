@@ -743,7 +743,7 @@ pub struct SimTables {
     /// Schema 27 (X1): an ending that fires for both players in one round goes to the
     /// player ahead under `rules.scoring`.
     pub both_score: bool,
-    /// Schema 28 (Q943a, `docs/plan-speed.md` §4.2): `[type]`, each type's speed. Empty
+    /// Schema 28 (Q943a, `docs/archive/plan-speed.md` §4.2): `[type]`, each type's speed. Empty
     /// unless a piece declares one, so `make_round` never orders a round in any other game.
     pub speed: Vec<u8>,
 }

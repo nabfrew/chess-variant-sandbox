@@ -25,7 +25,7 @@ TOURNAMENTS = {
 
 
 
-# Schema 28 (Q943b, `docs/plan-speed.md` §4.4): the round players on the library's round
+# Schema 28 (Q943b, `docs/archive/plan-speed.md` §4.4): the round players on the library's round
 # games without a speed, and on a round test spec, short games each. The faster-attacker
 # term is read only where a piece declares a speed, so these are what they were before it.
 ROUND_TOURNAMENTS = {

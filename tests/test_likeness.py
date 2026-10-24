@@ -2,7 +2,7 @@
 
 Every spec here is made in this file: what is under test is what the DSL's words mean and
 how the library's own rarity weighs them, not where any game happens to sit.
-`docs/plan-map.md` (M1) holds the readings on the real library.
+`docs/archive/plan-map.md` (M1) holds the readings on the real library.
 """
 
 from __future__ import annotations

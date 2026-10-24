@@ -116,7 +116,7 @@ owner, because `chess-variant-sandbox site load` gives every library game the ma
 
 ## The two over proven positions
 
-- **Every proven position** and **Game after game** (Q993e, `docs/plan-proven.md` §4) read
+- **Every proven position** and **Game after game** (Q993e, `docs/archive/plan-proven.md` §4) read
   `proven_marks` against the positions a game's record offers on the day. The first is a
   win from every one of them, each played out against hardest (`converted`; a `found`
   mark never counts, since the page shows the proved move to anybody who asks), once per
@@ -197,7 +197,7 @@ GAME_STEPS: tuple[int, ...] = (1, 5, 10, 25)
 """U2's steps, in different games. The user's answer of 2026-09-17."""
 
 PROVEN_STEPS: tuple[int, ...] = GAME_STEPS[1:]
-"""*Game after game*'s steps, in different games finished (`docs/plan-proven.md` §4,
+"""*Game after game*'s steps, in different games finished (`docs/archive/plan-proven.md` §4,
 written before any person's marks were read): U2's ladder without its 1, which *Every
 proven position* already is on each game, so a reader learns one ladder. 5 is reachable
 with the seven games that offer positions today, 10 and 25 once the refresher has proved
@@ -208,7 +208,7 @@ PROVEN_WAYS: tuple[str, ...] = ("converted",)
 """The marks *Every proven position* reads: a try played out against hardest and won
 (`proven.CONVERTED`). *Find the move* is not one of them, because the page shows the
 proved move to anybody who asks, and a kept badge cannot rest on a mark handed out on
-request (`docs/plan-proven.md` §4). Spelled here rather than imported, so that the table
+request (`docs/archive/plan-proven.md` §4). Spelled here rather than imported, so that the table
 reads no record module at import; `tests/test_site_proven_badges.py` holds it to
 `proven.CONVERTED`."""
 

@@ -384,7 +384,7 @@ def warm_library() -> None:
 def warm_map(warm_library: None, tmp_path_factory: pytest.TempPathFactory) -> None:
     """Draw the library's map once in this process, before a timed request needs it.
 
-    A game's page names the games most like it from the map (M5 of `docs/plan-map.md`), so
+    A game's page names the games most like it from the map (M5 of `docs/archive/plan-map.md`), so
     a server over the whole library with a runs directory of its own -- a test's `tmp_path`
     -- draws the map on its first `/api/game`: every spec compiled for the twin check and
     the picture drawn cold, about fifteen seconds on one core. The process keeps both by

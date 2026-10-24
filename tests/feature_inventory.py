@@ -593,7 +593,7 @@ def _schema_twenty_seven_uses(spec: dict[str, Any]) -> set[str]:
 
 
 def _schema_twenty_eight_uses(spec: dict[str, Any]) -> set[str]:
-    """Everything in this spec that schema 28 added, by name (Q943a, `docs/plan-speed.md`).
+    """Everything in this spec that schema 28 added, by name (Q943a, `docs/archive/plan-speed.md`).
 
     * ``pieces.speed`` -- a piece type's speed, a rank (absent: 0, the slowest). When the
       two pieces moving in a round differ in speed, the faster move is made first, as a move

@@ -592,7 +592,7 @@ function wirePlayPerson(game, hash) {
 
 // --------------------------------------------------------- the games like this one
 //
-// M5 of `docs/plan-map.md`: one meaning of near. Which games and in what order are the
+// M5 of `docs/archive/plan-map.md`: one meaning of near. Which games and in what order are the
 // server's (`library.neighbours`), read off the map: the map's own games, most alike first
 // by the map's likeness, so this list and the map's panel for the same game open on the
 // same games in the same order, and the first `open` of them are the panel's *games like
@@ -731,7 +731,7 @@ function wireLinks() {
 // so the game between a person's own draft and the library could be built and could not
 // be reached. A draft's own page offers it, against the library game most like the draft
 // -- the first of its own *games like this one* it may build from, by the map's likeness
-// (M5 of `docs/plan-map.md`) -- and says which game that is and how alike.
+// (M5 of `docs/archive/plan-map.md`) -- and says which game that is and how alike.
 //
 // All of it is the server's (`App._nearest`): which game, whether a game in between can
 // be built and the phrase for the rule that moves, or the sentence saying why there is
@@ -2295,7 +2295,7 @@ function piecesHtml(piece, options) {
   </div>`;
 }
 
-// Schema 28 (Q943b, `docs/plan-speed.md` §4.5): the speeds a game's pieces have, for each
+// Schema 28 (Q943b, `docs/archive/plan-speed.md` §4.5): the speeds a game's pieces have, for each
 // card's hover line; empty in a game without a speed (no piece carries one).
 function pieceSpeeds(pieces) {
   return [...new Set((pieces || []).map(piece => piece.speed)
@@ -3065,7 +3065,7 @@ function scoreHtml(score, guide, band, trust) {
 // ------------------------------------------------------------ proven positions
 //
 // R9b (`docs/plan-website.md` *Proven positions*, `site/proven.py`); since Q993b
-// (`docs/plan-proven.md` §2) a summary and a link. Positions from this game's own recorded
+// (`docs/archive/plan-proven.md` §2) a summary and a link. Positions from this game's own recorded
 // games that the computer proved won for the side to move are worked through on a page of
 // their own (`proven.js`, `/game/<hash>/proven`): this panel says how many there are, the
 // reader's own progress where there is any, and the way there. Every sentence is the

@@ -928,7 +928,7 @@ const MARK_KINDS = {
   // sign carries the turns left (Q983b, `docs/plan-rest.md` §5.6).
   rested: { colour: 'var(--rest)', shape: 'rest', name: 'pause sign', ink: 'var(--ink)',
             label: "a piece that moved: it rests for its side's next turns (the number in the sign, where there is one, says how many are left) and may not move, unless resting pieces are all its side can move" },
-  // Schema 28 (Q943b, `docs/plan-speed.md` §4.5): the order the last round's two moves were
+  // Schema 28 (Q943b, `docs/archive/plan-speed.md` §4.5): the order the last round's two moves were
   // made in, where the two pieces differed in speed: a numbered disc on the bottom corner of
   // each move's square (`orderBadge`), off the core's events (`roundOrder`).
   order: { colour: 'var(--order)', shape: 'order', name: 'numbered disc', ink: 'var(--ink)',

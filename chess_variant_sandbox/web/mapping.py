@@ -1,6 +1,6 @@
 """The map's picture: where each game is drawn, remembered from one map to the next.
 
-`docs/plan-map.md` §4, M3. The relation is `spec/likeness.py`'s and the families are
+`docs/archive/plan-map.md` §4, M3. The relation is `spec/likeness.py`'s and the families are
 `web/families.py`'s; this module only places the games, so that games alike are drawn
 near each other and a game that joins or leaves moves the others little.
 

@@ -332,6 +332,84 @@ class TestARebirthIsWrittenWhereItHappened:
         assert _texts_of_captures(engine, state) == ["Pe5xd6 (reborn d7) e.p."]
 
 
+def _circe_in_rounds() -> Engine:
+    """Q1020: a small game of rooks and kings played in rounds under circe, built from the
+    spec. Each rook's one home is its corner (a1 and a5), each king's e1 and e5."""
+    slide = {"kind": "slide", "vectors": [[1, 0]], "symmetry": "rotate4", "mode": "both"}
+    step = {"kind": "leap", **STEP, "mode": "both"}
+    spec = {
+        "schema_version": SCHEMA_VERSION,
+        "name": "circe in rounds",
+        "description": "Rooks and kings, both moves at once; a taken rook goes home.",
+        "board": {"width": 5, "height": 5},
+        "pieces": [
+            {"id": "R", "name": "rook", "value": 5, "moves": [slide]},
+            {"id": "K", "name": "king", "value": 0, "royal": True, "moves": [step]},
+        ],
+        "setup": {
+            "mirror": True,
+            "placements": [{"piece": "R", "squares": ["a1"]}, {"piece": "K", "squares": ["e1"]}],
+        },
+        "rules": {
+            "win": "royal_capture",
+            "stalemate": "draw",
+            "max_plies": 100,
+            "simultaneous": {},
+            "strike": {"effect": "capture", "position": "home", "immune": ["K"]},
+        },
+    }
+    assert validate_spec(spec) == [], validate_spec(spec)
+    return Engine(spec)
+
+
+class TestARebirthInARoundIsWrittenWithoutPlayingTheMoveAlone:
+    """Q1020: ``describe_move`` used to play the capture with ``apply``, which refuses a round
+    game; the core now resolves the round move alone (``Engine.board_alone``)."""
+
+    KINGS = {"e1": ("K", 0), "e5": ("K", 1)}
+
+    def _capture(self, engine: Engine, state: GameState, origin: str, target: str) -> int:
+        (move,) = [
+            m
+            for m in engine.legal_moves_for(state, 0)
+            if (move_from(m), move_to(m)) == (_square(origin, 5), _square(target, 5))
+        ]
+        return move
+
+    def test_a_rook_taken_in_a_round_is_reborn_on_its_free_home(self) -> None:
+        engine = _circe_in_rounds()
+        assert engine.simultaneous
+        state = engine.make_state({**self.KINGS, "c2": ("R", 0), "c4": ("R", 1)})
+        move = self._capture(engine, state, "c2", "c4")
+        assert engine.describe_move(state, move) == "Rc2xc4 (reborn a5)"
+        assert "Rc2xc4 (reborn a5)" in [
+            engine.describe_move(state, m) for m in engine.legal_moves_for(state, 0)
+        ]
+        # The text says what the round does when the other move leaves the home alone.
+        (still,) = [
+            m
+            for m in engine.legal_moves_for(state, 1)
+            if (move_from(m), move_to(m)) == (_square("e5", 5), _square("d5", 5))
+        ]
+        after = engine.apply_round(state, move, still)
+        assert engine.spec.type_of(after.board[_square("a5", 5)]) == 0
+        assert engine.spec.owner_of(after.board[_square("a5", 5)]) == 1
+
+    def test_a_home_held_in_a_round_removes_the_rook(self) -> None:
+        engine = _circe_in_rounds()
+        state = engine.make_state(
+            {**self.KINGS, "c2": ("R", 0), "c4": ("R", 1), "a5": ("R", 0)}
+        )
+        move = self._capture(engine, state, "c2", "c4")
+        assert engine.describe_move(state, move) == "Rc2xc4 (removed: no free home)"
+
+    def test_the_board_alone_is_refused_in_a_game_that_alternates(self) -> None:
+        engine = _chess_with(_circe(), drop=("castling",))
+        state = engine.make_state({**KINGS, "e4": ("P", 0), "d5": ("P", 1)})
+        with pytest.raises(ValueError, match="simultaneous"):
+            engine.board_alone(state, 0, _move(engine, state, "e4", "d5"))
+
+
 # ------------------------------------------------------------- folds and portals on a1
 
 

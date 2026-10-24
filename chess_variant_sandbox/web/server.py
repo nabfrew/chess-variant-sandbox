@@ -513,7 +513,7 @@ class App:
 
         The one population for the map and for every list that names a game as near or
         like another (`near`), so the two are always drawn over the same library (M5 of
-        `docs/plan-map.md`). The site leaves out what an admin took off the library
+        `docs/archive/plan-map.md`). The site leaves out what an admin took off the library
         (`site/server.SiteApp.mapped`).
         """
         return [game for game in games if game.source in MAPPED]
@@ -560,7 +560,7 @@ class App:
             # view that can disagree with itself about the game it is describing.
             game = self.game(digest)
             refused = opponents.refusals(digest, game.path, heuristics=self.heuristics_dir)
-            # The games like this one, on the map's relation (M5 of `docs/plan-map.md`):
+            # The games like this one, on the map's relation (M5 of `docs/archive/plan-map.md`):
             # the page's list, and the draft's gap button's nearest library game.
             near = self.near(game)
             return {
@@ -772,7 +772,7 @@ class App:
         page is where it goes, and it needs a second end: the library game most like the
         draft, which is the first of the page's own *games like this one* (`links`, from
         `near`) that this person may be shown. So *nearest* means here what it means on
-        the page and on the map: the map's likeness (M5 of `docs/plan-map.md`).
+        the page and on the map: the map's likeness (M5 of `docs/archive/plan-map.md`).
         `likeness` on the answer says how alike, and `units` how many rules apart.
 
         Answered only where the press would be: both ends findable, the question

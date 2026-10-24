@@ -834,7 +834,7 @@ kinds is gone, and the only one with two different armies of paired kinds.
 
 ## `gardner-in-rounds-with-a-swift-king.json`, `gardner-in-rounds-with-swift-knights.json`, `watering-hole-by-speed.json` — schema 28, speed (Q943c; all three retired)
 
-2026-10-19, three previews (the third in the library from Q943f, 2026-10-19, until Q996, 2026-10-21). The showcases of `pieces[].speed` (`docs/plan-speed.md` §6.1, pre-registered
+2026-10-19, three previews (the third in the library from Q943f, 2026-10-19, until Q996, 2026-10-21). The showcases of `pieces[].speed` (`docs/archive/plan-speed.md` §6.1, pre-registered
 2026-10-16 before the rule was built): each piece type has a speed, a rank; when the two pieces
 moving in a round differ in speed, the faster move is made first as an ordinary move, and the
 slower is made afterwards only if it still can be. The first two are Gardner in
@@ -859,7 +859,7 @@ difference; the third is the game designed around the rule.
   standing; the elephant and the dog are slower than theirs, whose prey escapes by moving and
   is caught only standing still or by stepping where the hunter was going. Two arrivals at the
   hole are no longer a meeting: the faster gets there first. Held off main a few hours for an
-  operator fix (`plan-speed.md` §6.1 *As built*). Joined the library by Q943f as its only game
+  operator fix (`docs/archive/plan-speed.md` §6.1 *As built*). Joined the library by Q943f as its only game
   with speeds: every round two moves in order and nothing colliding. **Back to the previews by
   Q996 (2026-10-21)**, mechanics unchanged: under Q986b's round player it measured 0.395, not
   viable 0-4, its games over in about five rounds (quick kills 0.64 to 0.72 on the worst half): a
@@ -868,7 +868,7 @@ difference; the third is the game designed around the rule.
   (`docs/reference/library-repair-2026-10-21.md` §2.2). Its parent is the old watering hole
   (`5c0b017473f5`), not the repaired one.
 
-Measured by Q943d (2026-10-19, v12, four runs on the round roster; `plan-speed.md` §6.5):
+Measured by Q943d (2026-10-19, v12, four runs on the round roster; `docs/archive/plan-speed.md` §6.5):
 the swift king reads in 2 of 4 runs and is not viable, the swift knights are not viable
 (0.439, worst-half decisive 0.11 to 0.17: the round players trade both knights on move one),
 and both stay previews; the watering hole by speed is **viable in 3 of 4 runs, 0.557

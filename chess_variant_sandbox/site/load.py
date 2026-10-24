@@ -16,7 +16,7 @@ Four sources, four tables and one seeding:
                                     -> ratings        seated through `rating.reseed`
     runs/human/games.jsonl          -> matches        the maintainer's own games, history
 
-Until M5 of `docs/plan-map.md` a fifth step compared every pair of the store's games into
+Until M5 of `docs/archive/plan-map.md` a fifth step compared every pair of the store's games into
 `links`; near now means the map's likeness, worked out by the app over the map's own games
 (`web/graphing.near`), and `0038_links_retired.sql` dropped the table.
 

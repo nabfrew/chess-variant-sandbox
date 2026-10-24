@@ -1790,7 +1790,7 @@ def _cmd_refresh(args: argparse.Namespace) -> int:
 
 
 def _cmd_proofs(args: argparse.Namespace) -> int:
-    """Proven positions kept by hand, as `measure` keeps scores (Q993d, `plan-proven.md` §5.2).
+    """Proven positions kept by hand, as `measure` keeps scores (Q993d, `docs/archive/plan-proven.md` §5.2).
 
     `--check` reads every Library and Baseline game's standing (`puzzles.survey`) and proves
     nothing: what is owed and why, and what is not and why not. Without it, each owed game

@@ -1,6 +1,6 @@
 """The library as a map: which games are alike, the communities they form, where each sits.
 
-`docs/plan-map.md` §4 (M4) puts the new map on the page. The relation is
+`docs/archive/plan-map.md` §4 (M4) puts the new map on the page. The relation is
 `spec/likeness.py`'s (what two games are made of, each part weighed by how rare it is in
 the library), the communities and each game's nearest are `web/families.py`'s, and the
 picture is `web/mapping.py`'s, remembered from one build to the next in
@@ -71,7 +71,7 @@ if TYPE_CHECKING:  # a Game is the library's; importing it at runtime would be a
 # when the payload changes shape, so a reader cannot take an older shape for this one. A
 # cache file stamped with anything else is dropped whole rather than read. `g11` to `g14`
 # were the similarity lines, their communities and the layout by community
-# (`docs/archive/plan-graph-map.md`). `g15` (M4 of `docs/plan-map.md`): the lines are the
+# (`docs/archive/plan-graph-map.md`). `g15` (M4 of `docs/archive/plan-map.md`): the lines are the
 # mutual neighbours by likeness (`neighbours`), the communities are `families`', the
 # picture is `mapping`'s; `links`, `similar` and `levels` left the payload, and a pair
 # record keeps `relate`'s reading and nothing else.
@@ -374,7 +374,7 @@ def _prepared(
 
 # ------------------------------------------------------------------- one meaning of near
 #
-# M5 of `docs/plan-map.md`. Every list on the site or the local application that names
+# M5 of `docs/archive/plan-map.md`. Every list on the site or the local application that names
 # games as near or like another reads this, and this reads the map: the same games, the
 # same `spec/likeness.py` relation over them and the same order (`Likeness.nearest`), so a
 # game's page and its panel on the map open on the same games in the same order, and its

@@ -433,7 +433,13 @@ class TestTheFingerprintsPointAtSomething:
 # game declares a command, and a sight game without one writes the keys it did, so no number
 # should move. It was "8e8d8c6ea96b7471" after Q1008d; the library replay after the detached
 # training campaign re-scores under it.
-FROZEN_METRICS = "0d041f41fc5bfba1"
+#
+# **Moved 2026-10-24 by Q1020 (a circe rebirth in a round)**: `engine/engine.py`'s
+# `describe_move` asks the core where a round move's struck piece went (`Engine.board_alone`)
+# instead of calling `apply`, which refuses a round game and raised. Only a circe game in rounds
+# reaches the new line, and no library game is one, so no number should move. It was
+# "0d041f41fc5bfba1" after Q1007d; the next library replay re-scores under it.
+FROZEN_METRICS = "5a65f47b2629c080"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -698,7 +704,12 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # see `FROZEN_METRICS`); a game without a command is analysed byte for byte as before
 # (`tests/test_command_page.py`, `tests/test_sight_page.py`). It was "e54e6675c520c48c" after
 # Q1007c; the library replay after the detached training campaign is the re-analysis.
-FROZEN_ANALYSIS = "c7d6042d1d057fc2"
+#
+# **Moved 2026-10-24 by Q1020**: `engine/engine.py`'s `board_alone` and the round branch of
+# `_reborn` (see `FROZEN_METRICS`); a game that is not circe in rounds is analysed byte for
+# byte as before. It was "c7d6042d1d057fc2" after Q1007d; the next library replay is the
+# re-analysis.
+FROZEN_ANALYSIS = "c38b69ba6532f04b"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

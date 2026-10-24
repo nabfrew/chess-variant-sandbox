@@ -1750,7 +1750,7 @@ def _describe_simultaneous(spec: dict[str, Any], rules: dict[str, Any]) -> list[
     ]
     speeds = {pid: speed for pid, speed in piece_speeds(spec).items() if speed > 0}
     if speeds and has_speeds(spec):
-        # Schema 28 (Q943a, `docs/plan-speed.md` §2.4, §4.3): the order before the
+        # Schema 28 (Q943a, `docs/archive/plan-speed.md` §2.4, §4.3): the order before the
         # collision sentence, which then reads only for equal speeds.
         ranked = "; ".join(
             f"{', '.join(pid for pid in speeds if speeds[pid] == rank)} {rank}"

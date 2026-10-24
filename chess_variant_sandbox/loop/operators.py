@@ -1819,7 +1819,7 @@ def _play_at_once(spec: dict[str, Any], rng: random.Random) -> str | None:
 def _set_a_collision(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Say who a piece beats when two pieces move onto one square, change it, or drop it
     (schema 26's `pieces[].beats`). Only in a game played in rounds, and only on a type that
-    can collide: under speeds (schema 28, `docs/plan-speed.md` §4.1) one that the other
+    can collide: under speeds (schema 28, `docs/archive/plan-speed.md` §4.1) one that the other
     player can meet at its own speed, asked of the validator's own predicate
     (`schema.has_equal_speed_opponent`), so the two cannot disagree."""
     if not is_simultaneous(spec):
@@ -1856,7 +1856,7 @@ def _set_a_collision(spec: dict[str, Any], rng: random.Random) -> str | None:
 def _break_the_tie(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Decide a collision tie by the initiative, promise there is none, or eliminate both
     again (schema 26's `rules.simultaneous.tie`). Not entered under speeds where no type of
-    one player shares a speed with a type of the other (schema 28, `docs/plan-speed.md`
+    one player shares a speed with a type of the other (schema 28, `docs/archive/plan-speed.md`
     §4.1): nothing collides there, and the validator refuses a tie, by the same predicate
     (`schema._any_equal_speed_meeting`)."""
     del rng
@@ -2182,7 +2182,7 @@ def _turn_the_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
 
 def _set_a_speed(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Give a piece type a speed, change one, or take the speeds away (schema 28,
-    `docs/plan-speed.md` §4.3). Only in a game played in rounds. In: a type at 0 is made
+    `docs/archive/plan-speed.md` §4.3). Only in a game played in rounds. In: a type at 0 is made
     faster than every other (one rank above the top), or one with a speed is moved a rank;
     the ranks are then closed up so none is skipped (`speed_ranks_in_use`). Out: every speed
     goes, and the round is today's again. Each child must pass the validator, so speeds that

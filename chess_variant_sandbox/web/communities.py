@@ -3,7 +3,7 @@
 The map's lines join games each among the other's nearest by likeness, and the families
 those lines form are what the map is drawn around. This finds them. It knows nothing
 about games: it takes node names and a weight per pair and returns a partition, which
-`web/families.py` names and remembers (`docs/plan-map.md` M2).
+`web/families.py` names and remembers (`docs/archive/plan-map.md` M2).
 
 **The method** is `docs/archive/plan-graph-map.md` §4's, pre-registered there and first run in
 `docs/reference/graph-map-probe.py`: weighted Louvain at resolution 1, from `ORDERS` node
@@ -163,7 +163,7 @@ def settle(
 ) -> list[list[str]]:
     """Communities settled from a partition already held, moving as few nodes as it can.
 
-    `docs/plan-map.md` §4, M2b. `start` is the partition held (a name in it that is not a
+    `docs/archive/plan-map.md` §4, M2b. `start` is the partition held (a name in it that is not a
     node is ignored) and `known` every node it placed, together or alone; any other node
     is new. The rule has a dead band, so that a node near a border does not cross it
     whenever a line's weight wavers:

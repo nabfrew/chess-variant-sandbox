@@ -1073,7 +1073,7 @@ def _settle_rests(listed: list[Any], rules: dict[str, Any]) -> list[str]:
 
 
 def _settle_speeds(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any]) -> list[str]:
-    """Schema 28 (Q943a, `docs/plan-speed.md` §4.1): what an edit can leave of the speeds
+    """Schema 28 (Q943a, `docs/archive/plan-speed.md` §4.1): what an edit can leave of the speeds
     that the validator refuses. Speeds in a game no longer in rounds go; ranks an edit
     left with a gap are closed up, keeping their order; speeds that can no longer order a
     round go; and a tie rule or a `beats` that speeds have left with no equal-speed meeting

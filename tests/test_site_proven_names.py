@@ -1,6 +1,6 @@
 """Q993c: proven positions named by what they are, and the store's marks and tries moved.
 
-`docs/plan-proven.md` §5.3. A record names a position by where it was found (`seed-game-ply`)
+`docs/archive/plan-proven.md` §5.3. A record names a position by where it was found (`seed-game-ply`)
 and `0037` keyed a person's marks (`proven_marks.position`) and a try (`matches.puzzle`) by
 that, so a re-proof from re-played runs could have handed a person's tick to another
 position. The site now names a position by its replayed state (`puzzles.name`), and

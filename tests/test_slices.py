@@ -319,6 +319,21 @@ LIBRARY = test_index_quality.RUNS
 # `analysis` "c7d6042d1d057fc2". No record, score, interval or verdict moved (100,352 records equal
 # outside the clock); the replaced measurements, with the stamp this window held, are kept under
 # each game's `runs/<hash>/previous/` (`docs/reference/replay-2026-10-23.md`).
+#
+# **Opened 2026-10-24 by Q1020** (a circe rebirth in a round): `engine/engine.py`'s
+# `describe_move` asks the core (`Core.board_alone`) where a round move's struck piece went, so
+# the engine's Python side moves `metrics` and `analysis` (`FROZEN_METRICS`, `FROZEN_ANALYSIS`)
+# and the core moves the build fingerprint. No library game is circe in rounds, so no game's
+# records should move. The window is the stamp R31 left the library; **the next library replay
+# empties it**.
+#
+# **Emptied 2026-10-25 by R32**, that replay: the 99 library games re-certified from a sample of
+# 128 of each run's 1,024 games on core `347121fa1bb6c149` (98 under a certificate; *opposite
+# colours*, whose records still named it *opposite colours with riders*, replayed whole), then
+# re-analysed and re-scored under `metrics` "5a65f47b2629c080" and `analysis` "c38b69ba6532f04b".
+# No record, score, interval or verdict moved (101,376 records equal outside the clock and that
+# one game's name); the replaced measurements, with the stamp this window held, are kept under
+# each game's `runs/<hash>/previous/` (`docs/reference/replay-2026-10-25.md`).
 STALE_WINDOW: dict[str, str] = {}
 
 

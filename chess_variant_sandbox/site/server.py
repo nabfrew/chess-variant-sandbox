@@ -1378,7 +1378,7 @@ class SiteApp(App):
         """The games the map draws, less what the store has taken off the library.
 
         The one population for the map and for every near list on the site -- a game's
-        page, its own address and a draft's gap button (M5 of `docs/plan-map.md`) -- so a
+        page, its own address and a draft's gap button (M5 of `docs/archive/plan-map.md`) -- so a
         killed game is named on none of them, and the map is one answer for everybody: no
         list names a person's unlisted draft to anybody but, on its own page, its owner.
         """

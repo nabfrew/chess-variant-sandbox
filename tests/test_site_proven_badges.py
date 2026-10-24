@@ -1,4 +1,4 @@
-"""The badges for finishing proven positions (Q993e, `docs/plan-proven.md` §4).
+"""The badges for finishing proven positions (Q993e, `docs/archive/plan-proven.md` §4).
 
 *Every proven position* is a win from every position a game offers, each one played out
 against hardest, once per game; *Game after game* is a series over how many games a

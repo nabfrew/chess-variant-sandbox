@@ -1414,7 +1414,7 @@ STORE: dict[str, tuple[str, ...]] = {
     "suggestions": ("id", "author", "kind", "body", "created", "done"),
     # `0012_links.sql` (G7) and `0013_similarity.sql` kept every pair's `relate` reading;
     # `0038_links_retired.sql` dropped the table when near took the map's one meaning (M5
-    # of `docs/plan-map.md`).
+    # of `docs/archive/plan-map.md`).
     "usage_samples": (
         "at",
         "cpu_busy",

@@ -16,7 +16,7 @@ and what a member may see beyond it is the router's to draw.
 
 The near games are the page's own list in its order (`library.near_names`, the caller's
 `near_of`): the map's games most like this one by the map's likeness, which is one answer
-for everybody (M5 of `docs/plan-map.md`). They are cached per game for `NEAR_SECONDS`,
+for everybody (M5 of `docs/archive/plan-map.md`). They are cached per game for `NEAR_SECONDS`,
 because a game the map does not draw is ranked by a relation over the whole library and a
 crawler reads every page in a burst. A game killed in that window can stay named on a
 neighbour's page for at most that long; its own address answers 404 at once.

@@ -20,19 +20,19 @@ position carries its prefix, the side to move, its result (`won` or `lost` for t
 move), the plies to the ending under best play as far as the proof saw it, and every root
 move's score and proof, so *find the move* is a lookup.
 
-**Too easy** (`docs/plan-proven.md` §3.1, pre-registered before anything was counted). A
+**Too easy** (`docs/archive/plan-proven.md` §3.1, pre-registered before anything was counted). A
 position is trivial under T1 (a win in one with two or more winning moves), T2 (half the
 legal moves or more proved won), both read off the record's own proofs (`trivial`), or T3
 (the defence has no say: after the shortest winning move, every reply leaves a win exactly
-two plies shorter), which asks the core again (`defence`). T4 (`plan-proven.md` §3.6,
+two plies shorter), which asks the core again (`defence`). T4 (`docs/archive/plan-proven.md` §3.6,
 adopted after the look that motivated it): the defence can only hasten it, every reply
-leaves a win at most two plies shorter, asked the same way (`hasten`). T5 (`plan-proven.md`
+leaves a win at most two plies shorter, asked the same way (`hasten`). T5 (`docs/archive/plan-proven.md`
 §3.7, pre-registered): seen at a glance, the core's two quickest players, asked from eight
 fixed seeds, play a move that wins (`shallow`). `FORMAT` 2 adds each asked position's T3
 answer and the basis it was asked on, `FORMAT` 3 T4's beside it, `FORMAT` 4 T5's; `FORMAT`
 1 records carry none of them.
 
-**Upkeep** (Q993d, `docs/plan-proven.md` §5). Nobody runs a driver: `survey` reads which
+**Upkeep** (Q993d, `docs/archive/plan-proven.md` §5). Nobody runs a driver: `survey` reads which
 Library and Baseline games are owed a record and why (`owes`: none yet, positions that no
 longer replay, or a record older than `FORMAT` or `PROOF_VERSION`), and `make` writes one
 whole, every stage resumable by its unit file under `runs/puzzles/work/<hash>/`: the count,
@@ -62,7 +62,7 @@ FORMATS = (1, 2, 3, 4)
 """Every record format a reader accepts: 1 has no T3 answers, 2 has them, 3 adds T4's, 4
 adds T5's."""
 NODES = 20_000_000
-# T3's budget a reply (`plan-proven.md` §3.1): a tenth of the proof's, since each of 20 to
+# T3's budget a reply (`docs/archive/plan-proven.md` §3.1): a tenth of the proof's, since each of 20 to
 # 30 replies is asked and the position after a reply is two plies nearer its end.
 DEFENCE_NODES = 2_000_000
 MAX_DEPTH = 400
@@ -75,7 +75,7 @@ CAP = 240
 # probe proves about eight plies ahead on *Intransitive*, and nothing proved further back
 # in the first, evenly spread sample (`proven-positions.md` §2), so twelve leaves room.
 NEAR = 12
-# And how near is too near (`plan-proven.md` §3.5, Q993d): a position fewer than this many
+# And how near is too near (`docs/archive/plan-proven.md` §3.5, Q993d): a position fewer than this many
 # plies before its game's recorded end is a win in one or two by construction, which T1
 # mostly removes, so the sample skips it. Like `NEAR` it decides where an expensive search
 # points, never what a position is worth, and the basis names it (`near_min`).
@@ -101,7 +101,7 @@ DEFENCES = (NONE, SOME, UNSETTLED)
 # faster; `some`, that a reply was proved to put the win off or escape it.
 T1, T2, T3, T4, T5 = "T1", "T2", "T3", "T4", "T5"
 
-# T5 (`plan-proven.md` §3.7): the core's two quickest players a person meets, at their own
+# T5 (`docs/archive/plan-proven.md` §3.7): the core's two quickest players a person meets, at their own
 # budgets on the built-in objective (*greedy* and *easy* on the site), each asked from these
 # fixed seeds. A position's `shallow` is `found` where any choice wins and `missed` where none
 # does; there is no third answer, since a choice the core cannot prove won counts as a miss.
@@ -148,7 +148,7 @@ NAME_LENGTH = 16
 
 
 def content(state: GameState) -> tuple[Any, ...]:
-    """What a position *is*, as the engine returned it (Q993c, `docs/plan-proven.md` §5.3).
+    """What a position *is*, as the engine returned it (Q993c, `docs/archive/plan-proven.md` §5.3).
 
     The core's position key (`state.key`, the Zobrist key the core maintains and seeds from
     the rules' hash) covers the board, the side to move, the en passant file and every part
@@ -444,7 +444,7 @@ def winning_moves(row: dict[str, Any]) -> int:
 
 
 def trivial(row: dict[str, Any]) -> tuple[str, ...]:
-    """The parts of the pre-registered test (`plan-proven.md` §3.1) a won position fails.
+    """The parts of the pre-registered test (`docs/archive/plan-proven.md` §3.1) a won position fails.
 
     Empty where the position is kept. Read off the record alone, deciding nothing: `n` is
     the record's `ends_in`, `L` its number of root moves, `W` those proved won.
@@ -490,7 +490,7 @@ def key_move(row: dict[str, Any]) -> dict[str, Any] | None:
 
 def asks_defence(row: dict[str, Any]) -> bool:
     """Whether T3 and T4 are put to this position: a proved win with two or more winning
-    moves that T1 and T2 keep (`plan-proven.md` §3.3: those already left out are not
+    moves that T1 and T2 keep (`docs/archive/plan-proven.md` §3.3: those already left out are not
     asked). T4 is asked of the same positions as T3 (§3.6), whatever T3 answered."""
     return row.get("result") == WON and winning_moves(row) >= 2 and not trivial(_unasked(row))
 
@@ -501,7 +501,7 @@ def _unasked(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def asks_shallow(row: dict[str, Any]) -> bool:
-    """Whether T5 is put to this position (`plan-proven.md` §3.7): a proved win that T1 to
+    """Whether T5 is put to this position (`docs/archive/plan-proven.md` §3.7): a proved win that T1 to
     T4 keep, read with T3's and T4's stored answers and without T5's own."""
     return row.get("result") == WON and not trivial(
         {key: value for key, value in row.items() if key not in ("shallow", "shallow_moves")}
@@ -517,7 +517,7 @@ def defence(
     immune: float = IMMUNE_PIECES,
     state: GameState | None = None,
 ) -> str | None:
-    """T3 (`plan-proven.md` §3.1): does anything the defender does change the count?
+    """T3 (`docs/archive/plan-proven.md` §3.1): does anything the defender does change the count?
 
     None where T3 does not apply (not a proved win, or fewer than two winning moves).
     Otherwise the position is reached (see `state`), the attacker's shortest winning move
@@ -547,7 +547,7 @@ def hasten(
     immune: float = IMMUNE_PIECES,
     state: GameState | None = None,
 ) -> str | None:
-    """T4 (`plan-proven.md` §3.6): can the defender do anything but hasten the loss?
+    """T4 (`docs/archive/plan-proven.md` §3.6): can the defender do anything but hasten the loss?
 
     T3 exactly as `defence` asks it, with one difference: a reply has no say when the core
     proves the position it leaves won for the attacker with a shortest win of **at most**
@@ -633,7 +633,7 @@ def shallow(
     immune: float = IMMUNE_PIECES,
     state: GameState | None = None,
 ) -> tuple[str, dict[str, list[int]]] | None:
-    """T5 (`plan-proven.md` §3.7): do the core's quick players play a move that wins?
+    """T5 (`docs/archive/plan-proven.md` §3.7): do the core's quick players play a move that wins?
 
     None where the position is not a proved win. Otherwise each of `agents` is asked from
     each of `seeds` what it plays here (`choose_move`: the core's own player, its seat

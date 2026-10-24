@@ -51,7 +51,7 @@ nothing; this is what makes them *current* again, with nobody starting a campaig
    `ladders.py --runs` does (`rate_ladder`). A ladder is never delivered: `rerate` moves
    the old one aside and puts it back if the rating fails. A rating that fails, or that
    leaves the ladder still owing, is refused like a game, keyed on the ladder file.
-9. **Proven positions, after ladders** (Q993d, `docs/plan-proven.md` §5). Only when no
+9. **Proven positions, after ladders** (Q993d, `docs/archive/plan-proven.md` §5). Only when no
    score and no ladder is owed does it read which Library and Baseline games are owed a
    proven-positions record (`proof_items`, `puzzles.survey`): none yet (`prove`), then one
    whose positions no longer replay or whose format or probe version is older than the

@@ -1516,7 +1516,7 @@ function drawLegend(marks, drawn) {
   // rules the board was drawn from, and then named from its row like every other kind.
   const said = legendEntries(kinds, SESSION.ruleset.wrap, zoneWords(SESSION.ruleset.zones),
                              SESSION.ruleset.portals);
-  // Schema 28 (Q943b, `docs/plan-speed.md` §4.5): a game with speeds lists its ranks, which
+  // Schema 28 (Q943b, `docs/archive/plan-speed.md` §4.5): a game with speeds lists its ranks, which
   // no square shows.
   const speeds = typeof speedLegendHtml === 'function'
     ? speedLegendHtml(SESSION.ruleset.speed, SESSION.ruleset.pieceNames) : '';

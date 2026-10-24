@@ -1,6 +1,6 @@
 // The library as a map, in words: the legend, the panels, and what they read.
 //
-// `docs/archive/plan-game-graph.md` G3 to G7 built the map's words; `docs/plan-map.md` M4
+// `docs/archive/plan-game-graph.md` G3 to G7 built the map's words; `docs/archive/plan-map.md` M4
 // put the new map under them. The second view of the library -- *list* beside *map* --
 // drawn from one call to `GET /api/graph`. The drawing is `page/explorer.js`'s and is what
 // `#/map` opens; what lives here is everything the map says in words, and the readings of
@@ -102,7 +102,7 @@ function mapSummary() {
 
 // ------------------------------------------------------------------------ the lines
 //
-// `docs/plan-map.md` M4. Every pair of games each among the other's nearest is a row in
+// `docs/archive/plan-map.md` M4. Every pair of games each among the other's nearest is a row in
 // `neighbours`, carrying how alike the two are (`likeness`, which is the line's width),
 // the rarest things both have (`shares`), and what differs between them in rules, which
 // is `spec/relate.py`'s reading. There is no cut to choose: which lines exist is the

@@ -10,7 +10,7 @@
 // the library's own model pixels. After that a position is a reader's -- a drag, or a
 // *reset* back to the server's -- and nothing else here writes one. There is no layout on
 // the page: the server's picture keeps games alike near each other and remembers itself
-// from one build to the next (`docs/plan-map.md` M3), and one here would only draw another
+// from one build to the next (`docs/archive/plan-map.md` M3), and one here would only draw another
 // (*tidy*, retired in Q477). It works out no distance, compares no rules, reads no spec,
 // formats no number and asks the engine nothing. What is decided here is presentation: how
 // big a dot is drawn, what colour a line is, what a tap holds up.
@@ -265,7 +265,7 @@ function explorerBodyHtml() {
 
 // ------------------------------------------------------------- the lines, and arrows
 //
-// `docs/plan-map.md` M4. The map's lines are the payload's `neighbours`, every one of
+// `docs/archive/plan-map.md` M4. The map's lines are the payload's `neighbours`, every one of
 // them drawn: there is no cut to choose, because which games are alike enough for a line
 // is each game's own nearest, not one threshold over the library. The arrows from a game
 // to one made from it are one switch, off when the map opens, and a dot's fill is the
@@ -1322,7 +1322,7 @@ function explorerHullsFade() {
 // screen, and Q477 retired it. The library's layout pulls every dot towards one point of
 // the frame and packs whatever is not joined into rows, so over the whole map it crossed
 // ten pairs of outlines; and the server's picture is the one that keeps games alike near
-// each other and stays where a returning reader left it (`docs/plan-map.md` M3). A layout
+// each other and stays where a returning reader left it (`docs/archive/plan-map.md` M3). A layout
 // here would be another picture, drawn by other rules and with none of its promises. A
 // reader who has dragged the picture out of shape has *reset*.
 

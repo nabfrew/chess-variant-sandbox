@@ -1449,7 +1449,7 @@ def has_speeds(spec_or_pieces: Any) -> bool:
 
 
 def piece_speeds(spec_or_pieces: Any) -> dict[str, int]:
-    """Each declared piece id's speed (schema 28, `docs/plan-speed.md` §2.1): its ``speed``,
+    """Each declared piece id's speed (schema 28, `docs/archive/plan-speed.md` §2.1): its ``speed``,
     and 0 (the slowest, the default) where it writes none or something the validator
     refuses. The one reader of the key, shared by the validator, the compiler and every
     surface."""
@@ -1517,7 +1517,7 @@ def _any_equal_speed_meeting(spec: dict[str, Any]) -> bool:
 def _check_speed_coherence(
     spec: dict[str, Any], pieces: list[Any], rules: dict[str, Any], errors: list[str]
 ) -> None:
-    """Schema 28 (Q943a): ``pieces[].speed`` and every refusal of `docs/plan-speed.md` §4.1,
+    """Schema 28 (Q943a): ``pieces[].speed`` and every refusal of `docs/archive/plan-speed.md` §4.1,
     in words. A speed orders the two moves of a round, so it needs the round rule; speeds
     are ranks, so one game has one spelling; and they must be able to order some round."""
     written = [
@@ -1608,7 +1608,7 @@ def simultaneous_swap_pair(spec: dict[str, Any]) -> tuple[str, str] | None:
     `simultaneous_holdings`, so a type a player can come to hold counts; a piece takes a
     type when its ``captures`` allows it and it has a move that may capture. Schema 28
     (Q943a): only a pair of equal speed, since between unequal speeds the faster takes the
-    slower where it stands and no swap happens (`docs/plan-speed.md` §2.5, case B)."""
+    slower where it stands and no swap happens (`docs/archive/plan-speed.md` §2.5, case B)."""
     pieces = [piece for piece in spec.get("pieces") or [] if isinstance(piece, dict)]
     by_id = {piece["id"]: piece for piece in pieces if isinstance(piece.get("id"), str)}
     speeds = piece_speeds(pieces)
@@ -1724,7 +1724,7 @@ def simultaneous_tie_pair(spec: dict[str, Any]) -> tuple[str, str] | None:
     """The first pair of a player-0 type and a player-1 type whose collision is a tie (both
     beat the other, or neither does), or ``None`` when no tie can occur (§3.1, F). Schema 28
     (Q943a): over pairs of equal speed only, since pieces of different speeds never collide
-    (`docs/plan-speed.md` §2.3, §3.3)."""
+    (`docs/archive/plan-speed.md` §2.3, §3.3)."""
     pieces = [piece for piece in spec.get("pieces") or [] if isinstance(piece, dict)]
     by_id = {piece["id"]: piece for piece in pieces if isinstance(piece.get("id"), str)}
     declared = list(by_id)
@@ -2094,7 +2094,7 @@ def _check_simultaneous_coherence(
     if tie in SIMULTANEOUS_TIES and has_speeds(pieces) and not _any_equal_speed_meeting(
         {**spec, "rules": rules, "pieces": pieces}
     ):
-        # Schema 28 (Q943a, `docs/plan-speed.md` §3.3): pieces of different speeds never
+        # Schema 28 (Q943a, `docs/archive/plan-speed.md` §3.3): pieces of different speeds never
         # collide, so where no two opposing types share a speed no collision can happen.
         errors.append(
             f"rules.simultaneous.tie {tie!r} can never be read: pieces of different speeds "

@@ -788,7 +788,7 @@ def delete_game(connection: Any, game: str, viewer: int | None, admin: bool = Fa
     more, and `measurements` is a view the loader rebuilds from `runs/` in any case, so
     it loses nothing a load cannot put back for the games that remain. (The store's
     `links` rows went too, until near took the map's meaning and the table retired: M5 of
-    `docs/plan-map.md`.)
+    `docs/archive/plan-map.md`.)
     """
     state = state_of(connection, game)
     if state is None:

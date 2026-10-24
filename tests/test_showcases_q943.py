@@ -1,4 +1,4 @@
-"""W1 of `docs/plan-speed.md` §6.3: what speed does in its three showcases, without players.
+"""W1 of `docs/archive/plan-speed.md` §6.3: what speed does in its three showcases, without players.
 
 The showcases (Q943c, §6.1): T1 `archive/gardner-in-rounds-with-a-swift-king` (the king at
 speed 1), T2 `archive/gardner-in-rounds-with-swift-knights` (the knights at 1), T3
