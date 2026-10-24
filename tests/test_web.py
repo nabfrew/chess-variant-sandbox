@@ -11527,6 +11527,14 @@ class TestBuildingAGameByHand:
         with pytest.raises(ValueError):
             designing.icon_data_uri("<svg>" + "x" * 70_000 + "</svg>")
 
+    def test_the_size_refusal_is_in_plain_words(self) -> None:
+        from chess_variant_sandbox.web import designing
+
+        with pytest.raises(ValueError) as caught:
+            designing.icon_data_uri("<svg>" + "x" * 70_000 + "</svg>")
+        assert "the spec" not in str(caught.value)
+        assert "the rules have to stay a file" in str(caught.value)
+
 
 class TestBuildingAnOpponent:
     """A heuristic is a name, a sentence and fourteen numbers, which is why this can be a

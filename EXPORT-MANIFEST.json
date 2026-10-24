@@ -1,5 +1,5 @@
 {
- "source_commit": "a536f8403cc55cd27ecdc95f10cd1f04ff6f0dfc",
+ "source_commit": "357e67bcc4409155d7017e381247aaac99de9040",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -1776,8 +1776,8 @@
   },
   {
    "path": "chess_variant_sandbox/fairy/words.py",
-   "bytes": 6329,
-   "sha256": "4b46d4c53196b7add23b0bfc8c7f28a667df10b5d74199680c365ab310a5dde6"
+   "bytes": 6251,
+   "sha256": "dddb39985faaf761932ba27a8700210e760ad93f4d1bea9b51137ba64400027b"
   },
   {
    "path": "chess_variant_sandbox/fuzz.py",
@@ -2786,8 +2786,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/designing.py",
-   "bytes": 186351,
-   "sha256": "0456eaf7a908ab476907796aba149cb75d486aafb02513d907176e1b37a127f3"
+   "bytes": 186496,
+   "sha256": "ec08b0ab47516646b24c95f37fb05fa4120e5bf31b2107c9d9ffa73155235e32"
   },
   {
    "path": "chess_variant_sandbox/web/draw_offer.py",
@@ -5095,6 +5095,11 @@
    "sha256": "943c5fb2bcc865bfedbc0718a417556eba89f490b34716f2097b094d47f02437"
   },
   {
+   "path": "tests/test_fairy_words_plain.py",
+   "bytes": 564,
+   "sha256": "75ec2a2e4b6489da3eb6c597b82bd974679cd29d71de021383a977a3b2e81116"
+  },
+  {
    "path": "tests/test_families.py",
    "bytes": 17748,
    "sha256": "9978ae15c75b90a77ba562d651a29f2e8c453daabe4f0b73392d3222b7bb9ff9"
@@ -6321,8 +6326,8 @@
   },
   {
    "path": "tests/test_web.py",
-   "bytes": 767821,
-   "sha256": "cf84253be26a499fc24e5592254f1d0c1d43fdbfcd1660d246b480aabad4be0d"
+   "bytes": 768182,
+   "sha256": "fb4179f7e72bfb6960de9bd1d3c82185a7a73d04c20282c6dce307e04793fd74"
   },
   {
    "path": "tests/test_web_board_fit.py",

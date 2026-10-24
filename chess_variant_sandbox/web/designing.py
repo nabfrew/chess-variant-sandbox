@@ -67,7 +67,7 @@ from chess_variant_sandbox.spec.describe import (
     plain_move_sentence,
     sight_sentence,
 )
-from chess_variant_sandbox.spec.plain import REST_WORDS, field_words
+from chess_variant_sandbox.spec.plain import REST_WORDS, field_words, the_rules
 from chess_variant_sandbox.spec.plain import plain_problem as _spec_plain_problem
 from chess_variant_sandbox.spec.schema import (
     HEX_SYMMETRIES,
@@ -3782,9 +3782,12 @@ def icon_data_uri(svg: str) -> str:
     if "<svg" not in text[:400].lower():
         raise DesignError("that does not look like an SVG file")
     if len(text) > 64_000:
+        # Through `plain`, like every refusal a visitor reads: it never says "the spec".
         raise DesignError(
-            f"that SVG is {len(text) // 1024}kB; the spec has to stay a file somebody "
-            "can read, so keep icons under 64kB"
+            the_rules(
+                f"that SVG is {len(text) // 1024}kB; the spec has to stay a file somebody "
+                "can read, so keep icons under 64kB"
+            )
         )
     # A `<script>` in an icon never runs -- an SVG in an `<image>` is a separate,
     # inert document -- but it also has no business in a piece drawing, and a spec is

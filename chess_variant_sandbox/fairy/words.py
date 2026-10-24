@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 
 from chess_variant_sandbox.spec.describe import RULE_WORDS
-from chess_variant_sandbox.spec.plain import FIELD_WORDS
+from chess_variant_sandbox.spec.plain import FIELD_WORDS, the_rules
 
 # A part of the game's text as the translator spells it: `rules.check_limit`,
 # `rules.explode_on_capture.by / .of`, `piece.captures`, `move.condition.region`. The
@@ -123,8 +123,7 @@ def plain_reason(reason: str) -> str:
         return f"{said} set to {match.group(4)}" if match.group(4) else said
 
     text = _PATH.sub(name, reason)
-    text = re.sub(r"\bthe spec does\b", "the rules do", text)
-    text = re.sub(r"\bthe spec\b", "the rules", text)
+    text = the_rules(text)
     for jargon, plain in _JARGON:
         text = re.sub(jargon, plain, text)
     return text
