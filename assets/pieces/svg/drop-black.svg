@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- drop: a drop of water. Drawn for the chess variant sandbox in Cburnett's grammar (assets/pieces/draw.py) and released CC0. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="45" height="45" viewBox="0 0 45 45">
+<g stroke-linecap="round" stroke-linejoin="round" fill-rule="nonzero">
+  <path d="M 9.5,39.5 L 35.5,39.5 L 35.5,37 C 35.5,36 34.5,35.5 33.5,35.5 L 11.5,35.5 C 10.5,35.5 9.5,36 9.5,37 Z" fill="#000000" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 11.5,35.5 L 33.5,35.5" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <path d="M 22.5,14.5 C 26.5,21.5 31,25.5 31,28.5 C 31,33.5 27,36 22.5,36 C 18,36 14,33.5 14,28.5 C 14,25.5 18.5,21.5 22.5,14.5 Z" fill="#000000" stroke="#000000" stroke-width="1.07" transform="translate(-9,-14.2) scale(1.4000)"/>
+  <path d="M 27,28.5 C 27,31 25.5,32.5 23.5,32.5" fill="none" stroke="#ffffff" stroke-width="1.07" transform="translate(-9,-14.2) scale(1.4000)"/>
+</g>
+</svg>

@@ -1085,7 +1085,9 @@ function pieceEditor(piece, index) {
       <input data-field="icon" data-index="${index}" placeholder="or name a library piece: knight, cannon..."
         title="one name serves both players; two names separated by a space draw one each"
         value="${esc(iconNameOf(piece.id))}" class="u-flex-1 u-minw-150 u-fs-12 u-p-5-8">
+      ${drawingsButtonHtml(index)}
     </div>
+    <div data-drawingsat="${index}">${drawingsPanelHtml(index)}</div>
     ${freshNoteHtml(index)}
     <div class="u-mt-8">
       ${(piece.moves || []).map((move, m) => moveEditor(move, index, m)).join('')}
@@ -1837,6 +1839,173 @@ function iconNameOf(id) {
   return (names[0] === names[1] ? names[0] : names.join(' ')).trim();
 }
 
+// V9: the piece library as a palette, to dress a piece in a drawing (plan-visual.md §7).
+// The drawings are the server's (`web/piece_library.py`, `GET /api/design?part=pieces`),
+// fetched the first time a palette opens rather than with the kit, since they are a
+// quarter of a megabyte of pictures. The page filters them by what is typed and by a
+// category, and writes the slug picked into `appearance.icons`, the same entry the text
+// field beside it names: a picture, never a rule, so no game changes by it.
+let PIECE_LIBRARY = null;   // {categories, pieces}, once fetched
+let DRAWINGS_FOR = -1;      // the piece whose palette is open, else -1
+let DRAWINGS_FIND = '';     // what is typed in the palette's search
+let DRAWINGS_KIND = '';     // the category whose chip is on, or '' for all of them
+
+function drawingsButtonHtml(index) {
+  const open = DRAWINGS_FOR === index;
+  return `<button data-drawfor="${index}" aria-expanded="${open}"
+    aria-controls="dDrawings${index}">${open ? 'close the drawings' : 'choose a drawing'}</button>`;
+}
+
+function drawingsPanelHtml(index) {
+  if (DRAWINGS_FOR !== index) return '';
+  return `<div class="panel drawingPanel u-mt-8" id="dDrawings${index}">
+    <label class="field"><span>find a drawing</span>
+      <input id="dDrawFind" type="search" value="${esc(DRAWINGS_FIND)}" autocomplete="off"
+        placeholder="a name, a kind or a move: kirin, rider, (3,0)"></label>
+    <div class="chips" role="group" aria-label="kinds of piece" id="dDrawKinds">${
+      drawingKindsHtml()}</div>
+    <div id="dDrawList" aria-live="polite">${drawingListHtml(index)}</div>
+  </div>`;
+}
+
+function drawingKindsHtml() {
+  if (!PIECE_LIBRARY) return '';
+  return [{ key: '', label: 'all' }].concat(PIECE_LIBRARY.categories).map(kind => {
+    const on = DRAWINGS_KIND === kind.key;
+    return `<button class="chip${on ? ' on' : ''}" data-drawkind="${esc(kind.key)}"
+      aria-pressed="${on}">${esc(kind.label)}</button>`;
+  }).join('');
+}
+
+// The drawings on offer: the chip's category, narrowed by every word typed, each matched
+// anywhere in a drawing's name, slug, the words it is found by or what it shows.
+function drawingOffers() {
+  const words = DRAWINGS_FIND.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return PIECE_LIBRARY.pieces.filter(drawing => {
+    if (DRAWINGS_KIND && drawing.category !== DRAWINGS_KIND) return false;
+    const said = [drawing.name, drawing.slug, drawing.says, drawing.category]
+      .concat(drawing.words).join(' ').toLowerCase();
+    return words.every(word => said.includes(word));
+  });
+}
+
+function drawingHref(drawing) {
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(drawing.svg);
+}
+
+function drawingListHtml(index) {
+  if (!PIECE_LIBRARY) return '<div class="muted small">Fetching the drawings...</div>';
+  const offers = drawingOffers();
+  const of = `${offers.length} of ${PIECE_LIBRARY.pieces.length} drawings`;
+  if (!offers.length) {
+    return `<div class="muted small">No drawing is called that (${of}).</div>`;
+  }
+  const piece = (DRAFT.pieces || [])[index] || {};
+  const worn = iconNameOf(piece.id);
+  return `<div class="muted small">${of}</div>
+    <ul class="drawingGrid">${offers.map(drawing => `<li><button
+      data-drawing="${esc(drawing.slug)}" aria-pressed="${worn === drawing.slug}"
+      title="${esc(drawing.name + (drawing.says ? ': ' + drawing.says : ''))}"><img
+      src="${esc(drawingHref(drawing))}" alt=""><span>${esc(drawing.name)}</span></button>
+      </li>`).join('')}</ul>`;
+}
+
+// The palette's box under one piece, drawn again in place, so the rest of the form (and
+// the cursor in a field) is left alone.
+function redrawDrawings(index) {
+  const form = document.getElementById('form');
+  if (!form) return;
+  form.querySelectorAll('[data-drawingsat]').forEach(box => {
+    const at = Number(box.dataset.drawingsat);
+    box.innerHTML = drawingsPanelHtml(at);
+  });
+  form.querySelectorAll('[data-drawfor]').forEach(node => {
+    const open = Number(node.dataset.drawfor) === DRAWINGS_FOR;
+    node.setAttribute('aria-expanded', String(open));
+    node.textContent = open ? 'close the drawings' : 'choose a drawing';
+  });
+  wireDrawingPanel(form, index);
+}
+
+function openDrawings(index) {
+  DRAWINGS_FOR = DRAWINGS_FOR === index ? -1 : index;
+  redrawDrawings(index);
+  if (DRAWINGS_FOR < 0 || PIECE_LIBRARY) return;
+  api('/api/design?part=pieces').then(answer => {
+    PIECE_LIBRARY = answer.pieceLibrary || { categories: [], pieces: [] };
+    if (DRAWINGS_FOR === index) redrawDrawings(index);
+  }).catch(error => {
+    const list = document.getElementById('dDrawList');
+    if (list) list.textContent = 'The drawings could not be fetched: ' + error.message;
+  });
+}
+
+// A drawing picked: the piece wears it. A piece drawn its own way for each player (a
+// facing, or a pair already typed) is given the drawing for both, which a two-colour
+// drawing serves as its white and its black.
+function wearDrawing(index, slug) {
+  const piece = (DRAFT.pieces || [])[index];
+  if (!piece) return;
+  DRAFT.appearance = DRAFT.appearance || {};
+  DRAFT.appearance.icons = DRAFT.appearance.icons || {};
+  DRAFT.appearance.icons[piece.id] = iconSeats(index) ? [slug, slug] : slug;
+  const field = document.querySelector(`[data-field="icon"][data-index="${index}"]`);
+  if (field) field.value = iconNameOf(piece.id);
+  const list = document.getElementById('dDrawList');
+  if (list) {
+    list.querySelectorAll('[data-drawing]').forEach(node => {
+      node.setAttribute('aria-pressed', String(node.dataset.drawing === slug));
+    });
+  }
+  checkDraft();
+}
+
+function wireDrawingPanel(form, index) {
+  const find = form.querySelector('#dDrawFind');
+  const list = form.querySelector('#dDrawList');
+  const kinds = form.querySelector('#dDrawKinds');
+  const wireList = () => {
+    list.querySelectorAll('[data-drawing]').forEach(node => {
+      node.onclick = event => {
+        event.preventDefault();
+        wearDrawing(index, node.dataset.drawing);
+      };
+    });
+  };
+  if (!list) return;
+  if (find) {
+    // Only the list is redrawn, so the cursor stays where it is being typed.
+    find.oninput = () => {
+      DRAWINGS_FIND = find.value;
+      list.innerHTML = drawingListHtml(index);
+      wireList();
+    };
+  }
+  if (kinds) {
+    kinds.querySelectorAll('[data-drawkind]').forEach(node => {
+      node.onclick = event => {
+        event.preventDefault();
+        DRAWINGS_KIND = node.dataset.drawkind;
+        kinds.innerHTML = drawingKindsHtml();
+        list.innerHTML = drawingListHtml(index);
+        wireDrawingPanel(form, index);
+      };
+    });
+  }
+  wireList();
+}
+
+function wireDrawings(form) {
+  form.querySelectorAll('[data-drawfor]').forEach(node => {
+    node.onclick = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openDrawings(Number(node.dataset.drawfor));
+    };
+  });
+  if (DRAWINGS_FOR >= 0) wireDrawingPanel(form, DRAWINGS_FOR);
+}
+
 // Every control that lists the draft's pieces, drawn again from the draft. The form is
 // redrawn whole on a structural change and never on a keystroke, so a typed letter used
 // to leave these offering letters that no longer exist and hiding the one that does --
@@ -2108,6 +2277,7 @@ function wireDesigner() {
   });
   wireUploads(form);
   wirePalettePieces(form);
+  wireDrawings(form);
   wirePortalCards(form);
 
   // Read by the server as a rule file is (Q830b): the parse, the size, the validator and

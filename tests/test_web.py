@@ -6631,7 +6631,11 @@ class TestWhatReachesThePage:
         # 151 since Q999c: what a piece sees laid over the board (`paintSight`, `sightHtml`:
         # numbers, squares and constant tokens), and the designer's refusals under a piece's
         # lines of sight (`sightProblemsHtml`, each server sentence through `esc`).
-        assert len(sites) == 151
+        # 155 since Q557: the piece palette under a piece (`drawingsPanelHtml`), its chips
+        # (`drawingKindsHtml`) and its list (`drawingListHtml`) redrawn in place as it opens,
+        # is searched and has a chip pressed. Every name, slug, sentence and picture's data
+        # URI through `esc`; the rest counts and constants.
+        assert len(sites) == 155
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
@@ -11617,7 +11621,7 @@ class TestBuildingAnOpponent:
         assert path.read_bytes() == before
 
     def test_an_older_clash_leaves_the_picker_alone_and_says_so(
-        self, tmp_path, chess_game, warm_map
+        self, tmp_path, chess_game, warm_map, warm_chess_reading
     ) -> None:
         """Q446. Only the clashing entry is left out, and the game page names it.
 

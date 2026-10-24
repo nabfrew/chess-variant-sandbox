@@ -70,6 +70,12 @@
   "ship": "ship",
   "dragon": "dragon",
   "lion": "dragon",
+  "marshal": "chancellor",
+  "cardinal": "archbishop",
+  "dragon king": "crowned-rook",
+  "dragon horse": "crowned-bishop",
+  "grasshopper": "grasshopper",
+  "lance (western)": "spear",
 
   "rock": "rock",
   "paper": "paper",

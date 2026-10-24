@@ -42,6 +42,7 @@ from chess_variant_sandbox.web import (
     launch,
     library,
     opponents,
+    piece_library,
     refreshing,
 )
 from chess_variant_sandbox.web.evolving import Runs
@@ -627,6 +628,10 @@ class App:
             return {"runs": self.runs.all()}
         if parts == ["api", "scoring"]:
             return self.scoring()
+        if parts == ["api", "design"] and (query or {}).get("part") == "pieces":
+            # The piece library, for the palette that dresses a piece (V9): fetched when
+            # the palette first opens, not with the kit (`web/piece_library.py`).
+            return {"pieceLibrary": piece_library.palette()}
         if parts == ["api", "design"]:
             # Everything the editor needs before it can draw anything: what a new game
             # can start from, and what an opponent can be told to care about.

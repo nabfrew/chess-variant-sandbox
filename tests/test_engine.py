@@ -552,15 +552,28 @@ class TestEveryEffectIsInTheKey:
 
     @staticmethod
     def _walk(engine: Engine, seed: int, plies: int) -> int:
-        """Play a random game, checking the key against the definition at every ply."""
+        """Play a random game, checking the key against the definition at every ply (a
+        round, in a game played in rounds)."""
         rng = random.Random(seed)
         state = engine.initial_state()
         played = 0
         for _ in range(plies):
-            moves = engine.legal_moves(state)
-            if not moves or engine.terminal(state, moves) is not None:
-                break
-            state = engine.apply(state, rng.choice(moves))
+            if engine.is_round(state):
+                # A round game (`rules.simultaneous`, or a spy game in its round phase):
+                # the core refuses `apply`, so each seat picks a move and the pair resolves
+                # together through `apply_round`. One round is one ply here.
+                if engine.terminal(state) is not None:
+                    break
+                firsts = engine.legal_moves_for(state, 0)
+                seconds = engine.legal_moves_for(state, 1)
+                if not firsts or not seconds:
+                    break
+                state = engine.apply_round(state, rng.choice(firsts), rng.choice(seconds))
+            else:
+                moves = engine.legal_moves(state)
+                if not moves or engine.terminal(state, moves) is not None:
+                    break
+                state = engine.apply(state, rng.choice(moves))
             assert state.key == engine._compute_hash(state), (
                 f"the incremental key drifted from the definition at ply {played}"
             )

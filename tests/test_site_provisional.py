@@ -92,6 +92,9 @@ class TestTheTwoBasisFields:
             # Q631: what the core is handed, and the agents' source for where it cannot
             # be read. Every server stamp gains both at the replay Q631 owes.
             "players", "agents_source",
+            # Dobutsu plays a rated net since L2 (plan-teacher §10.11), and a game that
+            # seats one names it in its stamp.
+            "net",
         }
         assert Basis.from_dict(stamp) == _now()
 

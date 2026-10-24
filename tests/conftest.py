@@ -405,6 +405,27 @@ def warm_map(warm_library: None, tmp_path_factory: pytest.TempPathFactory) -> No
 
 
 @pytest.fixture(scope="session")
+def warm_chess_reading(chess_spec: dict) -> None:
+    """Pay, once per process and in setup, what a roster of chess asks the first time.
+
+    A game's roster (`App.roster`, `web.opponents.for_game`) asks `fairy.verdict` whether
+    Fairy-Stockfish plays the game, and a page read asks `corpus.read_measurement` for its
+    stored score. Each is memoised by what it is a function of (`fairy._PLAYABLE` by the
+    spec's hash; `measurement.source_fingerprint` and `rust_source_fingerprint` by the
+    tree), and each costs seconds the first time a process asks: the verdict is two engine
+    handshakes (about 1.7 s), the fingerprints parse every source file (about 2 s). Beside
+    a campaign holding most of the cores that first ask was 4.4 s inside a test that
+    checks neither (Q1025). Take this in a test that builds chess's roster or reads its
+    page and asserts nothing about the verdict or the fingerprints.
+    """
+    from chess_variant_sandbox import corpus, fairy
+    from chess_variant_sandbox.spec.canonical import spec_hash
+
+    fairy.verdict(chess_spec)
+    corpus.current_basis(spec_hash(chess_spec), spec=chess_spec)
+
+
+@pytest.fixture(scope="session")
 def chess_spec() -> dict:
     return load_spec(RULESETS / "chess.json")
 

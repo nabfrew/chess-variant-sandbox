@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- warden: a wide body with a shield. Drawn for the chess variant sandbox in Cburnett's grammar (assets/pieces/draw.py) and released CC0. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="45" height="45" viewBox="0 0 45 45">
+<g stroke-linecap="round" stroke-linejoin="round" fill-rule="nonzero">
+  <path d="M 9.5,39.5 L 35.5,39.5 L 35.5,37 C 35.5,36 34.5,35.5 33.5,35.5 L 11.5,35.5 C 10.5,35.5 9.5,36 9.5,37 Z" fill="#000000" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 11.5,35.5 L 33.5,35.5" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <path d="M 11,35.5 C 9.5,32 9.5,27 11.5,23.5 L 33.5,23.5 C 35.5,27 35.5,32 34,35.5 Z" fill="#000000" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 11.5,31 C 18,29.5 27,29.5 33.5,31" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <path d="M 11.5,23.5 L 33.5,23.5 L 32.5,21 L 12.5,21 Z" fill="#000000" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 13,23.5 L 32,23.5" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <path d="M 14,4 L 31,4 L 31,12 C 31,17 26.5,20 22.5,21.5 C 18.5,20 14,17 14,12 Z" fill="#000000" stroke="#000000" stroke-width="1.37" transform="translate(-2.08,-1.94) scale(1.0925)"/>
+  <path d="M 22.5,6 L 22.5,19 M 16,11 L 29,11" fill="none" stroke="#ffffff" stroke-width="1.37" transform="translate(-2.08,-1.94) scale(1.0925)"/>
+</g>
+</svg>

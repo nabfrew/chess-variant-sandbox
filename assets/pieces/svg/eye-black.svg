@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- eye: an eye. Drawn for the chess variant sandbox in Cburnett's grammar (assets/pieces/draw.py) and released CC0. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="45" height="45" viewBox="0 0 45 45">
+<g stroke-linecap="round" stroke-linejoin="round" fill-rule="nonzero">
+  <path d="M 9.5,39.5 L 35.5,39.5 L 35.5,37 C 35.5,36 34.5,35.5 33.5,35.5 L 11.5,35.5 C 10.5,35.5 9.5,36 9.5,37 Z" fill="#000000" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 11.5,35.5 L 33.5,35.5" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <path d="M 11.5,28 C 16.5,20 28.5,20 33.5,28 C 28.5,36 16.5,36 11.5,28 Z" fill="#000000" stroke="#000000" stroke-width="1.07" transform="translate(-9,-14.2) scale(1.4000)"/>
+  <path d="M 18.9,28 A 3.6,3.6 0 1 1 26.1,28 A 3.6,3.6 0 1 1 18.9,28 Z" fill="none" stroke="#ffffff" stroke-width="1.07" transform="translate(-9,-14.2) scale(1.4000)"/>
+  <path d="M 20.9,28 A 1.6,1.6 0 1 1 24.1,28 A 1.6,1.6 0 1 1 20.9,28 Z" fill="#ffffff" stroke="none" stroke-width="1.07" transform="translate(-9,-14.2) scale(1.4000)"/>
+</g>
+</svg>

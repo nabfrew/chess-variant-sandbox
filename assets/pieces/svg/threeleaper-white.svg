@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- threeleaper: a trefoil on a stem. Drawn for the chess variant sandbox in Cburnett's grammar (assets/pieces/draw.py) and released CC0. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="45" height="45" viewBox="0 0 45 45">
+<g stroke-linecap="round" stroke-linejoin="round" fill-rule="nonzero">
+  <path d="M 9.5,39.5 L 35.5,39.5 L 35.5,37 C 35.5,36 34.5,35.5 33.5,35.5 L 11.5,35.5 C 10.5,35.5 9.5,36 9.5,37 Z" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 11.5,35.5 L 33.5,35.5" fill="none" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 14.5,35.5 C 16.5,33.5 18.5,32.5 19,30.5 L 26,30.5 C 26.5,32.5 28.5,33.5 30.5,35.5 Z" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 16.5,30.5 L 28.5,30.5 L 28.5,29.5 C 28.5,29 28,28.5 27.5,28.5 L 17.5,28.5 C 17,28.5 16.5,29 16.5,29.5 Z" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 18,30.5 L 27,30.5" fill="none" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 14.3,23.9 A 4,4 0 1 1 22.3,23.9 A 4,4 0 1 1 14.3,23.9 Z" fill="#ffffff" stroke="#000000" stroke-width="1.15" transform="translate(-6.75,-8.55) scale(1.3000)"/>
+  <path d="M 22.7,23.9 A 4,4 0 1 1 30.7,23.9 A 4,4 0 1 1 22.7,23.9 Z" fill="#ffffff" stroke="#000000" stroke-width="1.15" transform="translate(-6.75,-8.55) scale(1.3000)"/>
+  <path d="M 18.5,17.5 A 4,4 0 1 1 26.5,17.5 A 4,4 0 1 1 18.5,17.5 Z" fill="#ffffff" stroke="#000000" stroke-width="1.15" transform="translate(-6.75,-8.55) scale(1.3000)"/>
+  <path d="M 21.5,22 A 1,1 0 1 1 23.5,22 A 1,1 0 1 1 21.5,22 Z" fill="#000000" stroke="none" stroke-width="1.15" transform="translate(-6.75,-8.55) scale(1.3000)"/>
+</g>
+</svg>

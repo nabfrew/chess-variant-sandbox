@@ -5,8 +5,11 @@ it records exactly which Commons file every icon came from, re-checks the licenc
 of each one against an allowlist, and regenerates CREDITS.md and manifest.json.
 
 Run from anywhere:  python assets/pieces/fetch.py
+Without the network:  python assets/pieces/fetch.py --local   (re-records only the files
+drawn in this repository, keeping every downloaded row as the manifest has it)
 """
 
+# compute-lease: light
 from __future__ import annotations
 
 import json
@@ -64,14 +67,12 @@ CBURNETT = {
     "dabbaba": "v",
     "man": "M",
     "commoner": "x",
-    # long leapers.  Not "N": that file's art falls outside its own 45x45 canvas
-    # and renders clipped.  "K" is the same piece, drawn like the G/Z/U leapers.
-    "nightrider": "K",
-    "zebra": "Z",
+    # long leapers. The nightrider, zebra and unicorn ("K", "Z", "U") and the dragon
+    # ("D") were Commons files once: each is a whole knight with a mark on it, which the
+    # silhouette sort could not tell from the knight at 24 px (plan-visual.md §7), so they
+    # are drawn here now, the knight's head on the grammar's bodies (`draw.py`).
     "giraffe": "G",
-    "unicorn": "U",
     # the rest of the fairy vocabulary
-    "dragon": "D",
     "champion": "z",
     # Commons calls this one "wizard"; the drawing is unambiguously a crescent,
     # so the library calls it what it looks like.
@@ -83,93 +84,6 @@ CBURNETT = {
     "inverted-queen": "g",
     "inverted-pawn": "h",
 }
-
-# Two-colour pieces that do not follow the Chess_<x><c>t45 naming.
-PAIRS = {
-    "alfil": ("File:White alfil.svg", "File:Black alfil.svg"),
-    "camel": ("File:White chess camel.svg", "File:Black chess camel.svg"),
-    # Not Chess_W{l,d}t45: the light one is a vector but the dark one is a PNG
-    # in an SVG wrapper, so the pair does not match. These two are Quivira
-    # glyphs, the same family as alfil and camel above.
-    "wazir": ("File:White wazir.svg", "File:Black wazir.svg"),
-}
-
-# The white Quivira glyphs are a font's *outline* form, the way the Unicode white chess
-# pieces are: black ink around a body that is not drawn at all. On a board that body is
-# the square showing through, so a white alfil read as a ghost beside Cburnett's pieces
-# and the letter discs, every one of which is filled white (the user, 2026-10-19: "the
-# elephant svg isn't white, it's transparent"). The file kept here is the Commons
-# original with each of its outline's contours also drawn underneath in white, which
-# fills everything the outline encloses and changes nothing the outline draws.
-# `fill_body` makes it from the original, so a rebuild from an empty `svg/` comes back
-# filled; a file already on disk is read, not re-fetched, as DERIVED's are.
-FILLED = ("alfil", "camel", "wazir")
-FILL_NOTE = (
-    "the outline's body filled white beneath it, so the piece is not see-through on a "
-    "board; the outline itself is unchanged"
-)
-
-_PATH_TOKEN = re.compile(
-    r"[MmZzLlHhVvCcSsQqTtAa]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?"
-)
-_ARITY = {"m": 2, "l": 2, "h": 1, "v": 1, "c": 6, "s": 4, "q": 4, "t": 2, "a": 7, "z": 0}
-
-
-def subpaths(d: str) -> list[str]:
-    """Split a path's data into its contours, each one a path of its own.
-
-    A relative ``m`` is measured from where the previous contour ended, so a contour
-    cut out as it stands would start somewhere else. Each one here opens with an
-    absolute ``M`` at the point the original reached, and the rest of its commands are
-    copied as written, which leaves every later relative step where it was.
-    """
-    tokens = _PATH_TOKEN.findall(d)
-    x = y = start_x = start_y = 0.0
-    out: list[list[str]] = []
-    i = 0
-    command = ""
-    while i < len(tokens):
-        if tokens[i].isalpha():
-            command = tokens[i]
-            i += 1
-        lower = command.lower()
-        rel = command.islower()
-        if lower == "z":
-            x, y = start_x, start_y
-            out[-1].append(command)
-            if i < len(tokens) and not tokens[i].isalpha():
-                raise SystemExit("path data has numbers after a closepath")
-            continue
-        args = [float(t) for t in tokens[i : i + _ARITY[lower]]]
-        written = tokens[i : i + _ARITY[lower]]
-        i += _ARITY[lower]
-        if lower == "m":
-            x, y = (x + args[0], y + args[1]) if rel else (args[0], args[1])
-            start_x, start_y = x, y
-            out.append([f"M{x:.4f} {y:.4f}"])
-            # Further pairs after a moveto are line-tos of the same kind.
-            command = "l" if rel else "L"
-            continue
-        out[-1].append(command + " " + " ".join(written))
-        if lower == "h":
-            x = x + args[0] if rel else args[0]
-        elif lower == "v":
-            y = y + args[0] if rel else args[0]
-        else:
-            x, y = (x + args[-2], y + args[-1]) if rel else (args[-2], args[-1])
-    return [" ".join(parts) for parts in out]
-
-
-def fill_body(blob: bytes) -> bytes:
-    """An outline glyph with its body filled white underneath (see FILLED)."""
-    text = blob.decode("utf-8")
-    found = re.search(r'<path d="([^"]+)"', text)
-    if found is None or text.count("<path") != 1:
-        raise SystemExit("fill_body expects one outline <path>, as Quivira's are")
-    under = "".join(f'<path d="{part}"/>' for part in subpaths(found.group(1)))
-    return text.replace("<path ", '<g fill="#fff">' + under + "</g><path ", 1).encode(
-        "utf-8"
-    )
 
 # Single-colour glyphs. Shogi and xiangqi distinguish the two players by
 # rotating the piece, not by recolouring it, so one file serves both seats.
@@ -435,6 +349,97 @@ def view_box(blob: bytes) -> str:
     raise SystemExit("svg has neither viewBox nor numeric width/height")
 
 
+# The pieces drawn here in Cburnett's grammar (plan-visual.md §7, V9): `draw.py` writes
+# them, and this records each with its licence, read from what it is made of. A drawing
+# of the grammar's own parts is original work released CC0; one that uses Cburnett's
+# knight head is his work rearranged, credited to him under CC BY-SA 3.0. Like LOCAL and
+# DERIVED, `main()` never downloads or overwrites them.
+#
+# The alfil, camel and wazir were Commons files once, Quivira's font glyphs (White/Black
+# alfil.svg, White/Black chess camel.svg, White/Black wazir.svg), a second style beside
+# Cburnett's whose white forms had to be filled to stop the square showing through. They
+# are drawn here now, in the grammar (Q557b).
+def drawn() -> dict[str, dict]:
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from draw import DRAWN, SEATS
+
+    out: dict[str, dict] = {}
+    for slug, drawing in sorted(DRAWN.items()):
+        for seat in SEATS:
+            if drawing.cburnett:
+                letter = "l" if seat == "white" else "d"
+                credit = {
+                    "source": "https://commons.wikimedia.org/wiki/File:Chess_n" + letter
+                    + "t45.svg",
+                    **_BY_CBURNETT,
+                    "modified": "drawn for this repository from Cburnett's knight: "
+                    + drawing.says,
+                }
+            else:
+                credit = {
+                    **LOCAL_CREDIT,
+                    "modified": "drawn for this repository in Cburnett's grammar: "
+                    + drawing.says,
+                }
+            out[slug + "-" + seat] = credit
+    return out
+
+
+def record_local(manifest: dict[str, dict]) -> None:
+    """Every file drawn in this repository (LOCAL, DERIVED and the grammar's), read from
+    disk into `manifest`. None of them is downloaded, so this is all a rebuild without the
+    network (`--local`) has to do."""
+    for stem, description in sorted(LOCAL.items()):
+        credit = {**LOCAL_CREDIT, "modified": "drawn for this repository: " + description}
+        manifest[stem] = _from_disk(stem, credit, "local")
+    for stem, credit in sorted(DERIVED.items()):
+        manifest[stem] = _from_disk(stem, credit, "derived")
+    for stem, credit in drawn().items():
+        manifest[stem] = _from_disk(stem, credit, "drawn")
+
+
+def _from_disk(stem: str, credit: dict, kind: str) -> dict:
+    target = SVG_DIR / (stem + ".svg")
+    if not target.exists():
+        raise SystemExit(
+            f"{target.name} is drawn in this repository and is missing; restore it from git "
+            f"(or run draw.py) rather than re-running the fetch"
+        )
+    blob = target.read_bytes()
+    check_safe(stem, blob)
+    print(f"  {stem:<28} {credit['licence']:<14} {len(blob):>6} B  ({kind})")
+    return {"file": "svg/" + stem + ".svg", "viewBox": view_box(blob), "bytes": len(blob),
+            **credit}
+
+
+def write_manifest(manifest: dict[str, dict]) -> None:
+    (ROOT / "manifest.json").write_text(
+        json.dumps(dict(sorted(manifest.items())), indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8", newline="\n",
+    )
+
+
+def local_only() -> int:
+    """`--local`: re-record the files drawn here and keep every downloaded row as it is.
+
+    The downloaded rows are the existing manifest's, so this needs no network. A row whose
+    file is gone is dropped, which is how a Commons file replaced by a drawing leaves the
+    manifest and the credits.
+    """
+    old = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))
+    mine = set(LOCAL) | set(DERIVED) | set(drawn())
+    manifest = {
+        stem: row for stem, row in old.items()
+        if stem not in mine and (ROOT / row["file"]).exists()
+    }
+    record_local(manifest)
+    write_manifest(manifest)
+    write_credits(manifest)
+    print("\n" + str(len(manifest)) + " files -> " + str(SVG_DIR))
+    return 0
+
+
 def write_credits(manifest: dict[str, dict]) -> None:
     lines = [
         "# Credits",
@@ -443,10 +448,11 @@ def write_credits(manifest: dict[str, dict]) -> None:
         "Wikimedia Commons and are redistributed byte-for-byte unmodified; the",
         "xiangqi files are each one disc cut out of a four-up source sheet, the two",
         "chancellor and two archbishop files were drawn for this repository from",
-        "Cburnett's rook, bishop and knight and keep his licence, the white alfil,",
-        "camel and wazir have their outline's body filled white beneath it and keep",
-        "their licence, and the six rock/paper/scissors files were drawn for this",
-        "repository and released CC0.",
+        "Cburnett's rook, bishop and knight and keep his licence, and the six",
+        "rock/paper/scissors files were drawn for this repository and released CC0.",
+        "The pieces drawn in Cburnett's grammar",
+        "(`draw.py`) are original work released CC0, except those built on his",
+        "knight's head, which keep his CC BY-SA 3.0 and credit him.",
         "The notes column says which is which. Generated by `fetch.py`; edit that",
         "script, not this file.",
         "",
@@ -475,9 +481,6 @@ def main() -> int:
     for slug, letter in CBURNETT.items():
         wanted[slug + "-white"] = "File:Chess " + letter + "lt45.svg"
         wanted[slug + "-black"] = "File:Chess " + letter + "dt45.svg"
-    for slug, (light, dark) in PAIRS.items():
-        wanted[slug + "-white"] = light
-        wanted[slug + "-black"] = dark
     wanted.update(SINGLES)
 
     print("resolving " + str(len(wanted)) + " files on Commons ...")
@@ -496,16 +499,7 @@ def main() -> int:
         if info["mime"] != "image/svg+xml":
             raise SystemExit(title + " is " + info["mime"] + ", not SVG")
         target = SVG_DIR / (stem + ".svg")
-        filled = stem in {slug + "-white" for slug in FILLED}
-        if filled:
-            # Kept filled on disk (see FILLED), so its size is not Commons'; made from
-            # the original only when it is missing.
-            if target.exists():
-                blob = target.read_bytes()
-            else:
-                blob = fill_body(download(info["url"]))
-                time.sleep(THROTTLE)
-        elif target.exists():
+        if target.exists():
             # Resume. CREDITS.md attributes this file to `title`, so refuse to
             # vouch for bytes that are not the ones Commons is serving.
             blob = target.read_bytes()
@@ -528,8 +522,6 @@ def main() -> int:
             "licence": info["licence"],
             "licence_url": info["licence_url"],
         }
-        if filled:
-            manifest[stem]["modified"] = FILL_NOTE
         print(f"  {stem:<28} {info['licence']:<14} {len(blob):>6} B")
 
     # Xiangqi, second pass: one download yields four files, so it cannot share the
@@ -571,49 +563,14 @@ def main() -> int:
             stale.unlink()
             print("  removed stale strip " + stale.name)
 
-    # Authored here, not fetched. Read from disk and recorded so a rebuild keeps them.
-    for stem, description in sorted(LOCAL.items()):
-        target = SVG_DIR / (stem + ".svg")
-        if not target.exists():
-            raise SystemExit(
-                f"{target.name} is drawn in this repository and is missing; restore it "
-                f"from git rather than re-running the fetch"
-            )
-        blob = target.read_bytes()
-        check_safe(stem, blob)
-        manifest[stem] = {
-            "file": "svg/" + stem + ".svg",
-            "viewBox": view_box(blob),
-            "bytes": len(blob),
-            "author": LOCAL_CREDIT["author"],
-            "licence": LOCAL_CREDIT["licence"],
-            "licence_url": LOCAL_CREDIT["licence_url"],
-            "modified": "drawn for this repository: " + description,
-        }
-        print(f"  {stem:<28} {LOCAL_CREDIT['licence']:<14} {len(blob):>6} B  (local)")
+    # Drawn here, not fetched. Read from disk and recorded so a rebuild keeps them.
+    record_local(manifest)
 
-    # Drawn here from Cburnett's parts. Read from disk and credited to him.
-    for stem, credit in sorted(DERIVED.items()):
-        target = SVG_DIR / (stem + ".svg")
-        if not target.exists():
-            raise SystemExit(
-                f"{target.name} is drawn in this repository and is missing; restore it "
-                f"from git rather than re-running the fetch"
-            )
-        blob = target.read_bytes()
-        check_safe(stem, blob)
-        manifest[stem] = {"file": "svg/" + stem + ".svg", "viewBox": view_box(blob),
-                          "bytes": len(blob), **credit}
-        print(f"  {stem:<28} {credit['licence']:<14} {len(blob):>6} B  (derived)")
-
-    (ROOT / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8",
-        newline="\n",
-    )
+    write_manifest(manifest)
     write_credits(manifest)
     print("\n" + str(len(manifest)) + " files -> " + str(SVG_DIR))
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(local_only() if "--local" in sys.argv[1:] else main())

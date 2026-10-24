@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- queen and star: the queen's coronet with a six-pointed star. Drawn for the chess variant sandbox in Cburnett's grammar (assets/pieces/draw.py) and released CC0. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="45" height="45" viewBox="0 0 45 45">
+<g stroke-linecap="round" stroke-linejoin="round" fill-rule="nonzero">
+  <path d="M 9.5,39.5 L 35.5,39.5 L 35.5,37 C 35.5,36 34.5,35.5 33.5,35.5 L 11.5,35.5 C 10.5,35.5 9.5,36 9.5,37 Z" fill="#000000" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 11.5,35.5 L 33.5,35.5" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <path d="M 12,35.5 L 12,33 L 33,33 L 33,35.5 Z" fill="#000000" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 14,33 L 15,26.5 L 30,26.5 L 31,33 Z" fill="#000000" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 13.5,33 L 31.5,33 M 16.5,26.5 L 28.5,26.5" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <path d="M 15,26.5 L 10.5,16.5 L 16.5,21.5 L 19,15 L 22.5,20.5 L 26,15 L 28.5,21.5 L 34.5,16.5 L 30,26.5 Z" fill="#000000" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 22.5,1.95 L 25,6.62 L 30.29,6.45 L 27.5,10.95 L 30.29,15.45 L 25,15.28 L 22.5,19.95 L 20,15.28 L 14.71,15.45 L 17.5,10.95 L 14.71,6.45 L 20,6.62 Z" fill="#000000" stroke="#000000" stroke-width="1.97" transform="translate(5.4,4.68) scale(0.7600)"/>
+</g>
+</svg>

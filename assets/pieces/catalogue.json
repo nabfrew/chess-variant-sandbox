@@ -1,0 +1,1462 @@
+{
+ "categories": [
+  "leapers",
+  "riders",
+  "compounds",
+  "royals",
+  "pawns",
+  "oddities",
+  "shogi",
+  "xiangqi"
+ ],
+ "pieces": {
+  "alfil": {
+   "name": "alfil",
+   "category": "leapers",
+   "words": [
+    "elephant",
+    "(2,2) leaper",
+    "khon",
+    "A"
+   ],
+   "says": "an elephant's head on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "amazon": {
+   "name": "amazon",
+   "category": "compounds",
+   "words": [
+    "queen and knight",
+    "empress plus"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "anchor": {
+   "name": "anchor",
+   "category": "oddities",
+   "words": [
+    "immobile",
+    "stuck",
+    "fixed"
+   ],
+   "says": "an anchor",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "antelope": {
+   "name": "antelope",
+   "category": "leapers",
+   "words": [
+    "(3,4) leaper",
+    "antilope"
+   ],
+   "says": "long horns on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "archbishop": {
+   "name": "archbishop",
+   "category": "compounds",
+   "words": [
+    "bishop and knight",
+    "cardinal",
+    "princess"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "arrow": {
+   "name": "arrow",
+   "category": "riders",
+   "words": [
+    "archer",
+    "forward",
+    "shooter"
+   ],
+   "says": "an arrowhead on a shaft",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "axe": {
+   "name": "axe",
+   "category": "leapers",
+   "words": [
+    "berserker",
+    "woodcutter",
+    "executioner"
+   ],
+   "says": "an axe on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "banner": {
+   "name": "banner",
+   "category": "riders",
+   "words": [
+    "flag",
+    "herald",
+    "standard"
+   ],
+   "says": "a banner on a shaft",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "bell": {
+   "name": "bell",
+   "category": "oddities",
+   "words": [
+    "alarm",
+    "signal"
+   ],
+   "says": "a bell",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "berolina": {
+   "name": "berolina pawn",
+   "category": "pawns",
+   "words": [
+    "berolina",
+    "diagonal pawn"
+   ],
+   "says": "a pawn with a pointed head",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "bishop": {
+   "name": "bishop",
+   "category": "riders",
+   "words": [
+    "diagonal rider",
+    "courier"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "bison": {
+   "name": "bison",
+   "category": "leapers",
+   "words": [
+    "camel and zebra",
+    "cz"
+   ],
+   "says": "a bull's head on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "bolt": {
+   "name": "lightning",
+   "category": "oddities",
+   "words": [
+    "bolt",
+    "fast",
+    "zigzag",
+    "storm"
+   ],
+   "says": "a lightning bolt",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "bomb": {
+   "name": "bomb",
+   "category": "oddities",
+   "words": [
+    "explode",
+    "atomic",
+    "kamikaze"
+   ],
+   "says": "a bomb with a lit fuse",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "camel": {
+   "name": "camel",
+   "category": "leapers",
+   "words": [
+    "(1,3) leaper",
+    "dromedary",
+    "L"
+   ],
+   "says": "a camel on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "centaur": {
+   "name": "centaur",
+   "category": "compounds",
+   "words": [
+    "king and knight",
+    "crowned knight"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "champion": {
+   "name": "champion",
+   "category": "compounds",
+   "words": [
+    "wazir, alfil and dabbaba"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "chancellor": {
+   "name": "chancellor",
+   "category": "compounds",
+   "words": [
+    "rook and knight",
+    "marshal",
+    "empress"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "commoner": {
+   "name": "commoner",
+   "category": "royals",
+   "words": [
+    "non-royal king",
+    "guard"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "crown": {
+   "name": "crown",
+   "category": "oddities",
+   "words": [
+    "royal",
+    "throne",
+    "regalia"
+   ],
+   "says": "a crown",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "crowned-bishop": {
+   "name": "crowned bishop",
+   "category": "compounds",
+   "words": [
+    "dragon horse",
+    "bishop and king",
+    "bishop and wazir",
+    "promoted bishop"
+   ],
+   "says": "the bishop's mitre wearing a small crown",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "crowned-rook": {
+   "name": "crowned rook",
+   "category": "compounds",
+   "words": [
+    "dragon king",
+    "rook and king",
+    "rook and ferz",
+    "promoted rook"
+   ],
+   "says": "the rook's battlements wearing a small crown",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "dabbaba": {
+   "name": "dabbaba",
+   "category": "leapers",
+   "words": [
+    "(2,0) leaper",
+    "siege engine"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "dragon": {
+   "name": "dragon",
+   "category": "leapers",
+   "words": [
+    "wyvern",
+    "drake"
+   ],
+   "says": "a winged knight's head on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "drop": {
+   "name": "drop",
+   "category": "oddities",
+   "words": [
+    "water",
+    "rain",
+    "lake"
+   ],
+   "says": "a drop of water",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "duck": {
+   "name": "duck",
+   "category": "oddities",
+   "words": [
+    "duck chess",
+    "blocker",
+    "bird"
+   ],
+   "says": "a duck",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "emperor": {
+   "name": "emperor",
+   "category": "royals",
+   "words": [
+    "monarch",
+    "regent",
+    "royal"
+   ],
+   "says": "a wide body with a broad cross",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "eye": {
+   "name": "eye",
+   "category": "oddities",
+   "words": [
+    "watcher",
+    "sight",
+    "spy"
+   ],
+   "says": "an eye",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "fad": {
+   "name": "fad",
+   "category": "leapers",
+   "words": [
+    "ferz, alfil and dabbaba",
+    "fad"
+   ],
+   "says": "a diamond on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "ferz": {
+   "name": "ferz",
+   "category": "leapers",
+   "words": [
+    "met",
+    "advisor",
+    "one diagonal step"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "fish": {
+   "name": "fish",
+   "category": "leapers",
+   "words": [
+    "swimmer",
+    "carp",
+    "sea"
+   ],
+   "says": "a fish on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "flame": {
+   "name": "flame",
+   "category": "oddities",
+   "words": [
+    "fire",
+    "burn",
+    "bomb"
+   ],
+   "says": "a flame",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "frog": {
+   "name": "frog",
+   "category": "leapers",
+   "words": [
+    "ferz and threeleaper",
+    "fh"
+   ],
+   "says": "a frog's head on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "gem": {
+   "name": "gem",
+   "category": "leapers",
+   "words": [
+    "jewel",
+    "diamond",
+    "treasure"
+   ],
+   "says": "a cut gem on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "ghost": {
+   "name": "ghost",
+   "category": "oddities",
+   "words": [
+    "phantom",
+    "spirit",
+    "passes through"
+   ],
+   "says": "a ghost",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "giraffe": {
+   "name": "giraffe",
+   "category": "leapers",
+   "words": [
+    "(1,4) leaper"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "grasshopper": {
+   "name": "grasshopper",
+   "category": "riders",
+   "words": [
+    "hopper",
+    "g",
+    "jumps one piece"
+   ],
+   "says": "a chevron on a shaft",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "hammer": {
+   "name": "hammer",
+   "category": "oddities",
+   "words": [
+    "smith",
+    "builder",
+    "breaker"
+   ],
+   "says": "a hammer",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "heart": {
+   "name": "heart",
+   "category": "oddities",
+   "words": [
+    "life",
+    "love"
+   ],
+   "says": "a heart",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "hopper": {
+   "name": "chevron",
+   "category": "leapers",
+   "words": [
+    "jumper",
+    "leaper"
+   ],
+   "says": "a chevron on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "hourglass": {
+   "name": "hourglass",
+   "category": "oddities",
+   "words": [
+    "timer",
+    "clock",
+    "sand"
+   ],
+   "says": "an hourglass",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "inverted-king": {
+   "name": "king, upside down",
+   "category": "royals",
+   "words": [
+    "inverted",
+    "promoted"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "inverted-pawn": {
+   "name": "pawn, upside down",
+   "category": "pawns",
+   "words": [
+    "inverted",
+    "promoted"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "inverted-queen": {
+   "name": "queen, upside down",
+   "category": "riders",
+   "words": [
+    "inverted",
+    "promoted"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "key": {
+   "name": "key",
+   "category": "riders",
+   "words": [
+    "gate",
+    "unlock",
+    "keeper"
+   ],
+   "says": "a key on a shaft",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "king": {
+   "name": "king",
+   "category": "royals",
+   "words": [
+    "royal",
+    "shah",
+    "general"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "kirin": {
+   "name": "kirin",
+   "category": "leapers",
+   "words": [
+    "ferz and dabbaba",
+    "fd"
+   ],
+   "says": "a flame on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "knight": {
+   "name": "knight",
+   "category": "leapers",
+   "words": [
+    "(1,2) leaper",
+    "horse"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "leaf": {
+   "name": "leaf",
+   "category": "oddities",
+   "words": [
+    "plant",
+    "green",
+    "growth"
+   ],
+   "says": "a leaf",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "man": {
+   "name": "man",
+   "category": "royals",
+   "words": [
+    "mann",
+    "non-royal king"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "moon": {
+   "name": "moon",
+   "category": "compounds",
+   "words": [
+    "wizard",
+    "ferz and camel",
+    "crescent"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "mushroom": {
+   "name": "mushroom",
+   "category": "leapers",
+   "words": [
+    "toad",
+    "spore",
+    "fungus"
+   ],
+   "says": "a mushroom on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "night": {
+   "name": "night",
+   "category": "leapers",
+   "words": [
+    "moon",
+    "star",
+    "night leaper"
+   ],
+   "says": "a crescent and a star on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "nightrider": {
+   "name": "nightrider",
+   "category": "riders",
+   "words": [
+    "knight rider",
+    "nn"
+   ],
+   "says": "a knight's head before a crescent moon, on a shaft",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "paper": {
+   "name": "paper",
+   "category": "oddities",
+   "words": [
+    "rock paper scissors",
+    "sheet"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "pawn": {
+   "name": "pawn",
+   "category": "pawns",
+   "words": [
+    "soldier",
+    "footman"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "phoenix": {
+   "name": "phoenix",
+   "category": "leapers",
+   "words": [
+    "wazir and alfil",
+    "wa"
+   ],
+   "says": "spread wings on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "prince": {
+   "name": "prince",
+   "category": "royals",
+   "words": [
+    "crown prince",
+    "heir",
+    "royal commoner"
+   ],
+   "says": "a wide body with a small crown",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "queen": {
+   "name": "queen",
+   "category": "riders",
+   "words": [
+    "rook and bishop",
+    "vizier"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "queen-star": {
+   "name": "queen and star",
+   "category": "compounds",
+   "words": [
+    "queen plus",
+    "empress plus",
+    "super queen"
+   ],
+   "says": "the queen's coronet with a six-pointed star",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "ring-rider": {
+   "name": "ring",
+   "category": "riders",
+   "words": [
+    "circle",
+    "orbit",
+    "loop"
+   ],
+   "says": "a ring on a shaft",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "rock": {
+   "name": "rock",
+   "category": "oddities",
+   "words": [
+    "rock paper scissors",
+    "boulder"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "rook": {
+   "name": "rook",
+   "category": "riders",
+   "words": [
+    "chariot",
+    "castle",
+    "tower"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "rook-diamond": {
+   "name": "rook and diamond",
+   "category": "compounds",
+   "words": [
+    "rook and alfil",
+    "rook and fad"
+   ],
+   "says": "the rook's battlements with a diamond",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "rose": {
+   "name": "rose",
+   "category": "riders",
+   "words": [
+    "circular knight rider",
+    "qq"
+   ],
+   "says": "a rose on a shaft",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "royal-knight": {
+   "name": "royal knight",
+   "category": "royals",
+   "words": [
+    "royal knight",
+    "knight king"
+   ],
+   "says": "a wide body with a crowned knight's head",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "saltire-rider": {
+   "name": "saltire",
+   "category": "riders",
+   "words": [
+    "x",
+    "diagonal rider",
+    "cross"
+   ],
+   "says": "a diagonal cross on a shaft",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "scissors": {
+   "name": "scissors",
+   "category": "oddities",
+   "words": [
+    "rock paper scissors",
+    "cut"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "sergeant": {
+   "name": "sergeant",
+   "category": "pawns",
+   "words": [
+    "drill pawn",
+    "corporal"
+   ],
+   "says": "a pawn in a flat cap with a chevron",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "shield-king": {
+   "name": "warden",
+   "category": "royals",
+   "words": [
+    "guard",
+    "shield",
+    "defender"
+   ],
+   "says": "a wide body with a shield",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "ship": {
+   "name": "ship",
+   "category": "riders",
+   "words": [
+    "boat",
+    "sail"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "shogi-bishop": {
+   "name": "shogi bishop",
+   "category": "shogi",
+   "words": [
+    "bishop"
+   ],
+   "seats": [
+    "one"
+   ]
+  },
+  "shogi-gold": {
+   "name": "shogi gold general",
+   "category": "shogi",
+   "words": [
+    "gold"
+   ],
+   "seats": [
+    "one"
+   ]
+  },
+  "shogi-king": {
+   "name": "shogi king",
+   "category": "shogi",
+   "words": [
+    "king"
+   ],
+   "seats": [
+    "one"
+   ]
+  },
+  "shogi-knight": {
+   "name": "shogi knight",
+   "category": "shogi",
+   "words": [
+    "knight"
+   ],
+   "seats": [
+    "one"
+   ]
+  },
+  "shogi-lance": {
+   "name": "shogi lance",
+   "category": "shogi",
+   "words": [
+    "lance"
+   ],
+   "seats": [
+    "one"
+   ]
+  },
+  "shogi-pawn": {
+   "name": "shogi pawn",
+   "category": "shogi",
+   "words": [
+    "pawn"
+   ],
+   "seats": [
+    "one"
+   ]
+  },
+  "shogi-promoted-bishop": {
+   "name": "shogi dragon horse",
+   "category": "shogi",
+   "words": [
+    "promoted bishop"
+   ],
+   "seats": [
+    "one"
+   ]
+  },
+  "shogi-promoted-knight": {
+   "name": "shogi promoted knight",
+   "category": "shogi",
+   "words": [
+    "promoted knight"
+   ],
+   "seats": [
+    "one"
+   ]
+  },
+  "shogi-promoted-lance": {
+   "name": "shogi promoted lance",
+   "category": "shogi",
+   "words": [
+    "promoted lance"
+   ],
+   "seats": [
+    "one"
+   ]
+  },
+  "shogi-promoted-pawn": {
+   "name": "shogi tokin",
+   "category": "shogi",
+   "words": [
+    "promoted pawn"
+   ],
+   "seats": [
+    "one"
+   ]
+  },
+  "shogi-promoted-rook": {
+   "name": "shogi dragon king",
+   "category": "shogi",
+   "words": [
+    "promoted rook"
+   ],
+   "seats": [
+    "one"
+   ]
+  },
+  "shogi-promoted-silver": {
+   "name": "shogi promoted silver",
+   "category": "shogi",
+   "words": [
+    "promoted silver"
+   ],
+   "seats": [
+    "one"
+   ]
+  },
+  "shogi-rook": {
+   "name": "shogi rook",
+   "category": "shogi",
+   "words": [
+    "rook"
+   ],
+   "seats": [
+    "one"
+   ]
+  },
+  "shogi-silver": {
+   "name": "shogi silver general",
+   "category": "shogi",
+   "words": [
+    "silver"
+   ],
+   "seats": [
+    "one"
+   ]
+  },
+  "short-rook": {
+   "name": "short rook",
+   "category": "riders",
+   "words": [
+    "limited rook"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "snowflake": {
+   "name": "snowflake",
+   "category": "leapers",
+   "words": [
+    "ice",
+    "frost",
+    "six ways"
+   ],
+   "says": "a snowflake on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "soldier": {
+   "name": "soldier",
+   "category": "pawns",
+   "words": [
+    "footman",
+    "infantry",
+    "western soldier"
+   ],
+   "says": "a pawn in a crested helmet",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "spear": {
+   "name": "spear",
+   "category": "riders",
+   "words": [
+    "lance",
+    "forward rider",
+    "western lance"
+   ],
+   "says": "a spearhead on a shaft",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "squirrel": {
+   "name": "squirrel",
+   "category": "leapers",
+   "words": [
+    "dabbaba, alfil and knight",
+    "adn"
+   ],
+   "says": "an acorn on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "star-leaper": {
+   "name": "star leaper",
+   "category": "leapers",
+   "words": [
+    "star",
+    "general leaper"
+   ],
+   "says": "a five-pointed star on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "sword": {
+   "name": "sword",
+   "category": "riders",
+   "words": [
+    "blade",
+    "swordsman",
+    "duelist"
+   ],
+   "says": "a sword on a shaft",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "threeleaper": {
+   "name": "threeleaper",
+   "category": "leapers",
+   "words": [
+    "(3,0) leaper",
+    "three squares straight",
+    "H"
+   ],
+   "says": "a trefoil on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "tree": {
+   "name": "tree",
+   "category": "oddities",
+   "words": [
+    "forest",
+    "obstacle",
+    "fir"
+   ],
+   "says": "a fir tree",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "trident": {
+   "name": "trident",
+   "category": "riders",
+   "words": [
+    "three-way rider",
+    "sea"
+   ],
+   "says": "a trident on a shaft",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "tripper": {
+   "name": "tripper",
+   "category": "leapers",
+   "words": [
+    "(3,3) leaper",
+    "three squares diagonal",
+    "G"
+   ],
+   "says": "a triangle on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "unicorn": {
+   "name": "unicorn",
+   "category": "riders",
+   "words": [
+    "bishop and nightrider",
+    "bnn"
+   ],
+   "says": "a horned knight's head on a shaft",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "waffle": {
+   "name": "waffle",
+   "category": "leapers",
+   "words": [
+    "wazir and alfil",
+    "pheonix",
+    "wa"
+   ],
+   "says": "a square on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "wazir": {
+   "name": "wazir",
+   "category": "leapers",
+   "words": [
+    "one orthogonal step",
+    "vizier",
+    "W"
+   ],
+   "says": "a ring crossed by a plus, on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "xiangqi-advisor": {
+   "name": "xiangqi advisor",
+   "category": "xiangqi",
+   "words": [
+    "advisor",
+    "character"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "xiangqi-cannon": {
+   "name": "xiangqi cannon",
+   "category": "xiangqi",
+   "words": [
+    "cannon",
+    "character"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "xiangqi-chariot": {
+   "name": "xiangqi chariot",
+   "category": "xiangqi",
+   "words": [
+    "chariot",
+    "character"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "xiangqi-elephant": {
+   "name": "xiangqi elephant",
+   "category": "xiangqi",
+   "words": [
+    "elephant",
+    "character"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "xiangqi-general": {
+   "name": "xiangqi general",
+   "category": "xiangqi",
+   "words": [
+    "general",
+    "character"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "xiangqi-horse": {
+   "name": "xiangqi horse",
+   "category": "xiangqi",
+   "words": [
+    "horse",
+    "character"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "xiangqi-pictorial-advisor": {
+   "name": "xiangqi advisor, drawn",
+   "category": "xiangqi",
+   "words": [
+    "advisor",
+    "pictorial"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "xiangqi-pictorial-cannon": {
+   "name": "xiangqi cannon, drawn",
+   "category": "xiangqi",
+   "words": [
+    "cannon",
+    "pictorial"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "xiangqi-pictorial-chariot": {
+   "name": "xiangqi chariot, drawn",
+   "category": "xiangqi",
+   "words": [
+    "chariot",
+    "pictorial"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "xiangqi-pictorial-elephant": {
+   "name": "xiangqi elephant, drawn",
+   "category": "xiangqi",
+   "words": [
+    "elephant",
+    "pictorial"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "xiangqi-pictorial-general": {
+   "name": "xiangqi general, drawn",
+   "category": "xiangqi",
+   "words": [
+    "general",
+    "pictorial"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "xiangqi-pictorial-horse": {
+   "name": "xiangqi horse, drawn",
+   "category": "xiangqi",
+   "words": [
+    "horse",
+    "pictorial"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "xiangqi-pictorial-soldier": {
+   "name": "xiangqi soldier, drawn",
+   "category": "xiangqi",
+   "words": [
+    "soldier",
+    "pictorial"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "xiangqi-soldier": {
+   "name": "xiangqi soldier",
+   "category": "xiangqi",
+   "words": [
+    "soldier",
+    "character"
+   ],
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
+  "zebra": {
+   "name": "zebra",
+   "category": "leapers",
+   "words": [
+    "(2,3) leaper",
+    "z"
+   ],
+   "says": "a striped knight's head on a stem",
+   "seats": [
+    "white",
+    "black"
+   ]
+  }
+ }
+}

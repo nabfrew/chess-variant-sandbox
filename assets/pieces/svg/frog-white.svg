@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- frog: a frog's head on a stem. Drawn for the chess variant sandbox in Cburnett's grammar (assets/pieces/draw.py) and released CC0. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="45" height="45" viewBox="0 0 45 45">
+<g stroke-linecap="round" stroke-linejoin="round" fill-rule="nonzero">
+  <path d="M 9.5,39.5 L 35.5,39.5 L 35.5,37 C 35.5,36 34.5,35.5 33.5,35.5 L 11.5,35.5 C 10.5,35.5 9.5,36 9.5,37 Z" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 11.5,35.5 L 33.5,35.5" fill="none" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 14.5,35.5 C 16.5,33.5 18.5,32.5 19,30.5 L 26,30.5 C 26.5,32.5 28.5,33.5 30.5,35.5 Z" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 16.5,30.5 L 28.5,30.5 L 28.5,29.5 C 28.5,29 28,28.5 27.5,28.5 L 17.5,28.5 C 17,28.5 16.5,29 16.5,29.5 Z" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 18,30.5 L 27,30.5" fill="none" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 12.5,23 A 10,6 0 1 1 32.5,23 A 10,6 0 1 1 12.5,23 Z" fill="#ffffff" stroke="#000000" stroke-width="1.15" transform="translate(-6.75,-8.55) scale(1.3000)"/>
+  <path d="M 13.1,17.5 A 3.4,3.4 0 1 1 19.9,17.5 A 3.4,3.4 0 1 1 13.1,17.5 Z" fill="#ffffff" stroke="#000000" stroke-width="1.15" transform="translate(-6.75,-8.55) scale(1.3000)"/>
+  <path d="M 25.1,17.5 A 3.4,3.4 0 1 1 31.9,17.5 A 3.4,3.4 0 1 1 25.1,17.5 Z" fill="#ffffff" stroke="#000000" stroke-width="1.15" transform="translate(-6.75,-8.55) scale(1.3000)"/>
+  <path d="M 15.2,17 A 1.3,1.3 0 1 1 17.8,17 A 1.3,1.3 0 1 1 15.2,17 Z" fill="#000000" stroke="none" stroke-width="1.15" transform="translate(-6.75,-8.55) scale(1.3000)"/>
+  <path d="M 27.2,17 A 1.3,1.3 0 1 1 29.8,17 A 1.3,1.3 0 1 1 27.2,17 Z" fill="#000000" stroke="none" stroke-width="1.15" transform="translate(-6.75,-8.55) scale(1.3000)"/>
+  <path d="M 17.5,24.5 C 20.5,26.5 24.5,26.5 27.5,24.5" fill="none" stroke="#000000" stroke-width="1.15" transform="translate(-6.75,-8.55) scale(1.3000)"/>
+</g>
+</svg>

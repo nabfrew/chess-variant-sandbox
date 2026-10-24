@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- bomb: a bomb with a lit fuse. Drawn for the chess variant sandbox in Cburnett's grammar (assets/pieces/draw.py) and released CC0. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="45" height="45" viewBox="0 0 45 45">
+<g stroke-linecap="round" stroke-linejoin="round" fill-rule="nonzero">
+  <path d="M 9.5,39.5 L 35.5,39.5 L 35.5,37 C 35.5,36 34.5,35.5 33.5,35.5 L 11.5,35.5 C 10.5,35.5 9.5,36 9.5,37 Z" fill="#000000" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 11.5,35.5 L 33.5,35.5" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <path d="M 24,16 L 28.5,16 L 28.5,20 L 24,20 Z" fill="#000000" stroke="#000000" stroke-width="1.13" transform="translate(-7.42,-11.71) scale(1.3300)"/>
+  <path d="M 13,27 A 8.5,8.5 0 1 1 30,27 A 8.5,8.5 0 1 1 13,27 Z" fill="#000000" stroke="#000000" stroke-width="1.13" transform="translate(-7.42,-11.71) scale(1.3300)"/>
+  <path d="M 29.5,10.5 L 30.2,12.79 L 32.53,12.25 L 30.9,14 L 32.53,15.75 L 30.2,15.21 L 29.5,17.5 L 28.8,15.21 L 26.47,15.75 L 28.1,14 L 26.47,12.25 L 28.8,12.79 Z" fill="#000000" stroke="#000000" stroke-width="1.13" transform="translate(-7.42,-11.71) scale(1.3300)"/>
+  <path d="M 17,23.5 C 18,21.5 19.5,20.5 21.5,20.2" fill="none" stroke="#ffffff" stroke-width="1.13" transform="translate(-7.42,-11.71) scale(1.3300)"/>
+</g>
+</svg>

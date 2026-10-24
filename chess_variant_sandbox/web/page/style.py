@@ -1380,6 +1380,18 @@ RULES = """
                     align-items: baseline; }
   .paletteList button { justify-self: start; }
   .paletteGames { white-space: nowrap; }
+  /* V9: the piece library's palette under a piece, a search and a chip a kind, then a
+     grid of drawings, each on the board's dark square so a white piece reads. */
+  .drawingPanel .chips { margin: 6px 0 4px; }
+  .drawingGrid { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px;
+                 grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+                 max-height: 340px; overflow-y: auto; }
+  .drawingGrid button { display: flex; flex-direction: column; align-items: center; gap: 3px;
+                        width: 100%; padding: 4px 2px; font-size: 11.5px; line-height: 1.2; }
+  .drawingGrid img { width: 40px; height: 40px; background: var(--sq-dk);
+                     border-radius: var(--r-ctl); }
+  .drawingGrid button[aria-pressed="true"] { border-color: var(--act);
+                                             box-shadow: inset 0 0 0 1px var(--act); }
   /* What each player holds off the board, under a still of the opening position. */
   .stillHand { gap: 5px; margin-top: 6px; align-items: baseline; }
   /* Q852: the line under a still board naming each wild piece's walk that jumps, with a

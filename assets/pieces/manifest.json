@@ -1,22 +1,21 @@
 {
   "alfil-black": {
     "file": "svg/alfil-black.svg",
-    "viewBox": "0 0 12 12",
-    "bytes": 1309,
-    "source": "https://commons.wikimedia.org/wiki/File:Black_alfil.svg",
-    "author": "Kwamikagami",
-    "licence": "CC BY-SA 4.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+    "viewBox": "0 0 45 45",
+    "bytes": 3089,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: an elephant's head on a stem"
   },
   "alfil-white": {
     "file": "svg/alfil-white.svg",
-    "viewBox": "0 0 12 12",
-    "bytes": 3675,
-    "source": "https://commons.wikimedia.org/wiki/File:White_alfil.svg",
-    "author": "Kwamikagami",
-    "licence": "CC BY-SA 4.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0",
-    "modified": "the outline's body filled white beneath it, so the piece is not see-through on a board; the outline itself is unchanged"
+    "viewBox": "0 0 45 45",
+    "bytes": 3089,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: an elephant's head on a stem"
   },
   "amazon-black": {
     "file": "svg/amazon-black.svg",
@@ -35,6 +34,42 @@
     "author": "Mszulc29",
     "licence": "CC BY-SA 4.0",
     "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+  },
+  "anchor-black": {
+    "file": "svg/anchor-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1258,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: an anchor"
+  },
+  "anchor-white": {
+    "file": "svg/anchor-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1258,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: an anchor"
+  },
+  "antelope-black": {
+    "file": "svg/antelope-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1563,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: long horns on a stem"
+  },
+  "antelope-white": {
+    "file": "svg/antelope-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1563,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: long horns on a stem"
   },
   "archbishop-black": {
     "file": "svg/archbishop-black.svg",
@@ -56,6 +91,96 @@
     "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/",
     "modified": "drawn for this repository from Cburnett's knight and bishop (Chess_blt45.svg): the bishop's mitre with the knight's head rising from behind its point"
   },
+  "arrow-black": {
+    "file": "svg/arrow-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1315,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: an arrowhead on a shaft"
+  },
+  "arrow-white": {
+    "file": "svg/arrow-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1315,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: an arrowhead on a shaft"
+  },
+  "axe-black": {
+    "file": "svg/axe-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1364,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: an axe on a stem"
+  },
+  "axe-white": {
+    "file": "svg/axe-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1364,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: an axe on a stem"
+  },
+  "banner-black": {
+    "file": "svg/banner-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1479,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a banner on a shaft"
+  },
+  "banner-white": {
+    "file": "svg/banner-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1479,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a banner on a shaft"
+  },
+  "bell-black": {
+    "file": "svg/bell-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1129,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a bell"
+  },
+  "bell-white": {
+    "file": "svg/bell-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1129,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a bell"
+  },
+  "berolina-black": {
+    "file": "svg/berolina-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1166,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a pawn with a pointed head"
+  },
+  "berolina-white": {
+    "file": "svg/berolina-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1166,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a pawn with a pointed head"
+  },
   "bishop-black": {
     "file": "svg/bishop-black.svg",
     "viewBox": "0 0 45 45",
@@ -74,24 +199,77 @@
     "licence": "CC BY-SA 3.0",
     "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
   },
+  "bison-black": {
+    "file": "svg/bison-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1793,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a bull's head on a stem"
+  },
+  "bison-white": {
+    "file": "svg/bison-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1793,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a bull's head on a stem"
+  },
+  "bolt-black": {
+    "file": "svg/bolt-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 790,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a lightning bolt"
+  },
+  "bolt-white": {
+    "file": "svg/bolt-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 790,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a lightning bolt"
+  },
+  "bomb-black": {
+    "file": "svg/bomb-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1346,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a bomb with a lit fuse"
+  },
+  "bomb-white": {
+    "file": "svg/bomb-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1346,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a bomb with a lit fuse"
+  },
   "camel-black": {
     "file": "svg/camel-black.svg",
-    "viewBox": "0 0 12 12",
-    "bytes": 1414,
-    "source": "https://commons.wikimedia.org/wiki/File:Black_chess_camel.svg",
-    "author": "Kwamikagami",
-    "licence": "CC BY-SA 4.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+    "viewBox": "0 0 45 45",
+    "bytes": 1559,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a camel on a stem"
   },
   "camel-white": {
     "file": "svg/camel-white.svg",
-    "viewBox": "0 0 12 12",
-    "bytes": 3625,
-    "source": "https://commons.wikimedia.org/wiki/File:White_chess_camel.svg",
-    "author": "Kwamikagami",
-    "licence": "CC BY-SA 4.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0",
-    "modified": "the outline's body filled white beneath it, so the piece is not see-through on a board; the outline itself is unchanged"
+    "viewBox": "0 0 45 45",
+    "bytes": 1559,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a camel on a stem"
   },
   "centaur-black": {
     "file": "svg/centaur-black.svg",
@@ -167,6 +345,60 @@
     "licence": "GFDL",
     "licence_url": "http://www.gnu.org/copyleft/fdl.html"
   },
+  "crown-black": {
+    "file": "svg/crown-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1422,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a crown"
+  },
+  "crown-white": {
+    "file": "svg/crown-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1422,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a crown"
+  },
+  "crowned-bishop-black": {
+    "file": "svg/crowned-bishop-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2005,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: the bishop's mitre wearing a small crown"
+  },
+  "crowned-bishop-white": {
+    "file": "svg/crowned-bishop-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2005,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: the bishop's mitre wearing a small crown"
+  },
+  "crowned-rook-black": {
+    "file": "svg/crowned-rook-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1508,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: the rook's battlements wearing a small crown"
+  },
+  "crowned-rook-white": {
+    "file": "svg/crowned-rook-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1508,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: the rook's battlements wearing a small crown"
+  },
   "dabbaba-black": {
     "file": "svg/dabbaba-black.svg",
     "viewBox": "0 0 11.90625 11.90625",
@@ -188,20 +420,112 @@
   "dragon-black": {
     "file": "svg/dragon-black.svg",
     "viewBox": "0 0 45 45",
-    "bytes": 3453,
-    "source": "https://commons.wikimedia.org/wiki/File:Chess_Ddt45.svg",
-    "author": "en:User:Cburnett (knight); Conorpetersen (dragon)",
+    "bytes": 2354,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_ndt45.svg",
+    "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/",
+    "modified": "drawn for this repository from Cburnett's knight: a winged knight's head on a stem"
   },
   "dragon-white": {
     "file": "svg/dragon-white.svg",
     "viewBox": "0 0 45 45",
-    "bytes": 3181,
-    "source": "https://commons.wikimedia.org/wiki/File:Chess_Dlt45.svg",
-    "author": "en:User:Cburnett (knight); Conorpetersen (dragon)",
+    "bytes": 2354,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_nlt45.svg",
+    "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/",
+    "modified": "drawn for this repository from Cburnett's knight: a winged knight's head on a stem"
+  },
+  "drop-black": {
+    "file": "svg/drop-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 971,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a drop of water"
+  },
+  "drop-white": {
+    "file": "svg/drop-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 971,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a drop of water"
+  },
+  "duck-black": {
+    "file": "svg/duck-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1517,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a duck"
+  },
+  "duck-white": {
+    "file": "svg/duck-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1517,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a duck"
+  },
+  "emperor-black": {
+    "file": "svg/emperor-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1296,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a wide body with a broad cross"
+  },
+  "emperor-white": {
+    "file": "svg/emperor-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1296,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a wide body with a broad cross"
+  },
+  "eye-black": {
+    "file": "svg/eye-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1096,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: an eye"
+  },
+  "eye-white": {
+    "file": "svg/eye-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1096,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: an eye"
+  },
+  "fad-black": {
+    "file": "svg/fad-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1343,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a diamond on a stem"
+  },
+  "fad-white": {
+    "file": "svg/fad-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1343,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a diamond on a stem"
   },
   "ferz-black": {
     "file": "svg/ferz-black.svg",
@@ -221,6 +545,96 @@
     "licence": "CC0",
     "licence_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en"
   },
+  "fish-black": {
+    "file": "svg/fish-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1550,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a fish on a stem"
+  },
+  "fish-white": {
+    "file": "svg/fish-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1550,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a fish on a stem"
+  },
+  "flame-black": {
+    "file": "svg/flame-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1016,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a flame"
+  },
+  "flame-white": {
+    "file": "svg/flame-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1016,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a flame"
+  },
+  "frog-black": {
+    "file": "svg/frog-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2035,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a frog's head on a stem"
+  },
+  "frog-white": {
+    "file": "svg/frog-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2035,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a frog's head on a stem"
+  },
+  "gem-black": {
+    "file": "svg/gem-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1454,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a cut gem on a stem"
+  },
+  "gem-white": {
+    "file": "svg/gem-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1454,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a cut gem on a stem"
+  },
+  "ghost-black": {
+    "file": "svg/ghost-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1178,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a ghost"
+  },
+  "ghost-white": {
+    "file": "svg/ghost-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1178,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a ghost"
+  },
   "giraffe-black": {
     "file": "svg/giraffe-black.svg",
     "viewBox": "0 0 45 45",
@@ -238,6 +652,96 @@
     "author": "Francois-Pier",
     "licence": "CC BY-SA 3.0",
     "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "grasshopper-black": {
+    "file": "svg/grasshopper-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1304,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a chevron on a shaft"
+  },
+  "grasshopper-white": {
+    "file": "svg/grasshopper-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1304,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a chevron on a shaft"
+  },
+  "hammer-black": {
+    "file": "svg/hammer-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 929,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a hammer"
+  },
+  "hammer-white": {
+    "file": "svg/hammer-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 929,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a hammer"
+  },
+  "heart-black": {
+    "file": "svg/heart-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 825,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a heart"
+  },
+  "heart-white": {
+    "file": "svg/heart-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 825,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a heart"
+  },
+  "hopper-black": {
+    "file": "svg/hopper-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1186,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a chevron on a stem"
+  },
+  "hopper-white": {
+    "file": "svg/hopper-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1186,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a chevron on a stem"
+  },
+  "hourglass-black": {
+    "file": "svg/hourglass-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1168,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: an hourglass"
+  },
+  "hourglass-white": {
+    "file": "svg/hourglass-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1168,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: an hourglass"
   },
   "inverted-king-black": {
     "file": "svg/inverted-king-black.svg",
@@ -293,6 +797,24 @@
     "licence": "CC BY-SA 3.0",
     "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
   },
+  "key-black": {
+    "file": "svg/key-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1597,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a key on a shaft"
+  },
+  "key-white": {
+    "file": "svg/key-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1597,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a key on a shaft"
+  },
   "king-black": {
     "file": "svg/king-black.svg",
     "viewBox": "0 0 45 45",
@@ -311,6 +833,24 @@
     "licence": "CC BY-SA 3.0",
     "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
   },
+  "kirin-black": {
+    "file": "svg/kirin-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1435,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a flame on a stem"
+  },
+  "kirin-white": {
+    "file": "svg/kirin-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1435,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a flame on a stem"
+  },
   "knight-black": {
     "file": "svg/knight-black.svg",
     "viewBox": "0 0 45 45",
@@ -328,6 +868,24 @@
     "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
     "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "leaf-black": {
+    "file": "svg/leaf-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 922,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a leaf"
+  },
+  "leaf-white": {
+    "file": "svg/leaf-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 922,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a leaf"
   },
   "man-black": {
     "file": "svg/man-black.svg",
@@ -365,23 +923,61 @@
     "licence": "CC BY-SA 3.0",
     "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
   },
+  "mushroom-black": {
+    "file": "svg/mushroom-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1831,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a mushroom on a stem"
+  },
+  "mushroom-white": {
+    "file": "svg/mushroom-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1831,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a mushroom on a stem"
+  },
+  "night-black": {
+    "file": "svg/night-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1446,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a crescent and a star on a stem"
+  },
+  "night-white": {
+    "file": "svg/night-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1446,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a crescent and a star on a stem"
+  },
   "nightrider-black": {
     "file": "svg/nightrider-black.svg",
-    "viewBox": "0 0 15.820312 15.820312",
-    "bytes": 5937,
-    "source": "https://commons.wikimedia.org/wiki/File:Chess_Kdt45.svg",
-    "author": "Uray M. János",
+    "viewBox": "0 0 45 45",
+    "bytes": 2476,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_ndt45.svg",
+    "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/",
+    "modified": "drawn for this repository from Cburnett's knight: a knight's head before a crescent moon, on a shaft"
   },
   "nightrider-white": {
     "file": "svg/nightrider-white.svg",
-    "viewBox": "0 0 15.820312 15.820312",
-    "bytes": 5705,
-    "source": "https://commons.wikimedia.org/wiki/File:Chess_Klt45.svg",
-    "author": "Uray M. János",
+    "viewBox": "0 0 45 45",
+    "bytes": 2476,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_nlt45.svg",
+    "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/",
+    "modified": "drawn for this repository from Cburnett's knight: a knight's head before a crescent moon, on a shaft"
   },
   "paper-black": {
     "file": "svg/paper-black.svg",
@@ -419,6 +1015,42 @@
     "licence": "CC BY-SA 3.0",
     "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
   },
+  "phoenix-black": {
+    "file": "svg/phoenix-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1670,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: spread wings on a stem"
+  },
+  "phoenix-white": {
+    "file": "svg/phoenix-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1670,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: spread wings on a stem"
+  },
+  "prince-black": {
+    "file": "svg/prince-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1223,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a wide body with a small crown"
+  },
+  "prince-white": {
+    "file": "svg/prince-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1223,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a wide body with a small crown"
+  },
   "queen-black": {
     "file": "svg/queen-black.svg",
     "viewBox": "0 0 45 45",
@@ -428,6 +1060,24 @@
     "licence": "CC BY-SA 3.0",
     "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
   },
+  "queen-star-black": {
+    "file": "svg/queen-star-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1366,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: the queen's coronet with a six-pointed star"
+  },
+  "queen-star-white": {
+    "file": "svg/queen-star-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1366,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: the queen's coronet with a six-pointed star"
+  },
   "queen-white": {
     "file": "svg/queen-white.svg",
     "viewBox": "0 0 45 45",
@@ -436,6 +1086,24 @@
     "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
     "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "ring-rider-black": {
+    "file": "svg/ring-rider-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1354,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a ring on a shaft"
+  },
+  "ring-rider-white": {
+    "file": "svg/ring-rider-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1354,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a ring on a shaft"
   },
   "rock-black": {
     "file": "svg/rock-black.svg",
@@ -464,6 +1132,24 @@
     "licence": "CC BY-SA 3.0",
     "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
   },
+  "rook-diamond-black": {
+    "file": "svg/rook-diamond-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1671,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: the rook's battlements with a diamond"
+  },
+  "rook-diamond-white": {
+    "file": "svg/rook-diamond-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1671,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: the rook's battlements with a diamond"
+  },
   "rook-white": {
     "file": "svg/rook-white.svg",
     "viewBox": "0 0 45 45",
@@ -472,6 +1158,62 @@
     "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
     "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "rose-black": {
+    "file": "svg/rose-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2375,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a rose on a shaft"
+  },
+  "rose-white": {
+    "file": "svg/rose-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2375,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a rose on a shaft"
+  },
+  "royal-knight-black": {
+    "file": "svg/royal-knight-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2405,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_ndt45.svg",
+    "author": "Cburnett",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/",
+    "modified": "drawn for this repository from Cburnett's knight: a wide body with a crowned knight's head"
+  },
+  "royal-knight-white": {
+    "file": "svg/royal-knight-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 2405,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_nlt45.svg",
+    "author": "Cburnett",
+    "licence": "CC BY-SA 3.0",
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/",
+    "modified": "drawn for this repository from Cburnett's knight: a wide body with a crowned knight's head"
+  },
+  "saltire-rider-black": {
+    "file": "svg/saltire-rider-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1466,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a diagonal cross on a shaft"
+  },
+  "saltire-rider-white": {
+    "file": "svg/saltire-rider-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1466,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a diagonal cross on a shaft"
   },
   "scissors-black": {
     "file": "svg/scissors-black.svg",
@@ -490,6 +1232,42 @@
     "licence": "CC0",
     "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
     "modified": "drawn for this repository: an open pair of scissors"
+  },
+  "sergeant-black": {
+    "file": "svg/sergeant-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1294,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a pawn in a flat cap with a chevron"
+  },
+  "sergeant-white": {
+    "file": "svg/sergeant-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1294,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a pawn in a flat cap with a chevron"
+  },
+  "shield-king-black": {
+    "file": "svg/shield-king-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1370,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a wide body with a shield"
+  },
+  "shield-king-white": {
+    "file": "svg/shield-king-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1370,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a wide body with a shield"
   },
   "ship-black": {
     "file": "svg/ship-black.svg",
@@ -653,42 +1431,241 @@
     "licence": "CC BY-SA 3.0",
     "licence_url": "https://creativecommons.org/licenses/by-sa/3.0"
   },
+  "snowflake-black": {
+    "file": "svg/snowflake-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1274,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a snowflake on a stem"
+  },
+  "snowflake-white": {
+    "file": "svg/snowflake-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1274,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a snowflake on a stem"
+  },
+  "soldier-black": {
+    "file": "svg/soldier-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1465,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a pawn in a crested helmet"
+  },
+  "soldier-white": {
+    "file": "svg/soldier-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1465,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a pawn in a crested helmet"
+  },
+  "spear-black": {
+    "file": "svg/spear-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1469,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a spearhead on a shaft"
+  },
+  "spear-white": {
+    "file": "svg/spear-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1469,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a spearhead on a shaft"
+  },
+  "squirrel-black": {
+    "file": "svg/squirrel-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1488,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: an acorn on a stem"
+  },
+  "squirrel-white": {
+    "file": "svg/squirrel-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1488,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: an acorn on a stem"
+  },
+  "star-leaper-black": {
+    "file": "svg/star-leaper-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1268,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a five-pointed star on a stem"
+  },
+  "star-leaper-white": {
+    "file": "svg/star-leaper-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1268,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a five-pointed star on a stem"
+  },
+  "sword-black": {
+    "file": "svg/sword-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1613,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a sword on a shaft"
+  },
+  "sword-white": {
+    "file": "svg/sword-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1613,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a sword on a shaft"
+  },
+  "threeleaper-black": {
+    "file": "svg/threeleaper-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1690,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a trefoil on a stem"
+  },
+  "threeleaper-white": {
+    "file": "svg/threeleaper-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1690,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a trefoil on a stem"
+  },
+  "tree-black": {
+    "file": "svg/tree-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 997,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a fir tree"
+  },
+  "tree-white": {
+    "file": "svg/tree-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 997,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a fir tree"
+  },
+  "trident-black": {
+    "file": "svg/trident-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1402,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a trident on a shaft"
+  },
+  "trident-white": {
+    "file": "svg/trident-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1402,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a trident on a shaft"
+  },
+  "tripper-black": {
+    "file": "svg/tripper-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1297,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a triangle on a stem"
+  },
+  "tripper-white": {
+    "file": "svg/tripper-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1297,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a triangle on a stem"
+  },
   "unicorn-black": {
     "file": "svg/unicorn-black.svg",
     "viewBox": "0 0 45 45",
-    "bytes": 1608,
-    "source": "https://commons.wikimedia.org/wiki/File:Chess_Udt45.svg",
-    "author": "en:User:Cburnett (knight); Francois-Pier (unicorn)",
+    "bytes": 2441,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_ndt45.svg",
+    "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
-    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/",
+    "modified": "drawn for this repository from Cburnett's knight: a horned knight's head on a shaft"
   },
   "unicorn-white": {
     "file": "svg/unicorn-white.svg",
     "viewBox": "0 0 45 45",
-    "bytes": 1304,
-    "source": "https://commons.wikimedia.org/wiki/File:Chess_Ult45.svg",
-    "author": "en:User:Cburnett (knight); Francois-Pier (unicorn)",
+    "bytes": 2441,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_nlt45.svg",
+    "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
-    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/",
+    "modified": "drawn for this repository from Cburnett's knight: a horned knight's head on a shaft"
+  },
+  "waffle-black": {
+    "file": "svg/waffle-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1312,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a square on a stem"
+  },
+  "waffle-white": {
+    "file": "svg/waffle-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1312,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a square on a stem"
   },
   "wazir-black": {
     "file": "svg/wazir-black.svg",
-    "viewBox": "0 0 12 12",
-    "bytes": 1098,
-    "source": "https://commons.wikimedia.org/wiki/File:Black_wazir.svg",
-    "author": "Kwamikagami",
-    "licence": "CC BY-SA 4.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0"
+    "viewBox": "0 0 45 45",
+    "bytes": 1503,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a ring crossed by a plus, on a stem"
   },
   "wazir-white": {
     "file": "svg/wazir-white.svg",
-    "viewBox": "0 0 12 12",
-    "bytes": 2806,
-    "source": "https://commons.wikimedia.org/wiki/File:White_wazir.svg",
-    "author": "Kwamikagami",
-    "licence": "CC BY-SA 4.0",
-    "licence_url": "https://creativecommons.org/licenses/by-sa/4.0",
-    "modified": "the outline's body filled white beneath it, so the piece is not see-through on a board; the outline itself is unchanged"
+    "viewBox": "0 0 45 45",
+    "bytes": 1503,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a ring crossed by a plus, on a stem"
   },
   "xiangqi-advisor-black": {
     "file": "svg/xiangqi-advisor-black.svg",
@@ -973,19 +1950,21 @@
   "zebra-black": {
     "file": "svg/zebra-black.svg",
     "viewBox": "0 0 45 45",
-    "bytes": 4427,
-    "source": "https://commons.wikimedia.org/wiki/File:Chess_Zdt45.svg",
-    "author": "en:User:Cburnett (knight); Francois-Pier (zebra)",
+    "bytes": 2695,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_ndt45.svg",
+    "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
-    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/",
+    "modified": "drawn for this repository from Cburnett's knight: a striped knight's head on a stem"
   },
   "zebra-white": {
     "file": "svg/zebra-white.svg",
     "viewBox": "0 0 45 45",
-    "bytes": 5643,
-    "source": "https://commons.wikimedia.org/wiki/File:Chess_Zlt45.svg",
-    "author": "en:User:Cburnett (knight); Francois-Pier (zebra)",
+    "bytes": 2695,
+    "source": "https://commons.wikimedia.org/wiki/File:Chess_nlt45.svg",
+    "author": "Cburnett",
     "licence": "CC BY-SA 3.0",
-    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/"
+    "licence_url": "http://creativecommons.org/licenses/by-sa/3.0/",
+    "modified": "drawn for this repository from Cburnett's knight: a striped knight's head on a stem"
   }
 }

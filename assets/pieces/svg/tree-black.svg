@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- tree: a fir tree. Drawn for the chess variant sandbox in Cburnett's grammar (assets/pieces/draw.py) and released CC0. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="45" height="45" viewBox="0 0 45 45">
+<g stroke-linecap="round" stroke-linejoin="round" fill-rule="nonzero">
+  <path d="M 9.5,39.5 L 35.5,39.5 L 35.5,37 C 35.5,36 34.5,35.5 33.5,35.5 L 11.5,35.5 C 10.5,35.5 9.5,36 9.5,37 Z" fill="#000000" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 11.5,35.5 L 33.5,35.5" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+  <path d="M 20.7,31.5 L 24.3,31.5 L 24.3,36 L 20.7,36 Z" fill="#000000" stroke="#000000" stroke-width="1.01" transform="translate(-10.89,-17.18) scale(1.4840)"/>
+  <path d="M 12.5,31.5 L 17.5,25.5 L 15,25.5 L 19.5,19.5 L 17.5,19.5 L 22.5,13.5 L 27.5,19.5 L 25.5,19.5 L 30,25.5 L 27.5,25.5 L 32.5,31.5 Z" fill="#000000" stroke="#000000" stroke-width="1.01" transform="translate(-10.89,-17.18) scale(1.4840)"/>
+</g>
+</svg>

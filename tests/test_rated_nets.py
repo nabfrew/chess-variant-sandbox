@@ -56,6 +56,13 @@ ROLLED_OUT = {
     "0be72e61ef24": "db5ef1bc938e",  # marchfield
     "2261f8203948": "db5ef1bc938e",  # rps annihilation (rps-v1)
     "3c639d277808": "db5ef1bc938e",  # demotion chess (hierarchy-fall)
+    # L2's batch 2 (plan-teacher §10.11, 2026-10-24): generation 0, accepted and confirmed.
+    "57667d7861ad": "db5ef1bc938e",  # amazon ladder (hierarchy-extended)
+    "a1805ac1adc1": "db5ef1bc938e",  # kyoto
+    "a2f0c65ceedf": "db5ef1bc938e",  # dobutsu
+    "add543cc28c3": "db5ef1bc938e",  # rps repaint (rps-v4)
+    "bdf2801ade24": "db5ef1bc938e",  # rps race (rps-v3)
+    "fb8a67625131": "db5ef1bc938e",  # jeson mor
 }
 
 

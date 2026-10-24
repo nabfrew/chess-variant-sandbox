@@ -13,6 +13,19 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-24
 
+### Six more games get a computer player that learned them
+
+Six more library games now have a computer player that learned the game by playing it, and it takes part when their score is
+measured: *amazon ladder*, *kyoto*, *dobutsu*, *rps repaint*, *rps race* and *jeson mor*. A stronger player finds what weaker
+ones missed, so their scores moved: *dobutsu* fell from 0.80 to 0.47, *rps race* turned out to favour whoever moves first and
+is no longer counted as playable, and *rps repaint* now is.
+
+### More pieces to draw your game with
+
+In the designer, each piece now has *choose a drawing*: a searchable palette of more than a hundred piece pictures in
+categories, 58 of them new and drawn in the style of the familiar chess set (among them a zebra, a nightrider, a unicorn and
+a dragon), each one easy to tell apart from the others even at a small size.
+
 ### A new *opposite colours*, and chess with nightriders
 
 *Opposite colours* has a new version. Its rook and queen are now colour-bound versions of chess's: the rook rides any number
