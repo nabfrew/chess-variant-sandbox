@@ -11,6 +11,7 @@ only tokens (`tests/test_style.py`). The look is plan-visual.md's club room (§3
 
 from __future__ import annotations
 
+from chess_variant_sandbox.web.landing import BLOCKS
 from chess_variant_sandbox.web.page.shell import BODY, HEAD, MONO, faces
 from chess_variant_sandbox.web.page.tokens import TOKENS
 
@@ -58,6 +59,10 @@ RULES = """
                                         text-overflow: ellipsis; white-space: nowrap; }
     /* Cut from the left, so what stays is the corner's last word: the person's own name. */
     header.top #who { direction: rtl; }
+    /* A visitor's corner is shortened on purpose to *sign in* (LP0): cut from the left it
+       read *… count*, the one word that says nothing without the rest. The reason is on
+       the sign-in page and the landing page in full. */
+    header.top #who .accountWhy { display: none; }
     .js header.top { flex-wrap: nowrap; }
     .js .menu { display: inline-flex; align-items: center; justify-content: center; order: 10;
                 width: var(--ctl-h); height: var(--ctl-h); padding: 0; color: var(--ink); }
@@ -229,6 +234,47 @@ RULES = """
   .ingredientHead { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
   .ingredientWeight { font-family: var(--f-mono); font-size: 13px; color: var(--muted); }
   .landingFoot:empty { display: none; }
+  /* LP2: the palette as a wall of words (`landing.BLOCKS`), one row a family: its name with
+     the family's colour (`--family`, set on the row by the hue rules after these) beside its
+     words, each a link to its section of /rules. Wider than the reading column, so a row's
+     words sit on a line or two at 1400; on a phone each row's words are one rail that
+     scrolls sideways inside the row, and the page itself never does. */
+  .landingWall { max-width: none; }
+  .landingWall > p, .landingWall > h3 { max-width: 760px; }
+  .wall { margin: 14px 0 0; display: grid; }
+  .wallRow { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 16px;
+             align-items: baseline; padding: 12px 0; border-top: 1px solid var(--line);
+             --family: var(--muted); }
+  .wallRow dt { font-family: var(--f-head); font-size: 18px; line-height: 24px;
+                display: flex; gap: 8px; align-items: center; }
+  .wallRow dd { margin: 0; display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+  .wall .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none;
+                  background: var(--family); }
+  .landing a.wallWord { display: inline-flex; align-items: center; min-height: var(--chip-h);
+                        padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px;
+                        background: var(--panel); color: var(--ink); font-size: 14px;
+                        line-height: 18px; text-decoration: none; white-space: nowrap;
+                        transition: border-color .2s, box-shadow .2s, transform .2s; }
+  .landing a.wallWord:hover, .landing a.wallWord:focus-visible {
+    border-color: var(--family); box-shadow: inset 3px 0 0 var(--family);
+    transform: translateY(-1px); }
+  .wallBand { margin-top: 26px; padding: 20px 24px; border-radius: 12px;
+              background: var(--act-tint); display: flex; flex-wrap: wrap; gap: 12px 24px;
+              align-items: center; justify-content: space-between; }
+  .wallBand p { margin: 0; font-family: var(--f-head); font-size: 24px; line-height: 30px; }
+  @media (prefers-reduced-motion: reduce) {
+    .landing a.wallWord { transition: none; }
+    .landing a.wallWord:hover, .landing a.wallWord:focus-visible { transform: none; }
+  }
+  @media (max-width: 760px) {
+    .wallRow { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 10px 0; }
+    .wallRow dd { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+                  overscroll-behavior-x: contain; padding: 2px 0;
+                  mask-image: linear-gradient(to right, var(--ink) 82%, transparent); }
+    .wallRow dd.atEnd { mask-image: none; }
+    .wallBand { padding: 16px; }
+    .wallBand p { font-size: 21px; line-height: 27px; }
+  }
   /* Q741: *Made by members*, straight under the opening board. Wider than the reading
      column, so four games sit across at 1120 px. The shelf is one row of a fixed height
      whatever it holds -- nothing while the listing loads, up to four games, or the
@@ -1667,6 +1713,12 @@ RULES = """
   /* --- tabs, on the board page --- */
   .tabs { margin-bottom: 10px; }
   .tabpane { max-height: 58vh; overflow-y: auto; }"""
+
+# LP2: each family of rules on the landing's wall of words reads its colour from its own
+# class (choice E1 of `docs/plan-landing.md` §4: the map's per-kind hues), made from
+# `landing.BLOCKS` so a row and its colour are named in one place.
+RULES += "".join(f"\n  .{block.hue} {{ --family: var(--{block.colour}); }}"
+                 for block in BLOCKS)
 
 # The three families, each with its system fallback after it (§3.1).
 FAMILIES = f"""

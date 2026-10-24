@@ -509,6 +509,24 @@
     "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
     "modified": "drawn for this repository in Cburnett's grammar: an eye"
   },
+  "facing-pawn-black": {
+    "file": "svg/facing-pawn-black.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1125,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a pawn bearing an arrow"
+  },
+  "facing-pawn-white": {
+    "file": "svg/facing-pawn-white.svg",
+    "viewBox": "0 0 45 45",
+    "bytes": 1125,
+    "author": "Chess variant sandbox",
+    "licence": "CC0",
+    "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "modified": "drawn for this repository in Cburnett's grammar: a pawn bearing an arrow"
+  },
   "fad-black": {
     "file": "svg/fad-black.svg",
     "viewBox": "0 0 45 45",

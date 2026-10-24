@@ -4988,8 +4988,12 @@ class TestTheWayInToTheSitesOwnPages:
             " players: true, round: true }) })"
         )
         # L7 (`docs/archive/plan-launch.md` §4): what an account adds, in one line beside it.
-        assert drawn["who"] == [{"text": "sign in", "href": "/signin"},
-                                " to make your games count"]
+        # LP0: the reason is its own span, which a phone's corner drops (`style.py`), so
+        # there the corner reads *sign in* whole rather than *… count*.
+        signin, why = drawn["who"]
+        assert signin == {"text": "sign in", "href": "/signin"}
+        assert (why["tag"], why["className"], why["_text"]) == (
+            "span", "accountWhy", " to make your games count")
         assert drawn["foot"] == [
             {"text": "games", "href": "/game"},
             " · ",
@@ -5011,6 +5015,21 @@ class TestTheWayInToTheSitesOwnPages:
             " · ",
             {"text": "contact", "href": "https://github.com/nabfrew"},
         ]
+
+    def test_a_phone_shortens_the_visitors_corner_to_sign_in(self) -> None:
+        """LP0: at 375 the corner was cut from the left to *… count*. Inside the phone's
+        rules the reason is dropped, and only there: a desk keeps the whole line."""
+        import re
+
+        from chess_variant_sandbox.web.page import style
+
+        rule = "header.top #who .accountWhy { display: none; }"
+        assert style.RULES.count(rule) == 1
+        before = style.RULES[:style.RULES.index(rule)]
+        phone = before.rindex("@media (max-width: 760px)")
+        assert before.count("{", phone) - before.count("}", phone) == 1, "inside the media rule"
+        assert not re.search(r"\.accountWhy\s*\{[^}]*display:\s*none",
+                             style.RULES[:phone])
 
     def test_players_is_linked_only_once_the_list_starts(self) -> None:
         """L3 of `docs/archive/plan-launch.md` §3.3: below five people `/api/me` says

@@ -327,6 +327,16 @@
     "repetition_draw": 3,
     "no_progress_draw": 128
   },
+  "appearance": {
+    "icons": {
+      "P": "pawn",
+      "N": "knight",
+      "S": "alfil",
+      "R": "rook",
+      "F": "ferz",
+      "K": "king"
+    }
+  },
   "provenance": {
     "added": "2026-10-09",
     "origin": "human",

@@ -239,6 +239,67 @@ class TestThePalette:
             assert needle in PAGE, needle
 
 
+REPOSITORY = PIECES.parents[1]
+LIBRARY_SPECS = sorted([*(REPOSITORY / "rulesets").glob("*.json"),
+                        *(REPOSITORY / "archive").glob("*.json")])
+
+# The library pieces drawn as their letter, because no drawing names them (PI1's audit,
+# docs/reference/piece-library-audit.md). A new drawing that names one of these should
+# dress it, and a new library game whose piece has no drawing is added here on purpose.
+LETTERS = {
+    ("kraken-ford", "X"),  # kraken
+    ("pitchfork", "W"), ("wolves", "W"), ("wolves-bounty", "W"), ("wolves-patrol", "W"),
+    ("the-golem-well", "G"),  # golem
+    ("watering-hole", "C"), ("watering-hole", "D"), ("watering-hole", "R"),  # cat, dog, rat
+}
+
+
+def _drawn(path: Path) -> list[tuple[dict, list]]:
+    """Each piece of a library game beside the pair of pictures the boards draw it with."""
+    from chess_variant_sandbox.viz.pieces import icons_for
+
+    spec = json.loads(path.read_text(encoding="utf-8"))
+    pieces = spec["pieces"]
+    art = icons_for([p.get("name", p["id"]) for p in pieces], [p["id"] for p in pieces],
+                    (spec.get("appearance") or {}).get("icons"))
+    return list(zip(pieces, art, strict=True))
+
+
+class TestTheLibraryWearsTheMenu:
+    """PI1: every picture a library game draws is one the designer's piece menu offers, and
+    no library game keeps a letter where a drawing names its piece."""
+
+    def test_every_picture_a_library_game_draws_is_in_the_menu(self) -> None:
+        offered = {p["slug"] for p in piece_library.palette()["pieces"]}
+        strays = []
+        for path in LIBRARY_SPECS:
+            for piece, pair in _drawn(path):
+                for icon in pair:
+                    if icon is None:
+                        continue
+                    slug = re.sub(r"-(white|black)$", "", icon["stem"])
+                    if slug not in offered:
+                        strays.append((path.stem, piece["id"], icon["stem"]))
+        assert not strays, strays
+
+    def test_only_the_pieces_no_drawing_names_are_letters(self) -> None:
+        letters = {(path.stem, piece["id"]) for path in LIBRARY_SPECS
+                   for piece, pair in _drawn(path) if not any(pair)}
+        assert letters == LETTERS
+
+    @pytest.mark.parametrize(("game", "piece", "slug"), [
+        ("knightmate", "N", "royal-knight"), ("bastion", "K", "shield-king"),
+        ("bastion", "A", "arrow"), ("weathervane", "P", "facing-pawn"),
+        ("weathervane-half-turn", "P", "facing-pawn"), ("marchfield", "S", "soldier"),
+        ("riders-and-leapers", "G", "commoner"), ("stones", "X", "rock"),
+        ("sittuyin", "S", "alfil"), ("opposite-colours", "C", "camel"),
+    ])
+    def test_the_audits_swaps(self, game: str, piece: str, slug: str) -> None:
+        path = next(p for p in LIBRARY_SPECS if p.stem == game)
+        pair = dict((p["id"], art) for p, art in _drawn(path))[piece]
+        assert [icon["stem"] for icon in pair] == [slug + "-white", slug + "-black"]
+
+
 class TestAPictureIsNotARule:
     def test_naming_a_new_drawing_moves_no_hash(self) -> None:
         """A game is its mechanics: dressing a piece in any drawing of the library leaves

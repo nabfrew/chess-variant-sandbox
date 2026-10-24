@@ -1,5 +1,5 @@
 {
- "source_commit": "2599f4d411e12f7813c9fb4e4b4c604113c122a3",
+ "source_commit": "a536f8403cc55cd27ecdc95f10cd1f04ff6f0dfc",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -196,8 +196,8 @@
   },
   {
    "path": "archive/hierarchy-extended.json",
-   "bytes": 5870,
-   "sha256": "25e53d8eee75149a95ff41fe9481e9cc045b7373ca4caf7e8b0d8e72a1860343"
+   "bytes": 5967,
+   "sha256": "150dd949d50a4a6e46eb7d8e3b0e8762ae3028750a012a52e554435d045912c7"
   },
   {
    "path": "archive/hierarchy-fall.json",
@@ -231,8 +231,8 @@
   },
   {
    "path": "archive/kraken-ford.json",
-   "bytes": 7340,
-   "sha256": "0c404cf61f50dc298a656474d6a066d52a3ed2d62a3e826e5e4bb791b75cad4f"
+   "bytes": 7403,
+   "sha256": "49eb6fd562c202de0efcfc87dff9f3cb1e97891e271bbbf8523057fe02eaf7bd"
   },
   {
    "path": "archive/kyoto.json",
@@ -356,8 +356,8 @@
   },
   {
    "path": "archive/sittuyin.json",
-   "bytes": 6740,
-   "sha256": "da555fccc7f76649bfff476ad825c52fa827d91924f853132c741e9d8559e0b8"
+   "bytes": 6900,
+   "sha256": "3aae0f81681ae035e28dbea0d40f85fea90a92fa30a43622004507ea96700ef8"
   },
   {
    "path": "archive/sluice.json",
@@ -396,13 +396,13 @@
   },
   {
    "path": "archive/weathervane-half-turn.json",
-   "bytes": 8282,
-   "sha256": "e82103863d526d11313419dd59719e3d9436484213390b72c705f4ff9f6eeb05"
+   "bytes": 7076,
+   "sha256": "7677ef67d11c2615c5ef93ad446310aa999ab82fbb9ed0de47c553a74638775c"
   },
   {
    "path": "archive/weathervane.json",
-   "bytes": 8791,
-   "sha256": "c48d768179efaab94ca5bfa0ad321a414eae0f20af321219a699a6e191e99669"
+   "bytes": 7585,
+   "sha256": "a847a333dba1d204160dc4bf509668d1a53cbb90be6a95213f26a7a8c3eefdf3"
   },
   {
    "path": "archive/wolves-bounty.json",
@@ -431,23 +431,23 @@
   },
   {
    "path": "assets/pieces/CREDITS.md",
-   "bytes": 42748,
-   "sha256": "053cfb02b0253a66aa0286ea76035fd7454e88c63c51da7bdb1f4521ee2ef232"
+   "bytes": 43144,
+   "sha256": "9440097447ca79703b89229d9414347db874ea80718b31f6d82d67f5a246e617"
   },
   {
    "path": "assets/pieces/README.md",
    "bytes": 10730,
-   "sha256": "5670f02d5c85b1739330c5482abc14ff4e43a84ba3c686787094ebdd88143db6"
+   "sha256": "215ca9c3d7cabb66a1a1d4e33ad93e8574cdab8134c184d0fec1ff848c2e0cff"
   },
   {
    "path": "assets/pieces/aliases.json",
-   "bytes": 2366,
-   "sha256": "e2e67b63b612fafc211978e88b7593d6f8b1ca3ce2ed0b7b6f52e15732b768c6"
+   "bytes": 2425,
+   "sha256": "134e6c0dc150830f1d0df7c835effbe9fcf33ece6f6a3d4650261390d556767d"
   },
   {
    "path": "assets/pieces/catalogue.json",
-   "bytes": 21845,
-   "sha256": "7c43c3eb90607e3e7a5fc1cdc991510050be30e04c42399bb2d71525974e501e"
+   "bytes": 22090,
+   "sha256": "2c01022e852efaebc213429d208327ab5035b2095acb9135bb9c271ddcb474f8"
   },
   {
    "path": "assets/pieces/catalogue.py",
@@ -466,8 +466,8 @@
   },
   {
    "path": "assets/pieces/draw.py",
-   "bytes": 54624,
-   "sha256": "d7d7e00daf1cc496428a5cdb06c8dd4f17f7d01b9f1b6cea55d4d80514d2308d"
+   "bytes": 55013,
+   "sha256": "75cc9f18372c54d933721a58042929ea63fa79d597528281e51c1f50702e5f43"
   },
   {
    "path": "assets/pieces/fetch.py",
@@ -476,13 +476,13 @@
   },
   {
    "path": "assets/pieces/index.html",
-   "bytes": 83344,
-   "sha256": "ac4b2b2cd9b35af96d288140822567b09751fabc6551764347d0bc2e019cd720"
+   "bytes": 84076,
+   "sha256": "d4cd60863c23a4151da71ea1ff52e9576cc3f2ec64af0755847ff963c7f6afbb"
   },
   {
    "path": "assets/pieces/manifest.json",
-   "bytes": 73387,
-   "sha256": "f5cf67c863255986ee4ed4aeff05fcb45d63299f7d5f43e69e55317e9840b766"
+   "bytes": 74073,
+   "sha256": "df589ae413aac3b0c1c86c82904d856e9745f9a5a39665fc0f125b4e7271ad58"
   },
   {
    "path": "assets/pieces/svg/alfil-black.svg",
@@ -763,6 +763,16 @@
    "path": "assets/pieces/svg/eye-white.svg",
    "bytes": 1096,
    "sha256": "0b8b04db58dcdc937862b6129c2ad9ccbc92ad5ca19dfe097ab20a49e54cd9d0"
+  },
+  {
+   "path": "assets/pieces/svg/facing-pawn-black.svg",
+   "bytes": 1125,
+   "sha256": "ed7fe67b915ff3099660d5bf266ae4e01f661451e2c77128f7e5e275ce6881df"
+  },
+  {
+   "path": "assets/pieces/svg/facing-pawn-white.svg",
+   "bytes": 1125,
+   "sha256": "809ae1197bd1dfb04d804c6142c74efb9bcbebbfe7f637af69099b36c378aa1f"
   },
   {
    "path": "assets/pieces/svg/fad-black.svg",
@@ -2601,8 +2611,8 @@
   },
   {
    "path": "chess_variant_sandbox/spec/plain.py",
-   "bytes": 56977,
-   "sha256": "307a442418a5becc6170c42c04fb1ce4b01b78661bf8eb5926981e1bc10f1ae0"
+   "bytes": 59286,
+   "sha256": "5ded74afeb1ee46047e668db68d5016c65297c3fba225726bd43b5a818bbd153"
   },
   {
    "path": "chess_variant_sandbox/spec/reachability.py",
@@ -2816,8 +2826,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/landing.py",
-   "bytes": 38350,
-   "sha256": "d26b91113fb99b275d9d6aac3b97b28211443ae7e449dce57af96f5d6c8c4185"
+   "bytes": 48790,
+   "sha256": "362ce2eab21812c6f91ac313607e9c3e65315170512be66e48442c905145b91c"
   },
   {
    "path": "chess_variant_sandbox/web/launch.py",
@@ -2926,8 +2936,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/page/style.py",
-   "bytes": 113200,
-   "sha256": "7a5eb27b8b7e7f1f8c80789b19541ffa464f0955f90995e477c92fcf5f8b4c47"
+   "bytes": 116656,
+   "sha256": "824e8800c0e2f898c1417c0214840c5649af412f004bfd2ec702308212dcfddd"
   },
   {
    "path": "chess_variant_sandbox/web/page/tokens.py",
@@ -3026,8 +3036,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/static/page/core.js",
-   "bytes": 87421,
-   "sha256": "bd57fb29525c13bac61547e4853a89051a294c2cd9b0ef50270359e79825ad7a"
+   "bytes": 87795,
+   "sha256": "d4d19f03a16e6202e871c4b33ebcab4cfd2996a26c1952753885ce45bb0107e3"
   },
   {
    "path": "chess_variant_sandbox/web/static/page/design.js",
@@ -3051,8 +3061,8 @@
   },
   {
    "path": "chess_variant_sandbox/web/static/page/landing.js",
-   "bytes": 13787,
-   "sha256": "23acc774f3a494d7412044ca2de5397f05958fd4f539df2a70185cc016271a8c"
+   "bytes": 14355,
+   "sha256": "8aeb0c0f7808cb42e24bdf3a9bea48fab84e4e827061a7634588252bce7cd79b"
   },
   {
    "path": "chess_variant_sandbox/web/static/page/measure.js",
@@ -3175,14 +3185,49 @@
    "sha256": "0e8d2550baea17eb3072c4f919b36fbf9852bb49dba948549872e713863c0834"
   },
   {
+   "path": "chess_variant_sandbox/web/stories.py",
+   "bytes": 43067,
+   "sha256": "c2ec5904471e8a342ccdbfb09704da5bc02213f5d19fb633df829d7bc393dafc"
+  },
+  {
+   "path": "chess_variant_sandbox/web/stories/copy_records.py",
+   "bytes": 2574,
+   "sha256": "12dd9716f388ba187ed6171e9f62b1b352400c05473831ab52a020ad97f54b13"
+  },
+  {
+   "path": "chess_variant_sandbox/web/stories/examples.json",
+   "bytes": 3632,
+   "sha256": "65f2f12f669c6055db8eae36138aa4e52560c119a2725b70b42d582e0fe2f904"
+  },
+  {
+   "path": "chess_variant_sandbox/web/stories/ground-for-good.json",
+   "bytes": 1726,
+   "sha256": "03d2c640558260e7dfb3dc5c2354e8b71adb803562f3b71da5227ae6daee5901"
+  },
+  {
+   "path": "chess_variant_sandbox/web/stories/ground-repaint.json",
+   "bytes": 1763,
+   "sha256": "3e3a47de8ca78b2bdffecbab6ac3b935b8d216daddb3f6cf5ea1d3a1cc34edbd"
+  },
+  {
+   "path": "chess_variant_sandbox/web/stories/make_examples.py",
+   "bytes": 2884,
+   "sha256": "3e4704a8237587abe8dbc7ec65b73c91573f1f7c170aec1fb1f19e8d546a29d6"
+  },
+  {
+   "path": "chess_variant_sandbox/web/stories/recorded.json",
+   "bytes": 4718,
+   "sha256": "1bc47a335a1d18d9921932f165a622ce17ea2fc9f799c884ff59d8605878c3e0"
+  },
+  {
    "path": "chess_variant_sandbox/winprob.py",
    "bytes": 16020,
    "sha256": "f7cd1224cd639abfa6dca74acf2badabab3798f307f745ed9bcae59b294e52ca"
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 144260,
-   "sha256": "4c09788c195671e3b97dc794ba4e49956fd5df02c63a3d1652a5aab30804db89"
+   "bytes": 144599,
+   "sha256": "c7742bb974d2dfc11328a66dce40225fa66485d96821aa8abe1f2d770fbdbb6d"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -3861,8 +3906,8 @@
   },
   {
    "path": "rulesets/bastion.json",
-   "bytes": 2473,
-   "sha256": "3b8d18bf0457a3c6e9a99cb33e090ad48579c0e06e066bf4e4d38a5b79f60e51"
+   "bytes": 2479,
+   "sha256": "deca87553821a21c312848f86128d13b216a66b2d414deb8a0ca8e81dabc75d8"
   },
   {
    "path": "rulesets/berolina.json",
@@ -5201,8 +5246,13 @@
   },
   {
    "path": "tests/test_landing.py",
-   "bytes": 23081,
-   "sha256": "de7234173f58533d2d450d0a32e0a07ef69ca471a8e4117aa20f5e3f31650855"
+   "bytes": 23098,
+   "sha256": "ab6d622a1bdc1ee0a072a49851730bf61fbef42a4593ae69308ec1d08bbc9d50"
+  },
+  {
+   "path": "tests/test_landing_wall.py",
+   "bytes": 10158,
+   "sha256": "6f303a4bc41e55d65689ad286d78b6d2c3c1b2492e5374af1f44ad028d4d4f28"
   },
   {
    "path": "tests/test_last_game_corners.py",
@@ -5366,8 +5416,8 @@
   },
   {
    "path": "tests/test_piece_library.py",
-   "bytes": 11894,
-   "sha256": "4c7e1b784a7e067dc04f2b582f5d5769804f4b6209cd1866fde8c9877b8db7b7"
+   "bytes": 14862,
+   "sha256": "dfffc0c0e09fae570e8bddf6626044b6f3fcaa176aa21d6507c2356818fda950"
   },
   {
    "path": "tests/test_pinwheel.py",
@@ -5381,8 +5431,8 @@
   },
   {
    "path": "tests/test_plain_words.py",
-   "bytes": 27880,
-   "sha256": "46abfd618ddf5a254ce03110f7f6a71e0adb68a765a51da54e382080b5ab2a96"
+   "bytes": 30933,
+   "sha256": "b9cb102fc8628f7bf5d002ec041146b316aba36a4860bb8f9dac6c0afbc55a3b"
   },
   {
    "path": "tests/test_play_rounds.py",
@@ -6210,9 +6260,14 @@
    "sha256": "d0729801b7200fd66d55dccd75870f4a63afa73dcf16af4ca264acf510734e97"
   },
   {
+   "path": "tests/test_stories.py",
+   "bytes": 21012,
+   "sha256": "8638c5f39b5af6f78761fe21a5f6779777eaba7de356161509beff8902760788"
+  },
+  {
    "path": "tests/test_style.py",
-   "bytes": 44037,
-   "sha256": "b01ef44108fa179c76d7993077843064702f2e63922efbf42cf5829f6941ad98"
+   "bytes": 44229,
+   "sha256": "6ef7a3eb87bdd9836756c3783dfac71db566f620f4204273480a93d38872cbe6"
   },
   {
    "path": "tests/test_tables_cache.py",
@@ -6266,8 +6321,8 @@
   },
   {
    "path": "tests/test_web.py",
-   "bytes": 766794,
-   "sha256": "f942998caf6b9d97931ac7d11175da71e8aa0f8e49b6d893fd29a90377420ebe"
+   "bytes": 767821,
+   "sha256": "cf84253be26a499fc24e5592254f1d0c1d43fdbfcd1660d246b480aabad4be0d"
   },
   {
    "path": "tests/test_web_board_fit.py",

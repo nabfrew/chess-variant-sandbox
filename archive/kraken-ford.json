@@ -311,6 +311,11 @@
     },
     "max_plies": 300
   },
+  "appearance": {
+    "icons": {
+      "H": "spear"
+    }
+  },
   "provenance": {
     "added": "2026-10-21",
     "origin": "generated",

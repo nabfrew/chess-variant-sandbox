@@ -70,6 +70,8 @@ script, not this file.
 | `emperor-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a wide body with a broad cross |
 | `eye-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: an eye |
 | `eye-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: an eye |
+| `facing-pawn-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a pawn bearing an arrow |
+| `facing-pawn-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a pawn bearing an arrow |
 | `fad-black.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a diamond on a stem |
 | `fad-white.svg` | Chess variant sandbox | [CC0](https://creativecommons.org/publicdomain/zero/1.0/) | original | drawn for this repository in Cburnett's grammar: a diamond on a stem |
 | `ferz-black.svg` | Sammy2012 | [CC0](http://creativecommons.org/publicdomain/zero/1.0/deed.en) | [Commons](https://commons.wikimedia.org/wiki/File:Chess_Fdt45.svg) |  |

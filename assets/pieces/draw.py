@@ -1110,6 +1110,11 @@ piece("sergeant", "sergeant", "pawns", "skirt", "cap",
       "a pawn in a flat cap with a chevron", ("drill pawn", "corporal"))
 piece("berolina", "berolina pawn", "pawns", "skirt", "onion",
       "a pawn with a pointed head", ("berolina", "diagonal pawn"), scale=0.88)
+# A pawn with a facing (weathervane): the board turns it to point, so its head is an arrow.
+# It replaces the upload the weathervane showcases carried until PI1, a pawn under an arrow
+# drawn in a second style the palette did not offer.
+piece("facing-pawn", "pointing pawn", "pawns", "skirt", "arrow",
+      "a pawn bearing an arrow", ("facing", "weathervane", "turning pawn", "heading"))
 
 # Oddities: a picture on the base.
 piece("anchor", "anchor", "oddities", "plinth", "anchor",

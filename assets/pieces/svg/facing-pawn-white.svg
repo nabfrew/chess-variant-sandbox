@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- pointing pawn: a pawn bearing an arrow. Drawn for the chess variant sandbox in Cburnett's grammar (assets/pieces/draw.py) and released CC0. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="45" height="45" viewBox="0 0 45 45">
+<g stroke-linecap="round" stroke-linejoin="round" fill-rule="nonzero">
+  <path d="M 9.5,39.5 L 35.5,39.5 L 35.5,37 C 35.5,36 34.5,35.5 33.5,35.5 L 11.5,35.5 C 10.5,35.5 9.5,36 9.5,37 Z" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 11.5,35.5 L 33.5,35.5" fill="none" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 12.5,35.5 C 13,30.5 16.5,27.5 19,26 L 26,26 C 28.5,27.5 32,30.5 32.5,35.5 Z" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 17.5,26 L 27.5,26 C 28,25 27.5,24 26.5,23.5 L 18.5,23.5 C 17.5,24 17,25 17.5,26 Z" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 19,26 L 26,26" fill="none" stroke="#000000" stroke-width="1.5"/>
+  <path d="M 20.5,24 L 20.5,13.5 L 14.5,14.5 L 22.5,4.5 L 30.5,14.5 L 24.5,13.5 L 24.5,24 Z" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+</g>
+</svg>

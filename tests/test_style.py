@@ -136,6 +136,9 @@ class TestTheTokens:
         set_ |= {"stick-top"}
         # Nor this: how many lines the status strip keeps (Q725), set by its own rules.
         set_ |= {"strip-lines"}
+        # Nor this: a family's colour on the landing's wall of words (LP2), set on each row
+        # by its family's class, which names a token (`landing.BLOCKS`).
+        set_ |= {"family"}
         assert read - set_ == set()
 
     def test_dark_sets_only_what_light_sets(self) -> None:

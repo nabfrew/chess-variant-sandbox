@@ -537,3 +537,60 @@ class TestACommandsWords:
         trouble = [(line, _hits(line)) for line in said
                    if _hits(line) or re.search(r"\b[a-z]+_[a-z_]+\b", line)]
         assert not trouble, trouble
+
+
+class TestTheRulesArePlural:
+    """LP0 (`docs/plan-landing.md` §5). The validator's *the spec* is *the rules* to a
+    visitor, and the verb after it stayed singular: *the rules states no ending of its
+    own*. The fix is in the substitution (`plain.the_rules`), so every sentence built the
+    same way agrees, and the refusal itself is unchanged: same problem, one for one."""
+
+    @pytest.mark.parametrize(("spec_words", "rules_words"), [
+        ("the spec states no ending of its own", "the rules state no ending of their own"),
+        ("the spec is", "the rules are"),
+        ("the spec was", "the rules were"),
+        ("the spec has", "the rules have"),
+        ("the spec does", "the rules do"),
+        ("the spec says", "the rules say"),
+        ("the spec carries", "the rules carry"),
+        ("the spec passes", "the rules pass"),
+        ("the spec already states", "the rules already state"),
+        ("the spec alone decides", "the rules alone decide"),
+        ("the spec itself says", "the rules themselves say"),
+        ("the spec's own copy", "the rules' own copy"),
+        ("the spec as written", "the rules as written"),
+        ("the spec stated", "the rules stated"),
+        ("the spec, then", "the rules, then"),
+    ])
+    def test_what_agrees_with_the_rules_turns_plural(
+            self, spec_words: str, rules_words: str) -> None:
+        from chess_variant_sandbox.spec.plain import the_rules
+
+        assert the_rules(spec_words) == rules_words
+
+    def test_the_unwinnable_refusal_reads_right_in_the_designer(self) -> None:
+        spec = _spec("chess")
+        spec["rules"]["win"] = "none"
+        problems = validate_spec(spec)
+        line = next(p for p in problems if p.startswith("rules.win is 'none'"))
+        assert "the spec states" in line  # the validator's own sentence is unchanged
+        expected = ("The rule 'how the game is won' is 'none' but the rules state no ending "
+                    "of their own; the game could never be won.")
+        assert plain_problem(line, spec) == expected
+        said = designing.check(spec)["errors"]
+        assert expected in said and len(said) == len(problems)
+
+    def test_no_validator_sentence_says_the_rules_with_a_singular_verb(self) -> None:
+        """Every literal sentence in the validator's sources that says *the spec*, through
+        the designer's words: none leaves *the rules* with a singular verb."""
+        singular = re.compile(
+            r"\bthe rules (?:already |alone |also )?(?:is|was|has|does|[a-z]+[^s']s)\b")
+        # A sentence's own line: a string argument, never a docstring.
+        sentence = re.compile(r'^\s*f?"(?!"")([^"\n]*\bthe spec\b[^"\n]*)"', re.M)
+        found = []
+        for path in sorted((ROOT / "chess_variant_sandbox" / "spec").glob("*.py")):
+            for literal in sentence.findall(path.read_text("utf-8")):
+                said = plain_problem(f"rules.win {literal}")
+                found.append(said)
+                assert not singular.search(said), (path.name, said)
+        assert found

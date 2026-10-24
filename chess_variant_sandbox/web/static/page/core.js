@@ -372,6 +372,16 @@ function noteAdmin(said) {
   paintIdentity();
 }
 
+// What an account adds, beside *sign in*. On a phone the corner has room for *sign in* and
+// no more, so the reason is its own span that the stylesheet drops there (LP0): the corner
+// reads *sign in*, not *… count*.
+function accountWhy() {
+  const why = document.createElement('span');
+  why.className = 'accountWhy';
+  why.textContent = ' to make your games count';
+  return why;
+}
+
 // The header's corner and the footer, built as elements. A handle is a name somebody
 // chose for themselves, and `innerHTML` would let that name be tags.
 function paintIdentity() {
@@ -382,7 +392,7 @@ function paintIdentity() {
     // What an account adds, in one line beside *sign in* (L7, `docs/archive/plan-launch.md` §4); in
     // full on the sign-in and invitation pages (`site/pages.py` `ACCOUNT_ADDS`).
     if (ACCOUNTS && VIEWER) who.append(memberButton(VIEWER, VIEWER_MARK));
-    else if (ACCOUNTS) who.append(link('/signin', 'sign in'), ' to make your games count');
+    else if (ACCOUNTS) who.append(link('/signin', 'sign in'), accountWhy());
   }
   // Q760: *People*, after *Games*, for a member on the site (`shell.py`'s `PEOPLE`); the
   // site's own pages draw it in the markup. A visitor would only be sent to the door, and

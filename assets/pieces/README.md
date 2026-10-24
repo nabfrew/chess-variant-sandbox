@@ -23,8 +23,8 @@ Everything in `svg/` is committed, so nothing here runs at build time. `fetch.py
 is provenance: it records which Wikimedia Commons file each icon came from and
 re-checks each licence against an allowlist.
 
-214 files, 114 drawings: 12 standard chess files, 154 fairy (128 of them drawn here:
-122 by `draw.py` in Cburnett's grammar, and the six rock, paper and scissors before it), 6
+216 files, 115 drawings: 12 standard chess files, 156 fairy (130 of them drawn here:
+124 by `draw.py` in Cburnett's grammar, and the six rock, paper and scissors before it), 6
 inverted, 14 shogi, 28 xiangqi. The designer's palette offers them by category:
 leapers, riders, compounds, royals, pawns, oddities, and the two families kept apart,
 shogi and xiangqi (`catalogue.json`).
@@ -44,7 +44,7 @@ transparent background.
 
 ## The grammar (plan-visual.md §7, decision D4)
 
-`draw.py` draws 61 pieces from a few shared parts so that a board of fairy pieces reads
+`draw.py` draws 62 pieces from a few shared parts so that a board of fairy pieces reads
 as one set with the familiar six: a 45 × 45 frame, a 1.5 black stroke with round joins,
 the first player's piece white and the second's black, a detail line black on a white
 piece and white on a black one, one shared base, transparent ground. A piece is a *body*
@@ -137,7 +137,7 @@ anything outside its allowlist. As it stands: 124 CC0, 56 CC BY-SA 3.0, 28 publi
 domain, 5 CC BY-SA 4.0, 1 GFDL. `CREDITS.md` names the author, licence and source
 page for each one.
 
-The 122 files drawn in the grammar are described above: 112 CC0, and the 10 of the
+The 124 files drawn in the grammar are described above: 114 CC0, and the 10 of the
 knight's family that wear Cburnett's head under his CC BY-SA 3.0. Of the other
 non-xiangqi files, 54 are redistributed
 byte-for-byte unmodified; the

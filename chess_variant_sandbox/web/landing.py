@@ -30,6 +30,7 @@ from typing import Any
 from chess_variant_sandbox.corpus import CANONICAL_AGENTS, CANONICAL_GAMES
 from chess_variant_sandbox.metrics.components import QUICK_KILL_PLIES
 from chess_variant_sandbox.metrics.scoring import DEFAULT_WEIGHTS, FLOOR, Weights, load_weights
+from chess_variant_sandbox.spec import reference
 from chess_variant_sandbox.spec.reference import PAGE as RULES_PAGE
 
 # The contact line (Q720): the user's words, 2026-10-04, *"contact ... Refer to my github"*.
@@ -229,6 +230,231 @@ WORSE_HALF = (
     "not the play.")
 
 
+# ------------------------------------------------------------------ the palette, as words
+
+# LP2 (`docs/plan-landing.md` §3.2, direction B's *Your idea is in here somewhere*): every
+# family of rules the language offers, one row each, and in each row the rules as words a
+# visitor might use for an idea. Each word is a rule the designer has a control for (`key`,
+# and inside its card `field` and the option `value` it means), says the designer's own name
+# for that control (`card`), and links to the section of `/rules` that writes it down.
+# `tests/test_landing_wall.py` holds the table to the language: every family of `RULES.md`'s
+# *What the language can make* (`reference.FAMILIES`) has a row or a reason in
+# `NOT_ON_THE_WALL`; every word's key is in a family its row shows; every `card` is the
+# designer's (`web/cards.py`'s card model, or the hand-drawn control's words in the
+# designer's script); every link lands on a heading of `/rules`. `web/stories.py` reads a
+# story's family and its colour from here. The colours are the map's per-kind hues (the
+# user's choice E1, §4), one per row, set on the row's class by `web/page/style.py`.
+
+
+@dataclass(frozen=True)
+class Word:
+    """One rule on the wall."""
+
+    said: str
+    # The rule key as `reference.FAMILIES` spells it: `rules.reach`, `pieces[].region`, a
+    # kind of move (`slide`), `board.lattice`.
+    key: str
+    # The designer's words for the control that sets it: a rule card's label, a piece
+    # field's, or the words of a control the designer draws by hand (a kind of move, a
+    # sight's effect, the board's cells).
+    card: str
+    # The control inside the key's card the word means, dotted, where it is one of them.
+    field: str = ""
+    # The option of that control the word means, where it is one.
+    value: str | bool | None = None
+
+
+@dataclass(frozen=True)
+class Block:
+    """One family of rules, a row of the wall."""
+
+    # Lower case, as a story names its family (`web/stories.py`).
+    family: str
+    # The class that carries the row's colour, and the token it reads (choice E1).
+    hue: str
+    colour: str
+    # The families of `RULES.md`'s *What the language can make* this row's words are drawn
+    # from (`reference.FAMILIES`' titles).
+    shows: tuple[str, ...]
+    words: tuple[Word, ...]
+
+    @property
+    def title(self) -> str:
+        return self.family[:1].upper() + self.family[1:]
+
+
+BLOCKS: tuple[Block, ...] = (
+    Block("how a game is won", "k-ending", "kind-ending", ("How a game is won",), (
+        Word("checkmate", "rules.win", "how the game is won", value="checkmate"),
+        Word("take the king", "rules.win", "how the game is won", value="royal_capture"),
+        Word("take every piece", "rules.win", "how the game is won", value="annihilation"),
+        Word("reach a square", "rules.reach", "winning by arriving"),
+        Word("run them out of a kind", "rules.extinction", "losing by running out of a piece"),
+        Word("three checks", "rules.check_limit", "winning by giving checks"),
+        Word("claim ground", "rules.territory", "claiming ground"),
+        Word("a score when time runs out", "rules.scoring", "who wins when a clock runs out"),
+    )),
+    Block("how pieces move", "k-move", "kind-pieces", ("How pieces move",), (
+        Word("slide", "slide", "slides"),
+        Word("leap", "leap", "leaps"),
+        Word("hop over a screen", "hop", "hops over"),
+        Word("leap, but blockable", "lame", "blockable leap"),
+        Word("sweep a line clear", "sweep", "sweeps"),
+        Word("ride, jump after jump", "leap", "jumps again"),
+        Word("keep to a region", "pieces[].region", "only on these squares"),
+        Word("face a way, and turn", "pieces[].facing", "points a way"),
+    )),
+    Block("what a capture does", "k-capture", "kind-capture", ("What a capture does",), (
+        Word("take only some kinds", "pieces[].captures", "may take only"),
+        Word("become another piece", "rules.strike", "what a taken piece becomes",
+             field="chain"),
+        Word("go home", "rules.strike", "what a taken piece becomes", field="position",
+             value="home"),
+        Word("change places", "rules.strike", "what a taken piece becomes", field="position",
+             value="swap"),
+        Word("change sides", "rules.strike", "what a taken piece becomes",
+             field="switches_sides"),
+        Word("explode", "rules.explode_on_capture", "captures that explode"),
+        Word("must be taken", "rules.must_capture", "a capture must be taken"),
+    )),
+    Block("what a piece does by looking", "k-sight", "kind-valuation",
+          ("What pieces do to each other without moving",), (
+        Word("freeze", "pieces[].sight", "freezes it", field="effect", value="freeze"),
+        Word("disarm", "pieces[].sight", "disarms it", field="effect", value="disarm"),
+        Word("shield", "pieces[].sight", "shields it", field="effect", value="shield"),
+        Word("let the opponent move it", "pieces[].sight", "commands it", field="effect",
+             value="command"),
+    )),
+    Block("the board", "k-board", "kind-board", ("The board",), (
+        Word("hexagons", "board.lattice", "hexagons", value="hex"),
+        Word("walls", "rules.obstacles", "walls on the board"),
+        Word("edges that join", "rules.wrap", "edges that join"),
+        Word("portals", "rules.portals", "portals"),
+        Word("portals the players move", "rules.portals", "portals", field="moved_by"),
+    )),
+    Block("who moves, and when", "k-turn", "kind-turn", ("Who moves, and when",), (
+        Word("several moves a turn", "rules.turn", "more than one move a turn"),
+        Word("both at once, in secret", "rules.simultaneous",
+             "playing in rounds: both players move at once"),
+        Word("collisions", "pieces[].beats", "in a collision beats"),
+        Word("speeds", "pieces[].speed", "speed"),
+        Word("spies", "pieces[].spy", "a spy"),
+        Word("pieces that rest", "pieces[].rest", "rests after it moves"),
+    )),
+    Block("pieces nobody owns", "k-wild", "kind-wild", ("Pieces nobody owns",), (
+        Word("walk a route", "rules.npcs", "wild pieces", field="route"),
+        Word("eat what they meet", "rules.npcs", "wild pieces", field="piece"),
+        Word("a bounty on their heads", "rules.npcs", "wild pieces", field="bounty"),
+        Word("only some may take them", "rules.npcs", "wild pieces", field="immune"),
+    )),
+    # `RULES.md` puts a hand under *what a capture does*, since a taken piece is what goes
+    # into it; the wall gives it a row of its own, because a stone placed from a hand is an
+    # idea of its own (the stones story's family).
+    Block("pieces in hand", "k-hand", "kind-hand", ("What a capture does",), (
+        Word("drop what you took", "rules.drops", "pieces played back onto the board",
+             field="from_captures", value=True),
+        Word("start with pieces to place", "rules.drops", "pieces played back onto the board",
+             field="stock"),
+        Word("place them all first", "rules.drops", "pieces played back onto the board",
+             field="placement", value=True),
+        Word("no checkmate by a drop", "rules.drops", "pieces played back onto the board",
+             field="no_mate"),
+    )),
+    Block("chess's own, if you want them", "k-chess", "muted",
+          ("Chess's own rules", "When a game stops"), (
+        Word("promotion", "rules.promotion", "promotion"),
+        Word("en passant", "rules.en_passant", "taking a piece in passing"),
+        Word("castling", "rules.castling", "castling"),
+        Word("no check allowed", "rules.forbid_check", "check is not allowed"),
+        Word("kings may not face", "rules.royal_facing", "royal pieces facing each other"),
+        Word("a turn limit", "rules.max_plies", "the longest a game may run"),
+        Word("repetition", "rules.repetition_draw", "drawing by repetition"),
+        Word("a stall", "rules.no_progress_draw", "how long a game may stall"),
+    )),
+)
+
+# A family of `RULES.md`'s that has no row, by its title, with the reason. Empty: every
+# family is on the wall.
+NOT_ON_THE_WALL: dict[str, str] = {}
+
+WALL_HEADING = "Your idea is in here somewhere"
+WALL_LEAD = (
+    "The whole palette, by what each part does to play. Every word is a rule the designer "
+    "has a control for, and links to where <a href=\"{rules}\">the rule language</a> writes "
+    "it down.")
+WALL_BAND = "Your idea next."
+
+
+def section_key(key: str) -> str:
+    """The rule key whose section of `/rules` writes `key` down: a rule's own section, the
+    board's, a piece's, or a way of moving's."""
+    if key.startswith("rules."):
+        return key
+    if key.startswith("board."):
+        return "board"
+    if key.startswith("pieces[]."):
+        return "pieces"
+    return "pieces[].moves"
+
+
+_HEADING = re.compile(r"^#{1,6} +`([^`]+)`(?::.*)?$")
+
+
+def _slug(words: str, taken: dict[str, int]) -> str:
+    """GitHub's id for a heading, as `web/page/rules_page.py`'s `slug` makes it (which this
+    module cannot import: the page package imports this one). `tests/test_landing_wall.py`
+    holds every link here to the ids that page draws."""
+    base = re.sub(r"[^\w\- ]", "", words.strip().lower()).replace(" ", "-")
+    seen = taken.get(base, 0)
+    taken[base] = seen + 1
+    return base if seen == 0 else f"{base}-{seen}"
+
+
+def rule_sections(markdown: str | None = None) -> dict[str, str]:
+    """Each rule key with a section of its own in the reference, and that section's id."""
+    taken: dict[str, int] = {}
+    found: dict[str, str] = {}
+    fenced = False
+    for line in (markdown if markdown is not None else reference.render_reference()).splitlines():
+        if line.strip().startswith("```"):
+            fenced = not fenced
+            continue
+        heading = None if fenced else re.match(r"^#{1,6} +(.+?)\s*$", line)
+        if heading is None:
+            continue
+        words = heading.group(1).replace("`", "").replace("**", "").replace("*", "")
+        ident = _slug(words, taken)
+        keyed = _HEADING.match(line.strip())
+        if keyed:
+            found.setdefault(keyed.group(1), ident)
+    return found
+
+
+def word_link(word: Word, sections: dict[str, str]) -> str:
+    """Where a word links: its section of `/rules`."""
+    return f"{RULES_PAGE}#{sections[section_key(word.key)]}"
+
+
+def _wall_html() -> str:
+    sections = rule_sections()
+    rows = []
+    for block in BLOCKS:
+        words = "".join(
+            f'<a class="wallWord" href="{_e(word_link(word, sections))}" '
+            f'title="{_e("in the designer: " + word.card)}">{_e(word.said)}</a>'
+            for word in block.words)
+        rows.append(
+            f'<div class="wallRow {block.hue}" data-wall="{_e(block.family)}">'
+            f'<dt><span class="swatch" aria-hidden="true"></span>{_e(block.title)}</dt>'
+            f"<dd>{words}</dd></div>")
+    return (
+        f'<p class="muted">{WALL_LEAD.format(rules=RULES_PAGE)}</p>'
+        f'<dl class="wall">{"".join(rows)}</dl>'
+        f'<div class="wallBand"><p>{_e(WALL_BAND)}</p>'
+        '<div class="row"><a class="button primary" href="#/design">Start building a game</a>'
+        '<a class="button" href="/game">See the games</a></div></div>')
+
+
 def _number(value: float) -> str:
     """A number as the page writes it: to three places under 10 (a curve's end such as 0.735
     must not read as 0.7), to a tenth from 10, whole where it is whole, with a thousands
@@ -360,11 +586,12 @@ def _e(text: str) -> str:
     return html.escape(text, quote=True)
 
 
-def _section(key: str, heading: str, body: str, needs: str = "") -> str:
+def _section(key: str, heading: str, body: str, needs: str = "", classes: str = "") -> str:
     """One scrolling section. `needs` names what the server must have for it to show
     (`landing.js` hides it otherwise): `accounts` for the site's people."""
     marked = f' data-needs="{needs}"' if needs else ""
-    return (f'<section class="landingPart" id="landing-{key}"{marked}>'
+    more = f" {classes}" if classes else ""
+    return (f'<section class="landingPart{more}" id="landing-{key}"{marked}>'
             f"<h3>{_e(heading)}</h3>{body}</section>")
 
 
@@ -614,20 +841,9 @@ def html_page(version: str = DEFAULT_WEIGHTS) -> str:
             "crafted, it would have been immaculate, obviously.</p>"
             "<p>It is a place to invent games, play them, and find the ones worth playing. "
             "Chess is here too, as a familiar point of comparison.</p>")),
-        _section("palette", "Games are built from a palette of rules", (
-            "<p>Every game here is a mix of rules taken from one palette: the size and shape "
-            "of the board (squares or hexagons, and edges that can join round like a "
-            "cylinder), the pieces and how each one moves and takes, where they start, what "
-            "happens to a piece that is taken (it can come back into play from your hand), "
-            "promotion, and how a game is won: by checkmate, by checking three times, by "
-            "reaching a square, and more.</p>"
-            "<p>The designer puts the palette in front of you as cards and boards, with no "
-            "programming. Change a rule and the board answers at once: where each piece can "
-            "go, and whether the rules still make a game.</p>"
-            # G8: the palette written down, the page a person reads and an AI is given.
-            f'<p>The whole palette is written down as <a href="{RULES_PAGE}">the rule '
-            "language</a>: a game is one file in it, which you can write by hand or ask an AI "
-            "to write, then load into the designer to see it on the board.</p>")),
+        # LP2: the palette as a wall of words (B's, §3.2), in place of the paragraph that
+        # named a few of its rules. G8's link to the rule language is in its lead.
+        _section("palette", WALL_HEADING, _wall_html(), classes="landingWall"),
         _section("play", "Play any of them now, against the computer", (
             "<p>Every game is playable in the browser straight away, against computer "
             "players from gentle to strong. No account is needed: a practice game has undo "

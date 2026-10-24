@@ -1,0 +1,58 @@
+{
+ "schema_version": 31,
+ "name": "ground for good",
+ "description": "An example made for the landing page, not a library game. Five knights a side on a seven-by-seven board, and every square a knight lands on becomes its owner's for good; the first to hold 25 of the 49 squares wins, and taking every enemy knight wins too. Because a claim can never be taken back, every landing on empty ground is a step towards 25 that the other side cannot undo, so the question each turn is whether to spread out and claim or to go after the knights that are claiming against you.",
+ "board": {
+  "width": 7,
+  "height": 7
+ },
+ "pieces": [
+  {
+   "id": "N",
+   "name": "knight",
+   "value": 3,
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       2
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ]
+  }
+ ],
+ "setup": {
+  "mirror": true,
+  "placements": [
+   {
+    "piece": "N",
+    "squares": [
+     "b1",
+     "c1",
+     "d1",
+     "e1",
+     "f1"
+    ]
+   }
+  ]
+ },
+ "rules": {
+  "win": "annihilation",
+  "stalemate": "draw",
+  "max_plies": 160,
+  "repetition_draw": 3,
+  "territory": {
+   "mode": "permanent",
+   "win_at": 25
+  }
+ },
+ "provenance": {
+  "added": "2026-10-24",
+  "origin": "human",
+  "history": "Constructed by LPR2 as the landing page's ground story (docs/plan-landing.md section 2.1), the user allowing a constructed example where the library's pair was unclear. It differs from ground-repaint.json only in rules.territory.mode. Not a library game, not measured; its boards on the page are games played through Engine by make_examples.py. Moved from docs/reference/landing-mockups/examples/ to chess_variant_sandbox/web/stories/ by LP1 (2026-10-24), its mechanics unchanged."
+ }
+}

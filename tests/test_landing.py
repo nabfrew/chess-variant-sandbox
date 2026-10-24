@@ -52,7 +52,7 @@ class TestTheMarkup:
         assert routes.index("/static/page/landing.js") == routes.index("/static/page/boot.js") - 1
 
     def test_the_sections_in_the_order_asked(self) -> None:
-        keys = re.findall(r'<section class="landingPart" id="landing-([a-z]+)"', landing.HTML)
+        keys = re.findall(r'<section class="landingPart(?: landingWall)?" id="landing-([a-z]+)"', landing.HTML)
         assert keys == ["intent", "palette", "play", "people", "viable", "score", "more"]
         assert landing.HTML.index('class="landingHero"') < landing.HTML.index('id="landing-intent"')
 

@@ -69,9 +69,9 @@
   "appearance": {
     "icons": {
       "P": "pawn",
-      "A": "bishop",
+      "A": "arrow",
       "C": "xiangqi-pictorial-cannon",
-      "K": "king"
+      "K": "shield-king"
     }
   }
 }

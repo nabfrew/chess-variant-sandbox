@@ -35,6 +35,7 @@ async function showLanding() {
   view.querySelectorAll('[data-needs]').forEach(part => {
     if (!offered[part.dataset.needs]) part.remove();
   });
+  wireWallRails();
   // The board waits for the listing; the words above and below it do not.
   const data = await api('/api/library').catch(() => null);
   if (data) takePieceArt(data);
@@ -42,6 +43,18 @@ async function showLanding() {
   fillPicks(data);
   fillMembersShelf(data);
   if (data) startLandingBoard(landingGames(data));
+}
+
+// LP2: the wall of words. On a phone each family's words are one rail that scrolls sideways
+// inside its row, faded at its right edge to say there is more; a rail scrolled to its end
+// (or one that fits) is marked `atEnd`, and its last word stands unfaded.
+function wireWallRails() {
+  view.querySelectorAll('.wallRow dd').forEach(rail => {
+    const mark = () => rail.classList.toggle(
+      'atEnd', rail.scrollLeft + rail.clientWidth >= rail.scrollWidth - 2);
+    rail.addEventListener('scroll', mark, { passive: true });
+    mark();
+  });
 }
 
 // Q788: *New in the library*, the newest games as the server named them (`web/launch.py`'s

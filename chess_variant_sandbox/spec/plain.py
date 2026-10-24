@@ -730,7 +730,6 @@ _WORDS: tuple[tuple[str, str], ...] = (
     (r"\bvector\b", "direction"),
     (r"\bplies\b", "turns"),
     (r"\bply\b", "turn"),
-    (r"\bthe spec\b", "the rules"),
     (r"\bthe validator\b", "the designer"),
     (r"\bmust be 0 or 1\b", "must be the first player (0) or the second (1)"),
     (r"\bare not cells of this board\b", "aren't cells of this board"),
@@ -740,6 +739,56 @@ _WORDS: tuple[tuple[str, str], ...] = (
     # gloss of the key beside it says the label again, so it goes.
     (r"\bcaptures_own\b(?: \([^()]*\))?", "a command's 'may make them take their own side'"),
 )
+
+# *The spec* is *the rules* to a visitor, and the rules are plural where the spec was
+# singular, so the verb after it, and a pronoun or possessive that points back at it, turns
+# with it (LP0: *the rules states no ending of its own* was the designer's sentence).
+_THE_SPEC = re.compile(
+    r"\bthe spec(?P<own>'s)?(?: (?P<self>itself)\b)?"
+    r"(?: (?P<adverb>already|also|alone|never|now|only|still|then))?"
+    r"(?: (?P<word>[a-z]+)\b)?"
+)
+_PLURAL_VERBS = {"is": "are", "was": "were", "has": "have", "does": "do", "goes": "go",
+                 "doesn't": "don't",
+                 "isn't": "aren't", "wasn't": "weren't", "hasn't": "haven't"}
+# Words ending in *s* that follow a subject without being its verb.
+_NOT_VERBS = frozenset({"as", "its", "this", "thus", "plus", "unless", "us", "less"})
+
+
+def _plural_verb(word: str) -> str:
+    """A third-person singular verb as the plural's: *states* → *state*, *carries* →
+    *carry*, *passes* → *pass*, *is* → *are*. Anything else, unchanged."""
+    if word in _PLURAL_VERBS:
+        return _PLURAL_VERBS[word]
+    if word in _NOT_VERBS or not word.endswith("s") or word.endswith("ss") or len(word) < 3:
+        return word
+    if word.endswith("ies") and len(word) > 4:
+        return word[:-3] + "y"
+    if re.search(r"(?:ss|sh|ch|x|z)es$", word):
+        return word[:-2]
+    return word[:-1]
+
+
+def the_rules(text: str) -> str:
+    """*The spec* said as *the rules*, with what agrees with it made plural: *the spec
+    states* is *the rules state*, *the spec's* is *the rules'*, *the spec itself* is *the
+    rules themselves*. A sentence's meaning is untouched; only its grammar follows."""
+
+    def said(match: re.Match[str]) -> str:
+        out = "the rules'" if match["own"] else "the rules"
+        if match["self"]:
+            out += " themselves"
+        if match["adverb"]:
+            out += " " + match["adverb"]
+        if match["word"]:
+            # After a possessive the next word is the thing owned, never a verb.
+            out += " " + (match["word"] if match["own"] else _plural_verb(match["word"]))
+        return out
+
+    text = _THE_SPEC.sub(said, text)
+    # *of its own* a few words on in the same clause points back at the rules too.
+    return re.sub(r"\b(the rules (?:[a-z']+ ){1,4}?of )its own\b", r"\1their own", text)
+
 
 # The two clocks, counted in turns (§3.2: each player's move is one turn).
 _CLOCK_PATHS = frozenset({"rules.max_plies", "rules.no_progress_draw"})
@@ -1097,6 +1146,7 @@ def _generic(text: str, spec: Any) -> str:
     body = _PATH.sub(inner, body)
     for pattern, said in _WORDS:
         body = re.sub(pattern, said, body)
+    body = the_rules(body)
     # A menu's values as the menu spells them: *royal capture*, not *royal_capture*.
     body = re.sub(r"'([a-z0-9]+(?:_[a-z0-9]+)+)'",
                   lambda m: "'" + m.group(1).replace("_", " ") + "'", body)

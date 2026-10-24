@@ -386,6 +386,21 @@
     "black"
    ]
   },
+  "facing-pawn": {
+   "name": "pointing pawn",
+   "category": "pawns",
+   "words": [
+    "facing",
+    "weathervane",
+    "turning pawn",
+    "heading"
+   ],
+   "says": "a pawn bearing an arrow",
+   "seats": [
+    "white",
+    "black"
+   ]
+  },
   "fad": {
    "name": "fad",
    "category": "leapers",

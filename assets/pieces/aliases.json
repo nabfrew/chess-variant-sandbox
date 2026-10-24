@@ -15,7 +15,7 @@
   "general": "king",
   "shah": "king",
   "khun": "king",
-  "warden": "king",
+  "warden": "shield-king",
 
   "queen": "queen",
   "met": "ferz",
@@ -39,16 +39,16 @@
   "horse": "knight",
   "ma": "knight",
   "faras": "knight",
-  "royal knight": "knight",
+  "royal knight": "royal-knight",
 
   "pawn": "pawn",
-  "soldier": "pawn",
+  "soldier": "soldier",
   "baidaq": "pawn",
   "bia": "pawn",
   "footman": "pawn",
   "grunt": "pawn",
   "schleich": "pawn",
-  "archer": "pawn",
+  "archer": "arrow",
   "chick": "shogi-pawn",
 
   "cannon": "xiangqi-pictorial-cannon",
@@ -58,6 +58,7 @@
   "centaur": "centaur",
   "man": "man",
   "commoner": "commoner",
+  "guard": "commoner",
   "giraffe": "giraffe",
   "camel": "camel",
   "zebra": "zebra",
@@ -78,6 +79,7 @@
   "lance (western)": "spear",
 
   "rock": "rock",
+  "stone": "rock",
   "paper": "paper",
   "scissors": "scissors",
 

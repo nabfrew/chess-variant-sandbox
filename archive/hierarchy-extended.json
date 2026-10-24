@@ -136,6 +136,12 @@
       "immune": ["K"]
     }
   },
+  "appearance": {
+    "icons": {
+      "D": "saltire-rider",
+      "Z": "star-leaper"
+    }
+  },
   "provenance": {
     "added": "2026-09-06",
     "origin": "designed",

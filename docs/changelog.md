@@ -13,6 +13,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-24
 
+### Library pieces wear their own drawings
+
+Every piece picture a game in the library shows can now be picked in the designer, including a new pointing pawn. Seventeen
+pieces across ten games that wore a letter or a borrowed picture now have a drawing of their own, among them the royal knight,
+the warden and all six pieces of sittuyin.
+
 ### Six more games get a computer player that learned them
 
 Six more library games now have a computer player that learned the game by playing it, and it takes part when their score is
