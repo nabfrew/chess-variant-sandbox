@@ -305,8 +305,47 @@ class TestTheDesignerOffersThem:
         for slug in READY["left_out"]:
             assert offered[slug].get("ready") is None
 
+    def test_the_one_picker_serves_every_ready_piece_and_every_drawing(self) -> None:
+        """PF4: one picker for the drawings and the ready pieces. For a new piece it offers
+        every ready piece written for the draft's lattice (and, the box unticked, every
+        drawing); in a piece's card, every drawing. Each tile is a drawing's slug, and a
+        ready one is named and tagged as the piece it brings."""
+        import re
+
+        from test_designer import _run_page
+
+        from chess_variant_sandbox.web import designing
+
+        library = piece_library.palette()
+        spec = next(t for t in designing.templates() if t["key"] == "kingly")["spec"]
+        hexy = copy.deepcopy(spec)
+        hexy["board"]["lattice"] = "hex"
+        drawn = _run_page(
+            f"PIECE_LIBRARY = {json.dumps(library)};",
+            "[" + ", ".join(
+                f"(DRAFT = {json.dumps(draft)}, PICK_MOVING = {moving}, pickListHtml({at}))"
+                for draft, moving, at in ((spec, "true", "'new'"), (spec, "false", "'new'"),
+                                          (spec, "true", "0"), (hexy, "true", "'new'"))
+            ) + "]",
+        )
+        tiles = [re.findall(r'data-pick="([^"]+)"', html) for html in drawn]
+        every = [row["slug"] for row in library["pieces"]]
+        for lattice, offered in (("square", tiles[0]), ("hex", tiles[3])):
+            assert offered == [row["slug"] for row in library["pieces"] if row["ready"]
+                               and row["ready"]["lattice"] == lattice], lattice
+        assert len(tiles[0]) + len(tiles[3]) == len(READY["pieces"])
+        assert tiles[1] == every
+        assert tiles[2] == every
+        tagged = [row["slug"] for row in library["pieces"] if row["ready"]
+                  and row["ready"]["lattice"] == "square"]
+        assert drawn[1].count("with moves</span>") == len(tagged)
+        assert "with moves</span>" not in drawn[0]
+        for row in library["pieces"]:
+            if row["ready"] and row["ready"]["lattice"] == "square":
+                assert f"<span>{row['ready']['piece']['name']}</span>" in drawn[0], row["slug"]
+
     def test_the_page_picks_one_whole_and_says_what_it_needs(self) -> None:
-        for needle in ("data-readypiece", "function takeReadyPiece", "data-readyrules",
+        for needle in ("data-pick=", "function takeReadyPiece", "data-readyrules",
                        "function readyNeedsHtml", "'@self'", "'@royals'",
-                       "data-readyabout", "function placeReadyAbout", "ready.description"):
+                       "function placePickAbout", "ready.description"):
             assert needle in PAGE, needle

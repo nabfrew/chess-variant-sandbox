@@ -1458,32 +1458,53 @@ RULES = """
                     align-items: baseline; }
   .paletteList button { justify-self: start; }
   .paletteGames { white-space: nowrap; }
-  /* V9: the piece library's palette under a piece, a search and a chip a kind, then a
-     grid of drawings, each on the board's dark square so a white piece reads. */
-  .drawingPanel .chips { margin: 6px 0 4px; }
+  /* PF4: the one piece picker (V9's drawings and PF's ready pieces), a search and a chip a
+     kind, then a grid of drawings, each on the board's dark square so a white piece reads.
+     A press on a tile opens a line across the grid under its row (the drawing, what it is,
+     how it moves, the buttons that take it), pushing the rows below down instead of lying
+     over them. */
+  .picker .chips { margin: 6px 0 4px; }
   .drawingGrid { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px;
                  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
                  max-height: 340px; overflow-y: auto; }
-  .drawingGrid button { display: flex; flex-direction: column; align-items: center; gap: 3px;
-                        width: 100%; padding: 4px 2px; font-size: 11.5px; line-height: 1.2; }
+  .drawingGrid > li:not(.pickAbout) { display: flex; }
+  .drawingGrid > li > button { display: flex; flex-direction: column; align-items: center; gap: 3px;
+                        flex: 1; min-width: 0; padding: 4px 2px; font-size: 11.5px;
+                        line-height: 1.2; }
   .drawingGrid img { width: 40px; height: 40px; background: var(--sq-dk);
                      border-radius: var(--r-ctl); }
-  .drawingGrid button[aria-pressed="true"] { border-color: var(--act);
-                                             box-shadow: inset 0 0 0 1px var(--act); }
-  /* PF3: a ready piece's tile carries a small i in its corner, which opens the piece's
-     description as a line across the grid under the tile's row, pushing the rows below
-     down instead of lying over them. The i's reach stays inside the tile's corner, so a
-     press anywhere else on the tile still takes the piece. */
-  .readyTile { position: relative; }
-  .drawingGrid button.info.readyInfo {
-    position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; margin: 0;
-    padding: 0; display: inline-flex; font-size: 11px; background: var(--panel);
-  }
-  .drawingGrid button.info.readyInfo::after { width: 28px; height: 28px; }
-  .drawingGrid button.info.readyInfo[aria-expanded="true"] { color: var(--ink);
-                                                        border-color: var(--act); }
-  .readyAbout { grid-column: 1 / -1; color: var(--ink); line-height: 1.45;
-                border-left: 3px solid var(--note); padding: 3px 0 3px 9px; }
+  .drawingGrid > li > button.worn { border-color: var(--act); box-shadow: inset 0 0 0 1px var(--act); }
+  .drawingGrid > li > button[aria-expanded="true"] { border-color: var(--ink);
+                                             box-shadow: inset 0 0 0 1px var(--ink); }
+  .tileTag { font-size: 10.5px; color: var(--muted); font-weight: 400; }
+  .pickAbout { grid-column: 1 / -1; display: flex; gap: 10px; align-items: flex-start;
+               color: var(--ink); line-height: 1.45; border-left: 3px solid var(--note);
+               padding: 4px 0 4px 9px; }
+  .pickAbout > img { width: 56px; height: 56px; flex: none; background: var(--sq-dk);
+                     border-radius: var(--r-ctl); }
+  .pickAbout > div > div + div { margin-top: 3px; }
+  .pickAbout .row { margin-top: 8px; gap: 6px; }
+  .pickHead { font-weight: 600; margin-top: 14px; }
+  /* PF4: a piece's card folds to one line, a real button: its drawing, its name and its
+     moves in words, cut to the width; open, the line keeps the drawing and the name. */
+  .pieceFold { display: flex; align-items: center; gap: 10px; width: 100%;
+               min-height: var(--hit); padding: 0; border: 0; background: transparent;
+               color: var(--ink); text-align: left; font-weight: 400; }
+  .pieceFold:hover:not(:disabled) { border-color: transparent; }
+  .pieceFold:hover .foldName { text-decoration: underline; }
+  .foldMark { flex: none; width: 7px; height: 7px; margin: 0 3px 0 4px;
+              border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+              transform: rotate(-45deg); }
+  .pieceFold[aria-expanded="true"] .foldMark { transform: rotate(45deg); }
+  .pieceFold .iconSlot { flex: none; }
+  .foldName { font-weight: 600; white-space: nowrap; }
+  /* Sized by the line, never by its words: a long sentence held to one line would
+     otherwise widen the form past a phone's screen. */
+  .foldSays { flex: 1 1 0; min-width: 0; contain: inline-size; overflow: hidden;
+              text-overflow: ellipsis; white-space: nowrap; }
+  .editorPiece:not(.folded) .foldSays { display: none; }
+  .pieceBody { margin-top: 10px; }
+  .pieceBody[hidden] { display: none; }
   /* What each player holds off the board, under a still of the opening position. */
   .stillHand { gap: 5px; margin-top: 6px; align-items: baseline; }
   /* Q852: the line under a still board naming each wild piece's walk that jumps, with a

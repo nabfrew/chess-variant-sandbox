@@ -233,8 +233,8 @@ class TestThePalette:
         assert "pieceLibrary" not in app.get("/api/design")
 
     def test_the_page_searches_sorts_and_writes_a_slug(self) -> None:
-        for needle in ("/api/design?part=pieces", "data-drawfor", "data-drawkind",
-                       "data-drawing", 'id="dDrawFind"', "function wearDrawing",
+        for needle in ("/api/design?part=pieces", "data-pickfor", "data-pickkind",
+                       "data-pick=", 'id="dPickFind"', "function wearDrawing",
                        "DRAFT.appearance.icons[piece.id] = iconSeats(index) ? [slug, slug] : slug"):
             assert needle in PAGE, needle
 

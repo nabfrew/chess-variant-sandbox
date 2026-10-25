@@ -21,7 +21,8 @@ drawing, name and moves -- and says in the entry's own words what game-wide rule
 The file is data: nothing here reads what a move means beyond saying it in words.
 
 PF3: each entry's `description` is a sentence or two for a visitor (what it is, how it
-moves, where it comes from), which the page shows on request beside the grid.
+moves, where it comes from), which the page shows on request beside the grid: since
+PF4, in the line a press on the drawing's tile opens in the designer's one piece picker.
 """
 
 from __future__ import annotations

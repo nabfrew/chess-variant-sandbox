@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-27
 
+### One place to choose a piece
+
+The designer's piece sections are now one picker. Press a piece to see its drawing, a few words about it
+and how it moves, then add it; this works by touch on a phone too. Each piece's card folds to a single line.
+
 ### Wild pieces can come back
 
 A wild piece, one no player owns, can now be set to return a fixed number of moves after it is taken,

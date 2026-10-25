@@ -545,6 +545,8 @@ function drawDesigner() {
   if (!form) return;
   const board = DRAFT.board || {};
   const rules = DRAFT.rules || {};
+  // A picker open in the card of a piece that has since gone is closed.
+  if (typeof PICK_AT === 'number' && !(DRAFT.pieces || [])[PICK_AT]) PICK_AT = null;
 
   form.innerHTML = `
     <div class="panel">
@@ -572,8 +574,7 @@ function drawDesigner() {
       <span class="muted small">Click a piece to see where it can go.</span>
     </div>
     <div id="dRestSaid" aria-live="polite">${restSaidHtml()}</div>
-    ${readyPiecesHtml()}
-    ${libraryPiecesHtml()}
+    ${pickOpenerHtml()}
 
     <h3>Where they start</h3>
     <div class="panel">
@@ -931,14 +932,12 @@ function chooseTurnWay(way) {
 // Nothing here knows a piece: this filters by a typed word, gives the new piece a letter
 // the draft has free, and adds it.
 
-let PALETTE_FIND = '';   // what is typed in the palette's filter
-
 // The pieces on offer: those written for the lattice this draft is on, because a vector
-// on a hex board points somewhere else, narrowed by whatever is typed.
+// on a hex board points somewhere else, narrowed by whatever is typed into the picker.
 function paletteOffers() {
   const all = (DESIGN_KIT && DESIGN_KIT.palette) || [];
   const lattice = (DRAFT.board || {}).lattice || 'square';
-  const want = PALETTE_FIND.trim().toLowerCase();
+  const want = PICK_FIND.trim().toLowerCase();
   return all.filter(entry => entry.lattice === lattice && (!want
     || (entry.name + ' ' + entry.says.join(' ') + ' ' + entry.games.join(' '))
        .toLowerCase().includes(want)));
@@ -953,22 +952,6 @@ function paletteListHtml() {
       <span class="muted small paletteGames" title="${esc(entry.games.join(', '))}">in ${
         entry.games.length} game${entry.games.length === 1 ? '' : 's'}</span>
     </li>`).join('')}</ul>`;
-}
-
-function libraryPiecesHtml() {
-  if (!((DESIGN_KIT && DESIGN_KIT.palette) || []).length) return '';
-  const hexy = ((DRAFT.board || {}).lattice || 'square') === 'hex';
-  return `<details class="panel palettePanel u-mt-10"${PALETTE_FIND ? ' open' : ''}>
-    <summary class="muted small">or take a piece out of a game in the library</summary>
-    <div class="muted small u-m-8-0">Its moves come with it, word for word.
-      What it may capture, where it may stand and what it reverts to are left behind,
-      because those name pieces and squares of the game it came from.${
-      hexy ? ' Only pieces written for a hex board are offered here.' : ''}</div>
-    <label class="field"><span>find one</span>
-      <input id="dPaletteFind" value="${esc(PALETTE_FIND)}"
-        placeholder="a name, a way of moving, or a game"></label>
-    <div id="dPaletteList">${paletteListHtml()}</div>
-  </details>`;
 }
 
 // The letter a new piece gets: the one the library calls it, when this draft has it free.
@@ -1013,6 +996,7 @@ function freshNoteHtml(index) {
 // tray, so the next click on a square places it.
 function freshPiece(index) {
   FRESH_PIECE = DRAFT.pieces[index].id;
+  PIECES_OPEN.add(FRESH_PIECE);
   PLACING = { piece: index, player: 0 };
   if (!PICKING && DRAFT_MODE !== 'setup') {
     DRAFT_MODE = 'setup';
@@ -1033,159 +1017,390 @@ function takePalettePiece(key) {
   drawDesigner();
   checkDraft();
   loadMoveMap();
+  showNewPiece(DRAFT_PIECE);
 }
 
-function wirePalettePieces(form) {
-  const find = form.querySelector('#dPaletteFind');
-  const list = form.querySelector('#dPaletteList');
-  if (find && list) {
-    // Only the list is redrawn, so the cursor stays where it is being typed.
-    find.oninput = () => {
-      PALETTE_FIND = find.value;
-      list.innerHTML = paletteListHtml();
-      wirePalettePieces(form);
-    };
-  }
-  form.querySelectorAll('[data-palettepiece]').forEach(node => {
-    node.onclick = event => {
-      event.preventDefault();
-      takePalettePiece(node.dataset.palettepiece);
-    };
-  });
-}
-
-// ------------------------------------------------ a ready-made piece, drawing and all
+// ------------------------------------------------ the one piece picker
 //
-// PF. A drawing whose movement fairy-chess tradition settles comes with the piece that
-// moves that way: the server's `ready` on each drawing (`web/piece_library.py`, out of
-// `assets/pieces/ready.json`). One pick gives the drawing, the name and the moves, and all
-// three are the draft's own after, edited like any piece's. Nothing here knows a piece: a
-// rule of the whole game the piece needs is the entry's own data, written only when asked,
-// with '@self' its letter and '@royals' the draft's royal pieces.
+// PF4. One place to choose a piece out of the library (the user, 2026-10-26: the drawing
+// menu under each piece, the ready-made panel and the library games' panel were three
+// places). Its tiles are the drawings (`web/piece_library.py`, `GET /api/design?part=pieces`,
+// fetched the first time it opens, since they are a quarter of a megabyte of pictures). A
+// drawing whose movement tradition settles comes with its ready piece
+// (`assets/pieces/ready.json`): taken, it brings the drawing, the name and the moves, all the
+// draft's own after. A drawing without one gives just the drawing. Under the tiles, the
+// pieces of the library's games (`designing.piece_palette`), taken whole by their moves.
+//
+// The picker stands in one place at a time: under the list of pieces, for a new piece, or
+// in a piece's card, opened by its *choose a drawing*, where a drawing goes on that piece.
+// A press on a tile does not take it: it opens a line under the tile's row -- the drawing,
+// the description, the moves in words and the buttons that take it -- so what a piece is
+// is read by tap, click or Enter before anything changes, and Escape closes it. (PF3's
+// small i in a tile's corner was missed on a phone, where a tap on the tile itself took
+// the piece at once.) Nothing here knows a piece: a rule of the whole game a ready piece
+// needs is the entry's own data, written only when asked, '@self' its letter and '@royals'
+// the draft's royal pieces.
 
-let READY_OPEN = false;   // whether the ready pieces' panel is open
-let READY_FIND = '';      // what is typed in its search
-let READY_KIND = '';      // the category whose chip is on, or '' for all of them
-let READY_ABOUT = '';     // the drawing whose description is open under its row, or ''
-const READY_NEEDS = {};   // a ready piece's letter -> what it said it needs, until dismissed
+let PIECE_LIBRARY = null;   // {categories, pieces}, once fetched
+let PICK_AT = null;         // where the picker is open: 'new', a piece's index, or null
+let PICK_FIND = '';         // what is typed in its search
+let PICK_KIND = '';         // the category whose chip is on, or '' for all of them
+let PICK_MOVING = true;     // for a new piece, only the drawings that come with moves
+let PICK_SHOWN = '';        // the drawing whose line is open under its row, or ''
+const READY_NEEDS = {};     // a ready piece's letter -> what it said it needs, until dismissed
 
-function readyPiecesHtml() {
-  const hexy = ((DRAFT.board || {}).lattice || 'square') === 'hex';
-  return `<details class="panel palettePanel readyPanel u-mt-10" id="dReady"${
-    READY_OPEN ? ' open' : ''}>
-    <summary class="muted small">or take a ready-made piece: a drawing with the moves
-      tradition gives it</summary>
-    <div class="muted small u-m-8-0">One pick brings the drawing, the name and the moves,
-      all yours to change after. A piece that needs a rule of the whole game says so on
-      its card.${hexy ? ' Only pieces written for a hex board are offered here.' : ''}</div>
-    <label class="field"><span>find one</span>
-      <input id="dReadyFind" type="search" value="${esc(READY_FIND)}" autocomplete="off"
-        placeholder="a name or a way of moving: camel, rider, zigzag"></label>
-    <div class="chips" role="group" aria-label="kinds of piece" id="dReadyKinds">${
-      readyKindsHtml()}</div>
-    <div id="dReadyList" aria-live="polite">${readyListHtml()}</div>
-  </details>`;
-}
-
-function readyKindsHtml() {
-  if (!PIECE_LIBRARY) return '';
-  const used = new Set(readyOffers(true).map(drawing => drawing.category));
-  return [{ key: '', label: 'all' }].concat(PIECE_LIBRARY.categories
-    .filter(kind => used.has(kind.key))).map(kind => {
-    const on = READY_KIND === kind.key;
-    return `<button class="chip${on ? ' on' : ''}" data-readykind="${esc(kind.key)}"
-      aria-pressed="${on}">${esc(kind.label)}</button>`;
-  }).join('');
-}
-
-// The drawings with a ready piece on this draft's lattice, narrowed by the chip (unless
-// `anyKind`) and by every word typed.
-function readyOffers(anyKind) {
+// A drawing's ready piece, when it is written for the lattice this draft is on.
+function readyHere(drawing) {
+  const ready = drawing && drawing.ready;
   const lattice = (DRAFT.board || {}).lattice || 'square';
-  const words = READY_FIND.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return ready && ready.lattice === lattice ? ready : null;
+}
+
+// The piece the picker dresses, when it is open in a piece's card; else null.
+function pickTarget(at) {
+  return typeof at === 'number' ? (DRAFT.pieces || [])[at] || null : null;
+}
+
+function pickOpenerHtml() {
+  const open = PICK_AT === 'new';
+  return `<div class="row u-mt-10">
+      <button id="dPickNew" aria-expanded="${open}" aria-controls="dPicker">${
+        open ? 'close the piece library' : 'choose from the piece library'}</button>
+      <span class="muted small">a drawing with its moves, a drawing alone, or a piece out of
+        a game</span>
+    </div>
+    <div data-pickat="new">${open ? pickerHtml('new') : ''}</div>`;
+}
+
+function pickerHtml(at) {
+  const piece = pickTarget(at);
+  const hexy = ((DRAFT.board || {}).lattice || 'square') === 'hex';
+  const says = piece
+    ? `Press a drawing to see it, then put it on the ${esc(piece.name || piece.id)}. A
+       drawing that comes with moves can be added as a piece of its own instead.`
+    : `Press a piece to read what it is and how it moves, then add it. One that comes with
+       moves brings its drawing, its name and its moves, all yours to change after; one that
+       needs a rule of the whole game says so on its card.${hexy
+         ? ' Only moves written for a hex board are offered.' : ''}`;
+  return `<div class="panel picker u-mt-8" id="dPicker">
+    <div class="muted small u-m-0-0-8">${says}</div>
+    <label class="field"><span>find one</span>
+      <input id="dPickFind" type="search" value="${esc(PICK_FIND)}" autocomplete="off"
+        placeholder="a name or a way of moving: camel, rider, zigzag"></label>
+    <div class="chips" role="group" aria-label="kinds of piece" id="dPickKinds">${
+      pickKindsHtml(at)}</div>
+    ${piece ? '' : `<label class="pick small"><input type="checkbox" id="dPickMoving"${
+      PICK_MOVING ? ' checked' : ''}> only the drawings that come with moves</label>`}
+    <div class="muted small u-mt-6" id="dPickCount" aria-live="polite">${
+      esc(pickCountWords(at))}</div>
+    <div id="dPickList">${pickListHtml(at)}</div>
+  </div>`;
+}
+
+// The drawings on offer: the chip's category (unless `anyKind`), narrowed by every word
+// typed, each matched anywhere in what the drawing and its ready piece are called and say.
+// For a new piece, while the box is ticked, only the drawings that come with moves here.
+function pickOffers(at, anyKind) {
+  if (!PIECE_LIBRARY) return [];
+  const words = PICK_FIND.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const moving = at === 'new' && PICK_MOVING;
   return PIECE_LIBRARY.pieces.filter(drawing => {
-    const ready = drawing.ready;
-    if (!ready || ready.lattice !== lattice) return false;
-    if (!anyKind && READY_KIND && drawing.category !== READY_KIND) return false;
-    const said = [drawing.name, drawing.slug, ready.piece.name, ready.reading,
-      ready.description, drawing.category].concat(drawing.words, ready.says)
-      .join(' ').toLowerCase();
+    const ready = readyHere(drawing);
+    if (moving && !ready) return false;
+    if (!anyKind && PICK_KIND && drawing.category !== PICK_KIND) return false;
+    const said = [drawing.name, drawing.slug, drawing.says, drawing.category]
+      .concat(drawing.words, ready ? [ready.piece.name, ready.reading, ready.description]
+        .concat(ready.says) : []).join(' ').toLowerCase();
     return words.every(word => said.includes(word));
   });
 }
 
-function readyListHtml() {
-  if (!READY_OPEN) return '';
-  if (!PIECE_LIBRARY) return '<div class="muted small">Fetching the pieces...</div>';
-  const offers = readyOffers(false);
-  const all = readyOffers(true).length;
-  if (!offers.length) return '<div class="muted small">No ready piece is called that.</div>';
-  return `<div class="muted small">${offers.length} of ${all} ready pieces; the i on one
-      says what it is</div>
-    <ul class="drawingGrid readyGrid" id="dReadyGrid">${offers.map(drawing => {
-      const ready = drawing.ready;
-      const about = ready.description || ready.reading;
-      const open = READY_ABOUT === drawing.slug;
-      return `<li class="readyTile"><button data-readypiece="${esc(drawing.slug)}"
-      title="${esc(ready.piece.name + ': ' + about)}"><img
-      src="${esc(drawingHref(drawing))}" alt=""><span>${esc(ready.piece.name)}</span></button
-      ><button class="info readyInfo" data-readyabout="${esc(drawing.slug)}"
-      aria-expanded="${open}" aria-controls="dReadyAbout"
-      aria-label="about the ${esc(ready.piece.name)}">i</button></li>`;
-    }).join('')}</ul>`;
+function pickKindsHtml(at) {
+  if (!PIECE_LIBRARY) return '';
+  const used = new Set(pickOffers(at, true).map(drawing => drawing.category));
+  return [{ key: '', label: 'all' }].concat(PIECE_LIBRARY.categories
+    .filter(kind => used.has(kind.key))).map(kind => {
+    const on = PICK_KIND === kind.key;
+    return `<button class="chip${on ? ' on' : ''}" data-pickkind="${esc(kind.key)}"
+      aria-pressed="${on}">${esc(kind.label)}</button>`;
+  }).join('');
 }
 
-// PF3: a ready piece's description, opened by the i in its tile's corner (a press, a tap
-// or Enter) and drawn as a line of its own under the row that tile stands in, across the
-// whole grid. It pushes the rows below it down rather than lying over them, so it covers
-// neither the board nor another piece, and a press on the tile itself still takes the
-// piece in one go. A hover reads the same words from the tile's title.
-function placeReadyAbout() {
-  const grid = document.getElementById('dReadyGrid');
-  if (!grid) return;
-  const old = document.getElementById('dReadyAbout');
+function pickCountWords(at) {
+  if (!PIECE_LIBRARY) return '';
+  const noun = at === 'new' && PICK_MOVING ? 'pieces with moves' : 'drawings';
+  return `${pickOffers(at, false).length} of ${pickOffers(at, true).length} ${noun}; `
+    + 'press one to read about it.';
+}
+
+function pickListHtml(at) {
+  if (!PIECE_LIBRARY) return '<div class="muted small">Fetching the pieces...</div>';
+  const offers = pickOffers(at, false);
+  const piece = pickTarget(at);
+  const worn = piece ? iconNameOf(piece.id) : '';
+  // Where every tile comes with moves, no tile needs to say so.
+  const tagged = !(at === 'new' && PICK_MOVING);
+  const tiles = offers.length ? `<ul class="drawingGrid" id="dPickGrid">${offers.map(drawing => {
+    const ready = readyHere(drawing);
+    const name = ready ? ready.piece.name : drawing.name;
+    const about = ready ? ready.description || ready.reading : drawing.says;
+    const wearing = worn === drawing.slug;
+    return `<li><button data-pick="${esc(drawing.slug)}" aria-expanded="${
+      PICK_SHOWN === drawing.slug}"${wearing ? ' class="worn"' : ''}
+      title="${esc(name + (about ? ': ' + about : ''))}"><img
+      src="${esc(drawingHref(drawing))}" alt=""><span>${esc(name)}</span>${
+      ready && tagged ? '<span class="tileTag">with moves</span>' : ''}${
+      wearing ? '<span class="tileTag">worn now</span>' : ''}</button></li>`;
+  }).join('')}</ul>` : '<div class="muted small">No drawing is called that.</div>';
+  // The library's games' pieces come with every chip but a category's.
+  const games = at === 'new' && !PICK_KIND ? paletteOffers() : [];
+  return tiles + (games.length ? `<div class="pickHead">Out of a game in the library</div>
+    <div class="muted small">Its moves come with it, word for word. What it may capture,
+      where it may stand and what it reverts to are left behind, because those name pieces
+      and squares of the game it came from.</div>${paletteListHtml()}` : '');
+}
+
+// The line under a tile's row, across the whole grid: the drawing larger, what the piece
+// is, how it moves in the words a game's page uses (`spec/describe.py`, served with it),
+// and the buttons that take it. It pushes the rows below down rather than lying over them.
+function placePickAbout() {
+  const grid = document.getElementById('dPickGrid');
+  const old = document.getElementById('dPickAbout');
   if (old) old.remove();
-  const button = READY_ABOUT && grid.querySelector(
-    `[data-readyabout="${CSS.escape(READY_ABOUT)}"]`);
-  grid.querySelectorAll('[data-readyabout]').forEach(node => {
+  if (!grid) return;
+  const button = PICK_SHOWN && grid.querySelector(`[data-pick="${CSS.escape(PICK_SHOWN)}"]`);
+  grid.querySelectorAll('[data-pick]').forEach(node => {
     node.setAttribute('aria-expanded', String(node === button));
+    if (node === button) node.setAttribute('aria-controls', 'dPickAbout');
+    else node.removeAttribute('aria-controls');
   });
-  if (!button) { READY_ABOUT = ''; return; }
-  const drawing = PIECE_LIBRARY.pieces.find(one => one.slug === READY_ABOUT);
-  const ready = drawing && drawing.ready;
-  if (!ready) { READY_ABOUT = ''; return; }
+  if (!button) { PICK_SHOWN = ''; return; }
+  const drawing = PIECE_LIBRARY.pieces.find(one => one.slug === PICK_SHOWN);
+  if (!drawing) { PICK_SHOWN = ''; return; }
+  const ready = readyHere(drawing);
+  const piece = pickTarget(PICK_AT);
+  const line = document.createElement('li');
+  line.className = 'pickAbout small';
+  line.id = 'dPickAbout';
+  line.setAttribute('role', 'region');
+  line.setAttribute('aria-label', 'about the ' + (ready ? ready.piece.name : drawing.name));
+  const picture = document.createElement('img');
+  picture.src = drawingHref(drawing);
+  picture.alt = '';
+  const words = document.createElement('div');
+  const said = (text, muted) => {
+    const part = document.createElement('div');
+    if (muted) part.className = 'muted';
+    part.textContent = text;
+    words.append(part);
+  };
+  const title = document.createElement('b');
+  title.textContent = (ready ? ready.piece.name : drawing.name) + '. ';
+  const first = document.createElement('div');
+  first.append(title, ready ? ready.description || ready.reading
+    : drawing.says || 'A drawing.');
+  words.append(first);
+  if (ready) {
+    said('How it moves: ' + ready.says.join('; ') + '.');
+    if (ready.rulesSay) said(ready.rulesSay, true);
+  } else {
+    said(drawing.ready
+      ? 'Its moves are written for the other kind of board, so here it gives the drawing alone.'
+      : 'No moves come with this drawing: it gives the picture alone.', true);
+  }
+  const row = document.createElement('div');
+  row.className = 'row';
+  const offer = (label, primary, act) => {
+    const press = document.createElement('button');
+    press.textContent = label;
+    if (primary) press.className = 'primary';
+    press.onclick = event => { event.preventDefault(); act(); };
+    row.append(press);
+    return press;
+  };
+  if (piece) {
+    const wearing = iconNameOf(piece.id) === drawing.slug;
+    const put = offer(wearing ? `the ${piece.name || piece.id} wears it`
+      : `put it on the ${piece.name || piece.id}`, true, () => wearDrawing(PICK_AT, drawing.slug));
+    put.disabled = wearing;
+    if (ready) offer(`add the ${ready.piece.name} as a new piece`, false,
+      () => takeReadyPiece(drawing.slug));
+  } else if (ready) {
+    offer(`add the ${ready.piece.name}`, true, () => takeReadyPiece(drawing.slug));
+  } else {
+    offer('add a piece wearing it', true, () => addPieceWearing(drawing.slug));
+  }
+  words.append(row);
+  line.append(picture, words);
   // The last tile of the row this one stands in: the line goes after it.
   const tile = button.closest('li');
   let last = tile;
   while (last.nextElementSibling && last.nextElementSibling.offsetTop === tile.offsetTop) {
     last = last.nextElementSibling;
   }
-  const line = document.createElement('li');
-  line.className = 'readyAbout small';
-  line.id = 'dReadyAbout';
-  line.setAttribute('role', 'note');
-  const name = document.createElement('b');
-  name.textContent = ready.piece.name + '. ';
-  line.append(name, ready.description || ready.reading);
   last.after(line);
   const shown = line.getBoundingClientRect();
   const box = grid.getBoundingClientRect();
   if (shown.bottom > box.bottom) grid.scrollTop += shown.bottom - box.bottom;
 }
 
-function toggleReadyAbout(slug) {
-  READY_ABOUT = READY_ABOUT === slug ? '' : slug;
-  placeReadyAbout();
+function togglePickAbout(slug) {
+  PICK_SHOWN = PICK_SHOWN === slug ? '' : slug;
+  placePickAbout();
 }
 
-function redrawReady() {
-  const kinds = document.getElementById('dReadyKinds');
-  const list = document.getElementById('dReadyList');
-  if (kinds) kinds.innerHTML = readyKindsHtml();
-  if (list) list.innerHTML = readyListHtml();
+function loadPieceLibrary() {
+  if (PIECE_LIBRARY || loadPieceLibrary.asked) return;
+  loadPieceLibrary.asked = true;
+  api('/api/design?part=pieces').then(answer => {
+    PIECE_LIBRARY = answer.pieceLibrary || { categories: [], pieces: [] };
+    redrawPicker();
+  }).catch(error => {
+    loadPieceLibrary.asked = false;
+    const list = document.getElementById('dPickList');
+    if (list) list.textContent = 'The pieces could not be fetched: ' + error.message;
+  });
+}
+
+function openPicker(at) {
+  PICK_AT = PICK_AT === at ? null : at;
+  PICK_SHOWN = '';
+  redrawPicker();
+  if (PICK_AT !== null) loadPieceLibrary();
+}
+
+// The picker drawn again where it stands (and taken away where it does not), so the rest
+// of the form, and the cursor in a field, is left alone.
+function redrawPicker() {
   const form = document.getElementById('form');
-  if (form) wireReadyList(form);
-  placeReadyAbout();
+  if (!form) return;
+  form.querySelectorAll('[data-pickat]').forEach(box => {
+    box.innerHTML = String(PICK_AT) === box.dataset.pickat ? pickerHtml(PICK_AT) : '';
+  });
+  const opener = form.querySelector('#dPickNew');
+  if (opener) {
+    opener.setAttribute('aria-expanded', String(PICK_AT === 'new'));
+    opener.textContent = PICK_AT === 'new' ? 'close the piece library'
+      : 'choose from the piece library';
+  }
+  form.querySelectorAll('[data-pickfor]').forEach(node => {
+    const open = Number(node.dataset.pickfor) === PICK_AT;
+    node.setAttribute('aria-expanded', String(open));
+    node.textContent = open ? 'close the drawings' : 'choose a drawing';
+  });
+  wirePicker(form);
+}
+
+// Only the chips, the count and the tiles, so the cursor stays in the search box.
+function redrawPickList() {
+  const kinds = document.getElementById('dPickKinds');
+  const list = document.getElementById('dPickList');
+  const count = document.getElementById('dPickCount');
+  if (kinds) kinds.innerHTML = pickKindsHtml(PICK_AT);
+  if (list) list.innerHTML = pickListHtml(PICK_AT);
+  if (count) count.textContent = pickCountWords(PICK_AT);
+  const form = document.getElementById('form');
+  if (form) wirePickList(form);
+  placePickAbout();
+}
+
+function wirePickList(form) {
+  form.querySelectorAll('[data-pickkind]').forEach(node => {
+    node.onclick = event => {
+      event.preventDefault();
+      PICK_KIND = node.dataset.pickkind;
+      PICK_SHOWN = '';
+      redrawPickList();
+    };
+  });
+  form.querySelectorAll('[data-pick]').forEach(node => {
+    node.onclick = event => {
+      event.preventDefault();
+      togglePickAbout(node.dataset.pick);
+    };
+  });
+  form.querySelectorAll('[data-palettepiece]').forEach(node => {
+    node.onclick = event => {
+      event.preventDefault();
+      takePalettePiece(node.dataset.palettepiece);
+    };
+  });
+  const grid = form.querySelector('#dPickGrid');
+  if (grid) {
+    // Escape closes the open line and leaves the focus on the tile that opened it.
+    grid.onkeydown = event => {
+      if (event.key !== 'Escape' || !PICK_SHOWN) return;
+      const slug = PICK_SHOWN;
+      togglePickAbout(slug);
+      const button = grid.querySelector(`[data-pick="${CSS.escape(slug)}"]`);
+      if (button) button.focus();
+    };
+  }
+  // The grid's columns follow its width, so the line moves to its tile's row on a resize.
+  if (!wirePickList.resizing) {
+    wirePickList.resizing = true;
+    window.addEventListener('resize', () => { if (PICK_SHOWN) placePickAbout(); });
+  }
+}
+
+function wirePicker(form) {
+  const opener = form.querySelector('#dPickNew');
+  if (opener) opener.onclick = event => { event.preventDefault(); openPicker('new'); };
+  form.querySelectorAll('[data-pickfor]').forEach(node => {
+    node.onclick = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openPicker(Number(node.dataset.pickfor));
+    };
+  });
+  if (PICK_AT === null) return;
+  const find = form.querySelector('#dPickFind');
+  if (find) {
+    find.oninput = () => { PICK_FIND = find.value; PICK_SHOWN = ''; redrawPickList(); };
+  }
+  const moving = form.querySelector('#dPickMoving');
+  if (moving) {
+    moving.onchange = () => { PICK_MOVING = moving.checked; PICK_SHOWN = ''; redrawPickList(); };
+  }
+  wirePickList(form);
+  placePickAbout();
+}
+
+// A piece just added from the picker, brought into view with its card open, since on a
+// phone the picker is below the list it joined.
+function showNewPiece(index) {
+  const card = document.querySelector(`.editorPiece[data-piece="${index}"]`);
+  if (!card) return;
+  if (card.scrollIntoView) card.scrollIntoView({ block: 'start' });
+  const fold = card.querySelector('[data-fold]');
+  if (fold && fold.focus) fold.focus({ preventScroll: true });
+}
+
+// A new piece, with the knight's leap every new piece arrives with, wearing the drawing
+// named, if any, and called after it.
+function addPieceWearing(slug) {
+  const drawing = (PIECE_LIBRARY ? PIECE_LIBRARY.pieces : []).find(one => one.slug === slug);
+  DRAFT.pieces = DRAFT.pieces || [];
+  const piece = {
+    id: freeLetter(''), name: drawing ? drawing.name : 'new piece', value: 1,
+    moves: [{ kind: 'leap', vectors: [[1, 2]], symmetry: 'dihedral8' }],
+  };
+  DRAFT.pieces.push(piece);
+  if (drawing) {
+    DRAFT.appearance = DRAFT.appearance || {};
+    DRAFT.appearance.icons = DRAFT.appearance.icons || {};
+    DRAFT.appearance.icons[piece.id] = slug;
+  }
+  DRAFT_PIECE = DRAFT.pieces.length - 1;
+  DRAFT_SQUARE = -1;
+  PICK_SHOWN = '';
+  freshPiece(DRAFT_PIECE);
+  // On hexagons the knight's leap it arrives with is the hex knight's (Q640).
+  if ((DRAFT.board || {}).lattice === 'hex') return ontoHex();
+  drawDesigner();
+  checkDraft();
+  loadMoveMap();
+  showNewPiece(DRAFT_PIECE);
 }
 
 // '@self' is the piece's letter and '@royals' the draft's royal pieces, wherever they
@@ -1218,10 +1433,12 @@ function takeReadyPiece(slug) {
   if (ready.rules || ready.note) READY_NEEDS[piece.id] = ready;
   DRAFT_PIECE = DRAFT.pieces.length - 1;
   DRAFT_SQUARE = -1;
+  PICK_SHOWN = '';
   freshPiece(DRAFT_PIECE);
   drawDesigner();
   checkDraft();
   loadMoveMap();
+  showNewPiece(DRAFT_PIECE);
 }
 
 // On the card of a piece taken ready-made: what its tradition adds that the draft must
@@ -1252,68 +1469,7 @@ function readyNeedsHtml(index) {
     <button class="u-mt-6" data-readydone="${index}">done with this note</button></div>`;
 }
 
-function wireReadyList(form) {
-  form.querySelectorAll('[data-readykind]').forEach(node => {
-    node.onclick = event => {
-      event.preventDefault();
-      READY_KIND = node.dataset.readykind;
-      redrawReady();
-    };
-  });
-  form.querySelectorAll('[data-readypiece]').forEach(node => {
-    node.onclick = event => {
-      event.preventDefault();
-      takeReadyPiece(node.dataset.readypiece);
-    };
-  });
-  form.querySelectorAll('[data-readyabout]').forEach(node => {
-    node.onclick = event => {
-      event.preventDefault();
-      toggleReadyAbout(node.dataset.readyabout);
-    };
-  });
-  const grid = form.querySelector('#dReadyGrid');
-  if (grid) {
-    // Escape closes the open description and leaves the focus on the i that opened it.
-    grid.onkeydown = event => {
-      if (event.key !== 'Escape' || !READY_ABOUT) return;
-      const slug = READY_ABOUT;
-      toggleReadyAbout(slug);
-      const button = grid.querySelector(`[data-readyabout="${CSS.escape(slug)}"]`);
-      if (button) button.focus();
-    };
-  }
-  // The grid's columns follow its width, so the line moves to its tile's row on a resize.
-  if (!wireReadyList.resizing) {
-    wireReadyList.resizing = true;
-    window.addEventListener('resize', () => { if (READY_ABOUT) placeReadyAbout(); });
-  }
-}
-
-function wireReadyPieces(form) {
-  const panel = form.querySelector('#dReady');
-  if (panel) {
-    panel.ontoggle = () => {
-      READY_OPEN = panel.open;
-      if (!READY_OPEN) return;
-      redrawReady();
-      if (PIECE_LIBRARY) return;
-      api('/api/design?part=pieces').then(answer => {
-        PIECE_LIBRARY = answer.pieceLibrary || { categories: [], pieces: [] };
-        redrawReady();
-      }).catch(error => {
-        const list = document.getElementById('dReadyList');
-        if (list) list.textContent = 'The pieces could not be fetched: ' + error.message;
-      });
-    };
-  }
-  const find = form.querySelector('#dReadyFind');
-  if (find) {
-    // Only the list is redrawn, so the cursor stays where it is being typed.
-    find.oninput = () => { READY_FIND = find.value; redrawReady(); };
-  }
-  wireReadyList(form);
-  placeReadyAbout();
+function wireReadyNeeds(form) {
   form.querySelectorAll('[data-readyrules]').forEach(node => {
     node.onclick = event => {
       event.stopPropagation();
@@ -1335,6 +1491,56 @@ function wireReadyPieces(form) {
   });
 }
 
+// ------------------------------------------------ a piece's card, folded
+//
+// PF4 (the user, 2026-10-26). Each piece's card folds to one line -- its drawing, its name
+// and its moves in the words a game's page says them in (the check's `move_lines`, out of
+// `spec/describe.py`) -- and opens to the whole editor. Which cards are open is kept by the
+// piece's letter for as long as the page is, so a redraw, an undo or a check leaves it;
+// a piece just added opens.
+const PIECES_OPEN = new Set();   // the letters of the pieces whose cards are open
+
+function pieceFoldSays(index) {
+  const piece = (DRAFT.pieces || [])[index] || {};
+  const lines = MOVE_SAID && MOVE_SAID.key === JSON.stringify(DRAFT)
+    ? (MOVE_SAID.lines || [])[index] : null;
+  const said = (lines || []).filter(Boolean);
+  const count = (piece.moves || []).length;
+  const moves = said.length ? said.join('; ')
+    : count ? `${count} way${count === 1 ? '' : 's'} of moving` : 'no way of moving';
+  return (piece.royal ? 'royal; ' : '') + moves;
+}
+
+function setPieceOpen(index, open) {
+  const card = document.querySelector(`.editorPiece[data-piece="${index}"]`);
+  if (!card) return;
+  card.classList.toggle('folded', !open);
+  const fold = card.querySelector('[data-fold]');
+  if (fold) fold.setAttribute('aria-expanded', String(open));
+  const body = card.querySelector('.pieceBody');
+  if (body) body.hidden = !open;
+}
+
+function wireFolds(form) {
+  form.querySelectorAll('[data-fold]').forEach(node => {
+    node.onclick = () => {
+      const index = Number(node.dataset.fold);
+      const piece = (DRAFT.pieces || [])[index];
+      if (!piece) return;
+      const open = !PIECES_OPEN.has(piece.id);
+      if (open) PIECES_OPEN.add(piece.id); else PIECES_OPEN.delete(piece.id);
+      setPieceOpen(index, open);
+    };
+  });
+}
+
+// The folded lines' words, once the check has said each piece's moves.
+function drawFoldSays() {
+  document.querySelectorAll('[data-foldsays]').forEach(node => {
+    node.textContent = pieceFoldSays(Number(node.dataset.foldsays));
+  });
+}
+
 // The pieces in the order the list shows them: the draft's (a portal's moves are its
 // group's since spelling 31, on its card among the rules, so no piece here is a portal).
 function piecesInOrder() {
@@ -1343,9 +1549,16 @@ function piecesInOrder() {
 
 function pieceEditor(piece, index) {
   const on = index === DRAFT_PIECE;
-  return `<div class="editorPiece${on ? ' on' : ''}" data-piece="${index}">
+  const open = PIECES_OPEN.has(piece.id);
+  return `<div class="editorPiece${on ? ' on' : ''}${open ? '' : ' folded'}" data-piece="${index}">
+    <button class="pieceFold" data-fold="${index}" aria-expanded="${open}"
+      aria-controls="dPieceBody${index}"><span class="foldMark" aria-hidden="true"></span
+      ><span class="iconSlot" data-icon="${index}">${pieceIconHtml(index)}</span
+      ><span class="foldName" data-foldname="${index}">${esc(piece.name || piece.id || '')}</span
+      ><span class="foldSays muted small" data-foldsays="${index}">${
+        esc(pieceFoldSays(index))}</span></button>
+    <div class="pieceBody" id="dPieceBody${index}"${open ? '' : ' hidden'}>
     <div class="row u-gap-8">
-      <div class="iconSlot" data-icon="${index}">${pieceIconHtml(index)}</div>
       <label class="field u-w-64 u-m-0"><span>letter</span>
         <input data-field="id" data-index="${index}" maxlength="2"
           value="${esc(piece.id || '')}"></label>
@@ -1367,9 +1580,10 @@ function pieceEditor(piece, index) {
       <input data-field="icon" data-index="${index}" placeholder="or name a library piece: knight, cannon..."
         title="one name serves both players; two names separated by a space draw one each"
         value="${esc(iconNameOf(piece.id))}" class="u-flex-1 u-minw-150 u-fs-12 u-p-5-8">
-      ${drawingsButtonHtml(index)}
+      <button data-pickfor="${index}" aria-expanded="${PICK_AT === index}"
+        aria-controls="dPicker">${PICK_AT === index ? 'close the drawings' : 'choose a drawing'}</button>
     </div>
-    <div data-drawingsat="${index}">${drawingsPanelHtml(index)}</div>
+    <div data-pickat="${index}">${PICK_AT === index ? pickerHtml(index) : ''}</div>
     ${freshNoteHtml(index)}
     ${readyNeedsHtml(index)}
     <div class="u-mt-8">
@@ -1383,6 +1597,7 @@ function pieceEditor(piece, index) {
       ${pieceTurnsHtml(piece, index)}
       ${extrasHtml('piece.' + index, piece, 'more about this piece',
                    new Set(pieceRowKeys().rounds.concat(pieceRowKeys().always)))}
+    </div>
     </div>
   </div>`;
 }
@@ -2122,105 +2337,8 @@ function iconNameOf(id) {
   return (names[0] === names[1] ? names[0] : names.join(' ')).trim();
 }
 
-// V9: the piece library as a palette, to dress a piece in a drawing (plan-visual.md §7).
-// The drawings are the server's (`web/piece_library.py`, `GET /api/design?part=pieces`),
-// fetched the first time a palette opens rather than with the kit, since they are a
-// quarter of a megabyte of pictures. The page filters them by what is typed and by a
-// category, and writes the slug picked into `appearance.icons`, the same entry the text
-// field beside it names: a picture, never a rule, so no game changes by it.
-let PIECE_LIBRARY = null;   // {categories, pieces}, once fetched
-let DRAWINGS_FOR = -1;      // the piece whose palette is open, else -1
-let DRAWINGS_FIND = '';     // what is typed in the palette's search
-let DRAWINGS_KIND = '';     // the category whose chip is on, or '' for all of them
-
-function drawingsButtonHtml(index) {
-  const open = DRAWINGS_FOR === index;
-  return `<button data-drawfor="${index}" aria-expanded="${open}"
-    aria-controls="dDrawings${index}">${open ? 'close the drawings' : 'choose a drawing'}</button>`;
-}
-
-function drawingsPanelHtml(index) {
-  if (DRAWINGS_FOR !== index) return '';
-  return `<div class="panel drawingPanel u-mt-8" id="dDrawings${index}">
-    <label class="field"><span>find a drawing</span>
-      <input id="dDrawFind" type="search" value="${esc(DRAWINGS_FIND)}" autocomplete="off"
-        placeholder="a name, a kind or a move: kirin, rider, (3,0)"></label>
-    <div class="chips" role="group" aria-label="kinds of piece" id="dDrawKinds">${
-      drawingKindsHtml()}</div>
-    <div id="dDrawList" aria-live="polite">${drawingListHtml(index)}</div>
-  </div>`;
-}
-
-function drawingKindsHtml() {
-  if (!PIECE_LIBRARY) return '';
-  return [{ key: '', label: 'all' }].concat(PIECE_LIBRARY.categories).map(kind => {
-    const on = DRAWINGS_KIND === kind.key;
-    return `<button class="chip${on ? ' on' : ''}" data-drawkind="${esc(kind.key)}"
-      aria-pressed="${on}">${esc(kind.label)}</button>`;
-  }).join('');
-}
-
-// The drawings on offer: the chip's category, narrowed by every word typed, each matched
-// anywhere in a drawing's name, slug, the words it is found by or what it shows.
-function drawingOffers() {
-  const words = DRAWINGS_FIND.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  return PIECE_LIBRARY.pieces.filter(drawing => {
-    if (DRAWINGS_KIND && drawing.category !== DRAWINGS_KIND) return false;
-    const said = [drawing.name, drawing.slug, drawing.says, drawing.category]
-      .concat(drawing.words).join(' ').toLowerCase();
-    return words.every(word => said.includes(word));
-  });
-}
-
 function drawingHref(drawing) {
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(drawing.svg);
-}
-
-function drawingListHtml(index) {
-  if (!PIECE_LIBRARY) return '<div class="muted small">Fetching the drawings...</div>';
-  const offers = drawingOffers();
-  const of = `${offers.length} of ${PIECE_LIBRARY.pieces.length} drawings`;
-  if (!offers.length) {
-    return `<div class="muted small">No drawing is called that (${of}).</div>`;
-  }
-  const piece = (DRAFT.pieces || [])[index] || {};
-  const worn = iconNameOf(piece.id);
-  return `<div class="muted small">${of}</div>
-    <ul class="drawingGrid">${offers.map(drawing => `<li><button
-      data-drawing="${esc(drawing.slug)}" aria-pressed="${worn === drawing.slug}"
-      title="${esc(drawing.name + (drawing.says ? ': ' + drawing.says : ''))}"><img
-      src="${esc(drawingHref(drawing))}" alt=""><span>${esc(drawing.name)}</span></button>
-      </li>`).join('')}</ul>`;
-}
-
-// The palette's box under one piece, drawn again in place, so the rest of the form (and
-// the cursor in a field) is left alone.
-function redrawDrawings(index) {
-  const form = document.getElementById('form');
-  if (!form) return;
-  form.querySelectorAll('[data-drawingsat]').forEach(box => {
-    const at = Number(box.dataset.drawingsat);
-    box.innerHTML = drawingsPanelHtml(at);
-  });
-  form.querySelectorAll('[data-drawfor]').forEach(node => {
-    const open = Number(node.dataset.drawfor) === DRAWINGS_FOR;
-    node.setAttribute('aria-expanded', String(open));
-    node.textContent = open ? 'close the drawings' : 'choose a drawing';
-  });
-  wireDrawingPanel(form, index);
-}
-
-function openDrawings(index) {
-  DRAWINGS_FOR = DRAWINGS_FOR === index ? -1 : index;
-  redrawDrawings(index);
-  if (DRAWINGS_FOR < 0 || PIECE_LIBRARY) return;
-  api('/api/design?part=pieces').then(answer => {
-    PIECE_LIBRARY = answer.pieceLibrary || { categories: [], pieces: [] };
-    if (DRAWINGS_FOR === index) redrawDrawings(index);
-  }).catch(error => {
-    const list = document.getElementById('dDrawList');
-    if (list) list.textContent = 'The drawings could not be fetched: ' + error.message;
-  });
 }
 
 // A drawing picked: the piece wears it. A piece drawn its own way for each player (a
@@ -2234,59 +2352,13 @@ function wearDrawing(index, slug) {
   DRAFT.appearance.icons[piece.id] = iconSeats(index) ? [slug, slug] : slug;
   const field = document.querySelector(`[data-field="icon"][data-index="${index}"]`);
   if (field) field.value = iconNameOf(piece.id);
-  const list = document.getElementById('dDrawList');
-  if (list) {
-    list.querySelectorAll('[data-drawing]').forEach(node => {
-      node.setAttribute('aria-pressed', String(node.dataset.drawing === slug));
-    });
+  // The tiles say which drawing it wears now, and the open line's button that it does.
+  if (document.getElementById('dPickList')) {
+    redrawPickList();
+    const tile = document.querySelector(`[data-pick="${CSS.escape(slug)}"]`);
+    if (tile) tile.focus();
   }
   checkDraft();
-}
-
-function wireDrawingPanel(form, index) {
-  const find = form.querySelector('#dDrawFind');
-  const list = form.querySelector('#dDrawList');
-  const kinds = form.querySelector('#dDrawKinds');
-  const wireList = () => {
-    list.querySelectorAll('[data-drawing]').forEach(node => {
-      node.onclick = event => {
-        event.preventDefault();
-        wearDrawing(index, node.dataset.drawing);
-      };
-    });
-  };
-  if (!list) return;
-  if (find) {
-    // Only the list is redrawn, so the cursor stays where it is being typed.
-    find.oninput = () => {
-      DRAWINGS_FIND = find.value;
-      list.innerHTML = drawingListHtml(index);
-      wireList();
-    };
-  }
-  if (kinds) {
-    kinds.querySelectorAll('[data-drawkind]').forEach(node => {
-      node.onclick = event => {
-        event.preventDefault();
-        DRAWINGS_KIND = node.dataset.drawkind;
-        kinds.innerHTML = drawingKindsHtml();
-        list.innerHTML = drawingListHtml(index);
-        wireDrawingPanel(form, index);
-      };
-    });
-  }
-  wireList();
-}
-
-function wireDrawings(form) {
-  form.querySelectorAll('[data-drawfor]').forEach(node => {
-    node.onclick = event => {
-      event.preventDefault();
-      event.stopPropagation();
-      openDrawings(Number(node.dataset.drawfor));
-    };
-  });
-  if (DRAWINGS_FOR >= 0) wireDrawingPanel(form, DRAWINGS_FOR);
 }
 
 // Every control that lists the draft's pieces, drawn again from the draft. The form is
@@ -2441,11 +2513,16 @@ function wireDesigner() {
         // back at the start of this box on every letter typed.
         const from = piece.id;
         piece.id = node.value;
+        if (PIECES_OPEN.delete(from)) PIECES_OPEN.add(node.value);
         renamePiece(from, node.value);
         refreshPieceMenus();
         return changed(false);
       }
       piece[field] = node.value;
+      if (field === 'name') {
+        const folded = form.querySelector(`[data-foldname="${index}"]`);
+        if (folded) folded.textContent = node.value;
+      }
       changed(false);
     };
     if (node.type === 'checkbox') node.onchange = write;
@@ -2559,9 +2636,9 @@ function wireDesigner() {
     };
   });
   wireUploads(form);
-  wirePalettePieces(form);
-  wireReadyPieces(form);
-  wireDrawings(form);
+  wirePicker(form);
+  wireReadyNeeds(form);
+  wireFolds(form);
   wirePortalCards(form);
 
   // Read by the server as a rule file is (Q830b): the parse, the size, the validator and
@@ -2634,6 +2711,7 @@ function checkDraft() {
         MOVE_SAID = { key: JSON.stringify(DRAFT), lines: answer.moveLines || [],
                       portalLines: answer.portalMoveLines || [] };
         drawMoveSays();
+        drawFoldSays();
         SIGHT_SAID = { key: JSON.stringify(DRAFT), lines: answer.sightLines || [],
                        problems: answer.sightProblems || [] };
         drawSightSays();

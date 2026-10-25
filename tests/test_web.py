@@ -6662,7 +6662,12 @@ class TestWhatReachesThePage:
         # 157 since PF: the ready-made pieces' chips (`readyKindsHtml`) and list
         # (`readyListHtml`) redrawn in place (`redrawReady`). Every name, slug, reading and
         # picture's data URI through `esc`; the rest counts and constants.
-        assert len(sites) == 157
+        # 153 since PF4: the drawing palette, the ready pieces' panel and the library games'
+        # panel are one picker. Seven sites become three: the picker drawn where it stands
+        # (`redrawPicker`), and its chips and list redrawn in place (`redrawPickList`). Every
+        # name, slug, sentence and picture's data URI through `esc`; the line under a tile is
+        # built as text nodes (`placePickAbout`).
+        assert len(sites) == 153
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")
