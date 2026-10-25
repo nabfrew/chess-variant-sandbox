@@ -1,0 +1,252 @@
+{
+  "schema_version": 31,
+  "name": "the horse archers",
+  "description": "Chess, except that the knights are horse archers. A knight moves as in chess, but when it captures it shoots: the piece it takes is removed and the knight stays where it stood. Every other piece captures as in chess, by moving onto the square it takes. In chess a guarded piece is safe, because whoever takes it lands where it can be taken back. A knight here never lands, and its jump cannot be blocked, so a guard protects nothing against it: a piece a knight's jump away is lost unless it steps off that square or the knight itself is driven off or taken. A shot cannot block a check, since the knight stays on its own square, though it can answer one by shooting the checking piece; and a pinned knight, which in chess cannot move at all, may still shoot, since shooting never takes it off the line. The question the game keeps asking is how close to let an enemy knight come, because a knight in the middle of the board threatens eight squares at once and none of the pieces on them can be defended the usual way, and when to give up a piece of your own to be rid of a knight that cannot simply be chased away. Everything else, checkmate included, is chess.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100,
+    "strike": {
+      "effect": "capture",
+      "position": "stay",
+      "immune": [
+        "K"
+      ],
+      "by": [
+        "N"
+      ]
+    }
+  },
+  "provenance": {
+    "added": "2026-10-25",
+    "origin": "designed",
+    "source": "docs/plan-pieces-moves.md, A2: the showcase for a shooting capture (section 6.7, its fallback)",
+    "history": "The registered fallback of A2 (docs/plan-pieces-moves.md section 6.7), pre-registered 2026-10-25 before the rule was built: chess (4c1922ffae26) with rifle chess's capture given to the knights alone, rules.strike with by: [N], one key on the calibration baseline so a visitor sees what a piece that shoots does. Taken over the archers (the same rule on the bishops) by the rule written before the draft read: the bishops unless their 6400-node self-play gave the first seat more than 0.70 of the decided games; it gave 18 of 18, the first player's bishop going to b5 and shooting into the uncastled king's side. Nothing was tunable; the knights are drawn as an arrow, the drawing this rule was built for, a choice made before any measured game.",
+    "parents": [
+      "4c1922ffae26"
+    ]
+  },
+  "appearance": {
+    "icons": {
+      "N": "arrow"
+    }
+  }
+}

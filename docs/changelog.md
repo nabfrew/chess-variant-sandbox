@@ -13,6 +13,11 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-26
 
+### New games: the horse archers and anchors
+
+In the horse archers the knights shoot: the piece a knight captures is removed, and the knight stays where it
+stood. Anchors is chess with two pieces a side that never move, and that only a pawn can take.
+
 ### Two new games: crooked bishops and the circling queen
 
 In crooked bishops each bishop zigzags along a rank or file instead of running down a diagonal; in the

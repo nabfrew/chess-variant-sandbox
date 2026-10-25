@@ -2506,11 +2506,11 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
-    # I1's one name. Its showcase is I2, *capture the flag* (`plan-pieces-moves.md` §4.7),
-    # registered before the rule was built; I2 deletes this row when it lands.
-    # A1's one name. Its showcase is A2, *the archers* (`plan-pieces-moves.md` §6.7),
-    # registered before the rule was built; A2 deletes this row when it lands.
-    "A1 strike by": "owed: A2, the archers (plan-pieces-moves.md §6.7)",
+    # I1's one name went with I2's retirement to `_NO_SHOWCASE_ON_PURPOSE`, and from there with
+    # I3's *anchors* (`archive/anchors.json`, 2026-10-25). A1's one name,
+    # `rules.strike.by`, went on 2026-10-25, when A2 archived its showcase, *the horse
+    # archers* (`archive/horse-archers.json`, `plan-pieces-moves.md` §6.7, the registered
+    # fallback over *the archers*, whose bishops' strong self-play gave the first seat 18 of 18).
     # Schema 30's `through` went on 2026-10-22, when Q999d archived S2
     # (`archive/chess-with-a-sheltering-king`, `docs/archive/plan-passive.md` §6.1) beside S1 and S3
     # (`archive/madrasi`, `-with-daunting-knights`); freeze, disarm and shield had gone the
@@ -2612,15 +2612,9 @@ _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
     # Generation 34's two names (T1) were owed here until their showcases landed, both
     # 2026-10-25 (`plan-pieces-moves.md` §5.7): T2's `archive/crooked-bishops.json` deleted
     # `...path.zigzag`'s row and T3's `archive/circling-queen.json` `...path.circle`'s.
-    # Generation 33's name (I1). I2 built and measured its showcase, *capture the flag*
-    # (`plan-pieces-moves.md` §4.7, 2026-10-25): viable 4-0 and fair, V2 met, but the index
-    # missed V3's 0.800, so it retired by the call registered before its first measured game
-    # (`tests/_retired_capture_the_flag.json`). A game that closes this row is a moveless-piece
-    # game that scores as a game.
-    "schema 33: pieces.moves.empty": (
-        "I2: capture the flag retired, index 0.790 [0.770, 0.826], V3's bar 0.800"
-        " (plan-pieces-moves.md §4.7)"
-    ),
+    # Generation 33's name (I1) was here from I2's retirement of *capture the flag*
+    # (`plan-pieces-moves.md` §4.7, index 0.790 against V3's 0.800) until 2026-10-25, when I3
+    # archived the second showcase, *anchors* (`archive/anchors.json`, §4.8, 0.894).
     # Generation 32's two names (Q1007a), owed in `_SHOWCASE_OWED` until generation 33 retired
     # their `_FEATURES` rows. R1 (`plan-schema-31.md` §6.1) was to carry the lame rider; the user
     # made its rook the slide reading (2026-10-23), and Q1007e kept R1b, a slide, over R1c, the

@@ -1033,6 +1033,42 @@ twin's (`c4e50ed4ee63`) are kept.
   queen takes 0.66 of the flags, and a defence that cannot move the target rarely holds.
   The twin, chess under royal capture with stalemate a loss, scored 0.941 [0.923, 0.957].
 
+## `anchors.json` — generation 33, a piece that never moves (I3)
+
+2026-10-25, **in the library** (`d6cb641394dd`). The second showcase for `moves: []`
+(`docs/plan-pieces-moves.md` §4.8), registered after *capture the flag* retired: chess with two
+**anchors** a side on b3 and g3 (b6 and g6), pieces that never move and that only a pawn may
+take (`captures` on every other type), drawn as the anchor. Where the flag made the moveless
+piece the one whose loss ends the game, the anchors are terrain each side owns: a wall in front
+of its camp that no line passes, and a wall in its own knight's pawn's way until the enemy digs
+it out. The rule written before the draft read chose b3/g3 over d3/e3 unless their 6400-node
+self-play leaned over 0.70, ran under 30 plies or decided under 0.60 of games (it read 0.64, 176,
+0.70); d3/e3 was never measured. A one-shot bomb (`explode_on_capture`) was drafted first and
+set aside: no piece ever took one. Fairy-Stockfish has no reading of `captures`. Measured
+2026-10-25: **0.894 [0.876, 0.915], viable 4-0**, every registered bar met: an anchor taken in
+0.719 of graded games (0.813 between the two strongest players), one still standing at the end
+of 0.977 (0.953), the top three's games 0.917 decided, graded games 98.7 plies against chess's
+87.9, the first seat 0.509 of decided games. Pawns took 1.22 anchors a graded game, 1.64 between
+the strongest. `tests/test_showcase_anchors.py` holds the mechanism.
+
+## `horse-archers.json` — generation 35, a piece that shoots (A2)
+
+2026-10-25, **in the library** (`9c90463dc10f`). The registered fallback of A2,
+`docs/plan-pieces-moves.md` §6.7: chess whose knights shoot (`rules.strike` at rifle chess's
+reading, `by: ["N"]`): a knight's capture removes its target and the knight stays where it
+stood, so a guard protects nothing against it; every other piece captures as in chess. Drawn as
+an arrow. The plan preferred *the archers* (the same rule on the bishops), but the rule written
+before the draft read took the fallback if the bishops' 6400-node self-play gave the first seat
+more than 0.70 of decided games: it gave 18 of 18, every game opening with the king's bishop to
+b5 shooting into d7 and c6 before the diagonal could be closed. The bishops were never
+measured and are not kept. Fairy-Stockfish has no reading of a shot, so V1's second reading is
+the same game spelt with two knight types under contacts. Measured 2026-10-25: **0.916 [0.895,
+0.936], viable 4-0**, every registered bar met: shots 0.035 of graded plies, 0.544 of them at a
+piece that could have recaptured a landing knight (0.580 between the two strongest players), the
+top three's games 0.958 decided, graded games 83.8 plies against chess's 87.9, the first seat
+0.517 of decided games. `tests/test_showcase_horse_archers.py` holds the mechanism, a pinned
+knight that still shoots among it.
+
 ## `circling-queen.json` — generation 34, a rider whose path circles (T3)
 
 2026-10-25, **in the library** (`379efba235c5`). C1 of `docs/plan-pieces-moves.md` §5.7: chess

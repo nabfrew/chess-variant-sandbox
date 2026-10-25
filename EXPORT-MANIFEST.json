@@ -1,5 +1,5 @@
 {
- "source_commit": "181321c9abec8f19aec8996fd1db5ec6d31cb140",
+ "source_commit": "c72718821f51504a50a1285fd4944282634f0aa5",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -81,8 +81,13 @@
   },
   {
    "path": "archive/README.md",
-   "bytes": 86118,
-   "sha256": "147db547296a0382ead2b4961656bf831e57c459d72ff21733de37a0b00619bb"
+   "bytes": 88984,
+   "sha256": "d01a2787560f4ebad9ba57aafebc70ba8099476910fbf318fd5855dd383474a8"
+  },
+  {
+   "path": "archive/anchors.json",
+   "bytes": 6254,
+   "sha256": "2af025767e1e73f6614424414fd688e058cefda0d6c8dd6e5026400d89bf4a80"
   },
   {
    "path": "archive/andernach.json",
@@ -228,6 +233,11 @@
    "path": "archive/hierarchy-rise.json",
    "bytes": 5390,
    "sha256": "9993b5c94b98449b9d92854afeb21c9d9cf4af7b7e165518e3a72bc6ab9aeabe"
+  },
+  {
+   "path": "archive/horse-archers.json",
+   "bytes": 6051,
+   "sha256": "b8d4b6424b56b40b973a8f16bdd40e4d7508e22a4c6595874bd9b056f81957c2"
   },
   {
    "path": "archive/jeson-mor.json",
@@ -3241,8 +3251,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 146209,
-   "sha256": "b69062a370f947e163df266565e31b0227271596f116dad7002a9ba52a245252"
+   "bytes": 146461,
+   "sha256": "90bc416ccbffbb6355be7cdd9670943afbe37583a9ed0ebd2e498976d4f3c872"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -5241,13 +5251,13 @@
   },
   {
    "path": "tests/test_hex_readers.py",
-   "bytes": 32610,
-   "sha256": "a958aa0fd65dd828d5ad0c3672cdb6d34e9ce4fc9b89917745a8feb7d133e2a6"
+   "bytes": 32744,
+   "sha256": "ffdc5d9225aaefbc573e3075afc2a2282b97ada5f9cfb2d23b3b23b3406c77e0"
   },
   {
    "path": "tests/test_hex_resolver.py",
-   "bytes": 22263,
-   "sha256": "4aeb190f0d7ac2cd8c8cd971cc01286a0347238f4048e046743307497d314231"
+   "bytes": 22456,
+   "sha256": "b86e64417fa43eb3930a68f830b0f5cd3e9ba8844f304eadb3d7f86bc6253139"
   },
   {
    "path": "tests/test_history.py",
@@ -5446,8 +5456,8 @@
   },
   {
    "path": "tests/test_operators.py",
-   "bytes": 222255,
-   "sha256": "969d3937605ae17cd638cb8ffac577f8f96692f6ba0c94c4d21409d903165c62"
+   "bytes": 221982,
+   "sha256": "49d08f21de8c4a626e7d14634356bbfd5ef526e9ebcc96610a4f5e0284290f7f"
   },
   {
    "path": "tests/test_page_files.py",
@@ -5776,8 +5786,8 @@
   },
   {
    "path": "tests/test_schema_nine.py",
-   "bytes": 79689,
-   "sha256": "1db09b1ce90bba3337c7f8187bf38a8fd9c78ef07af418f875e899a0389eca22"
+   "bytes": 80332,
+   "sha256": "7769b1d8987b421cd55e105a1057bfd6e7dd59d0459cc0e7582058682a44d339"
   },
   {
    "path": "tests/test_schema_nine_core.py",
@@ -5806,8 +5816,8 @@
   },
   {
    "path": "tests/test_schema_six.py",
-   "bytes": 60882,
-   "sha256": "1f77dcd4c78f84cf91279ad3079d03443b57f1a04ace1d5abb63394d8154a1d3"
+   "bytes": 60984,
+   "sha256": "5c66aa8c01a53eb88d6caf0cd394e8d775ca98dd6ca50fc98fee0f61e7cc5b4e"
   },
   {
    "path": "tests/test_schema_sixteen.py",
@@ -5816,8 +5826,8 @@
   },
   {
    "path": "tests/test_schema_ten.py",
-   "bytes": 112348,
-   "sha256": "fb7817df99034aeb90e26fe860d7f15fe0cc6c190a0efcfbfe89ade49138ea37"
+   "bytes": 112778,
+   "sha256": "c71f96ed5990d920a689c841b5efaf182fbe9a140000663c91c601556b05c4e5"
   },
   {
    "path": "tests/test_schema_thirteen.py",
@@ -5910,6 +5920,11 @@
    "sha256": "bd7610739bf7f77a73857b5a5a1b37238099dfe2cc59fb9e50adcb570d4678d1"
   },
   {
+   "path": "tests/test_showcase_anchors.py",
+   "bytes": 5543,
+   "sha256": "326ddb950c2f4933ae4c25f2bd45b040ece1d85ebd4f76556bb719a8a8fe078b"
+  },
+  {
    "path": "tests/test_showcase_capture_the_flag.py",
    "bytes": 5500,
    "sha256": "640465704211fd62fe2beccd272e678b220ba63358f937b34935f3ec3e6ca35e"
@@ -5923,6 +5938,11 @@
    "path": "tests/test_showcase_crooked_bishops.py",
    "bytes": 5696,
    "sha256": "bcbe8852efd2b067d612ccb0e4e55e9f626d015dfa219627d418a7136b69d927"
+  },
+  {
+   "path": "tests/test_showcase_horse_archers.py",
+   "bytes": 8615,
+   "sha256": "3e5c0dfa6addb3f8b2f8ac02522be528e30bda672f025522de69beb277c32c59"
   },
   {
    "path": "tests/test_showcase_opposite_colours.py",

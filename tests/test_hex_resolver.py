@@ -418,6 +418,8 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "archive/chess-with-nightriders": "57d71a18e3db3ea9",  # Q1007e, schema 31
     "archive/crooked-bishops": "cca02b4d69cf1272",  # T2, generation 34; chess's own, `turning_share` added since
     "archive/circling-queen": "cca02b4d69cf1272",  # T3, generation 34; chess's own, `turning_share` added since
+    "archive/horse-archers": "352d33d9f6b29010",  # A2, generation 35; `strikers_share` 1/6 (the knights of six capturing types)
+    "archive/anchors": "b57b92f43654cb71",  # I3, generation 33
     "archive/madrasi": "b6e19675623090e2",  # Q999d, schema 30
     "archive/chess-with-a-sheltering-king": "e7321c09e075fea8",  # Q999d, schema 30
     "archive/chess-with-daunting-knights": "cca02b4d69cf1272",  # Q999d, schema 30

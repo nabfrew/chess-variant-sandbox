@@ -491,6 +491,14 @@ FROZEN: dict[str, tuple[str, str]] = {
     # path (`docs/plan-pieces-moves.md` §5.7; `tests/test_showcase_circling_queen.py`), from
     # `4c1922ffae26`. New.
     "archive/circling-queen.json": ("379efba235c5", "8374456cbf75c3ec"),
+    # A2, 2026-10-25: the horse archers, chess whose knights shoot, generation 35's strike `by`
+    # (`docs/plan-pieces-moves.md` §6.7, the registered fallback over the archers;
+    # `tests/test_showcase_horse_archers.py`), from `4c1922ffae26`. New.
+    "archive/horse-archers.json": ("9c90463dc10f", "77560229c453887c"),
+    # I3, 2026-10-25: anchors, chess with two pieces a side that never move and only a pawn
+    # may take, generation 33's `moves: []` on the board (`docs/plan-pieces-moves.md` §4.8;
+    # `tests/test_showcase_anchors.py`), from `4c1922ffae26`. New.
+    "archive/anchors.json": ("d6cb641394dd", "5caf97001f5a1db8"),
 }
 
 

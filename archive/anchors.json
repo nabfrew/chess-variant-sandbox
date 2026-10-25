@@ -1,0 +1,295 @@
+{
+  "schema_version": 31,
+  "name": "anchors",
+  "description": "Anchors are pieces that never move. Each side begins with two of them on its third rank, in front of its knights' pawns, and only a pawn may take one: no knight, bishop, rook, queen or king can capture an anchor, and no line passes through it. So an anchor is a wall in front of its owner's camp that the enemy's long-range pieces can neither clear nor shoot past, and the one way through is to march a pawn up to it and dig it out. It is also a wall in its owner's way: the pawn behind it cannot advance until the enemy removes the anchor, and can leave its file only by capturing. So every pawn move is a question of whose anchor it is aimed at and which lines it opens, and a closed position can be opened only where someone chooses to dig. Otherwise this is chess, with check, checkmate, castling and promotion as usual.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ],
+      "captures": [
+        "P",
+        "N",
+        "B",
+        "R",
+        "Q",
+        "K"
+      ]
+    },
+    {
+      "id": "A",
+      "name": "anchor",
+      "value": 1,
+      "moves": []
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      },
+      {
+        "piece": "A",
+        "squares": [
+          "b3",
+          "g3"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "appearance": {
+    "icons": {
+      "A": "anchor"
+    }
+  },
+  "provenance": {
+    "added": "2026-10-25",
+    "origin": "designed",
+    "source": "docs/plan-pieces-moves.md, I3: the second showcase for pieces that never move (section 4.8)",
+    "history": "Registered by I3 (docs/plan-pieces-moves.md section 4.8), 2026-10-25, before any measured game, after capture the flag (I2) retired: chess (4c1922ffae26) with two pieces that never move (moves: []) on each side's third rank, b3 and g3 (b6 and g6), which only a pawn may take (captures on every other type). Chosen over the same anchors on d3 and e3 by the rule written before the draft read: b3 and g3 unless their 6400-node self-play leaned over 0.70 to the first seat, ran under 30 plies or decided under 0.60 of games; it read 0.64, 176 and 0.70. A one-shot bomb (explode_on_capture) was drafted first and set aside: no piece ever took one. The value 1 was fixed before the draft read; the anchors are drawn as the anchor.",
+    "parents": [
+      "4c1922ffae26"
+    ]
+  }
+}

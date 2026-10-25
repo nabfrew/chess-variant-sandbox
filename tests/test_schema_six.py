@@ -584,8 +584,9 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
     # `watering-hole-by-speed` declared one; 99 since Q1007e's chess with nightriders, which
     # declares none (its opposite colours replaced the first under the same file); 100 since
     # T2's crooked bishops, which declares none; 101 since T3's circling queen, which declares
-    # none.
-    assert len(paths) == 101
+    # none; 102 since A2's horse archers, which declares none;
+    # 103 since I3's anchors, which declares none.
+    assert len(paths) == 103
 
     with_reach: dict[str, tuple[frozenset[int], frozenset[int]]] = {}
     for path in paths:
