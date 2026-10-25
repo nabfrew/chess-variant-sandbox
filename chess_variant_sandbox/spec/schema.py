@@ -161,7 +161,7 @@ FACING_NAMES = ("forward", "right", "backward", "left")
 # pawn going backward. See ``_check_fixed_facings``.
 _FACING_KEYS = {"axes", "initial", "turns"}
 # ``immune`` is schema 10 (Q78) and is documented at ``REPETITION_NEVER`` below.
-_NPC_KEYS = {"piece", "route", "bounty", "mirror", "immune", "also_at"}
+_NPC_KEYS = {"piece", "route", "bounty", "mirror", "immune", "also_at", "respawn"}
 
 # Schema 19 (Q771, `docs/archive/plan-portals.md` §1): pairs of portals. A piece whose move ends on
 # an end open to its player comes out one king's step beyond the other end, in the
@@ -992,6 +992,12 @@ PORTAL_OFF_VALUES: dict[str, Any] = {"kind": "momentum"}
 CONTACT_LINK_OFF_VALUES: dict[str, Any] = {"own": False}
 # T1: a move descriptor's (a piece's, or a portal group's).
 MOVE_OFF_VALUES: dict[str, Any] = {"path": "straight"}
+# N1: a wild-piece entry's (``rules.npcs[]``): ``respawn: 0`` is a piece that, once taken, is gone.
+NPC_OFF_VALUES: dict[str, Any] = {"respawn": 0}
+
+# Generation 36 (N1, `docs/plan-npc.md` §4.1): the longest clock a respawning wild piece may
+# have, in phases. Bounds the clocks' keys (one per value per half).
+RESPAWN_MAX = 16
 
 
 def stated_off(where: Any, key: str, off_values: dict[str, Any]) -> bool:
@@ -6287,6 +6293,19 @@ def npc_routes(
     return routes
 
 
+def npc_respawn(npc: Any) -> int:
+    """A wild-piece entry's ``respawn`` (generation 36, N1, `docs/plan-npc.md` §4.1): the
+    phases after which a taken piece of it comes back, and 0 -- gone for good -- where it
+    writes none, the off value 0, or something the validator refuses. The one reader, for
+    the compiler, the words and the operators."""
+    if not isinstance(npc, dict):
+        return 0
+    every = npc.get("respawn")
+    if isinstance(every, bool) or not isinstance(every, int) or not 1 <= every <= RESPAWN_MAX:
+        return 0
+    return every
+
+
 def npc_starts(
     rules: Any, width: int, height: int, orientation: str = "mirror"
 ) -> list[tuple[int, str, int]]:
@@ -6433,6 +6452,17 @@ def _validate_npcs(
             errors.append(f"{loc}.mirror must be a boolean")
 
         _validate_npc_also_at(npc, loc, errors)
+
+        if "respawn" in npc and not stated_off(npc, "respawn", NPC_OFF_VALUES):
+            every = npc["respawn"]
+            if isinstance(every, bool) or not isinstance(every, int) or not (
+                1 <= every <= RESPAWN_MAX
+            ):
+                errors.append(
+                    f"{loc}.respawn must be a whole number of phases from 1 to {RESPAWN_MAX}: "
+                    "how long after a piece of this entry is taken it comes back (0, or "
+                    "leaving it out, is a piece that once taken is gone)"
+                )
 
         _validate_npc_immune(npc, loc, rules or {}, piece_ids, errors)
 

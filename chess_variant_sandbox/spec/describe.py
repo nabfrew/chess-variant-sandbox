@@ -39,6 +39,7 @@ from chess_variant_sandbox.spec.schema import (
     absent_squares,
     has_speeds,
     is_simultaneous,
+    npc_respawn,
     obstacle_squares,
     path_of,
     piece_rests,
@@ -2303,9 +2304,38 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
             )
         lines.append(
             f"A wild {name} belongs to neither player. It {walk}.{more} {eats}.{taken} "
-            f"{worth}{mirrored}"
+            f"{worth}{mirrored}{_respawn_words(npc, route, also, rules)}"
         )
     return lines
+
+
+def _respawn_words(
+    npc: dict[str, Any], route: list[Any], also: list[str], rules: dict[str, Any]
+) -> str:
+    """Generation 36 (N1, `docs/plan-npc.md` §4.1): when a taken wild piece comes back,
+    where, and what holds it back. Empty for a piece that, once taken, is gone."""
+    every = npc_respawn(npc)
+    if not every:
+        return ""
+    rounds = is_simultaneous(rules)
+    unit = "round" if rounds else "move"
+    clock = (
+        f"{every} {unit}{'s' if every != 1 else ''} after it is taken"
+        + ("" if rounds else ", counting both players' moves")
+    )
+    starts = [str(route[0])] if route else []
+    starts += also
+    where = (
+        f"on {starts[0]}" if len(starts) == 1
+        else f"on the first of {_squares(starts)} that it may come back onto"
+    )
+    halves = " Each walk keeps its own count." if npc.get("mirror") else ""
+    return (
+        f" Once taken, it comes back {where}, {clock}, eating a piece standing there unless "
+        "that piece is royal, another wild piece or one it may not take; while its square "
+        f"is held it comes back at the first {unit} it is free. One comes back at a time, "
+        f"and the count starts again while any of its kind is still missing.{halves}"
+    )
 
 
 def _passage_words(way: Any, first: Any, second: Any) -> str:

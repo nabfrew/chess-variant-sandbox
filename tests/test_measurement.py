@@ -445,7 +445,13 @@ class TestTheFingerprintsPointAtSomething:
 # (`_path_extras`, `docs/plan-pieces-moves.md` §5.5). No library game writes a path, so no
 # number can move. It was "5a65f47b2629c080" after Q1020; the next library replay re-scores
 # under it.
-FROZEN_METRICS = "f745667ed7f652e7"
+#
+# **Moved 2026-10-25 by N1 (wild pieces that come back)**: the `analysis` files it reads
+# (`engine/state.py`'s `GameState.respawn` and `PhaseStep.kind`, `engine/engine.py`'s packing
+# of the clocks and `make_state(respawn=...)`; see `FROZEN_ANALYSIS`). No library game writes
+# `npcs[].respawn`, so no number can move. It was "f745667ed7f652e7" after T1; the next library
+# replay re-scores under it.
+FROZEN_METRICS = "4f17f5b9d98ac076"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -715,7 +721,13 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # `_reborn` (see `FROZEN_METRICS`); a game that is not circe in rounds is analysed byte for
 # byte as before. It was "c7d6042d1d057fc2" after Q1007d; the next library replay is the
 # re-analysis.
-FROZEN_ANALYSIS = "c38b69ba6532f04b"
+#
+# **Moved 2026-10-25 by N1**: `engine/state.py`'s `GameState.respawn` (the clocks, slot 11's
+# tenth element) and `PhaseStep.kind`, `engine/engine.py`'s packing and `make_state` (see
+# `FROZEN_METRICS`); a game without `respawn` is analysed byte for byte as before
+# (`tests/test_speed.py`'s round digest, the coming-phase tests). It was "c38b69ba6532f04b"
+# after Q1020; the next library replay is the re-analysis.
+FROZEN_ANALYSIS = "32b8a10b8d1f7b6e"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

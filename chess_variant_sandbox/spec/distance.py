@@ -37,6 +37,7 @@ from chess_variant_sandbox.spec.schema import (
     WRAP_PAIRS,
     absent_squares,
     facing_turns,
+    npc_respawn,
     obstacle_squares,
     piece_rests,
     piece_sights,
@@ -284,6 +285,10 @@ _SCALES: dict[str, float] = {
     # tables are the one-piece route's, so without it a patrol and its twin with a second
     # wolf read as one game and the loop would skip the tournament.
     "npcs_share_a_walk": 1.0,
+    # Generation 36 (N1). Whether a taken wild piece comes back (`npcs[].respawn`): the tables
+    # are the gone-for-good route's, so without it a hunt and its returning twin read as one
+    # game and the loop would skip the tournament.
+    "npcs_come_back": 1.0,
     # Q1011: the nineteen features added from schema 26 on, computed in `features` and left
     # out of this table, so `distance` never read them: a queen that freezes and one that
     # disarms measured 0.0 apart. `test_every_feature_has_a_scale` holds the two lists
@@ -641,12 +646,12 @@ def _npc_features(pieces: list[Any], npcs: Any) -> dict[str, float]:
     """
     absent = {
         "has_npcs": 0.0, "npcs_bite": 0.0, "npcs_pay": 0.0, "npcs_are_hard_to_kill": 0.0,
-        "npcs_share_a_walk": 0.0,
+        "npcs_share_a_walk": 0.0, "npcs_come_back": 0.0,
     }
     if not isinstance(npcs, list) or not npcs:
         return absent
     by_id = {p.get("id"): p for p in pieces if isinstance(p, dict)}
-    bites = pays = immune = shared = False
+    bites = pays = immune = shared = returns = False
     for npc in npcs:
         if not isinstance(npc, dict):
             continue
@@ -661,12 +666,15 @@ def _npc_features(pieces: list[Any], npcs: Any) -> dict[str, float]:
             immune = True
         if npc.get("also_at"):
             shared = True
+        if npc_respawn(npc):
+            returns = True
     return {
         "has_npcs": 1.0,
         "npcs_bite": 1.0 if bites else 0.0,
         "npcs_pay": 1.0 if pays else 0.0,
         "npcs_are_hard_to_kill": 1.0 if immune else 0.0,
         "npcs_share_a_walk": 1.0 if shared else 0.0,
+        "npcs_come_back": 1.0 if returns else 0.0,
     }
 
 

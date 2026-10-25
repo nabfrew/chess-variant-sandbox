@@ -11,6 +11,13 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-27
+
+### Wild pieces can come back
+
+A wild piece, one no player owns, can now be set to return a fixed number of moves after it is taken,
+so a hunt no longer ends when the board is cleared. The rules, the designer and the board all show when it is due.
+
 ## 2026-10-26
 
 ### A few words about each ready-made piece

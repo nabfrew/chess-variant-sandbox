@@ -47,7 +47,7 @@ type StateIn = (
     Vec<u8>, u8, Vec<u8>, i16, i16, u32, u32, u64, Vec<u64>,
     (u32, u32),
     (Vec<u32>, Vec<u32>),
-    (Vec<u8>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest),
+    (Vec<u8>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest, Vec<u8>),
 );
 /// Schema 26 (Q918a): the initiative, the void run and the bars, slot 11's eighth element.
 type Rounds = (i8, (i16, i16), Vec<(i16, i16)>);
@@ -55,6 +55,8 @@ type Rounds = (i8, (i16, i16), Vec<(i16, i16)>);
 /// 11's ninth element: a field of every position, alternating or in rounds (schema 27's
 /// rested squares were the round group's fourth).
 type Rest = (Vec<(i16, u8)>, Vec<(i16, u8)>);
+// Generation 36 (N1): the respawn clocks, one per respawning half, slot 11's tenth element
+// (empty without the rule; an empty one is every clock idle).
 type StateOut<'py> = (
     Bound<'py, PyBytes>,
     u8,
@@ -67,7 +69,7 @@ type StateOut<'py> = (
     Vec<u64>,
     (u32, u32),
     (Vec<u32>, Vec<u32>),
-    (Bound<'py, PyBytes>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest),
+    (Bound<'py, PyBytes>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest, Vec<u8>),
 );
 
 /// What the wild-piece phase did on the way to a position (schema 9): one
@@ -77,7 +79,9 @@ type StateOut<'py> = (
 /// over it, which is the half a caller cannot recover from two positions. It travels
 /// beside the position rather than inside it because the position is already at PyO3's
 /// twelve-slot ceiling -- and because it describes the *transition*, not the state.
-type PhaseOut = Vec<(u32, u32, u8)>;
+///
+/// Generation 36 (N1): a fourth field, the entry's kind (`game::PHASE_STEP`, `PHASE_RETURN`).
+type PhaseOut = Vec<(u32, u32, u8, u8)>;
 
 /// Schema 26 (Q918a): what a round's meetings did, `(event, square, player)` per
 /// `game::rounds::EVENT_*`, beside the position as the phase is.
@@ -158,6 +162,7 @@ fn snapshot_from(t: &Tables, state: &StateIn) -> Snapshot {
         void_run: [state.11.7.1.0, state.11.7.1.1],
         bars: state.11.7.2.iter().map(|&(a, b)| [a, b]).collect(),
         resting: crate::game::rest_lists_from(t, &board, [&state.11.8.0, &state.11.8.1]),
+        respawn: crate::game::respawn_clocks_from(t, &state.11.9),
     }
 }
 
@@ -218,6 +223,7 @@ fn state_out<'py>(py: Python<'py>, game: &Game<'_>) -> StateOut<'py> {
                 game.bars.iter().map(|bar| (bar[0], bar[1])).collect(),
             ),
             (game.resting_of(0), game.resting_of(1)),
+            game.respawn.clone(),
         ),
     )
 }
@@ -348,7 +354,7 @@ impl Core {
             let steps = game
                 .phase_steps()
                 .iter()
-                .map(|&(from, to, eaten)| (from as u32, to as u32, eaten))
+                .map(|&(from, to, eaten, kind)| (from as u32, to as u32, eaten, kind))
                 .collect();
             return Ok((state_out(py, &game), steps));
         }
@@ -383,7 +389,7 @@ impl Core {
         let phase = game
             .phase_steps()
             .iter()
-            .map(|&(from, to, eaten)| (from as u32, to as u32, eaten))
+            .map(|&(from, to, eaten, kind)| (from as u32, to as u32, eaten, kind))
             .collect();
         Ok((state_out(py, &game), phase))
     }
@@ -433,7 +439,7 @@ impl Core {
         let phase = game
             .phase_steps()
             .iter()
-            .map(|&(from, to, eaten)| (from as u32, to as u32, eaten))
+            .map(|&(from, to, eaten, kind)| (from as u32, to as u32, eaten, kind))
             .collect();
         let events = game
             .round_log
@@ -486,7 +492,7 @@ impl Core {
             .map(|phase| {
                 phase
                     .into_iter()
-                    .map(|(from, to, eaten)| (from as u32, to as u32, eaten))
+                    .map(|(from, to, eaten, kind)| (from as u32, to as u32, eaten, kind))
                     .collect()
             })
             .collect()

@@ -31,12 +31,13 @@ from chess_variant_sandbox.spec.schema import (
     has_rests,
     has_speeds,
     keeping_link_holds,
+    npc_respawn,
     promoting_piece_ids,
     uses_sweep,
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 35
+LAST_BUMP = 36
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -775,6 +776,21 @@ def _schema_thirty_five_uses(spec: dict[str, Any]) -> set[str]:
     return set()
 
 
+def _schema_thirty_six_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 36 added, by name (N1, `docs/plan-npc.md`
+    §4.1; numbered by order of landing, bumping no version).
+
+    * ``rules.npcs.respawn`` -- a taken wild piece comes back to its start a fixed number of
+      phases later (the off value 0 is no rule, so it names nothing).
+    """
+    rules = spec.get("rules")
+    npcs = rules.get("npcs") if isinstance(rules, dict) else None
+    for npc in npcs if isinstance(npcs, list) else ():
+        if npc_respawn(npc):
+            return {"rules.npcs.respawn"}
+    return set()
+
+
 def _hex_symmetries_used(spec: dict[str, Any]) -> set[str]:
     """Schema 18b's names for the hexagon's turns, wherever a descriptor writes one."""
     written: list[Any] = []
@@ -826,4 +842,5 @@ _COLLECTORS = {
     33: _schema_thirty_three_uses,
     34: _schema_thirty_four_uses,
     35: _schema_thirty_five_uses,
+    36: _schema_thirty_six_uses,
 }

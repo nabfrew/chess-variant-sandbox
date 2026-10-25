@@ -717,7 +717,11 @@ def walk_digest(names: list[str], seeds: int = 3, rounds: int = 60) -> str:
                 # Schema 29 (Q983a) moved the rest to a list; none of these specs rests, and
                 # the position is shown in schema 27's empty shape so the digest stays one.
                 assert state.rest == ((), ()), (name, state.rest)
-                rows.append(repr((name, seed, state.with_(rest=(-1, -1)), phase, events)))
+                # Generation 36 (N1) added `GameState.respawn` and `PhaseStep.kind`; none of these
+                # specs comes back, and both are left out of the row so the digest stays one.
+                assert state.respawn == () and all(step.kind == "step" for step in phase)
+                row = repr((name, seed, state.with_(rest=(-1, -1)), phase, events))
+                rows.append(row.replace(", respawn=()", "").replace(", kind='step'", ""))
     return hashlib.sha256("\n".join(rows).encode()).hexdigest()
 
 

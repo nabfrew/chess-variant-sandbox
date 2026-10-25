@@ -32,6 +32,16 @@ pub use rest::{rest_lists_from, RestLists, NO_REST};
 // Schema 30 (Q999a): lines of sight with passive effects, one query for movegen and attack.
 #[path = "sight.rs"]
 mod sight;
+// Generation 36 (N1, `docs/plan-npc.md` §4.1): wild pieces that come back, step 3 of the phase.
+#[path = "respawn.rs"]
+mod respawn;
+pub use respawn::respawn_clocks_from;
+
+/// What one entry of the phase log is (`Game::npc_log`'s fourth field): a wild piece's step
+/// along its route, `(from, to, eaten)`.
+pub const PHASE_STEP: u8 = 0;
+/// A wild piece coming back onto a start (generation 36), `(start, start, eaten)`.
+pub const PHASE_RETURN: u8 = 1;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Reason {
@@ -420,7 +430,13 @@ pub struct Game<'t> {
     /// `history` is one and the repetition window is a pair of indices into it: a move's
     /// own steps are everything above the index its `Undo` recorded, and the two are the
     /// same LIFO. Empty and never touched where nothing is wild.
-    npc_log: Vec<(usize, usize, u8)>,
+    npc_log: Vec<(usize, usize, u8, u8)>,
+    /// Generation 36 (N1): one clock per respawning half (`Tables::respawn`), 0 idle, else
+    /// the phases until a return is tried. Empty without the rule. In the key.
+    pub respawn: Vec<u8>,
+    /// `respawn` before each move still on the undo stack, oldest first, flat: written by
+    /// `make` only under the rule, `goal_left_log`'s shape.
+    respawn_log: Vec<u8>,
     /// Guard against infinite recursion in drop-mate checking.
     checking_drop_mate: bool,
     /// The key the move in progress is building. Scratch, not state: seeded from `key`
@@ -493,6 +509,8 @@ pub struct Snapshot {
     pub bars: Vec<[i16; 2]>,
     /// Schema 29 (Q983a): the resting pieces.
     pub resting: RestLists,
+    /// Generation 36 (N1): the respawn clocks.
+    pub respawn: Vec<u8>,
 }
 
 /// Schema 26: who holds the initiative at the start, or -1 where the tie is not it.
@@ -553,6 +571,8 @@ impl<'t> Game<'t> {
             scratch: 0,
             undo: Vec::with_capacity(64),
             npc_log: Vec::new(),
+            respawn: t.respawn.as_deref().map_or(Vec::new(), |rule| vec![0; rule.halves.len()]),
+            respawn_log: Vec::new(),
             goal_left_log: Vec::new(),
             checking_drop_mate: false,
             working_key: 0,
@@ -613,6 +633,8 @@ impl<'t> Game<'t> {
             scratch: 0,
             undo: Vec::with_capacity(64),
             npc_log: Vec::new(),
+            respawn: snapshot.respawn.clone(),
+            respawn_log: Vec::new(),
             goal_left_log: Vec::new(),
             checking_drop_mate: false,
             working_key: 0,
@@ -653,6 +675,7 @@ impl<'t> Game<'t> {
             void_run: self.void_run,
             bars: self.bars.clone(),
             resting: self.resting,
+            respawn: self.respawn.clone(),
         }
     }
 
@@ -698,6 +721,8 @@ impl<'t> Game<'t> {
         self.bars.clone_from(&snapshot.bars);
         self.resting = snapshot.resting;
         self.rest_log.clear();
+        self.respawn.clone_from(&snapshot.respawn);
+        self.respawn_log.clear();
         self.round_undo.clear();
         self.round_log.clear();
         // The check bits describe the position that just went away. The royal hint is
@@ -795,6 +820,8 @@ impl<'t> Game<'t> {
         digest ^= self.standoff_key();
         // Schema 29: the resting pieces; zero in a game without a rest.
         digest ^= self.rest_key();
+        // Generation 36: the respawn clocks; zero in a game without the rule.
+        digest ^= self.respawn_key();
         digest
     }
 
@@ -1863,12 +1890,51 @@ impl<'t> Game<'t> {
     #[cold]
     #[inline(never)]
     fn npc_phase(&mut self) -> bool {
-        if self.t.npc_queues {
+        let ate = if self.t.npc_queues {
             let order = self.npc_step_order();
             self.npc_phase_in(order)
         } else {
             let order = self.npc_here().iter();
             self.npc_phase_in(order)
+        };
+        // Generation 36 (N1): step 3, the returns, after every step.
+        if self.t.respawn.is_some() {
+            self.respawn_phase() | ate
+        } else {
+            ate
+        }
+    }
+
+    /// `make`'s phase: the respawn clocks logged first (generation 36, only under the rule),
+    /// then the phase. Cold and out of line for `npc_phase`'s reason: chess pays one flag
+    /// test in `make` for the whole of it.
+    #[cold]
+    #[inline(never)]
+    fn npc_phase_of_make(&mut self) -> bool {
+        if self.t.respawn.is_some() {
+            self.respawn_save();
+        }
+        self.npc_phase()
+    }
+
+    /// `unmake`'s half of the phase: every step above `base` walked back, newest first,
+    /// and the respawn clocks put back. Behind `has_npcs`, cold, for `npc_phase_of_make`'s
+    /// reason.
+    #[cold]
+    #[inline(never)]
+    fn unmake_phase(&mut self, base: usize) {
+        while self.npc_log.len() > base {
+            let (from, to, eaten, kind) =
+                self.npc_log.pop().expect("npc log shorter than its base");
+            let value = self.board[to];
+            self.put(to, eaten);
+            // A return (generation 36) came from nowhere, so nothing goes back.
+            if kind == PHASE_STEP {
+                self.put(from, value);
+            }
+        }
+        if self.t.respawn.is_some() {
+            self.respawn_unsave();
         }
     }
 
@@ -1893,7 +1959,7 @@ impl<'t> Game<'t> {
             self.unmoved.clear(next);
             ate |= eaten != 0;
             self.close_ep_window_over(square, next);
-            self.npc_log.push((square, next, eaten));
+            self.npc_log.push((square, next, eaten, PHASE_STEP));
         }
         ate
     }
@@ -1910,7 +1976,7 @@ impl<'t> Game<'t> {
     /// The log is scratch belonging to the undo stack, so it holds one move's steps only
     /// where one move was made on a fresh `Game` -- which is what the boundary's `apply`
     /// does, and the only caller this is for.
-    pub fn phase_steps(&self) -> &[(usize, usize, u8)] {
+    pub fn phase_steps(&self) -> &[(usize, usize, u8, u8)] {
         &self.npc_log
     }
 
@@ -1929,12 +1995,14 @@ impl<'t> Game<'t> {
     /// after the first is still the board *without* the moves between them, which is the
     /// one thing this cannot know. Exactly `count` entries, an empty one for a phase in
     /// which nothing would walk, and every entry empty for a ruleset without wild pieces.
-    pub fn coming_phases(&mut self, count: usize) -> Vec<Vec<(usize, usize, u8)>> {
+    pub fn coming_phases(&mut self, count: usize) -> Vec<Vec<(usize, usize, u8, u8)>> {
         let mut phases = vec![Vec::new(); count];
         if !self.t.has_npcs {
             return phases;
         }
         let mut saved = Saved::new();
+        // Generation 36: the clocks move on a phase at a time, on a copy.
+        let mut clocks = self.respawn.clone();
         for steps in phases.iter_mut() {
             // Once per drawn position, never in a search, so the one walk serves every game.
             for square in self.npc_step_order() {
@@ -1947,7 +2015,10 @@ impl<'t> Game<'t> {
                 saved.push((next, eaten));
                 self.board[square] = 0;
                 self.board[next] = value;
-                steps.push((square, next, eaten));
+                steps.push((square, next, eaten, PHASE_STEP));
+            }
+            if self.t.respawn.is_some() {
+                self.respawn_coming(&mut clocks, &mut saved, steps);
             }
         }
         saved.restore(&mut self.board);
@@ -1973,6 +2044,10 @@ impl<'t> Game<'t> {
         } else {
             let order = self.npc_here().iter();
             self.npc_phase_for_filter_in(saved, order);
+        }
+        // Generation 36 (N1): step 3, the returns.
+        if self.t.respawn.is_some() {
+            self.respawn_phase_for_filter(saved);
         }
     }
 
@@ -2254,7 +2329,7 @@ impl<'t> Game<'t> {
         // check count, the material clock and the irreversibility test below. It runs
         // before the key's en passant terms because it may close that window.
         let npc_log = self.npc_log.len() as u32;
-        let phase_ate = t.has_npcs && self.npc_phase();
+        let phase_ate = t.has_npcs && self.npc_phase_of_make();
 
         // Read after the phase, which clears the `unmoved` bit of every square it writes:
         // the irreversibility test is asked of the position the whole ply leaves behind.
@@ -2512,11 +2587,8 @@ impl<'t> Game<'t> {
         // The phase, walked back before the player's move (schema 9). Newest step first,
         // and the wild piece's own value is read off the square it stands on now --
         // there is nowhere else it could be.
-        while self.npc_log.len() > undo.npc_log as usize {
-            let (from, to, eaten) = self.npc_log.pop().expect("npc log shorter than its base");
-            let value = self.board[to];
-            self.put(to, eaten);
-            self.put(from, value);
+        if self.t.has_npcs {
+            self.unmake_phase(undo.npc_log as usize);
         }
 
         // Restore explosion-cleared squares first (in reverse)

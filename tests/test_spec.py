@@ -1066,6 +1066,8 @@ FROZEN_BOUNDS: dict[str, dict[str, int]] = {
     f"{_RULES}/npcs/items{_P}/route": _AT_LEAST_ONE,
     f"{_RULES}/npcs/items{_P}/also_at": _AT_LEAST_ONE,
     f"{_RULES}/npcs/items{_P}/bounty": {"minimum": 0},
+    # N1: the respawn clock, 0 the off value (`schema.NPC_OFF_VALUES`) up to `RESPAWN_MAX`.
+    f"{_RULES}/npcs/items{_P}/respawn": {"minimum": 0, "maximum": 16},
     f"{_RULES}/portals": {"minItems": 1, "maxItems": 4},
     f"{_RULES}/portals/items{_P}/ends": {"minItems": 3, "maxItems": 8},
     f"{_RULES}/portals/items{_P}/ends/items{_P}/to": {"minimum": 0, "maximum": 7},

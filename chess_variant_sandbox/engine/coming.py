@@ -42,7 +42,7 @@ def coming_phases(
     may not take) has no step in that phase.
     """
     return tuple(
-        tuple(PhaseStep(*step) for step in phase)
+        tuple(PhaseStep.from_core(step) for step in phase)
         for phase in engine.core.coming_phases(_pack(state), count)
     )
 

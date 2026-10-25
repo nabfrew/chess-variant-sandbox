@@ -1037,6 +1037,23 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                             "first; one that finds another in its way waits behind it. "
                             "Leave the key out for one wild piece on the route."
                         ),
+                        "respawn": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 16,
+                            "description": (
+                                "A taken wild piece of this entry comes back this many "
+                                "phases after it was taken (a phase follows every move, so "
+                                "8 is four moves of each player; one a round in rounds), "
+                                "onto the first of its starts -- the route's first square, "
+                                "then also_at in route order -- that is empty or holds a "
+                                "player's non-royal piece its type may take, which it eats. "
+                                "While every start is held it comes back at the first phase "
+                                "one is free. One clock per entry and per mirrored half; it "
+                                "starts again while the entry is still short. Leave it out "
+                                "(or write 0) for a wild piece that, once taken, is gone."
+                            ),
+                        },
                         "bounty": {
                             "type": "number",
                             "minimum": 0,

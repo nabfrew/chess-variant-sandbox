@@ -346,6 +346,20 @@ LIBRARY = test_index_quality.RUNS
 # `canonical.json`'s `basis.metrics` moved, and no score, interval or verdict; the replaced
 # measurements are kept under each game's `runs/<hash>/previous/`
 # (`docs/reference/replay-2026-10-26.md`).
+#
+# **Opened 2026-10-25 by N1** (wild pieces that come back): `engine/state.py` and
+# `engine/engine.py` carry the respawn clocks and the phase log's kind, which moves `analysis`
+# and so `metrics` (`FROZEN_ANALYSIS`, `FROZEN_METRICS`), and the core's new state moves the
+# build fingerprint. No library game writes `npcs[].respawn`, so no number should move. The
+# window is the stamp R33 left the library; **the next library replay empties it**.
+#
+# **Emptied 2026-10-25 by R34**, that replay: the 103 library games re-certified from a sample of
+# 128 of each run's 1,024 games on core `76bdeae6de748873` (412 runs, none refused), then
+# re-analysed and re-scored under `metrics` "4f17f5b9d98ac076" and `analysis` "32b8a10b8d1f7b6e".
+# No library game writes `npcs[].respawn`; no record, analysis, score, interval or verdict moved
+# (105,472 records equal outside the clock; *the horse archers*' stored description word count
+# aside); the replaced measurements, with the stamp this window held, are kept under each game's
+# `runs/<hash>/previous/` (`docs/reference/replay-2026-10-27.md`).
 STALE_WINDOW: dict[str, str] = {}
 
 

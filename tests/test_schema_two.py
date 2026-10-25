@@ -592,6 +592,9 @@ _EVERY_RULESET += sorted(Path(__file__).parent.glob("_path_*.json"))
 # A1: no committed or archived game gives a strike to some pieces only until A2's archers land,
 # so the archers' test spec (chess whose bishops shoot) joins the walk.
 _EVERY_RULESET += sorted(Path(__file__).parent.glob("_strike_*.json"))
+# N1: no committed or archived game has a wild piece that comes back until N6's showcase lands,
+# so the two respawn test specs (wolf hunt returning, a round game's returning knight) join it.
+_EVERY_RULESET += sorted(Path(__file__).parent.glob("_respawn_*.json"))
 
 
 def test_the_walk_below_reads_the_whole_corpus() -> None:

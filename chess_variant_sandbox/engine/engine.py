@@ -112,6 +112,9 @@ def _pack(state: GameState) -> tuple[Any, ...]:
             (state.initiative, state.void_run, [tuple(bar) for bar in state.bars]),
             # Schema 29 (Q983a): each player's resting pieces, a field of every position.
             ([tuple(entry) for entry in state.rest[0]], [tuple(entry) for entry in state.rest[1]]),
+            # Generation 36 (N1): the respawn clocks, one per respawning half, as bytes
+            # (PyO3 crosses a `Vec<u8>` so).
+            bytes(state.respawn),
         ),
     )
 
@@ -147,6 +150,7 @@ def _unpack(packed: State) -> GameState:
             tuple((square, left) for square, left in packed[11][8][0]),
             tuple((square, left) for square, left in packed[11][8][1]),
         ),
+        respawn=tuple(packed[11][9]),
     )
 
 
@@ -306,7 +310,7 @@ class Engine:
         packed, phase, events = self.core.apply_round(_pack(state), first, second)
         return (
             _unpack(packed),
-            tuple(PhaseStep(*step) for step in phase),
+            tuple(PhaseStep.from_core(step) for step in phase),
             tuple((event, square, player) for event, square, player in events),
         )
 
@@ -329,7 +333,7 @@ class Engine:
         ruleset without ``rules.npcs``, and for most plies of the ones with it.
         """
         packed, phase = self.core.apply(_pack(state), move)
-        return _unpack(packed), tuple(PhaseStep(*step) for step in phase)
+        return _unpack(packed), tuple(PhaseStep.from_core(step) for step in phase)
 
     # -------------------------------------------------------------------- verdict
 
@@ -827,6 +831,7 @@ class Engine:
         halfmove: int = 0,
         ply: int = 0,
         folds: Iterable[str] = (),
+        respawn: Iterable[int] = (),
     ) -> GameState:
         """Build a position directly, for tests, puzzles, and CLI setup.
 
@@ -834,7 +839,9 @@ class Engine:
         counts as unmoved unless named in ``moved`` -- the convenient default for
         castling tests, and the reason this takes a list of exceptions rather than a
         list of inclusions. ``folds`` (schema 22) names where each fold end stands, in end
-        order; left empty, the folds stand where they start.
+        order; left empty, the folds stand where they start. ``respawn`` (generation 36) is
+        each respawning half's clock, in ``npcs.respawn`` order; left empty, every clock is
+        idle, and a half standing short starts its clock in the next phase.
         """
         spec = self.spec
         board = bytearray(spec.n_squares)
@@ -863,6 +870,7 @@ class Engine:
             folds=tuple(self._square_index(name) for name in folds) or self._start_folds(),
             # Schema 26: the initiative where it starts, under that tie rule.
             initiative=self.initial_state().initiative if self.simultaneous else -1,
+            respawn=tuple(respawn) or self.initial_state().respawn,
         )
         key = self._compute_hash(state)
         return state.with_(key=key, repetition=(key,))

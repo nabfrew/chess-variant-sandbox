@@ -130,6 +130,12 @@ class GameState:
     # with a different piece resting has different legal moves. (Schema 27's
     # ``rules.simultaneous.rest`` kept ``(square, square)`` here; schema 29 retired it.)
     rest: tuple[tuple[tuple[int, int], ...], tuple[tuple[int, int], ...]] = ((), ())
+    # Generation 36 (N1, ``rules.npcs[].respawn``, `docs/plan-npc.md` §4.1): one clock per
+    # respawning half (an entry that comes back, then its mirrored half), 0 idle, else the
+    # phases until a taken piece's return is tried. ``()`` for every game without the rule,
+    # and read as every clock idle. In the Zobrist key: the same board with a different
+    # clock has a different future.
+    respawn: tuple[int, ...] = ()
 
     def with_(self, **changes: Any) -> GameState:
         return replace(self, **changes)
@@ -156,6 +162,10 @@ class Outcome:
         return {"winner": self.winner, "reason": self.reason}
 
 
+# The core's phase-log kinds (`game::PHASE_STEP`, `PHASE_RETURN`), by code.
+PHASE_KINDS = ("step", "return")
+
+
 @dataclass(frozen=True, slots=True)
 class PhaseStep:
     """One wild piece's step in the phase the rules run after a move (schema 9).
@@ -174,9 +184,24 @@ class PhaseStep:
     origin: int
     target: int
     eaten: int
+    # What the entry is (generation 36, N1): ``"step"``, a wild piece's step along its route,
+    # or ``"return"``, a taken wild piece coming back onto ``target`` (``origin`` is the same
+    # square: it came from nowhere on the board).
+    kind: str = "step"
+
+    @classmethod
+    def from_core(cls, step: tuple[int, int, int, int]) -> PhaseStep:
+        """One entry of the core's phase log, ``(from, to, eaten, kind)``."""
+        origin, target, eaten, kind = step
+        return cls(origin, target, eaten, PHASE_KINDS[kind])
 
     def as_dict(self) -> dict[str, Any]:
-        return {"from": self.origin, "to": self.target, "eaten": self.eaten}
+        """``{from, to, eaten}``, with ``kind`` only on an entry that is not a step, so the
+        page reads every game before the rule as it always did."""
+        out: dict[str, Any] = {"from": self.origin, "to": self.target, "eaten": self.eaten}
+        if self.kind != "step":
+            out["kind"] = self.kind
+        return out
 
 
 @dataclass(frozen=True, slots=True)

@@ -39,6 +39,7 @@ from chess_variant_sandbox.spec.schema import (
     has_speeds,
     hex_distance,
     npc_immune_attackers,
+    npc_respawn,
     npc_routes,
     npc_starts,
     obstacle_squares,
@@ -642,6 +643,11 @@ class NpcRule:
     bounty: tuple[float, ...]
     piece: tuple[int, ...]
     starts: tuple[tuple[int, int], ...]
+    # Generation 36 (N1, `docs/plan-npc.md` §4.1): ``(every, starts)`` per respawning half --
+    # an entry with ``respawn``, then its mirrored half -- in ``rules.npcs`` order, which is
+    # the order the phase's step 3 returns them in. ``starts`` are the half's own, first free
+    # first. ``()`` when no entry comes back, which is every game before the rule.
+    respawn: tuple[tuple[int, tuple[int, ...]], ...] = ()
 
 
 # Schema 19 (Q771): the eight king's directions a transit can come out in, in this fixed
@@ -1474,6 +1480,9 @@ class CompiledSpec:
     # last of all and only under the rule (`_build_zobrist`). For a game whose largest rest
     # is 1 this is schema 27's layout, ``player * n_squares + square``. Empty otherwise.
     zobrist_rest: tuple[int, ...] = ()
+    # Generation 36 (N1): the respawn clocks' keys, ``[half's base + clock - 1]`` in
+    # ``npcs.respawn`` order, drawn after the rest's and only where an entry comes back.
+    zobrist_respawn: tuple[int, ...] = ()
     # Schema 30 (Q999a, `docs/archive/plan-passive.md` §3.2): lines of sight, or ``None`` -- every
     # game in which no type sees, whose boundary keys for the rule all cross empty. An effect
     # is a function of the board, so the rule adds no state and no key.
@@ -1901,7 +1910,10 @@ def _compile(
     )
     digest = spec_hash(spec)
     simultaneous = rules.get("simultaneous")
-    zob_pieces, zob_side, zob_ep, zob_colour, zob_turn, zob_bar, zob_fold, zob_sim, zob_rest = (
+    (
+        zob_pieces, zob_side, zob_ep, zob_colour, zob_turn, zob_bar, zob_fold, zob_sim, zob_rest,
+        zob_respawn,
+    ) = (
         _build_zobrist(
             digest, n_squares, n_types, width, n_facings, n_owners,
             portal_bar=any(group["no_straight_back"] for group in portal_groups(rules)),
@@ -1909,6 +1921,7 @@ def _compile(
             simultaneous=isinstance(simultaneous, dict),
             initiative=isinstance(simultaneous, dict) and simultaneous.get("tie") == "initiative",
             rest_max=max(piece_rests(spec).values(), default=0),
+            respawn_keys=sum(every for every, _ in npcs.respawn) if npcs is not None else 0,
         )
     )
     royal_types = tuple(i for i, p in enumerate(pieces) if p.get("royal", False))
@@ -2126,6 +2139,7 @@ def _compile(
         spy=_compile_spy(declared_pieces, index_of, board, n_types, n_facings),
         rest=_compile_rests(declared_pieces, index_of, n_types),
         zobrist_rest=zob_rest,
+        zobrist_respawn=zob_respawn,
         sight=_compile_sights(
             spec, pieces, index_of, n_types, n_facings, facing_axes, n_squares, width, height,
             orientation, wrap, obstacles, blocks_leaps, radius, royal_types, multi_royal,
@@ -4727,7 +4741,30 @@ def _compile_npcs(
         (square, index_of[npcs[index]["piece"]])
         for index, _, square in npc_starts(rules, width, height, orientation)
     )
-    return NpcRule(next=tuple(nxt), bounty=tuple(bounty), piece=tuple(piece_of), starts=starts)
+    return NpcRule(
+        next=tuple(nxt), bounty=tuple(bounty), piece=tuple(piece_of), starts=starts,
+        respawn=_respawn_halves(rules, width, height, orientation),
+    )
+
+
+def _respawn_halves(
+    rules: dict[str, Any], width: int, height: int, orientation: str
+) -> tuple[tuple[int, tuple[int, ...]], ...]:
+    """Generation 36 (N1): each respawning half's clock and starts, ``NpcRule.respawn``.
+
+    Read off ``schema.npc_starts``, the one reading of where a route's pieces start, split
+    by the mirror label it gives: an entry's own starts, then its mirrored half's, each a
+    clock of its own (§4.1).
+    """
+    npcs = rules["npcs"]
+    halves: dict[tuple[int, bool], list[int]] = {}
+    for index, label, square in npc_starts(rules, width, height, orientation):
+        if npc_respawn(npcs[index]):
+            halves.setdefault((index, label.endswith("(mirrored)")), []).append(square)
+    return tuple(
+        (npc_respawn(npcs[index]), tuple(squares))
+        for (index, _), squares in sorted(halves.items())
+    )
 
 
 def _compile_drops(
@@ -4901,6 +4938,7 @@ def _build_zobrist(
     simultaneous: bool = False,
     initiative: bool = False,
     rest_max: int = 0,
+    respawn_keys: int = 0,
 ) -> tuple[
     tuple[tuple[int, ...], ...],
     int,
@@ -4910,6 +4948,7 @@ def _build_zobrist(
     tuple[int, ...],
     tuple[int, ...],
     tuple[int, tuple[int, ...], tuple[int, ...]] | None,
+    tuple[int, ...],
     tuple[int, ...],
 ]:
     """Seed the Zobrist table from the spec hash.
@@ -4973,4 +5012,8 @@ def _build_zobrist(
     # game's key moves. Where schema 27's rested squares were drawn: after the standoff's in
     # a round game, and in an alternating game (which has no standoff) after the folds.
     resting = tuple(rng.getrandbits(64) for _ in range(rest_max * 2 * n_squares))
-    return pieces, side, ep, colours, turns, bar, fold, sim, resting
+    # Generation 36 (N1, `docs/plan-npc.md` §4.1): the respawn clocks, one key per running
+    # value of each half's clock, drawn last of all and only where an entry comes back, so no
+    # other game's key moves.
+    respawn = tuple(rng.getrandbits(64) for _ in range(respawn_keys))
+    return pieces, side, ep, colours, turns, bar, fold, sim, resting, respawn

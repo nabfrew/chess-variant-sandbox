@@ -42,6 +42,7 @@ from chess_variant_sandbox.spec.schema import (
     CONTACT_LINK_OFF_VALUES,
     DEFAULT_RANGE,
     MOVE_OFF_VALUES,
+    NPC_OFF_VALUES,
     PIECE_OFF_VALUES,
     PORTAL_OFF_VALUES,
     SIGHT_OFF_VALUES,
@@ -187,7 +188,8 @@ def drop_off_values(spec: dict[str, Any]) -> None:
     `schema`'s ``*_OFF_VALUES``: a piece type's ``rest: 0``, ``speed: 0``, ``spy: false`` and
     ``sight: []``, a move's ``path: "straight"`` (T1), a line of sight's ``through:
     false``, ``rules.simultaneous``'s ``tie: "both"``, ``swap: "chase"`` and ``both:
-    "draw"``, a portal group's ``kind: "momentum"`` and a contact link's ``own: false``. The validator accepts each and every reader takes it
+    "draw"``, a portal group's ``kind: "momentum"``, a contact link's ``own: false`` and a wild-piece
+    entry's ``respawn: 0`` (N1). The validator accepts each and every reader takes it
     as the key's absence. Shared by the normal form and `spelling.current_spelling`, so a
     spec that writes one is named as, and tidied to, the game without it.
     """
@@ -210,6 +212,8 @@ def drop_off_values(spec: dict[str, Any]) -> None:
     if isinstance(contacts, dict):
         for link in _dicts(contacts.get("links")):
             _drop_off(link, CONTACT_LINK_OFF_VALUES)
+    for npc in _dicts(rules.get("npcs")):
+        _drop_off(npc, NPC_OFF_VALUES)
 
 
 def _drop_off(where: dict[str, Any], off_values: dict[str, Any]) -> None:

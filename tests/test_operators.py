@@ -89,7 +89,7 @@ _NUMBER_WORDS = {
     20: "twenty", 21: "twenty_one", 22: "twenty_two", 23: "twenty_three", 24: "twenty_four",
     25: "twenty_five", 26: "twenty_six", 27: "twenty_seven", 28: "twenty_eight",
     29: "twenty_nine", 30: "thirty", 31: "thirty_one", 32: "thirty_two", 33: "thirty_three",
-    34: "thirty_four", 35: "thirty_five",
+    34: "thirty_four", 35: "thirty_five", 36: "thirty_six",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -2027,7 +2027,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 35
+_FEATURES_ARE_FOR_SCHEMA = 36
 
 
 @dataclass(frozen=True)
@@ -2391,6 +2391,15 @@ def _parent_command() -> dict:
     })
 
 
+def _parent_returning_wolves() -> dict:
+    """*Wolf hunt* whose wolves come back (N1, `plan-npc.md` §4.1): every entry of
+    `archive/wolves-bounty` with ``respawn: 8``, four moves of each player."""
+    hunt = load_spec(ROOT / "archive" / "wolves-bounty.json")
+    for npc in hunt["rules"]["npcs"]:
+        npc["respawn"] = 8
+    return hunt
+
+
 def _parent_archers() -> dict:
     """Chess whose bishops shoot (A1, `plan-pieces-moves.md` §6.7): rifle's strike given to the
     bishops alone."""
@@ -2484,17 +2493,23 @@ def _armies_differ(spec: dict) -> bool:
     return len(set(first) & set(second)) < 2 and len(set(first) | set(second)) >= 2
 
 
-# Generation 35's inventory (A1, `plan-pieces-moves.md` §6.5): one name, a modifier on the
+# Generation 36's inventory (N1, `plan-npc.md` §4.1): one name, a modifier on a wild piece, so
+# its host is `npcs`. `bring-them-back` enters it (an entry given a clock) and leaves it (the
+# clock taken off), keeping the wild pieces; it names no type and adds none, so the army is
+# kept. Generation 35's row (A1) retired with the generation; `leave-something-behind` still
+# crosses it.
+#
+# Generation 35's inventory was (A1, `plan-pieces-moves.md` §6.5): one name, a modifier on the
 # strike, so its host is `strike`. `leave-something-behind` enters it (a standing rifle strike
 # is given to one capturing type, or a new strike is rifle given to one) and leaves it (the
 # list dropped, every piece striking again), keeping the strike. It names types and adds none,
 # so the army is kept. Generation 34's two rows (T1) retired with the generation; `bend-a-line`
 # and `straighten` still cross them.
 _FEATURES: dict[str, _Feature] = {
-    "A1 strike by": _Feature(
-        "strike", frozenset({"rules.strike.by"}), True, "chess+archers",
-        _parent_archers,
-        likely=lambda spec: isinstance(spec.get("rules", {}).get("strike"), dict),
+    "N1 respawn": _Feature(
+        "npcs", frozenset({"rules.npcs.respawn"}), True, "wolf-hunt+returning",
+        _parent_returning_wolves,
+        likely=lambda spec: bool(spec.get("rules", {}).get("npcs")),
     ),
 }
 
@@ -2506,6 +2521,9 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
+    # N1's one name. Its showcase is N6, *the shepherd's duck* (`plan-npc.md` §6.1), registered
+    # before the rule was built; N6 deletes this row when it lands.
+    "N1 respawn": "owed: N6, the shepherd's duck (plan-npc.md §6.1)",
     # I1's one name went with I2's retirement to `_NO_SHOWCASE_ON_PURPOSE`, and from there with
     # I3's *anchors* (`archive/anchors.json`, 2026-10-25). A1's one name,
     # `rules.strike.by`, went on 2026-10-25, when A2 archived its showcase, *the horse
@@ -2601,6 +2619,7 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     33: frozenset({"pieces.moves.empty"}),
     34: frozenset({"pieces.moves.slide.path.circle", "pieces.moves.slide.path.zigzag"}),
     35: frozenset({"rules.strike.by"}),
+    36: frozenset({"rules.npcs.respawn"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -3842,7 +3861,7 @@ _PINNED_SCALES: dict[str, float] = {
     "portals_no_back": 1.0, "portals_ring": 1.0, "portals_funnel": 1.0,
     "portals_other_map": 1.0, "portals_filtered": 1.0, "portals_fold": 1.0,
     "npcs_share_a_walk": 1.0, "lame_rider_share": 1.0, "turning_share": 1.0,
-    "strikers_share": 1.0,
+    "strikers_share": 1.0, "npcs_come_back": 1.0,
     # Q1011: the nineteen features of schema 26 onward that `distance` had never read.
     "simultaneous": 1.0, "simultaneous_initiative": 1.0, "simultaneous_impossible": 1.0,
     "beats_share": 1.0, "simultaneous_swap_collides": 1.0, "simultaneous_both_score": 1.0,
@@ -3911,14 +3930,14 @@ class TestDistanceIsPinnedToTheNumber:
         """Chess against its bare-royal twin differs in the flag (1/1), the rule mass (52
         to 58, over 90) and the special rules (3 to 4, over 6): the mean over the 100
         features (Q1011 brought it to 100: Q1007a's `lame_rider_share` was the 81st), 101 since
-        T1's `turning_share` and 102 since A1's `strikers_share`, is 0.012091, which rounds to
-        0.0121 and not to 0.012 or 0.01209."""
+        T1's `turning_share`, 102 since A1's `strikers_share` and 103 since N1's
+        `npcs_come_back`, is 0.011974, which rounds to 0.0120 and not to 0.01197."""
         chess = _chess()
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"
         twin = _stamped(twin)
         assert validate_spec(twin) == []
-        assert distance(chess, twin) == 0.0121
+        assert distance(chess, twin) == 0.0120
 
 
 def _one_leap_beside_a_stone() -> dict:

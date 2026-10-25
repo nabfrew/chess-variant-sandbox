@@ -64,6 +64,7 @@ from chess_variant_sandbox.spec.schema import (
     has_sights,
     has_speeds,
     is_simultaneous,
+    npc_respawn,
     obstacle_squares,
     opening_counts,
     parse_square,
@@ -3591,6 +3592,42 @@ def _share_a_walk(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
+def _bring_them_back(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Make a wild piece come back once taken, or let it stay gone (generation 36, N1's
+    ``npcs[].respawn``, `docs/plan-npc.md` §4.1).
+
+    In a game where some wild piece comes back, none does any more: the edit a designer
+    makes is "taken wild pieces stay gone", not one route of several. Otherwise one entry,
+    chosen at random, is given a clock of four to twelve phases (two to six moves of each
+    player), the range a hunt is played in -- long enough that taking one is worth
+    something, short enough that the board fills again within a game.
+    """
+    rules = spec.get("rules") or {}
+    npcs = rules.get("npcs")
+    if not isinstance(npcs, list) or not npcs:
+        return None
+    entries = [index for index, npc in enumerate(npcs) if isinstance(npc, dict)]
+    if not entries:
+        return None
+    trial = copy.deepcopy(spec)
+    if any(npc_respawn(npcs[index]) for index in entries):
+        for npc in trial["rules"]["npcs"]:
+            if isinstance(npc, dict):
+                npc.pop("respawn", None)
+        said = "a wild piece that is taken no longer comes back"
+    else:
+        npc = trial["rules"]["npcs"][rng.choice(entries)]
+        kind = npc.get("piece")
+        every = rng.choice((4, 6, 8, 12))
+        npc["respawn"] = every
+        said = f"a wild {kind} that is taken comes back to its start {every} moves later"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
 OPERATORS: tuple[Operator, ...] = (
     Operator("wall-off-a-square", _wall_off_a_square),
     Operator("soften-the-capture", _soften_the_capture),
@@ -3601,6 +3638,7 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("place-a-stone", _place_a_stone),
     Operator("set-a-patrol", _set_a_patrol),
     Operator("share-a-walk", _share_a_walk),
+    Operator("bring-them-back", _bring_them_back),
     Operator("promote-what-arrives", _promote_what_arrives),
     Operator("promote-on-leaving", _promote_on_leaving),
     Operator("count-each-kind", _count_each_kind),

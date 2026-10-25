@@ -1901,7 +1901,8 @@ def test_a_core_built_after_a_field_was_added_is_caught_too() -> None:
     A core *newer* than the package -- an older branch checked out over a fresh build --
     hands back a field the package does not read. Nothing throws: `_unpack` takes the nine
     it knows (five until schema 20's `portal_bar`, six until schema 22's `folds`, eight
-    until schema 29's `rest`) and drops the tenth on the floor. It is caught because the position that goes
+    until schema 29's `rest`, ten until generation 36's respawn clocks) and drops the
+    eleventh on the floor. It is caught because the position that goes
     back in is a field shorter than the one that came out, which is a comparison that
     needs no version number on either side to make.
     """
@@ -1914,7 +1915,7 @@ def test_a_core_built_after_a_field_was_added_is_caught_too() -> None:
 
     message = core_boundary_mismatch(newer, _unpack, _pack)
     assert message is not None
-    assert "slot 11 carries 10 fields where this package writes 9" in message
+    assert "slot 11 carries 11 fields where this package writes 10" in message
     assert "maturin develop --release" in message
 
 

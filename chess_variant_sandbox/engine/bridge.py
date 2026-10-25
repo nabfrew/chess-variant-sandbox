@@ -533,6 +533,14 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
     npcs = spec.npcs
     npc_next = list(npcs.next) if npcs is not None else []
     npc_bounty = [float(worth) for worth in npcs.bounty] if npcs is not None else []
+    # Generation 36 (N1): each respawning half as ``[every, n_starts, starts...]``, flat. The
+    # core walks the route off ``npc_next`` and reads the piece off the opening board. Empty
+    # unless an entry comes back.
+    npc_respawn = [
+        value
+        for every, starts in (npcs.respawn if npcs is not None else ())
+        for value in (every, len(starts), *starts)
+    ]
 
     # --- Promotion on entering play (schema 9) ---
     # One table, `[player][piece_type][square]` flattened in that order, holding the
@@ -775,6 +783,10 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         "has_npcs": npcs is not None,
         "npc_next": npc_next,
         "npc_bounty": npc_bounty,
+        # Generation 36 (N1, `docs/plan-npc.md` §4.1): the respawning halves and their
+        # clocks' keys, both empty unless an entry comes back.
+        "npc_respawn": npc_respawn,
+        "zobrist_respawn": list(spec.zobrist_respawn),
         # Promotion on entering play
         "entry_promotion": entry_promotion,
         # Portals (schema 19)
@@ -990,6 +1002,9 @@ _INERT_DEFAULTS: dict[str, Any] = {
     "has_npcs": False,
     "npc_next": [],
     "npc_bounty": [],
+    # Generation 36 (N1). Empty unless an `npcs` entry says `respawn`.
+    "npc_respawn": [],
+    "zobrist_respawn": [],
     "entry_promotion": [],
     # Schema 19 (Q771). Empty and false unless the spec has portals.
     "has_portals": False,

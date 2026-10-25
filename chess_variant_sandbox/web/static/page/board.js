@@ -2835,6 +2835,22 @@ function animatePhase(svg, phase, board, beat, cell, W, H, view) {
     if (!node) continue;
     const [fx, fy] = at(step.from), [tx, ty] = at(step.to);
     svg.appendChild(node);
+    // Generation 36 (N1): a taken wild piece coming back onto its start comes from nowhere
+    // on the board, so it fades in where it stands, held invisible until its beat, and
+    // strikes whatever it eats there as a step would.
+    if (step.kind === 'return') {
+      const appear = PACE.travelMin;
+      node.animate([{ opacity: 0 }, { opacity: 1 }],
+                   { duration: appear, delay: start, fill: 'backwards', easing: 'ease-out' });
+      busy = Math.max(busy, start + appear);
+      const eaten = step.eaten ? pieceOf(step.eaten) : null;
+      if (eaten) {
+        const ghost = beat.doomed.get(step.to) || ghostAt(svg, eaten, tx, ty, cell);
+        busy = Math.max(busy, strike(svg, ghost, tx, ty, cell,
+                                     { at: start + appear * PACE.impact, dx: 0, dy: 0 }));
+      }
+      continue;
+    }
     const walk = wrapStep(step.from, step.to, W, H, allow);
     const arc = pathHops(board, step.from, walk, W, H, view);
     const [dx, dy] = stepXY(walk, cell, view);

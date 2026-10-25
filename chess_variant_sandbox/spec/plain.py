@@ -320,6 +320,14 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "in step, and one that finds another in its way waits behind it. Leave it empty "
         "for one wild piece on the walk.",
     ),
+    "rules.npcs.respawn": (
+        "comes back after",
+        "How many moves after it is taken (counting both players' moves; rounds in a game "
+        "played in rounds) a taken wild piece comes back onto its walk's first square, or "
+        "the first of its starting squares it may come back onto, eating a piece there "
+        "unless that piece is royal or one it may not take. Leave it empty for a wild piece "
+        "that, once taken, is gone.",
+    ),
     "rules.npcs.bounty": (
         "worth taking",
         "What a player gains by taking it, counted when 'who wins when a clock runs out' "

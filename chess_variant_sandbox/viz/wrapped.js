@@ -1272,8 +1272,10 @@ function comingHtml(coming, cell, W, H, view, rule, then) {
     return comingArrow(at[0] + cell / 2, at[1] + cell / 2, d[0], d[1], cell, kind, apart);
   };
   let out = '';
-  for (const step of then) out += arrow(step, 'comingThen');
-  for (const step of coming) out += arrow(step, 'coming');
+  // A coming return (generation 36, N1) has no way to draw as an arrow: it goes nowhere.
+  const walks = step => step.kind !== 'return';
+  for (const step of then.filter(walks)) out += arrow(step, 'comingThen');
+  for (const step of coming.filter(walks)) out += arrow(step, 'coming');
   return `<g data-coming="${coming.length}" data-coming-then="${then.length}"
       pointer-events="none">${out}</g>`;
 }
@@ -2691,6 +2693,13 @@ function phaseWords(steps, walkers, nameOf, W) {
   let walking = null;       // the name of the piece whose quiet steps are being listed
   steps.forEach((step, i) => {
     const who = (walkers && walkers[i] && nameOf(walkers[i])) || 'wild piece';
+    // Generation 36 (N1): a taken wild piece coming back onto its start.
+    if (step.kind === 'return') {
+      clauses.push('the ' + who + ' comes back on ' + at(step.to)
+                   + (step.eaten ? ', taking the ' + (nameOf(step.eaten) || 'piece') : ''));
+      walking = null;
+      return;
+    }
     if (step.eaten) {
       clauses.push('the ' + who + ' on ' + at(step.from) + ' takes the '
                    + (nameOf(step.eaten) || 'piece') + ' on ' + at(step.to));

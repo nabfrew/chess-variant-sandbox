@@ -490,7 +490,14 @@ def resolve_round(engine: Engine, state: GameState, first: int, second: int) -> 
     # after a round that ended with its faster move.
     if spec.npcs is not None and not ended:
         phase = engine.core.coming_phases(_pack(here()), 1)[0]
-        for origin, target, eaten in phase:
+        for origin, target, eaten, kind in phase:
+            if kind == 1:
+                # Generation 36 (N1): a return, the piece that stood on its start at ply zero.
+                board[target] = engine.initial_state().board[target]
+                unmoved &= ~(1 << target)
+                touched.add(target)
+                flags["material"] |= eaten != 0
+                continue
             board[target] = board[origin]
             board[origin] = 0
             unmoved &= ~(1 << origin) & ~(1 << target)

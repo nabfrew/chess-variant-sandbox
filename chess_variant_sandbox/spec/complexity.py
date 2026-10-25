@@ -174,6 +174,10 @@ _RULE_COSTS: dict[str, float] = {
     # counts, as a mirrored entry's second wolf is, and what a player is told about it is
     # the clause "and another starts on h5", plus the queue rule (one waits behind
     # another), which is the waiting rule they were already told.
+    #
+    # Generation 36's `npcs[].respawn` (N1) is not costed either, on `bounty`'s grounds: it is
+    # a clause of the wild piece's sentence ("once taken, it comes back on a4 eight moves
+    # later"), a number on a rule already counted, and no new kind of thing to track.
     "npcs": 2.5,
     # Schema 9. One sentence -- "a pawn dropped or struck onto the far rank is a queen at
     # once" -- and an exception rather than a parameter of `promotion`: it changes what a

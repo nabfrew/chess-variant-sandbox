@@ -792,6 +792,45 @@ impl RestTables {
     }
 }
 
+/// One route of wild pieces that come back (generation 36, N1, `docs/plan-npc.md` §4.1): an
+/// `npcs` entry with `respawn`, or its mirrored half, each with a clock of its own.
+pub struct RespawnHalf {
+    /// The clock's length: a taken piece comes back this many phases after it was taken.
+    pub every: u8,
+    /// Where a piece comes back, first free first: the route's first square, then
+    /// `also_at` in route order (`schema.npc_starts`).
+    pub starts: Vec<u16>,
+    /// Every square of the route, where the half's pieces stand: walkers never leave it, so
+    /// the pieces standing are the wild pieces on these squares.
+    pub route: Vec<u16>,
+    /// The board byte of a piece of this half, read off the opening board.
+    pub value: u8,
+    /// Where this half's `every` keys begin in `RespawnTables::zobrist`.
+    pub key_base: usize,
+}
+
+/// Generation 36 (N1): every respawning half, in `rules.npcs` order with a mirrored half after
+/// its original (the order the phase's step 3 returns them in), and the clocks' keys. The
+/// state is `Game::respawn`, one clock per half (`respawn.rs`).
+pub struct RespawnTables {
+    pub halves: Vec<RespawnHalf>,
+    /// `[key_base + clock - 1]` for a running clock (1 to `every`); an idle clock (0) is keyed
+    /// by nothing, so a game whose wild pieces all stand keys as it did before the rule.
+    pub zobrist: Vec<u64>,
+}
+
+impl RespawnTables {
+    /// The key of `half`'s clock at `clock`; 0 for idle.
+    #[inline]
+    pub fn key(&self, half: usize, clock: u8) -> u64 {
+        if clock == 0 {
+            0
+        } else {
+            self.zobrist[self.halves[half].key_base + clock as usize - 1]
+        }
+    }
+}
+
 /// The spy (schema 27, Q935a; `docs/plan-spy.md` §2.4), as the compiler resolved it
 /// (`compile.SpyRule`). The core reads it and decides nothing: the phase is a function of
 /// the board and the side to move (`Game::phase`).
@@ -1128,6 +1167,9 @@ pub struct Tables {
     pub rest: Option<Box<RestTables>>,
     /// Schema 30 (Q999a): lines of sight, `None` for every game in which no type sees.
     pub sight: Option<Box<SightTables>>,
+    /// Generation 36 (N1, `docs/plan-npc.md` §4.1): wild pieces that come back, `None` for
+    /// every game in which no `npcs` entry says `respawn`.
+    pub respawn: Option<Box<RespawnTables>>,
 
     /// Schema 9's second key, `rules.promote_on_entry`: what a piece that *enters play*
     /// on a square becomes, as `[player][piece_type][square]` flattened in that order,
@@ -2296,6 +2338,7 @@ impl Tables {
             spy: None,
             rest: None,
             sight: None,
+            respawn: None,
             entry_promotion,
             piece_values,
             must_capture,
@@ -2391,6 +2434,16 @@ impl Tables {
                 }
                 seen.push(lowest);
             }
+        }
+
+        // Generation 36 (N1): respawning halves, `[every, n_starts, starts...]` each, and
+        // their clocks' keys. Both empty unless an entry says `respawn`.
+        let npc_respawn: Vec<u32> = field(source, keys::NPC_RESPAWN)?;
+        let zobrist_respawn: Vec<u64> = field(source, keys::ZOBRIST_RESPAWN)?;
+        if !npc_respawn.is_empty() {
+            tables.respawn = Some(Box::new(Self::respawn_tables(&tables, &npc_respawn, zobrist_respawn)?));
+        } else if !zobrist_respawn.is_empty() {
+            return Err(pyo3::exceptions::PyValueError::new_err("respawn keys without a respawn"));
         }
 
         if has_portals {
@@ -2550,6 +2603,49 @@ impl Tables {
 }
 
 impl Tables {
+    /// Generation 36 (N1): read the respawning halves, each checked against the board. The
+    /// route is walked off `npc_next` from the first start, and the piece's byte read off the
+    /// opening board there, so neither crosses the boundary twice.
+    fn respawn_tables(tables: &Tables, flat: &[u32], zobrist: Vec<u64>) -> PyResult<RespawnTables> {
+        let bad = || pyo3::exceptions::PyValueError::new_err("the respawn tables do not fit this board's routes");
+        let n = tables.n_squares;
+        let mut halves = Vec::new();
+        let mut at = 0;
+        let mut key_base = 0;
+        while at < flat.len() {
+            let every = *flat.get(at).ok_or_else(bad)?;
+            let count = *flat.get(at + 1).ok_or_else(bad)? as usize;
+            let starts: Vec<u16> = flat.get(at + 2..at + 2 + count).ok_or_else(bad)?.iter().map(|s| *s as u16).collect();
+            at += 2 + count;
+            if !(1..=16).contains(&every) || starts.is_empty() || starts.iter().any(|s| *s as usize >= n) {
+                return Err(bad());
+            }
+            let first = starts[0] as usize;
+            let value = tables.initial_board[first];
+            if !tables.has_npcs || value == 0 || tables.owner_of(value) != WILD || tables.npc_next[first] < 0 {
+                return Err(bad());
+            }
+            let mut route = vec![first as u16];
+            let mut cursor = tables.npc_next[first] as usize;
+            while cursor != first {
+                route.push(cursor as u16);
+                cursor = tables.npc_next[cursor] as usize;
+                if route.len() > n {
+                    return Err(bad());
+                }
+            }
+            if starts.iter().any(|s| !route.contains(s)) {
+                return Err(bad());
+            }
+            halves.push(RespawnHalf { every: every as u8, starts, route, value, key_base });
+            key_base += every as usize;
+        }
+        if zobrist.len() != key_base {
+            return Err(bad());
+        }
+        Ok(RespawnTables { halves, zobrist })
+    }
+
     /// Schema 19: read the portal tables, checking each against the shape it indexes.
     fn portal_tables(source: &Bound<'_, PyDict>, tables: &Tables) -> PyResult<PortalTables> {
         let fail = |what: String| Err(pyo3::exceptions::PyValueError::new_err(what));
@@ -2991,6 +3087,8 @@ pub mod keys {
         SPY_TYPES => "spy_types",
         ZOBRIST_REST => "zobrist_rest",
         PIECE_REST => "piece_rest",
+        NPC_RESPAWN => "npc_respawn",
+        ZOBRIST_RESPAWN => "zobrist_respawn",
         ZOBRIST_SIM => "zobrist_sim",
         ZOBRIST_PIECES => "zobrist_pieces",
         ZOBRIST_PORTAL_BAR => "zobrist_portal_bar",

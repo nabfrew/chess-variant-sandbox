@@ -23,6 +23,7 @@ from chess_variant_sandbox.spec import spec_hash, validate_spec
 from chess_variant_sandbox.spec.schema import (
     CONTACT_LINK_OFF_VALUES,
     MOVE_OFF_VALUES,
+    NPC_OFF_VALUES,
     PIECE_OFF_VALUES,
     PORTAL_OFF_VALUES,
     SIGHT_OFF_VALUES,
@@ -78,6 +79,11 @@ def _kind(spec: dict[str, Any]) -> None:
         group.setdefault("kind", "momentum")
 
 
+def _respawn(spec: dict[str, Any]) -> None:
+    for npc in spec["rules"]["npcs"]:
+        npc.setdefault("respawn", 0)
+
+
 def _own(spec: dict[str, Any]) -> None:
     for link in spec["rules"]["contacts"]["links"]:
         link.setdefault("own", False)
@@ -99,6 +105,7 @@ CASES = [
     ("rules.portals[].kind", "archive/wormhole.json", _kind),
     ("rules.contacts.links[].own", "archive/einstein.json", _own),
     ("pieces[].moves[].path", "rulesets/chess.json", _straight),
+    ("rules.npcs[].respawn", "archive/wolves.json", _respawn),
 ]
 
 
@@ -110,6 +117,7 @@ def test_every_off_value_has_a_case() -> None:
         **{f"rules.simultaneous.{key}": 1 for key in SIMULTANEOUS_OFF_VALUES},
         **{f"rules.portals[].{key}": 1 for key in PORTAL_OFF_VALUES},
         **{f"rules.contacts.links[].{key}": 1 for key in CONTACT_LINK_OFF_VALUES},
+        **{f"rules.npcs[].{key}": 1 for key in NPC_OFF_VALUES},
     }
     assert set(named) == {where for where, _, _ in CASES}
 
