@@ -163,7 +163,8 @@ class TestTheLabelledControlKeepsItsOwnShape:
                   if re.search(r"\.pick(?![\w-])", one) and not one.startswith(("label.pick", ".controls"))]
         assert panels
         for one in panels:
-            assert one.startswith(".landingPicks > .pick"), one
+            # LP3: the same row inside `/game`'s band of shelves.
+            assert one.startswith((".landingPicks > .pick", ".shelves .landingPicks > .pick")), one
 
 
 class TestMarkedLinesHangUnderTheirWords:

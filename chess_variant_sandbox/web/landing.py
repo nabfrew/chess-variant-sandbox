@@ -638,7 +638,7 @@ def _members_section() -> str:
 # places below. Each card's score is the library card's own pill (`scoreTag`), so a game
 # nobody has measured yet says *not measured* and never shows a number, and a stale one is
 # marked provisional. The shelf holds one height whatever it holds, as *Made by members*
-# does. `/game` repeats none of it: it opens on the search and the filters.
+# does. Since LP3 `/game` opens on the same shelves as one band (`shelves_html`).
 #
 # Q826: the shelf is derived from the day each game joined (`launch.NEW_WINDOW_DAYS`).
 # When nothing joined inside the window, the server sends the most recently added marked
@@ -799,12 +799,100 @@ def drawn_intro() -> str:
     )
 
 
-def html_page(version: str = DEFAULT_WEIGHTS) -> str:
-    """The landing page's markup: the opening board's place, then the sections in order."""
+# LP3 (`docs/plan-landing.md` §4.2): *How the score works*, the score's long explanation as
+# a view of its own, `#/score` on both servers. It carries the landing's two sections as
+# they were, *The computer checks that a game works* and *The score*, with the ingredients,
+# the tests that rule a game out and the provisional and re-certified marks, under the ids
+# they had on the landing (`SCORE_ANCHORS`), so a link made to one of them still lands: the
+# router sends a bare `#landing-score` here and scrolls to it (`landing.js`'s `showScore`).
+# It is linked from the score pills' (i) (`core.js`'s `SCORE_LINK`), from the band at the
+# top of `/game`, from every footer and from the landing.
+SCORE_ROUTE = "#/score"
+SCORE_TITLE = "How the score works"
+SCORE_LEAD = (
+    "How a game here is checked, and then scored: who plays it, what rules it out, what goes "
+    "into the number, and how far to trust it.")
+SCORE_ANCHORS = ("landing-viable", "landing-score", "landingIngredients")
+SCORE_POINTER = (
+    "Before a game is scored, computer players of several strengths play it to check that it "
+    "works; then it gets a score out of 1 for how interesting it looks when they play it. The "
+    f'score is a best estimate, not a judgement. <a href="{SCORE_ROUTE}">{SCORE_TITLE}</a> has '
+    "the tests, every ingredient, and what each score rests on.")
+
+
+def _viable_section() -> str:
     count, budgets, games = _players()
     looking = len(budgets)
     budget_words = (f"{budgets[0]:,} to {budgets[-1]:,}" if len(budgets) > 1
                     else f"{budgets[0]:,}") if budgets else ""
+    return _section("viable", "The computer checks that a game works", (
+        f"<p>Before a game is scored, {_say(count)} computer players play it: one that "
+        f"moves at random, one that takes whatever it can, and {_say(looking)} that look "
+        f"ahead, allowed to look at {budget_words} positions before each move. Each "
+        f"meets every other, and a copy of itself, from both sides: {games:,} games "
+        "a run. That is one run; a game in the library is measured four times, on "
+        "four different sets of games.</p>"
+        "<p>A game is <b>viable</b> when it passes the basic tests of a working game: "
+        "games finish, they are not almost all drawn or won by an opening trap, a "
+        "player who thinks beats one who moves at random, thinking longer pays, and "
+        "neither side wins just by moving first. A game that fails one is ruled out, "
+        "however well it does elsewhere. The tests and their numbers are under the score "
+        "below.</p>"))
+
+
+def _score_section(version: str) -> str:
+    return _section("score", "The score: a best estimate, not a judgement", (
+        "<p>Every measured game gets a <b>score out of 1</b> for how interesting it "
+        "looks when the computer plays it. A game scores well when the stronger player "
+        "usually wins, so skill pays; there are real choices on most turns; games don't "
+        "stall or end in a few moves; a game can turn round; no two games go the same "
+        "way; and the first player has no big edge.</p>"
+        "<p><b>It is a preliminary, evolving measure: the best estimate available of "
+        "giving a game a single value, and not to be treated as a definitive "
+        "judgement.</b> The computer players are strong on games like chess and weaker "
+        "on games won by a long plan, where they can miss what a person sees. So each "
+        "score says what it rests on (<i>0.810 · 4 runs</i>, with a ± for how far "
+        "chance alone could move it), each game says how far to trust its computer "
+        "players, and most games are too close to put in order: the score tells a "
+        "working game from a broken one, not first from second.</p>"
+        "<p>Scores are measured again as the computer players get stronger and as the "
+        "scoring improves. Until a game is measured again, its old score stays on show, "
+        "marked <i>provisional</i>, and it is never compared with current ones. A score "
+        "the site kept after playing only a sample of its games again says <i>from a "
+        "sample</i>. If you beat the strongest computer player on a game easily, that is "
+        "news about the score too.</p>"
+        + _ingredients_html(version)))
+
+
+def score_html(version: str = DEFAULT_WEIGHTS) -> str:
+    """*How the score works*: the view's markup, carried as `<template id="scoreView">`."""
+    return (
+        '<div class="landing scoreView" id="howScore">'
+        f'<h2 class="landingTitle">{_e(SCORE_TITLE)}</h2>'
+        f'<p class="landingLead">{_e(SCORE_LEAD)}</p>'
+        + _viable_section() + _score_section(version)
+        + '<p class="muted"><a href="/game">See the games</a>, each with its score and what '
+        "it rests on.</p></div>")
+
+
+# LP3 (§4.2): the five shelves, *today's game*, *this month's game*, *in the spotlight*,
+# *new in the library* and *made by members*, as one band at the top of `/game`, above the
+# search (`browse.js` clones `<template id="shelvesBand">` into the library). The parts are
+# the landing's own markup, so `landing.js`'s `fillShelves` fills either; the landing keeps
+# them too until LP4 replaces it. The band's last line is its way to the score's account.
+SHELVES_SCORE = (
+    f'Every score here is a best estimate. <a href="{SCORE_ROUTE}">{SCORE_TITLE}</a>.')
+
+
+def shelves_html() -> str:
+    return (
+        '<div class="landing shelves" id="shelves">'
+        + _picks_section() + _new_section() + _members_section()
+        + f'<p class="muted small shelvesScore">{SHELVES_SCORE}</p></div>')
+
+
+def html_page(version: str = DEFAULT_WEIGHTS) -> str:
+    """The landing page's markup: the opening board's place, then the sections in order."""
     hero = (
         '<section class="landingHero">'
         '<div class="landingIntro">'
@@ -819,7 +907,8 @@ def html_page(version: str = DEFAULT_WEIGHTS) -> str:
         '<a class="button" href="/profile" data-needs="member">Your page</a>'
         # Q760: and for a member, the way to everybody else.
         '<a class="button" href="/players" data-needs="member">Find players</a></div>'
-        '<p class="muted small landingScroll">What it is, and how the score works, below.</p>'
+        f'<p class="muted small landingScroll">What it is, below; and <a href="{SCORE_ROUTE}">'
+        f"{_e(SCORE_TITLE.lower())}</a>.</p>"
         "</div>"
         '<figure class="landingShow" id="landingShow">'
         '<div class="landingBoard" id="landingBoard" aria-hidden="true"></div>'
@@ -861,39 +950,10 @@ def html_page(version: str = DEFAULT_WEIGHTS) -> str:
             '<p data-needs="member"><a href="/players">Find a member</a> by name, open '
             "their page to see the games they made and played, and challenge them from "
             "there.</p>"), needs="accounts"),
-        _section("viable", "The computer checks that a game works", (
-            f"<p>Before a game is scored, {_say(count)} computer players play it: one that "
-            f"moves at random, one that takes whatever it can, and {_say(looking)} that look "
-            f"ahead, allowed to look at {budget_words} positions before each move. Each "
-            f"meets every other, and a copy of itself, from both sides: {games:,} games "
-            "a run. That is one run; a game in the library is measured four times, on "
-            "four different sets of games.</p>"
-            "<p>A game is <b>viable</b> when it passes the basic tests of a working game: "
-            "games finish, they are not almost all drawn or won by an opening trap, a "
-            "player who thinks beats one who moves at random, thinking longer pays, and "
-            "neither side wins just by moving first. A game that fails one is ruled out, "
-            "however well it does elsewhere. The tests and their numbers are under the score "
-            "below.</p>")),
-        _section("score", "The score: a best estimate, not a judgement", (
-            "<p>Every measured game gets a <b>score out of 1</b> for how interesting it "
-            "looks when the computer plays it. A game scores well when the stronger player "
-            "usually wins, so skill pays; there are real choices on most turns; games don't "
-            "stall or end in a few moves; a game can turn round; no two games go the same "
-            "way; and the first player has no big edge.</p>"
-            "<p><b>It is a preliminary, evolving measure: the best estimate available of "
-            "giving a game a single value, and not to be treated as a definitive "
-            "judgement.</b> The computer players are strong on games like chess and weaker "
-            "on games won by a long plan, where they can miss what a person sees. So each "
-            "score says what it rests on (<i>0.810 · 4 runs</i>, with a ± for how far "
-            "chance alone could move it), each game says how far to trust its computer "
-            "players, and most games are too close to put in order: the score tells a "
-            "working game from a broken one, not first from second.</p>"
-            "<p>Scores are measured again as the computer players get stronger and as the "
-            "scoring improves. Until a game is measured again, its old score stays on show, "
-            "marked <i>provisional</i>, and it is never compared with current ones. If you "
-            "beat the strongest computer player on a game easily, that is news about the "
-            "score too.</p>"
-            + _ingredients_html(version))),
+        # LP3: the two sections that said how a game is checked and scored are their own
+        # view now, *How the score works* (`#/score`, `score_html`); the landing keeps one
+        # short section that points there until LP4 rebuilds the page.
+        _section("scoring", SCORE_TITLE, f"<p>{SCORE_POINTER}</p>"),
         _section("more", "And more", (
             '<ul class="landingFeatures">'
             '<li><a href="/game">The library</a>: every game, with a search, filters by the '
@@ -922,3 +982,5 @@ def html_page(version: str = DEFAULT_WEIGHTS) -> str:
 
 # The page's markup, made once: the weights file does not change under a running server.
 HTML = html_page()
+SCORE_HTML = score_html()
+SHELVES_HTML = shelves_html()

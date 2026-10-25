@@ -65,14 +65,14 @@ async function showLibrary() {
       (data.previews || []).length ? `, and ${data.previews.length} preview${
         data.previews.length === 1 ? '' : 's'}` : ''}`;
 
-  // Q788 (the user, 2026-10-09: *"I'd like /games to skip repeating the game highlights of
-  // the landing page, and just go straight to the full search+filter interface"*): the
-  // day's game, this month's game, the games to start with and the newest games are the
-  // landing page's (`landing.js`), and this page opens on the search and the filters, on
-  // both servers. What waits on a signed-in member (`forYou`) is theirs, not a highlight,
-  // and stays on top.
+  // Q788 had this page open on the search and the filters, the shelves being the landing's.
+  // LP3 (`docs/plan-landing.md` §4.2, the user's decision of 2026-10-24) moves them here:
+  // the landing becomes a story, and `/game` is where a visitor goes to find a game, so
+  // the five shelves are one band at its top, above the search (`showShelves`). What waits
+  // on a signed-in member (`forYou`) is theirs, not a highlight, and stays above it.
   view.innerHTML = `
     <div id="forYou">${forYouHtml(asked)}</div>
+    <div id="shelvesMount"></div>
     <div class="row u-jc-space-between u-mb-12">
       <div class="muted small">Every game here is playable in the browser. Pick one, or
         <b>build your own</b>.</div>
@@ -89,6 +89,7 @@ async function showLibrary() {
       <div id="results"></div>
     </div>`;
 
+  showShelves(data);
   document.getElementById('newGame').onclick = () => go('#/design');
   // The same two buttons the map draws, so the way to the other view is in one place on
   // both. `graph.py` owns them.
@@ -99,6 +100,26 @@ async function showLibrary() {
   wireScoring();
   paintResults();
   if (SCORING && SCORING.sweep && SCORING.sweep.state === 'running') pollSweep();
+}
+
+// LP3: the band of shelves (`landing.shelves_html`, `<template id="shelvesBand">`), filled
+// from the listing this page already holds, by the landing's own `fillShelves`. A shelf the
+// server sent nothing for goes, as on the landing, and the band with it when all do.
+function showShelves(data) {
+  const mount = document.getElementById('shelvesMount');
+  const template = document.getElementById('shelvesBand');
+  if (!mount || !template) return;
+  mount.append(template.content.cloneNode(true));
+  dropUnoffered(mount);
+  fillShelves(data);
+  // On this page the members' *all of them* link would open the page it is on.
+  const all = document.getElementById('membersAll');
+  if (all) all.remove();
+  // Before anybody has published, the landing invites the first; a band of picks has
+  // nothing to show, so the empty shelf goes.
+  const empty = document.getElementById('membersEmpty');
+  if (empty && !empty.hidden) document.getElementById('landing-members').remove();
+  if (!mount.querySelector('.landingPart')) mount.remove();
 }
 
 // The leaderboard's header (EV3, `docs/archive/plan-evolving-score.md` §5.2): how many of the

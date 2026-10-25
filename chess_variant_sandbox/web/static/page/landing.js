@@ -29,20 +29,54 @@ async function showLanding() {
   view.append(template.content.cloneNode(true));
   // The landing page is in none of the header's sections, at `/` or at `#/about`.
   document.querySelectorAll('#sections a').forEach(link => link.removeAttribute('aria-current'));
-  // A visitor to the site is offered *Sign in*, a member their own page in its place (Q723).
-  const offered = { accounts: ACCOUNTS, round: ROUND,
-    visitor: ACCOUNTS && !VIEWER, member: ACCOUNTS && !!VIEWER };
-  view.querySelectorAll('[data-needs]').forEach(part => {
-    if (!offered[part.dataset.needs]) part.remove();
-  });
+  dropUnoffered(view);
   wireWallRails();
   // The board waits for the listing; the words above and below it do not.
   const data = await api('/api/library').catch(() => null);
+  fillShelves(data);
+  if (data) startLandingBoard(landingGames(data));
+}
+
+// A visitor to the site is offered *Sign in*, a member their own page in its place (Q723);
+// a part this server has not got goes (`data-needs`).
+function dropUnoffered(root) {
+  const offered = { accounts: ACCOUNTS, round: ROUND,
+    visitor: ACCOUNTS && !VIEWER, member: ACCOUNTS && !!VIEWER };
+  root.querySelectorAll('[data-needs]').forEach(part => {
+    if (!offered[part.dataset.needs]) part.remove();
+  });
+}
+
+// The five shelves, wherever they are drawn: on the landing until LP4, and as the band at
+// the top of `/game` (LP3, `browse.js`'s `showShelves`), from the same listing.
+function fillShelves(data) {
   if (data) takePieceArt(data);
   fillNewShelf(data);
   fillPicks(data);
   fillMembersShelf(data);
-  if (data) startLandingBoard(landingGames(data));
+}
+
+// LP3: *How the score works* (`#/score`), the score's long explanation as a view of its
+// own: the server's markup (`landing.score_html`), cloned as the landing is. `target` is an
+// id the landing's sections had (`#landing-score`, `#landingIngredients`), which an old link
+// still names: the view scrolls to it, and opens the ingredients when they are what it names.
+function showScore(target) {
+  stopPolling();
+  SESSION = null;
+  SHOWN = null;
+  view.textContent = '';
+  view.append(document.getElementById('scoreView').content.cloneNode(true));
+  document.querySelectorAll('#sections a').forEach(link => link.removeAttribute('aria-current'));
+  const named = target ? document.getElementById(target) : null;
+  if (!named) return;
+  if (named.tagName === 'DETAILS') named.open = true;
+  named.scrollIntoView();
+}
+
+// Whether a bare fragment (`#landing-score`) is one of the ids the score's view keeps.
+function scoreAnchor(part) {
+  const template = document.getElementById('scoreView');
+  return !!(part && template && template.content && template.content.getElementById(part));
 }
 
 // LP2: the wall of words. On a phone each family's words are one rail that scrolls sideways

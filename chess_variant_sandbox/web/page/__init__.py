@@ -153,7 +153,8 @@ def _head(title: str, head: str) -> str:
 # The header (plan-visual.md §3.4, V2): the mark and the name, the tagline the views write
 # their one-line summary into, the sections, and the corner. The footer: the links
 # `paintIdentity` writes into `#foot`, and the theme switch, which no view rewrites. Then the
-# landing page (Q718, `web/landing.py`), inert until `landing.js` clones it into the view.
+# landing page (Q718, `web/landing.py`), inert until `landing.js` clones it into the view,
+# and beside it (LP3) the band of shelves `/game` opens on and *How the score works*.
 _TOP = f"""</head>
 <body>
 <div class="wrap">
@@ -171,6 +172,8 @@ _BOTTOM = f"""</div>
   {footer()}
 </div>
 <template id="landingPage">{landing.HTML}</template>
+<template id="shelvesBand">{landing.SHELVES_HTML}</template>
+<template id="scoreView">{landing.SCORE_HTML}</template>
 """
 
 

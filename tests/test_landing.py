@@ -37,7 +37,7 @@ def _weights() -> dict:
 
 def _ingredient(name: str) -> str:
     found = re.search(rf'<li class="ingredient" data-ingredient="{name}">(.*?)</li>',
-                      landing.HTML, re.S)
+                      landing.SCORE_HTML, re.S)
     assert found, name
     return found[1]
 
@@ -53,7 +53,7 @@ class TestTheMarkup:
 
     def test_the_sections_in_the_order_asked(self) -> None:
         keys = re.findall(r'<section class="landingPart(?: landingWall)?" id="landing-([a-z]+)"', landing.HTML)
-        assert keys == ["intent", "palette", "play", "people", "viable", "score", "more"]
+        assert keys == ["intent", "palette", "play", "people", "scoring", "more"]
         assert landing.HTML.index('class="landingHero"') < landing.HTML.index('id="landing-intent"')
 
     def test_the_intention_in_the_users_words(self) -> None:
@@ -63,12 +63,22 @@ class TestTheMarkup:
                 "crafted, it would have been immaculate, obviously.</p>") in landing.HTML
 
     def test_the_score_is_an_estimate_and_its_ingredients_start_shut(self) -> None:
-        score = landing.HTML[landing.HTML.index('id="landing-score"'):]
+        score = landing.SCORE_HTML[landing.SCORE_HTML.index('id="landing-score"'):]
         assert "preliminary, evolving measure" in score
         assert "not to be treated as a definitive judgement" in score
-        assert "provisional" in score
-        details = re.search(r'<details[^>]*id="landingIngredients"[^>]*>', landing.HTML)
+        assert "provisional" in score and "from a sample" in score
+        details = re.search(r'<details[^>]*id="landingIngredients"[^>]*>', landing.SCORE_HTML)
         assert details and " open" not in details[0]
+
+    def test_the_landing_points_at_how_the_score_works(self) -> None:
+        """LP3: the two long sections left the landing for `#/score`; the landing says what
+        the score is in one paragraph and links there, from its hero too."""
+        for gone in landing.SCORE_ANCHORS:
+            assert f'id="{gone}"' not in landing.HTML
+        hero = landing.HTML[:landing.HTML.index('id="landing-intent"')]
+        assert f'<a href="{landing.SCORE_ROUTE}">' in hero
+        short = re.search(r'id="landing-scoring">(.*?)</section>', landing.HTML, re.S)
+        assert short and f'<a href="{landing.SCORE_ROUTE}">{landing.SCORE_TITLE}</a>' in short[1]
 
     def test_the_games_are_one_tap_away(self) -> None:
         hero = landing.HTML[:landing.HTML.index('id="landing-intent"')]
@@ -106,6 +116,57 @@ class TestTheMarkup:
         assert '<li data-needs="round"><a href="#/round">' in landing.HTML
 
 
+class TestTheShelvesAndTheScoreMove:
+    """LP3 (`docs/plan-landing.md` §4.2): the five shelves are one band at the top of
+    `/game`, and the score's long explanation is its own view, `#/score`, on both servers."""
+
+    def test_the_page_carries_both_as_templates(self) -> None:
+        assert page.PAGE.count('<template id="shelvesBand">') == 1
+        assert page.PAGE.count('<template id="scoreView">') == 1
+        assert landing.SHELVES_HTML in page.PAGE and landing.SCORE_HTML in page.PAGE
+
+    def test_the_band_holds_the_five_shelves_and_points_at_the_score(self) -> None:
+        band = landing.SHELVES_HTML
+        for key in ("landingToday", "landingMonth", "landingSpotlight", "newShelf",
+                    "membersShelf"):
+            assert f'id="{key}"' in band, key
+        assert f'<a href="{landing.SCORE_ROUTE}">{landing.SCORE_TITLE}</a>' in band
+
+    def test_the_library_opens_on_the_band_above_the_search(self) -> None:
+        browse = view("browse")
+        assert "document.getElementById('shelvesBand')" in browse
+        drawn = browse[browse.index("async function showLibrary"):]
+        assert drawn.index('<div id="shelvesMount">') < drawn.index("controlsHtml()")
+        assert "fillShelves(data);" in browse
+
+    def test_the_score_view_keeps_the_sections_and_their_ids(self) -> None:
+        html = landing.SCORE_HTML
+        assert f">{landing.SCORE_TITLE}</h2>" in html
+        for anchor in landing.SCORE_ANCHORS:
+            assert html.count(f'id="{anchor}"') == 1, anchor
+        assert html.index('id="landing-viable"') < html.index('id="landing-score"')
+        assert "The computer checks that a game works" in html
+
+    def test_every_score_gloss_links_to_it(self) -> None:
+        assert "const SCORE_LINK = ['#/score', 'How the score works'];" in CORE
+        for table in ("const GLOSS = {", "const SITE_GLOSS = {"):
+            body = CORE[CORE.index(table):]
+            body = body[:body.index("\n};")]
+            for key in ("index", "provisionalScore", "certifiedScore"):
+                entry = body[body.index(f"  {key}: ["):]
+                entry = entry[:entry.index("],\n")]
+                assert "link: SCORE_LINK" in entry and "SCORE_MORE" in entry, (table, key)
+        assert "How the score works" in CORE[CORE.index("const SCORE_MORE"):][:120]
+
+    def test_every_footer_links_it(self) -> None:
+        from chess_variant_sandbox.site import pages
+        from chess_variant_sandbox.web.page import rules_page
+
+        assert "link(SCORE_LINK[0], 'the score')" in CORE
+        assert '<a href="/#/score">the score</a>' in rules_page.document()
+        assert '<a href="/#/score">the score</a>' in pages.not_found()
+
+
 # The router, run under Node with the views stubbed: what each address draws, and what
 # the address bar says after (Q723). `core.js`'s `render` and its two helpers alone, so
 # nothing here depends on a view's own drawing.
@@ -139,6 +200,8 @@ showLibrary = () => __show('library');
 showGame = (hash) => __show('game ' + hash);
 showExplorer = () => __show('map');
 showWhatsNew = () => __show('whats-new');
+showScore = (target) => __show('score ' + target);
+scoreAnchor = (part) => ANCHORS.includes(part);
 showRound = (day) => __show('round ' + day);
 showDesigner = (from) => __show('design ' + from);
 showBoard = (session) => __show('play ' + session.id);
@@ -152,9 +215,10 @@ def _route(path: str, hash_: str, then: str = "", who: str = "visitor") -> dict:
     """Draw `path` + `hash_` as `who` (*visitor*, *member*, *admin*), then run `then`."""
     viewer = {"visitor": "null", "member": "'ada'", "admin": "'root'"}[who]
     head = (_ROUTER.replace("PATH", json.dumps(path)).replace("HASH", json.dumps(hash_)))
-    stubs = _VIEWS.replace("WHO", viewer).replace("BOSS", str(who == "admin").lower())
+    stubs = (_VIEWS.replace("WHO", viewer).replace("BOSS", str(who == "admin").lower())
+             .replace("ANCHORS", json.dumps(list(landing.SCORE_ANCHORS))))
     # The views are other files; `core.js` reads them only when a route is drawn.
-    names = ["showLanding", "showLibrary", "showGame", "showExplorer", "showWhatsNew", "showRound", "showDesigner", "showBotBuilder", "showBoard", "showRun", "stopPolling"]
+    names = ["showLanding", "showLibrary", "showGame", "showExplorer", "showWhatsNew", "showScore", "scoreAnchor", "showRound", "showDesigner", "showBotBuilder", "showBoard", "showRun", "stopPolling"]
     declared = "".join(f"var {name} = () => Promise.resolve();\n" for name in names)
     source = (head + declared + CORE + stubs + "render();\n" + then
               + "\nsetTimeout(() => console.log(JSON.stringify({ shown: __shown, "
@@ -201,7 +265,7 @@ class TestTheRoute:
     @pytest.mark.parametrize("hash_, shown", [
         ("#/play/s42", "play s42"), ("#/map", "map"),
         ("#/design", "design "), ("#/design/abc123", "design abc123"),
-        ("#/whats-new", "whats-new"), ("#/round", "round "),
+        ("#/whats-new", "whats-new"), ("#/round", "round "), ("#/score", "score "),
     ])
     @pytest.mark.parametrize("path", ["/", "/game"])
     def test_deep_links_from_before_game_still_open_what_they_named(
@@ -230,6 +294,20 @@ class TestTheRoute:
 
     def test_the_footer_links_the_games_and_the_landing_page_on_both_servers(self) -> None:
         assert "link(GAMES_PATH, 'games'), ' · ', link('/', 'about')" in PAGE
+
+    @pytest.mark.parametrize("anchor", landing.SCORE_ANCHORS)
+    @pytest.mark.parametrize("path", ["/", "/game"])
+    def test_an_old_link_to_the_scores_sections_lands_on_how_the_score_works(
+        self, path: str, anchor: str
+    ) -> None:
+        """LP3: the landing's `#landing-score` and its neighbours are `#/score`'s now, under
+        the same ids, so a link made to one opens the view scrolled to it."""
+        assert _route(path, "#" + anchor) == {
+            "shown": ["score " + anchor], "moved": [f"replace {path}#/score/{anchor}"],
+            "at": f"{path}#/score/{anchor}"}
+
+    def test_another_bare_fragment_is_not_the_score(self) -> None:
+        assert _route("/game", "#landing-palette")["shown"] == ["library"]
 
 
 class TestTheWayIn:
@@ -285,7 +363,8 @@ class TestTheBoard:
 
 class TestTheWords:
     def test_the_page_passes_the_words_guard(self) -> None:
-        assert site_words.hits(site_words.visible(landing.HTML)) == []
+        for markup in (landing.HTML, landing.SCORE_HTML, landing.SHELVES_HTML):
+            assert site_words.hits(site_words.visible(markup)) == []
 
     def test_the_script_passes_the_words_guard(self) -> None:
         for text in site_words.literals(LANDING):
@@ -299,13 +378,13 @@ class TestTheWords:
 
     def test_the_players_and_games_are_the_measuring_runs(self) -> None:
         count = len(corpus.CANONICAL_AGENTS)
-        assert f"{landing._say(count)} computer players play it" in landing.HTML
-        assert f"{count * count * corpus.CANONICAL_GAMES:,} games a run" in landing.HTML
+        assert f"{landing._say(count)} computer players play it" in landing.SCORE_HTML
+        assert f"{count * count * corpus.CANONICAL_GAMES:,} games a run" in landing.SCORE_HTML
 
 
 class TestTheIngredientsAgreeWithTheWeights:
     def test_every_scored_ingredient_and_nothing_else(self) -> None:
-        listed = set(re.findall(r'data-ingredient="([a-z_]+)"', landing.HTML))
+        listed = set(re.findall(r'data-ingredient="([a-z_]+)"', landing.SCORE_HTML))
         assert listed == set(_weights()["components"])
 
     def test_each_weight_is_its_share_of_the_file(self) -> None:
@@ -321,7 +400,7 @@ class TestTheIngredientsAgreeWithTheWeights:
         for entry in components.values():
             families[entry["family"]] = families.get(entry["family"], 0.0) + entry["weight"]
         for family, weight in families.items():
-            block = re.search(rf'data-quality="{family}"><h4>(.*?)</h4>', landing.HTML)
+            block = re.search(rf'data-quality="{family}"><h4>(.*?)</h4>', landing.SCORE_HTML)
             assert block, family
             assert f"{weight / total * 100:.1f}% of the weight" in block[1]
 
@@ -333,8 +412,8 @@ class TestTheIngredientsAgreeWithTheWeights:
                 assert landing.written(float(value), said.unit, said.noun) in text, (name, value)
 
     def test_every_test_that_rules_a_game_out_with_its_number(self) -> None:
-        start = landing.HTML.index('class="ruleOuts"')
-        tests = landing.HTML[start:landing.HTML.index("</ul>", start)]
+        start = landing.SCORE_HTML.index('class="ruleOuts"')
+        tests = landing.SCORE_HTML[start:landing.SCORE_HTML.index("</ul>", start)]
         gates = _weights()["gates"]
         assert tests.count("<li>") == len(gates)
         for gate in gates:
@@ -344,8 +423,8 @@ class TestTheIngredientsAgreeWithTheWeights:
 
     def test_the_version_and_the_least_a_quality_counts(self) -> None:
         number = _weights()["version"].removeprefix("v")
-        assert f"the scoring rules in force now, version {number}." in landing.HTML
-        assert f"No quality counts as lower than {scoring.FLOOR:g}" in landing.HTML
+        assert f"the scoring rules in force now, version {number}." in landing.SCORE_HTML
+        assert f"No quality counts as lower than {scoring.FLOOR:g}" in landing.SCORE_HTML
 
     def test_the_numbers_are_written_as_read(self) -> None:
         assert landing.written(0.735, "number") == "0.735"

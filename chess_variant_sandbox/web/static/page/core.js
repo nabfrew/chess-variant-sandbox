@@ -409,7 +409,7 @@ function paintIdentity() {
     // which is a file in the tree, so the local application has it too. None needs a
     // store behind it.
     foot.append(link(GAMES_PATH, 'games'), ' · ', link('/', 'about'), ' · ',
-      link('#/whats-new', "what's new"));
+      link(SCORE_LINK[0], 'the score'), ' · ', link('#/whats-new', "what's new"));
     if (ACCOUNTS) {
       if (ROUND) foot.append(' · ', link('#/round', 'the round'));
       if (PLAYERS) foot.append(' · ', link('/players', 'players'));
@@ -492,6 +492,11 @@ function link(where, words) {
 // paragraphs, folded behind *more* in the popover, and `link` is `[href, words]`, the words
 // of the text that link there. The site speaks to a visitor in some of these differently;
 // `SITE_GLOSS` below holds those, and `glossEntry` is the one reading of a key.
+// LP3: where a score's (i) sends the reader who wants the whole account, `#/score`
+// (`landing.score_html`), with the words of the sentence that link there.
+const SCORE_LINK = ['#/score', 'How the score works'];
+const SCORE_MORE = ' How the score works has every test and every ingredient.';
+
 const GLOSS = {
   index: ['The score, out of 1',
     "One number for how interesting a game looks, from measurements taken over a few"
@@ -504,7 +509,8 @@ const GLOSS = {
     + " fresh run usually lands within four of it. For a mean of four it is the error of"
     + " that mean, taken from the four runs' own games. When the library was played again"
     + " from four more seeds, the new mean landed inside it about five times in six, which"
-    + " is what an honest +/- should do, because the new mean carries its own error too."],
+    + " is what an honest +/- should do, because the new mean carries its own error too."
+    + SCORE_MORE, { link: SCORE_LINK }],
   // Q647: the chip's (i), followed by the game's own sentence (`trustTag`).
   trust: ['How far to trust it',
     "How much has checked the computer players that measured this score: early estimate"
@@ -526,7 +532,8 @@ const GLOSS = {
     + " scorer: the opponents, the measurements or the weights have changed since. It"
     + " stays on the card so the library is not blank while the work is owed, and it is"
     + " never current: it has no band, no trust level and no place in a comparison until"
-    + " the repair named beside it runs and the estimate is current again."],
+    + " the repair named beside it runs and the estimate is current again." + SCORE_MORE,
+    { link: SCORE_LINK }],
   // C6 (`docs/reference/compute-economy.md` §3.5, the user's answer B of 2026-10-02): a
   // current score whose games a sample re-certified on code that did not play them.
   certifiedScore: ['Re-certified from a sample',
@@ -535,7 +542,7 @@ const GLOSS = {
     + " each run, and of its analysis) was played again on the new code and"
     + " came out byte for byte the same, so the score was kept as current. A sample can"
     + " miss a change that touches few games, which is why it says so. The next full"
-    + " replay plays every game again and clears this."],
+    + " replay plays every game again and clears this." + SCORE_MORE, { link: SCORE_LINK }],
   // Drawn only where there is a store, so in a visitor's words on both servers.
   provisional: ['Measured on its designer\'s computer',
     "Your browser can play and score a game itself, so you need not wait for the site."
@@ -825,8 +832,8 @@ const SITE_GLOSS = {
     + " the first player has no big edge, games don't stall or end in a few moves, there"
     + " are real choices on most turns, and no two games go the same way. Six qualities"
     + " are scored out of 1 and multiplied, so a game that fails at one of them can't make"
-    + " up for it elsewhere.",
-    { more: [
+    + " up for it elsewhere." + SCORE_MORE,
+    { link: SCORE_LINK, more: [
       "Every score says what it rests on. A library game is measured four times, on four"
       + " different sets of games, and its score is the average: 0.810 · 4 runs. A"
       + " game measured once says 1 run. The ± is how far the number could move from"
@@ -866,14 +873,15 @@ const SITE_GLOSS = {
     + " scored. It is the best estimate there is until the game is measured again, which"
     + " happens on its own. Until then it is not compared with other games, so it says"
     + " nothing about which of two games is clearly better, and how far to trust it is"
-    + " not shown."],
+    + " not shown." + SCORE_MORE, { link: SCORE_LINK }],
   // C6: the same fact in a visitor's words (`docs/reference/plain-words.md`).
   certifiedScore: ['Kept from a sample',
     "The computer players changed after this game was measured, in a way that should not"
     + " change how any game is played. So instead of playing all of its games again, the"
     + " site played some of them again and they came out exactly the same, and the score"
     + " was kept. A few games could still have come out differently, so it says so here."
-    + " The next time the library is measured in full, every game is played again."],
+    + " The next time the library is measured in full, every game is played again."
+    + SCORE_MORE, { link: SCORE_LINK }],
   // A3.
   roster: ['The computer players',
     "Every score comes from the same computer players, from one that moves at random to"
@@ -1462,6 +1470,7 @@ function viewTitle(parts) {
   }
   const named = {
     map: 'The map of games', 'whats-new': "What's new", round: 'The round',
+    score: 'How the score works',
     play: 'A game in progress', design: 'Build a game', opponent: 'Build an opponent',
     run: 'Inventing a game',
   };
@@ -1541,6 +1550,14 @@ function render() {
   if (!parts.length && location.hash.replace(/^#/, '') !== '/' && pathProven()) {
     parts = ['proven', ...pathProven()];
   }
+  // LP3: an id the landing's score sections had (`#landing-score`, `#landingIngredients`)
+  // is *How the score works* now, scrolled to it, said as `#/score/<id>`.
+  if (parts.length === 1 && typeof scoreAnchor === 'function' && scoreAnchor(parts[0])) {
+    try {
+      history.replaceState(null, '', location.pathname + '#/score/' + parts[0]);
+    } catch (error) { /* stays */ }
+    parts = ['score', parts[0]];
+  }
   RENDERED = location.href;
   RENDERED_HASH = location.hash;
   setTitle(viewTitle(parts));
@@ -1558,6 +1575,8 @@ function render() {
   // steered. A place rather than a way of looking, unlike the filters, because it is a
   // page somebody links to. `#/map/explore` is where it was built and still leads here.
   if (parts[0] === 'map') return showExplorer().catch(fail);
+  // LP3: *How the score works*, on both servers (`landing.js`).
+  if (parts[0] === 'score') return showScore(parts[1] || '');
   // The changelog, which both servers hold and neither needs an account for.
   if (parts[0] === 'whats-new') return showWhatsNew().catch(fail);
   // The monthly round (Q503h): the latest, or one by the 1st of its month. The site's.

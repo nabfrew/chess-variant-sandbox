@@ -11,6 +11,13 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-25
+
+### The games page opens with today's picks, and the score has its own page
+
+The games page now starts with a band of picks: today's game, this month's game, the spotlight, new games and members' games,
+above the search. How the score works has a page of its own, reached from the little (i) beside any score.
+
 ## 2026-10-24
 
 ### Library pieces wear their own drawings

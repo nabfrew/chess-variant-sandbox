@@ -2686,8 +2686,10 @@ class TestWhatsNew:
             )
             # The games and the landing page first (Q718, Q723), on both servers, then the
             # changelog.
-            assert drawn["foot"][:5] == [{"text": "games", "href": "/game"}, " · ",
+            # LP3: then *How the score works*.
+            assert drawn["foot"][:7] == [{"text": "games", "href": "/game"}, " · ",
                                          {"text": "about", "href": "/"}, " · ",
+                                         {"text": "the score", "href": "#/score"}, " · ",
                                          {"text": "what's new", "href": "#/whats-new"}]
 
     def test_the_sites_own_pages_carry_the_same_link(self) -> None:
@@ -4999,6 +5001,8 @@ class TestTheWayInToTheSitesOwnPages:
             " · ",
             {"text": "about", "href": "/"},
             " · ",
+            {"text": "the score", "href": "#/score"},
+            " · ",
             {"text": "what's new", "href": "#/whats-new"},
             " · ",
             {"text": "the round", "href": "#/round"},
@@ -5077,6 +5081,7 @@ class TestTheWayInToTheSitesOwnPages:
         assert drawn["who"] == []
         assert drawn["foot"] == [{"text": "games", "href": "/game"}, " · ",
                                  {"text": "about", "href": "/"}, " · ",
+                                 {"text": "the score", "href": "#/score"}, " · ",
                                  {"text": "what's new", "href": "#/whats-new"}]
 
     def test_the_handle_is_a_text_node_and_never_markup(self) -> None:

@@ -352,6 +352,35 @@ RULES = """
     #landingSpotlight { grid-template-columns: 84px minmax(0, 1fr); gap: 12px; }
     #landingSpotlight .pickBoard .thumb { width: 84px; }
   }
+  /* LP3: the five shelves as one band at the top of `/game` (`landing.shelves_html`), above
+     the search: the three picks side by side, each a smaller board and three lines of its
+     sentence, then the two shelves; on a phone the picks are a rail too, as the shelves
+     are, so the band is three rows tall and the search is near. */
+  .shelves { margin: 0 0 20px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .shelves .landingPart { margin-bottom: 16px; }
+  .shelves .landingPicks { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .shelves .landingPicks > .pick, .shelves #landingSpotlight {
+    grid-column: auto; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; padding: 12px;
+    min-height: 0; }
+  .shelves .pickBoard .thumb, .shelves #landingSpotlight .pickBoard .thumb { width: 96px; }
+  .shelves .pickText h4 { font-size: 16px; line-height: 22px; }
+  .shelves .pickText p { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
+                         -webkit-box-orient: vertical; }
+  /* A band, not a page: each pick keeps its label, name, sentence and ways in; the notes
+     under them (why it was picked, how this month's game works, the practice note) and the
+     shelves' leads are the landing's and the game's own page's to say. */
+  .shelves .pickText p.small, .shelves .landingShelf > p, .shelves .landingMembers > p {
+    display: none; }
+  .shelvesScore { margin: 0; }
+  @media (max-width: 760px) {
+    .shelves .landingPicks { grid-template-columns: none; grid-auto-flow: column;
+      grid-auto-columns: minmax(270px, 86%); overflow-x: auto; overflow-y: hidden;
+      scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: thin; }
+    .shelves .landingPicks > .pick, .shelves #landingSpotlight {
+      grid-template-columns: 84px minmax(0, 1fr); scroll-snap-align: start; }
+    .shelves .pickBoard .thumb, .shelves #landingSpotlight .pickBoard .thumb { width: 84px; }
+  }
+  .scoreView .landingLead { max-width: 760px; }
   @media (max-width: 760px) {
     .landingHero { grid-template-columns: minmax(0, 1fr); gap: 18px; margin-bottom: 22px; }
     .landingShow { max-width: 340px; width: 100%; margin: 0 auto; }

@@ -316,6 +316,32 @@ class TestTheFrontDoors:
         assert start in landing.HTML
         assert landing.HTML.index(start) == landing.HTML.index('<section class="landingHero">')
 
+    def test_no_link_points_at_a_missing_anchor(self, site: Site) -> None:
+        """LP3: the score's sections left the landing for `#/score`. Every fragment a page
+        of the site links (`#x`, `/#x`, `/rules#x`) names an id its target page holds, the
+        single page's templates included, and every route a link names (`#/score`) is one
+        the router draws."""
+        pages_ = {path: _fetch(site.port, path).html for path in ("/", "/game", "/rules")}
+        ids = {path: set(re.findall(r'\bid="([^"]+)"', html)) for path, html in pages_.items()}
+        ids["/game"] |= ids["/"]
+        core = (ROOT / "chess_variant_sandbox/web/static/page/core.js").read_text(
+            encoding="utf-8")
+        for path, html in pages_.items():
+            for href in re.findall(r'\bhref="([^"]*#[^"]*)"', html):
+                where, fragment = href.split("#", 1)
+                if not fragment:
+                    continue
+                if fragment.startswith("/"):
+                    route = fragment.strip("/").split("/")[0]
+                    assert f"parts[0] === '{route}'" in core, (path, href)
+                    continue
+                target = where or path
+                assert fragment in ids[target], (path, href)
+        for anchor in landing.SCORE_ANCHORS:
+            assert pages_["/"].count(f'id="{anchor}"') == 1, anchor
+        assert f'<a href="{landing.SCORE_ROUTE}">' in pages_["/"]
+        assert '<a href="/#/score">the score</a>' in pages_["/rules"]
+
     def test_the_games_are_listed_for_a_reader_without_script(self, site: Site) -> None:
         page = _fetch(site.port, "/game")
         assert page.title == front.GAMES_TITLE

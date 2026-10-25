@@ -345,6 +345,8 @@ def _foot(here: str = "", players: bool = False) -> str:
     links = (
         ("/game", "games"),
         ("/", "about"),
+        # LP3: *How the score works*, a view of the single page (`landing.score_html`).
+        ("/#/score", "the score"),
         (front.NEWS_PATH, "what's new"),
         *((("/players", "players"),) if players else ()),
         ("/suggestions", "suggestions"),

@@ -414,7 +414,7 @@ def document() -> str:
     links = " · ".join(
         f'<a href="{where}">{words}</a>'
         for where, words in ((front.GAMES_PATH, "games"), ("/", "about"),
-                             ("/#/whats-new", "what's new"))
+                             ("/#/score", "the score"), ("/#/whats-new", "what's new"))
     )
     return (
         '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
