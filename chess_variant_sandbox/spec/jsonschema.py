@@ -476,9 +476,14 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "effect are one. There is no lift: a player whom a freeze leaves with no "
                     "legal move is checkmated if in check, and otherwise rules.stalemate "
                     "decides. In rounds the effects decide what is offered, never how a "
-                    "collision resolves. Never on a wild piece; refused beside "
+                    "collision resolves. On a wild piece (rules.npcs) a sight must have whose "
+                    "'any' (a wild piece has no side), may not command, and must read the "
+                    "same for both players (a symmetry such as rotate4 or dihedral8); it "
+                    "freezes, disarms or shields both players' pieces alike. A wild piece "
+                    "never takes a shielded piece: its step onto one waits, and it comes back "
+                    "only onto a start no shield covers. Refused beside "
                     "rules.portals and rules.explode_on_capture, a shield is refused beside a "
-                    "sweep move and beside rules.npcs, and a sight that can never bind (no "
+                    "sweep move, and a sight that can never bind (no "
                     "type it affects is ever held by the side it affects, a freeze on types "
                     "with no move, a disarm on types that capture nothing, a shield on types "
                     "nothing can capture, a command on types with no move) is refused. A "
@@ -1054,6 +1059,21 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                                 "(or write 0) for a wild piece that, once taken, is gone."
                             ),
                         },
+                        "turns_back": {
+                            "type": "boolean",
+                            "description": (
+                                "true walks the route as a line instead of a cycle: first to "
+                                "last and back, never from the last square to the first. "
+                                "The piece faces forward at the start and turns round at "
+                                "each end. Where the square ahead holds another wild piece "
+                                "or a piece its type may not take, it turns round and steps "
+                                "the other way, and blocked both ways it waits, turned; so "
+                                "blocking it steers it. Not on a one-square route, not "
+                                "beside also_at, and only in a game without check (win "
+                                "royal_capture, annihilation or none; no forbid_check; no "
+                                "reach.safe). Leave it out (or write false) for a cycle."
+                            ),
+                        },
                         "bounty": {
                             "type": "number",
                             "minimum": 0,
@@ -1093,7 +1113,11 @@ def rule_spec_schema(strict: bool = True) -> dict[str, Any]:
                     "steps to the next square of its route and eats whatever stands there "
                     "that its type may capture, or waits if it may not. A royal piece "
                     "standing where a wild piece steps next is in check from it when that "
-                    "type may capture the royal. Taking a wild piece is worth its bounty."
+                    "type may capture the royal. Taking a wild piece is worth its bounty. "
+                    "A wild piece's type may carry a line of sight (pieces[].sight, whose "
+                    "'any'), freezing, disarming or shielding both players' pieces alike, and "
+                    "a wild piece never takes a shielded piece: it waits in front of one, so "
+                    "a shielded royal on its next square is not in check from it."
                 ),
             },
             "portals": {

@@ -89,7 +89,8 @@ _NUMBER_WORDS = {
     20: "twenty", 21: "twenty_one", 22: "twenty_two", 23: "twenty_three", 24: "twenty_four",
     25: "twenty_five", 26: "twenty_six", 27: "twenty_seven", 28: "twenty_eight",
     29: "twenty_nine", 30: "thirty", 31: "thirty_one", 32: "thirty_two", 33: "thirty_three",
-    34: "thirty_four", 35: "thirty_five", 36: "thirty_six",
+    34: "thirty_four", 35: "thirty_five", 36: "thirty_six", 37: "thirty_seven",
+    38: "thirty_eight",
 }
 _COLLECTOR = f"_schema_{_NUMBER_WORDS.get(LAST_BUMP, LAST_BUMP)}_uses"
 _uses: Callable[[dict], set[str]] | None = getattr(feature_inventory, _COLLECTOR, None)
@@ -380,6 +381,9 @@ class TestMutation:
         # T1's `straighten` takes out a path a game already has: chess with zigzag bishops,
         # the mechanics of T2's `archive/crooked-bishops.json` (`plan-pieces-moves.md` §5.7).
         parents.append(_parent_crooked_bishops())
+        # N5's `pace-a-line` needs wild pieces in a game without check, and no archived wild
+        # game is one until N6: the turning wolves' test spec stands in.
+        parents.append(load_spec(ROOT / "tests" / "_turning_wolves.json"))
 
         def fires(operator) -> bool:
             return any(
@@ -2027,7 +2031,7 @@ class TestTheLastStructuralRefusals:
 # `reference/schema-showcase-coverage.md` are stated against. What is mechanical is that it
 # cannot be left behind: `_FEATURES_ARE_FOR_SCHEMA` fires on the commit that raises
 # `LAST_BUMP`, and the author is holding the list at exactly that moment.
-_FEATURES_ARE_FOR_SCHEMA = 36
+_FEATURES_ARE_FOR_SCHEMA = 38
 
 
 @dataclass(frozen=True)
@@ -2400,6 +2404,43 @@ def _parent_returning_wolves() -> dict:
     return hunt
 
 
+_RING = {"vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1, "through": True,
+         "whose": "any"}
+
+
+def _parent_seeing_wolves(effect: str) -> Callable[[], dict]:
+    """*Wolves* whose wolves carry an aura of ``effect`` (N2, `plan-npc.md` §4.2)."""
+
+    def build() -> dict:
+        wolves = load_spec(ROOT / "archive" / "wolves.json")
+        for piece in wolves["pieces"]:
+            if piece["id"] == "W":
+                piece["sight"] = [{**_RING, "effect": effect}]
+        return wolves
+
+    return build
+
+
+def _parent_sheltered_wolves() -> dict:
+    """*Wolves* whose king shields its own pieces beside it: a player's shield beside wild
+    pieces, the refusal N2 lifted."""
+    wolves = load_spec(ROOT / "archive" / "wolves.json")
+    for piece in wolves["pieces"]:
+        if piece["id"] == "K":
+            piece["sight"] = [{**_RING, "effect": "shield", "whose": "own"}]
+    return wolves
+
+
+def _parent_pacing_wolves() -> dict:
+    """*Wolves* to the capture of the king, whose wolves pace their routes as lines and turn
+    back (N5, `plan-npc.md` §4.7): the rule is refused beside checkmate."""
+    wolves = load_spec(ROOT / "archive" / "wolves.json")
+    wolves["rules"]["win"] = "royal_capture"
+    for npc in wolves["rules"]["npcs"]:
+        npc["turns_back"] = True
+    return wolves
+
+
 def _parent_archers() -> dict:
     """Chess whose bishops shoot (A1, `plan-pieces-moves.md` §6.7): rifle's strike given to the
     bishops alone."""
@@ -2493,7 +2534,15 @@ def _armies_differ(spec: dict) -> bool:
     return len(set(first) & set(second)) < 2 and len(set(first) | set(second)) >= 2
 
 
-# Generation 36's inventory (N1, `plan-npc.md` §4.1): one name, a modifier on a wild piece, so
+# Generation 37's inventory (N2, `plan-npc.md` §4.2): four names, each a modifier on a game with
+# wild pieces, so its host is `npcs`. `wild-eyes` enters the three wild effects (a wild type given
+# an aura) and leaves them (every wild aura taken away), and `blind-a-piece` leaves them too; the
+# shield beside wild pieces is entered by `wild-eyes` and `cast-a-gaze` (whose shield is no longer
+# held back beside wild pieces) and left by `blind-a-piece`. None names or adds a type, so the
+# army is kept. Generation 36's row (N1) retired with the generation; `bring-them-back` still
+# crosses it.
+#
+# Generation 36's inventory was (N1, `plan-npc.md` §4.1): one name, a modifier on a wild piece, so
 # its host is `npcs`. `bring-them-back` enters it (an entry given a clock) and leaves it (the
 # clock taken off), keeping the wild pieces; it names no type and adds none, so the army is
 # kept. Generation 35's row (A1) retired with the generation; `leave-something-behind` still
@@ -2506,9 +2555,9 @@ def _armies_differ(spec: dict) -> bool:
 # so the army is kept. Generation 34's two rows (T1) retired with the generation; `bend-a-line`
 # and `straighten` still cross them.
 _FEATURES: dict[str, _Feature] = {
-    "N1 respawn": _Feature(
-        "npcs", frozenset({"rules.npcs.respawn"}), True, "wolf-hunt+returning",
-        _parent_returning_wolves,
+    "N5 turns back": _Feature(
+        "npcs", frozenset({"rules.npcs.turns_back"}), True, "wolves-royal-capture+turns-back",
+        _parent_pacing_wolves,
         likely=lambda spec: bool(spec.get("rules", {}).get("npcs")),
     ),
 }
@@ -2521,9 +2570,10 @@ _FEATURES: dict[str, _Feature] = {
 # (`archive/wormhole.json` and its arms, Divide, Ferry, Carousel), and since schema 23,
 # whose showcase `archive/wolves-patrol.json` landed with the bump (Q850).
 _SHOWCASE_OWED: dict[str, str] = {
-    # N1's one name. Its showcase is N6, *the shepherd's duck* (`plan-npc.md` §6.1), registered
-    # before the rule was built; N6 deletes this row when it lands.
-    "N1 respawn": "owed: N6, the shepherd's duck (plan-npc.md §6.1)",
+    # N5's name. *The shepherd's duck* (N6, `plan-npc.md` §6.1) carries it: its wolves pace
+    # their lines and the duck steers them. N6 deletes this row.
+    "N5 turns back": "owed: N6, the shepherd's duck (plan-npc.md §6.1)",
+    # N2's four names went to `_NO_SHOWCASE_ON_PURPOSE` when N5 retired their `_FEATURES` rows.
     # I1's one name went with I2's retirement to `_NO_SHOWCASE_ON_PURPOSE`, and from there with
     # I3's *anchors* (`archive/anchors.json`, 2026-10-25). A1's one name,
     # `rules.strike.by`, went on 2026-10-25, when A2 archived its showcase, *the horse
@@ -2620,6 +2670,11 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
     34: frozenset({"pieces.moves.slide.path.circle", "pieces.moves.slide.path.zigzag"}),
     35: frozenset({"rules.strike.by"}),
     36: frozenset({"rules.npcs.respawn"}),
+    37: frozenset({
+        "pieces.sight.wild.freeze", "pieces.sight.wild.disarm", "pieces.sight.wild.shield",
+        "pieces.sight.shield.beside_npcs",
+    }),
+    38: frozenset({"rules.npcs.turns_back"}),
 }
 
 # A feature deliberately without a showcase, with the reason and the audit row that says
@@ -2628,6 +2683,17 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
+    # Generation 37's names (N2), owed in `_SHOWCASE_OWED` until generation 38 (N5) retired
+    # their `_FEATURES` rows. *The shepherd's duck* (N6) carries the shield beside wild pieces;
+    # neither registered showcase gives a wild type a sight (§6's drafts are fixed but for their
+    # tunable numbers), so the three wild effects are owed by a showcase task not yet queued.
+    "schema 37: pieces.sight.wild.freeze": "owed: no task yet (plan-npc.md §6 registers no wild sight)",
+    "schema 37: pieces.sight.wild.disarm": "owed: no task yet (plan-npc.md §6 registers no wild sight)",
+    "schema 37: pieces.sight.wild.shield": "owed: no task yet (plan-npc.md §6 registers no wild sight)",
+    "schema 37: pieces.sight.shield.beside_npcs": "owed: N6, the shepherd's duck (plan-npc.md §6.1)",
+    # Generation 36's name (N1), owed in `_SHOWCASE_OWED` until generation 37 (N2) retired its
+    # `_FEATURES` row. N6 deletes this row when *the shepherd's duck* lands.
+    "schema 36: rules.npcs.respawn": "owed: N6, the shepherd's duck (plan-npc.md §6.1)",
     # Generation 34's two names (T1) were owed here until their showcases landed, both
     # 2026-10-25 (`plan-pieces-moves.md` §5.7): T2's `archive/crooked-bishops.json` deleted
     # `...path.zigzag`'s row and T3's `archive/circling-queen.json` `...path.circle`'s.
@@ -3861,7 +3927,8 @@ _PINNED_SCALES: dict[str, float] = {
     "portals_no_back": 1.0, "portals_ring": 1.0, "portals_funnel": 1.0,
     "portals_other_map": 1.0, "portals_filtered": 1.0, "portals_fold": 1.0,
     "npcs_share_a_walk": 1.0, "lame_rider_share": 1.0, "turning_share": 1.0,
-    "strikers_share": 1.0, "npcs_come_back": 1.0,
+    "strikers_share": 1.0, "npcs_come_back": 1.0, "npcs_see": 1.0,
+    "npcs_turn_back": 1.0,
     # Q1011: the nineteen features of schema 26 onward that `distance` had never read.
     "simultaneous": 1.0, "simultaneous_initiative": 1.0, "simultaneous_impossible": 1.0,
     "beats_share": 1.0, "simultaneous_swap_collides": 1.0, "simultaneous_both_score": 1.0,
@@ -3930,14 +3997,15 @@ class TestDistanceIsPinnedToTheNumber:
         """Chess against its bare-royal twin differs in the flag (1/1), the rule mass (52
         to 58, over 90) and the special rules (3 to 4, over 6): the mean over the 100
         features (Q1011 brought it to 100: Q1007a's `lame_rider_share` was the 81st), 101 since
-        T1's `turning_share`, 102 since A1's `strikers_share` and 103 since N1's
-        `npcs_come_back`, is 0.011974, which rounds to 0.0120 and not to 0.01197."""
+        T1's `turning_share`, 102 since A1's `strikers_share`, 103 since N1's
+        `npcs_come_back`, 104 since N2's `npcs_see` and 105 since N5's `npcs_turn_back`, is
+        0.011746, which rounds to 0.0117 and not to 0.01175."""
         chess = _chess()
         twin = copy.deepcopy(chess)
         twin["rules"]["bare_royal"] = "win"
         twin = _stamped(twin)
         assert validate_spec(twin) == []
-        assert distance(chess, twin) == 0.0120
+        assert distance(chess, twin) == 0.0117
 
 
 def _one_leap_beside_a_stone() -> dict:

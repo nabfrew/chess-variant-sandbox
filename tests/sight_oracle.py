@@ -45,6 +45,16 @@ royal is check), from a piece the effects leave free. A shield and a command are
 a sweep, so only freeze and disarm meet one. The board a sweep makes is the engine's, as for
 every move; a sweep over the mover's only royal (friendly pieces are swept too) leaves it
 without one, and under checkmate that move is refused rather than played.
+
+**Wild pieces** (generation 37, N2, `docs/plan-npc.md` §4.2): a wild piece's sight (``whose``
+``"any"``) reads the third owner's frame of the forward lines and touches both players' pieces;
+effects never touch a wild piece. **A wild piece never takes a shielded piece**: the oracle plays
+the phase itself, on the board the move leaves (the twin's move with the twin's phase taken back
+off its log): each wild piece, ascending, steps to its route's next square when that is empty or
+holds a player's piece its type may capture that was not shielded at the phase's start, and
+waits otherwise. A royal on a wild piece's next square that it may take and that is not shielded
+is attacked. The oracle reads one wild piece per route and no returns (the walked specs have
+neither ``also_at`` nor ``respawn``).
 """
 
 from __future__ import annotations
@@ -120,11 +130,9 @@ class SightOracle:
             if not value:
                 continue
             owner = spec.owner_of(value)
-            if owner > 1:
-                continue
             piece_type = spec.type_of(value)
             entries = sight.entries[piece_type]
-            if not entries:
+            if not entries or (owner > 1 and spec.frame_at(value) >= len(sight.lines)):
                 continue
             for number, ray, seen in sight.lines[spec.frame_at(value)][piece_type][origin]:
                 entry = entries[number]
@@ -133,7 +141,7 @@ class SightOracle:
                     if seen[index] and occupant:
                         victim_owner = spec.owner_of(occupant)
                         if victim_owner <= 1 and (
-                            entry.whose == "any"
+                            entry.whose == "any" or owner > 1
                             or (entry.whose == "enemy") == (victim_owner != owner)
                         ) and entry.affects >> spec.type_of(occupant) & 1:
                             bits[square] |= entry.effect
@@ -172,6 +180,62 @@ class SightOracle:
                 return True
         return False
 
+    def wild_attacked(self, board: bytes, square: int, victim_type: int | None = None) -> bool:
+        """Whether a wild piece steps onto ``square`` next and would take what stands there
+        (or a piece of ``victim_type`` on an empty square), under the shields of ``board``."""
+        spec = self.compiled
+        npcs = spec.npcs
+        if npcs is None:
+            return False
+        occupant = board[square]
+        if occupant:
+            if spec.owner_of(occupant) > 1 or self.effects(board)[square] & SIGHT_SHIELD:
+                return False
+            victim_type = spec.type_of(occupant)
+        for origin, value in enumerate(board):
+            if (
+                value and spec.owner_of(value) > 1 and npcs.next[origin] == square
+                and origin != square
+                and (victim_type is None
+                     or spec.capture_allowed[spec.type_of(value)][victim_type])
+            ):
+                return True
+        return False
+
+    def after(self, state: GameState, move: int) -> GameState:
+        """The position ``move`` makes: the twin's, with the wild phase played here (a
+        shielded piece is never taken) in a game with wild pieces."""
+        spec = self.compiled
+        if spec.npcs is None:
+            return self.twin.apply(state, move)
+        after, steps = self.twin.apply_with_phase(state, move)
+        board = bytearray(after.board)
+        for step in reversed(steps):
+            assert step.kind == "step", "the oracle reads no returns"
+            board[step.origin] = board[step.target]
+            board[step.target] = step.eaten
+        shields = self.effects(bytes(board))
+        npcs = spec.npcs
+        # Listed before anything moves, so a piece steps once.
+        standing = [
+            origin for origin, value in enumerate(board) if value and spec.owner_of(value) > 1
+        ]
+        for origin in standing:
+            value = board[origin]
+            target = npcs.next[origin]
+            if target < 0 or target == origin:
+                continue
+            there = board[target]
+            if there and (
+                spec.owner_of(there) > 1
+                or shields[target] & SIGHT_SHIELD
+                or not spec.capture_allowed[spec.type_of(value)][spec.type_of(there)]
+            ):
+                continue
+            board[origin] = 0
+            board[target] = value
+        return dataclasses.replace(after, board=bytes(board))
+
     def _royals(self, state: GameState, player: int) -> list[int]:
         spec = self.compiled
         return [
@@ -186,7 +250,8 @@ class SightOracle:
             if (
                 value and spec.owner_of(value) == player
                 and spec.type_of(value) in spec.royal_types
-                and self.attacked(state, 1 - player, square)
+                and (self.attacked(state, 1 - player, square)
+                     or self.wild_attacked(state.board, square))
             ):
                 return True
         return False
@@ -244,12 +309,14 @@ class SightOracle:
         origin, target, _, _ = decode_move(move)
         player = state.side_to_move
         king_type = spec.type_of(state.board[origin])
-        if self.attacked(state, 1 - player, origin):
+        if self.attacked(state, 1 - player, origin) or self.wild_attacked(state.board, origin):
             return False
         step = 1 if target > origin else -1
         square = origin + step
         while True:
             if self.attacked(state, 1 - player, square, king_type):
+                return False
+            if not state.board[square] and self.wild_attacked(state.board, square, king_type):
                 return False
             if square == target:
                 return True
@@ -272,7 +339,7 @@ class SightOracle:
             for move in moves:
                 if decode_move(move)[2] == MOVE_CASTLE and not self._castling_safe(state, move):
                     continue
-                after = self.twin.apply(state, move)
+                after = self.after(state, move)
                 if self._royals(state, player) and not self._royals(after, player):
                     continue  # a sweep over its own last royal loses it: refused, not played
                 if not self.royal_attacked(after, player):

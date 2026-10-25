@@ -250,14 +250,16 @@ def sights_payload(engine: Any, state: GameState) -> list[dict[str, Any]]:
     the board's hover, as ``[{"square", "seen": [[square, bits], ...]}]``, square order: the
     core's answer for each (`Engine.sight_of`), a ray's stopping piece included and nothing
     past it. The page computes no square of it. Only the pieces whose type declares a sight
-    are asked, and a piece that sees nothing on this board is left out."""
+    are asked, and a piece that sees nothing on this board is left out. A wild piece that sees
+    (generation 37, N2) is asked as a player's piece is; a portal is refused beside a sight, so
+    the third owner's pieces here are wild ones."""
     spec = engine.spec
     if spec.sight is None:
         return []
     carriers = {kind for kind, entries in enumerate(spec.sight.entries) if entries}
     out = []
     for square, value in enumerate(state.board):
-        if not value or spec.owner_of(value) > 1 or spec.type_of(value) not in carriers:
+        if not value or spec.type_of(value) not in carriers:
             continue
         seen = engine.sight_of(state, square)
         if seen:

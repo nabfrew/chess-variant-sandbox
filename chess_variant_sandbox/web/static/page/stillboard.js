@@ -491,11 +491,23 @@ function walksHtml(preview, cell, view) {
     const squares = walk.squares || [];
     if (squares.length < 2) return;
     const jumps = new Set((walk.leaps || []).map(leap => leap.from + '>' + leap.to));
-    squares.forEach((from, at) => {
-      const to = squares[(at + 1) % squares.length];
+    const push = (from, to, leap) => {
       const pair = Math.min(from, to) + '-' + Math.max(from, to);
       shared.set(pair, (shared.get(pair) || 0) + 1);
-      steps.push({ index, from, to, pair, leap: jumps.has(from + '>' + to) });
+      steps.push({ index, from, to, pair, leap });
+    };
+    squares.forEach((from, at) => {
+      // Generation 38 (N5): a line is walked to its end and back, so each of its steps is
+      // drawn both ways, side by side, and nothing closes it from the last square to the first.
+      if (walk.line) {
+        if (at === squares.length - 1) return;
+        const to = squares[at + 1], leap = jumps.has(from + '>' + to);
+        push(from, to, leap);
+        push(to, from, leap);
+        return;
+      }
+      const to = squares[(at + 1) % squares.length];
+      push(from, to, jumps.has(from + '>' + to));
     });
   });
   const seen = new Map();

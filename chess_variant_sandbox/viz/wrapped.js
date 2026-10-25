@@ -1272,8 +1272,9 @@ function comingHtml(coming, cell, W, H, view, rule, then) {
     return comingArrow(at[0] + cell / 2, at[1] + cell / 2, d[0], d[1], cell, kind, apart);
   };
   let out = '';
-  // A coming return (generation 36, N1) has no way to draw as an arrow: it goes nowhere.
-  const walks = step => step.kind !== 'return';
+  // A coming return (generation 36, N1) has no way to draw as an arrow: it goes nowhere, and
+  // nor does a turning-back piece that waits, turned round (generation 38, N5).
+  const walks = step => step.kind !== 'return' && step.from !== step.to;
   for (const step of then.filter(walks)) out += arrow(step, 'comingThen');
   for (const step of coming.filter(walks)) out += arrow(step, 'coming');
   return `<g data-coming="${coming.length}" data-coming-then="${then.length}"
@@ -2697,6 +2698,16 @@ function phaseWords(steps, walkers, nameOf, W) {
     if (step.kind === 'return') {
       clauses.push('the ' + who + ' comes back on ' + at(step.to)
                    + (step.eaten ? ', taking the ' + (nameOf(step.eaten) || 'piece') : ''));
+      walking = null;
+      return;
+    }
+    // Generation 38 (N5): a turning-back piece blocked ahead, turned round.
+    if (step.kind === 'turn') {
+      clauses.push('the ' + who + ' on ' + at(step.from) + ' turns round'
+                   + (step.from === step.to ? ', blocked both ways'
+                      : step.eaten ? ' and takes the ' + (nameOf(step.eaten) || 'piece') + ' on '
+                        + at(step.to)
+                      : ' and steps to ' + at(step.to)));
       walking = null;
       return;
     }

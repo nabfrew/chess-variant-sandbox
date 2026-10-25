@@ -82,15 +82,16 @@ def test_a_seeded_batch_builds_hexagons_joined_and_unjoined() -> None:
 
 
 # Two hexagons the generator builds, one of each kind (the seeded batch above finds nine
-# among seeds 0-63): seed 29 unjoined, seed 36 joined, 0.3 s together where the batch took
-# 9 s (Q749). Asked of by name, so a generator that stops building them fails here.
-TWO_HEXAGONS = (29, 36)
+# among seeds 0-63): seed 32 unjoined, seed 36 joined, 0.3 s together where the batch took
+# 9 s (Q749). Asked of by name, so a generator that stops building them fails here. Seed 29
+# was the unjoined one until N5's `pace-a-line` joined the operators the generator draws from.
+TWO_HEXAGONS = (32, 36)
 
 
 def _one_of_each() -> list[fuzz.Case]:
     hexagons = _hexagons(TWO_HEXAGONS)
     assert {"wrap" in fuzz.active_rules(case.spec) for case in hexagons} == {True, False}, (
-        "seeds 29 and 36 no longer build one hexagon of each kind; pick two again from"
+        "seeds 32 and 36 no longer build one hexagon of each kind; pick two again from"
         " test_a_seeded_batch_builds_hexagons_joined_and_unjoined's batch"
     )
     return hexagons

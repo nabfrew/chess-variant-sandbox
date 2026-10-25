@@ -136,6 +136,11 @@ class GameState:
     # and read as every clock idle. In the Zobrist key: the same board with a different
     # clock has a different future.
     respawn: tuple[int, ...] = ()
+    # Generation 38 (N5, ``rules.npcs[].turns_back``, `docs/plan-npc.md` §4.7): the squares,
+    # ascending, of the wild pieces walking their line back; a piece on a line and not listed
+    # walks it forward. ``()`` for every game without the rule. In the Zobrist key: the same
+    # board with a piece facing the other way has a different future.
+    heading_back: tuple[int, ...] = ()
 
     def with_(self, **changes: Any) -> GameState:
         return replace(self, **changes)
@@ -162,8 +167,8 @@ class Outcome:
         return {"winner": self.winner, "reason": self.reason}
 
 
-# The core's phase-log kinds (`game::PHASE_STEP`, `PHASE_RETURN`), by code.
-PHASE_KINDS = ("step", "return")
+# The core's phase-log kinds (`game::PHASE_STEP`, `PHASE_RETURN`, `PHASE_TURN`), by code.
+PHASE_KINDS = ("step", "return", "turn")
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,7 +191,9 @@ class PhaseStep:
     eaten: int
     # What the entry is (generation 36, N1): ``"step"``, a wild piece's step along its route,
     # or ``"return"``, a taken wild piece coming back onto ``target`` (``origin`` is the same
-    # square: it came from nowhere on the board).
+    # square: it came from nowhere on the board); or ``"turn"`` (generation 38, N5), a
+    # turning-back piece that found its way blocked and turned round: a step the other way, or
+    # ``origin == target`` where it waits, turned.
     kind: str = "step"
 
     @classmethod
@@ -247,6 +254,9 @@ class Effects:
     shielded: int
     suppressed: bool
     commanded: int = 0
+    # Generation 37 (N2, `docs/plan-npc.md` §4.2): each square's bits from the wild pieces'
+    # sights alone, on a player's piece; empty in a game without wild pieces.
+    wild: tuple[int, ...] = ()
 
     @property
     def binds(self) -> bool:

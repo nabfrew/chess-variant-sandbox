@@ -42,6 +42,7 @@ from chess_variant_sandbox.spec.schema import (
     npc_respawn,
     npc_routes,
     npc_starts,
+    npc_turns_back,
     obstacle_squares,
     parse_square,
     path_of,
@@ -648,6 +649,19 @@ class NpcRule:
     # the order the phase's step 3 returns them in. ``starts`` are the half's own, first free
     # first. ``()`` when no entry comes back, which is every game before the rule.
     respawn: tuple[tuple[int, tuple[int, ...]], ...] = ()
+    # Generation 38 (N5, `docs/plan-npc.md` §4.7): a turning-back entry's route is a **line**,
+    # walked first to last and back. ``prev[square]`` is the square a piece walking it back
+    # steps to: the previous square of its line, the square itself at the line's first square
+    # (nothing before it, as ``next`` holds the square itself at the line's last), and ``-1``
+    # off every line, which is how the core knows a square is on one. ``()`` when no entry
+    # turns back, which is every game before the rule; a line's squares also carry no attack
+    # source (the square it threatens depends on what blocks it, so the rule is refused where
+    # check is asked).
+    prev: tuple[int, ...] = ()
+
+    def on_line(self, square: int) -> bool:
+        """Whether ``square`` is on a turning-back entry's line (generation 38)."""
+        return bool(self.prev) and self.prev[square] >= 0
 
 
 # Schema 19 (Q771): the eight king's directions a transit can come out in, in this fixed
@@ -1034,7 +1048,8 @@ class SightRule:
     * ``lines[frame][type][square]`` -- the forward lines, read off the slide tables
       `_compile_square_full` builds for each sight's geometry in that frame: what the type
       sees from that square on an empty board, before blocking. The page's hover and the
-      oracle read these; the core never does.
+      oracle read these; the core never does. Where a wild type sees (generation 37, N2), one
+      frame more, ``2 * n_facings``, the third owner's (`frame_at` of a wild byte).
     * ``sources[player][piece_type][square]`` -- the reverse table the core walks
       (`Game::effects_at`): every source whose effect could bind ``player``'s piece of
       ``piece_type`` standing on ``square``. Filed by the affected type, so a walk reads only
@@ -1154,6 +1169,58 @@ def _compile_sights(
                                     )
             frame_lines.append(type_lines)
         lines.append(frame_lines)
+
+    # Generation 37 (N2, `docs/plan-npc.md` §4.2): a wild piece's sight. A wild piece stands
+    # in the third owner's one frame (its byte is `WILD * n_facings * n_types + type + 1`), its
+    # lines read the same for both players (the validator refuses one that does not), so they
+    # are compiled in player 0's frame, and its ``whose`` is ``"any"``: one source per seen
+    # square for each player's piece. The forward lines get a frame of their own after the
+    # players' (`frame_at` of a wild byte), and only where a wild type sees, so no other
+    # game's tables move.
+    listed_npcs = rules.get("npcs") if isinstance(rules, dict) else None
+    wild_ids = {
+        npc.get("piece") for npc in (listed_npcs if isinstance(listed_npcs, list) else [])
+        if isinstance(npc, dict)
+    }
+    wild_seeing = [
+        piece_type for piece_type, piece in enumerate(pieces)
+        if piece["id"] in wild_ids and sights.get(piece["id"])
+    ]
+    if wild_seeing:
+        wild_lines: list[list[tuple[SightLine, ...]]] = [
+            [() for _ in range(n_squares)] for _ in range(n_types)
+        ]
+        for piece_type in wild_seeing:
+            piece_value = (WILD * n_facings) * n_types + piece_type + 1
+            written = sights[pieces[piece_type]["id"]]
+            for origin in range(n_squares):
+                seen_from: list[SightLine] = []
+                for number, sight in enumerate(written):
+                    slide = {
+                        "kind": "slide", "vectors": [list(v) for v in sight.vectors],
+                        "symmetry": sight.symmetry, "range": sight.range,
+                        "min_range": sight.min_range,
+                    }
+                    built = _compile_square(
+                        {"moves": [slide]}, 0, origin, width, height, orientation, wrap,
+                        obstacles, blocks_leaps, 0, radius,
+                    )
+                    for ray, modes, _ in built[1]:
+                        seen_from.append((number, tuple(ray), tuple(mode != 0 for mode in modes)))
+                wild_lines[piece_type][origin] = tuple(seen_from)
+                for number, ray, seen in seen_from:
+                    entry = entries[piece_type][number]
+                    for index, square in enumerate(ray):
+                        if not seen[index]:
+                            continue
+                        path = () if entry.through else ray[:index]
+                        for side in (0, 1):
+                            for victim in range(n_types):
+                                if entry.affects >> victim & 1:
+                                    sources[side][victim][square].append(
+                                        (origin, piece_value, entry.effect, path)
+                                    )
+        lines.append(wild_lines)
 
     royal_mask = 0
     for royal in royal_types:
@@ -1483,6 +1550,11 @@ class CompiledSpec:
     # Generation 36 (N1): the respawn clocks' keys, ``[half's base + clock - 1]`` in
     # ``npcs.respawn`` order, drawn after the rest's and only where an entry comes back.
     zobrist_respawn: tuple[int, ...] = ()
+    # Generation 38 (N5): a wild piece's heading on a line, ``[square]`` the key of a piece
+    # there walking its line back (a piece walking forward is keyed by nothing), board-sized
+    # with 0 off every line, drawn after the respawn clocks' and only where an entry turns
+    # back. Empty otherwise.
+    zobrist_heading: tuple[int, ...] = ()
     # Schema 30 (Q999a, `docs/archive/plan-passive.md` §3.2): lines of sight, or ``None`` -- every
     # game in which no type sees, whose boundary keys for the rule all cross empty. An effect
     # is a function of the board, so the rule adds no state and no key.
@@ -1912,7 +1984,7 @@ def _compile(
     simultaneous = rules.get("simultaneous")
     (
         zob_pieces, zob_side, zob_ep, zob_colour, zob_turn, zob_bar, zob_fold, zob_sim, zob_rest,
-        zob_respawn,
+        zob_respawn, zob_heading,
     ) = (
         _build_zobrist(
             digest, n_squares, n_types, width, n_facings, n_owners,
@@ -1922,6 +1994,9 @@ def _compile(
             initiative=isinstance(simultaneous, dict) and simultaneous.get("tie") == "initiative",
             rest_max=max(piece_rests(spec).values(), default=0),
             respawn_keys=sum(every for every, _ in npcs.respawn) if npcs is not None else 0,
+            heading_squares=tuple(
+                square for square in range(n_squares) if npcs is not None and npcs.on_line(square)
+            ),
         )
     )
     royal_types = tuple(i for i, p in enumerate(pieces) if p.get("royal", False))
@@ -2140,6 +2215,7 @@ def _compile(
         rest=_compile_rests(declared_pieces, index_of, n_types),
         zobrist_rest=zob_rest,
         zobrist_respawn=zob_respawn,
+        zobrist_heading=zob_heading,
         sight=_compile_sights(
             spec, pieces, index_of, n_types, n_facings, facing_axes, n_squares, width, height,
             orientation, wrap, obstacles, blocks_leaps, radius, royal_types, multi_royal,
@@ -2948,7 +3024,7 @@ def _build_attack_sources(
     if npcs is not None:
         wild: list[list[AttackSource]] = [[] for _ in range(n_squares)]
         for origin, target in enumerate(npcs.next):
-            if target < 0 or target == origin:
+            if target < 0 or target == origin or npcs.on_line(origin):
                 continue
             value = (WILD * n_facings) * n_types + npcs.piece[origin] + 1
             wild[target].append((origin, value, (), (), 0, False, SCREEN_ANY, 0, ()))
@@ -4725,16 +4801,23 @@ def _compile_npcs(
     nxt = [-1] * n_squares
     bounty = [0.0] * n_squares
     piece_of = [-1] * n_squares
+    prev = [-1] * n_squares
     for label, squares in npc_routes(rules, width, height, orientation):
         index = int(label.split("[")[1].split("]")[0])
         entry = npcs[index]
         piece_type = index_of[entry["piece"]]
         stated = entry.get("bounty")
         worth = float(stated if stated is not None else pieces[piece_type].get("value", 1))
+        line = npc_turns_back(entry)
+        last = len(squares) - 1
         for position, square in enumerate(squares):
             nxt[square] = squares[(position + 1) % len(squares)]
             bounty[square] = worth
             piece_of[square] = piece_type
+            if line:
+                # Generation 38 (N5): a line never wraps; each end holds itself.
+                nxt[square] = squares[position + 1] if position < last else square
+                prev[square] = squares[position - 1] if position > 0 else square
     # Schema 23: ``also_at`` is more starts on a route and nothing else -- the extra pieces
     # share the entry's type and bounty, so the three tables above are the route's.
     starts = tuple(
@@ -4744,6 +4827,7 @@ def _compile_npcs(
     return NpcRule(
         next=tuple(nxt), bounty=tuple(bounty), piece=tuple(piece_of), starts=starts,
         respawn=_respawn_halves(rules, width, height, orientation),
+        prev=tuple(prev) if any(npc_turns_back(npc) for npc in npcs) else (),
     )
 
 
@@ -4939,6 +5023,7 @@ def _build_zobrist(
     initiative: bool = False,
     rest_max: int = 0,
     respawn_keys: int = 0,
+    heading_squares: tuple[int, ...] = (),
 ) -> tuple[
     tuple[tuple[int, ...], ...],
     int,
@@ -4948,6 +5033,7 @@ def _build_zobrist(
     tuple[int, ...],
     tuple[int, ...],
     tuple[int, tuple[int, ...], tuple[int, ...]] | None,
+    tuple[int, ...],
     tuple[int, ...],
     tuple[int, ...],
 ]:
@@ -5016,4 +5102,11 @@ def _build_zobrist(
     # value of each half's clock, drawn last of all and only where an entry comes back, so no
     # other game's key moves.
     respawn = tuple(rng.getrandbits(64) for _ in range(respawn_keys))
-    return pieces, side, ep, colours, turns, bar, fold, sim, resting, respawn
+    # Generation 38 (N5, `docs/plan-npc.md` §4.7): a wild piece walking its line back, one key
+    # per line square in ascending order, laid out board-sized (0 off every line), drawn last
+    # of all and only where an entry turns back, so no other game's key moves.
+    heading: tuple[int, ...] = ()
+    if heading_squares:
+        drawn = {square: rng.getrandbits(64) for square in heading_squares}
+        heading = tuple(drawn.get(square, 0) for square in range(n_squares))
+    return pieces, side, ep, colours, turns, bar, fold, sim, resting, respawn, heading

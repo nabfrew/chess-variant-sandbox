@@ -373,12 +373,17 @@ def every_piece_is_in_an_orientation_it_may_be_in(engine: Engine, state: Any) ->
 
 def _route_key(npcs: Any, square: int) -> int:
     """The lowest square of the route through ``square``: one key per route, whichever of
-    its squares a wild piece stands on."""
+    its squares a wild piece stands on. A line (generation 38's ``turns_back``) holds each
+    end on itself, so it is walked both ways, to each end."""
     lowest = square
-    cursor = npcs.next[square]
-    while cursor != square:
-        lowest = min(lowest, cursor)
-        cursor = npcs.next[cursor]
+    for table in (npcs.next, npcs.prev) if npcs.prev else (npcs.next,):
+        cursor = square
+        while True:
+            after = table[cursor]
+            if after in (square, cursor):
+                break
+            cursor = after
+            lowest = min(lowest, cursor)
     return lowest
 
 

@@ -451,7 +451,19 @@ class TestTheFingerprintsPointAtSomething:
 # of the clocks and `make_state(respawn=...)`; see `FROZEN_ANALYSIS`). No library game writes
 # `npcs[].respawn`, so no number can move. It was "f745667ed7f652e7" after T1; the next library
 # replay re-scores under it.
-FROZEN_METRICS = "4f17f5b9d98ac076"
+#
+# **Moved 2026-10-25 by N2 (wild pieces that see)**: the `analysis` files it reads
+# (`tournament/analysis.py`'s `WILD_SIGHT_SERIES`, `engine/state.py`'s `Effects.wild`,
+# `engine/engine.py`'s reading of `Core.effects`; see `FROZEN_ANALYSIS`). No library game gives
+# a wild piece a sight or puts a shield beside wild pieces, so no number can move. It was
+# "4f17f5b9d98ac076" after N1; the next library replay re-scores under it.
+#
+# **Moved 2026-10-25 by N5 (wild pieces that turn back)**: the `analysis` files it reads
+# (`engine/state.py`'s `GameState.heading_back` and the `"turn"` phase kind, `engine/engine.py`'s
+# packing of the headings and `make_state(heading_back=...)`; see `FROZEN_ANALYSIS`). No library
+# game writes `npcs[].turns_back`, so no number can move. It was "69b24f7e39c6bc91" after N2;
+# the next library replay (R35, for N2 and N5 together) re-scores under it.
+FROZEN_METRICS = "c5a6b2b99d42a76f"
 
 
 class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
@@ -727,7 +739,19 @@ class TestTheMetricsFingerprintIsWhereTheLibraryLeftIt:
 # `FROZEN_METRICS`); a game without `respawn` is analysed byte for byte as before
 # (`tests/test_speed.py`'s round digest, the coming-phase tests). It was "c38b69ba6532f04b"
 # after Q1020; the next library replay is the re-analysis.
-FROZEN_ANALYSIS = "32b8a10b8d1f7b6e"
+#
+# **Moved 2026-10-25 by N2**: `tournament/analysis.py`'s third owner column
+# (`WILD_SIGHT_SERIES`, written only where a wild piece sees), `engine/state.py`'s
+# `Effects.wild` and `engine/engine.py`'s reading of it (see `FROZEN_METRICS`); a game without a
+# seeing wild piece is analysed byte for byte as before. It was "32b8a10b8d1f7b6e" after N1; the
+# next library replay is the re-analysis.
+#
+# **Moved 2026-10-25 by N5**: `engine/state.py`'s `GameState.heading_back` (slot 11's eleventh
+# element) and the `"turn"` phase kind, `engine/engine.py`'s packing and `make_state` (see
+# `FROZEN_METRICS`); a game without `turns_back` is analysed byte for byte as before
+# (`tests/test_speed.py`'s round digest). It was "a2baeaa95170685f" after N2; the next library
+# replay (R35) is the re-analysis.
+FROZEN_ANALYSIS = "63ae2694b7785b01"
 
 
 class TestTheAnalysisFingerprintIsWhereTheLibraryLeftIt:

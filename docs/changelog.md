@@ -18,6 +18,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 The designer's piece sections are now one picker. Press a piece to see its drawing, a few words about it
 and how it moves, then add it; this works by touch on a phone too. Each piece's card folds to a single line.
 
+### Wild pieces with auras, and wild pieces you can steer
+
+A wild piece can now freeze, disarm or shield the pieces next to it, alike for both players. And a wild piece
+can walk its route as a line, turning round at the end or wherever its way is blocked, so a player can steer it by standing in
+its path.
+
 ### Wild pieces can come back
 
 A wild piece, one no player owns, can now be set to return a fixed number of moves after it is taken,

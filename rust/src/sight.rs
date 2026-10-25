@@ -43,6 +43,10 @@ pub struct EffectsReport {
     pub suppressed: bool,
     /// Q1007c: how many of the side to move's legal moves are commanded ones.
     pub commanded: u32,
+    /// Generation 37 (N2): each square's effect bits from the wild pieces' sights alone (on
+    /// a player's piece, for its owner), the tallies' third owner column. Empty in a game
+    /// without wild pieces.
+    pub wild_bits: Vec<u8>,
 }
 
 impl<'t> Game<'t> {
@@ -65,6 +69,69 @@ impl<'t> Game<'t> {
                 continue;
             }
             if sight.path(source).iter().all(|s| self.board[*s as usize] == 0) {
+                bits |= source.effect;
+            }
+        }
+        bits
+    }
+
+    /// Generation 37 (N2, `docs/plan-npc.md` §4.2): the shielded squares a wild phase reads,
+    /// once, at its start: every route square holding a player's piece under a shield. A
+    /// step or a return only ever lands on a route square, so these are all it can ask
+    /// about. Empty, at one flag test, in every game without a shield beside wild pieces.
+    #[inline]
+    pub(super) fn wild_shields(&self) -> SquareSet {
+        if !self.t.npc_shield {
+            return SquareSet::EMPTY;
+        }
+        self.wild_shields_walk()
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn wild_shields_walk(&self) -> SquareSet {
+        let t = self.t;
+        let mut shields = SquareSet::EMPTY;
+        for &square in &t.npc_squares {
+            if self.shielded_from_wild(square as usize) {
+                shields.set(square as usize);
+            }
+        }
+        shields
+    }
+
+    /// Whether the piece on `square` is a player's under a shield, which no wild piece takes
+    /// (generation 37): the wild arm of `threatened` asks it, so a shielded royal on a wild
+    /// piece's next square is not in check from it. Only where `Tables::npc_shield`.
+    #[cold]
+    #[inline(never)]
+    pub(super) fn shielded_from_wild(&self, square: usize) -> bool {
+        let t = self.t;
+        let Some(sight) = t.sight.as_deref() else {
+            return false;
+        };
+        let occupant = self.board[square];
+        if occupant == 0 {
+            return false;
+        }
+        let owner = t.owner_of(occupant);
+        owner < 2 && self.effects_at(sight, owner, square) & SIGHT_SHIELD != 0
+    }
+
+    /// Generation 37 (N2): the effect bits on the player's piece on `square` from the wild
+    /// pieces' sights alone, read as `effects_at` reads every source. For `Core.effects`.
+    fn wild_effects_at(&self, sight: &SightTables, square: usize) -> u8 {
+        let t = self.t;
+        let occupant = self.board[square];
+        if occupant == 0 || t.owner_of(occupant) >= 2 {
+            return 0;
+        }
+        let mut bits = 0u8;
+        for source in sight.sources_of(t.owner_of(occupant), t.type_of(occupant), square) {
+            if t.owner_of(source.piece_value) == WILD
+                && self.board[source.origin as usize] == source.piece_value
+                && sight.path(source).iter().all(|s| self.board[*s as usize] == 0)
+            {
                 bits |= source.effect;
             }
         }
@@ -206,6 +273,7 @@ impl<'t> Game<'t> {
             removed: [0; 3],
             suppressed: false,
             commanded: 0,
+            wild_bits: Vec::new(),
         };
         let Some(sight) = t.sight.as_deref() else {
             return report;
@@ -218,6 +286,9 @@ impl<'t> Game<'t> {
                     *bits = self.effects_at(sight, owner, square);
                 }
             }
+        }
+        if t.has_npcs {
+            report.wild_bits = (0..t.n_squares).map(|square| self.wild_effects_at(sight, square)).collect();
         }
         let mut moves = Vec::new();
         self.generate_movement(&mut moves);

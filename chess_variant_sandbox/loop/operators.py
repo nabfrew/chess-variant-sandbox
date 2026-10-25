@@ -65,6 +65,7 @@ from chess_variant_sandbox.spec.schema import (
     has_speeds,
     is_simultaneous,
     npc_respawn,
+    npc_turns_back,
     obstacle_squares,
     opening_counts,
     parse_square,
@@ -862,7 +863,16 @@ def _drop_royalty(spec: dict[str, Any], rng: random.Random) -> str | None:
     if is_simultaneous(rules):
         return None  # schema 26: there is no checkmate when both players move at once
     rules["win"] = "royal_capture" if current == "checkmate" else "checkmate"
-    return f"the game is now won by {rules['win'].replace('_', ' ')}"
+    said = f"the game is now won by {rules['win'].replace('_', ' ')}"
+    # N5: a wild piece that turns back is refused beside checkmate, so under it the walks go
+    # round again (the guard both ways: `pace-a-line` moves the other way).
+    npcs = rules.get("npcs")
+    if rules["win"] == "checkmate" and isinstance(npcs, list) and any(map(npc_turns_back, npcs)):
+        for npc in npcs:
+            if isinstance(npc, dict):
+                npc.pop("turns_back", None)
+        said += ", and the wild pieces walk their routes round again"
+    return said
 
 
 def _counts_own_kinds(rules: dict[str, Any]) -> bool:
@@ -2186,14 +2196,15 @@ def _cast_a_gaze(spec: dict[str, Any], rng: random.Random) -> str | None:
     `docs/archive/plan-passive.md` §4.3): a slide-like reading of one of its capture-capable moves,
     a ray, with an effect drawn from the four -- `enemy` for a freeze, a disarm or a command
     (Q1007c), `own` for a shield -- touching every type but, for a command, the royals. Each child must pass the validator, so a type whose
-    gaze could never bind is passed over, a shield is not drawn beside a sweep or wild
-    pieces, and nothing is drawn beside portals or an explosion, where a sight is refused."""
+    gaze could never bind is passed over, a shield is not drawn beside a sweep, and nothing
+    is drawn beside portals or an explosion, where a sight is refused. A shield beside wild
+    pieces is allowed since generation 37 (a wild piece never takes a shielded piece)."""
     found = spec.get("rules")
     rules: dict[str, Any] = found if isinstance(found, dict) else {}
     if rules.get("portals") or rules.get("explode_on_capture"):
         return None
     effects = list(SIGHT_EFFECTS)
-    if uses_sweep(spec) or rules.get("npcs"):
+    if uses_sweep(spec):
         effects.remove("shield")
     candidates = [
         piece for piece in _gazers(spec)
@@ -3592,6 +3603,53 @@ def _share_a_walk(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
+# Generation 37 (N2, `docs/plan-npc.md` §4.2): the effects a wild piece's sight may have, and its
+# one shape here, a ring of the eight squares round it that sees past pieces (an aura): a wild
+# piece has no forward, so its sight must read the same for both players, and the ring does.
+_WILD_EFFECTS = ("freeze", "disarm", "shield")
+_WILD_RING = {"vectors": [[1, 0], [1, 1]], "symmetry": "rotate4", "range": 1, "through": True}
+
+
+def _wild_eyes(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Give a wild piece an aura, or take every wild aura away (generation 37, N2's sight on a
+    wild type, `docs/plan-npc.md` §4.2).
+
+    In a game where a wild type sees, no wild type does any more: the edit a designer makes is
+    "the wild pieces are only pieces again". Otherwise one wild type, chosen at random, freezes,
+    disarms or shields either side's pieces on the eight squares round it.
+    """
+    rules = spec.get("rules") or {}
+    npcs = rules.get("npcs")
+    if not isinstance(npcs, list) or not npcs:
+        return None
+    wild = sorted(
+        {npc["piece"] for npc in npcs if isinstance(npc, dict) and isinstance(npc.get("piece"), str)}
+    )
+    by_id = {piece.get("id"): piece for piece in pieces(spec)}
+    seeing = [pid for pid in wild if isinstance((by_id.get(pid) or {}).get("sight"), list)]
+    trial = copy.deepcopy(spec)
+    trial_by_id = {piece.get("id"): piece for piece in pieces(trial)}
+    if seeing:
+        for pid in seeing:
+            trial_by_id[pid].pop("sight", None)
+        said = "the wild pieces no longer affect what stands beside them"
+    else:
+        choices = [pid for pid in wild if pid in trial_by_id]
+        if not choices:
+            return None
+        pid = rng.choice(choices)
+        effect = rng.choice(_WILD_EFFECTS)
+        entry = {**copy.deepcopy(_WILD_RING), "effect": effect, "whose": "any"}
+        trial_by_id[pid]["sight"] = [entry]
+        name = trial_by_id[pid].get("name", pid)
+        said = f"the wild {name} now {_gaze_words(trial, entry)}"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
 def _bring_them_back(spec: dict[str, Any], rng: random.Random) -> str | None:
     """Make a wild piece come back once taken, or let it stay gone (generation 36, N1's
     ``npcs[].respawn``, `docs/plan-npc.md` §4.1).
@@ -3628,6 +3686,51 @@ def _bring_them_back(spec: dict[str, Any], rng: random.Random) -> str | None:
     return said
 
 
+def _pace_a_line(spec: dict[str, Any], rng: random.Random) -> str | None:
+    """Walk a wild piece's route as a line that turns back, or as a cycle again (generation
+    38, N5's ``npcs[].turns_back``, `docs/plan-npc.md` §4.7).
+
+    In a game where some wild piece turns back, none does any more: the edit is "the walks
+    go round again", not one route of several. Otherwise one entry with a route of two or
+    more squares and no ``also_at``, chosen at random, paces its route as a line. The
+    rule is refused where check is asked, so in a checkmate game (with no ``forbid_check``
+    and no safe goal) the game becomes one won by taking the king, which is the one edit that
+    lets the line in; the validator decides the rest.
+    """
+    rules = spec.get("rules") or {}
+    npcs = rules.get("npcs")
+    if not isinstance(npcs, list) or not npcs:
+        return None
+    trial = copy.deepcopy(spec)
+    if any(npc_turns_back(npc) for npc in npcs):
+        for npc in trial["rules"]["npcs"]:
+            if isinstance(npc, dict):
+                npc.pop("turns_back", None)
+        said = "the wild pieces walk their routes round again instead of turning back"
+    else:
+        entries = [
+            index for index, npc in enumerate(npcs)
+            if isinstance(npc, dict) and isinstance(npc.get("route"), list)
+            and len(npc["route"]) > 1 and "also_at" not in npc
+        ]
+        if not entries:
+            return None
+        npc = trial["rules"]["npcs"][rng.choice(entries)]
+        npc["turns_back"] = True
+        said = (
+            f"the wild {npc.get('piece')} paces its route as a line, turning back at its ends "
+            "and wherever it is blocked"
+        )
+        if trial["rules"].get("win", "checkmate") == "checkmate" and royal_id(trial) is not None:
+            trial["rules"]["win"] = "royal_capture"
+            said += ", and the game is now won by taking the royal piece rather than mating it"
+    if validate_spec(trial):
+        return None
+    spec.clear()
+    spec.update(trial)
+    return said
+
+
 OPERATORS: tuple[Operator, ...] = (
     Operator("wall-off-a-square", _wall_off_a_square),
     Operator("soften-the-capture", _soften_the_capture),
@@ -3639,6 +3742,8 @@ OPERATORS: tuple[Operator, ...] = (
     Operator("set-a-patrol", _set_a_patrol),
     Operator("share-a-walk", _share_a_walk),
     Operator("bring-them-back", _bring_them_back),
+    Operator("wild-eyes", _wild_eyes),
+    Operator("pace-a-line", _pace_a_line),
     Operator("promote-what-arrives", _promote_what_arrives),
     Operator("promote-on-leaving", _promote_on_leaving),
     Operator("count-each-kind", _count_each_kind),

@@ -1016,11 +1016,14 @@ def _settle_sights(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any
     """Schema 30 (Q999a, `docs/archive/plan-passive.md` §3.2): a line of sight an edit has made inert
     -- one `schema.sight_can_bind` refuses, as the validator does, because nothing it affects
     can be there or its effect would mean nothing to what can -- goes, and the piece's `sight`
-    with its last line; and so does every sight on a type an edit made a wild piece. Asked only of an entry `schema.piece_sights` reads, so a malformed one is left
-    for the validator to refuse by name."""
+    with its last line; and so does every sight on a type an edit made a wild piece that a wild
+    piece may not carry (generation 37: one not ``whose`` ``"any"``, a command, or one that
+    reads differently for the two players). Asked only of an entry `schema.piece_sights` reads,
+    so a malformed one is left for the validator to refuse by name."""
     from chess_variant_sandbox.spec.schema import (
         _sight_entry,
         has_sights,
+        reads_alike_for_both,
         sight_can_bind,
     )
 
@@ -1030,17 +1033,21 @@ def _settle_sights(spec: dict[str, Any], listed: list[Any], rules: dict[str, Any
     blank = {
         npc.get("piece") for npc in rules.get("npcs") or [] if isinstance(npc, dict)
     }
+    setup = spec.get("setup")
+    orientation = str(setup.get("orientation", "mirror")) if isinstance(setup, dict) else "mirror"
     for piece in listed:
         if not isinstance(piece, dict) or not isinstance(piece.get("sight"), list):
             continue
         pid = piece.get("id")
-        if pid in blank:
-            piece.pop("sight")
-            dropped.append(f"sight:{pid}")
-            continue
         kept = []
         for entry in piece["sight"]:
             read = _sight_entry(entry)
+            if read is not None and pid in blank and (
+                read.whose != "any" or read.effect == "command"
+                or not reads_alike_for_both(entry.get("vectors"), read.symmetry, orientation)
+            ):
+                dropped.append(f"sight:{pid}")
+                continue
             if read is not None and isinstance(pid, str) and sight_can_bind(spec, pid, read):
                 dropped.append(f"sight:{pid}")
                 continue

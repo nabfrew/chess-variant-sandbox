@@ -720,8 +720,12 @@ def walk_digest(names: list[str], seeds: int = 3, rounds: int = 60) -> str:
                 # Generation 36 (N1) added `GameState.respawn` and `PhaseStep.kind`; none of these
                 # specs comes back, and both are left out of the row so the digest stays one.
                 assert state.respawn == () and all(step.kind == "step" for step in phase)
+                # Generation 38 (N5) added `GameState.heading_back`; none of these specs turns
+                # back, and it is left out of the row so the digest stays one.
+                assert state.heading_back == ()
                 row = repr((name, seed, state.with_(rest=(-1, -1)), phase, events))
-                rows.append(row.replace(", respawn=()", "").replace(", kind='step'", ""))
+                rows.append(row.replace(", respawn=()", "").replace(", kind='step'", "")
+                            .replace(", heading_back=()", ""))
     return hashlib.sha256("\n".join(rows).encode()).hexdigest()
 
 

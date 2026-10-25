@@ -26,18 +26,20 @@ from typing import Any
 # (board, side_to_move, unmoved, ep_target, ep_victim, halfmove, ply, key,
 #  repetition, checks, hands,
 #  (colour, remaining, turns_taken, points, goal_left_by, portal_bar, folds,
-#   (initiative, void_run, bars), rest, respawn))
+#   (initiative, void_run, bars), rest, respawn, heading_back))
 # The round group is schema 26's (Q918a): who holds the initiative (-1 for no such rule),
 # the void run's pair ((-1, -1) for none) and the barred pairs. ``rest`` is schema 29's
 # (Q983a): each player's resting pieces, ``(square, turns left)`` by square, empty for none.
 # ``respawn`` is generation 36's (N1): one clock per respawning half, empty without the rule.
+# ``heading_back`` is generation 38's (N5): the squares of the wild pieces walking their line
+# back, ascending, empty without the rule.
 Rounds = tuple[int, tuple[int, int], list[tuple[int, int]]]
 Rest = tuple[list[tuple[int, int]], list[tuple[int, int]]]
 State = tuple[
     bytes, int, bytes, int, int, int, int, int, list[int],
     tuple[int, int], tuple[list[int], list[int]],
     tuple[bytes, int, int, tuple[float, float], int, tuple[int, int], list[int], Rounds, Rest,
-          bytes],
+          bytes, list[int]],
 ]
 
 # What a round's meetings did (schema 26): ``(event, square, player)``, the event 0 a
@@ -48,7 +50,8 @@ RoundEvents = list[tuple[int, int, int]]
 
 # What the wild-piece phase did on the way to a position (schema 9): one
 # ``(from, to, eaten, kind)`` per wild piece that walked (kind 0) or came back (kind 1,
-# generation 36; from and to the start), oldest first. Empty for every ruleset without
+# generation 36; from and to the start) or turned round at a block (kind 2, generation 38;
+# from and to the same square where it waits turned), oldest first. Empty for every ruleset without
 # ``rules.npcs`` and for most plies of the ones with it.
 Phase = list[tuple[int, int, int, int]]
 
@@ -115,7 +118,7 @@ class Core:
     def phase(self, state: tuple[Any, ...]) -> tuple[str, int]: ...
     def effects(
         self, state: tuple[Any, ...]
-    ) -> tuple[list[int], tuple[int, int, int], bool, int]: ...
+    ) -> tuple[list[int], tuple[int, int, int], bool, int, list[int]]: ...
     def sight_of(self, state: tuple[Any, ...], square: int) -> list[tuple[int, int]]: ...
     def rest_turn(self, state: tuple[Any, ...], player: int) -> tuple[bool, bool]: ...
     def in_check(self, state: tuple[Any, ...], player: int) -> bool: ...

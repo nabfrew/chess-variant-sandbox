@@ -328,6 +328,13 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
         "unless that piece is royal or one it may not take. Leave it empty for a wild piece "
         "that, once taken, is gone.",
     ),
+    "rules.npcs.turns_back": (
+        "turns back",
+        "Whether it paces its walk as a line, to the last square and back again, instead of "
+        "going round from the last square to the first. Where its way is blocked by a piece "
+        "it may not take, it turns round and walks the other way, so blocking it steers it. "
+        "Only in a game where the royal is taken rather than checkmated.",
+    ),
     "rules.npcs.bounty": (
         "worth taking",
         "What a player gains by taking it, counted when 'who wins when a clock runs out' "
@@ -527,7 +534,8 @@ FIELD_WORDS: dict[str, tuple[str, str | None]] = {
     ),
     "pieces.sight.whose": (
         "to whose pieces",
-        "The other player's, its own player's, or both, counted from this piece's owner.",
+        "The other player's, its own player's, or both, counted from this piece's owner. A "
+        "wild piece belongs to nobody, so its sight is always both players'.",
     ),
     "pieces.sight.affects": (
         "only these pieces",

@@ -38,6 +38,7 @@ from chess_variant_sandbox.spec.schema import (
     absent_squares,
     facing_turns,
     npc_respawn,
+    npc_turns_back,
     obstacle_squares,
     piece_rests,
     piece_sights,
@@ -289,6 +290,14 @@ _SCALES: dict[str, float] = {
     # are the gone-for-good route's, so without it a hunt and its returning twin read as one
     # game and the loop would skip the tournament.
     "npcs_come_back": 1.0,
+    # Generation 37 (N2). Whether a wild piece carries a line of sight: its type's sight is the
+    # only change, so without it a walk and its seeing twin read apart only by the sight
+    # features, which count a player's sights alike.
+    "npcs_see": 1.0,
+    # Generation 38 (N5). Whether a wild piece paces a line and turns back (`npcs[].turns_back`):
+    # the route's squares are the cycle's, so without it a patrol and its pacing twin read as
+    # one game and the loop would skip the tournament.
+    "npcs_turn_back": 1.0,
     # Q1011: the nineteen features added from schema 26 on, computed in `features` and left
     # out of this table, so `distance` never read them: a queen that freezes and one that
     # disarms measured 0.0 apart. `test_every_feature_has_a_scale` holds the two lists
@@ -646,12 +655,13 @@ def _npc_features(pieces: list[Any], npcs: Any) -> dict[str, float]:
     """
     absent = {
         "has_npcs": 0.0, "npcs_bite": 0.0, "npcs_pay": 0.0, "npcs_are_hard_to_kill": 0.0,
-        "npcs_share_a_walk": 0.0, "npcs_come_back": 0.0,
+        "npcs_share_a_walk": 0.0, "npcs_come_back": 0.0, "npcs_see": 0.0,
+        "npcs_turn_back": 0.0,
     }
     if not isinstance(npcs, list) or not npcs:
         return absent
     by_id = {p.get("id"): p for p in pieces if isinstance(p, dict)}
-    bites = pays = immune = shared = returns = False
+    bites = pays = immune = shared = returns = sees = paces = False
     for npc in npcs:
         if not isinstance(npc, dict):
             continue
@@ -668,6 +678,10 @@ def _npc_features(pieces: list[Any], npcs: Any) -> dict[str, float]:
             shared = True
         if npc_respawn(npc):
             returns = True
+        if npc_turns_back(npc):
+            paces = True
+        if (by_id.get(npc.get("piece")) or {}).get("sight"):
+            sees = True
     return {
         "has_npcs": 1.0,
         "npcs_bite": 1.0 if bites else 0.0,
@@ -675,6 +689,8 @@ def _npc_features(pieces: list[Any], npcs: Any) -> dict[str, float]:
         "npcs_are_hard_to_kill": 1.0 if immune else 0.0,
         "npcs_share_a_walk": 1.0 if shared else 0.0,
         "npcs_come_back": 1.0 if returns else 0.0,
+        "npcs_see": 1.0 if sees else 0.0,
+        "npcs_turn_back": 1.0 if paces else 0.0,
     }
 
 

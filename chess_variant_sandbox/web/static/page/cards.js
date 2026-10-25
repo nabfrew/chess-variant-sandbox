@@ -1564,6 +1564,8 @@ function pickedWalk(preview) {
     type: type >= 0 && type < (preview.nTypes || 0) ? type : (held ? held.type : null),
     squares, starts, leaps,
     says: held && leaps.length === (held.leaps || []).length ? held.says : null,
+    // Generation 38 (N5): a turning-back walk is drawn as a line.
+    line: npc.turns_back === true,
   };
   if (held) walks[at] = walk;
   else {

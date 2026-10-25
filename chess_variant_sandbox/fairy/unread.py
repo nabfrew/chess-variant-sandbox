@@ -73,8 +73,28 @@ def _promotes_by_rank(written: dict[str, str]) -> bool:
     return "promotionRank" in written or written.get("promotionPieceTypes") == "-"
 
 
-def _no_double_step(written: dict[str, str]) -> bool:
-    return written.get("doubleStep") == "false"
+def _cleared(written: dict[str, str]) -> bool:
+    # The 2021 build's Bitboard reader empties its target before it reads a square, so a
+    # `-` it then calls invalid has already cleared the region. Probed by Q1030: chess
+    # under `enPassantRegion = -` offers no e5d6 after 1.e4 a6 2.e5 d5, and offers it with
+    # the line left out. Only `-` is known to do this; any other unread value refuses.
+    return written.get("enPassantRegion") == "-"
+
+
+def _custom_initial(written: dict[str, str]) -> list[str]:
+    """The custom pieces whose notation carries an initial (`i`) move, by letter."""
+    return [
+        value.partition(":")[0]
+        for key, value in written.items()
+        if key.startswith("customPiece") and "i" in value.partition(":")[2]
+    ]
+
+
+def _no_custom_initial(written: dict[str, str]) -> bool:
+    # The 2021 build reads the pawn slot's double step from `doubleStepRank*`, but gives a
+    # custom piece's `i` move from every square: probed by Q1030, the sergeant
+    # (`fWfFmifW2`) plays d5d7 and berolina's pawn its diagonal double step anywhere.
+    return not _custom_initial(written)
 
 
 def _spares_its_pawn(written: dict[str, str]) -> bool:
@@ -112,14 +132,16 @@ UNREAD: dict[str, tuple[Callable[[dict[str, str]], bool], str]] = {
         "or nothing promotes",
     ),
     "doubleStepRegionWhite": (
-        _always,
+        _no_custom_initial,
         "a move rule: doubleStepRank stands beside it where the ranks are one band "
-        "(Q783), and `verify` walks the double steps either way",
+        "(Q783), and `verify` walks the double steps either way; never beside a custom "
+        "piece's initial move, which the build gives from every square (Q1030)",
     ),
     "doubleStepRegionBlack": (
-        _always,
+        _no_custom_initial,
         "a move rule: doubleStepRank stands beside it where the ranks are one band "
-        "(Q783), and `verify` walks the double steps either way",
+        "(Q783), and `verify` walks the double steps either way; never beside a custom "
+        "piece's initial move, which the build gives from every square (Q1030)",
     ),
     "promotionPawnTypes": (
         _always,
@@ -134,9 +156,9 @@ UNREAD: dict[str, tuple[Callable[[dict[str, str]], bool], str]] = {
         "only the build's search near the no-progress limit differs (Q411)",
     ),
     "enPassantRegion": (
-        _no_double_step,
-        "the build takes no `-` for a region and keeps every square, and with "
-        "doubleStep = false no pawn can be taken in passing",
+        _cleared,
+        "the build calls `-` an invalid region after it has emptied the region, so no "
+        "square takes a capture in passing, which is what `-` says (Q1030)",
     ),
     "blastImmuneTypes": (
         _spares_its_pawn,
@@ -155,6 +177,16 @@ def reasons(config: str, unread: Iterable[str]) -> list[str]:
             continue
         entry = UNREAD.get(key)
         if entry is not None and entry[0](written):
+            continue
+        if key.startswith("doubleStepRegion") and _custom_initial(written):
+            # Named, not "does not read": what refuses is the build's custom-piece `i`.
+            sentence = (
+                "the installed Fairy-Stockfish gives a piece's first-move-only step "
+                f"(piece {', '.join(_custom_initial(written))}) from every square, "
+                "so it would play another game"
+            )
+            if sentence not in said:
+                said.append(sentence)
             continue
         said.append(
             f"the installed Fairy-Stockfish does not read {key}"

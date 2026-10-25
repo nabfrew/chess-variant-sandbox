@@ -2008,6 +2008,19 @@ const SIGHT_LINE_WORDS = [['ray', 'no: stops at the first piece'], ['aura', 'yes
 const NEW_SIGHT = { vectors: [[1, 0], [1, 1]], symmetry: 'rotate4', range: 1,
                     effect: 'freeze', whose: 'enemy' };
 
+// Generation 37 (N2, `docs/plan-npc.md` §4.2): a wild piece's type may see too, with its
+// three limits: both sides' pieces (`whose` 'any', a wild piece has no side), no command
+// (nobody commands for it), and lines that read the same for both players (the validator
+// says so in words; the ring below does). Its new line of sight is the ring freezing both
+// sides' pieces.
+const NEW_WILD_SIGHT = { vectors: [[1, 0], [1, 1]], symmetry: 'rotate4', range: 1,
+                         through: true, effect: 'freeze', whose: 'any' };
+
+function isWildPiece(index) {
+  const piece = (DRAFT.pieces || [])[index];
+  return !!piece && ((DRAFT.rules || {}).npcs || []).some(npc => npc && npc.piece === piece.id);
+}
+
 function sightKit() {
   return (cardModel() || {}).sight || { max: 4, effects: [], whose: [], words: {} };
 }
@@ -2048,10 +2061,11 @@ function sightEditor(sight, piece, index) {
   const box = (key, value, placeholder, attrs) => `<input ${tag} data-sfield="${key}"
     value="${value}" placeholder="${esc(placeholder)}" ${attrs || ''}>`;
   const kit = sightKit();
-  const effects = withHeld(kit.effects.map(value => [value, SIGHT_EFFECT_WORDS[value] || value]),
-                           sight.effect);
-  const whose = withHeld(kit.whose.map(value => [value, SIGHT_WHOSE_WORDS[value] || value]),
-                         sight.whose);
+  const wild = isWildPiece(piece);
+  const effects = withHeld(kit.effects.filter(value => !wild || value !== 'command')
+    .map(value => [value, SIGHT_EFFECT_WORDS[value] || value]), sight.effect);
+  const whose = withHeld(kit.whose.filter(value => !wild || value === 'any')
+    .map(value => [value, SIGHT_WHOSE_WORDS[value] || value]), sight.whose);
   const lines = sight.through === undefined ? 'ray'
     : sight.through === true ? 'aura' : String(sight.through);
   const named = Array.isArray(sight.affects) ? sight.affects : [];
@@ -2215,7 +2229,8 @@ function wireSights(form, changed) {
       event.stopPropagation();
       const piece = DRAFT.pieces[Number(node.dataset.addsight)];
       piece.sight = Array.isArray(piece.sight) ? piece.sight : [];
-      piece.sight.push(JSON.parse(JSON.stringify(NEW_SIGHT)));
+      const wild = isWildPiece(Number(node.dataset.addsight));
+      piece.sight.push(JSON.parse(JSON.stringify(wild ? NEW_WILD_SIGHT : NEW_SIGHT)));
       DRAFT_PIECE = Number(node.dataset.addsight);
       // On hexagons it looks the hexagons' six ways, as a new way of moving goes (Q640).
       if ((DRAFT.board || {}).lattice === 'hex') return ontoHex();

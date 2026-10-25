@@ -337,7 +337,10 @@ function wildOnesWords(id) {
     const every = Number.isInteger(npc.respawn) && npc.respawn > 0 ? npc.respawn : 0;
     const back = every ? `, and comes back ${every} move${every === 1 ? '' : 's'} after it is taken` : '';
     if (npc.route.length === 1) return `${stands}${mirrored} never moves${back}`;
-    return `${stands}${mirrored} ${walks} ${walkWords(npc.route)}${back}`;
+    // Generation 38 (N5): a line paced to its end and back, turning where it is blocked.
+    const paces = npc.turns_back === true
+      ? ', to its end and back, turning round wherever it is blocked' : '';
+    return `${stands}${mirrored} ${walks} ${walkWords(npc.route)}${paces}${back}`;
   });
 }
 

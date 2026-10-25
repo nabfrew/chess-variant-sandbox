@@ -301,6 +301,8 @@ _ADDED_SINCE: frozenset[str] = frozenset({
     "turning_share",  # T1
     "strikers_share",  # A1
     "npcs_come_back",  # N1
+    "npcs_see",  # N2
+    "npcs_turn_back",  # N5
 })
 _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "rulesets/almost": "9035530ccf64d8cd",

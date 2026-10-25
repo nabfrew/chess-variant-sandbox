@@ -595,6 +595,14 @@ _EVERY_RULESET += sorted(Path(__file__).parent.glob("_strike_*.json"))
 # N1: no committed or archived game has a wild piece that comes back until N6's showcase lands,
 # so the two respawn test specs (wolf hunt returning, a round game's returning knight) join it.
 _EVERY_RULESET += sorted(Path(__file__).parent.glob("_respawn_*.json"))
+# N2: no committed or archived game gives a wild piece a sight, or a shield beside wild pieces,
+# so the two wild-sight test specs (seeing wolves and dryads; a disarming wolf beside wardens)
+# join it.
+_EVERY_RULESET += sorted(Path(__file__).parent.glob("_sight_wild_*.json"))
+# N5: no committed or archived game has a wild piece that turns back until N6's showcase lands,
+# so the two turning test specs (pacing wolves in chess to the king's capture; a round game's
+# pacing knight) join it.
+_EVERY_RULESET += sorted(Path(__file__).parent.glob("_turning_*.json"))
 
 
 def test_the_walk_below_reads_the_whole_corpus() -> None:

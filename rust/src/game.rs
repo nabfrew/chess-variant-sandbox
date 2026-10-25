@@ -36,12 +36,19 @@ mod sight;
 #[path = "respawn.rs"]
 mod respawn;
 pub use respawn::respawn_clocks_from;
+// Generation 38 (N5, `docs/plan-npc.md` §4.7): wild pieces that turn back, step 2 on a line.
+#[path = "turning.rs"]
+mod turning;
+pub use turning::heading_from;
 
 /// What one entry of the phase log is (`Game::npc_log`'s fourth field): a wild piece's step
 /// along its route, `(from, to, eaten)`.
 pub const PHASE_STEP: u8 = 0;
 /// A wild piece coming back onto a start (generation 36), `(start, start, eaten)`.
 pub const PHASE_RETURN: u8 = 1;
+/// A turning-back piece that found its way blocked and turned round (generation 38):
+/// `(from, to, eaten)` for its step the other way, `(square, square, 0)` where it waits.
+pub const PHASE_TURN: u8 = 2;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Reason {
@@ -437,6 +444,12 @@ pub struct Game<'t> {
     /// `respawn` before each move still on the undo stack, oldest first, flat: written by
     /// `make` only under the rule, `goal_left_log`'s shape.
     respawn_log: Vec<u8>,
+    /// Generation 38 (N5): the squares of the wild pieces walking their line back. Empty
+    /// without the rule. In the key.
+    pub heading_back: SquareSet,
+    /// `heading_back` before each move still on the undo stack, oldest first: written by
+    /// `make` only under the rule.
+    heading_log: Vec<SquareSet>,
     /// Guard against infinite recursion in drop-mate checking.
     checking_drop_mate: bool,
     /// The key the move in progress is building. Scratch, not state: seeded from `key`
@@ -511,6 +524,8 @@ pub struct Snapshot {
     pub resting: RestLists,
     /// Generation 36 (N1): the respawn clocks.
     pub respawn: Vec<u8>,
+    /// Generation 38 (N5): the squares of the wild pieces walking their line back.
+    pub heading_back: SquareSet,
 }
 
 /// Schema 26: who holds the initiative at the start, or -1 where the tie is not it.
@@ -573,6 +588,8 @@ impl<'t> Game<'t> {
             npc_log: Vec::new(),
             respawn: t.respawn.as_deref().map_or(Vec::new(), |rule| vec![0; rule.halves.len()]),
             respawn_log: Vec::new(),
+            heading_back: SquareSet::EMPTY,
+            heading_log: Vec::new(),
             goal_left_log: Vec::new(),
             checking_drop_mate: false,
             working_key: 0,
@@ -635,6 +652,8 @@ impl<'t> Game<'t> {
             npc_log: Vec::new(),
             respawn: snapshot.respawn.clone(),
             respawn_log: Vec::new(),
+            heading_back: snapshot.heading_back,
+            heading_log: Vec::new(),
             goal_left_log: Vec::new(),
             checking_drop_mate: false,
             working_key: 0,
@@ -676,6 +695,7 @@ impl<'t> Game<'t> {
             bars: self.bars.clone(),
             resting: self.resting,
             respawn: self.respawn.clone(),
+            heading_back: self.heading_back,
         }
     }
 
@@ -723,6 +743,8 @@ impl<'t> Game<'t> {
         self.rest_log.clear();
         self.respawn.clone_from(&snapshot.respawn);
         self.respawn_log.clear();
+        self.heading_back = snapshot.heading_back;
+        self.heading_log.clear();
         self.round_undo.clear();
         self.round_log.clear();
         // The check bits describe the position that just went away. The royal hint is
@@ -822,6 +844,8 @@ impl<'t> Game<'t> {
         digest ^= self.rest_key();
         // Generation 36: the respawn clocks; zero in a game without the rule.
         digest ^= self.respawn_key();
+        // Generation 38: the headings; zero in a game without the rule.
+        digest ^= self.heading_key();
         digest
     }
 
@@ -1132,9 +1156,15 @@ impl<'t> Game<'t> {
     ///
     /// **`check_limit` is the one place that does not ask.** It counts checks a *player*
     /// delivers, and a boar's threat is nobody's check.
-    #[inline]
+    ///
+    /// Generation 37 (N2): a shielded victim is not threatened by a wild piece, which never
+    /// takes one. Asked only where the wild source answers yes, and only beside a shield.
+    #[inline(always)]
     fn threatened(&self, by: usize, square: usize) -> bool {
-        self.attacks_any(by, square) || (self.t.has_npcs && self.attacks_square(WILD, square))
+        self.attacks_any(by, square)
+            || (self.t.has_npcs
+                && self.attacks_square(WILD, square)
+                && (!self.t.npc_shield || !self.shielded_from_wild(square)))
     }
 
     /// `threatened`, for the callers that mean a specific victim -- castling's transit
@@ -1147,7 +1177,9 @@ impl<'t> Game<'t> {
                 Some(sight) => self.attacks_in_sight_game(sight, by, square, Some(victim)),
             },
             Some(portals) => self.attacks_in_portal_game(portals, by, square, Some(victim)),
-        }) || (self.t.has_npcs && self.attacks_square_as(WILD, square, victim))
+        }) || (self.t.has_npcs
+            && self.attacks_square_as(WILD, square, victim)
+            && !(self.t.npc_shield && self.shielded_from_wild(square)))
     }
 
     /// Whether `player` attacks `square` by any way the game has: `attacks_square`, and in
@@ -1835,8 +1867,18 @@ impl<'t> Game<'t> {
     /// one route: the piece behind waits for the one in front. Whether the one in front
     /// has already gone this phase is `npc_step_order`'s business, not this function's --
     /// it reads the board as the earlier steps left it.
+    ///
+    /// Generation 37 (N2, `docs/plan-npc.md` §4.2): a fourth, **a wild piece never takes a
+    /// shielded piece**. `shields` is the phase's snapshot of the shielded squares
+    /// (`wild_shields`), read once at the phase's start, so a step earlier in the phase that
+    /// moves a shield (a wild piece carrying one, or one eating the piece that gave it) bares
+    /// what it shielded from the next phase, not for the next step (§3.1). Empty in every
+    /// game without a shield beside wild pieces.
+    /// `SHIELDS` is `Tables::npc_shield` as a constant, so every game without a shield beside
+    /// wild pieces walks the step it walked before generation 37 (the bench: *wolves* lost 11%
+    /// to the one set test when it was a run-time branch).
     #[inline]
-    fn npc_step_of(&self, square: usize) -> Option<usize> {
+    fn npc_step_of<const SHIELDS: bool>(&self, square: usize, shields: &SquareSet) -> Option<usize> {
         let t = self.t;
         let value = self.board[square];
         debug_assert!(value != 0 && t.owner_of(value) == WILD);
@@ -1849,7 +1891,7 @@ impl<'t> Game<'t> {
         if standing == 0 {
             return Some(next);
         }
-        if t.owner_of(standing) == WILD {
+        if t.owner_of(standing) == WILD || (SHIELDS && shields.get(next)) {
             return None;
         }
         if t.may_capture(t.type_of(value), t.type_of(standing)) {
@@ -1890,16 +1932,45 @@ impl<'t> Game<'t> {
     #[cold]
     #[inline(never)]
     fn npc_phase(&mut self) -> bool {
+        // Generation 38 (N5): a game with a line plays its own phase (`turning.rs`).
+        if self.t.npc_lines.is_some() {
+            return self.npc_phase_lines();
+        }
+        if self.t.npc_shield {
+            return self.npc_phase_shielded();
+        }
+        let none = SquareSet::EMPTY;
         let ate = if self.t.npc_queues {
             let order = self.npc_step_order();
-            self.npc_phase_in(order)
+            self.npc_phase_in::<_, false>(order, &none)
         } else {
             let order = self.npc_here().iter();
-            self.npc_phase_in(order)
+            self.npc_phase_in::<_, false>(order, &none)
         };
         // Generation 36 (N1): step 3, the returns, after every step.
         if self.t.respawn.is_some() {
-            self.respawn_phase() | ate
+            self.respawn_phase(&none) | ate
+        } else {
+            ate
+        }
+    }
+
+    /// `npc_phase` in a game with a shield beside wild pieces (generation 37): the shields
+    /// read once, at the phase's start (`wild_shields`). Its own function, so the phase of
+    /// every other game is the one it was.
+    #[cold]
+    #[inline(never)]
+    fn npc_phase_shielded(&mut self) -> bool {
+        let shields = self.wild_shields();
+        let ate = if self.t.npc_queues {
+            let order = self.npc_step_order();
+            self.npc_phase_in::<_, true>(order, &shields)
+        } else {
+            let order = self.npc_here().iter();
+            self.npc_phase_in::<_, true>(order, &shields)
+        };
+        if self.t.respawn.is_some() {
+            self.respawn_phase(&shields) | ate
         } else {
             ate
         }
@@ -1913,6 +1984,9 @@ impl<'t> Game<'t> {
     fn npc_phase_of_make(&mut self) -> bool {
         if self.t.respawn.is_some() {
             self.respawn_save();
+        }
+        if self.t.npc_lines.is_some() {
+            self.heading_log.push(self.heading_back);
         }
         self.npc_phase()
     }
@@ -1928,23 +2002,30 @@ impl<'t> Game<'t> {
                 self.npc_log.pop().expect("npc log shorter than its base");
             let value = self.board[to];
             self.put(to, eaten);
-            // A return (generation 36) came from nowhere, so nothing goes back.
-            if kind == PHASE_STEP {
+            // A return (generation 36) came from nowhere, so nothing goes back. A turn
+            // (generation 38) is a step, and a turned wait puts its piece back where it is.
+            if kind != PHASE_RETURN {
                 self.put(from, value);
             }
         }
         if self.t.respawn.is_some() {
             self.respawn_unsave();
         }
+        if self.t.npc_lines.is_some() {
+            self.heading_back =
+                self.heading_log.pop().expect("heading log shorter than the undo stack");
+        }
     }
 
     /// `npc_phase` over the wild pieces in `order`: monomorphised twice, so a game with one
     /// wild piece per route runs exactly the ascending walk it ran before schema 23.
     #[inline(always)]
-    fn npc_phase_in<I: Iterator<Item = usize>>(&mut self, order: I) -> bool {
+    fn npc_phase_in<I: Iterator<Item = usize>, const SHIELDS: bool>(
+        &mut self, order: I, shields: &SquareSet,
+    ) -> bool {
         let mut ate = false;
         for square in order {
-            let Some(next) = self.npc_step_of(square) else {
+            let Some(next) = self.npc_step_of::<SHIELDS>(square, shields) else {
                 continue;
             };
             let value = self.board[square];
@@ -2003,10 +2084,21 @@ impl<'t> Game<'t> {
         let mut saved = Saved::new();
         // Generation 36: the clocks move on a phase at a time, on a copy.
         let mut clocks = self.respawn.clone();
+        // Generation 38: the headings move on a phase at a time, on a copy.
+        let mut heading = self.heading_back;
         for steps in phases.iter_mut() {
+            // Generation 37: each phase's shields, read on the board it starts from.
+            let shields = self.wild_shields();
+            if self.t.npc_lines.is_some() {
+                self.npc_coming_lines(&mut heading, &mut saved, steps, &shields);
+                if self.t.respawn.is_some() {
+                    self.respawn_coming(&mut clocks, &mut saved, steps, &shields);
+                }
+                continue;
+            }
             // Once per drawn position, never in a search, so the one walk serves every game.
             for square in self.npc_step_order() {
-                let Some(next) = self.npc_step_of(square) else {
+                let Some(next) = self.npc_step_of::<true>(square, &shields) else {
                     continue;
                 };
                 let value = self.board[square];
@@ -2018,7 +2110,7 @@ impl<'t> Game<'t> {
                 steps.push((square, next, eaten, PHASE_STEP));
             }
             if self.t.respawn.is_some() {
-                self.respawn_coming(&mut clocks, &mut saved, steps);
+                self.respawn_coming(&mut clocks, &mut saved, steps, &shields);
             }
         }
         saved.restore(&mut self.board);
@@ -2038,29 +2130,54 @@ impl<'t> Game<'t> {
     #[cold]
     #[inline(never)]
     fn npc_phase_for_filter(&mut self, saved: &mut Saved) {
+        if self.t.npc_lines.is_some() {
+            return self.npc_phase_for_filter_lines(saved);
+        }
+        if self.t.npc_shield {
+            return self.npc_phase_for_filter_shielded(saved);
+        }
+        let none = SquareSet::EMPTY;
         if self.t.npc_queues {
             let order = self.npc_step_order();
-            self.npc_phase_for_filter_in(saved, order);
+            self.npc_phase_for_filter_in::<_, false>(saved, order, &none);
         } else {
             let order = self.npc_here().iter();
-            self.npc_phase_for_filter_in(saved, order);
+            self.npc_phase_for_filter_in::<_, false>(saved, order, &none);
         }
         // Generation 36 (N1): step 3, the returns.
         if self.t.respawn.is_some() {
-            self.respawn_phase_for_filter(saved);
+            self.respawn_phase_for_filter(saved, &none);
+        }
+    }
+
+    /// `npc_phase_for_filter` beside a shield (generation 37), as `npc_phase_shielded`.
+    #[cold]
+    #[inline(never)]
+    fn npc_phase_for_filter_shielded(&mut self, saved: &mut Saved) {
+        let shields = self.wild_shields();
+        if self.t.npc_queues {
+            let order = self.npc_step_order();
+            self.npc_phase_for_filter_in::<_, true>(saved, order, &shields);
+        } else {
+            let order = self.npc_here().iter();
+            self.npc_phase_for_filter_in::<_, true>(saved, order, &shields);
+        }
+        if self.t.respawn.is_some() {
+            self.respawn_phase_for_filter(saved, &shields);
         }
     }
 
     /// `npc_phase_for_filter` over the wild pieces in `order`, monomorphised as
     /// `npc_phase_in` is.
     #[inline(always)]
-    fn npc_phase_for_filter_in<I: Iterator<Item = usize>>(
+    fn npc_phase_for_filter_in<I: Iterator<Item = usize>, const SHIELDS: bool>(
         &mut self,
         saved: &mut Saved,
         order: I,
+        shields: &SquareSet,
     ) {
         for square in order {
-            let Some(next) = self.npc_step_of(square) else {
+            let Some(next) = self.npc_step_of::<SHIELDS>(square, shields) else {
                 continue;
             };
             let value = self.board[square];

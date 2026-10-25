@@ -115,6 +115,8 @@ def _pack(state: GameState) -> tuple[Any, ...]:
             # Generation 36 (N1): the respawn clocks, one per respawning half, as bytes
             # (PyO3 crosses a `Vec<u8>` so).
             bytes(state.respawn),
+            # Generation 38 (N5): the squares of the wild pieces walking their line back.
+            list(state.heading_back),
         ),
     )
 
@@ -151,6 +153,7 @@ def _unpack(packed: State) -> GameState:
             tuple((square, left) for square, left in packed[11][8][1]),
         ),
         respawn=tuple(packed[11][9]),
+        heading_back=tuple(packed[11][10]),
     )
 
 
@@ -377,9 +380,12 @@ class Engine:
         ``SIGHT_SHIELD`` on the piece there, for its owner), the side to move's moves the
         effects removed by reason, and whether its royal stands under a suppressed attack.
         All zeros in a game without a sight. Q1007c: ``commanded`` counts the side to move's
-        legal commanded moves (`docs/plan-schema-31.md` §3.7)."""
-        bits, (freeze, disarm, shield), suppressed, commanded = self.core.effects(_pack(state))
-        return Effects(tuple(bits), freeze, disarm, shield, suppressed, commanded)
+        legal commanded moves (`docs/plan-schema-31.md` §3.7). Generation 37 (N2): ``wild``,
+        each square's bits from the wild pieces' sights alone (empty without wild pieces)."""
+        bits, (freeze, disarm, shield), suppressed, commanded, wild = self.core.effects(
+            _pack(state)
+        )
+        return Effects(tuple(bits), freeze, disarm, shield, suppressed, commanded, tuple(wild))
 
     def rest_turn(self, state: GameState, player: int) -> RestTurn:
         """What the rest does to ``player``'s choice on this board (schema 29, Q983b,
@@ -832,6 +838,7 @@ class Engine:
         ply: int = 0,
         folds: Iterable[str] = (),
         respawn: Iterable[int] = (),
+        heading_back: Iterable[str] = (),
     ) -> GameState:
         """Build a position directly, for tests, puzzles, and CLI setup.
 
@@ -842,6 +849,8 @@ class Engine:
         order; left empty, the folds stand where they start. ``respawn`` (generation 36) is
         each respawning half's clock, in ``npcs.respawn`` order; left empty, every clock is
         idle, and a half standing short starts its clock in the next phase.
+        ``heading_back`` (generation 38) names the turning-back wild pieces walking their line
+        back; the rest walk it forward. A square holding no such piece is dropped.
         """
         spec = self.spec
         board = bytearray(spec.n_squares)
@@ -871,6 +880,11 @@ class Engine:
             # Schema 26: the initiative where it starts, under that tie rule.
             initiative=self.initial_state().initiative if self.simultaneous else -1,
             respawn=tuple(respawn) or self.initial_state().respawn,
+            heading_back=tuple(sorted(
+                square for square in map(self._square_index, heading_back)
+                if board[square] and spec.owner_of(board[square]) == 2
+                and spec.npcs is not None and spec.npcs.on_line(square)
+            )),
         )
         key = self._compute_hash(state)
         return state.with_(key=key, repetition=(key,))

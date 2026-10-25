@@ -290,6 +290,68 @@ class TestWhatCannotCross:
         assert any("12x10" in reason for reason in caught.value.reasons)
 
 
+def _lone_piece(name: str, moves: list[dict[str, Any]], squares: list[str]) -> dict[str, Any]:
+    """One piece `X` beside two kings, the shape of `plan-pieces-moves.md` §1.3's specs."""
+    king = {
+        "id": "K", "name": "king", "value": 0, "royal": True,
+        "moves": [{"kind": "leap", "vectors": [[1, 0], [1, 1]], "symmetry": "rotate4",
+                   "mode": "both"}],
+    }
+    spec = {
+        "schema_version": 31, "name": name, "description": "A Q1030 probe.",
+        "board": {"width": 8, "height": 8},
+        "pieces": [{"id": "X", "name": name, "value": 2, "moves": moves}, king],
+        "setup": {"mirror": True, "placements": [
+            {"piece": "X", "squares": squares}, {"piece": "K", "squares": ["a1"]}]},
+        "rules": {"win": "checkmate", "stalemate": "draw", "max_plies": 200},
+    }
+    validate_spec(spec)
+    return spec
+
+
+def _sergeant() -> dict[str, Any]:
+    """Chess with Different Armies' sergeant: fWfF, a double step from home, no promotion."""
+    return _lone_piece("sergeant", [
+        {"kind": "leap", "vectors": [[0, 1], [1, 1]], "symmetry": "lateral", "mode": "both"},
+        {"kind": "slide", "vectors": [[0, 1]], "range": 2, "min_range": 2, "mode": "move",
+         "condition": {"from_rank": 1}},
+    ], ["c2", "d2", "e2"])
+
+
+class TestTheTwoPiecesQ1030Found:
+    """`plan-pieces-moves.md` §1.3's two translator gaps."""
+
+    def test_the_antelope_is_refused_by_its_leap(self) -> None:
+        """Fairy-Stockfish's leapers stop at (3,3); both builds read `(3,4)` as no moves."""
+        antelope = _lone_piece("antelope", [
+            {"kind": "leap", "vectors": [[3, 4]], "symmetry": "dihedral8", "mode": "both"},
+        ], ["d3"])
+        with pytest.raises(Untranslatable) as caught:
+            translate(antelope)
+        assert any("(3,4) leap" in reason for reason in caught.value.reasons), caught.value
+
+    def test_the_sergeant_plays_the_same_game(self) -> None:
+        """A double step on a piece that never promotes, under `enPassantRegion = -`."""
+        from chess_variant_sandbox.fairy.verify import PyffishBackend, verify
+
+        _pyffish()
+        written = translate(_sergeant())
+        assert "enPassantRegion = -" in written.config
+        assert "mifW2" in written.config
+        # Depth 2 here for time; `fairy --depth 3` agrees too (Q1030), and the slow twin
+        # below holds that.
+        result = verify(_sergeant(), PyffishBackend(), "", depth=2, games=1, plies=20)
+        assert result.ok, result.summary()
+
+    @pytest.mark.slow
+    def test_the_sergeant_plays_the_same_game_to_depth_three(self) -> None:
+        from chess_variant_sandbox.fairy.verify import PyffishBackend, verify
+
+        _pyffish()
+        result = verify(_sergeant(), PyffishBackend(), "", depth=3, games=3, plies=60)
+        assert result.ok, result.summary()
+
+
 def _shaped(name: str, **rules: Any) -> dict[str, Any]:
     """A committed ruleset with some rules replaced, at a schema version that has them."""
     spec = _spec(name)

@@ -161,7 +161,7 @@ FACING_NAMES = ("forward", "right", "backward", "left")
 # pawn going backward. See ``_check_fixed_facings``.
 _FACING_KEYS = {"axes", "initial", "turns"}
 # ``immune`` is schema 10 (Q78) and is documented at ``REPETITION_NEVER`` below.
-_NPC_KEYS = {"piece", "route", "bounty", "mirror", "immune", "also_at", "respawn"}
+_NPC_KEYS = {"piece", "route", "bounty", "mirror", "immune", "also_at", "respawn", "turns_back"}
 
 # Schema 19 (Q771, `docs/archive/plan-portals.md` §1): pairs of portals. A piece whose move ends on
 # an end open to its player comes out one king's step beyond the other end, in the
@@ -993,7 +993,8 @@ CONTACT_LINK_OFF_VALUES: dict[str, Any] = {"own": False}
 # T1: a move descriptor's (a piece's, or a portal group's).
 MOVE_OFF_VALUES: dict[str, Any] = {"path": "straight"}
 # N1: a wild-piece entry's (``rules.npcs[]``): ``respawn: 0`` is a piece that, once taken, is gone.
-NPC_OFF_VALUES: dict[str, Any] = {"respawn": 0}
+# N5: ``turns_back: false`` is a route walked as a cycle, as every route was before the key.
+NPC_OFF_VALUES: dict[str, Any] = {"respawn": 0, "turns_back": False}
 
 # Generation 36 (N1, `docs/plan-npc.md` §4.1): the longest clock a respawning wild piece may
 # have, in phases. Bounds the clocks' keys (one per value per half).
@@ -1394,6 +1395,10 @@ def sight_can_bind(spec: dict[str, Any], source: str, sight: Sight) -> str | Non
         sides = {"enemy": (1 - owner,), "own": (owner,), "any": (0, 1)}[sight.whose]
         for side in sides:
             reachable |= affected & held[side]
+    if source in _never_moved(rules):
+        # Generation 37: a wild piece is on the board for neither side, and its sight (whose
+        # 'any') touches both players' pieces.
+        reachable |= affected & (held[0] | held[1])
     if not reachable:
         return "no type it affects is ever held by the side it affects"
     if sight.effect == "freeze" and not any(_listed(by_id[pid].get("moves")) for pid in reachable):
@@ -1470,6 +1475,8 @@ def _check_sight_coherence(
     ]
     board = spec.get("board")
     hex_lattice = isinstance(board, dict) and board.get("lattice") == "hex"
+    setup = spec.get("setup")
+    orientation = str(setup.get("orientation", "mirror")) if isinstance(setup, dict) else "mirror"
     wild = _never_moved(rules)
     royal = {
         piece["id"] for piece in pieces
@@ -1489,11 +1496,7 @@ def _check_sight_coherence(
                 f"{where} holds {len(sight)} lines of sight; a type may have at most {SIGHT_MAX}"
             )
         pid = piece.get("id")
-        if pid in wild:
-            errors.append(
-                f"{where} is on a wild piece (rules.npcs), which is nobody's and carries no "
-                "sight; leave it out"
-            )
+        on_wild = pid in wild
         for number, entry in enumerate(sight):
             loc = f"{where}[{number}]"
             if not isinstance(entry, dict):
@@ -1519,6 +1522,27 @@ def _check_sight_coherence(
             whose = entry.get("whose")
             if "whose" in entry and whose not in SIGHT_WHOSE:
                 errors.append(f"{loc}.whose must be one of {SIGHT_WHOSE}, got {whose!r}")
+            if on_wild:
+                # Generation 37 (N2, `docs/plan-npc.md` §4.2): a wild piece's sight, with its
+                # three limits.
+                if whose in ("enemy", "own"):
+                    errors.append(
+                        f"{loc}.whose is {whose!r} on a wild piece (rules.npcs), which has no "
+                        "side; use 'any'"
+                    )
+                if effect == "command":
+                    errors.append(
+                        f"{loc} is a command on a wild piece (rules.npcs): nobody commands for "
+                        "it; use freeze, disarm or shield"
+                    )
+                if not reads_alike_for_both(
+                    entry.get("vectors"), entry.get("symmetry", "none"), orientation
+                ):
+                    errors.append(
+                        f"{loc} reads differently for the two players: a wild piece has no "
+                        "forward of its own, so its sight must be the same seen from either side "
+                        "(use a symmetry that covers both, such as rotate4 or dihedral8)"
+                    )
             if "through" in entry and not isinstance(entry["through"], bool):
                 errors.append(f"{loc}.through must be true or false")
             if "affects" in entry:
@@ -1544,7 +1568,7 @@ def _check_sight_coherence(
                     if len(set(map(str, affects))) != len(affects):
                         errors.append(f"{loc}.affects repeats a piece id")
             read = _sight_entry(entry)
-            if read is not None and isinstance(pid, str) and pid not in wild:
+            if read is not None and isinstance(pid, str):
                 why = sight_can_bind(spec, pid, read)
                 if why is not None:
                     errors.append(f"{loc} affects nothing that could be there: {why}")
@@ -1565,11 +1589,6 @@ def _check_sight_coherence(
             "a shield (pieces[].sight effect 'shield') beside a sweep move: whether a sweep "
             "passing over a shielded piece removes it or is stopped by it would be a second "
             "rule; leave one out"
-        )
-    if shields and rules.get("npcs"):
-        errors.append(
-            "a shield (pieces[].sight effect 'shield') beside rules.npcs: whether a wild "
-            "piece's step takes a shielded piece would be a second rule; leave one out"
         )
     if commands:
         _check_command_beside(spec, pieces, rules, turncoats, errors)
@@ -4180,6 +4199,8 @@ def _check_npc_coherence(
             "is taken; a blast that destroys a wild piece pays nobody its bounty, and a "
             "wild piece that eats does not explode"
         )
+    _check_npc_turns_back(npcs, rules, errors)
+
     if turn_is_long(rules):
         errors.append(
             "rules.npcs beside a turn longer than one move: a wild piece walks between "
@@ -4202,6 +4223,47 @@ def _check_npc_coherence(
             errors.append(
                 'rules.scoring.count "points" needs a wild piece with a bounty above '
                 "zero, or there is nothing to count"
+            )
+
+
+def _check_npc_turns_back(npcs: list[Any], rules: dict[str, Any], errors: list[str]) -> None:
+    """Generation 38 (N5, `docs/plan-npc.md` §4.7): a turning-back entry against the rest.
+
+    * **a one-square route** -- nothing to turn on;
+    * **``also_at``** -- two pieces on one line meeting head-on would need an order the queue
+      rule (front first) does not give;
+    * **anywhere check is asked of a wild piece** -- ``win: "checkmate"``, ``forbid_check``
+      and ``reach.safe``: a turning piece threatens the square ahead, or the one behind when
+      the way ahead is blocked, so the square it threatens depends on what blocks it, and
+      rather than a second attack rule its line carries no attack source. ``check_limit``
+      counts only a player's checks and stays allowed.
+    """
+    win = rules.get("win", "checkmate")
+    reach = rules.get("reach")
+    asks = []
+    if win == "checkmate":
+        asks.append('"win": "checkmate"')
+    if rules.get("forbid_check") is True:
+        asks.append('"forbid_check": true')
+    if isinstance(reach, dict) and reach.get("safe") is True:
+        asks.append('rules.reach.safe')
+    for index, npc in enumerate(npcs):
+        if not npc_turns_back(npc):
+            continue
+        loc = f"rules.npcs[{index}].turns_back"
+        route = npc.get("route")
+        if isinstance(route, list) and len(route) == 1:
+            errors.append(f"{loc} on a one-square route: nothing to turn on")
+        if "also_at" in npc:
+            errors.append(
+                f"{loc} beside also_at: two pieces on one line meeting head-on would need an "
+                "order the queue rule does not give; give each piece a line of its own"
+            )
+        for rule in asks:
+            errors.append(
+                f"{loc} beside {rule}: the square a turning piece threatens depends on what "
+                'blocks it; turning back is for a game without check ("win": '
+                '"royal_capture", "annihilation" or "none", no forbid_check, no safe goal)'
             )
 
 
@@ -6306,6 +6368,14 @@ def npc_respawn(npc: Any) -> int:
     return every
 
 
+def npc_turns_back(npc: Any) -> bool:
+    """Whether a wild-piece entry turns back (generation 38, N5, `docs/plan-npc.md` §4.7): its
+    route is a line, walked first to last and back, and a blocked step turns the piece round.
+    False where it writes none, the off value ``false``, or something the validator refuses.
+    The one reader, for the compiler, the words and the operators."""
+    return isinstance(npc, dict) and npc.get("turns_back") is True
+
+
 def npc_starts(
     rules: Any, width: int, height: int, orientation: str = "mirror"
 ) -> list[tuple[int, str, int]]:
@@ -6463,6 +6533,12 @@ def _validate_npcs(
                     "how long after a piece of this entry is taken it comes back (0, or "
                     "leaving it out, is a piece that once taken is gone)"
                 )
+
+        if "turns_back" in npc and not isinstance(npc["turns_back"], bool):
+            errors.append(
+                f"{loc}.turns_back must be a boolean: true walks the route as a line, first "
+                "to last and back, turning round wherever the way is blocked"
+            )
 
         _validate_npc_immune(npc, loc, rules or {}, piece_ids, errors)
 
@@ -7036,6 +7112,26 @@ def _check_portal_carries(
                 )
 
 
+def reads_alike_for_both(vectors: Any, symmetry: Any, orientation: str) -> bool:
+    """Whether a geometry (a move's or a sight's ``vectors`` with their ``symmetry``) is its
+    own image under the second player's reflection (``reflect_square``'s: a mirror flips the
+    rank, a rotation both), so a piece that belongs to neither player reads it the same from
+    either side. A portal's moves (spelling 31) and a wild piece's sight (generation 37) must.
+    True for a shape this cannot read (the shape's own check says what is wrong with it) and
+    for the hexagon's symmetries, which are closed under the half turn."""
+    if not isinstance(vectors, list) or symmetry not in SQUARE_SYMMETRIES:
+        return True
+    directions: set[tuple[int, int]] = set()
+    for vector in vectors:
+        if (
+            isinstance(vector, list) and len(vector) == 2
+            and all(isinstance(c, int) and not isinstance(c, bool) for c in vector)
+        ):
+            directions |= expand_symmetry((vector[0], vector[1]), symmetry)
+    flipped = {(-dx, -dy) if orientation == "rotate" else (dx, -dy) for dx, dy in directions}
+    return flipped == directions
+
+
 def _check_portal_moves(group: dict[str, Any], orientation: str, errors: list[str]) -> None:
     """One group's moves (spelling 31): the same seen from either player, and some where
     anybody may move an end. The shape of each move is `_validate_portal_moves`'."""
@@ -7043,21 +7139,7 @@ def _check_portal_moves(group: dict[str, Any], orientation: str, errors: list[st
     for index, move in enumerate(group["moves"]):
         if not isinstance(move, dict):
             continue
-        vectors = move.get("vectors")
-        symmetry = move.get("symmetry", "none")
-        if not isinstance(vectors, list) or symmetry not in SQUARE_SYMMETRIES:
-            continue
-        directions: set[tuple[int, int]] = set()
-        for vector in vectors:
-            if (
-                isinstance(vector, list) and len(vector) == 2
-                and all(isinstance(c, int) and not isinstance(c, bool) for c in vector)
-            ):
-                directions |= expand_symmetry((vector[0], vector[1]), symmetry)
-        flipped = {
-            (-dx, -dy) if orientation == "rotate" else (dx, -dy) for dx, dy in directions
-        }
-        if flipped != directions:
+        if not reads_alike_for_both(move.get("vectors"), move.get("symmetry", "none"), orientation):
             errors.append(
                 f"{loc}.moves[{index}] reads differently for the two players: a portal has no "
                 "forward of its own, so its moves must be the same seen from either side (use "

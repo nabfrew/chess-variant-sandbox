@@ -47,7 +47,7 @@ type StateIn = (
     Vec<u8>, u8, Vec<u8>, i16, i16, u32, u32, u64, Vec<u64>,
     (u32, u32),
     (Vec<u32>, Vec<u32>),
-    (Vec<u8>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest, Vec<u8>),
+    (Vec<u8>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest, Vec<u8>, Vec<u16>),
 );
 /// Schema 26 (Q918a): the initiative, the void run and the bars, slot 11's eighth element.
 type Rounds = (i8, (i16, i16), Vec<(i16, i16)>);
@@ -56,7 +56,8 @@ type Rounds = (i8, (i16, i16), Vec<(i16, i16)>);
 /// rested squares were the round group's fourth).
 type Rest = (Vec<(i16, u8)>, Vec<(i16, u8)>);
 // Generation 36 (N1): the respawn clocks, one per respawning half, slot 11's tenth element
-// (empty without the rule; an empty one is every clock idle).
+// (empty without the rule; an empty one is every clock idle). Generation 38 (N5): the squares
+// of the wild pieces walking their line back, slot 11's eleventh element.
 type StateOut<'py> = (
     Bound<'py, PyBytes>,
     u8,
@@ -69,7 +70,7 @@ type StateOut<'py> = (
     Vec<u64>,
     (u32, u32),
     (Vec<u32>, Vec<u32>),
-    (Bound<'py, PyBytes>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest, Vec<u8>),
+    (Bound<'py, PyBytes>, u32, u32, (f64, f64), i8, (i16, i16), Vec<i16>, Rounds, Rest, Vec<u8>, Vec<u16>),
 );
 
 /// What the wild-piece phase did on the way to a position (schema 9): one
@@ -163,6 +164,7 @@ fn snapshot_from(t: &Tables, state: &StateIn) -> Snapshot {
         bars: state.11.7.2.iter().map(|&(a, b)| [a, b]).collect(),
         resting: crate::game::rest_lists_from(t, &board, [&state.11.8.0, &state.11.8.1]),
         respawn: crate::game::respawn_clocks_from(t, &state.11.9),
+        heading_back: crate::game::heading_from(t, &board, &state.11.10),
     }
 }
 
@@ -224,6 +226,7 @@ fn state_out<'py>(py: Python<'py>, game: &Game<'_>) -> StateOut<'py> {
             ),
             (game.resting_of(0), game.resting_of(1)),
             game.respawn.clone(),
+            game.heading_back.iter().map(|square| square as u16).collect(),
         ),
     )
 }
@@ -279,6 +282,10 @@ fn record_out(output: play::GameOutput) -> RecordOut {
 }
 
 /// One compiled ruleset. Construct once per ruleset and reuse.
+/// `Core.effects`' answer: each square's bits, the moves removed by reason, the suppressed
+/// check, the commanded count and (generation 37, N2) each square's wild bits.
+type EffectsOut = (Vec<u8>, (u32, u32, u32), bool, u32, Vec<u8>);
+
 #[pyclass(module = "chess_variant_sandbox._core", frozen)]
 pub struct Core {
     tables: Arc<Tables>,
@@ -580,11 +587,13 @@ impl Core {
     /// the effects suppressed. Zeros in a game without a sight. Python asks; the core answers.
     /// Q1007c: the bits carry `8` command and `16` its `captures_own`, and the fourth element
     /// counts the side to move's legal commanded moves (0 without a command).
-    fn effects(&self, state: StateIn) -> (Vec<u8>, (u32, u32, u32), bool, u32) {
+    /// Generation 37 (N2): the fifth element is each square's bits from the wild pieces'
+    /// sights alone, empty in a game without wild pieces.
+    fn effects(&self, state: StateIn) -> EffectsOut {
         let snapshot = snapshot_from(&self.tables, &state);
         let report = Game::from_snapshot(&self.tables, &snapshot).effects_report();
         let [freeze, disarm, shield] = report.removed;
-        (report.bits, (freeze, disarm, shield), report.suppressed, report.commanded)
+        (report.bits, (freeze, disarm, shield), report.suppressed, report.commanded, report.wild_bits)
     }
 
     /// Schema 29 (Q983b, `docs/plan-rest.md` §5.6, §7): what the rest does to `player`'s

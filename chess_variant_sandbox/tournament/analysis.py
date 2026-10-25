@@ -379,6 +379,22 @@ COMMAND_SERIES = (
     "turncoat",
 )
 
+# Generation 37 (N2, `docs/plan-npc.md` §4.2): the third owner's column, for a game in which a
+# wild piece sees, one entry a side-turn beside `SIGHT_SERIES`' (and `COMMAND_SERIES`', when a
+# player's sight commands): how many of that side's pieces stood under a freeze, a disarm and a
+# shield **a wild piece gives** (`Effects.wild`, the core's bits from the wild sights alone),
+# read as the piece counts above are. A game without a seeing wild piece has none of these keys,
+# so its `analysis.json` is the bytes it was.
+WILD_SIGHT_SERIES = ("wild_frozen", "wild_disarmed", "wild_shielded")
+
+
+def _wild_sees(engine: Engine) -> bool:
+    """Whether a wild piece of this game carries a sight: the compiled forward lines hold the
+    third owner's frame (`compile._compile_sights`, generation 37)."""
+    sight = engine.spec.sight
+    return sight is not None and len(sight.lines) > engine.spec.n_frames
+
+
 # The effect bits as the core reports them (`compile.SIGHT_FREEZE`, `SIGHT_DISARM`,
 # `SIGHT_SHIELD`, and Q1007c's `SIGHT_COMMAND` and `SIGHT_COMMAND_OWN`), in the order of the
 # piece counts: the first three are `SIGHT_SERIES`', the last two `COMMAND_SERIES`'.
@@ -396,6 +412,7 @@ def _sight_tally(engine: Engine) -> dict[str, list[int]] | None:
     if engine.spec.sight is None:
         return None
     keys = SIGHT_SERIES + (COMMAND_SERIES if _commands(engine) else ())
+    keys += WILD_SIGHT_SERIES if _wild_sees(engine) else ()
     return {key: [] for key in keys}
 
 
@@ -437,6 +454,13 @@ def _count_sight(
             int(made),
             int(made and move is not None and _takes(state.board, move)),
         )
+    if "wild_frozen" in tally:
+        wild = [0, 0, 0]
+        for square, bits in enumerate(effects.wild):
+            if bits and spec.owner_of(state.board[square]) == seat:
+                for index, bit in enumerate(_SIGHT_BITS[:3]):
+                    wild[index] += int(bool(bits & bit))
+        row += tuple(wild)
     for key, value in zip(tally, row, strict=True):
         tally[key].append(value)
 

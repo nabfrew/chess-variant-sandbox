@@ -35,10 +35,11 @@ impl<'t> Game<'t> {
     }
 
     /// The first of `half`'s starts a piece may come back onto: empty, or a player's
-    /// non-royal piece the wild type may capture. A royal, a piece it may not take and
-    /// another wild piece each hold the start.
+    /// non-royal piece the wild type may capture. A royal, a piece it may not take, a
+    /// piece in `shields` (generation 37: the phase's snapshot of the shielded squares, a
+    /// wild piece never takes a shielded piece) and another wild piece each hold the start.
     #[inline]
-    fn respawn_start(&self, half: &RespawnHalf) -> Option<usize> {
+    fn respawn_start(&self, half: &RespawnHalf, shields: &SquareSet) -> Option<usize> {
         let t = self.t;
         let wild_type = t.type_of(half.value);
         half.starts.iter().map(|square| *square as usize).find(|square| {
@@ -46,7 +47,7 @@ impl<'t> Game<'t> {
             if standing == 0 {
                 return true;
             }
-            if t.owner_of(standing) == WILD {
+            if t.owner_of(standing) == WILD || shields.get(*square) {
                 return false;
             }
             let victim = t.type_of(standing);
@@ -56,8 +57,11 @@ impl<'t> Game<'t> {
 
     /// **The rule, stated once**: what `half` does this phase on the board as it stands
     /// (after the steps), its clock being `clock` before the phase. Returns the clock after
-    /// the phase and the start a piece comes back onto, if one does.
-    pub(super) fn respawn_due(&self, index: usize, clock: u8) -> (u8, Option<usize>) {
+    /// the phase and the start a piece comes back onto, if one does. `shields` is the
+    /// phase's snapshot of the shielded squares (`Game::wild_shields`), read at its start.
+    pub(super) fn respawn_due(
+        &self, index: usize, clock: u8, shields: &SquareSet,
+    ) -> (u8, Option<usize>) {
         let rule = self.t.respawn.as_deref().expect("respawn_due without the rule");
         let half = &rule.halves[index];
         let standing = self.respawn_standing(half);
@@ -72,7 +76,7 @@ impl<'t> Game<'t> {
         if left > 0 {
             return (left, None);
         }
-        match self.respawn_start(half) {
+        match self.respawn_start(half, shields) {
             None => (1, None),
             Some(start) => {
                 let next = if standing + 1 < half.starts.len() { half.every } else { 0 };
@@ -84,7 +88,7 @@ impl<'t> Game<'t> {
     /// Step 3 of the phase, played for real: every square through `write`, every clock
     /// change into the working key, every return on the phase log. Returns whether a return
     /// ate anything (a material change, as a step's eating is).
-    pub(super) fn respawn_phase(&mut self) -> bool {
+    pub(super) fn respawn_phase(&mut self, shields: &SquareSet) -> bool {
         let t = self.t;
         let Some(rule) = t.respawn.as_deref() else {
             return false;
@@ -92,7 +96,7 @@ impl<'t> Game<'t> {
         let mut ate = false;
         for index in 0..rule.halves.len() {
             let before = self.respawn[index];
-            let (after, start) = self.respawn_due(index, before);
+            let (after, start) = self.respawn_due(index, before, shields);
             if after != before {
                 self.working_key ^= rule.key(index, before) ^ rule.key(index, after);
                 self.respawn[index] = after;
@@ -111,12 +115,12 @@ impl<'t> Game<'t> {
 
     /// Step 3 on the raw board for a legality filter, every square written pushed to
     /// `saved`. The clocks are read, never written: the filter asks about one position.
-    pub(super) fn respawn_phase_for_filter(&mut self, saved: &mut Saved) {
+    pub(super) fn respawn_phase_for_filter(&mut self, saved: &mut Saved, shields: &SquareSet) {
         let Some(rule) = self.t.respawn.as_deref() else {
             return;
         };
         for index in 0..rule.halves.len() {
-            if let (_, Some(start)) = self.respawn_due(index, self.respawn[index]) {
+            if let (_, Some(start)) = self.respawn_due(index, self.respawn[index], shields) {
                 saved.push((start, self.board[start]));
                 self.board[start] = rule.halves[index].value;
             }
@@ -130,12 +134,13 @@ impl<'t> Game<'t> {
         clocks: &mut [u8],
         saved: &mut Saved,
         steps: &mut Vec<(usize, usize, u8, u8)>,
+        shields: &SquareSet,
     ) {
         let Some(rule) = self.t.respawn.as_deref() else {
             return;
         };
         for (index, clock) in clocks.iter_mut().enumerate() {
-            let (after, start) = self.respawn_due(index, *clock);
+            let (after, start) = self.respawn_due(index, *clock, shields);
             *clock = after;
             if let Some(start) = start {
                 let eaten = self.board[start];

@@ -1,0 +1,203 @@
+{
+  "schema_version": 31,
+  "name": "wild sight: a disarming wolf beside wardens",
+  "description": "Test spec (generation 37, N2): a 6x6 checkmate game with a wolf that disarms every piece beside it, walking a loop through the middle, and a warden each that shields its own side's pieces beside it.",
+  "board": {
+    "width": 6,
+    "height": 6
+  },
+  "pieces": [
+    {
+      "id": "K",
+      "name": "king",
+      "royal": true,
+      "value": 0,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8"
+        }
+      ]
+    },
+    {
+      "id": "G",
+      "name": "warden",
+      "value": 2,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ],
+      "sight": [
+        {
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "range": 1,
+          "through": true,
+          "whose": "own",
+          "effect": "shield"
+        }
+      ]
+    },
+    {
+      "id": "W",
+      "name": "wolf",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4"
+        }
+      ],
+      "sight": [
+        {
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "range": 1,
+          "through": true,
+          "whose": "any",
+          "effect": "disarm"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "R",
+        "player": 0,
+        "squares": [
+          "a1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "N",
+        "player": 0,
+        "squares": [
+          "b1"
+        ]
+      },
+      {
+        "piece": "G",
+        "player": 0,
+        "squares": [
+          "e1"
+        ]
+      },
+      {
+        "piece": "K",
+        "player": 0,
+        "squares": [
+          "d1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "max_plies": 120,
+    "repetition_draw": 3,
+    "no_progress_draw": 40,
+    "npcs": [
+      {
+        "piece": "W",
+        "route": [
+          "b3",
+          "c3",
+          "d3",
+          "e3",
+          "e4",
+          "d4",
+          "c4",
+          "b4"
+        ]
+      }
+    ]
+  }
+}

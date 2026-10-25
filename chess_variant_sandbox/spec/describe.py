@@ -40,6 +40,7 @@ from chess_variant_sandbox.spec.schema import (
     has_speeds,
     is_simultaneous,
     npc_respawn,
+    npc_turns_back,
     obstacle_squares,
     path_of,
     piece_rests,
@@ -2234,8 +2235,16 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         piece = by_id.get(npc.get("piece"), {})
         name = str(piece.get("name", npc.get("piece")))
         route = list(npc.get("route") or [])
+        turns = npc_turns_back(npc)
         if len(route) <= 1:
             walk = f"stands on {_squares(route)} and never moves"
+        elif turns:
+            # Generation 38 (N5, `docs/plan-npc.md` §4.7): a line walked to its end and back.
+            walk = (
+                f"starts on {route[0]} and, after every move, paces the line "
+                f"{_squares(route)}: it steps along it to {route[-1]}, turns round there and "
+                f"steps back to {route[0]}, and turns round again"
+            )
         else:
             walk = (
                 f"starts on {route[0]} and, after every move, steps along "
@@ -2255,7 +2264,11 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         threatens_royal = captures is None or any(pid in royals for pid in captures)
         if captures is None or captures:
             eats += "; a piece it eats is gone for good"
-            if threatens_royal:
+            if turns:
+                # Generation 38: refused beside check, so its threat is nobody's check.
+                if threatens_royal:
+                    eats += ", a royal piece among them"
+            elif threatens_royal:
                 eats += (
                     ", and a royal piece standing where it steps next is in check from it"
                 )
@@ -2265,6 +2278,13 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
                     "next is not in check from it"
                 )
             eats += ". Where it may not step, it waits"
+        if turns:
+            eats = eats.removesuffix(". Where it may not step, it waits") + (
+                ". Where the square ahead holds a piece it may not take, or another wild "
+                "piece, it turns round and steps the other way instead; blocked both ways, it "
+                "waits, turned round. Turned round, it walks the other way from then on, so "
+                "blocking it steers it"
+            )
         bounty = npc.get("bounty", piece.get("value", 1))
         worth = (
             f"Taking it is worth {bounty:g} points."
@@ -2305,6 +2325,17 @@ def _describe_npcs(spec: dict[str, Any], rules: dict[str, Any]) -> list[str]:
         lines.append(
             f"A wild {name} belongs to neither player. It {walk}.{more} {eats}.{taken} "
             f"{worth}{mirrored}{_respawn_words(npc, route, also, rules)}"
+        )
+    # Generation 37 (N2, `docs/plan-npc.md` §4.2): the rule a shield beside wild pieces needs.
+    if any(sight.effect == "shield" for sights in piece_sights(spec).values() for sight in sights):
+        has_royal = any(isinstance(p, dict) and p.get("royal") for p in spec.get("pieces", []))
+        lines.append(
+            "A wild piece never takes a shielded piece: it waits in front of one, and comes "
+            "back only onto a start no shield covers"
+            + (", so a shielded royal standing where one steps next is not in check from it"
+               if has_royal and not is_simultaneous(rules) else "")
+            + ". The shields are read as the wild pieces set off after a move, before any of "
+            "them steps."
         )
     return lines
 

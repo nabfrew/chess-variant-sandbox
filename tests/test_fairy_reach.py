@@ -73,9 +73,24 @@ class TestTheBuildsOwnAccount:
         assert unread.reasons("x = 1\n", {"?a warning nobody has read"})
 
     def test_a_condition_is_not_widened(self) -> None:
+        # Q1030: the build empties the region on reading `-`, double step or not; any other
+        # value it skips still refuses.
         stepping = "doubleStep = true\nenPassantRegion = -\n"
-        assert unread.reasons(stepping, {"enPassantRegion"})
-        assert unread.reasons("doubleStep = false\n", {"enPassantRegion"}) == []
+        assert unread.reasons(stepping, {"enPassantRegion"}) == []
+        assert unread.reasons("doubleStep = false\nenPassantRegion = -\n", {"enPassantRegion"}) == []
+        assert unread.reasons("doubleStep = true\nenPassantRegion = *3\n", {"enPassantRegion"})
+
+    def test_a_custom_pieces_first_move_is_refused_by_name(self) -> None:
+        """Q1030: the build gives a custom piece's `i` move from every square, so the
+        double-step region it skips cannot be left to `doubleStepRank` there."""
+        regions = {"doubleStepRegionWhite", "doubleStepRegionBlack"}
+        pawn_slot = "pawn = p\ndoubleStepRegionWhite = *2\ndoubleStepRegionBlack = *7\n"
+        assert unread.reasons(pawn_slot, regions) == []
+        sergeant = "customPiece1 = x:fWfFmifW2\n" + pawn_slot
+        assert unread.reasons(sergeant, regions) == [
+            "the installed Fairy-Stockfish gives a piece's first-move-only step (piece x) "
+            "from every square, so it would play another game"
+        ]
         assert unread.reasons("pawn = p\nblastImmuneTypes = N\n", {"blastImmuneTypes"})
         assert unread.reasons("pawn = p\nblastImmuneTypes = P\n", {"blastImmuneTypes"}) == []
 

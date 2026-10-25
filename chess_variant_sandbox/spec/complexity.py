@@ -178,6 +178,10 @@ _RULE_COSTS: dict[str, float] = {
     # Generation 36's `npcs[].respawn` (N1) is not costed either, on `bounty`'s grounds: it is
     # a clause of the wild piece's sentence ("once taken, it comes back on a4 eight moves
     # later"), a number on a rule already counted, and no new kind of thing to track.
+    #
+    # Generation 38's `npcs[].turns_back` (N5) is not costed either: a clause of the same
+    # sentence (it paces its walk and turns round where blocked), the waiting rule a player was
+    # already told with a direction added.
     "npcs": 2.5,
     # Schema 9. One sentence -- "a pawn dropped or struck onto the far rank is a queen at
     # once" -- and an exception rather than a parameter of `promotion`: it changes what a

@@ -831,6 +831,30 @@ impl RespawnTables {
     }
 }
 
+/// Generation 38 (N5, `docs/plan-npc.md` §4.7): the routes walked as **lines**, first to last
+/// and back, by an `npcs` entry with `turns_back`. `npc_next` holds a line's last square on
+/// itself (it never wraps); `prev` is the way back. The state is `Game::heading_back`, the
+/// squares of the pieces walking back (`turning.rs`).
+pub struct LineTables {
+    /// `prev[square]`: the square a piece walking its line back steps to; the square itself
+    /// at a line's first square; `-1` off every line.
+    pub prev: Vec<i16>,
+    /// Every line square: where a turning-back piece can stand.
+    pub squares: SquareSet,
+    /// `[square]`: the key of a piece on a line walking it back; 0 off every line.
+    pub zobrist: Vec<u64>,
+}
+
+impl LineTables {
+    /// The square ahead of a piece on line square `square` walking back (`back`) or forward,
+    /// or `None` at the line's end that way.
+    #[inline]
+    pub fn ahead(&self, next: &[i16], square: usize, back: bool) -> Option<usize> {
+        let to = if back { self.prev[square] } else { next[square] };
+        (to >= 0 && to as usize != square).then_some(to as usize)
+    }
+}
+
 /// The spy (schema 27, Q935a; `docs/plan-spy.md` §2.4), as the compiler resolved it
 /// (`compile.SpyRule`). The core reads it and decides nothing: the phase is a function of
 /// the board and the side to move (`Game::phase`).
@@ -1152,6 +1176,11 @@ pub struct Tables {
     /// does the phase need `Game::npc_step_order`'s passes; every other game steps its
     /// wild pieces in one ascending pass, as before the bump, at no extra cost.
     pub npc_queues: bool,
+    /// Generation 37 (N2, `docs/plan-npc.md` §4.2): whether a shield and wild pieces share
+    /// the game. Only then does a wild step, a return or a wild threat ask whether the piece
+    /// in its way is shielded (**a wild piece never takes a shielded piece**). Derived here
+    /// from the sight's flags and `has_npcs`, so nothing new crosses the boundary.
+    pub npc_shield: bool,
 
     /// Schema 19: the portal tables, or `None` for every game without portals.
     pub portals: Option<Box<PortalTables>>,
@@ -1170,6 +1199,9 @@ pub struct Tables {
     /// Generation 36 (N1, `docs/plan-npc.md` §4.1): wild pieces that come back, `None` for
     /// every game in which no `npcs` entry says `respawn`.
     pub respawn: Option<Box<RespawnTables>>,
+    /// Generation 38 (N5, `docs/plan-npc.md` §4.7): wild pieces that turn back, `None` for
+    /// every game in which no `npcs` entry says `turns_back`.
+    pub npc_lines: Option<Box<LineTables>>,
 
     /// Schema 9's second key, `rules.promote_on_entry`: what a piece that *enters play*
     /// on a square becomes, as `[player][piece_type][square]` flattened in that order,
@@ -2333,12 +2365,14 @@ impl Tables {
             npc_squares,
             npc_bounty_total: 0.0,
             npc_queues: false,
+            npc_shield: false,
             portals: None,
             simultaneous: None,
             spy: None,
             rest: None,
             sight: None,
             respawn: None,
+            npc_lines: None,
             entry_promotion,
             piece_values,
             must_capture,
@@ -2427,13 +2461,29 @@ impl Tables {
                 let mut cursor = tables.npc_next[square] as usize;
                 while cursor != square {
                     lowest = lowest.min(cursor);
-                    cursor = tables.npc_next[cursor] as usize;
+                    let after = tables.npc_next[cursor] as usize;
+                    // Generation 38: a line's last square holds itself, and a line starts
+                    // where its piece does, so the walk to it has seen the whole line.
+                    if after == cursor {
+                        break;
+                    }
+                    cursor = after;
                 }
                 if seen.contains(&lowest) {
                     tables.npc_queues = true;
                 }
                 seen.push(lowest);
             }
+        }
+
+        // Generation 38 (N5): the lines' way back and the heading's keys, both empty unless
+        // an entry turns back. Read before the respawning halves, which walk a line to its end.
+        let npc_prev: Vec<i32> = field(source, keys::NPC_PREV)?;
+        let zobrist_heading: Vec<u64> = field(source, keys::ZOBRIST_HEADING)?;
+        if !npc_prev.is_empty() {
+            tables.npc_lines = Some(Box::new(Self::line_tables(&tables, &npc_prev, zobrist_heading)?));
+        } else if !zobrist_heading.is_empty() {
+            return Err(pyo3::exceptions::PyValueError::new_err("heading keys without a line"));
         }
 
         // Generation 36 (N1): respawning halves, `[every, n_starts, starts...]` each, and
@@ -2564,6 +2614,7 @@ impl Tables {
                 block: tables.n_types * tables.n_squares,
                 n_squares: tables.n_squares,
             }));
+            tables.npc_shield = tables.has_npcs && sight_flags[0] != 0;
         } else if !sight_index.is_empty()
             || !sight_srcs.is_empty()
             || !sight_paths.is_empty()
@@ -2603,6 +2654,36 @@ impl Tables {
 }
 
 impl Tables {
+    /// Generation 38 (N5): read the lines, each square checked against `npc_next`: a line
+    /// square is on a route, and its way back and its way on are each other's inverse.
+    fn line_tables(tables: &Tables, prev: &[i32], zobrist: Vec<u64>) -> PyResult<LineTables> {
+        let bad = || pyo3::exceptions::PyValueError::new_err("the line tables do not fit this board's routes");
+        let n = tables.n_squares;
+        if !tables.has_npcs || prev.len() < n || zobrist.len() < n {
+            return Err(bad());
+        }
+        let prev: Vec<i16> = prev.iter().map(|p| *p as i16).collect();
+        let mut squares = SquareSet::EMPTY;
+        for square in 0..n {
+            let back = prev[square];
+            if back < 0 {
+                continue;
+            }
+            let on = tables.npc_next[square];
+            if on < 0 || back as usize >= n {
+                return Err(bad());
+            }
+            if back as usize != square && tables.npc_next[back as usize] as usize != square {
+                return Err(bad());
+            }
+            if on as usize != square && prev[on as usize] as usize != square {
+                return Err(bad());
+            }
+            squares.set(square);
+        }
+        Ok(LineTables { prev, squares, zobrist })
+    }
+
     /// Generation 36 (N1): read the respawning halves, each checked against the board. The
     /// route is walked off `npc_next` from the first start, and the piece's byte read off the
     /// opening board there, so neither crosses the boundary twice.
@@ -2629,7 +2710,12 @@ impl Tables {
             let mut cursor = tables.npc_next[first] as usize;
             while cursor != first {
                 route.push(cursor as u16);
-                cursor = tables.npc_next[cursor] as usize;
+                let after = tables.npc_next[cursor] as usize;
+                // Generation 38: a line ends on a square that holds itself.
+                if after == cursor {
+                    break;
+                }
+                cursor = after;
                 if route.len() > n {
                     return Err(bad());
                 }
@@ -3089,6 +3175,8 @@ pub mod keys {
         PIECE_REST => "piece_rest",
         NPC_RESPAWN => "npc_respawn",
         ZOBRIST_RESPAWN => "zobrist_respawn",
+        NPC_PREV => "npc_prev",
+        ZOBRIST_HEADING => "zobrist_heading",
         ZOBRIST_SIM => "zobrist_sim",
         ZOBRIST_PIECES => "zobrist_pieces",
         ZOBRIST_PORTAL_BAR => "zobrist_portal_bar",

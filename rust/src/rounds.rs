@@ -38,6 +38,8 @@ pub(super) struct RoundUndo {
     npc_log: usize,
     /// Generation 36 (N1): the respawn clocks, empty without the rule.
     respawn: Vec<u8>,
+    /// Generation 38 (N5): the headings, empty without the rule.
+    heading_back: SquareSet,
 }
 
 /// One player's move of a round, read off the round's board.
@@ -319,6 +321,7 @@ impl<'t> Game<'t> {
             resting: self.resting,
             npc_log: self.npc_log.len(),
             respawn: self.respawn.clone(),
+            heading_back: self.heading_back,
         });
         self.round_log.clear();
         let standoff_before = self.standoff_key();
@@ -404,6 +407,11 @@ impl<'t> Game<'t> {
         // faster move (§2.6).
         if !ended && t.has_npcs && self.npc_phase() {
             material_changed = true;
+        }
+        // Generation 38 (N5): a round that ended before its phase still drops the heading of
+        // a turning-back piece taken in it, as the phase would have.
+        if ended && t.npc_lines.is_some() {
+            self.heading_tidy();
         }
         for &(from, to, _, _) in &self.npc_log[npc_mark..] {
             touched.set(from);
@@ -881,6 +889,7 @@ impl<'t> Game<'t> {
         self.resting = undo.resting;
         self.npc_log.truncate(undo.npc_log);
         self.respawn = undo.respawn;
+        self.heading_back = undo.heading_back;
         self.check_memo.set([-1, -1]);
     }
 

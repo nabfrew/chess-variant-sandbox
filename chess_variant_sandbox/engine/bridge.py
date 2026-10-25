@@ -787,6 +787,10 @@ def build_tables(spec: CompiledSpec) -> dict[str, Any]:
         # clocks' keys, both empty unless an entry comes back.
         "npc_respawn": npc_respawn,
         "zobrist_respawn": list(spec.zobrist_respawn),
+        # Generation 38 (N5, `docs/plan-npc.md` §4.7): the lines' way back and the heading's
+        # keys, both empty unless an entry turns back.
+        "npc_prev": list(npcs.prev) if npcs is not None else [],
+        "zobrist_heading": list(spec.zobrist_heading),
         # Promotion on entering play
         "entry_promotion": entry_promotion,
         # Portals (schema 19)
@@ -1005,6 +1009,9 @@ _INERT_DEFAULTS: dict[str, Any] = {
     # Generation 36 (N1). Empty unless an `npcs` entry says `respawn`.
     "npc_respawn": [],
     "zobrist_respawn": [],
+    # Generation 38 (N5). Empty unless an `npcs` entry says `turns_back`.
+    "npc_prev": [],
+    "zobrist_heading": [],
     "entry_promotion": [],
     # Schema 19 (Q771). Empty and false unless the spec has portals.
     "has_portals": False,

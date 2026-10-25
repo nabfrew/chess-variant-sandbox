@@ -1624,7 +1624,20 @@ def _descriptor_term(
         reasons.append(f"{where}: unknown move kind {kind!r}")
         return None
 
-    if term is None:
+    unlettered = sorted(
+        {tuple(sorted((abs(dx), abs(dy)), reverse=True)) for dx, dy in directions}
+        - set(betza.LEAPERS)
+    )
+    if term is None and unlettered:
+        # Q1030: the (3,4) antelope. Fairy-Stockfish's leaper atoms stop at (3,3), and
+        # both builds read a bracketed `(3,4)` as a piece with no moves, without a word
+        # (probed on the 2021 binary and pyffish 0.0.90), so no spelling exists to try.
+        leaps = ", ".join(f"({b},{a})" for a, b in unlettered)
+        reasons.append(
+            f"{where}: Fairy-Stockfish has no letter for a {leaps} leap "
+            "(its leapers stop at (3,3)), so this piece cannot be written there"
+        )
+    elif term is None:
         reasons.append(
             f"{where}: no Betza notation for a {kind} along "
             f"{sorted(directions)} at range {rng}"

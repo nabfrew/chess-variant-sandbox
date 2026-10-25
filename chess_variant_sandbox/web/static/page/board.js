@@ -2851,6 +2851,8 @@ function animatePhase(svg, phase, board, beat, cell, W, H, view) {
       }
       continue;
     }
+    // Generation 38 (N5): a turning-back piece blocked both ways turns where it stands.
+    if (step.from === step.to) continue;
     const walk = wrapStep(step.from, step.to, W, H, allow);
     const arc = pathHops(board, step.from, walk, W, H, view);
     const [dx, dy] = stepXY(walk, cell, view);

@@ -32,6 +32,7 @@ from chess_variant_sandbox.spec.schema import (
     hex_distance,
     npc_routes,
     npc_starts,
+    npc_turns_back,
 )
 
 _WORDS = ("no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
@@ -120,7 +121,8 @@ def walks(
     mirror*); ``entry`` and ``mirrored``, which ``rules.npcs`` entry it is; ``piece`` (the
     letter) and ``type`` (its index in ``piece_ids``, or None while the draft names no
     such piece); ``squares``, in the order a piece on it steps, the last stepping back to
-    the first; ``starts``, where a piece stands on it at ply zero (``also_at``'s included,
+    the first (or, where ``line`` -- generation 38's ``turns_back`` -- the walk turning back
+    at each end); ``starts``, where a piece stands on it at ply zero (``also_at``'s included,
     several pieces on one walk being one walk); ``leaps``, each step between two squares
     that do not touch, ``{from, to, files, ranks, says}``; and ``says``, the sentence
     naming them, or None where it has none. Empty without ``rules.npcs``.
@@ -140,8 +142,12 @@ def walks(
         own = [square for at, where, square in starts
                if at == index and where.endswith("(mirrored)") == mirrored]
         leaps: list[dict[str, Any]] = []
+        # Generation 38 (N5): a line never steps from its last square to its first.
+        line = npc_turns_back(entry)
         if len(squares) > 1:
             for position, a in enumerate(squares):
+                if line and position == len(squares) - 1:
+                    break
                 b = squares[(position + 1) % len(squares)]
                 apart = step_apart(a, b, width, height, lattice=lattice,
                                    files_join=files_join, ranks_join=ranks_join, copies=copies)
@@ -160,6 +166,8 @@ def walks(
             "starts": own,
             "leaps": leaps,
             "says": _walk_says(name, leaps),
+            # Generation 38 (N5): walked to its end and back, so drawn both ways, unclosed.
+            "line": line,
         })
     return out
 

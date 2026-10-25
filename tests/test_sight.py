@@ -213,13 +213,20 @@ def test_a_sight_is_refused_beside_portals_and_explosions() -> None:
     refused(chess_with(base=wormhole, sights={pid: [QUEEN_FREEZE]}), "beside rules.portals")
 
 
-def test_a_shield_is_refused_beside_wild_pieces_and_a_wild_piece_sees_nothing() -> None:
+def test_a_shield_beside_wild_pieces_and_a_wild_piece_seeing_both_sides() -> None:
+    """Generation 37 (N2, `docs/plan-npc.md` §4.2) lifted the shield's refusal beside wild
+    pieces and let a wild piece see, with ``whose`` ``"any"`` only (`tests/test_wild_sight.py`
+    holds the rest)."""
     wolves = load("archive/wolves.json")
     wild = {npc["piece"] for npc in wolves["rules"]["npcs"]}
     tame = next(p["id"] for p in wolves["pieces"] if p["id"] not in wild and p.get("moves"))
     shield = dict(KING_STEP, effect="shield", whose="own")
-    refused(chess_with(base=wolves, sights={tame: [shield]}), "beside rules.npcs")
-    refused(chess_with(base=wolves, sights={next(iter(wild)): [FREEZE_BESIDE]}), "wild piece")
+    assert validate_spec(chess_with(base=wolves, sights={tame: [shield]})) == []
+    refused(chess_with(base=wolves, sights={next(iter(wild)): [FREEZE_BESIDE]}),
+            "which has no side; use 'any'")
+    assert validate_spec(chess_with(
+        base=wolves, sights={next(iter(wild)): [dict(FREEZE_BESIDE, whose="any")]}
+    )) == []
     freeze_tame = chess_with(base=wolves, sights={tame: [FREEZE_BESIDE]})
     assert not any("sight" in error for error in validate_spec(freeze_tame))
     refused(chess_with(base=wolves, sights={tame: [dict(FREEZE_BESIDE, affects=sorted(wild))]}),

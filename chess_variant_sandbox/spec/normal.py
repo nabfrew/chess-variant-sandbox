@@ -189,7 +189,7 @@ def drop_off_values(spec: dict[str, Any]) -> None:
     ``sight: []``, a move's ``path: "straight"`` (T1), a line of sight's ``through:
     false``, ``rules.simultaneous``'s ``tie: "both"``, ``swap: "chase"`` and ``both:
     "draw"``, a portal group's ``kind: "momentum"``, a contact link's ``own: false`` and a wild-piece
-    entry's ``respawn: 0`` (N1). The validator accepts each and every reader takes it
+    entry's ``respawn: 0`` (N1) and ``turns_back: false`` (N5). The validator accepts each and every reader takes it
     as the key's absence. Shared by the normal form and `spelling.current_spelling`, so a
     spec that writes one is named as, and tidied to, the game without it.
     """

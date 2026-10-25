@@ -84,6 +84,11 @@ def _respawn(spec: dict[str, Any]) -> None:
         npc.setdefault("respawn", 0)
 
 
+def _turns_back(spec: dict[str, Any]) -> None:
+    for npc in spec["rules"]["npcs"]:
+        npc.setdefault("turns_back", False)
+
+
 def _own(spec: dict[str, Any]) -> None:
     for link in spec["rules"]["contacts"]["links"]:
         link.setdefault("own", False)
@@ -106,6 +111,7 @@ CASES = [
     ("rules.contacts.links[].own", "archive/einstein.json", _own),
     ("pieces[].moves[].path", "rulesets/chess.json", _straight),
     ("rules.npcs[].respawn", "archive/wolves.json", _respawn),
+    ("rules.npcs[].turns_back", "archive/wolves.json", _turns_back),
 ]
 
 

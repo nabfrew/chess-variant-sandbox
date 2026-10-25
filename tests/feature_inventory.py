@@ -32,12 +32,13 @@ from chess_variant_sandbox.spec.schema import (
     has_speeds,
     keeping_link_holds,
     npc_respawn,
+    npc_turns_back,
     promoting_piece_ids,
     uses_sweep,
 )
 
 # The last schema version that was a feature bump. The inventory runs from 9 to here.
-LAST_BUMP = 36
+LAST_BUMP = 38
 
 # Schema 9's two rule keys, which were `schema.V9_RULE_KEYS`.
 V9_RULE_KEYS = frozenset({"npcs", "promote_on_entry"})
@@ -791,6 +792,50 @@ def _schema_thirty_six_uses(spec: dict[str, Any]) -> set[str]:
     return set()
 
 
+def _schema_thirty_seven_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 37 added, by name (N2, `docs/plan-npc.md`
+    §4.2; numbered by order of landing, bumping no version).
+
+    * ``pieces.sight.wild.freeze``, ``.disarm``, ``.shield`` -- a wild type (an `npcs` entry's
+      piece) carrying a line of sight with that effect, ``whose`` ``"any"``.
+    * ``pieces.sight.shield.beside_npcs`` -- a shield, on any type, in a game with wild
+      pieces: the lifted refusal, with its rule (a wild piece never takes a shielded piece).
+    """
+    rules = spec.get("rules")
+    npcs = rules.get("npcs") if isinstance(rules, dict) else None
+    if not isinstance(npcs, list) or not npcs:
+        return set()
+    wild = {npc.get("piece") for npc in npcs if isinstance(npc, dict)}
+    used: set[str] = set()
+    for piece in _listed(spec.get("pieces")):
+        if not isinstance(piece, dict):
+            continue
+        for entry in _listed(piece.get("sight")):
+            if not isinstance(entry, dict):
+                continue
+            effect = entry.get("effect")
+            if piece.get("id") in wild and effect in _SCHEMA_THIRTY_EFFECTS:
+                used.add(f"pieces.sight.wild.{effect}")
+            if effect == "shield":
+                used.add("pieces.sight.shield.beside_npcs")
+    return used
+
+
+def _schema_thirty_eight_uses(spec: dict[str, Any]) -> set[str]:
+    """Everything in this spec that generation 38 added, by name (N5, `docs/plan-npc.md`
+    §4.7; numbered by order of landing, bumping no version).
+
+    * ``rules.npcs.turns_back`` -- a wild piece paces its route as a line and turns round at
+      its ends and wherever it is blocked (the off value ``false`` names nothing).
+    """
+    rules = spec.get("rules")
+    npcs = rules.get("npcs") if isinstance(rules, dict) else None
+    for npc in npcs if isinstance(npcs, list) else ():
+        if npc_turns_back(npc):
+            return {"rules.npcs.turns_back"}
+    return set()
+
+
 def _hex_symmetries_used(spec: dict[str, Any]) -> set[str]:
     """Schema 18b's names for the hexagon's turns, wherever a descriptor writes one."""
     written: list[Any] = []
@@ -843,4 +888,6 @@ _COLLECTORS = {
     34: _schema_thirty_four_uses,
     35: _schema_thirty_five_uses,
     36: _schema_thirty_six_uses,
+    37: _schema_thirty_seven_uses,
+    38: _schema_thirty_eight_uses,
 }

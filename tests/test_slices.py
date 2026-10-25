@@ -360,6 +360,26 @@ LIBRARY = test_index_quality.RUNS
 # (105,472 records equal outside the clock; *the horse archers*' stored description word count
 # aside); the replaced measurements, with the stamp this window held, are kept under each game's
 # `runs/<hash>/previous/` (`docs/reference/replay-2026-10-27.md`).
+#
+# **Opened 2026-10-25 by N2** (wild pieces that see): `tournament/analysis.py`'s wild column,
+# `engine/state.py`'s `Effects.wild` and `engine/engine.py` move `analysis` and so `metrics`
+# (`FROZEN_ANALYSIS`, `FROZEN_METRICS`), and the core's wild sight sources and shield snapshot
+# move the build fingerprint. No library game gives a wild piece a sight or a shield beside wild
+# pieces, so no number should move. The window is the stamp R34 left the library; **the next
+# library replay empties it** (the coordinator batches it after N5).
+#
+# **Held open 2026-10-25 by N5** (wild pieces that turn back): `engine/state.py`'s headings and
+# `engine/engine.py` move `analysis` and `metrics` again, and the core's lines and heading move
+# the build fingerprint; no library game turns back. The window keeps R34's stamp; R35, the
+# replay for N2 and N5 together, empties it.
+#
+# **Emptied 2026-10-26 by R35**, that replay: the 103 library games re-certified from a sample of
+# 128 of each run's 1,024 games on core `e5a2461fe09a7fa6` (412 runs, none refused), then
+# re-analysed and re-scored under `metrics` "c5a6b2b99d42a76f" and `analysis` "63ae2694b7785b01".
+# No library game gives a wild piece a sight or turns back; no record, analysis, score, interval
+# or verdict moved (105,472 records equal outside the clock; 1,751 of 1,751 files byte-equal); the
+# replaced measurements, with the stamp this window held, are kept under each game's
+# `runs/<hash>/previous/` (`docs/reference/replay-2026-10-28.md`).
 STALE_WINDOW: dict[str, str] = {}
 
 
