@@ -11,6 +11,13 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ---
 
+## 2026-10-26
+
+### Two new games: crooked bishops and the circling queen
+
+In crooked bishops each bishop zigzags along a rank or file instead of running down a diagonal; in the
+circling queen the queen's lines curl round in circles. Both join the library, and the designer's ready-made pieces now include the pointing pawn from weathervane.
+
 ## 2026-10-25
 
 ### Ready-made pieces in the designer

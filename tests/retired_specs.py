@@ -204,6 +204,12 @@ RETIRED_PREVIEWS = {
     # (`tests/test_showcases_q1007.py`).
     "chess-with-commanding-knights": "adc1a91b0a83",
     "chess-with-a-spellbinding-king": "6a8120390853",
+    # I2 (2026-10-25, `docs/plan-pieces-moves.md` §4.7): the showcase of pieces that never move,
+    # chess with an immobile royal flag, built, measured and retired before it ever joined: the
+    # index missed V3's 0.800 (0.790), and the call registered before its first measured game
+    # retires a miss. Kept here because its V1 mechanism tests read it
+    # (`tests/test_showcase_capture_the_flag.py`).
+    "capture-the-flag": "407af145c5d6",
 }
 
 # Retired previews kept byte for byte though the validator now refuses them, so a test can hold

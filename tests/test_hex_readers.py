@@ -291,6 +291,8 @@ _DESCRIPTIONS_BEFORE_THE_HEXAGON: dict[str, str] = {
     "archive/chess-with-a-weary-queen": "d441c25522408073",  # Q983d, schema 29
     "archive/opposite-colours": "1e2dfc55b0d9af8c",  # Q999b, schema 30; Q1007e, 2026-10-24: replaced under its name by R1, riders as rook and queen (was 4ff00bc55e702f5c)
     "archive/chess-with-nightriders": "8c0fea2fdf92394b",  # Q1007e, schema 31
+    "archive/crooked-bishops": "2ead2536dfc6a8ff",  # T2, generation 34
+    "archive/circling-queen": "6cc108310afcc1ea",  # T3, generation 34
     "archive/madrasi": "b11e935637736813",  # Q999d, schema 30
     "archive/chess-with-a-sheltering-king": "84030d503bb17bc8",  # Q999d, schema 30
     "archive/chess-with-daunting-knights": "78cfd35394c8d7db",  # Q999d, schema 30

@@ -582,8 +582,10 @@ def test_one_corpus_spec_reads_reach_mirror_apart_from_its_orientation() -> None
     # which declares none; 104 since Q999d's three sight showcases, which declare none; 98
     # since Q1005 retired six previews (`docs/reference/preview-call-2026-10.md`), of which
     # `watering-hole-by-speed` declared one; 99 since Q1007e's chess with nightriders, which
-    # declares none (its opposite colours replaced the first under the same file).
-    assert len(paths) == 99
+    # declares none (its opposite colours replaced the first under the same file); 100 since
+    # T2's crooked bishops, which declares none; 101 since T3's circling queen, which declares
+    # none.
+    assert len(paths) == 101
 
     with_reach: dict[str, tuple[frozenset[int], frozenset[int]]] = {}
     for path in paths:

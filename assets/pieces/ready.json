@@ -604,6 +604,55 @@
     }
    ]
   },
+  "facing-pawn": {
+   "name": "pawn",
+   "id": "P",
+   "value": 1,
+   "reading": "this project's own piece, not the tradition's: the pawn of weathervane, a pawn that points, so its forward and its captures turn with the way it faces (archive/weathervane.json plays it)",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "range": 1,
+     "mode": "move"
+    },
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "range": 2,
+     "min_range": 2,
+     "mode": "move",
+     "condition": {
+      "from_rank": 1
+     }
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "lateral",
+     "mode": "capture"
+    }
+   ],
+   "facing": {
+    "axes": 4
+   },
+   "note": "Which way each pawn faces is set per placement (setup.placements[].facing: forward, backward, left or right), or for all of them by facing.initial. It promotes only if rules.promotion says so."
+  },
   "fad": {
    "name": "fad",
    "id": "F",
@@ -2391,7 +2440,6 @@
   "bell": "no canonical move",
   "drop": "terrain, not a piece: its reading is walls (rules.obstacles)",
   "duck": "Duck chess's neutral blocker, moved by the player after every move: the language has no second half of a turn (plan-pieces-moves.md §2.4)",
-  "facing-pawn": "drawn after the survey (plan-pieces-moves.md §1): a pawn that points, whose reading is a facing, which archive/weathervane.json plays",
   "fish": "no canonical move",
   "flame": "no canonical move",
   "gem": "no canonical move",

@@ -416,6 +416,8 @@ _FEATURES_BEFORE_THE_RESOLVER: dict[str, str] = {
     "archive/chess-with-a-weary-queen": "cca02b4d69cf1272",  # Q983d, schema 29
     "archive/opposite-colours": "d36bc9991015602c",  # Q999b, schema 30; Q1007e, 2026-10-24: replaced under its name by R1, riders as rook and queen (was a0e70d8f14e2936a)
     "archive/chess-with-nightriders": "57d71a18e3db3ea9",  # Q1007e, schema 31
+    "archive/crooked-bishops": "cca02b4d69cf1272",  # T2, generation 34; chess's own, `turning_share` added since
+    "archive/circling-queen": "cca02b4d69cf1272",  # T3, generation 34; chess's own, `turning_share` added since
     "archive/madrasi": "b6e19675623090e2",  # Q999d, schema 30
     "archive/chess-with-a-sheltering-king": "e7321c09e075fea8",  # Q999d, schema 30
     "archive/chess-with-daunting-knights": "cca02b4d69cf1272",  # Q999d, schema 30

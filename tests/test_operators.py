@@ -377,8 +377,8 @@ class TestMutation:
         # Q1007a's `ride-a-leap` rides a lame leap a game already has: xiangqi's horse and
         # elephant.
         parents.append(specs["xiangqi"])
-        # T1's `straighten` takes out a path a game already has, and none is archived until
-        # T2 and T3 (`plan-pieces-moves.md` §5.7): chess with zigzag bishops stands in.
+        # T1's `straighten` takes out a path a game already has: chess with zigzag bishops,
+        # the mechanics of T2's `archive/crooked-bishops.json` (`plan-pieces-moves.md` §5.7).
         parents.append(_parent_crooked_bishops())
 
         def fires(operator) -> bool:
@@ -2609,19 +2609,18 @@ _EVERY_SCHEMA_FEATURES: dict[int, frozenset[str]] = {
 # 2026-10-09 audit; `reference/schema-showcase-coverage.md` rows 7, 10 and 11 are schema 6,
 # whose schema 6 rows come from `_schema_6_uses` (Q795).
 _NO_SHOWCASE_ON_PURPOSE: dict[str, str] = {
-    # Generation 34's two names (T1), owed in `_SHOWCASE_OWED` until generation 35 (A1) retired
-    # their `_FEATURES` rows. Their showcases are T2, *crooked bishops*, and T3, *the circling
-    # queen* (`plan-pieces-moves.md` §5.7); each deletes its row when it lands.
-    "schema 34: pieces.moves.slide.path.circle": (
-        "owed: T3, the circling queen (plan-pieces-moves.md §5.7)"
+    # Generation 34's two names (T1) were owed here until their showcases landed, both
+    # 2026-10-25 (`plan-pieces-moves.md` §5.7): T2's `archive/crooked-bishops.json` deleted
+    # `...path.zigzag`'s row and T3's `archive/circling-queen.json` `...path.circle`'s.
+    # Generation 33's name (I1). I2 built and measured its showcase, *capture the flag*
+    # (`plan-pieces-moves.md` §4.7, 2026-10-25): viable 4-0 and fair, V2 met, but the index
+    # missed V3's 0.800, so it retired by the call registered before its first measured game
+    # (`tests/_retired_capture_the_flag.json`). A game that closes this row is a moveless-piece
+    # game that scores as a game.
+    "schema 33: pieces.moves.empty": (
+        "I2: capture the flag retired, index 0.790 [0.770, 0.826], V3's bar 0.800"
+        " (plan-pieces-moves.md §4.7)"
     ),
-    "schema 34: pieces.moves.slide.path.zigzag": (
-        "owed: T2, crooked bishops (plan-pieces-moves.md §5.7)"
-    ),
-    # Generation 33's name (I1), owed in `_SHOWCASE_OWED` until generation 34 (T1) retired its
-    # `_FEATURES` row. Its showcase is I2, *capture the flag* (`plan-pieces-moves.md` §4.7),
-    # which deletes this row when it lands.
-    "schema 33: pieces.moves.empty": "owed: I2, capture the flag (plan-pieces-moves.md §4.7)",
     # Generation 32's two names (Q1007a), owed in `_SHOWCASE_OWED` until generation 33 retired
     # their `_FEATURES` rows. R1 (`plan-schema-31.md` §6.1) was to carry the lame rider; the user
     # made its rook the slide reading (2026-10-23), and Q1007e kept R1b, a slide, over R1c, the

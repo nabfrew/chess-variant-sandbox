@@ -46,7 +46,7 @@ def _read(name: str) -> Any:
 
 
 # What of a ready entry travels into a draft as the piece itself.
-_READY_PIECE_KEYS = ("name", "value", "royal", "moves", "rest", "sight")
+_READY_PIECE_KEYS = ("name", "value", "royal", "moves", "rest", "sight", "facing")
 
 
 def _ready(entry: Any) -> dict[str, Any] | None:

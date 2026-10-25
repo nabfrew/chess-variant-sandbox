@@ -29,7 +29,7 @@ READY = json.loads((PIECES / "ready.json").read_text(encoding="utf-8"))
 CATALOGUE = json.loads((PIECES / "catalogue.json").read_text(encoding="utf-8"))
 
 # The keys an entry may hold: the piece's own (what travels into a draft) and what is said.
-_PIECE_KEYS = {"name", "value", "royal", "moves", "rest", "sight"}
+_PIECE_KEYS = {"name", "value", "royal", "moves", "rest", "sight", "facing"}
 _ENTRY_KEYS = _PIECE_KEYS | {"id", "reading", "lattice", "rules", "rules_say", "note"}
 
 
@@ -115,6 +115,11 @@ TRADITIONAL = {**_committed("shogi"), **_committed("xiangqi")}
 BEROLINA = [p for p in json.loads((ROOT / "rulesets" / "berolina.json").read_text(
     encoding="utf-8"))["pieces"] if p["id"] == "P"][0]["moves"]
 SURVEY_COMMITTED = {"berolina": BEROLINA}
+# PF2: the pointing pawn is this project's own, drawn after the survey, so no section-1 row holds it:
+# archive/weathervane.json's pawn does (name, value, moves and facing, exactly as spelled there).
+WEATHERVANE_PAWN = json.loads((ROOT / "archive" / "weathervane.json").read_text(
+    encoding="utf-8"))["pieces"][0]
+OWN = {"facing-pawn": WEATHERVANE_PAWN}
 
 
 def _resolve(value: Any, self_id: str, royals: list[str]) -> Any:
@@ -192,6 +197,16 @@ class TestTheCatalogue:
         assert entry["moves"] == {**SURVEY, **SURVEY_COMMITTED}[slug]
         assert bool(entry.get("royal")) == (slug in ROYAL)
 
+    @pytest.mark.parametrize("slug", sorted(OWN))
+    def test_an_own_piece_is_its_games_spelling(self, slug: str) -> None:
+        """The project's own drawings: the piece as the game that plays it spells it."""
+        entry, piece = READY["pieces"][slug], OWN[slug]
+        for key in ("id", "name", "value", "moves", "facing"):
+            assert entry[key] == piece[key], (slug, key)
+        assert bool(entry.get("royal")) == bool(piece.get("royal"))
+        assert "weathervane" in entry["reading"] and "own" in entry["reading"]
+        assert "rules" not in entry  # weathervane's pawn needs no rule of the whole game
+
     @pytest.mark.parametrize("slug", sorted(TRADITIONAL))
     def test_a_traditional_piece_moves_as_its_committed_game(self, slug: str) -> None:
         """The shogi and xiangqi drawings: the committed game's moves, less a square."""
@@ -204,7 +219,8 @@ class TestTheCatalogue:
             assert "note" in entry, f"{slug} leaves squares out without saying so"
 
     def test_the_survey_and_the_committed_games_cover_every_ready_piece(self) -> None:
-        assert set(READY["pieces"]) == set(SURVEY) | set(SURVEY_COMMITTED) | set(TRADITIONAL)
+        assert set(READY["pieces"]) == (set(SURVEY) | set(SURVEY_COMMITTED) | set(TRADITIONAL)
+                                        | set(OWN))
         assert "note" in READY["pieces"]["soldier"]
 
 
@@ -241,6 +257,7 @@ class TestTheDesignerOffersThem:
             ready = offered[slug]["ready"]
             assert ready["piece"]["moves"] == entry["moves"]
             assert ready["piece"]["name"] == entry["name"]
+            assert ready["piece"].get("facing") == entry.get("facing")
             assert len(ready["says"]) == len(entry["moves"])
             assert ready["lattice"] == entry.get("lattice", "square")
         for slug in READY["left_out"]:

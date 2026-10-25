@@ -1017,6 +1017,56 @@ retires. The showcases of the `command` sight effect, each one key on chess, pre
   128 turncoat captures were played. But a commanded move was offered at only **0.028** of
   graded side-turns (bar 0.05): its force is as a deterrent, which V2 did not measure.
 
+## `capture-the-flag.json` — generation 33, a piece that never moves (I2; retired)
+
+2026-10-25, built, measured and **retired without joining**, by the call registered before its
+first measured game (`docs/plan-pieces-moves.md` §4.7): a showcase that misses any of V2 to V4
+retires, and is not tuned after the miss. Its file is `tests/_retired_capture_the_flag.json`,
+`tests/test_showcase_capture_the_flag.py` holds V1 on it, and its runs and its king-stepping
+twin's (`c4e50ed4ee63`) are kept.
+
+- **`capture-the-flag`** (`407af145c5d6`, F1a): chess with the king an immobile royal flag
+  (`moves: []`) on e1/e8, won by taking it, stalemate a loss, no castling. **0.790 [0.770,
+  0.826], viable 4-0**, seat level (0.524), the ladder read in every run; V2 met (graded games
+  0.41 of the twin's length, the flag taken in 0.995 of them), V4 met, but V3's index bar is
+  0.800. In play it is a raid: graded games run 21.8 plies (chess 87.9, the twin 52.7), the
+  queen takes 0.66 of the flags, and a defence that cannot move the target rarely holds.
+  The twin, chess under royal capture with stalemate a loss, scored 0.941 [0.923, 0.957].
+
+## `circling-queen.json` — generation 34, a rider whose path circles (T3)
+
+2026-10-25, **in the library** (`379efba235c5`). C1 of `docs/plan-pieces-moves.md` §5.7: chess
+with the queen's slide given `path: "circle"`: one-square steps in her eight directions, each
+turning an eighth of a turn the same way, so her lines curl round in a ring of up to seven
+squares. Named *circling queen* and drawn as a queen; nothing else was open, and the registered
+fallback (the rose queen) was not taken, since the draft's strong self-play ran long and decisive.
+One key on the calibration baseline, so a visitor sees what a circling path is. Fairy-Stockfish
+has no reading of a turning path, so `path_oracle` is V1's second reading. Measured 2026-10-25:
+**0.916 [0.894, 0.938], viable 4-0**, every registered bar met: 0.573 of the queen's graded
+moves were ones a queen could not have played in that position (0.554 between the two strongest
+players), the top three's games 0.951 decided, graded games 76.8 plies against chess's 87.9, the
+first seat 0.511 of decided games. The queen makes 0.104 of graded plies (0.080 between the two
+strongest), and the strong self-play of the draft ran far longer than chess's (median 133 plies).
+`tests/test_showcase_circling_queen.py` holds the mechanism, a check along two circles that one
+block cannot answer among it.
+
+## `crooked-bishops.json` — generation 34, a rider whose path zigzags (T2)
+
+2026-10-25, **in the library** (`23f6613e9fa3`). Z1 of `docs/plan-pieces-moves.md` §5.7: chess
+with each bishop's slide given `path: "zigzag"`, Betza's crooked bishop (XBetza `zB`): diagonal
+steps alternating with a neighbouring diagonal, so the path runs along a rank or a file on its
+colour. Named *crooked bishop* and drawn as a bishop; nothing else was open. One key on the
+calibration baseline, so a visitor sees what a turning path is. Fairy-Stockfish reads `zB` as a
+plain bishop, so it has no second engine; `path_oracle` is V1's second reading. Measured
+2026-10-25: **0.898 [0.883, 0.922], viable 4-0**, every registered bar met: 0.729 of the crooked
+bishops' graded moves were ones a bishop could not have played in that position (0.642 between
+the two strongest players), the top three's games 0.868 decided, graded games 75.6 plies against
+chess's 87.9. Known fault: the seat leans to the second player over the graded band (first seat
+0.452 of decided games, the bar's floor 0.45), and the other way between the two strongest
+players (33 of 55). The predicted slower chess did not come: graded games are shorter than
+chess's, and no-progress draws are rare (0.015). `tests/test_showcase_crooked_bishops.py` holds
+the mechanism.
+
 ## `circe-mortal-diagonals.json` — schema 6, a strike that spares a piece other than the king (Q798)
 
 2026-10-19, a library game from the start (`d32ef74e88c0`; it never carried a preview mark, and

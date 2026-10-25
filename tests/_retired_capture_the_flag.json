@@ -1,0 +1,221 @@
+{
+  "schema_version": 31,
+  "name": "capture the flag",
+  "description": "The king of chess survives on its escapes; this game takes them all away. Each side's king is replaced by a flag that stands on its starting square for the whole game and never moves, and whoever takes the enemy flag wins at once. There is no check. Nothing forces a player to defend the flag and nothing stops them leaving it attacked, so every threat to it has to be met before it lands, by taking the attacker, blocking its line or guarding the square it would strike from, because the flag can never step aside. A knight fork that a king would simply walk out of here wins the game. The second way to win is to strip the enemy bare: a player who has no move loses, so a side reduced to its flag, or whose last pieces are all stuck, has lost, and building a fortress round the flag and waiting is not safe either. The decision the game keeps forcing is how much of the army to spend guarding one square that can never be moved out of trouble, against how much to send after the other flag. Both rules come from Stratego, the board game of hidden armies, whose flag also never moves and whose player without a move loses. Everything else is chess, except castling, which a flag cannot do.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "F",
+      "name": "flag",
+      "value": 0,
+      "royal": true,
+      "moves": []
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "F",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "royal_capture",
+    "stalemate": "loss",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "appearance": {
+    "icons": {
+      "F": "crown"
+    }
+  },
+  "provenance": {
+    "added": "2026-10-25",
+    "origin": "designed",
+    "source": "docs/plan-pieces-moves.md, I2: the showcase for pieces that never move (section 4.7)",
+    "history": "I2 of docs/plan-pieces-moves.md section 4.7, pre-registered 2026-10-25: chess (4c1922ffae26) with the king made an immobile royal flag (moves: []), won by taking it, stalemate a loss and no castling, one change on the calibration baseline so a visitor sees what a piece that never moves does. Draft F1a, kept over F1b (only pawns, bishops and rooks may take the flag) by the rule registered before the draft read: its 6400-node self-play median was 33.5 plies, not under 30. Measured 2026-10-25 (four runs, weights v12): 0.790 [0.770, 0.826], viable 4-0, seat level; V2 and V4 met, V3's index bar 0.800 missed, so it retired by the call registered before its first measured game, and never joined the library.",
+    "parents": [
+      "4c1922ffae26"
+    ]
+  }
+}

@@ -1,0 +1,242 @@
+{
+  "schema_version": 31,
+  "name": "the circling queen",
+  "description": "Chess, except that the queen no longer runs in straight lines. The circling queen starts as a queen does, one square in any of the eight directions, but every further square turns her an eighth of a turn the same way, clockwise or anticlockwise as she chooses: north, then north-east, then east, then south-east, and so on, a path that curls round in a small circle of up to seven squares and never comes back to where it began. She may stop anywhere along it, and like a queen she is stopped by the first piece on a square she lands on, taking it if it is an enemy's. Next to her, she moves as a queen does; two or three squares away she reaches squares no queen could, a knight's square among them, and she has lost the long straight lines a queen pins and skewers along. What that changes is where the strongest piece belongs. A queen in the corner of the board still commands a diagonal; this one, far from the action, commands almost nothing, so she has to be brought close, where her curling paths cover a cluster of squares round her and a single piece in the way bends her elsewhere. The decision the game keeps forcing is how near to bring a queen without lines, and how to keep her out of reach of the pieces she is drawn among. Everything else is chess.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "circling queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "path": "circle"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "appearance": {
+    "icons": {
+      "Q": "queen"
+    }
+  },
+  "provenance": {
+    "added": "2026-10-25",
+    "origin": "designed",
+    "source": "docs/plan-pieces-moves.md, T3: the showcase for riders whose path circles (section 5.7, C1)",
+    "history": "C1 of docs/plan-pieces-moves.md section 5.7, pre-registered 2026-10-25 before the rule was built: chess (4c1922ffae26) with the queen's slide given path: circle, her own eight directions walked round as a ring of one-square steps, one key on the calibration baseline so a visitor sees what a circling path does. Registered over the fallback, the rose queen, by the rule written before the draft read (C1 unless its self-play at 6400 nodes ran a median under 30 plies or under half decisive; it ran 133 plies, 0.85 decided). Nothing was tunable; the mechanics are T1's test spec tests/_path_ring.json, archived as registered, with the piece named circling queen (the test spec calls it ring queen) and drawn as a queen, a choice made before any measured game.",
+    "parents": [
+      "4c1922ffae26"
+    ]
+  }
+}

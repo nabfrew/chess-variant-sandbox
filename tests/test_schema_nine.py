@@ -483,6 +483,14 @@ FROZEN: dict[str, tuple[str, str]] = {
     # Q1007e, 2026-10-24: R3, chess with the knight made a nightrider, schema 31's ridden leap
     # (`docs/plan-schema-31.md` §6.2; `tests/test_showcases_q1007e.py`), from `4c1922ffae26`. New.
     "archive/chess-with-nightriders.json": ("cc5e28e9ed0f", "1c16ddb9f0bfe37b"),
+    # T2, 2026-10-25: Z1, chess with zigzag bishops, generation 34's turning path
+    # (`docs/plan-pieces-moves.md` §5.7; `tests/test_showcase_crooked_bishops.py`), from
+    # `4c1922ffae26`. New.
+    "archive/crooked-bishops.json": ("23f6613e9fa3", "e4e79b5a3a3a78e9"),
+    # T3, 2026-10-25: C1, chess with the queen's lines turned to circles, generation 34's turning
+    # path (`docs/plan-pieces-moves.md` §5.7; `tests/test_showcase_circling_queen.py`), from
+    # `4c1922ffae26`. New.
+    "archive/circling-queen.json": ("379efba235c5", "8374456cbf75c3ec"),
 }
 
 

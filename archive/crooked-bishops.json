@@ -1,0 +1,242 @@
+{
+  "schema_version": 31,
+  "name": "crooked bishops",
+  "description": "Chess, except that the bishops no longer run in straight lines. A crooked bishop (Ralph Betza's fairy piece of that name) steps one square diagonally, then one square on the neighbouring diagonal, then back again, and so on: north-east, south-east, north-east, south-east, a zigzag that travels along a rank or a file instead of across the board. It may start on any of the four diagonals and turn either way, it stops wherever it likes along the way, and like a bishop it is stopped by the first piece on a square it lands on, taking it if it is an enemy's. It still never leaves its colour. What that changes is which positions bury a bishop. A closed centre that locks a chess bishop behind its own pawns barely troubles this one, which walks round the side of a pawn chain as if it were a fence; but a single piece on the first square of a zigzag shuts that whole path, so the squares it reaches are crooked lines the eye does not scan, and each needs guarding in its own way. The decision the game keeps forcing is how to cover, and how to block, a long-range piece whose lines bend: which pawn to push to close a lane, and when to trade a piece that can no longer be shut out. Everything else is chess.",
+  "board": {
+    "width": 8,
+    "height": 8
+  },
+  "pieces": [
+    {
+      "id": "P",
+      "name": "pawn",
+      "value": 1,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 1,
+          "mode": "move"
+        },
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              0,
+              1
+            ]
+          ],
+          "range": 2,
+          "min_range": 2,
+          "mode": "move",
+          "condition": {
+            "from_rank": 1
+          }
+        },
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "lateral",
+          "mode": "capture"
+        }
+      ]
+    },
+    {
+      "id": "N",
+      "name": "knight",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              2
+            ]
+          ],
+          "symmetry": "dihedral8",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "crooked bishop",
+      "value": 3,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "path": "zigzag"
+        }
+      ]
+    },
+    {
+      "id": "R",
+      "name": "rook",
+      "value": 5,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "Q",
+      "name": "queen",
+      "value": 9,
+      "moves": [
+        {
+          "kind": "slide",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    },
+    {
+      "id": "K",
+      "name": "king",
+      "value": 0,
+      "royal": true,
+      "moves": [
+        {
+          "kind": "leap",
+          "vectors": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ]
+          ],
+          "symmetry": "rotate4",
+          "mode": "both"
+        }
+      ]
+    }
+  ],
+  "setup": {
+    "mirror": true,
+    "placements": [
+      {
+        "piece": "P",
+        "squares": [
+          "a2",
+          "b2",
+          "c2",
+          "d2",
+          "e2",
+          "f2",
+          "g2",
+          "h2"
+        ]
+      },
+      {
+        "piece": "R",
+        "squares": [
+          "a1",
+          "h1"
+        ]
+      },
+      {
+        "piece": "N",
+        "squares": [
+          "b1",
+          "g1"
+        ]
+      },
+      {
+        "piece": "B",
+        "squares": [
+          "c1",
+          "f1"
+        ]
+      },
+      {
+        "piece": "Q",
+        "squares": [
+          "d1"
+        ]
+      },
+      {
+        "piece": "K",
+        "squares": [
+          "e1"
+        ]
+      }
+    ]
+  },
+  "rules": {
+    "win": "checkmate",
+    "stalemate": "draw",
+    "promotion": {
+      "piece": "P",
+      "rank": "last",
+      "to": [
+        "Q",
+        "R",
+        "B",
+        "N"
+      ]
+    },
+    "en_passant": true,
+    "castling": {
+      "king": "K",
+      "rook": "R",
+      "king_steps": 2
+    },
+    "max_plies": 400,
+    "repetition_draw": 3,
+    "no_progress_draw": 100
+  },
+  "appearance": {
+    "icons": {
+      "B": "bishop"
+    }
+  },
+  "provenance": {
+    "added": "2026-10-25",
+    "origin": "designed",
+    "source": "docs/plan-pieces-moves.md, T2: the showcase for riders whose path zigzags (section 5.7, Z1)",
+    "history": "Z1 of docs/plan-pieces-moves.md section 5.7, pre-registered 2026-10-25 before the rule was built: chess (4c1922ffae26) with each bishop's slide given path: zigzag (XBetza zB, Betza's crooked bishop), one key on the calibration baseline so a visitor sees what a turning path does. Nothing was tunable; the mechanics are T1's test spec tests/_path_bolt.json, archived as registered, with the piece named crooked bishop (the test spec calls it bolt) and drawn as a bishop, a choice made before any measured game.",
+    "parents": [
+      "4c1922ffae26"
+    ]
+  }
+}
