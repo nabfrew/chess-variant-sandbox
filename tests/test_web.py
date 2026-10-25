@@ -6659,7 +6659,10 @@ class TestWhatReachesThePage:
         # (`drawingKindsHtml`) and its list (`drawingListHtml`) redrawn in place as it opens,
         # is searched and has a chip pressed. Every name, slug, sentence and picture's data
         # URI through `esc`; the rest counts and constants.
-        assert len(sites) == 155
+        # 157 since PF: the ready-made pieces' chips (`readyKindsHtml`) and list
+        # (`readyListHtml`) redrawn in place (`redrawReady`). Every name, slug, reading and
+        # picture's data URI through `esc`; the rest counts and constants.
+        assert len(sites) == 157
 
     def test_esc_is_safe_inside_a_quoted_attribute(self) -> None:
         escaped = _in_page("", "esc(`\"'<>&`) + '|' + esc(null) + '|' + esc(0)")

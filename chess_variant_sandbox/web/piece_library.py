@@ -13,6 +13,12 @@ kit is fetched by every visit to the designer.
 
 The catalogue is `assets/pieces/catalogue.json` (`catalogue.py` writes it). A checkout
 without the library answers an empty palette, as `viz/pieces.py` answers no icon.
+
+PF: a drawing whose movement tradition settles also carries `ready`, the piece that moves
+that way, out of `assets/pieces/ready.json` (`tests/test_ready_pieces.py` holds each entry
+to its reading in `docs/plan-pieces-moves.md` §1). The page lets a designer take it whole --
+drawing, name and moves -- and says in the entry's own words what game-wide rule it needs.
+The file is data: nothing here reads what a move means beyond saying it in words.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ import json
 from functools import lru_cache
 from typing import Any
 
+from chess_variant_sandbox.spec.describe import move_sentence
 from chess_variant_sandbox.viz.pieces import ASSET_ROOT
 
 # The order the palette's category chips are offered in, and what each is called on them.
@@ -38,10 +45,33 @@ def _read(name: str) -> Any:
         return None
 
 
+# What of a ready entry travels into a draft as the piece itself.
+_READY_PIECE_KEYS = ("name", "value", "royal", "moves", "rest", "sight")
+
+
+def _ready(entry: Any) -> dict[str, Any] | None:
+    """One drawing's ready piece, as the page takes it, or None."""
+    if not isinstance(entry, dict) or not isinstance(entry.get("moves"), list):
+        return None
+    lattice = entry.get("lattice", "square")
+    return {
+        "id": entry.get("id", ""),
+        "piece": {key: entry[key] for key in _READY_PIECE_KEYS if key in entry},
+        "reading": entry.get("reading", ""),
+        "says": [move_sentence(move, lattice == "hex") for move in entry["moves"]],
+        "lattice": lattice,
+        "rules": entry.get("rules"),
+        "rulesSay": entry.get("rules_say", ""),
+        "note": entry.get("note", ""),
+    }
+
+
 @lru_cache(maxsize=1)
 def palette() -> dict[str, Any]:
     """Every drawing, in the catalogue's category order and then by name."""
     catalogue, manifest = _read("catalogue.json"), _read("manifest.json")
+    ready_file = _read("ready.json")
+    ready = ready_file.get("pieces", {}) if isinstance(ready_file, dict) else {}
     if not isinstance(catalogue, dict) or not isinstance(manifest, dict):
         return {"categories": [], "pieces": []}
     order = {name: i for i, name in enumerate(catalogue["categories"])}
@@ -67,6 +97,7 @@ def palette() -> dict[str, Any]:
             "pair": entry["seats"] != ["one"],
             "licence": row.get("licence", ""),
             "svg": svg,
+            "ready": _ready(ready.get(slug)),
         })
     pieces.sort(key=lambda p: (order.get(p["category"], len(order)), p["name"]))
     return {

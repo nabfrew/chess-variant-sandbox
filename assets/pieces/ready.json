@@ -1,0 +1,2410 @@
+{
+ "about": "The ready-made pieces the designer offers: for each drawing whose movement fairy-chess tradition (or the drawing's own words) settles, the piece that moves that way, picked whole -- drawing, name and moves -- and editable after. docs/plan-pieces-moves.md section 1 is the reading of each; tests/test_ready_pieces.py holds every entry to it and compiles it. A piece carries no squares and names no other piece. 'rules' is a rule of the whole game the piece needs, which the designer offers to write, '@self' standing for the piece's own letter and '@royals' for the draft's royal pieces; 'note' is what the tradition adds that is left to the designer.",
+ "pieces": {
+  "alfil": {
+   "name": "alfil",
+   "id": "A",
+   "value": 1,
+   "reading": "the (2,2) leaper (Betza A; shatranj's elephant)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       2,
+       2
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "amazon": {
+   "name": "amazon",
+   "id": "M",
+   "value": 12,
+   "reading": "queen and knight",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       2
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ]
+  },
+  "anchor": {
+   "name": "anchor",
+   "id": "X",
+   "value": 1,
+   "reading": "a piece that never moves (its words: immobile, stuck, fixed)",
+   "moves": [],
+   "note": "It never moves: it blocks lines and screens hops, and is taken as any piece is."
+  },
+  "antelope": {
+   "name": "antelope",
+   "id": "T",
+   "value": 2,
+   "reading": "the (3,4) leaper (Parlett)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       3,
+       4
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ]
+  },
+  "archbishop": {
+   "name": "archbishop",
+   "id": "A",
+   "value": 8,
+   "reading": "bishop and knight (Capablanca)",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       2
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ]
+  },
+  "arrow": {
+   "name": "archer",
+   "id": "A",
+   "value": 3,
+   "reading": "an archer (its words: archer, shooter): a bishop whose every capture is a shot, Rifle chess's capture given to one piece",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ],
+   "rules": {
+    "strike": {
+     "effect": "capture",
+     "position": "stay",
+     "immune": "@royals",
+     "by": [
+      "@self"
+     ]
+    }
+   },
+   "rules_say": "It shoots only under rules.strike, a rule of the whole game: its captures take the target and leave it where it stood. Without that rule it is a plain bishop."
+  },
+  "berolina": {
+   "name": "berolina pawn",
+   "id": "P",
+   "value": 1,
+   "reading": "moves diagonally forward, captures straight forward (Berolina, E. Nebermann 1926)",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "lateral",
+     "range": 1,
+     "mode": "move"
+    },
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "lateral",
+     "range": 2,
+     "min_range": 2,
+     "mode": "move",
+     "condition": {
+      "from_rank": 1
+     }
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "mode": "capture"
+    }
+   ],
+   "note": "It promotes on the far rank only if the game says so: rules.promotion, which names what it may become."
+  },
+  "bishop": {
+   "name": "bishop",
+   "id": "B",
+   "value": 3,
+   "reading": "the diagonal rider",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "bison": {
+   "name": "bison",
+   "id": "B",
+   "value": 5,
+   "reading": "camel and zebra (Betza CZ)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       3
+      ]
+     ],
+     "symmetry": "dihedral8"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       2,
+       3
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ]
+  },
+  "bolt": {
+   "name": "lightning",
+   "id": "Z",
+   "value": 3,
+   "reading": "the crooked bishop (its words: zigzag; Betza's boyscout, XBetza zB): diagonal steps turning one way and back, along a rank or a file",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4",
+     "path": "zigzag"
+    }
+   ]
+  },
+  "bomb": {
+   "name": "bomb",
+   "id": "X",
+   "value": 1,
+   "reading": "Stratego's bomb, one shot: it never moves, and whatever takes it is destroyed with it",
+   "moves": [],
+   "rules": {
+    "explode_on_capture": {
+     "radius": 0,
+     "of": [
+      "@self"
+     ]
+    }
+   },
+   "rules_say": "Taking it destroys the taker too only under rules.explode_on_capture, a rule of the whole game. Without that rule it is a plain piece that never moves."
+  },
+  "camel": {
+   "name": "camel",
+   "id": "C",
+   "value": 2.5,
+   "reading": "the (1,3) leaper (Parlett)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       3
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ]
+  },
+  "centaur": {
+   "name": "centaur",
+   "id": "C",
+   "value": 6,
+   "reading": "king and knight",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       2
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ]
+  },
+  "champion": {
+   "name": "champion",
+   "id": "C",
+   "value": 4.5,
+   "reading": "wazir, alfil and dabbaba (Omega chess)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       2,
+       2
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       2,
+       0
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "chancellor": {
+   "name": "chancellor",
+   "id": "C",
+   "value": 9,
+   "reading": "rook and knight (Capablanca)",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       2
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ]
+  },
+  "commoner": {
+   "name": "commoner",
+   "id": "M",
+   "value": 3,
+   "reading": "a king that is not royal",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "crown": {
+   "name": "flag",
+   "id": "F",
+   "value": 0,
+   "reading": "Stratego's flag: a royal that never moves",
+   "moves": [],
+   "royal": true,
+   "note": "Under win by royal capture taking it wins at once. Under checkmate a check on it can only be met by taking or blocking the checker, since it cannot step away."
+  },
+  "crowned-bishop": {
+   "name": "dragon horse",
+   "id": "H",
+   "value": 7,
+   "reading": "bishop and wazir (shogi's dragon horse)",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "crowned-rook": {
+   "name": "dragon king",
+   "id": "D",
+   "value": 8,
+   "reading": "rook and ferz (shogi's dragon king)",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "dabbaba": {
+   "name": "dabbaba",
+   "id": "D",
+   "value": 1,
+   "reading": "the (2,0) leaper (Betza D)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       2,
+       0
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "dragon": {
+   "name": "dragon",
+   "id": "D",
+   "value": 4,
+   "reading": "knight and pawn (problemist convention)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       2
+      ]
+     ],
+     "symmetry": "dihedral8"
+    },
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "symmetry": "none",
+     "range": 1,
+     "mode": "move"
+    },
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "symmetry": "none",
+     "range": 2,
+     "min_range": 2,
+     "mode": "move",
+     "condition": {
+      "from_rank": 1
+     }
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "lateral",
+     "mode": "capture"
+    }
+   ],
+   "note": "It promotes on the far rank only if the game says so: rules.promotion, which names what it may become."
+  },
+  "emperor": {
+   "name": "emperor",
+   "id": "K",
+   "value": 0,
+   "reading": "a royal king (no settled convention)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ],
+   "royal": true
+  },
+  "eye": {
+   "name": "watcher",
+   "id": "E",
+   "value": 3,
+   "reading": "a watcher (its words: sight): a king's step, and every enemy it sees within two squares is frozen",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ],
+   "sight": [
+    {
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4",
+     "range": 2,
+     "effect": "freeze",
+     "whose": "enemy"
+    }
+   ]
+  },
+  "fad": {
+   "name": "fad",
+   "id": "F",
+   "value": 3.5,
+   "reading": "ferz, alfil and dabbaba (Betza FAD)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       2,
+       2
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       2,
+       0
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "ferz": {
+   "name": "ferz",
+   "id": "F",
+   "value": 1,
+   "reading": "one diagonal step (shatranj)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "frog": {
+   "name": "frog",
+   "id": "F",
+   "value": 2.5,
+   "reading": "ferz and threeleaper (Betza FH)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       3,
+       0
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "ghost": {
+   "name": "ghost",
+   "id": "G",
+   "value": 9,
+   "reading": "a queen that passes through (its words): every queen-line square up to seven away, as a leap",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       0,
+       1
+      ],
+      [
+       0,
+       2
+      ],
+      [
+       0,
+       3
+      ],
+      [
+       0,
+       4
+      ],
+      [
+       0,
+       5
+      ],
+      [
+       0,
+       6
+      ],
+      [
+       0,
+       7
+      ],
+      [
+       1,
+       1
+      ],
+      [
+       2,
+       2
+      ],
+      [
+       3,
+       3
+      ],
+      [
+       4,
+       4
+      ],
+      [
+       5,
+       5
+      ],
+      [
+       6,
+       6
+      ],
+      [
+       7,
+       7
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "giraffe": {
+   "name": "giraffe",
+   "id": "G",
+   "value": 2,
+   "reading": "the (1,4) leaper (Betza; Parlett)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       4
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ]
+  },
+  "grasshopper": {
+   "name": "grasshopper",
+   "id": "G",
+   "value": 2,
+   "reading": "a queen-line hop, landing just past the screen (Dawson)",
+   "moves": [
+    {
+     "kind": "hop",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4",
+     "screen_range": 1
+    }
+   ]
+  },
+  "hourglass": {
+   "name": "hourglass",
+   "id": "T",
+   "value": 6,
+   "reading": "a timer (its words): a queen that rests two turns after it moves",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ],
+   "rest": 2
+  },
+  "inverted-king": {
+   "name": "king",
+   "id": "K",
+   "value": 0,
+   "reading": "a royal king (no canonical move of its own)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ],
+   "royal": true
+  },
+  "inverted-queen": {
+   "name": "grasshopper",
+   "id": "G",
+   "value": 2,
+   "reading": "the grasshopper (problemist convention: an upside-down queen)",
+   "moves": [
+    {
+     "kind": "hop",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4",
+     "screen_range": 1
+    }
+   ]
+  },
+  "king": {
+   "name": "king",
+   "id": "K",
+   "value": 0,
+   "reading": "the king",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ],
+   "royal": true
+  },
+  "kirin": {
+   "name": "kirin",
+   "id": "K",
+   "value": 3,
+   "reading": "ferz and dabbaba (chu shogi)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       2,
+       0
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "knight": {
+   "name": "knight",
+   "id": "N",
+   "value": 3,
+   "reading": "the (1,2) leaper",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       2
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ]
+  },
+  "man": {
+   "name": "man",
+   "id": "M",
+   "value": 3,
+   "reading": "a king that is not royal (Betza's man)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "moon": {
+   "name": "wizard",
+   "id": "W",
+   "value": 4,
+   "reading": "ferz and camel (Omega chess's wizard)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       3
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ]
+  },
+  "nightrider": {
+   "name": "nightrider",
+   "id": "N",
+   "value": 5,
+   "reading": "the knight rider (Dawson, 1925)",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       2
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ]
+  },
+  "paper": {
+   "name": "paper",
+   "id": "P",
+   "value": 1,
+   "reading": "rock-paper-scissors: a king's step, and it takes only the rock",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    }
+   ],
+   "note": "In rock-paper-scissors it takes only the rock. What it may take names other pieces, so it is left for you: once all three are in, set what each may capture, under more about this piece."
+  },
+  "pawn": {
+   "name": "pawn",
+   "id": "P",
+   "value": 1,
+   "reading": "the pawn",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "symmetry": "none",
+     "range": 1,
+     "mode": "move"
+    },
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "symmetry": "none",
+     "range": 2,
+     "min_range": 2,
+     "mode": "move",
+     "condition": {
+      "from_rank": 1
+     }
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "lateral",
+     "mode": "capture"
+    }
+   ],
+   "note": "It promotes on the far rank only if the game says so: rules.promotion, which names what it may become. Taking in passing is rules.en_passant."
+  },
+  "phoenix": {
+   "name": "phoenix",
+   "id": "P",
+   "value": 3,
+   "reading": "wazir and alfil (Betza WA)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       2,
+       2
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "prince": {
+   "name": "prince",
+   "id": "P",
+   "value": 0,
+   "reading": "a second royal that moves as a king (Tamerlane's prince)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ],
+   "royal": true,
+   "note": "A second royal: a game where a side holds two is won by royal capture (rules.win), and the check says so if it is not."
+  },
+  "queen": {
+   "name": "queen",
+   "id": "Q",
+   "value": 9,
+   "reading": "the queen",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "queen-star": {
+   "name": "super queen",
+   "id": "M",
+   "value": 12,
+   "reading": "queen and knight (its words: super queen)",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       2
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ]
+  },
+  "ring-rider": {
+   "name": "ring",
+   "id": "O",
+   "value": 6,
+   "reading": "a circular rider (its words: circle, orbit, loop): one-square steps turning an eighth each time, round a small octagon",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4",
+     "path": "circle"
+    }
+   ]
+  },
+  "rock": {
+   "name": "rock",
+   "id": "R",
+   "value": 1,
+   "reading": "rock-paper-scissors: a king's step, and it takes only the scissors",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    }
+   ],
+   "note": "In rock-paper-scissors it takes only the scissors. What it may take names other pieces, so it is left for you: once all three are in, set what each may capture, under more about this piece."
+  },
+  "rook": {
+   "name": "rook",
+   "id": "R",
+   "value": 5,
+   "reading": "the rook",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "rook-diamond": {
+   "name": "rook and alfil",
+   "id": "R",
+   "value": 6,
+   "reading": "rook and alfil",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       2,
+       2
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "rose": {
+   "name": "rose",
+   "id": "O",
+   "value": 5,
+   "reading": "the circular knight rider: knight steps turning an eighth each time, round an octagon (Parlett; XBetza qN)",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       2
+      ]
+     ],
+     "symmetry": "dihedral8",
+     "path": "circle"
+    }
+   ]
+  },
+  "royal-knight": {
+   "name": "royal knight",
+   "id": "K",
+   "value": 0,
+   "reading": "a royal knight (Knightmate)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       2
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ],
+   "royal": true
+  },
+  "saltire-rider": {
+   "name": "saltire",
+   "id": "S",
+   "value": 3,
+   "reading": "a diagonal rider (its words)",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "scissors": {
+   "name": "scissors",
+   "id": "S",
+   "value": 1,
+   "reading": "rock-paper-scissors: a king's step, and it takes only the paper",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    }
+   ],
+   "note": "In rock-paper-scissors it takes only the paper. What it may take names other pieces, so it is left for you: once all three are in, set what each may capture, under more about this piece."
+  },
+  "sergeant": {
+   "name": "sergeant",
+   "id": "S",
+   "value": 1.5,
+   "reading": "one step forward or diagonally forward, a double step from home (Betza)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "symmetry": "none"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "lateral"
+    },
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "symmetry": "none",
+     "range": 2,
+     "min_range": 2,
+     "mode": "move",
+     "condition": {
+      "from_rank": 1
+     }
+    }
+   ],
+   "note": "It promotes on the far rank only if the game says so: rules.promotion, which names what it may become."
+  },
+  "shield-king": {
+   "name": "warden",
+   "id": "K",
+   "value": 0,
+   "reading": "a royal king (no settled convention)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ],
+   "royal": true
+  },
+  "ship": {
+   "name": "ship",
+   "id": "S",
+   "value": 1,
+   "reading": "chaturaji's boat, the (2,2) leaper (Murray)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       2,
+       2
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "shogi-bishop": {
+   "name": "bishop",
+   "id": "B",
+   "value": 8,
+   "reading": "shogi's bishop, as rulesets/shogi.json plays it",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    }
+   ]
+  },
+  "shogi-gold": {
+   "name": "gold",
+   "id": "G",
+   "value": 6,
+   "reading": "shogi's gold, as rulesets/shogi.json plays it",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "lateral",
+     "mode": "both"
+    }
+   ]
+  },
+  "shogi-king": {
+   "name": "king",
+   "id": "K",
+   "value": 0,
+   "reading": "shogi's king, as rulesets/shogi.json plays it",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    }
+   ],
+   "royal": true
+  },
+  "shogi-knight": {
+   "name": "knight",
+   "id": "N",
+   "value": 3,
+   "reading": "shogi's knight, as rulesets/shogi.json plays it",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       2
+      ]
+     ],
+     "symmetry": "lateral",
+     "mode": "both"
+    }
+   ]
+  },
+  "shogi-lance": {
+   "name": "lance",
+   "id": "L",
+   "value": 3,
+   "reading": "shogi's lance, as rulesets/shogi.json plays it",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "mode": "both"
+    }
+   ]
+  },
+  "shogi-pawn": {
+   "name": "pawn",
+   "id": "P",
+   "value": 1,
+   "reading": "shogi's pawn, as rulesets/shogi.json plays it",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "mode": "both"
+    }
+   ]
+  },
+  "shogi-promoted-bishop": {
+   "name": "horse",
+   "id": "H",
+   "value": 10,
+   "reading": "shogi's horse, as rulesets/shogi.json plays it",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    }
+   ],
+   "note": "In shogi it is what a piece becomes on promotion: rules.promotion and promoted_from say that, and name pieces of your game."
+  },
+  "shogi-promoted-knight": {
+   "name": "promoted knight",
+   "id": "Y",
+   "value": 5,
+   "reading": "shogi's promoted knight, as rulesets/shogi.json plays it",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "lateral",
+     "mode": "both"
+    }
+   ],
+   "note": "In shogi it is what a piece becomes on promotion: rules.promotion and promoted_from say that, and name pieces of your game."
+  },
+  "shogi-promoted-lance": {
+   "name": "promoted lance",
+   "id": "X",
+   "value": 5,
+   "reading": "shogi's promoted lance, as rulesets/shogi.json plays it",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "lateral",
+     "mode": "both"
+    }
+   ],
+   "note": "In shogi it is what a piece becomes on promotion: rules.promotion and promoted_from say that, and name pieces of your game."
+  },
+  "shogi-promoted-pawn": {
+   "name": "tokin",
+   "id": "Q",
+   "value": 5,
+   "reading": "shogi's tokin, as rulesets/shogi.json plays it",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "lateral",
+     "mode": "both"
+    }
+   ],
+   "note": "In shogi it is what a piece becomes on promotion: rules.promotion and promoted_from say that, and name pieces of your game."
+  },
+  "shogi-promoted-rook": {
+   "name": "dragon",
+   "id": "D",
+   "value": 12,
+   "reading": "shogi's dragon, as rulesets/shogi.json plays it",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    }
+   ],
+   "note": "In shogi it is what a piece becomes on promotion: rules.promotion and promoted_from say that, and name pieces of your game."
+  },
+  "shogi-promoted-silver": {
+   "name": "promoted silver",
+   "id": "Z",
+   "value": 5,
+   "reading": "shogi's promoted silver, as rulesets/shogi.json plays it",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "lateral",
+     "mode": "both"
+    }
+   ],
+   "note": "In shogi it is what a piece becomes on promotion: rules.promotion and promoted_from say that, and name pieces of your game."
+  },
+  "shogi-rook": {
+   "name": "rook",
+   "id": "R",
+   "value": 10,
+   "reading": "shogi's rook, as rulesets/shogi.json plays it",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    }
+   ]
+  },
+  "shogi-silver": {
+   "name": "silver",
+   "id": "S",
+   "value": 5,
+   "reading": "shogi's silver, as rulesets/shogi.json plays it",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "mode": "both"
+    }
+   ]
+  },
+  "short-rook": {
+   "name": "short rook",
+   "id": "R",
+   "value": 4,
+   "reading": "a rook limited to four (Betza, the Remarkable Rookies)",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "range": 4
+    }
+   ]
+  },
+  "snowflake": {
+   "name": "snowflake",
+   "id": "S",
+   "value": 5,
+   "reading": "a slider six ways, on a hex board (its words: six ways)",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate6"
+    }
+   ],
+   "lattice": "hex"
+  },
+  "soldier": {
+   "name": "soldier",
+   "id": "S",
+   "value": 1,
+   "reading": "the xiangqi soldier: one step forward, and sideways too once across the river",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "symmetry": "none"
+    }
+   ],
+   "note": "Across the river it steps sideways too. The river is squares of your board, so it is left for you: add a sideways step (wazir, lateral) and give it the far half of the board as its region, under more about this move."
+  },
+  "spear": {
+   "name": "lance",
+   "id": "L",
+   "value": 2.5,
+   "reading": "the western lance, a forward rider",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "symmetry": "none"
+    }
+   ]
+  },
+  "squirrel": {
+   "name": "squirrel",
+   "id": "S",
+   "value": 5,
+   "reading": "alfil, dabbaba and knight (Betza ADN)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       2,
+       2
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       2,
+       0
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       2
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ]
+  },
+  "threeleaper": {
+   "name": "threeleaper",
+   "id": "H",
+   "value": 1,
+   "reading": "the (3,0) leaper (Betza H)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       3,
+       0
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "trident": {
+   "name": "trident",
+   "id": "T",
+   "value": 3,
+   "reading": "a three-way rider (its words): forward and both forward diagonals",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       0,
+       1
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "lateral"
+    }
+   ]
+  },
+  "tripper": {
+   "name": "tripper",
+   "id": "G",
+   "value": 1,
+   "reading": "the (3,3) leaper (Betza G)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       3,
+       3
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "unicorn": {
+   "name": "unicorn",
+   "id": "U",
+   "value": 7,
+   "reading": "bishop and nightrider",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       2
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ]
+  },
+  "waffle": {
+   "name": "waffle",
+   "id": "W",
+   "value": 3,
+   "reading": "wazir and alfil (Betza's waffle, WA)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4"
+    },
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       2,
+       2
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "wazir": {
+   "name": "wazir",
+   "id": "W",
+   "value": 1,
+   "reading": "one orthogonal step (Betza W)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4"
+    }
+   ]
+  },
+  "xiangqi-advisor": {
+   "name": "advisor",
+   "id": "A",
+   "value": 2,
+   "reading": "xiangqi's advisor, as rulesets/xiangqi.json plays it",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    }
+   ],
+   "note": "In xiangqi it stays in the palace. Those are squares of your board, so they are left for you: give it a region, under more about this piece."
+  },
+  "xiangqi-cannon": {
+   "name": "cannon",
+   "id": "C",
+   "value": 4.5,
+   "reading": "xiangqi's cannon, as rulesets/xiangqi.json plays it",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "move"
+    },
+    {
+     "kind": "hop",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "capture"
+    }
+   ]
+  },
+  "xiangqi-chariot": {
+   "name": "chariot",
+   "id": "R",
+   "value": 9,
+   "reading": "xiangqi's chariot, as rulesets/xiangqi.json plays it",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    }
+   ]
+  },
+  "xiangqi-elephant": {
+   "name": "elephant",
+   "id": "E",
+   "value": 2,
+   "reading": "xiangqi's elephant, as rulesets/xiangqi.json plays it",
+   "moves": [
+    {
+     "kind": "lame",
+     "vectors": [
+      [
+       2,
+       2
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    }
+   ],
+   "note": "In xiangqi it stays in its own side of the river. Those are squares of your board, so they are left for you: give it a region, under more about this piece."
+  },
+  "xiangqi-general": {
+   "name": "general",
+   "id": "K",
+   "value": 0,
+   "reading": "xiangqi's general, as rulesets/xiangqi.json plays it",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    }
+   ],
+   "royal": true,
+   "note": "In xiangqi it stays in the palace. Those are squares of your board, so they are left for you: give it a region, under more about this piece."
+  },
+  "xiangqi-horse": {
+   "name": "horse",
+   "id": "H",
+   "value": 4,
+   "reading": "xiangqi's horse, as rulesets/xiangqi.json plays it",
+   "moves": [
+    {
+     "kind": "lame",
+     "vectors": [
+      [
+       1,
+       2
+      ]
+     ],
+     "symmetry": "dihedral8",
+     "mode": "both"
+    }
+   ]
+  },
+  "xiangqi-pictorial-advisor": {
+   "name": "advisor",
+   "id": "A",
+   "value": 2,
+   "reading": "xiangqi's advisor, as rulesets/xiangqi.json plays it",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       1
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    }
+   ],
+   "note": "In xiangqi it stays in the palace. Those are squares of your board, so they are left for you: give it a region, under more about this piece."
+  },
+  "xiangqi-pictorial-cannon": {
+   "name": "cannon",
+   "id": "C",
+   "value": 4.5,
+   "reading": "xiangqi's cannon, as rulesets/xiangqi.json plays it",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "move"
+    },
+    {
+     "kind": "hop",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "capture"
+    }
+   ]
+  },
+  "xiangqi-pictorial-chariot": {
+   "name": "chariot",
+   "id": "R",
+   "value": 9,
+   "reading": "xiangqi's chariot, as rulesets/xiangqi.json plays it",
+   "moves": [
+    {
+     "kind": "slide",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    }
+   ]
+  },
+  "xiangqi-pictorial-elephant": {
+   "name": "elephant",
+   "id": "E",
+   "value": 2,
+   "reading": "xiangqi's elephant, as rulesets/xiangqi.json plays it",
+   "moves": [
+    {
+     "kind": "lame",
+     "vectors": [
+      [
+       2,
+       2
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    }
+   ],
+   "note": "In xiangqi it stays in its own side of the river. Those are squares of your board, so they are left for you: give it a region, under more about this piece."
+  },
+  "xiangqi-pictorial-general": {
+   "name": "general",
+   "id": "K",
+   "value": 0,
+   "reading": "xiangqi's general, as rulesets/xiangqi.json plays it",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       1,
+       0
+      ]
+     ],
+     "symmetry": "rotate4",
+     "mode": "both"
+    }
+   ],
+   "royal": true,
+   "note": "In xiangqi it stays in the palace. Those are squares of your board, so they are left for you: give it a region, under more about this piece."
+  },
+  "xiangqi-pictorial-horse": {
+   "name": "horse",
+   "id": "H",
+   "value": 4,
+   "reading": "xiangqi's horse, as rulesets/xiangqi.json plays it",
+   "moves": [
+    {
+     "kind": "lame",
+     "vectors": [
+      [
+       1,
+       2
+      ]
+     ],
+     "symmetry": "dihedral8",
+     "mode": "both"
+    }
+   ]
+  },
+  "xiangqi-pictorial-soldier": {
+   "name": "soldier",
+   "id": "S",
+   "value": 1,
+   "reading": "xiangqi's soldier, as rulesets/xiangqi.json plays it",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "mode": "both"
+    }
+   ],
+   "note": "Across the river it steps sideways too. The river is squares of your board, so it is left for you: add a sideways step (wazir, lateral) and give it the far half of the board as its region, under more about this move."
+  },
+  "xiangqi-soldier": {
+   "name": "soldier",
+   "id": "S",
+   "value": 1,
+   "reading": "xiangqi's soldier, as rulesets/xiangqi.json plays it",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       0,
+       1
+      ]
+     ],
+     "mode": "both"
+    }
+   ],
+   "note": "Across the river it steps sideways too. The river is squares of your board, so it is left for you: add a sideways step (wazir, lateral) and give it the far half of the board as its region, under more about this move."
+  },
+  "zebra": {
+   "name": "zebra",
+   "id": "Z",
+   "value": 2.5,
+   "reading": "the (2,3) leaper (Parlett)",
+   "moves": [
+    {
+     "kind": "leap",
+     "vectors": [
+      [
+       2,
+       3
+      ]
+     ],
+     "symmetry": "dihedral8"
+    }
+   ]
+  }
+ },
+ "left_out": {
+  "axe": "no canonical move",
+  "banner": "no canonical move",
+  "bell": "no canonical move",
+  "drop": "terrain, not a piece: its reading is walls (rules.obstacles)",
+  "duck": "Duck chess's neutral blocker, moved by the player after every move: the language has no second half of a turn (plan-pieces-moves.md §2.4)",
+  "facing-pawn": "drawn after the survey (plan-pieces-moves.md §1): a pawn that points, whose reading is a facing, which archive/weathervane.json plays",
+  "fish": "no canonical move",
+  "flame": "no canonical move",
+  "gem": "no canonical move",
+  "hammer": "no canonical move",
+  "heart": "no canonical move",
+  "hopper": "no canonical move",
+  "inverted-pawn": "no canonical move",
+  "key": "no canonical move",
+  "leaf": "no canonical move",
+  "mushroom": "no canonical move",
+  "night": "no canonical move",
+  "star-leaper": "no canonical move",
+  "sword": "no canonical move",
+  "tree": "terrain, not a piece: its reading is walls (rules.obstacles)"
+ }
+}

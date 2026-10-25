@@ -572,6 +572,7 @@ function drawDesigner() {
       <span class="muted small">Click a piece to see where it can go.</span>
     </div>
     <div id="dRestSaid" aria-live="polite">${restSaidHtml()}</div>
+    ${readyPiecesHtml()}
     ${libraryPiecesHtml()}
 
     <h3>Where they start</h3>
@@ -1053,6 +1054,211 @@ function wirePalettePieces(form) {
   });
 }
 
+// ------------------------------------------------ a ready-made piece, drawing and all
+//
+// PF. A drawing whose movement fairy-chess tradition settles comes with the piece that
+// moves that way: the server's `ready` on each drawing (`web/piece_library.py`, out of
+// `assets/pieces/ready.json`). One pick gives the drawing, the name and the moves, and all
+// three are the draft's own after, edited like any piece's. Nothing here knows a piece: a
+// rule of the whole game the piece needs is the entry's own data, written only when asked,
+// with '@self' its letter and '@royals' the draft's royal pieces.
+
+let READY_OPEN = false;   // whether the ready pieces' panel is open
+let READY_FIND = '';      // what is typed in its search
+let READY_KIND = '';      // the category whose chip is on, or '' for all of them
+const READY_NEEDS = {};   // a ready piece's letter -> what it said it needs, until dismissed
+
+function readyPiecesHtml() {
+  const hexy = ((DRAFT.board || {}).lattice || 'square') === 'hex';
+  return `<details class="panel palettePanel readyPanel u-mt-10" id="dReady"${
+    READY_OPEN ? ' open' : ''}>
+    <summary class="muted small">or take a ready-made piece: a drawing with the moves
+      tradition gives it</summary>
+    <div class="muted small u-m-8-0">One pick brings the drawing, the name and the moves,
+      all yours to change after. A piece that needs a rule of the whole game says so on
+      its card.${hexy ? ' Only pieces written for a hex board are offered here.' : ''}</div>
+    <label class="field"><span>find one</span>
+      <input id="dReadyFind" type="search" value="${esc(READY_FIND)}" autocomplete="off"
+        placeholder="a name or a way of moving: camel, rider, zigzag"></label>
+    <div class="chips" role="group" aria-label="kinds of piece" id="dReadyKinds">${
+      readyKindsHtml()}</div>
+    <div id="dReadyList" aria-live="polite">${readyListHtml()}</div>
+  </details>`;
+}
+
+function readyKindsHtml() {
+  if (!PIECE_LIBRARY) return '';
+  const used = new Set(readyOffers(true).map(drawing => drawing.category));
+  return [{ key: '', label: 'all' }].concat(PIECE_LIBRARY.categories
+    .filter(kind => used.has(kind.key))).map(kind => {
+    const on = READY_KIND === kind.key;
+    return `<button class="chip${on ? ' on' : ''}" data-readykind="${esc(kind.key)}"
+      aria-pressed="${on}">${esc(kind.label)}</button>`;
+  }).join('');
+}
+
+// The drawings with a ready piece on this draft's lattice, narrowed by the chip (unless
+// `anyKind`) and by every word typed.
+function readyOffers(anyKind) {
+  const lattice = (DRAFT.board || {}).lattice || 'square';
+  const words = READY_FIND.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return PIECE_LIBRARY.pieces.filter(drawing => {
+    const ready = drawing.ready;
+    if (!ready || ready.lattice !== lattice) return false;
+    if (!anyKind && READY_KIND && drawing.category !== READY_KIND) return false;
+    const said = [drawing.name, drawing.slug, ready.piece.name, ready.reading,
+      drawing.category].concat(drawing.words, ready.says).join(' ').toLowerCase();
+    return words.every(word => said.includes(word));
+  });
+}
+
+function readyListHtml() {
+  if (!READY_OPEN) return '';
+  if (!PIECE_LIBRARY) return '<div class="muted small">Fetching the pieces...</div>';
+  const offers = readyOffers(false);
+  const all = readyOffers(true).length;
+  if (!offers.length) return '<div class="muted small">No ready piece is called that.</div>';
+  return `<div class="muted small">${offers.length} of ${all} ready pieces</div>
+    <ul class="drawingGrid">${offers.map(drawing => `<li><button
+      data-readypiece="${esc(drawing.slug)}"
+      title="${esc(drawing.ready.piece.name + ': ' + drawing.ready.reading)}"><img
+      src="${esc(drawingHref(drawing))}" alt=""><span>${
+      esc(drawing.ready.piece.name)}</span></button></li>`).join('')}</ul>`;
+}
+
+function redrawReady() {
+  const kinds = document.getElementById('dReadyKinds');
+  const list = document.getElementById('dReadyList');
+  if (kinds) kinds.innerHTML = readyKindsHtml();
+  if (list) list.innerHTML = readyListHtml();
+  const form = document.getElementById('form');
+  if (form) wireReadyList(form);
+}
+
+// '@self' is the piece's letter and '@royals' the draft's royal pieces, wherever they
+// stand in the rule the entry gives; everything else is copied as written.
+function readyRules(rules, id) {
+  const royals = (DRAFT.pieces || []).filter(piece => piece.royal).map(piece => piece.id);
+  const fill = value => {
+    if (value === '@self') return id;
+    if (value === '@royals') return royals.slice();
+    if (Array.isArray(value)) return value.map(fill);
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, fill(item)]));
+    }
+    return value;
+  };
+  return fill(rules);
+}
+
+function takeReadyPiece(slug) {
+  const drawing = (PIECE_LIBRARY ? PIECE_LIBRARY.pieces : []).find(one => one.slug === slug);
+  const ready = drawing && drawing.ready;
+  if (!ready) return;
+  DRAFT.pieces = DRAFT.pieces || [];
+  const piece = Object.assign(JSON.parse(JSON.stringify(ready.piece)),
+                              { id: freeLetter(ready.id) });
+  DRAFT.pieces.push(piece);
+  DRAFT.appearance = DRAFT.appearance || {};
+  DRAFT.appearance.icons = DRAFT.appearance.icons || {};
+  DRAFT.appearance.icons[piece.id] = slug;
+  if (ready.rules || ready.note) READY_NEEDS[piece.id] = ready;
+  DRAFT_PIECE = DRAFT.pieces.length - 1;
+  DRAFT_SQUARE = -1;
+  freshPiece(DRAFT_PIECE);
+  drawDesigner();
+  checkDraft();
+  loadMoveMap();
+}
+
+// On the card of a piece taken ready-made: what its tradition adds that the draft must
+// say, a rule of the whole game it needs (with a button that writes it), or both.
+function readyNeedsHtml(index) {
+  const piece = (DRAFT.pieces || [])[index];
+  const ready = piece && READY_NEEDS[piece.id];
+  if (!ready) return '';
+  const parts = [];
+  if (ready.rules) {
+    const rules = readyRules(ready.rules, piece.id);
+    const held = DRAFT.rules || {};
+    const keys = Object.keys(rules);
+    const named = keys.map(key => 'rules.' + key).join(', ');
+    const written = keys.every(key => JSON.stringify(held[key]) === JSON.stringify(rules[key]));
+    const replaced = keys.filter(key => key in held).map(key => 'rules.' + key).join(', ');
+    parts.push(written
+      ? `<div>Its rule is written: <code>${esc(named)}</code>.</div>`
+      : `<div><b>It needs a rule of the whole game.</b> ${esc(ready.rulesSay)}</div>
+         <div class="row u-gap-8 u-mt-6"><button data-readyrules="${index}">write ${
+           esc(named)} into the game</button>
+         <code class="small">${esc(JSON.stringify(rules))}</code></div>${replaced
+           ? `<div class="muted small">That replaces the game's own ${esc(replaced)}.</div>`
+           : ''}`);
+  }
+  if (ready.note) parts.push(`<div>${esc(ready.note)}</div>`);
+  return `<div class="freshNote readyNeeds small" data-readyneeds="${index}">${parts.join('')}
+    <button class="u-mt-6" data-readydone="${index}">done with this note</button></div>`;
+}
+
+function wireReadyList(form) {
+  form.querySelectorAll('[data-readykind]').forEach(node => {
+    node.onclick = event => {
+      event.preventDefault();
+      READY_KIND = node.dataset.readykind;
+      redrawReady();
+    };
+  });
+  form.querySelectorAll('[data-readypiece]').forEach(node => {
+    node.onclick = event => {
+      event.preventDefault();
+      takeReadyPiece(node.dataset.readypiece);
+    };
+  });
+}
+
+function wireReadyPieces(form) {
+  const panel = form.querySelector('#dReady');
+  if (panel) {
+    panel.ontoggle = () => {
+      READY_OPEN = panel.open;
+      if (!READY_OPEN) return;
+      redrawReady();
+      if (PIECE_LIBRARY) return;
+      api('/api/design?part=pieces').then(answer => {
+        PIECE_LIBRARY = answer.pieceLibrary || { categories: [], pieces: [] };
+        redrawReady();
+      }).catch(error => {
+        const list = document.getElementById('dReadyList');
+        if (list) list.textContent = 'The pieces could not be fetched: ' + error.message;
+      });
+    };
+  }
+  const find = form.querySelector('#dReadyFind');
+  if (find) {
+    // Only the list is redrawn, so the cursor stays where it is being typed.
+    find.oninput = () => { READY_FIND = find.value; redrawReady(); };
+  }
+  wireReadyList(form);
+  form.querySelectorAll('[data-readyrules]').forEach(node => {
+    node.onclick = event => {
+      event.stopPropagation();
+      const piece = DRAFT.pieces[Number(node.dataset.readyrules)];
+      const ready = piece && READY_NEEDS[piece.id];
+      if (!ready || !ready.rules) return;
+      DRAFT.rules = Object.assign(DRAFT.rules || {}, readyRules(ready.rules, piece.id));
+      drawDesigner();
+      checkDraft();
+    };
+  });
+  form.querySelectorAll('[data-readydone]').forEach(node => {
+    node.onclick = event => {
+      event.stopPropagation();
+      const piece = DRAFT.pieces[Number(node.dataset.readydone)];
+      if (piece) delete READY_NEEDS[piece.id];
+      drawDesigner();
+    };
+  });
+}
+
 // The pieces in the order the list shows them: the draft's (a portal's moves are its
 // group's since spelling 31, on its card among the rules, so no piece here is a portal).
 function piecesInOrder() {
@@ -1089,6 +1295,7 @@ function pieceEditor(piece, index) {
     </div>
     <div data-drawingsat="${index}">${drawingsPanelHtml(index)}</div>
     ${freshNoteHtml(index)}
+    ${readyNeedsHtml(index)}
     <div class="u-mt-8">
       ${(piece.moves || []).map((move, m) => moveEditor(move, index, m)).join('')}
       ${sightsHtml(piece, index)}
@@ -2277,6 +2484,7 @@ function wireDesigner() {
   });
   wireUploads(form);
   wirePalettePieces(form);
+  wireReadyPieces(form);
   wireDrawings(form);
   wirePortalCards(form);
 

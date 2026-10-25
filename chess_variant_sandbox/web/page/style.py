@@ -1203,6 +1203,9 @@ RULES = """
   /* A piece just added that no square holds (`freshNoteHtml`). Inside the piece's sheet,
      so the note's rule rather than a box of its own (V8: no panel inside a panel). */
   .freshNote { border-left: 3px solid var(--note); padding: 3px 0 3px 9px; margin: 8px 0; }
+  /* PF: what a ready-made piece needs, the rule it would write shown whole, wrapped. */
+  .readyNeeds code { white-space: normal; overflow-wrap: anywhere; }
+  .readyNeeds > div + div { margin-top: 4px; }
   .benchTabs { gap: 6px; margin-bottom: 10px; }
   .benchTabs button { min-height: var(--ctl-h-sm); padding: 3px 11px; line-height: 18px; }
   /* The tray stands to the board's left, and drops above it when the column is too

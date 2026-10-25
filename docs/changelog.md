@@ -13,6 +13,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-25
 
+### Ready-made pieces in the designer
+
+The designer's pieces card now offers 95 ready-made pieces, from the familiar fairy pieces to shogi and
+xiangqi's. Pick a drawing and the piece arrives with its name and its moves, all yours to change. A piece that needs a rule for
+the whole game, like the archer's shot, says so and can write it in.
+
 ### Pieces that shoot
 
 A game can now give the shooting capture to some pieces only: an archer bishop takes what it attacks and
