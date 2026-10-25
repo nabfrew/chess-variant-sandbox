@@ -947,6 +947,15 @@ def survey(
             for digest, game, spec in library(root)]
 
 
+def _file_digest(path: Path) -> str:
+    """The first 16 hex digits of a file's SHA-256, read in chunks."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()[:16]
+
+
 def _aside(path: Path, today: datetime.date) -> Path:
     """A free name beside `path` for what is moved out of the way, dated, never over one."""
     for n in range(1, 1000):
@@ -1063,8 +1072,13 @@ def make(
 
     # The count and the sample, keyed by how it was taken.
     work = work_dir(runs_dir, digest)
+    # The runs by their bytes as well as their names (Q1032): a re-measured game keeps its
+    # run directories' names, so work keyed on the names alone picked up the old runs'
+    # sample and re-proved the record it was meant to replace.
     sampling = {"runs": [f"{digest}-{seed}" for seed in seeds], "max_pieces": MAX_PIECES,
-                "near": NEAR, "near_min": NEAR_MIN, "cap": CAP}
+                "near": NEAR, "near_min": NEAR_MIN, "cap": CAP,
+                "games": [_file_digest(runs_dir / f"{digest}-{seed}" / "games.jsonl")
+                          for seed in seeds]}
     listed_path = work / "candidates.json"
     listed: dict[str, Any] | None = None
     try:

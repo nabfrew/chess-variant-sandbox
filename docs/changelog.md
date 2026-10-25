@@ -13,6 +13,12 @@ application shows it as written and the site skips it (`chess_variant_sandbox/we
 
 ## 2026-10-26
 
+### Kings in the exploding games play by their own rules
+
+In atomic and kamikaze a king can no longer capture, since the blast would take it too, so the kings may
+stand side by side. In queen bomb and queens wake kings attack as in chess and can no longer step next to each other. The four
+games were measured again; their scores moved only a little.
+
 ### New games: the horse archers and anchors
 
 In the horse archers the knights shoot: the piece a knight captures is removed, and the knight stays where it

@@ -1870,7 +1870,8 @@ def _compile(
     )
     n_frames = n_facings * 2
     frames = _compile_frames(
-        pieces, n_facings, n_squares, width, height, orientation, wrap, obstacles,
+        _without_self_destroying_captures(pieces, rules, index_of),
+        n_facings, n_squares, width, height, orientation, wrap, obstacles,
         blocks_leaps, radius, has_portals, share,
     )
     if frames is None:
@@ -1950,7 +1951,6 @@ def _compile(
         n_squares,
         n_types,
         n_facings,
-        silent_types=royal_types if rules.get("explode_on_capture") else (),
         npcs=npcs,
         third_block=has_portals,
         momentum=(leap_dirs, slide_dirs, hop_dirs) if has_portals else None,
@@ -2880,7 +2880,6 @@ def _build_attack_sources(
     n_squares: int,
     n_types: int,
     n_facings: int = 1,
-    silent_types: tuple[int, ...] = (),
     npcs: NpcRule | None = None,
     third_block: bool = False,
     momentum: tuple[Any, Any, Any] | None = None,
@@ -2945,8 +2944,6 @@ def _build_attack_sources(
     for frame in range(len(leaps)):
         player, facing = divmod(frame, n_facings)
         for piece_type in range(len(leaps[frame])):
-            if piece_type in silent_types:
-                continue
             if facing and piece_type < len(facing_axes) and facing % (
                 n_facings // facing_axes[piece_type]
             ):
@@ -4104,6 +4101,46 @@ def _compile_repetition_draw(value: Any) -> int:
     is counted from.
     """
     return NO_REPETITION_DRAW if value == REPETITION_NEVER else int(value)
+
+
+def _without_self_destroying_captures(
+    pieces: list[dict[str, Any]], rules: dict[str, Any], index_of: dict[str, int]
+) -> list[dict[str, Any]]:
+    """The pieces as the movement tables read them: a royal that cannot capture loses its
+    captures (Q1032).
+
+    Under ``explode_on_capture`` the captor always dies, so a royal whose every capture
+    fires the blast -- it is in ``by`` (or ``by`` is absent) and ``of`` is absent -- can
+    take nothing without losing the game. Atomic's and kamikaze's convention, and their
+    descriptions' words, is that such a king *cannot capture*: it is offered no capture,
+    and since it attacks nothing it gives no check either, so two kings may stand side by
+    side. Stripping the capture bit here says both at once; the attack table is inverted
+    from the capture bits and needs no exception. A royal outside ``by`` (queen-bomb) or
+    one whose captures fire only on the ``of`` victims (queens-wake) captures as in chess
+    and attacks as in chess. Schema 2's ``silent_types`` silenced every royal under any
+    blast, which was this rule before ``by``/``of`` existed, and it left the capture in
+    the tables, so a king could step beside the enemy king and be taken by it
+    (``docs/reference/engine-and-spec-record.md``, "A royal that cannot capture").
+    """
+    explosion = rules.get("explode_on_capture")
+    if not isinstance(explosion, dict):
+        return pieces
+    by = _explosion_selection(explosion, "by", index_of)
+    of = _explosion_selection(explosion, "of", index_of)
+    if by == frozenset() or of is not None:
+        return pieces  # no blast at all, or one only some victims set off
+    stripped = list(pieces)
+    for index, piece in enumerate(pieces):
+        if not piece.get("royal", False) or (by is not None and index not in by):
+            continue
+        moves = []
+        for descriptor in piece.get("moves", []):
+            mode = descriptor.get("mode", "both")
+            if mode == "capture":
+                continue
+            moves.append({**descriptor, "mode": "move"} if mode == "both" else descriptor)
+        stripped[index] = {**piece, "moves": moves}
+    return stripped
 
 
 def _explosion_selection(

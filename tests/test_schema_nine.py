@@ -72,7 +72,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FROZEN: dict[str, tuple[str, str]] = {
     "rulesets/almost.json": ("9c26a04f1ca5", "b5693955ab65e13a"),
     "rulesets/antichess.json": ("3ec1560124c3", "fe591ce72b1ac298"),
-    "rulesets/atomic.json": ("6bd4d9c5769e", "4c0a2bc790ce84a3"),
+    "rulesets/atomic.json": ("6bd4d9c5769e", "68e2e63e8ea2e0e3"),  # was 4c0a2bc790ce84a3 (Q1032)
     "rulesets/bastion.json": ("9574b0bf9095", "c7b2c37ce93eaaa3"),
     "rulesets/berolina.json": ("14a126b38a1a", "f2b419020c29d309"),
     "rulesets/capablanca.json": ("2eefcd835b3b", "304b04afb9d2d47b"),
@@ -228,8 +228,8 @@ FROZEN: dict[str, tuple[str, str]] = {
     # beside a king or a pawn no longer stops two of its four diagonals. Quarry is the
     # only spec in the tree that moved; re-measured, the old score kept under `previous/`.
     "archive/quarry.json": ("51d9b36b4e93", "7bed2a6503798054"),  # was b03c53fbdc1c2346
-    "archive/queen-bomb.json": ("313c913a5b3b", "fa021e91cdc7782d"),
-    "archive/queens-wake.json": ("328cab4db5cc", "185b194e58d513eb"),
+    "archive/queen-bomb.json": ("313c913a5b3b", "6898bebfab0e245a"),  # was fa021e91cdc7782d (Q1032)
+    "archive/queens-wake.json": ("328cab4db5cc", "882d0cc13661cae0"),  # was 185b194e58d513eb (Q1032)
     "archive/reckoning.json": ("ffc7b604bea0", "165fff189589d44f"),
     # The two stone games moved **both** numbers on 2026-09-08 (Q131), which is the row
     # kind the header calls out: a ruleset whose *spec* is edited, not a compiler
@@ -308,7 +308,7 @@ FROZEN: dict[str, tuple[str, str]] = {
     # re-measured, the old score kept under `runs/54a0a193da0f/previous/`.
     "archive/circe.json": ("54a0a193da0f", "b6ab29ca41ad93ee"),  # was 33948d3b415bd51e
     "archive/andernach.json": ("f9e5dbf3ff1f", "05eec37015be2352"),
-    "archive/kamikaze.json": ("6cd3785c7246", "e626905b911bbd2b"),
+    "archive/kamikaze.json": ("6cd3785c7246", "636ce6ef33ffa7cb"),  # was e626905b911bbd2b (Q1032)
     # Q787, 2026-10-09: the three showcases the 2026-10-09 audit found missing (gaps G1 to G3
     # of `docs/reference/schema-showcase-coverage.md`): shogi plus `promote_on_entry`, shogi
     # with a backward-facing dropped pawn, and chess with a pawn that knocks pieces down.

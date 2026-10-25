@@ -734,8 +734,11 @@ SPEEDLESS = sorted(
 # no speed is resolved byte for byte as it was, its events included. It was
 # "44198b8c1ac430dcbe89a291045ee12c02f67f0661cf63ad044ccf9eb57cd3fc" over the twelve; Q983a
 # re-took it over the ten without a rest, equal with main's package and core (4271f9ff, core
-# 2acbc7a08a2785f2) and with this one.
-SPEEDLESS_DIGEST = "81a30e836fd3f995d7b4ae05c5e9c235729c8f9d437e8eb42bfd82442dd08960"
+# 2acbc7a08a2785f2) and with this one. Q1032 re-took it: the two `_simultaneous_atomic*`
+# kings lost their captures (a royal whose every capture blows itself up cannot capture; the
+# other eight specs digest equal before and after, 0d742648a3735f94), so
+# it was "81a30e836fd3f995d7b4ae05c5e9c235729c8f9d437e8eb42bfd82442dd08960" before.
+SPEEDLESS_DIGEST = "11df28788b4927ab71bec972a3fc2547e088f91c24100e9bf610334a31d525ba"
 
 
 def test_a_round_game_without_speed_plays_byte_for_byte_as_before() -> None:

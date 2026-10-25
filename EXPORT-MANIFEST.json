@@ -1,5 +1,5 @@
 {
- "source_commit": "c72718821f51504a50a1285fd4944282634f0aa5",
+ "source_commit": "af7fce4f67d16002fa38669cf4dacc421a2b694c",
  "licence": "LICENSE",
  "allow": [
   "README.md",
@@ -1741,8 +1741,8 @@
   },
   {
    "path": "chess_variant_sandbox/engine/compile.py",
-   "bytes": 232468,
-   "sha256": "bfefdc10958b6fe691afaf88969d925887d3cdda62d179537826c1d1611b5a0a"
+   "bytes": 234521,
+   "sha256": "0ac362e509d534b2d73e67b1da78e6670b649428d440832b6f9130de2f6d0d7f"
   },
   {
    "path": "chess_variant_sandbox/engine/engine.py",
@@ -2016,8 +2016,8 @@
   },
   {
    "path": "chess_variant_sandbox/puzzles.py",
-   "bytes": 55393,
-   "sha256": "290fc954dd78c44d444ef589f17aec04c02b3acd7112223c6fbb177cad15e2af"
+   "bytes": 56072,
+   "sha256": "53a8eb1dbdb3ff98cfa040bf63d1cbf9d976c5c987ddfa5f51ea8f760387c385"
   },
   {
    "path": "chess_variant_sandbox/refresher.py",
@@ -3251,8 +3251,8 @@
   },
   {
    "path": "docs/changelog.md",
-   "bytes": 146461,
-   "sha256": "90bc416ccbffbb6355be7cdd9670943afbe37583a9ed0ebd2e498976d4f3c872"
+   "bytes": 146813,
+   "sha256": "33f560f9165eac565431824afb08a6144d7e18df6c24761ea754098ecebe378c"
   },
   {
    "path": "heuristics/0b96463ffba7.json",
@@ -5066,8 +5066,8 @@
   },
   {
    "path": "tests/test_engine_compile_edges.py",
-   "bytes": 13368,
-   "sha256": "805e9c34260f24c12c83d96bc75cba4839cc2a6dc10440b3ce5ca156f24cc4d6"
+   "bytes": 15463,
+   "sha256": "709006273b5c70a46b67f8b2a7744486ea7ab6a65c7b8bfff3c49bc55da517ad"
   },
   {
    "path": "tests/test_engine_defaults_and_variants.py",
@@ -5641,8 +5641,8 @@
   },
   {
    "path": "tests/test_refresher_proofs.py",
-   "bytes": 30999,
-   "sha256": "4a090cad752e6777d448f1e4ac502316249b2dfa9b31240c002e3f7b0656a650"
+   "bytes": 31873,
+   "sha256": "7131fc3d13bb1a6b9aae23de0de39acc0c979e1acc42af7781ecb1695ba9a41d"
   },
   {
    "path": "tests/test_refresher_slow_tier.py",
@@ -5786,8 +5786,8 @@
   },
   {
    "path": "tests/test_schema_nine.py",
-   "bytes": 80332,
-   "sha256": "7769b1d8987b421cd55e105a1057bfd6e7dd59d0459cc0e7582058682a44d339"
+   "bytes": 80460,
+   "sha256": "8cf13ac292b8313eba7fa4eac2cb4c7366214caf77e80d8eab94177a0beb2fb1"
   },
   {
    "path": "tests/test_schema_nine_core.py",
@@ -6326,8 +6326,8 @@
   },
   {
    "path": "tests/test_speed.py",
-   "bytes": 39268,
-   "sha256": "ef7742c25fc2314719ea95eef108dac3530ce6bf4dd7e122d3dfe35fead25fd5"
+   "bytes": 39568,
+   "sha256": "08d634c149585f5ec1f52cfce73e9f32c2d31484f0cf5db10aa8a7fc94a73a0d"
   },
   {
    "path": "tests/test_speed_players.py",

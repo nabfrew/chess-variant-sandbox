@@ -252,6 +252,22 @@ class TestMake:
         assert second == first
         assert not list(work.glob("record-*.json"))  # nothing was there to keep
 
+    def test_a_game_replayed_under_the_same_run_names_is_sampled_again(
+        self, made, tmp_path: Path
+    ) -> None:
+        """Q1032: a re-measure keeps the run directories' names and changes their games, so
+        the work must not be picked up: the count is taken again and the old work kept."""
+        root, digest, _said = made
+        copy = tmp_path / "copy"
+        shutil.copytree(root, copy)
+        games = copy / "runs" / f"{digest}-0" / "games.jsonl"
+        lines = games.read_text(encoding="utf-8").splitlines(keepends=True)
+        games.write_text("".join(lines[:-1]), encoding="utf-8")
+        again = puzzles.make(SPEC, copy / "runs", workers=1, nodes=SMALL,
+                             defence_nodes=SMALL)
+        assert "count" in again["seconds"]
+        assert list(puzzles.work_dir(copy / "runs", digest).parent.glob(f"{digest}.before-*"))
+
     def test_a_record_replaced_is_kept_and_other_work_moved_aside(
         self, made, tmp_path: Path
     ) -> None:

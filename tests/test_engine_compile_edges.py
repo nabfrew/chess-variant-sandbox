@@ -288,3 +288,50 @@ class TestWhichPiecesCannotComeBack:
         assert _one_way(_probe([sweeper], placements=placements)) == set()
         forward = {**sweeper, "moves": [{"kind": "sweep", "vectors": [[0, 1]]}]}
         assert _one_way(_probe([forward], placements=placements)) == {"W"}
+
+
+# ------------------------------------------------- a royal that cannot capture (Q1032)
+
+
+class TestARoyalThatCannotCapture:
+    """`runs/I3/probe_kings.py`'s position: kings on e4 and e6, a rook each in a corner.
+
+    Where every capture a royal could make blows itself up, it is offered no capture and
+    attacks nothing, so the kings may stand side by side and neither takes the other.
+    Where its captures are ordinary (outside ``by``, or ``of`` naming other victims), it
+    attacks as any piece does and may not step beside the enemy royal.
+    """
+
+    POSITION = {"e4": ("K", 0), "e6": ("K", 1), "a1": ("R", 0), "h8": ("R", 1)}
+
+    def _after_step(self, explosion: dict[str, Any]) -> tuple[list[str], list[str]]:
+        spec = _load("rulesets/atomic.json")
+        spec["rules"]["explode_on_capture"] = explosion
+        engine = Engine(spec)
+        state = engine.make_state(self.POSITION, moved=list(self.POSITION))
+        steps = [t for t in engine.move_texts(state) if t.startswith("Ke4-") and t[-1] == "5"]
+        if not steps:
+            return steps, []
+        after = engine.apply(state, engine.find_move(state, steps[0]))
+        return steps, [t for t in engine.move_texts(after) if t.startswith("Ke6x")]
+
+    @pytest.mark.parametrize("explosion", [
+        {"radius": 1, "immune": ["P"]},
+        {"radius": 0},
+        {"radius": 1, "by": ["K", "Q"]},
+    ], ids=["every-capture", "radius-0", "by-the-royal"])
+    def test_a_royal_whose_every_capture_destroys_it_may_stand_beside_the_other(
+        self, explosion: dict[str, Any]
+    ) -> None:
+        steps, replies = self._after_step(explosion)
+        assert sorted(steps) == ["Ke4-d5", "Ke4-e5", "Ke4-f5"]
+        assert replies == []
+
+    @pytest.mark.parametrize("explosion", [
+        {"radius": 1, "immune": ["P"], "by": ["Q"]},
+        {"radius": 1, "immune": ["P"], "of": ["Q"]},
+    ], ids=["by-another", "of-another"])
+    def test_a_royal_whose_captures_are_ordinary_attacks_as_ordinary(
+        self, explosion: dict[str, Any]
+    ) -> None:
+        assert self._after_step(explosion) == ([], [])
